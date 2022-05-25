@@ -171,6 +171,12 @@ class HloAsyncInstruction : public HloInstruction {
   HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
                       HloInstruction* operand,
                       HloComputation* async_computation);
+
+  ~HloAsyncInstruction() override;
+  // When an async instruction is being destructed, remove it from the vector of
+  // pointers of its called computation, to avoid referencing freed memory.
+  void ClearAsyncComputationInstruction();
+
   HloInstruction* async_wrapped_instruction() const;
   HloOpcode async_wrapped_opcode() const;
 
@@ -1782,8 +1788,7 @@ class HloGatherInstruction : public HloInstruction {
 class HloScatterInstruction : public HloInstruction {
  public:
   explicit HloScatterInstruction(
-      const Shape& shape, HloInstruction* operand,
-      HloInstruction* scatter_indices, HloInstruction* updates,
+      const Shape& shape, absl::Span<HloInstruction* const> args,
       HloComputation* update_computation,
       const ScatterDimensionNumbers& scatter_dim_numbers,
       bool indices_are_sorted, bool unique_indices);
@@ -1798,6 +1803,19 @@ class HloScatterInstruction : public HloInstruction {
   bool unique_indices() const override { return unique_indices_; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
+  int64_t scatter_operand_count() const { return operand_count() / 2; }
+  absl::Span<HloInstruction* const> scatter_operands() const {
+    return absl::MakeConstSpan(operands()).first(scatter_operand_count());
+  }
+  absl::Span<HloInstruction* const> scatter_updates() const {
+    return absl::MakeConstSpan(operands()).last(scatter_operand_count());
+  }
+  const HloInstruction* scatter_indices() const {
+    return operand(scatter_operand_count());
+  }
+  HloInstruction* scatter_indices() {
+    return mutable_operand(scatter_operand_count());
+  }
 
   // Creates an instance of ScatterDimensionNumbers.
   static ScatterDimensionNumbers MakeScatterDimNumbers(

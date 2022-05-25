@@ -249,7 +249,7 @@ struct ShapeSimplification
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateShapeSimplification() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateShapeSimplification() {
   return std::make_unique<ShapeSimplification>();
 }
 

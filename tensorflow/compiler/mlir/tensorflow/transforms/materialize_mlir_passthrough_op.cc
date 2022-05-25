@@ -54,7 +54,8 @@ void MaterializePassthroughOpPass::runOnOperation() {
       op->emitError() << "could not parse attached MLIR module";
       return;
     }
-    FuncOp main = dyn_cast<FuncOp>(nested_module->lookupSymbol("main"));
+    func::FuncOp main =
+        dyn_cast<func::FuncOp>(nested_module->lookupSymbol("main"));
     if (!main) {
       op->emitError() << "MLIR Opaque Op expects a main() entry point\n";
       return;
@@ -100,7 +101,8 @@ void MaterializePassthroughOpPass::runOnOperation() {
 }  // namespace
 
 namespace TF {
-std::unique_ptr<OperationPass<FuncOp>> CreateMaterializePassthroughOpPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateMaterializePassthroughOpPass() {
   return std::make_unique<MaterializePassthroughOpPass>();
 }
 }  // namespace TF

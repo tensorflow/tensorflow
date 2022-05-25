@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_SCHEMA_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_SCHEMA_H_
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 
@@ -88,20 +89,12 @@ enum HostEventType {
   kTfDataCapturedFunctionRunWithBorrowedArgs,
   kTfDataCapturedFunctionRunInstantiated,
   kTfDataCapturedFunctionRunAsync,
-  // Functional ops.
-  kCallOp,
+  // Loop ops.
   kParallelForOp,
   kForeverOp,
-  kNumericalGradientOpEvalRight,
-  kNumericalGradientOpEvalLeft,
-  kSymbolicGradientOp,
-  kRemoteCallOp,
-  kIfOp,
-  kCaseOp,
   kWhileOpEvalCond,
   kWhileOpStartBody,
   kForOp,
-  kPartitionedCallOp,
   // tf.data related.
   kIteratorGetNextOp,
   kIteratorGetNextAsOptionalOp,
@@ -139,19 +132,19 @@ enum HostEventType {
   // TPU related
   kEnqueueRequestLocked,
   kRunProgramRequest,
-  kStartProgramRequest,
   kHostCallbackRequest,
   kTransferH2DRequest,
   kTransferPreprocessedH2DRequest,
   kTransferD2HRequest,
-  kTransferD2DRequest,
-  kTransferD2DRemoteRequest,
   kOnDeviceSendRequest,
   kOnDeviceRecvRequest,
   kOnDeviceSendRecvLocalRequest,
+  kCustomWait,
+  kOnDeviceSendRequestMulti,
+  kOnDeviceRecvRequestMulti,
+  kPjrtAsyncWait,
   kDoEnqueueProgram,
   kDoEnqueueContinuationProgram,
-  kStartProgram,
   kWriteHbm,
   kReadHbm,
   kTpuExecuteOp,
@@ -175,8 +168,6 @@ enum StatType {
   kUnknownStatType = kFirstStatType,
   // TraceMe arguments.
   kStepId,
-  kParentStepId,
-  kFunctionStepId,
   kDeviceOrdinal,
   kChipOrdinal,
   kNodeOrdinal,
@@ -244,7 +235,6 @@ enum StatType {
   kTfFunctionTracingCount,
   kFlops,
   kBytesAccessed,
-  kSelectedGroupIds,
   kSourceInfo,
   kModelName,
   kModelVersion,
@@ -356,9 +346,14 @@ class XFlow {
     return FlowDirection(encoded_.parts.direction);
   }
 
+  static uint64_t GetUniqueId() {  // unique in current process.
+    return next_flow_id_.fetch_add(1);
+  }
+
  private:
   explicit XFlow(uint64_t encoded) { encoded_.whole = encoded; }
   static constexpr uint64_t kFlowMask = (1ULL << 56) - 1;
+  static std::atomic<uint64_t> next_flow_id_;
 
   union {
     // Encoded representation.

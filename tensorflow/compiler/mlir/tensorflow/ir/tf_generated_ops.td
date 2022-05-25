@@ -3300,7 +3300,7 @@ The attr `block_size` indicates the input block size and how the data is moved.
 
   * Chunks of data of size `block_size * block_size` from depth are rearranged
     into non-overlapping blocks of size `block_size x block_size`
-  * The width the output tensor is `input_depth * block_size`, whereas the
+  * The width of the output tensor is `input_depth * block_size`, whereas the
     height is `input_height * block_size`.
   * The Y, X coordinates within each block of the output image are determined
     by the high order component of the input channel index.
@@ -9069,6 +9069,8 @@ def TF_MaximumOp : TF_Op<"Maximum", [NoSideEffect, ResultsBroadcastableShape, TF
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_MeanOp : TF_Op<"Mean", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
@@ -10506,8 +10508,8 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
     CallInterfaceCallable getCallableForCallee() { return fAttr(); }
 
     // returns the callee of this operation.
-    FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
+    func::FuncOp func() {
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, f());
     }
   }];
 
@@ -11767,7 +11769,7 @@ is the corresponding input gradient.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_RecvOp : TF_Op<"Recv", []> {
+def TF_RecvOp : TF_Op<"Recv", [TF_RecvSideEffect]> {
   let summary = "Receives the named tensor from send_device on recv_device.";
 
   let arguments = (ins
@@ -11873,6 +11875,8 @@ array([0., 0., 3.], dtype=float32)
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_Relu6Op : TF_Op<"Relu6", [Idempotent, NoSideEffect, SameOperandsAndResultType]> {
@@ -14239,26 +14243,28 @@ Scatters `updates` into a tensor of shape `shape` according to `indices`.
   }];
 
   let description = [{
-Update the input tensor by scattering sparse `updates` according to individual values at the specified `indices`.
-This op returns an `output` tensor with the `shape` you specify. This op is the
-inverse of the `tf.gather_nd` operator which extracts values or slices from a
-given tensor.
+Scatter sparse `updates` according to individual values at the specified
+`indices`. This op returns an output tensor with the `shape` you specify. This
+op is the inverse of the `tf.gather_nd` operator which extracts values or slices
+from a given tensor.
 
 This operation is similar to `tf.tensor_scatter_nd_add`, except that the tensor
-is zero-initialized. Calling `tf.scatter_nd(indices, values, shape)`
+is zero-initialized. Calling `tf.scatter_nd(indices, updates, shape)`
 is identical to calling
-`tf.tensor_scatter_nd_add(tf.zeros(shape, values.dtype), indices, values)`
+`tf.tensor_scatter_nd_add(tf.zeros(shape, updates.dtype), indices, updates)`
 
-If `indices` contains duplicates, the duplicate `values` are accumulated
-(summed).
+If `indices` contains duplicates, the associated `updates` are accumulated
+(summed) into the output tensor.
 
-**WARNING**: The order in which updates are applied is nondeterministic, so the
-output will be nondeterministic if `indices` contains duplicates;
-numbers summed in different order may yield different results because of some
-numerical approximation issues.
+**WARNING**: For floating-point data types, the output may be nondeterministic.
+This is because the order in which the updates are applied is nondeterministic
+and when floating-point numbers are added in different orders the resulting
+numerical approximation error can be slightly different. However, the output
+will be deterministic if op determinism is enabled via
+`tf.config.experimental.enable_op_determinism`.
 
-`indices` is an integer tensor of shape `shape`. The last dimension
-of `indices` can be at most the rank of `shape`:
+`indices` is an integer tensor containing indices into the output tensor. The
+last dimension of `indices` can be at most the rank of `shape`:
 
     indices.shape[-1] <= shape.rank
 
@@ -14750,7 +14756,7 @@ if outputs < 0, `scale * gradients` otherwise.}]>:$backprops
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_SendOp : TF_Op<"Send", []> {
+def TF_SendOp : TF_Op<"Send", [TF_SendSideEffect]> {
   let summary = "Sends the named tensor from send_device to recv_device.";
 
   let arguments = (ins
@@ -18195,6 +18201,8 @@ def TF_TensorListGetItemOp : TF_Op<"TensorListGetItem", [NoSideEffect]> {
   );
 
   TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_TensorListLengthOp : TF_Op<"TensorListLength", [NoSideEffect]> {
@@ -19899,6 +19907,28 @@ containing only non-negative values.}]>:$padding_interior
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
 }
 
+def TF_XlaRecvOp : TF_Op<"XlaRecv", [TF_RecvSideEffect]> {
+  let summary = [{
+Receives the named tensor from another XLA computation. Wraps the XLA Recv
+  }];
+
+  let description = [{
+operator documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#recv .
+  }];
+
+  let arguments = (ins
+    StrAttr:$tensor_name,
+    TF_ShapeAttr:$shape
+  );
+
+  let results = (outs
+    Res<TF_Tensor, [{The tensor to receive.}]>:$tensor
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_XlaRecvFromHostOp : TF_Op<"XlaRecvFromHost", [TF_RecvSideEffect]> {
   let summary = "An op to receive a tensor from the host.";
 
@@ -20137,6 +20167,27 @@ multiplicity.}]>:$w,
     Res<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{The column v[..., :, i] is the normalized eigenvector corresponding to the
 eigenvalue w[..., i].}]>:$v
   );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlaSendOp : TF_Op<"XlaSend", [TF_SendSideEffect]> {
+  let summary = [{
+Sends the named tensor to another XLA computation. Wraps the XLA Send operator
+  }];
+
+  let description = [{
+documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#send .
+  }];
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{The tensor to send.}]>:$tensor,
+
+    StrAttr:$tensor_name
+  );
+
+  let results = (outs);
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
@@ -20559,7 +20610,7 @@ expected to create these operators.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF__HostRecvOp : TF_Op<"_HostRecv", [TF_RecvSideEffect]> {
+def TF__HostRecvOp : TF_Op<"_HostRecv", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_RecvSideEffect]> {
   let summary = "Receives the named tensor from send_device on recv_device.";
 
   let description = [{
@@ -20582,7 +20633,7 @@ output on device memory.
   TF_DerivedResultTypeAttr tensor_type = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF__HostSendOp : TF_Op<"_HostSend", [TF_SendSideEffect]> {
+def TF__HostSendOp : TF_Op<"_HostSend", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_SendSideEffect]> {
   let summary = "Sends the named tensor from send_device to recv_device.";
 
   let description = [{
@@ -20621,7 +20672,7 @@ def TF__ListToArrayOp : TF_Op<"_ListToArray", [NoSideEffect]> {
   TF_DerivedResultTypeAttr T = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF__RecvOp : TF_Op<"_Recv", [TF_RecvSideEffect]> {
+def TF__RecvOp : TF_Op<"_Recv", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_RecvSideEffect]> {
   let summary = "Receives the named tensor from send_device on recv_device.";
 
   let arguments = (ins
@@ -20691,7 +20742,7 @@ of the embedding lookup operation.
   );
 }
 
-def TF__SendOp : TF_Op<"_Send", [TF_SendSideEffect]> {
+def TF__SendOp : TF_Op<"_Send", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_SendSideEffect]> {
   let summary = "Sends the named tensor from send_device to recv_device.";
 
   let arguments = (ins
@@ -20817,7 +20868,7 @@ expected to create these operators.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF__XlaHostComputeMlirOp : TF_Op<"_XlaHostComputeMlir", [TF_RecvSideEffect, TF_SendSideEffect]> {
+def TF__XlaHostComputeMlirOp : TF_Op<"_XlaHostComputeMlir", [TF_RecvSideEffect, TF_SendSideEffect, TF_XlaHostComputeSideEffect]> {
   let summary = [{
 A pseudo-op to represent host-side computation in an XLA program.
   }];
@@ -20839,7 +20890,7 @@ A pseudo-op to represent host-side computation in an XLA program.
   TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
 
   let extraClassDeclaration = [{
-    FuncOp GetHostFunc(mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
+    func::FuncOp GetHostFunc(mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
   }];
 
   let hasVerifier = 1;

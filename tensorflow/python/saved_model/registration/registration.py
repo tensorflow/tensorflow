@@ -199,7 +199,8 @@ def register_checkpoint_saver(package="Custom",
                               name=None,
                               predicate=None,
                               save_fn=None,
-                              restore_fn=None):
+                              restore_fn=None,
+                              strict_predicate_restore=True):
   """Registers functions which checkpoints & restores objects with custom steps.
 
   If you have a class that requires complicated coordination between multiple
@@ -261,6 +262,8 @@ def register_checkpoint_saver(package="Custom",
     return file_prefix  # Returns a tensor or a list of string tensors
   ```
 
+  The save function is executed before the unregistered save ops.
+
   **Custom restore function**
 
   Normal checkpoint restore behavior:
@@ -290,6 +293,8 @@ def register_checkpoint_saver(package="Custom",
     # Restore the checkpoint values for the given Trackables.
   ```
 
+  The restore function is executed after the non-registered restore ops.
+
   Args:
     package: Optional, the package that this class belongs to.
     name: (Required) The name of this saver, which is saved to the checkpoint.
@@ -305,6 +310,11 @@ def register_checkpoint_saver(package="Custom",
       Trackables, and returns the list of shard prefixes.
     restore_fn: (Required) A function that takes a dictionary of trackables and
       a file prefix as the arguments and restores the trackable values.
+    strict_predicate_restore: If this is `True` (default), then an error will be
+      raised if the predicate fails during checkpoint restoration. If this is
+      `True`, checkpoint restoration will skip running the restore function.
+      This value is generally set to `False` when the predicate does not pass on
+      the Trackables after being saved/loaded from SavedModel.
 
   Raises:
     ValueError: if the package and name are already registered.
@@ -314,7 +324,8 @@ def register_checkpoint_saver(package="Custom",
   if not callable(restore_fn):
     raise TypeError(f"The restore_fn must be callable, got: {type(restore_fn)}")
 
-  _saver_registry.register(package, name, predicate, (save_fn, restore_fn))
+  _saver_registry.register(package, name, predicate, (save_fn, restore_fn,
+                                                      strict_predicate_restore))
 
 
 def get_registered_saver_name(trackable):
@@ -333,6 +344,11 @@ def get_save_function(registered_name):
 def get_restore_function(registered_name):
   """Returns restore function registered to name."""
   return _saver_registry.name_lookup(registered_name)[1]
+
+
+def get_strict_predicate_restore(registered_name):
+  """Returns if the registered restore can be ignored if the predicate fails."""
+  return _saver_registry.name_lookup(registered_name)[2]
 
 
 def validate_restore_function(trackable, registered_name):

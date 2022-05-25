@@ -50,7 +50,11 @@ static Type GetReifiedType(Type orig, ShapeAttr shape) {
   Type element_type = orig.cast<ShapedType>().getElementType();
   TensorType inferred;
   if (shape.hasRank()) {
-    inferred = RankedTensorType::get(shape.getShape(), element_type);
+    // Replace dimensions less than -1 with ?
+    SmallVector<int64_t> dims = llvm::to_vector(shape.getShape());
+    for (int64_t &dim : dims)
+      if (dim < -1) dim = -1;
+    inferred = RankedTensorType::get(dims, element_type);
   } else {
     inferred = UnrankedTensorType::get(element_type);
   }
@@ -108,7 +112,7 @@ class ConsolidateAttributesPassImpl
  private:
   // Reify `tf._input_shapes`, `tf._output_shapes` and `tfg.handle_data` into
   // the types of the function arguments. Drop the attributes `tfg.dtype` and
-  // `tfg.is_ref`. Return the the new argument attributes.
+  // `tfg.is_ref`. Return the new argument attributes.
   ArrayAttr reifyAndDropFunctionArgumentAttributes(GraphFuncOp func);
   // Reify `tf._output_shapes` and `tfg.handle_data` into the types of the
   // function results. Drop the attribute `tfg.dtype`. Return the new result
@@ -116,19 +120,25 @@ class ConsolidateAttributesPassImpl
   ArrayAttr reifyAndDropFunctionResultAttributes(GraphFuncOp func);
 
   // Refine a type with `tf._output_shapes`.
-  Type refineTypeWithOutputShapes(Type type, Attribute output_shapes_attr);
+  Type refineTypeWithOutputShapes(Type type, NamedAttrList &attrs);
   // Refine a type with `tfg.handle_data`.
   Type refineTypeWithHandleData(Type type, Attribute handle_data);
 };
 }  // namespace
 
 Type ConsolidateAttributesPassImpl::refineTypeWithOutputShapes(
-    Type type, Attribute output_shapes_attr) {
-  auto output_shapes = output_shapes_attr.dyn_cast_or_null<ArrayAttr>();
-  if (!output_shapes || output_shapes.size() != 1 ||
-      !IsArrayOfShapes(output_shapes))
-    return type;
-  return GetReifiedType(type, output_shapes[0].cast<ShapeAttr>());
+    Type type, NamedAttrList &attrs) {
+  // Get the output shapes attribute. If the attribute is not an array of
+  // exactly one shape, ignore it.
+  if (auto output_shapes =
+          attrs.get(output_shapes_id_).dyn_cast_or_null<ArrayAttr>()) {
+    if (output_shapes.size() == 1 && IsArrayOfShapes(output_shapes)) {
+      attrs.erase(output_shapes_id_);
+      attrs.set(regenerate_output_shapes_id_, UnitAttr::get(&getContext()));
+      return GetReifiedType(type, output_shapes[0].cast<ShapeAttr>());
+    }
+  }
+  return type;
 }
 
 Type ConsolidateAttributesPassImpl::refineTypeWithHandleData(
@@ -147,15 +157,17 @@ Type ConsolidateAttributesPassImpl::refineTypeWithHandleData(
 
 ArrayAttr ConsolidateAttributesPassImpl::reifyAndDropFunctionArgumentAttributes(
     GraphFuncOp func) {
-  // Get the input shapes attribute if there is one. Only use if the number of
-  // shapes matches the number of arguments.
+  // Get the input shapes attribute. If it is a UnitAttr, then it is empty and
+  // we will ignore it. If it isn't an array of shapes or has an inconsistent
+  // number of shapes, ignore it.
   ArrayAttr input_shapes =
-      func->removeAttr(input_shapes_id_).dyn_cast_or_null<ArrayAttr>();
+      func->getAttr(input_shapes_id_).dyn_cast_or_null<ArrayAttr>();
   unsigned num_args = func.getNumArguments() / 2;
   if (input_shapes) {
     if (input_shapes.size() != num_args || !IsArrayOfShapes(input_shapes)) {
       input_shapes = {};
     } else {
+      func->removeAttr(input_shapes_id_);
       func->setAttr(regenerate_input_shapes_id_, UnitAttr::get(&getContext()));
     }
   }
@@ -166,10 +178,7 @@ ArrayAttr ConsolidateAttributesPassImpl::reifyAndDropFunctionArgumentAttributes(
     BlockArgument arg = GraphFuncOp::getDataValue(func.body(), i);
     NamedAttrList attrs(func.getArgAttrs(arg.getArgNumber()));
     Type arg_type = arg.getType();
-    if (Attribute output_shapes = attrs.erase(output_shapes_id_)) {
-      arg_type = refineTypeWithOutputShapes(arg_type, output_shapes);
-      attrs.set(regenerate_output_shapes_id_, UnitAttr::get(&getContext()));
-    }
+    arg_type = refineTypeWithOutputShapes(arg_type, attrs);
     arg_type = refineTypeWithHandleData(arg_type, attrs.erase(handle_data_id_));
     if (input_shapes)
       arg_type = GetReifiedType(arg_type, input_shapes[i].cast<ShapeAttr>());
@@ -183,18 +192,17 @@ ArrayAttr ConsolidateAttributesPassImpl::reifyAndDropFunctionArgumentAttributes(
 
 ArrayAttr ConsolidateAttributesPassImpl::reifyAndDropFunctionResultAttributes(
     GraphFuncOp func) {
+  ArrayAttr res_attrs = func.getAllResultAttrs();
+  if (!res_attrs) return ArrayAttr::get(&getContext(), {});
+
   SmallVector<Attribute> ret_attrs;
   // The result types are propagated to the data operands to `return`.
   auto ret_op = cast<ReturnOp>(func.body().front().getTerminator());
-  for (auto &it :
-       llvm::enumerate(func.getAllResultAttrs().getAsRange<DictionaryAttr>())) {
+  for (auto &it : llvm::enumerate(res_attrs.getAsRange<DictionaryAttr>())) {
     NamedAttrList attrs(it.value());
     Value ret = ret_op.getOperand(it.index());
     Type ret_type = ret.getType();
-    if (Attribute output_shapes = attrs.erase(output_shapes_id_)) {
-      ret_type = refineTypeWithOutputShapes(ret_type, output_shapes);
-      attrs.set(regenerate_output_shapes_id_, UnitAttr::get(&getContext()));
-    }
+    ret_type = refineTypeWithOutputShapes(ret_type, attrs);
     ret_type = refineTypeWithHandleData(ret_type, attrs.erase(handle_data_id_));
     ret.setType(ret_type);
     attrs.erase(dtype_id_);
@@ -216,19 +224,24 @@ class ReifyOperationOutputShapes : public RewritePattern {
   // Returns true if this instance of the pattern should match the op.
   virtual bool shouldMatch(Operation *op) const = 0;
 
-  LogicalResult match(Operation *op) const override {
-    return success(shouldMatch(op) && op->hasAttr(output_shapes_id_));
-  }
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    if (!shouldMatch(op)) return failure();
 
-  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
+    ResultRange results = TFOp(op).getNonControlResults();
+
+    // Get the output shapes attribute. Ignore it if it is not an array
+    // attribute, if it has an inconsistent number of shapes, or if it is not
+    // an array of shapes.
+    ArrayAttr output_shapes =
+        op->getAttr(output_shapes_id_).dyn_cast_or_null<ArrayAttr>();
+    if (!output_shapes || results.size() != output_shapes.size() ||
+        !IsArrayOfShapes(output_shapes))
+      return failure();
+
     rewriter.updateRootInPlace(op, [&] {
-      auto output_shapes =
-          op->removeAttr(output_shapes_id_).dyn_cast_or_null<ArrayAttr>();
-      ResultRange results = TFOp(op).getNonControlResults();
-      if (!output_shapes || results.size() != output_shapes.size() ||
-          !IsArrayOfShapes(output_shapes))
-        return;
-
+      op->removeAttr(output_shapes_id_);
+      assert(output_shapes.size() == results.size());
       for (auto it :
            llvm::zip(results, output_shapes.getAsRange<ShapeAttr>())) {
         Value result = std::get<0>(it);
@@ -236,6 +249,7 @@ class ReifyOperationOutputShapes : public RewritePattern {
       }
       rewriteImpl(op, rewriter);
     });
+    return success();
   }
 
   virtual void rewriteImpl(Operation *op, PatternRewriter &rewriter) const {}
@@ -257,7 +271,7 @@ class ReifyTFGOpOutputShapes : public ReifyOperationOutputShapes {
             StringAttr::get(context, kRegenerateOutputShapes)) {}
 
   bool shouldMatch(Operation *op) const override {
-    return op->getDialect() == dialect_;
+    return op->getDialect() == dialect_ && op->getNumResults();
   }
 
   void rewriteImpl(Operation *op, PatternRewriter &rewriter) const override {
@@ -325,6 +339,11 @@ static std::unique_ptr<RewritePattern> RemoveAttributes(
 }
 
 void ConsolidateAttributesPassImpl::runOnOperation() {
+  // Skip this pass on generic functions. Generic functions contain only opaque
+  // tensor types, into which shape and data type info cannot be reified.
+  auto func = dyn_cast<GraphFuncOp>(getOperation());
+  if (func && func.generic()) return;
+
   // Reify operation attributes.
   RewritePatternSet patterns(&getContext());
   patterns.insert<ReifyTFGOpOutputShapes, ReifyCFOpOutputShapes>(&getContext());
@@ -345,8 +364,7 @@ void ConsolidateAttributesPassImpl::runOnOperation() {
   // If the pass was run on a function, reify its attributes and then rebuild
   // the signature. Because the attributes may have conflicting type info, the
   // order in which we visit the attributes is the priority.
-  auto func = dyn_cast<GraphFuncOp>(getOperation());
-  if (!func || func.generic()) return;
+  if (!func) return;
   ArrayAttr arg_attrs = reifyAndDropFunctionArgumentAttributes(func);
   ArrayAttr res_attrs = reifyAndDropFunctionResultAttributes(func);
   Block &body = func.body().front();
@@ -384,9 +402,11 @@ void PrepareAttributesForExportPassImpl::prepareFunctionAttributes(
     GraphFuncOp func) {
   NamedAttrList attrs(func->getAttrDictionary());
   SmallVector<Attribute> input_shapes, arg_attrs, res_attrs;
-  for (auto it :
-       llvm::zip(func.getArgumentTypes(),
-                 func.getAllArgAttrs().getAsRange<DictionaryAttr>())) {
+
+  ArrayAttr func_arg_attrs = func.getAllArgAttrs();
+  if (!func_arg_attrs) func_arg_attrs = ArrayAttr::get(&getContext(), {});
+  for (auto it : llvm::zip(func.getArgumentTypes(),
+                           func_arg_attrs.getAsRange<DictionaryAttr>())) {
     Type type = std::get<0>(it);
     DictionaryAttr attrs = std::get<1>(it);
     if (type == control_type_) {
@@ -400,9 +420,11 @@ void PrepareAttributesForExportPassImpl::prepareFunctionAttributes(
       input_shapes.push_back(ShapeAttr::get(&getContext(), llvm::None));
     }
   }
-  for (auto it :
-       llvm::zip(func.getResultTypes(),
-                 func.getAllResultAttrs().getAsRange<DictionaryAttr>()))
+
+  ArrayAttr func_res_attrs = func.getAllResultAttrs();
+  if (!func_res_attrs) func_res_attrs = ArrayAttr::get(&getContext(), {});
+  for (auto it : llvm::zip(func.getResultTypes(),
+                           func_res_attrs.getAsRange<DictionaryAttr>()))
     res_attrs.push_back(prepareAttributesFor(std::get<0>(it), std::get<1>(it)));
 
   // Add input shapes only if its regeneration is required.
@@ -611,6 +633,11 @@ static void InsertPatterns(RewritePatternSet &patterns, Args &&...args) {
 }
 
 void PrepareAttributesForExportPassImpl::runOnOperation() {
+  // Skip this pass on generic functions. Generic functions contain only opaque
+  // tensor types, into which shape and data type info cannot be reified.
+  auto func = dyn_cast<GraphFuncOp>(getOperation());
+  if (func && func.generic()) return;
+
   RewritePatternSet patterns(&getContext());
   ControlType control_type = ControlType::get(&getContext());
   InsertPatterns<MaterializeIfAttrs, IfOp, StatelessIfOp, StatefulIfOp>(
@@ -628,10 +655,9 @@ void PrepareAttributesForExportPassImpl::runOnOperation() {
     return;
   }
 
-  // If the pass was run on a function, materialize attributes with type info.
-  auto func = dyn_cast<GraphFuncOp>(getOperation());
-  if (!func || func.generic()) return;
-  prepareFunctionAttributes(func);
+  // If the pass was run on a function, materialize function, argument, and
+  // result attributes with type info.
+  if (func) prepareFunctionAttributes(func);
 }
 
 namespace {

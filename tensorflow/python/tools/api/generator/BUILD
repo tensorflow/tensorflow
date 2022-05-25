@@ -92,6 +92,7 @@ py_test(
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:sharded_variable",
+        "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
         "//tensorflow/python/tools/api/generator:create_python_api",
     ],
 )

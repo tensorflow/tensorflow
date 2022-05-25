@@ -87,17 +87,13 @@ ElementsAttr ConvertBf16Tensor(const Tensor& input_tensor,
                                RankedTensorType type) {
   auto buffer = llvm::makeArrayRef(static_cast<char*>(input_tensor.data()),
                                    input_tensor.TotalBytes());
-  return DenseElementsAttr::getFromRawBuffer(
-      type, buffer,
-      /*isSplatBuffer=*/type.getNumElements() == 1);
+  return DenseElementsAttr::getFromRawBuffer(type, buffer);
 }
 
 ElementsAttr ConvertHalfTensor(const Tensor& tensor, RankedTensorType type) {
   auto buffer = llvm::makeArrayRef(static_cast<char*>(tensor.data()),
                                    tensor.TotalBytes());
-  return DenseElementsAttr::getFromRawBuffer(
-      type, buffer,
-      /*isSplatBuffer=*/type.getNumElements() == 1);
+  return DenseElementsAttr::getFromRawBuffer(type, buffer);
 }
 
 tensorflow::StatusOr<ElementsAttr> ConvertStringTensor(
@@ -284,8 +280,8 @@ tensorflow::StatusOr<ShapeAttr> ConvertTensorShapeProto(
     const TensorShapeProto& shape, MLIRContext* context) {
   if (shape.unknown_rank()) return ShapeAttr::get(context, llvm::None);
 
-  llvm::SmallVector<int64_t, 4> dims;
-  dims.reserve(shape.dim().size());
+  SmallVector<int64_t, 4> dims;
+  dims.reserve(shape.dim_size());
   for (const auto& dim : shape.dim()) {
     dims.push_back(dim.size());
   }

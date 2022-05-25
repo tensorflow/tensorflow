@@ -42,7 +42,9 @@ namespace tensorflow {
 namespace data {
 namespace {
 // Time to wait before skipping a round if data still isn't available.
-const int64_t kWaitBeforeSkipUs = 100 * 1000;  // 100ms.
+constexpr int64_t kWaitBeforeSkipUs = 100 * 1000;  // 100ms.
+constexpr size_t kDefaultCrossTrainerCacheSizeBytes =
+    10 * (size_t{1} << 30);  // 10GB
 
 }  // namespace
 
@@ -77,9 +79,16 @@ Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
     out = absl::make_unique<RoundRobinTaskRunner>(std::move(iterator),
                                                   task_def.num_consumers(),
                                                   task_def.worker_address());
+  } else if (task_def.use_cross_trainer_cache()) {
+    // TODO(b/221104308): Add a validation to check enough RAM is available.
+    const size_t max_cache_size_bytes =
+        worker_config.cross_trainer_cache_size_bytes() > 0
+            ? worker_config.cross_trainer_cache_size_bytes()
+            : kDefaultCrossTrainerCacheSizeBytes;
+    out = std::make_unique<CachingTaskRunner>(
+        std::move(iterator), /*max_cache_size_bytes=*/max_cache_size_bytes);
   } else {
-    out =
-        absl::make_unique<FirstComeFirstServedTaskRunner>(std::move(iterator));
+    out = std::make_unique<FirstComeFirstServedTaskRunner>(std::move(iterator));
   }
   return Status::OK();
 }
@@ -277,8 +286,8 @@ Status RoundRobinTaskRunner::PrepareRound(const GetElementRequest& req) {
         "Consumer ", req.consumer_index(), " requested data for round ",
         req.round_index(), ", but the current round has already reached ",
         current_round_,
-        ". This may indicate that the consumer was restarted with the same job "
-        "name.`");
+        ". This may indicate that the consumer was restarted with the same "
+        "iteration name.");
   }
   return prefetch_thread_.GetStatus();
 }

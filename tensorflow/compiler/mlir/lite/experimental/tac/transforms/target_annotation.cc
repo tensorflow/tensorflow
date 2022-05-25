@@ -111,7 +111,7 @@ void TargetAnnotationPass::SetTargetAnnotation(
   // default to CPU
   if (!device_is_set) {
     if (IsNonConstOp(op) && !IsTerminatorOp(op) &&
-        !llvm::isa<func::ReturnOp, FuncOp, CallableOpInterface>(op)) {
+        !llvm::isa<func::ReturnOp, func::FuncOp, CallableOpInterface>(op)) {
       SetAnnotation(op, kDevice, "CPU", builder);
       device_is_set = true;
     }
@@ -129,7 +129,7 @@ void TargetAnnotationPass::runOnFunction() {
     // We only care about TFL dialect.
     if (IsNonConstOp(op) && NotTFLQuantDequantizeOp(op) &&
         !IsTerminatorOp(op) &&
-        !llvm::isa<func::ReturnOp, FuncOp, CallOpInterface>(op)) {
+        !llvm::isa<func::ReturnOp, func::FuncOp, CallOpInterface>(op)) {
       SetTargetAnnotation(op, device_specs_flag_, &builder);
     }
   });
@@ -137,12 +137,12 @@ void TargetAnnotationPass::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTargetAnnotationPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTargetAnnotationPass(
     llvm::ArrayRef<std::string> device_specs) {
   return std::make_unique<TargetAnnotationPass>(device_specs);
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTargetAnnotationPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTargetAnnotationPass(
     const TacModule* module) {
   return std::make_unique<TargetAnnotationPass>(module);
 }

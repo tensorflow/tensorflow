@@ -804,9 +804,6 @@ StatusOr<Operation*> LhloDialectEmitter::EmitGemm(
     op.dot_dimension_numbersAttr(mlir_dims);
     op.alpha_realAttr(builder_.getF64FloatAttr(config.alpha_real()));
     op.alpha_imagAttr(builder_.getF64FloatAttr(config.alpha_imag()));
-    op.batch_sizeAttr(builder_.getI64IntegerAttr(config.batch_size()));
-    op.lhs_strideAttr(builder_.getI64IntegerAttr(config.lhs_stride()));
-    op.rhs_strideAttr(builder_.getI64IntegerAttr(config.rhs_stride()));
     if (config.algorithm_case() ==
         xla::gpu::GemmBackendConfig::kSelectedAlgorithm) {
       op.algorithmAttr(builder_.getI64IntegerAttr(config.selected_algorithm()));
@@ -1494,8 +1491,8 @@ Status LhloDialectEmitter::Initialize() {
 
   // Create the function as () -> (), we'll compute the arguments from the
   // buffer allocation and update the type then.
-  auto func_op = FuncOp::create(builder_.getUnknownLoc(), function_name,
-                                builder_.getFunctionType({}, {}));
+  auto func_op = func::FuncOp::create(builder_.getUnknownLoc(), function_name,
+                                      builder_.getFunctionType({}, {}));
 
   {
     // This is an optional attribute used by the XLA backend. If the resulting

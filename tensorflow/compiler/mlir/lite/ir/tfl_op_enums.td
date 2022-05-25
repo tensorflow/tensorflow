@@ -69,6 +69,29 @@ def TFL_AF_Relu6 : ConstantStrAttr<TFL_AFAttr, TFL_AFEnum_Relu6.symbol>;
 def TFL_AF_Tanh  : ConstantStrAttr<TFL_AFAttr, TFL_AFEnum_Tanh.symbol>;
 def TFL_AF_Sign  : ConstantStrAttr<TFL_AFAttr, TFL_AFEnum_Sign.symbol>;
 
+// Allowed padding cases
+// These should match the padding enum in TFLite schema.
+def TFL_PADEnum_Same  : I32EnumAttrCase<"SAME", 0>;
+def TFL_PADEnum_Valid : I32EnumAttrCase<"VALID", 1>;
+def TFL_PaddingAttr : TFL_AnyStrAttrOf<[
+      TFL_PADEnum_Same.symbol, TFL_PADEnum_Valid.symbol
+    ]>;
+def TFL_PAD_Same  : ConstantStrAttr<TFL_PaddingAttr, TFL_PADEnum_Same.symbol>;
+def TFL_PAD_Valid : ConstantStrAttr<TFL_PaddingAttr, TFL_PADEnum_Valid.symbol>;
+
+// FullyConnectedOptionsWeightFormat attributes
+def TFL_FCWOEnum_Default         : I32EnumAttrCase<"DEFAULT", 0>;
+def TFL_FCWOEnum_Shuffled4x16i8  : I32EnumAttrCase<"SHUFFLED4x16INT8", 1>;
+def TFL_FullyConnectedOptionsWeightFormatAttr :
+    TFL_AnyStrAttrOf<[
+      TFL_FCWOEnum_Default.symbol,
+      TFL_FCWOEnum_Shuffled4x16i8.symbol
+    ]>;
+def TFL_FCWO_Default        : ConstantStrAttr<
+      TFL_FullyConnectedOptionsWeightFormatAttr, TFL_FCWOEnum_Default.symbol>;
+def TFL_FCWO_Shuffled4x16i8 : ConstantStrAttr<
+      TFL_FullyConnectedOptionsWeightFormatAttr, TFL_FCWOEnum_Shuffled4x16i8.symbol>;
+
 // MirrorPadding type attributes
 def TFL_MIRRORPAD_Reflect : I32EnumAttrCase<"REFLECT", 0>;
 def TFL_MIRRORPAD_Symmetric : I32EnumAttrCase<"SYMMETRIC", 1>;

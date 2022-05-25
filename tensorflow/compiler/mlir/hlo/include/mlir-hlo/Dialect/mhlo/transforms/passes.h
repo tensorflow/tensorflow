@@ -87,10 +87,20 @@ createLegalizeTrigonometricToApproximationPass();
 // fusions.
 std::unique_ptr<OperationPass<func::FuncOp>> createBroadcastPropagationPass();
 
+// Transformations that helps in restricting maximum rank among tensors in the
+// pass.
+std::unique_ptr<OperationPass<func::FuncOp>> createRestrictMaxRankPass();
+
 // Prepare moving dynamic broadcasts up over element-wise operations and
 // broadcast the operands rather than the result. This will eventually allow for
 // larger fusions.
 std::unique_ptr<OperationPass<func::FuncOp>> createMergeAssumingOpsPass();
+
+// Iteratively reifies all shape computations in the function.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateShapeReificationPass();
+
+// Fuse shape constraints and merge all assuming regions.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateConstraintFusionPass();
 
 // Group reduction and parallel dimensions of reduction operations and realize
 // them through equivalent 1D or 2D reductions.
@@ -118,6 +128,16 @@ std::unique_ptr<OperationPass<func::FuncOp>> createFlattenTuplePass();
 // Creates a pass for expanding mhlo.tuple ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateExpandHloTuplesPass(
     const std::string& entry_function_name = "main");
+
+// Creates a pass for collapsing the mhlo.map if the map only has elementwise
+// op.
+std::unique_ptr<OperationPass<func::FuncOp>> createCollapseElementwiseMapPass();
+
+// Pass to replace unsigned types with signless integers.
+std::unique_ptr<OperationPass<ModuleOp>> createConvertToSignlessPass();
+
+/// Creates pass for rewriting sparse mhlo ops.
+std::unique_ptr<OperationPass<func::FuncOp>> createSparseRewritingPass();
 
 }  // namespace mhlo
 }  // namespace mlir

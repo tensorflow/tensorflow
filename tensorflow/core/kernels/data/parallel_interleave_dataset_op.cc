@@ -416,9 +416,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           std::move(args),
           {model::MakeParameter(kParallelism, num_parallel_calls_, /*min=*/min,
                                 /*max=*/dataset()->cycle_length_),
-           model::MakeParameter(kCycleLength, nullptr,
-                                /*min=*/dataset()->cycle_length_,
-                                /*max=*/dataset()->cycle_length_)});
+           model::MakeNonTunableParameter(kCycleLength,
+                                          dataset()->cycle_length_),
+           model::MakeNonTunableParameter(kDeterministic,
+                                          deterministic_ ? 1.0 : 0.0)});
     }
 
     // TODO(aaudibert): Refactor the implementations to avoid the need for

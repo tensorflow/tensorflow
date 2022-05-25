@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_THREAD_SAFE_BUFFER_H_
 
 #include <deque>
+#include <utility>
 
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"

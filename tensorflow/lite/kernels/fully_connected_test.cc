@@ -451,6 +451,48 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest2) {
   EXPECT_THAT(m.GetOutput(), ElementsAre(11, 9));
 }
 
+TEST_P(FloatFullyConnectedOpTest, FilterWithZeroSecondDimension1) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+
+  FloatFullyConnectedOpModel m(GetRegistration(), /*units=*/2, /*batches=*/2,
+                               /*input=*/{TensorType_FLOAT32, {2, 0}});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 2));
+  EXPECT_THAT(m.GetOutput(), ElementsAre(0, 0, 0, 0));
+}
+
+TEST_P(FloatFullyConnectedOpTest, FilterWithZeroSecondDimension2) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+
+  FloatFullyConnectedOpModel m(GetRegistration(), /*units=*/2, /*batches=*/2,
+                               /*input=*/{TensorType_FLOAT32, {2, 2, 0}},
+                               /*output=*/{TensorType_FLOAT32},
+                               /*bias_type=*/TensorType_FLOAT32,
+                               /*keep_num_dims=*/true);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 2, 2));
+  EXPECT_THAT(m.GetOutput(), ElementsAre(0, 0, 0, 0, 0, 0, 0, 0));
+}
+
+TEST_P(FloatFullyConnectedOpTest, FilterWithZeroSecondDimension3) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+
+  FloatFullyConnectedOpModel m(GetRegistration(), /*units=*/2, /*batches=*/2,
+                               /*input=*/{TensorType_FLOAT32, {2, 2, 0}});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(4, 2));
+  EXPECT_THAT(m.GetOutput(), ElementsAre(0, 0, 0, 0, 0, 0, 0, 0));
+}
+
 TEST(FloatFullyConnectedOpTest, SimpleTestNoBias) {
   // The optimized kernel assumes that the bias is specified.
   FloatFullyConnectedOpModel m(ops::builtin::Register_FULLY_CONNECTED_PIE(),

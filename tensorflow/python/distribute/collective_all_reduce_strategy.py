@@ -333,7 +333,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
                       cross_device_ops_lib.CollectiveAllReduce)
 
   def _use_merge_call(self):
-    """XLA is not supported for multi-worker strategy."""
+    logging.log_first_n(logging.WARN, "XLA is not supported for multi-worker "
+                        "strategy.", 1)
     return True
 
   def _initialize_strategy(self, cluster_resolver):

@@ -57,7 +57,6 @@ class StridedSliceOp : public XlaOpKernel {
 
   void EmitDynamicSlice(XlaOpKernelContext* ctx,
                         const absl::InlinedVector<int64_t, 4>& strides,
-                        TensorShape processing_shape, TensorShape final_shape,
                         PartialTensorShape partial_processing_shape,
                         PartialTensorShape partial_final_shape,
                         const StridedSliceShapeSpec& shape_spec,
@@ -82,6 +81,7 @@ class StridedSliceOp : public XlaOpKernel {
       }
     }
 
+    TensorShape final_shape;
     OP_REQUIRES(
         ctx, partial_final_shape.AsTensorShape(&final_shape),
         InvalidArgument("XLA can't deduce compile time constant output "
@@ -95,15 +95,13 @@ class StridedSliceOp : public XlaOpKernel {
         partial_processing_shape.set_dim(i, input_shape.dim_size(i));
       }
     }
+    TensorShape processing_shape;
     OP_REQUIRES(
         ctx, partial_processing_shape.AsTensorShape(&processing_shape),
         InvalidArgument("XLA can't deduce compile time constant processing "
                         "shape for strided slice: ",
                         partial_processing_shape.DebugString(),
                         ", output shape must be a compile-time constant"));
-    // When inputs are not compile time constants, shape inference can only
-    // inference size 1 slice.
-    std::vector<int64_t> slice_sizes(input_shape.dims(), 1);
     // If there is dynamic begin/end (and if the dimension is not shrunk), we
     // need to use dynamic shape infrastructure -- we slice the output with
     // full size, then call SetDimensionSize on the output. However, if we
@@ -259,7 +257,6 @@ class StridedSliceOp : public XlaOpKernel {
     }
     OP_REQUIRES_OK(ctx, LiteralToHostTensor(strides_literal, index_type_,
                                             &strides_tensor));
-    TensorShape processing_shape, final_shape;
     PartialTensorShape partial_processing_shape, partial_final_shape;
     bool dummy = false;
     StridedSliceShapeSpec shape_spec;
@@ -280,6 +277,7 @@ class StridedSliceOp : public XlaOpKernel {
     OP_REQUIRES_OK(
         ctx, ctx->ResolveInputDynamismIntoPredVector(2, &ends_are_dynamic));
     if (begin_is_constant && end_is_constant) {
+      TensorShape final_shape;
       OP_REQUIRES(
           ctx, partial_final_shape.AsTensorShape(&final_shape),
           InvalidArgument("XLA can't deduce compile time constant output "
@@ -384,9 +382,9 @@ class StridedSliceOp : public XlaOpKernel {
       ctx->SetOutput(0, slice);
       return;
     } else {
-      EmitDynamicSlice(ctx, strides, processing_shape, final_shape,
-                       partial_processing_shape, partial_final_shape,
-                       shape_spec, begins_are_dynamic, ends_are_dynamic);
+      EmitDynamicSlice(ctx, strides, partial_processing_shape,
+                       partial_final_shape, shape_spec, begins_are_dynamic,
+                       ends_are_dynamic);
     }
   }
 

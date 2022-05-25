@@ -1,7 +1,12 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_platform_deps",
+    "tf_proto_library",
+)
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary")
 load("@tf_runtime//:build_defs.bzl", "tfrt_cc_library", "tfrt_cc_test")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 # TF to TFRT kernels conversion.
 package(
@@ -111,7 +116,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
-        "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/core:ops",
         "@llvm-project//llvm:Support",
@@ -168,6 +172,18 @@ tfrt_cc_library(
 # copybara:uncomment_end
 
 tfrt_cc_library(
+    name = "tf_jitrt_query_of_death",
+    hdrs = ["jit/tf_jitrt_query_of_death.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/core/platform",
+    ] + tf_platform_deps(
+        "tf_jitrt_query_of_death",
+        platform_dir = "//tensorflow/compiler/mlir/tfrt/jit/",
+    ),
+)
+
+tfrt_cc_library(
     name = "tf_jitrt_kernels",
     srcs = ["jit/tf_jitrt_kernels.cc"],
     hdrs = ["jit/tf_jitrt_kernels_registration.h"],
@@ -175,9 +191,11 @@ tfrt_cc_library(
     deps = [
         ":tf_jitrt",
         ":tf_jitrt_pipeline",
+        ":tf_jitrt_query_of_death",
         ":tf_jitrt_request_context",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
         "//tensorflow/core:framework",
         "//tensorflow/core:platform_base",
@@ -701,6 +719,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu",
         "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:lmhlo_to_gpu_binary",
+        "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:lmhlo_to_jitrt",
         "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:lmhlo_to_tfrt_gpu",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",

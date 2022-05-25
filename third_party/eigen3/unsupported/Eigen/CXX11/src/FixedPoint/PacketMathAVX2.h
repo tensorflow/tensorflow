@@ -514,9 +514,7 @@ EIGEN_STRONG_INLINE QInt8 predux_max<Packet32q8i>(const Packet32q8i& a) {
 template <>
 struct scalar_product_op<QInt32, double> : binary_op_base<QInt32, double> {
   typedef typename ScalarBinaryOpTraits<QInt32, double>::ReturnType result_type;
-#ifndef EIGEN_SCALAR_BINARY_OP_PLUGIN
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_product_op)
-#else
+#ifdef EIGEN_SCALAR_BINARY_OP_PLUGIN
   scalar_product_op() { EIGEN_SCALAR_BINARY_OP_PLUGIN }
 #endif
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE result_type

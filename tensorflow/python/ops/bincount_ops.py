@@ -289,6 +289,8 @@ def sparse_bincount(values,
       * `0` (if `values` is empty);
       * `reduce_max(values) + 1` otherwise.
 
+  Raises:
+    `InvalidArgumentError` if negative values are provided as an input.
 
   Examples:
 

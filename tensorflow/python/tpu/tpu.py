@@ -1355,7 +1355,7 @@ def split_compile_and_replicate(
       raise TypeError(
           "Supplied computation cannot be called with the specified inputs. "
           f"You specified {input_arity} inputs: {[i.name for i in inputs[0]]}, "
-          f"but the computation needs{arg_error}")
+          f"but the computation needs {arg_error}")
     else:
       raise TypeError(
           "Supplied computation cannot be called with the specified inputs. "

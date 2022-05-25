@@ -133,6 +133,14 @@ func.func @testLog(tensor<? x f32>) -> tensor<? x f32> {
   func.return %0 : tensor<? x f32>
 }
 
+// CHECK-LABEL: testLogStaticShapeInputAndDynamicShapeOutput
+func.func @testLogStaticShapeInputAndDynamicShapeOutput(tensor<8 x f32>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<8 x f32>):
+  // CHECK: "tfl.log"(%arg0)
+  %0 = "tfl.log"(%arg0): (tensor<8 x f32>) -> tensor<? x f32>
+  func.return %0 : tensor<? x f32>
+}
+
 // CHECK-LABEL: testNeg
 func.func @testNeg(tensor<? x f32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<? x f32>):
@@ -600,7 +608,7 @@ func.func @testPadding(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x3xf3
 // -----
 
 func.func @testPadding(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x3xf32>, %arg2: tensor<16xf32>) -> tensor<256x30x30x16xf32> {
-  // expected-error @+1 {{op attribute 'padding' failed to satisfy constraint: padding enum}}
+  // expected-error @+1 {{op attribute 'padding' failed to satisfy constraint: string attribute whose value is SAME, or VALID}}
   %0 = "tfl.conv_2d"(%arg0, %arg1, %arg2) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SOMETHING", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<256x32x32x3xf32>, tensor<16x3x3x3xf32>, tensor<16xf32>) -> tensor<256x30x30x16xf32>
   func.return %0 : tensor<256x30x30x16xf32>
 }

@@ -18,7 +18,12 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "mlir-hlo/Dialect/gml_st/transforms/bufferizable_op_interface_impl.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Bufferization/Transforms/OneShotAnalysis.h"
+#include "mlir/Dialect/Bufferization/Transforms/OneShotModuleBufferize.h"
+#include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -143,7 +148,7 @@ struct TestGmlStLoopTilingPass
   }
 
   void runOnOperation() override {
-    FuncOp funcOp = getOperation();
+    func::FuncOp funcOp = getOperation();
 
     auto distTypes = llvm::to_vector<2>(llvm::map_range(
         distribution_types, [](std::string &str) { return StringRef(str); }));
@@ -164,14 +169,38 @@ struct TestGmlStLoopTilingPass
   }
 };
 
+struct TestGmlStBufferizationPass
+    : public TestGmlStBufferizationBase<TestGmlStBufferizationPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    linalg::registerBufferizableOpInterfaceExternalModels(registry);
+    gml_st::registerBufferizableOpInterfaceExternalModels(registry);
+  }
+
+  void runOnOperation() override {
+    bufferization::OneShotBufferizationOptions opts;
+    opts.bufferizeFunctionBoundaries = true;
+
+    ModuleOp module = getOperation();
+    if (failed(bufferization::runOneShotModuleBufferize(module, opts))) {
+      signalPassFailure();
+      return;
+    }
+  }
+};
+
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createTestGmlStLoopPeelingPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStLoopPeelingPass() {
   return std::make_unique<TestGmlStLoopPeelingPass>();
 }
 
-std::unique_ptr<OperationPass<FuncOp>> createTestGmlStLoopTilingPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStLoopTilingPass() {
   return std::make_unique<TestGmlStLoopTilingPass>();
 }
+
+std::unique_ptr<OperationPass<ModuleOp>> createTestGmlStBufferizationPass() {
+  return std::make_unique<TestGmlStBufferizationPass>();
+}
+
 }  // namespace gml_st
 }  // namespace mlir

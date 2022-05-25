@@ -59,7 +59,9 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/protobuf/tpu/dynamic_padding.pb.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
@@ -2605,6 +2607,12 @@ Status DistributedTPURewritePass::BuildCompileNode(
   VLOG(1) << "BuildCompileNode";
 
   tpu::TPUCompileMetadataProto proto;
+  if (replicate_node) {
+    std::string str;
+    TF_RETURN_IF_ERROR(GetNodeAttr(replicate_node->attrs(),
+                                   "tpu_compile_options_proto", &str));
+    proto.ParseFromString(str);
+  }
   proto.set_num_replicas(params_info.NumReplicas());
   proto.set_num_cores_per_replica(num_cores_per_replica);
   proto.set_function_library_fingerprint(library_fingerprint);
@@ -2675,7 +2683,9 @@ Status DistributedTPURewritePass::BuildCompileNode(
         (params_info.IsVariableArg(i) || params_info.IsBroadcastArg(i) ||
          params_info.IsConstantArg(i)));
     if (params_info.mirrored_variable_indices().count(i) > 0) {
-      CHECK_EQ(type, DT_RESOURCE);
+      TF_RET_CHECK(type == DT_RESOURCE)
+          << "Arg type: " << type << " name: " << arg->name()
+          << " shape: " << arg->shape().DebugString();
       arg->set_is_same_data_across_replicas(true);
       // 64-bit type is not shardable by XLA:TPU yet.
       bool sharding_enabled = (arg_shape.handle_type != DT_COMPLEX64 &&
@@ -4918,6 +4928,14 @@ Status DistributedTPURewritePass::PlaceUnassignedDeviceNodesOnTPUIfPossible(
 
 Status DistributedTPURewritePass::Run(
     const GraphOptimizationPassOptions& options) {
+  Status status = InternalRun(options);
+  OkOrSetErrorCounterPayload(
+      tensorflow::core::platform::ErrorSourceProto::TF_XLA_BRIDGE, status);
+  return status;
+}
+
+Status DistributedTPURewritePass::InternalRun(
+    const GraphOptimizationPassOptions& options) {
   VLOG(1) << "DistributedTPURewritePass::Run";
 
   Graph* graph = options.graph->get();
@@ -5045,7 +5063,7 @@ bool DistributedTPURewritePass::
 bool DistributedTPURewritePass::
     enable_cross_replica_sharding_mirrored_variables_ = true;
 bool DistributedTPURewritePass::enable_automatic_model_parallelism_ = false;
-bool DistributedTPURewritePass::enable_xla_param_broadcast_ = false;
+bool DistributedTPURewritePass::enable_xla_param_broadcast_ = true;
 bool DistributedTPURewritePass::enable_multicore_locking_ = false;
 bool DistributedTPURewritePass::use_nd_sharding_ops_ = false;
 

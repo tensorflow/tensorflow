@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/stream.h"
 
+#include <memory>
+#include <utility>
+
 #include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/stream_executor/blas.h"
@@ -256,16 +259,6 @@ Stream::Stream(StreamExecutor *parent)
       status_(port::InternalError("Uninitialized stream")),
       temporary_memory_manager_(this) {
   VLOG_CALL(PARAM(parent));
-}
-
-Stream::Stream(StreamExecutor *parent,
-               internal::StreamInterface *implementation)
-    : parent_(parent),
-      implementation_(implementation),
-      allocated_(false),
-      status_(port::InternalError("Uninitialized stream")),
-      temporary_memory_manager_(this) {
-  VLOG_CALL(PARAM(parent), PARAM(implementation));
 }
 
 Stream::~Stream() {
@@ -3702,7 +3695,7 @@ Stream &Stream::ThenBlasLtMatmulImpl(
     const DeviceMemory<CType> &bias,
     blas::ProfileResult *output_profile_result) {
   VLOG_CALL(PARAM(plan), PARAM(alpha), PARAM(a), PARAM(b), PARAM(beta),
-            PARAM(c), PARAM(algorithm), PARAM(bias));
+            PARAM(scratch_allocator), PARAM(c), PARAM(algorithm), PARAM(bias));
 
   ThenBlasWithProfileImpl<
       const blas::IBlasLtMatmulPlan *, const HostOrDeviceScalar<CType> &,
@@ -4236,6 +4229,14 @@ Stream &Stream::ThenRunAfterNextBlockHostUntilDone(
   absl::MutexLock lock(&mu_);
   after_block_host_until_done_callbacks_.push_back(std::move(callback));
   return *this;
+}
+
+void Stream::CheckError(bool operation_retcode) {
+  if (operation_retcode) {
+    return;
+  }
+  absl::MutexLock lock(&mu_);
+  status_ = port::InternalError("Unknown error");
 }
 
 Stream &Stream::ThenFft(fft::Plan *plan,

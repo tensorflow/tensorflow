@@ -76,8 +76,8 @@ void InsertQuantizedFunctionsPass::runOnOperation() {
   MLIRContext* context = &getContext();
   PassManager pm(context);
   pm.addPass(mlir::createInlinerPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
 
   StatusScopedDiagnosticHandler diagnostic_handler(context);
   if (failed(pm.run(*module_ref))) {
@@ -89,11 +89,13 @@ void InsertQuantizedFunctionsPass::runOnOperation() {
   }
 
   // Copy all functions used by this signature to the final MLIR module.
-  for (FuncOp func : module_ref->getOps<FuncOp>()) {
-    // Set the function to private.
-    FuncOp new_func = func.clone();
+  for (func::FuncOp func : module_ref->getOps<func::FuncOp>()) {
+    // Do nothing if the function already exists.
+    if (symbol_table.lookup(func.getSymName()) != nullptr) continue;
+
+    // Set the function to private and insert to the module.
+    func::FuncOp new_func = func.clone();
     new_func.setPrivate();
-    // The insert here is a NO-OP if the function already exists.
     symbol_table.insert(new_func);
   }
 }

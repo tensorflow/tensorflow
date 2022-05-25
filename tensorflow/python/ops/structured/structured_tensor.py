@@ -31,7 +31,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.ragged import dynamic_ragged_shape
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import row_partition as row_partition_lib
@@ -484,7 +483,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
       msg = '`StructuredTensor.with_updates` failed'
       if error_prefix:
         msg = '{} for field {}'.format(msg, error_prefix)
-      raise ValueError('{}: {}'.format(msg, e))
+      raise ValueError(msg) from e
 
   def _promote_helper(self, source_path, new_parent_path):
     """Creates a promoted field without adding it to the structure.
@@ -1300,8 +1299,9 @@ def _convert_to_structured_field_value(value):
   else:
     try:
       return ops.convert_to_tensor(value)
-    except (ValueError, TypeError):
-      raise TypeError('Unexpected type for value in `fields`: %r' % value)
+    except (ValueError, TypeError) as e:
+      raise TypeError('Unexpected type for value in `fields`: %r' %
+                      value) from e
 
 
 def _find_shape_dtype(fields, nrows, row_partitions):
@@ -1724,34 +1724,3 @@ def _merge_dims_generic(source, outer, inner):
     return source.merge_dims(outer, inner)
   else:
     return ragged_tensor.merge_dims(source, outer, inner)
-
-
-# pylint:disable=protected-access
-def _dynamic_ragged_shape_init(fields, shape, nrows, row_partitions):
-  """Produce a DynamicRaggedShape for StructuredTensor."""
-  assert isinstance(fields, dict), fields
-  assert isinstance(shape, tensor_shape.TensorShape), shape
-  assert nrows is None or isinstance(nrows, ops.Tensor), nrows
-  assert isinstance(row_partitions, tuple), row_partitions
-
-  rank = shape.rank
-  if rank is None:
-    raise TypeError("StructuredTensor's shape must have known rank.")
-
-  # TODO(martinz): figure out whether to validate.
-  dtype = _find_shape_dtype(fields, nrows, row_partitions)
-  if rank == 0:
-    return dynamic_ragged_shape.DynamicRaggedShape._from_inner_shape(
-        array_ops.zeros((0,), dtype=dtype))
-
-  if rank == 1:
-    alt_value = shape[0]
-    if isinstance(alt_value, tensor_shape.Dimension):
-      alt_value = alt_value.value
-    if alt_value is not None:
-      nrows = alt_value
-    return dynamic_ragged_shape.DynamicRaggedShape._from_inner_shape(
-        [nrows], dtype=dtype)
-
-  return dynamic_ragged_shape.DynamicRaggedShape.from_row_partitions(
-      row_partitions, dtype=dtype)

@@ -68,6 +68,7 @@ from tensorflow.python.util.tf_decorator import unwrap
 
 from tensorflow.python.distribute.parameter_server_strategy_v2 import *
 from tensorflow.python.distribute.coordinator.cluster_coordinator import *
+from tensorflow.python.distribute.failure_handling.failure_handling import *
 
 tf_export('__internal__.decorator.make_decorator', v1=[])(make_decorator)
 tf_export('__internal__.decorator.unwrap', v1=[])(unwrap)

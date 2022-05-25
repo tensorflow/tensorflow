@@ -40,12 +40,12 @@ bool NewJournalDir(std::string& journal_dir) {
   return true;
 }
 
-Update MakeCreateJobUpdate() {
+Update MakeCreateIterationUpdate() {
   Update update;
-  CreateJobUpdate* create_job = update.mutable_create_job();
-  create_job->set_dataset_id(3);
-  create_job->set_job_id(8);
-  create_job->mutable_processing_mode_def()->set_sharding_policy(
+  CreateIterationUpdate* create_iteration = update.mutable_create_iteration();
+  create_iteration->set_dataset_id(3);
+  create_iteration->set_iteration_id(8);
+  create_iteration->mutable_processing_mode_def()->set_sharding_policy(
       ProcessingModeDef::OFF);
   return update;
 }
@@ -88,7 +88,7 @@ Status CheckJournalContent(StringPiece journal_dir,
 TEST(Journal, RoundTripMultiple) {
   std::string journal_dir;
   EXPECT_TRUE(NewJournalDir(journal_dir));
-  std::vector<Update> updates = {MakeCreateJobUpdate(),
+  std::vector<Update> updates = {MakeCreateIterationUpdate(),
                                  MakeRegisterDatasetUpdate(),
                                  MakeFinishTaskUpdate()};
   FileJournalWriter writer(Env::Default(), journal_dir);
@@ -102,7 +102,7 @@ TEST(Journal, RoundTripMultiple) {
 TEST(Journal, AppendExistingJournal) {
   std::string journal_dir;
   EXPECT_TRUE(NewJournalDir(journal_dir));
-  std::vector<Update> updates = {MakeCreateJobUpdate(),
+  std::vector<Update> updates = {MakeCreateIterationUpdate(),
                                  MakeRegisterDatasetUpdate(),
                                  MakeFinishTaskUpdate()};
   for (const auto& update : updates) {

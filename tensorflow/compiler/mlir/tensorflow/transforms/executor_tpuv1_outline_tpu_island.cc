@@ -53,8 +53,8 @@ struct TPUBridgeExecutorIslandOutlining
 // Move FuncOp referenced by `symbol_ref` from one symbol table to another.
 void MoveFuncOp(FlatSymbolRefAttr &symbol_ref, SymbolTable &from,
                 SymbolTable &to) {
-  if (to.lookup<FuncOp>(symbol_ref.getValue())) return;
-  FuncOp callee = from.lookup<FuncOp>(symbol_ref.getValue());
+  if (to.lookup<func::FuncOp>(symbol_ref.getValue())) return;
+  func::FuncOp callee = from.lookup<func::FuncOp>(symbol_ref.getValue());
   callee.getOperation()->getBlock()->getOperations().remove(
       callee.getOperation());
   to.insert(callee);
@@ -106,8 +106,8 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
     // Create the outlined function
     SmallString<32> name = kOutlinedFuncPrefix;
     name += llvm::Twine(prefix_id++).str();
-    auto outlined_func =
-        OpBuilder(ctx).create<FuncOp>(island_op.getLoc(), name, func_type);
+    auto outlined_func = OpBuilder(ctx).create<func::FuncOp>(island_op.getLoc(),
+                                                             name, func_type);
     outlined_symbol_table.insert(outlined_func);
     outlined_func.setNested();
 
@@ -153,7 +153,7 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
 
   // Outlined all the transitively called functions by moving them in the
   // outlined module.
-  for (FuncOp func : outlined_module.getOps<FuncOp>()) {
+  for (func::FuncOp func : outlined_module.getOps<func::FuncOp>()) {
     func.walk([&](Operation *op) {
       for (NamedAttribute attr : op->getAttrs()) {
         if (auto symbol_ref = attr.getValue().dyn_cast<FlatSymbolRefAttr>()) {

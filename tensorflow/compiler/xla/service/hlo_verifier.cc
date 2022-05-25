@@ -147,10 +147,6 @@ Status ShapeVerifier::HandleSelect(HloInstruction* select) {
   return CheckTernaryShape(select);
 }
 
-Status ShapeVerifier::HandleTupleSelect(HloInstruction* tuple_select) {
-  return CheckTernaryShape(tuple_select);
-}
-
 Status ShapeVerifier::HandleConcatenate(HloInstruction* concatenate) {
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : concatenate->operands()) {
@@ -1475,7 +1471,6 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kRecvDone:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kReduceWindow:
-    case HloOpcode::kTupleSelect:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kSort:
@@ -1518,12 +1513,15 @@ Status ShapeVerifier::HandleGather(HloInstruction* gather) {
 }
 
 Status ShapeVerifier::HandleScatter(HloInstruction* scatter) {
-  return CheckShape(
-      scatter, ShapeInference::InferScatterShape(
-                   scatter->operand(0)->shape(), scatter->operand(1)->shape(),
-                   scatter->operand(2)->shape(),
-                   scatter->to_apply()->ComputeProgramShape(),
-                   scatter->scatter_dimension_numbers()));
+  absl::InlinedVector<const Shape*, 3> arg_shapes;
+  arg_shapes.reserve(scatter->operand_count());
+  for (const HloInstruction* operand : scatter->operands()) {
+    arg_shapes.push_back(&operand->shape());
+  }
+  return CheckShape(scatter,
+                    ShapeInference::InferScatterShape(
+                        arg_shapes, scatter->to_apply()->ComputeProgramShape(),
+                        scatter->scatter_dimension_numbers()));
 }
 
 Status ShapeVerifier::HandleAfterAll(HloInstruction* token) {
@@ -1571,7 +1569,7 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       // The opcodes below can't have implicit layout conversions, nor can they
       // implicitly transform f32 -> bf16.  Fundamentally these are either
       // reinterpreting existing data (e.g. kBitcast) or shuffling data around
-      // without modifying it (e.g. kGetTupleElement, kTupleSelect).
+      // without modifying it (e.g. kGetTupleElement).
       case HloOpcode::kBitcast:
       case HloOpcode::kCall:
       case HloOpcode::kConditional:
@@ -1579,7 +1577,6 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       case HloOpcode::kCopyDone:
       case HloOpcode::kCopyStart:
       case HloOpcode::kCustomCall:
-      case HloOpcode::kDynamicUpdateSlice:
       case HloOpcode::kGetTupleElement:
       case HloOpcode::kInfeed:
       case HloOpcode::kOutfeed:
@@ -1590,10 +1587,18 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       case HloOpcode::kSend:
       case HloOpcode::kSendDone:
       case HloOpcode::kTuple:
-      case HloOpcode::kTupleSelect:
       case HloOpcode::kWhile:
         return ShapesSame(instruction->shape(), inferred_shape,
                           only_compare_minor_to_major_in_layout);
+      case HloOpcode::kDynamicUpdateSlice:
+        // For DynamicUpdateSlice it has an "in-place" update semantics, but
+        // inside of fusions memory space propagation doesn't propagate the
+        // memory spaces all the way, causing possible mismatches. Relax the
+        // constraint in that condition.
+        return ShapesSame(instruction->shape(), inferred_shape,
+                          only_compare_minor_to_major_in_layout,
+                          /*ignore_memory_space=*/
+                          instruction->parent()->IsFusionComputation());
 
       // We allow arbitrary layout and f32->bf16 transformations on all other
       // instructions, although this may be made more strict pending discussion

@@ -267,6 +267,7 @@ static LogicalResult Verify(OpT op) {
   ArrayRef<int64_t> output_shape = output_ty.getShape();
   for (int i = 0; i < result_batch_shape.size(); ++i) {
     if (output_shape[i] != ShapedType::kDynamicSize &&
+        result_batch_shape[i] != ShapedType::kDynamicSize &&
         output_shape[i] != result_batch_shape[i])
       return op.emitOpError()
              << "has mismatching input batch dimension "
@@ -830,7 +831,7 @@ static LogicalResult VerifyCaseOrIfOpBranchFunctions(
   TypeRangeWithDesc result{op->getResultTypes(), "result"};
 
   for (auto branch : llvm::enumerate(branches)) {
-    auto branch_func = symbol_table.lookupNearestSymbolFrom<FuncOp>(
+    auto branch_func = symbol_table.lookupNearestSymbolFrom<func::FuncOp>(
         op, branch.value().cast<SymbolRefAttr>());
     if (!branch_func)
       return op->emitOpError()
@@ -882,8 +883,6 @@ LogicalResult CaseOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
   auto branch_name = [](unsigned index) {
     return llvm::formatv("branch #{0}", index).str();
   };
-  // TODO(jpienaar): Remove.
-  if (failed(CaseOpAdaptor(*this).verify(getLoc()))) return failure();
   return VerifyCaseOrIfOpBranchFunctions(symbol_table, *this,
                                          branches().getValue(), branch_name);
 }
@@ -2858,8 +2857,6 @@ LogicalResult IfOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
   auto branch_name = [](unsigned index) -> std::string {
     return index == 0 ? "'then_branch'" : "'else_branch'";
   };
-  // TODO(jpienaar): Remove.
-  if (failed(IfOpAdaptor(*this).verify(getLoc()))) return failure();
   return VerifyCaseOrIfOpBranchFunctions(
       symbol_table, *this, {then_branchAttr(), else_branchAttr()}, branch_name);
 }
@@ -3116,6 +3113,15 @@ void MaxOp::build(OpBuilder &builder, OperationState &result, Value input,
                   Value reduction_indices, BoolAttr keep_dims) {
   Type out_ty = InferReductionOpType(input, reduction_indices, keep_dims);
   build(builder, result, out_ty, input, reduction_indices, keep_dims);
+}
+
+//===----------------------------------------------------------------------===//
+// MaximumOp
+//===----------------------------------------------------------------------===//
+
+void MaximumOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                            MLIRContext *context) {
+  results.add<MaximumOfZeroToRelu>(context);
 }
 
 //===----------------------------------------------------------------------===//

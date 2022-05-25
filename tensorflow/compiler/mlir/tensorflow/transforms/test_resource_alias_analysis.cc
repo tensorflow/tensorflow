@@ -50,7 +50,7 @@ struct TestResourceAliasAnalysis
            "purpose.";
   }
 
-  void runOnFunction(FuncOp func,
+  void runOnFunction(func::FuncOp func,
                      const TF::ResourceAliasAnalysis::Info& analysis) {
     int64_t next_id = 0;
     llvm::SmallDenseMap<Value, int64_t, 8> ids;

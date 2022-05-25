@@ -22,17 +22,14 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/ir/importexport/convert_tensor.h"
-#include "tensorflow/core/ir/importexport/export.h"
-#include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/ir/importexport/graphdef_export.h"
+#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/public/version.h"
-#include "tensorflow/core/transforms/utils/utils.h"
 
 namespace mlir {
 namespace tfg {
@@ -89,7 +86,9 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
   }
 
   tensorflow::NodeDef node_def;
-  if (!ConvertOperationToNode(*op, &node_def).ok())
+  if (!ConvertToNodeDef(&*op, &node_def, op.getDialect(), [&](Value value) {
+         return GetValueName(value, op.getDialect());
+       }).ok())
     return op->emitError() << "failed to convert operation to NodeDef";
 
   absl::InlinedVector<tensorflow::Tensor, 4> input_tensors(operands.size());

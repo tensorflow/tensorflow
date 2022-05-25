@@ -69,6 +69,11 @@ inline se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
   return typed;
 }
 
+// Returns whether cuBLASLt is enabled.
+//
+// Controlled by the TF_USE_CUBLASLT environment variable.
+bool EnableCublasLtGemm();
+
 // A helper class that looks up the best autotuned config from parameters.
 // Due to the noisy nature of autotune, especially with multiple devices, it
 // only accepts a config if its margin exceeds a threshold.
@@ -399,6 +404,12 @@ StatusOr<AutotuneEntry<Op>> BestCudnnConvAlgorithm(
     std::vector<
         std::unique_ptr<const se::dnn::OpRunner<typename Op::Signature>>>
         runners);
+
+// Get the Dnn workspace limit from the environment variable, which is in MB.
+// Return the workspace memory limit in bytes. If no value is set, return the
+// default value.
+int64_t GetDnnWorkspaceLimit(const string& envvar_in_mb,
+                             int64_t default_value_in_bytes);
 
 }  // namespace tensorflow
 

@@ -97,15 +97,15 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   int GetLinearIndex(const BHWDC& shape5d, int b, int x, int y, int d, int s,
                      int sub_c) const;
 
-  bool SupportsZeroClamp(const Axis& axis) const;
+  bool SupportsZeroClamp(const Axis& axis, const GpuInfo& gpu_info) const;
   bool CanReadOutOfBorder(const Axis& axis) const;
   bool IsLinear() const;
 
   // applicable only for types that: IsLinear -> true.
   // In this case for address we have 1d component - addr (int)
-  // If for addr == -1 this linear storage type returns FLT4(0.0), this function
-  // returns true, otherwise false
-  bool ReturnsZeroForNegOneRead() const;
+  // If for addr == -1 this linear storage type returns zero value, this
+  // function returns true, otherwise false
+  bool ReturnsZeroForNegOneRead(const GpuInfo& gpu_info) const;
 
   absl::Status CanCreateTensorWithShape(const GpuInfo& gpu_info,
                                         const BHWDC& shape) const;

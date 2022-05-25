@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/nccl_utils.h"
 
 #include <memory>
+#include <string_view>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -38,8 +39,10 @@ bool IsGlobalNcclConfig() {
 }
 
 bool IsNcclLaunchModeParallel() {
-  static const bool is_launch_mode_parallel =
-      absl::string_view(std::getenv("NCCL_LAUNCH_MODE")) == "PARALLEL";
+  static const bool is_launch_mode_parallel = []() {
+    const char* launch_mode = std::getenv("NCCL_LAUNCH_MODE");
+    return launch_mode && std::string_view(launch_mode) == "PARALLEL";
+  }();
   return is_launch_mode_parallel;
 }
 

@@ -303,7 +303,8 @@ std::vector<std::string> FindNamesForValidSignatures(
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     mlir::MLIRContext* context, const tensorflow::MetaGraphDef& meta_graph_def,
     const FallbackState& fallback_state, std::string saved_model_dir,
-    bool import_user_signatures, bool run_placer_grappler_on_functions) {
+    bool import_user_signatures, bool run_placer_grappler_on_functions,
+    bool enable_tfrt_gpu) {
   std::vector<std::string> signature_names;
   if (import_user_signatures) {
     signature_names = FindNamesForValidSignatures(meta_graph_def);
@@ -321,7 +322,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
   TF_ASSIGN_OR_RETURN(auto import_input,
                       TfrtSavedModelMLIRImportInput::Create(
                           fallback_state, &meta_graph_def, /*debug_info=*/{},
-                          run_placer_grappler_on_functions));
+                          run_placer_grappler_on_functions, enable_tfrt_gpu));
 
   TF_ASSIGN_OR_RETURN(
       auto module,
@@ -446,6 +447,15 @@ void GetSignaturesFromSignatureDef(
   }
 }
 
+void UpdateCompileOptions(SavedModel::Options& options) {
+  // Disable DecomposeResourceOpsPass for now, as DecomposeResourceGather does
+  // not work well with GPU (b/232819415).
+  if (options.graph_execution_options.enable_tfrt_gpu) {
+    options.graph_execution_options.compile_options.decompose_resource_ops =
+        false;
+  }
+}
+
 }  // namespace
 
 std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
@@ -456,6 +466,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
 
   UpdateTpuTargetByBridgeCompatibility(options.graph_execution_options,
                                        meta_graph_def.graph_def());
+  UpdateCompileOptions(options);
 
   auto statusor_saved_model =
       [&]() -> tensorflow::StatusOr<std::unique_ptr<SavedModel>> {
@@ -484,7 +495,8 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
             &context, meta_graph_def, *fallback_state,
             std::string(saved_model_dir),
             /*import_user_signatures=*/!options.enable_lazy_loading,
-            options.graph_execution_options.run_placer_grappler_on_functions));
+            options.graph_execution_options.run_placer_grappler_on_functions,
+            options.graph_execution_options.enable_tfrt_gpu));
 
     auto import_duration = absl::Now() - import_start_time;
     saved_model_import_time_seconds->GetCell(std::string(saved_model_dir))

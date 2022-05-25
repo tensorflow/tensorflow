@@ -29,7 +29,6 @@ package(
 package_group(
     name = "friends",
     packages = [
-        "//learning/brain/experimental/mlir/quantization/...",
         "//tensorflow/c/...",
         "//tensorflow/compiler/...",
         # Allow visibility from the mlir language server.
@@ -329,8 +328,6 @@ tf_py_test(
 tf_python_pybind_extension(
     name = "tfr_wrapper",
     srcs = ["python/tfr_wrapper.cc"],
-    module_name = "tfr_wrapper",
-    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfr",

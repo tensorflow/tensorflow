@@ -26,4 +26,9 @@ def GmlSt_Dialect : Dialect {
   let useDefaultTypePrinterParser = 1;
 }
 
+class GMLST_Op<string mnemonic, list<Trait> traits> :
+    Op<GmlSt_Dialect, mnemonic, traits> {
+  let hasVerifier = 1;
+}
+
 #endif // GML_ST_OPS_BASE

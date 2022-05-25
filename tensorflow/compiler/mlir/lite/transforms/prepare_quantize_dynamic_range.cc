@@ -53,9 +53,8 @@ static llvm::cl::opt<bool> enable_float16_quantization(
 // NOLINTNEXTLINE
 static llvm::cl::opt<std::string> enable_custom_op_quantization(
     "tfl-enable-custom-op-quantization",
-    llvm::cl::desc(
-        "Specifies which pairs of a custom op and indicies are "
-        "quantizable where the indicies are separated with a space."),
+    llvm::cl::desc("Specifies which pairs of a custom op and indices are "
+                   "quantizable where the indices are separated with a space."),
     llvm::cl::ZeroOrMore);
 
 //===----------------------------------------------------------------------===//
@@ -77,7 +76,7 @@ using QuantizationUnits = llvm::SetVector<std::pair<Operation*, int>>;
 // applicable.
 class PrepareDynamicRangeQuantizePass
     : public PassWrapper<PrepareDynamicRangeQuantizePass,
-                         OperationPass<FuncOp>> {
+                         OperationPass<func::FuncOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
         .insert<TensorFlowLiteDialect, ::mlir::quant::QuantizationDialect>();
@@ -117,7 +116,7 @@ class PrepareDynamicRangeQuantizePass
   // dynamic range quantization. And stats ops may cause conflict while
   // processing the function for dynamic range quantization. Therefore, this
   // method preprocess the function to remove all stats ops.
-  void removeAllStatsOp(FuncOp func);
+  void removeAllStatsOp(func::FuncOp func);
 
   void runOnOperation() override;
 
@@ -431,7 +430,7 @@ class PrepareDynamicRangeQuantizableOp
 };
 
 // Remove all the stats ops which are redundant for dynamic range quantizaiton.
-void PrepareDynamicRangeQuantizePass::removeAllStatsOp(FuncOp func) {
+void PrepareDynamicRangeQuantizePass::removeAllStatsOp(func::FuncOp func) {
   func.walk([&](quant::StatisticsOp stats_op) {
     stats_op.replaceAllUsesWith(stats_op.arg());
     stats_op.erase();
@@ -439,7 +438,7 @@ void PrepareDynamicRangeQuantizePass::removeAllStatsOp(FuncOp func) {
 }
 
 void PrepareDynamicRangeQuantizePass::runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
 
   ConvertTFLQuantOpsToMlirQuantOps(func);
@@ -456,7 +455,8 @@ void PrepareDynamicRangeQuantizePass::runOnOperation() {
 
 // Creates an instance of the TensorFlow Lite dialect
 // PrepareDynamicRangeQuantize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreatePrepareDynamicRangeQuantizePass(
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreatePrepareDynamicRangeQuantizePass(
     const quant::QuantizationSpecs& quant_specs) {
   return std::make_unique<PrepareDynamicRangeQuantizePass>(quant_specs);
 }

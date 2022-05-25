@@ -922,27 +922,6 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
   }
 }
 
-bool HloDataflowAnalysis::UpdateTupleSelectValueSet(HloInstruction* select) {
-  CHECK_EQ(select->opcode(), HloOpcode::kTupleSelect);
-  // A phi value is not defined at a kTupleSelect instruction because
-  // kTupleSelect does not create a new value. Rather it forwards a value from
-  // its operands. This contrasts with kWhile instruction (which does define a
-  // phi value) which has in-place update semantics.
-  bool changed = false;
-  for (auto& pair : GetInstructionValueSet(select)) {
-    const ShapeIndex& index = pair.first;
-    if (index.empty()) {
-      // kTupleSelect copies (not forwards) the top-level value.
-      continue;
-    }
-    HloValueSet& value_set = pair.second;
-    changed |=
-        value_set.AssignUnionOf({&GetValueSet(select->operand(1), index),
-                                 &GetValueSet(select->operand(2), index)});
-  }
-  return changed;
-}
-
 bool HloDataflowAnalysis::UpdateTupleValueSet(HloInstruction* tuple) {
   CHECK_EQ(tuple->opcode(), HloOpcode::kTuple);
   bool changed = false;
@@ -1138,8 +1117,6 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateCopyValueSet(instruction);
     case HloOpcode::kGetTupleElement:
       return UpdateGetTupleElementValueSet(instruction);
-    case HloOpcode::kTupleSelect:
-      return UpdateTupleSelectValueSet(instruction);
     case HloOpcode::kTuple:
       return UpdateTupleValueSet(instruction);
     case HloOpcode::kParameter:
@@ -1360,7 +1337,6 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           }
           break;
         case HloOpcode::kCopy:
-        case HloOpcode::kTupleSelect:
         case HloOpcode::kTuple:
           // These instructions only define their top-level values. Any other
           // values flow from their operands.
@@ -1740,6 +1716,16 @@ GetFusionInstructionInPlaceInputOutputPairs(const HloInstruction* instruction) {
 HloDataflowAnalysis::GetInPlaceInputOutputPairs(
     const HloInstruction* instruction) {
   if (IsInPlaceOperation(instruction->opcode())) {
+    const HloScatterInstruction* scatter =
+        DynCast<HloScatterInstruction>(instruction);
+    if (scatter && scatter->scatter_operand_count() > 1) {
+      std::vector<std::pair<HloOperandIndex, ShapeIndex>> pairs;
+      pairs.reserve(scatter->scatter_operand_count());
+      for (int i = 0, n = scatter->scatter_operand_count(); i < n; ++i) {
+        pairs.emplace_back(HloOperandIndex{i, {}}, ShapeIndex{i});
+      }
+      return pairs;
+    }
     return {{HloOperandIndex{0, {}}, {}}};
   } else if (instruction->opcode() == HloOpcode::kCollectivePermute &&
              instruction->operands().size() == 4) {

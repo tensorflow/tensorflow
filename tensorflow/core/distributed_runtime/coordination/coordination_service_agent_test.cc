@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
+#include "tensorflow/core/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -36,15 +37,36 @@ using ::testing::_;
 using ::testing::DoAll;
 using ::testing::InvokeArgument;
 using ::testing::SetArgPointee;
+using ::testing::UnorderedPointwise;
 using ::testing::WithArgs;
+
+MATCHER(KvEq, "simple KeyValueEntry matcher") {
+  const KeyValueEntry& kv0 = std::get<0>(arg);
+  const KeyValueEntry& kv1 = std::get<1>(arg);
+  return kv0.key() == kv1.key() && kv0.value() == kv1.value();
+}
+
+KeyValueEntry CreateKv(const std::string& key, const std::string& value) {
+  KeyValueEntry kv;
+  kv.set_key(key);
+  kv.set_value(value);
+  return kv;
+}
 
 class TestCoordinationClient : public CoordinationClient {
  public:
   TestCoordinationClient() = default;
   // MOCK_METHOD does not work on Windows build, using deprecated MOCK_METHOD3
   // instead.
-  MOCK_METHOD3(GetKeyValueAsync, void(const GetKeyValueRequest*,
-                                      GetKeyValueResponse*, StatusCallback));
+  MOCK_METHOD4(GetKeyValueAsync,
+               void(CallOptions* call_opts, const GetKeyValueRequest*,
+                    GetKeyValueResponse*, StatusCallback));
+  MOCK_METHOD3(TryGetKeyValueAsync,
+               void(const TryGetKeyValueRequest*, TryGetKeyValueResponse*,
+                    StatusCallback));
+  MOCK_METHOD3(GetKeyValueDirAsync,
+               void(const GetKeyValueDirRequest*, GetKeyValueDirResponse*,
+                    StatusCallback));
   MOCK_METHOD4(RegisterTaskAsync, void(CallOptions*, const RegisterTaskRequest*,
                                        RegisterTaskResponse*, StatusCallback));
   MOCK_METHOD4(ShutdownTaskAsync, void(CallOptions*, const ShutdownTaskRequest*,
@@ -128,9 +150,9 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValue_Simple_Success) {
   auto kv = mocked_response.mutable_kv();
   kv->set_key(test_key);
   kv->set_value(test_value);
-  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _))
-      .WillByDefault(DoAll(SetArgPointee<1>(mocked_response),
-                           InvokeArgument<2>(Status::OK())));
+  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
+      .WillByDefault(DoAll(SetArgPointee<2>(mocked_response),
+                           InvokeArgument<3>(Status::OK())));
   // Initialize coordination agent.
   InitializeAgent();
 
@@ -148,9 +170,9 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValue_WithTimeout_Success) {
   auto kv = mocked_response.mutable_kv();
   kv->set_key(test_key);
   kv->set_value(test_value);
-  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _))
-      .WillByDefault(DoAll(SetArgPointee<1>(mocked_response),
-                           InvokeArgument<2>(Status::OK())));
+  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
+      .WillByDefault(DoAll(SetArgPointee<2>(mocked_response),
+                           InvokeArgument<3>(Status::OK())));
   // Initialize coordination agent.
   InitializeAgent();
 
@@ -162,11 +184,20 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValue_WithTimeout_Success) {
 
 TEST_F(CoordinationServiceAgentTest, GetKeyValue_Timeout_ReturnError) {
   const std::string& test_key = "test_key";
+  StatusCallback owned_done;
+  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
+      .WillByDefault(WithArgs<3>([&](StatusCallback done) {
+        // Copy method argument to prevent de-allocation.
+        owned_done = done;
+      }));
   InitializeAgent();
 
   auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::Seconds(1));
 
   EXPECT_EQ(result.status().code(), error::DEADLINE_EXCEEDED);
+  // Needed to tear down test safely since agent dtor would cancel pending
+  // calls, which would reference deallocated call_opts.
+  owned_done(errors::Cancelled("error"));
 }
 
 TEST_F(CoordinationServiceAgentTest,
@@ -176,8 +207,8 @@ TEST_F(CoordinationServiceAgentTest,
   auto client = std::make_unique<TestCoordinationClient>();
   GetKeyValueResponse* owned_response;
   StatusCallback owned_done;
-  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _))
-      .WillByDefault(WithArgs<1, 2>(
+  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
+      .WillByDefault(WithArgs<2, 3>(
           [&](GetKeyValueResponse* response, StatusCallback done) {
             // Copy method arguments to prevent de-allocation before mocking the
             // server callback beyond timeout.
@@ -187,7 +218,7 @@ TEST_F(CoordinationServiceAgentTest,
   // Initialize coordination service agent.
   InitializeAgent();
 
-  auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::Seconds(3));
+  auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::Seconds(1));
   EXPECT_EQ(result.status().code(), error::DEADLINE_EXCEEDED);
 
   // Delayed server response: set key-value response, and invoke done callback.
@@ -209,10 +240,10 @@ TEST_F(CoordinationServiceAgentTest,
   std::unique_ptr<Thread> async_thread;
   GetKeyValueResponse* owned_response;
   StatusCallback owned_done;
-  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _))
+  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
       // Setup async callback to insert key-value after a brief delay (5s)
       // before timeout (10s).
-      .WillByDefault(WithArgs<1, 2>(
+      .WillByDefault(WithArgs<2, 3>(
           [&](GetKeyValueResponse* response, StatusCallback done) {
             // Copy method arguments to prevent de-allocation before
             //  triggering this async callback.
@@ -235,6 +266,46 @@ TEST_F(CoordinationServiceAgentTest,
 
   TF_EXPECT_OK(result.status());
   EXPECT_EQ(result.ValueOrDie(), test_value);
+}
+
+TEST_F(CoordinationServiceAgentTest, TryGetKeyValue_Simple_Success) {
+  const std::string& test_key = "test_key";
+  const std::string& test_value = "test_value";
+  // Mock server response: set key-value pair and invoke done callback.
+  TryGetKeyValueResponse mocked_response;
+  auto kv = mocked_response.mutable_kv();
+  kv->set_key(test_key);
+  kv->set_value(test_value);
+  ON_CALL(*GetClient(), TryGetKeyValueAsync(_, _, _))
+      .WillByDefault(DoAll(SetArgPointee<1>(mocked_response),
+                           InvokeArgument<2>(Status::OK())));
+
+  // Initialize coordination agent.
+  InitializeAgent();
+  auto result = agent_->TryGetKeyValue(test_key);
+  TF_ASSERT_OK(result.status());
+  EXPECT_EQ(result.ValueOrDie(), test_value);
+}
+
+TEST_F(CoordinationServiceAgentTest, GetKeyValueDir_Simple_Success) {
+  const std::string test_key = "test_key_dir";
+  std::vector<KeyValueEntry> test_values;
+  test_values.push_back(CreateKv("test_key_dir/task_0", "0"));
+  test_values.push_back(CreateKv("test_key_dir/task_1", "1"));
+  // Mock server response: set key-value pair and invoke done callback.
+  GetKeyValueDirResponse mocked_response;
+  mocked_response.set_directory_key(test_key);
+  *mocked_response.mutable_kv() = {test_values.begin(), test_values.end()};
+  ON_CALL(*GetClient(), GetKeyValueDirAsync(_, _, _))
+      .WillByDefault(DoAll(SetArgPointee<1>(mocked_response),
+                           InvokeArgument<2>(Status::OK())));
+  // Initialize coordination agent.
+  InitializeAgent();
+
+  auto result = agent_->GetKeyValueDir(test_key);
+
+  TF_EXPECT_OK(result.status());
+  EXPECT_THAT(result.ValueOrDie(), UnorderedPointwise(KvEq(), test_values));
 }
 
 TEST_F(CoordinationServiceAgentTest, NotAllowedToConnectAfterShuttingDown) {
@@ -301,6 +372,27 @@ TEST_F(CoordinationServiceAgentTest, ResetCanBeRetried) {
   TF_EXPECT_OK(agent_->Reset());
   // Agent should be able to reconnect to the service after resetting.
   TF_EXPECT_OK(agent_->Connect());
+}
+
+TEST_F(CoordinationServiceAgentTest, GetOwnTask) {
+  InitializeAgent();
+
+  auto result = agent_->GetOwnTask();
+
+  TF_EXPECT_OK(result.status());
+  CoordinatedTask actual_task = result.ValueOrDie();
+  // These fields are from the arguments used in InitializeAgent().
+  CoordinatedTask expected_task;
+  expected_task.set_job_name("test_job");
+  expected_task.set_task_id(0);
+  EXPECT_EQ(actual_task.job_name(), expected_task.job_name());
+  EXPECT_EQ(actual_task.task_id(), expected_task.task_id());
+}
+
+TEST_F(CoordinationServiceAgentTest, GetOwnTask_Uninitialized) {
+  auto result = agent_->GetOwnTask();
+
+  EXPECT_TRUE(errors::IsFailedPrecondition(result.status()));
 }
 }  // namespace
 }  // namespace tensorflow

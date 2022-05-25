@@ -19,10 +19,13 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -33,13 +36,16 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/ir/importexport/export.h"
-#include "tensorflow/core/ir/importexport/import.h"
+#include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/importexport/graphdef_export.h"
+#include "tensorflow/core/ir/importexport/graphdef_import.h"
 #include "tensorflow/core/ir/ops.h"
+#include "tensorflow/core/ir/tf_op_registry.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
-#include "tensorflow/core/transforms/pass_registration.h"
+#include "tensorflow/core/transforms/func_to_graph/func_to_graph.h"
+#include "tensorflow/core/transforms/graph_to_func/graph_to_func.h"
 
 using tensorflow::Status;
 using tensorflow::errors::InvalidArgument;
@@ -47,8 +53,52 @@ using tensorflow::errors::InvalidArgument;
 namespace mlir {
 namespace tfg {
 
-// The default pipeline is empty.
-void DefaultGrapplerPipeline(PassManager& mgr) {}
+// Lift the graph into a function to embed the semantic of feeds, fetches and
+// nodes-to-preserve nodes in GrapplerItem.
+static Status LiftGraphToFunc(GraphOp graph,
+                              const tensorflow::grappler::GrapplerItem& item) {
+  SmallVector<std::string> feed = llvm::to_vector<4>(llvm::map_range(
+      item.feed, [](const std::pair<std::string, tensorflow::Tensor>& item) {
+        return item.first;
+      }));
+  SmallVector<std::string> control_rets =
+      llvm::to_vector<4>(item.NodesToPreserve());
+
+  Status status = GraphToFunc(graph, feed, item.fetch, control_rets);
+  if (!status.ok()) {
+    return InvalidArgument(
+        "MLIR Graph optimizer failed: Can't lift graph into function: ",
+        status.error_message());
+  }
+  return Status::OK();
+}
+
+// Lower the lifted graph function back to the graph.
+static Status LowerFuncToGraph(ModuleOp module) {
+  auto* dialect = module->getContext()->getLoadedDialect<TFGraphDialect>();
+  StringAttr lifted_graph_func_name =
+      dialect->getLiftedGraphFuncNameAttrIdentifier();
+  GraphFuncOp lifted_graph_func;
+  for (auto func : module.getOps<GraphFuncOp>()) {
+    if (func.sym_name() == lifted_graph_func_name) {
+      lifted_graph_func = func;
+      break;
+    }
+  }
+
+  if (!lifted_graph_func) {
+    return InvalidArgument(
+        "MLIR Graph Optimizer failed: module is missing lifted graph func op");
+  }
+
+  Status status = FuncToGraph(lifted_graph_func);
+  if (!status.ok()) {
+    return InvalidArgument(
+        "MLIR Graph Optimizer failed: Can't lower function into graph: ",
+        status.error_message());
+  }
+  return Status::OK();
+}
 
 // The implementation of the TFG optimizer. It holds the MLIR context and the
 // pass manager.
@@ -59,6 +109,12 @@ class TFGGrapplerOptimizer::Impl {
   // threads, a threadpool is initialized and passed to the MLIR context.
   explicit Impl(TFGPassPipelineBuilder builder, unsigned num_tfg_threads)
       : ctx_(MLIRContext::Threading::DISABLED), mgr_(&ctx_) {
+    DialectRegistry registry;
+    // Register the TF op registry interface so that passes can query it.
+    registry.addExtension(+[](MLIRContext* ctx, TFGraphDialect* dialect) {
+      dialect->addInterfaces<TensorFlowOpRegistryInterface>();
+    });
+    ctx_.appendDialectRegistry(registry);
     builder(mgr_);
     if (num_tfg_threads) {
       llvm::ThreadPoolStrategy strategy;
@@ -114,30 +170,46 @@ Status TFGGrapplerOptimizer::Optimize(
       tensorflow::metrics::GetGraphOptimizationCounter(),
       {"TfgOptimizer", "convert_graphdef_to_tfg"});
   auto error_or_module =
-      ImportGraphDefToMlir(impl_->GetContext(), debug_info, item.graph);
+      ImportGraphDef(impl_->GetContext(), debug_info, item.graph);
   if (!error_or_module.ok()) {
     auto status = error_or_module.status();
     tensorflow::errors::AppendToMessage(
         &status, "when importing GraphDef to MLIR module in GrapplerHook");
-    VLOG(4) << "GraphDef import error: " << status.ToString();
-    return status;
+    // Import errors are not fatal. Log the error here and return `Aborted` so
+    // the meta optimizer knows to swallow the error.
+    LOG(ERROR) << name() << " failed: " << status.ToString();
+    return tensorflow::errors::Aborted(status.error_message());
   }
   metrics.ReportAndStop();
 
-  // Run the pipeline on the graph.
   ModuleOp module = (*error_or_module).get();
-  StatusScopedDiagnosticHandler error_handler(impl_->GetContext());
-  if (failed(impl_->RunPipeline(module)))
-    return error_handler.Combine(
-        InvalidArgument("MLIR Graph Optimizer failed: "));
+
+  // Lift the graph to a func to embed the semantic of feeds, fetches and
+  // nodes-to-preserve nodes in GrapplerItem.
+  TF_RETURN_IF_ERROR(LiftGraphToFunc(*module.getOps<GraphOp>().begin(), item));
+
+  // TODO(chiahungduan): There was a StatusScopedDiagnosticHandler here to
+  // collect the diagnostics emitted from the pass pipeline. Given that even a
+  // successful pass execution may have error diagnostics emitted in between
+  // execution and those logs are not useful for debugging. Besides, there's an
+  // issue (b/36186527) which relates to the handler. Remove this to temporary
+  // bypass the problem. Find a better way to collect the pipeline failure
+  // message here.
+  if (failed(impl_->RunPipeline(module))) {
+    return InvalidArgument("MLIR Graph Optimizer failed: ");
+  }
+
+  // Convert the lifted graph function back to the graph.
+  TF_RETURN_IF_ERROR(LowerFuncToGraph(module));
 
   // Export the TFG module to GraphDef.
   tensorflow::GraphDef graphdef;
-  *graphdef.mutable_library() = item.graph.library();
   metrics.Reset({"TfgOptimizer", "convert_tfg_to_graphdef"});
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      tensorflow::ExportMlirToGraphdef(module, &graphdef),
+      ConvertToGraphDef(module, &graphdef),
       "when exporting MLIR module to GraphDef in GrapplerHook");
+  // Ensure that an empty library is instantiated.
+  (void)graphdef.mutable_library();
   metrics.ReportAndStop();
   *optimized_graph = std::move(graphdef);
 

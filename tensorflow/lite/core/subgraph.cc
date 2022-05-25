@@ -963,6 +963,11 @@ TfLiteStatus Subgraph::ReleaseNonPersistentMemory() {
 
 TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
                                  TfLiteNode* node) {
+  if (op_reg.registration_external && op_reg.registration_external->prepare) {
+    return op_reg.registration_external->prepare(
+        reinterpret_cast<TfLiteOpaqueContext*>(&context_),
+        reinterpret_cast<TfLiteOpaqueNode*>(node));
+  }
   if (op_reg.prepare == nullptr) {
     // Check if it's an unresolved custom op.
     if (IsUnresolvedCustomOp(op_reg)) {
@@ -1356,7 +1361,7 @@ TfLiteStatus Subgraph::GetNodeAndRegistration(
 }
 
 TfLiteStatus Subgraph::SetTensorParametersReadOnly(
-    int tensor_index, TfLiteType type, const char* name, const size_t rank,
+    int tensor_index, TfLiteType type, const char* name, const size_t ndims,
     const int* dims, TfLiteQuantization quantization, const char* buffer,
     size_t bytes, const Allocation* allocation, TfLiteSparsity* sparsity) {
   // Ensure quantization cleanup on failure.
@@ -1379,18 +1384,18 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
       type != kTfLiteVariant && sparsity == nullptr) {
     size_t required_bytes;
     TF_LITE_ENSURE_OK(&context_,
-                      BytesRequired(type, dims, rank, &required_bytes));
+                      BytesRequired(type, dims, ndims, &required_bytes));
     TF_LITE_ENSURE_EQ(&context_, required_bytes, bytes);
   }
 
   TfLiteTensor& tensor = context_.tensors[tensor_index];
   if (type == tensor.type &&
-      EqualArrayAndTfLiteIntArray(tensor.dims, rank, dims)) {
+      EqualArrayAndTfLiteIntArray(tensor.dims, ndims, dims)) {
     // Fast path which does not invalidate the invokable property.
     TfLiteTensorDataFree(&tensor);
     TfLiteQuantizationFree(&tensor.quantization);
     tensor.data.raw = const_cast<char*>(buffer);
-    if (!tensor.dims) tensor.dims = ConvertArrayToTfLiteIntArray(rank, dims);
+    if (!tensor.dims) tensor.dims = ConvertArrayToTfLiteIntArray(ndims, dims);
     tensor.params = GetLegacyQuantization(quantization);
     tensor.quantization = *scoped_quantization.release();
     tensor.sparsity = scoped_sparsity.release();
@@ -1398,7 +1403,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
     tensor.allocation = allocation;
   } else {
     state_ = kStateUninvokable;
-    TfLiteTensorReset(type, name, ConvertArrayToTfLiteIntArray(rank, dims),
+    TfLiteTensorReset(type, name, ConvertArrayToTfLiteIntArray(ndims, dims),
                       GetLegacyQuantization(quantization),
                       const_cast<char*>(buffer), bytes, kTfLiteMmapRo,
                       allocation, false, &tensor);
@@ -1413,9 +1418,9 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
 // bytes. The lifetime of buffer must be ensured to be greater or equal
 // to Interpreter.
 TfLiteStatus Subgraph::SetTensorParametersReadWrite(
-    int tensor_index, TfLiteType type, const char* name, const size_t rank,
+    int tensor_index, TfLiteType type, const char* name, const size_t ndims,
     const int* dims, TfLiteQuantization quantization, bool is_variable,
-    const size_t rank_dims_signature, const int* dims_signature) {
+    const size_t ndims_signature, const int* dims_signature) {
   // Ensure quantization cleanup on failure.
   ScopedTfLiteQuantization scoped_quantization(&quantization);
   if (state_ == kStateInvokableAndImmutable) {
@@ -1433,7 +1438,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadWrite(
     // allocated dynamically and we can't know ahead of time how much space
     // they will require.
     TF_LITE_ENSURE_OK(&context_,
-                      BytesRequired(type, dims, rank, &required_bytes));
+                      BytesRequired(type, dims, ndims, &required_bytes));
   }
 
   TfLiteAllocationType allocation_type = kTfLiteArenaRw;
@@ -1450,13 +1455,14 @@ TfLiteStatus Subgraph::SetTensorParametersReadWrite(
   }
 
   TfLiteTensor& tensor = context_.tensors[tensor_index];
-  TfLiteTensorReset(type, name, ConvertArrayToTfLiteIntArray(rank, dims),
+
+  TfLiteTensorReset(type, name, ConvertArrayToTfLiteIntArray(ndims, dims),
                     GetLegacyQuantization(quantization),
                     /*buffer=*/nullptr, required_bytes, allocation_type,
                     nullptr, is_variable, &tensor);
   tensor.quantization = *scoped_quantization.release();
   tensor.dims_signature =
-      ConvertArrayToTfLiteIntArray(rank_dims_signature, dims_signature);
+      ConvertArrayToTfLiteIntArray(ndims_signature, dims_signature);
   return kTfLiteOk;
 }
 

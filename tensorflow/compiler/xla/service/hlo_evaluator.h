@@ -295,6 +295,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleGather(HloInstruction* gather) override;
 
+  Status HandleScatter(HloInstruction* hlo) override;
+
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
 
   Status HandleAsyncStart(HloInstruction* async_start) override;
@@ -318,8 +320,6 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   Status HandleWhile(HloInstruction* while_hlo) override;
 
   Status HandleSelect(HloInstruction* select) override;
-
-  Status HandleTupleSelect(HloInstruction* tuple_select) override;
 
   Status HandleBroadcast(HloInstruction* broadcast) override;
 

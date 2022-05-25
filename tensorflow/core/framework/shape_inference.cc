@@ -18,14 +18,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/full_type_util.h"
-#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/scanner.h"
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 namespace shape_inference {
@@ -129,8 +126,7 @@ Status InferenceContext::set_output(StringPiece output_name,
     const int size = result->second.second - start;
     const int shapes_size = shapes.size();
     if (size != shapes_size) {
-      return errors::InvalidArgument("Must have exactly ", shapes.size(),
-                                     " shapes.");
+      return errors::InvalidArgument("Must provide exactly ", size, " shapes.");
     }
     for (int i = 0; i < shapes_size; ++i) {
       outputs_[i + start] = shapes[i];
@@ -845,7 +841,7 @@ Status InferenceContext::InternalMakeShapeFromTensor(
     return errors::InvalidArgument(
         "Input tensor must be rank 1, but was rank ", t->shape().dims(), ".",
         ((t->shape().dims() == 0)
-             ? "If it is rank 0 rank 0 it must have statically known value -1 "
+             ? "If it is rank 0 it must have statically known value -1 "
                "(representing an unknown shape). "
              : " "),
         "Saw tensor shape ", t->shape().DebugString());
@@ -1111,7 +1107,7 @@ Status InferenceContext::Multiply(DimensionHandle first,
     *out = UnknownDim();
   } else {
     // Invariant: Both values are known and greater than 1.
-    const int64_t product = first_value * second_value;
+    const int64_t product = MultiplyWithoutOverflow(first_value, second_value);
     if (product < 0) {
       return errors::InvalidArgument(
           "Negative dimension size caused by overflow when multiplying ",
@@ -1236,9 +1232,7 @@ bool InferenceContext::MergeHandleShapesAndTypes(
   if (!refined) {
     return false;
   }
-  for (int i = 0, end = new_values.size(); i < end; ++i) {
-    (*to_update)[i] = new_values[i];
-  }
+  to_update->swap(new_values);
   return true;
 }
 

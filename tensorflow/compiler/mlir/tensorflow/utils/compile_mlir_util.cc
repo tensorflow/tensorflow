@@ -63,7 +63,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
@@ -310,7 +312,8 @@ Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
 void CreateConvertMlirToXlaHloPipeline(
     mlir::OpPassManager& pm, llvm::StringRef device_type, bool prefer_tf2xla,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-        custom_legalization_passes) {
+        custom_legalization_passes,
+    bool allow_partial_conversion) {
   // Note that the region-based control-flow produced here still contains
   // function call ops which get inlined by the subsequent inliner pass.
   pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
@@ -375,7 +378,8 @@ void CreateConvertMlirToXlaHloPipeline(
   // necessary for the second LegalizeTFPass(allow_partial_conversion=false)
   // invocation.
   pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
-      /*allow_partial_conversion=*/false, /*legalize_chlo=*/true,
+      /*allow_partial_conversion=*/allow_partial_conversion,
+      /*legalize_chlo=*/true,
       /*tf2xla_fallback_device_type=*/device_type, prefer_tf2xla));
 
   if (CanInlineFunctionsPostLegalization(device_type))
@@ -412,14 +416,20 @@ Status LegalizeToHlo(mlir::ModuleOp module_op, llvm::StringRef device_type,
   mlir::StatusScopedDiagnosticHandler error_handler(module_op.getContext());
 
   if (failed(tf2xla.run(module_op))) {
-    return error_handler.Combine(
-        errors::InvalidArgument("TF to XLA legalization failed: "));
+    Status status = errors::InvalidArgument("TF to XLA legalization failed: ");
+    tensorflow::OkOrSetErrorCounterPayload(
+        tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_2,
+        status);
+    return error_handler.Combine(status);
   }
 
   if (VLOG_IS_ON(1))
     tensorflow::DumpMlirOpToFile("legalize_hlo_after", module_op);
-
-  return error_handler.ConsumeStatus();
+  Status status = error_handler.ConsumeStatus();
+  tensorflow::OkOrSetErrorCounterPayload(
+      tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_2,
+      status);
+  return status;
 }
 
 Status BuildHloFromTfInner(mlir::ModuleOp module_op, xla::XlaBuilder& builder,

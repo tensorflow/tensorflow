@@ -35,7 +35,7 @@ constexpr char kNullAttributeValue[] = "N/A";
 
 // Checks if the op is inside a lifted function.
 bool IsInLiftedFunc(Operation *op) {
-  return op->getParentOfType<FuncOp>()->hasAttr(kFusedFunctionAttr);
+  return op->getParentOfType<func::FuncOp>()->hasAttr(kFusedFunctionAttr);
 }
 
 // Inserts the function to the symbol table of the module thread-safely.
@@ -182,7 +182,7 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
   auto module = result_op->getParentOfType<ModuleOp>();
 
   // Create a private function and copy all ops between arguments and results.
-  auto current_func = result_op->getParentOfType<FuncOp>();
+  auto current_func = result_op->getParentOfType<func::FuncOp>();
   auto guard = OpBuilder::InsertionGuard(builder);
   builder.setInsertionPointAfter(current_func);
   TypeRange arg_types(
@@ -194,7 +194,7 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
   for (const auto &arg : arguments) {
     arg_locs.push_back(arg.getLoc());
   }
-  auto wrap_func = builder.create<FuncOp>(location, func_name, func_type);
+  auto wrap_func = builder.create<func::FuncOp>(location, func_name, func_type);
   wrap_func.setVisibility(SymbolTable::Visibility::Private);
   wrap_func->setAttr(kFusedFunctionAttr, builder.getUnitAttr());
   builder.createBlock(&wrap_func.getBody(), wrap_func.begin(), arg_types,

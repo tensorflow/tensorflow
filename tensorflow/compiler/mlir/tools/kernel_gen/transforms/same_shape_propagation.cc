@@ -196,7 +196,7 @@ class ShapeEqualityKnowledge {
  public:
   /// Checks all operations for potential shape equality of their respective
   /// results.
-  void build(FuncOp function) {
+  void build(func::FuncOp function) {
     function.walk([&](Operation *op) {
       if (auto reshape = dyn_cast<memref::ReshapeOp>(op)) {
         registerAssociation(ShapeValue{reshape.shape()}, reshape.result());
@@ -374,7 +374,7 @@ struct PropagateShapeKnowledgeToKernels
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreatePropagateShapeKnowledgeToKernels() {
   return std::make_unique<PropagateShapeKnowledgeToKernels>();
 }

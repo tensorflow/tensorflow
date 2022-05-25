@@ -140,7 +140,9 @@ Status IrEmitterNested::CodegenNestedComputation() {
     llvm::Argument* out_parameter = std::prev(function->arg_end(), 1);
 
     if (ShapeUtil::IsScalar(return_shape)) {
-      llvm::Value* ret_value = Load(root_value, "load_ret_value");
+      llvm::Value* ret_value =
+          Load(llvm_ir::ShapeToIrType(return_shape, module_), root_value,
+               "load_ret_value");
       Store(ret_value,
             BitCast(out_parameter, root_value->getType(), "bitcast_ret_value"));
     } else {
@@ -151,15 +153,17 @@ Status IrEmitterNested::CodegenNestedComputation() {
 
       for (int i = 0; i < return_shape.tuple_shapes_size(); i++) {
         const Shape& element_shape = return_shape.tuple_shapes(i);
-        llvm::Value* destination =
-            llvm_ir::EmitGetTupleElement(element_shape,
-                                         /*index=*/i,
-                                         /*alignment=*/1, tuple_ptr, &b_);
-        llvm::Value* source =
-            llvm_ir::EmitGetTupleElement(element_shape,
-                                         /*index=*/i,
-                                         /*alignment=*/1, root_value, &b_);
-        Store(Load(source), destination);
+        llvm::Value* destination = llvm_ir::EmitGetTupleElement(
+            element_shape,
+            /*index=*/i,
+            /*alignment=*/1, tuple_ptr, tuple_type, &b_);
+        llvm::Value* source = llvm_ir::EmitGetTupleElement(
+            element_shape,
+            /*index=*/i,
+            /*alignment=*/1, root_value,
+            llvm_ir::ShapeToIrType(root_instruction->shape(), module_), &b_);
+        Store(Load(llvm_ir::ShapeToIrType(element_shape, module_), source),
+              destination);
       }
     }
   }

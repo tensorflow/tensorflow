@@ -64,6 +64,16 @@ tf_proto_library(
     ],
 )
 
+tf_proto_library(
+    name = "export_proto",
+    srcs = ["export.proto"],
+    cc_api_version = 2,
+    create_java_proto = False,
+    protodeps = tf_additional_all_protos() + [
+        ":common_proto",
+    ],
+)
+
 cc_library(
     name = "auto_shard_rewriter",
     srcs = ["auto_shard_rewriter.cc"],
@@ -183,6 +193,7 @@ tf_cc_test(
         ":common_proto_cc",
         ":dispatcher_client",
         ":dispatcher_proto_cc",
+        ":export_proto_cc",
         ":test_cluster",
         ":test_util",
         "//tensorflow/core:lib",
@@ -226,6 +237,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:status",
     ],
 )
@@ -297,10 +309,12 @@ tf_cc_test(
     name = "dispatcher_client_test",
     srcs = ["dispatcher_client_test.cc"],
     deps = [
+        ":common_proto_cc",
         ":data_transfer",
         ":dispatcher_client",
         ":test_cluster",
         ":test_util",
+        "@com_google_absl//absl/types:optional",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
@@ -324,6 +338,7 @@ cc_library(
         ":dataset_store",
         ":dispatcher_proto_cc",
         ":dispatcher_state",
+        ":export_proto_cc",
         ":grpc_util",
         ":journal",
         ":journal_proto_cc",
@@ -350,6 +365,7 @@ cc_library(
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:thread_annotations",
     ] + tf_grpc_cc_dependencies(),
 )
@@ -401,6 +417,7 @@ cc_library(
     deps = [
         ":dispatcher_cc_grpc_proto",
         ":dispatcher_impl",
+        ":export_proto_cc",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
     ] + tf_grpc_cc_dependencies(),
@@ -459,6 +476,7 @@ cc_library(
     srcs = ["grpc_worker_impl.cc"],
     hdrs = ["grpc_worker_impl.h"],
     deps = [
+        ":export_proto_cc",
         ":worker_cc_grpc_proto",
         ":worker_impl",
         ":worker_proto_cc",
@@ -580,6 +598,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:mutex",
@@ -614,6 +633,7 @@ cc_library(
     deps = [
         ":credentials_factory",
         ":data_transfer",
+        ":export_proto_cc",
         ":grpc_dispatcher_impl",
         ":grpc_util",
         ":grpc_worker_impl",
@@ -716,6 +736,7 @@ cc_library(
         ":data_transfer",
         ":dispatcher_client",
         ":dispatcher_proto_cc",
+        ":export_proto_cc",
         ":server_lib",
         ":test_util",
         ":worker_client",
@@ -942,6 +963,7 @@ cc_library(
         ":dispatcher_cc_grpc_proto",
         ":dispatcher_client",
         ":dispatcher_proto_cc",
+        ":export_proto_cc",
         ":grpc_util",
         ":split_provider",
         ":task_runner",

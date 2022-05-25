@@ -66,6 +66,13 @@ class HloVerifierTestLayoutSensitive : public HloTestBase {
                     LayoutAssignment::InstructionCanChangeLayout) {}
 };
 
+class HloVerifierTestLayoutFusion : public HloTestBase {
+ public:
+  HloVerifierTestLayoutFusion()
+      : HloTestBase(/*verifier_layout_sensitive=*/true,
+                    /*allow_mixed_precision_in_hlo_verifier=*/false) {}
+};
+
 TEST_F(HloVerifierTest, NullInstructionParent) {
   HloComputation::Builder builder(TestName());
   const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
@@ -1969,6 +1976,32 @@ TEST_F(HloVerifierTest, ReduceScatterNonUniformGroups) {
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.error_message(),
               HasSubstr("Replica groups expected to be of uniform size"));
+}
+
+TEST_F(HloVerifierTestLayoutFusion, DynamicUpdateSliceWithMemorySpace) {
+  const char* const hlo_string = R"(
+HloModule fusion, is_scheduled=true
+
+fused_computation {
+  %parameter.0 = bf16[1,8,1,8,320]{4,0,3,2,1:T(2,128)(2,1)S(3)} parameter(0)
+  %parameter.1 = bf16[1,8,6,8,320]{4,0,3,2,1:T(2,128)(2,1)S(3)} parameter(1)
+  %c = bf16[1,8,6,8,320]{4,0,3,2,1:T(2,128)(2,1)} copy(parameter.1)
+  %constant.1 = s32[] constant(0)
+  ROOT %dynamic-update-slice.1 = bf16[1,8,6,8,320]{4,0,3,2,1:T(2,128)(2,1)S(3)}
+    dynamic-update-slice(%c, %parameter.0, %constant.1, %constant.1,
+    %constant.1, %constant.1, %constant.1)
+}
+
+ENTRY entry (parameter.0: bf16[1,8,1,8,320], parameter.1: bf16[1,8,6,8,320]) -> bf16[1,8,6,8,320]{
+  %p0 = bf16[1,8,1,8,320]{4,0,3,2,1:T(2,128)(2,1)S(3)} parameter(0)
+  %p1 = bf16[1,8,6,8,320]{4,0,3,2,1:T(2,128)(2,1)S(3)} parameter(1)
+  ROOT out = bf16[1,8,6,8,320]{4,0,3,2,1:T(2,128)(2,1)S(3)} fusion(p0, p1), kind=kLoop, calls=fused_computation
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
 }
 
 }  // namespace

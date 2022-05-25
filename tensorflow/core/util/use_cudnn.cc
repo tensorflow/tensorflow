@@ -92,10 +92,10 @@ ADD_BOOL_CUDNN_FLAG(DebugCudnnRnnUseTensorOps,
 ADD_INT64_CUDNN_FLAG(DebugCudnnRnnAlgo, TF_DEBUG_CUDNN_RNN_ALGO, -1);
 #undef ADD_INT64_CUDNN_FLAG
 
-bool IsCudnnSupportedFilterSize(const int32_t filter_rows,
-                                const int32_t filter_cols,
-                                const int32_t in_depth,
-                                const int32_t out_depth) {
+bool ShouldCudnnGroupedConvolutionBeUsed(const int32_t filter_rows,
+                                         const int32_t filter_cols,
+                                         const int32_t in_depth,
+                                         const int32_t out_depth) {
   return in_depth == out_depth && filter_rows == filter_cols &&
          (filter_rows == 1 || filter_rows == 3 || filter_rows == 5 ||
           filter_rows == 7);

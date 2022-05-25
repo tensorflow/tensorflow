@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/types/variant.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tools_data.h"
@@ -268,7 +267,6 @@ tensorflow::Status ProfilerSessionWrapper::ExportToTensorBoard() {
   tensorflow::profiler::XSpace xspace;
   tensorflow::Status status;
   status = session_->CollectData(&xspace);
-  xspace.add_hostnames(tensorflow::port::Hostname());
   session_.reset();
   status = tensorflow::profiler::ExportToTensorBoard(xspace, logdir_);
   return status;

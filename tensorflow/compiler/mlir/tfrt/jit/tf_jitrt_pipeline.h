@@ -24,6 +24,9 @@ namespace tensorflow {
 
 struct TfJitRtPipelineOptions
     : public mlir::PassPipelineOptions<TfJitRtPipelineOptions> {
+  Option<bool> one_shot_bufferize{
+      *this, "one-shot-bufferize",
+      llvm::cl::desc("Enable one-shot bufferization."), llvm::cl::init(false)};
   Option<bool> vectorize{*this, "vectorize",
                          llvm::cl::desc("Enable tiling for vectorization."),
                          llvm::cl::init(false)};

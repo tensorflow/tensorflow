@@ -16,14 +16,19 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 
 #include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/utils/broadcast_utils.h"
 #include "mlir/Dialect/Traits.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "mlir/IR/Value.h"
+#include "mlir/Interfaces/InferTypeOpInterface.h"
 
 namespace mlir {
 namespace chlo {
@@ -53,6 +58,41 @@ Value getConstantLike(OpBuilder& b, Location loc, const APFloat& constant,
   Type ty = getElementTypeOrSelf(val.getType());
   return b.create<ConstantLikeOp>(loc, b.getFloatAttr(ty, constant), val);
 }
+
+//===----------------------------------------------------------------------===//
+// CompatibleOperandsAndResultType
+//===----------------------------------------------------------------------===//
+
+// TODO(b/231358795): Review the use of InferTypeOpInterface for ops that
+// support quantization or sparsity.
+#define INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Op)                        \
+  LogicalResult Op::inferReturnTypeComponents(                                \
+      MLIRContext* context, Optional<Location> location,                      \
+      ValueShapeRange operands, DictionaryAttr attributes,                    \
+      RegionRange regions,                                                    \
+      SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {          \
+    return inferReturnTypeComponentsFromOperands(context, location, operands, \
+                                                 attributes, regions,         \
+                                                 inferredReturnShapes);       \
+  }
+
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AcosOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AcoshOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AsinOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AsinhOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AtanOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AtanhOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ConjOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CoshOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DigammaOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ErfOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ErfcOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LgammaOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NextAfterOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(PolygammaOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SinhOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(TanOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ZetaOp)
 
 //===----------------------------------------------------------------------===//
 // BinaryOps
@@ -433,6 +473,45 @@ LogicalResult RankSpecializationClusterOp::verify() {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// TopKOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TopKOp::inferReturnTypeComponents(
+    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  Builder builder(context);
+  TopKOp::Adaptor adaptor(operands, attributes, regions);
+  Value operand = adaptor.operand();
+  uint64_t k = adaptor.k();
+
+  auto operand_ty = operand.getType().dyn_cast<RankedTensorType>();
+  if (!operand_ty) {
+    return emitOptionalError(location, "operand must be ranked");
+  }
+  if (operand_ty.getRank() < 1) {
+    return emitOptionalError(location, "operand's rank must be at least 1");
+  }
+  auto operand_last_dim = operand_ty.getShape()[operand_ty.getRank() - 1];
+  if (operand_last_dim == ShapedType::kDynamicSize) {
+    return emitOptionalError(location,
+                             "operand's last dimension must be static");
+  }
+  if (operand_last_dim < k) {
+    return emitOptionalError(location,
+                             "operand's last dimension must be at least ", k);
+  }
+
+  SmallVector<int64_t> result_shape;
+  append_range(result_shape, operand_ty.getShape());
+  result_shape[operand_ty.getRank() - 1] = k;
+
+  inferredReturnShapes.emplace_back(result_shape, operand_ty.getElementType());
+  inferredReturnShapes.emplace_back(result_shape, builder.getI32Type());
+  return success();
+}
+
 }  // namespace chlo
 }  // namespace mlir
 
@@ -446,16 +525,15 @@ namespace chlo {
 // chlo Dialect Constructor
 //===----------------------------------------------------------------------===//
 
-Operation* HloClientDialect::materializeConstant(OpBuilder& builder,
-                                                 Attribute value, Type type,
-                                                 Location loc) {
+Operation* ChloDialect::materializeConstant(OpBuilder& builder, Attribute value,
+                                            Type type, Location loc) {
   // Mirror MHLO dialect here.
   if (value.isa<ElementsAttr>())
     return builder.create<mhlo::ConstOp>(loc, type, value.cast<ElementsAttr>());
   return nullptr;
 }
 
-void HloClientDialect::initialize() {
+void ChloDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.cc.inc"

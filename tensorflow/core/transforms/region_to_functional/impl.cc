@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/iterator.h"
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/Support/raw_ostream.h"
@@ -69,6 +70,34 @@ struct CachedIdentifiers {
   StringAttr tfg_regenerate_output_shapes;
 };
 
+// A helper for uniqueing argument, result, and control result names, which must
+// be unique for a function.
+class NameUniquer {
+ public:
+  explicit NameUniquer(MLIRContext *ctx) : ctx_(ctx) {}
+
+  // Unique a name. If the name is unused, returns the name. Otherwise,
+  // allocates a new name.
+  StringAttr GetUniqued(StringAttr name) {
+    auto it = unique_names_.insert(name);
+    if (it.second) return name;
+    unsigned suffix = 0;
+    StringAttr next_name;
+    do {
+      next_name =
+          StringAttr::get(ctx_, name.getValue() + "_" + Twine(suffix++));
+      it = unique_names_.insert(next_name);
+    } while (!it.second);
+    return next_name;
+  }
+
+ private:
+  // The MLIR context.
+  MLIRContext *ctx_;
+  // This set contains the occupied names.
+  DenseSet<StringAttr> unique_names_;
+};
+
 // Base class for patterns used to convert region control-flow ops to functional
 // control-flow ops. This class contains common utility functions and cached
 // attribute identifiers.
@@ -105,16 +134,21 @@ class BasePattern {
   Operation *MakeChainConstant(Operation *parent, Value ctl, unsigned idx,
                                PatternRewriter &rewriter) const;
 
-  // Infer or propagate function attributes.
+  // Infer or propagate function attributes. Use a name uniquer to unique names
+  // across function arguments, results, and control results.
   NamedAttrList BuildAttributes(RegionAttr preserved, ValueRange arguments,
-                                ValueRange results) const;
+                                ValueRange results,
+                                NameUniquer *name_uniquer) const;
 
   // Try to find a name for a data or control value. For op results, check the
   // op for a name. Otherwise, check the enclosing function's arg attributes.
   StringAttr TryFindName(Value value, Optional<ValueRange> args) const;
 
-  // Get the `control_ret_attrs` attributes for control returns.
-  ArrayAttr GetControlRetAttrs(ValueRange ctls, ValueRange args) const;
+  // Get the `control_ret_attrs` attributes for control returns. Use a name
+  // uniquer to unique names across function arguments, results, and control
+  // results,
+  ArrayAttr GetControlRetAttrs(ValueRange ctls, ValueRange args,
+                               NameUniquer *name_uniquer) const;
 
   // Create a function with the given name and attributes. Use the types of the
   // block arguments and the given results types. Take the body of the region.
@@ -387,7 +421,7 @@ Operation *BasePattern::MakeChainConstant(Operation *parent, Value ctl,
   state.addTypes({tensor_type, ctl.getType()});
 
   // Inherit `tfg.tpu_replicate`, `assigned_device`, and `device`.
-  for (StringAttr attr_name : {dialect_.getTfgTpuReplicateAttrIdentifier(),
+  for (StringAttr attr_name : {StringAttr::get(ctx_, "_tpu_replicate"),
                                dialect_.getAssignedDeviceAttrIdentifier(),
                                dialect_.getDeviceAttrIdentifier()}) {
     if (Attribute attr = parent->getAttr(attr_name))
@@ -447,7 +481,8 @@ void BasePattern::IsolateRegions(RegionRange regions,
 
 NamedAttrList BasePattern::BuildAttributes(RegionAttr preserved,
                                            ValueRange arguments,
-                                           ValueRange results) const {
+                                           ValueRange results,
+                                           NameUniquer *name_uniquer) const {
   NamedAttrList attrs(preserved ? preserved.getAttrs() : DictionaryAttr());
   // The original function name is preserved in the region attributes, but don't
   // re-use it when creating a new function.
@@ -467,7 +502,7 @@ NamedAttrList BasePattern::BuildAttributes(RegionAttr preserved,
     // If no name was preserved, try to find one.
     if (!attrs.get(ids_.tfg_name)) {
       if (StringAttr name = TryFindName(it.value(), args))
-        attrs.set(ids_.tfg_name, name);
+        attrs.set(ids_.tfg_name, name_uniquer->GetUniqued(name));
     }
     attrs.set(ids_.tfg_regenerate_output_shapes, UnitAttr::get(ctx_));
     return attrs.getDictionary(ctx_);
@@ -509,7 +544,7 @@ StringAttr BasePattern::TryFindName(Value value,
     arg = iface.getDataValueOf(arg);
   // If the parent is a function, try to find a `tfg.name`.
   if (auto func = dyn_cast<GraphFuncOp>(*iface))
-    return func.getArgAttrOfType<StringAttr>(arg.getArgNumber(), "tfg.name");
+    return func.getArgAttrOfType<StringAttr>(arg.getArgNumber(), ids_.tfg_name);
   // Otherwise, "see through" to the corresponding operand.
   if (args) {
     assert(arg.getArgNumber() < args->size());
@@ -526,13 +561,15 @@ StringAttr BasePattern::TryFindName(Value value,
   return TryFindName(inputs[arg.getArgNumber()], {});
 }
 
-ArrayAttr BasePattern::GetControlRetAttrs(ValueRange ctls,
-                                          ValueRange args) const {
+ArrayAttr BasePattern::GetControlRetAttrs(ValueRange ctls, ValueRange args,
+                                          NameUniquer *name_uniquer) const {
   SmallVector<Attribute> ctl_ret_attrs;
   for (Value ctl : ctls) {
     NamedAttrList ctl_attrs;
-    if (StringAttr name = TryFindName(ctl, args))
-      ctl_attrs.set(dialect_.getTfgNameAttrIdentifier(), name);
+    if (StringAttr name = TryFindName(ctl, args)) {
+      ctl_attrs.set(dialect_.getTfgNameAttrIdentifier(),
+                    name_uniquer->GetUniqued(name));
+    }
     ctl_ret_attrs.push_back(ctl_attrs.getDictionary(ctx_));
   }
   return ArrayAttr::get(ctx_, ctl_ret_attrs);
@@ -587,13 +624,18 @@ FuncAttr BasePattern::Outline(Operation *op, PatternRewriter &rewriter,
   if (FuncAttr reused = FindReusableFunc(region, preserved, attrs))
     return reused;
 
+  // Create a name scope for the function.
+  NameUniquer name_uniquer(ctx_);
+
   NamedAttrList func_attrs = BuildAttributes(
-      preserved, args, cast<YieldOp>(region.front().getTerminator()).args());
+      preserved, args, cast<YieldOp>(region.front().getTerminator()).args(),
+      &name_uniquer);
 
   auto yield = cast<YieldOp>(region.front().getTerminator());
   rewriter.setInsertionPoint(yield);
   auto ret_op = rewriter.replaceOpWithNewOp<ReturnOp>(
-      yield, yield.getOperands(), GetControlRetAttrs(yield.ctls(), args));
+      yield, yield.getOperands(),
+      GetControlRetAttrs(yield.ctls(), args, &name_uniquer));
 
   // Derive a function name. Use a default name. If a previous name exists,
   // use it. If the op also has a name, derive a name based on that.
@@ -866,9 +908,11 @@ ConvertWhileLikeOp<WhileLikeRegionOp, WhileLikeOp>::matchAndRewrite(
             this->FindReusableFunc(op.cond_region(), op.cond_region_attrsAttr(),
                                    op.cond_attrsAttr()))) {
     ConditionOp cond_op = op.cond_condition();
+    // Create a name scope for the condition function.
+    NameUniquer name_uniquer(this->ctx_);
     // Create the function.
-    NamedAttrList cond_attrs = this->BuildAttributes(op.cond_region_attrsAttr(),
-                                                     op.init(), cond_op.cond());
+    NamedAttrList cond_attrs = this->BuildAttributes(
+        op.cond_region_attrsAttr(), op.init(), cond_op.cond(), &name_uniquer);
     GraphFuncOp cond_func =
         this->CreateFunc(op.getLoc(), "while_cond_function", op.cond_region(),
                          cond_op.cond().getType(), std::move(cond_attrs));
@@ -878,7 +922,7 @@ ConvertWhileLikeOp<WhileLikeRegionOp, WhileLikeOp>::matchAndRewrite(
     llvm::append_range(cond_rets, cond_op.ctls());
     rewriter.replaceOpWithNewOp<ReturnOp>(
         cond_op, cond_rets,
-        this->GetControlRetAttrs(cond_op.ctls(), op.init()));
+        this->GetControlRetAttrs(cond_op.ctls(), op.init(), &name_uniquer));
     // Insert the function and grab a reference.
     cond_ref = FuncAttr::get(
         op.getContext(), this->table_.insert(cond_func),

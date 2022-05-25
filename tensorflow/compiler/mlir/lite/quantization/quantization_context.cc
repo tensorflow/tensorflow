@@ -43,7 +43,7 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 
-QuantizeContext::QuantizeContext(FuncOp func, const DeviceTarget &spec)
+QuantizeContext::QuantizeContext(func::FuncOp func, const DeviceTarget &spec)
     : func_(func), target_spec_(spec) {
   llvm::DenseMap<Value, int> value_to_state;
   func.walk([&](quant::QuantizeRegionOp op) {

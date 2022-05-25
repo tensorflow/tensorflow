@@ -51,6 +51,7 @@ py_library(
         "//tensorflow/python/client:device_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
@@ -128,6 +129,7 @@ py_library(
         ":sharded_variable",
         "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/distribute/experimental",
+        "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
     ],
 )
 
@@ -665,6 +667,7 @@ distribute_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:stateful_random_ops",
+        "//tensorflow/python:util",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
@@ -1331,14 +1334,14 @@ py_library(
     srcs = ["strategy_test_lib.py"],
     srcs_version = "PY3",
     deps = [
+        ":collective_all_reduce_strategy",
         ":distribute_lib",
         ":distribute_utils",
+        ":mirrored_strategy",
         ":reduce_util",
         ":tpu_strategy",
-        ":values",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
@@ -1412,6 +1415,7 @@ distribute_py_test(
     size = "medium",
     srcs = ["distributed_variable_test.py"],
     disable_v2 = True,  # TODO(b/209058825)
+    disable_v3 = True,  # TODO(b/209058825)
     main = "distributed_variable_test.py",
     shard_count = 3,
     tags = [
@@ -1634,6 +1638,7 @@ distribute_py_test(
     main = "moving_averages_test.py",
     shard_count = 5,
     tags = [
+        "multi_gpu",
         "no_windows",  # TODO(b/184424727): Re-enable this.
         "notpu",  # TODO(b/210145904)
     ],
@@ -1677,7 +1682,7 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
-        "no_windows",  # TODO(b/227211015)
+        "no_oss",  # TODO(b/227211015)
     ],
     tpu_tags = [
         "no_oss",  # Target too big to run serially reliably.

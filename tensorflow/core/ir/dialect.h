@@ -65,6 +65,7 @@ using mlir::tf_type::VariantType;        // NOLINT
 using mlir::tf_type::VersionAttr;        // NOLINT
 
 class TFGraphOpAsmInterface;
+class TFOp;
 }  // namespace tfg
 }  // namespace mlir
 

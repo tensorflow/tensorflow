@@ -32,9 +32,9 @@ namespace ops {
 // Summary:
 //
 // Description:
-Status Neg(AbstractContext* ctx, AbstractTensorHandle* const x, AbstractTensorHandle** y, const char* name) {
+Status Neg(AbstractContext* ctx, AbstractTensorHandle* const x, AbstractTensorHandle** y, const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(op_ptr->Reset("Neg", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(op_ptr->Reset("Neg", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(x));
   int num_retvals = 1;
@@ -45,9 +45,9 @@ Status Neg(AbstractContext* ctx, AbstractTensorHandle* const x, AbstractTensorHa
 // Summary:
 //
 // Description:
-Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a, AbstractTensorHandle* const b, AbstractTensorHandle** product, bool transpose_a, bool transpose_b, const char* name) {
+Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a, AbstractTensorHandle* const b, AbstractTensorHandle** product, bool transpose_a, bool transpose_b, const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(op_ptr->Reset("MatMul", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(op_ptr->Reset("MatMul", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(a));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(b));
@@ -61,9 +61,9 @@ Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a, AbstractTenso
 // Summary:
 //
 // Description:
-Status IdentityN(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> input, absl::Span<AbstractTensorHandle*> output, const char* name) {
+Status IdentityN(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> input, absl::Span<AbstractTensorHandle*> output, const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(op_ptr->Reset("IdentityN", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(op_ptr->Reset("IdentityN", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInputList(input));
   int num_retvals = output.size();
@@ -74,9 +74,9 @@ Status IdentityN(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> i
 // Summary:
 //
 // Description:
-Status SparseSoftmaxCrossEntropyWithLogits(AbstractContext* ctx, AbstractTensorHandle* const features, AbstractTensorHandle* const labels, AbstractTensorHandle** loss, AbstractTensorHandle** backprop, const char* name) {
+Status SparseSoftmaxCrossEntropyWithLogits(AbstractContext* ctx, AbstractTensorHandle* const features, AbstractTensorHandle* const labels, AbstractTensorHandle** loss, AbstractTensorHandle** backprop, const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(op_ptr->Reset("SparseSoftmaxCrossEntropyWithLogits", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(op_ptr->Reset("SparseSoftmaxCrossEntropyWithLogits", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(features));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(labels));
@@ -92,9 +92,9 @@ Status SparseSoftmaxCrossEntropyWithLogits(AbstractContext* ctx, AbstractTensorH
 // Summary:
 //
 // Description:
-Status AccumulatorApplyGradient(AbstractContext* ctx, AbstractTensorHandle** handle, AbstractTensorHandle* const local_step, AbstractTensorHandle* const gradient, const char* name) {
+Status AccumulatorApplyGradient(AbstractContext* ctx, AbstractTensorHandle** handle, AbstractTensorHandle* const local_step, AbstractTensorHandle* const gradient, const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(op_ptr->Reset("AccumulatorApplyGradient", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(op_ptr->Reset("AccumulatorApplyGradient", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(handle));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(local_step));
@@ -108,9 +108,9 @@ Status AccumulatorApplyGradient(AbstractContext* ctx, AbstractTensorHandle** han
 // Summary:
 //
 // Description:
-Status VarHandleOp(AbstractContext* ctx, AbstractTensorHandle** resource, DataType dtype, const PartialTensorShape shape, const char* container, const char* shared_name, absl::Span<string const> allowed_devices, const char* name) {
+Status VarHandleOp(AbstractContext* ctx, AbstractTensorHandle** resource, DataType dtype, const PartialTensorShape shape, const char* container, const char* shared_name, absl::Span<string const> allowed_devices, const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(op_ptr->Reset("VarHandleOp", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(op_ptr->Reset("VarHandleOp", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->SetAttrString("container", container, strlen(container)));
   TF_RETURN_IF_ERROR(op_ptr->SetAttrString("shared_name", shared_name, strlen(shared_name)));
@@ -119,6 +119,22 @@ Status VarHandleOp(AbstractContext* ctx, AbstractTensorHandle** resource, DataTy
   TF_RETURN_IF_ERROR(op_ptr->SetAttrStringList("allowed_devices", allowed_devices));
   int num_retvals = 1;
   return op_ptr->Execute(absl::MakeSpan(resource, 1), &num_retvals);
+}
+
+// Op: RestoreV2()
+// Summary:
+//
+// Description:
+Status RestoreV2(AbstractContext* ctx, AbstractTensorHandle* const prefix, AbstractTensorHandle* const tensor_names, AbstractTensorHandle* const shape_and_slices, absl::Span<AbstractTensorHandle*> tensors, absl::Span<DataType> dtypes, const char* name, const char* raw_device_name) {
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("RestoreV2", raw_device_name));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(prefix));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(tensor_names));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(shape_and_slices));
+  TF_RETURN_IF_ERROR(op_ptr->SetAttrTypeList("dtypes", dtypes.data(), dtypes.length()));
+  int num_retvals = tensors.size();
+  return op_ptr->Execute(tensors, &num_retvals);
 }
 
 }  // namespace ops

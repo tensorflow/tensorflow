@@ -45,19 +45,6 @@ def TFL_Quint8 : Type<CPred<"$_self.isa<mlir::TF::Quint8Type>()">,
 
 
 //===----------------------------------------------------------------------===//
-// Padding enum definitions.
-//===----------------------------------------------------------------------===//
-
-// Allowed padding cases
-// These should match the padding enum in TFLite schema.
-def TFL_PAD_Same  : StrEnumAttrCase<"SAME">;
-def TFL_PAD_Valid : StrEnumAttrCase<"VALID">;
-
-def TFL_PaddingAttr : StrEnumAttr<"Padding", "padding enum", [
-      TFL_PAD_Same, TFL_PAD_Valid
-    ]>;
-
-//===----------------------------------------------------------------------===//
 // TensorType attribute definitions.
 //===----------------------------------------------------------------------===//
 // A type attribute containing the TensorType.
@@ -1025,15 +1012,6 @@ def TFL_DepthwiseConv2DOp :
     std::vector<int> GetQuantizableOperandIndices() { return {1}; }
   }];
 }
-
-def TFL_FCWO_Default  : StrEnumAttrCase<"DEFAULT">;
-def TFL_FCWO_Shuffled4x16i8  : StrEnumAttrCase<"SHUFFLED4x16INT8">;
-
-def TFL_FullyConnectedOptionsWeightFormatAttr :
-    StrEnumAttr<"FullyConnectedOptionsWeightsFormat",
-                "fully connected options weights format", [
-      TFL_FCWO_Default, TFL_FCWO_Shuffled4x16i8
-    ]>;
 
 // TODO(jpienaar): Update post discussion on semantics of FC OP.
 def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
@@ -4830,6 +4808,25 @@ def TFL_SegmentSumOp: TFL_Op<"segment_sum", [
     TFL_I32Tensor:$segment_ids
   );
   let results = (outs TFL_TensorOf<[F32, I32]>:$output);
+}
+
+def TFL_UnsortedSegmentProdOp: TFL_Op<"unsorted_segment_prod", [
+    NoSideEffect,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+  let summary = "UnsortedSegmentProd operator";
+
+  let description = [{
+    Computes the product along segments of a tensor.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32, I32]>:$input,
+    TFL_I32Tensor:$segment_ids,
+    I32Attr:$num_segments
+  );
+  let results = (outs TFL_TensorOf<[F32, I32]>:$output);
+  let hasOptions = 1;
 }
 
 def TFL_YieldOp : Op<TFL_Dialect, "yield",

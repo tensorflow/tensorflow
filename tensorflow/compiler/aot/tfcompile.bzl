@@ -60,7 +60,9 @@ def _tfcompile_model_library_rule_impl(ctx):
 
     dfsan_flags = []
     dfsan_deps = []
-    if ctx.attr.dfsan:
+
+    # DFSan is only supported on linux.
+    if ctx.attr.is_linux and ctx.attr.dfsan:
         dfsan_flags = [
             "--sanitize_dataflow",
             "--sanitize_abilists_dataflow=" + ",".join([f.path for f in ctx.files.dfsan_abilists]),
@@ -121,6 +123,7 @@ _tfcompile_model_library = rule(
         "extra_flags": attr.string_list(),
         "dfsan": attr.bool(default = False),
         "dfsan_abilists": attr.label_list(default = [], allow_files = True),
+        "is_linux": attr.bool(),
     },
 )
 
@@ -323,6 +326,10 @@ def tf_library(
         extra_flags = debug_info_flags + profiling_flags + mlir_flags + traceme_flags,
         dfsan = tfcompile_dfsan_enabled(),
         dfsan_abilists = tfcompile_dfsan_abilists(),
+        is_linux = select({
+            "//tensorflow:linux_x86_64": True,
+            "//conditions:default": False,
+        }),
         visibility = visibility,
         testonly = testonly,
         tags = tags,
@@ -370,7 +377,7 @@ def tf_library(
             "//third_party/eigen3",
         ] or []) + (
             mlir_components.count("HloLowering") > 0 and [
-                "@llvm-project//mlir:mlir_c_runner_utils",
+                "//tensorflow/compiler/xla/service/cpu:runtime_mlir_utils",
             ] or []
         ) + (deps or []),
         tags = tags,

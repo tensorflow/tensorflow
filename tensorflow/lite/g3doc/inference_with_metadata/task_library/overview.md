@@ -38,12 +38,16 @@ we continue enabling more and more use cases.
     *   [ImageClassifier](image_classifier.md)
     *   [ObjectDetector](object_detector.md)
     *   [ImageSegmenter](image_segmenter.md)
+    *   [ImageSearcher](image_searcher.md)
+    *   [ImageEmbedder](image_embedder.md)
 
 *   **Natural Language (NL) APIs**
 
     *   [NLClassifier](nl_classifier.md)
     *   [BertNLClassifier](bert_nl_classifier.md)
     *   [BertQuestionAnswerer](bert_question_answerer.md)
+    *   [TextSearcher](text_searcher.md)
+    *   [TextEmbedder](text_embedder.md)
 
 *   **Audio APIs**
 
@@ -71,8 +75,9 @@ and use delegates. The following accelerators are now supported in the Task API:
 
 *   Android
     *   [GPU](https://www.tensorflow.org/lite/performance/gpu): Java / C++
-    *   [NNAPI](https://www.tensorflow.org/lite/performance/nnapi): Java / C++
-    *   [Hexagon](https://www.tensorflow.org/lite/performance/hexagon_delegate):
+    *   [NNAPI](https://www.tensorflow.org/lite/android/delegates/nnapi):
+        Java / C++
+    *   [Hexagon](https://www.tensorflow.org/lite/android/delegates/hexagon):
         C++
 *   Linux / Mac
     *   [Coral Edge TPU](https://coral.ai/): C++

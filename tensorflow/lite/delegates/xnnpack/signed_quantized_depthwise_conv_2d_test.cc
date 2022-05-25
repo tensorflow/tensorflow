@@ -600,5 +600,49 @@ TEST(SignedQuantizedDepthwiseConv2D, MultiThreading) {
       .Test(xnnpack_delegate.get());
 }
 
+TEST(SignedQuantizedDepthwiseConv2D, WeightsCache) {
+  TfLiteXNNPackDelegateOptions delegate_options =
+      TfLiteXNNPackDelegateOptionsDefault();
+  std::unique_ptr<TfLiteXNNPackDelegateWeightsCache,
+                  decltype(&TfLiteXNNPackDelegateWeightsCacheDelete)>
+      weights_cache(TfLiteXNNPackDelegateWeightsCacheCreate(),
+                    TfLiteXNNPackDelegateWeightsCacheDelete);
+  delegate_options.weights_cache = weights_cache.get();
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
+                                      std::numeric_limits<int8_t>::min(),
+                                      std::numeric_limits<int8_t>::max()),
+                                  std::ref(rng));
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
+  auto input_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto kernel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
+  auto stride_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 3), std::ref(rng));
+  auto channel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 32), std::ref(rng));
+
+  QuantizedDepthwiseConv2DTester()
+      .InputZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .BatchSize(batch_rng())
+      .InputHeight(input_rng())
+      .InputWidth(input_rng())
+      .InputChannels(channel_rng())
+      .KernelHeight(kernel_rng())
+      .KernelWidth(kernel_rng())
+      .StrideHeight(stride_rng())
+      .StrideWidth(stride_rng())
+      .WeightsCache(weights_cache.get())
+      .Test(xnnpack_delegate.get());
+}
+
 }  // namespace xnnpack
 }  // namespace tflite

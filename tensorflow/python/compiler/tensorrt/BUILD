@@ -96,6 +96,7 @@ cuda_py_test(
         "//tensorflow/python:graph_util",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:save_options",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",

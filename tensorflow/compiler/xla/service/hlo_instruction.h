@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
+#include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -1053,6 +1054,14 @@ class HloInstruction {
       absl::Span<const int64_t> slice_sizes, bool indices_are_sorted);
 
   static std::unique_ptr<HloInstruction> CreateScatter(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloInstruction* scatter_indices,
+      absl::Span<HloInstruction* const> updates,
+      HloComputation* update_computation,
+      const ScatterDimensionNumbers& scatter_dim_numbers,
+      bool indices_are_sorted, bool unique_indices);
+
+  static std::unique_ptr<HloInstruction> CreateScatter(
       const Shape& shape, HloInstruction* operand,
       HloInstruction* scatter_indices, HloInstruction* updates,
       HloComputation* update_computation,
@@ -1333,6 +1342,13 @@ class HloInstruction {
 
   // Same as ReplaceUseWith(), but new_producer can have a different shape.
   Status ReplaceUseWithDifferentShape(HloInstruction* user,
+                                      HloInstruction* new_producer);
+
+  // Same as ReplaceUseWith but only replaces the use at the given operand
+  // number.
+  Status ReplaceUseWith(HloInstruction* user, int operand_number,
+                        HloInstruction* new_producer);
+  Status ReplaceUseWithDifferentShape(HloInstruction* user, int operand_number,
                                       HloInstruction* new_producer);
 
   // Replaces the specified operand with new_operand. The old and new operands
@@ -1794,6 +1810,9 @@ class HloInstruction {
   void set_logical_creation_pass_id(int64_t pass_id) {
     metadata_.set_logical_creation_pass_id(pass_id);
   }
+  void set_metadata_replaced_op(absl::string_view replaced_op) {
+    metadata_.set_replaced_op(std::string(replaced_op));
+  }
   const OpMetadata& metadata() const { return metadata_; }
 
   // Set/get the computation containing this instruction. set_parent should only
@@ -1817,6 +1836,13 @@ class HloInstruction {
   }
   void set_outer_dimension_partitions(
       const std::vector<int64_t>& outer_dimension_partitions);
+
+  // A method that sorts users_, control_predecessors_, and control_successors_
+  // according to the orders used in sorted_instruction. The sorting is used
+  // during cloning, to make clone behavior match uncloned behavior.
+  void SortInstructionUsersAndControlLists(
+      const MappedPtrContainerSorter<HloInstruction>::MapPtrFn& map_fn,
+      const HloInstruction& sorted_instruction);
 
   // Old methods kept for smooth subclassing transition BEGIN.
   // TODO(b/80131774): Remove this code.

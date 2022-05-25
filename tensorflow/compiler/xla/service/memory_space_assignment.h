@@ -657,7 +657,7 @@ class MemorySpaceAssignment {
     HloInstruction* copy_start() const { return copy_start_; }
     HloInstruction* copy_done() const { return copy_done_; }
 
-    // Returns the time the buffer is first available to be used. For For
+    // Returns the time the buffer is first available to be used. For
     // CopyAllocation, this is when the copy ends, which is
     // copy_done_schedule_before.
     int64_t earliest_available_time() const override {

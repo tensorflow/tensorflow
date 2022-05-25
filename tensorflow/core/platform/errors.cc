@@ -180,5 +180,69 @@ Status IOError(const string& context, int err_number) {
   return Status(code, strings::StrCat(context, "; ", strerror(err_number)));
 }
 
+bool IsAborted(const Status& status) {
+  return status.code() == tensorflow::errors::Code::ABORTED;
+}
+
+bool IsAlreadyExists(const Status& status) {
+  return status.code() == tensorflow::errors::Code::ALREADY_EXISTS;
+}
+
+bool IsCancelled(const Status& status) {
+  return status.code() == tensorflow::errors::Code::CANCELLED;
+}
+
+bool IsDataLoss(const Status& status) {
+  return status.code() == tensorflow::errors::Code::DATA_LOSS;
+}
+
+bool IsDeadlineExceeded(const Status& status) {
+  return status.code() == tensorflow::errors::Code::DEADLINE_EXCEEDED;
+}
+
+bool IsFailedPrecondition(const Status& status) {
+  return status.code() == tensorflow::errors::Code::FAILED_PRECONDITION;
+}
+
+bool IsInternal(const Status& status) {
+  return status.code() == tensorflow::errors::Code::INTERNAL;
+}
+
+bool IsInvalidArgument(const Status& status) {
+  return status.code() == tensorflow::errors::Code::INVALID_ARGUMENT;
+}
+
+bool IsNotFound(const Status& status) {
+  return status.code() == tensorflow::errors::Code::NOT_FOUND;
+}
+
+bool IsOutOfRange(const Status& status) {
+  return status.code() == tensorflow::errors::Code::OUT_OF_RANGE;
+}
+
+bool IsPermissionDenied(const Status& status) {
+  return status.code() == tensorflow::errors::Code::PERMISSION_DENIED;
+}
+
+bool IsResourceExhausted(const Status& status) {
+  return status.code() == tensorflow::errors::Code::RESOURCE_EXHAUSTED;
+}
+
+bool IsUnauthenticated(const Status& status) {
+  return status.code() == tensorflow::errors::Code::UNAUTHENTICATED;
+}
+
+bool IsUnavailable(const Status& status) {
+  return status.code() == tensorflow::errors::Code::UNAVAILABLE;
+}
+
+bool IsUnimplemented(const Status& status) {
+  return status.code() == tensorflow::errors::Code::UNIMPLEMENTED;
+}
+
+bool IsUnknown(const Status& status) {
+  return status.code() == tensorflow::errors::Code::UNKNOWN;
+}
+
 }  // namespace errors
 }  // namespace tensorflow

@@ -131,7 +131,6 @@ HloModule Gemm
 // CHECK-SAME: algorithm = 7 : i64
 // CHECK-SAME: alpha_imag = 0.000000e+00 : f64
 // CHECK-SAME: alpha_real = 1.000000e+00 : f64
-// CHECK-SAME: batch_size = 1 : i64
 // CHECK-NOT: lhs_batching_dimensions
 // CHECK-NOT: rhs_batching_dimensions
 // CHECK-SAME: lhs_contracting_dimensions = [1]
@@ -142,7 +141,7 @@ ENTRY main {
   %B = f32[2,2]{1,0} parameter(1)
   ROOT %sgemm = f32[2,2]{1,0} custom-call(f32[2,2]{1,0} %A, f32[2,2]{1,0} %B),
                               custom_call_target="__cublas$gemm",
-  backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"selected_algorithm\":\"7\"}"
+  backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"selected_algorithm\":\"7\"}"
 }
 
 // -----
@@ -154,7 +153,6 @@ HloModule GemmBias
 // CHECK-SAME: algorithm = 0 : i64
 // CHECK-SAME: alpha_imag = 0.000000e+00 : f64
 // CHECK-SAME: alpha_real = 1.000000e+00 : f64
-// CHECK-SAME: batch_size = 1 : i64
 // CHECK-SAME: beta = 1.000000e+00 : f64
 // CHECK-NOT: lhs_batching_dimensions
 // CHECK-NOT: rhs_batching_dimensions
@@ -167,7 +165,7 @@ ENTRY main {
   %C = f32[1,4]{1,0} parameter(2)
   ROOT %sgemm_add = f32[1,4]{1,0} custom-call(f32[1,1]{0,1} %A, f32[1,4]{1,0} %B, f32[1,4]{1,0} %C),
                                   custom_call_target="__cublas$gemm",
-  backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"selected_algorithm\":\"0\"}"
+  backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"selected_algorithm\":\"0\"}"
 }
 
 // -----
@@ -179,7 +177,6 @@ HloModule GemmBias
 // CHECK-SAME: algorithm = 0 : i64
 // CHECK-SAME: alpha_imag = 0.000000e+00 : f64
 // CHECK-SAME: alpha_real = 1.000000e+00 : f64
-// CHECK-SAME: batch_size = 1 : i64
 // CHECK-SAME: beta = 1.000000e+00 : f64
 // CHECK-NOT: lhs_batching_dimensions
 // CHECK-NOT: rhs_batching_dimensions
@@ -192,7 +189,7 @@ ENTRY main {
   %C = f32[1,4]{1,0} parameter(2)
   ROOT %sgemm_add = f32[1,4]{1,0} custom-call(f32[1,1]{0,1} %A, f32[1,4]{1,0} %B, f32[1,4]{1,0} %C),
                                   custom_call_target="__cublas$gemm",
-  backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"selected_algorithm\":\"0\"}"
+  backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"selected_algorithm\":\"0\"}"
 }
 
 // -----

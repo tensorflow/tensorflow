@@ -2,7 +2,7 @@
 # TensorFlow Lite Java API.
 
 load("//tensorflow/java:build_defs.bzl", "JAVACOPTS")
-load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary", "tflite_jni_linkopts", "tflite_linkopts_no_undefined")
+load("//tensorflow/lite:build_def.bzl", "tflite_jni_linkopts", "tflite_linkopts_no_undefined")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "android_library_with_tflite", "cc_library_with_tflite", "java_library_with_tflite", "java_test_with_tflite", "jni_binary_with_tflite")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_android_library")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni", "aar_without_jni")
@@ -264,14 +264,9 @@ tflite_flex_android_library(
 # Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
 android_library(
     name = "tensorflowlite_gpu",
-    srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
-    exports_manifest = 1,
-    manifest = "AndroidManifest.xml",
-    proguard_specs = ["proguard.flags"],
-    deps = [
-        ":tensorflowlite_java",
+    exports = [
+        ":tensorflowlite_java_gpu",
         ":tensorflowlite_native_gpu",
-        "@org_checkerframework_qual",
     ],
 )
 
@@ -295,6 +290,19 @@ android_library(
     deps = [
         "@org_checkerframework_qual",
     ],
+)
+
+# EXPERIMENTAL: Android target for GPU acceleration, EXCLUDING NATIVE CODE dependencies.
+#  Note that this library contains *only* the GPU delegate and its Java wrapper; clients must also
+# include the core `tensorflowlite` runtime.
+# Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
+android_library(
+    name = "tensorflowlite_java_gpu",
+    srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
+    exports_manifest = 1,
+    manifest = "AndroidManifestGpu.xml",
+    proguard_specs = ["proguard.flags"],
+    deps = [":tensorflowlite_java"],
 )
 
 #-----------------------------------------------------------------------------
@@ -809,9 +817,9 @@ cc_library_with_tflite(
     tflite_jni_binaries = ["//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so"],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "tensorflowlite_native_gpu",
-    srcs = ["libtensorflowlite_gpu_jni.so"],
+    tflite_jni_binaries = ["libtensorflowlite_gpu_jni.so"],
     visibility = ["//visibility:private"],
 )
 
@@ -858,11 +866,11 @@ jni_binary_with_tflite(
 # Unlike libtensorflowlite_jni.so, this will NOT get loaded automatically by
 # TensorFlowLite.init(); instead this library should be explicitly loaded by the
 # client code, using System.LoadLibrary, before TensorFlowLite.init() is called.
-tflite_jni_binary(
+jni_binary_with_tflite(
     name = "libtensorflowlite_gpu_jni.so",
     linkopts = tflite_jni_linkopts() + tflite_linkopts_no_undefined(),
     linkscript = ":gpu_version_script.lds",
-    deps = [
+    tflite_deps = [
         "//tensorflow/lite/delegates/gpu/java/src/main/native",
     ],
 )

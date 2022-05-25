@@ -138,10 +138,12 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/kernel_tests/linalg/testdata:self_adjoint_eig_op_test_files",
     "//tensorflow/python/kernel_tests/nn_ops:bias_op_base",
     "//tensorflow/python/kernel_tests/nn_ops:cudnn_deterministic_base",
+    "//tensorflow/python/kernel_tests/nn_ops:depthwise_conv_op_base",
     "//tensorflow/python/kernel_tests/nn_ops:xent_op_test_base",
     "//tensorflow/python/kernel_tests/random:util",
     "//tensorflow/python/kernel_tests/signal:test_util",
     "//tensorflow/python/kernel_tests/sparse_ops:sparse_xent_op_test_base",
+    "//tensorflow/python/ops/structured:structured_tensor_dynamic",
     "//tensorflow/python/profiler:trace",
     "//tensorflow/python/saved_model:saved_model",
     "//tensorflow/python/tools:tools_pip",
@@ -287,6 +289,7 @@ sh_binary(
                "//tensorflow:dynamic_loaded_kernels": DYNAMIC_LOADED_KERNELS,
                "//conditions:default": [],
            }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
+    visibility = ["//visibility:public"],
 )
 
 # A genrule for generating a marker file for the pip package on Windows

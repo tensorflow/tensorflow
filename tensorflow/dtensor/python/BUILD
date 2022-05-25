@@ -180,9 +180,11 @@ pytype_strict_library(
     deps = [
         ":api",
         ":layout",
+        ":multi_client_util",
         ":tpu_util",
         "//tensorflow/python:config",
         "//tensorflow/python:device",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",
@@ -212,9 +214,11 @@ pytype_strict_library(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:tfrt_utils",
         "//tensorflow/python/tpu:topology",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
+        "@absl_py//absl/flags",
     ],
 )
 

@@ -506,6 +506,7 @@ tf_cc_test(
         "spectral_ops_test.cc",
         "state_ops_test.cc",
         "string_ops_test.cc",
+        "tpu_cross_replica_ops_test.cc",
         "training_ops_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),

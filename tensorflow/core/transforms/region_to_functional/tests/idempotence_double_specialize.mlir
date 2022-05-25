@@ -32,6 +32,6 @@ tfg.func @test(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> (t
   return(%Case0, %Case1) : tensor<i32>, tensor<i32>
 }
 
-// CHECK: tfg.func @case_tfg_region_specialized_bar_0
 // CHECK: tfg.func @case_tfg_region_specialized_foo_0
+// CHECK: tfg.func @case_tfg_region_specialized_bar_0
 // CHECK-NOT: tfg.func

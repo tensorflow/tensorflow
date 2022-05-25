@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
@@ -543,7 +544,7 @@ bool isScale32(mlir::quant::UniformQuantizedType output_element_type) {
 }
 
 LogicalResult ApplyPatternsWithShapeResolution(
-    FuncOp func, const FrozenRewritePatternSet& patterns) {
+    func::FuncOp func, const FrozenRewritePatternSet& patterns) {
   // We use top-down traversal so that shape inference can fully infer types
   // during pattern rewrite.
   GreedyRewriteConfig config;
@@ -568,7 +569,7 @@ LogicalResult ApplyPatternsWithShapeResolution(
   // the FuncOp type.
   IRRewriter rewriter(func.getContext());
   func.walk([&](func::ReturnOp op) {
-    FuncOp parent = dyn_cast<FuncOp>(op->getParentOp());
+    func::FuncOp parent = dyn_cast<func::FuncOp>(op->getParentOp());
     if (parent != func) return;
 
     rewriter.setInsertionPoint(op);

@@ -49,6 +49,7 @@ constexpr int64_t kAutotune = -1;
 constexpr char kParallelism[] = "parallelism";
 constexpr char kBufferSize[] = "buffer_size";
 constexpr char kCycleLength[] = "cycle_length";
+constexpr char kDeterministic[] = "deterministic";
 
 // A key used to identify the input time of the model.
 constexpr char kModelInputTimeKey[] = "model_input_time";
@@ -113,9 +114,14 @@ struct Parameter {
   std::shared_ptr<SharedState> state;
 };
 
+// Returns a new tunable parameter.
 std::shared_ptr<Parameter> MakeParameter(const string& name,
                                          std::shared_ptr<SharedState> state,
                                          double min, double max);
+
+// Returns a new non-tunable parameter.
+std::shared_ptr<Parameter> MakeNonTunableParameter(const string& name,
+                                                   double value);
 
 // Abstract representation of a TensorFlow input pipeline node. It collects
 // information about inputs to this node, processing time spent executing the
@@ -329,8 +335,19 @@ class Node {
   // `Batch`. It can be 0 if the ratio is unknown.
   virtual double Ratio() const { return 1.0; }
 
-  // Computes the self time of the node to produce one element.
+  // Computes the self time in nanoseconds of the node to produce one element.
   virtual double ComputeSelfTime() const;
+
+  // Returns the parameter value if it exists, not ok status otherwise.
+  StatusOr<double> ParameterValue(const std::string& parameter_name) const
+      TF_LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock l(mu_);
+    if (parameters_.contains(parameter_name)) {
+      return parameters_.at(parameter_name)->value;
+    }
+    return errors::NotFound("Parameter ", parameter_name,
+                            " was not found in model node ", long_name());
+  }
 
   // Given the average time between events when the elements in the buffer are
   // produced (`producer_time`), the average time between events when elements
@@ -376,7 +393,7 @@ class Node {
   // operate over immutable state while allowing concurrent model updates.
   std::shared_ptr<Node> Snapshot() const TF_LOCKS_EXCLUDED(mu_);
 
-  // Returns the per-element processing time spent in this node.
+  // Returns the per-element processing time in nanoseconds spent in this node.
   double SelfProcessingTime() const TF_LOCKS_EXCLUDED(mu_);
 
   // Returns the total number of bytes buffered in all nodes in the subtree for
@@ -388,9 +405,9 @@ class Node {
   // would be used by the subtree nodes if all of their buffers were full.
   double TotalMaximumBufferedBytes() const TF_LOCKS_EXCLUDED(mu_);
 
-  // Returns the per-element CPU time spent in the subtree rooted in this node.
-  // If `processing_times` is not `nullptr`, collects the per-element CPU time
-  // spent in each node of the subtree.
+  // Returns the per-element CPU time in nanoseconds spent in the subtree rooted
+  // in this node. If `processing_times` is not `nullptr`, collects the
+  // per-element CPU time spent in each node of the subtree.
   double TotalProcessingTime(NodeValues* processing_times)
       TF_LOCKS_EXCLUDED(mu_);
 
@@ -836,23 +853,19 @@ class ModelTiming {
     // Pipeline ratio is the number of elements this node needs to produce in
     // order to produce an element at the root of the pipeline.
     double pipeline_ratio = 0.0;
-    // The total time of an interleave node is the sum of its processing time
-    // and the average of the total time of its inputs weighted by inputs'
-    // `num_elements`. This weight is what is stored in this variable.
-    double pipeline_weight = 0.0;
     // The self time it takes this node to produce the elements needed to
     // produce one element of the root of the pipeline.
-    double self_time = 0.0;
+    double self_time_nsec = 0.0;
     // The total time it takes this node and the subtree rooted at this node to
     // produce the elements needed to produce one element at the root of the
     // pipeline.
-    double total_time = 0.0;
+    double total_time_nsec = 0.0;
   };
 
   explicit ModelTiming(std::shared_ptr<Model> model);
 
   // Returns the timing data for `node`.
-  const NodeTiming* GetTiming(Node* node) const;
+  const NodeTiming* GetTiming(const Node* node) const;
 
   // Returns the root nodes of all stages.
   std::vector<std::shared_ptr<Node>> GetStageRoots() const;
@@ -865,18 +878,20 @@ class ModelTiming {
   // Computes timing information for the whole model.
   void ComputeTiming();
 
-  // Computes the pipeline ratio, pipeline weight, self time for all nodes. The
-  // `bfs_nodes` are assumed to be a vector of model nodes in BFS manner.
+  // Computes the pipeline ratio, self time for all nodes. The `bfs_nodes` are
+  // assumed to be a vector of model nodes in BFS manner.
   void ComputeTimingComponents(const Node::NodeVector& bfs_nodes);
 
   // Computes the total time for all nodes. The `reverse_bfs_nodes` are assumed
   // to be a vector of model nodes in reversed BFS manner.
   void ComputeTotalTimes(const Node::NodeVector& reverse_bfs_nodes);
 
-  // Computes the pipeline weight of the node if the node is an input of an
-  // interleave node. If not, it returns the pipeline weight of its output.
-  double ComputeNodePipelineWeight(const NodeTiming& output_timing,
-                                   const Node* node, const Node* output);
+  // Computes the total time for a node except when the node is an async
+  // interleave node.
+  void ComputeNodeTotalTime(std::shared_ptr<Node> node);
+
+  // Computes the total time of an async interleave node.
+  void ComputeAsyncInterleaveManyTotalTime(std::shared_ptr<Node> node);
 
   std::shared_ptr<Model> model_;
 

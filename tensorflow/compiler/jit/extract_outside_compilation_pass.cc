@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -1326,6 +1327,14 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
   return Status::OK();
 }
 
+void SetMaximalSharding(NodeDefBuilder& node_builder) {
+  xla::OpSharding sharding;
+  sharding.set_type(xla::OpSharding::MAXIMAL);
+  sharding.add_tile_assignment_dimensions(1);
+  sharding.add_tile_assignment_devices(0);
+  node_builder.Attr("_XlaSharding", sharding.SerializeAsString());
+}
+
 // Builds XlaSendToHost node which sends cond predicate to host.
 TF_ATTRIBUTE_NOINLINE StatusOr<Node*> BuildSendIfPredNode(
     const string& name, const string& host_transfer_key, Node* pred_node,
@@ -1336,6 +1345,7 @@ TF_ATTRIBUTE_NOINLINE StatusOr<Node*> BuildSendIfPredNode(
   send_pred_builder.Attr(kXlaTokenInputNodesAttrName,
                          std::vector<string>{kXlaTokenArgNodeName});
   send_pred_builder.Attr(kXlaOriginalOutsideCompilationNodeName, name);
+  SetMaximalSharding(send_pred_builder);
   send_pred_builder.Input(pred_node->name(), 0, DT_BOOL);
   NodeDef send_pred_def;
   TF_RETURN_IF_ERROR(send_pred_builder.Finalize(&send_pred_def));
@@ -1515,6 +1525,7 @@ TF_ATTRIBUTE_NOINLINE Status AddSendLoopPredToLoopCond(
                               std::vector<string>{kXlaTokenArgNodeName});
   send_loop_cond_builder.Attr(kXlaOriginalOutsideCompilationNodeName,
                               send_loop_cond_builder.node_name());
+  SetMaximalSharding(send_loop_cond_builder);
   send_loop_cond_builder.Input(loop_cond->name(), 0, DT_BOOL);
   NodeDef send_loop_cond_def;
   TF_RETURN_IF_ERROR(send_loop_cond_builder.Finalize(&send_loop_cond_def));

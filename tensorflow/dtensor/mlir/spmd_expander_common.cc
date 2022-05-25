@@ -472,7 +472,7 @@ mlir::LogicalResult PopulateConsumersFromModule(
 // If the mesh shape is [a, b, c, d], then the mesh coordinates are
 // [device_id/b/c/d, device_id/c/d%b, device_id/d%c, device_id%d]
 // for convenience, since device_id < a*b*c*d, we can apply %a on the first
-// coordinate as well for simplicies sake.
+// coordinate as well for simplicity's sake.
 // Thus we can decompose this calculation into the following tf ops:
 // tf.FloorMod(tf.Div(device_id, [b*c*d, c*d, d, 1]), [a, b, c, d]) where
 // [a, b, c, d] and [b*c*d, c*d, d, 1] are simply precomputed constants.
@@ -680,6 +680,8 @@ Status PrintTensor(mlir::Value value, const std::string& format_string = "%s") {
 Status ExtractConstStringVectorFromValue(
     mlir::Value value, llvm::SmallVectorImpl<std::string>& out_vector) {
   value = GetForwardedDTensorLayoutInput(value);
+  if (value.isa<mlir::BlockArgument>())
+    return errors::Internal("Unable get constant value from block argument.");
   mlir::DenseStringElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {
     return errors::Internal(
@@ -695,6 +697,8 @@ Status ExtractConstStringVectorFromValue(
 
 StatusOr<std::string> ExtractConstScalarStringFromValue(mlir::Value value) {
   value = GetForwardedDTensorLayoutInput(value);
+  if (value.isa<mlir::BlockArgument>())
+    return errors::Internal("Unable get constant value from block argument.");
   mlir::DenseStringElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {
     return errors::Internal(absl::StrCat("required constant value for ",

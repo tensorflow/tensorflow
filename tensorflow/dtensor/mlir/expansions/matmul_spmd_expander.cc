@@ -422,7 +422,7 @@ StatusOr<llvm::DenseMap<int, Layout>> MatMulSPMDExpander::ComputeLayoutBackward(
   // Make sure necessary dimensions are replicated.
   //
   // Due to broadcasting, each of the batch dimensions (i.e. from dimension 0
-  // to dim - 2), one of the two inputs may have have dimension 1 while the
+  // to dim - 2), one of the two inputs may have dimension 1 while the
   // other has dimension > 1 and equal to the dim of the output. Since a
   // tensor with dimension 1 cannot be sharded, we set this to unsharded.
   auto specs_matmul_operands = [](const llvm::ArrayRef<int64>& tensor_shape,

@@ -59,6 +59,7 @@ limitations under the License.
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/TensorToLinalg/TensorToLinalgPass.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToSCF/VectorToSCF.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
@@ -84,9 +85,9 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/LLVMTranslationInterface.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Transforms/passes.h"
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/hlo_to_mlir_hlo.h"
 #include "tensorflow/compiler/mlir/xla/ir/xla_framework.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
@@ -556,12 +557,12 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   }
   pipeline.AddPass<IndexedArrayAnalysisPrinterPass>();
   pipeline.AddPass<TransposeFolding>(
-      [&](const HloInstruction& dot,
-          const TransposeFolding::OperandIndices& candidate_operands) {
-        return DotImplementationCanHandleTranspose(dot,
-                                                   *target_machine_features)
-                   ? candidate_operands
-                   : TransposeFolding::OperandIndices{};
+      [&](const HloInstruction& dot, int64_t operand) -> StatusOr<bool> {
+        if (DotImplementationCanHandleTranspose(dot,
+                                                *target_machine_features)) {
+          return TransposeFolding::IsRowColumnTransposeDotOperand(dot, operand);
+        }
+        return false;
       },
       TransposeFolding::NeverFoldTranspose);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
@@ -892,6 +893,11 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::createLinalgElementwiseOpFusionPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
+  pm.addPass(mlir::createConvertTensorToLinalgPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::createLinalgInitTensorToAllocTensorPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::bufferization::createBufferizationBufferizePass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createLinalgBufferizePass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createConvertLinalgToLoopsPass());
 
@@ -901,17 +907,16 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addPass(mlir::createCanonicalizerPass());
   // Now bufferize all the compute operations (hlo + linalg) and func
   // signature.
-  pm.addPass(
-      mlir::kernel_gen::transforms::CreateComputeOpAndFuncBufferizePass());
+  pm.addPass(mlir::CreateComputeOpAndFuncBufferizePass());
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::kernel_gen::transforms::CreateTiledLoopBufferizePass());
+      mlir::gml_st::CreateTiledLoopBufferizePass());
   // Turn tensor constants into global memrefs.
   // TODO(kramerb): Expose the patterns and add them to the bufferize passes.
   // pm.addPass(mlir::createTensorConstantBufferizePass());
   // Always run canonicalizer (which does dead code removal) before
   // bufferizing anything.
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::kernel_gen::transforms::CreateFinalBufferizePass(
+  pm.addPass(mlir::CreateFinalBufferizePass(
       /*alignment=*/xla::cpu_function_runtime::Align()));
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -957,14 +962,6 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
     return tensorflow::errors::Internal(
         "Failed to compile through MLIR pipeline");
   }
-
-  // Make @main private so it doesn't clash with other modules.
-  mlir_module->walk([&](mlir::LLVM::LLVMFuncOp f) {
-    if (f.getName() == "main") {
-      f.setLinkageAttr(mlir::LLVM::LinkageAttr::get(
-          f.getContext(), mlir::LLVM::Linkage::Private));
-    }
-  });
 
   return Status::OK();
 }

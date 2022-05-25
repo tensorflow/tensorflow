@@ -69,6 +69,10 @@ class OptionsDatasetOp::Dataset : public DatasetBase {
 
   int64_t CardinalityInternal() const override { return input_->Cardinality(); }
 
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    return input_->Cardinality(options);
+  }
+
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));

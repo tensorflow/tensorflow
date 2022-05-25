@@ -62,6 +62,120 @@ float GetTolerance(float min, float max) {
   return kQuantizedStep;
 }
 
+using BoolReductions = ::testing::Types<AnyOpConstModel, AllOpConstModel>;
+using NonBoolReductions =
+    ::testing::Types<MeanOpConstModel, SumOpConstModel, ProdOpConstModel,
+                     MaxOpConstModel, MinOpConstModel>;
+using DynamicBoolReductions =
+    ::testing::Types<AnyOpDynamicModel, AllOpDynamicModel>;
+using DynamicNonBoolReductions =
+    ::testing::Types<MeanOpDynamicModel, SumOpDynamicModel, ProdOpDynamicModel,
+                     MaxOpDynamicModel, MinOpDynamicModel>;
+
+template <typename T>
+class ReductionIsCopyTest : public testing::Test {};
+template <typename T>
+class ReductionIsCopyTestBool : public testing::Test {};
+template <typename T>
+class DynamicReductionIsCopyTest : public testing::Test {};
+template <typename T>
+class DynamicReductionIsCopyTestBool : public testing::Test {};
+
+TYPED_TEST_SUITE(ReductionIsCopyTest, NonBoolReductions);
+TYPED_TEST_SUITE(ReductionIsCopyTestBool, BoolReductions);
+TYPED_TEST_SUITE(DynamicReductionIsCopyTest, DynamicNonBoolReductions);
+TYPED_TEST_SUITE(DynamicReductionIsCopyTestBool, DynamicBoolReductions);
+
+// Test reductions which are copies.
+TYPED_TEST(ReductionIsCopyTest, ReduceIsCopy) {
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  TypeParam m({TensorType_FLOAT32, {4, 3, 2}}, {TensorType_FLOAT32, {4, 3, 2}},
+              {0}, {}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 3, 2}));
+  EXPECT_THAT(m.template GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear(data)));
+}
+
+TYPED_TEST(ReductionIsCopyTestBool, ReduceIsCopyBool) {
+  std::vector<bool> data = {false, false, false, false, false, false,
+                            false, true,  false, false, false, true};
+  TypeParam m({TensorType_BOOL, {2, 3, 2}}, {TensorType_BOOL, {2, 3, 2}}, {0},
+              {}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 2}));
+  EXPECT_THAT(m.template GetOutput<bool>(), ElementsAreArray(data));
+}
+
+TYPED_TEST(DynamicReductionIsCopyTest, ReduceIsCopy) {
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  TypeParam m({TensorType_FLOAT32, {4, 3, 2}}, {TensorType_FLOAT32, {4, 3, 2}},
+              {TensorType_INT32, {0}}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 3, 2}));
+  EXPECT_THAT(m.template GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear(data)));
+}
+
+TYPED_TEST(DynamicReductionIsCopyTestBool, ReduceIsCopy) {
+  std::vector<bool> data = {false, false, false, false, false, false,
+                            false, true,  false, false, false, true};
+  TypeParam m({TensorType_BOOL, {2, 3, 2}}, {TensorType_BOOL, {2, 3, 2}},
+              {TensorType_INT32, {0}}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 2}));
+  EXPECT_THAT(m.template GetOutput<bool>(), ElementsAreArray(data));
+}
+
+TEST(ConstFloatMeanOpTest, Flatten2ReduceDims) {
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  MeanOpConstModel m({TensorType_FLOAT32, {4, 3, 2}}, {TensorType_FLOAT32, {2}},
+                     {2}, {2, 1}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4}));
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear({3.5, 9.5, 15.5, 21.5})));
+}
+
+TEST(ConstFloatMeanOpTest, Flatten2NonReduceDims) {
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  MeanOpConstModel m({TensorType_FLOAT32, {4, 3, 2}}, {TensorType_FLOAT32, {2}},
+                     {1}, {2}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 3}));
+  EXPECT_THAT(
+      m.GetOutput<float>(),
+      ElementsAreArray(ArrayFloatNear({1.5, 3.5, 5.5, 7.5, 9.5, 11.5, 13.5,
+                                       15.5, 17.5, 19.5, 21.5, 23.5})));
+}
+
+TEST(ConstFloatMeanOpTest, Flatten2MiddleDims) {
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  MeanOpConstModel m({TensorType_FLOAT32, {2, 2, 3, 2}},
+                     {TensorType_FLOAT32, {2}}, {2}, {2, 1}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2}));
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear({6, 7, 18, 19})));
+}
+
 // Tests for reduce_mean
 TEST(ConstFloatMeanOpTest, NotKeepDims) {
   std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,

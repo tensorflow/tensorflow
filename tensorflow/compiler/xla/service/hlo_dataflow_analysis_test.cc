@@ -923,234 +923,6 @@ TEST_P(HloDataflowAnalysisTest, ArraySelect) {
   EXPECT_TRUE(analysis.GetValueDefinedAt(select).live_out_of_module());
 }
 
-TEST_P(HloDataflowAnalysisTest, TupleSelect) {
-  // Test a kTupleSelect. Non-top-level element flow through the instruction.
-  auto builder = HloComputation::Builder(TestName());
-  auto pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
-  auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
-  auto constant3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(3.0)));
-  auto constant4 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(4.0)));
-  auto tuple1 =
-      builder.AddInstruction(HloInstruction::CreateTuple({constant1}));
-  auto tuple2 =
-      builder.AddInstruction(HloInstruction::CreateTuple({constant2}));
-  auto tuple3 =
-      builder.AddInstruction(HloInstruction::CreateTuple({constant3}));
-  auto tuple4 =
-      builder.AddInstruction(HloInstruction::CreateTuple({constant4}));
-  const Shape tuple_shape = tuple1->shape();
-  auto select11 = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple_shape, HloOpcode::kTupleSelect, pred, tuple1, tuple1));
-  auto select12 = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple_shape, HloOpcode::kTupleSelect, pred, tuple1, tuple2));
-  auto select34 = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple_shape, HloOpcode::kTupleSelect, pred, tuple3, tuple4));
-  auto select1234 = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple_shape, HloOpcode::kTupleSelect, pred, select12, select34));
-
-  module_->AddEntryComputation(builder.Build());
-  SCOPED_TRACE(module_->ToString());
-
-  bool ssa_form = GetParam();
-  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
-
-  // Top-level value is always defined by a kTupleSelect.
-  EXPECT_TRUE(analysis.ValueIsDefinedAt(select11));
-  EXPECT_TRUE(analysis.ValueIsDefinedAt(select12));
-  EXPECT_TRUE(analysis.ValueIsDefinedAt(select34));
-  EXPECT_TRUE(analysis.ValueIsDefinedAt(select1234));
-
-  EXPECT_FALSE(analysis.ValueIsDefinedAt(select11, /*index=*/{0}));
-  EXPECT_FALSE(analysis.ValueIsDefinedAt(select12, /*index=*/{0}));
-  EXPECT_FALSE(analysis.ValueIsDefinedAt(select34, /*index=*/{0}));
-  EXPECT_FALSE(analysis.ValueIsDefinedAt(select1234, /*index=*/{0}));
-
-  EXPECT_THAT(HloValuesAt(select11, /*index=*/{0}),
-              UnorderedElementsAre(&analysis.GetValueDefinedAt(constant1)));
-  EXPECT_THAT(HloValuesAt(select12, /*index=*/{0}),
-              UnorderedElementsAre(&analysis.GetValueDefinedAt(constant1),
-                                   &analysis.GetValueDefinedAt(constant2)));
-  EXPECT_THAT(HloValuesAt(select34, /*index=*/{0}),
-              UnorderedElementsAre(&analysis.GetValueDefinedAt(constant3),
-                                   &analysis.GetValueDefinedAt(constant4)));
-  EXPECT_THAT(HloValuesAt(select1234, /*index=*/{0}),
-              UnorderedElementsAre(&analysis.GetValueDefinedAt(constant1),
-                                   &analysis.GetValueDefinedAt(constant2),
-                                   &analysis.GetValueDefinedAt(constant3),
-                                   &analysis.GetValueDefinedAt(constant4)));
-
-  EXPECT_THAT(
-      analysis.GetValueDefinedAt(tuple1, /*index=*/{}).GetUses(),
-      UnorderedElementsAre(HloUse{select11, 1, {}}, HloUse{select11, 2, {}},
-                           HloUse{select12, 1, {}}));
-
-  // The two constant values just pass through the Selects and are not
-  // used except at the root. They are live out however.
-  EXPECT_THAT(analysis.GetValueDefinedAt(constant1).GetUses(),
-              UnorderedElementsAre(HloUse{select1234, 1, {0}}));
-  EXPECT_THAT(analysis.GetValueDefinedAt(constant2).GetUses(),
-              UnorderedElementsAre(HloUse{select1234, 1, {0}}));
-  EXPECT_TRUE(analysis.GetValueDefinedAt(constant1).live_out_of_module());
-  EXPECT_TRUE(analysis.GetValueDefinedAt(constant2).live_out_of_module());
-}
-
-TEST_P(HloDataflowAnalysisTest, NestedTupleSelect) {
-  // Test kTupleSelect of a nested tuple.
-  auto builder = HloComputation::Builder(TestName());
-  auto pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
-  auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
-  auto constant3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(3.0)));
-  auto constant4 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(4.0)));
-  auto constant5 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(5.0)));
-  auto inner_tuple1 = builder.AddInstruction(
-      HloInstruction::CreateTuple({constant2, constant3}));
-  auto tuple1 = builder.AddInstruction(
-      HloInstruction::CreateTuple({constant1, inner_tuple1}));
-  auto inner_tuple2 = builder.AddInstruction(
-      HloInstruction::CreateTuple({constant5, constant3}));
-  auto tuple2 = builder.AddInstruction(
-      HloInstruction::CreateTuple({constant4, inner_tuple2}));
-  auto select = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple1->shape(), HloOpcode::kTupleSelect, pred, tuple1, tuple2));
-
-  module_->AddEntryComputation(builder.Build());
-  SCOPED_TRACE(module_->ToString());
-
-  bool ssa_form = GetParam();
-  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
-
-  EXPECT_TRUE(analysis.ValueIsDefinedAt(select));
-
-  EXPECT_THAT(HloValuesAt(select, /*index=*/{0}),
-              UnorderedElementsAre(&analysis.GetValueDefinedAt(constant1),
-                                   &analysis.GetValueDefinedAt(constant4)));
-  EXPECT_THAT(HloValuesAt(select, /*index=*/{1}),
-              UnorderedElementsAre(&analysis.GetValueDefinedAt(inner_tuple1),
-                                   &analysis.GetValueDefinedAt(inner_tuple2)));
-  EXPECT_THAT(HloValuesAt(select, /*index=*/{1, 0}),
-              UnorderedElementsAre(&analysis.GetValueDefinedAt(constant2),
-                                   &analysis.GetValueDefinedAt(constant5)));
-  EXPECT_THAT(HloValuesAt(select, /*index=*/{1, 1}),
-              UnorderedElementsAre(&analysis.GetValueDefinedAt(constant3)));
-}
-
-TEST_P(HloDataflowAnalysisTest, TupleSelectToWhile) {
-  // Test a tuple-shaped kTupleSelect feeding a kWhile instruction. HLO:
-  //
-  // body((F32[], F32[]) %tuple_param):
-  //   %add = Add(%tuple_param{0}, %tuple_param{1})
-  //   return Tuple(%tuple_param{0}, %add)
-  //
-  // condition((F32[], F32[]) %tuple_param):
-  //   return Constant(false)
-  //
-  // entry:
-  //   %constant1 = Constant(1.0)
-  //   %constant2 = Constant(2.0)
-  //   %constant3 = Constant(3.0)
-  //   %tuple1 = Tuple(%constant1)
-  //   %tuple2 = Tuple(%constant2)
-  //   %select = Select(%tuple1, %tuple2)
-  //   %gte = GetTupleElement(%select, 0)
-  //   %tuple = Tuple(%gte, %constant3)
-  //   return While(%tuple, body, condition)
-  //
-  auto builder = HloComputation::Builder(TestName());
-
-  const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
-
-  // Element 0 passes transparently through the body.
-  auto body_builder = HloComputation::Builder("body");
-  auto body_param = body_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape, "param"));
-  auto body_element_0 = body_builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, body_param, 0));
-  auto body_element_1 = body_builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, body_param, 1));
-  auto add = body_builder.AddInstruction(HloInstruction::CreateBinary(
-      scalar_shape_, HloOpcode::kAdd, body_element_0, body_element_1));
-  body_builder.AddInstruction(
-      HloInstruction::CreateTuple({body_element_0, add}));
-  HloComputation* body = module_->AddEmbeddedComputation(body_builder.Build());
-
-  auto cond_builder = HloComputation::Builder("condition");
-  cond_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape, "param"));
-  cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
-  HloComputation* condition =
-      module_->AddEmbeddedComputation(cond_builder.Build());
-
-  auto pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
-  auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
-  auto constant3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(3.0)));
-  auto tuple1 =
-      builder.AddInstruction(HloInstruction::CreateTuple({constant1}));
-  auto tuple2 =
-      builder.AddInstruction(HloInstruction::CreateTuple({constant2}));
-  auto select = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple1->shape(), HloOpcode::kTupleSelect, pred, tuple1, tuple2));
-  auto gte = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, select, 0));
-  auto tuple =
-      builder.AddInstruction(HloInstruction::CreateTuple({gte, constant3}));
-  auto xla_while = builder.AddInstruction(
-      HloInstruction::CreateWhile(tuple->shape(), condition, body, tuple));
-
-  module_->AddEntryComputation(builder.Build());
-  SCOPED_TRACE(module_->ToString());
-
-  bool ssa_form = GetParam();
-  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
-
-  if (ssa_form) {
-    EXPECT_TRUE(analysis.ValueIsDefinedAt(xla_while, /*index=*/{0}));
-    EXPECT_TRUE(analysis.GetValueDefinedAt(xla_while, /*index=*/{0}).is_phi());
-    EXPECT_TRUE(analysis.ValueIsDefinedAt(xla_while, /*index=*/{1}));
-    EXPECT_TRUE(analysis.GetValueDefinedAt(xla_while, /*index=*/{1}).is_phi());
-
-    EXPECT_FALSE(analysis.ValueIsDefinedAt(select, /*index=*/{0}));
-
-    EXPECT_FALSE(analysis.GetValueDefinedAt(constant1).live_out_of_module());
-    EXPECT_FALSE(analysis.GetValueDefinedAt(constant2).live_out_of_module());
-    EXPECT_FALSE(analysis.GetValueDefinedAt(constant3).live_out_of_module());
-    EXPECT_TRUE(analysis.GetValueDefinedAt(xla_while, /*index=*/{1})
-                    .live_out_of_module());
-  } else {
-    EXPECT_THAT(HloValuesAt(gte),
-                UnorderedElementsAre(&analysis.GetValueDefinedAt(constant1),
-                                     &analysis.GetValueDefinedAt(constant2)));
-    EXPECT_THAT(HloValuesAt(xla_while, /*index=*/{0}),
-                UnorderedElementsAre(&analysis.GetValueDefinedAt(constant1),
-                                     &analysis.GetValueDefinedAt(constant2)));
-    EXPECT_THAT(HloValuesAt(xla_while, /*index=*/{1}),
-                UnorderedElementsAre(&analysis.GetValueDefinedAt(add),
-                                     &analysis.GetValueDefinedAt(constant3)));
-    EXPECT_TRUE(analysis.GetValueDefinedAt(constant1).live_out_of_module());
-    EXPECT_TRUE(analysis.GetValueDefinedAt(constant2).live_out_of_module());
-    EXPECT_TRUE(analysis.GetValueDefinedAt(constant3).live_out_of_module());
-  }
-}
-
 TEST_P(HloDataflowAnalysisTest, BitcastDefinesValue) {
   // Test the bitcast_defines_value flag to the dataflow analysis.
   auto builder = HloComputation::Builder(TestName());
@@ -2689,6 +2461,66 @@ TEST_F(CanShareOperandBufferWithUserTest, ScatterCanShare) {
       indices_param, {}, scatter, {}));
   EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
       updates_param, {}, scatter, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, MultioutputScatterCanShare) {
+  const char* hlo_text = R"(
+    HloModule MultioutputScatter
+
+    update {
+      lhs0 = s32[] parameter(0)
+      lhs1 = f32[] parameter(1)
+      rhs0 = s32[] parameter(2)
+      rhs1 = f32[] parameter(3)
+      ROOT tuple = tuple(rhs0, rhs1)
+    }
+
+    ENTRY main {
+      operand0 = s32[3,3] parameter(0)
+      operand1 = f32[3,3] parameter(1)
+      indices = s32[2] parameter(2)
+      updates0 = s32[2,3] parameter(3)
+      updates1 = f32[2,3] parameter(4)
+      ROOT scatter = (s32[3,3], f32[3,3])
+      scatter(operand0, operand1, indices, updates0, updates1),
+          to_apply=update,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  auto computation = module->entry_computation();
+  auto dataflow_analysis = RunAnalysis(*module);
+
+  HloInstruction* operand0_param = computation->parameter_instruction(0);
+  HloInstruction* operand1_param = computation->parameter_instruction(1);
+  HloInstruction* indices_param = computation->parameter_instruction(2);
+  HloInstruction* updates0_param = computation->parameter_instruction(3);
+  HloInstruction* updates1_param = computation->parameter_instruction(4);
+  HloInstruction* scatter = computation->root_instruction();
+
+  EXPECT_TRUE(dataflow_analysis->CanShareOperandBufferWithUser(
+      operand0_param, {}, scatter, {0}));
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      operand0_param, {}, scatter, {1}));
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      operand1_param, {}, scatter, {0}));
+  EXPECT_TRUE(dataflow_analysis->CanShareOperandBufferWithUser(
+      operand1_param, {}, scatter, {1}));
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      indices_param, {}, scatter, {0}));
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      indices_param, {}, scatter, {1}));
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      updates0_param, {}, scatter, {0}));
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      updates0_param, {}, scatter, {1}));
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      updates1_param, {}, scatter, {0}));
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      updates1_param, {}, scatter, {1}));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, TriangularSolveCanShare) {

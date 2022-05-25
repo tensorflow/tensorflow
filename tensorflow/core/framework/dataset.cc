@@ -627,8 +627,9 @@ Status DatasetBase::CheckRandomAccessCompatible(const int64 index) const {
   if (cardinality == kInfiniteCardinality ||
       cardinality == kUnknownCardinality) {
     return tensorflow::errors::FailedPrecondition(
-        "Dataset of type ", this->DebugString(), "has cardinality ",
-        cardinality, "which does not support random access.");
+        "Dataset of type ", this->DebugString(), " has ",
+        cardinality == kInfiniteCardinality ? "infinite" : "unknown",
+        " cardinality, which does not support random access.");
   }
   if (index < 0 || index >= cardinality) {
     return errors::OutOfRange("Index out of range [0, ", cardinality,

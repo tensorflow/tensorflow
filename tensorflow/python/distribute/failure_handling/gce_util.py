@@ -15,6 +15,7 @@
 """Util of GCE specifics to ingegrate with WorkerPreemptionHandler."""
 import enum
 import os
+import sys
 
 import requests
 
@@ -25,7 +26,11 @@ from tensorflow.python.eager import context
 GCP_METADATA_HEADER = {'Metadata-Flavor': 'Google'}
 _GCE_METADATA_URL_ENV_VARIABLE = 'GCE_METADATA_IP'
 _RESTARTABLE_EXIT_CODE = 143
-GRACE_PERIOD_GCE = 0
+GRACE_PERIOD_GCE = 3600
+
+
+def gce_exit_fn():
+  sys.exit(_RESTARTABLE_EXIT_CODE)
 
 
 def request_compute_metadata(path):

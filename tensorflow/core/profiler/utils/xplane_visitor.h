@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 
 namespace tensorflow {
@@ -58,6 +57,8 @@ class XStatVisitor {
   int64_t IntValue() const { return stat_->int64_value(); }
 
   uint64 UintValue() const { return stat_->uint64_value(); }
+
+  absl::string_view BytesValue() const { return stat_->bytes_value(); }
 
   uint64 IntOrUintValue() const {
     return ValueCase() == XStat::kUint64Value ? UintValue()
@@ -178,6 +179,9 @@ class XEventVisitor : public XStatsOwner<XEvent> {
   int64_t EndOffsetPs() const {
     return event_->offset_ps() + event_->duration_ps();
   }
+
+  int64_t EndTimestampNs() const { return TimestampNs() + DurationNs(); }
+
   int64_t EndTimestampPs() const { return TimestampPs() + DurationPs(); }
 
   int64_t NumOccurrences() const { return event_->num_occurrences(); }
@@ -260,6 +264,25 @@ class XPlaneVisitor : public XStatsOwner<XPlane> {
   void ForEachLine(ForEachLineFunc&& for_each_line) const {
     for (const XLine& line : plane_->lines()) {
       for_each_line(XLineVisitor(this, &line));
+    }
+  }
+  template <typename ThreadBundle, typename ForEachLineFunc>
+  void ForEachLineInParallel(ForEachLineFunc&& for_each_line) const {
+    ThreadBundle bundle;
+    for (const XLine& line : plane_->lines()) {
+      bundle.Add([this, line = &line, &for_each_line] {
+        for_each_line(XLineVisitor(this, line));
+      });
+    }
+    bundle.JoinAll();
+  }
+
+  template <typename ForEachEventMetadataFunc>
+  void ForEachEventMetadata(
+      ForEachEventMetadataFunc&& for_each_event_metadata) {
+    for (const auto& event : plane_->event_metadata()) {
+      for_each_event_metadata(event.first,
+                              XEventMetadataVisitor(this, &event.second));
     }
   }
 

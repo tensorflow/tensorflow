@@ -2043,6 +2043,28 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "runtime_shape_check_test",
+    size = "small",
+    srcs = ["runtime_shape_check_test.py"],
+    disabled_backends = [
+        "cpu",
+        "cpu_ondemand",
+    ],
+    enable_mlir_bridge = False,
+    python_version = "PY3",
+    tags = [
+        "no_pip",
+        "notap",
+    ],
+    use_xla_device = False,
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "conv_node_name_test",
     size = "medium",
     srcs = ["conv_node_name_test.py"],
@@ -2117,6 +2139,28 @@ tf_xla_py_test(
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
     ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:math_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
+    name = "image_ops_jit_compile_test",
+    size = "medium",
+    srcs = ["image_ops_jit_compile_test.py"],
+    disabled_backends = [
+        "cpu_ondemand",
+    ],
+    enable_mlir_bridge = False,
+    shard_count = 5,
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
+    use_xla_device = False,
     deps = [
         ":xla_test",
         "//tensorflow/python:extra_py_tests_deps",
@@ -2255,6 +2299,7 @@ tpu_py_test(
     # TODO(b/225357162): Flaky segfault when transfering from device to host
     # using TFRT.
     disable_tfrt = True,
+    tags = ["no_oss"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",

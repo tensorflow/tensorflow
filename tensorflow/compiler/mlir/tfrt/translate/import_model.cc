@@ -114,7 +114,7 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
 
   // TODO(b/187991150): Consider only decomposing read-only resource variable
   // ops.
-  pass_options.decompose_resource_ops = true;
+  pass_options.decompose_resource_ops = options.decompose_resource_ops;
   pass_options.enable_optimizer = options.enable_optimizer;
   pass_options.enable_native_ops = options.enable_native_ops;
   pass_options.target_tpurt =

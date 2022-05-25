@@ -124,6 +124,12 @@ static constexpr char kTPUEmbeddingConfiguration[] =
 // Attribute mapping table_id to func op arguments using as TPUEmbedding tables
 // `tf` prefix attached in MLIR importer for dialect requirements.
 static constexpr char kTPUEmbeddingTableID[] = "tf._tpu_embedding_table_id";
+
+// Name of dtensor load embedding function.
+static constexpr char kLoadEmbeddingFn[] = "load_embedding_fn";
+
+// Name of dtensor retrieve embedding function.
+static constexpr char kRetrieveEmbeddingFn[] = "retrieve_embedding_fn";
 }  // namespace dtensor
 }  // namespace tensorflow
 

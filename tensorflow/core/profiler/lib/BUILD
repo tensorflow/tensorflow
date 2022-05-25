@@ -1,6 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
-load("//tensorflow:tensorflow.bzl", "if_libtpu", "if_not_android", "if_xla_available", "tf_cc_test", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "if_libtpu", "if_not_android", "tf_cc_test", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "filegroup")
 load(
     "//tensorflow/core/profiler/builds:build_config.bzl",
@@ -72,6 +72,7 @@ cc_library(
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "@com_google_absl//absl/memory",
     ] + if_not_android([
+        "//tensorflow/core:lib_internal",
         ":profiler_interface",
         ":profiler_factory",
         ":profiler_collection",
@@ -166,15 +167,14 @@ cc_library(
 tf_cuda_library(
     name = "profiler_backends",
     cuda_deps = [
-        "//tensorflow/core/profiler/internal/gpu:device_tracer",
+        "//tensorflow/core/profiler/backends/gpu:device_tracer",
     ],
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/core/profiler/internal/cpu:host_tracer",
+        "//tensorflow/core/profiler/backends/cpu:host_tracer",
+        "//tensorflow/core/profiler/backends/cpu:metadata_collector",
     ] + if_libtpu([
         "//tensorflow/core/profiler/backends/tpu:tpu_tracer",
-    ]) + if_xla_available([
-        "//tensorflow/core/profiler/internal/cpu:metadata_collector",
     ]),
     alwayslink = True,
 )
@@ -195,7 +195,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
     ] + if_not_android([
-        "//tensorflow/core/profiler/internal/cpu:traceme_recorder",
+        "//tensorflow/core/profiler/backends/cpu:traceme_recorder",
         "//tensorflow/core/profiler/utils:time_utils",
     ]),
 )
@@ -280,7 +280,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
     ] + if_not_android([
-        "//tensorflow/core/profiler/internal/cpu:annotation_stack",
+        "//tensorflow/core/profiler/backends/cpu:annotation_stack",
     ]),
 )
 
@@ -294,7 +294,7 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/profiler/internal/cpu:annotation_stack",
+        "//tensorflow/core/profiler/backends/cpu:annotation_stack",
         "@com_google_absl//absl/strings",
     ],
 )

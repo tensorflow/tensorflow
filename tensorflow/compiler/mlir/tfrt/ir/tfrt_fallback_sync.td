@@ -37,10 +37,77 @@ def FallbackSync_Dialect : Dialect {
 
 class FallbackSync_Op<string mnemonic, list<Trait> traits = []> :
     Op<FallbackSync_Dialect, mnemonic, !listconcat(traits, [IsolatedFromAbove])> {
-  // Each registered op in the fallback namespace needs to provide all of a
-  // verifier, a printer and a parser.
-  let hasVerifier = 1;
-  let hasCustomAssemblyFormat = 1;
+}
+
+// TODO(rohitju): Add a verifier if there is anything that should be verified
+// compile time.
+def SetResourceOp : FallbackSync_Op<"set_resource", [CoreRT_TypedAttributeTrait]> {
+  let summary = "Set a tensor in resource array";
+
+  let description = [{
+    Set a tensor in resource array.
+
+    arg: the tensor to be set in the resource array.
+    index: the index in the resource array
+  }];
+
+  let arguments = (ins
+    TFTensorType:$arg,
+    I64Attr:$index
+  );
+
+  let results = (outs);
+
+  let assemblyFormat = "operands attr-dict";
+}
+
+def GetResourceOp : FallbackSync_Op<"get_resource",
+    [CoreRT_TypedAttributeTrait]> {
+  let summary = "get a tensor in resource array";
+
+  let description = [{
+    Get a tensor in resource array.
+
+    indices: the indices in the resource array.
+    results: the tensor values for the corresponding indices.
+  }];
+
+  let arguments = (ins
+    I64ArrayAttr:$indices
+  );
+
+  let results = (outs
+    Variadic<TFTensorType>:$results
+  );
+
+  let assemblyFormat = "attr-dict `:` type($results)";
+}
+
+def CreateOp: FallbackSync_Op<"createop", [CoreRT_TypedAttributeTrait]> {
+  let summary = "The Fallback CreateOp";
+
+  let description = [{
+    The CreateOp creates the tensorflow::OpKernel in the fallback context.
+
+    op_key: The unique key to identify this op.
+    num_args: The number of inputs.
+    device: The tensorflow device. eg. "/CPU:0"
+    op_attrs: The tensorflow attributes excluding the func attrs.
+    op_name: The tensorflow op name. eg. "tf.AddV2"
+
+    Example:
+      tfrt_fallback_async.createop() key(0) device("/CPU:0")
+        "some.op"() {attr1 = value, attr2 = value2} {f_attr1 = "fn1", f_attr2 = "fn2"} num_args(1)
+  }];
+
+  let arguments = (ins
+    I64Attr:$num_args,
+    ArrayAttr:$op_attrs,
+    I64Attr:$op_key,
+    StrAttr:$op_name
+  );
+
+  let results = (outs);
 }
 
 def ExecuteOp : FallbackSync_Op<"executeop",
@@ -73,6 +140,9 @@ def ExecuteOp : FallbackSync_Op<"executeop",
     OpBuilder<(ins "ArrayRef<Type>":$results, "ValueRange":$operands,
       "ArrayRef<std::pair<StringRef, Attribute>>":$op_attrs,
       "StringRef":$op_name)>];
+
+  let hasVerifier = 1;
+  let hasCustomAssemblyFormat = 1;
 }
 
 #endif

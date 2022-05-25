@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/RegionUtils.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -82,6 +83,7 @@ constexpr char kTFRTDeviceAttr[] = "tfrt.device";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kHostAttr[] = "host";
 constexpr char kDeviceTypeTpu[] = "TPU";
+constexpr int64_t kDefaultCheapCost = 1;
 
 void getDependentConversionDialects(mlir::DialectRegistry &registry) {
   registry.insert<tfrt::corert::CoreRTDialect, mlir::func::FuncDialect,
@@ -251,7 +253,16 @@ mlir::LogicalResult FallbackExecuteOpConversion::ConvertToFallbackExecuteOp(
       rewriter.getI64IntegerAttr(fallback_converter.GetNextFallbackKey());
 
   // Query cost analysis to assign costs.
-  auto cost = rewriter.getI64IntegerAttr(cost_analysis_.GetCost(op));
+  IntegerAttr cost;
+  auto parsed_device_name =
+      corert_converter_.ParseDeviceName(device.getValue());
+  if (parsed_device_name && parsed_device_name->device_type == DEVICE_GPU) {
+    // For GPU ops, the host only needs to dispatch them to GPUs, which should
+    // be relatively cheap for the host.
+    cost = rewriter.getI64IntegerAttr(kDefaultCheapCost);
+  } else {
+    cost = rewriter.getI64IntegerAttr(cost_analysis_.GetCost(op));
+  }
 
   if (mlir::MemoryEffectOpInterface::hasNoEffect(op)) {
     auto new_op = rewriter.create<tfrt::fallback_async::ExecuteOp>(
@@ -486,7 +497,7 @@ class TFDeviceRemoteRunOpConversion
         rewriter.getType<tfrt::dist::RemoteObjectIdType>();
     ModuleOp module = op->getParentOfType<ModuleOp>();
     SymbolTable symtab(module);
-    FuncOp callee = symtab.lookup<FuncOp>(op.callee());
+    func::FuncOp callee = symtab.lookup<func::FuncOp>(op.callee());
     if (!callee) {
       op.emitOpError("callee function ") << op.callee() << " is not found";
       return failure();
@@ -1004,12 +1015,15 @@ class TFRTCaseOpConversion : public mlir::OpConversionPattern<TF::CaseOp> {
     mlir::ArrayAttr branches = op.branches();
 
     llvm::SmallVector<mlir::Type, 4> result_types;
+    result_types.push_back(corert_converter_.chain_type());
     for (mlir::Type type : op->getResultTypes()) {
       if (failed(type_converter_.convertType(type, result_types)))
         return failure();
     }
 
     llvm::SmallVector<mlir::Value, 4> branch_operands;
+    branch_operands.push_back(
+        corert_converter_.GetLocalSideEffectChain(op, &rewriter));
     if (mlir::failed(ConvertFunctionCallOperands(
             op, adaptor.getOperands().drop_front(), &branch_operands, rewriter,
             func_use_fallback_tensor_)))
@@ -1037,11 +1051,9 @@ class TFRTCaseOpConversion : public mlir::OpConversionPattern<TF::CaseOp> {
             op.getLoc(), rewriter.getI32Type(), index_operand);
 
     auto new_op = rewriter.create<tfrt::compiler::CaseOp>(
-        op.getLoc(), corert_converter_.chain_type(), result_types, index_value,
-        branches, corert_converter_.GetLocalSideEffectChain(op, &rewriter),
-        branch_operands);
+        op.getLoc(), result_types, index_value, branches, branch_operands);
 
-    rewriter.replaceOp(op, new_op.branch_outputs());
+    rewriter.replaceOp(op, new_op.branch_outputs().drop_front());
     return success();
   }
 
@@ -1487,7 +1499,8 @@ void SetUpTFToTFRTConversionLegality(mlir::ConversionTarget *target,
   target->addIllegalDialect<tf_device::TensorFlowDeviceDialect>();
   target->addIllegalDialect<tfrt::jitrt::JitRuntimeDialect>();
   target->addDynamicallyLegalOp<mlir::func::FuncOp>([func_type_converter,
-                                                     chain_type](FuncOp op) {
+                                                     chain_type](
+                                                        func::FuncOp op) {
     auto func_type = op.getFunctionType();
     if (func_type.getNumInputs() == 0 || func_type.getInput(0) != chain_type)
       return false;
@@ -1932,6 +1945,8 @@ void AddTfDeviceAssignmentPasses(mlir::OpPassManager &pm,
                                  const TfrtPipelineOptions &options) {
   pm.addPass(mlir::TF::CreateConstantOpDeviceAssignmentPass());
   pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::TF::CreateTFDeviceAssignmentByFuncAttrPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateSimpleTFDeviceAssignmentPass(options.default_device));
 }
 
@@ -1967,7 +1982,7 @@ class OutlineJitRtClustersPass
  private:
   struct CompiledModule {
     ModuleOp module;
-    FuncOp entrypoint;
+    func::FuncOp entrypoint;
     llvm::SetVector<Value> operands;
   };
 
@@ -1990,7 +2005,7 @@ class OutlineJitRtClustersPass
   // Mapping from the outlined module string representation to the module itself
   // and an entrypoint function. Used to deduplicate identical modules during
   // the `tf_device.cluster` outlining.
-  llvm::StringMap<std::pair<ModuleOp, FuncOp>> outlined_;
+  llvm::StringMap<std::pair<ModuleOp, func::FuncOp>> outlined_;
 };
 
 OutlineJitRtClustersPass::CompiledModule
@@ -2021,7 +2036,7 @@ OutlineJitRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
   // Create a function in the compiled module.
   auto compiled_func_type =
       FunctionType::get(ctx, operand_types, cluster->getResultTypes());
-  auto compiled_func = FuncOp::create(loc, "compute", compiled_func_type);
+  auto compiled_func = func::FuncOp::create(loc, "compute", compiled_func_type);
   compiled_module_symbol_table.insert(compiled_func);
 
   // Replace uses of live-in values within cluster region with block arguments.
@@ -2050,6 +2065,13 @@ OutlineJitRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
   // identical Tensorflow programs, with current approach we'll not be able
   // to detect duplicates like this.
 
+  // Remove location attribute attached to Tensorflow operations to be able to
+  // deduplicate compiled clusters with the same set of operations.
+  //
+  // TODO(ezhulenev): Figure out how to propagate locations for error reporting,
+  // right now JitRt will ignore them anyway.
+  compiled_module.walk([](Operation *op) { op->removeAttr("_class"); });
+
   // Serialize prepared module to string.
   std::string serialized;
   llvm::raw_string_ostream os(serialized);
@@ -2075,7 +2097,7 @@ OutlineJitRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
 
 LogicalResult OutlineJitRtClustersPass::SetEntrypointConstraints(
     CompiledModule &compiled) {
-  FuncOp func = compiled.entrypoint;
+  func::FuncOp func = compiled.entrypoint;
 
   // Functions outlined from jitrt device clusters must have a single block.
   assert(func.getBody().getBlocks().size() == 1 && "expected single block");
@@ -2110,7 +2132,7 @@ LogicalResult OutlineJitRtClustersPass::OutlineClusterOp(
 
   CompiledModule compiled_module =
       CreateCompiledModule(cluster, max_arg_size, symbol_table);
-  FuncOp compiled_func = compiled_module.entrypoint;
+  func::FuncOp compiled_func = compiled_module.entrypoint;
 
   // Add constraints to the entrypoint arguments.
   if (failed(SetEntrypointConstraints(compiled_module))) return failure();

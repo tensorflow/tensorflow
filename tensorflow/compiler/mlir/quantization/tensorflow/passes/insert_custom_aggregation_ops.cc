@@ -37,7 +37,7 @@ constexpr char kCustomAggregatorOpName[] = "tf.CustomAggregator";
 
 class InsertCustomAggregationOpsPass
     : public PassWrapper<InsertCustomAggregationOpsPass,
-                         OperationPass<FuncOp>> {
+                         OperationPass<func::FuncOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertCustomAggregationOpsPass)
 
@@ -120,7 +120,7 @@ class AddCustomAggregationOp : public RewritePattern {
 void InsertCustomAggregationOpsPass::runOnOperation() {
   MLIRContext *ctx = &getContext();
   RewritePatternSet patterns(ctx);
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
 
   patterns.add<AddCustomAggregationOp>(ctx);
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
@@ -131,7 +131,8 @@ void InsertCustomAggregationOpsPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateInsertCustomAggregationOpsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateInsertCustomAggregationOpsPass() {
   return std::make_unique<InsertCustomAggregationOpsPass>();
 }
 

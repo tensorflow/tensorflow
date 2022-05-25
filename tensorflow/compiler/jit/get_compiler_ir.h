@@ -29,6 +29,7 @@ class EagerContext;
 
 enum class IrExportStage {
   HLO,
+  HLO_NO_METADATA,
   HLO_SERIALIZED,
   OPTIMIZED_HLO,
   OPTIMIZED_HLO_SERIALIZED,

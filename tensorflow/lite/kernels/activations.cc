@@ -695,7 +695,7 @@ TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
     // alpha_float = (alpha_q - alpha_zp) * alpha_scale
     //
     // When input_q - input_zp >= 0:
-    // ouput_q = (input_q - input_zp) * input_scale / output_scale + output_q
+    // output_q = (input_q - input_zp) * input_scale / output_scale + output_q
     // else:
     // output_q = (input_q - input_zp) * (alpha_q - alpha_zp) * input_scale
     //            * alpha_scale / output_scale + output_q
@@ -846,6 +846,36 @@ TfLiteStatus HardSwishEval(TfLiteContext* context, TfLiteNode* node) {
           context,
           "Only float32, uint8 and int8 are supported currently, got %s.",
           TfLiteTypeGetName(input->type));
+      return kTfLiteError;
+  }
+}
+
+TfLiteStatus Relu0to1Eval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+  const ReluOpData* data = reinterpret_cast<ReluOpData*>(node->user_data);
+  switch (input->type) {
+    case kTfLiteFloat32: {
+      optimized_ops::Relu0To1(
+          GetTensorShape(input), GetTensorData<float>(input),
+          GetTensorShape(output), GetTensorData<float>(output));
+      return kTfLiteOk;
+    }
+    case kTfLiteUInt8: {
+      QuantizedReluX<uint8_t>(0.0f, 1.0f, input, output, data);
+      return kTfLiteOk;
+    }
+    case kTfLiteInt8: {
+      QuantizedReluX<int8_t>(0, 1, input, output, data);
+      return kTfLiteOk;
+    }
+    default:
+      TF_LITE_KERNEL_LOG(context,
+                         "Only float32, uint8, int8 supported "
+                         "currently, got %s.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 }
@@ -1095,13 +1125,13 @@ TfLiteStatus SoftmaxQuantized<int8_t, int8_t>(TfLiteContext* context,
                            GetTensorData<int8_t>(output));
   } else {
 #ifdef TFLITE_SOFTMAX_USE_UINT16_LUT
-  optimized_ops::SoftmaxInt8LUT(
-      data->params, GetTensorShape(input), GetTensorData<int8_t>(input),
-      GetTensorShape(output), GetTensorData<int8_t>(output));
+    optimized_ops::SoftmaxInt8LUT(
+        data->params, GetTensorShape(input), GetTensorData<int8_t>(input),
+        GetTensorShape(output), GetTensorData<int8_t>(output));
 #else
-  optimized_ops::Softmax(data->params, GetTensorShape(input),
-                         GetTensorData<int8_t>(input), GetTensorShape(output),
-                         GetTensorData<int8_t>(output));
+    optimized_ops::Softmax(data->params, GetTensorShape(input),
+                           GetTensorData<int8_t>(input), GetTensorShape(output),
+                           GetTensorData<int8_t>(output));
 #endif
   }
   return kTfLiteOk;
@@ -1119,13 +1149,13 @@ TfLiteStatus SoftmaxQuantized<uint8_t, uint8_t>(TfLiteContext* context,
         GetTensorShape(output), GetTensorData<uint8_t>(output));
   } else {
 #ifdef TFLITE_SOFTMAX_USE_UINT16_LUT
-  optimized_ops::SoftmaxInt8LUT(
-      data->params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-      GetTensorShape(output), GetTensorData<uint8_t>(output));
+    optimized_ops::SoftmaxInt8LUT(
+        data->params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+        GetTensorShape(output), GetTensorData<uint8_t>(output));
 #else
-  optimized_ops::Softmax(data->params, GetTensorShape(input),
-                         GetTensorData<uint8_t>(input), GetTensorShape(output),
-                         GetTensorData<uint8_t>(output));
+    optimized_ops::Softmax(
+        data->params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+        GetTensorShape(output), GetTensorData<uint8_t>(output));
 #endif
   }
   return kTfLiteOk;
@@ -1585,6 +1615,13 @@ TfLiteRegistration* Register_RELU6() {
   static TfLiteRegistration r = {activations::ReluInit, activations::ReluFree,
                                  activations::ReluPrepare,
                                  activations::Relu6Eval};
+  return &r;
+}
+
+TfLiteRegistration* Register_RELU_0_TO_1() {
+  static TfLiteRegistration r = {activations::ReluInit, activations::ReluFree,
+                                 activations::ReluPrepare,
+                                 activations::Relu0to1Eval};
   return &r;
 }
 

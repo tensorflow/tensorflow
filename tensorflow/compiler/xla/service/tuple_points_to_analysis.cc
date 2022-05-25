@@ -508,38 +508,6 @@ Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
   return Status::OK();
 }
 
-Status TuplePointsToAnalysis::HandleTupleSelect(HloInstruction* tuple_select) {
-  // Select allocates a new buffer and then shallow copies the on_true or
-  // on_false buffer into this new buffer. Which side is chosen cannot be
-  // determined statically so conservatively set the points-to set to the union
-  // of these on_true and on_false operands.
-  //
-  // First create a copy of the on_true points-to set (and tuple sources), then
-  // add in elements of the on_false points-to set (tuple sources).
-  auto on_true = tuple_select->operand(1);
-  auto on_false = tuple_select->operand(2);
-  PointsToSet& points_to_set = CreateCopiedPointsToSet(tuple_select, on_true);
-  const PointsToSet& false_points_to_set = *PerInst(on_false)->points_to_set;
-  points_to_set.ForEachMutableElement(
-      [&](const ShapeIndex& index, PointsToSet::BufferList* buffers) {
-        for (const LogicalBuffer* false_buffer :
-             false_points_to_set.element(index)) {
-          points_to_set.AddPointedToBuffer(*false_buffer, index);
-        }
-
-        for (HloInstruction* tuple : false_points_to_set.tuple_sources(index)) {
-          points_to_set.add_tuple_source(index, tuple);
-        }
-      });
-
-  // Select creates a new (top-level) buffer to store its result, so its
-  // respective element in the points-to set should contain only itself.
-  points_to_set.mutable_element({})->clear();
-  points_to_set.AddPointedToBuffer(
-      logical_buffer_analysis_->GetBuffer(tuple_select, /*index=*/{}),
-      /*index=*/{});
-  return Status::OK();
-}
 
 Status TuplePointsToAnalysis::HandleCustomCall(HloInstruction* custom_call) {
   auto ccall = Cast<HloCustomCallInstruction>(custom_call);

@@ -52,6 +52,9 @@ class HloInstruction;
 namespace internal {
 
 struct XlaBuilderFriend {
+  static XlaOp BuildAddDependency(XlaBuilder* builder, XlaOp operand,
+                                  XlaOp token, const Shape& shape);
+
   static XlaOp BuildFusion(XlaBuilder* builder,
                            absl::Span<const XlaOp> operands,
                            absl::string_view fusion_kind,
@@ -59,6 +62,8 @@ struct XlaBuilderFriend {
 
   static XlaOp BuildBitcast(XlaBuilder* builder, XlaOp operand,
                             const Shape& shape);
+
+  static XlaOp BuildPartitionId(XlaBuilder* builder, const Shape& shape);
 
   static XlaOp BuildRngGetAndUpdateState(XlaBuilder* builder, int64_t delta,
                                          const Shape& shape);

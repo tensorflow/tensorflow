@@ -2034,6 +2034,15 @@ func.func @segmentsum_i64(%arg0: tensor<3x3xf32>, %arg1: tensor<i64>) -> tensor<
   // CHECK: "tfl.segment_sum"
 }
 
+func.func @unsorted_segment_prod(%arg0: tensor<8xf32>, %arg1: tensor<8xi32>) -> tensor<8xf32> {
+  %num_segments = "tf.Const"() {value = dense<8> : tensor<i32>} : () -> tensor<i32>
+  %0 = "tf.UnsortedSegmentProd"(%arg0, %arg1, %num_segments) : (tensor<8xf32>, tensor<8xi32>, tensor<i32>) -> tensor<8xf32>
+  func.return %0 : tensor<8xf32>
+  // CHECK-LABEL: unsorted_segment_prod
+  // CHECK:  [[BCT:%.*]] = "tfl.unsorted_segment_prod"(%arg0, %arg1) {num_segments = 8 : i32} : (tensor<8xf32>, tensor<8xi32>) -> tensor<8xf32>
+  // CHECK:  return [[BCT]] : tensor<8xf32>
+}
+
 func.func @rfft2d(%arg0: tensor<10x20x10x30xf32>, %arg1: tensor<2xi32>) -> tensor<10x20x10x30xcomplex<f32>> {
   %0 = "tf.RFFT2D"(%arg0, %arg1) : (tensor<10x20x10x30xf32>, tensor<2xi32>) -> tensor<10x20x10x30xcomplex<f32>>
   func.return %0 : tensor<10x20x10x30xcomplex<f32>>
@@ -2284,4 +2293,24 @@ func.func @dynamic_update_slice(%arg0: tensor<4x5xi32>, %arg1: tensor<1x5xi32>, 
 
 // CHECK-LABEL:dynamic_update_slice
 // CHECK: "tfl.dynamic_update_slice"(%arg0, %arg1, %arg2) : (tensor<4x5xi32>, tensor<1x5xi32>, tensor<2xi32>) -> tensor<4x5xi32>
+}
+
+func.func @testReluI32(%arg0: tensor<1xi32>) -> tensor<1xi32> {
+  %0 = "tf.Relu"(%arg0) : (tensor<1xi32>) -> tensor<1xi32>
+  func.return %0: tensor<1xi32>
+
+// CHECK-LABEL: testReluI32
+// CHECK:  %[[CONST_0:.*]] = arith.constant dense<0> : tensor<i32>
+// CHECK:  %[[RES0:.*]] = "tfl.maximum"(%arg0, %[[CONST_0]]) : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
+// CHECK:  return %[[RES0]] : tensor<1xi32>
+}
+
+func.func @testReluI64(%arg0: tensor<1xi64>) -> tensor<1xi64> {
+  %0 = "tf.Relu"(%arg0) : (tensor<1xi64>) -> tensor<1xi64>
+  func.return %0: tensor<1xi64>
+
+// CHECK-LABEL: testReluI64
+// CHECK:  %[[CONST_0:.*]] = arith.constant dense<0> : tensor<i64>
+// CHECK:  %[[RES0:.*]] = "tfl.maximum"(%arg0, %[[CONST_0]]) : (tensor<1xi64>, tensor<i64>) -> tensor<1xi64>
+// CHECK:  return %[[RES0]] : tensor<1xi64>
 }
