@@ -2,6 +2,7 @@
 load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
@@ -1241,5 +1242,12 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+build_test(
+    name = "tensorflow_lite_build_test",
+    targets = [
+        ":tensorflow_lite",
     ],
 )
