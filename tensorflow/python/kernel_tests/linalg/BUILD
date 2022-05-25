@@ -623,6 +623,7 @@ cuda_py_test(
     srcs = ["matrix_solve_ls_op_test.py"],
     tags = [
         "noasan",  # TODO(b/337374867) fails with -fsanitize=null
+        "nomac",  # TODO(b/233829166): Breaks nightly build
     ],
     deps = [
         "//tensorflow/python:array_ops",
