@@ -56,7 +56,7 @@ landing_page:
             <li>Start developing machine learning features with already
             <a href="./trained">trained models.</a></li>
             <li>Modify existing TensorFlow Lite models using tools such as
-            <a href="../guide/model_maker">Model Maker</a>.</li>
+            <a href="../models/modify/model_maker">Model Maker</a>.</li>
             <li>Build a
             <a href="https://www.tensorflow.org/tutorials/customization/custom_training_walkthrough">
             custom model</a> with TensorFlow tools and then
@@ -122,9 +122,9 @@ landing_page:
       path: /lite/models/trained
     - classname: tfo-landing-page-card
       description: >
-        <a href="/lite/guide/model_maker"><h3 class="no-link">Modify models</h3></a>
+        <a href="/lite/models/modify/model_maker"><h3 class="no-link">Modify models</h3></a>
         Use TensorFlow Lite Model Maker to modify models using your training data.
-      path: /lite/guide/model_maker
+      path: /lite/models/modify/model_maker
     - classname: tfo-landing-page-card
       description: >
         <a href="/lite/convert/index"><h3 class="no-link">Build models</h3></a>
