@@ -36,3 +36,7 @@ RUN export PYTHON_VERSION=$(python -c 'import platform; print(platform.python_ve
     ln -s /opt/_internal/cpython-$PYTHON_VERSION/bin/pip /usr/local/bin/pip
 
 RUN pip3 install packaging
+
+ARG tf_project_name='tf_ci_cpu' # PyPI project name passed by CD GitHub workflow
+
+ENV TF_PROJECT_NAME=${tf_project_name}
