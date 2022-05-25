@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -71,6 +72,31 @@ namespace xla {
 namespace {
 
 namespace m = match;
+
+bool OnlyPermutesDegenerateDims(const Shape& shape,
+                                absl::Span<const int64_t> perm) {
+  std::vector<int64_t> new_permutation;
+  int64_t degenerate_count = 0;
+  for (int64_t i = 0; i < perm.size(); ++i) {
+    if (shape.dimensions(i) != 1) {
+      new_permutation.push_back(perm[i]);
+    } else {
+      ++degenerate_count;
+    }
+  }
+  return degenerate_count > 0 && absl::c_is_sorted(new_permutation);
+}
+
+bool IsPermutationOfIota(absl::Span<const int64_t> elems) {
+  absl::InlinedVector<int64_t, 8> sorted(elems.begin(), elems.end());
+  absl::c_sort(sorted);
+  for (int i = 0; i < sorted.size(); i++) {
+    if (sorted[i] != i) {
+      return false;
+    }
+  }
+  return true;
+}
 
 // Unwraps broadcasts hunting for a constant.  If we find one, checks if the
 // constant contains only the given value.
@@ -4259,6 +4285,13 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
                                                operand->mutable_operand(0)));
   }
 
+  if (HloOpcode::kTranspose == operand->opcode() &&
+      OnlyPermutesDegenerateDims(operand->shape(), operand->dimensions())) {
+    return ReplaceWithNewInstruction(
+        reshape, HloInstruction::CreateReshape(reshape->shape(),
+                                               operand->mutable_operand(0)));
+  }
+
   if (operand->opcode() == HloOpcode::kRng && operand->user_count() == 1) {
     *operand->mutable_shape() = reshape->shape();
     return ReplaceInstruction(reshape, operand);
@@ -4448,11 +4481,11 @@ StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReshape(
   if (!IsUnstridedSlice(slice)) {
     return false;
   }
-  HloInstruction* reshape = slice->mutable_operand(0);
-  if (reshape->opcode() != HloOpcode::kReshape) {
+  HloInstruction *reshape, *new_slice_operand;
+  if (!Match(slice->mutable_operand(0),
+             m::Reshape(&reshape, m::Op(&new_slice_operand)))) {
     return false;
   }
-  HloInstruction* new_slice_operand = reshape->mutable_operand(0);
   int64_t slice_rank = slice->shape().rank();
   std::vector<int64_t> sliced_dims;
   for (int64_t i = 0; i < slice_rank; ++i) {
@@ -4494,6 +4527,37 @@ StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReshape(
     return true;
   }
   return false;
+}
+
+StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndTranspose(
+    HloInstruction* slice) {
+  HloInstruction* transpose;
+  if (!Match(slice->mutable_operand(0), m::Transpose(&transpose, m::Op()))) {
+    return false;
+  }
+  auto output_to_input = InversePermutation(transpose->dimensions());
+  Shape new_slice_shape =
+      ShapeUtil::PermuteDimensions(output_to_input, slice->shape());
+  HloInstruction* new_slice;
+  if (slice->opcode() == HloOpcode::kSlice) {
+    new_slice = slice->AddInstruction(HloInstruction::CreateSlice(
+        new_slice_shape, transpose->mutable_operand(0),
+        Permute(slice->slice_starts(), output_to_input),
+        Permute(slice->slice_limits(), output_to_input),
+        Permute(slice->slice_strides(), output_to_input)));
+  } else {
+    CHECK_EQ(slice->opcode(), HloOpcode::kDynamicSlice);
+    new_slice = slice->AddInstruction(HloInstruction::CreateDynamicSlice(
+        new_slice_shape, transpose->mutable_operand(0),
+        Permute(absl::MakeSpan(slice->operands().begin() + 1,
+                               slice->operands().end()),
+                output_to_input),
+        Permute(slice->dynamic_slice_sizes(), output_to_input)));
+  }
+  TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
+      slice, HloInstruction::CreateTranspose(slice->shape(), new_slice,
+                                             transpose->dimensions())));
+  return true;
 }
 
 // Allowing a slice to move through a reverse with any necessary updates to the
@@ -4705,6 +4769,9 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
   // be invalid.
   if (!options_.is_layout_sensitive()) {
     TF_ASSIGN_OR_RETURN(replaced, TryToReorderSliceAndReshape(slice));
+    if (!replaced) {
+      TF_ASSIGN_OR_RETURN(replaced, TryToReorderSliceAndTranspose(slice));
+    }
   }
   if (replaced) {
     return Status::OK();
@@ -4896,6 +4963,14 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
             dynamic_slice,
             HloInstruction::CreateReshape(dynamic_slice->shape(), result));
       }
+    }
+  }
+
+  if (!options_.is_layout_sensitive()) {
+    TF_ASSIGN_OR_RETURN(bool slice_of_tranpose,
+                        TryToReorderSliceAndTranspose(dynamic_slice));
+    if (slice_of_tranpose) {
+      return Status::OK();
     }
   }
 
@@ -5868,33 +5943,6 @@ Status AlgebraicSimplifierVisitor::HandleSqrt(HloInstruction* sqrt) {
   return Status::OK();
 }
 
-namespace {
-bool OnlyPermutesDegenerateDims(const Shape& shape,
-                                absl::Span<const int64_t> perm) {
-  std::vector<int64_t> new_permutation;
-  int64_t degenerate_count = 0;
-  for (int64_t i = 0; i < perm.size(); ++i) {
-    if (shape.dimensions(i) != 1) {
-      new_permutation.push_back(perm[i]);
-    } else {
-      ++degenerate_count;
-    }
-  }
-  return degenerate_count > 0 && absl::c_is_sorted(new_permutation);
-}
-
-bool IsPermutationOfIota(absl::Span<const int64_t> elems) {
-  absl::InlinedVector<int64_t, 8> sorted(elems.begin(), elems.end());
-  absl::c_sort(sorted);
-  for (int i = 0; i < sorted.size(); i++) {
-    if (sorted[i] != i) {
-      return false;
-    }
-  }
-  return true;
-}
-
-}  // namespace
 
 Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
   auto operand = transpose->mutable_operand(0);
@@ -5966,10 +6014,12 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
 
   // Replace transpose with a reshape if more than one degenerate method is
   // permuted.
-  if (OnlyPermutesDegenerateDims(transpose->shape(), transpose->dimensions())) {
+  if (OnlyPermutesDegenerateDims(transpose->shape(), transpose->dimensions()) &&
+      transpose->operand(0)->opcode() == HloOpcode::kReshape) {
     return ReplaceWithNewInstruction(
         transpose, HloInstruction::CreateReshape(
-                       transpose->shape(), transpose->mutable_operand(0)));
+                       transpose->shape(),
+                       transpose->mutable_operand(0)->mutable_operand(0)));
   }
 
   if (operand->opcode() == HloOpcode::kRng && operand->user_count() == 1) {
