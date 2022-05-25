@@ -84,8 +84,8 @@ export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} \
     -//tensorflow/python/ops/parallel_for:math_test"
 export TF_PIP_TESTS="test_pip_virtualenv_clean"
 export TF_TEST_FILTER_TAGS="-no_oss,-oss_serial,-no_oss_py${py_ver},-gpu,-tpu,-benchmark-test,-v1only,-no_aarch64,-requires-gpu"
-export IS_NIGHTLY=0 # Not nightly; uncomment if building from tf repo.
-export TF_PROJECT_NAME="aws_tensorflow_cpu"
+export IS_NIGHTLY=0
+export TF_PROJECT_NAME="tensorflow_cpu_aws"
 export TF_PIP_TEST_ROOT="pip_test"
 export TF_AUDITWHEEL_TARGET_PLAT="manylinux2014"
 
