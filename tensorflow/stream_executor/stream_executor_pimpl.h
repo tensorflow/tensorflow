@@ -559,6 +559,12 @@ class StreamExecutor {
     return implementation_.get();
   }
 
+  // Returns a stream allocated by this executor, or nullptr if not found.
+  // Performs linear search over alive GPU streams.
+  Stream* FindAllocatedStream(void* gpu_stream) {
+    return implementation()->FindAllocatedStream(gpu_stream);
+  }
+
  private:
   template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
             typename... BeginArgsT>

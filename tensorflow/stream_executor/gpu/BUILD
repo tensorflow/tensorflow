@@ -119,6 +119,7 @@ cc_library(
         "//tensorflow/stream_executor:stream_executor_pimpl_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],

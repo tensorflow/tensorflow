@@ -142,6 +142,19 @@ cc_library(
 )
 
 tf_cuda_cc_test(
+    name = "stream_search_test",
+    size = "small",
+    srcs = ["stream_search_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor/host:host_platform",
+    ],
+)
+
+tf_cuda_cc_test(
     name = "cuda_driver_test",
     srcs = ["cuda_driver_test.cc"],
     tags = tf_cuda_tests_tags() + [

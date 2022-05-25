@@ -115,10 +115,6 @@ class Stream {
   // StreamExecutor's platform.
   explicit Stream(StreamExecutor *parent);
 
-  // Create stream for an existing stream handle.
-  Stream(StreamExecutor *parent,
-         std::unique_ptr<internal::StreamInterface> implementation);
-
   // Deallocates any stream resources that the parent StreamExecutor has
   // bestowed
   // upon this object.
@@ -2113,7 +2109,7 @@ class Stream {
   // Whether Init() was successfully called to allocate this stream on the
   // underlying platform. It simply flips from 0 to 1 with a sanity check.
   // See StreamExecutor::AllocateStream.
-  bool allocated_ TF_GUARDED_BY(mu_);
+  bool allocated_ TF_GUARDED_BY(mu_) = false;
 
   // The last error (if any) of all method calls.
   port::Status status_ TF_GUARDED_BY(mu_);
@@ -2129,10 +2125,6 @@ class Stream {
   // notes when they can be reclaimed -- reclamation is attempted when
   // BlockHostUntilDone() is called.
   internal::TemporaryMemoryManager temporary_memory_manager_;
-
-  // Whether the stream resources are managed externally: that is, whether the
-  // destructor of the stream needs to deallocate it.
-  bool managed_externally_ = false;
 
   // Callbacks enqueued to be run after the next call to BlockHostUntilDone().
   std::vector<std::function<void()>> after_block_host_until_done_callbacks_
