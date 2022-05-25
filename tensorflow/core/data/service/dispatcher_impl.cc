@@ -75,9 +75,9 @@ constexpr char kJournalDir[] = "tf_data_dispatcher_journal";
 // The name of the datasets directory inside the dispatcher's working directory.
 constexpr char kDatasetsDir[] = "datasets";
 constexpr int64_t kDefaultIterationGcCheckIntervalMs =
-    10 * 60 * 1000;                                               // 10 minutes.
-constexpr int64_t kDefaultIterationGcTimeoutMs = 5 * 60 * 1000;   // 5 minutes.
-constexpr int64_t kDefaultClientTimeoutMs = 2 * 60 * 1000;        // 2 minutes.
+    10 * 60 * 1000;                                              // 10 minutes.
+constexpr int64_t kDefaultIterationGcTimeoutMs = 5 * 60 * 1000;  // 5 minutes.
+constexpr int64_t kDefaultClientTimeoutMs = 2 * 60 * 1000;       // 2 minutes.
 
 constexpr std::array<const char*, 8> kNodeNameSharingOps = {
     "HashTable",
@@ -93,6 +93,7 @@ constexpr std::array<const char*, 8> kNodeNameSharingOps = {
 using DispatcherConfig = experimental::DispatcherConfig;
 using Dataset = DispatcherState::Dataset;
 using Worker = DispatcherState::Worker;
+using Job = DispatcherState::Job;
 using IterationKey = DispatcherState::IterationKey;
 using Iteration = DispatcherState::Iteration;
 using Task = DispatcherState::Task;
@@ -216,7 +217,7 @@ Status DataServiceDispatcherImpl::Start() {
     }
   }
   for (const auto& iteration : state_.ListIterations()) {
-    if (IsDynamicShard(iteration->processing_mode)) {
+    if (IsDynamicShard(iteration->job->processing_mode)) {
       TF_RETURN_IF_ERROR(RestoreSplitProviders(
           *iteration, split_providers_[iteration->iteration_id]));
     }
@@ -252,7 +253,8 @@ Status DataServiceDispatcherImpl::RestoreSplitProviders(
   const std::vector<int64_t>& indices =
       iteration.distributed_epoch_state.value().indices;
   std::vector<std::unique_ptr<SplitProvider>> split_providers;
-  TF_RETURN_IF_ERROR(MakeSplitProviders(iteration.dataset_id, split_providers));
+  TF_RETURN_IF_ERROR(
+      MakeSplitProviders(iteration.job->dataset_id, split_providers));
   for (int provider_index = 0; provider_index < indices.size();
        ++provider_index) {
     int index = indices[provider_index];
@@ -398,10 +400,10 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   int64_t iteration_id = request->iteration_id();
-  int64_t split_iteration = request->iteration();
+  int64_t repetition = request->repetition();
   int64_t provider_index = request->split_provider_index();
   VLOG(3) << "Received GetSplit request for iteration " << iteration_id
-          << ", iteration " << split_iteration << ", split provider index "
+          << ", repetition " << repetition << ", split provider index "
           << provider_index;
   std::shared_ptr<const Iteration> iteration;
   TF_RETURN_IF_ERROR(state_.IterationFromId(iteration_id, iteration));
@@ -410,13 +412,13 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
         "Cannot get split for iteration ", iteration_id,
         ", since it is not a distributed_epoch iteration.");
   }
-  int64_t current_iteration =
-      iteration->distributed_epoch_state.value().iterations[provider_index];
-  if (split_iteration < current_iteration) {
+  int64_t current_repetition =
+      iteration->distributed_epoch_state.value().repetitions[provider_index];
+  if (repetition < current_repetition) {
     response->set_end_of_splits(true);
-    VLOG(3) << "Returning end_of_splits since current iteration "
-            << current_iteration << " is greater than the requested iteration "
-            << iteration;
+    VLOG(3) << "Returning end_of_splits since current repetition "
+            << current_repetition
+            << " is greater than the requested repetition " << repetition;
     return Status::OK();
   }
   SplitProvider* split_provider =
@@ -425,7 +427,7 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
   Tensor split;
   bool end_of_splits = false;
   TF_RETURN_IF_ERROR(split_provider->GetNext(&split, &end_of_splits));
-  TF_RETURN_IF_ERROR(RecordSplitProduced(iteration_id, split_iteration,
+  TF_RETURN_IF_ERROR(RecordSplitProduced(iteration_id, repetition,
                                          request->split_provider_index(),
                                          end_of_splits));
   response->set_end_of_splits(end_of_splits);
@@ -537,6 +539,35 @@ Status DataServiceDispatcherImpl::GetDataServiceConfig(
   return Status::OK();
 }
 
+Status DataServiceDispatcherImpl::GetOrCreateJob(
+    const GetOrCreateJobRequest* request, GetOrCreateJobResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
+  VLOG(3) << "GetOrCreateJob(" << request->DebugString() << ")";
+  std::shared_ptr<const Job> job;
+  {
+    mutex_lock l(mu_);
+    std::string job_name;
+    if (request->optional_job_name_case() == GetOrCreateJobRequest::kJobName) {
+      job_name = request->job_name();
+    } else {
+      job_name = absl::StrCat("anonymous_job_", state_.NextAvailableJobId(),
+                              "_", random::New64());
+    }
+    Status s = state_.JobByName(job_name, job);
+    if (s.ok()) {
+      TF_RETURN_IF_ERROR(ValidateMatchingJob(job, *request));
+    } else if (errors::IsNotFound(s)) {
+      TF_RETURN_IF_ERROR(CreateJob(job_name, *request, job));
+    } else {
+      return s;
+    }
+    response->set_job_id(job->id);
+  }
+  VLOG(3) << "Received job id " << job->id << " for CreateJob("
+          << request->DebugString() << ")";
+  return Status::OK();
+}
+
 Status DataServiceDispatcherImpl::GetOrCreateIteration(
     const GetOrCreateIterationRequest* request,
     GetOrCreateIterationResponse* response) {
@@ -546,22 +577,15 @@ Status DataServiceDispatcherImpl::GetOrCreateIteration(
   std::vector<std::shared_ptr<const Task>> tasks;
   {
     mutex_lock l(mu_);
-    std::string iteration_name = request->iteration_key().name();
-    if (iteration_name.empty()) {
-      iteration_name =
-          absl::StrCat("anonymous_iteration_",
-                       state_.NextAvailableIterationId(), "_", random::New64());
-    }
-    IterationKey key(iteration_name, request->iteration_key().iteration());
+    std::shared_ptr<const Job> job;
+    TF_RETURN_IF_ERROR(state_.JobFromId(request->job_id(), job));
+    IterationKey key(job->job_name, request->repetition());
     Status s = state_.IterationByKey(key, iteration);
     if (!s.ok() && !errors::IsNotFound(s)) {
       return s;
     }
-    if (s.ok()) {
-      TF_RETURN_IF_ERROR(ValidateMatchingIteration(iteration, *request));
-    }
     if (errors::IsNotFound(s) || iteration->garbage_collected) {
-      TF_RETURN_IF_ERROR(CreateIteration(key, *request, iteration));
+      TF_RETURN_IF_ERROR(CreateIteration(*request, iteration));
       TF_RETURN_IF_ERROR(CreateTasksForIteration(iteration, tasks));
     }
     int64_t iteration_client_id;
@@ -595,8 +619,8 @@ Status DataServiceDispatcherImpl::MaybeRemoveTask(
         return errors::FailedPrecondition(
             "MaybeRemoveTask called on a non-round-robin task.");
       }
-      remover_ref =
-          std::make_shared<TaskRemover>(task->iteration->num_consumers.value());
+      remover_ref = std::make_shared<TaskRemover>(
+          task->iteration->job->num_consumers.value());
     }
     remover = remover_ref;
   }
@@ -636,78 +660,85 @@ Status DataServiceDispatcherImpl::ReleaseIterationClient(
   return Status::OK();
 }
 
-// Validates that the iteration matches the requested processing mode.
-Status DataServiceDispatcherImpl::ValidateMatchingIteration(
-    std::shared_ptr<const Iteration> iteration,
-    const GetOrCreateIterationRequest& request)
+// Validates that the job matches the requested processing mode.
+Status DataServiceDispatcherImpl::ValidateMatchingJob(
+    std::shared_ptr<const Job> job, const GetOrCreateJobRequest& request)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::string diff;
-  if (!MessageDifferencer::Equals(iteration->processing_mode,
+  if (!MessageDifferencer::Equals(job->processing_mode,
                                   request.processing_mode_def())) {
     strings::StrAppend(&diff, "Existing processing mode: <",
-                       iteration->processing_mode.ShortDebugString(),
-                       ">; got <",
+                       job->processing_mode.ShortDebugString(), ">; got <",
                        request.processing_mode_def().ShortDebugString(), ">. ");
   }
 
-  if (iteration->use_cross_trainer_cache != request.use_cross_trainer_cache()) {
+  if (job->use_cross_trainer_cache != request.use_cross_trainer_cache()) {
     strings::StrAppend(
         &diff, "Existing cross-trainer cache: <",
-        (iteration->use_cross_trainer_cache ? "enabled" : "disabled"),
-        ">; got <",
+        (job->use_cross_trainer_cache ? "enabled" : "disabled"), ">; got <",
         (request.use_cross_trainer_cache() ? "enabled" : "disabled"), ">. ");
   }
 
-  if (iteration->target_workers != request.target_workers()) {
+  if (job->target_workers != request.target_workers()) {
     strings::StrAppend(&diff, "Existing target workers: <",
-                       TargetWorkersToString(iteration->target_workers),
-                       ">; got <",
+                       TargetWorkersToString(job->target_workers), ">; got <",
                        TargetWorkersToString(request.target_workers()), ">. ");
   }
 
   if (!diff.empty()) {
     return errors::InvalidArgument(
-        "Tried to create job with name ", iteration->iteration_key.name,
+        "Tried to create job with name ", job->job_name,
         ", but found an existing job with different parameters: ", diff);
   }
   return Status::OK();
 }
 
+Status DataServiceDispatcherImpl::CreateJob(
+    const std::string& job_name, const GetOrCreateJobRequest& request,
+    std::shared_ptr<const Job>& job) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  TF_RETURN_IF_ERROR(ValidateProcessingMode(request.processing_mode_def()));
+  int64_t job_id = state_.NextAvailableJobId();
+  Update update;
+  CreateJobUpdate* create_job = update.mutable_create_job();
+  create_job->set_job_id(job_id);
+  create_job->set_job_name(job_name);
+  create_job->set_dataset_id(request.dataset_id());
+  *create_job->mutable_processing_mode_def() = request.processing_mode_def();
+  const bool is_coordinated_read = (request.optional_num_consumers_case() ==
+                                    GetOrCreateJobRequest::kNumConsumers);
+  if (is_coordinated_read) {
+    create_job->set_num_consumers(request.num_consumers());
+  }
+  create_job->set_target_workers(request.target_workers());
+  create_job->set_use_cross_trainer_cache(request.use_cross_trainer_cache());
+  TF_RETURN_IF_ERROR(Apply(update));
+  TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
+  tensorflow::metrics::RecordTFDataServiceJobsCreated(
+      request.processing_mode_def(), is_coordinated_read);
+  return Status::OK();
+}
+
 Status DataServiceDispatcherImpl::CreateIteration(
-    const IterationKey& iteration_key,
     const GetOrCreateIterationRequest& request,
     std::shared_ptr<const Iteration>& iteration)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  TF_RETURN_IF_ERROR(ValidateProcessingMode(request.processing_mode_def()));
   int64_t iteration_id = state_.NextAvailableIterationId();
   int64_t num_split_providers = 0;
-  if (IsDynamicShard(request.processing_mode_def())) {
-    TF_RETURN_IF_ERROR(MakeSplitProviders(request.dataset_id(),
-                                          split_providers_[iteration_id]));
+  std::shared_ptr<const Job> job;
+  TF_RETURN_IF_ERROR(state_.JobFromId(request.job_id(), job));
+  if (IsDynamicShard(job->processing_mode)) {
+    TF_RETURN_IF_ERROR(
+        MakeSplitProviders(job->dataset_id, split_providers_[iteration_id]));
     num_split_providers = split_providers_[iteration_id].size();
   }
   Update update;
   CreateIterationUpdate* create_iteration = update.mutable_create_iteration();
   create_iteration->set_iteration_id(iteration_id);
-  create_iteration->set_dataset_id(request.dataset_id());
-  *create_iteration->mutable_processing_mode_def() =
-      request.processing_mode_def();
+  create_iteration->set_repetition(request.repetition());
+  create_iteration->set_job_id(request.job_id());
   create_iteration->set_num_split_providers(num_split_providers);
-  create_iteration->mutable_iteration_key()->set_name(iteration_key.name);
-  create_iteration->mutable_iteration_key()->set_iteration(
-      iteration_key.iteration);
-  const bool is_coordinated_read = (request.optional_num_consumers_case() ==
-                                    GetOrCreateIterationRequest::kNumConsumers);
-  if (is_coordinated_read) {
-    create_iteration->set_num_consumers(request.num_consumers());
-  }
-  create_iteration->set_target_workers(request.target_workers());
-  create_iteration->set_use_cross_trainer_cache(
-      request.use_cross_trainer_cache());
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.IterationFromId(iteration_id, iteration));
-  tensorflow::metrics::RecordTFDataServiceJobsCreated(
-      request.processing_mode_def(), is_coordinated_read);
   return Status::OK();
 }
 
@@ -719,7 +750,7 @@ Status DataServiceDispatcherImpl::CreateTasksForWorker(
     if (iteration->finished) {
       continue;
     }
-    if (iteration->num_consumers.has_value()) {
+    if (iteration->job->num_consumers.has_value()) {
       TF_RETURN_IF_ERROR(CreatePendingTask(iteration, worker_address));
       continue;
     }
@@ -978,12 +1009,13 @@ Status DataServiceDispatcherImpl::GetWorkers(const GetWorkersRequest* request,
 Status DataServiceDispatcherImpl::PopulateTaskDef(
     std::shared_ptr<const Task> task, TaskDef* task_def) const
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  task_def->set_dataset_id(task->iteration->dataset_id);
+  task_def->set_dataset_id(task->iteration->job->dataset_id);
   task_def->set_iteration_id(task->iteration->iteration_id);
   task_def->set_worker_address(task->worker_address);
   task_def->set_task_id(task->task_id);
-  *task_def->mutable_processing_mode_def() = task->iteration->processing_mode;
-  if (IsStaticShard(task->iteration->processing_mode)) {
+  *task_def->mutable_processing_mode_def() =
+      task->iteration->job->processing_mode;
+  if (IsStaticShard(task->iteration->job->processing_mode)) {
     task_def->set_num_workers(config_.worker_addresses_size());
     TF_ASSIGN_OR_RETURN(int64_t worker_index,
                         state_.GetWorkerIndex(task->worker_address));
@@ -993,14 +1025,14 @@ Status DataServiceDispatcherImpl::PopulateTaskDef(
     task_def->set_num_split_providers(
         task->iteration->distributed_epoch_state.value().indices.size());
   }
-  if (task->iteration->num_consumers.has_value()) {
-    task_def->set_num_consumers(task->iteration->num_consumers.value());
+  if (task->iteration->job->num_consumers.has_value()) {
+    task_def->set_num_consumers(task->iteration->job->num_consumers.value());
   }
   task_def->set_use_cross_trainer_cache(
-      task->iteration->use_cross_trainer_cache);
+      task->iteration->job->use_cross_trainer_cache);
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(
-      state_.DatasetFromId(task->iteration->dataset_id, dataset));
+      state_.DatasetFromId(task->iteration->job->dataset_id, dataset));
   std::string dataset_key =
       DatasetKey(dataset->dataset_id, dataset->fingerprint);
   if (config_.work_dir().empty()) {
@@ -1024,12 +1056,12 @@ Status DataServiceDispatcherImpl::CheckStarted() TF_LOCKS_EXCLUDED(mu_) {
 }
 
 Status DataServiceDispatcherImpl::RecordSplitProduced(
-    int64_t iteration_id, int64_t iteration, int64_t split_provider_index,
+    int64_t iteration_id, int64_t repetition, int64_t split_provider_index,
     bool finished) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   Update update;
   ProduceSplitUpdate* produce_split = update.mutable_produce_split();
   produce_split->set_iteration_id(iteration_id);
-  produce_split->set_iteration(iteration);
+  produce_split->set_repetition(repetition);
   produce_split->set_split_provider_index(split_provider_index);
   produce_split->set_finished(finished);
   return Apply(update);
@@ -1152,15 +1184,16 @@ DispatcherStateExport DataServiceDispatcherImpl::ExportState() const
   for (const auto& iteration : iterations) {
     DispatcherStateExport::Iteration* iteration_export =
         dispatcher_state_export.add_iterations();
-    iteration_export->set_dataset_id(iteration->dataset_id);
+    iteration_export->set_dataset_id(iteration->job->dataset_id);
     iteration_export->set_iteration_id(iteration->iteration_id);
     iteration_export->mutable_iteration_key()->set_name(
         iteration->iteration_key.name);
     iteration_export->mutable_iteration_key()->set_iteration(
-        iteration->iteration_key.iteration);
-    *iteration_export->mutable_processing_mode() = iteration->processing_mode;
-    if (iteration->num_consumers) {
-      iteration_export->set_num_consumers(*iteration->num_consumers);
+        iteration->iteration_key.repetition);
+    *iteration_export->mutable_processing_mode() =
+        iteration->job->processing_mode;
+    if (iteration->job->num_consumers) {
+      iteration_export->set_num_consumers(*iteration->job->num_consumers);
     }
     iteration_export->set_num_clients(iteration->num_clients);
     iteration_export->set_finished(iteration->finished);

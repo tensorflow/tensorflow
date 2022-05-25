@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -47,6 +48,9 @@ Status DispatcherState::Apply(const Update& update) {
       break;
     case Update::kRegisterWorker:
       RegisterWorker(update.register_worker());
+      break;
+    case Update::kCreateJob:
+      CreateJob(update.create_job());
       break;
     case Update::kCreateIteration:
       CreateIteration(update.create_iteration());
@@ -108,22 +112,55 @@ void DispatcherState::RegisterWorker(
   worker_index_resolver_.AddWorker(address);
 }
 
+void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
+  int64_t job_id = create_job.job_id();
+  std::string job_name = create_job.job_name();
+  std::optional<int64_t> num_consumers;
+  if (create_job.optional_num_consumers_case() ==
+      CreateJobUpdate::kNumConsumers) {
+    num_consumers = create_job.num_consumers();
+  }
+  auto job = std::make_shared<Job>(
+      job_id, create_job.dataset_id(), create_job.processing_mode_def(),
+      job_name, num_consumers, create_job.use_cross_trainer_cache(),
+      create_job.target_workers());
+  DCHECK(!jobs_by_id_.contains(job_id));
+  jobs_by_id_[job_id] = job;
+  DCHECK(!jobs_by_name_.contains(job_name));
+  jobs_by_name_[job_name] = job;
+  next_available_job_id_ = std::max(next_available_job_id_, job_id + 1);
+}
+
+Status DispatcherState::JobFromId(int64_t job_id,
+                                  std::shared_ptr<const Job>& job) const {
+  auto it = jobs_by_id_.find(job_id);
+  if (it == jobs_by_id_.end()) {
+    return errors::NotFound("Job with id ", job_id, " not found");
+  }
+  job = it->second;
+  return Status::OK();
+}
+
+Status DispatcherState::JobByName(const std::string& job_name,
+                                  std::shared_ptr<const Job>& job) const {
+  auto it = jobs_by_name_.find(job_name);
+  if (it == jobs_by_name_.end()) {
+    return errors::NotFound("Job with name ", job_name, " not found");
+  }
+  job = it->second;
+  return Status::OK();
+}
+
 void DispatcherState::CreateIteration(
     const CreateIterationUpdate& create_iteration) {
   int64_t iteration_id = create_iteration.iteration_id();
-  IterationKey iteration_key(create_iteration.iteration_key().name(),
-                             create_iteration.iteration_key().iteration());
-  absl::optional<int64_t> num_consumers;
-  if (create_iteration.optional_num_consumers_case() ==
-      CreateIterationUpdate::kNumConsumers) {
-    num_consumers = create_iteration.num_consumers();
-  }
+  int64_t job_id = create_iteration.job_id();
+  DCHECK(jobs_by_id_.contains(job_id));
+  auto& job = jobs_by_id_[job_id];
+  DCHECK(job);
+  IterationKey iteration_key(job->job_name, create_iteration.repetition());
   auto iteration = std::make_shared<Iteration>(
-      iteration_id, create_iteration.dataset_id(),
-      create_iteration.processing_mode_def(),
-      create_iteration.num_split_providers(), iteration_key, num_consumers,
-      create_iteration.use_cross_trainer_cache(),
-      create_iteration.target_workers());
+      iteration_id, iteration_key, create_iteration.num_split_providers(), job);
   DCHECK(!iterations_.contains(iteration_id));
   iterations_[iteration_id] = iteration;
   tasks_by_iteration_[iteration_id] = std::vector<std::shared_ptr<Task>>();
@@ -140,9 +177,9 @@ void DispatcherState::ProduceSplit(const ProduceSplitUpdate& produce_split) {
   DCHECK(iteration->distributed_epoch_state.has_value());
   DistributedEpochState& state = iteration->distributed_epoch_state.value();
   int64_t provider_index = produce_split.split_provider_index();
-  DCHECK_EQ(produce_split.iteration(), state.iterations[provider_index]);
+  DCHECK_EQ(produce_split.repetition(), state.repetitions[provider_index]);
   if (produce_split.finished()) {
-    state.iterations[provider_index]++;
+    state.repetitions[provider_index]++;
     state.indices[provider_index] = 0;
     return;
   }
@@ -231,7 +268,7 @@ void DispatcherState::ClientHeartbeat(
   }
   if (client_heartbeat.task_accepted()) {
     task.ready_consumers.insert(iteration_client_id);
-    if (task.ready_consumers.size() == iteration->num_consumers.value()) {
+    if (task.ready_consumers.size() == iteration->job->num_consumers.value()) {
       VLOG(1) << "Promoting task " << task.task->task_id
               << " from pending to active";
       task.task->starting_round = task.target_round;
@@ -341,11 +378,15 @@ Status DispatcherState::IterationByKey(
     std::shared_ptr<const Iteration>& iteration) const {
   auto it = iterations_by_key_.find(iteration_key);
   if (it == iterations_by_key_.end()) {
-    return errors::NotFound("Iteration key (", iteration_key.name, ", ",
-                            iteration_key.iteration, ") not found");
+    return errors::NotFound("Iteration key ", iteration_key.DebugString(),
+                            " not found");
   }
   iteration = it->second;
   return Status::OK();
+}
+
+int64_t DispatcherState::NextAvailableJobId() const {
+  return next_available_job_id_;
 }
 
 int64_t DispatcherState::NextAvailableIterationId() const {

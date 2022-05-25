@@ -287,7 +287,8 @@ Status RoundRobinTaskRunner::PrepareRound(const GetElementRequest& req) {
         req.round_index(), ", but the current round has already reached ",
         current_round_,
         ". This may indicate that the consumer was restarted with the same "
-        "iteration name.");
+        "iteration "
+        "name.`");
   }
   return prefetch_thread_.GetStatus();
 }

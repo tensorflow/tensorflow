@@ -282,7 +282,7 @@ TEST(DataServiceTest, DispatcherStateExport) {
                   .iterations(0)
                   .iteration_key()
                   .name(),
-              HasSubstr("anonymous_iteration"));
+              HasSubstr("anonymous_job"));
   EXPECT_EQ(
       server_state_export.dispatcher_state_export().iterations(0).num_clients(),
       1);

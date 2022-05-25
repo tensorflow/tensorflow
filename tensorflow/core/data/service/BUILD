@@ -427,6 +427,7 @@ tf_cc_test(
     name = "grpc_dispatcher_impl_test",
     srcs = ["grpc_dispatcher_impl_test.cc"],
     deps = [
+        ":common",
         ":common_proto_cc",
         ":credentials_factory",
         ":dispatcher_proto_cc",
