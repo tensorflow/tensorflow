@@ -185,6 +185,12 @@ absl::StatusOr<GraphDef> QuantizePTQModelPreCalibration(
   mlir::PassManager pm(&context);
 
   pm.addPass(mlir::createCanonicalizerPass());
+  // Freeze variables as constants.
+  pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
+  pm.addPass(mlir::createInlinerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass());
+
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
   // TODO(b/230426953): Add TFShapeInferencePass to infer shapes for unranked
   // types. pm.addPass(mlir::TF::CreateTFShapeInferencePass());
