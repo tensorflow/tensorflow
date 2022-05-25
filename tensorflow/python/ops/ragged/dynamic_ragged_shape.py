@@ -596,8 +596,8 @@ class DynamicRaggedShape(extension_type.ExtensionType):
     elif rank is not None and axis >= rank:
       raise IndexError("Expected axis=%s < rank=%s" % (axis, rank))
     else:
-      return ((axis == 0 or axis > len(self._row_partitions)) or
-              self._row_partitions[axis - 1].is_uniform())
+      return ((axis == 0 or axis > len(self._row_partitions))  # pylint:disable=superfluous-parens
+              or self._row_partitions[axis - 1].is_uniform())
 
   @property
   def rank(self):
