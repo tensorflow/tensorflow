@@ -113,6 +113,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/reduction_dimension_grouper.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_layout_normalizer.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_splitter.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime_intrinsics.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
@@ -436,6 +437,7 @@ Status GpuCompiler::OptimizeHloModule(
         /*expansion_type=*/LogisticExpansionType::kExp);
     pipeline.AddPass<ConditionalCanonicalizer>();
     pipeline.AddPass<DynamicDimensionSimplifier>();
+
     DynamicPadderOptions dynamic_padder_options;
 
     switch (hlo_module->config().debug_options().xla_gpu_shape_checks()) {
@@ -446,6 +448,15 @@ Status GpuCompiler::OptimizeHloModule(
       case DebugOptions::RUNTIME: {
         dynamic_padder_options.shape_check_mode =
             DynamicDimensionInference::ShapeCheckMode::kRuntime;
+        dynamic_padder_options.assertion_generator = [&](HloInstruction* inst) {
+          auto created = Cast<HloCustomCallInstruction>(
+              inst->parent()->AddInstruction(HloInstruction::CreateCustomCall(
+                  ShapeUtil::MakeTokenShape(), {inst},
+                  kXlaGpuAssertCustomCallTag,
+                  "Buffers have different size at runtime",
+                  API_VERSION_STATUS_RETURNING)));
+          created->set_custom_call_has_side_effect(true);
+        };
         break;
       }
       case DebugOptions::COMPILE_TIME:
