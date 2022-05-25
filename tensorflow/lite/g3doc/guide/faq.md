@@ -8,7 +8,7 @@ detailed documentation for the topic or file a
 
 #### What formats are supported for conversion from TensorFlow to TensorFlow Lite?
 
-The supported formats are listed [here](../convert/index#python_api)
+The supported formats are listed [here](../models/convert/index#python_api)
 
 #### Why are some operations not implemented in TensorFlow Lite?
 
@@ -19,7 +19,7 @@ In order to keep TFLite lightweight, only certain TF operators (listed in the
 
 Since the number of TensorFlow Lite operations is smaller than TensorFlow's,
 some models may not be able to convert. Some common errors are listed
-[here](../convert/index#conversion-errors).
+[here](../models/convert/index#conversion-errors).
 
 For conversion issues not related to missing operations or control flow ops,
 search our

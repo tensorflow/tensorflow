@@ -7,8 +7,8 @@ among many others.
 
 This page shows how you can start running TensorFlow Lite models with Python in
 just a few minutes. All you need is a TensorFlow model [converted to TensorFlow
-Lite](../convert/). (If you don't have a model converted yet, you can experiment
-using the model provided with the example linked below.)
+Lite](../models/convert/). (If you don't have a model converted yet, you can
+experiment using the model provided with the example linked below.)
 
 ## About the TensorFlow Lite runtime package
 
@@ -24,7 +24,7 @@ Python class. This small package is ideal when all you want to do is execute
 `.tflite` models and avoid wasting disk space with the large TensorFlow library.
 
 Note: If you need access to other Python APIs, such as the
-[TensorFlow Lite Converter](../convert/), you must install the
+[TensorFlow Lite Converter](../models/convert/), you must install the
 [full TensorFlow package](https://www.tensorflow.org/install/).
 For example, the [Select TF ops]
 (https://www.tensorflow.org/lite/guide/ops_select) are not included in the
@@ -112,7 +112,7 @@ models.
   [Coral examples on GitHub](https://github.com/google-coral/tflite/tree/master/python/examples).
 
 * To convert other TensorFlow models to TensorFlow Lite, read about the
-  [TensorFlow Lite Converter](../convert/).
+  [TensorFlow Lite Converter](../models/convert/).
 
 * If you want to build `tflite_runtime` wheel, read
   [Build TensorFlow Lite Python Wheel Package](build_cmake_pip.md)
