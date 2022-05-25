@@ -166,6 +166,18 @@ cc_test(
 )
 
 cc_library(
+    name = "unidirectional_sequence_lstm_test_util",
+    testonly = 1,
+    hdrs = ["unidirectional_sequence_lstm_test_util.h"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_benchmark//:benchmark",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "test_util",
     testonly = 1,
     srcs = ["test_util.cc"],
@@ -249,6 +261,7 @@ cc_library(
         ":test_util_delegate_providers",
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools:command_line_flags",
+        "@com_google_benchmark//:benchmark",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1418,7 +1431,9 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        ":unidirectional_sequence_lstm_test_util",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_benchmark//:benchmark",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
