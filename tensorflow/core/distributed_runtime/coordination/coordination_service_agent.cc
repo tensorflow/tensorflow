@@ -84,8 +84,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   StatusOr<std::string> GetKeyValue(const std::string& key) override;
   StatusOr<std::string> GetKeyValue(const std::string& key,
                                     absl::Duration timeout) override;
-  void GetKeyValueAsync(const std::string& key,
-                        StatusOrValueCallback done) override;
+  std::shared_ptr<CallOptions> GetKeyValueAsync(
+      const std::string& key, StatusOrValueCallback done) override;
   StatusOr<std::string> TryGetKeyValue(const std::string& key) override;
   StatusOr<std::vector<KeyValueEntry>> GetKeyValueDir(
       const std::string& key) override;
@@ -120,7 +120,6 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   const uint64_t incarnation_id_ = random::New64();
   CoordinatedTask task_;
   CoordinationServiceConfig configs_;
-  std::unique_ptr<CoordinationClient> leader_client_;
   StatusCallback error_fn_;
 
   enum class State {
@@ -141,7 +140,10 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   condition_variable heartbeat_thread_cv_;
   bool shutting_down_ TF_GUARDED_BY(heartbeat_thread_shutdown_mu_) = false;
   std::unique_ptr<Thread> heartbeat_thread_;
+  // Must outlive coordination client which may need to access it within
+  // GetKeyValueAsync() callbacks.
   CancellationManager cancellation_manager_;
+  std::unique_ptr<CoordinationClient> leader_client_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CoordinationServiceAgentImpl);
 };
@@ -506,7 +508,7 @@ StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
   return *result;
 }
 
-void CoordinationServiceAgentImpl::GetKeyValueAsync(
+std::shared_ptr<CallOptions> CoordinationServiceAgentImpl::GetKeyValueAsync(
     const std::string& key, StatusOrValueCallback done) {
   auto request = std::make_shared<GetKeyValueRequest>();
   request->set_key(key);
@@ -519,7 +521,7 @@ void CoordinationServiceAgentImpl::GetKeyValueAsync(
       token, [call_opts]() { call_opts->StartCancel(); });
   if (already_cancelled) {
     done(errors::Cancelled("GetKeyValueAsync() was cancelled."));
-    return;
+    return call_opts;
   }
   leader_client_->GetKeyValueAsync(
       call_opts.get(), request.get(), response.get(),
@@ -536,6 +538,7 @@ void CoordinationServiceAgentImpl::GetKeyValueAsync(
           done(response->kv().value());
         }
       });
+  return call_opts;
 }
 
 StatusOr<std::string> CoordinationServiceAgentImpl::TryGetKeyValue(

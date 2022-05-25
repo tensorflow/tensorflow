@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_AGENT_H_
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -161,8 +162,9 @@ class CoordinationServiceAgent {
   virtual StatusOr<std::string> GetKeyValue(const std::string& key) = 0;
   virtual StatusOr<std::string> GetKeyValue(const std::string& key,
                                             absl::Duration timeout) = 0;
-  virtual void GetKeyValueAsync(const std::string& key,
-                                StatusOrValueCallback done) = 0;
+  // Note: Cancel the underlying RPC call with `call_opts->StartCancel()`.
+  virtual std::shared_ptr<CallOptions> GetKeyValueAsync(
+      const std::string& key, StatusOrValueCallback done) = 0;
 
   // Get config key-value from the service.
   // If the key-value does not exist, this call returns NotFound error.

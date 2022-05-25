@@ -268,6 +268,31 @@ TEST_F(CoordinationServiceAgentTest,
   EXPECT_EQ(result.ValueOrDie(), test_value);
 }
 
+TEST_F(CoordinationServiceAgentTest, CancelGetKeyValue_Success) {
+  const std::string test_key = "test_key";
+  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
+      .WillByDefault(
+          WithArgs<0, 3>([](CallOptions* call_opts, StatusCallback done) {
+            // Mock RPC call cancellation.
+            call_opts->SetCancelCallback([callback = std::move(done)]() {
+              callback(errors::Cancelled("RPC call cancelled."));
+            });
+          }));
+  InitializeAgent();
+
+  Status status;
+  std::shared_ptr<CallOptions> get_kv_call_opts = agent_->GetKeyValueAsync(
+      test_key, [&status](const StatusOr<std::string>& result) {
+        status = result.status();
+      });
+  get_kv_call_opts->StartCancel();
+
+  EXPECT_TRUE(errors::IsCancelled(status)) << status;
+  // This is to prevent memory leaks due to how we set this particular cancel
+  // callback. In practice, this should not be necessary.
+  get_kv_call_opts->ClearCancelCallback();
+}
+
 TEST_F(CoordinationServiceAgentTest, TryGetKeyValue_Simple_Success) {
   const std::string& test_key = "test_key";
   const std::string& test_value = "test_value";
