@@ -53,8 +53,11 @@ namespace tpu {
 namespace {
 
 static std::string GetEnvVar(const char* name) {
-  // Constructing a std::string directly from nullptr is undefined behavior.
-  return absl::StrCat(getenv(name));
+  // Constructing a std::string directly from nullptr is undefined behavior so
+  // we can return empty string in that case
+  const char* env_value = getenv(name);
+  if (!env_value) return "";
+  return std::string(env_value);
 }
 
 bool GetEnvBool(const char* name, bool defval) {
