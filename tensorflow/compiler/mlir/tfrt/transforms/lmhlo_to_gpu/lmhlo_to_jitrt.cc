@@ -75,6 +75,12 @@ using mlir::memref::GetGlobalOp;
 
 class ConvertLmhloConstantToArgPass
     : public ConvertLmhloConstantToArgPassBase<ConvertLmhloConstantToArgPass> {
+ public:
+  ConvertLmhloConstantToArgPass() = default;
+  explicit ConvertLmhloConstantToArgPass(int64_t min_num_elements) {
+    this->min_num_elements_ = min_num_elements;
+  }
+
   void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry& registry) const override {
@@ -463,10 +469,14 @@ void ConvertLmhloConstantToArgPass::runOnOperation() {
   GlobalConstantsArgs cst_args = GetConstantArgs(module);
   patterns.insert<GetGlobalOpLowering>(ctx, cst_args);
 
-  // Set up conversion target to rewrite only GetGlobalOp and avoid any other
-  // canonicalizations that can break later passes.
+  // Set up conversion target to rewrite only GetGlobalOp larger than the
+  // threshold and avoid any other canonicalizations that can break later
+  // passes.
   ConversionTarget target(*ctx);
-  target.addIllegalOp<GetGlobalOp>();
+  target.addDynamicallyLegalOp<GetGlobalOp>([&](GetGlobalOp op) {
+    auto memref = op.getType();
+    return memref.getNumElements() < min_num_elements_;
+  });
   target.addLegalOp<ConstantOp, memref::ViewOp>();
 
   // TODO(ezhulenev): By adding MHLO and LMHLO to a set of legal dialects, we
@@ -514,13 +524,31 @@ std::unique_ptr<OperationPass<ModuleOp>> createConvertLmhloConstantToArgPass() {
   return std::make_unique<ConvertLmhloConstantToArgPass>();
 }
 
+std::unique_ptr<OperationPass<ModuleOp>> createConvertLmhloConstantToArgPass(
+    int64_t min_num_elements) {
+  return std::make_unique<ConvertLmhloConstantToArgPass>(min_num_elements);
+}
+
 std::unique_ptr<OperationPass<ModuleOp>> createConvertLmhloGpuToJitRtPass() {
   return std::make_unique<ConvertLmhloGpuToJitRtPass>();
 }
 
 void populateLmhloToJitRtPasses(mlir::OpPassManager& pm) {
-  pm.addPass(createConvertLmhloConstantToArgPass());
+  // Convert large global memrefs corresponding to XLA constants with arguments,
+  // so that compiled device kernels do not capture them.
+  //
+  // TODO(ezhulenev): Threshold should be consistent with the device kernel
+  // code generation. If constant will be embedded into the device module, we
+  // should not inline it too early. Currently it's hardcoded to `1` element.
+  pm.addPass(createConvertLmhloConstantToArgPass(/*min_num_elements=*/2));
+
+  // Small global constants will be embedded into the device modules.
   pm.addPass(createConvertLmhloToGpuBinaryPass());
+
+  // Convert remaining small global memrefs corresponding to constant arguments.
+  pm.addPass(createConvertLmhloConstantToArgPass());
+
+  // Lower all Gpu operations to the JitRt Gpu runtime intrinsics.
   pm.addPass(createConvertLmhloGpuToJitRtPass());
   pm.addPass(createConvertGpuToJitRtPass());
 }
