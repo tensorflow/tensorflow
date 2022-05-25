@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/tpu.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace grappler {
