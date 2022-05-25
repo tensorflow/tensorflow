@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace xla {
 
@@ -31,8 +32,8 @@ StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
     HloInstruction* done;
   };
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
-    // Find all all-reduce ops first as we can't modify the instructions while
-    // iterating through them.
+    // Find all supported collective ops first as we can't modify the
+    // instructions while iterating through them.
     std::vector<HloInstruction*> supported_collectives;
     for (HloInstruction* instruction : computation->instructions()) {
       if ((instruction->opcode() == HloOpcode::kAllReduce &&
@@ -40,7 +41,9 @@ StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
           (instruction->opcode() == HloOpcode::kAllGather &&
            convert_all_gather_(instruction)) ||
           (instruction->opcode() == HloOpcode::kCollectivePermute &&
-           convert_collective_permute_(instruction))) {
+           convert_collective_permute_(instruction)) ||
+          (instruction->opcode() == HloOpcode::kAllToAll &&
+           convert_all_to_all_(instruction))) {
         supported_collectives.push_back(instruction);
       }
     }
@@ -143,6 +146,39 @@ StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
         }
         TF_RETURN_IF_ERROR(
             computation->ReplaceInstruction(cp, collective_permute_done));
+        changed = true;
+        continue;
+      }
+      if (HloAllToAllInstruction* ata =
+              DynCast<HloAllToAllInstruction>(instruction)) {
+        HloComputation::Builder builder("all_to_all_async");
+        HloInstruction* parameter =
+            builder.AddInstruction(HloInstruction::CreateParameter(
+                /*parameter_number=*/0, instruction->operand(0)->shape(),
+                "param"));
+        HloInstruction* root = builder.AddInstruction(
+            instruction->CloneWithNewOperands(ata->shape(), {parameter}));
+        HloComputation* async_computation =
+            module->AddEmbeddedComputation(builder.Build(root));
+        // Send and Recv sync values for determining when communication is done.
+        Shape sync_shape = ShapeUtil::MakeScalarShape(U32);
+        std::vector<Shape> start_shapes = {parameter->shape(), root->shape(),
+                                           sync_shape, sync_shape};
+        HloInstruction* async_start =
+            computation->AddInstruction(HloInstruction::CreateAsyncStart(
+                ShapeUtil::MakeTupleShape(start_shapes),
+                instruction->operands(), async_computation));
+        HloInstruction* async_done =
+            computation->AddInstruction(HloInstruction::CreateAsyncDone(
+                root->shape(), async_start, async_computation));
+        async_start->set_metadata(ata->metadata());
+        async_start->CopyBackendConfigFrom(ata);
+        async_done->set_metadata(ata->metadata());
+        async_done->CopyBackendConfigFrom(ata);
+        if (should_update_schedule) {
+          replaced_pairs[ata] = ReplacedAsync{async_start, async_done};
+        }
+        TF_RETURN_IF_ERROR(computation->ReplaceInstruction(ata, async_done));
         changed = true;
         continue;
       }

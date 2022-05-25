@@ -91,6 +91,7 @@ cc_library(
         ":hlo",
         ":hlo_pass",
         ":shape_inference",
+        "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -101,6 +102,7 @@ tf_cc_test(
     deps = [
         ":async_collective_creator",
         ":hlo",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
