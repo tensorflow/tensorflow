@@ -181,19 +181,19 @@ static inline bool hasIntegralShapeType(Operation* op) {
 ///     }
 ///     absent={}
 ///   linalg.yield %result
-Value PreSparsify(Operation* op, llvm::SmallVector<Value, 2>& values,
+Value PreSparsify(Operation* op, llvm::SmallVector<Value, 2>& values, Type rtp,
                   OpBuilder* b) {
   // Apply for semi-ring operations that lower to elaborate code
-  // (any sign-op or an integral abs-op).
-  if (isa<mhlo::SignOp>(op) ||
+  // (any sign-op, any elt-wise conversion, or an integral abs-op).
+  if (isa<mhlo::SignOp>(op) || isa<mhlo::ConvertOp>(op) ||
       (isa<mhlo::AbsOp>(op) && hasIntegralShapeType(op))) {
     if (!sparse_tensor::getSparseTensorEncoding(op->getResult(0).getType()) &&
         !sparse_tensor::getSparseTensorEncoding(op->getOperand(0).getType()))
       return Value();
-    Type rtp = values[0].getType();
     Location loc = op->getLoc();
     auto semiring = b->create<sparse_tensor::UnaryOp>(loc, rtp, values[0]);
-    Block* present = b->createBlock(&semiring.presentRegion(), {}, rtp, loc);
+    Type itp = values[0].getType();
+    Block* present = b->createBlock(&semiring.presentRegion(), {}, itp, loc);
     b->setInsertionPointToStart(&semiring.presentRegion().front());
     values[0] = present->getArgument(0);
     return semiring;
@@ -739,7 +739,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
             ValueRange args) {
           Type inner_result_ty = getElementTypeOrSelf(output);
           auto argvec = llvm::to_vector<2>(args.take_front(inputs.size()));
-          auto semiring = PreSparsify(op, argvec, &rewriter);
+          auto semiring = PreSparsify(op, argvec, inner_result_ty, &rewriter);
           Value inner_result = mhlo::MhloOpToStdScalarOp::map<OpTy>(
               op, inner_result_ty, argvec, &rewriter);
           if (inner_result == nullptr) {
