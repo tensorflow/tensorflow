@@ -59,20 +59,6 @@ class InjectPrefetch : public TFDataOptimizerBase {
   bool autotune_ = true;
 };
 
-// This is an optimization that does not change the graph. It is used to check
-// whether the `inject_prefetch` optimization would modify the graph.
-class InjectPrefetchEligible : public InjectPrefetch {
- public:
-  InjectPrefetchEligible() = default;
-  ~InjectPrefetchEligible() override = default;
-
-  std::string name() const override { return "inject_prefetch_eligible"; }
-
-  Status OptimizeAndCollectStats(Cluster* cluster, const GrapplerItem& item,
-                                 GraphDef* output,
-                                 OptimizationStats* stats) override;
-};
-
 }  // namespace grappler
 }  // namespace tensorflow
 

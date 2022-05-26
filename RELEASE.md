@@ -50,6 +50,14 @@
         same dataset. See
         https://www.tensorflow.org/api_docs/python/tf/data/experimental/service#sharing_tfdata_service_with_concurrent_trainers
         for more details.
+    *   Added a new field, `inject_prefetch`, to
+        `tf.data.experimental.OptimizationOptions`. If it is set to `True`,
+        tf.data will now automatically add a `prefetch` transformation to
+        datasets that end in synchronous transformations. This enables data
+        generation to be overlapped with  data consumption. This may cause a
+        small increase in memory usage due to buffering. To enable this
+        behavior, set `inject_prefetch=True` in
+        `tf.data.experimental.OptimizationOptions`.
 
 *   `tf.math`:
 
