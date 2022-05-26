@@ -17,7 +17,6 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
-#include "base/integral_types.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
