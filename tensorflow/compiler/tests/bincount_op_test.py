@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for where op."""
+"""Tests for bincount op."""
 
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.compiler.tests import xla_test
@@ -23,7 +23,7 @@ from tensorflow.python.platform import test
 # pylint: enable=g-direct-tensorflow-import
 
 
-class WhereOpTest(xla_test.XLATestCase):
+class BincountOpTest(xla_test.XLATestCase):
 
   def testBincount(self):
     self.skipTest("TODO: this a dummy kernel")
