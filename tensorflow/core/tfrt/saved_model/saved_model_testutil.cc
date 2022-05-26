@@ -18,8 +18,10 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
+#include "third_party/tensorflow_serving/apis/prediction_log.pb.h"
 
 ABSL_FLAG(bool, enable_optimizer, true,
           "enable optimizations in CoreRT dialect (e.g., constant-folding)");
@@ -154,6 +156,53 @@ void ExpectTensorEqual(const tensorflow::Tensor& x, const tensorflow::Tensor& y,
       tensorflow::test::ExpectEqual(x, y);
       break;
   }
+}
+
+SavedModel::Options DefaultTpuModelOptions(
+    tensorflow::tfrt_stub::Runtime* runtime,
+    tensorflow::TfrtTpuInfraTarget tpu_target) {
+  SavedModel::Options options(runtime);
+  auto& compile_options = options.graph_execution_options.compile_options;
+  compile_options.variable_device =
+      "/job:localhost/replica:0/task:0/device:CPU:0";
+  compile_options.enable_optimizer = false;
+  compile_options.enable_native_ops = false;
+  compile_options.enable_grappler = true;
+  compile_options.tpu_target = tpu_target;
+  compile_options.hoist_invariant_ops = true;
+  compile_options.cost_threshold =
+      1024;  // Servo currently uses 1024 as threshold for TPU models
+
+  return options;
+}
+
+namespace {
+
+constexpr absl::string_view kWarmupRequestsRelativePath =
+    "/assets.extra/tf_serving_warmup_requests";
+
+}
+
+tensorflow::StatusOr<std::vector<tensorflow::serving::PredictRequest>>
+GetWarmupRequests(absl::string_view saved_model_dir) {
+  std::vector<tensorflow::serving::PredictRequest> requests;
+  const std::string kWarmupRequestPath =
+      absl::StrCat(saved_model_dir, kWarmupRequestsRelativePath);
+  std::unique_ptr<tensorflow::RandomAccessFile> tf_record_file;
+  TF_RETURN_IF_ERROR(tensorflow::Env::Default()->NewRandomAccessFile(
+      kWarmupRequestPath, &tf_record_file));
+  auto tf_record_file_reader =
+      std::make_unique<tensorflow::io::SequentialRecordReader>(
+          tf_record_file.get());
+  tensorflow::tstring record;
+  while (tf_record_file_reader->ReadRecord(&record).ok()) {
+    tensorflow::serving::PredictionLog log;
+    TF_RET_CHECK(log.ParseFromArray(record.data(), record.size()));
+    TF_RET_CHECK(log.has_predict_log());
+    requests.push_back(
+        std::move(*(log.mutable_predict_log()->mutable_request())));
+  }
+  return requests;
 }
 
 }  // namespace tfrt_stub

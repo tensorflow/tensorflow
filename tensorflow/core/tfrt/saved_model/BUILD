@@ -90,9 +90,13 @@ cc_library(
     deps = [
         ":saved_model",
         "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/tfrt/runtime",
+        "//tensorflow_serving/apis:predict_cc_proto",
+        "//tensorflow_serving/apis:prediction_log_cc_proto",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:tensor",
     ],
