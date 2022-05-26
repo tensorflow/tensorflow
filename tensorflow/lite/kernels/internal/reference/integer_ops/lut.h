@@ -23,7 +23,7 @@ namespace reference_integer_ops {
 template <typename InputT, typename OutputT>
 inline void LookupTable(const InputT* input_data, int num_elements,
                         const OutputT* lut, OutputT* output_data) {
-  for (int i = 0; i < num_elements; i++) {
+  for (int i = 0; i < num_elements; ++i) {
     output_data[i] = LUTLookup(input_data[i], lut);
   }
 }
