@@ -2800,6 +2800,10 @@ test_suite(
     name = "jitrt_executable_tests",
     tests = [
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_fusion_test",
+        "//tensorflow/compiler/xla/service/gpu/tests:gpu_kernel_tiling_test",
+        "//tensorflow/compiler/xla/service/gpu/tests:kernel_launch_test",
+        "//tensorflow/compiler/xla/tests:cholesky_test_gpu",
+        "//tensorflow/compiler/xla/tests:dot_operation_test_gpu",
     ],
 )
 
