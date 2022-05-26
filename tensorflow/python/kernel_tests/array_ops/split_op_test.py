@@ -402,6 +402,50 @@ class SplitOpTest(test.TestCase):
       splits = [1, 2]
       self.evaluate(array_ops.split(x, splits, axis=0))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testSplitVBigTensors(self):
+    # input tensor must be big enough to fall into specific implementation
+    input_shape = [1, 64, 32768]
+    x = np.linspace(start=1,
+                    stop=np.prod(input_shape),
+                    num=np.prod(input_shape),
+                    dtype=np.float32).reshape(input_shape)
+    split_axis = 1
+    size_splits_feed = [1] * input_shape[split_axis]
+
+    cpu_result = array_ops.split(x,
+                                 num_or_size_splits=size_splits_feed,
+                                 axis=split_axis)
+
+    for i in range(input_shape[split_axis]):
+      in_f = x[:, i, :].reshape(1, 1, 32768)
+      cpu_f = cpu_result[i]
+      self.assertAllEqual(in_f, cpu_f)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSplitVBigTensorsWithIrregularSplits(self):
+    # input tensor must be big enough to fall into specific implementation
+    input_shape = [1, 64, 32768]
+    x = np.linspace(start=1,
+                    stop=np.prod(input_shape),
+                    num=np.prod(input_shape),
+                    dtype=np.float32).reshape(input_shape)
+    split_axis = 1
+    size_splits_feed = [32, 16, 8, 4, 2, 1, 1]
+
+    cpu_result = array_ops.split(x,
+                                 num_or_size_splits=size_splits_feed,
+                                 axis=split_axis)
+
+    start = 0
+    for i in range(len(size_splits_feed)):
+      split_size = size_splits_feed[i]
+      in_f = x[:, start:start + split_size, :].reshape(1, split_size, 32768)
+      start += split_size
+
+      cpu_f = cpu_result[i]
+      self.assertAllEqual(in_f, cpu_f)
+
 
 if __name__ == "__main__":
   test.main()

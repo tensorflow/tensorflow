@@ -240,15 +240,14 @@ class SplitVOpCPUImpl {
       outputs[i] = static_cast<T*>(&result->flat<T>()(0));
     }
 
-    auto sub_split_func = [&split_sizes_vec, &p_data, elem_pkg, &outputs,
-                           line_elem_num](int32_t start_part,
-                                          int32_t end_part) {
+    auto sub_split_func = [&split_sizes_vec, &p_data, &outputs, line_elem_num](
+                              int32_t start_part, int32_t end_part) {
       int start = start_part * line_elem_num;
       int end = end_part * line_elem_num;
       uint32 times = 0;
       for (int32_t i = start; i < end;) {
         for (uint32 j = 0; j < split_sizes_vec.size(); ++j) {
-          const auto copy_elem_num = split_sizes_vec[j] * elem_pkg;
+          const auto copy_elem_num = split_sizes_vec[j] * line_elem_num;
           std::copy_n(p_data + i, copy_elem_num,
                       &(outputs[j][(start_part + times) * copy_elem_num]));
           i += copy_elem_num;
