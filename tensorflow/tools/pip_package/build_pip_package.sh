@@ -213,9 +213,6 @@ function prepare_src() {
   rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.so
   rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.so.[0-9].*
 
-  # Prevents pip package bloat in Linux and macOS. See b/228948031#comment17.
-  rm -f "${TMPDIR}"/tensorflow/python/lib_pywrap_tensorflow_internal.*
-
   # TODO(annarev): copy over API files from tensorflow/api/_vN to tensorflow/
   #   except tensorflow/api/_vN/lite/.
 
