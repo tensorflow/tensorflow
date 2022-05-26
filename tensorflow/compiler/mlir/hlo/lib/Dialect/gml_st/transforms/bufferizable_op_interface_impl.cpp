@@ -80,8 +80,6 @@ struct LoopOpInterface
     return true;
   }
 
-  bool isAllocationHoistingBarrier(Operation *op) const { return true; }
-
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
                           BufferizationState &state) const {
     auto loop_op = cast<LoopOp>(op);
