@@ -592,6 +592,12 @@ WorkerStateExport DataServiceWorkerImpl::ExportState() const {
   for (const auto& task : tasks_) {
     *worker_state_export.add_tasks() = Export(task.second->task_def);
   }
+  for (int64_t finished_task : finished_tasks_) {
+    worker_state_export.add_finished_task_ids(finished_task);
+  }
+  for (int64_t deleted_task : deleted_tasks_) {
+    worker_state_export.add_deleted_task_ids(deleted_task);
+  }
   return worker_state_export;
 }
 

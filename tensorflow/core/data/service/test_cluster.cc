@@ -74,6 +74,7 @@ Status TestCluster::AddWorker() {
   config.set_protocol(kProtocol);
   config.set_dispatcher_address(dispatcher_address_);
   config.set_worker_address("localhost:%port%");
+  config.set_heartbeat_interval_ms(config_.worker_heartbeat_interval_ms);
   TF_RETURN_IF_ERROR(NewWorkerServer(config, worker));
   TF_RETURN_IF_ERROR(worker->Start());
   worker_addresses_.push_back(absl::StrCat("localhost:", worker->BoundPort()));

@@ -196,6 +196,7 @@ tf_cc_test(
         ":export_proto_cc",
         ":test_cluster",
         ":test_util",
+        "@com_google_absl//absl/time",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
