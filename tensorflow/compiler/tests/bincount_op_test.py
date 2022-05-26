@@ -17,6 +17,7 @@
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bincount_ops
 from tensorflow.python.platform import test
 # pylint: enable=g-direct-tensorflow-import
@@ -26,8 +27,6 @@ class WhereOpTest(xla_test.XLATestCase):
 
   def testBincount(self):
     self.skipTest("TODO: this a dummy kernel")
-    """Test first form of where (return indices)."""
-
     with self.session() as sess:
       with self.test_scope():
         x = array_ops.placeholder(dtypes.int32)

@@ -2154,6 +2154,7 @@ tf_xla_py_test(
     ],
     deps = [
         ":xla_test",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:bincount_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
