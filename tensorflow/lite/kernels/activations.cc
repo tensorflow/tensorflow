@@ -1535,21 +1535,19 @@ TfLiteStatus GeluPrepare(TfLiteContext* context, TfLiteNode* node) {
   // lambda with capture. Add an if/else condition to avoid capture of
   // params->approximate.
   if (input->type == kTfLiteInt8) {
-    LUTPopulate<int8_t>(
-        input->params.scale, input->params.zero_point, output->params.scale,
-        output->params.zero_point,
-        params->approximate
-            ? [](float v) { return reference_ops::GeluTransform(true)(v); }
-            : [](float v) { return reference_ops::GeluTransform(false)(v); },
-        data->lut_int8);
+    LUTPopulate<int8_t>(input->params.scale, input->params.zero_point,
+                        output->params.scale, output->params.zero_point,
+                        params->approximate
+                            ? reference_ops::GeluTransformApproximate
+                            : reference_ops::GeluTransform,
+                        data->lut_int8);
   } else if (input->type == kTfLiteUInt8) {
-    LUTPopulate<uint8_t>(
-        input->params.scale, input->params.zero_point, output->params.scale,
-        output->params.zero_point,
-        params->approximate
-            ? [](float v) { return reference_ops::GeluTransform(true)(v); }
-            : [](float v) { return reference_ops::GeluTransform(false)(v); },
-        data->lut_uint8);
+    LUTPopulate<uint8_t>(input->params.scale, input->params.zero_point,
+                         output->params.scale, output->params.zero_point,
+                         params->approximate
+                             ? reference_ops::GeluTransformApproximate
+                             : reference_ops::GeluTransform,
+                         data->lut_uint8);
   }
   return GenericPrepare(context, node);
 }
