@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import bincount_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
@@ -692,6 +693,18 @@ class DefFunctionTest(xla_test.XLATestCase):
         return array_ops.unique(x).y
 
       self.assertAllClose(f(constant_op.constant([3.1, 3.2, 3.2])), [3.1, 3.2])
+
+  @test_util.disable_mlir_bridge('TODO(b/199737685): MLIR bridge does not'
+                                 'support tf.unique via jit_compile')
+  def testBincountCompilability(self):
+    self.skipTest("(TODO) There is only a dummy kernel")
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def f(x):
+        return bincount_ops.bincount(x)
+      x =constant_op.constant([1, 1, 2, 3, 2, 4, 4, 5])
+      self.assertAllClose(f(x), [0, 2, 2, 1, 2, 1])
 
   def testUpdateVariableMemoryUsage(self):
     with ops.device('device:{}:0'.format(self.device)):
