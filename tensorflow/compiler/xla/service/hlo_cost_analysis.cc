@@ -19,8 +19,10 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -1076,18 +1078,26 @@ Status HloCostAnalysis::HandleGather(const HloInstruction* gather) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleScatter(const HloInstruction* scatter) {
-  // Scatter accesses the equivalent of 3 update shapes (input, output, and
+Status HloCostAnalysis::HandleScatter(const HloInstruction* hlo) {
+  auto* scatter = Cast<HloScatterInstruction>(hlo);
+  // Scatter accesses the equivalent of 3N update shapes (input, output, and
   // updates), and the scatter indices.
-  int64_t update_size = GetShapeSize(scatter->operand(2)->shape());
+  int64_t total_update_size = 0;
+  for (int i = 0, n = scatter->scatter_operand_count(); i < n; ++i) {
+    int64_t update_size = GetShapeSize(scatter->scatter_updates()[i]->shape());
+    SetOperandBytesAccessed(i, update_size);
+    SetOperandBytesAccessed(n + 1 + i, update_size);
+    total_update_size += update_size;
+  }
+  int64_t scatter_indices_size =
+      GetShapeSize(scatter->scatter_indices()->shape());
+  SetOperandBytesAccessed(scatter->scatter_operand_count(),
+                          scatter_indices_size);
   current_properties_[kBytesAccessedKey] =
-      update_size * 3 + GetShapeSize(scatter->operand(1)->shape());
-  SetOperandBytesAccessed(0, update_size);
-  SetOperandBytesAccessed(1, GetShapeSize(scatter->operand(1)->shape()));
-  SetOperandBytesAccessed(2, update_size);
-  SetOutputBytesAccessed(update_size);
+      total_update_size * 3 + scatter_indices_size;
+  SetOutputBytesAccessed(total_update_size);
   const int64_t element_count =
-      ShapeUtil::ElementsIn(scatter->operand(2)->shape());
+      ShapeUtil::ElementsIn(scatter->scatter_updates()[0]->shape());
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
                       ProcessSubcomputation(scatter->to_apply()));
   for (const auto& property : sub_properties) {

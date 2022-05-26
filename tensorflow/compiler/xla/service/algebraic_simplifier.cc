@@ -453,10 +453,15 @@ bool AlgebraicSimplifierVisitor::Run(HloComputation* computation,
 
 bool AlgebraicSimplifierVisitor::SameShape(const HloInstruction* lhs,
                                            const HloInstruction* rhs) const {
+  return SameShape(lhs->shape(), rhs->shape());
+}
+
+bool AlgebraicSimplifierVisitor::SameShape(const Shape& lhs,
+                                           const Shape& rhs) const {
   if (options_.is_layout_sensitive()) {
-    return ShapeUtil::Equal(lhs->shape(), rhs->shape());
+    return ShapeUtil::Equal(lhs, rhs);
   } else {
-    return ShapeUtil::Compatible(lhs->shape(), rhs->shape());
+    return ShapeUtil::Compatible(lhs, rhs);
   }
 }
 
@@ -668,6 +673,28 @@ bool AlgebraicSimplifierVisitor::ReplaceInstructionIfCompatible(
     return false;
   }
   return ReplaceInstruction(old_instruction, new_instruction,
+                            /*preserve_sharding=*/true)
+      .ValueOrDie();
+}
+
+bool AlgebraicSimplifierVisitor::ReplaceInstructionIfCompatible(
+    HloInstruction* old_instruction,
+    absl::Span<HloInstruction* const> new_instructions) {
+  if (new_instructions.size() == 1) {
+    return ReplaceInstructionIfCompatible(old_instruction, new_instructions[0]);
+  }
+  CHECK(!new_instructions.empty());
+  if (!old_instruction->shape().IsTuple() ||
+      old_instruction->shape().tuple_shapes_size() != new_instructions.size()) {
+    return false;
+  }
+  for (int i = 0, n = new_instructions.size(); i < n; ++i) {
+    if (!SameShape(old_instruction->shape().tuple_shapes(i),
+                   new_instructions[i]->shape())) {
+      return false;
+    }
+  }
+  return ReplaceInstruction(old_instruction, MaybeMakeTuple(new_instructions),
                             /*preserve_sharding=*/true)
       .ValueOrDie();
 }
@@ -5899,22 +5926,29 @@ Status AlgebraicSimplifierVisitor::HandleSelect(HloInstruction* select) {
   return Status::OK();
 }
 
-Status AlgebraicSimplifierVisitor::HandleScatter(HloInstruction* scatter) {
-  if (ShapeUtil::IsZeroElementArray(scatter->operand(2)->shape()) &&
-      ReplaceInstructionIfCompatible(scatter, scatter->mutable_operand(0))) {
+Status AlgebraicSimplifierVisitor::HandleScatter(HloInstruction* hlo) {
+  auto* scatter = Cast<HloScatterInstruction>(hlo);
+
+  if (absl::c_all_of(scatter->scatter_updates(),
+                     [](const HloInstruction* updates) {
+                       return ShapeUtil::IsZeroElementArray(updates->shape());
+                     }) &&
+      ReplaceInstructionIfCompatible(scatter, scatter->scatter_operands())) {
     return Status::OK();
   }
-  if (ShapeUtil::IsZeroElementArray(scatter->operand(1)->shape()) &&
-      SameShape(scatter, scatter->operand(0)) &&
-      SameShape(scatter, scatter->operand(2))) {
+  if (scatter->scatter_operand_count() == 1 &&
+      ShapeUtil::IsZeroElementArray(scatter->scatter_indices()->shape()) &&
+      SameShape(scatter, scatter->scatter_operands()[0]) &&
+      SameShape(scatter, scatter->scatter_updates()[0])) {
     return ReplaceWithNewInstruction(
-        scatter, HloInstruction::CreateMap(
-                     scatter->shape(),
-                     {scatter->mutable_operand(0), scatter->mutable_operand(2)},
-                     scatter->to_apply()));
+        scatter, HloInstruction::CreateMap(scatter->shape(),
+                                           {scatter->scatter_operands()[0],
+                                            scatter->scatter_updates()[0]},
+                                           scatter->to_apply()));
   }
   return Status::OK();
 }
+
 Status AlgebraicSimplifierVisitor::HandleSort(HloInstruction* sort) {
   auto operand = sort->mutable_operand(0);
   int64_t dimension_to_sort = sort->dimensions(0);

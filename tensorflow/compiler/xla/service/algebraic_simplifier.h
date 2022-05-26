@@ -338,7 +338,7 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   Status HandleDynamicUpdateSlice(
       HloInstruction* dynamic_update_slice) override;
-  Status HandleScatter(HloInstruction* scatter) override;
+  Status HandleScatter(HloInstruction* hlo) override;
 
   Status HandleSelect(HloInstruction* select) override;
 
@@ -439,6 +439,11 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Updates uses and root instruction. Returns whether a replacement was made.
   bool ReplaceInstructionIfCompatible(HloInstruction* old_instruction,
                                       HloInstruction* new_instruction);
+  // Similar to above but tuplizes `new_instructions` if there are more than 1
+  // instructions.
+  bool ReplaceInstructionIfCompatible(
+      HloInstruction* old_instruction,
+      absl::Span<HloInstruction* const> new_instructions);
 
   // Returns whether the shape of the output of the given instructions are the
   // same for the purposes of simplification. If options_.is_layout_sensitive()
@@ -446,6 +451,9 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // (ShapeUtil::Equal). If options_.is_layout_sensitive() is false, then the
   // tests shape compatibility (ShapeUtil::Compatible).
   bool SameShape(const HloInstruction* lhs, const HloInstruction* rhs) const;
+
+  // Same as above but takes shape arguments directly.
+  bool SameShape(const Shape& lhs, const Shape& rhs) const;
 
   // A Broadcast that feeds an element-wise operation with a unique non-scalar
   // operand can sink to after the operation.

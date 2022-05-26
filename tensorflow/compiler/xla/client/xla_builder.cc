@@ -2411,26 +2411,52 @@ XlaOp XlaBuilder::Scatter(XlaOp input, XlaOp scatter_indices, XlaOp updates,
                           const XlaComputation& update_computation,
                           const ScatterDimensionNumbers& dimension_numbers,
                           bool indices_are_sorted, bool unique_indices) {
+  return Scatter(absl::MakeConstSpan(&input, 1), scatter_indices,
+                 absl::MakeConstSpan(&updates, 1), update_computation,
+                 dimension_numbers, indices_are_sorted, unique_indices);
+}
+
+XlaOp XlaBuilder::Scatter(absl::Span<const XlaOp> inputs, XlaOp scatter_indices,
+                          absl::Span<const XlaOp> updates,
+                          const XlaComputation& update_computation,
+                          const ScatterDimensionNumbers& dimension_numbers,
+                          bool indices_are_sorted, bool unique_indices) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(const Shape* input_shape, GetShapePtr(input));
+    if (inputs.empty()) {
+      return InvalidArgument("Scatter inputs cannot be empty.");
+    }
+    if (inputs.size() != updates.size()) {
+      return InvalidArgument(
+          "Scatter should have same number of inputs and updates: %d vs %d.",
+          inputs.size(), updates.size());
+    }
+    absl::InlinedVector<const Shape*, 3> operand_shapes;
+    operand_shapes.reserve(inputs.size() + 1 + updates.size());
+    for (const XlaOp& input : inputs) {
+      TF_ASSIGN_OR_RETURN(const Shape* input_shape, GetShapePtr(input));
+      operand_shapes.push_back(input_shape);
+    }
     TF_ASSIGN_OR_RETURN(const Shape* scatter_indices_shape,
                         GetShapePtr(scatter_indices));
-    TF_ASSIGN_OR_RETURN(const Shape* updates_shape, GetShapePtr(updates));
+    operand_shapes.push_back(scatter_indices_shape);
+    for (const XlaOp& update : updates) {
+      TF_ASSIGN_OR_RETURN(const Shape* update_shape, GetShapePtr(update));
+      operand_shapes.push_back(update_shape);
+    }
     TF_ASSIGN_OR_RETURN(const ProgramShape& to_apply_shape,
                         update_computation.GetProgramShape());
     TF_ASSIGN_OR_RETURN(Shape shape,
                         ShapeInference::InferScatterShape(
-                            {input_shape, scatter_indices_shape, updates_shape},
-                            to_apply_shape, dimension_numbers));
-    return ScatterInternal(shape, input, scatter_indices, updates,
+                            operand_shapes, to_apply_shape, dimension_numbers));
+    return ScatterInternal(shape, inputs, scatter_indices, updates,
                            update_computation, dimension_numbers,
                            indices_are_sorted, unique_indices);
   });
 }
 
 StatusOr<XlaOp> XlaBuilder::ScatterInternal(
-    const Shape& shape, XlaOp input, XlaOp scatter_indices, XlaOp updates,
-    const XlaComputation& update_computation,
+    const Shape& shape, absl::Span<const XlaOp> inputs, XlaOp scatter_indices,
+    absl::Span<const XlaOp> updates, const XlaComputation& update_computation,
     const ScatterDimensionNumbers& dimension_numbers, bool indices_are_sorted,
     bool unique_indices) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
@@ -2441,8 +2467,12 @@ StatusOr<XlaOp> XlaBuilder::ScatterInternal(
     *instr.mutable_scatter_dimension_numbers() = dimension_numbers;
 
     AddCalledComputation(update_computation, &instr);
-    return AddInstruction(std::move(instr), HloOpcode::kScatter,
-                          {input, scatter_indices, updates});
+    absl::InlinedVector<XlaOp, 3> operands;
+    operands.reserve(inputs.size() + 1 + updates.size());
+    absl::c_copy(inputs, std::back_inserter(operands));
+    operands.push_back(scatter_indices);
+    absl::c_copy(updates, std::back_inserter(operands));
+    return AddInstruction(std::move(instr), HloOpcode::kScatter, operands);
   });
 }
 
@@ -4837,6 +4867,16 @@ XlaOp Scatter(const XlaOp input, const XlaOp scatter_indices,
   return input.builder()->Scatter(input, scatter_indices, updates,
                                   update_computation, dimension_numbers,
                                   indices_are_sorted, unique_indices);
+}
+
+XlaOp Scatter(absl::Span<const XlaOp> inputs, XlaOp scatter_indices,
+              absl::Span<const XlaOp> updates,
+              const XlaComputation& update_computation,
+              const ScatterDimensionNumbers& dimension_numbers,
+              bool indices_are_sorted, bool unique_indices) {
+  return scatter_indices.builder()->Scatter(
+      inputs, scatter_indices, updates, update_computation, dimension_numbers,
+      indices_are_sorted, unique_indices);
 }
 
 void Send(const XlaOp operand, const ChannelHandle& handle) {

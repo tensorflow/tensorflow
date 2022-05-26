@@ -869,10 +869,15 @@ class XlaBuilder {
                 const XlaComputation& update_computation,
                 const ScatterDimensionNumbers& dimension_numbers,
                 bool indices_are_sorted = false, bool unique_indices = false);
+  XlaOp Scatter(absl::Span<const XlaOp> inputs, XlaOp scatter_indices,
+                absl::Span<const XlaOp> updates,
+                const XlaComputation& update_computation,
+                const ScatterDimensionNumbers& dimension_numbers,
+                bool indices_are_sorted = false, bool unique_indices = false);
 
   virtual StatusOr<XlaOp> ScatterInternal(
-      const Shape& shape, XlaOp input, XlaOp scatter_indices, XlaOp updates,
-      const XlaComputation& update_computation,
+      const Shape& shape, absl::Span<const XlaOp> inputs, XlaOp scatter_indices,
+      absl::Span<const XlaOp> updates, const XlaComputation& update_computation,
       const ScatterDimensionNumbers& dimension_numbers, bool indices_are_sorted,
       bool unique_indices);
 
@@ -1127,7 +1132,6 @@ class XlaBuilder {
 
   friend XlaOp ConcatInDim(XlaBuilder* builder,
                            absl::Span<const XlaOp> operands, int64_t dimension);
-
 
   friend XlaOp Select(XlaOp pred, XlaOp on_true, XlaOp on_false);
   friend XlaOp Tuple(XlaBuilder* builder, absl::Span<const XlaOp> elements);
@@ -1446,6 +1450,11 @@ class XlaBuilder {
                       absl::Span<const int64_t> slice_sizes,
                       bool indices_are_sorted);
   friend XlaOp Scatter(XlaOp input, XlaOp scatter_indices, XlaOp updates,
+                       const XlaComputation& update_computation,
+                       const ScatterDimensionNumbers& dimension_numbers,
+                       bool indices_are_sorted, bool unique_indices);
+  friend XlaOp Scatter(absl::Span<const XlaOp> inputs, XlaOp scatter_indices,
+                       absl::Span<const XlaOp> updates,
                        const XlaComputation& update_computation,
                        const ScatterDimensionNumbers& dimension_numbers,
                        bool indices_are_sorted, bool unique_indices);
@@ -2559,6 +2568,11 @@ XlaOp Gather(XlaOp input, XlaOp start_indices,
 
 // Enqueues a Scatter node onto the computation.
 XlaOp Scatter(XlaOp input, XlaOp scatter_indices, XlaOp updates,
+              const XlaComputation& update_computation,
+              const ScatterDimensionNumbers& dimension_numbers,
+              bool indices_are_sorted = false, bool unique_indices = false);
+XlaOp Scatter(absl::Span<const XlaOp> inputs, XlaOp scatter_indices,
+              absl::Span<const XlaOp> updates,
               const XlaComputation& update_computation,
               const ScatterDimensionNumbers& dimension_numbers,
               bool indices_are_sorted = false, bool unique_indices = false);
