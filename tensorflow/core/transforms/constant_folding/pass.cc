@@ -910,9 +910,11 @@ class MaterializeReductionIndices : public FolderPatternBase {
     if (!dialect_->IsReduction(op)) return failure();
 
     Operation *indices = op->getOperand(1).getDefiningOp();
+    // The reduction indices are already constant, there's nothing to do.
     if (!indices || dialect_->IsConstant(indices)) return failure();
 
     auto indices_shape = indices->getResult(0).getType().cast<ShapedType>();
+    if (!indices_shape.hasRank()) return failure();
     if (!indices_shape.getElementType().isInteger(32) &&
         indices_shape.getElementType().isInteger(64))
       return failure();
@@ -929,8 +931,10 @@ class MaterializeReductionIndices : public FolderPatternBase {
                                                   input_shape.getRank();
 
     if (!full_reduction) {
-      // TODO(chiahungduan): The logic of computing `full_reduction` looks weird
-      // in grappler, verify it again.
+      // A full reduction will generate a tensor of one of the shapes
+      // [], [1], [1, 1], [1, 1, ...]. Even if we do not know the number of
+      // elements in the output of the reduction, we may deduce it from reshape
+      // nodes following it.
       for (Operation *user : op->getResult(0).getUsers()) {
         full_reduction = false;
         if (!dialect_->IsReshape(user)) return failure();
@@ -944,10 +948,14 @@ class MaterializeReductionIndices : public FolderPatternBase {
       if (!full_reduction) return failure();
     }
 
+    // We know it's a full reduction. We can generate the full set of indices
+    // to reduce as a constant node.
     SmallVector<APInt> elements(indices_shape.getNumElements());
-    for (unsigned i = 0; i < indices_shape.getNumElements(); ++i)
+    for (unsigned i = 0; i < indices_shape.getNumElements(); ++i) {
       elements[i] =
           APInt(indices_shape.getElementType().getIntOrFloatBitWidth(), i);
+    }
+
     DenseElementsAttr const_attr =
         DenseElementsAttr::get(indices_shape, elements);
 
@@ -955,11 +963,12 @@ class MaterializeReductionIndices : public FolderPatternBase {
         rewriter, indices->getLoc(), indices->getName().getStringRef(),
         const_attr.getType(), TFOp(indices).controlRet(), const_attr);
     if (failed(const_op)) return failure();
-    rewriter.startRootUpdate(op);
-    op->setOperand(1, (*const_op)->getResults()[0]);
 
     if (TFOp(op).deviceAttr())
       (*const_op).setRequestedDevice(TFOp(op).deviceAttr());
+
+    rewriter.startRootUpdate(op);
+    op->setOperand(1, (*const_op)->getResults()[0]);
     rewriter.finalizeRootUpdate(op);
 
     return success();
@@ -976,29 +985,26 @@ class MaterializeFillNode : public FolderPatternBase {
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     if (helper_.DisableCompressedTensorOptimization()) return failure();
+    // Only handles single result op. Note that another result is control ret.
+    if (op->getNumResults() != 2) return failure();
 
     auto output_type = op->getResult(0).getType().cast<ShapedType>();
     if (!output_type.hasStaticShape()) return failure();
 
-    for (Value operand : TFOp(op).getNonControlOperands()) {
-      if (!operand.getDefiningOp() ||
-          !dialect_->IsConstant(operand.getDefiningOp()))
-        return failure();
-    }
-
     Operation *dim = op->getOperand(0).getDefiningOp();
     Operation *value = op->getOperand(1).getDefiningOp();
     if (!dim || !value) return failure();
-
-    ElementsAttr dim_attr = dim->getAttrOfType<ElementsAttr>("value");
+    // In grappler's constant folding, they also check if `dim` is constant.
+    // Which is redundant because it's constant property is never used.
+    if (!dialect_->IsConstant(value)) return failure();
 
     ElementsAttr const_attr = CreateElementsAttrOfTypeValues(
-        output_type.getElementType(),
-        dim_attr.getType().cast<ShapedType>().getShape(),
+        output_type.getElementType(), output_type.getShape(),
         {value->getAttrOfType<ElementsAttr>("value")});
 
     FailureOr<TFOp> const_op = ReplaceOpWithConstantTensor(
-        rewriter, op, const_attr, ArrayRef<StringRef>({"T", "index_type"}));
+        rewriter, op, const_attr,
+        /*exclude_attrs=*/ArrayRef<StringRef>({"T", "index_type"}));
     if (failed(const_op)) return failure();
 
     rewriter.replaceOp(op, (*const_op)->getResults());
@@ -1017,8 +1023,8 @@ class MaterializeConstantValuedNode : public FolderPatternBase {
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     if (helper_.DisableCompressedTensorOptimization()) return failure();
-
-    // TODO(chiahungduan): disable_compressed_tensor_optimization_
+    // Only handles single result op. Note that another result is control ret.
+    if (op->getNumResults() != 2) return failure();
 
     // FillOp is handled in MaterializeFillNode pattern.
     if (dialect_->IsFill(op)) return failure();
@@ -1050,7 +1056,7 @@ class MaterializeConstantValuedNode : public FolderPatternBase {
     if (failed(const_op)) return failure();
 
     rewriter.replaceOp(op, (*const_op)->getResults());
-    return failure();
+    return success();
   }
 };
 
