@@ -29,7 +29,7 @@ constexpr absl::string_view CoordinationErrorPayloadKey() {
 // Mark error as a coordination service error (as opposed to RPC
 // errors).
 inline Status MakeCoordinationError(Status s) {
-  s.SetPayload(CoordinationErrorPayloadKey(), "");
+  s.SetPayload(CoordinationErrorPayloadKey(), absl::Cord(""));
   return s;
 }
 
@@ -42,14 +42,16 @@ inline Status MakeCoordinationError(Status s, const CoordinatedTask& origin,
   CoordinationServiceError error;
   *error.mutable_source_task() = origin;
   error.set_is_reported_error(is_reported_error);
-  s.SetPayload(CoordinationErrorPayloadKey(), error.SerializeAsString());
+  s.SetPayload(CoordinationErrorPayloadKey(),
+               absl::Cord(error.SerializeAsString()));
   return s;
 }
 
 // Mark error as a coordination service error with payload.
 inline Status MakeCoordinationError(Status s,
                                     const CoordinationServiceError& payload) {
-  s.SetPayload(CoordinationErrorPayloadKey(), payload.SerializeAsString());
+  s.SetPayload(CoordinationErrorPayloadKey(),
+               absl::Cord(payload.SerializeAsString()));
   return s;
 }
 }  // namespace tensorflow

@@ -66,7 +66,7 @@ inline std::unordered_map<std::string, std::string> GetPayloads(
     const ::tensorflow::Status& status) {
   std::unordered_map<std::string, std::string> payloads;
   status.ForEachPayload(
-      [&payloads](tensorflow::StringPiece key, tensorflow::StringPiece value) {
+      [&payloads](tensorflow::StringPiece key, const absl::Cord& value) {
         payloads[std::string(key)] = std::string(value);
       });
   return payloads;
@@ -78,7 +78,7 @@ inline void InsertPayloads(
     ::tensorflow::Status& status,
     const std::unordered_map<std::string, std::string>& payloads) {
   for (const auto& payload : payloads) {
-    status.SetPayload(payload.first, payload.second);
+    status.SetPayload(payload.first, absl::Cord(payload.second));
   }
 }
 
@@ -87,7 +87,7 @@ inline void InsertPayloads(
 inline void CopyPayloads(const ::tensorflow::Status& from,
                          ::tensorflow::Status& to) {
   from.ForEachPayload(
-      [&to](tensorflow::StringPiece key, tensorflow::StringPiece value) {
+      [&to](tensorflow::StringPiece key, const absl::Cord& value) {
         to.SetPayload(key, value);
       });
 }

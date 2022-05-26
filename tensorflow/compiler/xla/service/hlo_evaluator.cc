@@ -412,18 +412,18 @@ Status MakeEvalErrorDueToParamOrInfeed() {
   absl::little_endian::Store32(
       const_cast<char*>(error_payload.data()),
       static_cast<uint32_t>(EvalErrorDetail::kDynamicValueDependence));
-  error.SetPayload(kEvalErrorDetailUrl, error_payload);
+  error.SetPayload(kEvalErrorDetailUrl, absl::Cord(std::move(error_payload)));
   return error;
 }
 
 absl::optional<EvalErrorDetail> ParseEvalErrorDetail(const Status& error) {
-  absl::optional<tensorflow::StringPiece> error_detail =
+  absl::optional<absl::Cord> error_detail =
       error.GetPayload(kEvalErrorDetailUrl);
   if (!error_detail.has_value() && error_detail->empty()) {
     return absl::nullopt;
   }
   return static_cast<EvalErrorDetail>(
-      absl::little_endian::Load32(error_detail->data()));
+      absl::little_endian::Load32(error_detail->Flatten().data()));
 }
 
 // A convenience wrapper to compute the while loop's argument's init value at
