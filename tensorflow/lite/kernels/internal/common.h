@@ -375,11 +375,11 @@ inline Integer FloorLog2(Integer n) {
   }
 }
 
-// The size of the LUT depends on the type of input. For uint8 and int8 inputs a
-// simple 256 entries LUT is used. For int16 inputs the high 9 bits are used for
-// indexing and the 7 remaining bits are used for interpolation. We thus use a
-// 513-entries LUT for int16 cases, 512 for the 9-bit indexing and 1 extra entry
-// to interpolate the last value.
+// The size of the LUT depends on the type of input. For uint8 and int8 inputs
+// we use a 256 entries LUT to map all the values in the (u)int8 range. For
+// int16 inputs the high 9 bits are used for indexing and the 7 remaining bits
+// are used for interpolation. We thus use a 513-entries LUT for int16 cases,
+// 512 for the 9-bit indexing and 1 extra entry to interpolate the last value.
 template <typename T>
 constexpr int LUTSize() {
   static_assert(std::is_same<T, uint8_t>::value ||
