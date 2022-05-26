@@ -1,4 +1,4 @@
-# Python quickstart
+# Quickstart for Linux-based devices with Python
 
 Using TensorFlow Lite with Python is great for embedded devices based on Linux,
 such as [Raspberry Pi](https://www.raspberrypi.org/){:.external} and
