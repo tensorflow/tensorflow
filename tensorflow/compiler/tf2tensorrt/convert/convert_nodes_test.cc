@@ -1819,15 +1819,10 @@ class ParameterizedOpConverterTestBase
                        const Status& expected_runtime_status,
                        const Matcher<std::vector<float>>& matcher,
                        const std::vector<DataType>& out_tf_types = {}) {
-    const auto& exp_dims =
-        std::vector<std::vector<int>>({expected_output_dims});
-    RunValidationAndConversion(node_def, expected_conversion_status, name,
-                               exp_dims);
-    if (expected_conversion_status.ok()) {
-      BuildAndRun(name, exp_dims, expected_runtime_status,
-                  std::vector<Matcher<std::vector<float>>>({matcher}),
-                  out_tf_types);
-    }
+    TestOpConverterMultiOut(
+        name, node_def, std::vector<std::vector<int>>({expected_output_dims}),
+        expected_conversion_status, expected_runtime_status,
+        std::vector<Matcher<std::vector<float>>>({matcher}), out_tf_types);
   }
 
  protected:
@@ -1925,12 +1920,12 @@ class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
   template <typename S>
   void RunTests(
       const OperationMap<S>& map,
-      std::map<std::string,
-               std::pair<std::function<NodeDef(DataType)>, std::vector<T>>>&
-          op_test_info,
+      std::map<std::string, std::pair<std::function<NodeDef(DataType)>,
+                                      std::vector<T>>>& op_test_info,
       const std::vector<std::vector<T>>& data) {
     // Test combinations of tensor vs weight inputs (except when both inputs are
     // weights).
+    const std::vector<DataType> bool_types{DT_BOOL}, default_types{};
     const DataType tf_type = get_tf_type();
     for (const bool operand_1_is_tensor : {true, false}) {
       for (const bool operand_2_is_tensor : {true, false}) {
@@ -1944,16 +1939,24 @@ class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
           }
 
           if (!operand_1_is_tensor && !operand_2_is_tensor) {
+            // In that case the only test which should be launched is in
+            // runExpectedToFailTest
             runExpectedToFailTest(op_name);
             continue;
           }
+
+          const bool flag =
+              op_name == "Greater" || op_name == "Less" || op_name == "Equal";
+          const std::vector<DataType>* out_tf_types =
+              flag ? &bool_types : &default_types;
           auto conv_status = Status::OK();
-          if (tf_type == DT_BOOL) {
+          if (tf_type == DT_BOOL || flag) {
             if (trt_mode_ == TrtTestMode::kImplicitBatch) {
               conv_status = errors::Unimplemented(
                   "Binary op: '", op_name,
                   "' is not supported in implicit batch mode");
-            } else if (!operand_1_is_tensor || !operand_2_is_tensor) {
+            } else if (!flag &&
+                       (!operand_1_is_tensor || !operand_2_is_tensor)) {
               conv_status = errors::InvalidArgument(
                   "Both inputs  of '", op_name, "' are expected to be tensors");
             }
@@ -1972,9 +1975,9 @@ class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
           }
 
           const NodeDef& node_def = op_test_info[op_name].first(tf_type);
-          TestOpConverter("my_binary", node_def, {2, 2, 2}, conv_status,
-                          Status::OK(),
-                          ElementsAreArray(op_test_info[op_name].second));
+          TestOpConverter(
+              "my_binary", node_def, {2, 2, 2}, conv_status, Status::OK(),
+              ElementsAreArray(op_test_info[op_name].second), *out_tf_types);
         }
       }
     }
@@ -3240,6 +3243,11 @@ TEST_P(OpConverter_FP32_FP16_BinaryTest, ConvertBinary) {
   ADD_OP("Minimum", ops::Minimum, {2, 2, 3, 3, 2, 2, 3, 3});
   ADD_OP("Maximum", ops::Maximum, {3, 6, 3, 6, 3, 6, 3, 6});
   ADD_OP("Pow", ops::Pow, {9, 36, 27, 216, 9, 36, 27, 216});
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+  ADD_OP("Greater", ops::Greater, {1, 1, 0, 1, 1, 1, 0, 1});
+  ADD_OP("Less", ops::Less, {0, 0, 0, 0, 0, 0, 0, 0});
+  ADD_OP("Equal", ops::Equal, {0, 0, 1, 0, 0, 0, 1, 0});
+#endif
 #undef ADD_OP
   std::vector<std::vector<float>> data = {
       {3, 6, 3, 6}, {3, 6}, {2, 3, 2, 3}, {2, 3}};

@@ -34,6 +34,11 @@ const BinaryOperationMapType* BinaryOperationMap() {
       {"Minimum", nvinfer1::ElementWiseOperation::kMIN},
       {"Maximum", nvinfer1::ElementWiseOperation::kMAX},
       {"Pow", nvinfer1::ElementWiseOperation::kPOW},
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+      {"Greater", nvinfer1::ElementWiseOperation::kGREATER},
+      {"Less", nvinfer1::ElementWiseOperation::kLESS},
+      {"Equal", nvinfer1::ElementWiseOperation::kEQUAL},
+#endif
   });
   return map;
 }
@@ -70,11 +75,17 @@ class ConvertBinaryImpl {
           "' received both input as constant");
     }
 
-    if (!not_supported_ops.empty() && params.use_implicit_batch) {
+    converToBool_ = false;
+    if (!not_supported_ops.empty()) {
       const auto& end = not_supported_ops.end();
       if (std::find(not_supported_ops.begin(), end, op) != end) {
-        return errors::Unimplemented(
-            "Binary op: '", op, "' is not supported in implicit batch mode");
+        if (params.use_implicit_batch) {
+          return errors::Unimplemented(
+              "Binary op: '", op, "' is not supported in implicit batch mode");
+        } else {
+          // No need to convert the output of "LogicalOr" and "LogicalAnd"
+          converToBool_ = !both_tensors;
+        }
       }
     }
 
@@ -112,7 +123,12 @@ class ConvertBinaryImpl {
     }
 
     params.converter->SetLayerName(layer, node_def);
-    params.outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
+    const auto& output = layer->getOutput(0);
+    if (converToBool_) {
+      output->setType(nvinfer1::DataType::kBOOL);
+    }
+
+    params.outputs->push_back(TRT_TensorOrWeights(output));
     return Status::OK();
   }
 
@@ -126,6 +142,7 @@ class ConvertBinaryImpl {
   const BinaryOperationMapType* pOperMap_;
   std::array<ITensorProxyPtr, 2> tensor_{nullptr, nullptr};
   nvinfer1::ElementWiseOperation operation_;
+  bool converToBool_;
 };
 
 class ConvertBinary : public OpConverterBase<ConvertBinary>,
@@ -143,7 +160,13 @@ class ConvertBinary : public OpConverterBase<ConvertBinary>,
     return ConvertBinaryImpl::InputSpec();
   }
 
-  Status Validate() { return ValidateImpl(*params_); }
+  Status Validate() {
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+    return ValidateImpl(*params_, false, {"Greater", "Less", "Equal"});
+#else
+    return ValidateImpl(*params_);
+#endif
+  }
   Status Convert() { return ConvertImpl(*params_); }
 };
 
