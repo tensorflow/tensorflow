@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// RUN: tf-quant-opt %s -split-input-file -quant-lift-quantizable-spots-as-functions-dynamic-range | FileCheck %s
+// RUN: tf-quant-opt %s -split-input-file -quant-lift-quantizable-spots-as-functions-drq | FileCheck %s
 
 // CHECK-LABEL: float_matmul
 func.func @float_matmul(%arg0: tensor<1x12x12x512xf32>) -> (tensor<*xf32>) {
