@@ -1,7 +1,6 @@
 FROM quay.io/pypa/manylinux2014_aarch64
 
 RUN yum -y check-update || true && \
-    yum install -y epel-release && \
     yum install -y \
         sudo \
         wget \
@@ -13,8 +12,7 @@ RUN yum -y check-update || true && \
         ncurses-devel \
         nss-devel \
         readline-devel \
-        sqlite-devel \
-        hdf5-devel && \
+        sqlite-devel && \
     yum clean all
 
 COPY install/install_bazel.sh /install/
