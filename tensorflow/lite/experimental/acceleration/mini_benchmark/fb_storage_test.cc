@@ -33,7 +33,10 @@ std::string GetTemporaryDirectory() {
   if (getenv("TEST_TMPDIR")) {
     return getenv("TEST_TMPDIR");
   }
-  return getenv("TEMP");
+  if (getenv("TEMP")) {
+    return getenv("TEMP");
+  }
+  return ".";
 #endif
 }
 
