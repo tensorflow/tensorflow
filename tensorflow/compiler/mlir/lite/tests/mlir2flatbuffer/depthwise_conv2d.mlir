@@ -20,14 +20,16 @@ func.func @main(tensor<1x224x224x3xf32>) -> tensor<1x112x112x32xf32> {
   // CHECK-NEXT:      name: "arg0",
   // CHECK-NEXT:      quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:      }
+  // CHECK-NEXT:      },
+  // CHECK-NEXT:      has_rank: true
   // CHECK-NEXT:    }, {
   // CHECK-NEXT:      shape: [ 32 ],
   // CHECK-NEXT:      buffer: 2,
   // CHECK-NEXT:      name: "Const",
   // CHECK-NEXT:      quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:      }
+  // CHECK-NEXT:      },
+  // CHECK-NEXT:      has_rank: true
   // CHECK-NEXT:    }, {
   // CHECK-NEXT:      shape: [ 32, 3, 3, 3 ],
   // CHECK-NEXT:      type: UINT8,
@@ -36,21 +38,24 @@ func.func @main(tensor<1x224x224x3xf32>) -> tensor<1x112x112x32xf32> {
   // CHECK-NEXT:      quantization: {
   // CHECK-NEXT:        scale: [ 0.021827 ],
   // CHECK-NEXT:        zero_point: [ 151 ]
-  // CHECK-NEXT:      }
+  // CHECK-NEXT:      },
+  // CHECK-NEXT:      has_rank: true
   // CHECK-NEXT:    }, {
   // CHECK-NEXT:      shape: [ 32, 3, 3, 3 ],
   // CHECK-NEXT:      buffer: 4,
   // CHECK-NEXT:      name: "tfl.dequantize",
   // CHECK-NEXT:      quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:      }
+  // CHECK-NEXT:      },
+  // CHECK-NEXT:      has_rank: true
   // CHECK-NEXT:    }, {
   // CHECK-NEXT:      shape: [ 1, 112, 112, 32 ],
   // CHECK-NEXT:      buffer: 5,
   // CHECK-NEXT:      name: "tfl.depthwise_conv_2d",
   // CHECK-NEXT:      quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:      }
+  // CHECK-NEXT:      },
+  // CHECK-NEXT:      has_rank: true
   // CHECK-NEXT:    } ],
   // CHECK-NEXT:    inputs: [ 0 ],
   // CHECK-NEXT:    outputs: [ 4 ],
