@@ -115,25 +115,9 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":exceptions",
-        ":status_casters_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "@pybind11",
-    ],
-)
-
-cc_library(
-    name = "status_casters_util",
-    srcs = ["status_casters_util.cc"],
-    hdrs = ["status_casters_util.h"],
-    compatible_with = [],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    deps = [
-        "//tensorflow/compiler/xla:status",
     ],
 )
 
@@ -664,19 +648,6 @@ cc_library(
     ],
 )
 
-pybind_extension(
-    name = "status_casters_example",
-    testonly = True,
-    srcs = ["status_casters_example.cc"],
-    deps = [
-        ":status_casters",
-        ":status_casters_util",
-        "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla:statusor",
-        "@pybind11",
-    ],
-)
-
 # TODO(phawkins): the configuration settings here are overly confusing. The right fix is to split
 # xla_extension.so so that each backend is a separate plugin, however that must wait for a clean
 # ABI separation between devices.
@@ -782,17 +753,4 @@ pybind_extension(
                ],
                "//conditions:default": [],
            }),
-)
-
-py_test(
-    name = "status_casters_test",
-    srcs = ["status_casters_test.py"],
-    python_version = "PY3",
-    tags = ["no_oss"],
-    deps = [
-        ":status_casters_example",
-        ":xla_client",
-        ":xla_extension",
-        "@absl_py//absl/testing:absltest",
-    ] + xla_py_test_deps(),
 )

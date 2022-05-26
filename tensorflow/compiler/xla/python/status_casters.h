@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
-#include "tensorflow/compiler/xla/python/status_casters_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
@@ -53,13 +52,6 @@ struct type_caster<xla::Status> {
   static handle cast(xla::Status src, return_value_policy /* policy */,
                      handle /* parent */) {
     if (!src.ok()) {
-      std::optional<xla::status_casters_util::FunctionPtr> function =
-          xla::status_casters_util::GetFunctionPointerFromPayload(src);
-
-      if (function.has_value()) {
-        function.value()(src);  // This is supposed to throw a custom exception
-      }
-
       throw xla::XlaRuntimeError(src);
     }
     return none().inc_ref();
@@ -70,7 +62,6 @@ template <typename T>
 struct type_caster<xla::StatusOr<T>> {
  public:
   using value_conv = make_caster<T>;
-  using status_conv = make_caster<xla::Status>;
 
   PYBIND11_TYPE_CASTER(xla::StatusOr<T>,
                        _("StatusOr[") + value_conv::name + _("]"));
@@ -78,7 +69,7 @@ struct type_caster<xla::StatusOr<T>> {
   static handle cast(xla::StatusOr<T> src, return_value_policy policy,
                      handle parent) {
     if (!src.ok()) {
-      return status_conv::cast(src.status(), policy, parent);
+      throw xla::XlaRuntimeError(src.status());
     }
     return value_conv::cast(std::forward<xla::StatusOr<T>>(src).ValueOrDie(),
                             policy, parent);
