@@ -6115,11 +6115,10 @@ TEST_F(SpmdPartitioningTest, DynamicSliceAlongNonPartitionedDimension) {
 HloModule module
 
 ENTRY entry {
-  %input = s32[128,64] parameter(0)
-  %input.copy = s32[128,64] copy(%input), sharding={devices=[2,1]0,1}
+  %input = s32[128,64] parameter(0), sharding={devices=[2,1]0,1}
   %index = s32[] parameter(1)
-  %constant = s32[] constant(0)
-  ROOT %dynamic-slice = s32[128,2] dynamic-slice(%input.copy, %constant, %index),
+  %trivial_index = s32[] parameter(2)
+  ROOT %dynamic-slice = s32[128,2] dynamic-slice(%input, %trivial_index, %index),
     dynamic_slice_sizes={128,2}, sharding={devices=[2,1]0,1}
 })";
 
@@ -6128,9 +6127,7 @@ ENTRY entry {
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
-  auto input = AllOf(op::Copy(op::DynamicSlice(op::Parameter(0), op::Reshape(),
-                                               op::Constant())),
-                     op::Shape("s32[64,64]"));
+  auto input = AllOf(op::Parameter(0), op::Shape("s32[64,64]"));
   EXPECT_THAT(root,
               AllOf(op::DynamicSlice(input, op::Constant(), op::Parameter(1)),
                     op::Shape("s32[64,2]")));
@@ -6141,14 +6138,13 @@ TEST_F(SpmdPartitioningTest, DynamicUpdateSliceAlongNonPartitionedDimension) {
 HloModule module
 
 ENTRY entry {
-  %input = s32[128,64] parameter(0)
-  %input.copy = s32[128,64] copy(%input), sharding={devices=[2,1]0,1}
+  %input = s32[128,64] parameter(0), sharding={devices=[2,1]0,1}
   %index = s32[] parameter(1)
-  %constant = s32[] constant(0)
   %update = s32[128,2] parameter(2)
+  %trivial_index = s32[] parameter(3)
   %update.copy = s32[128,2] copy(%update), sharding={devices=[2,1]0,1}
   ROOT %dynamic-update-slice = s32[128,64]
-    dynamic-update-slice(%input.copy, %update.copy, %constant, %index),
+    dynamic-update-slice(%input, %update.copy, %trivial_index, %index),
     sharding={devices=[2,1]0,1}
 })";
 
@@ -6157,9 +6153,7 @@ ENTRY entry {
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
-  auto input = AllOf(op::Copy(op::DynamicSlice(op::Parameter(0), op::Reshape(),
-                                               op::Constant())),
-                     op::Shape("s32[64,64]"));
+  auto input = AllOf(op::Parameter(0), op::Shape("s32[64,64]"));
   auto update = AllOf(op::Copy(op::DynamicSlice(op::Parameter(2), op::Reshape(),
                                                 op::Constant())),
                       op::Shape("s32[64,2]"));
@@ -6173,14 +6167,12 @@ TEST_F(SpmdPartitioningTest, DynamicUpdateSliceAlongPartitionedDimension) {
 HloModule module
 
 ENTRY entry {
-  %input = s32[128,64] parameter(0)
-  %input.copy = s32[128,64] copy(%input), sharding={devices=[1,2]0,1}
+  %input = s32[128,64] parameter(0), sharding={devices=[1,2]0,1}
   %index = s32[] parameter(1)
   %constant = s32[] constant(60)
-  %update = s32[128,2] parameter(2)
-  %update.copy = s32[128,2] copy(%update), sharding={devices=[1,2]0,1}
+  %update = s32[128,2] parameter(2), sharding={devices=[1,2]0,1}
   ROOT %dynamic-update-slice = s32[128,64]
-    dynamic-update-slice(%input.copy, %update.copy, %index, %constant),
+    dynamic-update-slice(%input, %update, %index, %constant),
     sharding={devices=[1,2]0,1}
 })";
 
@@ -6189,22 +6181,18 @@ ENTRY entry {
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
-  auto input = AllOf(op::Copy(op::DynamicSlice(op::Parameter(0), op::Constant(),
-                                               op::Reshape())),
-                     op::Shape("s32[128,32]"));
-  auto update = AllOf(op::AllReduce(op::DynamicUpdateSlice(
-                          op::Broadcast(),
-                          op::Copy(op::DynamicSlice(
-                              op::Parameter(2), op::Constant(), op::Reshape())),
-                          op::Constant(), op::Reshape())),
-                      op::Shape("s32[128,2]"));
+  auto input = AllOf(op::Parameter(0), op::Shape("s32[128,32]"));
+  auto update = AllOf(
+      op::AllReduce(op::DynamicUpdateSlice(op::Broadcast(), op::Parameter(2),
+                                           op::Constant(), op::Reshape())),
+      op::Shape("s32[128,2]"));
 
-  EXPECT_THAT(
-      root, AllOf(op::Select(op::Broadcast(),
-                             op::DynamicUpdateSlice(
-                                 input, update, op::Parameter(1), op::Select()),
-                             input),
-                  op::Shape("s32[128,32]")));
+  EXPECT_THAT(root,
+              AllOf(op::Select(op::Broadcast(),
+                               op::DynamicUpdateSlice(
+                                   input, update, op::Constant(), op::Select()),
+                               input),
+                    op::Shape("s32[128,32]")));
 }
 
 TEST_F(SpmdPartitioningTest, DynamicUpdateSliceAlongPartitionedDimension2) {
