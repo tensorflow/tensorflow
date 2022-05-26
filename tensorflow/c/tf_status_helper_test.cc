@@ -24,8 +24,8 @@ namespace {
 TEST(StatusHelper, TestStatusHelper) {
   TF_Status* s = TF_NewStatus();
   Status cc_status(errors::InvalidArgument("some error"));
-  cc_status.SetPayload("key1", absl::Cord("value1"));
-  cc_status.SetPayload("key2", absl::Cord("value2"));
+  cc_status.SetPayload("key1", "value1");
+  cc_status.SetPayload("key2", "value2");
   Set_TF_Status_from_Status(s, cc_status);
   ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s));
   ASSERT_EQ(std::string("some error"), TF_Message(s));

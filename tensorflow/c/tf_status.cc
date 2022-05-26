@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/c/tf_status.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
@@ -37,7 +36,7 @@ void TF_SetStatus(TF_Status* s, TF_Code code, const char* msg) {
 }
 
 void TF_SetPayload(TF_Status* s, const char* key, const char* value) {
-  s->status.SetPayload(key, absl::Cord(absl::string_view(value)));
+  s->status.SetPayload(key, value);
 }
 
 void TF_SetStatusFromIOError(TF_Status* s, int error_code,
