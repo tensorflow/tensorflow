@@ -728,6 +728,39 @@ HloInstruction* HloComputation::CreateFusionInstruction(
   return fusion_instruction;
 }
 
+StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
+    HloInstruction* instruction, absl::Span<const Shape> context_shapes) {
+  Builder builder("async_computation");
+  std::vector<HloInstruction*> parameters(instruction->operand_count());
+  std::vector<Shape> parameter_shapes(instruction->operand_count());
+  for (int i = 0; i < instruction->operand_count(); ++i) {
+    const Shape& parameter_shape = instruction->operand(i)->shape();
+    parameters[i] = builder.AddInstruction(HloInstruction::CreateParameter(
+        i, parameter_shape, absl::StrCat("param_", i)));
+    parameter_shapes[i] = parameter_shape;
+  }
+  HloInstruction* root = builder.AddInstruction(
+      instruction->CloneWithNewOperands(instruction->shape(), parameters));
+  HloComputation* async_computation =
+      parent_->AddEmbeddedComputation(builder.Build(root));
+  std::vector<Shape> start_shapes = {
+      ShapeUtil::MakeTupleShape(parameter_shapes), root->shape()};
+  for (const Shape& context_shape : context_shapes) {
+    start_shapes.push_back(context_shape);
+  }
+  HloInstruction* async_start = AddInstruction(HloInstruction::CreateAsyncStart(
+      ShapeUtil::MakeTupleShape(start_shapes), instruction->operands(),
+      async_computation));
+  HloInstruction* async_done = AddInstruction(HloInstruction::CreateAsyncDone(
+      root->shape(), async_start, async_computation));
+  async_start->set_metadata(instruction->metadata());
+  async_start->CopyBackendConfigFrom(instruction);
+  async_done->set_metadata(instruction->metadata());
+  async_done->CopyBackendConfigFrom(instruction);
+  TF_RETURN_IF_ERROR(ReplaceInstruction(instruction, async_done));
+  return async_done;
+}
+
 StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
     HloInstruction* instruction, ShapeIndex* index,
     const std::function<

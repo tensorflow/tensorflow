@@ -710,6 +710,31 @@ TEST_F(HloInstructionTest, PreserveMetadataInFusionAndClone) {
   EXPECT_TRUE(protobuf_util::ProtobufEquals(metadata, fusion->metadata()));
 }
 
+TEST_F(HloInstructionTest, AsyncOp) {
+  HloComputation::Builder builder(TestName());
+  // Create a call instruction containing a single binary operation.
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f)));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.1f)));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      r0f32_, HloOpcode::kAdd, constant1, constant2));
+  auto module = CreateNewVerifiedModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(auto* async_done,
+                          computation->CreateAsyncInstructions(
+                              add, {ShapeUtil::MakeScalarShape(U32)}));
+  auto* async_start = async_done->operand(0);
+
+  EXPECT_EQ(async_start->shape().tuple_shapes_size(), 3);
+  EXPECT_TRUE(ShapeUtil::Equal(async_start->shape().tuple_shapes(2),
+                               ShapeUtil::MakeScalarShape(U32)));
+  EXPECT_THAT(async_start->operands(), ElementsAre(constant1, constant2));
+  EXPECT_THAT(constant1->users(), ElementsAre(async_start));
+  EXPECT_THAT(constant2->users(), ElementsAre(async_start));
+  EXPECT_EQ(computation->root_instruction(), async_done);
+}
+
 TEST_F(HloInstructionTest, PreserveOutfeedShapeThroughClone) {
   HloComputation::Builder builder(TestName());
   auto constant = builder.AddInstruction(

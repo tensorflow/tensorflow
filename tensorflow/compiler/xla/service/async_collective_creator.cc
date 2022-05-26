@@ -151,34 +151,14 @@ StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
       }
       if (HloAllToAllInstruction* ata =
               DynCast<HloAllToAllInstruction>(instruction)) {
-        HloComputation::Builder builder("all_to_all_async");
-        HloInstruction* parameter =
-            builder.AddInstruction(HloInstruction::CreateParameter(
-                /*parameter_number=*/0, instruction->operand(0)->shape(),
-                "param"));
-        HloInstruction* root = builder.AddInstruction(
-            instruction->CloneWithNewOperands(ata->shape(), {parameter}));
-        HloComputation* async_computation =
-            module->AddEmbeddedComputation(builder.Build(root));
-        // Send and Recv sync values for determining when communication is done.
         Shape sync_shape = ShapeUtil::MakeScalarShape(U32);
-        std::vector<Shape> start_shapes = {parameter->shape(), root->shape(),
-                                           sync_shape, sync_shape};
-        HloInstruction* async_start =
-            computation->AddInstruction(HloInstruction::CreateAsyncStart(
-                ShapeUtil::MakeTupleShape(start_shapes),
-                instruction->operands(), async_computation));
-        HloInstruction* async_done =
-            computation->AddInstruction(HloInstruction::CreateAsyncDone(
-                root->shape(), async_start, async_computation));
-        async_start->set_metadata(ata->metadata());
-        async_start->CopyBackendConfigFrom(ata);
-        async_done->set_metadata(ata->metadata());
-        async_done->CopyBackendConfigFrom(ata);
+        TF_ASSIGN_OR_RETURN(HloInstruction * async_done,
+                            computation->CreateAsyncInstructions(
+                                ata, {sync_shape, sync_shape}));
         if (should_update_schedule) {
+          HloInstruction* async_start = async_done->mutable_operand(0);
           replaced_pairs[ata] = ReplacedAsync{async_start, async_done};
         }
-        TF_RETURN_IF_ERROR(computation->ReplaceInstruction(ata, async_done));
         changed = true;
         continue;
       }
