@@ -17,37 +17,25 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // This pass inserts a TFL::CallOnce op when tf_saved_model's session
 // initializer is given.
 class InsertCallOnceOpFromSessionInitializerPass
-    : public mlir::PassWrapper<InsertCallOnceOpFromSessionInitializerPass,
-                               OperationPass<ModuleOp>> {
+    : public InsertCallOnceOpFromSessionInitializerPassBase<
+          InsertCallOnceOpFromSessionInitializerPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
       InsertCallOnceOpFromSessionInitializerPass)
 
  private:
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<TensorFlowLiteDialect>();
-  }
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-insert-call-once-op";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Insert CallOnce op when tf_saved_model's session initializer is "
-           "given";
-  }
-
   void runOnOperation() override;
 };
 
@@ -89,8 +77,6 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateInsertCallOnceOpFromSessionInitializerPass() {
   return std::make_unique<InsertCallOnceOpFromSessionInitializerPass>();
 }
-
-static PassRegistration<InsertCallOnceOpFromSessionInitializerPass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

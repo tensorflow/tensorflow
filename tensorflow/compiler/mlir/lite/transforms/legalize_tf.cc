@@ -68,49 +68,26 @@ namespace TFL {
 //===----------------------------------------------------------------------===//
 // The actual LegalizeTF Pass.
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 constexpr char kUnidirectionalSequenceLstm[] = "tf.UnidirectionalSequenceLstm";
 constexpr char kUnidirectionalSequenceRnn[] = "tf.UnidirectionalSequenceRnn";
 constexpr char kTfLiteInputIndices[] = "_tflite_input_indices";
 
 // Legalize operations in functions.
-class LegalizeTF : public PassWrapper<LegalizeTF, OperationPass<func::FuncOp>> {
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<quant::QuantizationDialect, TFL::TensorFlowLiteDialect>();
-  }
-
+class LegalizeTFPass : public LegalizeTFPassBase<LegalizeTFPass> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeTF)
-
-  LegalizeTF() = default;
-  LegalizeTF(const LegalizeTF&) {}
-  explicit LegalizeTF(bool run_tfl_runtime_verification,
-                      bool preserve_assert_op) {
-    run_tfl_runtime_verification_ = run_tfl_runtime_verification;
-    preserve_assert_op_ = preserve_assert_op;
-  }
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-legalize-tf";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Legalize from TensorFlow to TensorFlow Lite dialect";
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeTFPass)
+  LegalizeTFPass() = default;
+  explicit LegalizeTFPass(bool run_tfl_runtime_verification,
+                          bool preserve_assert_op) {
+    this->run_tfl_runtime_verification_ = run_tfl_runtime_verification;
+    this->preserve_assert_op_ = preserve_assert_op;
   }
 
   /// Performs the lowering to TFLite dialect.
   void runOnOperation() override;
-
- private:
-  Option<bool> run_tfl_runtime_verification_{
-      *this, "run-tfl-runtime-verification",
-      llvm::cl::desc("Allow tfl runtime verification."), llvm::cl::init(true)};
-  Option<bool> preserve_assert_op_{
-      *this, "preserve-assert-op",
-      llvm::cl::desc("Preserve AssertOp during tfl legalization."),
-      llvm::cl::init(false)};
 };
 
 // Returns true if all tensor value in `values` has static shape and same shape.
@@ -950,7 +927,7 @@ bool applyPatterns(func::FuncOp func, ConversionTarget& target,
   return true;
 }
 
-void LegalizeTF::runOnOperation() {
+void LegalizeTFPass::runOnOperation() {
   auto* context = &getContext();
   auto func = getOperation();
 
@@ -977,7 +954,7 @@ void LegalizeTF::runOnOperation() {
 
   RewritePatternSet stage1Patterns(&getContext());
 
-  addPatterns(context, stage1Patterns, preserve_assert_op_);
+  addPatterns(context, stage1Patterns, this->preserve_assert_op_);
 
   FrozenRewritePatternSet stage1FrozenPatterns(std::move(stage1Patterns));
   if (!applyPatterns(func, target, stage1FrozenPatterns))
@@ -988,7 +965,7 @@ void LegalizeTF::runOnOperation() {
   // rules in order not to add unnecessary BroadcastTo ops.
   RewritePatternSet stage2Patterns(&getContext());
 
-  addPatterns(context, stage2Patterns, preserve_assert_op_);
+  addPatterns(context, stage2Patterns, this->preserve_assert_op_);
 
   stage2Patterns.add<ApplyExplicitBroadcasting<TF::LessEqualOp>,
                      ApplyExplicitBroadcasting<TF::GreaterEqualOp>,
@@ -1020,11 +997,13 @@ void LegalizeTF::runOnOperation() {
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeTFPass(
     bool run_tfl_runtime_verification, bool preserve_assert_op) {
-  return std::make_unique<LegalizeTF>(run_tfl_runtime_verification,
-                                      preserve_assert_op);
+  return std::make_unique<LegalizeTFPass>(run_tfl_runtime_verification,
+                                          preserve_assert_op);
 }
 
-static PassRegistration<LegalizeTF> pass;
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeTFPass() {
+  return std::make_unique<LegalizeTFPass>();
+}
 
 }  // namespace TFL
 }  // namespace mlir

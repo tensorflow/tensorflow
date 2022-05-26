@@ -1,5 +1,5 @@
 // RUN: tf-opt -tfl-raise-custom-ops -canonicalize %s --split-input-file | FileCheck %s
-// RUN: tf-opt -tfl-raise-custom-ops -canonicalize -tfl-test-raise-tf-targets="tf.FakeQuantWithMinMaxVarsPerChannel" %s --split-input-file | FileCheck --check-prefix=WRAPPED %s
+// RUN: tf-opt -tfl-raise-custom-ops="test-raise-tf-targets=tf.FakeQuantWithMinMaxVarsPerChannel" -canonicalize %s --split-input-file | FileCheck --check-prefix=WRAPPED %s
 
 // CHECK-LABEL: custom_op
 func.func @custom_op(%arg0: tensor<4xf32>) -> tensor<4xf32> {
