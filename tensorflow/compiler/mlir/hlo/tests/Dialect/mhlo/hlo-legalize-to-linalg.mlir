@@ -3708,26 +3708,6 @@ func.func @reduce_window_generic(%arg0: tensor<4x6xf32>, %arg1: tensor<f32>) -> 
 
 // -----
 
-// CHECK-LABEL: func @reduce_window_generic_base_dilation
-// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
-// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
-
-// CHECK: %[[PADVAL:.+]] = tensor.extract %[[ARG1]][] : tensor<f32>
-// CHECK: %[[INIT:.+]] = linalg.init_tensor [8, 9] : tensor<8x9xf32>
-// CHECK: %[[FILL:.+]] = linalg.fill ins(%[[PADVAL]] : f32) outs(%[[INIT]] : tensor<8x9xf32>) -> tensor<8x9xf32>
-// CHECK: %[[PAD:.+]] = tensor.insert_slice %[[ARG0]] into %[[FILL]][0, 1] [3, 6] [2, 1] : tensor<3x6xf32> into tensor<8x9xf32>
-
-func.func @reduce_window_generic_base_dilation(%arg0: tensor<3x6xf32>, %arg1: tensor<f32>) -> tensor<4x7xf32> {
-  %0 = "mhlo.reduce_window"(%arg0, %arg1) ({
-  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
-    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
-    "mhlo.return"(%1) : (tensor<f32>) -> ()
-  }) {base_dilations = dense<[2, 1]> : tensor<2xi64>, padding = dense<[[0, 3], [1, 2]]> : tensor<2x2xi64>, window_dilations = dense<[1, 2]> : tensor<2xi64>, window_dimensions = dense<[1, 2]> : tensor<2xi64>, window_strides = dense<[2, 1]> : tensor<2xi64>} : (tensor<3x6xf32>, tensor<f32>) -> tensor<4x7xf32>
-  func.return %0 : tensor<4x7xf32>
-}
-
-// -----
-
 func.func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi32>) -> tensor<1x8x8xi32> {
   %res = "mhlo.gather"(%operand, %start_indices) {
     dimension_numbers = #mhlo.gather<
