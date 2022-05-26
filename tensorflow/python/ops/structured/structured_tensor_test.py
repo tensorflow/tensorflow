@@ -1206,6 +1206,13 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     result = st.merge_dims(outer_axis, inner_axis)
     self.assertAllEqual(result, expected)
 
+  def testMergeDimsDetail_3D_0_1(self):
+    st = StructuredTensor.from_pyval(
+        [[[{"x": 1}, {"x": 2}], [{"x": 3}]], [[{"x": 4}]]])
+    result = st.merge_dims(0, 1)
+    expected_shape = tensor_shape.TensorShape([3, None])
+    self.assertTrue(expected_shape.is_compatible_with(result.shape))
+
   def testMergeDims_0_1(self):
     rt = ragged_tensor.RaggedTensor.from_value_rowids(
         array_ops.constant([[1, 2], [3, 4], [5, 6]]), [0, 0, 1])
