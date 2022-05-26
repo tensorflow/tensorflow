@@ -39,7 +39,8 @@ using subgraph_test_util::CheckIntTensor;
 using subgraph_test_util::FillIntTensor;
 
 std::string CreateFilePath(const std::string& file_name) {
-  return std::string(getenv("TEST_TMPDIR")) + file_name;
+  const char* tmp_dir = getenv("TEST_TMPDIR");
+  return std::string(tmp_dir ? tmp_dir : "./") + file_name;
 }
 
 // The bool param indicates whether we use SubgraphWriter(true) or
