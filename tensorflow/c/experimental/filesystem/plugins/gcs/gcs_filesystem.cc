@@ -17,6 +17,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+#include "base/integral_types.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
@@ -437,13 +438,16 @@ GCSFile::GCSFile(google::cloud::storage::Client&& gcs_client)
 
   // Apply the overrides for the block size (MB), max bytes (MB), and max
   // staleness (seconds) if provided.
-  if (absl::SimpleAtoi(std::getenv(kBlockSize), &value)) {
+  const char* block_size_env = std::getenv(kBlockSize);
+  if (block_size_env && absl::SimpleAtoi(block_size_env, &value)) {
     block_size = value * 1024 * 1024;
   }
-  if (absl::SimpleAtoi(std::getenv(kMaxCacheSize), &value)) {
+  const char* max_bytes_env = std::getenv(kMaxCacheSize);
+  if (max_bytes_env && absl::SimpleAtoi(max_bytes_env, &value)) {
     max_bytes = static_cast<size_t>(value * 1024 * 1024);
   }
-  if (absl::SimpleAtoi(std::getenv(kMaxStaleness), &value)) {
+  const char* max_staleness_env = std::getenv(kMaxStaleness);
+  if (max_staleness_env && absl::SimpleAtoi(max_staleness_env, &value)) {
     max_staleness = value;
   }
   TF_VLog(1, "GCS cache max size = %u ; block size = %u ; max staleness = %u",
@@ -459,10 +463,14 @@ GCSFile::GCSFile(google::cloud::storage::Client&& gcs_client)
 
   uint64_t stat_cache_max_age = kStatCacheDefaultMaxAge;
   size_t stat_cache_max_entries = kStatCacheDefaultMaxEntries;
-  if (absl::SimpleAtoi(std::getenv(kStatCacheMaxAge), &value)) {
+  const char* stat_cache_max_age_env = std::getenv(kStatCacheMaxAge);
+  if (stat_cache_max_age_env &&
+      absl::SimpleAtoi(stat_cache_max_age_env, &value)) {
     stat_cache_max_age = value;
   }
-  if (absl::SimpleAtoi(std::getenv(kStatCacheMaxEntries), &value)) {
+  const char* stat_cache_max_entries_env = std::getenv(kStatCacheMaxEntries);
+  if (stat_cache_max_entries_env &&
+      absl::SimpleAtoi(stat_cache_max_entries_env, &value)) {
     stat_cache_max_entries = static_cast<size_t>(value);
   }
   stat_cache = std::make_unique<ExpiringLRUCache<GcsFileStat>>(
