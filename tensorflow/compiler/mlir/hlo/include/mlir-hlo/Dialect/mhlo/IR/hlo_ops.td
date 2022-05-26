@@ -58,12 +58,12 @@ def HLO_ConstOp : HLO_Op<"constant",
   let builders = [
     OpBuilder<(ins "Attribute":$value)>];
 
-  let assemblyFormat = "attr-dict $value";
-
-  let hasFolder = 1;
+  let hasCustomAssemblyFormat = 1;
 
   // Constant has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
+
+  let hasFolder = 1;
 
   let extraClassDeclaration = [{
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);

@@ -759,6 +759,51 @@ bool ConstOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
   return lhs_ty == rhs_ty;
 }
 
+ParseResult ConstOp::parse(OpAsmParser& parser, OperationState& result) {
+  // Parse the generic form.
+  if (succeeded(parser.parseOptionalLParen())) {
+    if (parser.parseRParen()) return failure();
+    if (parser.parseOptionalAttrDict(result.attributes)) return failure();
+    if (parser.parseColon() || parser.parseLParen() || parser.parseRParen() ||
+        parser.parseArrow())
+      return failure();
+    Type result_ty;
+    if (parser.parseType(result_ty)) {
+      return failure();
+    }
+    result.addTypes(result_ty);
+    return success();
+  }
+
+  ElementsAttr valueAttr;
+  if (parser.parseOptionalAttrDict(result.attributes)) return failure();
+
+  if (parser.parseCustomAttributeWithFallback(valueAttr, Type{}, "value",
+                                              result.attributes)) {
+    return failure();
+  }
+  result.addTypes(valueAttr.getType());
+  return success();
+}
+
+/// Print a `constant` op.
+///
+/// op ::= attr-dict $value
+///
+/// When the `value` and `output` have different type, it just uses the default
+/// operator assembly format as a fallback.
+void ConstOp::print(::mlir::OpAsmPrinter& p) {
+  // If not all types are the same, use generic form.
+  if (value().getType() != getType()) {
+    p.printGenericOp(getOperation(), /*printOpName=*/false);
+    return;
+  }
+
+  p.printOptionalAttrDict((*this)->getAttrs(), /*elidedAttrs=*/{"value"});
+  p << ' ';
+  p.printStrippedAttrOrType(valueAttr());
+}
+
 //===----------------------------------------------------------------------===//
 // CustomCallOp
 //===----------------------------------------------------------------------===//
