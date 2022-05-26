@@ -388,12 +388,13 @@ static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
     const Thunk::ExecuteParams& params,
     tfrt::RequestContextBuilder request_context_builder) {
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
-                      params.GetGlobalDeviceId());
-  request_context_builder.context_data().emplace<XlaGpuParams>(XlaGpuParams{
-      params.run_id, params.device_assn, params.gpu_global_device_ids,
-      params.nccl_unique_id_callback, global_device_id,
-      GetOrCreateInfeedManager(params.stream->parent()),
-      GetOrCreateOutfeedManager(params.stream->parent())});
+                      params.nccl_params.GetGlobalDeviceId());
+  request_context_builder.context_data().emplace<XlaGpuParams>(
+      XlaGpuParams{params.nccl_params.run_id, params.nccl_params.device_assn,
+                   params.nccl_params.gpu_global_device_ids,
+                   params.nccl_params.nccl_unique_id_callback, global_device_id,
+                   GetOrCreateInfeedManager(params.stream->parent()),
+                   GetOrCreateOutfeedManager(params.stream->parent())});
 
   auto expected_req_ctx = std::move(request_context_builder).build();
   if (!expected_req_ctx) {

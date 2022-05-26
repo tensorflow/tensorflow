@@ -123,9 +123,12 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:global_device_id",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:optional",
     ],
