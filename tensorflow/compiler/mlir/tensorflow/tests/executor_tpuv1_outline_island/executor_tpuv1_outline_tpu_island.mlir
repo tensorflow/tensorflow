@@ -8,7 +8,7 @@ func.func @func0(%arg0 : tensor<i1>) -> tensor<f32> {
 // CHECK: PartitionedCall
 // CHECK-SAME: @_tpu_v1_compat_outlined::@_tpu_v1_compat_outlined_func0
     %1:2 = tf_executor.island {
-     "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
+     "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
       %3 = "tf.opA"(%arg0) : (tensor<i1>) -> tensor<i1>
       tf_executor.yield %3 : tensor<i1>
     }
@@ -34,7 +34,7 @@ func.func @func2(%arg0 : tensor<i1>) -> tensor<i1> {
 // CHECK: PartitionedCall
 // CHECK-SAME: @_tpu_v1_compat_outlined::@_tpu_v1_compat_outlined_func1
     %2:3 = tf_executor.island {
-     "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
+     "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
       %3 = "tf.opA"(%arg0) : (tensor<i1>) -> tensor<i1>
       %4 = "tf.opA"(%3) : (tensor<i1>) -> tensor<i1>
       %5 = "tf.SomeOp"(%arg0, %1#0) : (tensor<i1>, tensor<f32>) -> tensor<i32>
