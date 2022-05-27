@@ -661,8 +661,11 @@ inline bool QuantizedReduceProd(
   // Resolve axis.
   int num_resolved_axis = 0;
   int normalized_num_dims = 0;
+  // reinterpret_cast(input_shape.DimsData) is needed to build with the Hexagon
+  // toolchain. See http://b/234097792 for more context.
   if (!ResolveAxis(input_shape.DimensionsCount(), axis, num_axis_dimensions,
-                   resolved_axis, &num_resolved_axis, input_shape.DimsData(),
+                   resolved_axis, &num_resolved_axis,
+                   reinterpret_cast<const int*>(input_shape.DimsData()),
                    normalized_dims, &normalized_num_dims)) {
     return false;
   }
