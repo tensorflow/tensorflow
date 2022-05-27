@@ -131,13 +131,13 @@ Status TryAcquireTpuLock() {
   static absl::Mutex* mu = new absl::Mutex();
   absl::MutexLock l(mu);
 
+  // TODO(skyewm): use `absl::StrCat(getenv(name))` once we build with the
+  // fix for https://github.com/abseil/abseil-cpp/issues/1167.
+  std::string load_library_override;
   const char* env_value = getenv("TPU_LOAD_LIBRARY");
-  if (!env_value) {
-    return errors::FailedPrecondition(
-        "TPU_LOAD_LIBRARY environment variable not defined");
+  if (env_value != nullptr) {
+    load_library_override = std::string(env_value);
   }
-
-  std::string load_library_override = absl::StrCat(env_value);
 
   if (load_library_override == "1") {
     return Status::OK();
