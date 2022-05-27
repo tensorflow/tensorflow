@@ -104,36 +104,20 @@ static constexpr const char kStackTraceProtoUrl[] =
 
 void SetStackTrace(::tensorflow::Status& status,
                    std::vector<StackFrame> stack_trace) {
-  StackTracePayload payload;
-  for (const StackFrame& frame : stack_trace) {
-    StackTracePayload::StackFrame frame_proto;
-    frame_proto.set_file_name(frame.file_name);
-    frame_proto.set_line_number(frame.line_number);
-    frame_proto.set_function_name(frame.function_name);
-    *payload.add_stack_frames() = frame_proto;
-  }
-  status.SetPayload(kStackTraceProtoUrl,
-                    absl::Cord(payload.SerializeAsString()));
+  status.SetStackTrace(stack_trace);
 }
 
 std::vector<StackFrame> GetStackTrace(const ::tensorflow::Status& status) {
-  std::vector<StackFrame> stack_trace;
-  absl::optional<absl::Cord> maybe_serialized_payload =
-      status.GetPayload(kStackTraceProtoUrl);
-  if (maybe_serialized_payload.has_value()) {
-    StackTracePayload payload;
-    std::string serialized_payload(maybe_serialized_payload.value());
-    payload.ParseFromString(serialized_payload);
-    for (const auto& frame_proto : payload.stack_frames()) {
-      StackFrame frame({frame_proto.file_name(), frame_proto.line_number(),
-                        frame_proto.function_name()});
-      stack_trace.push_back(frame);
-    }
-  }
-  return stack_trace;
+  return status.GetStackTrace();
 }
 
 }  // namespace errors
+
+void Status::SetStackTrace(std::vector<StackFrame> stack_trace) {
+  stack_trace_ = stack_trace;
+}
+
+std::vector<StackFrame> Status::GetStackTrace() const { return stack_trace_; }
 
 Status::Status(tensorflow::error::Code code, absl::string_view msg) {
   assert(code != tensorflow::error::OK);

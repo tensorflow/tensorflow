@@ -168,8 +168,12 @@ class Status {
       absl::FunctionRef<void(absl::string_view, const absl::Cord&)> visitor)
       const;
 
+  void SetStackTrace(std::vector<StackFrame>);
+  std::vector<StackFrame> GetStackTrace() const;
+
  private:
   static const std::string& empty_string();
+  std::vector<StackFrame> stack_trace_;
   struct State {
     tensorflow::error::Code code;
     std::string msg;
