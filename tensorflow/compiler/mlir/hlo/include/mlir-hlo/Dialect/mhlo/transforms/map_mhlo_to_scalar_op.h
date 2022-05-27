@@ -168,6 +168,7 @@ struct MhloToScalarOp<mhlo::ShiftRightLogicalOp> {
 template <>
 struct MhloToScalarOp<mhlo::Atan2Op> {
   using FOp = ::mlir::math::Atan2Op;
+  using COp = ::mlir::complex::Atan2Op;
 };
 template <>
 struct MhloToScalarOp<mhlo::TanhOp> {

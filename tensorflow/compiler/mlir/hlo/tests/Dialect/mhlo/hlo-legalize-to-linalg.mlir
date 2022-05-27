@@ -42,6 +42,20 @@ func.func @complex_add(%lhs: tensor<2x2xcomplex<f32>>,
 
 // -----
 
+// CHECK-LABEL: func @complex_atan2
+func.func @complex_atan2(%lhs: tensor<2x2xcomplex<f32>>,
+    %rhs: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  %tensor_result = "mhlo.atan2"(%lhs, %rhs)
+      : (tensor<2x2xcomplex<f32>>, tensor<2x2xcomplex<f32>>)
+      -> tensor<2x2xcomplex<f32>>
+  // CHECK: linalg.generic
+  // CHECK: complex.atan2
+  func.return %tensor_result : tensor<2x2xcomplex<f32>>
+}
+
+
+// -----
+
 // CHECK-LABEL: func @float_mul
 func.func @float_mul(%lhs: tensor<2x2xf32>,
                 %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
