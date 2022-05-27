@@ -14,13 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <string>
 
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/io/record_reader.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
+#include "tensorflow/core/tfrt/saved_model/saved_model.h"
+#include "third_party/tensorflow_serving/apis/model.pb.h"
 #include "third_party/tensorflow_serving/apis/prediction_log.pb.h"
 
 ABSL_FLAG(bool, enable_optimizer, true,
@@ -203,6 +208,51 @@ GetWarmupRequests(absl::string_view saved_model_dir) {
         std::move(*(log.mutable_predict_log()->mutable_request())));
   }
   return requests;
+}
+
+namespace {
+
+tensorflow::Tensor CreateTensorFromTensorProto(
+    const tensorflow::TensorProto& proto) {
+  tensorflow::Tensor tensor;
+  CHECK(tensor.FromProto(proto));
+  return tensor;
+}
+
+}  // namespace
+
+std::vector<tensorflow::Tensor> ProcessPredictRequestsAndMaybeProfile(
+    const std::vector<tensorflow::serving::PredictRequest>& requests,
+    SavedModel* saved_model, const bool profile, const int32_t num_steps) {
+  std::vector<tensorflow::Tensor> outputs;
+  for (size_t i = 0; i < requests.size(); ++i) {
+    const tensorflow::serving::PredictRequest& request = requests.at(i);
+    auto& input_map = request.inputs();
+    std::vector<tensorflow::Tensor> inputs;
+    const std::string& signature = request.model_spec().signature_name();
+    auto func_metadata = saved_model->GetFunctionMetadata(signature);
+    if (func_metadata.has_value()) {
+      LOG(INFO) << "Running request for model signature " << signature;
+      for (const std::string& key : func_metadata->GetInputNames()) {
+        inputs.push_back(CreateTensorFromTensorProto(input_map.at(key)));
+      }
+
+      for (int32_t step = 0; step < num_steps; ++step) {
+        if (profile) {
+          tensorflow::profiler::TraceMe t([i, step]() mutable {
+            return absl::StrCat("Request_", i, "_step_", step);
+          });
+          TF_CHECK_OK(saved_model->Run({}, signature, inputs, &outputs));
+        } else {
+          TF_CHECK_OK(saved_model->Run({}, signature, inputs, &outputs));
+        }
+      }
+    } else {
+      LOG(ERROR) << "Model signature defined in the request is not found, "
+                 << signature;
+    }
+  }
+  return outputs;
 }
 
 }  // namespace tfrt_stub
