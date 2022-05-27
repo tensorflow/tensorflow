@@ -651,6 +651,7 @@ cc_library(
     deps = [
         ":cholesky_thunk",
         ":gpu_asm_opts_util",
+        ":io_feed_manager",
         ":matmul_utils",
         ":stream_executor_util",
         "//tensorflow/compiler/xla:shape_util",

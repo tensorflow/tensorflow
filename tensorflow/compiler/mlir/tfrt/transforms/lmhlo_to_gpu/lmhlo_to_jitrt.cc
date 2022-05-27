@@ -68,6 +68,7 @@ using mlir::func::ReturnOp;
 using mlir::gpu::GPUModuleOp;
 using mlir::gpu::LaunchFuncOp;
 using mlir::gpu::MemcpyOp;
+using mlir::lmhlo::InfeedOp;
 using mlir::lmhlo::TerminatorOp;
 using mlir::lmhlo::WhileOp;
 using mlir::lmhlo_gpu::CholeskyOp;
@@ -134,6 +135,45 @@ class TerminatorOpLowering : public OpRewritePattern<TerminatorOp> {
                                 PatternRewriter& rewriter) const override {
     rewriter.replaceOpWithNewOp<ReturnOp>(op);
     return mlir::success();
+  }
+};
+
+// -------------------------------------------------------------------------- //
+
+class InfeedOpLowering : public OpRewritePattern<InfeedOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(InfeedOp op,
+                                PatternRewriter& rewriter) const override {
+    MLIRContext* ctx = getContext();
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    // Custom call target.
+    NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
+                          b.getStringAttr("xla.gpu.infeed"));
+
+    // Create a custom call function declaration.
+    auto custom_call_type =
+        FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
+    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
+    auto custom_call = FuncOp::create(op.getLoc(), "infeed", custom_call_type,
+                                      custom_call_attrs);
+    custom_call.setPrivate();
+
+    SymbolTable sym_table(op->getParentOfType<ModuleOp>());
+    auto inserted = sym_table.insert(custom_call);
+    rewriter.notifyOperationInserted(custom_call);
+
+    // Call the runtime intrinsic with the original operands.
+    auto call = rewriter.create<CallOp>(op.getLoc(), inserted, TypeRange(),
+                                        op.getOperands());
+    call->setAttr(b.getStringAttr("config"), op.configAttr());
+
+    // Erase the original infeed operation.
+    rewriter.eraseOp(op);
+
+    return success();
   }
 };
 
@@ -577,8 +617,8 @@ void ConvertGpuToJitRtPass::runOnOperation() {
 
   // Convert gpu operations to JitRt gpu runtime custom calls.
   RewritePatternSet patterns(ctx);
-  patterns.insert<GpuModuleOpLowering, LaunchFuncOpLowering, MemcpyOpLowering>(
-      ctx);
+  patterns.insert<GpuModuleOpLowering, LaunchFuncOpLowering, MemcpyOpLowering,
+                  InfeedOpLowering>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();

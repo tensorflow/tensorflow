@@ -22,6 +22,7 @@
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
+#include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
@@ -468,6 +469,72 @@ static bool GemmBias(runtime::KernelContext* ctx, void** args, void** attrs) {
 // -------------------------------------------------------------------------- //
 
 namespace {
+struct Infeed {
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           CustomCall::RemainingArgs args,
+                           StringRef config) const;
+  static Infeed Handler() { return Infeed(); }
+};
+}  // namespace
+
+LogicalResult Infeed::operator()(const ServiceExecutableRunOptions* run_options,
+                                 CustomCall::RemainingArgs args,
+                                 StringRef config) const {
+  VLOG(3) << "Infeeding to GPU";
+
+  se::Stream* stream = run_options->stream();
+  ShapeTree<se::ScopedDeviceMemory<uint8_t>> source_buffers =
+      GetOrCreateInfeedManager(stream->parent())->BlockingGetNextDestination();
+
+  // Check that we have correct number of arguments.
+  if (args.size() != source_buffers.leaf_count()) return failure();
+
+  // TODO(ezhulenev): Report human-readable error messages through errors.
+  size_t index = 0;
+  for (auto& source : source_buffers.leaves()) {
+    // Get the destination buffer.
+    auto dest = args.get<jitrt::StridedMemrefView>(index);
+    if (failed(dest)) return failure();
+
+    // Get the source buffer shape.
+    const Shape& source_shape =
+        ShapeUtil::GetSubshape(source_buffers.shape(), source.first);
+
+    // Check that destination shape matches the source shape.
+    // TODO(ezhulenev): Report human-readable error similar to infeed_thunk.
+    Shape dest_shape = ToShape(*dest);
+    if (!ShapeUtil::Equal(dest_shape, source_shape)) return failure();
+
+    se::DeviceMemoryBase dest_address = GetDeviceAddress(*dest);
+    se::ScopedDeviceMemory<uint8_t>& buffer = source.second;
+    stream->ThenMemcpy(&dest_address, *buffer.ptr(), buffer.ptr()->size());
+
+    ++index;
+  }
+
+  // TODO(ezhulenev): Make this function async?
+  Status block_status = stream->BlockHostUntilDone();
+  if (!block_status.ok()) return failure();
+
+  VLOG(3) << "Infeeding to GPU complete";
+
+  return success();
+}
+
+static bool Infeed(runtime::KernelContext* ctx, void** args, void** attrs) {
+  static auto* handler = CustomCall::Bind("xla.gpu.infeed")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .Arg<CustomCall::RemainingArgs>()  // args
+                             .Attr<StringRef>("config")
+                             .To<RuntimeChecks()>(Infeed::Handler())
+                             .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+// -------------------------------------------------------------------------- //
+
+namespace {
 
 enum class MemcpyDirection { kDeviceToDevice, kDeviceToHost, kHostToDevice };
 
@@ -602,6 +669,7 @@ SymbolMap JitRtCustomCallsSymbolMap(MangleAndInterner mangle) {
   bind("xla.gpu.memcpy.d2d", &MemcpyFn<MemcpyDirection::kDeviceToDevice>);
   bind("xla.gpu.memcpy.h2d", &MemcpyFn<MemcpyDirection::kHostToDevice>);
   bind("xla.gpu.memcpy.d2h", &MemcpyFn<MemcpyDirection::kDeviceToHost>);
+  bind("xla.gpu.infeed", &xla::gpu::Infeed);
 
   return symbol_map;
 }
