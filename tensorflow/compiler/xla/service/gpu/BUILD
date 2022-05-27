@@ -653,6 +653,7 @@ cc_library(
         ":gpu_asm_opts_util",
         ":io_feed_manager",
         ":matmul_utils",
+        ":nccl_collective_thunks",
         ":stream_executor_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:executable",

@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <numeric>
+#include <optional>
 #include <utility>
 
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
@@ -40,6 +41,8 @@
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu_binary.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 
@@ -51,6 +54,7 @@ namespace {
 
 using mlir::DialectRegistry;
 using mlir::FunctionType;
+using mlir::IntegerAttr;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::NamedAttribute;
@@ -68,6 +72,7 @@ using mlir::func::ReturnOp;
 using mlir::gpu::GPUModuleOp;
 using mlir::gpu::LaunchFuncOp;
 using mlir::gpu::MemcpyOp;
+using mlir::lmhlo::AllReduceOp;
 using mlir::lmhlo::InfeedOp;
 using mlir::lmhlo::OutfeedOp;
 using mlir::lmhlo::TerminatorOp;
@@ -599,6 +604,122 @@ class CholeskyOpLowering : public OpRewritePattern<CholeskyOp> {
 
 // -------------------------------------------------------------------------- //
 
+class AllReduceOpLowering : public OpRewritePattern<AllReduceOp> {
+ public:
+  explicit AllReduceOpLowering(MLIRContext* ctx)
+      : OpRewritePattern<AllReduceOp>(ctx) {}
+
+  LogicalResult matchAndRewrite(AllReduceOp op,
+                                PatternRewriter& rewriter) const override {
+    MLIRContext* ctx = this->getContext();
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    ModuleOp module = op->getParentOfType<ModuleOp>();
+
+    // Custom call target.
+    NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
+                          b.getStringAttr("xla.gpu.all_reduce"));
+
+    // Create a custom call function declaration.
+    auto custom_call_type =
+        FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
+    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
+    auto custom_call = FuncOp::create(op.getLoc(), "all_reduce",
+                                      custom_call_type, custom_call_attrs);
+    custom_call.setPrivate();
+
+    SymbolTable sym_table(module);
+    auto inserted = sym_table.insert(custom_call);
+    rewriter.notifyOperationInserted(custom_call);
+
+    // Convert AllReduce to a function call.
+    auto call = rewriter.create<CallOp>(op.getLoc(), inserted, TypeRange(),
+                                        op.getOperands());
+
+    xla::gpu::NcclCollectiveConfig config =
+        xla::gpu::GetNcclCollectiveConfigForMlir(op,
+                                                 op.use_global_device_ids());
+
+    FuncOp func = op->getParentOfType<FuncOp>();
+    IntegerAttr replica_count_attr =
+        func->getAttrOfType<IntegerAttr>("replica_count");
+    IntegerAttr num_partitions_attr =
+        func->getAttrOfType<IntegerAttr>("num_partitions");
+    const int64_t replica_count = replica_count_attr.getInt();
+    const int64_t num_partitions = num_partitions_attr.getInt();
+
+    // A given collective op can be degenerate if across all groups formed
+    // by it are singleton. In such a case, we don't need to do any
+    // communication and we can just copy the input to the output.
+    if (config.IsDegenerate(replica_count, num_partitions)) {
+      for (int64_t i = 0; i < op.operands().size(); i++) {
+        rewriter.create<gpu::MemcpyOp>(
+            op.getLoc(), TypeRange(),
+            ValueRange({op.results()[i], op.operands()[i]}));
+      }
+
+      // Erase the original AllReduce operation.
+      rewriter.eraseOp(op);
+
+      return success();
+    }
+
+    if (!xla::gpu::NcclAllReduceThunk::CanImplement(op)) {
+      return op.emitOpError()
+             << "Requested AllReduce not implemented on GPU; replica_count: "
+             << replica_count << ", num_partitions: " << num_partitions
+             << ", group_mode: "
+             << CollectiveOpGroupModeToString(config.group_mode)
+             << ", operand_count: " << op.operands().size()
+             << ", NCCL support: "
+             << xla::gpu::NcclCollectiveThunk::NcclIsEnabled();
+    }
+
+    std::optional<xla::ReductionKind> reduction_kind =
+        xla::gpu::NcclAllReduceThunkBase::MatchAllReduceComputation(
+            op.computation());
+    if (!reduction_kind.has_value())
+      return op.emitOpError()
+             << "Failed to determine reduction computation for AllReduce";
+
+    // Copy backend specific attributes.
+    call->setAttr(b.getStringAttr("group_mode"),
+                  b.getI64IntegerAttr(static_cast<int64_t>(config.group_mode)));
+    call->setAttr(b.getStringAttr("op_id"), b.getI64IntegerAttr(config.op_id));
+    call->setAttr(
+        b.getStringAttr("reduction_kind"),
+        b.getI64IntegerAttr(static_cast<int64_t>(reduction_kind.value())));
+    // TODO(b/233930690): Pass the attribute below as a nested array.
+    // Pass an array of arrays using two vectors; one specifying all the values
+    // and another specifying the (ending) offsets of each array in the other
+    // vector. Example: [ [10, 20, 30, 40], [50, 60], [70, 80, 90] ] turns into
+    // offsets=[4, 6, 9] values=[10, 20, 30, 40, 50, 60, 70, 80, 90].
+    std::vector<int64_t> replica_group_offsets;
+    std::vector<int64_t> replica_group_values;
+    replica_group_offsets.reserve(config.replica_groups.size());
+    int replica_group_offset = 0;
+    for (const auto& replica_group : config.replica_groups) {
+      replica_group_offset += replica_group.replica_ids_size();
+      replica_group_offsets.push_back(replica_group_offset);
+      replica_group_values.reserve(replica_group_offset);
+      for (auto replica_id : replica_group.replica_ids()) {
+        replica_group_values.push_back(replica_id);
+      }
+    }
+    call->setAttr(b.getStringAttr("replica_group_offsets"),
+                  b.getI64TensorAttr(replica_group_offsets));
+    call->setAttr(b.getStringAttr("replica_group_values"),
+                  b.getI64TensorAttr(replica_group_values));
+
+    // Erase the original AllReduce operation.
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+};
+
+// -------------------------------------------------------------------------- //
+
 void ConvertLmhloConstantToArgPass::runOnOperation() {
   ModuleOp module = getOperation();
   MLIRContext* ctx = module.getContext();
@@ -649,8 +770,8 @@ void ConvertLmhloGpuToJitRtPass::runOnOperation() {
   // Convert lmhlo_gpu operations to JitRt gpu runtime custom calls.
   RewritePatternSet patterns(ctx);
   patterns.insert<GemmOpLowering, GemmBiasOpLowering>(ctx, uid);
-  patterns.insert<CholeskyOpLowering, WhileOpLowering, TerminatorOpLowering>(
-      ctx);
+  patterns.insert<AllReduceOpLowering, CholeskyOpLowering, WhileOpLowering,
+                  TerminatorOpLowering>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();

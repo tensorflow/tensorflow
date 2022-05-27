@@ -25,6 +25,8 @@
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
@@ -725,6 +727,95 @@ static bool Cholesky(runtime::KernelContext* ctx, void** args, void** attrs) {
 
 // -------------------------------------------------------------------------- //
 
+namespace {
+struct AllReduce {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           CustomCall::RemainingArgs args, int64_t group_mode,
+                           int64_t op_id, int64_t reduction_kind,
+                           ArrayRef<int64_t> replica_group_offsets,
+                           ArrayRef<int64_t> replica_group_values) const;
+  static AllReduce Handler() { return AllReduce(); }
+};
+}  // namespace
+
+LogicalResult AllReduce::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
+    int64_t reduction_kind, ArrayRef<int64_t> replica_group_offsets,
+    ArrayRef<int64_t> replica_group_values) const {
+#if XLA_ENABLE_XCCL
+  VLOG(3) << "Running AllReduce";
+  se::Stream* stream = run_options->stream();
+  NcclExecuteParams params(*run_options, stream);
+
+  // TODO(b/233930690): Pass the attribute below as a nested array.
+  // Pass an array of arrays using two vectors; one specifying all the values
+  // and another specifying the (ending) offsets of each array in the other
+  // vector. Example: [ [10, 20, 30, 40], [50, 60], [70, 80, 90] ] turns into
+  // offsets=[4, 6, 9] values=[10, 20, 30, 40, 50, 60, 70, 80, 90].
+  std::vector<ReplicaGroup> replica_groups;
+  int i = 0;
+  for (int64_t replica_group_end : replica_group_offsets) {
+    ReplicaGroup replica_group;
+    while (i < replica_group_end)
+      replica_group.add_replica_ids(replica_group_values[i++]);
+    replica_groups.push_back(replica_group);
+  }
+
+  auto comm =
+      LockNcclComm(params, replica_groups,
+                   static_cast<CollectiveOpGroupMode>(group_mode), op_id);
+  if (!comm.ok()) return failure();
+
+  // Add MemRef arguments as buffer arguments.
+  const int buffer_pairs = args.size() / 2;
+  std::vector<DeviceBufferPair> device_buffers;
+  device_buffers.reserve(buffer_pairs);
+  for (int i = 0; i < buffer_pairs; ++i) {
+    auto source = args.get<jitrt::MemrefView>(i);
+    auto destination = args.get<jitrt::MemrefView>(i + buffer_pairs);
+    if (failed(source) || failed(destination)) {
+      // Unsupported argument type.
+      return failure();
+    }
+
+    int element_count = 1;
+    for (int size : source->sizes) element_count *= size;
+    device_buffers.emplace_back(DeviceBufferPair{
+        ToPrimitiveType(source->dtype), element_count,
+        GetDeviceAddress(*source), GetDeviceAddress(*destination)});
+  }
+
+  auto executed = RunAllReduce(static_cast<ReductionKind>(reduction_kind),
+                               device_buffers, *stream, *comm.value());
+  if (!executed.ok()) return failure();
+
+  return success();
+#else   // XLA_ENABLE_XCCL
+  // NCCL disabled.
+  return failure();
+#endif  // XLA_ENABLE_XCCL
+}
+
+static bool AllReduce(runtime::KernelContext* ctx, void** args, void** attrs) {
+  static auto* handler =
+      CustomCall::Bind("xla.gpu.all_reduce")
+          .UserData<const ServiceExecutableRunOptions*>()
+          .RemainingArgs()              // args
+          .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
+          .Attr<int64_t>("op_id")
+          .Attr<int64_t>("reduction_kind")  // ReductionKind
+          .Attr<ArrayRef<int64_t>>("replica_group_offsets")
+          .Attr<ArrayRef<int64_t>>("replica_group_values")
+          .To<RuntimeChecks()>(AllReduce::Handler())
+          .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+// -------------------------------------------------------------------------- //
+
 SymbolMap JitRtCustomCallsSymbolMap(MangleAndInterner mangle) {
   SymbolMap symbol_map;
 
@@ -733,6 +824,7 @@ SymbolMap JitRtCustomCallsSymbolMap(MangleAndInterner mangle) {
         llvm::pointerToJITTargetAddress(symbol_ptr), llvm::JITSymbolFlags());
   };
 
+  bind("xla.gpu.all_reduce", &xla::gpu::AllReduce);
   bind("xla.gpu.cholesky", &xla::gpu::Cholesky);
   bind("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
   bind("xla.gpu.gemm", &xla::gpu::Gemm);
