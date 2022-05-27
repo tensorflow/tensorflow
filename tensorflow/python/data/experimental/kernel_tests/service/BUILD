@@ -9,7 +9,7 @@ package(
 
 tf_py_test(
     name = "auto_shard_test",
-    size = "medium",
+    size = "large",
     srcs = ["auto_shard_test.py"],
     shard_count = 32,
     tags = [
