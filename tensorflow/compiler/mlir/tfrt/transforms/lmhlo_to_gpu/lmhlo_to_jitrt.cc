@@ -69,6 +69,7 @@ using mlir::gpu::GPUModuleOp;
 using mlir::gpu::LaunchFuncOp;
 using mlir::gpu::MemcpyOp;
 using mlir::lmhlo::InfeedOp;
+using mlir::lmhlo::OutfeedOp;
 using mlir::lmhlo::TerminatorOp;
 using mlir::lmhlo::WhileOp;
 using mlir::lmhlo_gpu::CholeskyOp;
@@ -140,28 +141,33 @@ class TerminatorOpLowering : public OpRewritePattern<TerminatorOp> {
 
 // -------------------------------------------------------------------------- //
 
-class InfeedOpLowering : public OpRewritePattern<InfeedOp> {
+template <typename IoFeedOp>
+class IoFeedOpLowering : public OpRewritePattern<IoFeedOp> {
  public:
-  using OpRewritePattern::OpRewritePattern;
+  explicit IoFeedOpLowering(MLIRContext* ctx)
+      : OpRewritePattern<IoFeedOp>(ctx) {}
 
-  LogicalResult matchAndRewrite(InfeedOp op,
+  static llvm::StringRef Name(InfeedOp) { return "infeed"; }
+  static llvm::StringRef Name(OutfeedOp) { return "outfeed"; }
+
+  LogicalResult matchAndRewrite(IoFeedOp op,
                                 PatternRewriter& rewriter) const override {
-    MLIRContext* ctx = getContext();
+    MLIRContext* ctx = this->getContext();
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
     // Custom call target.
     NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
-                          b.getStringAttr("xla.gpu.infeed"));
+                          b.getStringAttr(Twine("xla.gpu.") + Name(op)));
 
     // Create a custom call function declaration.
     auto custom_call_type =
         FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
     auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
-    auto custom_call = FuncOp::create(op.getLoc(), "infeed", custom_call_type,
+    auto custom_call = FuncOp::create(op.getLoc(), Name(op), custom_call_type,
                                       custom_call_attrs);
     custom_call.setPrivate();
 
-    SymbolTable sym_table(op->getParentOfType<ModuleOp>());
+    SymbolTable sym_table(op->template getParentOfType<ModuleOp>());
     auto inserted = sym_table.insert(custom_call);
     rewriter.notifyOperationInserted(custom_call);
 
@@ -170,11 +176,21 @@ class InfeedOpLowering : public OpRewritePattern<InfeedOp> {
                                         op.getOperands());
     call->setAttr(b.getStringAttr("config"), op.configAttr());
 
-    // Erase the original infeed operation.
+    // Erase the original infeed/outfeed operation.
     rewriter.eraseOp(op);
 
     return success();
   }
+};
+
+class InfeedOpLowering : public IoFeedOpLowering<InfeedOp> {
+ public:
+  using IoFeedOpLowering::IoFeedOpLowering;
+};
+
+class OutfeedOpLowering : public IoFeedOpLowering<OutfeedOp> {
+ public:
+  using IoFeedOpLowering::IoFeedOpLowering;
 };
 
 // -------------------------------------------------------------------------- //
@@ -618,7 +634,7 @@ void ConvertGpuToJitRtPass::runOnOperation() {
   // Convert gpu operations to JitRt gpu runtime custom calls.
   RewritePatternSet patterns(ctx);
   patterns.insert<GpuModuleOpLowering, LaunchFuncOpLowering, MemcpyOpLowering,
-                  InfeedOpLowering>(ctx);
+                  InfeedOpLowering, OutfeedOpLowering>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();
