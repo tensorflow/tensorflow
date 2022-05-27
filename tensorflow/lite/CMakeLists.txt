@@ -71,20 +71,12 @@ option(TFLITE_ENABLE_XNNPACK "Enable XNNPACK backend" ON)
 option(TFLITE_ENABLE_EXTERNAL_DELEGATE "Enable External Delegate backend" ON)
 
 option(TFLITE_KERNEL_TEST "Enable tflite kernel unit test" OFF)
-option(TFLITE_EVAL_TOOLS "Enable tflite eval tools compilation" OFF)
 
 if(${CMAKE_CROSSCOMPILING})
   set(TFLITE_HOST_TOOLS_DIR "" CACHE PATH "Host tools directory")
-  macro(report_error MISSING_COMPILER)
-    message(FATAL_ERROR "Path to the natively compiled '${MISSING_COMPILER}' compiler binary has not been provided!\
-    Please specify it using -DTFLITE_HOST_TOOLS_DIR=<host_tools_dir> launch argument.")
-  endmacro()
-
   if(TFLITE_KERNEL_TEST AND TFLITE_HOST_TOOLS_DIR STREQUAL "")
-    report_error("flatc")
-  endif()
-  if(TFLITE_EVAL_TOOLS AND TFLITE_HOST_TOOLS_DIR STREQUAL "")
-    report_error("protoc")
+    message(FATAL_ERROR "Path to the natively compiled 'flatc' compiler binary has not been provided!\
+    Please specify it using -DTFLITE_HOST_TOOLS_DIR=<host_tools_dir> launch argument.")
   endif()
 endif()
 
@@ -546,9 +538,7 @@ if(TFLITE_KERNEL_TEST)
 endif()
 
 # Tensorflow Lite Evaluation Tools
-if(TFLITE_EVAL_TOOLS)
-  add_subdirectory(${TFLITE_SOURCE_DIR}/tools/evaluation)
-endif()
+add_subdirectory(${TFLITE_SOURCE_DIR}/tools/evaluation)
 
 # The benchmark tool.
 add_subdirectory(${TFLITE_SOURCE_DIR}/tools/benchmark)

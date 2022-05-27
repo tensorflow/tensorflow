@@ -17,6 +17,13 @@
 # compiler is required. If found, it is added as a custom target. When compiling
 # natively, 'protoc' target is already available in protobuf CMake configuration.
 if(${CMAKE_CROSSCOMPILING})
+    if(TFLITE_HOST_TOOLS_DIR STREQUAL "")
+        message(WARNING "TFLITE_HOST_TOOLS_DIR=<host_tools_dir> launch argument has not been specified.\
+        In order to enable Evaluation Tools build, you need to specify <host_tools_dir> containing the\
+        natively compiled 'protoc' compiler!")
+        return()
+    endif()
+
     set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${TFLITE_SOURCE_DIR}/tools/cmake/native_tools)
     include(native_utils)
     
@@ -91,18 +98,21 @@ if(TFLITE_ENABLE_XNNPACK)
 endif()
 
 add_executable(coco_object_detection_run_eval
+    EXCLUDE_FROM_ALL
     ${TFLITE_SOURCE_DIR}/tools/evaluation/tasks/coco_object_detection/run_eval.cc
     ${TFLITE_EVALUATION_BINARY_SRCS}
 )
 target_link_libraries(coco_object_detection_run_eval proto_gen_outputs )
 
 add_executable(imagenet_image_classification_run_eval
+    EXCLUDE_FROM_ALL
     ${TFLITE_SOURCE_DIR}/tools/evaluation/tasks/imagenet_image_classification/run_eval.cc
     ${TFLITE_EVALUATION_BINARY_SRCS}
 )
 target_link_libraries(imagenet_image_classification_run_eval proto_gen_outputs)
 
 add_executable(inference_diff_run_eval
+    EXCLUDE_FROM_ALL
     ${TFLITE_SOURCE_DIR}/tools/evaluation/tasks/inference_diff/run_eval.cc
     ${TFLITE_EVALUATION_BINARY_SRCS}
 )
@@ -130,4 +140,11 @@ foreach(evaltool ${EVALTOOLS})
         PRIVATE
         ${TFLITE_BENCHMARK_CC_OPTIONS})
 endforeach()
+
+add_custom_target(evaltools DEPENDS
+    coco_object_detection_run_eval
+    imagenet_image_classification_run_eval
+    inference_diff_run_eval
+)
+
 
