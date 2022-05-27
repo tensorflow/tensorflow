@@ -2252,10 +2252,8 @@ struct ReduceWindowOpOnTensorsGenericConversion
     }
 
     llvm::SmallVector<int64_t> base_dilations;
-    if (op.window_dilations()) {
+    if (op.base_dilations()) {
       base_dilations = Extract1DVector(*op.base_dilations());
-      if (llvm::any_of(base_dilations, [](int64_t& x) { return x != 1; }))
-        return failure();
     }
 
     llvm::SmallVector<int64_t> window_strides(window_dimensions.size(), 1);
@@ -2268,14 +2266,14 @@ struct ReduceWindowOpOnTensorsGenericConversion
       window_dilations = Extract1DVector(*op.window_dilations());
     }
 
-    auto rank = window_dimensions.size();
+    auto rank = static_cast<int64_t>(window_dimensions.size());
     SmallVector<AffineExpr, 2> src_exprs;
     SmallVector<AffineExpr, 2> window_exprs;
     SmallVector<AffineExpr, 2> dst_exprs;
     SmallVector<int64_t> filtered_window_dims;
 
     int window_dim = 0;
-    for (int i = 0; i < rank; i++) {
+    for (int64_t i = 0; i < rank; i++) {
       AffineExpr src_expr = mlir::getAffineDimExpr(i, ctx);
 
       if (window_strides[i] != 1) src_expr = src_expr * window_strides[i];
@@ -2320,37 +2318,32 @@ struct ReduceWindowOpOnTensorsGenericConversion
     llvm::SmallVector<Value> inputs = llvm::to_vector(adaptor.operands());
 
     // Pad as necessary.
-    if (llvm::any_of(padding, [](int32_t v) { return v != 0; })) {
-      llvm::SmallVector<int64_t> static_lows;
-      llvm::SmallVector<int64_t> static_highs;
+    if (llvm::any_of(padding, [](int64_t v) { return v != 0; }) ||
+        llvm::any_of(base_dilations, [](int64_t v) { return v != 1; })) {
+      llvm::SmallVector<int64_t> static_lows(rank, 0);
+      llvm::SmallVector<int64_t> static_highs(rank, 0);
       for (int i = 0; i < padding.size(); i += 2) {
-        static_lows.push_back(padding[i]);
-        static_highs.push_back(padding[i + 1]);
+        static_lows[i / 2] = padding[i];
+        static_highs[i / 2] = padding[i + 1];
       }
+      // Translate base dilation into interior padding.
+      llvm::SmallVector<int64_t> static_interiors(rank, 0);
+      for (const auto& dilation : llvm::enumerate(base_dilations)) {
+        static_interiors[dilation.index()] = dilation.value() - 1;
+      }
+
+      auto pad_attr_type =
+          RankedTensorType::get({rank}, rewriter.getIndexType());
+      auto pad_lows = DenseIntElementsAttr::get(pad_attr_type, static_lows);
+      auto pad_highs = DenseIntElementsAttr::get(pad_attr_type, static_highs);
+      auto pad_interiors =
+          DenseIntElementsAttr::get(pad_attr_type, static_interiors);
+
       for (auto values : llvm::zip(inputs, init_values)) {
         auto& input = std::get<0>(values);
         auto& init_value = std::get<1>(values);
-
-        // Extract the single element from init value. This mimic the lowering
-        // behavior of mhlo.pad.
-        Value padding_value =
-            rewriter.createOrFold<tensor::ExtractOp>(loc, init_value);
-
-        auto pad_op = rewriter.create<tensor::PadOp>(
-            loc, input, static_lows, static_highs, ValueRange{}, ValueRange{});
-
-        SmallVector<Type, 4> block_arg_types;
-        block_arg_types.assign(input.getType().cast<ShapedType>().getRank(),
-                               rewriter.getIndexType());
-        auto& region = pad_op.region();
-
-        OpBuilder::InsertionGuard guard(rewriter);
-        rewriter.createBlock(
-            &region, region.end(), block_arg_types,
-            SmallVector<Location>(block_arg_types.size(), loc));
-        rewriter.create<tensor::YieldOp>(loc, padding_value);
-
-        input = pad_op.getResult();
+        input = rewriter.create<mhlo::PadOp>(loc, input, init_value, pad_lows,
+                                             pad_highs, pad_interiors);
       }
     }
 
