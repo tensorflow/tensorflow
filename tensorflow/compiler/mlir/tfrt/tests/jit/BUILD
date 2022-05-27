@@ -29,7 +29,8 @@ tfrt_cc_test(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt_pipeline",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:BufferizationTransforms",
         "@tf_runtime//:dtype",
