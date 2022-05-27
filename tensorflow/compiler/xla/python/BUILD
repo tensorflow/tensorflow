@@ -311,7 +311,6 @@ cc_library(
         "//tensorflow/python/lib/core:numpy_lib",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_cuda//cuda:cuda_runtime",
     ]),
 )
 
