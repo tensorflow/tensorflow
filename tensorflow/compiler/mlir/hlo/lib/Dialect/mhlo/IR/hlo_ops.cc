@@ -2207,9 +2207,57 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
+namespace {
+
+struct EliminateRedundantConvert : public OpRewritePattern<ConvertOp> {
+  using OpRewritePattern<ConvertOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(ConvertOp op,
+                                PatternRewriter& rewriter) const override {
+    auto convert_op = op.operand().getDefiningOp<ConvertOp>();
+    if (!convert_op) {
+      return failure();
+    }
+    auto first_type =
+        convert_op.operand().getType().cast<TensorType>().getElementType();
+    auto second_type =
+        op.operand().getType().cast<TensorType>().getElementType();
+    auto third_type =
+        op.getResult().getType().cast<TensorType>().getElementType();
+    auto loc = rewriter.getFusedLoc({convert_op->getLoc(), op->getLoc()});
+    if (first_type.isa<FloatType>() && second_type.isa<FloatType>() &&
+        third_type.isa<FloatType>()) {
+      // fold when the second float type's width is longer than first,
+      // like fp16 -> fp32 -> fp64, bf16 -> fp32 -> fp16
+      if (second_type.cast<FloatType>().getWidth() >
+          first_type.cast<FloatType>().getWidth()) {
+        Value result = rewriter.create<ConvertOp>(loc, op.getResult().getType(),
+                                                  convert_op.operand());
+        rewriter.replaceOp(op, result);
+        return success();
+      }
+    } else if (first_type.isa<IntegerType>() &&
+               second_type.isa<IntegerType>() &&
+               third_type.isa<IntegerType>()) {
+      // fold when the second integer type's width is longer than first,
+      // like i16 -> i32 -> i64, u16 -> i32 -> u32
+      if (second_type.cast<IntegerType>().getWidth() >
+          first_type.cast<IntegerType>().getWidth()) {
+        Value result = rewriter.create<ConvertOp>(loc, op.getResult().getType(),
+                                                  convert_op.operand());
+        rewriter.replaceOp(op, result);
+        return success();
+      }
+    }
+    return failure();
+  }
+};
+
+}  // namespace
+
 void ConvertOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                             MLIRContext* context) {
   results.add<EliminateIdentityConvert>(context);
+  results.add<EliminateRedundantConvert>(context);
 }
 
 //===----------------------------------------------------------------------===//
