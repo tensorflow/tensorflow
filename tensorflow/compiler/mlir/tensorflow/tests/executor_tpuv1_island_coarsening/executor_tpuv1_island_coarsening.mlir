@@ -189,7 +189,6 @@ func.func @fuse_in_replicated_input_op(%arg0: tensor<i32>) {
   func.return
 }
 
-
 // Check that we bring in TPUReplicatedOutputOp users.
 // CHECK-LABEL: func @fuse_in_replicated_output_op
 func.func @fuse_in_replicated_output_op() {
