@@ -687,7 +687,6 @@ class LoadDatasetOp::Dataset : public DatasetBase {
           absl::StrReplaceAll(run_dir, {{"[", "\\["},
                                         {"]", "\\]"},
                                         {"?", "\\?"},
-                                        {"-", "\\-"},
                                         {"*", "\\*"}});
       std::vector<std::string> snapshot_shard_dirs;
       TF_RETURN_IF_ERROR(ctx->env()->GetMatchingPaths(
