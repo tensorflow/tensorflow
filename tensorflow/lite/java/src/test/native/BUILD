@@ -40,6 +40,7 @@ cc_library_with_tflite(
     ],
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "//tensorflow/lite/java/jni",
         "//tensorflow/lite/kernels:kernel_util",
