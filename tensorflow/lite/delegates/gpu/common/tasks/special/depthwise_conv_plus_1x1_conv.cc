@@ -99,8 +99,9 @@ void UploadWeights(const DepthwiseConvolution2DAttributes& dw_attr,
   BufferDescriptor desc;
   desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
   desc.element_size = 4;
-  desc.memory_type =
-      gpu_info.IsMali() ? MemoryType::GLOBAL : MemoryType::CONSTANT;
+  desc.memory_type = gpu_info.IsMali() || gpu_info.IsAMD()
+                         ? MemoryType::GLOBAL
+                         : MemoryType::CONSTANT;
   desc.size = float_size * gpu_data.size();
   desc.data.resize(desc.size);
 
