@@ -113,6 +113,11 @@ class LocalizerValidationRegressionTest : public ::testing::Test {
     EXPECT_EQ(validator->RunValidation(&results), kMinibenchmarkSuccess);
     EXPECT_TRUE(results.ok);
     EXPECT_EQ(results.delegate_error, 0);
+    if (accelerator_name != "CPU") {
+      // For any non-CPU delegate, we validate that model execution was at least
+      // partially delegated by expecting non-zero number of delegated kernels
+      EXPECT_NE(results.delegated_kernels, 0);
+    }
 
     for (const auto& metric : results.metrics) {
       int test_case = 0;
@@ -188,7 +193,13 @@ TEST_F(LocalizerValidationRegressionTest, NnapiSl) {
               /* allow_dynamic_dimensions */ false,
               /* allow_fp16_precision_for_fp32 */ false,
               /* use_burst_computation */ false,
-              reinterpret_cast<uint64_t>(nnapi_sl_handle->getFL5())))));
+              reinterpret_cast<uint64_t>(nnapi_sl_handle->getFL5())),
+          /* gpu_settings */ 0,
+          /* hexagon_settings */ 0,
+          /* xnnpack_settings */ 0,
+          /* coreml_settings */ 0,
+          /* cpu_settings */ 0,
+          /* max_delegated_partitions */ 1)));
   AndroidInfo android_info;
   auto status = RequestAndroidInfo(&android_info);
   ASSERT_TRUE(status.ok());
