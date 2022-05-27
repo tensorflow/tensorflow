@@ -1631,8 +1631,8 @@ TEST_F(HloInstructionTest, StringifyScatter) {
 TEST_F(HloInstructionTest, StringifyAsyncOps) {
   const Shape s1 = ShapeUtil::MakeShape(F32, {10});
   const Shape s2 = ShapeUtil::MakeShape(F32, {20});
-  const Shape s_tuple =
-      ShapeUtil::MakeTupleShape({s1, s2, ShapeUtil::MakeShape(S32, {})});
+  const Shape s_tuple = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeTupleShape({s1}), s2, ShapeUtil::MakeShape(S32, {})});
 
   HloComputation::Builder async_builder("AsyncOp");
   HloInstruction* param = async_builder.AddInstruction(
@@ -1663,9 +1663,9 @@ TEST_F(HloInstructionTest, StringifyAsyncOps) {
 
 ENTRY %Entry (p0: f32[10]) -> f32[20] {
   %p0 = f32[10]{0} parameter(0)
-  %async-start = (f32[10]{0}, f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), custom_call_target="foo"
-  %async-update = (f32[10]{0}, f32[20]{0}, s32[]) custom-call-update((f32[10]{0}, f32[20]{0}, s32[]) %async-start), custom_call_target="foo"
-  ROOT %async-done = f32[20]{0} custom-call-done((f32[10]{0}, f32[20]{0}, s32[]) %async-update), custom_call_target="foo"
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), custom_call_target="foo"
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), custom_call_target="foo"
+  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), custom_call_target="foo"
 }
 
 )";
@@ -1680,9 +1680,9 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 
 ENTRY %Entry (p0: f32[10]) -> f32[20] {
   %p0 = f32[10]{0} parameter(0)
-  %async-start = (f32[10]{0}, f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), calls=%AsyncOp
-  %async-update = (f32[10]{0}, f32[20]{0}, s32[]) async-update((f32[10]{0}, f32[20]{0}, s32[]) %async-start), calls=%AsyncOp
-  ROOT %async-done = f32[20]{0} async-done((f32[10]{0}, f32[20]{0}, s32[]) %async-update), calls=%AsyncOp
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), calls=%AsyncOp
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), calls=%AsyncOp
+  ROOT %async-done = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), calls=%AsyncOp
 }
 
 )";
