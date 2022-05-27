@@ -171,37 +171,13 @@ LogicalResult SortTopologically(Block::iterator begin, Block::iterator end) {
 // Returns a failure if a cycle prevents the merge from happening correctly
 // without breaking dominance. The IR is left in invalid state in case of
 // failure.
-LogicalResult MergeIsland(llvm::function_ref<bool(llvm::StringRef, Operation*)>
-                              is_op_calling_func_for_cluster,
-                          Operation* op, bool* changed) {
-  // Find the first island wrapping a single operation with the
-  // `_replication_info` attribute, it'll be used as the root of the algorithm
-  // to find the other operations that are part of the same cluster.
-  IslandOp island = dyn_cast<IslandOp>(*op);
-  if (!island || !island.WrapsSingleOp()) return success();
-  Operation& wrapped_op = island.GetBody().front();
-
-  // TODO(b/188046643): Conservatively fail until pass is extended to fuse
-  // chains of these ops.
-  if (isa<TF::TPUPartitionedInputOp, TF::TPUPartitionedOutputOp>(wrapped_op)) {
-    return failure();
-  }
-
-  llvm::Optional<llvm::StringRef> result = GetTpuClusterName(&wrapped_op);
-  if (!result.hasValue()) return success();
-  llvm::StringRef cluster_name = result.getValue();
-
-  // We found a _replication_info, let's build an island for the full cluster!
-  LLVM_DEBUG(llvm::dbgs() << "Processing candidate island: "
-                          << *island.getOperation() << "\n");
-
-  // Collect the islands to merge together in this new cluster starting with the
-  // given island.
-  SmallVector<IslandOp, 16> islands;
-  SmallPtrSet<Operation*, 16> islands_set;
-  SmallPtrSet<Operation*, 16> wrapped_ops;
-  IslandOp last_island_added;
-
+void CollectCandidateIslands(
+    llvm::function_ref<bool(llvm::StringRef, Operation*)>
+        is_op_calling_func_for_cluster,
+    Operation* op, StringRef cluster_name,
+    SmallPtrSet<Operation*, 16>& islands_set,
+    SmallPtrSet<Operation*, 16>& wrapped_ops, IslandOp& last_island_added,
+    bool& has_unsupported_op) {
   for (Operation& candidate_op : llvm::make_early_inc_range(
            llvm::make_range(op->getIterator(), op->getBlock()->end()))) {
     IslandOp candidate_island = dyn_cast<IslandOp>(candidate_op);
@@ -213,9 +189,9 @@ LogicalResult MergeIsland(llvm::function_ref<bool(llvm::StringRef, Operation*)>
     // chains of these ops.
     if (isa<TF::TPUPartitionedInputOp, TF::TPUPartitionedOutputOp>(
             candidate_wrapped_op)) {
-      return failure();
+      has_unsupported_op = true;
+      return;
     }
-
     // The op might be a special TPU input/output op and may have been already
     // added to the list of islands to be merged.
     if (wrapped_ops.contains(&candidate_wrapped_op)) {
@@ -223,7 +199,8 @@ LogicalResult MergeIsland(llvm::function_ref<bool(llvm::StringRef, Operation*)>
       continue;
     }
 
-    result = GetTpuClusterName(&candidate_wrapped_op);
+    llvm::Optional<llvm::StringRef> result =
+        GetTpuClusterName(&candidate_wrapped_op);
     llvm::StringRef candidate_cluster_name;
     if (result.hasValue()) {
       candidate_cluster_name = result.getValue();
@@ -245,6 +222,8 @@ LogicalResult MergeIsland(llvm::function_ref<bool(llvm::StringRef, Operation*)>
       wrapped_ops.insert(&wrapped_op);
       islands_set.insert(wrapper);
     }
+    // Add the current op to the set of ops which are planned to be merged into
+    // one cluster.
     islands_set.insert(candidate_island);
     wrapped_ops.insert(&candidate_wrapped_op);
     last_island_added = candidate_island;
@@ -261,26 +240,10 @@ LogicalResult MergeIsland(llvm::function_ref<bool(llvm::StringRef, Operation*)>
       }
     }
   }
+}
 
-  // Get the sequential order of the candidate islands in the block.
-  // Later we can merge the candidate islands in this order.
-  // The dominance is guaranteed in this order.
-  for (Operation& candidate_op : llvm::make_early_inc_range(
-           llvm::make_range(op->getBlock()->begin(), op->getBlock()->end()))) {
-    IslandOp candidate_island = dyn_cast<IslandOp>(candidate_op);
-    if (!candidate_island || !candidate_island.WrapsSingleOp()) continue;
-    if (islands_set.contains(candidate_island)) {
-      islands.push_back(candidate_island);
-    }
-  }
-
-  // If no other island was found to merge with the existing one, just
-  // move on.
-  if (islands.size() <= 1) return success();
-
-  *changed = true;
-  Operation* first_op_after = last_island_added->getNextNode();
-
+IslandOp CreateMergedIsland(IslandOp island, SmallVector<IslandOp, 16>& islands,
+                            SmallPtrSet<Operation*, 16>& wrapped_ops) {
   // Compute the result of the merged island, these are the values produced by
   // the islands that are merged if they have a use in an island not merged,
   // i.e. a value that escapes.
@@ -324,7 +287,7 @@ LogicalResult MergeIsland(llvm::function_ref<bool(llvm::StringRef, Operation*)>
   Value control = new_island.control();
   for (IslandOp island : islands) {
     YieldOp yield_op = island.GetYield();
-    for (auto idx_result : llvm::enumerate(island.outputs())) {
+    for (const auto& idx_result : llvm::enumerate(island.outputs())) {
       Value result = idx_result.value();
 
       bool has_external_use = false;
@@ -342,6 +305,76 @@ LogicalResult MergeIsland(llvm::function_ref<bool(llvm::StringRef, Operation*)>
     island.control().replaceAllUsesWith(control);
     island.erase();
   }
+  return new_island;
+}
+
+// Looks for an IslandOp that wraps a single operation tagged with the
+// _replication_info attribute, and merges it with all the following operations
+// in the block. Sets the `changed` boolean to true if any island is merged.
+// Returns a failure if a cycle prevents the merge from happening correctly
+// without breaking dominance. The IR is left in invalid state in case of
+// failure.
+LogicalResult MergeIsland(llvm::function_ref<bool(StringRef, Operation*)>
+                              is_op_calling_func_for_cluster,
+                          Operation* op, bool* changed) {
+  // Find the first island wrapping a single operation with the
+  // `_replication_info` attribute, it'll be used as the root of the algorithm
+  // to find the other operations that are part of the same cluster.
+  IslandOp island = dyn_cast<IslandOp>(*op);
+  if (!island || !island.WrapsSingleOp()) return success();
+  Operation& wrapped_op = island.GetBody().front();
+
+  // TODO(b/188046643): Conservatively fail until pass is extended to fuse
+  // chains of these ops.
+  if (isa<TF::TPUPartitionedInputOp, TF::TPUPartitionedOutputOp>(wrapped_op)) {
+    return failure();
+  }
+
+  llvm::Optional<llvm::StringRef> result = GetTpuClusterName(&wrapped_op);
+  if (!result.hasValue()) return success();
+  llvm::StringRef cluster_name = result.getValue();
+
+  // We found a _replication_info, let's build an island for the full cluster!
+  LLVM_DEBUG(llvm::dbgs() << "Processing candidate island: "
+                          << *island.getOperation() << "\n");
+
+  // Collect the islands to merge together in this new cluster starting with the
+  // given island.
+  SmallVector<IslandOp, 16> islands;
+  SmallPtrSet<Operation*, 16> islands_set;
+  SmallPtrSet<Operation*, 16> wrapped_ops;
+  IslandOp last_island_added;
+  bool has_unsupported_op = false;
+
+  CollectCandidateIslands(is_op_calling_func_for_cluster, op, cluster_name,
+                          islands_set, wrapped_ops, last_island_added,
+                          has_unsupported_op);
+
+  if (has_unsupported_op) {
+    return failure();
+  }
+
+  // Get the sequential order of the candidate islands in the block.
+  // Later we can merge the candidate islands in this order.
+  // The dominance is guaranteed in this order.
+  for (Operation& candidate_op : llvm::make_early_inc_range(
+           llvm::make_range(op->getBlock()->begin(), op->getBlock()->end()))) {
+    IslandOp candidate_island = dyn_cast<IslandOp>(candidate_op);
+    if (!candidate_island || !candidate_island.WrapsSingleOp()) continue;
+    if (islands_set.contains(candidate_island)) {
+      islands.push_back(candidate_island);
+    }
+  }
+
+  // If no other island was found to merge with the existing one, just move on.
+  if (islands.size() <= 1) return success();
+
+  *changed = true;
+  Operation* first_op_after = last_island_added->getNextNode();
+
+  // We create the merged island at the location of the first island that was
+  // merged (excluding special TPU input/output ops).
+  IslandOp new_island = CreateMergedIsland(island, islands, wrapped_ops);
 
   // Ensure dominance by sorting the range of islands that were merged.
   return SortTopologically(Block::iterator(new_island.getOperation()),
