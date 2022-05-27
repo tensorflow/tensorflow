@@ -447,11 +447,36 @@ class GetGlobalOpLowering : public OpRewritePattern<GetGlobalOp> {
     if (arg == func_mapping->second.end()) return failure();
 
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    MemRefType memref = op->getResult(0).getType().cast<MemRefType>();
 
-    // Replace all loads from a global with the corresponding argument.
+    // For identity layouts we can replace all loads from a global with the
+    // corresponding argument.
+    if (memref.getLayout().isIdentity()) {
+      Value c0 = b.create<ConstantOp>(rewriter.getIndexAttr(0));
+      rewriter.replaceOpWithNewOp<memref::ViewOp>(op, memref, arg->second, c0,
+                                                  ValueRange());
+      return success();
+    }
+
+    // For non-identity type we first view constant argument as a flat memref
+    // with the correct element type, and then cast it to the strided memref
+    // corresponding to the original memref layout.
+
+    // Get the strides and offset from the original memref type.
+    int64_t offset;
+    llvm::SmallVector<int64_t> strides;
+    if (failed(getStridesAndOffset(memref, strides, offset)))
+      return op.emitOpError("failed to compute strides and offset");
+
+    // Create a 1d view into the corresponding argument.
     Value c0 = b.create<ConstantOp>(rewriter.getIndexAttr(0));
-    rewriter.replaceOpWithNewOp<memref::ViewOp>(op, op->getResultTypes(),
-                                                arg->second, c0, ValueRange());
+    Value flat_view = b.create<memref::ViewOp>(
+        MemRefType::get({memref.getNumElements()}, memref.getElementType()),
+        arg->second, c0, ValueRange());
+
+    // Cast flat memref view into the original memref type.
+    rewriter.replaceOpWithNewOp<memref::ReinterpretCastOp>(
+        op, memref, flat_view, offset, memref.getShape(), strides);
 
     return success();
   }
@@ -535,7 +560,7 @@ void ConvertLmhloConstantToArgPass::runOnOperation() {
     auto memref = op.getType();
     return memref.getNumElements() < min_num_elements_;
   });
-  target.addLegalOp<ConstantOp, memref::ViewOp>();
+  target.addLegalOp<ConstantOp, memref::ViewOp, memref::ReinterpretCastOp>();
 
   // TODO(ezhulenev): By adding MHLO and LMHLO to a set of legal dialects, we
   // suppress any rewrites for these dialects (there are canonicalization
