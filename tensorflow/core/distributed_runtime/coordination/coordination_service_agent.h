@@ -162,7 +162,8 @@ class CoordinationServiceAgent {
   virtual StatusOr<std::string> GetKeyValue(const std::string& key) = 0;
   virtual StatusOr<std::string> GetKeyValue(const std::string& key,
                                             absl::Duration timeout) = 0;
-  // Note: Cancel the underlying RPC call with `call_opts->StartCancel()`.
+  // Note: Cancel the underlying RPC call with `call_opts->StartCancel()` and
+  // `call_opts->ClearCancelCallback()`.
   virtual std::shared_ptr<CallOptions> GetKeyValueAsync(
       const std::string& key, StatusOrValueCallback done) = 0;
 
@@ -250,6 +251,8 @@ class CoordinationServiceAgent {
   // Possible service errors:
   //   - FailedPrecondition: Barrier has already been passed.
   virtual Status CancelBarrier(const std::string& barrier_id) = 0;
+  virtual void CancelBarrierAsync(const std::string& barrier_id,
+                                  StatusCallback done) = 0;
 
  protected:
   // Set the service agent to error status and invoke the error callback.

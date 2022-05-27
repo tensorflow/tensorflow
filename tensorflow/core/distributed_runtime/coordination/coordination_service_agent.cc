@@ -106,6 +106,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
                           const std::vector<CoordinatedTask>& tasks,
                           StatusCallback done) override;
   Status CancelBarrier(const std::string& barrier_id) override;
+  void CancelBarrierAsync(const std::string& barrier_id,
+                          StatusCallback done) override;
 
  protected:
   void SetError(const Status& error) override;
@@ -696,23 +698,32 @@ void CoordinationServiceAgentImpl::WaitAtBarrierAsync(
 
 Status CoordinationServiceAgentImpl::CancelBarrier(
     const std::string& barrier_id) {
-  Status agent_running_status = ValidateRunningAgent();
-  if (!agent_running_status.ok()) {
-    return agent_running_status;
-  }
-  CancelBarrierRequest request;
-  CancelBarrierResponse response;
-  request.set_barrier_id(barrier_id);
-  *request.mutable_source_task() = task_;
-
   Status status;
   absl::Notification n;
-  leader_client_->CancelBarrierAsync(&request, &response, [&](const Status& s) {
+  CancelBarrierAsync(barrier_id, [&](const Status& s) {
     status = s;
     n.Notify();
   });
   n.WaitForNotification();
   return status;
+}
+
+void CoordinationServiceAgentImpl::CancelBarrierAsync(
+    const std::string& barrier_id, StatusCallback done) {
+  Status agent_running_status = ValidateRunningAgent();
+  if (!agent_running_status.ok()) {
+    done(agent_running_status);
+    return;
+  }
+  auto request = std::make_shared<CancelBarrierRequest>();
+  auto response = std::make_shared<CancelBarrierResponse>();
+  request->set_barrier_id(barrier_id);
+  *request->mutable_source_task() = task_;
+  leader_client_->CancelBarrierAsync(
+      request.get(), response.get(),
+      [request, response, done = std::move(done)](const Status& s) {
+        done(s);
+      });
 }
 
 // Returns an error if agent is not running.
