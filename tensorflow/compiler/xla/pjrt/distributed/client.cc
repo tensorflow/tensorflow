@@ -55,15 +55,8 @@ class DistributedRuntimeClientImpl : public DistributedRuntimeClient {
   xla::StatusOr<std::string> BlockingKeyValueGet(
       std::string key, absl::Duration timeout) override;
   xla::Status KeyValueSet(std::string key, std::string value) override;
-  // TODO(b/233099439): Implement and test this.
-  xla::Status KeyValueDelete(std::string key) override {
-    return tensorflow::errors::Unimplemented("Unimplemented.");
-  }
-  // TODO(b/233099439): Implement and test this.
   xla::Status WaitAtBarrier(std::string barrier_id,
-                            absl::Duration timeout) override {
-    return tensorflow::errors::Unimplemented("Unimplemented.");
-  }
+                            absl::Duration timeout) override;
 
  private:
   // Entry point for the heartbeat thread.
@@ -127,7 +120,6 @@ class DistributedRuntimeCoordinationServiceClient
   xla::StatusOr<std::string> BlockingKeyValueGet(
       std::string key, absl::Duration timeout) override;
   xla::Status KeyValueSet(std::string key, std::string value) override;
-  xla::Status KeyValueDelete(std::string key) override;
   xla::Status WaitAtBarrier(std::string barrier_id,
                             absl::Duration timeout) override;
 
@@ -317,7 +309,7 @@ xla::StatusOr<std::string> DistributedRuntimeClientImpl::BlockingKeyValueGet(
   request.set_session_id(session_id_);
   request.set_key(std::move(key));
   timeout = std::min(timeout, absl::Minutes(10));  // Avoid overflow
-  request.set_timeout_milliseconds(timeout / absl::Milliseconds(1));
+  request.set_timeout_milliseconds(absl::ToInt64Milliseconds(timeout));
   VLOG(10) << "BlockingKeyValueGet: " << request.DebugString();
   KeyValueGetResponse response;
   ::grpc::Status status = stub_->KeyValueGet(&ctx, request, &response);
@@ -346,6 +338,32 @@ xla::Status DistributedRuntimeClientImpl::KeyValueSet(std::string key,
   VLOG(10) << "KeyValueSet: " << request.DebugString();
   KeyValueSetResponse response;
   ::grpc::Status status = stub_->KeyValueSet(&ctx, request, &response);
+  return FromGrpcStatus(status);
+}
+
+xla::Status DistributedRuntimeClientImpl::WaitAtBarrier(
+    std::string barrier_id, absl::Duration timeout) {
+  {
+    absl::MutexLock lock(&mu_);
+    if (state_ != State::kConnected) {
+      return xla::FailedPrecondition(
+          "WaitAtBarrier() called when client not connected.");
+    }
+  }
+  ::grpc::ClientContext ctx;
+  ctx.set_fail_fast(false);
+  ctx.set_deadline(absl::ToChronoTime(absl::Now() + timeout));
+  WaitAtBarrierRequest request;
+  request.set_session_id(session_id_);
+  request.set_barrier_id(std::move(barrier_id));
+  request.set_node_id(options_.node_id);
+  // TODO(yashkatariya,hanyuangtay): Change timeout_milliseconds to int64 in
+  // protocol.proto so that we don't need a minimum timeout here.
+  timeout = std::min(timeout, absl::Minutes(10));  // Avoid overflow
+  request.set_timeout_milliseconds(absl::ToInt64Milliseconds(timeout));
+  VLOG(10) << "WaitAtBarrier: " << request.DebugString();
+  WaitAtBarrierResponse response;
+  ::grpc::Status status = stub_->WaitAtBarrier(&ctx, request, &response);
   return FromGrpcStatus(status);
 }
 
@@ -500,10 +518,6 @@ xla::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(
   return coord_agent_->InsertKeyValue(key, value);
 }
 
-xla::Status DistributedRuntimeCoordinationServiceClient::KeyValueDelete(
-    std::string key) {
-  return coord_agent_->DeleteKeyValue(key);
-}
 xla::Status DistributedRuntimeCoordinationServiceClient::WaitAtBarrier(
     std::string barrier_id, absl::Duration timeout) {
   return coord_agent_->WaitAtBarrier(barrier_id, timeout, /*tasks=*/{});

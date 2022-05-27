@@ -408,13 +408,6 @@ PYBIND11_MODULE(xla_extension, m) {
           },
           py::arg("key"), py::arg("timeout_in_ms"))
       .def(
-          "key_value_delete",
-          [](DistributedRuntimeClient& client, std::string key) {
-            py::gil_scoped_release gil_release;
-            return client.KeyValueDelete(key);
-          },
-          py::arg("key"))
-      .def(
           "wait_at_barrier",
           [](DistributedRuntimeClient& client, std::string barrier_id,
              int64_t timeout_in_ms) {
