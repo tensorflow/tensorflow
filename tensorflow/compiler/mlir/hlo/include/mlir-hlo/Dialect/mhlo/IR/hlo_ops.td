@@ -1804,8 +1804,8 @@ def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]> {
 }
 
 def HLO_MapOp: HLO_Op<"map",
-      [RecursiveSideEffects, SameOperandsElementType,
-       SameOperandsAndResultShape, SingleBlockImplicitTerminator<"ReturnOp">]> {
+      [RecursiveSideEffects, SameOperandsAndResultShape,
+       SingleBlockImplicitTerminator<"ReturnOp">]> {
   let summary = "Map operator";
   let description = [{
   Applies a scalar function over the given operands arrays, producing an array

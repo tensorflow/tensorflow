@@ -4196,9 +4196,6 @@ LogicalResult MapOp::verify() {
 
   // The parameters of computation should all be scalars and match the element
   // type of operands.
-  auto operand_type = operands()[0].getType().cast<TensorType>();
-  auto operand_elem_ty = operand_type.getElementType();
-
   for (const auto& indexed_arg : llvm::enumerate(computation_args)) {
     auto arg_type = indexed_arg.value().getType().dyn_cast<TensorType>();
     if (!arg_type || arg_type.getRank() != 0)
@@ -4206,6 +4203,10 @@ LogicalResult MapOp::verify() {
              << "computation arguments must be 0-rank tensor, but got: arg #"
              << indexed_arg.index() << " of type "
              << indexed_arg.value().getType();
+    auto operand_elem_ty = operands()[indexed_arg.index()]
+                               .getType()
+                               .cast<TensorType>()
+                               .getElementType();
     if (arg_type.getElementType() != operand_elem_ty) {
       return emitOpError()
              << "element type of operands and computation arguments must "
@@ -4249,6 +4250,7 @@ LogicalResult MapOp::verify() {
   // Checks that number of dimensions of operands matches the size of
   // `dimensions` since we currently only support mapping across all
   // dimensions: i.e., scalar map functions.
+  auto operand_type = operands()[0].getType().cast<TensorType>();
   if (operand_type.hasRank()) {
     if (dimensions.size() != operand_type.getShape().size())
       return emitOpError()
