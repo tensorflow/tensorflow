@@ -688,7 +688,15 @@ class TfrtCpuExecutable final : public PjRtExecutable {
   bool cheap_computation_;
 };
 
+// Creates a CPU client with one Device. For testing purposes, you can set the
+// number of devices passing the --xla_force_host_platform_device_count flag to
+// the XLA_FLAGS environment variable.
 StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous);
+
+// Similar to the function above, but you can set the number of devices
+// explicitly.
+StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous,
+                                                       int cpu_device_count);
 
 }  // namespace xla
 
