@@ -78,6 +78,21 @@ func.func @all_fused(%arg0: tensor<*xf32>) {
   func.return
 }
 
+// Check that we fuse entirely when the attribute matches (no replication).
+// CHECK-LABEL: func @all_fused
+func.func @all_fused_non_replicated(%arg0: tensor<*xf32>) {
+  tf_executor.graph {
+// CHECK: island
+// CHECK-NEXT: = "tf.Const"
+// CHECK-NEXT: = "tf.Const"
+// CHECK-NEXT: = "tf.AddV2"
+    %outputs, %control = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %outputs_0, %control_1 = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", value = dense<2> : tensor<i32>} : () -> tensor<i32>
+    %outputs_3, %control_4 = tf_executor.island wraps "tf.AddV2"(%outputs, %outputs_0) {_xla_compile_device_type = "TPU"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    tf_executor.fetch
+  }
+  func.return
+}
 
 // Check that we don't fuse an op that does not have the attribute.
 // CHECK-LABEL: func @split_ops
@@ -97,7 +112,6 @@ func.func @split_ops(%arg0: tensor<*xf32>) {
   }
   func.return
 }
-
 
 // Check that we correctly merge operations from two clusters in their
 // respective clusters.
@@ -129,6 +143,35 @@ func.func @two_clusters_mixed(%arg0: tensor<*xf32>) {
   func.return
 }
 
+// Check that we correctly merge operations from two clusters (one replicated,
+// one not replicated) in their respective clusters.
+// CHECK-LABEL: func @two_clusters_mixed
+func.func @two_clusters_mixed_replication(%arg0: tensor<*xf32>) {
+  tf_executor.graph {
+// CHECK: %[[ISLAND1:.*]], {{.*}} = tf_executor.island
+// CHECK-NEXT: = "tf.Const"{{.*}}"cluster1"
+// CHECK-NEXT: = "tf.Const"{{.*}}"cluster1"
+// CHECK-NEXT: = "tf.AddV2"{{.*}}"cluster1"
+// CHECK-NEXT: = "tf.AddV2"{{.*}}"cluster1"
+// CHECK: %[[ISLAND2:.*]], {{.*}} = tf_executor.island
+// CHECK-NEXT: = "tf.Const"{{.*}}
+// CHECK-NEXT: = "tf.Const"{{.*}}
+// CHECK-NEXT: = "tf.AddV2"{{.*}}
+// CHECK-NEXT: = "tf.AddV2"{{.*}}
+// CHECK: island wraps "tf.AddV2"(%[[ISLAND1]], %[[ISLAND2]])
+    %outputs, %control = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster1", value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %outputs_0, %control_1 = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", value = dense<2> : tensor<i32>} : () -> tensor<i32>
+    %outputs_2, %control_2 = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster1", value = dense<3> : tensor<i32>} : () -> tensor<i32>
+    %outputs_3, %control_3 = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", value = dense<4> : tensor<i32>} : () -> tensor<i32>
+    %outputs_4, %control_4 = tf_executor.island wraps "tf.AddV2"(%outputs, %outputs_0) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    %outputs_5, %control_5 = tf_executor.island wraps "tf.AddV2"(%outputs, %outputs_2) {_xla_compile_device_type = "TPU", _replication_info = "cluster1"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    %outputs_6, %control_6 = tf_executor.island wraps "tf.AddV2"(%outputs_0, %outputs_3) {_xla_compile_device_type = "TPU"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    %outputs_7, %control_7 = tf_executor.island wraps "tf.AddV2"(%outputs_5, %outputs) {_xla_compile_device_type = "TPU", _replication_info = "cluster1"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    %outputs_8, %control_8 = tf_executor.island wraps "tf.AddV2"(%outputs_0, %outputs_3) {_xla_compile_device_type = "TPU"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    tf_executor.fetch
+  }
+  func.return
+}
 
 // Check that we bring in TPUReplicatedInputOp operand producers.
 // CHECK-LABEL: func @fuse_in_replicated_input_op
@@ -337,6 +380,36 @@ func.func @keep_data_dependency() {
     %outputs_2, %control_2 = tf_executor.island wraps "tf.AddV2"(%outputs_1, %outputs_1) {_xla_compile_device_type = "TPU", _replication_info = "cluster2"} : (tensor<f32>, tensor<f32>) -> tensor<f32>
     %outputs_3, %control_3 = tf_executor.island wraps "tf.Const"() {device = "", value = dense<2.0> : tensor<f32>} : () -> tensor<f32>
     %outputs_4, %control_4 = tf_executor.island wraps "tf.AddV2"(%outputs_3, %outputs_3) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  }
+  func.return
+}
+
+// -----
+
+// CHECK-LABEL: func @tpu_compilation_status_same_cluster
+// CHECK: island
+// CHECK-NEXT: "tf.Const"
+// CHECK-NEXT: "tf.TPUCompilationResult"
+// CHECK-NEXT: yield
+func.func @tpu_compilation_status_same_cluster() {
+  tf_executor.graph {
+    %outputs_1, %control_1 = tf_executor.island wraps "tf.Const"() {_replication_info = "cluster", _xla_compile_device_type = "TPU", device = "", value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
+    %outputs_2, %control_2 = tf_executor.island wraps "tf.TPUCompilationResult"() {_tpu_compilation_status = "cluster"} : () -> tensor<!tf_type.string>
+  }
+  func.return
+}
+
+// -----
+
+// CHECK-LABEL: func @tpu_compilation_status_different_clusters
+// CHECK: island
+// CHECK: "tf.Const"
+// CHECK: island
+// CHECK: "tf.TPUCompilationResult"
+func.func @tpu_compilation_status_different_clusters() {
+  tf_executor.graph {
+    %outputs_1, %control_1 = tf_executor.island wraps "tf.Const"() {_replication_info = "cluster", _xla_compile_device_type = "TPU", device = "", value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
+    %outputs_2, %control_2 = tf_executor.island wraps "tf.TPUCompilationResult"() {_tpu_compilation_status = "cluster2"} : () -> tensor<!tf_type.string>
   }
   func.return
 }

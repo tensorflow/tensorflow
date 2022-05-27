@@ -57,6 +57,7 @@ namespace tf_executor {
 namespace {
 
 constexpr llvm::StringRef kTpuStatusAttr = "_tpu_compilation_status";
+constexpr llvm::StringRef kNoReplicationCluster = "__no_replication_cluster";
 
 // This pass is a variant of the island coarsening that is limited to
 // TPU-annotated operations and intended to preserve backward compatibility with
@@ -66,6 +67,28 @@ struct TpuV1BridgeExecutorIslandCoarsening
           TpuV1BridgeExecutorIslandCoarsening> {
   void runOnOperation() override;
 };
+
+// Returns name of TPU cluster, if op belongs to a TPU cluster. Otherwise,
+// returns `llvm::None`.
+llvm::Optional<llvm::StringRef> GetTpuClusterName(Operation* op) {
+  if (auto tpu_status = op->getAttrOfType<StringAttr>(kTpuStatusAttr)) {
+    // Borrow cluster name from TPU status (for `TPUCompilationResult` op).
+    return tpu_status.getValue();
+  }
+  auto device_type = op->getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr);
+  if (!device_type || device_type.getValue() != TF::kTpuDevice) {
+    // Op does not belong to a TPU cluster.
+    return llvm::None;
+  }
+  // Op belongs to a TPU cluster.
+  if (auto replication_info =
+          op->getAttrOfType<StringAttr>(TF::kReplicationInfoAttr)) {
+    // Borrow cluster name from replication info.
+    return replication_info.getValue();
+  }
+  // Use special cluster name for non-replicated case.
+  return kNoReplicationCluster;
+}
 
 bool HasDataDependencyWithUnscheduledOp(
     Operation& op, Block* block, SmallPtrSet<Operation*, 16>& unscheduled_ops) {
@@ -148,7 +171,7 @@ LogicalResult SortTopologically(Block::iterator begin, Block::iterator end) {
 // Returns a failure if a cycle prevents the merge from happening correctly
 // without breaking dominance. The IR is left in invalid state in case of
 // failure.
-LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
+LogicalResult MergeIsland(llvm::function_ref<bool(llvm::StringRef, Operation*)>
                               is_op_calling_func_for_cluster,
                           Operation* op, bool* changed) {
   // Find the first island wrapping a single operation with the
@@ -164,11 +187,9 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
     return failure();
   }
 
-  StringAttr cluster_name =
-      wrapped_op.getAttrOfType<StringAttr>(TF::kReplicationInfoAttr);
-  if (!cluster_name)
-    cluster_name = wrapped_op.getAttrOfType<StringAttr>(kTpuStatusAttr);
-  if (!cluster_name) return success();
+  llvm::Optional<llvm::StringRef> result = GetTpuClusterName(&wrapped_op);
+  if (!result.hasValue()) return success();
+  llvm::StringRef cluster_name = result.getValue();
 
   // We found a _replication_info, let's build an island for the full cluster!
   LLVM_DEBUG(llvm::dbgs() << "Processing candidate island: "
@@ -202,15 +223,15 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
       continue;
     }
 
-    StringAttr candidate_cluster_name =
-        candidate_wrapped_op.getAttrOfType<StringAttr>(
-            TF::kReplicationInfoAttr);
-    if (!candidate_cluster_name)
-      candidate_cluster_name =
-          candidate_wrapped_op.getAttrOfType<StringAttr>(kTpuStatusAttr);
-    if (candidate_cluster_name != cluster_name &&
-        !is_op_calling_func_for_cluster(cluster_name, &candidate_wrapped_op))
-      continue;
+    result = GetTpuClusterName(&candidate_wrapped_op);
+    llvm::StringRef candidate_cluster_name;
+    if (result.hasValue()) {
+      candidate_cluster_name = result.getValue();
+    } else if (is_op_calling_func_for_cluster(cluster_name,
+                                              &candidate_wrapped_op)) {
+      candidate_cluster_name = cluster_name;
+    }
+    if (candidate_cluster_name != cluster_name) continue;
 
     // Look at captured operands to bring-in ReplicatedInputOp in the
     // island as well. Consider pulling in tf.Const, some optimizations can
@@ -372,19 +393,18 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
   DenseMap<StringRef, DenseSet<func::FuncOp>> tpu_funcs;
   for (func::FuncOp func_op : getOperation().getOps<func::FuncOp>()) {
     func_op.walk([&](Operation* op) {
-      StringAttr cluster_name =
-          op->getAttrOfType<StringAttr>(TF::kReplicationInfoAttr);
-      if (!cluster_name)
-        cluster_name = op->getAttrOfType<StringAttr>(kTpuStatusAttr);
-      if (!cluster_name) return;
-      tpu_funcs[cluster_name.getValue()].insert(func_op);
+      llvm::Optional<llvm::StringRef> cluster_name_opt = GetTpuClusterName(op);
+      if (cluster_name_opt.hasValue()) {
+        tpu_funcs[cluster_name_opt.getValue()].insert(func_op);
+      }
     });
   }
 
   // Return true if the operation is containing a reference to a function
   // containing operations for this cluster.
-  auto is_op_calling_func_for_cluster = [&](StringAttr cluster, Operation* op) {
-    auto funcs_for_cluster = tpu_funcs.find(cluster.getValue());
+  auto is_op_calling_func_for_cluster = [&](llvm::StringRef cluster,
+                                            Operation* op) {
+    auto funcs_for_cluster = tpu_funcs.find(cluster);
     assert(funcs_for_cluster != tpu_funcs.end());
     assert(!funcs_for_cluster->second.empty());
     if (funcs_for_cluster->second.size() == 1) return false;
