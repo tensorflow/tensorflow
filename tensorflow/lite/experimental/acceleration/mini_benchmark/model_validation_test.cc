@@ -175,6 +175,8 @@ TEST_F(LocalizerValidationRegressionTest, Nnapi) {
 
 #ifdef ENABLE_NNAPI_SL_TEST
 TEST_F(LocalizerValidationRegressionTest, NnapiSl) {
+  const char* accelerator_name = getenv("TEST_ACCELERATOR_NAME");
+
   std::string support_library_file = GetTestTmpDir() + "/libnnapi_sl_driver.so";
   auto nnapi_sl_handle = nnapi::loadNnApiSupportLibrary(support_library_file);
   fbb_.Finish(CreateComputeSettings(
@@ -182,7 +184,7 @@ TEST_F(LocalizerValidationRegressionTest, NnapiSl) {
       CreateTFLiteSettings(
           fbb_, Delegate_NNAPI,
           CreateNNAPISettings(
-              fbb_, fbb_.CreateString("qti-gpu"),
+              fbb_, fbb_.CreateString(accelerator_name ? accelerator_name : ""),
               /* cache_directory */ 0,
               /* model_token */ 0, NNAPIExecutionPreference_UNDEFINED,
               /* no_of_nnapi_instances_to_cache */ 0,
@@ -191,7 +193,7 @@ TEST_F(LocalizerValidationRegressionTest, NnapiSl) {
               /* execution_priority */
               NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED,
               /* allow_dynamic_dimensions */ false,
-              /* allow_fp16_precision_for_fp32 */ false,
+              /* allow_fp16_precision_for_fp32 */ true,
               /* use_burst_computation */ false,
               reinterpret_cast<uint64_t>(nnapi_sl_handle->getFL5())),
           /* gpu_settings */ 0,
