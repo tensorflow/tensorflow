@@ -417,8 +417,8 @@ def TestFactory(xla_backend,
   class PythonCallbackTest(ComputationTest):
 
     def testPythonCallback(self):
-      if self.backend.platform not in {"cpu", "gpu"}:
-        self.skipTest("Test requires cpu or gpu platform")
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
       c = self._NewComputation()
 
       f = lambda x, y: (x + y, x - y)
@@ -436,8 +436,8 @@ def TestFactory(xla_backend,
       del out, keepalive
 
     def testPythonCallbackCanHandleExceptions(self):
-      if self.backend.platform not in {"cpu", "gpu"}:
-        self.skipTest("Test requires cpu or gpu platform")
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
       c = self._NewComputation()
 
       def _Callback(x):
@@ -455,8 +455,8 @@ def TestFactory(xla_backend,
       del out, keepalive
 
     def testTokens(self):
-      if self.backend.platform not in {"cpu", "gpu"}:
-        self.skipTest("Test requires cpu or gpu platform")
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
       c = self._NewComputation()
 
       def _Callback(x, y):
@@ -475,8 +475,8 @@ def TestFactory(xla_backend,
       del out, keepalive
 
     def testStriding(self):
-      if self.backend.platform not in {"cpu", "gpu"}:
-        self.skipTest("Test requires cpu or gpu platform")
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
       c = self._NewComputation()
 
       def _Callback(x):
