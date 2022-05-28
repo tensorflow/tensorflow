@@ -429,7 +429,7 @@ PyArray_Descr NPyBfloat16_Descr = {
     // character is unique.
     /*type=*/'E',
     /*byteorder=*/'=',
-    /*flags=*/NPY_NEEDS_PYAPI | NPY_USE_GETITEM | NPY_USE_SETITEM,
+    /*flags=*/NPY_NEEDS_PYAPI | NPY_USE_SETITEM,
     /*type_num=*/0,
     /*elsize=*/sizeof(bfloat16),
     /*alignment=*/alignof(bfloat16),
@@ -447,7 +447,7 @@ PyArray_Descr NPyBfloat16_Descr = {
 PyObject* NPyBfloat16_GetItem(void* data, void* arr) {
   bfloat16 x;
   memcpy(&x, data, sizeof(bfloat16));
-  return PyBfloat16_FromBfloat16(x).release();
+  return PyFloat_FromDouble(static_cast<float>(x));
 }
 
 int NPyBfloat16_SetItem(PyObject* item, void* data, void* arr) {

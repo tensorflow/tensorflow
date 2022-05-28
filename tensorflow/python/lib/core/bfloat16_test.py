@@ -115,6 +115,9 @@ class Bfloat16Test(parameterized.TestCase):
     self.assertEqual("-inf", repr(bfloat16(float("-inf"))))
     self.assertEqual("nan", repr(bfloat16(float("nan"))))
 
+  def testItem(self):
+    self.assertIsInstance(bfloat16(0).item(), float)
+
   def testHashZero(self):
     """Tests that negative zero and zero hash to the same value."""
     self.assertEqual(hash(bfloat16(-0.0)), hash(bfloat16(0.0)))
