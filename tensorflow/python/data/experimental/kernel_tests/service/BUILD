@@ -9,12 +9,9 @@ package(
 
 tf_py_test(
     name = "auto_shard_test",
-    size = "large",
+    size = "medium",
     srcs = ["auto_shard_test.py"],
     shard_count = 32,
-    tags = [
-        "noasan",  # b/231336996
-    ],
     deps = [
         ":multi_process_cluster",
         ":test_base",
@@ -237,6 +234,7 @@ py_library(
     deps = [
         ":test_base",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/data/experimental/service:server_lib",
         "//tensorflow/python/distribute:multi_process_lib",
         "//tensorflow/python/platform:test",

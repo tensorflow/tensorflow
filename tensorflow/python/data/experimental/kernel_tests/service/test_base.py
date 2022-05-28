@@ -78,6 +78,7 @@ class TestWorker(object):
                dispatcher_address,
                shutdown_quiet_period_ms,
                data_transfer_protocol=None,
+               port=0,
                worker_tags=None,
                cross_trainer_cache_size_bytes=None):
     self._dispatcher_address = dispatcher_address
@@ -86,6 +87,7 @@ class TestWorker(object):
         dispatcher_address,
         data_transfer_protocol,
         shutdown_quiet_period_ms,
+        port=port,
         worker_tags=worker_tags,
         cross_trainer_cache_size_bytes=cross_trainer_cache_size_bytes)
     self._running = False
