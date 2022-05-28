@@ -21,7 +21,6 @@ limitations under the License.
 
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "tensorflow/lite/error_reporter.h"
 
 namespace tflite {
@@ -53,7 +52,7 @@ void ThrowException(JNIEnv* env, const char* clazz, const char* fmt, ...);
  *     returns false, no other JNI method should be called until the pending
  *     exception has been handled (typically by returning to Java).
  */
-ABSL_MUST_USE_RESULT bool CheckJniInitializedOrThrow(JNIEnv* env);
+bool CheckJniInitializedOrThrow(JNIEnv* env);
 
 class BufferErrorReporter : public ErrorReporter {
  public:
