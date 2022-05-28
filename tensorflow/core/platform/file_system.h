@@ -898,7 +898,7 @@ class ReadOnlyMemoryRegion {
 /// the only `FileSystem` class and marked as `final`). But this will happen at
 /// a later time, after we convert all filesystems to the new API.
 ///
-/// TODO(mihaimaruseac): After all filesystems are converted, remove old
+/// TODO(b/139060984): After all filesystems are converted, remove old
 /// registration and update comment.
 class FileSystemRegistry {
  public:

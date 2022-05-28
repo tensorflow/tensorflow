@@ -3052,7 +3052,7 @@ def TFL_SelectV2Op : TFL_Op<"select_v2", [
     NoSideEffect,
     QuantizableResult,
     SameOperandsAndResultsScale,
-    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1, 2], 5>,
+    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1, 2], 4>,
     PredOpTrait<"operands have same element type", TFL_TCopVTEtAreSameAt<1, 2>>,
     PredOpTrait<"operands and result have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 1>>]> {

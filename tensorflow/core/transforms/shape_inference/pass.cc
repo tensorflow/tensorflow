@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/transforms/shape_inference/pass.h"
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -253,10 +254,12 @@ void ShapeInference::runOnOperation() {
     return WalkResult::advance();
   });
 
-  // It's possible that we enqueue the same operations multiple times because of
-  // every shape update of its operands. Given that the cases won't be too much
-  // in general, we don't optimize it for now.
-  SmallVector<Operation *> may_need_update;
+  // This is used to track the set of operations that may be able to infer their
+  // shape. When an operation infers its shape successfully, it'll add its user
+  // to this vector. Which implies that an operation may be added multiple
+  // times if it has multiple operands. Use SetVector to avoid keeping duplicate
+  // entry.
+  SetVector<Operation *> may_need_update;
 
   // Collect operations that have the chance to infer the more precise shape
   // information.
@@ -275,7 +278,7 @@ void ShapeInference::runOnOperation() {
 
     for (OpResult res : op->getResults().drop_back()) {
       for (Operation *user : res.getUsers())
-        if (CanBeRefined(user)) may_need_update.push_back(user);
+        if (CanBeRefined(user)) may_need_update.insert(user);
     }
 
     return WalkResult::advance();
@@ -290,7 +293,7 @@ void ShapeInference::runOnOperation() {
     // The users may be able to refine their shapes.
     for (Value v : op->getResults().drop_back()) {
       for (Operation *user : v.getUsers()) {
-        if (CanBeRefined(user)) may_need_update.push_back(user);
+        if (CanBeRefined(user)) may_need_update.insert(user);
       }
     }
   }

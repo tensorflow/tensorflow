@@ -114,6 +114,9 @@ void TFGraphDialect::initialize() {
   // Create the fallback OpAsmOpInterface instance.
   fallbackOpAsmInterface_ = new TFGraphOpAsmInterface;
 
+  // Register the memory effects interface adaptor.
+  addInterfaces<StatefulMemoryEffectInterface>();
+
   // Initialized the cached operation names.
 #define GET_OP_NAME_DEFS
 #include "tensorflow/core/ir/tf_op_names.inc"
@@ -124,6 +127,8 @@ void TFGraphDialect::initialize() {
   assigned_device_key_ =
       StringAttr::get(getContext(), getAssignedDeviceAttrKey());
   fulltype_key_ = StringAttr::get(getContext(), getFullTypeAttrKey());
+  lifted_graph_func_name_ =
+      StringAttr::get(getContext(), getLiftedGraphFuncNameKey());
   tfg_name_key_ = StringAttr::get(getContext(), getTfgNameAttrKey());
   tfg_description_key_ =
       StringAttr::get(getContext(), getTfgDescriptionAttrKey());
@@ -140,13 +145,25 @@ void *TFGraphDialect::getRegisteredInterfaceForOp(TypeID interface,
                                                   OperationName opName) {
   if (interface == TypeID::get<OpAsmOpInterface>()) {
     return fallbackOpAsmInterface_;
-  } else if (interface == TypeID::get<TensorFlowRegistryInterface>()) {
+  }
+
+  // Intrinsic operations explicitly implement intefaces.
+  if (opName.hasTrait<OpTrait::IntrinsicOperation>()) {
+    return nullptr;
+  }
+
+  if (interface == TypeID::get<TensorFlowRegistryInterface>()) {
     if (auto *instance =
             getRegisteredInterface<TensorFlowRegistryInterfaceBase>()) {
       // Important: cast to (Concept *) to shift the pointer off the vtable.
       return static_cast<TensorFlowRegistryInterfaceBase::Concept *>(
           const_cast<TensorFlowRegistryInterfaceBase *>(instance));
     }
+  } else if (interface == TypeID::get<MemoryEffectOpInterface>()) {
+    auto *instance = getRegisteredInterface<StatefulMemoryEffectInterface>();
+    assert(instance && "expected the memory interface to be registered");
+    return static_cast<StatefulMemoryEffectInterface::Concept *>(
+        const_cast<StatefulMemoryEffectInterface *>(instance));
   }
 
   return nullptr;
@@ -1422,13 +1439,19 @@ FunctionTable::FunctionTable(ModuleOp module) {
   }
 }
 
-bool FunctionTable::MaybeCall(Operation *op) {
-  if (functions.count(op->getName().stripDialect())) return true;
-  for (NamedAttribute named_attr : op->getAttrs()) {
-    // Treat any operation that references a FuncAttr as a call.
-    if (named_attr.getValue().isa<FuncAttr>()) return true;
-  }
-  return false;
+bool FunctionTable::MayBeCall(Operation *op) const {
+  if (IsLegacyCall(op)) return true;
+  // The operation might be a call if it references a symbol.
+  bool references_symbol = false;
+  op->getAttrDictionary().walkSubAttrs(
+      [&](Attribute attr) { references_symbol |= attr.isa<SymbolRefAttr>(); });
+  return references_symbol;
+}
+
+bool FunctionTable::IsLegacyCall(Operation *op) const {
+  // If the operation name refers to a function in the module, then it is
+  // guaranteed to be a legacy call. Otherwise, it is not.
+  return functions.count(op->getName().stripDialect());
 }
 
 }  // namespace tfg

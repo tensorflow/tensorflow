@@ -1124,7 +1124,7 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
   PropagateTFDataAttrs(flib, *optimized_graph->mutable_library());
 
   // True if this is a TPU graph using the old bridge.
-  bool is_tpu_graph = IsTPUGraphDef(*optimized_graph);
+  bool is_tpu_graph = IsLegacyTPUBridgeGraphDef(*optimized_graph);
 
   // Optimize each function only once.
   absl::flat_hash_set<string> optimized_funcs;
@@ -1254,7 +1254,10 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
     optimizers.push_back(std::make_unique<mlir::tfg::TFGGrapplerOptimizer>(
         // For module-level optimizations, use multithreading to process
         // functions in parallel.
-        mlir::tfg::DefaultModuleGrapplerPipeline, /*num_tfg_threads=*/4));
+        [&](mlir::PassManager& manager) {
+          mlir::tfg::DefaultModuleGrapplerPipeline(manager, cfg_);
+        },
+        /*num_tfg_threads=*/4));
     // Wrap the optimized GraphDef in a new GrapplerItem with copied
     // configuration options from the provided item.
     GrapplerItem tfg_item = item.WithGraph(std::move(*optimized_graph));
@@ -1262,10 +1265,6 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
     *optimized_graph = GraphDef();
     TF_RETURN_IF_ERROR(OptimizeGraph(optimizers, cluster, std::move(tfg_item),
                                      optimized_graph));
-    // Replace the output function library with a minimized one that strips
-    // functions with no references.
-    *optimized_graph->mutable_library() =
-        minimized_flib(*optimized_graph).ToProto();
   }
 #endif
 

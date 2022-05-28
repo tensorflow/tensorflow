@@ -1120,9 +1120,10 @@ tf_cc_shared_library(
         "//tensorflow:tf_private_symbols.lds",
         "//tensorflow:tf_version_script.lds",
     ],
-    dynamic_deps = [
-        "//tensorflow:libtensorflow_framework.so.%s" % VERSION,
-    ],
+    dynamic_deps = select({
+        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+    }),
     framework_so = [],
     linkopts = select({
         "//tensorflow:macos": [

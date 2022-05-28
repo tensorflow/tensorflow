@@ -22,18 +22,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 
 namespace tensorflow {
-namespace functor {
-
-template <typename Device, typename T>
-struct NonMaxSuppression {
-  void operator()(const Device& d, typename TTypes<float, 2>::ConstTensor boxes,
-                  typename TTypes<float, 1>::ConstTensor scores,
-                  float iou_threshold, float score_threshold,
-                  int max_output_size,
-                  typename TTypes<int, 1>::Tensor selected_indices);
-};
-
-}  // namespace functor
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 extern const int kNmsBoxesPerTread;

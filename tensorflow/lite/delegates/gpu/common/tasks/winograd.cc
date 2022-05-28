@@ -48,7 +48,8 @@ void VectorToKernelBufferDesc(const std::vector<float>& data,
     }
   }
 }
-std::string GetKernelWinograd4x4To36(const OperationDef& op_def) {
+std::string GetKernelWinograd4x4To36(const GpuInfo& gpu_info,
+                                     const OperationDef& op_def) {
   std::string c;
   const auto src_desc = op_def.src_tensors[0];
   c += R"(
@@ -73,7 +74,7 @@ MAIN_FUNCTION($0) {
     const std::string s_y = std::to_string(y);
     c += "  {\n";
     c += "    int coord_y = Y + " + s_y + " + args.padding_y;\n";
-    if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+    if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
       c += "    bool in_y = coord_y >= 0 && coord_y < "
            "args.src_tensor.Height();\n";
       c += "    coord_y = clamp(coord_y, 0, args.src_tensor.Height() - 1);\n";
@@ -86,18 +87,18 @@ MAIN_FUNCTION($0) {
       const std::string s_x = std::to_string(x);
       c += "    {\n";
       c += "      int coord_x = X + " + s_x + " + args.padding_x;\n";
-      if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
+      if (!src_desc.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
         c += "      bool in_x = coord_x >= 0 && coord_x < "
              "args.src_tensor.Width();\n";
         c += "      coord_x = clamp(coord_x, 0, args.src_tensor.Width()-1);\n";
       }
       std::string multiplier;
-      if (!src_desc.SupportsZeroClamp(Axis::WIDTH) &&
-          !src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+      if (!src_desc.SupportsZeroClamp(Axis::WIDTH, gpu_info) &&
+          !src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
         multiplier = " * INIT_FLT(in_y && in_x)";
-      } else if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
+      } else if (!src_desc.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
         multiplier = " * INIT_FLT(in_x)";
-      } else if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+      } else if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
         multiplier = " * INIT_FLT(in_y)";
       }
       if (src_desc.IsLinear()) {
@@ -275,9 +276,10 @@ absl::Status Winograd4x4To36::BindArguments(ArgumentsBinder* args) {
 }
 
 Winograd4x4To36 CreateWinograd4x4To36(const OperationDef& definition,
-                                      const Padding2D& padding) {
+                                      const Padding2D& padding,
+                                      const GpuInfo& gpu_info) {
   Winograd4x4To36 desc(definition, padding);
-  desc.code_ = GetKernelWinograd4x4To36(definition);
+  desc.code_ = GetKernelWinograd4x4To36(gpu_info, definition);
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
@@ -352,8 +354,9 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
       read_statement = "args.src_tensor.Read(xc" + xs + ", yc, DST_Z)";
     }
     std::string multiplier;
-    if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
-      if (!(src_desc.IsLinear() && src_desc.ReturnsZeroForNegOneRead())) {
+    if (!src_desc.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
+      if (!(src_desc.IsLinear() &&
+            src_desc.ReturnsZeroForNegOneRead(gpu_info))) {
         multiplier = " * m" + xs + "_x";
       }
     }
@@ -362,7 +365,7 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
   for (int x = 0; x < 6; ++x) {
     const std::string xs = std::to_string(x);
     c += "  int xc" + xs + " = tile_x + args.padding_x + " + xs + ";\n";
-    if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
+    if (!src_desc.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
       c += "  bool inx" + xs + " = (xc" + xs + " >= 0 && xc" + xs +
            " < args.src_tensor.Width());\n";
       c += "  FLT m" + xs + "_x = INIT_FLT(inx" + xs + ");\n";
@@ -372,7 +375,7 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
     if (src_desc.IsLinear()) {
       c += "  args.src_tensor.GetAddress(src_a_" + xs + ", xc" + xs +
            ", 0, DST_Z);\n";
-      if (src_desc.ReturnsZeroForNegOneRead()) {
+      if (src_desc.ReturnsZeroForNegOneRead(gpu_info)) {
         c += "  src_a_" + xs +
              " = select(-args.src_tensor.Width() * args.src_tensor.Height(), "
              "src_a_" +
@@ -385,7 +388,7 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
   if (manual_unroll) {
     c += "  {\n";
     c += "    int yc = tile_y + args.padding_y;\n";
-    if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+    if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
       c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
       c += "    yc = clamp(yc, 0, args.src_tensor.Height() - 1);\n";
       c += "    int offset = select(0, yc * args.src_tensor.Width(), iny);\n";
@@ -404,7 +407,7 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
       const std::string ys = std::to_string(y);
       c += "  {\n";
       c += "    int yc = tile_y + args.padding_y + (" + ys + ");\n";
-      if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+      if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
         c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
         c += "    yc = clamp(yc, 0, args.src_tensor.Height() - 1);\n";
         c += "    int offset = select(0, yc * args.src_tensor.Width(), iny);\n";
@@ -429,7 +432,7 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
     c += "  I5 = INIT_FLT4(0.0f);\n";
     c += "  for (int y = 0; y < 6; ++y) {\n";
     c += "    int yc = tile_y + args.padding_y + y;\n";
-    if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+    if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
       c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
       c += "    yc = clamp(yc, 0, args.src_tensor.Height() - 1);\n";
       c += "    int offset = select(0, yc * args.src_tensor.Width(), iny);\n";

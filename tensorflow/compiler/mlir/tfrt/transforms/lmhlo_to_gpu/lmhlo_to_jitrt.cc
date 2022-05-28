@@ -15,6 +15,8 @@
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_jitrt.h"
 
 #include <cstdint>
+#include <numeric>
+#include <optional>
 #include <utility>
 
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
@@ -39,6 +41,8 @@
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu_binary.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 
@@ -48,9 +52,9 @@ namespace {
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/jitrt_passes.h.inc"
 
-using lmhlo_gpu::GEMM_BiasOp;
 using mlir::DialectRegistry;
 using mlir::FunctionType;
+using mlir::IntegerAttr;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::NamedAttribute;
@@ -59,6 +63,7 @@ using mlir::success;
 using mlir::SymbolTable;
 using mlir::Type;
 using mlir::TypeRange;
+using mlir::arith::ConstantOp;
 using mlir::arith::IndexCastOp;
 using mlir::detail::PassOptions;
 using mlir::func::CallOp;
@@ -67,9 +72,30 @@ using mlir::func::ReturnOp;
 using mlir::gpu::GPUModuleOp;
 using mlir::gpu::LaunchFuncOp;
 using mlir::gpu::MemcpyOp;
+using mlir::lmhlo::AllReduceOp;
+using mlir::lmhlo::InfeedOp;
+using mlir::lmhlo::OutfeedOp;
 using mlir::lmhlo::TerminatorOp;
 using mlir::lmhlo::WhileOp;
+using mlir::lmhlo_gpu::CholeskyOp;
+using mlir::lmhlo_gpu::GEMM_BiasOp;
 using mlir::lmhlo_gpu::GEMMOp;
+using mlir::memref::GetGlobalOp;
+
+class ConvertLmhloConstantToArgPass
+    : public ConvertLmhloConstantToArgPassBase<ConvertLmhloConstantToArgPass> {
+ public:
+  ConvertLmhloConstantToArgPass() = default;
+  explicit ConvertLmhloConstantToArgPass(int64_t min_num_elements) {
+    this->min_num_elements_ = min_num_elements;
+  }
+
+  void runOnOperation() override;
+
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<mlir::memref::MemRefDialect>();
+  }
+};
 
 class ConvertGpuToJitRtPass
     : public ConvertGpuToJitRtPassBase<ConvertGpuToJitRtPass> {
@@ -116,6 +142,60 @@ class TerminatorOpLowering : public OpRewritePattern<TerminatorOp> {
     rewriter.replaceOpWithNewOp<ReturnOp>(op);
     return mlir::success();
   }
+};
+
+// -------------------------------------------------------------------------- //
+
+template <typename IoFeedOp>
+class IoFeedOpLowering : public OpRewritePattern<IoFeedOp> {
+ public:
+  explicit IoFeedOpLowering(MLIRContext* ctx)
+      : OpRewritePattern<IoFeedOp>(ctx) {}
+
+  static llvm::StringRef Name(InfeedOp) { return "infeed"; }
+  static llvm::StringRef Name(OutfeedOp) { return "outfeed"; }
+
+  LogicalResult matchAndRewrite(IoFeedOp op,
+                                PatternRewriter& rewriter) const override {
+    MLIRContext* ctx = this->getContext();
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    // Custom call target.
+    NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
+                          b.getStringAttr(Twine("xla.gpu.") + Name(op)));
+
+    // Create a custom call function declaration.
+    auto custom_call_type =
+        FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
+    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
+    auto custom_call = FuncOp::create(op.getLoc(), Name(op), custom_call_type,
+                                      custom_call_attrs);
+    custom_call.setPrivate();
+
+    SymbolTable sym_table(op->template getParentOfType<ModuleOp>());
+    auto inserted = sym_table.insert(custom_call);
+    rewriter.notifyOperationInserted(custom_call);
+
+    // Call the runtime intrinsic with the original operands.
+    auto call = rewriter.create<CallOp>(op.getLoc(), inserted, TypeRange(),
+                                        op.getOperands());
+    call->setAttr(b.getStringAttr("config"), op.configAttr());
+
+    // Erase the original infeed/outfeed operation.
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+};
+
+class InfeedOpLowering : public IoFeedOpLowering<InfeedOp> {
+ public:
+  using IoFeedOpLowering::IoFeedOpLowering;
+};
+
+class OutfeedOpLowering : public IoFeedOpLowering<OutfeedOp> {
+ public:
+  using IoFeedOpLowering::IoFeedOpLowering;
 };
 
 // -------------------------------------------------------------------------- //
@@ -388,22 +468,297 @@ class WhileOpLowering : public OpRewritePattern<WhileOp> {
 
 // -------------------------------------------------------------------------- //
 
+using GlobalConstantsArgs = llvm::DenseMap<FuncOp, llvm::StringMap<Value>>;
+
+// Returns a mapping from a global constant name to the function argument.
+//
+// Example:
+//
+//   memref.global "private" constant @cst : memref<2x3xf32>
+//   func @get_global(%arg0: memref<24xi8> {lmhlo.constant_name = "cst"})
+//
+// All memref.get_global operations will be replaced by constant arguments
+// corresponding to the global constant.
+GlobalConstantsArgs GetConstantArgs(ModuleOp m) {
+  GlobalConstantsArgs mapping;
+
+  m.walk([&](FuncOp func) {
+    for (unsigned i = 0; i < func.getNumArguments(); ++i) {
+      auto cst = func.getArgAttrOfType<StringAttr>(i, "lmhlo.constant_name");
+      if (cst) mapping[func][cst] = func.getArgument(i);
+    }
+  });
+
+  return mapping;
+}
+
+class GetGlobalOpLowering : public OpRewritePattern<GetGlobalOp> {
+ public:
+  GetGlobalOpLowering(MLIRContext* ctx, const GlobalConstantsArgs& cst_args)
+      : OpRewritePattern<GetGlobalOp>(ctx), cst_args_(cst_args) {}
+
+  LogicalResult matchAndRewrite(GetGlobalOp op,
+                                PatternRewriter& rewriter) const override {
+    // Find global constants mapping for the parent function.
+    auto func_mapping = cst_args_.find(op->getParentOfType<FuncOp>());
+    if (func_mapping == cst_args_.end()) return failure();
+
+    // Check if the global operation correposponds to the LMHLO constant arg.
+    auto arg = func_mapping->second.find(op.name());
+    if (arg == func_mapping->second.end()) return failure();
+
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    MemRefType memref = op->getResult(0).getType().cast<MemRefType>();
+
+    // For identity layouts we can replace all loads from a global with the
+    // corresponding argument.
+    if (memref.getLayout().isIdentity()) {
+      Value c0 = b.create<ConstantOp>(rewriter.getIndexAttr(0));
+      rewriter.replaceOpWithNewOp<memref::ViewOp>(op, memref, arg->second, c0,
+                                                  ValueRange());
+      return success();
+    }
+
+    // For non-identity type we first view constant argument as a flat memref
+    // with the correct element type, and then cast it to the strided memref
+    // corresponding to the original memref layout.
+
+    // Get the strides and offset from the original memref type.
+    int64_t offset;
+    llvm::SmallVector<int64_t> strides;
+    if (failed(getStridesAndOffset(memref, strides, offset)))
+      return op.emitOpError("failed to compute strides and offset");
+
+    // Create a 1d view into the corresponding argument.
+    Value c0 = b.create<ConstantOp>(rewriter.getIndexAttr(0));
+    Value flat_view = b.create<memref::ViewOp>(
+        MemRefType::get({memref.getNumElements()}, memref.getElementType()),
+        arg->second, c0, ValueRange());
+
+    // Cast flat memref view into the original memref type.
+    rewriter.replaceOpWithNewOp<memref::ReinterpretCastOp>(
+        op, memref, flat_view, offset, memref.getShape(), strides);
+
+    return success();
+  }
+
+ private:
+  const GlobalConstantsArgs& cst_args_;
+};
+
+// -------------------------------------------------------------------------- //
+
+class CholeskyOpLowering : public OpRewritePattern<CholeskyOp> {
+ public:
+  explicit CholeskyOpLowering(MLIRContext* ctx)
+      : OpRewritePattern<CholeskyOp>(ctx) {}
+
+  LogicalResult matchAndRewrite(CholeskyOp op,
+                                PatternRewriter& rewriter) const override {
+    MLIRContext* ctx = this->getContext();
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    ModuleOp module = op->getParentOfType<ModuleOp>();
+
+    // Custom call target.
+    NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
+                          b.getStringAttr("xla.gpu.cholesky"));
+
+    // Create a custom call function declaration.
+    auto custom_call_type =
+        FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
+    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
+    auto custom_call = FuncOp::create(op.getLoc(), "cholesky", custom_call_type,
+                                      custom_call_attrs);
+    custom_call.setPrivate();
+
+    SymbolTable sym_table(module);
+    auto inserted = sym_table.insert(custom_call);
+    rewriter.notifyOperationInserted(custom_call);
+
+    // Convert Cholesky to a function call.
+    auto call = rewriter.create<CallOp>(op.getLoc(), inserted, TypeRange(),
+                                        op.getOperands());
+
+    const auto& dims = op.input().getType().cast<mlir::MemRefType>().getShape();
+    if (dims.size() < 2)
+      return op.emitOpError() << "Input's dimension count (" << dims.size()
+                              << ") must be 2 or greater.";
+    int64_t n = dims[dims.size() - 1];
+    int64_t batch_size =
+        std::accumulate(dims.begin(), dims.end() - 2, int64_t{1},
+                        [](int64_t a, int64_t b) { return a * b; });
+
+    // Copy backend specific attributes.
+    call->setAttr(b.getStringAttr("batch_size"),
+                  b.getI64IntegerAttr(batch_size));
+    call->setAttr(b.getStringAttr("n"), b.getI64IntegerAttr(n));
+    call->setAttr(b.getStringAttr("uplo"), b.getI64IntegerAttr(op.is_lower()));
+
+    // Erase the original Cholesky operation.
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+};
+
+// -------------------------------------------------------------------------- //
+
+class AllReduceOpLowering : public OpRewritePattern<AllReduceOp> {
+ public:
+  explicit AllReduceOpLowering(MLIRContext* ctx)
+      : OpRewritePattern<AllReduceOp>(ctx) {}
+
+  LogicalResult matchAndRewrite(AllReduceOp op,
+                                PatternRewriter& rewriter) const override {
+    MLIRContext* ctx = this->getContext();
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    ModuleOp module = op->getParentOfType<ModuleOp>();
+
+    // Custom call target.
+    NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
+                          b.getStringAttr("xla.gpu.all_reduce"));
+
+    // Create a custom call function declaration.
+    auto custom_call_type =
+        FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
+    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
+    auto custom_call = FuncOp::create(op.getLoc(), "all_reduce",
+                                      custom_call_type, custom_call_attrs);
+    custom_call.setPrivate();
+
+    SymbolTable sym_table(module);
+    auto inserted = sym_table.insert(custom_call);
+    rewriter.notifyOperationInserted(custom_call);
+
+    // Convert AllReduce to a function call.
+    auto call = rewriter.create<CallOp>(op.getLoc(), inserted, TypeRange(),
+                                        op.getOperands());
+
+    xla::gpu::NcclCollectiveConfig config =
+        xla::gpu::GetNcclCollectiveConfigForMlir(op,
+                                                 op.use_global_device_ids());
+
+    FuncOp func = op->getParentOfType<FuncOp>();
+    IntegerAttr replica_count_attr =
+        func->getAttrOfType<IntegerAttr>("replica_count");
+    IntegerAttr num_partitions_attr =
+        func->getAttrOfType<IntegerAttr>("num_partitions");
+    const int64_t replica_count = replica_count_attr.getInt();
+    const int64_t num_partitions = num_partitions_attr.getInt();
+
+    // A given collective op can be degenerate if across all groups formed
+    // by it are singleton. In such a case, we don't need to do any
+    // communication and we can just copy the input to the output.
+    if (config.IsDegenerate(replica_count, num_partitions)) {
+      for (int64_t i = 0; i < op.operands().size(); i++) {
+        rewriter.create<gpu::MemcpyOp>(
+            op.getLoc(), TypeRange(),
+            ValueRange({op.results()[i], op.operands()[i]}));
+      }
+
+      // Erase the original AllReduce operation.
+      rewriter.eraseOp(op);
+
+      return success();
+    }
+
+    if (!xla::gpu::NcclAllReduceThunk::CanImplement(op)) {
+      return op.emitOpError()
+             << "Requested AllReduce not implemented on GPU; replica_count: "
+             << replica_count << ", num_partitions: " << num_partitions
+             << ", group_mode: "
+             << CollectiveOpGroupModeToString(config.group_mode)
+             << ", operand_count: " << op.operands().size()
+             << ", NCCL support: "
+             << xla::gpu::NcclCollectiveThunk::NcclIsEnabled();
+    }
+
+    std::optional<xla::ReductionKind> reduction_kind =
+        xla::gpu::NcclAllReduceThunkBase::MatchAllReduceComputation(
+            op.computation());
+    if (!reduction_kind.has_value())
+      return op.emitOpError()
+             << "Failed to determine reduction computation for AllReduce";
+
+    // Copy backend specific attributes.
+    call->setAttr(b.getStringAttr("group_mode"),
+                  b.getI64IntegerAttr(static_cast<int64_t>(config.group_mode)));
+    call->setAttr(b.getStringAttr("op_id"), b.getI64IntegerAttr(config.op_id));
+    call->setAttr(
+        b.getStringAttr("reduction_kind"),
+        b.getI64IntegerAttr(static_cast<int64_t>(reduction_kind.value())));
+    // TODO(b/233930690): Pass the attribute below as a nested array.
+    // Pass an array of arrays using two vectors; one specifying all the values
+    // and another specifying the (ending) offsets of each array in the other
+    // vector. Example: [ [10, 20, 30, 40], [50, 60], [70, 80, 90] ] turns into
+    // offsets=[4, 6, 9] values=[10, 20, 30, 40, 50, 60, 70, 80, 90].
+    std::vector<int64_t> replica_group_offsets;
+    std::vector<int64_t> replica_group_values;
+    replica_group_offsets.reserve(config.replica_groups.size());
+    int replica_group_offset = 0;
+    for (const auto& replica_group : config.replica_groups) {
+      replica_group_offset += replica_group.replica_ids_size();
+      replica_group_offsets.push_back(replica_group_offset);
+      replica_group_values.reserve(replica_group_offset);
+      for (auto replica_id : replica_group.replica_ids()) {
+        replica_group_values.push_back(replica_id);
+      }
+    }
+    call->setAttr(b.getStringAttr("replica_group_offsets"),
+                  b.getI64TensorAttr(replica_group_offsets));
+    call->setAttr(b.getStringAttr("replica_group_values"),
+                  b.getI64TensorAttr(replica_group_values));
+
+    // Erase the original AllReduce operation.
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+};
+
+// -------------------------------------------------------------------------- //
+
+void ConvertLmhloConstantToArgPass::runOnOperation() {
+  ModuleOp module = getOperation();
+  MLIRContext* ctx = module.getContext();
+
+  // Replace memref loads from globals corresponding to the constant arguments.
+  RewritePatternSet patterns(ctx);
+  GlobalConstantsArgs cst_args = GetConstantArgs(module);
+  patterns.insert<GetGlobalOpLowering>(ctx, cst_args);
+
+  // Set up conversion target to rewrite only GetGlobalOp larger than the
+  // threshold and avoid any other canonicalizations that can break later
+  // passes.
+  ConversionTarget target(*ctx);
+  target.addDynamicallyLegalOp<GetGlobalOp>([&](GetGlobalOp op) {
+    auto memref = op.getType();
+    return memref.getNumElements() < min_num_elements_;
+  });
+  target.addLegalOp<ConstantOp, memref::ViewOp, memref::ReinterpretCastOp>();
+
+  // TODO(ezhulenev): By adding MHLO and LMHLO to a set of legal dialects, we
+  // suppress any rewrites for these dialects (there are canonicalization
+  // patterns that interact badly with downstream Gpu binary code generation).
+  target.addLegalDialect<mhlo::MhloDialect, lmhlo::LmhloDialect>();
+
+  if (failed(applyPartialConversion(module, target, std::move(patterns))))
+    signalPassFailure();
+}
+
 void ConvertGpuToJitRtPass::runOnOperation() {
   ModuleOp module = getOperation();
   MLIRContext* ctx = module.getContext();
 
   // Convert gpu operations to JitRt gpu runtime custom calls.
   RewritePatternSet patterns(ctx);
-  patterns.insert<GpuModuleOpLowering, LaunchFuncOpLowering, MemcpyOpLowering>(
-      ctx);
+  patterns.insert<GpuModuleOpLowering, LaunchFuncOpLowering, MemcpyOpLowering,
+                  InfeedOpLowering, OutfeedOpLowering>(ctx);
 
-  // Set up conversion target to rewrite gpu operations.
-  ConversionTarget target(*ctx);
-  target.addIllegalOp<GPUModuleOp, LaunchFuncOp, MemcpyOp>();
-  target.addLegalOp<IndexCastOp, FuncOp, CallOp, ReturnOp>();
-
-  if (failed(applyPartialConversion(module, target, std::move(patterns))))
-    signalPassFailure();
+  if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
+    return signalPassFailure();
 }
 
 void ConvertLmhloGpuToJitRtPass::runOnOperation() {
@@ -415,7 +770,8 @@ void ConvertLmhloGpuToJitRtPass::runOnOperation() {
   // Convert lmhlo_gpu operations to JitRt gpu runtime custom calls.
   RewritePatternSet patterns(ctx);
   patterns.insert<GemmOpLowering, GemmBiasOpLowering>(ctx, uid);
-  patterns.insert<WhileOpLowering, TerminatorOpLowering>(ctx);
+  patterns.insert<AllReduceOpLowering, CholeskyOpLowering, WhileOpLowering,
+                  TerminatorOpLowering>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();
@@ -425,18 +781,42 @@ std::unique_ptr<OperationPass<ModuleOp>> createConvertGpuToJitRtPass() {
   return std::make_unique<ConvertGpuToJitRtPass>();
 }
 
+std::unique_ptr<OperationPass<ModuleOp>> createConvertLmhloConstantToArgPass() {
+  return std::make_unique<ConvertLmhloConstantToArgPass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp>> createConvertLmhloConstantToArgPass(
+    int64_t min_num_elements) {
+  return std::make_unique<ConvertLmhloConstantToArgPass>(min_num_elements);
+}
+
 std::unique_ptr<OperationPass<ModuleOp>> createConvertLmhloGpuToJitRtPass() {
   return std::make_unique<ConvertLmhloGpuToJitRtPass>();
 }
 
 void populateLmhloToJitRtPasses(mlir::OpPassManager& pm) {
+  // Convert large global memrefs corresponding to XLA constants with arguments,
+  // so that compiled device kernels do not capture them.
+  //
+  // TODO(ezhulenev): Threshold should be consistent with the device kernel
+  // code generation. If constant will be embedded into the device module, we
+  // should not inline it too early. Currently it's hardcoded to `1` element.
+  pm.addPass(createConvertLmhloConstantToArgPass(/*min_num_elements=*/2));
+
+  // Small global constants will be embedded into the device modules.
   pm.addPass(createConvertLmhloToGpuBinaryPass());
+
+  // Convert remaining small global memrefs corresponding to constant arguments.
+  pm.addPass(createConvertLmhloConstantToArgPass());
+
+  // Lower all Gpu operations to the JitRt Gpu runtime intrinsics.
   pm.addPass(createConvertLmhloGpuToJitRtPass());
   pm.addPass(createConvertGpuToJitRtPass());
 }
 
 void registerLmhloToJitRtPasses() {
   mlir::registerPass([] { return createConvertGpuToJitRtPass(); });
+  mlir::registerPass([] { return createConvertLmhloConstantToArgPass(); });
   mlir::registerPass([] { return createConvertLmhloGpuToJitRtPass(); });
 
   mlir::registerPassPipeline(

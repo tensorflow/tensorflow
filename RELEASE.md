@@ -42,10 +42,6 @@
         argument, for returning both dataset splits at once, as a tuple.
     *   Added `tf.keras.utils.split_dataset` utility to split a `Dataset` object
         or a list/tuple of arrays into two `Dataset` objects (e.g. train/test).
-    *   Added step granualarity to `BackupAndRestore` callback for handling
-        distributed training failures & restarts. The training state can now be
-        restored at the exact epoch and step at which it was previously saved
-        before failing.
 
 *   `tf.data`:
 
@@ -54,6 +50,14 @@
         same dataset. See
         https://www.tensorflow.org/api_docs/python/tf/data/experimental/service#sharing_tfdata_service_with_concurrent_trainers
         for more details.
+    *   Added a new field, `inject_prefetch`, to
+        `tf.data.experimental.OptimizationOptions`. If it is set to `True`,
+        tf.data will now automatically add a `prefetch` transformation to
+        datasets that end in synchronous transformations. This enables data
+        generation to be overlapped with  data consumption. This may cause a
+        small increase in memory usage due to buffering. To enable this
+        behavior, set `inject_prefetch=True` in
+        `tf.data.experimental.OptimizationOptions`.
 
 *   `tf.math`:
 
@@ -94,6 +98,22 @@
 This release contains contributions from many people at Google, as well as:
 
 <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
+# Release 2.9.1
+
+Add an upper bound for `protobuf` in `setup.py` since `protobuf` after version 3.20 is currently incompatible with TensorFlow. See https://github.com/tensorflow/tensorflow/issues/53234, https://github.com/protocolbuffers/protobuf/issues/9954 and https://github.com/tensorflow/tensorflow/issues/56077.
+
+# Release 2.8.2
+
+Add an upper bound for `protobuf` in `setup.py` since `protobuf` after version 3.20 is currently incompatible with TensorFlow. See https://github.com/tensorflow/tensorflow/issues/53234, https://github.com/protocolbuffers/protobuf/issues/9954 and https://github.com/tensorflow/tensorflow/issues/56077.
+
+# Release 2.7.3
+
+Add an upper bound for `protobuf` in `setup.py` since `protobuf` after version 3.20 is currently incompatible with TensorFlow. See https://github.com/tensorflow/tensorflow/issues/53234, https://github.com/protocolbuffers/protobuf/issues/9954 and https://github.com/tensorflow/tensorflow/issues/56077.
+
+# Release 2.6.5
+
+Add an upper bound for `protobuf` in `setup.py` since `protobuf` after version 3.20 is currently incompatible with TensorFlow. See https://github.com/tensorflow/tensorflow/issues/53234, https://github.com/protocolbuffers/protobuf/issues/9954 and https://github.com/tensorflow/tensorflow/issues/56077.
 
 # Release 2.9.0
 

@@ -2172,6 +2172,10 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
       cumulative_axis = i;
     }
 
+    if (cumulative_axis == -1) {
+      return rewriter.notifyMatchFailure(rw, "no reduced dimension is found.");
+    }
+
     // For a cumulative op, padding (expressed as a list of left-padding and
     // right-padding pairs) should be of the form:
     //  dense<[[0, 0], [0, 0], [N-1, 0], [0, 0]]>

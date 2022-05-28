@@ -113,6 +113,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/reduction_dimension_grouper.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_layout_normalizer.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_splitter.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime_intrinsics.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
@@ -164,7 +165,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
@@ -172,9 +172,7 @@ limitations under the License.
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/platform/threadpool.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -439,9 +437,36 @@ Status GpuCompiler::OptimizeHloModule(
         /*expansion_type=*/LogisticExpansionType::kExp);
     pipeline.AddPass<ConditionalCanonicalizer>();
     pipeline.AddPass<DynamicDimensionSimplifier>();
-    auto dynamic_padder_options = DynamicPadderOptions();
-    dynamic_padder_options.shape_check_mode =
-        DynamicDimensionInference::ShapeCheckMode::kCompileTime;
+
+    DynamicPadderOptions dynamic_padder_options;
+
+    switch (hlo_module->config().debug_options().xla_gpu_shape_checks()) {
+      case DebugOptions::IGNORE:
+        dynamic_padder_options.shape_check_mode =
+            DynamicDimensionInference::ShapeCheckMode::kIgnore;
+        break;
+      case DebugOptions::RUNTIME: {
+        dynamic_padder_options.shape_check_mode =
+            DynamicDimensionInference::ShapeCheckMode::kRuntime;
+        dynamic_padder_options.assertion_generator = [&](HloInstruction* inst) {
+          auto created = Cast<HloCustomCallInstruction>(
+              inst->parent()->AddInstruction(HloInstruction::CreateCustomCall(
+                  ShapeUtil::MakeTokenShape(), {inst},
+                  kXlaGpuAssertCustomCallTag,
+                  "Buffers have different size at runtime",
+                  API_VERSION_STATUS_RETURNING)));
+          created->set_custom_call_has_side_effect(true);
+        };
+        break;
+      }
+      case DebugOptions::COMPILE_TIME:
+        dynamic_padder_options.shape_check_mode =
+            DynamicDimensionInference::ShapeCheckMode::kCompileTime;
+        break;
+      default:
+        LOG(FATAL) << "Unreachable";
+    }
+
     pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
 
     // Build simplification pipeline.  The passes in here are run to a fixed
@@ -872,6 +897,17 @@ static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module,
 static StatusOr<OwnedJitRtProgram> LowerToJitRt(
     mlir::ModuleOp mlir_module, llvm::StringRef entry_function_name,
     llvm::ArrayRef<int64_t> buffer_sizes, HloModule* hlo_module) {
+  // Forward collective (NCCL) attributes for use by the lowering pipeline.
+  mlir::OpBuilder builder(mlir_module.getContext());
+  mlir::IntegerAttr replica_count_attr =
+      builder.getI64IntegerAttr(hlo_module->config().replica_count());
+  mlir::IntegerAttr num_partitions_attr =
+      builder.getI64IntegerAttr(hlo_module->config().num_partitions());
+  mlir::func::FuncOp func =
+      mlir_module.lookupSymbol<mlir::func::FuncOp>(entry_function_name);
+  func->setAttr("replica_count", replica_count_attr);
+  func->setAttr("num_partitions", num_partitions_attr);
+
   // Lower LMHLO operations to the JitRt compatible custom calls.
   TF_RETURN_IF_ERROR(tensorflow::ConvertLmhloToJitRt(
       mlir_module, {entry_function_name.data(), entry_function_name.size()},

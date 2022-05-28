@@ -88,10 +88,10 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
     plane.ForEachLine([&](const XLineVisitor& line) {
       uint32_t thread_id = line.Id();
       line.ForEachEvent([&](const XEventVisitor& event) {
+        LaunchEventStats stats(&event);
         if (event.Name() == "cuStreamSynchronize") {
-          auto device_id_stat = event.GetStat(StatType::kDeviceId);
-          if (device_id_stat.has_value()) {
-            uint32_t device_ordinal = device_id_stat->IntOrUintValue();
+          if (stats.device_id.has_value()) {
+            uint32_t device_ordinal = stats.device_id.value();
             DeviceStepStats* sync_dev_stats =
                 sync_dev_stats_map[device_ordinal];
             if (sync_dev_stats == nullptr) {
@@ -106,9 +106,8 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
             ns->set_thread_id(thread_id);
           }
         } else {
-          auto correlation_id_stat = event.GetStat(StatType::kCorrelationId);
-          if (correlation_id_stat.has_value()) {
-            int64_t correlation_id = correlation_id_stat->IntValue();
+          if (stats.correlation_id.has_value()) {
+            int64_t correlation_id = stats.correlation_id.value();
             uint64_t enqueue_time_ns = event.TimestampNs();
             correlation_info_map[correlation_id] = {thread_id, enqueue_time_ns};
           }

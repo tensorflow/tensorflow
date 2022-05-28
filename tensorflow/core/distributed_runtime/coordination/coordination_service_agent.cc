@@ -84,8 +84,9 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   StatusOr<std::string> GetKeyValue(const std::string& key) override;
   StatusOr<std::string> GetKeyValue(const std::string& key,
                                     absl::Duration timeout) override;
-  void GetKeyValueAsync(const std::string& key,
-                        StatusOrValueCallback done) override;
+  std::shared_ptr<CallOptions> GetKeyValueAsync(
+      const std::string& key, StatusOrValueCallback done) override;
+  StatusOr<std::string> TryGetKeyValue(const std::string& key) override;
   StatusOr<std::vector<KeyValueEntry>> GetKeyValueDir(
       const std::string& key) override;
   void GetKeyValueDirAsync(const std::string& key,
@@ -105,6 +106,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
                           const std::vector<CoordinatedTask>& tasks,
                           StatusCallback done) override;
   Status CancelBarrier(const std::string& barrier_id) override;
+  void CancelBarrierAsync(const std::string& barrier_id,
+                          StatusCallback done) override;
 
  protected:
   void SetError(const Status& error) override;
@@ -119,7 +122,6 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   const uint64_t incarnation_id_ = random::New64();
   CoordinatedTask task_;
   CoordinationServiceConfig configs_;
-  std::unique_ptr<CoordinationClient> leader_client_;
   StatusCallback error_fn_;
 
   enum class State {
@@ -140,7 +142,10 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   condition_variable heartbeat_thread_cv_;
   bool shutting_down_ TF_GUARDED_BY(heartbeat_thread_shutdown_mu_) = false;
   std::unique_ptr<Thread> heartbeat_thread_;
+  // Must outlive coordination client which may need to access it within
+  // GetKeyValueAsync() callbacks.
   CancellationManager cancellation_manager_;
+  std::unique_ptr<CoordinationClient> leader_client_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CoordinationServiceAgentImpl);
 };
@@ -505,6 +510,59 @@ StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
   return *result;
 }
 
+std::shared_ptr<CallOptions> CoordinationServiceAgentImpl::GetKeyValueAsync(
+    const std::string& key, StatusOrValueCallback done) {
+  auto request = std::make_shared<GetKeyValueRequest>();
+  request->set_key(key);
+  auto response = std::make_shared<GetKeyValueResponse>();
+  auto call_opts = std::make_shared<CallOptions>();
+
+  const CancellationToken token =
+      cancellation_manager_.get_cancellation_token();
+  const bool already_cancelled = !cancellation_manager_.RegisterCallback(
+      token, [call_opts]() { call_opts->StartCancel(); });
+  if (already_cancelled) {
+    done(errors::Cancelled("GetKeyValueAsync() was cancelled."));
+    return call_opts;
+  }
+  leader_client_->GetKeyValueAsync(
+      call_opts.get(), request.get(), response.get(),
+      [call_opts, request, response, done = std::move(done),
+       &cm = cancellation_manager_, token](const Status& s) {
+        // RPC call has completed (no longer needs to be cancelled if agent is
+        // destroyed).
+        cm.TryDeregisterCallback(token);
+
+        // Retrieve server response.
+        if (!s.ok()) {
+          done(s);
+        } else {
+          done(response->kv().value());
+        }
+      });
+  return call_opts;
+}
+
+StatusOr<std::string> CoordinationServiceAgentImpl::TryGetKeyValue(
+    const std::string& key) {
+  absl::Notification n;
+  StatusOr<std::string> result;
+  TryGetKeyValueRequest request;
+  request.set_key(key);
+  TryGetKeyValueResponse response;
+  leader_client_->TryGetKeyValueAsync(&request, &response,
+                                      [&](const Status& s) {
+                                        if (s.ok()) {
+                                          result = response.kv().value();
+                                        } else {
+                                          result = s;
+                                        }
+                                        n.Notify();
+                                      });
+  n.WaitForNotification();
+  return result;
+}
+
 StatusOr<std::vector<KeyValueEntry>>
 CoordinationServiceAgentImpl::GetKeyValueDir(const std::string& key) {
   absl::Notification n;
@@ -553,38 +611,6 @@ Status CoordinationServiceAgentImpl::InsertKeyValue(const std::string& key,
   });
   n.WaitForNotification();
   return status;
-}
-
-void CoordinationServiceAgentImpl::GetKeyValueAsync(
-    const std::string& key, StatusOrValueCallback done) {
-  auto request = std::make_shared<GetKeyValueRequest>();
-  request->set_key(key);
-  auto response = std::make_shared<GetKeyValueResponse>();
-  auto call_opts = std::make_shared<CallOptions>();
-
-  const CancellationToken token =
-      cancellation_manager_.get_cancellation_token();
-  const bool already_cancelled = !cancellation_manager_.RegisterCallback(
-      token, [call_opts]() { call_opts->StartCancel(); });
-  if (already_cancelled) {
-    done(errors::Cancelled("GetKeyValueAsync() was cancelled."));
-    return;
-  }
-  leader_client_->GetKeyValueAsync(
-      call_opts.get(), request.get(), response.get(),
-      [call_opts, request, response, done = std::move(done),
-       &cm = cancellation_manager_, token](const Status& s) {
-        // RPC call has completed (no longer needs to be cancelled if agent is
-        // destroyed).
-        cm.TryDeregisterCallback(token);
-
-        // Retrieve server response.
-        if (!s.ok()) {
-          done(s);
-        } else {
-          done(response->kv().value());
-        }
-      });
 }
 
 Status CoordinationServiceAgentImpl::DeleteKeyValue(const std::string& key) {
@@ -672,23 +698,32 @@ void CoordinationServiceAgentImpl::WaitAtBarrierAsync(
 
 Status CoordinationServiceAgentImpl::CancelBarrier(
     const std::string& barrier_id) {
-  Status agent_running_status = ValidateRunningAgent();
-  if (!agent_running_status.ok()) {
-    return agent_running_status;
-  }
-  CancelBarrierRequest request;
-  CancelBarrierResponse response;
-  request.set_barrier_id(barrier_id);
-  *request.mutable_source_task() = task_;
-
   Status status;
   absl::Notification n;
-  leader_client_->CancelBarrierAsync(&request, &response, [&](const Status& s) {
+  CancelBarrierAsync(barrier_id, [&](const Status& s) {
     status = s;
     n.Notify();
   });
   n.WaitForNotification();
   return status;
+}
+
+void CoordinationServiceAgentImpl::CancelBarrierAsync(
+    const std::string& barrier_id, StatusCallback done) {
+  Status agent_running_status = ValidateRunningAgent();
+  if (!agent_running_status.ok()) {
+    done(agent_running_status);
+    return;
+  }
+  auto request = std::make_shared<CancelBarrierRequest>();
+  auto response = std::make_shared<CancelBarrierResponse>();
+  request->set_barrier_id(barrier_id);
+  *request->mutable_source_task() = task_;
+  leader_client_->CancelBarrierAsync(
+      request.get(), response.get(),
+      [request, response, done = std::move(done)](const Status& s) {
+        done(s);
+      });
 }
 
 // Returns an error if agent is not running.

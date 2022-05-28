@@ -26,7 +26,7 @@ Status CheckOpDefCompatibility(const tensorflow::OpDef& op_def) {
       return tensorflow::errors::Internal(
           "TFRT kernel fallback error: Unsupported ref args in ",
           op_def.name());
-    return Status::OK();
+    return OkStatus();
   };
 
   for (const auto& arg_def : op_def.input_arg())
@@ -34,7 +34,7 @@ Status CheckOpDefCompatibility(const tensorflow::OpDef& op_def) {
   for (const auto& arg_def : op_def.output_arg())
     TF_RETURN_IF_ERROR(check_arg_def(arg_def));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Create a tensorflow::NodeDef from the tensorflow::OpDef and the attributes.
@@ -73,7 +73,7 @@ tensorflow::Status CreateOpKernel(
   tensorflow::OpKernel* k = nullptr;
   TF_RETURN_IF_ERROR(flr->CreateKernel(props, &k));
   result->reset(k);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

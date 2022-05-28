@@ -159,7 +159,7 @@ with your own model and test data.
 ## Model compatibility requirements
 
 The `BertQuestionAnswerer` API expects a TFLite model with mandatory
-[TFLite Model Metadata](../../convert/metadata).
+[TFLite Model Metadata](../../models/convert/metadata).
 
 The Metadata should meet the following requirements:
 

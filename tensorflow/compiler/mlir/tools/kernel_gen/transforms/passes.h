@@ -92,14 +92,6 @@ std::unique_ptr<mlir::OperationPass<func::FuncOp>> CreateMapParallelLoopsPass();
 std::unique_ptr<mlir::OperationPass<func::FuncOp>>
 CreateFuseInnerParallelLoopsPass();
 
-/// Pass that transforms gpu modules in standard dialect to NNVM.
-std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
-CreateGpuKernelToNvvmPass();
-
-/// Pass that transforms gpu modules in standard dialect to ROCDL.
-std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
-CreateGpuKernelToRocdlPass();
-
 // Pass to create vectorized code for CPU.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateVectorizationPass();
 

@@ -20,6 +20,18 @@ package(
 )
 
 py_library(
+    name = "checkpoint_lib",
+    deps = [
+        ":checkpoint",
+        ":checkpoint_management",
+        ":checkpoint_options",
+        ":functional_saver",
+        ":graph_view",
+        ":util",
+    ],
+)
+
+py_library(
     name = "checkpoint",
     srcs = [
         "__init__.py",
@@ -149,6 +161,7 @@ py_library(
         ":util",
         "//tensorflow/python:util",
         "//tensorflow/python/trackable:base",
+        "//tensorflow/python/trackable:converter",
     ],
 )
 

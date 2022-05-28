@@ -171,9 +171,10 @@ Status MakeBatchPointers(se::Stream* stream, const se::GpuAsmOpts& asm_opts,
   TF_ASSIGN_OR_RETURN(auto kernel, lazy_kernel->Get(stream->parent()));
 
   constexpr int kThreads = 128;
-  stream->ThenLaunch(se::ThreadDim(kThreads, 1, 1),
-                     se::BlockDim(CeilOfRatio(n, kThreads), 1, 1), *kernel,
-                     base_ptr, stride_bytes, n, ptrs_out);
+  TF_RETURN_IF_ERROR(
+      stream->ThenLaunch(se::ThreadDim(kThreads, 1, 1),
+                         se::BlockDim(CeilOfRatio(n, kThreads), 1, 1), *kernel,
+                         base_ptr, stride_bytes, n, ptrs_out));
 #endif
   return Status::OK();
 }

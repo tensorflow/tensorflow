@@ -83,6 +83,7 @@ struct MhloToScalarOp<mhlo::ExpOp> {
 template <>
 struct MhloToScalarOp<mhlo::Expm1Op> {
   using FOp = ::mlir::math::ExpM1Op;
+  using COp = ::mlir::complex::Expm1Op;
 };
 template <>
 struct MhloToScalarOp<mhlo::FloorOp> {
@@ -130,6 +131,7 @@ struct MhloToScalarOp<mhlo::PopulationCountOp> {
 template <>
 struct MhloToScalarOp<mhlo::RsqrtOp> {
   using FOp = ::mlir::math::RsqrtOp;
+  using COp = ::mlir::complex::RsqrtOp;
 };
 template <>
 struct MhloToScalarOp<mhlo::SubOp> {
@@ -141,6 +143,7 @@ struct MhloToScalarOp<mhlo::SubOp> {
 template <>
 struct MhloToScalarOp<mhlo::SqrtOp> {
   using FOp = ::mlir::math::SqrtOp;
+  using COp = ::mlir::complex::SqrtOp;
 };
 template <>
 struct MhloToScalarOp<mhlo::SinOp> {
@@ -165,10 +168,12 @@ struct MhloToScalarOp<mhlo::ShiftRightLogicalOp> {
 template <>
 struct MhloToScalarOp<mhlo::Atan2Op> {
   using FOp = ::mlir::math::Atan2Op;
+  using COp = ::mlir::complex::Atan2Op;
 };
 template <>
 struct MhloToScalarOp<mhlo::TanhOp> {
   using FOp = ::mlir::math::TanhOp;
+  using COp = ::mlir::complex::TanhOp;
 };
 template <>
 struct MhloToScalarOp<mhlo::XorOp> {
@@ -688,16 +693,12 @@ inline Value MapMhloOpToStdScalarOp<mhlo::ClampOp>(Location loc,
                                                    ArrayRef<Type> arg_types,
                                                    ValueRange args,
                                                    OpBuilder* b) {
-  assert(args.size() == 3 && "expected 3 arguments");
-  Value lb = args[0];
-  Value x = args[1];
-  Value ub = args[2];
-
-  // clamp(lb, x, ub) = max(min(x, ub), lb)
-  Value min_x_ub = MapMhloOpToStdScalarOp<mhlo::MinOp>(loc, result_types,
-                                                       arg_types, {x, ub}, b);
-  return MapMhloOpToStdScalarOp<mhlo::MaxOp>(loc, result_types, arg_types,
-                                             {min_x_ub, lb}, b);
+  mhlo::ClampOp::Adaptor op(args);
+  // clamp(lb, x, ub) = min(max(lb, x), ub)
+  Value max_lb_x = MapMhloOpToStdScalarOp<mhlo::MaxOp>(
+      loc, result_types, arg_types, {op.min(), op.operand()}, b);
+  return MapMhloOpToStdScalarOp<mhlo::MinOp>(loc, result_types, arg_types,
+                                             {max_lb_x, op.max()}, b);
 }
 
 template <typename U, typename S>
@@ -845,12 +846,11 @@ inline Value MapMhloOpToStdScalarOp<mhlo::PowOp>(Location loc,
   auto lb = ImplicitLocOpBuilder(loc, *b);
   // Floating point can use std::powf
   auto result_type = result_types.front();
-  if (result_type.isa<::mlir::FloatType>())
-    return MapMhloOpToScalarOpImpl<::mlir::math::PowFOp>{}(loc, result_types,
-                                                           arg_types, args, b);
-
-  assert(result_type.isa<::mlir::IntegerType>() &&
-         "only float and integer `pow` is supported right now");
+  if (result_type.isa<ComplexType, FloatType>()) {
+    return MapMhloOpToScalarOpImpl<isFloatType, math::PowFOp, isComplexType,
+                                   complex::PowOp>{}(loc, result_types,
+                                                     arg_types, args, b);
+  }
 
   // Exponentiation by squaring:
   // https://en.wikipedia.org/wiki/Exponentiation_by_squaring;

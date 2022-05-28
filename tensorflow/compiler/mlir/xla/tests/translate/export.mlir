@@ -763,6 +763,28 @@ func.func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
 // -----
 
 // CHECK:  HloModule
+func.func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xi32>) -> tensor<4xf32> {
+  %0 = "mhlo.map"(%arg0, %arg1) ({
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<i32>):
+    "mhlo.return"(%arg2) : (tensor<f32>) -> ()
+  }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<4xf32>, tensor<4xi32>) -> tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}
+
+// CHECK:  [[COMPUTATION:%.*]] ({{.*}}: f32[], {{.*}}: s32[]) -> f32[] {
+// CHECK:  ROOT [[ARG_0:%.*]] = f32[] parameter(0)
+// CHECK:  }
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG_2:%.*]] = f32[4] parameter(0)
+// CHECK:  [[ARG_3:%.*]] = s32[4] parameter(1)
+// CHECK:  ROOT
+// CHECK-SAME:  f32[4] map(f32[4] [[ARG_2]], s32[4] [[ARG_3]]), dimensions={0}, to_apply=[[COMPUTATION]]
+
+// -----
+
+
+// CHECK:  HloModule
 func.func @main(%data: tensor<3xi32>, %token: !mhlo.token) -> !mhlo.token {
   %0 = "mhlo.outfeed"(%data, %token) {outfeed_config = "foobar"} : (tensor<3xi32>, !mhlo.token) -> !mhlo.token
   func.return %0 : !mhlo.token
@@ -1470,6 +1492,15 @@ func.func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<3x4xf32>) -> (tensor<4x4xf
 // CHECK: %[[RESULT:.*]] = (f32[4,4], f32[3,4]) opt-barrier((f32[4,4], f32[3,4]) %[[ARGS]])
   %0, %1 = "mhlo.optimization_barrier"(%arg0, %arg1) : (tensor<4x4xf32>, tensor<3x4xf32>) -> (tensor<4x4xf32>, tensor<3x4xf32>)
   func.return %0, %1 : tensor<4x4xf32>, tensor<3x4xf32>
+}
+
+// -----
+
+// CHECK:  HloModule
+func.func private @main() -> tensor<ui32> {
+  // CHECK: u32[] partition-id()
+  %1 = "mhlo.partition_id"() : () -> tensor<ui32>
+  return %1 : tensor<ui32>
 }
 
 // -----

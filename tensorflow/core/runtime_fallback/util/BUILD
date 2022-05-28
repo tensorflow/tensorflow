@@ -9,6 +9,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 package_group(
     name = "internal",
     packages = [
+        "//learning/brain/experimental/tfrt/native_lowering/kernels/...",
         "//tensorflow/core/runtime_fallback/...",
         "//tensorflow/core/tfrt/eager/backends/tpu/...",
         "//tensorflow/core/tfrt/utils/...",

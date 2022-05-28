@@ -191,6 +191,22 @@ message DebugOptions {
   // If set to true XLA:GPU invokes `ptxas` with -O0 (default is -O3).
   bool xla_gpu_disable_gpuasm_optimizations = 103;
 
+  enum ShapeChecks {
+    // Do not insert any shape checks for dynamically shaped operations; output
+    // buffers might contain garbage data if shapes don't match.
+    IGNORE = 0;
+
+    // Check shapes at runtime, will insert an extra synchronization if shapes
+    // cannot be proven correct at compile time.
+    RUNTIME = 1;
+
+    // Will refuse to compile any program where shape correctness can not be
+    // established at compile time.
+    COMPILE_TIME = 2;
+  }
+
+  ShapeChecks xla_gpu_shape_checks = 170;
+
   // Enable fast math with eigen in the HLO evaluator.
   bool xla_hlo_evaluator_use_fast_path = 106;
 
@@ -393,7 +409,7 @@ message DebugOptions {
   // no-ops, e.g. `bf16 -> f32 -> bf16`. Removing these improves accuracy.
   bool xla_gpu_simplify_all_fp_conversions = 168;
 
-  // Next id: 169
+  // Next id: 171
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

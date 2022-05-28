@@ -737,6 +737,73 @@ void ConstOp::build(OpBuilder& builder, OperationState& result,
   result.addAttribute("value", value);
 }
 
+LogicalResult ConstOp::inferReturnTypes(
+    MLIRContext*, Optional<Location>, ValueRange, DictionaryAttr attributes,
+    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  Type type = attributes.get("value").getType();
+  inferredReturnTypes.push_back(type);
+  return success();
+}
+
+bool ConstOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+  if (l.size() != r.size() || l.size() != 1) return false;
+  auto lhs_ty = l.front().cast<TensorType>();
+  auto rhs_ty = r.front().cast<TensorType>();
+  // For comparisons of the uniform quantized element based tensor type, use the
+  // storage type since the constant value will be stored through the underlying
+  // storage type.
+  if (auto rhs_elem_ty =
+          rhs_ty.getElementType().dyn_cast<quant::QuantizedType>()) {
+    rhs_ty = getSameShapeTensorType(rhs_ty, rhs_elem_ty.getStorageType());
+  }
+  return lhs_ty == rhs_ty;
+}
+
+ParseResult ConstOp::parse(OpAsmParser& parser, OperationState& result) {
+  // Parse the generic form.
+  if (succeeded(parser.parseOptionalLParen())) {
+    if (parser.parseRParen()) return failure();
+    if (parser.parseOptionalAttrDict(result.attributes)) return failure();
+    if (parser.parseColon() || parser.parseLParen() || parser.parseRParen() ||
+        parser.parseArrow())
+      return failure();
+    Type result_ty;
+    if (parser.parseType(result_ty)) {
+      return failure();
+    }
+    result.addTypes(result_ty);
+    return success();
+  }
+
+  ElementsAttr valueAttr;
+  if (parser.parseOptionalAttrDict(result.attributes)) return failure();
+
+  if (parser.parseCustomAttributeWithFallback(valueAttr, Type{}, "value",
+                                              result.attributes)) {
+    return failure();
+  }
+  result.addTypes(valueAttr.getType());
+  return success();
+}
+
+/// Print a `constant` op.
+///
+/// op ::= attr-dict $value
+///
+/// When the `value` and `output` have different type, it just uses the default
+/// operator assembly format as a fallback.
+void ConstOp::print(::mlir::OpAsmPrinter& p) {
+  // If not all types are the same, use generic form.
+  if (value().getType() != getType()) {
+    p.printGenericOp(getOperation(), /*printOpName=*/false);
+    return;
+  }
+
+  p.printOptionalAttrDict((*this)->getAttrs(), /*elidedAttrs=*/{"value"});
+  p << ' ';
+  p.printStrippedAttrOrType(valueAttr());
+}
+
 //===----------------------------------------------------------------------===//
 // CustomCallOp
 //===----------------------------------------------------------------------===//
@@ -2131,12 +2198,6 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
   // static shape to non-static shape.
   if (!result_ty.hasStaticShape()) return {};
 
-  // TODO(hinsu): Handle unsigned types.
-  if (operand_ty.getElementType().isUnsignedInteger() ||
-      result_ty.getElementType().isUnsignedInteger()) {
-    return {};
-  }
-
   // If the operand is constant, we can do the conversion now.
   if (auto elementsAttr = operands.front().dyn_cast_or_null<ElementsAttr>()) {
     return hlo::ConvertElementsAttr(elementsAttr,
@@ -2146,9 +2207,57 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
+namespace {
+
+struct EliminateRedundantConvert : public OpRewritePattern<ConvertOp> {
+  using OpRewritePattern<ConvertOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(ConvertOp op,
+                                PatternRewriter& rewriter) const override {
+    auto convert_op = op.operand().getDefiningOp<ConvertOp>();
+    if (!convert_op) {
+      return failure();
+    }
+    auto first_type =
+        convert_op.operand().getType().cast<TensorType>().getElementType();
+    auto second_type =
+        op.operand().getType().cast<TensorType>().getElementType();
+    auto third_type =
+        op.getResult().getType().cast<TensorType>().getElementType();
+    auto loc = rewriter.getFusedLoc({convert_op->getLoc(), op->getLoc()});
+    if (first_type.isa<FloatType>() && second_type.isa<FloatType>() &&
+        third_type.isa<FloatType>()) {
+      // fold when the second float type's width is longer than first,
+      // like fp16 -> fp32 -> fp64, bf16 -> fp32 -> fp16
+      if (second_type.cast<FloatType>().getWidth() >
+          first_type.cast<FloatType>().getWidth()) {
+        Value result = rewriter.create<ConvertOp>(loc, op.getResult().getType(),
+                                                  convert_op.operand());
+        rewriter.replaceOp(op, result);
+        return success();
+      }
+    } else if (first_type.isa<IntegerType>() &&
+               second_type.isa<IntegerType>() &&
+               third_type.isa<IntegerType>()) {
+      // fold when the second integer type's width is longer than first,
+      // like i16 -> i32 -> i64, u16 -> i32 -> u32
+      if (second_type.cast<IntegerType>().getWidth() >
+          first_type.cast<IntegerType>().getWidth()) {
+        Value result = rewriter.create<ConvertOp>(loc, op.getResult().getType(),
+                                                  convert_op.operand());
+        rewriter.replaceOp(op, result);
+        return success();
+      }
+    }
+    return failure();
+  }
+};
+
+}  // namespace
+
 void ConvertOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                             MLIRContext* context) {
   results.add<EliminateIdentityConvert>(context);
+  results.add<EliminateRedundantConvert>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2245,18 +2354,49 @@ void TupleOp::getCanonicalizationPatterns(RewritePatternSet& results,
 // AllToAllOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult AllToAllOp::verify() {
+LogicalResult AllToAllOp::inferReturnTypeComponents(
+    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  AllToAllOp::Adaptor adaptor(operands, attributes, regions);
+  Type operand_type = adaptor.operand().getType();
+  RankedTensorType operand_ranked_type =
+      operand_type.dyn_cast<RankedTensorType>();
+  if (!operand_ranked_type) {
+    inferredReturnShapes.emplace_back(
+        operand_type.cast<TensorType>().getElementType());
+    return success();
+  }
+
+  int64_t input_rank = operand_ranked_type.getRank();
+  int64_t split_dimension = static_cast<int64_t>(adaptor.split_dimension());
+  int64_t concat_dimension = static_cast<int64_t>(adaptor.concat_dimension());
+  if (split_dimension >= input_rank || split_dimension < 0) {
+    return emitOptionalError(location, "AllToAll split_dimension ",
+                             split_dimension,
+                             " is out-of-bounds for input rank ", input_rank);
+  }
+  if (concat_dimension >= input_rank || concat_dimension < 0) {
+    return emitOptionalError(location, "AllToAll concat_dimension ",
+                             concat_dimension,
+                             " is out-of-bounds for input rank ", input_rank);
+  }
+
   // If operand is ranked, size of split dimension should be a multiple of split
   // count.
-  auto type = getOperand().getType().dyn_cast<RankedTensorType>();
-  if (!type) return success();
-  auto split_dim_size = type.getDimSize(split_dimension());
-  auto split_count = this->split_count();
+  int64_t split_count = adaptor.split_count();
+  auto split_dim_size = operand_ranked_type.getDimSize(split_dimension);
   if (split_dim_size % split_count != 0) {
-    return emitError() << "split dimension has size " << split_dim_size
-                       << ", expected to be a multiple of split_count "
-                       << split_count;
+    return emitOptionalError(
+        location, "split dimension has size ", split_dim_size,
+        ", expected to be a multiple of split_count ", split_count);
   }
+  SmallVector<int64_t> result_shape(operand_ranked_type.getShape().begin(),
+                                    operand_ranked_type.getShape().end());
+  result_shape[split_dimension] /= split_count;
+  result_shape[concat_dimension] *= split_count;
+  inferredReturnShapes.emplace_back(result_shape,
+                                    operand_ranked_type.getElementType());
   return success();
 }
 
@@ -2930,9 +3070,20 @@ class DynamicBroadcastInDimOpNotActuallyDynamic
         for (APInt shape : shapeAttr.getValues<APInt>()) {
           outputShape.push_back(shape.getZExtValue());
         }
-        rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
-            op, RankedTensorType::get(outputShape, type.getElementType()),
+        Value result = rewriter.create<BroadcastInDimOp>(
+            op.getLoc(),
+            RankedTensorType::get(outputShape, type.getElementType()),
             op.operand(), op.broadcast_dimensions());
+        // We are refining the type here. Not all operations can tolerate their
+        // operands changing type. Operations from mhlo dialect can. So insert
+        // a cast otherwise.
+        if (llvm::any_of(op->getUsers(), [&](Operation* user) {
+              return user->getDialect() != op->getDialect();
+            })) {
+          result = rewriter.create<tensor::CastOp>(
+              op.getLoc(), op.getResult().getType(), result);
+        }
+        rewriter.replaceOp(op, result);
         return success();
       }
     }
@@ -3662,6 +3813,29 @@ LogicalResult DynamicSliceOp::verify() {
                          << num_slice_sizes << ") and number of start indices ("
                          << num_start_indices << ")";
   }
+  auto operandType = operand().getType().dyn_cast<RankedTensorType>();
+  if (!operandType) return failure();
+
+  if (operandType.getRank() != num_start_indices) {
+    return emitOpError() << "has mismatched number of start indices ("
+                         << num_start_indices << ") and the rank of operand ("
+                         << operandType.getRank() << ")";
+  }
+
+  for (int i = 0; i < num_slice_sizes; ++i) {
+    int64_t slice_size = slice_sizes().getValues<int64_t>()[i];
+    if (slice_size < 0) {
+      return emitOpError() << "has negative size index to dynamic slice: "
+                           << slice_size;
+    } else if (!operandType.isDynamicDim(i)) {
+      int64_t dim_size = operandType.getDimSize(i);
+      if (slice_size > dim_size) {
+        return emitOpError() << "has slice size " << slice_size
+                             << " greater than dimension size " << dim_size
+                             << " in dimension " << i << " of operand";
+      }
+    }
+  }
   return success();
 }
 
@@ -4022,9 +4196,6 @@ LogicalResult MapOp::verify() {
 
   // The parameters of computation should all be scalars and match the element
   // type of operands.
-  auto operand_type = operands()[0].getType().cast<TensorType>();
-  auto operand_elem_ty = operand_type.getElementType();
-
   for (const auto& indexed_arg : llvm::enumerate(computation_args)) {
     auto arg_type = indexed_arg.value().getType().dyn_cast<TensorType>();
     if (!arg_type || arg_type.getRank() != 0)
@@ -4032,6 +4203,10 @@ LogicalResult MapOp::verify() {
              << "computation arguments must be 0-rank tensor, but got: arg #"
              << indexed_arg.index() << " of type "
              << indexed_arg.value().getType();
+    auto operand_elem_ty = operands()[indexed_arg.index()]
+                               .getType()
+                               .cast<TensorType>()
+                               .getElementType();
     if (arg_type.getElementType() != operand_elem_ty) {
       return emitOpError()
              << "element type of operands and computation arguments must "
@@ -4075,6 +4250,7 @@ LogicalResult MapOp::verify() {
   // Checks that number of dimensions of operands matches the size of
   // `dimensions` since we currently only support mapping across all
   // dimensions: i.e., scalar map functions.
+  auto operand_type = operands()[0].getType().cast<TensorType>();
   if (operand_type.hasRank()) {
     if (dimensions.size() != operand_type.getShape().size())
       return emitOpError()
@@ -5195,6 +5371,11 @@ LogicalResult PadOp::inferReturnTypeComponents(
   auto input_shape = input_type.getShape();
   SmallVector<int64_t> result_shape;
   for (int i = 0, e = input_shape.size(); i < e; i++) {
+    if (isDynamicDimSize(input_shape[i])) {
+      result_shape.push_back(ShapedType::kDynamicSize);
+      continue;
+    }
+
     int64_t padding_low_val = padding_low.getValues<APInt>()[i].getSExtValue();
     int64_t padding_high_val =
         padding_high.getValues<APInt>()[i].getSExtValue();
@@ -5822,6 +6003,12 @@ void printBinaryOp(Operation* op, OpAsmPrinter& p) {
   p << " : " << resultType;
 }
 
+static const APFloat& addSign(const APFloat& v, Type) { return v; }
+static APSInt addSign(const APInt& v, Type t) {
+  // Add signedness information to the value, treating signless as signed.
+  return APSInt(v, t.isUnsignedInteger());
+}
+
 template <typename Op, typename ElementType = Type, typename ValType,
           typename Convert>
 static Attribute BinaryFolder(Op* op, ArrayRef<Attribute> attrs) {
@@ -5849,8 +6036,9 @@ static Attribute BinaryFolder(Op* op, ArrayRef<Attribute> attrs) {
   SplatElementsAttr splat_lhs = lhs.dyn_cast<SplatElementsAttr>();
   SplatElementsAttr splat_rhs = rhs.dyn_cast<SplatElementsAttr>();
   if (splat_lhs && splat_rhs) {
-    FailureOr<ValType> result(Convert()(splat_lhs.getSplatValue<ValType>(),
-                                        splat_rhs.getSplatValue<ValType>()));
+    auto signed_lhs = addSign(splat_lhs.getSplatValue<ValType>(), etype);
+    auto signed_rhs = addSign(splat_rhs.getSplatValue<ValType>(), etype);
+    FailureOr<decltype(signed_lhs)> result(Convert()(signed_lhs, signed_rhs));
     return succeeded(result) ? SplatElementsAttr::get(type, *result)
                              : Attribute();
   }
@@ -5864,7 +6052,9 @@ static Attribute BinaryFolder(Op* op, ArrayRef<Attribute> attrs) {
   values.reserve(lhs.getNumElements());
   for (const auto zip :
        llvm::zip(lhs.getValues<ValType>(), rhs.getValues<ValType>())) {
-    FailureOr<ValType> result(Convert()(std::get<0>(zip), std::get<1>(zip)));
+    auto signed_lhs = addSign(std::get<0>(zip), etype);
+    auto signed_rhs = addSign(std::get<1>(zip), etype);
+    FailureOr<decltype(signed_lhs)> result(Convert()(signed_lhs, signed_rhs));
     if (failed(result)) {
       return {};
     }
@@ -5878,10 +6068,10 @@ template <typename T>
 struct divide : std::divides<T> {};
 
 template <>
-struct divide<APInt> {
-  FailureOr<APInt> operator()(const APInt& a, const APInt& b) const {
+struct divide<APSInt> {
+  FailureOr<APSInt> operator()(const APSInt& a, const APSInt& b) const {
     if (b.isZero()) return failure();
-    return a.sdiv(b);
+    return a / b;
   }
 };
 
@@ -5889,10 +6079,10 @@ template <typename T>
 struct remainder : std::modulus<T> {};
 
 template <>
-struct remainder<APInt> {
-  FailureOr<APInt> operator()(const APInt& a, const APInt& b) const {
+struct remainder<APSInt> {
+  FailureOr<APSInt> operator()(const APSInt& a, const APSInt& b) const {
     if (b.isZero()) return failure();
-    return a.srem(b);
+    return a % b;
   }
 };
 
@@ -5910,30 +6100,16 @@ struct max {
   T operator()(const T& a, const T& b) const { return std::max<T>(a, b); }
 };
 
-template <>
-struct max<APInt> {
-  APInt operator()(const APInt& a, const APInt& b) const {
-    return llvm::APIntOps::smax(a, b);
-  }
-};
-
 template <typename T>
 struct min {
   T operator()(const T& a, const T& b) const { return std::min<T>(a, b); }
-};
-
-template <>
-struct min<APInt> {
-  APInt operator()(const APInt& a, const APInt& b) const {
-    return llvm::APIntOps::smin(a, b);
-  }
 };
 
 #define BINARY_FOLDER_INTERNAL(Op, Func)                                     \
   if (getElementTypeOrSelf(getType()).isa<FloatType>())                      \
     return BinaryFolder<Op, FloatType, APFloat, Func<APFloat>>(this, attrs); \
   if (getElementTypeOrSelf(getType()).isa<IntegerType>())                    \
-    return BinaryFolder<Op, IntegerType, APInt, Func<APInt>>(this, attrs);   \
+    return BinaryFolder<Op, IntegerType, APInt, Func<APSInt>>(this, attrs);  \
   return {};
 
 #define BINARY_FOLDER(Op, Func)                      \

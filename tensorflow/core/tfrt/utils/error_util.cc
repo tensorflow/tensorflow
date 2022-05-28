@@ -56,7 +56,7 @@ tensorflow::Status ToTfStatus(const tfrt::AsyncValue* av) {
   if (av->IsError()) {
     return CreateTfErrorStatus(av->GetError());
   }
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace tfrt

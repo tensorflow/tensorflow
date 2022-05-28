@@ -209,8 +209,8 @@ class EditDistanceTest(test.TestCase):
 
   def testEditDistanceBadIndices(self):
     hypothesis_indices = np.full((3, 3), -1250999896764, dtype=np.int64)
-    hypothesis_values = np.empty(3, dtype=np.int64)
-    hypothesis_shape = np.empty(3, dtype=np.int64)
+    hypothesis_values = np.zeros(3, dtype=np.int64)
+    hypothesis_shape = np.zeros(3, dtype=np.int64)
     truth_indices = np.full((3, 3), -1250999896764, dtype=np.int64)
     truth_values = np.full([3], 2, dtype=np.int64)
     truth_shape = np.full([3], 2, dtype=np.int64)

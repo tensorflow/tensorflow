@@ -21,7 +21,6 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace xla {
 namespace {

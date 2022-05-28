@@ -130,6 +130,14 @@ class NcclCollectiveThunk : public Thunk {
 // Note: Keep this in sync with ToNcclDataType().
 bool IsTypeSupportedByNccl(PrimitiveType element_type);
 
+#if XLA_ENABLE_XCCL
+// TODO(hanbinyoon): Consider moving to nccl_utils.h when deprecating Thunks.
+StatusOr<NcclComm::Lock> LockNcclComm(
+    const NcclExecuteParams& params,
+    const std::vector<ReplicaGroup>& replica_groups,
+    CollectiveOpGroupMode group_mode, int64_t op_id);
+#endif  // XLA_ENABLE_XCCL
+
 }  // namespace gpu
 }  // namespace xla
 

@@ -259,7 +259,7 @@ tensorflow::Status RunInitializers(
   TF_RETURN_IF_ERROR(
       RunRuntimeInitializer(exec_ctx, bef_file, "_tfrt_resource_init"));
 
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 std::vector<std::string> FindNamesForValidSignatures(
@@ -371,7 +371,7 @@ tensorflow::Status InitSavedModel(
                       *options.graph_execution_options.runtime,
                       resource_context, fallback_state));
 
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -447,6 +447,15 @@ void GetSignaturesFromSignatureDef(
   }
 }
 
+void UpdateCompileOptions(SavedModel::Options& options) {
+  // Disable DecomposeResourceOpsPass for now, as DecomposeResourceGather does
+  // not work well with GPU (b/232819415).
+  if (options.graph_execution_options.enable_tfrt_gpu) {
+    options.graph_execution_options.compile_options.decompose_resource_ops =
+        false;
+  }
+}
+
 }  // namespace
 
 std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
@@ -457,6 +466,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
 
   UpdateTpuTargetByBridgeCompatibility(options.graph_execution_options,
                                        meta_graph_def.graph_def());
+  UpdateCompileOptions(options);
 
   auto statusor_saved_model =
       [&]() -> tensorflow::StatusOr<std::unique_ptr<SavedModel>> {
@@ -556,7 +566,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     *status = statusor_saved_model.status();
     return nullptr;
   }
-  *status = tensorflow::Status::OK();
+  *status = OkStatus();
   return std::move(statusor_saved_model).ValueOrDie();
 }
 
@@ -621,7 +631,7 @@ tensorflow::Status IsInputSpecsCorrect(
         << " input shape is wrong, expected : " << expected_input_spec.shape
         << ", actual: " << inputs[i].shape();
   }
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -786,7 +796,7 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
     cur += len;
     DCHECK_LE(std::distance(flat_outputs.begin(), cur), flat_outputs.size());
   }
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>

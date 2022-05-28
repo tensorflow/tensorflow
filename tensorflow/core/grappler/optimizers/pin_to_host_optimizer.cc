@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/tpu.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -300,8 +299,8 @@ Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                     GraphDef* optimized_graph) {
   *optimized_graph = item.graph;
 
-  // Skip all TPU graphs.
-  if (IsTPUGraphDef(*optimized_graph)) {
+  // Skip Legacy TPU bridge graphs.
+  if (IsLegacyTPUBridgeGraphDef(*optimized_graph)) {
     return Status::OK();
   }
 

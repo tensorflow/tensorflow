@@ -4606,22 +4606,27 @@ func BroadcastGradientArgs(scope *Scope, s0 tf.Output, s1 tf.Output) (r0 tf.Outp
 //
 // Broadcasting is the process of making arrays to have compatible shapes
 // for arithmetic operations. Two shapes are compatible if for each
-// dimension pair they are either equal or one of them is one. When trying
-// to broadcast a Tensor to a shape, it starts with the trailing dimensions,
-// and works its way forward.
+// dimension pair they are either equal or one of them is one.
 //
-// For example,
+// For example:
 //
-// >>> x = tf.constant([1, 2, 3])
-// >>> y = tf.broadcast_to(x, [3, 3])
+// >>> x = tf.constant([[1, 2, 3]])   # Shape (1, 3,)
+// >>> y = tf.broadcast_to(x, [2, 3])
 // >>> print(y)
 // tf.Tensor(
 //     [[1 2 3]
-//      [1 2 3]
-//      [1 2 3]], shape=(3, 3), dtype=int32)
+//      [1 2 3]], shape=(2, 3), dtype=int32)
 //
 // In the above example, the input Tensor with the shape of `[1, 3]`
-// is broadcasted to output Tensor with shape of `[3, 3]`.
+// is broadcasted to output Tensor with shape of `[2, 3]`.
+//
+// When broadcasting, if a tensor has fewer axes than necessary its shape is
+// padded on the left with ones. So this gives the same result as the previous
+// example:
+//
+// >>> x = tf.constant([1, 2, 3])   # Shape (3,)
+// >>> y = tf.broadcast_to(x, [2, 3])
+//
 //
 // When doing broadcasted operations such as multiplying a tensor
 // by a scalar, broadcasting (usually) confers some time or space
@@ -12311,79 +12316,6 @@ func DynamicEnqueueTPUEmbeddingArbitraryTensorBatch(scope *Scope, sample_indices
 		Type: "DynamicEnqueueTPUEmbeddingArbitraryTensorBatch",
 		Input: []tf.Input{
 			tf.OutputList(sample_indices_or_row_splits), tf.OutputList(embedding_indices), tf.OutputList(aggregation_weights), mode_override, device_ordinal,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
-// An op that loads optimization parameters into embedding memory.
-//
-// An op that loads optimization parameters into embedding memory. Must be
-// preceded by a ConfigureTPUEmbeddingHost op that sets up the correct embedding
-// table configuration. For example, this op is used to install parameters that are
-// loaded from a checkpoint before a training loop is executed.  For Adagrad,
-// auxiliary1 should be the accumulators. For SGD, all of the auxiliary* values
-// should be empty. For FTRL, auxiliary1 should be the accumulators and auxiliary2
-// should be the linear terms. For ADAM, auxiliary1 should be the momenta and
-// auxiliary2 should be the velocities. The distinction between this op and
-// LoadAllTPUEmbeddingParameters op is that the shard_id input in this op is
-// a tensor input.
-//
-// Arguments:
-//	parameters: A list of tensors, one for each embedding table,
-// containing the initial embedding table parameters to use in embedding
-// lookups.
-//	auxiliary1: A list of tensors, one for each embedding table, containing the
-// initial values of the first auxiliary optimization parameter to use in embedding
-// training loop updates. The shape of each entry is ignored (and thus can be
-// empty) for those tables whose optimization algorithms do not have at least one
-// auxiliary parameter.
-//	auxiliary2: A list of tensors, one for each embedding table, containing the
-// initial values of the second auxiliary optimization parameter to use in
-// embedding training loop updates. The shape of each entry is ignored (and thus
-// can be empty) for those tables whose optimization algorithms do not have at
-// least two auxiliary
-//	auxiliary3: A list of tensors, one for each embedding table, containing the
-// initial values of the third auxiliary optimization parameter to use in embedding
-// training loop updates. The shape of each entry is ignored (and thus can be
-// empty) for those tables whose optimization algorithms do not have three
-// auxiliary parameters.
-//	auxiliary4: A list of tensors, one for each embedding table, containing the
-// initial values of the second auxiliary optimization parameter to use in
-// embedding training loop updates. The shape of each entry is ignored (and thus
-// can be empty) for those tables whose optimization algorithms do not have at
-// least four auxiliary
-//	auxiliary5: A list of tensors, one for each embedding table, containing the
-// initial values of the third auxiliary optimization parameter to use in embedding
-// training loop updates. The shape of each entry is ignored (and thus can be
-// empty) for those tables whose optimization algorithms do not have five
-// auxiliary parameters.
-//	auxiliary6: A list of tensors, one for each embedding table, containing the
-// initial values of the second auxiliary optimization parameter to use in
-// embedding training loop updates. The shape of each entry is ignored (and thus
-// can be empty) for those tables whose optimization algorithms do not have at
-// least six auxiliary
-//	auxiliary7: A list of tensors, one for each embedding table, containing the
-// initial values of the third auxiliary optimization parameter to use in embedding
-// training loop updates. The shape of each entry is ignored (and thus can be
-// empty) for those tables whose optimization algorithms do not have sevan
-// auxiliary parameters.
-//	shard_id: Identifier of shard for this operation.
-//	config: An TPUEmbeddingConfiguration proto describing the
-// table parameters being loaded, serialized to a string.
-//	num_shards: Number of shards into which the embedding tables are divided.
-//
-// Returns the created operation.
-func DynamicLoadAllTPUEmbeddingParameters(scope *Scope, parameters []tf.Output, auxiliary1 []tf.Output, auxiliary2 []tf.Output, auxiliary3 []tf.Output, auxiliary4 []tf.Output, auxiliary5 []tf.Output, auxiliary6 []tf.Output, auxiliary7 []tf.Output, shard_id tf.Output, config string, num_shards int64) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"config": config, "num_shards": num_shards}
-	opspec := tf.OpSpec{
-		Type: "DynamicLoadAllTPUEmbeddingParameters",
-		Input: []tf.Input{
-			tf.OutputList(parameters), tf.OutputList(auxiliary1), tf.OutputList(auxiliary2), tf.OutputList(auxiliary3), tf.OutputList(auxiliary4), tf.OutputList(auxiliary5), tf.OutputList(auxiliary6), tf.OutputList(auxiliary7), shard_id,
 		},
 		Attrs: attrs,
 	}

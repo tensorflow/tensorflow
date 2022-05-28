@@ -583,5 +583,6 @@ cc_library(
     hdrs = ["pjrt_c_api_client.h"],
     deps = [
         ":pjrt_client",
+        "//tensorflow/core/platform:casts",
     ],
 )

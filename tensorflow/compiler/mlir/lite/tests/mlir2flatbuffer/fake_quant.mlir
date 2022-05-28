@@ -17,14 +17,16 @@ func.func @main(tensor<4xf32>) -> tensor<4xf32> {
 // CHECK-NEXT:         name: "arg0",
 // CHECK-NEXT:         quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:         }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         has_rank: true
 // CHECK-NEXT:       }, {
 // CHECK-NEXT:         shape: [ 4 ],
 // CHECK-NEXT:         buffer: 2,
 // CHECK-NEXT:         name: "tfl.fake_quant",
 // CHECK-NEXT:         quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:         }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         has_rank: true
 // CHECK-NEXT:       } ],
 // CHECK-NEXT:       inputs: [ 0 ],
 // CHECK-NEXT:       outputs: [ 1 ],

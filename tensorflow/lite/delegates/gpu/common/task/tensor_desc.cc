@@ -147,7 +147,6 @@ TensorDescriptor::TensorDescriptor(TensorDescriptor&& desc)
           desc.use_buffer_for_write_only_2d_texture),
       use_buffer_for_write_only_image_buffer(
           desc.use_buffer_for_write_only_image_buffer),
-      zero_clamp_support(desc.zero_clamp_support),
       shape(desc.shape),
       data(std::move(desc.data)) {}
 TensorDescriptor& TensorDescriptor::operator=(TensorDescriptor&& desc) {
@@ -159,7 +158,6 @@ TensorDescriptor& TensorDescriptor::operator=(TensorDescriptor&& desc) {
               desc.use_buffer_for_write_only_2d_texture);
     std::swap(use_buffer_for_write_only_image_buffer,
               desc.use_buffer_for_write_only_image_buffer);
-    std::swap(zero_clamp_support, desc.zero_clamp_support);
     std::swap(shape, desc.shape);
     data = std::move(desc.data);
     GPUObjectDescriptor::operator=(std::move(desc));
@@ -1280,7 +1278,8 @@ void TensorDescriptor::UploadData(
   UploadData(src.data.data());
 }
 
-bool TensorDescriptor::SupportsZeroClamp(const Axis& axis) const {
+bool TensorDescriptor::SupportsZeroClamp(const Axis& axis,
+                                         const GpuInfo& gpu_info) const {
   switch (storage_type) {
     case TensorStorageType::UNKNOWN:
       return false;
@@ -1289,15 +1288,15 @@ bool TensorDescriptor::SupportsZeroClamp(const Axis& axis) const {
       return false;
     case TensorStorageType::TEXTURE_ARRAY:
       return (axis == Axis::WIDTH || axis == Axis::HEIGHT) &&
-             zero_clamp_support.image2d_array;
+             gpu_info.SupportsZeroClampForImages();
     case TensorStorageType::TEXTURE_2D:
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return (axis == Axis::WIDTH || axis == Axis::HEIGHT) &&
-             zero_clamp_support.image2d;
+             gpu_info.SupportsZeroClampForImages();
     case TensorStorageType::TEXTURE_3D:
       return (axis == Axis::WIDTH || axis == Axis::HEIGHT ||
               axis == Axis::DEPTH) &&
-             zero_clamp_support.image3d;
+             gpu_info.SupportsZeroClampForImages();
   }
 }
 
@@ -1321,9 +1320,9 @@ bool TensorDescriptor::IsLinear() const {
          storage_type == TensorStorageType::IMAGE_BUFFER;
 }
 
-bool TensorDescriptor::ReturnsZeroForNegOneRead() const {
+bool TensorDescriptor::ReturnsZeroForNegOneRead(const GpuInfo& gpu_info) const {
   return storage_type == TensorStorageType::IMAGE_BUFFER &&
-         zero_clamp_support.image_buffer;
+         gpu_info.SupportsZeroClampForImageBuffer();
 }
 
 absl::Status TensorDescriptor::CanCreateTensorWithShape(

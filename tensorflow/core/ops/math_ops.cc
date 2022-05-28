@@ -1487,17 +1487,18 @@ Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
     return errors::InvalidArgument("Requires delta != 0");
   }
 
-  auto size = (std::is_integral<T>::value
-                   ? ((Eigen::numext::abs(limit - start) +
-                       Eigen::numext::abs(delta) - T(1)) /
-                      Eigen::numext::abs(delta))
-                   : (Eigen::numext::ceil(
-                         Eigen::numext::abs((limit - start) / delta))));
-
-  // Undefined behaviour if size will not fit into int64_t
-  if (size > std::numeric_limits<int64_t>::max()) {
-    return errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
-                                   std::numeric_limits<int64_t>::max());
+  int64_t size;
+  if (std::is_integral<T>::value) {
+    size = Eigen::divup(static_cast<int64_t>(Eigen::numext::abs(limit - start)),
+                        static_cast<int64_t>(Eigen::numext::abs(delta)));
+  } else {
+    auto size_auto =
+        Eigen::numext::ceil(Eigen::numext::abs((limit - start) / delta));
+    if (size_auto > std::numeric_limits<int64_t>::max()) {
+      return errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
+                                     std::numeric_limits<int64_t>::max());
+    }
+    size = static_cast<int64_t>(size_auto);
   }
 
   c->set_output(0, c->Vector(static_cast<int64_t>(size)));

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -92,6 +93,7 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(ResetTask);
   UNIMPLEMENTED(ReportErrorToService);
   UNIMPLEMENTED(InsertKeyValue);
+  UNIMPLEMENTED(TryGetKeyValue);
   UNIMPLEMENTED(GetKeyValueDir);
   UNIMPLEMENTED(DeleteKeyValue);
   UNIMPLEMENTED(Barrier);
@@ -353,6 +355,51 @@ TEST(CoordinationServiceTest, TestCoordinatedJobs) {
   EXPECT_TRUE(errors::IsInvalidArgument(status)) << status;
 }
 
+TEST(CoordinationServiceTest, RegisterTask_AlreadyConnected_Fails) {
+  ServerDef server_def = GetMultiClientServerDef("worker", 1);
+  JobDef* job_def = server_def.mutable_cluster()->add_job();
+  job_def->set_name("worker");
+  job_def->mutable_tasks()->insert({0, "dummy address"});
+  CoordinatedTask task_0;
+  task_0.set_job_name("worker");
+  task_0.set_task_id(0);
+  std::unique_ptr<CoordinationServiceInterface> coord_service =
+      CoordinationServiceInterface::EnableCoordinationService(
+          kCoordinationServiceType, Env::Default(), server_def,
+          /*cache=*/nullptr);
+  // Task connects to coordination service.
+  TF_ASSERT_OK(coord_service->RegisterTask(task_0, /*incarnation=*/0));
+
+  // Registration should fail since task already registered previously.
+  const Status status = coord_service->RegisterTask(task_0, /*incarnation=*/0);
+
+  EXPECT_TRUE(errors::IsAborted(status)) << status;
+}
+
+TEST(CoordinationServiceTest, RegisterTask_AlreadyInError_Fails) {
+  ServerDef server_def = GetMultiClientServerDef("worker", 1);
+  JobDef* job_def = server_def.mutable_cluster()->add_job();
+  job_def->set_name("worker");
+  job_def->mutable_tasks()->insert({0, "dummy address"});
+  CoordinatedTask task_0;
+  task_0.set_job_name("worker");
+  task_0.set_task_id(0);
+  std::unique_ptr<CoordinationServiceInterface> coord_service =
+      CoordinationServiceInterface::EnableCoordinationService(
+          kCoordinationServiceType, Env::Default(), server_def,
+          /*cache=*/nullptr);
+  // Task connects to coordination service.
+  TF_ASSERT_OK(coord_service->RegisterTask(task_0, /*incarnation=*/0));
+  // Arbitrarily set task to be in error.
+  TF_ASSERT_OK(
+      coord_service->ReportTaskError(task_0, errors::Internal("test_error")));
+
+  // Registration should fail since task already registered previously.
+  const Status status = coord_service->RegisterTask(task_0, /*incarnation=*/0);
+
+  EXPECT_TRUE(errors::IsAborted(status)) << status;
+}
+
 TEST_F(CoordinateTwoTasksTest, TestTaskHeartbeatTimeout) {
   EnableCoordinationService();
   TF_ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
@@ -414,36 +461,76 @@ TEST_F(CoordinateTwoTasksTest, TestSetGetValues) {
       coord_service_->InsertKeyValue("/path/to/key1/", "value2")));
 
   // Get simple key
-  auto ret = coord_service_->GetKeyValue("key0");
+  absl::Notification n1;
+  StatusOr<std::string> ret;
+  coord_service_->GetKeyValueAsync(
+      "key0", [&](const StatusOr<std::string>& status_or_value) {
+        ret = status_or_value;
+        n1.Notify();
+      });
+  n1.WaitForNotification();
   TF_ASSERT_OK(ret.status());
   EXPECT_EQ(ret.ValueOrDie(), "value0");
   // Get key with redundant slashes
-  ret = coord_service_->GetKeyValue("path//to///key1////");
+  absl::Notification n2;
+  coord_service_->GetKeyValueAsync(
+      "path//to///key1////", [&](const StatusOr<std::string>& status_or_value) {
+        ret = status_or_value;
+        n2.Notify();
+      });
+  n2.WaitForNotification();
   EXPECT_EQ(ret.ValueOrDie(), "value1");
 
   // Delete single key-value
   TF_ASSERT_OK(coord_service_->DeleteKeyValue("key0"));
   // Get key that is not available
-  absl::Notification n;
+  absl::Notification n3;
   coord_service_->GetKeyValueAsync(
       "key0", [&](const StatusOr<std::string>& status_or_value) {
         ret = status_or_value;
-        n.Notify();
+        n3.Notify();
       });
-  EXPECT_FALSE(n.HasBeenNotified());
+  EXPECT_FALSE(n3.HasBeenNotified());
   // Insert the previously deleted key again
   TF_ASSERT_OK(coord_service_->InsertKeyValue("key0", "value0_new"));
-  n.WaitForNotification();
+  n3.WaitForNotification();
   EXPECT_EQ(ret.ValueOrDie(), "value0_new");
 
   // Delete key-values recursively
   TF_ASSERT_OK(coord_service_->DeleteKeyValue("/path"));
   // Get key that is not available
-  absl::Notification n2;
+  auto n4 = std::make_shared<absl::Notification>();
   coord_service_->GetKeyValueAsync(
       "/path/to/key1",
-      [&](const StatusOr<std::string>& status_or_value) { n2.Notify(); });
-  EXPECT_FALSE(n2.HasBeenNotified());
+      // Note: this callback will remain pending until it is cleaned up during
+      // service shutdown. Hence, we use a shared pointer for notification so
+      // that the it will not be deallocated before the pending callback is
+      // cleaned up.
+      [n4](const StatusOr<std::string>& status_or_value) { n4->Notify(); });
+  EXPECT_FALSE(n4->HasBeenNotified());
+}
+
+TEST(CoordinationServiceTest, TryGetKeyValue) {
+  const ServerDef& server_def = GetMultiClientServerDef("worker", 1);
+  auto client_cache = std::make_unique<TestCoordinationClientCache>();
+  std::unique_ptr<CoordinationServiceInterface> coord_service =
+      CoordinationServiceInterface::EnableCoordinationService(
+          kCoordinationServiceType, Env::Default(), server_def,
+          std::move(client_cache));
+
+  // Try to get nonexistent key.
+  StatusOr<std::string> result = coord_service->TryGetKeyValue("test_key");
+  EXPECT_TRUE(errors::IsNotFound(result.status()));
+
+  // Insert key value.
+  TF_ASSERT_OK(coord_service->InsertKeyValue("test_key", "test_value"));
+  result = coord_service->TryGetKeyValue("test_key");
+  EXPECT_EQ(result.ValueOrDie(), "test_value");
+
+  // Delete Key, and try to get the key again.
+  TF_ASSERT_OK(coord_service->DeleteKeyValue("test_key"));
+  result = coord_service->TryGetKeyValue("test_key");
+  EXPECT_TRUE(errors::IsNotFound(result.status()));
 }
 
 TEST_F(CoordinateTwoTasksTest, GetKeyValueDir_SingleValueInDirectory) {
@@ -905,14 +992,20 @@ TEST_F(CoordinationBarrierTest, BarrierCancelled) {
   TF_EXPECT_OK(cancelled_status);
 }
 
-TEST_F(CoordinationBarrierTest, CancelNonExistentBarrier) {
-  std::string wrong_barrier_id = "wrong_barrier_id";
+TEST_F(CoordinationBarrierTest, CancelNonExistentBarrier_FutureBarrierFails) {
+  const std::string barrier_id = "cancelled_barrier_id";
+  absl::Duration timeout = absl::Seconds(1);
+  Status barrier_status;
 
-  // Cancel barrier should fail if non-existent id is specified.
-  Status cancelled_status =
-      GetCoordinationService()->CancelBarrier(wrong_barrier_id, GetTask(0));
+  // Cancel barrier should still succeed.
+  TF_ASSERT_OK(GetCoordinationService()->CancelBarrier(barrier_id, GetTask(0)));
+  // Calling a cancelled barrier should fail instantly.
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(0),
+      /*participating_tasks=*/{},
+      [&barrier_status](Status s) { barrier_status = s; });
 
-  EXPECT_TRUE(errors::IsNotFound(cancelled_status));
+  EXPECT_TRUE(errors::IsCancelled(barrier_status)) << barrier_status;
 }
 
 TEST_F(CoordinationBarrierTest, CancelAfterBarrierHasPassed) {

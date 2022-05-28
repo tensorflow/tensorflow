@@ -119,7 +119,8 @@ absl::StatusOr<GraphDef> QuantizeQATModel(absl::string_view saved_model_path,
   // pattern for FakeQuantOp.
   // pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass());
-  pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass());
+  pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
+      mlir::quant::QuantizationMethod::kQuantizationAwareTraining));
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       mlir::quant::QuantizationMethod::kQuantizationAwareTraining));
   pm.addPass(mlir::createSymbolDCEPass());
@@ -185,6 +186,12 @@ absl::StatusOr<GraphDef> QuantizePTQModelPreCalibration(
   mlir::PassManager pm(&context);
 
   pm.addPass(mlir::createCanonicalizerPass());
+  // Freeze variables as constants.
+  pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
+  pm.addPass(mlir::createInlinerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass());
+
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
   // TODO(b/230426953): Add TFShapeInferencePass to infer shapes for unranked
   // types. pm.addPass(mlir::TF::CreateTFShapeInferencePass());
@@ -255,7 +262,8 @@ absl::StatusOr<GraphDef> QuantizePTQModelPostCalibration(
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertCustomAggregationOpToQuantStatsPass());
-  pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass());
+  pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
+      mlir::quant::QuantizationMethod::kPostTrainingQuantization));
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       mlir::quant::QuantizationMethod::kPostTrainingQuantization));
   pm.addPass(mlir::createSymbolDCEPass());

@@ -1728,9 +1728,6 @@ absl::optional<std::vector<int64_t>> FindMatchingPartitionedDimsForGrouping(
     return absl::nullopt;
   }
   int64_t rank = sharding.tile_assignment().num_dimensions();
-  if (sharding.ReplicateOnLastTileDim()) {
-    rank--;
-  }
   absl::flat_hash_map<int64_t, std::vector<int64_t>> device_to_index;
   sharding.tile_assignment().Each(
       [&](absl::Span<const int64_t> index, int64_t device) {

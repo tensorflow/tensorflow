@@ -67,8 +67,9 @@ std::string GetSrcValue(int channel_multiplier, const std::string coords) {
 }
 
 std::string GenerateDepthwiseConvolutionCode(
-    const OperationDef& op_def, bool stride_correction, int channel_multiplier,
-    bool weights_are_buffer, bool dynamic_weights, GPUOperation* op) {
+    const GpuInfo& gpu_info, const OperationDef& op_def, bool stride_correction,
+    int channel_multiplier, bool weights_are_buffer, bool dynamic_weights,
+    GPUOperation* op) {
   auto src_desc = op_def.src_tensors[0];
   src_desc.SetAddressMode(AddressMode::kZero);
   if (op_def.IsBatchSupported()) {
@@ -142,7 +143,8 @@ std::string GenerateDepthwiseConvolutionCode(
     const std::vector<std::string> names{"outside_x", "outside_y", "outside_z"};
     for (int i = 0; i < axes.size(); ++i) {
       const auto& axis = axes[i];
-      if (src_desc.HasAxis(axis) && !src_desc.SupportsZeroClamp(axis)) {
+      if (src_desc.HasAxis(axis) &&
+          !src_desc.SupportsZeroClamp(axis, gpu_info)) {
         if (!check.empty()) {
           check += " && ";
         }
@@ -172,14 +174,14 @@ std::string GenerateDepthwiseConvolutionCode(
   if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
     c += "  for (int kz = 0; kz < " + kernel_size_z + "; ++kz) {\n";
     c += "    int z_c = z_offseted + kz * args.dilation_z;\n";
-    if (!src_desc.SupportsZeroClamp(Axis::DEPTH)) {
+    if (!src_desc.SupportsZeroClamp(Axis::DEPTH, gpu_info)) {
       c += "    bool outside_z = z_c < 0 || z_c >= args.src_tensor.Depth();\n";
     }
   }
   if (op_def.dst_tensors[0].HasAxis(Axis::HEIGHT)) {
     c += "  for (int ky = 0; ky < " + kernel_size_y + "; ++ky) {\n";
     c += "    int y_c = y_offseted + ky * args.dilation_y;\n";
-    if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+    if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
       c += "    bool outside_y = y_c < 0 || y_c >= args.src_tensor.Height();\n";
     }
   }
@@ -189,7 +191,7 @@ std::string GenerateDepthwiseConvolutionCode(
         op_def.IsBatchSupported() ? "args.dilation_x * args.src_tensor.Batch()"
                                   : "args.dilation_x";
     c += "    int x_c = x_offseted + kx * " + dilation_x + ";\n";
-    if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
+    if (!src_desc.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
       c += "    bool outside_x = x_c < 0 || x_c >= args.src_tensor.Width();\n";
     }
   }
@@ -261,9 +263,9 @@ GPUOperation CreateDepthwiseConvolution2D(
   }
   const bool stride_correction =
       definition.IsBatchSupported() && attr.strides.w != 1;
-  op.code_ = GenerateDepthwiseConvolutionCode(definition, stride_correction,
-                                              attr.weights.shape.o,
-                                              weights_are_buffer, false, &op);
+  op.code_ = GenerateDepthwiseConvolutionCode(
+      gpu_info, definition, stride_correction, attr.weights.shape.o,
+      weights_are_buffer, false, &op);
   UploadWeightsForDWConv2D(attr.weights, weights_are_buffer,
                            definition.precision, &op);
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
@@ -290,8 +292,8 @@ GPUOperation CreateDepthwiseConvolution2DDynamicWeights(
   op.args_.AddInt("dilation_y", attr.dilations.h);
   const bool stride_correction =
       definition.IsBatchSupported() && attr.strides.w != 1;
-  op.code_ = GenerateDepthwiseConvolutionCode(definition, stride_correction, 1,
-                                              false, true, &op);
+  op.code_ = GenerateDepthwiseConvolutionCode(
+      gpu_info, definition, stride_correction, 1, false, true, &op);
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
 
   TensorLinearDescriptor desc;
@@ -328,9 +330,9 @@ GPUOperation CreateDepthwiseConvolution3D(
   }
   const bool stride_correction =
       definition.IsBatchSupported() && attr.strides.w != 1;
-  op.code_ = GenerateDepthwiseConvolutionCode(definition, stride_correction,
-                                              attr.weights.shape.o,
-                                              weights_are_buffer, false, &op);
+  op.code_ = GenerateDepthwiseConvolutionCode(
+      gpu_info, definition, stride_correction, attr.weights.shape.o,
+      weights_are_buffer, false, &op);
   UploadWeightsForDWConv3D(attr.weights, weights_are_buffer,
                            definition.precision, &op);
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;

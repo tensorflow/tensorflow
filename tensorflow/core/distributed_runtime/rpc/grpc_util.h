@@ -87,7 +87,7 @@ inline bool IsStreamRemovedError(const ::grpc::Status& s) {
 inline std::string SerializePayloads(const ::tensorflow::Status& s) {
   distributed_runtime::GrpcPayloadContainer container;
   s.ForEachPayload(
-      [&container](tensorflow::StringPiece key, tensorflow::StringPiece value) {
+      [&container](tensorflow::StringPiece key, const absl::Cord& value) {
         (*container.mutable_payloads())[std::string(key)] = std::string(value);
       });
   return container.SerializeAsString();
@@ -98,11 +98,13 @@ inline void InsertSerializedPayloads(::tensorflow::Status& s,
   distributed_runtime::GrpcPayloadContainer container;
   if (container.ParseFromString(payloads)) {
     for (const auto& key_val : container.payloads()) {
-      s.SetPayload(key_val.first, key_val.second);
+      s.SetPayload(key_val.first, absl::Cord(key_val.second));
     }
   } else {
-    s.SetPayload(kGrpcPayloadsLost,
-                 distributed_runtime::GrpcPayloadsLost().SerializeAsString());
+    s.SetPayload(
+        kGrpcPayloadsLost,
+        absl::Cord(
+            distributed_runtime::GrpcPayloadsLost().SerializeAsString()));
   }
 }
 

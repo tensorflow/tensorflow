@@ -199,8 +199,8 @@ class Scope {
 
   Status status() const;
 
-  /// If status() is Status::OK(), convert the Graph object stored in this scope
-  /// to a GraphDef proto and return Status::OK(). Otherwise, return the error
+  /// If status() is ok, convert the Graph object stored in this scope
+  /// to a GraphDef proto and return an ok Status. Otherwise, return the error
   /// status as is without performing GraphDef conversion.
   Status ToGraphDef(GraphDef* gdef) const;
 

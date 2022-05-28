@@ -349,7 +349,7 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         "Cross-trainer caching requires infinite datasets and disallows "
-        "multiple iterations of the same dataset."):
+        "multiple repetitions of the same dataset."):
       self.getDatasetOutput(dataset1.take(10))
       self.getDatasetOutput(dataset1.take(10))
       self.getDatasetOutput(dataset1.take(10))
@@ -425,6 +425,23 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
       dataset2 = self.make_distributed_dataset(
           dataset, cluster, job_name="job", cross_trainer_cache=None)
       self.getDatasetOutput(dataset2)
+
+  @combinations.generate(
+      combinations.times(
+          combinations.combine(tf_api_version=2, mode=["eager", "graph"])))
+  def testRequiresNonEmptyTrainerID(self):
+    cluster = self._create_cluster(num_workers=2)
+    dataset = dataset_ops.Dataset.range(10000000).repeat()
+
+    with self.assertRaisesRegex(
+        ValueError,
+        "tf.data service cross-trainer cache requires a non-empty trainer ID."):
+      self.make_distributed_dataset(
+          dataset,
+          cluster,
+          job_name="job",
+          cross_trainer_cache=data_service_ops.CrossTrainerCache(
+              trainer_id=None))
 
   def _create_cluster(self,
                       num_workers,

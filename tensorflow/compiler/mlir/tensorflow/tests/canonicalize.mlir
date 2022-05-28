@@ -1898,9 +1898,9 @@ func.func @testHashTableAndLookupTableFindToV2(%arg0: tensor<!tf_type.string>, %
 // CHECK-LABEL: testDivNoNanAndMulNoNanWithConstantY
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<2xf32>)
 func.func @testDivNoNanAndMulNoNanWithConstantY(%arg0: tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>) {
-  // CHECK: %[[CON3:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
+  // CHECK: %[[CON1:.*]] = "tf.Const"() {value = dense<[1.000000e+00, 2.000000e+00]> : tensor<2xf32>} : () -> tensor<2xf32>
   // CHECK-NEXT: %[[CON2:.*]] = "tf.Const"() {value = dense<[1.000000e+01, 0.000000e+00]> : tensor<2xf32>} : () -> tensor<2xf32>
-  // CHECK-NEXT: %[[CON1:.*]] = "tf.Const"() {value = dense<[1.000000e+00, 2.000000e+00]> : tensor<2xf32>} : () -> tensor<2xf32>
+  // CHECK-NEXT: %[[CON3:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
   // CHECK-NEXT: %[[RES1:.*]] = "tf.Div"(%[[ARG0]], %[[CON1]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   // CHECK-NEXT: %[[RES2:.*]] = "tf.MulNoNan"(%[[ARG0]], %[[CON2]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   // CHECK-NEXT: return %[[RES1]], %[[RES2]], %[[CON3]] : tensor<2xf32>, tensor<2xf32>, tensor<2xf32>

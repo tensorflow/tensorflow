@@ -72,25 +72,24 @@ class ConvertToSignless : public ConversionPattern {
 
 // A pattern that converts the type of the attribute used as an operand for
 // arith.constant
-class ConvertConstantToSignless : public ConversionPattern {
+class ConvertConstantToSignless
+    : public OpConversionPattern<arith::ConstantOp> {
  public:
   ConvertConstantToSignless(TypeConverter& type_converter, MLIRContext* context)
-      : ConversionPattern(type_converter, MatchAnyOpTypeTag{}, 0, context) {}
+      : OpConversionPattern<arith::ConstantOp>(type_converter, context) {}
 
   LogicalResult matchAndRewrite(
-      Operation* op, ArrayRef<Value> /*operands*/,
-      ConversionPatternRewriter& rewriter) const final {
-    auto constant_op = llvm::cast<arith::ConstantOp>(op);
-
+      arith::ConstantOp constant_op, arith::ConstantOpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
     // We only care about unsigned integers
-    if (!constant_op.getValue().isa<DenseIntElementsAttr>()) return failure();
+    if (!adaptor.getValue().isa<DenseIntElementsAttr>()) return failure();
 
     auto values = llvm::to_vector(
-        constant_op.getValue().cast<DenseIntElementsAttr>().getValues<APInt>());
+        adaptor.getValue().cast<DenseIntElementsAttr>().getValues<APInt>());
     auto new_values = DenseIntElementsAttr::get(
         typeConverter->convertType(constant_op.getType()), values);
 
-    rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, new_values);
+    rewriter.replaceOpWithNewOp<arith::ConstantOp>(constant_op, new_values);
     return success();
   }
 };

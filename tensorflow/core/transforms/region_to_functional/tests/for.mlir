@@ -21,12 +21,15 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
     yield(%A) : tensor<*xf32>
   } : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>)
 
-  // CHECK: For(%[[START]], %[[LIMIT]], %[[DELTA]], %[[START]])
+  // CHECK: %{{.*}}, %[[CTL_4:.*]] = For(%[[START]], %[[LIMIT]], %[[DELTA]], %[[START]])
   // CHECK: body = #tf_type.func<@[[BODY_FUNC0:.*]], {}>
   %outs_0, %ctl_4 = ForRegion(%Start) from %Start to %Limit by %Delta {
   ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: !tf_type.control, %arg3: !tf_type.control):
     yield(%arg0) : tensor<i32>
   } : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>)
+
+  // CHECK: Sink [%[[CTL_3]], %[[CTL_4]]]
+  %ctl_5 = Sink [%ctl_3, %ctl_4]
 }
 
 // CHECK: tfg.func @[[BODY_FUNC]](%[[ARG0:.*]]: tensor<i32> {tfg.name = "[[IDX]]_tfg_result_0", tfg.regenerate_output_shapes},

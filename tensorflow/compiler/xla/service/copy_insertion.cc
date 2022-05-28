@@ -398,6 +398,10 @@ Status AddCopiesForAliasedInputOutputs(HloModule* module) {
     TF_ASSIGN_OR_RETURN(HloInstruction * copied,
                         entry->DeepCopyInstruction(
                             param, &param_indices_to_copy, &param_copy_tree));
+    if (param == root) {
+      entry->set_root_instruction(copied);
+      root = copied;
+    }
     for (HloInstruction* user : users) {
       TF_RETURN_IF_ERROR(param->ReplaceUseWith(user, copied));
     }
@@ -1809,7 +1813,6 @@ Status CopyInsertion::AddCopiesForConditional(
 Status CopyInsertion::AddCopiesToResolveInterference(HloModule* module) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, can_share_buffer_));
-
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {

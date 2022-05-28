@@ -56,7 +56,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/numbers.h"
 
 namespace xla {
 namespace spmd {
@@ -2294,7 +2293,10 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
   absl::optional<HloSharding> desired_operand_sharding =
       hlo_sharding_util::ReshapeSharding(hlo->shape(), hlo->operand(0)->shape(),
                                          hlo->sharding());
-  if (desired_operand_sharding.has_value()) {
+  // Use the desired operand sharding only if the number of tiles returned
+  // matches the number of tiles in the output.
+  if (desired_operand_sharding.has_value() &&
+      hlo->sharding().NumTiles() == desired_operand_sharding->NumTiles()) {
     auto operand_hlo = operand.Reshard(*desired_operand_sharding).hlo();
     SetPartitionedHlo(hlo, [&] {
       return b_.AddInstruction(hlo->CloneWithNewOperands(
@@ -2665,9 +2667,8 @@ Status SpmdPartitioningVisitor::HandleDynamicSlice(HloInstruction* hlo) {
   }
   for (int64_t i = 0; i < hlo->shape().rank(); ++i) {
     if (hlo->sharding().tile_assignment().dim(i) != 1 &&
-        (hlo->dynamic_slice_sizes()[i] != hlo->shape().dimensions(i) ||
-         !hlo->operand(i + 1)->IsConstant() ||
-         !hlo->operand(i + 1)->literal().IsZero({}))) {
+        hlo->dynamic_slice_sizes()[i] !=
+            hlo->operand(0)->shape().dimensions(i)) {
       // We currently do not partition the sliced dimensions.
       return DefaultAction(hlo);
     }
@@ -2676,7 +2677,13 @@ Status SpmdPartitioningVisitor::HandleDynamicSlice(HloInstruction* hlo) {
   auto new_input =
       GetPartitionedHlo(hlo->operand(0)).Reshard(hlo->sharding()).hlo();
   for (int64_t i = 0; i < new_indices.size(); ++i) {
-    // Replicate the indices.
+    if (hlo->dynamic_slice_sizes()[i] ==
+        hlo->operand(0)->shape().dimensions(i)) {
+      // Trivial slice dim: index must be clampped to 0.
+      new_indices[i] = CreateZero(hlo->operand(i + 1)->shape(), &b_);
+      continue;
+    }
+    // Replicate the indices.;
     new_indices[i] = GetPartitionedHlo(hlo->operand(i + 1))
                          .Reshard(HloSharding::Replicate())
                          .hlo();
@@ -2718,10 +2725,6 @@ Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(HloInstruction* hlo) {
         }
       }
     } else if (hlo->sharding().tile_assignment().dim(i) != 1) {
-      if (!hlo->operand(i + 2)->IsConstant() ||
-          !hlo->operand(i + 2)->literal().IsZero({})) {
-        return DefaultAction(hlo);
-      }
       partitioned_non_slice_dims.push_back(i);
     }
   }
@@ -2733,6 +2736,11 @@ Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(HloInstruction* hlo) {
     };
     std::vector<HloInstruction*> new_indices(hlo->shape().rank());
     for (int64_t i = 0; i < new_indices.size(); ++i) {
+      if (hlo->operand(1)->shape().dimensions(i) ==
+          hlo->shape().dimensions(i)) {
+        new_indices[i] = CreateZero(hlo->operand(i + 2)->shape(), &b_);
+        continue;
+      }
       // Replicate the indices.
       new_indices[i] = GetPartitionedHlo(hlo->operand(i + 2))
                            .Reshard(HloSharding::Replicate())
@@ -2848,6 +2856,10 @@ Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(HloInstruction* hlo) {
   auto new_update =
       GetPartitionedHlo(hlo->operand(1)).Reshard(hlo->sharding()).hlo();
   for (int64_t i = 0; i < new_indices.size(); ++i) {
+    if (hlo->operand(1)->shape().dimensions(i) == hlo->shape().dimensions(i)) {
+      new_indices[i] = CreateZero(hlo->operand(i + 2)->shape(), &b_);
+      continue;
+    }
     // Replicate the indices.
     new_indices[i] = GetPartitionedHlo(hlo->operand(i + 2))
                          .Reshard(HloSharding::Replicate())

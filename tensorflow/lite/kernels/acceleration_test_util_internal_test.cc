@@ -30,7 +30,7 @@ using ::testing::Test;
 
 struct SimpleConfig {
  public:
-  static constexpr const char* kAccelerationTestConfig =
+  static constexpr char kAccelerationTestConfig[] =
       R"(
       #test-id,some-other-data
       test-1,data-1

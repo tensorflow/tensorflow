@@ -118,6 +118,7 @@ FRAMEWORK_LIB_HDRS = STABLE_FRAMEWORK_LIB_HDRS + [
     "context.h",
     "core/subgraph.h",
     "graph_info.h",
+    "interpreter_options.h",
     "optional_debug_tools.h",
     "signature_runner.h",
 ]
@@ -507,6 +508,7 @@ cc_library(
     hdrs = [
         "interpreter.h",
         "interpreter_builder.h",
+        "interpreter_options.h",
         "model.h",
         "model_builder.h",
     ],
@@ -569,6 +571,7 @@ cc_library(
         "graph_info.h",
         "interpreter.h",
         "interpreter_builder.h",
+        "interpreter_options.h",
         "model.h",
         "model_builder.h",
         "signature_runner.h",

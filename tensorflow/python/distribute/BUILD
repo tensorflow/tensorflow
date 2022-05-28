@@ -129,6 +129,7 @@ py_library(
         ":sharded_variable",
         "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/distribute/experimental",
+        "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
     ],
 )
 
@@ -1681,7 +1682,7 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
-        "no_windows",  # TODO(b/227211015)
+        "no_oss",  # TODO(b/227211015)
     ],
     tpu_tags = [
         "no_oss",  # Target too big to run serially reliably.

@@ -5912,5 +5912,29 @@ ENTRY %entry {
               op::Sharding("{devices=[4]3,2,1,0}"));
 }
 
+TEST_F(ShardingPropagationTest, ReshapeTrivialDimPartialReplicate) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[8,128] parameter(0), sharding={replicated}
+  %c = f32[8,128] copy(%param0)
+  %rsp = f32[8,1,128] reshape(%c),
+    sharding={devices=[1,2,4]0,1,2,3,4,5,6,7}
+  ROOT %copy = f32[8,1,128] copy(%rsp),
+    sharding={devices=[1,2,4]0,1,2,3,4,5,6,7}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      FindInstruction(module.get(), "c"),
+      op::Sharding("{devices=[1,4,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}"));
+}
+
 }  // namespace
 }  // namespace xla

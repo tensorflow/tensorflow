@@ -555,6 +555,182 @@ TEST_P(ClientServerTest, ConnectEventuallyTimesOutIfAClientDoesNotShowUp) {
   }
 }
 
+TEST_P(ClientServerTest, WaitAtBarrier_Succeed) {
+  int num_nodes = 2;
+  DistributedRuntimeServiceImpl::Options service_options;
+  service_options.num_nodes = num_nodes;
+  StartService(service_options, GetParam().use_coordination_service);
+
+  auto thread_fn = [&](int node_id) -> xla::Status {
+    DistributedRuntimeClient::Options client_options;
+    client_options.node_id = node_id;
+    auto client = GetDistributedRuntimeClient(
+        server_->InProcessChannel(::grpc::ChannelArguments()), client_options,
+        GetParam().use_coordination_service);
+    TF_RETURN_IF_ERROR(client->Connect());
+
+    TF_RETURN_IF_ERROR(
+        client->WaitAtBarrier("barrier_1", absl::Milliseconds(100)));
+    TF_RETURN_IF_ERROR(
+        client->WaitAtBarrier("barrier_2", absl::Milliseconds(100)));
+
+    TF_RETURN_IF_ERROR(client->Shutdown());
+    return xla::Status::OK();
+  };
+
+  std::vector<xla::Status> statuses(num_nodes);
+  {
+    tensorflow::thread::ThreadPool thread_pool(tensorflow::Env::Default(),
+                                               "test_threads", num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
+    }
+  }
+  for (int i = 0; i < num_nodes; ++i) {
+    TF_EXPECT_OK(statuses[i]);
+  }
+}
+
+TEST_P(ClientServerTest, WaitAtBarrier_Timeout) {
+  int num_nodes = 2;
+  DistributedRuntimeServiceImpl::Options service_options;
+  service_options.num_nodes = num_nodes;
+  StartService(service_options, GetParam().use_coordination_service);
+  absl::Notification n;
+
+  auto thread_fn = [&](int node_id) -> xla::Status {
+    DistributedRuntimeClient::Options client_options;
+    client_options.node_id = node_id;
+    auto client = GetDistributedRuntimeClient(
+        server_->InProcessChannel(::grpc::ChannelArguments()), client_options,
+        GetParam().use_coordination_service);
+    TF_RETURN_IF_ERROR(client->Connect());
+
+    if (node_id == 1) {
+      n.WaitForNotification();
+    }
+    Status barrier_status =
+        client->WaitAtBarrier("barrier_1", absl::Milliseconds(100));
+    if (node_id == 0) {
+      n.Notify();
+    }
+    TF_RETURN_IF_ERROR(barrier_status);
+
+    TF_RETURN_IF_ERROR(client->Shutdown());
+    return xla::Status::OK();
+  };
+
+  std::vector<xla::Status> statuses(num_nodes);
+  {
+    tensorflow::thread::ThreadPool thread_pool(tensorflow::Env::Default(),
+                                               "test_threads", num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
+    }
+  }
+  for (int i = 0; i < num_nodes; ++i) {
+    if (GetParam().use_coordination_service) {
+      // Co-ordination service returns the status of the previous barrier
+      // failure without waiting for the thread to time out.
+      EXPECT_EQ(statuses[i].code(), tensorflow::error::DEADLINE_EXCEEDED)
+          << " node id: " << i;
+    } else {
+      if (i == 0) {
+        EXPECT_EQ(statuses[i].code(), tensorflow::error::DEADLINE_EXCEEDED)
+            << " node id: " << i;
+      }
+      if (i == 1) {
+        EXPECT_EQ(statuses[i].code(), tensorflow::error::FAILED_PRECONDITION)
+            << " node id: " << i;
+      }
+    }
+  }
+}
+
+TEST_P(ClientServerTest, WaitAtBarrier_TimeoutWithDifferentBarrierId) {
+  int num_nodes = 2;
+  DistributedRuntimeServiceImpl::Options service_options;
+  service_options.num_nodes = num_nodes;
+  StartService(service_options, GetParam().use_coordination_service);
+
+  auto thread_fn = [&](int node_id) -> xla::Status {
+    DistributedRuntimeClient::Options client_options;
+    client_options.node_id = node_id;
+    auto client = GetDistributedRuntimeClient(
+        server_->InProcessChannel(::grpc::ChannelArguments()), client_options,
+        GetParam().use_coordination_service);
+    TF_RETURN_IF_ERROR(client->Connect());
+
+    std::string barrier_id;
+    if (node_id == 0) {
+      barrier_id = "barrier_0";
+    } else if (node_id == 1) {
+      barrier_id = "barrier_1";
+    }
+    TF_RETURN_IF_ERROR(
+        client->WaitAtBarrier(barrier_id, absl::Milliseconds(100)));
+
+    TF_RETURN_IF_ERROR(client->Shutdown());
+    return xla::Status::OK();
+  };
+
+  std::vector<xla::Status> statuses(num_nodes);
+  {
+    tensorflow::thread::ThreadPool thread_pool(tensorflow::Env::Default(),
+                                               "test_threads", num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
+    }
+  }
+  for (int i = 0; i < num_nodes; ++i) {
+    EXPECT_EQ(statuses[i].code(), tensorflow::error::DEADLINE_EXCEEDED)
+        << " node id: " << i;
+  }
+}
+
+TEST_P(ClientServerTest, WaitAtBarrier_FailWithSameBarrierId) {
+  int num_nodes = 2;
+  DistributedRuntimeServiceImpl::Options service_options;
+  service_options.num_nodes = num_nodes;
+  StartService(service_options, GetParam().use_coordination_service);
+
+  auto thread_fn = [&](int node_id) -> xla::Status {
+    DistributedRuntimeClient::Options client_options;
+    client_options.node_id = node_id;
+    auto client = GetDistributedRuntimeClient(
+        server_->InProcessChannel(::grpc::ChannelArguments()), client_options,
+        GetParam().use_coordination_service);
+    TF_RETURN_IF_ERROR(client->Connect());
+
+    TF_RETURN_IF_ERROR(
+        client->WaitAtBarrier("barrier_1", absl::Milliseconds(100)));
+    TF_RETURN_IF_ERROR(
+        client->WaitAtBarrier("barrier_1", absl::Milliseconds(100)));
+
+    TF_RETURN_IF_ERROR(client->Shutdown());
+    return xla::Status::OK();
+  };
+
+  std::vector<xla::Status> statuses(num_nodes);
+  {
+    tensorflow::thread::ThreadPool thread_pool(tensorflow::Env::Default(),
+                                               "test_threads", num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
+    }
+  }
+  for (int i = 0; i < num_nodes; ++i) {
+    if (GetParam().use_coordination_service) {
+      // Co-ordination service returns OK because the previous barrier has
+      // already passed.
+      TF_EXPECT_OK(statuses[i]);
+    } else {
+      EXPECT_EQ(statuses[i].code(), tensorflow::error::FAILED_PRECONDITION)
+          << " node id: " << i;
+    }
+  }
+}
+
 INSTANTIATE_TEST_SUITE_P(
     ClientServerTests, ClientServerTest,
     ::testing::ValuesIn<ServiceParams>({

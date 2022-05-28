@@ -16,7 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <functional>
 #include <iterator>
+#include <memory>
 #include <set>
 #include <sstream>
 #include <string>
@@ -33,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
+#include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -40,7 +44,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/stacktrace.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 
@@ -260,6 +264,11 @@ absl::Cord HloModule::ToCord(const HloPrintOptions& options) const {
   }
   if (config_.alias_passthrough_params()) {
     result.Append(", alias_passthrough_params=true");
+  }
+  if (config_.has_entry_computation_layout()) {
+    result.Append(", entry_computation_layout={");
+    result.Append(entry_computation_layout().ToString());
+    result.Append("}");
   }
   if (config_.allow_spmd_sharding_propagation_to_output()) {
     result.Append(", allow_spmd_sharding_propagation_to_output=true");
@@ -849,6 +858,22 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
     const auto& indices = parameter_indices.second;
     module->AddCrossProgramPrefetch(parameter, indices);
   }
+
+  // To make clone behavior match uncloned behavior, we reorder
+  // module->computations_ to match the order in computations_.
+  using ComputationSorter = MappedPtrContainerSorter<HloComputation>;
+  ComputationSorter::MapPtrFn computation_map_fn =
+      [&context](const HloComputation* c) {
+        return context.FindComputation(c);
+      };
+  auto status = ComputationSorter::Sort(
+      computation_map_fn, ComputationSorter::IndexAfterMappedElementsFn(),
+      computations_, module->computations_);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to sort module computations for " << name() << "; "
+               << status;
+  }
+
   return module;
 }
 

@@ -270,45 +270,46 @@ PyClient::MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
                                       PjRtDevice* device) {
   CHECK(device != nullptr);
   absl::Mutex mu;
+  StatusOr<std::vector<PjRtCrossHostRecvDescriptors>> recv_descriptors_or;
   bool done = false;
-  StatusOr<std::vector<std::pair<pybind11::bytes, pybind11::object>>>
-      recv_buffers_or;
 
-  auto shared_this = shared_from_this();
-  pjrt_client_->MakeCrossHostReceiveBuffers(
-      shapes, device,
-      [&done, &recv_buffers_or, &shared_this,
-       &mu](StatusOr<std::pair<std::vector<PjRtCrossHostRecvBuffer>,
-                               PjRtCrossHostSendCancelNotifier>>&& buffers_or) {
-        absl::MutexLock l(&mu);
-        done = true;
-        if (buffers_or.ok()) {
-          py::gil_scoped_acquire gil;
-          auto& buffers = buffers_or.ValueOrDie().first;
-          std::vector<std::pair<pybind11::bytes, pybind11::object>>
-              recv_buffers;
-          for (auto& buf : buffers) {
-            std::string desc = buf.serialized_descriptors[0];
-            pybind11::bytes py_desc = pybind11::bytes(desc);
-            auto traceback = Traceback::Get();
-            auto py_buf =
-                PyBuffer::Make(shared_this, std::move(buf.buffer), traceback);
-            recv_buffers.push_back(std::make_pair(py_desc, py_buf));
-          }
-          recv_buffers_or = recv_buffers;
-        } else {
-          recv_buffers_or = buffers_or.status();
-        }
-      });
+  TF_ASSIGN_OR_RETURN(
+      auto buffers, pjrt_client_->MakeCrossHostReceiveBuffers(
+                        shapes, device,
+                        [&done, &recv_descriptors_or, &mu](
+                            StatusOr<PjRtCrossHostRecvState>&& recv_state_or) {
+                          absl::MutexLock l(&mu);
+                          if (recv_state_or.ok()) {
+                            py::gil_scoped_acquire gil;
+                            recv_descriptors_or =
+                                std::move(recv_state_or->descriptors);
+                          } else {
+                            recv_descriptors_or = recv_state_or.status();
+                          }
+                          done = true;
+                        }));
 
   {
     py::gil_scoped_release gil_release;
     absl::MutexLock l(&mu);
-    mu.Await(absl::Condition(
-        +[](bool* done) { return *done; }, &done));
+    mu.Await(absl::Condition(&done));
   }
 
-  return recv_buffers_or;
+  TF_RETURN_IF_ERROR(recv_descriptors_or.status());
+  CHECK_EQ(buffers.size(), recv_descriptors_or->size());
+  std::vector<std::pair<pybind11::bytes, pybind11::object>> result;
+  result.reserve(buffers.size());
+  for (int i = 0; i < buffers.size(); ++i) {
+    auto& descriptors = recv_descriptors_or->at(i);
+    CHECK_EQ(descriptors.serialized_descriptors.size(), 1);
+    const std::string& desc = descriptors.serialized_descriptors[0];
+    pybind11::bytes py_desc = pybind11::bytes(desc);
+    auto traceback = Traceback::Get();
+    auto py_buf =
+        PyBuffer::Make(shared_from_this(), std::move(buffers[i]), traceback);
+    result.push_back(std::make_pair(std::move(py_desc), std::move(py_buf)));
+  }
+  return result;
 }
 
 StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(

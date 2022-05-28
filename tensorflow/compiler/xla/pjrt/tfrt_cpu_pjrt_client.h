@@ -187,16 +187,19 @@ class TfrtCpuClient final : public PjRtClient {
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) override;
 
-  void MakeCrossHostReceiveBuffers(
-      absl::Span<const Shape> shapes, PjRtDevice* device,
-      PjRtCrossHostRecvNotifier&& notifier) override {
-    LOG(FATAL) << "MakeCrossHostReceiveBuffers not implemented.";
+  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
+                              PjRtDevice* device,
+                              PjRtCrossHostRecvNotifier&& notifier) override {
+    return Unimplemented("MakeCrossHostReceiveBuffers not implemented.");
   }
 
-  void MakeCrossHostReceiveBuffersForGather(
+  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  MakeCrossHostReceiveBuffersForGather(
       absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
       PjRtDevice* device, PjRtCrossHostRecvNotifier&& notifier) override {
-    LOG(FATAL) << "MakeCrossHostReceiveBuffersForGather not implemented.";
+    return Unimplemented(
+        "MakeCrossHostReceiveBuffersForGather not implemented.");
   }
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
@@ -688,7 +691,15 @@ class TfrtCpuExecutable final : public PjRtExecutable {
   bool cheap_computation_;
 };
 
+// Creates a CPU client with one Device. For testing purposes, you can set the
+// number of devices passing the --xla_force_host_platform_device_count flag to
+// the XLA_FLAGS environment variable.
 StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous);
+
+// Similar to the function above, but you can set the number of devices
+// explicitly.
+StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous,
+                                                       int cpu_device_count);
 
 }  // namespace xla
 

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_AGENT_H_
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -161,8 +162,17 @@ class CoordinationServiceAgent {
   virtual StatusOr<std::string> GetKeyValue(const std::string& key) = 0;
   virtual StatusOr<std::string> GetKeyValue(const std::string& key,
                                             absl::Duration timeout) = 0;
-  virtual void GetKeyValueAsync(const std::string& key,
-                                StatusOrValueCallback done) = 0;
+  // Note: Cancel the underlying RPC call with `call_opts->StartCancel()` and
+  // `call_opts->ClearCancelCallback()`.
+  virtual std::shared_ptr<CallOptions> GetKeyValueAsync(
+      const std::string& key, StatusOrValueCallback done) = 0;
+
+  // Get config key-value from the service.
+  // If the key-value does not exist, this call returns NotFound error.
+  // Agent does not need to be connected to utilize the distributed key-value
+  // store.
+  //   - errors::NotFound: the requested key does not exist.
+  virtual StatusOr<std::string> TryGetKeyValue(const std::string& key) = 0;
 
   // Get all values under a directory (key).
   // A value is considered to be in the directory if its key is prefixed with
@@ -240,8 +250,9 @@ class CoordinationServiceAgent {
   // CANCELLED error status.
   // Possible service errors:
   //   - FailedPrecondition: Barrier has already been passed.
-  //   - NotFound: No barrier with the specified id is found.
   virtual Status CancelBarrier(const std::string& barrier_id) = 0;
+  virtual void CancelBarrierAsync(const std::string& barrier_id,
+                                  StatusCallback done) = 0;
 
  protected:
   // Set the service agent to error status and invoke the error callback.

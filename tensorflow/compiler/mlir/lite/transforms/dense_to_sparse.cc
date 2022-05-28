@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 
 //===----------------------------------------------------------------------===//
@@ -32,6 +33,10 @@ namespace mlir {
 namespace TFL {
 
 namespace {
+
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
+
 // If sparsity level is below this threshold, keep the tensor in dense format.
 constexpr float kMinSparsityLevel = 0.3;
 // Heuristic to check if a block configuration is correct for float constants.
@@ -276,37 +281,13 @@ std::vector<T> BuildSparsityParameterAttribute(
   return compressed_data;
 }
 
-// This pass encodes sparse weights in the model in the proper format, and adds
-// Densify() op if necessary. The general algorithm is:
-//   1. Get list of operands (weights) of an op that can be sparse.
-//   2. Get list of supported block configurations of the op.
-//   3. Calculate random sparsity of the weight.
-//     3.1. If sparsity level is below the encoding threshold, keep in dense.
-//     3.2. If sparsity level is above the encoding threshold, go to 4.
-//   4. Try to encode the weight with supported block configurations. If the
-//      weight was pruned with the same block config, the blocked sparsity level
-//      should match the random sparsity.
-//     4.1. Return the matching block config if found.
-//     4.2. If no matching block config is found, encode the weight with random
-//          sparsity, and add Densify() op to fall back to dense execution.
-struct DenseToSparse
-    : public PassWrapper<DenseToSparse, OperationPass<func::FuncOp>> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DenseToSparse)
+struct DenseToSparsePass : public DenseToSparsePassBase<DenseToSparsePass> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DenseToSparsePass)
 
   void runOnOperation() override;
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-dense-to-sparse";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Convert dense tensor to sparse format.";
-  }
 };
 
-void DenseToSparse::runOnOperation() {
+void DenseToSparsePass::runOnOperation() {
   func::FuncOp func = getOperation();
   OpBuilder builder(func);
 
@@ -442,10 +423,8 @@ void DenseToSparse::runOnOperation() {
 
 // Creates an instance of the TensorFlow Lite dialect DenseToSparse pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateDenseToSparsePass() {
-  return absl::make_unique<DenseToSparse>();
+  return std::make_unique<DenseToSparsePass>();
 }
-
-static PassRegistration<DenseToSparse> pass;
 
 }  // namespace TFL
 }  // namespace mlir

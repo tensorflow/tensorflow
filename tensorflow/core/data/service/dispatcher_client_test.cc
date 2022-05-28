@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstdlib>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "absl/types/optional.h"
@@ -98,16 +99,17 @@ TEST_F(DispatcherClientTest, EnableMultiTrainerCache) {
   metadata.set_cardinality(kInfiniteCardinality);
   TF_ASSERT_OK_AND_ASSIGN(const int64_t dataset_id, RegisterDataset(metadata));
 
-  int64_t job_client_id = 0;
   ProcessingModeDef processing_mode;
   processing_mode.set_sharding_policy(ProcessingModeDef::OFF);
-  JobKeyDef job_key;
-  job_key.set_name("job");
-  job_key.set_iteration(0);
+  std::string job_name = "job";
+  int64_t job_id;
   TF_ASSERT_OK(dispatcher_client_->GetOrCreateJob(
-      dataset_id, processing_mode, job_key,
-      /*num_consumers=*/absl::nullopt,
-      /*use_cross_trainer_cache=*/true, TARGET_WORKERS_AUTO, job_client_id));
+      dataset_id, processing_mode, job_name,
+      /*num_consumers=*/std::nullopt,
+      /*use_cross_trainer_cache=*/true, TARGET_WORKERS_AUTO, job_id));
+  int64_t iteration_client_id;
+  TF_ASSERT_OK(dispatcher_client_->GetOrCreateIteration(
+      job_id, /*repetition=*/0, iteration_client_id));
 
   WorkerHeartbeatRequest worker_heartbeat_request;
   worker_heartbeat_request.set_worker_address(test_cluster_->WorkerAddress(0));
@@ -125,22 +127,22 @@ TEST_F(DispatcherClientTest, CreateNamedJob) {
   metadata.set_cardinality(kInfiniteCardinality);
   TF_ASSERT_OK_AND_ASSIGN(const int64_t dataset_id, RegisterDataset(metadata));
 
-  int64_t job_client_id = 0;
   ProcessingModeDef processing_mode;
   processing_mode.set_sharding_policy(ProcessingModeDef::OFF);
-  JobKeyDef job_key;
-  job_key.set_name("job");
-  job_key.set_iteration(0);
+  std::string job_name = "job";
+  int64_t job_id_1 = -1;
   TF_ASSERT_OK(dispatcher_client_->GetOrCreateJob(
-      dataset_id, processing_mode, job_key,
+      dataset_id, processing_mode, job_name,
       /*num_consumers=*/absl::nullopt,
-      /*use_cross_trainer_cache=*/true, TARGET_WORKERS_AUTO, job_client_id));
+      /*use_cross_trainer_cache=*/true, TARGET_WORKERS_AUTO, job_id_1));
 
-  // Creating the same job should succeed.
+  int64_t job_id_2 = -2;
+  // Creating the same job should succeed and receive the same job id.
   TF_ASSERT_OK(dispatcher_client_->GetOrCreateJob(
-      dataset_id, processing_mode, job_key,
+      dataset_id, processing_mode, job_name,
       /*num_consumers=*/absl::nullopt,
-      /*use_cross_trainer_cache=*/true, TARGET_WORKERS_AUTO, job_client_id));
+      /*use_cross_trainer_cache=*/true, TARGET_WORKERS_AUTO, job_id_2));
+  ASSERT_EQ(job_id_1, job_id_2);
 }
 
 TEST_F(DispatcherClientTest, NamedJobsDoNotMatch) {
@@ -150,30 +152,27 @@ TEST_F(DispatcherClientTest, NamedJobsDoNotMatch) {
   metadata.set_cardinality(kInfiniteCardinality);
   TF_ASSERT_OK_AND_ASSIGN(const int64_t dataset_id, RegisterDataset(metadata));
 
-  int64_t job_client_id = 0;
+  int64_t job_id = 0;
   ProcessingModeDef processing_mode;
   processing_mode.set_sharding_policy(ProcessingModeDef::OFF);
-  JobKeyDef job_key;
-  job_key.set_name("job");
-  job_key.set_iteration(0);
+  std::string job_name = "job";
   TF_ASSERT_OK(dispatcher_client_->GetOrCreateJob(
-      dataset_id, processing_mode, job_key,
+      dataset_id, processing_mode, job_name,
       /*num_consumers=*/absl::nullopt,
-      /*use_cross_trainer_cache=*/false, TARGET_WORKERS_AUTO, job_client_id));
+      /*use_cross_trainer_cache=*/false, TARGET_WORKERS_AUTO, job_id));
 
-  // Creating the same job with a different argument should fail.
+  // Creating the same iteration with a different argument should fail.
   processing_mode.set_sharding_policy(ProcessingModeDef::DYNAMIC);
   EXPECT_THAT(
-      dispatcher_client_->GetOrCreateJob(dataset_id, processing_mode, job_key,
-                                         /*num_consumers=*/absl::nullopt,
+      dispatcher_client_->GetOrCreateJob(dataset_id, processing_mode, job_name,
+                                         /*num_consumers=*/std::nullopt,
                                          /*use_cross_trainer_cache=*/true,
-                                         TARGET_WORKERS_AUTO, job_client_id),
-      StatusIs(
-          error::INVALID_ARGUMENT,
-          AllOf(HasSubstr(
-                    "but found an existing job with different parameters: "),
-                HasSubstr("Existing processing mode: <>"),
-                HasSubstr("Existing cross-trainer cache: <disabled>"))));
+                                         TARGET_WORKERS_AUTO, job_id),
+      StatusIs(error::INVALID_ARGUMENT,
+               AllOf(HasSubstr("but found an existing job with different "
+                               "parameters: "),
+                     HasSubstr("Existing processing mode: <>"),
+                     HasSubstr("Existing cross-trainer cache: <disabled>"))));
 }
 }  // namespace
 }  // namespace data

@@ -238,7 +238,7 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
       resources_(resources),
       resource_ids_(resource_ids),
       initialization_status_map_(initialization_status_map),
-      large_tensors_thresholds_in_bytes_(0) {
+      options_(nullptr) {
   context_.impl_ = static_cast<void*>(this);
   context_.ResizeTensor = ResizeTensor;
   context_.ReportError = ReportErrorC;
@@ -994,7 +994,7 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
 }
 
 TfLiteStatus Subgraph::MayAllocateOpOutput(TfLiteNode* node) {
-  if (IsMemoryOptimizationForLargeTensorsEnabled()) {
+  if (ShouldOptimizeMemoryForLargeTensors()) {
     for (int i = 0; i < node->outputs->size; ++i) {
       int tensor_index = node->outputs->data[i];
       TfLiteTensor* tensor = &context_.tensors[tensor_index];
@@ -1050,7 +1050,7 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
     memory_planner_.reset(new SimplePlanner(&context_, CreateGraphInfo()));
 #else
     memory_planner_.reset(new ArenaPlanner(&context_, CreateGraphInfo(),
-                                           preserve_all_tensors_,
+                                           ShouldPreserveAllTensors(),
                                            kDefaultTensorAlignment));
 #endif
     memory_planner_->PlanAllocations();
@@ -1519,11 +1519,10 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
 
 void Subgraph::OptimizeMemoryForLargeTensors(
     int large_tensors_thresholds_in_bytes) {
-  large_tensors_thresholds_in_bytes_ = large_tensors_thresholds_in_bytes;
   for (size_t tensor_index = 0; tensor_index < context_.tensors_size;
        tensor_index++) {
     TfLiteTensor* tensor = &context_.tensors[tensor_index];
-    if (tensor->bytes >= large_tensors_thresholds_in_bytes_ &&
+    if (tensor->bytes >= large_tensors_thresholds_in_bytes &&
         tensor->allocation_type == kTfLiteArenaRw &&
         // Skip input tensors since they are handled by ResizeInputTensor().
         std::find(inputs_.begin(), inputs_.end(), tensor_index) ==
@@ -1856,16 +1855,6 @@ void Subgraph::DumpMemoryPlannerDebugInfo() const {
   memory_planner_->DumpDebugInfo(execution_plan());
 }
 
-TfLiteStatus Subgraph::PreserveAllTensorsExperimental() {
-  if (memory_planner_) {
-    ReportError(
-        "PreserveAllTensorsExperimental called after memory was planned. ");
-    return kTfLiteError;
-  }
-  preserve_all_tensors_ = true;
-  return kTfLiteOk;
-}
-
 std::unique_ptr<GraphInfo> Subgraph::CreateGraphInfo() {
   return std::unique_ptr<GraphInfo>(new InterpreterInfo(this));
 }
@@ -1894,7 +1883,7 @@ void Subgraph::InitializeTensorReleaseMap() {
 
 void Subgraph::MaybeReleaseDynamicTensors(const TfLiteNode& node,
                                           size_t node_index) {
-  if (!release_dynamic_tensors_if_unused_) return;
+  if (!ShouldReleaseDynamicTensors()) return;
 
   // Release input tensors if they're neither graph input tensors nor no
   // longer used by remaining graph execution.

@@ -215,7 +215,8 @@ absl::Status Winograd4x4To36Test(TestExecutionEnvironment* env) {
       Padding2D padding;
       padding.prepended = HW(1, 1);
       padding.appended = HW(1, 1);
-      Winograd4x4To36 operation = CreateWinograd4x4To36(op_def, padding);
+      Winograd4x4To36 operation =
+          CreateWinograd4x4To36(op_def, padding, env->GetGpuInfo());
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor, absl::make_unique<Winograd4x4To36>(std::move(operation)),
           BHWC(1, 36, 1, 1), &dst_tensor));

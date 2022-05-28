@@ -40,3 +40,21 @@ add_mlir_library(MLIRBufferTransforms
   MLIRShape
   MLIRTransforms
 )
+
+add_mlir_library(MLIRHLOGPUTransforms
+  gpu_kernel_lowering_passes.cc
+
+  DEPENDS
+  LMHLOGPUTransformsPassIncGen
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  MLIRGPUOps
+  MLIRHLOAnalysis
+  MLIRIR
+  MLIRPass
+  MLIRShape
+  MLIRTransforms
+)

@@ -10,16 +10,27 @@ package(
 )
 
 cc_library(
+    name = "FuncToGraph",
+    srcs = ["func_to_graph.cc"],
+    hdrs = ["func_to_graph.h"],
+    deps = [
+        "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "Pass",
     srcs = ["pass.cc"],
     hdrs = ["pass.h"],
     deps = [
+        ":FuncToGraph",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/transforms:PassDetail",
-        "@com_google_absl//absl/strings",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
     ],
 )
 

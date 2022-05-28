@@ -542,6 +542,12 @@ Status DirectSession::RunInternal(
                             executor_step_count, &debugger_state));
   }
 
+  if (run_metadata != nullptr &&
+      options_.config.experimental().has_session_metadata()) {
+    *run_metadata->mutable_session_metadata() =
+        options_.config.experimental().session_metadata();
+  }
+
 #ifndef __ANDROID__
   // Set up for collectives if ExecutorsAndKeys declares a key.
   if (executors_and_keys->collective_graph_key !=
