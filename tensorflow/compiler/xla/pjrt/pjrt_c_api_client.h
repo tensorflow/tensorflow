@@ -206,16 +206,20 @@ class PjRtCApiClient : public PjRtClient {
 
   StatusOr<std::uintptr_t> UnsafeBufferPointer(PjRtBuffer* buffer) override;
 
-  void MakeCrossHostReceiveBuffers(
-      absl::Span<const Shape> shapes, PjRtDevice* device,
-      PjRtCrossHostRecvNotifier&& notifier) override {
-    LOG(ERROR) << "PJRT C API does not support MakeCrossHostReceiveBuffers";
+  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
+                              PjRtDevice* device,
+                              PjRtCrossHostRecvNotifier&& notifier) override {
+    return Unimplemented(
+        "PJRT C API does not support MakeCrossHostReceiveBuffers");
   }
 
-  void MakeCrossHostReceiveBuffersForGather(
+  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  MakeCrossHostReceiveBuffersForGather(
       absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
       PjRtDevice* device, PjRtCrossHostRecvNotifier&& notifier) override {
-    LOG(ERROR) << "PJRT C API does not support MakeCrossHostReceiveBuffers";
+    return Unimplemented(
+        "PJRT C API does not support MakeCrossHostReceiveBuffers");
   }
 
   StatusOr<ChannelHandle> CreateChannelHandle() override {
