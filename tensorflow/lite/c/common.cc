@@ -117,9 +117,6 @@ TfLiteFloatArray* TfLiteFloatArrayCreate(int size) {
 void TfLiteFloatArrayFree(TfLiteFloatArray* a) { free(a); }
 
 void TfLiteTensorDataFree(TfLiteTensor* t) {
-  if (t->data.raw == nullptr) {
-    return;
-  }
   if (t->allocation_type == kTfLiteDynamic ||
       t->allocation_type == kTfLitePersistentRo) {
 #ifdef TF_LITE_TENSORFLOW_PROFILER
