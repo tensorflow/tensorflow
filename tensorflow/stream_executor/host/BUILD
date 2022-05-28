@@ -50,15 +50,14 @@ cc_library(
     deps = [
         ":host_gpu_executor",
         ":host_platform_id",
-        "//tensorflow/core:lib",
         "//tensorflow/stream_executor:executor_cache",
         "//tensorflow/stream_executor:multi_platform_manager",
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
     ],
     alwayslink = True,  # Registers itself with the MultiPlatformManager.
 )
