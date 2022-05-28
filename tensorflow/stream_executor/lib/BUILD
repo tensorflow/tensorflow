@@ -34,8 +34,10 @@ cc_library(
     hdrs = glob(["**/*.h"]),
     linkopts = if_windows(["-DEFAULTLIB:ws2_32.lib"]),
     deps = [
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:stacktrace",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/strings",
