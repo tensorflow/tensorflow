@@ -3120,6 +3120,44 @@ XlaOp XlaBuilder::AllToAllArray(XlaOp operand, int64_t split_dimension,
   });
 }
 
+XlaOp XlaBuilder::AllToAllTuple(absl::Span<const XlaOp> operands,
+                                absl::Span<const ReplicaGroup> replica_groups,
+                                const absl::optional<Layout>& layout) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(auto operand_shapes, this->GetOperandShapes(operands));
+    std::vector<const Shape*> operand_shape_ptrs;
+    operand_shape_ptrs.reserve(operand_shapes.size());
+    absl::c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
+                      [](const Shape& shape) { return &shape; });
+    TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferAllToAllTupleShape(
+                                         operand_shape_ptrs));
+
+    if (layout) {
+      TF_RET_CHECK(shape.IsTuple() && !ShapeUtil::IsNestedTuple(shape));
+      for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+        const int64_t layout_minor_to_major_size =
+            layout->minor_to_major().size();
+        if (layout_minor_to_major_size != shape.tuple_shapes(i).rank()) {
+          return InvalidArgument(
+              "Provided layout must be compatible with the operands' shape. "
+              "The layout is %s, but operand %d has shape %s.",
+              layout->ToString(), i, shape.tuple_shapes(i).ToString());
+        }
+        *(shape.mutable_tuple_shapes(i)->mutable_layout()) = *layout;
+      }
+      instr.set_constrain_layout(true);
+    }
+    *instr.mutable_shape() = shape.ToProto();
+
+    for (const ReplicaGroup& group : replica_groups) {
+      *instr.add_replica_groups() = group;
+    }
+
+    return AddInstruction(std::move(instr), HloOpcode::kAllToAll, operands);
+  });
+}
+
 XlaOp XlaBuilder::AllToAllTuple(XlaOp operand, int64_t split_dimension,
                                 int64_t concat_dimension, int64_t split_count,
                                 absl::Span<const ReplicaGroup> replica_groups,
@@ -3151,37 +3189,7 @@ XlaOp XlaBuilder::AllToAllTuple(XlaOp operand, int64_t split_dimension,
     }
 
     // Handle data communication.
-    HloInstructionProto instr;
-    TF_ASSIGN_OR_RETURN(auto slice_shapes, this->GetOperandShapes(slices));
-    std::vector<const Shape*> slice_shape_ptrs;
-    absl::c_transform(slice_shapes, std::back_inserter(slice_shape_ptrs),
-                      [](const Shape& shape) { return &shape; });
-    TF_ASSIGN_OR_RETURN(
-        Shape shape, ShapeInference::InferAllToAllTupleShape(slice_shape_ptrs));
-
-    if (layout) {
-      TF_RET_CHECK(shape.IsTuple() && !ShapeUtil::IsNestedTuple(shape));
-      for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
-        const int64_t layout_minor_to_major_size =
-            layout->minor_to_major().size();
-        if (layout_minor_to_major_size != shape.tuple_shapes(i).rank()) {
-          return InvalidArgument(
-              "Provided layout must be compatible with the operand shape: %s "
-              "vs %s",
-              layout->ToString(), operand_shape->ToString());
-        }
-        *(shape.mutable_tuple_shapes(i)->mutable_layout()) = *layout;
-      }
-      instr.set_constrain_layout(true);
-    }
-    *instr.mutable_shape() = shape.ToProto();
-
-    for (const ReplicaGroup& group : replica_groups) {
-      *instr.add_replica_groups() = group;
-    }
-    TF_ASSIGN_OR_RETURN(
-        XlaOp alltoall,
-        AddInstruction(std::move(instr), HloOpcode::kAllToAll, slices));
+    XlaOp alltoall = this->AllToAllTuple(slices, replica_groups, layout);
 
     // Concat the N received parts.
     std::vector<XlaOp> received;
@@ -4660,6 +4668,13 @@ XlaOp AllToAll(const XlaOp operand, int64_t split_dimension,
                const absl::optional<Layout>& layout) {
   return operand.builder()->AllToAll(operand, split_dimension, concat_dimension,
                                      split_count, replica_groups, layout);
+}
+
+XlaOp AllToAllTuple(absl::Span<const XlaOp> operands,
+                    absl::Span<const ReplicaGroup> replica_groups,
+                    const absl::optional<Layout>& layout) {
+  CHECK(!operands.empty());
+  return operands[0].builder()->AllToAllTuple(operands, replica_groups, layout);
 }
 
 XlaOp AllToAllTuple(const XlaOp operand, int64_t split_dimension,

@@ -752,13 +752,16 @@ class XlaBuilder {
       const absl::optional<Layout>& layout = absl::nullopt,
       const absl::optional<bool> use_global_device_ids = absl::nullopt);
 
-  // TODO(b/219961627): Add overload that accepts one operand per replica (i.e.
-  // with no split_dimension provided).  Also, allow the replica_groups to be
-  // inferred (one group containing all replicas).
+  // TODO(b/219961627): Allow the replica_groups to be inferred (one group
+  // containing all replicas).
   XlaOp AllToAll(XlaOp operand, int64_t split_dimension,
                  int64_t concat_dimension, int64_t split_count,
                  absl::Span<const ReplicaGroup> replica_groups,
                  const absl::optional<Layout>& layout = absl::nullopt);
+
+  XlaOp AllToAllTuple(absl::Span<const XlaOp> operands,
+                      absl::Span<const ReplicaGroup> replica_groups,
+                      const absl::optional<Layout>& layout);
 
   XlaOp AllToAllTuple(XlaOp operand, int64_t split_dimension,
                       int64_t concat_dimension, int64_t split_count,
@@ -1364,6 +1367,9 @@ class XlaBuilder {
                         int64_t concat_dimension, int64_t split_count,
                         absl::Span<const ReplicaGroup> replica_groups,
                         const absl::optional<Layout>& layout);
+  friend XlaOp AllToAllTuple(absl::Span<const XlaOp> operands,
+                             absl::Span<const ReplicaGroup> replica_groups,
+                             const absl::optional<Layout>& layout);
   friend XlaOp AllToAllTuple(XlaOp operand, int64_t split_dimension,
                              int64_t concat_dimension, int64_t split_count,
                              absl::Span<const ReplicaGroup> replica_groups,
@@ -2346,6 +2352,10 @@ XlaOp AllToAll(XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
                int64_t split_count,
                absl::Span<const ReplicaGroup> replica_groups = {},
                const absl::optional<Layout>& layout = absl::nullopt);
+
+XlaOp AllToAllTuple(absl::Span<const XlaOp> operand,
+                    absl::Span<const ReplicaGroup> replica_groups = {},
+                    const absl::optional<Layout>& layout = absl::nullopt);
 
 XlaOp AllToAllTuple(XlaOp operand, int64_t split_dimension,
                     int64_t concat_dimension, int64_t split_count,
