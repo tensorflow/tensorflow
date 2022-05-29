@@ -697,7 +697,6 @@ class DefFunctionTest(xla_test.XLATestCase):
   @test_util.disable_mlir_bridge('TODO(b/199737685): MLIR bridge does not'
                                  'support tf.bincount via jit_compile')
   def testBincountCompilability(self):
-    self.skipTest("(TODO) There is only a dummy kernel")
     with ops.device('device:{}:0'.format(self.device)):
 
       @def_function.function(jit_compile=True)

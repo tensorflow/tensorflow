@@ -26,7 +26,6 @@ from tensorflow.python.platform import test
 class BincountOpTest(xla_test.XLATestCase):
 
   def testBincount(self):
-    self.skipTest("TODO: this a dummy kernel")
     with self.session() as sess:
       with self.test_scope():
         x = array_ops.placeholder(dtypes.int32)
