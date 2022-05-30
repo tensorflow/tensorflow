@@ -172,7 +172,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
     }, {
      "testcase_name": "_no_maxlength",
      "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
-     "expected_values": [1, 1, 1, 2, 1],
+     "expected_values": [[0, 1, 1, 1, 0, 0],[0, 0, 0, 0, 2, 1]],
     })
   def test_compiled_dense(self,
                        x,
