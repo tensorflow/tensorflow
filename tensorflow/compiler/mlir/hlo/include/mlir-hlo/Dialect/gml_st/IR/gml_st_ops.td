@@ -71,13 +71,14 @@ class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
   let arguments = (ins Variadic<Index>:$lowerBound,
                        Variadic<Index>:$upperBound,
                        Variadic<Index>:$step,
-                       Variadic<AnyShaped>:$outputs);
+                       Variadic<AnyShaped>:$outputs,
+                       Variadic<AnySubset>:$subsets);
   let results = (outs Variadic<AnyRankedTensor>:$results);
   let regions = (region SizedRegion<1>:$region);
 
   let builders = [
     OpBuilder<(ins "ValueRange":$lowerBounds, "ValueRange":$upperBounds,
-      "ValueRange":$steps, "ValueRange":$outputs,
+      "ValueRange":$steps, "ValueRange":$outputs, "ValueRange":$subsets,
       CArg<"function_ref<void (OpBuilder &, Location, /*ivs=*/ValueRange,"
         "/*outputs=*/ValueRange)>", "nullptr">:$bodyBuilderFn)>,
   ];
@@ -120,11 +121,11 @@ def GMLST_ParallelOp : GMLST_LoopLikeOp<"parallel", []> {
     Example:
 
     ```mlir
-    %in_space = gml_st.space [8, 16] : !gml_st.tile<8x16>
+    %space = gml_st.space [8, 16] : !gml_st.tile<8x16>
 
     %result = gml_st.parallel (%i) = (%c0, %c0) to (%c8, %c16) step (%c4, %c4)
-        outs(%out_ = %output: tensor<8x16xf32>) {
-      %tile = gml_st.tile %in_space [%i, %j] [4, 4] [1, 1]
+        outs(%out_ = %output at %space: tensor<8x16xf32> at !gml_st.tile<8x16>) {
+      %tile = gml_st.tile %space [%i, %j] [4, 4] [1, 1]
         : ! gml_st.tile<8x16> to !gml_st.tile<4x4>
       %lhs_sub = gml_st.materialize %lhs_ at %tile
         : tensor<8x16xf32> at !gml_st.tile<4x4>
@@ -159,10 +160,10 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
     Example:
 
     ```mlir
-    %in_space = gml_st.space [8, 16] : !gml_st.tile<8x16>
+    %space = gml_st.space [8, 16] : !gml_st.tile<8x16>
 
     %result = gml_st.for (%i) = (%c0, %c0) to (%c8, %c16) step (%c4, %c4)
-        outs(%out_ = %output: tensor<8x16xf32>) {
+        outs(%out_ = %output at %space: tensor<8x16xf32> at !gml_st.tile<8x16>)
       %tile = gml_st.tile %in_space [%i, %j] [4, 4] [1, 1]
         : ! gml_st.tile<8x16> to !gml_st.tile<4x4>
       %lhs_sub = gml_st.materialize %lhs_ at %tile

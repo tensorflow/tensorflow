@@ -462,6 +462,7 @@ template <typename LoopTy>
 void buildLoopLikeOp(
     OpBuilder &builder, OperationState &result, ValueRange lowerBounds,
     ValueRange upperBounds, ValueRange steps, ValueRange outputs,
+    ValueRange subsets,
     function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
         bodyBuilderFn) {
   result.addOperands(lowerBounds);
@@ -473,7 +474,8 @@ void buildLoopLikeOp(
       builder.getI32VectorAttr({static_cast<int32_t>(lowerBounds.size()),
                                 static_cast<int32_t>(upperBounds.size()),
                                 static_cast<int32_t>(steps.size()),
-                                static_cast<int32_t>(outputs.size())}));
+                                static_cast<int32_t>(outputs.size()),
+                                static_cast<int32_t>(subsets.size())}));
 
   // Add output types for `RankedTensorType` output arguments.
   for (Value output : outputs) {
@@ -508,11 +510,14 @@ void printLoopLikeOp(LoopTy op, OpAsmPrinter &p) {
 
   if (!op.outputs().empty()) {
     p << " outs (";
-    llvm::interleaveComma(llvm::zip(op.getRegionOutputArgs(), op.outputs()), p,
-                          [&](auto it) {
-                            p << std::get<0>(it) << " = " << std::get<1>(it)
-                              << ": " << std::get<1>(it).getType();
-                          });
+    llvm::interleaveComma(
+        llvm::zip(op.getRegionOutputArgs(), op.outputs(), op.subsets()), p,
+        [&](auto it) {
+          Value output_region_arg, output, subset;
+          std::tie(output_region_arg, output, subset) = it;
+          p << output_region_arg << " = " << output << " at " << subset << ": "
+            << output.getType() << "at" << subset.getType();
+        });
     p << ")";
   }
 
@@ -522,6 +527,30 @@ void printLoopLikeOp(LoopTy op, OpAsmPrinter &p) {
       op.getOperation()->getAttrs(),
       /*elidedAttrs=*/{LoopTy::getOperandSegmentSizeAttr()});
 }
+
+namespace {
+ParseResult parseOutputArgs(
+    OpAsmParser &parser,
+    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &output_region_args,
+    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &outputs,
+    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &subsets,
+    SmallVectorImpl<Type> &output_types, SmallVectorImpl<Type> &subset_types) {
+  auto parse_elt = [&]() -> ParseResult {
+    if (parser.parseOperand(output_region_args.emplace_back(),
+                            /*allowResultNumber=*/false) ||
+        parser.parseEqual() || parser.parseOperand(outputs.emplace_back()) ||
+        parser.parseKeyword("at") ||
+        parser.parseOperand(subsets.emplace_back()) || parser.parseColon() ||
+        parser.parseType(output_types.emplace_back()) ||
+        parser.parseKeyword("at") ||
+        parser.parseType(subset_types.emplace_back())) {
+      return failure();
+    }
+    return success();
+  };
+  return parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parse_elt);
+}
+}  // namespace
 
 template <typename LoopTy>
 ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
@@ -556,17 +585,18 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
     return failure();
 
   // Parse output tensors.
-  SmallVector<OpAsmParser::UnresolvedOperand, 4> outputs, output_region_args;
-  SmallVector<Type, 4> output_types;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> outputs, output_region_args,
+      subsets;
+  SmallVector<Type, 4> output_types, subset_types;
   if (succeeded(parser.parseOptionalKeyword("outs"))) {
-    SMLoc outputsOperandsLoc = parser.getCurrentLocation();
+    SMLoc loc = parser.getCurrentLocation();
 
-    if (parseAssignmentListWithTypes(parser, output_region_args, outputs,
-                                     output_types))
+    if (parseOutputArgs(parser, output_region_args, outputs, subsets,
+                        output_types, subset_types))
       return failure();
 
-    if (parser.resolveOperands(outputs, output_types, outputsOperandsLoc,
-                               result.operands))
+    if (parser.resolveOperands(outputs, output_types, loc, result.operands) ||
+        parser.resolveOperands(subsets, subset_types, loc, result.operands))
       return failure();
     for (Type outputType : output_types)
       if (outputType.isa<RankedTensorType>()) result.addTypes(outputType);
@@ -577,7 +607,8 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
       builder.getI32VectorAttr({static_cast<int32_t>(lower.size()),
                                 static_cast<int32_t>(upper.size()),
                                 static_cast<int32_t>(steps.size()),
-                                static_cast<int32_t>(outputs.size())}));
+                                static_cast<int32_t>(outputs.size()),
+                                static_cast<int32_t>(subsets.size())}));
 
   // Parse the body.
   Region *body = result.addRegion();
@@ -630,10 +661,11 @@ LogicalResult ParallelOp::verify() {
 void ParallelOp::build(
     OpBuilder &builder, OperationState &result, ValueRange lowerBounds,
     ValueRange upperBounds, ValueRange steps, ValueRange outputs,
+    ValueRange subsets,
     function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
         bodyBuilderFn) {
   buildLoopLikeOp<ParallelOp>(builder, result, lowerBounds, upperBounds, steps,
-                              outputs, bodyBuilderFn);
+                              outputs, subsets, bodyBuilderFn);
 }
 
 void ParallelOp::print(OpAsmPrinter &p) {
@@ -670,10 +702,11 @@ LogicalResult ForOp::verify() {
 void ForOp::build(
     OpBuilder &builder, OperationState &result, ValueRange lowerBounds,
     ValueRange upperBounds, ValueRange steps, ValueRange outputs,
+    ValueRange subsets,
     function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
         bodyBuilderFn) {
   buildLoopLikeOp<ForOp>(builder, result, lowerBounds, upperBounds, steps,
-                         outputs, bodyBuilderFn);
+                         outputs, subsets, bodyBuilderFn);
 }
 
 void ForOp::print(OpAsmPrinter &p) { printLoopLikeOp<ForOp>(*this, p); }
