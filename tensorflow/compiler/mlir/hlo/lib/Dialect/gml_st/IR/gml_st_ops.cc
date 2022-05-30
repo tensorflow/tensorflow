@@ -1212,6 +1212,24 @@ LogicalResult YieldOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// SpaceOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult SpaceOp::inferReturnTypes(
+    MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  SpaceOp::Adaptor adaptor(operands, attributes, regions);
+  SmallVector<int64_t> shape = llvm::to_vector(
+      llvm::map_range(adaptor.static_shapes(), [&](const Attribute &val) {
+        return val.cast<IntegerAttr>().getValue().getSExtValue();
+      }));
+  auto result_ty = TileType::get(ctx, shape);
+  inferredReturnTypes.push_back(result_ty);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // CollapseTileOp
 //===----------------------------------------------------------------------===//
 

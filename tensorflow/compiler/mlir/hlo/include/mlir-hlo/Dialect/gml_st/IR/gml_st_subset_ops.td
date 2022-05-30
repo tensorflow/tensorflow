@@ -45,12 +45,13 @@ def IsSubsetTypePred : CPred<"$_self.isa<::mlir::gml_st::PointType, ::mlir::gml_
 
 def AnySubset : Type<IsSubsetTypePred, "subset type">;
 
-def GMLST_SpaceOp : GMLST_Op<"space", []> {
+def GMLST_SpaceOp : GMLST_Op<"space",
+    [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let arguments = (ins Variadic<Index>:$shapes,
                        I64ArrayAttr:$static_shapes);
   let results = (outs AnySubset:$result);
   let assemblyFormat = [{
-    custom<OperandsOrIntegersOffsetsOrStridesList>($shapes, $static_shapes)
+    custom<OperandsOrIntegersSizesList>($shapes, $static_shapes)
     attr-dict `:` type($result)
   }];
   let hasVerifier = 0;

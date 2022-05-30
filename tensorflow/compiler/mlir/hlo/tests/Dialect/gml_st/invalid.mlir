@@ -102,3 +102,18 @@ func.func @loop_incorrent_block_arg_type(%A: memref<192xf32>) {
   func.return
 }
 
+// -----
+
+func.func @space_op_different_rank() {
+  // expected-error@+1 {{'gml_st.space' op inferred type(s) '!gml_st.tile<64>' are incompatible with return type(s) of operation '!gml_st.tile<32x32>'}}
+  %0 = gml_st.space [64] : !gml_st.tile<32x32>
+  func.return
+}
+
+// -----
+
+func.func @space_op_dynamic_static_mismatch(%size : index) {
+  // expected-error@+1 {{'gml_st.space' op inferred type(s) '!gml_st.tile<64x?>' are incompatible with return type(s) of operation '!gml_st.tile<64x32>'}}
+  %0 = gml_st.space [64, %size] : !gml_st.tile<64x32>
+  func.return
+}
