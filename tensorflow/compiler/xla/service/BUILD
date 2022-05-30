@@ -6332,3 +6332,16 @@ tf_cc_test(
         "//tensorflow/core:test",
     ],
 )
+
+cc_library(
+    name = "rendezvous",
+    srcs = ["rendezvous.cc"],
+    hdrs = ["rendezvous.h"],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+    ],
+)
