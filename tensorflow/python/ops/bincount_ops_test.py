@@ -166,13 +166,24 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
     {
-     "testcase_name": "_baseline",
-     "x": np.array([1, 1, 2, 3, 2, 4, 4, 5], dtype=np.int32),
-     "expected_values": [0, 2, 2, 1, 2, 1],
+        "testcase_name": "_baseline",
+        "x": np.array([1, 1, 2, 3, 2, 4, 4, 5], dtype=np.int32),
+        "expected_values": [0, 2, 2, 1, 2, 1]
     }, {
-     "testcase_name": "_no_maxlength",
-     "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
-     "expected_values": [[0, 1, 1, 1, 0, 0],[0, 0, 0, 0, 2, 1]],
+        "testcase_name": "_no_maxlength",
+        "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
+        "expected_values": [[0, 1, 1, 1, 0, 0],[0, 0, 0, 0, 2, 1]]
+    }, {
+        "testcase_name": "_maxlength",
+        "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
+        "maxlength": 7,
+        "expected_values": [[0, 1, 1, 1, 0, 0, 0],[1, 0, 0, 0, 2, 0, 0]]
+    }, {
+          "testcase_name": "_minlength",
+          "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
+          "minlength": 9,
+          "expected_values": [[0, 1, 1, 1, 0, 0, 0, 1, 0], 
+                              [1, 0, 0, 0, 2, 0, 0, 1, 0]]
     })
   def test_compiled_dense(self,
                        x,
