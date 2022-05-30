@@ -156,6 +156,32 @@ ENTRY AddDotsFunc {
   }
 }
 
+TEST_F(GemmRewriteTest, MultipleContractingDims) {
+  const char* hlo_text = R"(
+HloModule MultipleContractingCheckGemm
+
+ENTRY AddDotsFunc {
+  x = f32[3,4,2] parameter(0)
+  y = f32[3,4,5] parameter(1)
+  ROOT dot_a = f32[2,5] dot(x, y), lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK-NOT:     copy
+;
+; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[3,4,2], y: f32[3,4,5]) -> f32[2,5] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[3,4,2]{2,1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = f32[3,4,5]{2,1,0} parameter(1)
+; CHECK-DAG:     [[FUSION:%[^ ]+]] = f32[2,12]{0,1} fusion([[P0]])
+; CHECK-DAG:     [[BITCAST:%[^ ]+]] = f32[12,5]{1,0} bitcast([[P1]])
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,5]{1,0} custom-call([[FUSION]], [[BITCAST]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+      )");
+}
+
 TEST_F(GemmRewriteTest, ArgTransposeFoldCheck) {
   const char* hlo_text = R"(
 HloModule ArgTransposeFoldGemm

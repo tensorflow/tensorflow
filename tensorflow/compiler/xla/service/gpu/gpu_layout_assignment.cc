@@ -298,14 +298,14 @@ Status GpuLayoutAssignment::AddBackendConstraints(
             instruction, 0, lhs_batch_dims, lhs_row_dims, lhs_col_dims));
         TF_RETURN_IF_ERROR(SetOperandBatchRowsColsLayout(
             instruction, 1, rhs_batch_dims, rhs_col_dims, rhs_row_dims));
-      } else {
+        TF_RETURN_IF_ERROR(SetDotLayout(instruction, constraints));
+      } else if (!lhs_batch_dims.empty()) {
         TF_RETURN_IF_ERROR(SetDotOperandLayout(instruction, 0, lhs_batch_dims,
                                                lhs_row_dims, lhs_col_dims));
         TF_RETURN_IF_ERROR(SetDotOperandLayout(instruction, 1, rhs_batch_dims,
                                                rhs_row_dims, rhs_col_dims));
+        TF_RETURN_IF_ERROR(SetDotLayout(instruction, constraints));
       }
-
-      TF_RETURN_IF_ERROR(SetDotLayout(instruction, constraints));
     } else if (instruction->opcode() == HloOpcode::kTranspose) {
       const HloInstruction* operand = instruction->operand(0);
       if ((operand->opcode() != HloOpcode::kDot) ||
