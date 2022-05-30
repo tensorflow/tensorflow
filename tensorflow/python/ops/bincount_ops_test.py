@@ -166,7 +166,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
     {
-     "testcase_name": "_baseline_test",
+     "testcase_name": "_baseline",
      "x": np.array([1, 1, 2, 3, 2, 4, 4, 5], dtype=np.int32),
      "expected_values": [0, 2, 2, 1, 2, 1],
     }, {
