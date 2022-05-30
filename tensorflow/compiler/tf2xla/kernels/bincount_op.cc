@@ -35,16 +35,12 @@ class BincountOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
   // Dumb implementation for the simplest test case
     xla::XlaOp input = ctx->Input(0);
-    auto max = xla::ReduceAll(
-        input, xla::Zero(ctx->builder(), xla::S32),
-        xla::CreateScalarMaxComputation(xla::S32, ctx->builder()));
-    // TODO: it need to be max
-    int64_t output_size = 6;
+    int64_t output_size;
+    ctx->ConstantInputAsIntScalar("size",&output_size);
     StatusOr<xla::Shape> input_shape_or = ctx->builder()->GetShape(input);
     OP_REQUIRES_OK(ctx, input_shape_or.status());
     auto input_shape = input_shape_or.ValueOrDie();
     int64_t size = input_shape.dimensions(0);
-    
     auto counter_shape = xla::ShapeUtil::MakeShape(xla::S32, {});
     const xla::Shape data_shape = xla::ShapeUtil::MakeShape(xla::S32, {size});
 
@@ -92,7 +88,7 @@ class BincountOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Bincount"), BincountOp);
+REGISTER_XLA_OP(Name("Bincount").CompileTimeConstantInput("size"), BincountOp);
 
 }  // namespace
 }  // namespace tensorflow
