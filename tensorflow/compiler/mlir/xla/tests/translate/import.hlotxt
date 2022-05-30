@@ -977,7 +977,7 @@ add {
   // CHECK-SAME:   window_dilations = dense<[1, 2, 2, 1]> : tensor<4xi64>
   // CHECK-SAME:   window_dimensions = dense<[1, 2, 2, 1]> : tensor<4xi64>
   // CHECK-SAME:   window_strides = dense<[1, 4, 4, 1]> : tensor<4xi64>
-  // CHECK_SAME: }
+  // CHECK-SAME: }
   ROOT %reduce-window.1 = f32[2,5,8,7] reduce-window(f32[2,17,31,7] %Arg_0.1, f32[] %Arg_1.2), window={size=1x2x2x1 stride=1x4x4x1 pad=0_0x2_0x0_2x0_0 rhs_dilate=1x2x2x1}, to_apply=%reduce_helper.3
 }
 
@@ -1016,8 +1016,8 @@ add {
   // CHECK-SAME:   window_dilations = dense<1> : tensor<2xi64>
   // CHECK-SAME:   window_dimensions = dense<[1, 2]> : tensor<2xi64>
   // CHECK-SAME:   window_strides = dense<[1, 2]> : tensor<2xi64>
-  // CHECK_SAME: }
-  // CHECK_SAME: : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<f32>, tensor<f32>) -> (tensor<4x3xf32>, tensor<4x3xf32>)
+  // CHECK-SAME: }
+  // CHECK-SAME: : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<f32>, tensor<f32>) -> (tensor<4x3xf32>, tensor<4x3xf32>)
   %reduce-window.15 = (f32[4,3], f32[4,3]) reduce-window(f32[4,6] %Arg1, f32[4,6] %Arg0, f32[] %constant.4, f32[] %constant.5), window={size=1x2 stride=1x2}, to_apply=%reducer_window_helper
   // CHECK: return [[REDUCE_WINDOW]]#1 : tensor<4x3xf32>
   ROOT %get-tuple-element.16 = f32[4,3] get-tuple-element((f32[4,3], f32[4,3]) %reduce-window.15), index=1
