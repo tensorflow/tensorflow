@@ -348,7 +348,7 @@ HloModule ConvForward
 // CHECK-SAME: tensor_ops_enabled = false
 // CHECK-SAME: batch_group_count = 1 : i64
 // CHECK-SAME: feature_group_count = 1 : i64
-// CHECK_SAME: result_scale = 1.000000e+00 : f64
+// CHECK-SAME: result_scale = 1.000000e+00 : f64
 // CHECK: (memref<4x256x3x3xf32>, memref<256x256x2x2xf32>, memref<4x256x2x2xf32>, memref<65536xui8>)
 ENTRY main {
   %input = f32[4,256,3,3]{3,2,1,0} parameter(0)
@@ -574,7 +574,7 @@ HloModule TestAllGather
 
 // CHECK: func @main
 // CHECK: "lmhlo.all_gather"
-// CHECK_SAME: all_gather_dimension = 1 : i64
+// CHECK-SAME: all_gather_dimension = 1 : i64
 // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
 // CHECK-SAME: use_global_device_ids = false
 ENTRY main {
