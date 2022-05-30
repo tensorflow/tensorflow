@@ -141,20 +141,19 @@ void AppendToMessage(::tensorflow::Status* status, Args... args) {
 //   if (errors::IsInvalidArgument(status)) { ... }
 //   switch (status.code()) { case error::INVALID_ARGUMENT: ... }
 
-#define DECLARE_ERROR(FUNC, CONST)                                             \
-  template <typename... Args>                                                  \
-  ABSL_DEPRECATED("Use tensorflow::FUNC##Error() instead")::tensorflow::Status \
-  FUNC(Args... args) {                                                         \
-    return ::tensorflow::Status(                                               \
-        ::tensorflow::error::CONST,                                            \
-        ::tensorflow::strings::StrCat(                                         \
-            ::tensorflow::errors::internal::PrepareForStrCat(args)...));       \
-  }                                                                            \
-  template <typename... Args>                                                  \
-  ::tensorflow::Status FUNC##WithPayloads(                                     \
-      const ::tensorflow::StringPiece& message,                                \
-      const std::unordered_map<std::string, std::string>& payloads) {          \
-    return errors::Create(::tensorflow::error::CONST, message, payloads);      \
+#define DECLARE_ERROR(FUNC, CONST)                                        \
+  template <typename... Args>                                             \
+  ::tensorflow::Status FUNC(Args... args) {                               \
+    return ::tensorflow::Status(                                          \
+        ::tensorflow::error::CONST,                                       \
+        ::tensorflow::strings::StrCat(                                    \
+            ::tensorflow::errors::internal::PrepareForStrCat(args)...));  \
+  }                                                                       \
+  template <typename... Args>                                             \
+  ::tensorflow::Status FUNC##WithPayloads(                                \
+      const ::tensorflow::StringPiece& message,                           \
+      const std::unordered_map<std::string, std::string>& payloads) {     \
+    return errors::Create(::tensorflow::error::CONST, message, payloads); \
   }
 
 DECLARE_ERROR(Cancelled, CANCELLED)
@@ -176,37 +175,21 @@ DECLARE_ERROR(Unauthenticated, UNAUTHENTICATED)
 
 #undef DECLARE_ERROR
 
-ABSL_DEPRECATED("Use tensorflow::IsAborted() instead")
 bool IsAborted(const Status& status);
-ABSL_DEPRECATED("Use tensorflow::IsAlreadyExists() instead")
 bool IsAlreadyExists(const Status& status);
-ABSL_DEPRECATED("Use tensorflow::IsCancelled() instead")
 bool IsCancelled(const Status& status);
-ABSL_DEPRECATED("Use tensorflow::IsDataLoss() instead")
 bool IsDataLoss(const Status& status);
-ABSL_DEPRECATED("Use tensorflow::IsDeadlineExceeded() instead")
 bool IsDeadlineExceeded(const Status& status);
-ABSL_DEPRECATED("Use tensorflow::IsFailedPrecondition() instead")
 bool IsFailedPrecondition(const Status& status);
-ABSL_DEPRECATED("Use tensorflow::IsInternal() instead")
 bool IsInternal(const Status& status);
-ABSL_DEPRECATED("Use tensorflow::IsInvalidArgument() instead")
 bool IsInvalidArgument(const Status& status);
-ABSL_DEPRECATED("Use tensorflow::IsNotFound() instead")
 bool IsNotFound(const Status& status);
-ABSL_DEPRECATED("Use tensorflow::IsOutOfRange() instead")
 bool IsOutOfRange(const Status& status);
-ABSL_DEPRECATED("Use tensorflow::IsPermissionDenied() instead")
 bool IsPermissionDenied(const Status& status);
-ABSL_DEPRECATED("Use tensorflow::IsResourceExhausted() instead")
 bool IsResourceExhausted(const Status& status);
-ABSL_DEPRECATED("Use tensorflow::IsUnauthenticated() instead")
 bool IsUnauthenticated(const Status& status);
-ABSL_DEPRECATED("Use tensorflow::IsUnavailable() instead")
 bool IsUnavailable(const Status& status);
-ABSL_DEPRECATED("Use tensorflow::IsUnimplemented() instead")
 bool IsUnimplemented(const Status& status);
-ABSL_DEPRECATED("Use tensorflow::IsUnknown() instead")
 bool IsUnknown(const Status& status);
 
 // Produces a formatted string pattern from the name which can uniquely identify
