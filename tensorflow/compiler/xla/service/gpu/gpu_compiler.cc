@@ -97,6 +97,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_reduce_scatter_creator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_scatter_expander.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_fusion_stats.h"
 #include "tensorflow/compiler/xla/service/gpu/horizontal_input_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/horizontal_loop_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
@@ -623,6 +624,12 @@ Status GpuCompiler::OptimizeHloModule(
                                       /*only_fusion_computations=*/true);
     horizontal_fusion.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(horizontal_fusion.Run(hlo_module).status());
+  }
+
+  if (VLOG_IS_ON(2)) {
+    HloFusionStatsVisitor stats;
+    TF_RETURN_IF_ERROR(hlo_module->entry_computation()->Accept(&stats));
+    VLOG(2) << stats.ToString();
   }
 
   {

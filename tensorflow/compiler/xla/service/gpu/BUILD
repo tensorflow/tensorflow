@@ -1643,6 +1643,7 @@ cc_library(
         ":reduction_layout_normalizer",
         ":reduction_splitter",
         ":stream_assignment",
+        ":hlo_fusion_stats",
         ":stream_executor_util",
         ":target_constants",
         ":tree_reduction_rewriter",
@@ -2877,4 +2878,35 @@ tf_cuda_library(
         "@com_google_absl//absl/cleanup",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "hlo_fusion_stats",
+    srcs = ["hlo_fusion_stats.cc"],
+    hdrs = ["hlo_fusion_stats.h"],
+    deps = [
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_fusion_stats_test",
+    srcs = ["hlo_fusion_stats_test.cc"],
+    tags = ["no_pip"],
+    deps = [
+        ":hlo_fusion_stats",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
 )
