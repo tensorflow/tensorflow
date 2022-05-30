@@ -8,6 +8,7 @@ option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/full_type_go_proto";
 
+// LINT.IfChange
 // Experimental. Represents the complete type information of a TensorFlow value.
 enum FullTypeId {
   // The default represents an uninitialized values.
@@ -25,7 +26,7 @@ enum FullTypeId {
   //   TFT_TENSOR[TFT_VAR["T"]], TFT_TENSOR[TFT_VAR["T"]] are two tensors of
   //     identical element types.
   //   TFT_TENSOR[TFT_VAR["P"]], TFT_TENSOR[TFT_VAR["Q"]] are two tensors of
-  //     potentially different element types.
+  //     independent element types.
   //
   TFT_VAR = 1;
 
@@ -61,6 +62,28 @@ enum FullTypeId {
   //     is a structure with two fields, an int tensor "foo" and a float tensor
   //     "bar".
   TFT_NAMED = 4;
+
+  // Template definition. Expands the variables by repeating a template as
+  // arguments of container.
+  //
+  // Parametrization:
+  //   TFT_FOR_EACH[<container_type>, <template>, <expansions>]
+  //   * <container_type> is the type of the container that the template will be
+  //     expanded into
+  //   * <template> is any type definition that potentially contains type
+  //     variables
+  //   * <expansions> is a TFT_VAR and may include more types in the future
+  //
+  // Example:
+  //   TFT_FOR_EACH[
+  //         TFT_PRODUCT,
+  //         TFT_TENSOR[TFT_VAR["t"]],
+  //         TFT_VAR["t"]
+  //     ]
+  //     will substitute a T = TFT_INT32 to TFT_PRODUCT[TFT_TENSOR[TFT_INT32]]
+  //     and a T = (TFT_INT32, TFT_INT64) to
+  //     TFT_PRODUCT[TFT_TENSOR[TFT_INT32], TFT_TENSOR[TFT_INT64]].
+  TFT_FOR_EACH = 20;
 
   // Callable types describe functions and ops.
   //
@@ -151,38 +174,17 @@ enum FullTypeId {
   //   TFT_LITERAL[TFT_INT32]{1} is the compile-time constant 1.
   TFT_LITERAL = 1003;
 
-  // Datasets created by tf.data ops and APIs. Datasets have generator/iterable
-  // semantics, that is, one can construct an iterator from them. Like
-  // Array, they are considered to return elements that can be described
-  // by a single type. Unlike Array, they do not support random access or
-  // mutation, and can potentially produce an infinite number of elements.
-  // A datasets can produce logical structures (e.g. multiple elements). This
-  // is expressed using TFT_PRODUCT.
+  // Encoding types describe a value of a certain type, encoded as a different
+  // type.
   //
-  //
-  // Parametrization: TFT_ARRAY[<element type>].
-  //   * <element type> may be a concrete type or a type symbol. It represents
-  //     the data type of the elements produced by the dataset.
+  // Parametrization:
+  //   TFT_ENCODED[<encoded type>, <encoding type>]
+  //   * <encoded type> may be any type
+  //   * <encoding type> may be any type
   //
   // Examples:
-  //   TFT_DATSET[TFT_TENSOR[TFT_INT32]] is a Dataset producing single int32
-  //     Tensors of unknown shape.
-  //   TFT_DATSET[TFT_PRODUCT[TFT_TENSOR[TFT_INT32], TFT_TENSOR[TFT_FLOAT32]] is
-  //     a Dataset producing pairs of Tensors, one integer and one float.
-  // Note: The high ID number is to prepare for the eventuality that Datasets
-  // will be supported by user types in the future.
-  TFT_DATASET = 10102;
-
-  // A mutex lock tensor, produced by tf.raw_ops.MutexLock.
-  // Unlike strict execution models, where ownership of a lock is denoted by
-  // "running after the lock has been acquired", in non-strict mode, lock
-  // ownership is in the true sense: "the op argument representing the lock is
-  // available".
-  // Mutex locks are the dynamic counterpart of control dependencies.
-  // TODO(mdan): Properly document this thing.
-  //
-  // Parametrization: TFT_MUTEX_LOCK[].
-  TFT_MUTEX_LOCK = 10202;
+  //   TFT_ENCODING[TFT_INT32, TFT_STRING] is an integer encoded as string.
+  TFT_ENCODED = 1004;
 
   // Type attributes. These always appear in the parametrization of a type,
   // never alone. For example, there is no such thing as a "bool" TensorFlow
@@ -211,6 +213,65 @@ enum FullTypeId {
   TFT_COMPLEX128 = 213;
   // The string element type.
   TFT_STRING = 214;
+
+  // Other types that we don't know yet whether they will become part of the
+  // core type system or be consisdered third-party (and consequently moved to
+  // user-defined type mechanisms). Presently, they are effectively in the core
+  // type system, because key compilation passes like Placer account for their
+  // existence.
+
+  // Datasets created by tf.data ops and APIs. Datasets have generator/iterable
+  // semantics, that is, one can construct an iterator from them. Like
+  // Array, they are considered to return elements that can be described
+  // by a single type. Unlike Array, they do not support random access or
+  // mutation, and can potentially produce an infinite number of elements.
+  // A datasets can produce logical structures (e.g. multiple elements). This
+  // is expressed using TFT_PRODUCT.
+  //
+  //
+  // Parametrization: TFT_DATASET[<element type>].
+  //   * <element type> may be a concrete type or a type symbol. It represents
+  //     the data type of the elements produced by the dataset.
+  //
+  // Examples:
+  //   TFT_DATSET[TFT_TENSOR[TFT_INT32]] is a Dataset producing single int32
+  //     Tensors of unknown shape.
+  //   TFT_DATSET[TFT_PRODUCT[TFT_TENSOR[TFT_INT32], TFT_TENSOR[TFT_FLOAT32]] is
+  //     a Dataset producing pairs of Tensors, one integer and one float.
+  // Note: The high ID number is to prepare for the eventuality that Datasets
+  // will be supported by user types in the future.
+  TFT_DATASET = 10102;
+
+  // A ragged tensor created by tf.ragged ops and APIs.
+  //
+  // Parametrization: TFT_RAGGED[<element_type>].
+  TFT_RAGGED = 10103;
+
+  // Iterators created by tf.data ops and APIs. Very similar to Datasets, except
+  // they are mutable.
+  //
+  //
+  // Parametrization: TFT_ITERATOR[<element type>].
+  //   * <element type> may be a concrete type or a type symbol. It represents
+  //     the data type of the elements produced by the dataset.
+  TFT_ITERATOR = 10104;
+
+  // A mutex lock tensor, produced by tf.raw_ops.MutexLock.
+  // Unlike strict execution models, where ownership of a lock is denoted by
+  // "running after the lock has been acquired", in non-strict mode, lock
+  // ownership is in the true sense: "the op argument representing the lock is
+  // available".
+  // Mutex locks are the dynamic counterpart of control dependencies.
+  // TODO(mdan): Properly document this thing.
+  //
+  // Parametrization: TFT_MUTEX_LOCK[].
+  TFT_MUTEX_LOCK = 10202;
+
+  // The equivalent of a Tensor with DT_VARIANT dtype, kept here to simplify
+  // translation. This type should not normally appear after type inference.
+  // Note that LEGACY_VARIANT != ANY: TENSOR[INT32] is a subtype of ANY, but is
+  // not a subtype of LEGACY_VARIANT.
+  TFT_LEGACY_VARIANT = 10203;
 }
 
 // Highly experimental and very likely to change.
@@ -225,7 +286,7 @@ message FullTypeDef {
 
   repeated FullTypeDef args = 2;
 
-  // Literal values of this type object, if the the type admits one.
+  // Literal values of this type object, if the type admits one.
   // For example, a type variable admits a string attribute - its name.
   // Shape-related types may admit int attributes - their static shape values.
   // Fields for more data types to be added as needed.
@@ -235,3 +296,4 @@ message FullTypeDef {
     // TODO(mdan): list/tensor, map? Need to reconcile with TFT_RECORD, etc.
   }
 }
+// LINT.ThenChange(../ir/types/attributes.td)

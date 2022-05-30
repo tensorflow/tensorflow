@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
@@ -42,7 +43,6 @@ namespace {
 // implementation of the all-reduce for the backend, this may give a better
 // performance.
 StatusOr<bool> ReplaceReplicatedAllReduce(HloModule* module,
-                                          int64_t replica_count,
                                           int64_t partition_count) {
   TF_ASSIGN_OR_RETURN(
       auto replication_analysis,
@@ -65,7 +65,7 @@ StatusOr<bool> ReplaceReplicatedAllReduce(HloModule* module,
         }
         // We would need a cost model for the target, but in general we want to
         // rewrite only if the replica count in the original op was large.
-        if (replica_count < 8 * partition_count) {
+        if (module->config().replica_count() < 8 * partition_count) {
           continue;
         }
         if (replication_analysis->HloInstructionIsReplicatedAt(ar, {})) {
@@ -91,21 +91,21 @@ StatusOr<bool> ReplaceReplicatedAllReduce(HloModule* module,
 // has a ReplicaGroup config that can be combined with cross-replica all-reduce.
 // We currently restrict to those groups where all partitions in each replica
 // belong to the same group.
-bool HasCombinableReplicaGroup(HloInstruction* hlo, int64_t num_replicas,
-                               int64_t num_partitions) {
+bool HasCombinableReplicaGroup(HloInstruction* hlo, int64_t num_partitions) {
   auto all_reduce = Cast<HloAllReduceInstruction>(hlo);
   auto replica_groups = all_reduce->replica_groups();
+  const int64_t replica_count = hlo->GetModule()->config().replica_count();
   CHECK(all_reduce->IsCrossModuleAllReduce());
 
   if (all_reduce->use_global_device_ids()) {
-    if (replica_groups.size() != num_replicas) {
+    if (replica_groups.size() != replica_count) {
       return false;
     }
     for (const auto& group : replica_groups) {
       if (group.replica_ids_size() != num_partitions) {
         return false;
       }
-      std::unordered_set<int64_t> partition_ids;
+      absl::flat_hash_set<int64_t> partition_ids;
       int64_t replica_id = group.replica_ids(0) / num_partitions;
       for (int64_t i = 0; i < num_partitions; ++i) {
         if (group.replica_ids(i) / num_partitions != replica_id) {
@@ -120,7 +120,7 @@ bool HasCombinableReplicaGroup(HloInstruction* hlo, int64_t num_replicas,
     return true;
   }
 
-  return replica_groups.size() == num_replicas;
+  return replica_groups.size() == replica_count;
 }
 
 }  // namespace
@@ -165,8 +165,7 @@ absl::optional<ArCrsCombiner::ArCrsPair> ArCrsCombiner::MatchesArCrsPattern(
   // belongs to its own group, since the later cross-replica all-reduce combines
   // along the replica dimension.
   if (instruction->IsCrossModuleAllReduce() &&
-      HasCombinableReplicaGroup(instruction, num_replicas_,
-                                num_spatial_partitions_) &&
+      HasCombinableReplicaGroup(instruction, num_spatial_partitions_) &&
       computation_is_addition(instruction->called_computations()[0]) &&
       instruction->user_count() == 1) {
     auto next = instruction->users()[0];
@@ -288,7 +287,9 @@ absl::optional<std::vector<HloInstruction*>> ArCrsCombiner::GetAllTuples(
     }
     case HloOpcode::kConditional: {
       std::vector<HloInstruction*> result_tuples;
-      for (HloComputation* body : instruction->branch_computations()) {
+      const auto& branch_computations = instruction->branch_computations();
+      result_tuples.reserve(branch_computations.size());
+      for (HloComputation* body : branch_computations) {
         if (body->root_instruction()->opcode() != HloOpcode::kTuple) {
           return absl::nullopt;
         }
@@ -334,7 +335,7 @@ bool ArCrsCombiner::TupleElementsComputeSameValue(
 /* static */
 bool ArCrsCombiner::TestInstructionsComputeSameValue(HloInstruction* i1,
                                                      HloInstruction* i2) {
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/1,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
   auto module = i1->parent()->parent();
   CHECK_EQ(module, i2->parent()->parent());
@@ -612,10 +613,9 @@ StatusOr<bool> ArCrsCombiner::Run(HloModule* module) {
 
   TF_ASSIGN_OR_RETURN(auto changed, RewriteGraph());
 
-  if (num_replicas_ > 1 && spmd_partition_) {
-    TF_ASSIGN_OR_RETURN(auto replaced,
-                        ReplaceReplicatedAllReduce(module, num_replicas_,
-                                                   num_spatial_partitions_));
+  if (module->config().replica_count() > 1 && spmd_partition_) {
+    TF_ASSIGN_OR_RETURN(auto replaced, ReplaceReplicatedAllReduce(
+                                           module, num_spatial_partitions_));
     changed |= replaced;
   }
 

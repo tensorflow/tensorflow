@@ -15,6 +15,7 @@ load(
     "tf_cuda_library",
     "tf_cuda_only_cc_test",
     "tf_kernel_library",
+    "tf_mkl_kernel_library",
 )
 
 # buildifier: disable=same-origin-load
@@ -168,6 +169,7 @@ filegroup(
         "mirror_pad_mode.h",
         "mkl_threadpool.h",
         "mkl_util.h",
+        "onednn_env_vars.h",
         "overflow.h",
         "padding.h",
         "permutation_input_iterator.h",
@@ -298,6 +300,7 @@ filegroup(
     srcs = [
         "mkl_threadpool.h",
         "mkl_util.h",
+        "onednn_env_vars.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -373,8 +376,14 @@ filegroup(
 # is written.
 tf_version_info_genrule(
     name = "version_info_gen",
-    out = "version_info.cc",
+    out = "version_info.h",
     compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "version_info",
+    hdrs = ["version_info.h"],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -389,6 +398,19 @@ cc_library(
     copts = tf_copts(),
     visibility = [
         "//tensorflow:internal",
+    ],
+)
+
+tf_mkl_kernel_library(
+    name = "onednn_env_vars",
+    srcs = ["onednn_env_vars.cc"],
+    hdrs = ["onednn_env_vars.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/kernels:ops_util",
     ],
 )
 
@@ -511,6 +533,9 @@ tf_cuda_library(
 cc_library(
     name = "overflow",
     hdrs = ["overflow.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
     deps = [
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
@@ -530,15 +555,6 @@ cc_library(
 cc_library(
     name = "ptr_util",
     hdrs = ["ptr_util.h"],
-)
-
-cc_library(
-    name = "version_info",
-    srcs = ["version_info.cc"],
-    hdrs = ["//tensorflow/core/public:version.h"],
-    compatible_with = get_compatible_with_portable(),
-    copts = tf_copts(),
-    alwayslink = if_static(0, 1),
 )
 
 cc_library(
@@ -574,6 +590,7 @@ cc_library(
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/gtl:inlined_vector",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )

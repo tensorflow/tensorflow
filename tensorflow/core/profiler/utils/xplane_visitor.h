@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 
 namespace tensorflow {
@@ -53,9 +52,13 @@ class XStatVisitor {
 
   XStat::ValueCase ValueCase() const { return stat_->value_case(); }
 
+  bool BoolValue() const { return static_cast<bool>(IntValue()); }
+
   int64_t IntValue() const { return stat_->int64_value(); }
 
   uint64 UintValue() const { return stat_->uint64_value(); }
+
+  absl::string_view BytesValue() const { return stat_->bytes_value(); }
 
   uint64 IntOrUintValue() const {
     return ValueCase() == XStat::kUint64Value ? UintValue()
@@ -147,6 +150,8 @@ class XEventVisitor : public XStatsOwner<XEvent> {
   XEventVisitor(const XPlaneVisitor* plane, const XLine* line,
                 const XEvent* event);
 
+  const XPlaneVisitor& Plane() const { return *plane_; }
+
   int64_t Id() const { return event_->metadata_id(); }
 
   absl::string_view Name() const { return metadata_->name(); }
@@ -157,25 +162,28 @@ class XEventVisitor : public XStatsOwner<XEvent> {
 
   absl::string_view DisplayName() const { return metadata_->display_name(); }
 
-  double OffsetNs() const { return PicosToNanos(event_->offset_ps()); }
+  double OffsetNs() const { return PicoToNano(event_->offset_ps()); }
 
   int64_t OffsetPs() const { return event_->offset_ps(); }
 
   int64_t LineTimestampNs() const { return line_->timestamp_ns(); }
 
-  double TimestampNs() const { return line_->timestamp_ns() + OffsetNs(); }
+  int64_t TimestampNs() const { return line_->timestamp_ns() + OffsetNs(); }
 
   int64_t TimestampPs() const {
-    return NanosToPicos(line_->timestamp_ns()) + event_->offset_ps();
+    return NanoToPico(line_->timestamp_ns()) + event_->offset_ps();
   }
 
-  double DurationNs() const { return PicosToNanos(event_->duration_ps()); }
+  double DurationNs() const { return PicoToNano(event_->duration_ps()); }
 
   int64_t DurationPs() const { return event_->duration_ps(); }
 
   int64_t EndOffsetPs() const {
     return event_->offset_ps() + event_->duration_ps();
   }
+
+  int64_t EndTimestampNs() const { return TimestampNs() + DurationNs(); }
+
   int64_t EndTimestampPs() const { return TimestampPs() + DurationPs(); }
 
   int64_t NumOccurrences() const { return event_->num_occurrences(); }
@@ -219,7 +227,7 @@ class XLineVisitor {
                                           : line_->name();
   }
 
-  double TimestampNs() const { return line_->timestamp_ns(); }
+  int64_t TimestampNs() const { return line_->timestamp_ns(); }
 
   int64_t DurationPs() const { return line_->duration_ps(); }
 
@@ -258,6 +266,25 @@ class XPlaneVisitor : public XStatsOwner<XPlane> {
   void ForEachLine(ForEachLineFunc&& for_each_line) const {
     for (const XLine& line : plane_->lines()) {
       for_each_line(XLineVisitor(this, &line));
+    }
+  }
+  template <typename ThreadBundle, typename ForEachLineFunc>
+  void ForEachLineInParallel(ForEachLineFunc&& for_each_line) const {
+    ThreadBundle bundle;
+    for (const XLine& line : plane_->lines()) {
+      bundle.Add([this, line = &line, &for_each_line] {
+        for_each_line(XLineVisitor(this, line));
+      });
+    }
+    bundle.JoinAll();
+  }
+
+  template <typename ForEachEventMetadataFunc>
+  void ForEachEventMetadata(
+      ForEachEventMetadataFunc&& for_each_event_metadata) {
+    for (const auto& event : plane_->event_metadata()) {
+      for_each_event_metadata(event.first,
+                              XEventMetadataVisitor(this, &event.second));
     }
   }
 

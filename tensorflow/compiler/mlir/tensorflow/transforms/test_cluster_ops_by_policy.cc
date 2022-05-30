@@ -56,7 +56,7 @@ class TestOpsClusteringPolicy : public ClusteringPolicy {
 };
 
 void TestClusteringPolicyPass::runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
   ValuesConstraintSet constraints;
 
   ClusteringPolicySet policies;
@@ -67,7 +67,9 @@ void TestClusteringPolicyPass::runOnOperation() {
     return signalPassFailure();
 
   // Propagate constraints though the function body.
-  auto result = PropagateValuesConstraints(func.body(), policies, constraints);
+  auto result =
+      PropagateValuesConstraints(func.getBody(), policies, constraints,
+                                 /*resolve=*/false, /*emit_remarks=*/true);
   (void)result;
 
   // Emit remarks for all operations that use constrained values.
@@ -76,7 +78,7 @@ void TestClusteringPolicyPass::runOnOperation() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTestClusteringPolicyPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTestClusteringPolicyPass() {
   return std::make_unique<TestClusteringPolicyPass>();
 }
 

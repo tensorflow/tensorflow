@@ -27,10 +27,10 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
@@ -131,7 +131,7 @@ LogicalResult GetLstmProperty(
 }
 
 template <typename SourceOp>
-struct PrepareLstmOutputScale : public OpRewritePattern<SourceOp> {
+class PrepareLstmOutputScale : public OpRewritePattern<SourceOp> {
  public:
   explicit PrepareLstmOutputScale(MLIRContext* context)
       : OpRewritePattern<SourceOp>(context) {}
@@ -220,16 +220,16 @@ struct PrepareLstmOutputScale : public OpRewritePattern<SourceOp> {
 };
 
 template <typename SourceOp>
-struct ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
+class ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
  public:
   explicit ConvertOpStatsToQDQs(MLIRContext* context,
-                                const QuantizationSpecs& quant_specs,
+                                const quant::QuantizationSpecs& quant_specs,
                                 PatternBenefit benefit = 1)
       : OpRewritePattern<SourceOp>(context, benefit),
-        quant_specs(quant_specs) {}
+        quant_specs_(quant_specs) {}
 
  protected:
-  QuantizationSpecs quant_specs;
+  quant::QuantizationSpecs quant_specs_;
 
   LogicalResult processInputs(
       SourceOp op, const operator_property::OpVariant& op_variant,
@@ -244,7 +244,8 @@ struct ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
       if (input.getDefiningOp() == nullptr) continue;
 
       // TODO(b/172517537): make this work with non-PTQ case.
-      if (llvm::isa<ConstantOp, TFL::ConstOp>(input.getDefiningOp())) {
+      if (llvm::isa<func::ConstantOp, arith::ConstantOp, TFL::ConstOp>(
+              input.getDefiningOp())) {
         // Tensors with derived scale are biases, and handled in propagation.
         if (tensor_property.use_derived_scale) continue;
         // For weights, use quantization scale inferred from the values.
@@ -260,15 +261,13 @@ struct ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
             return failure();
           }
         } else if (!llvm::isa<DQ>(input.getDefiningOp()) &&
-                   !llvm::isa<SameScalesOpInterface>(input.getDefiningOp())) {
+                   !llvm::isa<SameScalesOpInterface, FixedOutputRangeInterface>(
+                       input.getDefiningOp())) {
           // Continue if StatisticsOp is already converted to Q-DQ pair, or
-          // stats op is not immediately available to the input because it's
-          // connected to ops with same scale requirements.
+          // stats op is not immediately available to the input because either
+          // it's connected to ops with same scale requirements or it has
+          // fixed output range.
           // TODO(b/172517537): make this work with non-PTQ case.
-          op.emitError() << "Input " << index
-                         << " should be from DequantizeCast, Statistics, "
-                         << ", or ops with same scale requirement.";
-          input.getDefiningOp()->emitError();
           return failure();
         }
       }
@@ -312,7 +311,7 @@ struct ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
           quant::GetUniformQuantizedTypeForWeight(
               attr, /*symmetric=*/true,
               /*num_bits=*/tensor_property.number_of_bits, /*is_signed=*/true,
-              /*narrow_range=*/true, quant_specs.legacy_float_scale)
+              /*narrow_range=*/true, quant_specs_.legacy_float_scale)
               .template dyn_cast<quant::UniformQuantizedType>();
     }
     if (!quant_type) {
@@ -348,8 +347,8 @@ struct ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
       return failure();
     }
     quant::QuantizedType quant_type;
-    double min = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({0}));
-    double max = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({1}));
+    double min = FloatAttr::getValueAsDouble(stats.getValues<APFloat>()[0]);
+    double max = FloatAttr::getValueAsDouble(stats.getValues<APFloat>()[1]);
     // Make sure the range includes zero.
     min = std::min(min, 0.0);
     max = std::max(max, 0.0);
@@ -386,7 +385,7 @@ struct ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
             /*narrowRange=*/false, expressed,
             /*isSigned=*/true);
       }
-      if (quant_specs.legacy_float_scale) {
+      if (quant_specs_.legacy_float_scale) {
         quant_type = quant::DownCastScale(quant_type, min, max, op.getLoc());
       }
     }
@@ -400,10 +399,10 @@ struct ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
 
 // Quantize LSTM according to its quantization recipe.
 template <typename SourceOp>
-struct ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
+class ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
  public:
   ConvertLstmStatsToQDQs(MLIRContext* context,
-                         const QuantizationSpecs& quant_specs)
+                         const quant::QuantizationSpecs& quant_specs)
 
       : ConvertOpStatsToQDQs<SourceOp>(context, quant_specs) {}
   LogicalResult matchAndRewrite(SourceOp op,
@@ -466,8 +465,8 @@ struct ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
             op.getLoc(), tensor_property.number_of_bits,
             calibrated_type.getMin(), calibrated_type.getMax(),
             /*narrowRange=*/false, calibrated_type.getExpressedType(),
-            /*isSigned=*/this->quant_specs.IsSignedInferenceType());
-        if (this->quant_specs.legacy_float_scale) {
+            /*isSigned=*/this->quant_specs_.IsSignedInferenceType());
+        if (this->quant_specs_.legacy_float_scale) {
           qtype = quant::DownCastScale(qtype, calibrated_type.getMin(),
                                        calibrated_type.getMax(), op.getLoc())
                       .template cast<UniformQuantizedType>();
@@ -552,10 +551,10 @@ std::unique_ptr<quant::OpQuantSpec> GetLstmOpQuantSpec(LstmOp op) {
   return spec;
 }
 
-struct ConvertSvdfStatsToQDQs : public ConvertOpStatsToQDQs<TFL::SVDFOp> {
+class ConvertSvdfStatsToQDQs : public ConvertOpStatsToQDQs<TFL::SVDFOp> {
  public:
-  explicit ConvertSvdfStatsToQDQs(MLIRContext* context,
-                                  const QuantizationSpecs& quant_specs_param)
+  explicit ConvertSvdfStatsToQDQs(
+      MLIRContext* context, const quant::QuantizationSpecs& quant_specs_param)
       : ConvertOpStatsToQDQs<TFL::SVDFOp>(context, quant_specs_param) {}
   LogicalResult matchAndRewrite(TFL::SVDFOp op,
                                 PatternRewriter& rewriter) const override {

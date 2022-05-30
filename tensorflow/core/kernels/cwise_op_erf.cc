@@ -17,7 +17,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER3(UnaryOp, CPU, "Erf", functor::erf, float, Eigen::half, double);
+REGISTER4(UnaryOp, CPU, "Erf", functor::erf, float, Eigen::half, double,
+          bfloat16);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)

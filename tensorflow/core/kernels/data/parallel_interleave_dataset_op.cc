@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <algorithm>
 #include <atomic>
 #include <deque>
 #include <memory>
@@ -219,7 +220,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         ParallelInterleaveDatasetOp::kDatasetType, params);
   }
 
-  int64_t Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality) {
       return n;
@@ -343,7 +344,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       thread_pool_ = ctx->CreateThreadPool(
           "data_parallel_interleave_worker_pool", num_threads);
       if (num_parallel_calls_->value == model::kAutotune) {
-        num_parallel_calls_->value = dataset()->cycle_length_;
+        num_parallel_calls_->value = std::min(
+            GetAutotuneDefaultParallelism(ctx), dataset()->cycle_length_);
       }
       ctx_ = std::make_unique<IteratorContext>(*ctx);
       cancellation_manager_ = absl::make_unique<CancellationManager>();
@@ -413,7 +415,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return model::MakeAsyncInterleaveManyNode(
           std::move(args),
           {model::MakeParameter(kParallelism, num_parallel_calls_, /*min=*/min,
-                                /*max=*/dataset()->cycle_length_)});
+                                /*max=*/dataset()->cycle_length_),
+           model::MakeNonTunableParameter(kCycleLength,
+                                          dataset()->cycle_length_),
+           model::MakeNonTunableParameter(kDeterministic,
+                                          deterministic_ ? 1.0 : 0.0)});
     }
 
     // TODO(aaudibert): Refactor the implementations to avoid the need for
@@ -991,8 +997,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                {"element_id", result->id}});
         });
         bool end_of_input = false;
-        result->status = iterator->GetNext(ctx_.get(), &result->return_values,
-                                           &end_of_input);
+        result->status =
+            iterator->GetNext(MakeNestedIteratorContext(ctx_.get()),
+                              &result->return_values, &end_of_input);
         if (end_of_input) {
           mutex_lock l(*mu_);
           element->iterator.reset();

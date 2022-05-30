@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_pod_state.h"
 
+#include "absl/cleanup/cleanup.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/tpu/tpu_api.h"
@@ -40,11 +41,11 @@ Status DeleteIfExists(ResourceMgr* resource_manager,
       resource_manager->default_container(), resource_name);
   if (status.ok()) {
     VLOG(1) << "Removed existing resource " << resource_name;
-    return Status::OK();
+    return OkStatus();
   }
   if (status.code() == error::NOT_FOUND) {
     VLOG(1) << "No resource " << resource_name << " to remove";
-    return Status::OK();
+    return OkStatus();
   }
   VLOG(1) << "Error removing resource " << resource_name << " : " << status;
   return status;
@@ -72,7 +73,7 @@ ConstructCacheService(ResourceMgr* rmgr, int serving_port,
 Status GetServerAddressAndPort(std::string* server_address, int* serving_port) {
   TF_Status* status = TF_NewStatus();
   char* server_address_output = nullptr;
-  auto cleanup = xla::MakeCleanup([&status, &server_address_output]() {
+  auto cleanup = absl::MakeCleanup([&status, &server_address_output]() {
     TF_DeleteStatus(status);
     tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(server_address_output);
   });
@@ -92,7 +93,7 @@ Status GetServerAddressAndPort(std::string* server_address, int* serving_port) {
   *server_address =
       std::string(server_address_output, server_address_output_size);
   CHECK_NE(*serving_port, -1);
-  return Status::OK();
+  return OkStatus();
 }
 
 TpuPodState::TpuPodState(
@@ -128,7 +129,7 @@ Status GetTPUPodState(const ResourceMgr* rmgr, TpuPodState** pod_state) {
     return errors::FailedPrecondition(
         "The TPU system has not been initialized.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool HasTPUPodState(const ResourceMgr* rmgr) {
@@ -148,14 +149,14 @@ Status ConstructTpuPodState(
     std::string* host_config_proto) {
   TF_Status* status = TF_NewStatus();
   auto status_cleanup =
-      xla::MakeCleanup([&status]() { TF_DeleteStatus(status); });
+      absl::MakeCleanup([&status]() { TF_DeleteStatus(status); });
 
   int serving_port;
   std::string server_address;
   TF_RETURN_IF_ERROR(GetServerAddressAndPort(&server_address, &serving_port));
 
   char* host_config_output = nullptr;
-  auto host_config_cleanup = xla::MakeCleanup([&host_config_output]() {
+  auto host_config_cleanup = absl::MakeCleanup([&host_config_output]() {
     tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(host_config_output);
   });
   size_t host_config_output_size;

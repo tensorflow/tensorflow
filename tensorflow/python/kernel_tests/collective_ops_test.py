@@ -17,7 +17,6 @@
 import os
 import threading
 import time
-
 from absl.testing import parameterized
 
 from tensorflow.python.compat import v2_compat
@@ -29,7 +28,6 @@ from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -39,9 +37,24 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
 
 
+def create_ordering_token():
+  return resource_variable_ops.ResourceVariable(1.0).handle
+
+
 class CollectiveOpsV1(object):
-  all_reduce = _collective_ops.all_reduce
-  all_gather = _collective_ops.all_gather
+
+  @staticmethod
+  def all_reduce(t, group_size, group_key, instance_key, *args, **kwargs):
+    kwargs.pop('ordering_token', None)
+    return _collective_ops.all_reduce(t, group_size, group_key, instance_key,
+                                      *args, **kwargs)
+
+  @staticmethod
+  def all_gather(t, group_size, group_key, instance_key, *args, **kwargs):
+    kwargs.pop('ordering_token', None)
+    return _collective_ops.all_gather(t, group_size, group_key, instance_key,
+                                      *args, **kwargs)
+
   broadcast_send = _collective_ops.broadcast_send
   broadcast_recv = _collective_ops.broadcast_recv
 
@@ -80,8 +93,9 @@ class CollectiveOpsV2(object):
     group_key = array_ops.identity(group_key)
     instance_key = array_ops.identity(instance_key)
     shape = array_ops.identity(shape)
-    return _collective_ops.broadcast_recv_v2(
-        shape, dtype, group_size, group_key, instance_key, *args, **kwargs)
+    return _collective_ops.broadcast_recv_v2(shape, dtype, group_size,
+                                             group_key, instance_key, *args,
+                                             **kwargs)
 
 
 device_combination = (
@@ -91,8 +105,8 @@ device_combination = (
 
 collective_op_combinations = combinations.combine(collective_op=[
     combinations.NamedObject('all_reduce', CollectiveOpsV1.all_reduce),
-    combinations.NamedObject('all_reduce_v2', CollectiveOpsV2.all_reduce),
     combinations.NamedObject('all_gather', CollectiveOpsV1.all_gather),
+    combinations.NamedObject('all_reduce_v2', CollectiveOpsV2.all_reduce),
     combinations.NamedObject('all_gather_v2', CollectiveOpsV2.all_gather)
 ])
 
@@ -115,6 +129,11 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
     dev0 = '/device:%s:0' % device
     dev1 = '/device:%s:1' % device
 
+    tokens = {}
+    for dev in [dev0, dev1]:
+      with ops.device(dev):
+        tokens[dev] = create_ordering_token()
+
     @def_function.function
     def run_all_reduce_1device():
       with ops.device(dev0):
@@ -127,7 +146,8 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
             group_size,
             group_key,
             instance_key,
-            communication_hint=communication)
+            communication_hint=communication,
+            ordering_token=tokens[dev0])
 
     @def_function.function
     def run_all_reduce_2devices():
@@ -143,6 +163,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
                 group_size,
                 group_key,
                 instance_key,
+                ordering_token=tokens[dev0],
                 communication_hint=communication))
       with ops.device(dev1):
         collectives.append(
@@ -151,6 +172,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
                 group_size,
                 group_key,
                 instance_key,
+                ordering_token=tokens[dev1],
                 communication_hint=communication))
       return collectives
 
@@ -161,6 +183,11 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
   def testGather(self, collective_ops, device, communication):
     dev0 = '/device:%s:0' % device
     dev1 = '/device:%s:1' % device
+
+    tokens = {}
+    for dev in [dev0, dev1]:
+      with ops.device(dev):
+        tokens[dev] = create_ordering_token()
 
     @def_function.function
     def run_all_gather_1device():
@@ -174,6 +201,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
             group_size,
             group_key,
             instance_key,
+            ordering_token=tokens[dev0],
             communication_hint=communication)
 
     @def_function.function
@@ -190,6 +218,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
                 group_size,
                 group_key,
                 instance_key,
+                ordering_token=tokens[dev0],
                 communication_hint=communication))
       with ops.device(dev1):
         collectives.append(
@@ -198,6 +227,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
                 group_size,
                 group_key,
                 instance_key,
+                ordering_token=tokens[dev1],
                 communication_hint=communication))
       return collectives
 
@@ -251,6 +281,11 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
     dev2 = '/device:%s:2' % device
     dev3 = '/device:%s:3' % device
 
+    tokens = {}
+    for dev in [dev0, dev1, dev2, dev3]:
+      with ops.device(dev):
+        tokens[dev] = create_ordering_token()
+
     @def_function.function
     def run_all_reduce_4devices_same_instance_key():
       # Use a common instance key for both groups.
@@ -265,19 +300,39 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
       with ops.device(dev0):
         collectives.append(
             collective_ops.all_reduce(
-                constant_op.constant(1.), group_size, group0_key, instance_key))
+                constant_op.constant(1.),
+                group_size,
+                group0_key,
+                instance_key,
+                ordering_token=tokens[dev0],
+            ))
       with ops.device(dev1):
         collectives.append(
             collective_ops.all_reduce(
-                constant_op.constant(2.), group_size, group0_key, instance_key))
+                constant_op.constant(2.),
+                group_size,
+                group0_key,
+                instance_key,
+                ordering_token=tokens[dev1],
+            ))
       with ops.device(dev2):
         collectives.append(
             collective_ops.all_reduce(
-                constant_op.constant(3.), group_size, group1_key, instance_key))
+                constant_op.constant(3.),
+                group_size,
+                group1_key,
+                instance_key,
+                ordering_token=tokens[dev2],
+            ))
       with ops.device(dev3):
         collectives.append(
             collective_ops.all_reduce(
-                constant_op.constant(4.), group_size, group1_key, instance_key))
+                constant_op.constant(4.),
+                group_size,
+                group1_key,
+                instance_key,
+                ordering_token=tokens[dev3],
+            ))
       return collectives
 
     results = run_all_reduce_4devices_same_instance_key()
@@ -294,12 +349,18 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
     in_value = [1., 2., 3., 4.]
     in_tensor = constant_op.constant(in_value)
 
+    tokens = {}
+    for dev in [dev0]:
+      with ops.device(dev):
+        tokens[dev] = create_ordering_token()
+
     with ops.device(dev0):
       reduced_tensor = collective_ops.all_reduce(
           in_tensor,
           group_size,
           group_key,
           instance_key=100,
+          ordering_token=tokens[dev0],
           communication_hint=communication)
     self.assertAllEqual(in_value, reduced_tensor.numpy())
 
@@ -309,6 +370,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
           group_size,
           group_key,
           instance_key=200,
+          ordering_token=tokens[dev0],
           communication_hint=communication)
     self.assertAllEqual(in_value, gathered_tensor.numpy())
 
@@ -321,12 +383,18 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
     in_value = [1., 2., 3., 4.]
     in_tensor = constant_op.constant(in_value)
 
+    tokens = {}
+    for dev in [dev0]:
+      with ops.device(dev):
+        tokens[dev] = create_ordering_token()
+
     with ops.device(dev0):
       reduced_tensor = collective_ops.all_reduce(
           in_tensor,
           group_size,
           group_key,
           instance_key,
+          ordering_token=tokens[dev0],
           communication_hint=communication)
     self.assertAllEqual(in_value, reduced_tensor.numpy())
 
@@ -339,6 +407,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
             group_size,
             group_key,
             instance_key,
+            ordering_token=tokens[dev0],
             communication_hint=communication)
 
   def testMultipleGroups(self, collective_ops, device, communication):
@@ -346,6 +415,11 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
       self.skipTest('not enough GPU')
 
     num_elements = 4
+    tokens = {}
+    for device_idx in range(num_elements):
+      dev = '/{}:{}'.format(device, device_idx)
+      with ops.device(dev):
+        tokens[dev] = create_ordering_token()
 
     @def_function.function
     def run_all_reduce(group_size, group_key):
@@ -353,7 +427,8 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
       input_value = [float(group_key) for i in range(num_elements)]
       collectives = []
       for device_idx in range(group_size):
-        with ops.device('/{}:{}'.format(device, device_idx)):
+        dev = '/{}:{}'.format(device, device_idx)
+        with ops.device(dev):
           input_tensor = constant_op.constant(input_value)
           collectives.append(
               collective_ops.all_reduce(
@@ -361,6 +436,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
                   group_size,
                   group_key,
                   instance_key,
+                  ordering_token=tokens[dev],
                   communication_hint=communication))
       return collectives
 
@@ -377,9 +453,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
 @combinations.generate(
     combinations.times(
         combinations.combine(
-            collective_ops=[
-                combinations.NamedObject('v2', CollectiveOpsV2)
-            ],
+            collective_ops=[combinations.NamedObject('v2', CollectiveOpsV2)],
             mode='eager',
             max_subdivs_per_device=[-1, 0, 16]), device_combination))
 class AllReduceWithSubdivisionsTest(test.TestCase, parameterized.TestCase):
@@ -392,6 +466,11 @@ class AllReduceWithSubdivisionsTest(test.TestCase, parameterized.TestCase):
                  max_subdivs_per_device):
     dev0 = '/device:%s:0' % device
     dev1 = '/device:%s:1' % device
+
+    tokens = {}
+    for dev in [dev0, dev1]:
+      with ops.device(dev):
+        tokens[dev] = create_ordering_token()
 
     @def_function.function
     def run_all_reduce_1device():
@@ -406,6 +485,7 @@ class AllReduceWithSubdivisionsTest(test.TestCase, parameterized.TestCase):
               group_size,
               group_key,
               instance_key,
+              ordering_token=tokens[dev0],
               communication_hint=communication)
         else:
           return collective_ops.all_reduce(
@@ -413,6 +493,7 @@ class AllReduceWithSubdivisionsTest(test.TestCase, parameterized.TestCase):
               group_size,
               group_key,
               instance_key,
+              ordering_token=tokens[dev0],
               communication_hint=communication,
               max_subdivs_per_device=max_subdivs_per_device)
 
@@ -430,6 +511,7 @@ class AllReduceWithSubdivisionsTest(test.TestCase, parameterized.TestCase):
                 group_size,
                 group_key,
                 instance_key,
+                ordering_token=tokens[dev0],
                 communication_hint=communication))
       with ops.device(dev1):
         collectives.append(
@@ -438,6 +520,7 @@ class AllReduceWithSubdivisionsTest(test.TestCase, parameterized.TestCase):
                 group_size,
                 group_key,
                 instance_key,
+                ordering_token=tokens[dev1],
                 communication_hint=communication))
       return collectives
 
@@ -460,10 +543,16 @@ class XlaTest(test.TestCase, parameterized.TestCase):
 
     def all_reduce(device):
 
+      with ops.device(device):
+        token = create_ordering_token()
+
       @def_function.function(jit_compile=True)
       def f():
-        return _collective_ops.all_reduce_v2([1.], group_size, group_key,
-                                             instance_key)
+        return _collective_ops.all_reduce_v2([1.],
+                                             group_size,
+                                             group_key,
+                                             instance_key,
+                                             ordering_token=token)
 
       with ops.device(device):
         results.append(f())
@@ -476,6 +565,132 @@ class XlaTest(test.TestCase, parameterized.TestCase):
     t1.join()
 
     self.assertAllEqual(results, [[2.], [2.]])
+
+  def testReduceSameGraph(self):
+    device0 = '/device:GPU:0'
+    device1 = '/device:GPU:1'
+    group_size = 2
+    group_key = 100
+    instance_key = 100
+    results = []
+
+    @def_function.function(jit_compile=True)
+    def func():
+
+      def all_reduce(device):
+
+        with ops.device(device):
+          token = create_ordering_token()
+
+          return _collective_ops.all_reduce_v2([1.],
+                                               group_size,
+                                               group_key,
+                                               instance_key,
+                                               ordering_token=token)
+
+      results.append(all_reduce(device0))
+      results.append(all_reduce(device1))
+      return results
+
+    # FIXME(b/204228837): the error shall no longer be about resources
+    # after multi-device support in jit_compile lands. This will likely
+    # becomes a deadlock near ResolveDeviceAssignment, or an error in the MLIR
+    # bridge on resetting CollectiveInfo.
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Trying to access resource'):
+      func()
+
+
+@combinations.generate(
+    combinations.combine(
+        required_physical_gpus=2, mode='eager', jit_compile=[True, False]))
+class GroupAssignmentTest(test.TestCase, parameterized.TestCase):
+
+  def testGroupAssignmentBeforeAllReduce(self, jit_compile):
+    device0 = '/device:GPU:0'
+    device1 = '/device:GPU:1'
+    instance_key = 100
+    results = []
+
+    group_assignment = [[0], [1]]
+
+    def all_reduce(device, device_index):
+
+      with ops.device(device):
+        token = create_ordering_token()
+
+      @def_function.function(jit_compile=jit_compile)
+      def f(device_index):
+        group_size, group_key = _collective_ops.assign_group_v2(
+            group_assignment=group_assignment,
+            device_index=device_index,
+            base_key=1)
+        return _collective_ops.all_reduce_v2([1.],
+                                             group_size,
+                                             group_key,
+                                             instance_key,
+                                             ordering_token=token)
+
+      with ops.device(device):
+        results.append(f(device_index))
+
+    t0 = threading.Thread(target=all_reduce, args=(device0, 0))
+    t1 = threading.Thread(target=all_reduce, args=(device1, 1))
+    t0.start()
+    t1.start()
+    t0.join()
+    t1.join()
+
+    self.assertAllEqual(results, [[1.], [1.]])
+
+  def testTwoGroupAssignmentBeforeAllReduce(self, jit_compile):
+    device0 = '/device:GPU:0'
+    device1 = '/device:GPU:1'
+    instance_key = 100
+    results = []
+
+    group_assignment1 = [[0], [1]]
+    group_assignment2 = [[0, 1]]
+
+    def all_reduce(device, device_index):
+
+      with ops.device(device):
+        token = create_ordering_token()
+
+      @def_function.function(jit_compile=jit_compile)
+      def f(device_index):
+        group_size, group_key = _collective_ops.assign_group_v2(
+            group_assignment=group_assignment1,
+            device_index=device_index,
+            base_key=1)
+        r1 = _collective_ops.all_reduce_v2([1.],
+                                           group_size,
+                                           group_key,
+                                           instance_key,
+                                           ordering_token=token)
+
+        group_size, group_key = _collective_ops.assign_group_v2(
+            group_assignment=group_assignment2,
+            device_index=device_index,
+            base_key=10000)
+        r2 = _collective_ops.all_reduce_v2([1.],
+                                           group_size,
+                                           group_key,
+                                           instance_key,
+                                           ordering_token=token)
+        return r1, r2
+
+      with ops.device(device):
+        results.append(f(device_index))
+
+    t0 = threading.Thread(target=all_reduce, args=(device0, 0))
+    t1 = threading.Thread(target=all_reduce, args=(device1, 1))
+    t0.start()
+    t1.start()
+    t0.join()
+    t1.join()
+
+    self.assertAllEqual(results, [[[1.], [2.]], [[1.], [2.]]])
 
 
 @combinations.generate(
@@ -495,6 +710,11 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
     instance_key = 100
     in_tensor = constant_op.constant([1.])
 
+    tokens = {}
+    for device in [dev0, dev1]:
+      with ops.device(device):
+        tokens[device] = create_ordering_token()
+
     def abort_fn():
       time.sleep(2)
       context.context().abort_collective_ops(errors.UNAVAILABLE, 'peer down')
@@ -511,6 +731,7 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
             group_size,
             group_key,
             instance_key,
+            ordering_token=tokens[dev0],
             communication_hint=communication)
 
     # After abortion, subsequent collectives should fail immediately.
@@ -521,6 +742,7 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
             group_size,
             group_key,
             instance_key,
+            ordering_token=tokens[dev0],
             communication_hint=communication)
 
     t.join()
@@ -536,6 +758,7 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
               group_size,
               group_key,
               instance_key,
+              ordering_token=tokens[device],
               communication_hint=communication)
 
     def_function.function(collective_fn)()
@@ -549,6 +772,11 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
     instance_key = 100
     in_tensor = constant_op.constant([1.])
 
+    tokens = {}
+    for device in [dev0, dev1]:
+      with ops.device(device):
+        tokens[device] = create_ordering_token()
+
     def collective_fn():
       for device in [dev0, dev1]:
         with ops.device(device):
@@ -557,6 +785,7 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
               group_size,
               group_key,
               instance_key,
+              ordering_token=tokens[device],
               communication_hint=communication)
 
     # First perform a normal all-reduce to complete the group resolution.
@@ -580,6 +809,7 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
             group_size,
             group_key,
             instance_key,
+            ordering_token=tokens[dev0],
             communication_hint=communication)
 
     # After abortion, subsequent collectives should fail immediately.
@@ -590,6 +820,7 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
             group_size,
             group_key,
             instance_key,
+            ordering_token=tokens[dev0],
             communication_hint=communication)
 
     context._reset_context()  # pylint: disable=protected-access
@@ -608,6 +839,11 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
     instance_key = 100
     in_tensor = constant_op.constant([1.])
 
+    tokens = {}
+    for device in [dev0, dev1]:
+      with ops.device(device):
+        tokens[device] = create_ordering_token()
+
     # First perform a normal collective to finish resolution.
     def collective_fn():
       for device in [dev0, dev1]:
@@ -617,6 +853,7 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
               group_size,
               group_key,
               instance_key,
+              ordering_token=tokens[device],
               communication_hint=communication)
 
     def_function.function(collective_fn)()
@@ -637,6 +874,7 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
             group_size,
             group_key,
             instance_key,
+            ordering_token=tokens[device],
             communication_hint=communication)
 
     # After abortion, subsequent collectives should fail immediately.
@@ -647,6 +885,7 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
             group_size,
             group_key,
             instance_key,
+            ordering_token=tokens[device],
             communication_hint=communication)
 
     # Reset the context in order to reset the collective executor.
@@ -667,12 +906,8 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
               collective_op=[
                   combinations.NamedObject('all_reduce',
                                            CollectiveOpsV1.all_reduce),
-                  combinations.NamedObject('all_reduce_v2',
-                                           CollectiveOpsV2.all_reduce),
                   combinations.NamedObject('all_gather',
                                            CollectiveOpsV1.all_gather),
-                  combinations.NamedObject('all_gather_v2',
-                                           CollectiveOpsV2.all_gather),
               ],
               mode='eager'), device_combination))
   def testOpErrorNotAbortIfNoCollective(self, collective_op, device,
@@ -687,6 +922,11 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
     instance_key = 100
     dataset = dataset_ops.Dataset.from_tensors([1.])
 
+    tokens = {}
+    for device in [dev0, dev1]:
+      with ops.device(device):
+        tokens[device] = create_ordering_token()
+
     @def_function.function
     def collective_fn(in_tensor):
       for device in [dev0, dev1]:
@@ -696,6 +936,7 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
               group_size,
               group_key,
               instance_key,
+              ordering_token=tokens[device],
               communication_hint=communication)
 
     @def_function.function
@@ -705,6 +946,57 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
       # This next(iterator) should raise EOF.
       collective_fn(next(iterator))
 
+    collective_fn(constant_op.constant([1.]))
+    with self.assertRaises(errors.OutOfRangeError):
+      f()
+    collective_fn(constant_op.constant([1.]))
+
+  @combinations.generate(
+      combinations.times(
+          combinations.combine(
+              collective_op=[
+                  combinations.NamedObject('all_reduce_v2',
+                                           CollectiveOpsV2.all_reduce),
+                  combinations.NamedObject('all_gather_v2',
+                                           CollectiveOpsV2.all_gather),
+              ],
+              mode='eager'), device_combination))
+  def testOpErrorNotAbortIfNoCollectiveV2(self, collective_op, device,
+                                          communication):
+    # Do not abort if there's no active collective ops. There could be
+    # exceptions like EOF which we expect users to catch, aborting collective
+    # ops on all op errors intervenes with this workflow.
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
+    group_size = 2
+    group_key = 100
+    instance_key = 100
+    dataset = dataset_ops.Dataset.from_tensors([1.])
+    tokens = {}
+    for device in [dev0, dev1]:
+      with ops.device(device):
+        tokens[device] = create_ordering_token()
+
+    @def_function.function
+    def collective_fn(in_tensor):
+      for device in [dev0, dev1]:
+        with ops.device(device):
+          collective_op(
+              in_tensor,
+              group_size,
+              group_key,
+              instance_key,
+              communication_hint=communication,
+              ordering_token=tokens[device])
+
+    @def_function.function
+    def f():
+      iterator = iter(dataset)
+      collective_fn(next(iterator))
+      # This next(iterator) should raise EOF.
+      collective_fn(next(iterator))
+
+    collective_fn(constant_op.constant([1.]))
     with self.assertRaises(errors.OutOfRangeError):
       f()
     collective_fn(constant_op.constant([1.]))
@@ -734,6 +1026,11 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensors([1.]).apply(
         dataset_testing.sleep(sleep_microseconds=200))
 
+    tokens = {}
+    for device in [dev0]:
+      with ops.device(device):
+        tokens[device] = create_ordering_token()
+
     @def_function.function
     def f():
       # Launch a collective op that won't be able to finish to test abortion
@@ -744,6 +1041,7 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
             group_size,
             group_key,
             instance_key,
+            ordering_token=tokens[dev0],
             communication_hint=communication)
       iterator = iter(dataset)
       next(iterator)
@@ -762,6 +1060,7 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
             group_size,
             group_key,
             instance_key,
+            ordering_token=tokens[dev0],
             communication_hint=communication)
 
   @combinations.generate(
@@ -774,8 +1073,8 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
                                            CollectiveOpsV2.all_gather),
               ],
               mode='eager'), device_combination))
-  def testOpErrorNotAbortWithCollective(self, collective_op, device,
-                                        communication):
+  def testOpErrorNotAbortWithCollectiveV2(self, collective_op, device,
+                                          communication):
     # Do not abort v2 collective ops even if there're active collective ops at
     # the time of an op error. We rely cancellation to terminate active
     # collective ops.
@@ -786,6 +1085,11 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
     instance_key = 100
     in_tensor = constant_op.constant([1.])
 
+    tokens = {}
+    for device in [dev0, dev1]:
+      with ops.device(device):
+        tokens[device] = create_ordering_token()
+
     @def_function.function
     def collective_fn():
       for device in [dev0, dev1]:
@@ -795,6 +1099,7 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
               group_size,
               group_key,
               instance_key,
+              ordering_token=tokens[device],
               communication_hint=communication)
 
     # Local params resolution cannot be cancelled yet, so we perform a normal
@@ -816,6 +1121,7 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
             group_size,
             group_key,
             instance_key,
+            ordering_token=tokens[dev0],
             communication_hint=communication)
       iterator = iter(dataset)
       next(iterator)
@@ -839,8 +1145,8 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
                                            CollectiveOpsV2.all_gather),
               ],
               mode='eager'), device_combination))
-  def testCancelDuringParamResolution(self, collective_op, device,
-                                      communication):
+  def testCancelDuringParamResolutionV2(self, collective_op, device,
+                                        communication):
     dev0 = '/device:%s:0' % device
     dev1 = '/device:%s:1' % device
     group_size = 2
@@ -861,6 +1167,11 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
             group_size,
             group_key,
             instance_key,
+            # This test cannot use ordering_token because the placement
+            # occurs outside of tf.function and we cannot relocate the token
+            # after concrete function is created.
+            # since there is only 1 collective Op in the graph there is no
+            # need to use a token for ordering.
             communication_hint=communication)
 
     collective_concrete = _collective_fn.get_concrete_function(in_tensor)
@@ -911,6 +1222,12 @@ class TimeoutTest(test.TestCase, parameterized.TestCase):
   def testTimeout(self, collective_op, device, communication):
     timeout = 1.5
 
+    tokens = {}
+    for i in range(2):
+      dev = '/{}:{}'.format(device, i)
+      with ops.device(dev):
+        tokens[dev] = create_ordering_token()
+
     @def_function.function
     def run(group_size, reported_group_size=None):
       group_key = 20
@@ -920,13 +1237,15 @@ class TimeoutTest(test.TestCase, parameterized.TestCase):
       if reported_group_size is None:
         reported_group_size = group_size
       for i in range(group_size):
-        with ops.device('/{}:{}'.format(device, i)):
+        dev = '/{}:{}'.format(device, i)
+        with ops.device(dev):
           input_data = constant_op.constant(tensor)
           result = collective_op(
               input_data,
               group_size=reported_group_size,
               group_key=group_key,
               instance_key=instance_key,
+              ordering_token=tokens[dev],
               communication_hint=communication,
               timeout=timeout)
           results.append(result)
@@ -950,6 +1269,11 @@ class TimeoutTest(test.TestCase, parameterized.TestCase):
     instance_key = 30
     input_data = constant_op.constant([1., 2., 3., 4.])
 
+    tokens = {}
+    for device in [dev0, dev1]:
+      with ops.device(device):
+        tokens[device] = create_ordering_token()
+
     # This timeout comes from param solution.
     with self.assertRaisesRegex(
         errors.DeadlineExceededError,
@@ -960,6 +1284,7 @@ class TimeoutTest(test.TestCase, parameterized.TestCase):
             group_size=2,
             group_key=group_key,
             instance_key=instance_key,
+            ordering_token=tokens[dev0],
             communication_hint=communication,
             timeout=timeout)
 
@@ -975,6 +1300,7 @@ class TimeoutTest(test.TestCase, parameterized.TestCase):
             group_size=2,
             group_key=group_key,
             instance_key=instance_key,
+            ordering_token=tokens[dev1],
             communication_hint=communication)
 
   def testExecutionAfterTimeout(self, collective_op, device, communication):
@@ -985,6 +1311,11 @@ class TimeoutTest(test.TestCase, parameterized.TestCase):
     instance_key = 30
     input_data = constant_op.constant([1., 2., 3., 4.])
 
+    tokens = {}
+    for device in [dev0, dev1]:
+      with ops.device(device):
+        tokens[device] = create_ordering_token()
+
     @def_function.function
     def run():
       for device in [dev0, dev1]:
@@ -994,6 +1325,7 @@ class TimeoutTest(test.TestCase, parameterized.TestCase):
               group_size=2,
               group_key=group_key,
               instance_key=instance_key,
+              ordering_token=tokens[device],
               communication_hint=communication,
               timeout=timeout)
 
@@ -1008,6 +1340,7 @@ class TimeoutTest(test.TestCase, parameterized.TestCase):
             group_size=2,
             group_key=group_key,
             instance_key=instance_key,
+            ordering_token=tokens[dev0],
             communication_hint=communication,
             timeout=timeout)
 
@@ -1023,6 +1356,7 @@ class TimeoutTest(test.TestCase, parameterized.TestCase):
             group_size=2,
             group_key=group_key,
             instance_key=instance_key,
+            ordering_token=tokens[dev1],
             communication_hint=communication)
 
 
@@ -1045,6 +1379,11 @@ class CommunicationHintTest(test.TestCase, parameterized.TestCase):
     instance_key = 30
     input_data = constant_op.constant([1., 2., 3., 4.])
 
+    tokens = {}
+    for device in [dev0, dev1]:
+      with ops.device(device):
+        tokens[device] = create_ordering_token()
+
     @def_function.function
     def run():
       for device in [dev0, dev1]:
@@ -1054,6 +1393,7 @@ class CommunicationHintTest(test.TestCase, parameterized.TestCase):
               group_size=2,
               group_key=group_key,
               instance_key=instance_key,
+              ordering_token=tokens[device],
               communication_hint='NCCL')
 
     run()
@@ -1084,9 +1424,9 @@ class OrderingTest(test.TestCase, parameterized.TestCase):
     in_tensor = constant_op.constant([1.])
 
     with ops.device(dev0):
-      token0 = resource_variable_ops.ResourceVariable(0.)
+      token0 = create_ordering_token()
     with ops.device(dev1):
-      token1 = resource_variable_ops.ResourceVariable(0.)
+      token1 = create_ordering_token()
 
     @def_function.function
     def f():
@@ -1097,53 +1437,70 @@ class OrderingTest(test.TestCase, parameterized.TestCase):
             group_size,
             group_key,
             instance_key,
-            ordering_token=token0.handle)
+            ordering_token=token0,
+            name='FirstChainedDev0')
       with ops.device(dev1):
         collective_op(
             in_tensor,
             group_size,
             group_key,
             instance_key,
-            ordering_token=token1.handle)
+            ordering_token=token1,
+            name='FirstChainedDev1')
       # Launch the second collective without token.
       with ops.device(dev0):
-        collective_op(in_tensor, group_size, group_key, instance_key)
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            ordering_token=create_ordering_token(),
+            name='UnchainedDev0')
       with ops.device(dev1):
-        collective_op(in_tensor, group_size, group_key, instance_key)
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            ordering_token=create_ordering_token(),
+            name='UnchainedDev1')
       # Launch the third collective with token.
       with ops.device(dev0):
         collective_op(
             in_tensor,
             group_size,
             group_key,
-            instance_key,
-            ordering_token=token0.handle)
+            instance_key + 1,
+            ordering_token=token0,
+            name='SecondChainedDev0')
       with ops.device(dev1):
         collective_op(
             in_tensor,
             group_size,
             group_key,
-            instance_key,
-            ordering_token=token1.handle)
+            instance_key + 1,
+            ordering_token=token1,
+            name='SecondChainedDev1')
 
     graph = f.get_concrete_function().graph
-    for device in [dev0, dev1]:
+    for device, suffix in [(dev0, 'Dev0'), (dev1, 'Dev1')]:
+
+      first = graph.get_operation_by_name('FirstChained' + suffix)
+      second = graph.get_operation_by_name('Unchained' + suffix)
+      third = graph.get_operation_by_name('SecondChained' + suffix)
+      self.assertIsNotNone(first)
+      self.assertTrue(first.device.endswith(device))
+      self.assertIsNotNone(second)
+      self.assertTrue(second.device.endswith(device))
+      self.assertIsNotNone(third)
+      self.assertTrue(third.device.endswith(device))
+
       # Try to find the third collective, which should have the first collective
       # as a control input.
-      third = None
-      for op in graph.get_operations():
-        if (op.type.startswith('Collective') and op.device.endswith(device) and
-            op.control_inputs and
-            op.control_inputs[0].type.startswith('Collective')):
-          self.assertIsNone(third)
-          third = op
-      self.assertIsNotNone(third)
-      # Verify it's not the second collective by looking at the inputs.
-      self.assertTrue(any(v.dtype == dtypes.resource for v in third.inputs))
-      first = third.control_inputs[0]
-      self.assertEqual(third.device, first.device)
-      # Verify it's not the second collective by looking at the inputs.
-      self.assertTrue(any(v.dtype == dtypes.resource for v in first.inputs))
+      self.assertLen(third.control_inputs, 1)
+      self.assertEqual(third.control_inputs[0].name, 'FirstChained' + suffix)
+
+      self.assertEmpty(second.control_inputs)
       self.assertEmpty(first.control_inputs)
 
 
@@ -1162,11 +1519,14 @@ class InputPipelineTest(test.TestCase):
       dataset = dataset_ops.Dataset.from_tensor_slices([t])
 
       def reduce_fn(t):
+        # A token is created for each device.
+        token = create_ordering_token()
         return CollectiveOpsV2.all_reduce(
             t,
             group_size=group_size,
             group_key=group_key,
-            instance_key=instance_key)
+            instance_key=instance_key,
+            ordering_token=token)
 
       dataset = dataset.map(reduce_fn)
       return next(iter(dataset))
@@ -1180,6 +1540,72 @@ class InputPipelineTest(test.TestCase):
       return value0, value1
 
     self.assertAllEqual(self.evaluate(f()), [[3.], [3.]])
+
+
+@combinations.generate(
+    combinations.times(
+        combinations.combine(collective_op=[
+            combinations.NamedObject('all_reduce_v2',
+                                     CollectiveOpsV2.all_reduce),
+            combinations.NamedObject('all_gather_v2',
+                                     CollectiveOpsV2.all_gather)
+        ]), device_combination))
+class InvalidInputTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    _setup_context()
+    super().setUp()
+
+  def testInvalidGroupKey(self, collective_op, device, communication):
+    dev0 = '/device:%s:0' % device
+    group_size = 2
+    group_key = [100]
+    instance_key = 100
+    in_tensor = constant_op.constant([1.])
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      with ops.device(dev0):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            ordering_token=create_ordering_token(),
+            communication_hint=communication)
+
+  def testInvalidGroupSize(self, collective_op, device, communication):
+    dev0 = '/device:%s:0' % device
+    group_size = -2
+    group_key = 100
+    instance_key = 100
+    in_tensor = constant_op.constant([1.])
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      with ops.device(dev0):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            ordering_token=create_ordering_token(),
+            communication_hint=communication)
+
+  def testInvalidInstanceKey(self, collective_op, device, communication):
+    dev0 = '/device:%s:0' % device
+    group_size = 2
+    group_key = 100
+    instance_key = [100]
+    in_tensor = constant_op.constant([1.])
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      with ops.device(dev0):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            ordering_token=create_ordering_token(),
+            communication_hint=communication)
 
 
 class CollectiveOpsV3Test(test.TestCase, parameterized.TestCase):
@@ -1241,7 +1667,6 @@ class CollectiveOpsV3Test(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(device_combination)
   def testAllToAllV3(self, device, communication):
-    self.skipTest('TODO(b/200953796)')
     group_size = 2
     group_key = 104
 
@@ -1273,11 +1698,85 @@ class CollectiveOpsV3Test(test.TestCase, parameterized.TestCase):
     self.assertAllClose(result[0], [1.0, 2.0], rtol=1e-5, atol=1e-5)
     self.assertAllClose(result[1], [3.0, 4.0], rtol=1e-5, atol=1e-5)
 
+  @combinations.generate(device_combination)
+  def testAllToAllV3DifferentUserRank(self, device, communication):
+    group_size = 2
+    group_key = 105
+
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
+
+    @def_function.function
+    def run_all_to_all_2devices():
+      collectives = []
+      with ops.device(dev0):
+        group_handle0 = _collective_ops.initialize_communicator(
+            group_key=group_key,
+            rank=1,
+            group_size=group_size,
+            communication_hint=communication)
+        collectives.append(
+            _collective_ops.all_to_all_v3(group_handle0, [1.0, 3.0]))
+      with ops.device(dev1):
+        group_handle1 = _collective_ops.initialize_communicator(
+            group_key=group_key,
+            rank=0,
+            group_size=group_size,
+            communication_hint=communication)
+        collectives.append(
+            _collective_ops.all_to_all_v3(group_handle1, [2.0, 4.0]))
+      return collectives
+
+    result = run_all_to_all_2devices()
+    self.assertAllClose(result[0], [2.0, 1.0], rtol=1e-5, atol=1e-5)
+    self.assertAllClose(result[1], [4.0, 3.0], rtol=1e-5, atol=1e-5)
+
+  @combinations.generate(device_combination)
+  def testAllToAllV3DifferentUserRankWithTensorInput(self, device,
+                                                     communication):
+
+    group_size = 2
+    group_key = 106
+
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
+
+    @def_function.function
+    def run_all_to_all_2devices():
+      collectives = []
+      with ops.device(dev0):
+        group_handle0 = _collective_ops.initialize_communicator(
+            group_key=group_key,
+            rank=1,
+            group_size=group_size,
+            communication_hint=communication)
+        collectives.append(
+            _collective_ops.all_to_all_v3(group_handle0,
+                                          constant_op.constant([1.0, 2.0])))
+      with ops.device(dev1):
+        group_handle1 = _collective_ops.initialize_communicator(
+            group_key=group_key,
+            rank=0,
+            group_size=group_size,
+            communication_hint=communication)
+        collectives.append(
+            _collective_ops.all_to_all_v3(group_handle1,
+                                          constant_op.constant([3.0, 4.0])))
+
+      return collectives
+
+    result = run_all_to_all_2devices()
+    # FIXME(b/214407359): This is correct.
+    # result[0] is rank 1 and shall have 4, 2.
+    self.assertAllClose(result[1], [4.0, 2.0], rtol=1e-5, atol=1e-5)
+    self.assertAllClose(result[0], [3.0, 1.0], rtol=1e-5, atol=1e-5)
+
 
 def _setup_context():
   context._reset_context()
   test_util.set_logical_devices_to_at_least('CPU', 4)
   context.ensure_initialized()
+  context.set_log_device_placement(True)
 
 
 if __name__ == '__main__':

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 
 #include "absl/types/span.h"
+#include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -67,6 +68,7 @@ class EagerContextTest : public ::testing::Test {
     added_devices.emplace_back(CreateDevice(DEVICE_CPU, 1));
     added_devices.emplace_back(CreateDevice(DEVICE_GPU, 0));
     added_devices.emplace_back(CreateDevice(DEVICE_GPU, 1));
+    added_devices.emplace_back(CreateDevice(DEVICE_TPU, 0));
 
     TF_CHECK_OK(device_manager_->AddDevices(std::move(added_devices)));
   }
@@ -301,6 +303,100 @@ TEST_F(EagerContextTest, FunctionErrorRecovery) {
   TF_ASSERT_OK(context()->SyncExecutors());
   retvals[0]->Unref();
   retvals[0] = nullptr;
+}
+
+TEST_F(EagerContextTest, XlaCompileDeviceType) {
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT, /*async=*/true);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
+  const FunctionDef x_times_two = FDH::Define(
+      // Name
+      "XTimesTwo",
+      // Args
+      {"x: int64"},
+      // Return values
+      {"y: int64"}, {},
+      // Nodes
+      {
+          {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
+          {{"y"}, "Mul", {"x", "two"}, {{"T", DT_INT64}}},
+      });
+
+  Status s = context()->AddFunctionDef(x_times_two);
+  context()->SetJitCompileRewrite(true);
+  auto op = ImmediateOpPtr(context()->CreateOperation());
+  TF_ASSERT_OK(
+      op->Reset("XTimesTwo", "/job:localhost/replica:0/task:0/device:TPU:0"));
+  Tensor int_tensor = test::AsScalar<int64_t>(3);
+  auto input_int = core::RefCountPtr<ImmediateExecutionTensorHandle>(
+      context()->CreateLocalHandleFromTFTensor(
+          int_tensor, context()->HostCPUName().c_str()));
+  TF_ASSERT_OK(op->AddInput(input_int.get()));
+  std::vector<AbstractTensorHandle*> retvals(1);
+  int num_retvals = retvals.size();
+  TF_ASSERT_OK(op->Execute(absl::MakeSpan(retvals), &num_retvals));
+  retvals[0]->Unref();
+  retvals[0] = nullptr;
+}
+
+TEST_F(EagerContextTest, LocalRendezvousCreation) {
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
+  std::function<Rendezvous*(const int64_t)> rendezvous_creator =
+      context()->RendezvousCreator();
+
+  // Create a new rendezvous instance.
+  // Initially its ref-count is 2:
+  // one added upopn rendezvous creation, the other one added by EagerContext.
+  Rendezvous* rendezvous_1 = rendezvous_creator(1);
+  EXPECT_EQ(rendezvous_1->RefCount(), 2);
+
+  // Create another rendezvous instance with the same step-id.
+  // This would add one more ref-count to the existing rendezvous insteance
+  // insted of creating a new instance.
+  Rendezvous* rendezvous_2 = rendezvous_creator(1);
+  EXPECT_EQ(rendezvous_2->RefCount(), 3);
+
+  // Caller releases rendezvous-1.
+  rendezvous_1->Unref();
+  EXPECT_EQ(rendezvous_1->RefCount(), 2);
+
+  // Caller releases rendezvous-2.
+  rendezvous_2->Unref();
+  EXPECT_EQ(rendezvous_2->RefCount(), 1);
+}
+
+void TestGlobalRendezvous(EagerContext* context, bool reuse_global_rendezvous) {
+  context->SetReuseRendezvousForFunctions(reuse_global_rendezvous);
+  EXPECT_EQ(context->GetReuseRendezvousForFunctions(), reuse_global_rendezvous);
+
+  auto rendezvous_creator = context->RendezvousCreator();
+  Rendezvous* rendezvous_1 = rendezvous_creator(-1);
+  EXPECT_EQ(rendezvous_1->RefCount(), 2);
+  Rendezvous* rendezvous_2 = rendezvous_creator(-1);
+  EXPECT_EQ(rendezvous_2->RefCount(), 3);
+
+  // Global rendezvous's ref-count should be back to 1 after resetting.
+  context->ResetGlobalRendezvousForFunction();
+
+  Rendezvous* rendezvous_3 = rendezvous_creator(-1);
+  EXPECT_EQ(rendezvous_3->RefCount(), 2);
+
+  // Callers release rendezvous.
+  rendezvous_1->Unref();
+  rendezvous_2->Unref();
+  rendezvous_3->Unref();
+}
+
+TEST_F(EagerContextTest, GlobalRendezvousCreation) {
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
+
+  TestGlobalRendezvous(context(), false);
+}
+
+TEST_F(EagerContextTest, ReuseGlobalRendezvous) {
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
+  EXPECT_FALSE(context()->GetReuseRendezvousForFunctions());
+
+  TestGlobalRendezvous(context(), true);
 }
 
 }  // namespace

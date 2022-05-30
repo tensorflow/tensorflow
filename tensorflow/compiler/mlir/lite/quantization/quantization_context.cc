@@ -22,9 +22,9 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -43,7 +43,7 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 
-QuantizeContext::QuantizeContext(FuncOp func, const DeviceTarget &spec)
+QuantizeContext::QuantizeContext(func::FuncOp func, const DeviceTarget &spec)
     : func_(func), target_spec_(spec) {
   llvm::DenseMap<Value, int> value_to_state;
   func.walk([&](quant::QuantizeRegionOp op) {

@@ -1,7 +1,30 @@
+op 	 {
+  name: "IsTPUEmbeddingInitialized"
+  output_arg {
+    name: "is_tpu_embedding_initialized"
+    type: DT_BOOL
+  }
+}
 op {
   name: "IsTPUEmbeddingInitialized"
   output_arg {
     name: "is_tpu_embedding_initialized"
     type: DT_BOOL
   }
+  is_stateful: true
+}
+op {
+  name: "IsTPUEmbeddingInitialized"
+  output_arg {
+    name: "is_tpu_embedding_initialized"
+    type: DT_BOOL
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
 }

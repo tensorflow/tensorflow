@@ -68,7 +68,7 @@ absl::StatusOr<AttrValue> TfInitContext::GetAttr(
     return absl::InvalidArgumentError(
         absl::StrCat("Non-existent attribute: ", attr_name, "\nop def:\n",
                      context_->def().DebugString()));
-  const auto attr_value = context_->def().attr().at(attr_name);
+  const auto& attr_value = context_->def().attr().at(attr_name);
   return TfAttrValueToShimAttrValue(attr_value);
 }
 
@@ -99,7 +99,7 @@ TensorViewOr TfInvokeContext::GetOutput(const int idx,
   if (!status.ok()) return ToAbslStatus(status);
   SH_ASSIGN_OR_RETURN(const TfTensorView& tensor_view,
                       TensorView::New(output_t));
-  return absl::make_unique<TfTensorView>(tensor_view);
+  return absl::make_unique<TfTensorView>(std::move(tensor_view));
 }
 
 int TfInvokeContext::NumInputs() const { return context_->num_inputs(); }

@@ -138,10 +138,8 @@ Status PartiallyDeclusterNode(Graph* graph, Node* n) {
   ndef.set_name(absl::StrCat(n->name(), "/declustered"));
   MergeDebugInfo(NodeDebugInfo(n->def()), &ndef);
   RemoveFromXlaCluster(&ndef);
-  Status s;
-  Node* cloned_node = graph->AddNode(ndef, &s);
+  TF_ASSIGN_OR_RETURN(Node * cloned_node, graph->AddNode(ndef));
   cloned_node->set_assigned_device_name(n->assigned_device_name());
-  TF_RETURN_IF_ERROR(s);
 
   for (const Edge* in_edge : n->in_edges()) {
     graph->AddEdge(in_edge->src(), in_edge->src_output(), cloned_node,
@@ -333,7 +331,7 @@ Status PartiallyDeclusterGraph(Graph* graph,
     // remove Input, OP, Shape and F from the cluster, if F is a many-to-one
     // function.
     //
-    // Note that we do do the right thing for graphs like:
+    // Note that we do the right thing for graphs like:
     //
     //   Input -> F0 -> F1 -> Reshape
     //
@@ -343,8 +341,24 @@ Status PartiallyDeclusterGraph(Graph* graph,
       bool must_compile_node;
       TF_RETURN_IF_ERROR(MustCompileNode(n, &must_compile_node));
       if (!must_compile_node) {
-        VLOG(3) << "Declustering must-be-constant node " << n->name();
-        RemoveFromXlaCluster(n);
+        if (n->IsConstant()) {
+          // We must decluster Const nodes that have an input control edge from
+          // a different device, because this node may be part of the
+          // co-ordination of while loops between devices.
+          for (auto it : n->in_edges()) {
+            if (!it->src()->assigned_device_name().empty() &&
+                it->src()->assigned_device_name() !=
+                    n->assigned_device_name()) {
+              VLOG(3) << "Declustering Const with cross-device control input "
+                      << n->name();
+              RemoveFromXlaCluster(n);
+              break;
+            }
+          }
+        } else {
+          VLOG(3) << "Declustering must-be-constant node " << n->name();
+          RemoveFromXlaCluster(n);
+        }
       }
     }
   }

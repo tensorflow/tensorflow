@@ -18,13 +18,44 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_INSTRUCTIONS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_INSTRUCTIONS_H_
 
+#include <functional>
+#include <string>
+#include <utility>
+
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
+
+// Base class for instructions with a dimensions vector.
+class HloDimensionsInstruction : public HloInstruction {
+ public:
+  HloDimensionsInstruction(HloOpcode opcode, const Shape& shape,
+                           absl::Span<const int64_t> dimensions)
+      : HloInstruction(opcode, shape),
+        dimensions_(dimensions.begin(), dimensions.end()) {}
+
+  absl::Span<const int64_t> dimensions() const override { return dimensions_; }
+
+  std::vector<int64_t>* mutable_dimensions() override { return &dimensions_; }
+
+  HloInstructionProto ToProto() const override;
+
+ protected:
+  std::vector<std::string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+
+  std::vector<int64_t> dimensions_;
+};
 
 class HloBatchNormInstruction : public HloInstruction {
  public:
@@ -46,7 +77,7 @@ class HloBatchNormInstruction : public HloInstruction {
                                    int64_t feature_index);
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -113,7 +144,7 @@ class HloFftInstruction : public HloInstruction {
   HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -132,6 +163,35 @@ class HloFftInstruction : public HloInstruction {
   std::vector<int64_t> fft_length_;
 };
 
+class HloAsyncInstruction : public HloInstruction {
+ public:
+  HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
+                      absl::Span<HloInstruction* const> operands,
+                      HloComputation* async_computation);
+  HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
+                      HloInstruction* operand,
+                      HloComputation* async_computation);
+
+  ~HloAsyncInstruction() override;
+  // When an async instruction is being destructed, remove it from the vector of
+  // pointers of its called computation, to avoid referencing freed memory.
+  void ClearAsyncComputationInstruction();
+
+  HloInstruction* async_wrapped_instruction() const;
+  HloOpcode async_wrapped_opcode() const;
+
+ private:
+  std::vector<std::string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+};
+
 class HloCopyStartInstruction : public HloInstruction {
  public:
   explicit HloCopyStartInstruction(const Shape& shape, HloInstruction* operand,
@@ -141,7 +201,7 @@ class HloCopyStartInstruction : public HloInstruction {
   HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -161,11 +221,12 @@ class HloCompareInstruction : public HloInstruction {
                                  ComparisonDirection direction,
                                  absl::optional<Comparison::Type> type);
   ComparisonDirection direction() const { return compare_.GetDirection(); }
+  ComparisonOrder order() const { return compare_.GetOrder(); }
   Comparison::Type type() const { return compare_.GetType(); }
   HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -191,7 +252,7 @@ class HloTriangularSolveInstruction : public HloInstruction {
   HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -216,7 +277,7 @@ class HloCholeskyInstruction : public HloInstruction {
   HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -259,7 +320,7 @@ class HloChannelInstruction : public HloInstruction {
 
   HloInstructionProto ToProto() const override;
 
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
 
   // Do not override IdenticalSlowPath(). Override
@@ -285,7 +346,7 @@ class HloSendRecvInstruction : public HloChannelInstruction {
                                   int64_t channel_id, bool is_host_transfer);
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPathIgnoringChannelIdValues(
       const HloInstruction& other,
@@ -373,7 +434,7 @@ class HloCollectiveInstruction : public HloChannelInstruction {
 
   HloInstructionProto ToProto() const override;
 
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPathIgnoringChannelIdValues(
       const HloInstruction& other,
@@ -396,11 +457,14 @@ class HloAllGatherInstruction : public HloCollectiveInstruction {
 
   // The dimension on which data from different participants are concatenated.
   int64_t all_gather_dimension() const { return all_gather_dimension_; }
+  absl::Span<const int64_t> dimensions() const override {
+    return absl::MakeConstSpan(&all_gather_dimension_, 1);
+  }
 
   void set_all_gather_dimension(int64_t dim) { all_gather_dimension_ = dim; }
 
  protected:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   HloInstructionProto ToProto() const override;
 
@@ -440,9 +504,10 @@ class HloAllReduceInstructionBase : public HloCollectiveInstruction {
   // group[1] = (0,2), (0,3), (1,2), (1,3)
   // where each pair is (replica_id, partition_id).
   bool use_global_device_ids() const { return use_global_device_ids_; }
+  void set_use_global_device_ids(bool value) { use_global_device_ids_ = value; }
 
  protected:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   HloInstructionProto ToProto() const override;
 
@@ -481,9 +546,12 @@ class HloReduceScatterInstruction : public HloAllReduceInstructionBase {
 
   // The dimension on which reduced data is scattered to different participants.
   int64_t scatter_dimension() const { return scatter_dimension_; }
+  absl::Span<const int64_t> dimensions() const override {
+    return absl::MakeConstSpan(&scatter_dimension_, 1);
+  }
 
  protected:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   HloInstructionProto ToProto() const override;
 
@@ -520,7 +588,7 @@ class HloAllToAllInstruction : public HloCollectiveInstruction {
   void set_split_dimension(int64_t dim) { split_dimension_ = dim; }
 
  protected:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   HloInstructionProto ToProto() const override;
 
@@ -565,7 +633,7 @@ class HloCollectivePermuteInstruction : public HloChannelInstruction {
   HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPathIgnoringChannelIdValues(
       const HloInstruction& other,
@@ -581,85 +649,41 @@ class HloCollectivePermuteInstruction : public HloChannelInstruction {
   const std::vector<std::vector<int64_t>> slice_sizes_;
 };
 
-class HloReverseInstruction : public HloInstruction {
+class HloReverseInstruction : public HloDimensionsInstruction {
  public:
   explicit HloReverseInstruction(const Shape& shape, HloInstruction* operand,
                                  absl::Span<const int64_t> dimensions);
-  // Returns the dimension sizes or numbers associated with this instruction.
-  const std::vector<int64_t>& dimensions() const override {
-    return dimensions_;
-  }
-  int64_t dimensions(int64_t index) const override {
-    return dimensions()[index];
-  }
-  std::vector<int64_t>* mutable_dimensions() override { return &dimensions_; }
-  // Returns a serialized representation of this instruction.
-  HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
-      const HloPrintOptions& options) const override;
-  bool IdenticalSlowPath(
-      const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
-          eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
-
-  std::vector<int64_t> dimensions_;
 };
 
-class HloConcatenateInstruction : public HloInstruction {
+class HloConcatenateInstruction : public HloDimensionsInstruction {
  public:
   explicit HloConcatenateInstruction(const Shape& shape,
                                      absl::Span<HloInstruction* const> operands,
                                      int64_t dimension);
-  // Returns the dimension sizes or numbers associated with this instruction.
-  const std::vector<int64_t>& dimensions() const override {
-    return dimensions_;
-  }
-  int64_t dimensions(int64_t index) const override {
-    return dimensions()[index];
-  }
-  std::vector<int64_t>* mutable_dimensions() override { return &dimensions_; }
   // Accessor for the dimension in which a concatenate HLO should occur.
-  int64_t concatenate_dimension() const { return dimensions(0); }
-  // Returns a serialized representation of this instruction.
-  HloInstructionProto ToProto() const override;
+  int64_t concatenate_dimension() const override {
+    return HloInstruction::dimensions(0);
+  }
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
-      const HloPrintOptions& options) const override;
-  bool IdenticalSlowPath(
-      const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
-          eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
-
-  std::vector<int64_t> dimensions_;
 };
 
-class HloReduceInstruction : public HloInstruction {
+class HloReduceInstruction : public HloDimensionsInstruction {
  public:
   explicit HloReduceInstruction(const Shape& shape,
                                 absl::Span<HloInstruction* const> args,
                                 absl::Span<const int64_t> dimensions_to_reduce,
                                 HloComputation* reduce_computation);
-  // Returns the dimension sizes or numbers associated with this instruction.
-  const std::vector<int64_t>& dimensions() const override {
-    return dimensions_;
-  }
-  int64_t dimensions(int64_t index) const override {
-    return dimensions()[index];
-  }
-  std::vector<int64_t>* mutable_dimensions() override { return &dimensions_; }
-  // Returns a serialized representation of this instruction.
-  HloInstructionProto ToProto() const override;
 
   // Returns the number of input arrays (and, consequentially, the number of
   // init values) this reduce has.
@@ -676,8 +700,6 @@ class HloReduceInstruction : public HloInstruction {
   }
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
-      const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
@@ -686,25 +708,15 @@ class HloReduceInstruction : public HloInstruction {
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
-
-  std::vector<int64_t> dimensions_;
 };
 
-class HloSortInstruction : public HloInstruction {
+class HloSortInstruction : public HloDimensionsInstruction {
  public:
   explicit HloSortInstruction(const Shape& shape, int64_t dimension,
                               absl::Span<HloInstruction* const> operands,
                               HloComputation* compare, bool is_stable);
-  // Returns the dimension sizes or numbers associated with this instruction.
-  const std::vector<int64_t>& dimensions() const override {
-    return dimensions_;
-  }
-  int64_t dimensions(int64_t index) const override {
-    return dimensions()[index];
-  }
-  std::vector<int64_t>* mutable_dimensions() override { return &dimensions_; }
   // Returns the sort dimension for this instruction
-  int64_t sort_dimension() const { return dimensions(0); }
+  int64_t sort_dimension() const { return HloInstruction::dimensions(0); }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
   // Returns the key operand to this instruction.
@@ -715,7 +727,7 @@ class HloSortInstruction : public HloInstruction {
   bool is_stable() const { return is_stable_; }
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -726,71 +738,34 @@ class HloSortInstruction : public HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
 
-  std::vector<int64_t> dimensions_;
   bool is_stable_;
 };
 
-class HloTransposeInstruction : public HloInstruction {
+class HloTransposeInstruction : public HloDimensionsInstruction {
  public:
   explicit HloTransposeInstruction(const Shape& shape, HloInstruction* operand,
                                    absl::Span<const int64_t> dimensions);
-  // Returns the dimension sizes or numbers associated with this instruction.
-  const std::vector<int64_t>& dimensions() const override {
-    return dimensions_;
-  }
-  int64_t dimensions(int64_t index) const override {
-    return dimensions()[index];
-  }
-  std::vector<int64_t>* mutable_dimensions() override { return &dimensions_; }
   // Returns whether this instruction does a rank-2 transposition.
   bool IsRank2Transpose() const;
-  // Returns a serialized representation of this instruction.
-  HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
-      const HloPrintOptions& options) const override;
-  bool IdenticalSlowPath(
-      const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
-          eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
-
-  std::vector<int64_t> dimensions_;
 };
 
-class HloBroadcastInstruction : public HloInstruction {
+class HloBroadcastInstruction : public HloDimensionsInstruction {
  public:
   explicit HloBroadcastInstruction(
       const Shape& shape, HloInstruction* operand,
       absl::Span<const int64_t> broadcast_dimension);
-  // Returns the dimension sizes or numbers associated with this instruction.
-  const std::vector<int64_t>& dimensions() const override {
-    return dimensions_;
-  }
-  int64_t dimensions(int64_t index) const override {
-    return dimensions()[index];
-  }
-  std::vector<int64_t>* mutable_dimensions() override { return &dimensions_; }
-  // Returns a serialized representation of this instruction.
-  HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
-      const HloPrintOptions& options) const override;
-  bool IdenticalSlowPath(
-      const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
-          eq_computations) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
-
-  std::vector<int64_t> dimensions_;
 };
 
 class HloDynamicReshapeInstruction : public HloInstruction {
@@ -820,7 +795,7 @@ class HloReshapeInstruction : public HloInstruction {
   HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -839,12 +814,8 @@ class HloMapInstruction : public HloInstruction {
                              absl::Span<HloInstruction* const> operands,
                              HloComputation* map_computation);
   // Returns the dimension sizes or numbers associated with this instruction.
-  const std::vector<int64_t>& dimensions() const override {
-    return dimensions_;
-  }
-  int64_t dimensions(int64_t index) const override {
-    return dimensions()[index];
-  }
+  absl::Span<const int64_t> dimensions() const override { return dimensions_; }
+
   std::vector<int64_t>* mutable_dimensions() override { return &dimensions_; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
@@ -852,7 +823,7 @@ class HloMapInstruction : public HloInstruction {
  private:
   bool IsElementwiseImpl(
       const absl::optional<int64_t>& operand_idx) const override;
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -898,7 +869,7 @@ class HloSliceInstruction : public HloInstruction {
   std::vector<int64_t>* mutable_slice_strides() { return &slice_strides_; }
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -943,7 +914,7 @@ class HloConstantInstruction : public HloInstruction {
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations) const override;
-  string OperandsToStringWithCanonicalNameMap(
+  std::string OperandsToStringWithCanonicalNameMap(
       const HloPrintOptions& options,
       CanonicalNameMap* canonical_name_map) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -951,26 +922,6 @@ class HloConstantInstruction : public HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
   absl::optional<Literal> literal_;
-};
-
-class HloTraceInstruction : public HloInstruction {
- public:
-  explicit HloTraceInstruction(const string& tag, HloInstruction* operand);
-  // Returns a tag to be used in tracing.
-  string TracingTag() const { return literal_.GetR1U8AsString(); }
-  // Returns a serialized representation of this instruction.
-  HloInstructionProto ToProto() const override;
-
- private:
-  bool IdenticalSlowPath(
-      const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
-          eq_computations) const override;
-  // Implementation for non-common logic of CloneWithNewOperands.
-  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
-      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
-      HloCloneContext* context) const override;
-  Literal literal_;
 };
 
 class HloFusionInstruction : public HloInstruction {
@@ -990,7 +941,7 @@ class HloFusionInstruction : public HloInstruction {
   // its fusion computation, to avoid referencing freed memory.
   void ClearFusionComputationInstruction();
 
-  string ToCategory() const override;
+  std::string ToCategory() const override;
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1090,13 +1041,12 @@ class HloFusionInstruction : public HloInstruction {
 
   bool IsElementwiseImpl(
       const absl::optional<int64_t>& operand_idx) const override;
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations) const override;
-  uint64 InnerHash() const override;
 
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -1120,7 +1070,7 @@ class HloRngInstruction : public HloInstruction {
  private:
   bool IsElementwiseImpl(
       const absl::optional<int64_t>& operand_idx) const override;
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -1138,7 +1088,7 @@ class HloRngInstruction : public HloInstruction {
 class HloParameterInstruction : public HloInstruction {
  public:
   explicit HloParameterInstruction(int64_t parameter_number, const Shape& shape,
-                                   const string& name);
+                                   const std::string& name);
   int64_t parameter_number() const { return parameter_number_; }
 
   // Sets and gets the whether all replicas will receive the same parameter data
@@ -1167,13 +1117,13 @@ class HloParameterInstruction : public HloInstruction {
   HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations) const override;
-  string OperandsToStringWithCanonicalNameMap(
+  std::string OperandsToStringWithCanonicalNameMap(
       const HloPrintOptions& options,
       CanonicalNameMap* canonical_name_map) const override;
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -1203,7 +1153,7 @@ class HloGetTupleElementInstruction : public HloInstruction {
   HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -1224,14 +1174,14 @@ class HloReducePrecisionInstruction : public HloInstruction {
                                          const int exponent_bits,
                                          const int mantissa_bits);
   // Returns the number of exponent bits for a reduce-precision node.
-  int32 exponent_bits() const { return exponent_bits_; }
+  int32_t exponent_bits() const { return exponent_bits_; }
   // Returns the number of mantissa bits for a reduce-precision node.
-  int32 mantissa_bits() const { return mantissa_bits_; }
+  int32_t mantissa_bits() const { return mantissa_bits_; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -1243,20 +1193,20 @@ class HloReducePrecisionInstruction : public HloInstruction {
       HloCloneContext* context) const override;
 
   // The bit sizes for a reduce-precision operation.
-  int32 exponent_bits_ = 0;
-  int32 mantissa_bits_ = 0;
+  int32_t exponent_bits_ = 0;
+  int32_t mantissa_bits_ = 0;
 };
 
 class HloInfeedInstruction : public HloInstruction {
  public:
   explicit HloInfeedInstruction(const Shape& infeed_shape,
                                 HloInstruction* token_operand,
-                                const string& config);
+                                const std::string& config);
   // Returns the infeed configuration string. The infeed configuration includes
   // any metadata needed for the backend compiler (e.g., infeed buffer address)
   // and is target-dependent.
-  string infeed_config() const { return infeed_config_; }
-  void set_infeed_config(const string& config) { infeed_config_ = config; }
+  std::string infeed_config() const { return infeed_config_; }
+  void set_infeed_config(const std::string& config) { infeed_config_ = config; }
   // Returns the shape of the data received by the infeed. This is not the same
   // as the shape of the infeed instruction which produces a tuple containing
   // the infeed data shape and a TOKEN.
@@ -1268,7 +1218,7 @@ class HloInfeedInstruction : public HloInstruction {
   HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -1280,7 +1230,7 @@ class HloInfeedInstruction : public HloInstruction {
       HloCloneContext* context) const override;
 
   // The string representation of the infeed configuration.
-  string infeed_config_;
+  std::string infeed_config_;
 };
 
 class HloOutfeedInstruction : public HloInstruction {
@@ -1294,13 +1244,15 @@ class HloOutfeedInstruction : public HloInstruction {
   // Returns the mutable shape for the Outfeed instruction.
   Shape* mutable_outfeed_shape() { return &outfeed_shape_; }
   // Returns the config for the Outfeed instruction.
-  const string& outfeed_config() const { return outfeed_config_; }
-  void set_outfeed_config(const string& config) { outfeed_config_ = config; }
+  const std::string& outfeed_config() const { return outfeed_config_; }
+  void set_outfeed_config(const std::string& config) {
+    outfeed_config_ = config;
+  }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -1314,7 +1266,7 @@ class HloOutfeedInstruction : public HloInstruction {
   // Shape of outfeed request.
   Shape outfeed_shape_;
   // Outfeed configuration information, only present for kOutfeed.
-  string outfeed_config_;
+  std::string outfeed_config_;
 };
 
 class HloConvolutionInstruction : public HloInstruction {
@@ -1356,12 +1308,12 @@ class HloConvolutionInstruction : public HloInstruction {
   const PrecisionConfig& precision_config() const { return precision_config_; }
   PrecisionConfig* mutable_precision_config() { return &precision_config_; }
 
-  string ToCategory() const override;
+  std::string ToCategory() const override;
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -1443,7 +1395,7 @@ class HloReduceWindowInstruction : public HloInstruction {
   }
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -1492,7 +1444,7 @@ class HloSelectAndScatterInstruction : public HloInstruction {
   HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -1509,14 +1461,16 @@ class HloCustomCallInstruction : public HloInstruction {
  public:
   HloCustomCallInstruction(const Shape& shape,
                            absl::Span<HloInstruction* const> operands,
-                           absl::string_view custom_call_target, string opaque,
+                           absl::string_view custom_call_target,
+                           std::string opaque,
                            CustomCallApiVersion api_version);
 
   // Constructor for a custom call with constrained layout. 'shape' and
   // 'operands_with_layout' must all have layouts.
   HloCustomCallInstruction(const Shape& shape,
                            absl::Span<HloInstruction* const> operands,
-                           absl::string_view custom_call_target, string opaque,
+                           absl::string_view custom_call_target,
+                           std::string opaque,
                            absl::Span<const Shape> operand_shapes_with_layout,
                            CustomCallApiVersion api_version);
 
@@ -1524,14 +1478,15 @@ class HloCustomCallInstruction : public HloInstruction {
   HloCustomCallInstruction(const Shape& shape,
                            absl::Span<HloInstruction* const> operands,
                            HloComputation* to_apply,
-                           absl::string_view custom_call_target, string opaque,
+                           absl::string_view custom_call_target,
+                           std::string opaque,
                            CustomCallApiVersion api_version);
 
   // Constructor for a custom call with multiple computations.
   HloCustomCallInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::Span<HloComputation* const> called_computations,
-      absl::string_view custom_call_target, string opaque,
+      absl::string_view custom_call_target, std::string opaque,
       CustomCallApiVersion api_version);
 
   const Window& window() const override {
@@ -1554,8 +1509,11 @@ class HloCustomCallInstruction : public HloInstruction {
         absl::make_unique<ConvolutionDimensionNumbers>(dnums);
   }
   // TODO(jpienaar): Remove this accessor in the follow up.
-  const string& opaque() const { return raw_backend_config_string(); }
-  const string& custom_call_target() const { return custom_call_target_; }
+  const std::string& opaque() const { return raw_backend_config_string(); }
+  const std::string& custom_call_target() const { return custom_call_target_; }
+  void set_custom_call_target(absl::string_view target) {
+    custom_call_target_ = std::string(target);
+  }
   void set_feature_group_count(int64_t feature_group_count) {
     feature_group_count_ = feature_group_count;
   }
@@ -1627,7 +1585,7 @@ class HloCustomCallInstruction : public HloInstruction {
   CustomCallApiVersion api_version() const { return api_version_; }
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -1638,7 +1596,7 @@ class HloCustomCallInstruction : public HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
   // Name of a global symbol to call.
-  string custom_call_target_;
+  std::string custom_call_target_;
   // Describes the window in a windowed operation such as convolution.
   std::unique_ptr<Window> window_;
   // Describes the dimension numbers used for a convolution.
@@ -1689,7 +1647,7 @@ class HloPadInstruction : public HloInstruction {
   HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -1752,7 +1710,7 @@ class HloDynamicSliceInstruction : public HloDynamicIndexInstruction {
   int64_t first_index_operand_number() const override { return 1; }
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -1808,11 +1766,11 @@ class HloGatherInstruction : public HloInstruction {
       absl::Span<const int64_t> collapsed_slice_dims,
       absl::Span<const int64_t> start_index_map, int64_t index_vector_dim);
   // Returns the dump string of the given gather dimension numbers.
-  static string GatherDimensionNumbersToString(
+  static std::string GatherDimensionNumbersToString(
       const GatherDimensionNumbers& gather_dimension_numbers);
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -1830,8 +1788,7 @@ class HloGatherInstruction : public HloInstruction {
 class HloScatterInstruction : public HloInstruction {
  public:
   explicit HloScatterInstruction(
-      const Shape& shape, HloInstruction* operand,
-      HloInstruction* scatter_indices, HloInstruction* updates,
+      const Shape& shape, absl::Span<HloInstruction* const> args,
       HloComputation* update_computation,
       const ScatterDimensionNumbers& scatter_dim_numbers,
       bool indices_are_sorted, bool unique_indices);
@@ -1846,6 +1803,19 @@ class HloScatterInstruction : public HloInstruction {
   bool unique_indices() const override { return unique_indices_; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
+  int64_t scatter_operand_count() const { return operand_count() / 2; }
+  absl::Span<HloInstruction* const> scatter_operands() const {
+    return absl::MakeConstSpan(operands()).first(scatter_operand_count());
+  }
+  absl::Span<HloInstruction* const> scatter_updates() const {
+    return absl::MakeConstSpan(operands()).last(scatter_operand_count());
+  }
+  const HloInstruction* scatter_indices() const {
+    return operand(scatter_operand_count());
+  }
+  HloInstruction* scatter_indices() {
+    return mutable_operand(scatter_operand_count());
+  }
 
   // Creates an instance of ScatterDimensionNumbers.
   static ScatterDimensionNumbers MakeScatterDimNumbers(
@@ -1854,11 +1824,11 @@ class HloScatterInstruction : public HloInstruction {
       absl::Span<const int64_t> scatter_dims_to_operand_dims,
       int64_t index_vector_dim);
   // Returns the dump string of the given scatter dimension numbers.
-  static string ScatterDimensionNumbersToString(
+  static std::string ScatterDimensionNumbersToString(
       const ScatterDimensionNumbers& scatter_dimension_numbers);
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -1877,13 +1847,17 @@ class HloScatterInstruction : public HloInstruction {
 class HloIotaInstruction : public HloInstruction {
  public:
   explicit HloIotaInstruction(const Shape& shape, int64_t iota_dimension);
+
   // Returns the dimension sizes or numbers associated with this instruction.
   int64_t iota_dimension() const { return iota_dimension_; }
+  absl::Span<const int64_t> dimensions() const override {
+    return absl::MakeConstSpan(&iota_dimension_, 1);
+  }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -1894,7 +1868,7 @@ class HloIotaInstruction : public HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
 
-  const int64_t iota_dimension_;
+  int64_t iota_dimension_;
 };
 
 class HloDotInstruction : public HloInstruction {
@@ -1925,7 +1899,7 @@ class HloDotInstruction : public HloInstruction {
   HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -1935,8 +1909,6 @@ class HloDotInstruction : public HloInstruction {
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
-  // Returns the dump string of the dot dimension numbers.
-  string DotDimensionNumbersToString() const;
 
   // Describes the dimension numbers used for a dot.
   DotDimensionNumbers dot_dimension_numbers_;
@@ -1966,7 +1938,7 @@ class HloDomainInstruction : public HloInstruction {
   }
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -1993,7 +1965,7 @@ class HloGetDimensionSizeInstruction : public HloInstruction {
   HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -2020,7 +1992,7 @@ class HloSetDimensionSizeInstruction : public HloInstruction {
   HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -2046,7 +2018,7 @@ class HloRngGetAndUpdateStateInstruction : public HloInstruction {
   HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
@@ -2069,7 +2041,7 @@ class HloRngBitGeneratorInstruction : public HloInstruction {
   HloInstructionProto ToProto() const override;
 
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
+  std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,

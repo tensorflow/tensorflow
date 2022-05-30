@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/call_register.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/interpreter_test_util.h"
 #include "tensorflow/lite/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
 #include "tensorflow/lite/testing/util.h"
@@ -156,7 +157,7 @@ class CallTest : public subgraph_test_util::ControlFlowOpTest {
         pad_reg, &node_index);
     ASSERT_EQ(node_index, expected_node_index++);
     // Node 2: Call op, calls subgraph that contains Add op.
-    interpreter_->AddSubgraphs(1);
+    AddSubgraphs(1);
     const int kLoopCount = 1;
     const int kSubgraphIndex = 1;
     builder_->BuildAddSubgraph(interpreter_->subgraph(1));
@@ -185,7 +186,7 @@ TEST_F(CallTest, SubgraphMultipleInputsSingleOutput) {
   // {1,3,1,2}.
   for (size_t i = 0; i < test_shapes.size(); ++i) {
     interpreter_.reset(new Interpreter);
-    interpreter_->AddSubgraphs(1);
+    AddSubgraphs(1);
     int loop_count = test_shapes[i][0];
     builder_->BuildMulSubgraph(interpreter_->subgraph(1));
     CallTest::BuildCallSubgraph(&interpreter_->primary_subgraph(), 1,
@@ -208,7 +209,7 @@ TEST_F(CallTest, SubgraphMultipleInputsSingleOutput) {
 }
 
 TEST_F(CallTest, ShouldBeANoOpWhenLoopCountIsZero) {
-  interpreter_->AddSubgraphs(1);
+  AddSubgraphs(1);
   int loop_count = 0;
   builder_->BuildMulSubgraph(interpreter_->subgraph(1));
   CallTest::BuildCallSubgraph(&interpreter_->primary_subgraph(), 1, loop_count,
@@ -222,7 +223,7 @@ TEST_F(CallTest, ShouldBeANoOpWhenLoopCountIsZero) {
 }
 
 TEST_F(CallTest, SubgraphWithFixedInputShapes) {
-  interpreter_->AddSubgraphs(1);
+  AddSubgraphs(1);
   const int kLoopCount = 2;
   const int kBatchSizeSubgraph = 1;
   const int kFixedInputLen = 3;
@@ -257,7 +258,7 @@ TEST_F(CallTest, SubgraphWithMultipleInputsAndOutputs) {
       {3, 2, 1}, {1, 2, 3}, {2, 1, 3}, {2, 3, 1, 1}, {2, 3}};
   for (size_t i = 0; i < test_shapes.size(); ++i) {
     interpreter_.reset(new Interpreter);
-    interpreter_->AddSubgraphs(1);
+    AddSubgraphs(1);
     int loop_count = test_shapes[i][0];
     CallTest::BuildGraphWithMultipleOutputs(interpreter_->subgraph(1));
     CallTest::BuildCallSubgraph(&interpreter_->primary_subgraph(), 1,
@@ -288,7 +289,7 @@ TEST_F(CallTest, ShouldHandleInvalidParamsAndSetToDefault) {
     fbb.String("hello");
   });
   fbb.Finish();
-  interpreter_->AddSubgraphs(1);
+  AddSubgraphs(1);
 
   CallTest::BuildCallSubgraph(&interpreter_->primary_subgraph(),
                               fbb.GetBuffer(), {0}, {1}, 0, true);
@@ -336,7 +337,7 @@ TEST_F(CallTest, MultiNodeGraph) {
 // It's sufficient to test whether the string returned by error reporter
 // contains the expected error message.
 TEST_F(CallTest, ShouldFailWith0DInputs) {
-  interpreter_->AddSubgraphs(1);
+  AddSubgraphs(1);
   int loop_count = 5;
   builder_->BuildMulSubgraph(interpreter_->subgraph(1));
   interpreter_->subgraph(1)->ResizeInputTensor(0, {});
@@ -353,7 +354,7 @@ TEST_F(CallTest, ShouldFailWith0DInputs) {
 }
 
 TEST_F(CallTest, ShouldFailWhenLoopCountDoesNotMatchBatchSize) {
-  interpreter_->AddSubgraphs(1);
+  AddSubgraphs(1);
   int loop_count = 7;
   builder_->BuildMulSubgraph(interpreter_->subgraph(1));
   CallTest::BuildCallSubgraph(&interpreter_->primary_subgraph(), 1, loop_count,
@@ -368,7 +369,7 @@ TEST_F(CallTest, ShouldFailWhenLoopCountDoesNotMatchBatchSize) {
 }
 
 TEST_F(CallTest, ShouldFailForSubgraphWithIncompatibleInputShapes) {
-  interpreter_->AddSubgraphs(1);
+  AddSubgraphs(1);
   const int kLoopCount = 5;
   const int kBatchSizeSubgraph = 1;
   std::vector<int> call_op_input = {kLoopCount, 3};
@@ -404,7 +405,7 @@ TEST_F(CallTest, ShouldFailWhenSubgraphIndexMatchesInvokedSubgraph) {
 }
 
 TEST_F(CallTest, ShouldFailWithNegativeLoopCount) {
-  interpreter_->AddSubgraphs(1);
+  AddSubgraphs(1);
   CallTest::BuildCallSubgraph(&interpreter_->primary_subgraph(), 1, -1, {0},
                               {1});
 

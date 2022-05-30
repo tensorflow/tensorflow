@@ -35,6 +35,7 @@ class SequentialThunk : public Thunk {
   SequentialThunk(const SequentialThunk&) = delete;
   SequentialThunk& operator=(const SequentialThunk&) = delete;
 
+  ThunkSequence& thunks() { return thunks_; }
   const ThunkSequence& thunks() const { return thunks_; }
   std::string ToStringExtra(int indent) const override;
 

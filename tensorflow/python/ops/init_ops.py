@@ -48,7 +48,7 @@ from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
 
 
-class Initializer(object):
+class Initializer:
   """Initializer base class: all initializers inherit from this class."""
 
   def __call__(self, shape, dtype=None, partition_info=None):
@@ -107,7 +107,7 @@ class Zeros(Initializer):
   `tf.zeros_initializer.__init__()`. However, you can specify the `dtype` in
   `__call__()` in both cases.
 
-  #### Structural Mapping to Native TF2
+  #### Structural Mapping to TF2
 
   Before:
 
@@ -302,7 +302,7 @@ class Constant(Initializer):
   The `verify_shape` argument is not supported in TF2. Using
   `tf.constant_initializer` is equivalent to setting `verify_shape` to `False`.
 
-  #### Structural Mapping to Native TF2
+  #### Structural Mapping to TF2
 
   Before:
 
@@ -412,13 +412,13 @@ class RandomUniform(Initializer):
   Although it is a legacy compat.v1 API, this symbol is compatible with eager
   execution and `tf.function`.
 
-  To switch to native TF2, switch to using either
+  To switch to TF2, switch to using either
   `tf.initializers.RandomUniform` or `tf.keras.initializers.RandomUniform`
   (neither from `compat.v1`) and
   pass the dtype when calling the initializer. Keep in mind that
   the default minval, maxval and the behavior of fixed seeds have changed.
 
-  #### Structural Mapping to Native TF2
+  #### Structural Mapping to TF2
 
   Before:
 
@@ -502,13 +502,13 @@ class RandomNormal(Initializer):
   Although it is a legacy `compat.v1` API, this symbol is compatible with eager
   execution and `tf.function`.
 
-  To switch to native TF2, switch to using either
+  To switch to TF2, switch to using either
   `tf.initializers.RandomNormal` or `tf.keras.initializers.RandomNormal`
   (neither from `compat.v1`) and
   pass the dtype when calling the initializer. Keep in mind that
   the default stddev and the behavior of fixed seeds have changed.
 
-  #### Structural Mapping to Native TF2
+  #### Structural Mapping to TF2
 
   Before:
 
@@ -595,16 +595,16 @@ class TruncatedNormal(Initializer):
       calling the initializer. Only floating point types are supported.
 
   @compatibility(TF2)
-  Although it is a legacy compat.v1 API, this symbol is compatible with eager
+  Although it is a legacy `compat.v1` API, this symbol is compatible with eager
   execution and `tf.function`.
 
-  To switch to native TF2, switch to using either
+  To switch to TF2, switch to using either
   `tf.initializers.truncated_normal` or `tf.keras.initializers.TruncatedNormal`
   (neither from `compat.v1`) and
   pass the dtype when calling the initializer. Keep in mind that
   the default stddev and the behavior of fixed seeds have changed.
 
-  #### Structural Mapping to Native TF2
+  #### Structural Mapping to TF2
 
   Before:
 
@@ -742,6 +742,59 @@ class UniformUnitScaling(Initializer):
                                   "variance_scaling_initializer")
 class VarianceScaling(Initializer):
   """Initializer capable of adapting its scale to the shape of weights tensors.
+
+  @compatibility(TF2)
+  Although it is a legacy `compat.v1` API, this symbol is compatible with eager
+  execution and `tf.function`.
+
+  To switch to TF2 APIs, move to using either
+  `tf.initializers.variance_scaling` or `tf.keras.initializers.VarianceScaling`
+  (neither from `compat.v1`) and
+  pass the dtype when calling the initializer.
+
+  #### Structural Mapping to TF2
+
+  Before:
+
+  ```python
+  initializer = tf.compat.v1.variance_scaling_initializer(
+    scale=scale,
+    mode=mode,
+    distribution=distribution
+    seed=seed,
+    dtype=dtype)
+
+  weight_one = tf.Variable(initializer(shape_one))
+  weight_two = tf.Variable(initializer(shape_two))
+  ```
+
+  After:
+
+  ```python
+  initializer = tf.keras.initializers.VarianceScaling(
+    scale=scale,
+    mode=mode,
+    distribution=distribution
+    seed=seed)
+
+  weight_one = tf.Variable(initializer(shape_one, dtype=dtype))
+  weight_two = tf.Variable(initializer(shape_two, dtype=dtype))
+  ```
+
+  #### How to Map Arguments
+
+  | TF1 Arg Name       | TF2 Arg Name    | Note                       |
+  | :----------------- | :-------------- | :------------------------- |
+  | `scale`            | `scale`        | No change to defaults       |
+  | `mode`             | `mode`         | No change to defaults       |
+  | `distribution`     | `distribution` | No change to defaults.      |
+  :                    :                : 'normal' maps to 'truncated_normal' :
+  | `seed`             | `seed`         | |
+  | `dtype`        |  `dtype` | The TF2 api only takes it  |
+  :                :          : as a `__call__` arg, not a constructor arg. :
+  | `partition_info`     | - |  (`__call__` arg in TF1) Not supported       |
+
+  @end_compatibility
 
   With `distribution="truncated_normal" or "untruncated_normal"`,
   samples are drawn from a truncated/untruncated normal

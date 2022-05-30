@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "TensorListConcatLists"
   input_arg {
     name: "input_a"
@@ -35,6 +35,35 @@ op {
       args {
         type_id: TFT_VAR
         s: "element_dtype"
+      }
+    }
+  }
+  attr {
+    name: "element_dtype"
+    type: "type"
+  }
+}
+op {
+  name: "TensorListConcatLists"
+  input_arg {
+    name: "input_a"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "input_b"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "output"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_ARRAY
+      args {
+        type_id: TFT_TENSOR
+        args {
+          type_id: TFT_VAR
+          s: "element_dtype"
+        }
       }
     }
   }

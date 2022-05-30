@@ -15,16 +15,20 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
 
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_support_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/stream_executor/device_description.h"
+#include "tensorflow/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {
 
-// Finds convolutions that this pass may be able to transform, namely int8 cudnn
-// forward or forward-bias-activation convolutions
+// Finds convolutions that this pass may be able to transform, namely int8_t
+// cudnn forward or forward-bias-activation convolutions
 //
 // cudnn as of v8.2 supports the following data type combinations for forward
 // and forward-bias-activation convolutions.  We have to make sure we only
@@ -33,7 +37,7 @@ namespace gpu {
 //   in       out
 //   int8x1   int8x1
 //   int8x1   float
-//   int8x1   int32
+//   int8x1   int32_t
 //
 //   int8x4   int8x4
 //   int8x4   float
@@ -43,7 +47,7 @@ namespace gpu {
 // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnConvolutionForward
 //
 // For now we restrict ourselves to only the int8xN -> int8xN cases.  We could
-// allow the int8x4 -> float case in the future if desireable.
+// allow the int8x4 -> float case in the future if desirable.
 static std::vector<HloCustomCallInstruction*> GetRelevantConvs(
     HloComputation* comp) {
   std::vector<HloCustomCallInstruction*> convs;
@@ -253,7 +257,9 @@ static ConvolutionDimensionNumbers VectorizeDnums(
 //
 // (The dimensions can appear in any order; which is N/C/etc is determined by
 // the convolutions' dnums.)
-static StatusOr<bool> TryRevectorizeConv(HloInstruction* conv, int vect_size) {
+static StatusOr<bool> TryRevectorizeConv(
+    const se::CudaComputeCapability& compute_capability,
+    HloCustomCallInstruction* conv, int vect_size) {
   const Shape& input_shape = conv->operand(0)->shape();
   const Shape& kernel_shape = conv->operand(1)->shape();
   const Shape& output_shape = conv->shape().tuple_shapes(0);
@@ -281,6 +287,19 @@ static StatusOr<bool> TryRevectorizeConv(HloInstruction* conv, int vect_size) {
       input_feat_size % (vect_size / input_vect_size) != 0 ||
       output_feat_size % (vect_size / output_vect_size) != 0) {
     return false;
+  }
+
+  // If this is an integer convolution check that we only vectorize when cuDNN
+  // supports the vectorized implementation.
+  if (primitive_util::IsIntegralType(input_shape.element_type())) {
+    TF_ASSIGN_OR_RETURN(bool supported_target_vectorization,
+                        CudnnSupportsOptimizedIntegerConvolution(
+                            compute_capability, *conv, vect_size));
+    if (!supported_target_vectorization) {
+      VLOG(3) << "Skipping re-vectorization of conv to vector size: "
+              << vect_size << ": " << conv->ToString();
+      return false;
+    }
   }
 
   VLOG(1) << "Re-vectorizing conv channels from "
@@ -345,11 +364,24 @@ static StatusOr<bool> TryRevectorizeConv(HloInstruction* conv, int vect_size) {
           b, Tuple(&b, {new_conv_result_unrevectorized, new_conv_scratch}),
           conv->parent()));
 
+  // Set the name on the new conv.  This is purely cosmetic, but we attempt to
+  // preserve e.g. "cudnn-conv.42" instead of "custom-call.42".
+  auto new_conv_comp_instrs = new_conv_comp->instructions();
+  auto new_conv_it =
+      absl::c_find_if(new_conv_comp_instrs, [](HloInstruction* instr) {
+        return instr->opcode() == HloOpcode::kCustomCall;
+      });
+  if (new_conv_it != new_conv_comp_instrs.end()) {
+    new_conv_comp->parent()->SetAndUniquifyInstrName(*new_conv_it,
+                                                     conv->name());
+  }
+
   // Replace the old conv with a call to the computation we just created.
   VLOG(1) << "Re-vectorized conv to " << new_conv_comp->ToString();
   TF_RETURN_IF_ERROR(conv->parent()->ReplaceWithNewInstruction(
       conv, HloInstruction::CreateCall(conv->shape(), conv->operands(),
                                        new_conv_comp)));
+
   return true;
 }
 
@@ -361,8 +393,9 @@ static StatusOr<bool> TryRevectorizeConv(HloInstruction* conv, int vect_size) {
 //
 // This requires that C be a multiple of vect_size.  CudnnPadForConvolutions can
 // add padding to make this true.
-static StatusOr<bool> TryVectorizeConv(HloInstruction* conv,
-                                       int64_t vect_size) {
+static StatusOr<bool> TryVectorizeConv(
+    const se::CudaComputeCapability& compute_capability,
+    HloCustomCallInstruction* conv, int64_t vect_size) {
   const Shape& input_shape = conv->operand(0)->shape();
   const Shape& output_shape = conv->shape().tuple_shapes(0);
   const auto& dnums = conv->convolution_dimension_numbers();
@@ -379,6 +412,19 @@ static StatusOr<bool> TryVectorizeConv(HloInstruction* conv,
     // Conv already has an extra dimension, which we assume is the vectorized
     // features dim.
     return false;
+  }
+
+  // If this is an integer convolution check that we only vectorize when cuDNN
+  // supports the vectorized implementation.
+  if (primitive_util::IsIntegralType(input_shape.element_type())) {
+    TF_ASSIGN_OR_RETURN(bool supported_target_vectorization,
+                        CudnnSupportsOptimizedIntegerConvolution(
+                            compute_capability, *conv, vect_size));
+    if (!supported_target_vectorization) {
+      VLOG(3) << "Skipping vectorization of conv to vector size: " << vect_size
+              << ": " << conv->ToString();
+      return false;
+    }
   }
 
   VLOG(1) << "Vectorizing conv channels by " << vect_size << ": "
@@ -454,13 +500,16 @@ StatusOr<bool> CudnnVectorizeConvolutions::Run(HloModule* module) {
       // fall back to int8x4.
       bool local_changed = false;
       if (compute_capability_.IsAtLeast(7, 5)) {
-        TF_ASSIGN_OR_RETURN(local_changed, TryRevectorizeConv(conv, 32));
+        TF_ASSIGN_OR_RETURN(local_changed,
+                            TryRevectorizeConv(compute_capability_, conv, 32));
         if (!local_changed) {
-          TF_ASSIGN_OR_RETURN(local_changed, TryVectorizeConv(conv, 32));
+          TF_ASSIGN_OR_RETURN(local_changed,
+                              TryVectorizeConv(compute_capability_, conv, 32));
         }
       }
       if (!local_changed) {
-        TF_ASSIGN_OR_RETURN(local_changed, TryVectorizeConv(conv, 4));
+        TF_ASSIGN_OR_RETURN(local_changed,
+                            TryVectorizeConv(compute_capability_, conv, 4));
       }
       changed |= local_changed;
     }

@@ -206,6 +206,8 @@ class XlaAssignVariableOp : public OpKernel {
                           data::AnonymousIteratorHandleOp);                    \
   REGISTER_KERNEL_BUILDER(Name("AnonymousIteratorV2").Device(DEVICE),          \
                           data::AnonymousIteratorHandleOp);                    \
+  REGISTER_KERNEL_BUILDER(Name("AnonymousIteratorV3").Device(DEVICE),          \
+                          data::AnonymousIteratorHandleOp);                    \
   REGISTER_KERNEL_BUILDER(Name("DeleteIterator").Device(DEVICE),               \
                           data::DeleteIteratorOp);                             \
   REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE),              \

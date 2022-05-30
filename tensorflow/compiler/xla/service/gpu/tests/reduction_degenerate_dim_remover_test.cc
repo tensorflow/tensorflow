@@ -105,7 +105,7 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHloWithShapes(hlo_text,
                               R"(
-// CHECK: (f32[], u32[]) reduce(f32[3,4,5]{2,1,0} %bitcast, u32[3,4,5]{2,1,0} %bitcast.1, f32[] %zero, u32[] %zero_idx), dimensions={0,1,2}
+// CHECK: (f32[], u32[]) reduce(f32[3,4,5]{2,1,0} %bitcast.5, u32[3,4,5]{2,1,0} %bitcast.4, f32[] %zero_1, u32[] %zero_idx_1), dimensions={0,1,2}
 )");
 }
 

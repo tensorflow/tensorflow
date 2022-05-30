@@ -15,65 +15,67 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
 
+#include <string>
+
+#include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Support/FileUtilities.h"
-#include "mlir/Transforms/Bufferize.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/core/platform/logging.h"
+#include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
 
 namespace tensorflow {
 
 using ::tfrt::HostContext;
-using ::tfrt::cpu::jit::CompilationOptions;
-using ::tfrt::cpu::jit::MemrefType;
+using ::tfrt::jitrt::CompilationOptions;
+using ::tfrt::jitrt::CompilationPipelineOptions;
+using ::tfrt::jitrt::MemrefType;
 
-std::unique_ptr<HostContext> CreateSingleThreadedHostContext() {
-  return std::make_unique<HostContext>(
-      [](const tfrt::DecodedDiagnostic& diag) {
-        LOG(FATAL) << "Runtime error: " << diag.message << "\n";
-      },
-      tfrt::CreateMallocAllocator(), tfrt::CreateSingleThreadedWorkQueue());
-}
+const bool kStaticDim = false;
+const bool kDynamicDim = true;
 
-std::unique_ptr<HostContext> CreateMultiThreadedHostContext(int num_threads) {
-  return std::make_unique<HostContext>(
-      [](const tfrt::DecodedDiagnostic& diag) {
-        LOG(FATAL) << "Runtime error: " << diag.message << "\n";
-      },
-      tfrt::CreateMallocAllocator(),
-      tfrt::CreateMultiThreadedWorkQueue(num_threads,
-                                         /*num_blocking_threads=*/1));
-}
-
-mlir::LogicalResult FreeReturnedMemref(const ResultConversionCtx&,
+mlir::LogicalResult FreeReturnedMemref(const ResultConversionCtx& ctx,
                                        RemainingResults results,
                                        unsigned result_index, const Type* type,
+                                       const Type* runtime_type,
                                        void* result_ptr) {
-  DCHECK(llvm::isa<MemrefType>(type)) << "expected memref result";
+  DCHECK(llvm::isa<MemrefType>(runtime_type)) << "expected memref result";
   // Cast result to the arbitrary chosen memref type and rank because we only
   // need to know the base pointer value.
   auto* memref = static_cast<StridedMemRefType<float, 0>*>(result_ptr);
-  free(memref->basePtr);
+  if (llvm::find(ctx.input_ptrs, memref->data) == ctx.input_ptrs.end()) {
+    free(memref->basePtr);
+  }
   return mlir::success();
 }
 
 JitExecutable& CreateJitExecutable(
     const HostContext& host, llvm::StringRef mlir_input,
     llvm::StringRef function_name, bool lower_from_tensorflow,
-    const TfCpuRtPipelineOptions& tf_cpurt_opts) {
+    const TfJitRtPipelineOptions& tf_jitrt_opts) {
+  // Options for the default JitRt compilation pipeline (lowering to LLVM).
+  CompilationPipelineOptions copts;
+  copts.alignment = EIGEN_MAX_ALIGN_BYTES;
+  copts.num_worker_threads = host.GetNumWorkerThreads();
+
   CompilationOptions opts;
-  opts.num_worker_threads = host.GetNumWorkerThreads();
-  opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
-  if (lower_from_tensorflow) {
-    opts.register_pass_pipeline = [&](mlir::OpPassManager& pm) {
-      tensorflow::CreateTfCpuRtPipeline(pm, tf_cpurt_opts);
-    };
-  }
-  opts.type_converter = mlir::BufferizeTypeConverter();
+  opts.register_dialects = [](mlir::DialectRegistry& registry) {
+    mlir::RegisterAllTensorFlowDialects(registry);
+    tfrt::jitrt::RegisterDefaultJitRtDialects(registry);
+  };
+  opts.create_compilation_pipeline =
+      [&, copts, lower_from_tensorflow](mlir::PassManager& pm) {
+        if (lower_from_tensorflow)
+          tensorflow::CreateTfJitRtPipeline(pm, tf_jitrt_opts);
+        tfrt::jitrt::CreateDefaultJitRtCompilationPipeline(pm, copts);
+      };
+  opts.create_specialization_pipeline = CreateJitRtSpecializationPipeline;
+  opts.calling_convention = CompilationOptions::DefaultCallingConvention(
+      mlir::bufferization::BufferizeTypeConverter());
 
   // Cache all jit executables, otherwise different benchmark runs will produce
   // different .so files and the same compiled function will have different
@@ -81,7 +83,8 @@ JitExecutable& CreateJitExecutable(
   static auto* cache = new llvm::StringMap<std::unique_ptr<JitExecutable>>();
 
   std::string key =
-      llvm::formatv("{0}/{1}", mlir_input.data(), opts.num_worker_threads);
+      llvm::formatv("{0}/{1}/{2}", mlir_input.data(), copts.num_worker_threads,
+                    hash_value(tf_jitrt_opts));
 
   // Compile and cache MLIR function.
   auto it = cache->find(key);
@@ -107,17 +110,17 @@ MemrefDesc TensorToMemrefDesc(const Tensor& tensor) {
   tfrt::DType dtype;
   if (tensor.dtype() == DT_FLOAT)
     dtype = tfrt::GetDType<float>();
+  else if (tensor.dtype() == DT_INT64)
+    dtype = tfrt::GetDType<int64_t>();
   else
     LOG(FATAL) << "Unsupported tensor dtype: " << tensor.dtype();
 
   tfrt::TensorShape shape(dims);
-  MemrefDesc desc;
-  desc.dtype = dtype;
-  desc.data = tensor.data();
-  desc.offset = 0;
-  shape.GetDimensions(&desc.sizes);
-  shape.GetStrides(&desc.strides);
-  return desc;
+  return MemrefDesc(shape.GetRank(), dtype, tensor.data(), 0,
+                    [&](auto sizes, auto strides) {
+                      shape.GetDimensions(sizes);
+                      shape.GetStrides(strides);
+                    });
 }
 
 std::string PrintTensorType(llvm::ArrayRef<int64_t> shape,

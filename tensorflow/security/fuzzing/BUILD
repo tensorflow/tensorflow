@@ -130,7 +130,6 @@ tf_fuzz_target(
 tf_fuzz_target(
     name = "tstring_fuzz",
     srcs = ["tstring_fuzz.cc"],
-    tags = ["notap"],  # TODO(188445161): Flaky, re-enable.
     deps = [
         "//tensorflow/core/platform:tstring",
     ],
@@ -177,6 +176,34 @@ py_library(
     name = "python_fuzzing",
     srcs = ["python_fuzzing.py"],
     srcs_version = "PY3",
+)
+
+tf_py_fuzz_target(
+    name = "abs_fuzz",
+    srcs = ["abs_fuzz.py"],
+    tags = ["notap"],  # Run in OSS only.
+    deps = [":python_fuzzing"],
+)
+
+tf_py_fuzz_target(
+    name = "acos_fuzz",
+    srcs = ["acos_fuzz.py"],
+    tags = ["notap"],  # Run in OSS only.
+    deps = [":python_fuzzing"],
+)
+
+tf_py_fuzz_target(
+    name = "acosh_fuzz",
+    srcs = ["acosh_fuzz.py"],
+    tags = ["notap"],  # Run in OSS only.
+    deps = [":python_fuzzing"],
+)
+
+tf_py_fuzz_target(
+    name = "add_fuzz",
+    srcs = ["add_fuzz.py"],
+    tags = ["notap"],  # Run in OSS only.
+    deps = [":python_fuzzing"],
 )
 
 tf_py_fuzz_target(

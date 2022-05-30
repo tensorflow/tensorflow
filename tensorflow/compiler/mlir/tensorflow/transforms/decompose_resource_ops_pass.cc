@@ -31,8 +31,12 @@ namespace {
 
 constexpr char kBadDecompositionMessage[] =
     "Resource ops decomposition did not converge";
-// TODO(prakalps): This can probably be reduced to much smaller number.
-constexpr int kMaxIterations = 100;
+
+// Decomposing resource ops should not take more than a few iterations (2-3) to
+// converge as only a few patterns create new resource ops that can be further
+// decomposed. The rest of the iterations are enough to clean up any dead ops
+// created by decomposition.
+constexpr int kMaxIterations = 10;
 
 // Populates `reachable_functions` with all functions that can be reached from
 // device cluster ops.
@@ -42,18 +46,18 @@ void PopulateClusterReachableFunctions(
   SymbolUserMap symbol_map(table, module);
 
   // Create map from caller to set of all callee(s).
-  llvm::DenseMap<FuncOp, llvm::DenseSet<FuncOp>> caller_callee_map;
+  llvm::DenseMap<func::FuncOp, llvm::DenseSet<func::FuncOp>> caller_callee_map;
 
   // Use worklist to populate the set of reachable functions.
-  std::queue<FuncOp> function_worklist;
+  std::queue<func::FuncOp> function_worklist;
 
   // Iterates over all functions within the module to (1) create caller-callee
   // map, and (2) initialize function worklist with functions referenced from
   // device cluster ops.
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     for (auto user : symbol_map.getUsers(func)) {
       // Populate caller-callee map.
-      if (FuncOp caller = user->getParentOfType<FuncOp>())
+      if (func::FuncOp caller = user->getParentOfType<func::FuncOp>())
         caller_callee_map[caller].insert(func);
       // Initialize function worklist with functions refrerenced in device
       // cluster.
@@ -67,7 +71,7 @@ void PopulateClusterReachableFunctions(
   // Uses worklist algorithm to insert all functions reachable from device
   // cluster ops.
   while (!function_worklist.empty()) {
-    FuncOp caller = function_worklist.front();
+    func::FuncOp caller = function_worklist.front();
     function_worklist.pop();
     for (auto callee : caller_callee_map[caller]) {
       if (reachable_functions.insert(callee).second)
@@ -113,7 +117,7 @@ LogicalResult ApplyPatternsInClusterAndReachableFunctions(
 
   // Apply patterns to reachable functions.
   for (Operation* op : reachable_functions) {
-    assert(isa<FuncOp>(op));
+    assert(isa<func::FuncOp>(op));
     if (failed(applyPatternsAndFoldGreedily(op, patterns))) {
       return op->emitError() << kBadDecompositionMessage;
     }
@@ -124,7 +128,7 @@ LogicalResult ApplyPatternsInClusterAndReachableFunctions(
   // collected many cluster ops when we were populating reachable functions. But
   // we would still need to do a walk to find all clusters that do not
   // reference any function.
-  for (FuncOp func : module.getOps<FuncOp>()) {
+  for (func::FuncOp func : module.getOps<func::FuncOp>()) {
     // If we have already applied patterns to a function then we can skip
     // applying patterns to any device clusters it contains.
     if (reachable_functions.contains(func)) continue;
@@ -148,14 +152,14 @@ LogicalResult ApplyPatternsInClusterAndReachableFunctions(
 
 struct DecomposeResourceOpsPass
     : public DecomposeResourceOpsPassBase<DecomposeResourceOpsPass> {
-  void runOnFunction() override {
+  void runOnOperation() override {
     // Add lowering patterns to the list.
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     TF::PopulateDecomposeResourceOpsPatterns(&getContext(), &patterns);
 
-    if (failed(
-            applyPatternsAndFoldGreedily(getFunction(), std::move(patterns)))) {
-      getFunction().emitError() << kBadDecompositionMessage;
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
+      getOperation().emitError() << kBadDecompositionMessage;
       signalPassFailure();
     }
   }
@@ -166,7 +170,7 @@ struct DecomposeResourceOpsInClusterPass
           DecomposeResourceOpsInClusterPass> {
   void runOnOperation() override {
     // Add lowering patterns to the list.
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     TF::PopulateDecomposeResourceOpsPatterns(&getContext(), &patterns);
     FrozenRewritePatternSet frozen_patterns(std::move(patterns));
 
@@ -178,7 +182,7 @@ struct DecomposeResourceOpsInClusterPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateDecomposeResourceOpsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDecomposeResourceOpsPass() {
   return std::make_unique<DecomposeResourceOpsPass>();
 }
 
@@ -189,4 +193,3 @@ CreateDecomposeResourceOpsInClusterPass() {
 
 }  // namespace TFDevice
 }  // namespace mlir
-

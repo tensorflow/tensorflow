@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -152,6 +153,19 @@ class QuantizedConv2DTester {
     return (KernelWidth() - 1) * DilationWidth() + 1;
   }
 
+  inline QuantizedConv2DTester& Groups(int32_t groups) {
+    EXPECT_EQ(InputChannels() % groups, 0);
+    EXPECT_EQ(OutputChannels() % groups, 0);
+    groups_ = groups;
+    return *this;
+  }
+
+  inline int32_t Groups() const { return groups_; }
+
+  inline int32_t KernelInputChannels() const {
+    return input_channels_ / groups_;
+  }
+
   inline QuantizedConv2DTester& InputZeroPoint(int32_t input_zero_point) {
     input_zero_point_ = input_zero_point;
     return *this;
@@ -238,6 +252,12 @@ class QuantizedConv2DTester {
     return *this;
   }
 
+  inline QuantizedConv2DTester& WeightsCache(
+      TfLiteXNNPackDelegateWeightsCache* weights_cache) {
+    weights_cache_ = weights_cache;
+    return *this;
+  }
+
   template <class T>
   void Test(Interpreter* delegate_interpreter,
             Interpreter* default_interpreter) const;
@@ -256,6 +276,7 @@ class QuantizedConv2DTester {
   int32_t batch_size_ = 1;
   int32_t input_channels_ = 1;
   int32_t output_channels_ = 1;
+  int32_t groups_ = 1;
   int32_t input_height_ = 1;
   int32_t input_width_ = 1;
   int32_t kernel_height_ = 1;
@@ -274,6 +295,7 @@ class QuantizedConv2DTester {
   ::tflite::Padding padding_ = ::tflite::Padding_VALID;
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;
+  TfLiteXNNPackDelegateWeightsCache* weights_cache_ = nullptr;
 };
 
 }  // namespace xnnpack

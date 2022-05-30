@@ -45,6 +45,9 @@ class HloDomainIsolator : public HloModulePass {
 
   absl::string_view name() const override { return "domain_isolator"; }
 
+  // Update domains for an instruction.
+  StatusOr<bool> UpdateDomains(HloInstruction* instruction);
+
   StatusOr<bool> Run(HloModule* module) override;
 
  private:

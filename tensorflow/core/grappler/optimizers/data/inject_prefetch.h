@@ -31,7 +31,7 @@ class InjectPrefetch : public TFDataOptimizerBase {
   InjectPrefetch() = default;
   ~InjectPrefetch() override = default;
 
-  string name() const override { return "inject_prefetch"; };
+  std::string name() const override { return "inject_prefetch"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 
@@ -39,7 +39,7 @@ class InjectPrefetch : public TFDataOptimizerBase {
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     if (!config) return Status::OK();
 
-    const string& autotune = config->parameter_map().at(kAutotune).s();
+    const std::string& autotune = config->parameter_map().at(kAutotune).s();
     if (autotune == "true") {
       autotune_ = true;
     } else if (autotune == "false") {
@@ -55,7 +55,7 @@ class InjectPrefetch : public TFDataOptimizerBase {
                                  GraphDef* output,
                                  OptimizationStats* stats) override;
 
- private:
+ protected:
   bool autotune_ = true;
 };
 

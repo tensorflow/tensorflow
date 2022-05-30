@@ -20,7 +20,8 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -603,7 +604,7 @@ tf_device::ClusterOp CreateClusterOp(Cluster &cluster, StringAttr policy) {
 mlir::LogicalResult PropagateValuesConstraints(
     llvm::ArrayRef<Operation *> root, std::function<bool(Operation *)> filter,
     const ClusteringPolicySet &policies, ValuesConstraintSet &constraints,
-    bool resolve) {
+    bool resolve, bool emit_remarks) {
   // A set of constraints for operation results.
   llvm::DenseMap<Operation *, ValuesConstraintSet> op_results_constraints;
   assert(filter && "filter predicate must be defined");
@@ -645,7 +646,14 @@ mlir::LogicalResult PropagateValuesConstraints(
     // Signal a failure if could not propagate non-empty constraints on the
     // operation results to the operands.
     if (!updated && !results.Empty()) {
-      op->emitError("failed to propagate results constraints");
+      if (emit_remarks) {
+        std::string err_msg;
+        llvm::raw_string_ostream os(err_msg);
+        for (unsigned i = 0; i < op->getNumResults(); ++i)
+          os << " " << i << ":" << results.GetConstraint(op->getResult(i));
+        op->emitError(llvm::formatv(
+            "failed to propagate results constraints:{0}", os.str()));
+      }
       return failure();
     }
 
@@ -674,7 +682,7 @@ mlir::LogicalResult PropagateValuesConstraints(
 
 mlir::LogicalResult PropagateValuesConstraints(
     mlir::Region &region, const ClusteringPolicySet &policies,
-    ValuesConstraintSet &constraints, bool resolve) {
+    ValuesConstraintSet &constraints, bool resolve, bool emit_remarks) {
   // Propagate constraints for all operations in the region.
   llvm::SmallVector<Operation *> worklist;
   region.walk([&](Operation *op) { worklist.emplace_back(op); });
@@ -685,7 +693,7 @@ mlir::LogicalResult PropagateValuesConstraints(
   };
 
   return PropagateValuesConstraints(worklist, filter, policies, constraints,
-                                    resolve);
+                                    resolve, emit_remarks);
 }
 
 void EmitValueConstraintsRemarks(const ValuesConstraintSet &constraints) {
@@ -697,18 +705,18 @@ void EmitValueConstraintsRemarks(const ValuesConstraintSet &constraints) {
   });
 }
 
-void EmitInputsConstraintsRemarks(FuncOp func,
+void EmitInputsConstraintsRemarks(func::FuncOp func,
                                   const ValuesConstraintSet &constraints) {
   constraints.Walk([&](Value value, ValueConstraint constraint) {
     if (auto arg = value.dyn_cast<BlockArgument>())
-      if (arg.getOwner() == &func.body().front())
+      if (arg.getOwner() == &func.getBody().front())
         func.emitRemark(llvm::formatv("input #{0} constrained to: {1}",
                                       arg.getArgNumber(), constraint));
   });
 }
 
 LogicalResult InferFunctionBodyValuesConstraints(
-    FuncOp func, ValuesConstraintSet &constraints) {
+    func::FuncOp func, ValuesConstraintSet &constraints) {
   for (unsigned i = 0; i < func.getNumResults(); ++i) {
     auto str = func.getResultAttrOfType<StringAttr>(i, "tf.constraint");
     if (!str) continue;
@@ -719,8 +727,8 @@ LogicalResult InferFunctionBodyValuesConstraints(
                                      .Case("value", ValueConstraint::kValue);
 
     // Propagate constraints through function return operations.
-    for (Block &block : func.body()) {
-      ReturnOp ret = dyn_cast<ReturnOp>(block.back());
+    for (Block &block : func.getBody()) {
+      func::ReturnOp ret = dyn_cast<func::ReturnOp>(block.back());
       if (ret) constraints.Insert(ret.getOperand(i), constraint);
     }
   }

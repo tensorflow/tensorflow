@@ -881,7 +881,10 @@ class SaverTest(test.TestCase):
           "v2": v2.saveable
       },
                                 restore_sequentially=True)
-      save.save(sess, save_path)
+      ckpt_prefix = save.save(sess, save_path)
+      filesize = saver_module._get_checkpoint_size(ckpt_prefix)
+      count_after_one_save = metrics.GetCheckpointSize(
+          api_label=api_label, filesize=filesize)
 
       self.assertEqual(_get_write_histogram_proto().num, num_writes_start + 1)
       time_after_one_save = metrics.GetTrainingTimeSaved(api_label=api_label)
@@ -908,6 +911,9 @@ class SaverTest(test.TestCase):
       self.assertGreater(
           metrics.GetTrainingTimeSaved(api_label=api_label),
           time_after_one_save)
+      self.assertEqual(
+          metrics.GetCheckpointSize(api_label=api_label, filesize=filesize),
+          count_after_one_save + 1)
 
 
 class SaveRestoreShardedTest(test.TestCase):

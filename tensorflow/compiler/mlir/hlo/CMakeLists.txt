@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-cmake_minimum_required(VERSION 3.13.4)
+cmake_minimum_required(VERSION 3.15.0)
 
 if(POLICY CMP0068)
   cmake_policy(SET CMP0068 NEW)
@@ -28,6 +28,12 @@ if(POLICY CMP0077)
   cmake_policy(SET CMP0077 NEW)
 endif()
 
+# CMP0116: Ninja generators transform `DEPFILE`s from `add_custom_command()`
+# New in CMake 3.20. https://cmake.org/cmake/help/latest/policy/CMP0116.html
+if(POLICY CMP0116)
+  cmake_policy(SET CMP0116 OLD)
+endif()
+
 #-------------------------------------------------------------------------------
 # Options and settings
 #-------------------------------------------------------------------------------
@@ -39,7 +45,7 @@ option(MHLO_ENABLE_BINDINGS_PYTHON "Enables MHLO python bindings" OFF)
 #-------------------------------------------------------------------------------
 set(MHLO_EXTERNAL_PROJECT_BUILD OFF)
 
-if(PROJECT_NAME STREQUAL "LLVM")
+if(NOT (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR) AND NOT MLIR_BINARY_DIR)
   # Building as part of LLVM via the external project mechanism.
   set(MHLO_EXTERNAL_PROJECT_BUILD ON)
 else()
@@ -52,6 +58,29 @@ endif()
 
 if(MHLO_ENABLE_BINDINGS_PYTHON AND NOT MHLO_EXTERNAL_PROJECT_BUILD)
   message(WARNING "MHLO python bindings are only supported in unified, external project builds")
+endif()
+
+# Build with ccache if the package is present
+set(LLVM_CCACHE_BUILD OFF CACHE BOOL "Set to ON for a ccache enabled build")
+if(LLVM_CCACHE_BUILD)
+  find_program(CCACHE_PROGRAM ccache)
+  if(CCACHE_PROGRAM)
+      set(LLVM_CCACHE_MAXSIZE "" CACHE STRING "Size of ccache")
+      set(LLVM_CCACHE_DIR "" CACHE STRING "Directory to keep ccached data")
+      set(LLVM_CCACHE_PARAMS "CCACHE_CPP2=yes CCACHE_HASHDIR=yes"
+          CACHE STRING "Parameters to pass through to ccache")
+
+      set(CCACHE_PROGRAM "${LLVM_CCACHE_PARAMS} ${CCACHE_PROGRAM}")
+      if (LLVM_CCACHE_MAXSIZE)
+        set(CCACHE_PROGRAM "CCACHE_MAXSIZE=${LLVM_CCACHE_MAXSIZE} ${CCACHE_PROGRAM}")
+      endif()
+      if (LLVM_CCACHE_DIR)
+        set(CCACHE_PROGRAM "CCACHE_DIR=${LLVM_CCACHE_DIR} ${CCACHE_PROGRAM}")
+      endif()
+      set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ${CCACHE_PROGRAM})
+  else()
+    message(FATAL_ERROR "Unable to find the program ccache. Set LLVM_CCACHE_BUILD to OFF")
+  endif()
 endif()
 
 #-------------------------------------------------------------------------------
@@ -108,10 +137,7 @@ add_definitions(${LLVM_DEFINITIONS})
 
 if(MHLO_ENABLE_BINDINGS_PYTHON)
   include(MLIRDetectPythonEnv)
-  mlir_detect_pybind11_install()
-  find_package(Python3 ${LLVM_MINIMUM_PYTHON_VERSION}
-  COMPONENTS Interpreter Development NumPy REQUIRED)
-  find_package(pybind11 2.6 CONFIG REQUIRED)
+  mlir_configure_python_dev_packages()
 endif()
 
 #-------------------------------------------------------------------------------
@@ -120,15 +146,19 @@ endif()
 
 set(MLIR_HLO_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(MLIR_HLO_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
+set(MLIR_HLO_MAIN_INCLUDE_DIR ${MLIR_HLO_SOURCE_DIR}/include )
+set(MLIR_HLO_GEN_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/include)
+set(MLIR_HLO_LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/lib)
 
 add_custom_target(check-mlir-hlo)
 
 add_subdirectory(include/mlir-hlo)
 add_subdirectory(lib)
-add_subdirectory(runtime)
 add_subdirectory(tools)
 add_subdirectory(tests)
 
 if(MHLO_ENABLE_BINDINGS_PYTHON)
   add_subdirectory(python)
 endif()
+
+add_subdirectory(cmake/modules)

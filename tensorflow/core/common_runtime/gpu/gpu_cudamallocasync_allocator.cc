@@ -138,7 +138,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
 
   se::cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
 
-  // Check the the CUDA runtime is recent enough.
+  // Check the CUDA runtime is recent enough.
   if (auto status2 = cuDriverGetVersion(&driverVersion)) {
     LOG(FATAL)  // Crash OK.
         << "Error while fetching driver version: "

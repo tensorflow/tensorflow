@@ -774,24 +774,6 @@ TEST_F(PlacerTest, TestHeuristicGeneratorFollowsSingleConsumer) {
   EXPECT_COLOCATED(g, "assign", "in");
 }
 
-TEST_F(PlacerTest, TestUncopiableTypeEdges) {
-  Graph g(OpRegistry::Global());
-
-  GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
-
-  // The producer can only be on the CPU. Without colocation constraints,
-  // the consumer would be placed on GPU, causing a copy.
-  Node* input =
-      ops::SourceOp("TestUncopiableTypeGeneratorCPU", b.opts().WithName("ds"));
-  ops::UnaryOp("TestTypedConsumer", ops::NodeOut(input, 0),
-               b.opts().WithName("c"));
-
-  TF_EXPECT_OK(BuildGraph(b, &g));
-
-  TF_EXPECT_OK(Place(&g));
-  EXPECT_COLOCATED(g, "ds", "c");
-}
-
 TEST_F(PlacerTest, TestIgnoreGeneratorHeuristicIfWrongDevice) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.

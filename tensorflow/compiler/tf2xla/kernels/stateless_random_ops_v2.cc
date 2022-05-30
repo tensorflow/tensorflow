@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/random_ops_util.h"
 #include "tensorflow/compiler/tf2xla/lib/random.h"
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -575,43 +576,11 @@ class GetAlgOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("StatelessRandomGetAlg"), GetAlgOp);
 
-class XlaRngBitGeneratorOp : public XlaOpKernel {
- public:
-  explicit XlaRngBitGeneratorOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx),
-        device_type_string_(ctx->device_type().type_string()) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
-  }
-
-  void Compile(XlaOpKernelContext* ctx) override {
-    xla::RandomAlgorithm algorithm;
-    OP_REQUIRES_OK(ctx,
-                   AlgorithmFromInput(ctx, 0, device_type_string_, &algorithm));
-    xla::XlaOp initial_state = ctx->Input(1);
-
-    TensorShape shape;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(2, &shape));
-    xla::Shape xla_shape;
-    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape, &xla_shape));
-
-    xla::XlaOp result =
-        xla::RngBitGenerator(algorithm, initial_state, xla_shape);
-    ctx->SetOutput(0, xla::GetTupleElement(result, 0));
-    ctx->SetOutput(1, xla::GetTupleElement(result, 1));
-  }
-
- private:
-  DataType dtype_;
-  string device_type_string_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaRngBitGeneratorOp);
-};
-
 REGISTER_XLA_OP(Name("XlaRngBitGenerator")
                     .CompileTimeConstantInput("algorithm")
                     .CompileTimeConstantInput("shape")
                     .TypeConstraint("dtype", {DT_UINT32, DT_UINT64}),
-                XlaRngBitGeneratorOp);
+                MlirXlaOpKernel);
 
 }  // namespace
 }  // namespace tensorflow

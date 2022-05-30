@@ -20,6 +20,9 @@ package(
         "//tensorflow/core/util:__pkg__",
         # tensorflow/core/tfrt/utils uses array_slice, inlined_vector
         "//tensorflow/core/tfrt/utils:__pkg__",
+        # tensorflow/examples/custom_ops_doc/simple_hash_table uses map_util
+        "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
+        "//tensorflow/stream_executor:__subpackages__",
     ],
     licenses = ["notice"],
 )

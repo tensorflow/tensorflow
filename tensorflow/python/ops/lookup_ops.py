@@ -18,8 +18,6 @@ import collections
 import functools
 import uuid
 
-import six
-
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -40,6 +38,7 @@ from tensorflow.python.saved_model import registration
 from tensorflow.python.training.saver import BaseSaverBuilder
 # pylint: enable=wildcard-import
 from tensorflow.python.training.tracking import base as trackable_base
+from tensorflow.python.training.tracking import resource
 from tensorflow.python.training.tracking import tracking as trackable
 from tensorflow.python.util import compat as compat_util
 from tensorflow.python.util.deprecation import deprecated
@@ -125,7 +124,7 @@ def check_table_dtypes(table, key_dtype, value_dtype):
                     f"{table.value_dtype} but got {value_dtype}.")
 
 
-class LookupInterface(trackable.TrackableResource):
+class LookupInterface(resource.TrackableResource):
   """Represent a lookup table that persists across different steps."""
 
   def __init__(self, key_dtype, value_dtype):
@@ -272,7 +271,7 @@ class InitializableLookupTableBaseV1(InitializableLookupTableBase):
     return self._init_op
 
 
-@registration.register_serializable(
+@registration.register_tf_serializable(
     predicate=lambda obj: isinstance(obj, StaticHashTable))
 @tf_export("lookup.StaticHashTable", v1=[])
 class StaticHashTable(InitializableLookupTableBase):
@@ -396,22 +395,15 @@ class StaticHashTable(InitializableLookupTableBase):
       self._track_trackable(value, name)  # pylint:disable=protected-access
 
   @classmethod
-  def _deserialize_from_proto(cls, proto, **unused_kwargs):
+  def _deserialize_from_proto(cls, **kwargs):
 
-    from tensorflow.python.saved_model import load  # pylint: disable=g-import-not-at-top
-
-    class _RestoredStaticHashTable(load._RestoredResource):  # pylint: disable=protected-access
+    class _RestoredStaticHashTable(resource.RestoredResource):  # pylint: disable=protected-access
 
       @classmethod
       def _resource_type(cls):
         return "RestoredStaticHashTable"
 
-      def _add_trackable_child(self, name, value):
-        setattr(self, name, value)
-        if isinstance(value, trackable_base.Trackable):
-          self._track_trackable(value, name)  # pylint:disable=protected-access
-
-    return _RestoredStaticHashTable()
+    return _RestoredStaticHashTable._deserialize_from_proto(**kwargs)  # pylint: disable=protected-access
 
 
 @tf_export(v1=["lookup.StaticHashTable"])
@@ -434,6 +426,25 @@ class StaticHashTableV1(StaticHashTable):
       print(sess.run(out))
   ```
 
+  Note that in graph mode if you set `experimental_is_anonymous` to
+  `True`, you should only call `Session.run` once, otherwise each
+  `Session.run` will create (and destroy) a new table unrelated to
+  each other, leading to errors such as "Table not initialized".
+  You can do so like this:
+
+  ```python
+  keys_tensor = tf.constant([1, 2])
+  vals_tensor = tf.constant([3, 4])
+  input_tensor = tf.constant([1, 5])
+  table = tf.lookup.StaticHashTable(
+      tf.lookup.KeyValueTensorInitializer(keys_tensor, vals_tensor), -1,
+      experimental_is_anonymous=True)
+  with tf.control_dependencies([tf.tables_initializer()]):
+    out = table.lookup(input_tensor)
+  with tf.Session() as sess:
+    print(sess.run(out))
+  ```
+
   In eager mode, no special code is needed to initialize the table.
   Example usage in eager mode:
 
@@ -447,10 +458,6 @@ class StaticHashTableV1(StaticHashTable):
   print(table.lookup(input_tensor))
   ```
   """
-
-  def __init__(self, initializer, default_value, name=None):
-    super().__init__(
-        initializer, default_value, name=name, experimental_is_anonymous=False)
 
   @property
   def initializer(self):
@@ -573,7 +580,7 @@ class KeyValueTensorInitializer(TableInitializerBase):
 
 
 @tf_export("lookup.TextFileIndex")
-class TextFileIndex(object):
+class TextFileIndex:
   """The key and value content to get from each line.
 
   This class defines the key and value used for `tf.lookup.TextFileInitializer`.
@@ -706,7 +713,7 @@ class TextFileInitializer(TableInitializerBase):
     value_dtype = dtypes.as_dtype(value_dtype)
 
     if key_index < -2:
-      raise ValueError("`key_index` should be >= -2, received: {key_index}.")
+      raise ValueError(f"`key_index` should be >= -2, received: {key_index}.")
 
     if key_index == TextFileIndex.LINE_NUMBER and key_dtype != dtypes.int64:
       raise ValueError("`key_dtype` must be int64 if `key_index` is "
@@ -722,7 +729,7 @@ class TextFileInitializer(TableInitializerBase):
 
     if value_index == TextFileIndex.LINE_NUMBER and value_dtype != dtypes.int64:
       raise ValueError("`value_dtype` must be int64 for `value_index` "
-                       f"{TextFileIndex.LINE_NUMBER}, received: {key_dtype}")
+                       f"{TextFileIndex.LINE_NUMBER}, received: {value_dtype}")
     if ((value_index == TextFileIndex.WHOLE_LINE) and
         (not value_dtype.is_integer) and (value_dtype != dtypes.string)):
       raise ValueError(
@@ -1242,19 +1249,27 @@ class StaticVocabularyTable(LookupInterface):
                initializer,
                num_oov_buckets,
                lookup_key_dtype=None,
-               name=None):
+               name=None,
+               experimental_is_anonymous=False):
     """Construct a `StaticVocabularyTable` object.
 
     Args:
       initializer: A `TableInitializerBase` object that contains the data used
         to initialize the table. If None, then we only use out-of-vocab buckets.
       num_oov_buckets: Number of buckets to use for out-of-vocabulary keys. Must
-        be greater than zero.
+        be greater than zero. If out-of-vocab buckets are not required, use
+        `StaticHashTable` instead.
       lookup_key_dtype: Data type of keys passed to `lookup`. Defaults to
         `initializer.key_dtype` if `initializer` is specified, otherwise
         `tf.string`. Must be string or integer, and must be castable to
         `initializer.key_dtype`.
       name: A name for the operation (optional).
+      experimental_is_anonymous: Whether to use anonymous mode for the
+        table (default is False). In anonymous mode, the table
+        resource can only be accessed via a resource handle. It can't
+        be looked up by a name. When all resource handles pointing to
+        that resource are gone, the resource will be deleted
+        automatically.
 
     Raises:
       ValueError: when `num_oov_buckets` is not positive.
@@ -1262,7 +1277,7 @@ class StaticVocabularyTable(LookupInterface):
         integer or string. Also when initializer.value_dtype != int64.
     """
     if num_oov_buckets <= 0:
-      raise ValueError("`num_oov_buckets` must be > 0.")
+      raise ValueError("`num_oov_buckets` must be > 0; use StaticHashTable.")
     # If a name ends with a '/' it is a "name scope", remove all trailing '/'
     # characters to use as table name.
     if name:
@@ -1284,7 +1299,10 @@ class StaticVocabularyTable(LookupInterface):
                         (dtypes.int64, initializer.value_dtype))
       if isinstance(initializer, trackable_base.Trackable):
         self._initializer = self._track_trackable(initializer, "_initializer")
-      self._table = HashTable(initializer, default_value=-1)
+      self._table = HashTable(
+          initializer,
+          default_value=-1,
+          experimental_is_anonymous=experimental_is_anonymous)
       name = name or self._table.name
     else:
       lookup_key_dtype = dtypes.string
@@ -1470,8 +1488,8 @@ def index_table_from_file(vocabulary_file=None,
     ValueError: If `num_oov_buckets` is negative or `vocab_size` is not greater
       than zero.
   """
-  if vocabulary_file is None or (isinstance(vocabulary_file, six.string_types)
-                                 and not vocabulary_file):
+  if vocabulary_file is None or (isinstance(vocabulary_file, str) and
+                                 not vocabulary_file):
     raise ValueError(
         "`vocabulary_file` must be specified and must not be empty.")
   if num_oov_buckets < 0:
@@ -1681,8 +1699,8 @@ def index_to_string_table_from_file(vocabulary_file,
     ValueError: when `vocabulary_file` is empty.
     ValueError: when `vocab_size` is invalid.
   """
-  if vocabulary_file is None or (isinstance(vocabulary_file, six.string_types)
-                                 and not vocabulary_file):
+  if vocabulary_file is None or (isinstance(vocabulary_file, str) and
+                                 not vocabulary_file):
     raise ValueError(
         "`vocabulary_file` must be specified and must not be empty.")
 
@@ -1799,7 +1817,8 @@ class MutableHashTable(LookupInterface):
                value_dtype,
                default_value,
                name="MutableHashTable",
-               checkpoint=True):
+               checkpoint=True,
+               experimental_is_anonymous=False):
     """Creates an empty `MutableHashTable` object.
 
     Creates a table, the type of its keys and values are specified by key_dtype
@@ -1813,6 +1832,12 @@ class MutableHashTable(LookupInterface):
       checkpoint: if True, the contents of the table are saved to and restored
         from checkpoints. If `shared_name` is empty for a checkpointed table, it
         is shared using the table node name.
+      experimental_is_anonymous: Whether to use anonymous mode for the
+        table (default is False). In anonymous mode, the table
+        resource can only be accessed via a resource handle. It can't
+        be looked up by a name. When all resource handles pointing to
+        that resource are gone, the resource will be deleted
+        automatically.
 
     Returns:
       A `MutableHashTable` object.
@@ -1827,17 +1852,16 @@ class MutableHashTable(LookupInterface):
     self._key_dtype = key_dtype
     self._value_dtype = value_dtype
     self._name = name
-
-    self._shared_name = None
-    if context.executing_eagerly():
-      # TODO(allenl): This will leak memory due to kernel caching by the
-      # shared_name attribute value (but is better than the alternative of
-      # sharing everything by default when executing eagerly; hopefully creating
-      # tables in a loop is uncommon).
-      # TODO(rohanj): Use context.anonymous_name() instead.
-      self._shared_name = "table_%d" % (ops.uid(),)
+    self._is_anonymous = experimental_is_anonymous
+    if not self._is_anonymous:
+      self._shared_name = None
+      if context.executing_eagerly():
+        # TODO(allenl): This will leak memory due to kernel caching by
+        # the shared_name attribute value (but is better than the
+        # alternative of sharing everything by default when executing
+        # eagerly; hopefully creating tables in a loop is uncommon).
+        self._shared_name = "table_%d" % (ops.uid(),)
     super(MutableHashTable, self).__init__(key_dtype, value_dtype)
-
     self._resource_handle = self._create_resource()
     if checkpoint:
       saveable = MutableHashTable._Saveable(self, name)
@@ -1845,25 +1869,38 @@ class MutableHashTable(LookupInterface):
         ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
 
   def _create_resource(self):
-    # The table must be shared if checkpointing is requested for multi-worker
-    # training to work correctly. Use the node name if no shared_name has been
-    # explicitly specified.
-    use_node_name_sharing = self._checkpoint and self._shared_name is None
-    if self._default_value.get_shape().ndims == 0:
-      table_ref = gen_lookup_ops.mutable_hash_table_v2(
-          shared_name=self._shared_name,
-          use_node_name_sharing=use_node_name_sharing,
-          key_dtype=self._key_dtype,
-          value_dtype=self._value_dtype,
-          name=self._name)
+    if self._is_anonymous:
+      if self._default_value.get_shape().ndims == 0:
+        table_ref = gen_lookup_ops.anonymous_mutable_hash_table(
+            key_dtype=self._key_dtype,
+            value_dtype=self._value_dtype,
+            name=self._name)
+      else:
+        table_ref = gen_lookup_ops.anonymous_mutable_hash_table_of_tensors(
+            key_dtype=self._key_dtype,
+            value_dtype=self._value_dtype,
+            value_shape=self._default_value.get_shape(),
+            name=self._name)
     else:
-      table_ref = gen_lookup_ops.mutable_hash_table_of_tensors_v2(
-          shared_name=self._shared_name,
-          use_node_name_sharing=use_node_name_sharing,
-          key_dtype=self._key_dtype,
-          value_dtype=self._value_dtype,
-          value_shape=self._default_value.get_shape(),
-          name=self._name)
+      # The table must be shared if checkpointing is requested for multi-worker
+      # training to work correctly. Use the node name if no shared_name has been
+      # explicitly specified.
+      use_node_name_sharing = self._checkpoint and self._shared_name is None
+      if self._default_value.get_shape().ndims == 0:
+        table_ref = gen_lookup_ops.mutable_hash_table_v2(
+            shared_name=self._shared_name,
+            use_node_name_sharing=use_node_name_sharing,
+            key_dtype=self._key_dtype,
+            value_dtype=self._value_dtype,
+            name=self._name)
+      else:
+        table_ref = gen_lookup_ops.mutable_hash_table_of_tensors_v2(
+            shared_name=self._shared_name,
+            use_node_name_sharing=use_node_name_sharing,
+            key_dtype=self._key_dtype,
+            value_dtype=self._value_dtype,
+            value_shape=self._default_value.get_shape(),
+            name=self._name)
 
     if context.executing_eagerly():
       self._table_name = None
@@ -2001,15 +2038,21 @@ class MutableHashTable(LookupInterface):
             self.resource_handle, self._key_dtype, self._value_dtype)
     return exported_keys, exported_values
 
-  def _gather_saveables_for_checkpoint(self):
-    """For object-based checkpointing."""
-    return {
-        "table":
-            functools.partial(
-                MutableHashTable._Saveable, table=self, name=self._name,
-                table_name=self._name)
-    }
+  def _serialize_to_tensors(self):
+    """Implements checkpointing protocols for `Trackable`."""
+    tensors = self.export()
+    return {"table-keys": tensors[0], "table-values": tensors[1]}
 
+  def _restore_from_tensors(self, restored_tensors):
+    """Implements checkpointing protocols for `Trackable`."""
+    with ops.name_scope("%s_table_restore" % self._name):
+      with ops.colocate_with(self.resource_handle):
+        return gen_lookup_ops.lookup_table_import_v2(
+            self.resource_handle,
+            restored_tensors["table-keys"],
+            restored_tensors["table-values"])
+
+    # This class is needed for `MutableHashTable(checkpoint=True)`.
   class _Saveable(BaseSaverBuilder.SaveableObject):
     """SaveableObject implementation for DenseHashTable."""
 
@@ -2077,7 +2120,8 @@ class DenseHashTable(LookupInterface):
                deleted_key,
                initial_num_buckets=None,
                name="MutableDenseHashTable",
-               checkpoint=True):
+               checkpoint=True,
+               experimental_is_anonymous=False):
     """Creates an empty `DenseHashTable` object.
 
     Creates a table, the type of its keys and values are specified by key_dtype
@@ -2092,11 +2136,22 @@ class DenseHashTable(LookupInterface):
       deleted_key: the key to use to represent deleted buckets internally. Must
         not be used in insert, remove or lookup operations and be different from
         the empty_key.
-      initial_num_buckets: the initial number of buckets.
+      initial_num_buckets: the initial number of buckets (optional,
+        default to 2^17=131072). Note that the default value is
+        relatively large (~1MB), so if you are going to create many
+        tables (likely the case when `experimental_is_anonymous` is
+        `True`), you should set `initial_num_buckets` to a smaller
+        value to reduce memory usage.
       name: A name for the operation (optional).
       checkpoint: if True, the contents of the table are saved to and restored
         from checkpoints. If `shared_name` is empty for a checkpointed table, it
         is shared using the table node name.
+      experimental_is_anonymous: Whether to use anonymous mode for the
+        table (default is False). In anonymous mode, the table
+        resource can only be accessed via a resource handle. It can't
+        be looked up by a name. When all resource handles pointing to
+        that resource are gone, the resource will be deleted
+        automatically.
 
     Returns:
       A `DenseHashTable` object.
@@ -2108,23 +2163,24 @@ class DenseHashTable(LookupInterface):
         default_value, dtype=value_dtype, name="default_value")
     self._key_dtype = key_dtype
     self._value_dtype = value_dtype
+    # TODO(b/201578996): Pick a good default for initial_num_buckets
+    #   other than 2^17.
     self._initial_num_buckets = initial_num_buckets
     self._value_shape = self._default_value.get_shape()
     self._checkpoint = checkpoint
     self._name = name
-
     self._empty_key = empty_key
     self._deleted_key = deleted_key
-    self._shared_name = None
-    if context.executing_eagerly():
-      # TODO(allenl): This will leak memory due to kernel caching by the
-      # shared_name attribute value (but is better than the alternative of
-      # sharing everything by default when executing eagerly; hopefully creating
-      # tables in a loop is uncommon).
-      # TODO(rohanj): Use context.anonymous_name() instead.
-      self._shared_name = "table_%d" % (ops.uid(),)
+    self._is_anonymous = experimental_is_anonymous
+    if not self._is_anonymous:
+      self._shared_name = None
+      if context.executing_eagerly():
+        # TODO(allenl): This will leak memory due to kernel caching by
+        # the shared_name attribute value (but is better than the
+        # alternative of sharing everything by default when executing
+        # eagerly; hopefully creating tables in a loop is uncommon).
+        self._shared_name = "table_%d" % (ops.uid(),)
     super(DenseHashTable, self).__init__(key_dtype, value_dtype)
-
     self._resource_handle = self._create_resource()
     if checkpoint:
       saveable = DenseHashTable._Saveable(self, name)
@@ -2132,23 +2188,32 @@ class DenseHashTable(LookupInterface):
         ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
 
   def _create_resource(self):
-    # The table must be shared if checkpointing is requested for multi-worker
-    # training to work correctly. Use the node name if no shared_name has been
-    # explicitly specified.
-    use_node_name_sharing = self._checkpoint and self._shared_name is None
     empty_key = ops.convert_to_tensor(
         self._empty_key, dtype=self._key_dtype, name="empty_key")
     deleted_key = ops.convert_to_tensor(
         self._deleted_key, dtype=self._key_dtype, name="deleted_key")
-    table_ref = gen_lookup_ops.mutable_dense_hash_table_v2(
-        empty_key=empty_key,
-        deleted_key=deleted_key,
-        shared_name=self._shared_name,
-        use_node_name_sharing=use_node_name_sharing,
-        value_dtype=self._value_dtype,
-        value_shape=self._value_shape,
-        initial_num_buckets=self._initial_num_buckets,
-        name=self._name)
+    if self._is_anonymous:
+      table_ref = gen_lookup_ops.anonymous_mutable_dense_hash_table(
+          empty_key=empty_key,
+          deleted_key=deleted_key,
+          value_dtype=self._value_dtype,
+          value_shape=self._value_shape,
+          initial_num_buckets=self._initial_num_buckets,
+          name=self._name)
+    else:
+      # The table must be shared if checkpointing is requested for multi-worker
+      # training to work correctly. Use the node name if no shared_name has been
+      # explicitly specified.
+      use_node_name_sharing = self._checkpoint and self._shared_name is None
+      table_ref = gen_lookup_ops.mutable_dense_hash_table_v2(
+          empty_key=empty_key,
+          deleted_key=deleted_key,
+          shared_name=self._shared_name,
+          use_node_name_sharing=use_node_name_sharing,
+          value_dtype=self._value_dtype,
+          value_shape=self._value_shape,
+          initial_num_buckets=self._initial_num_buckets,
+          name=self._name)
     if context.executing_eagerly():
       self._table_name = None
     else:
@@ -2307,15 +2372,21 @@ class DenseHashTable(LookupInterface):
 
     return exported_keys, exported_values
 
-  def _gather_saveables_for_checkpoint(self):
-    """For object-based checkpointing."""
-    return {
-        "table":
-            functools.partial(
-                DenseHashTable._Saveable, table=self, name=self._name,
-                table_name=self._name)
-    }
+  def _serialize_to_tensors(self):
+    """Implements checkpointing interface in `Trackable`."""
+    tensors = self.export()
+    return {"table-keys": tensors[0], "table-values": tensors[1]}
 
+  def _restore_from_tensors(self, restored_tensors):
+    """Implements checkpointing interface in `Trackable`."""
+    with ops.name_scope("%s_table_restore" % self._name):
+      with ops.colocate_with(self.resource_handle):
+        return gen_lookup_ops.lookup_table_import_v2(
+            self.resource_handle,
+            restored_tensors["table-keys"],
+            restored_tensors["table-values"])
+
+  # This class is needed for `DenseHashTable(checkpoint=True)`.
   class _Saveable(BaseSaverBuilder.SaveableObject):
     """SaveableObject implementation for DenseHashTable."""
 

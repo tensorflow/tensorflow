@@ -15,31 +15,44 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def TosaLegalizeTFPass : FunctionPass<"tosa-legalize-tf"> {
+def TosaLegalizeTFPass : Pass<"tosa-legalize-tf", "mlir::func::FuncOp"> {
   let summary = "Legalize from TensorFlow to TOSA";
   let constructor = "createLegalizeTFPass()";
   let dependentDialects = ["TosaDialect", "quant::QuantizationDialect"];
 }
 
-def TosaLegalizeTFLPass : FunctionPass<"tosa-legalize-tfl"> {
-  let summary = "Legalize from TensorFlow Lite to TOSA";
+def TosaLegalizeTFLPass : Pass<"tosa-legalize-tfl", "mlir::func::FuncOp"> {
+  let summary = "Legalize from TensorFlow Lite to TOSA. Options allow selective disabling/enabling of rewrites";
   let constructor = "createLegalizeTFLPass()";
+
+  let dependentDialects = ["TosaDialect"];
+  let options = [
+    ListOption<"disabled_patterns_", "disable-patterns", "std::string",
+               "Labels of patterns that should be filtered out during application">,
+    ListOption<"enabled_patterns_", "enable-patterns", "std::string",
+               "Labels of patterns that should be used during application, all other patterns are filtered out">,
+  ];
+}
+
+def TosaLegalizeTFTFLPass : Pass<"tosa-legalize-tf-tfl", "mlir::func::FuncOp"> {
+  let summary = "Legalize from TensorFlow / TensorFlow Lite to TOSA";
+  let constructor = "createLegalizeTFTFLPass()";
   let dependentDialects = ["TosaDialect"];
 }
 
-def TosaFusebiasTFPass : FunctionPass<"tosa-fuse-bias-tf"> {
+def TosaFusebiasTFPass : Pass<"tosa-fuse-bias-tf", "mlir::func::FuncOp"> {
   let summary = "Fuse tf.Op + tf.BiasAdd and legalized to TOSA";
   let constructor = "createFuseBiasTFPass()";
   let dependentDialects = ["TosaDialect"];
 }
 
-def TosaConvertTFLUint8Pass : FunctionPass<"tosa-convert-tfl-uint8"> {
+def TosaConvertTFLUint8Pass : Pass<"tosa-convert-tfl-uint8", "mlir::func::FuncOp"> {
   let summary = "Convert uint8 graph to int8 graph";
   let constructor = "createConvertTFLUint8Pass()";
   let dependentDialects = ["TosaDialect"];
 }
 
-def TosaStripQuantTypesPass : FunctionPass<"tosa-strip-quant-types"> {
+def TosaStripQuantTypesPass : Pass<"tosa-strip-quant-types", "mlir::func::FuncOp"> {
   let summary = "Convert all quant types to their storage type.";
   let constructor = "createStripQuantTypesPass()";
   let dependentDialects = ["TosaDialect"];

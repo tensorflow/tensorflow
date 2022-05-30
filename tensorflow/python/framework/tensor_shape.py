@@ -15,12 +15,15 @@
 """Helper classes for tensor shape inference."""
 import functools
 import operator
+from typing import Optional, Sequence
+
 import six
 
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python import tf2
 from tensorflow.python.eager import monitoring
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import trace
 from tensorflow.python.util.tf_export import tf_export
 
 _TENSORSHAPE_V2_OVERRIDE = None
@@ -264,6 +267,7 @@ class Dimension(object):
     """The value of this dimension, or None if it is unknown."""
     return self._value
 
+  # TODO(b/225058047): Reconsider semantics.
   def is_compatible_with(self, other):
     """Returns true if `other` is compatible with this Dimension.
 
@@ -736,7 +740,7 @@ def as_dimension(value):
 
 
 @tf_export("TensorShape")
-class TensorShape(object):
+class TensorShape(trace.TraceType):
   """Represents the shape of a `Tensor`.
 
   A `TensorShape` represents a possibly-partial shape specification for a
@@ -752,9 +756,9 @@ class TensorShape(object):
   If a tensor is produced by an operation of type `"Foo"`, its shape
   may be inferred if there is a registered shape function for
   `"Foo"`. See [Shape
-  functions](https://tensorflow.org/extend/adding_an_op#shape_functions_in_c)
+  functions](https://www.tensorflow.org/guide/create_op#shape_functions_in_c)
   for details of shape functions and how to register them. Alternatively,
-  the shape may be set explicitly using `tf.Tensor.set_shape`.
+  you may set the shape explicitly using `tf.Tensor.set_shape`.
   """
   __slots__ = ["_dims"]
 
@@ -768,31 +772,31 @@ class TensorShape(object):
       TypeError: If dims cannot be converted to a list of dimensions.
     """
     if isinstance(dims, (tuple, list)):  # Most common case.
-      self._dims = [Dimension(d) for d in dims]
+      self._dims = tuple(as_dimension(d).value for d in dims)
     elif dims is None:
       self._dims = None
     elif isinstance(dims, tensor_shape_pb2.TensorShapeProto):
       if dims.unknown_rank:
         self._dims = None
       else:
-        self._dims = [
+        self._dims = tuple(
             # Protos store variable-size dimensions as -1
-            as_dimension(dim.size if dim.size != -1 else None)
+            dim.size if dim.size != -1 else None
             for dim in dims.dim
-        ]
+            )
     elif isinstance(dims, TensorShape):
-      self._dims = dims.dims
+      self._dims = dims._dims
     else:
       try:
         dims_iter = iter(dims)
       except TypeError:
         # Treat as a singleton dimension
-        self._dims = [as_dimension(dims)]
+        self._dims = (as_dimension(dims).value,)
       else:
         self._dims = []
         for d in dims_iter:
           try:
-            self._dims.append(as_dimension(d))
+            self._dims.append(as_dimension(d).value)
           except TypeError as e:
             six.raise_from(
                 TypeError(
@@ -801,6 +805,7 @@ class TensorShape(object):
                     "either be single dimension (e.g. 10), or an iterable of "
                     "dimensions (e.g. [1, 10, None])."
                     .format(dims, d)), e)
+        self._dims = tuple(self._dims)
 
   @property
   def _v2_behavior(self):
@@ -811,25 +816,25 @@ class TensorShape(object):
   def __repr__(self):
     if self._v2_behavior:
       if self._dims is not None:
-        return "TensorShape(%r)" % [dim.value for dim in self._dims]
+        return f"TensorShape({list(self._dims)})"
       else:
         return "TensorShape(None)"
     else:
-      return "TensorShape(%r)" % self._dims
+      return f"TensorShape({self.dims})"
 
   def __str__(self):
     if self.rank is None:
       return "<unknown>"
     elif self.rank == 1:
       if self._v2_behavior:
-        return "(%s,)" % self._dims[0].value
-      else:
         return "(%s,)" % self._dims[0]
+      else:
+        return "(%s,)" % self.dims[0]
     else:
       if self._v2_behavior:
-        return "(%s)" % ", ".join(str(d.value) for d in self._dims)
-      else:
         return "(%s)" % ", ".join(str(d) for d in self._dims)
+      else:
+        return "(%s)" % ", ".join(str(d) for d in self.dims)
 
   @property
   def rank(self):
@@ -848,7 +853,9 @@ class TensorShape(object):
       A list containing `tf.compat.v1.Dimension`s, or None if the shape is
       unspecified.
     """
-    return self._dims
+    if self._dims is None:
+      return None
+    return [as_dimension(d) for d in self._dims]
 
   @property
   def ndims(self):
@@ -874,9 +881,9 @@ class TensorShape(object):
       raise ValueError("Cannot iterate over a shape with unknown rank.")
     else:
       if self._v2_behavior:
-        return iter(d.value for d in self._dims)
-      else:
         return iter(d for d in self._dims)
+      else:
+        return iter(d for d in self.dims)
 
   def __getitem__(self, key):
     """Returns the value of a dimension or a shape, depending on the key.
@@ -899,9 +906,9 @@ class TensorShape(object):
         return TensorShape(self._dims[key])
       else:
         if self._v2_behavior:
-          return self._dims[key].value
-        else:
           return self._dims[key]
+        else:
+          return self.dims[key]
     else:
       if isinstance(key, slice):
         start = key.start if key.start is not None else 0
@@ -972,7 +979,7 @@ class TensorShape(object):
       ValueError: If `self` and `other` are not compatible.
     """
     other = as_shape(other)
-    if self._dims is None:
+    if self.dims is None:
       return other
     if other.dims is None:
       return self
@@ -981,7 +988,7 @@ class TensorShape(object):
         self.assert_same_rank(other)
         new_dims = [
             dim.merge_with(other_dim)
-            for dim, other_dim in zip(self._dims, other.dims)
+            for dim, other_dim in zip(self.dims, other.dims)
         ]
         return TensorShape(new_dims)
       except ValueError:
@@ -1013,10 +1020,10 @@ class TensorShape(object):
     # TODO(mrry): Handle the case where we concatenate a known shape with a
     # completely unknown shape, so that we can use the partial information.
     other = as_shape(other)
-    if self._dims is None or other.dims is None:
+    if self.dims is None or other.dims is None:
       return unknown_shape()
     else:
-      return TensorShape(self._dims + other.dims)
+      return TensorShape(self.dims + other.dims)
 
   def assert_same_rank(self, other):
     """Raises an exception if `self` and `other` do not have compatible ranks.
@@ -1104,6 +1111,123 @@ class TensorShape(object):
     else:
       return self
 
+  def is_subtype_of(self, other: trace.TraceType) -> bool:
+    """Returns True iff `self` is subtype of `other`.
+
+    Shape A is a subtype of shape B if shape B can successfully represent it:
+
+    * A `TensorShape` of any rank is a subtype of `TensorShape(None)`.
+
+    *  TensorShapes of equal ranks are covariant, i.e.
+      `TensorShape([A1, A2, ..])` is a subtype of
+      `TensorShape([B1, B2, ..])` iff An is a subtype of Bn.
+
+      An is subtype of Bn iff An == Bn or Bn is None.
+
+    * TensorShapes of different defined ranks have no subtyping relation.
+
+    The subtyping relation is reflexive and transitive, but not symmetric.
+
+    Some examples:
+    * `TensorShape([32, 784])` is a subtype of `TensorShape(None)`, and
+      `TensorShape([4, 4])` is also a subtype of `TensorShape(None)` but
+      `TensorShape([32, 784])` and `TensorShape([4, 4])` are not subtypes of
+      each other.
+
+    * All two-dimensional shapes are subtypes of `TensorShape([None, None])`,
+      such as `TensorShape([32, 784])`. There is no subtype relationship with,
+      for example, `TensorShape([None])` or `TensorShape([None, None, None])`.
+
+    * `TensorShape([32, None])` is also a subtype of `TensorShape([None, None])`
+      and `TensorShape(None)`. It is not a subtype of, for example,
+      `TensorShape([32])`, `TensorShape([32, None, 1])`,
+      `TensorShape([64, None])` or `TensorShape([None, 32])`.
+
+    * `TensorShape([32, 784])` is a subtype of itself, and also
+      `TensorShape([32, None])`, `TensorShape([None, 784])`,
+      `TensorShape([None, None])` and `TensorShape(None)`.
+      It has no subtype relation with, for example, `TensorShape([32, 1, 784])`
+      or `TensorShape([None])`.
+
+    Args:
+      other: Another `TensorShape`.
+
+    Returns:
+      True iff `self` is subtype of `other`.
+
+    """
+    if not isinstance(other, TensorShape):
+      return False
+
+    # All Tensors are subtypes of a Tensor with no shape.
+    if other.rank is None:
+      return True
+
+    # Tensor with a defined shape can only be subtype of another with a defined
+    # shape if they have the same number of dimensions.
+    if self.rank != other.rank:
+      return False
+
+    # A Tensor is a subtype if each corresponding dimension is a subtype.
+    return all(o is None or s == o for s, o in zip(self._dims, other._dims))  # pylint: disable=protected-access
+
+  def most_specific_common_supertype(
+      self, others: Sequence[trace.TraceType]) -> Optional["TensorShape"]:
+    """Returns the most specific supertype `TensorShape` of self and others.
+
+    * `TensorShape([None, 1])` is the most specific `TensorShape` supertyping
+      both `TensorShape([2, 1])` and `TensorShape([5, 1])`. Note that
+      `TensorShape(None)` is also a supertype but it is not "most specific".
+
+    * `TensorShape([1, 2, 3])` is the most specific `TensorShape` supertyping
+      both `TensorShape([1, 2, 3])` and `TensorShape([1, 2, 3]`). There are
+      other less specific TensorShapes that supertype above mentioned
+      TensorShapes, e.g. `TensorShape([1, 2, None])`, `TensorShape(None)`.
+
+     * `TensorShape([None, None])` is the most specific `TensorShape`
+       supertyping both `TensorShape([2, None])` and `TensorShape([None, 3])`.
+       As always, `TensorShape(None)` is also a supertype but not the most
+       specific one.
+
+     * `TensorShape(None`) is the only `TensorShape` supertyping both
+       `TensorShape([1, 2, 3])` and `TensorShape([1, 2])`. In general, any two
+       shapes that have different ranks will only have `TensorShape(None)`
+       as a common supertype.
+
+     * `TensorShape(None)` is the only `TensorShape` supertyping both
+       `TensorShape([1, 2, 3])` and `TensorShape(None)`. In general, the common
+       supertype of any shape with `TensorShape(None)` is `TensorShape(None)`.
+
+    Args:
+      others: Sequence of `TensorShape`.
+
+    Returns:
+      A `TensorShape` which is the most specific supertype shape of `self`
+      and `others`. None if it does not exist.
+    """
+    if any(not isinstance(other, TensorShape) for other in others):
+      return None
+
+    # A Rankless TensorShape is already a global supertype so we return another
+    # instance of it.
+    if self.rank is None:
+      return unknown_shape()
+
+    # A Rankless TensorShape is the most specific supertype for shapes whose
+    # ranks do not match.
+    if any(other.dims is None or self.rank != other.rank for other in others):
+      return unknown_shape()
+
+    # Retain the integer dimension if it is the same across all others, else
+    # use an undefined dimension.
+    dims = [
+        dim if all(dim == other._dims[i]
+                   for other in others) else None
+        for i, dim in enumerate(self._dims)
+    ]
+    return TensorShape(dims)
+
+  # TODO(b/216206374): Consider deprecation at TraceType release.
   def is_compatible_with(self, other):
     """Returns True iff `self` is compatible with `other`.
 
@@ -1143,10 +1267,10 @@ class TensorShape(object):
 
     """
     other = as_shape(other)
-    if self._dims is not None and other.dims is not None:
+    if self.dims is not None and other.dims is not None:
       if self.rank != other.rank:
         return False
-      for x_dim, y_dim in zip(self._dims, other.dims):
+      for x_dim, y_dim in zip(self.dims, other.dims):
         if not x_dim.is_compatible_with(y_dim):
           return False
     return True
@@ -1187,19 +1311,19 @@ class TensorShape(object):
     """
 
     other = as_shape(other)
-    if self._dims is None or other.dims is None or self.rank != other.rank:
+    if self.dims is None or other.dims is None or self.rank != other.rank:
       return unknown_shape()
 
     dims = [
         d1 if d1 is not None and d2 is not None and d1 == d2 else None
-        for d1, d2 in zip(self._dims, other.dims)
+        for d1, d2 in zip(self.dims, other.dims)
     ]
     return TensorShape(dims)
 
   def is_fully_defined(self):
     """Returns True iff `self` is fully defined in every dimension."""
     return (self._dims is not None and
-            all(dim.value is not None for dim in self._dims))
+            all(dim is not None for dim in self._dims))
 
   def assert_is_fully_defined(self):
     """Raises an exception if `self` is not fully defined in every dimension.
@@ -1221,7 +1345,7 @@ class TensorShape(object):
     """
     if self._dims is None:
       raise ValueError("as_list() is not defined on an unknown TensorShape.")
-    return [dim.value for dim in self._dims]
+    return list(self._dims)
 
   def as_proto(self):
     """Returns this shape as a `TensorShapeProto`."""
@@ -1230,7 +1354,7 @@ class TensorShape(object):
     else:
       return tensor_shape_pb2.TensorShapeProto(dim=[
           tensor_shape_pb2.TensorShapeProto.Dim(
-              size=-1 if d.value is None else d.value) for d in self._dims
+              size=-1 if d is None else d) for d in self._dims
       ])
 
   def __eq__(self, other):
@@ -1252,12 +1376,15 @@ class TensorShape(object):
     >>> t_a.__eq__(t_c)
     False
 
-    * Two *Partially-known* shapes, return False.
+    * Two *Partially-known* shapes, return True iff each element is equal.
     >>> p_a = tf.TensorShape([1,None])
-    >>> p_b = tf.TensorShape([2,None])
+    >>> p_b = tf.TensorShape([1,None])
+    >>> p_c = tf.TensorShape([2,None])
     >>> p_a.__eq__(p_b)
-    False
+    True
     >>> t_a.__eq__(p_a)
+    False
+    >>> p_a.__eq__(p_c)
     False
 
     * Two *Unknown shape*, return True.
@@ -1282,22 +1409,14 @@ class TensorShape(object):
       other = as_shape(other)
     except TypeError:
       return NotImplemented
-    return self._dims == other.dims
 
-  def __ne__(self, other):
-    """Returns True if `self` is known to be different from `other`."""
-    try:
-      other = as_shape(other)
-    except TypeError:
-      return NotImplemented
-    if self.rank is None or other.rank is None:
-      raise ValueError("The inequality of unknown TensorShapes is undefined.")
-    if self.rank != other.rank:
-      return True
-    return self._dims != other.dims
+    return self._dims == other._dims
+
+  def __hash__(self):
+    return hash(self._dims)
 
   def __reduce__(self):
-    return TensorShape, (self._dims,)
+    return TensorShape, (self.dims,)
 
   def __concat__(self, other):
     return self.concatenate(other)

@@ -42,6 +42,8 @@ namespace experimental {
 /* static */ constexpr const char* const
     DirectedInterleaveDatasetOp::kNumInputDatasets;
 
+constexpr char kCycleLength[] = "cycle_length";
+
 class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* selector_input,
@@ -95,7 +97,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     // As long as one of input dataset has infinite cardinality, the output
     // cardinality is infinite.
     for (const auto& input : data_inputs_) {
@@ -232,7 +234,9 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
-      return model::MakeInterleaveManyNode(std::move(args));
+      return model::MakeInterleaveManyNode(
+          std::move(args),
+          {model::MakeNonTunableParameter(kCycleLength, /*value=*/1)});
     }
 
     Status SaveInternal(SerializationContext* ctx,

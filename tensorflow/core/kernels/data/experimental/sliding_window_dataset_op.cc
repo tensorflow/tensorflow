@@ -26,10 +26,16 @@ namespace data {
 namespace experimental {
 namespace {
 
+constexpr char kDropRemainder[] = "drop_remainder";
+
 class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit SlidingWindowDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {}
+      : UnaryDatasetOpKernel(ctx) {
+    if (ctx->HasAttr(kDropRemainder)) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr(kDropRemainder, &drop_remainder_));
+    }
+  }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
@@ -56,18 +62,21 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
                    << " is equal to window_size: " << window_size
                    << " and window_stride is 1, use `batch` instead.";
     }
-    *output = new Dataset(ctx, window_size, window_shift, window_stride, input);
+    *output = new Dataset(ctx, window_size, window_shift, window_stride,
+                          drop_remainder_, input);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, int64_t window_size, int64_t window_shift,
-            int64_t window_stride, const DatasetBase* input)
+            int64_t window_stride, bool drop_remainder,
+            const DatasetBase* input)
         : DatasetBase(DatasetContext(ctx)),
           window_size_(window_size),
           window_shift_(window_shift),
           window_stride_(window_stride),
+          drop_remainder_(drop_remainder),
           input_(input) {
       input_->Ref();
 
@@ -97,15 +106,16 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override {
       return strings::StrCat("SlidingWindowDatasetOp(", window_size_, ", ",
-                             window_shift_, ", ", window_stride_, ")::Dataset");
+                             window_shift_, ", ", window_stride_, ", ",
+                             drop_remainder_, ")::Dataset");
     }
 
-    int64_t Cardinality() const override {
+    int64_t CardinalityInternal() const override {
       int64_t n = input_->Cardinality();
       if (n == kInfiniteCardinality || n == kUnknownCardinality) {
         return n;
       }
-      return n / window_shift_;
+      return (drop_remainder_ ? n : n + window_shift_ - 1) / window_shift_;
     }
 
     Status InputDatasets(
@@ -127,12 +137,17 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
       Node* window_size = nullptr;
       Node* window_shift = nullptr;
       Node* window_stride = nullptr;
+
+      // Attr: drop_remainder.
+      AttrValue drop_remainder_attr;
+      b->BuildAttrValue(drop_remainder_, &drop_remainder_attr);
+
       TF_RETURN_IF_ERROR(b->AddScalar(window_size_, &window_size));
       TF_RETURN_IF_ERROR(b->AddScalar(window_shift_, &window_shift));
       TF_RETURN_IF_ERROR(b->AddScalar(window_stride_, &window_stride));
       TF_RETURN_IF_ERROR(b->AddDataset(
           this, {input_graph_node, window_size, window_shift, window_stride},
-          output));
+          {std::make_pair(kDropRemainder, drop_remainder_attr)}, output));
       return Status::OK();
     }
 
@@ -153,24 +168,20 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
         const int64_t window_size = dataset()->window_size_;
         const int64_t window_shift = dataset()->window_shift_;
         const int64_t window_stride = dataset()->window_stride_;
+        const bool drop_remainder = dataset()->drop_remainder_;
         std::vector<std::vector<Tensor>> batch_elements;
         {
           mutex_lock l(mu_);
-          if (!input_impl_) {
-            *end_of_sequence = true;
-            return Status::OK();
-          }
           batch_elements.reserve(window_size);
 
-          // Fill up buffer.
+          // Fill up buffer if not entire data was consumed.
           size_t target_size = TargetBufferSize(window_size, window_stride);
-          *end_of_sequence = false;
-          for (size_t i = buffer_.size(); i < target_size && !*end_of_sequence;
-               ++i) {
+          for (size_t i = buffer_.size(); i < target_size && input_impl_; ++i) {
+            bool end_of_input;
             std::vector<Tensor> element;
             TF_RETURN_IF_ERROR(
-                input_impl_->GetNext(ctx, &element, end_of_sequence));
-            if (!*end_of_sequence) {
+                input_impl_->GetNext(ctx, &element, &end_of_input));
+            if (!end_of_input) {
               buffer_.push_back(std::move(element));
             } else {
               input_impl_.reset();
@@ -178,25 +189,27 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
           }
 
           // Drop the final smaller batch.
-          if (buffer_.size() < target_size) {
-            DCHECK(*end_of_sequence);
+          if (buffer_.empty() ||
+              (buffer_.size() < target_size && drop_remainder)) {
+            DCHECK(input_impl_ == nullptr);
+            *end_of_sequence = true;
             return Status::OK();
           }
 
-          for (size_t i = 0; i < window_size; ++i) {
-            batch_elements.emplace_back(buffer_[window_stride * i]);
+          for (size_t i = 0; i < buffer_.size(); i += window_stride) {
+            batch_elements.emplace_back(buffer_[i]);
           }
 
           // Drop the data before the next iteration.
           if (window_shift >= buffer_.size()) {
-            for (size_t i = buffer_.size(); i < window_shift; ++i) {
+            for (size_t i = buffer_.size(); i < window_shift && input_impl_;
+                 ++i) {
               bool end_of_input;
               std::vector<Tensor> element;
               TF_RETURN_IF_ERROR(
                   input_impl_->GetNext(ctx, &element, &end_of_input));
               if (end_of_input) {
                 input_impl_.reset();
-                break;
               }
             }
             buffer_.clear();
@@ -308,9 +321,11 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
     const int64_t window_size_;
     const int64_t window_shift_;
     const int64_t window_stride_;
+    const bool drop_remainder_;
     const DatasetBase* const input_;
     std::vector<PartialTensorShape> output_shapes_;
   };
+  bool drop_remainder_ = true;
 };
 
 REGISTER_KERNEL_BUILDER(Name("SlidingWindowDataset").Device(DEVICE_CPU),

@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_ANALYSIS_USERANGE_ANALYSIS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_ANALYSIS_USERANGE_ANALYSIS_H_
+#ifndef MLIR_HLO_ANALYSIS_USERANGE_ANALYSIS_H
+#define MLIR_HLO_ANALYSIS_USERANGE_ANALYSIS_H
 
 #include <vector>
 
 #include "mlir/Analysis/Liveness.h"
+#include "mlir/Dialect/Bufferization/Transforms/BufferUtils.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
-#include "mlir/Transforms/BufferUtils.h"
 
 namespace mlir {
 
@@ -63,9 +63,10 @@ struct UseInterval {
   }
 
   /// Performs an interval subtraction => A = A - B.
-  /// Note: This assumes that all intervals of b are included in some interval
-  ///       of a.
   static void intervalSubtract(Vector &a, const Vector &b);
+
+  /// Performs an interval intersection => A = A ^ B.
+  static void intervalIntersect(Vector &a, const Vector &b);
 
   /// Performs an interval merge => A = A u B.
   /// Note: All overlapping and contiguous UseIntervals are merged.
@@ -101,7 +102,8 @@ class UserangeAnalysis {
   using UsePosition = std::pair<size_t, Operation *>;
   using UsePositionList = std::vector<UsePosition>;
 
-  UserangeAnalysis(Operation *op, const BufferPlacementAllocs &allocs,
+  UserangeAnalysis(Operation *op,
+                   const bufferization::BufferPlacementAllocs &allocs,
                    const BufferViewFlowAnalysis &aliases);
 
   /// Returns the index of the first operation that uses the given value or an
@@ -144,6 +146,10 @@ class UserangeAnalysis {
   /// Merges the userange of itemB into the userange of itemA.
   void unionRanges(Value itemA, Value itemB);
 
+  /// Merges listB into listA, sorts the result and removes all duplicates.
+  static void mergeUsePositions(UsePositionList &listA,
+                                const UsePositionList &listB);
+
   /// Dumps the liveness information to the given stream.
   void dump(raw_ostream &os);
 
@@ -154,6 +160,10 @@ class UserangeAnalysis {
   /// Builds an UseInterval::Vector corresponding to the given OperationList.
   UseInterval::Vector computeInterval(
       Value value, const Liveness::OperationListT &operationList);
+
+  /// Computes the UsePositions of the given Value, sorts and inserts them into
+  /// the usePositionMap.
+  void computeUsePositions(Value v);
 
   /// Checks each operand within the operation for its memory effects and
   /// separates them into read and write.
@@ -192,4 +202,4 @@ class UserangeAnalysis {
 
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_ANALYSIS_USERANGE_ANALYSIS_H_
+#endif  // MLIR_HLO_ANALYSIS_USERANGE_ANALYSIS_H

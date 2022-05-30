@@ -80,6 +80,7 @@ TEST_F(ConversionTest, Delegate) {
   CheckDelegateEnum(Delegate_EDGETPU, proto::Delegate::EDGETPU);
   CheckDelegateEnum(Delegate_EDGETPU_CORAL, proto::Delegate::EDGETPU_CORAL);
   CheckDelegateEnum(Delegate_XNNPACK, proto::Delegate::XNNPACK);
+  CheckDelegateEnum(Delegate_CORE_ML, proto::Delegate::CORE_ML);
 }
 
 TEST_F(ConversionTest, ExecutionPreference) {
@@ -212,6 +213,24 @@ TEST_F(ConversionTest, NNAPIExecutionPriority) {
   CheckNNAPIExecutionPriority(
       NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED,
       proto::NNAPIExecutionPriority::NNAPI_PRIORITY_UNDEFINED);
+}
+
+TEST_F(ConversionTest, NNAPISupportLibraryHandle) {
+  settings_.tflite_settings.reset(new TFLiteSettingsT());
+  settings_.tflite_settings->nnapi_settings.reset(new NNAPISettingsT());
+  NNAPISettingsT* input_settings =
+      settings_.tflite_settings->nnapi_settings.get();
+
+  proto::ComputeSettings compute = ConvertFromFlatbuffer(settings_);
+  proto::NNAPISettings output_settings =
+      compute.tflite_settings().nnapi_settings();
+  EXPECT_EQ(output_settings.support_library_handle(), 0);
+
+  input_settings->support_library_handle = std::numeric_limits<int64_t>::max();
+  compute = ConvertFromFlatbuffer(settings_);
+  output_settings = compute.tflite_settings().nnapi_settings();
+  EXPECT_EQ(output_settings.support_library_handle(),
+            std::numeric_limits<int64_t>::max());
 }
 
 TEST_F(ConversionTest, GPUSettings) {
@@ -388,8 +407,33 @@ TEST_F(ConversionTest, XNNPackSettings) {
       settings_.tflite_settings->xnnpack_settings.get();
 
   input_settings->num_threads = 2;
+  input_settings->flags =
+      tflite::XNNPackFlags::XNNPackFlags_TFLITE_XNNPACK_DELEGATE_FLAG_QS8_QU8;
   const proto::ComputeSettings compute = ConvertFromFlatbuffer(settings_);
   EXPECT_EQ(compute.tflite_settings().xnnpack_settings().num_threads(), 2);
+  EXPECT_EQ(compute.tflite_settings().xnnpack_settings().flags(), 3);
+}
+
+TEST_F(ConversionTest, CoreMLSettings) {
+  settings_.tflite_settings.reset(new TFLiteSettingsT());
+  settings_.tflite_settings->coreml_settings.reset(new CoreMLSettingsT());
+  CoreMLSettingsT* input_settings =
+      settings_.tflite_settings->coreml_settings.get();
+
+  input_settings->enabled_devices =
+      CoreMLSettings_::EnabledDevices_DEVICES_WITH_NEURAL_ENGINE;
+  input_settings->coreml_version = 3;
+  input_settings->max_delegated_partitions = 10;
+  input_settings->min_nodes_per_partition = 4;
+  const proto::ComputeSettings compute = ConvertFromFlatbuffer(settings_);
+  EXPECT_EQ(compute.tflite_settings().coreml_settings().enabled_devices(),
+            proto::CoreMLSettings::DEVICES_WITH_NEURAL_ENGINE);
+  EXPECT_EQ(compute.tflite_settings().coreml_settings().coreml_version(), 3);
+  EXPECT_EQ(
+      compute.tflite_settings().coreml_settings().max_delegated_partitions(),
+      10);
+  EXPECT_EQ(
+      compute.tflite_settings().coreml_settings().min_nodes_per_partition(), 4);
 }
 
 TEST_F(ConversionTest, CoralSettings) {
@@ -447,8 +491,16 @@ TEST_F(ConversionTest, MiniBenchmarkSettings) {
   std::unique_ptr<TFLiteSettingsT> hexagon(new TFLiteSettingsT());
   hexagon->hexagon_settings.reset(new HexagonSettingsT());
   hexagon->hexagon_settings->powersave_level = 3;
+  std::unique_ptr<TFLiteSettingsT> coreml(new TFLiteSettingsT());
+  coreml->coreml_settings.reset(new CoreMLSettingsT());
+  coreml->coreml_settings->enabled_devices =
+      CoreMLSettings_::EnabledDevices_DEVICES_WITH_NEURAL_ENGINE;
+  coreml->coreml_settings->coreml_version = 3;
+  coreml->coreml_settings->max_delegated_partitions = 10;
+  coreml->coreml_settings->min_nodes_per_partition = 4;
   mini_settings->settings_to_test.emplace_back(std::move(xnnpack));
   mini_settings->settings_to_test.emplace_back(std::move(hexagon));
+  mini_settings->settings_to_test.emplace_back(std::move(coreml));
 
   proto::ComputeSettings compute = ConvertFromFlatbuffer(settings_);
   EXPECT_EQ(2, compute.tflite_settings().cpu_settings().num_threads());
@@ -460,13 +512,28 @@ TEST_F(ConversionTest, MiniBenchmarkSettings) {
   EXPECT_EQ("test_model", mini_output.model_file().filename());
   EXPECT_EQ("/data/local/tmp", mini_output.storage_paths().storage_file_path());
 
-  EXPECT_EQ(2, mini_output.settings_to_test_size());
+  EXPECT_EQ(3, mini_output.settings_to_test_size());
   EXPECT_EQ(
       2, mini_output.settings_to_test().at(0).xnnpack_settings().num_threads());
   EXPECT_EQ(3, mini_output.settings_to_test()
                    .at(1)
                    .hexagon_settings()
                    .powersave_level());
+
+  EXPECT_EQ(
+      proto::CoreMLSettings::DEVICES_WITH_NEURAL_ENGINE,
+      mini_output.settings_to_test().at(2).coreml_settings().enabled_devices());
+  EXPECT_EQ(
+      3,
+      mini_output.settings_to_test().at(2).coreml_settings().coreml_version());
+  EXPECT_EQ(10, mini_output.settings_to_test()
+                    .at(2)
+                    .coreml_settings()
+                    .max_delegated_partitions());
+  EXPECT_EQ(4, mini_output.settings_to_test()
+                   .at(2)
+                   .coreml_settings()
+                   .min_nodes_per_partition());
 
   compute =
       ConvertFromFlatbuffer(settings_, /*skip_mini_benchmark_settings=*/true);

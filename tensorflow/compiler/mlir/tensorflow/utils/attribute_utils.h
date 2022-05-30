@@ -18,21 +18,36 @@ limitations under the License.
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 
 namespace mlir {
 namespace TF {
+
+// TODO(b/229028654) see comment in source file
+
+// Marks a node for XLA compilation. The attribute value indicates the
+// compilation device type.
+extern const llvm::StringRef kCompileDeviceTypeAttr;
+// Marks a node for replication. The attribute value indicates the replication
+// metadata op.
+extern const llvm::StringRef kReplicationInfoAttr;
+// Marks a node for XLA-TPU compilation. The attribute value indicates the
+// associated compilation cluster and replication metadata op.
+extern const llvm::StringRef kTpuReplicateAttr;
+// Device types.
+extern const llvm::StringRef kTpuDevice;
 
 // Copies attributes that satisfy the given predicate from `from` to `to`.
 template <typename Predicate>
 void CopyAttributes(Operation *from, Operation *to, Predicate P) {
   for (const NamedAttribute &attr : from->getAttrs())
-    if (P(attr)) to->setAttr(attr.first, attr.second);
+    if (P(attr)) to->setAttr(attr.getName(), attr.getValue());
 }
 
 // Copies attributes whose name begins with an _ from `from` to `to`.
 inline void CopyUnderscoredAttributes(Operation *from, Operation *to) {
   CopyAttributes(from, to, [](const NamedAttribute &attr) {
-    return attr.first.strref().front() == '_';
+    return attr.getName().strref().front() == '_';
   });
 }
 
@@ -41,9 +56,9 @@ inline void CopyUnderscoredAttributes(Operation *from, Operation *to) {
 // TODO(b/158769932): This should be a general feature instead post some policy
 // discussion.
 inline void CopyDeviceAndUnderscoredAttributes(Operation *from, Operation *to) {
-  auto device = mlir::Identifier::get("device", from->getContext());
+  auto device = mlir::StringAttr::get(from->getContext(), "device");
   CopyAttributes(from, to, [&device](const NamedAttribute &attr) {
-    return attr.first.strref().front() == '_' || attr.first == device;
+    return attr.getName().strref().front() == '_' || attr.getName() == device;
   });
 }
 
@@ -63,6 +78,8 @@ bool GetValueAsConstant(Value val, AttrT &attr) {
   }
   return matchPattern(val, m_Constant(&attr));
 }
+
+LogicalResult HasValidCompilationAndReplicationAttributes(Operation &op);
 
 }  // namespace TF
 }  // namespace mlir

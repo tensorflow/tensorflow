@@ -83,19 +83,46 @@ cc_library(
     ],
     deps = [
         ":allocator_stats",
-        ":dnn_proto_cc",
         ":host_or_device_scalar",
         ":stream_executor_headers",
-        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
     ],
+)
+
+MATH_DEPS = [
+    "//tensorflow/core:core_cpu",
+    "//tensorflow/core:framework",
+    "//tensorflow/core:lib_internal",
+    "//tensorflow/core:math_grad",
+    "//tensorflow/core/framework:bounds_check",
+    "//third_party/eigen3",
+]
+
+cc_library(
+    name = "matmul_util",
+    srcs = ["matmul_util.cc"],
+    hdrs = ["matmul_util.h"],
+    deps = [
+        ":stream_header",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "//tensorflow/core/kernels:gpu_utils",
+        "//tensorflow/core/platform:hash",
+        "//tensorflow/core/lib/strings:str_util",
+        "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/core:protos_all_cc",
+    ] + if_static(
+        ["//tensorflow/core/platform:tensor_float_32_utils"],
+        ["//tensorflow/core/platform:tensor_float_32_hdr_lib"],
+    ) + MATH_DEPS,
 )
 
 cc_library(
@@ -129,19 +156,19 @@ cc_library(
     deps = [
         ":allocator_stats",
         ":device_memory",
-        ":dnn_proto_cc",
         ":host_or_device_scalar",
         ":kernel_cache_config",
         ":stream_executor_headers",
-        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -201,12 +228,13 @@ cc_library(
         ":stream_executor_headers",
         ":stream_executor_internal",
         ":stream_executor_pimpl_header",
-        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -241,9 +269,9 @@ cc_library(
     deps = [
         ":device_memory",
         ":stream_header",
-        "//tensorflow/core:lib",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -257,9 +285,9 @@ cc_library(
         ":stream_executor_pimpl_header",
         ":stream_header",
         ":temporary_device_memory",
-        "//tensorflow/core:lib",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
@@ -342,19 +370,19 @@ cc_library(
     ],
     deps = [
         ":allocator_stats",
-        ":dnn_proto_cc",
         ":host_or_device_scalar",
         ":stream_executor_headers",
-        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -365,9 +393,9 @@ cc_library(
     deps = [
         ":platform",
         ":stream_executor_headers",
-        "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -408,9 +436,9 @@ cc_library(
     deps = [
         ":device_memory",
         ":stream_header",
-        ":temporary_device_memory",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
@@ -439,16 +467,36 @@ cc_library(
         ":device_memory",
         ":dnn_proto_cc",
         ":stream_executor_headers",
-        "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/lib",
-        "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/lib/strings:proto_serialization",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform",
+    ] + if_static(["@com_google_protobuf//:protobuf"]),
+)
+
+cc_library(
+    name = "lazy_op_runner",
+    hdrs = ["lazy_op_runner.h"],
+    deps = [
+        ":dnn",
+        ":stream_header",
     ],
 )
+
+# This is terrible, but we need to defeat the dependency check to depend on the
+# header-only lazy_op_runner template in fused_conv2d_bias_activation (being
+# header-only means it can't cause linkage issues), so export the actual header
+# file itself and add a target for it in core/kernels.  Unsophisticated checks
+# beget dumb circumventions :(
+#
+# TODO(b/202546057) get rid of this once fused_conv is moved out of contrib.
+exports_files(["lazy_op_runner.h"])
 
 cc_library(
     name = "stream_executor_internal",
@@ -487,19 +535,19 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":dnn_proto_cc",
         ":platform",
         ":stream_executor_headers",
         ":stream_executor_internal",
-        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -528,13 +576,15 @@ tf_cuda_library(
         ":stream_header",
         ":temporary_memory_manager",
         ":timer",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/cuda:cuda_dnn_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -582,11 +632,13 @@ cc_library(
         ":allocator_stats",
         ":dnn_proto_cc",
         ":host_or_device_scalar",
-        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/cuda:cuda_dnn_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -668,14 +720,12 @@ cc_library(
         ":device_memory",
         ":platform",
         ":stream_executor",
-        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:types",
         "//tensorflow/stream_executor/lib",
-        "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -689,16 +739,10 @@ cc_library(
         ":device_memory_allocator",
         ":platform",
         ":stream_executor_headers",
-        "//tensorflow/core:lib",
         "//tensorflow/core/framework:allocator",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/stream_executor/lib",
-        "//tensorflow/stream_executor/platform",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
     ],
 )
 

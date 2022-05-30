@@ -1,4 +1,5 @@
 add_mlir_library(MLIRHLOAnalysis
+  shape_component_analysis.cc
   userange_analysis.cc
 
   DEPENDS
@@ -10,6 +11,7 @@ add_mlir_library(MLIRHLOAnalysis
 )
 
 add_mlir_library(MLIRHLOTestAnalysis
+  test_shape_component_analysis.cc
   test_userange_analysis.cc
 
   DEPENDS

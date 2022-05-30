@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/types/optional.h"
@@ -91,7 +92,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
  public:
   explicit PyClient(std::unique_ptr<PjRtClient> pjrt_client);
   explicit PyClient(std::shared_ptr<PjRtClient> pjrt_client);
-  ~PyClient();
+  virtual ~PyClient();
 
   PjRtClient* pjrt_client() const { return pjrt_client_.get(); }
   std::shared_ptr<PjRtClient> shared_pjrt_client() { return pjrt_client_; }
@@ -145,12 +146,18 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
     return pjrt_client_->CreateHostToDeviceChannelHandle();
   }
 
+  StatusOr<std::vector<std::pair<pybind11::bytes, pybind11::object>>>
+  MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
+                              PjRtDevice* device);
+
   StatusOr<pybind11::object> BufferFromPyval(
       pybind11::handle argument, PjRtDevice* device, bool force_copy,
       PjRtClient::HostBufferSemantics host_buffer_semantics);
 
   StatusOr<std::shared_ptr<PyExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options);
+  StatusOr<std::shared_ptr<PyExecutable>> CompileMlir(std::string mlir_module,
+                                                      CompileOptions options);
 
   StatusOr<pybind11::bytes> SerializeExecutable(
       const PyExecutable& executable) const;
@@ -166,19 +173,31 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
 
   StatusOr<pybind11::bytes> HeapProfile();
 
-  // Adds code to `builder` to call Python host function `callable` with
-  // `operands`, returning a result of `result_shape`. If desired, the operand
-  // layouts can be constrained by `operand_layouts`. Returns a pair of the
-  // output XlaOp, together with an object that must be kept alive as long as
-  // the Python callback may be called. Typically the callback may be kept
-  // alive by attaching it to the executable built from this computation.
+  // `GetEmitPythonCallbackDescriptor` takes in an input Python callable that
+  // takes in arguments of shapes `operand_shapes` and returns values of shapes
+  // `result_shapes`. It returns a pair of a `uint64_t` descriptor and a Python
+  // object whose reference will keep the Python callback alive. The descriptor
+  // should be passed into a 'xla_cpu_python_callback' CustomCall as its first
+  // argument. Typically the callback may be kept alive by attaching the
+  // keep-alive object to the executable built from this computation.
   //
-  // Callable receives as arguments NumPy arrays for arguments with array types,
-  // and None for Token argument. The callable must return a tuple of either
-  // arrays or None values.
+  // The callable receives as arguments NumPy arrays for arguments with array
+  // types, and None for Token argument. The callable must return a tuple of
+  // either arrays or None values.
   //
   // This is a method of PyClient since different platforms may implement this
   // functionality in different ways.
+  StatusOr<std::pair<uint64_t, pybind11::object>>
+  GetEmitPythonCallbackDescriptor(pybind11::function callable,
+                                  absl::Span<Shape const> operand_shapes,
+                                  absl::Span<Shape const> result_shapes);
+  // Deprecated; please switch to emitting an MHLO `CustomCallOp` directly.
+  StatusOr<XlaOp> EmitPythonCallbackFromDescriptor(
+      XlaBuilder& builder, uint64_t descriptor,
+      absl::Span<XlaOp const> operands, absl::Span<Shape const> result_shapes,
+      absl::optional<std::vector<Shape>> operand_layouts, bool has_side_effect);
+  // Deprecated; please switch to using `GetEmitPythonCallbackDescriptor`
+  // and then emitting a `CustomCall` op instead.
   StatusOr<std::pair<XlaOp, pybind11::object>> EmitPythonCallback(
       pybind11::function callable, XlaBuilder& builder,
       absl::Span<XlaOp const> operands, absl::Span<Shape const> result_shapes,

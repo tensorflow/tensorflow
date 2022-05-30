@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
-#include "tensorflow/core/grappler/costs/virtual_placer.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/frame.h"
 #include "tensorflow/core/grappler/utils/graph_view.h"
@@ -51,9 +50,16 @@ struct TransposeContext {
   // Initializes TransposeContext with given GrapplerItem. Because initializing
   // FrameMap and GraphProperties may return error, we initialize
   // TransposeContext outside constructor.
-  static Status InitializeTransposeContext(const GrapplerItem& item,
+  static Status InitializeTransposeContext(bool assume_valid_feeds,
+                                           const GrapplerItem& item,
                                            const Cluster* cluster,
                                            TransposeContext* context);
+
+  static Status InitializeTransposeContext(const GrapplerItem& item,
+                                           const Cluster* cluster,
+                                           TransposeContext* context) {
+    return InitializeTransposeContext(false, item, cluster, context);
+  }
 
   // Sets data formats to convert from and to for specified device type.
   void AssignDeviceAndDataFormats(absl::string_view target_device,
@@ -69,7 +75,6 @@ struct TransposeContext {
   absl::flat_hash_set<string> nodes_to_preserve;
   std::unique_ptr<GraphProperties> graph_properties;
   std::unique_ptr<utils::MutableGraphView> graph_view;
-  std::unique_ptr<const VirtualPlacer> virtual_placer;
 
   string target_device;
   string src_format;
@@ -78,6 +83,8 @@ struct TransposeContext {
   absl::flat_hash_map<char, int> dst_dim_indices;
   std::vector<int> src_to_dst;
   std::vector<int> dst_to_src;
+
+  string enforced_layout;
 };
 
 class Transposer {
@@ -604,7 +611,7 @@ Status PermuteDouble(absl::string_view location,
   return Status::OK();
 }
 
-string GetDeviceName(const VirtualPlacer* virtual_placer, const NodeDef& node);
+string GetDeviceName(const NodeDef& node);
 
 bool IsDefaultLayoutSensitiveOp(const NodeDef& node);
 

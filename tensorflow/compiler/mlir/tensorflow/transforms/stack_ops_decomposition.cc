@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -54,45 +55,9 @@ namespace {
 
 namespace cutil = TF::collection_ops_util;
 
-// A pass that converts stack operations to tensor operations and read/assign
-// ops on local variables. A later resource lifting pass can further remove the
-// local variables.
-//
-// This pass requires that the full shape of the stack can be inferred: 1) the
-// maximum size needs to be a constant and 2) a push op can be found with a
-// known shape, and all push ops need to have the same shape.
-//
-// A stack creation op "tf.StackV2" will be turned in to two zero-initialized
-// variables, for the buffer and current size. Each push will be turned into
-//   %old_val = "tf.ReadVariableOp"(%buffer)
-//   %old_size = "tf.ReadVariableOp"(%size)
-//   %offsets = "tf.ConcatV2"(%old_size, %other_dims_0s, %const0)
-//   %new_val = "tf.XlaDynamicUpdateSlice"(%old_val, %push_val, %offsets)
-//   "tf.AssignVariableOp"(%buffer, %new_val)
-//   %new_size = "tf.AddV2"(%old_size, %const1)
-//   "tf.AssignVariableOp"(%size, %new_size)
-//
-// and each pop will be turned into
-//
-//   %old_val = "tf.ReadVariableOp"(%buffer)
-//   %old_size = "tf.ReadVariableOp"(%size)
-//   %new_size = "tf.Sub"(%old_size, %const1)
-//   %offsets = "tf.ConcatV2"(%old_size, %other_dims_0s, %const0)
-//   %slice = "tf.Slice"(%old_val, %offsets, %slice_size_const)
-//   %pop_result = "tf.Reshape"(%slice, %elem_size_const)
-//   "tf.AssignVariableOp"(%size, %new_size)
-//
-// The pass also works across control flow and functional calls.
 struct StackOpsDecompositionPass
-    : public PassWrapper<StackOpsDecompositionPass, OperationPass<ModuleOp>> {
-  StringRef getArgument() const final { return "tf-stack-ops-decomposition"; }
-
-  StringRef getDescription() const final {
-    return "Decompose stack operations into local variable operations. Needs "
-           "static shapes.";
-  }
-
-  void runOnOperation() override;
+    : public TF::StackOpsDecompositionPassBase<StackOpsDecompositionPass> {
+  void runOnOperation() final;
 };
 
 // Returns the type of the local variable for the stack size.
@@ -105,7 +70,7 @@ Type GetSizeVarType(OpBuilder builder) {
 
 // Returns the aliasing argument number of a fucntion return value if it simply
 // forwards the argument. Otherwise, returns -1.
-int64_t FindAliasedInput(FuncOp func, int64_t return_index) {
+int64_t FindAliasedInput(func::FuncOp func, int64_t return_index) {
   Value return_val = func.front().getTerminator()->getOperand(return_index);
   auto maybe_arg = return_val.dyn_cast<BlockArgument>();
   if (!maybe_arg) return -1;
@@ -123,11 +88,11 @@ int64_t FindAliasedInput(FuncOp func, int64_t return_index) {
 // If handle_new_size_vars is provided, it will be invoked on the list of new
 // size variables before finally changing the function type.
 void ModifyFunctionSignature(
-    FuncOp func, llvm::SmallDenseMap<Value, Value>* stack_var_to_size_var,
+    func::FuncOp func, llvm::SmallDenseMap<Value, Value>* stack_var_to_size_var,
     llvm::function_ref<llvm::Optional<Type>(int64_t)> arg_to_stack_type,
     llvm::function_ref<void(ArrayRef<BlockArgument>)> handle_new_size_vars =
         nullptr) {
-  auto new_input_types = llvm::to_vector<8>(func.getType().getInputs());
+  auto new_input_types = llvm::to_vector<8>(func.getFunctionType().getInputs());
   auto size_var_type = GetSizeVarType(OpBuilder(func));
   int64_t original_arg_count = new_input_types.size();
   for (int64_t i = 0; i < original_arg_count; ++i) {
@@ -135,7 +100,7 @@ void ModifyFunctionSignature(
     if (!stack_type.hasValue()) continue;
     func.getArgument(i).setType(*stack_type);
     new_input_types[i] = *stack_type;
-    auto size_arg = func.front().addArgument(size_var_type);
+    auto size_arg = func.front().addArgument(size_var_type, func.getLoc());
     new_input_types.push_back(size_arg.getType());
     if (stack_var_to_size_var) {
       (*stack_var_to_size_var)[func.getArgument(i)] = size_arg;
@@ -153,7 +118,7 @@ void ModifyFunctionSignature(
 // partitioned call ops.
 struct PartitionedCallStackOpsInfo {
   bool signature_change;
-  FuncOp decomposed_callee;
+  func::FuncOp decomposed_callee;
   llvm::SmallDenseMap<int64_t, int64_t> stack_var_arg_to_size_arg;
 };
 
@@ -180,7 +145,8 @@ LogicalResult HandleWhileOp(
     auto body_ret = body.front().getTerminator();
     auto new_body_returns = llvm::to_vector<8>(body_ret->getOperands());
     for (auto arg : new_args) new_body_returns.push_back(arg);
-    OpBuilder(body_ret).create<ReturnOp>(body_ret->getLoc(), new_body_returns);
+    OpBuilder(body_ret).create<func::ReturnOp>(body_ret->getLoc(),
+                                               new_body_returns);
     body_ret->erase();
   };
   // Handle body.
@@ -209,9 +175,9 @@ LogicalResult HandleWhileOp(
     if (it == data_var_to_size_var.end()) continue;
     new_while_operands.push_back(it->getSecond());
   }
-  auto new_while =
-      builder.create<TF::WhileOp>(while_op.getLoc(), body.getType().getInputs(),
-                                  new_while_operands, while_op->getAttrs());
+  auto new_while = builder.create<TF::WhileOp>(
+      while_op.getLoc(), body.getFunctionType().getInputs(), new_while_operands,
+      while_op->getAttrs());
   for (int64_t i = 0; i < while_op.getNumResults(); ++i) {
     if (!getElementTypeOrSelf(while_op.getOperand(i).getType())
              .isa<TF::ResourceType>()) {
@@ -263,7 +229,7 @@ LogicalResult HandleIfOp(
     new_if_operands.push_back(it->getSecond());
   }
   auto new_if = OpBuilder(if_op).create<TF::IfOp>(
-      if_op.getLoc(), then_func.getType().getResults(), new_if_operands,
+      if_op.getLoc(), then_func.getFunctionType().getResults(), new_if_operands,
       if_op->getAttrs());
   for (auto result : if_op.getResults()) {
     if (!getElementTypeOrSelf(result.getType()).isa<TF::ResourceType>()) {
@@ -289,7 +255,7 @@ LogicalResult HandleIfOp(
 // and performs stack ops decomposition on it.
 template <typename CallOp>
 LogicalResult HandlePartitionedCallOp(
-    CallOp call, FuncOp callee, ModuleOp module,
+    CallOp call, func::FuncOp callee, ModuleOp module,
     const llvm::SmallDenseMap<Value, Value>& data_var_to_size_var,
     llvm::StringMap<PartitionedCallStackOpsInfo>*
         decomposed_partitioned_call_callees) {
@@ -312,12 +278,12 @@ LogicalResult HandlePartitionedCallOp(
     }
     OpBuilder builder(call);
     auto new_call = builder.create<CallOp>(
-        call.getLoc(), info.decomposed_callee.getType().getResults(),
+        call.getLoc(), info.decomposed_callee.getFunctionType().getResults(),
         new_operands, call->getAttrs());
     new_call->setAttr(
         "f", SymbolRefAttr::get(
                  builder.getContext(),
-                 const_cast<FuncOp&>(info.decomposed_callee).getName()));
+                 const_cast<func::FuncOp&>(info.decomposed_callee).getName()));
     for (int64_t i = 0; i < call.getNumResults(); ++i) {
       auto result = call.getResult(i);
       if (!getElementTypeOrSelf(result.getType())
@@ -340,7 +306,7 @@ LogicalResult HandlePartitionedCallOp(
     return recreate_caller();
   }
   llvm::SmallDenseMap<Value, Value> callee_map;
-  FuncOp lowered_callee = callee;
+  func::FuncOp lowered_callee = callee;
   if (!callee.isPrivate()) {
     // Clone non-private callee in case of signature change.
     lowered_callee = callee.clone();
@@ -584,14 +550,12 @@ LogicalResult DecomposeStackOps(Block* block, ModuleOp module) {
 
 void StackOpsDecompositionPass::runOnOperation() {
   auto module = getOperation();
-  auto main = module.lookupSymbol<FuncOp>("main");
+  auto main = module.lookupSymbol<func::FuncOp>("main");
   if (!main) return;
   if (failed(DecomposeStackOps(&main.front(), module))) {
     signalPassFailure();
   }
 }
-
-static PassRegistration<StackOpsDecompositionPass> pass;
 
 }  // namespace
 

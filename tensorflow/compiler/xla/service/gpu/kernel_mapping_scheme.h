@@ -22,175 +22,160 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 namespace gpu {
 
-// A tile is a spatial subdivision of a tensor. We group tensor elements into
-// tiles so that we can launch kernels to process the tensor elements in blocks
-// of tiles.
+using Vector3 = std::array<int64_t, 3>;
+
+// Describes tiling used by the kernel.
 //
-// A kernel mapping scheme describes a method to partition the tensors accessed
-// by an unnested HLO instruction into tiles and blocks of tiles, and the
-// associated information to use hardware threads to process the tensor elements
-// in blocks of tiles.
+// Used by reductions and 021 transpose algorithm. Both algorithms operate over
+// "logical" 3D views over input arrays, hence tiling and number of threads
+// information has only 3 dimensions.
 //
-// Currently, there are two main use cases for a tiling scheme. First, we
-// implement kernels with 0-2-1 memory transpose using shared memory to improve
-// memory access pattern. Second, we implement reduction to contiguous
-// dimensions in layout, with or without memory transpose, to achieve better
-// memory access pattern as well as to reduce the need numbers of executed
-// expensive instructions, such as thread synchronization related instructions
-// and atomic operations. For both use cases, we can apply a normalization to
-// the original tensors, to collapse contiguous dimensions for the same purpose
-// and produce normlized three dimensional tensors. For this reason, the tiling
-// scheme class only needs to handle normalized three dimensional tensors and
-// two dimensional tiles.
-//
-// The current implementation of the class is somewhat NVIDIA GPU oriented. This
-// situation can be improved when there is a need though. The idea of 0-2-1
-// transpose using shared memory can be found in the following CUDA algorithm in
-// TensorFlow: https://goo.gl/MStRV6.
-//
-// We use a thread block to process a tile because we want to use the HW thread
-// block synchronization primitives to synchronize the processing of all the
-// elements in the same tile. A thread block can be viewed as a two dimensional
-// array of threads, described by the number of threads for the Y and X
-// dimensions. A thread block (num_threads_y, num_threads_x) processes a tile of
-// (tile_size_y, tile_size_x) as follows: each thread in the thread block
-// processes one element in the tile so that all the threads in the thread block
-// together process a subdivision of the tile that has the same dimension as the
-// thread block array. Then the thread block moves on to process the next
-// subdivision of the tile until the whole tile is processed. Therefore, each
-// thread in the thread block processes
-// tile_size_x/num_threads_x * tile_size_y/num_threads_y elements in a tile.
-//
-// There are situations where we want a thread block to process multiple
-// tiles. We can't group those tiles into a bigger tiles because we limit a tile
-// to a two dimensional spatial subdivision of a tensor. For example, when we
-// use tiling to implement reduction with tranpose, we want the partial sum
-// produced by each thread to accumulate values for more elements before using
-// shlf_down and atomic_add instructions for further reduction, to amortize the
-// cost of such expensive instructions. The concept of tile block is introduced
-// for this purpose. A tile block is a three dimensional array of tiles, of
-// which some dimensions may be degenerated to only one tile.
-class KernelMappingScheme {
+// In the presence of virtual threadIdx/blockIdx scaling, all accessors are
+// "logical", unless otherwise specified.
+class TilingScheme {
  public:
   enum { DimZ = 0, DimY, DimX, DimTot };
+
   enum IndexingOrder {
     // Thread reads consecutive elements.
     LinearIndexingX,
     // Thread reads strided elements while keeping memory coalescing.
     StridedIndexingX,
-    // Thread reads a few consecutive elements then take a strided
-    // step. This can trigger vectorized reads and keep memory
-    // coalescing.
-    StridedLinearIndexingX
   };
 
-  KernelMappingScheme(absl::Span<const int64_t> dims_in_elems,
-                      absl::Span<const int64_t> tile_sizes,
-                      int64_t num_threads_y, int64_t num_threads_x,
-                      IndexingOrder indexing_order, int vector_size,
-                      bool is_row_contiguous = false)
-      : dims_in_elems_{dims_in_elems[0], dims_in_elems[1], dims_in_elems[2]},
-        tile_sizes_{tile_sizes[0], tile_sizes[1], tile_sizes[2]},
-        num_threads_x_(num_threads_x),
-        num_threads_y_(num_threads_y),
+  TilingScheme(Vector3 dims_in_elems, Vector3 tile_sizes, Vector3 num_threads,
+               IndexingOrder indexing_order, int vector_size,
+               int scaling_factor)
+      : dims_in_elems_(dims_in_elems),
+        tile_sizes_(tile_sizes),
+        num_threads_(num_threads),
         indexing_order_(indexing_order),
         vector_size_(vector_size),
-        is_row_contiguous_(is_row_contiguous) {
-    CHECK_EQ(tile_sizes[1] % num_threads_y_, 0);
-    CHECK_EQ(tile_sizes[2] % num_threads_x_, 0);
-    VLOG(10) << "dims_in_elems_ = " << absl::StrJoin(dims_in_elems_, ",");
-    if (indexing_order != LinearIndexingX) {
-      // StridedIndexingX, and StridedLinearIndexingX
-      // is for the purpose of vectorization, which requires
-      // GetTileSizeFor(DimX) to be a multiplier of num_threads_x_.
-      CHECK_EQ(GetTileSizeFor(DimX) % num_threads_x_, 0);
+        thread_id_virtual_scaling_(scaling_factor) {
+    CHECK_EQ(tile_sizes[2] % vector_size_, 0);
+  }
+
+  static std::string IndexingOrderToString(IndexingOrder order) {
+    switch (order) {
+      case LinearIndexingX:
+        return "linear";
+      case StridedIndexingX:
+        return "strided";
     }
+  }
+
+  std::string ToString() const {
+    return absl::StrJoin(
+        {absl::StrFormat("dims_in_elems = {%s}",
+                         absl::StrJoin(dims_in_elems_, ", ")),
+         absl::StrFormat("tile_sizes = {%s}", absl::StrJoin(tile_sizes_, ", ")),
+         absl::StrFormat("num_threads = {%s}",
+                         absl::StrJoin(num_threads_, ", ")),
+         absl::StrFormat("indexing_order = %s",
+                         IndexingOrderToString(indexing_order_)),
+         absl::StrFormat("vector_size = %d", vector_size_)},
+        ", ");
   }
 
   // Number of elements in each dimension (Z/Y/X respectively).
   absl::Span<const int64_t> GetDimsInElems() const { return dims_in_elems_; }
 
-  int64_t GetNumberOfBlocks() const {
-    return CeilOfRatio(dims_in_elems_[0], GetTileSizeZ()) *
-           CeilOfRatio(dims_in_elems_[1], GetTileSizeY()) *
-           CeilOfRatio(dims_in_elems_[2], GetTileSizeX());
+  Vector3 GetDimsInBlocks() const {
+    return {GetDimInBlock(0), GetDimInBlock(1), GetDimInBlock(2)};
   }
 
-  // Tile size for a given dimensions. Tiles are assigned per thread block,
-  // and are processed by all threads in the block.
+  // Number of blocks required to "cover" the given dimension.
+  int64_t GetDimInBlock(int d) const {
+    return CeilOfRatio(dims_in_elems_[d], GetBlockTileSizeFor(d));
+  }
+
+  // Tile size for a given dimensions per thread.
+  //
+  // Equals to the number of iterations in the loop each tile will make.
   int64_t GetTileSizeFor(int d) const { return tile_sizes_.at(d); }
 
-  int64_t GetTileSizeZ() const { return GetTileSizeFor(DimZ); }
-  int64_t GetTileSizeX() const { return GetTileSizeFor(DimX); }
-  int64_t GetTileSizeY() const { return GetTileSizeFor(DimY); }
+  // Tile size for a given dimension per entire thread block.
+  int64_t GetBlockTileSizeFor(int d) const {
+    return num_threads_.at(d) * tile_sizes_.at(d);
+  }
 
-  int64_t GetNumThreadsX() const { return num_threads_x_; }
-  int64_t GetNumThreadsY() const { return num_threads_y_; }
+  // Number of threads in given dimension.
+  int64_t GetNumThreadsFor(int d) const { return num_threads_.at(d); }
 
-  int64_t GetThreadsPerBlock() const {
-    return GetNumThreadsX() * GetNumThreadsY();
+  // Number of logical threads per block.
+  int64_t GetNumThreadsPerBlock() const {
+    return GetNumThreadsFor(0) * GetNumThreadsFor(1) * GetNumThreadsFor(2);
+  }
+
+  // Number of logical blocks.
+  int64_t GetNumberOfBlocks() const {
+    return GetDimInBlock(0) * GetDimInBlock(1) * GetDimInBlock(2);
+  }
+
+  // Number of physical blocks launched (with scaling applied).
+  int64_t GetNumberOfBlocksPhysical() const {
+    return CeilOfRatio(GetNumberOfBlocks(), thread_id_virtual_scaling_);
+  }
+
+  // Number of physical threads per block launched (with scaling applied).
+  int64_t GetNumThreadsPerBlockPhysical() const {
+    return GetNumThreadsPerBlock() * thread_id_virtual_scaling_;
   }
 
   IndexingOrder GetIndexingOrder() const { return indexing_order_; }
   int GetVectorSize() const { return vector_size_; }
-  bool GetRowContiguous() const { return is_row_contiguous_; }
+
+  // Scaling factor for transforming physical threadId to logical.
+  int GetThreadIdScalingFactor() const { return thread_id_virtual_scaling_; }
 
  private:
   // The number of elements in each dimension.
-  const std::array<int64_t, 3> dims_in_elems_;
+  const Vector3 dims_in_elems_;
 
   // The number of elements for each dimension of a tile.
-  const std::array<int64_t, 3> tile_sizes_;
+  const Vector3 tile_sizes_;
 
-  // Number of threads used to process elements in the X direction of a tile.
-  const int64_t num_threads_x_;
+  // Number of threads implicitly assigned to each dimension.
+  const Vector3 num_threads_;
 
-  // Number of threads used to process elements in the Y direction of a tile.
-  const int64_t num_threads_y_;
-
-  // When num_threads_x threads process a total of tile_size_x
-  // elements in the X dimension of a tile, each threads process
-  // n=tile_size_x/num_threads_x elements.
-  // indexing_order defines which tile's elements each thread reads.
   const IndexingOrder indexing_order_;
 
-  // vector_size_ only supported for row reduction and must be a divisor
-  // of tile_sizes_[2]/num_threads_x.  Interesting values are 2 and 4
-  // to trigger vectorized loads on GPUs while keeping memory
-  // coalescing.
+  // Vector size for dimension X.
   const int vector_size_;
-  const bool is_row_contiguous_;
+
+  // Scaling apply to transform physical threadIdx into logical.
+  const int64_t thread_id_virtual_scaling_ = 1;
 };
 
 class ReductionCodegenInfo {
  public:
-  explicit ReductionCodegenInfo(KernelMappingScheme mapping_scheme,
+  explicit ReductionCodegenInfo(TilingScheme mapping_scheme,
                                 int num_partial_results, bool is_row_reduction,
                                 bool is_race_free)
-      : mapping_scheme_(mapping_scheme),
+      : tiling_scheme_(mapping_scheme),
         num_partial_results_(num_partial_results),
         is_row_reduction_(is_row_reduction),
         is_race_free_(is_race_free) {
     if (num_partial_results > 1) {
-      CHECK_EQ(num_partial_results, (mapping_scheme.GetTileSizeX() /
-                                     mapping_scheme.GetNumThreadsX()));
+      CHECK_EQ(num_partial_results,
+               mapping_scheme.GetTileSizeFor(TilingScheme::DimX));
     }
   }
 
-  const KernelMappingScheme& GetKernelMappingScheme() const {
-    return mapping_scheme_;
-  }
+  const TilingScheme& GetTilingScheme() const { return tiling_scheme_; }
 
+  int GetNumPartialResults() const { return num_partial_results_; }
   bool IsRaceFree() const { return is_race_free_; }
 
  private:
   friend class ReductionCodegenState;
 
-  const KernelMappingScheme mapping_scheme_;
+  const TilingScheme tiling_scheme_;
   int num_partial_results_;
   bool is_row_reduction_;
   bool is_race_free_;
@@ -210,8 +195,8 @@ class ReductionCodegenState {
       const ReductionCodegenInfo& reduction_codegen_info)
       : reduction_codegen_info_(reduction_codegen_info) {}
 
-  const KernelMappingScheme& GetKernelMappingScheme() const {
-    return reduction_codegen_info_.mapping_scheme_;
+  const TilingScheme& GetTilingScheme() const {
+    return reduction_codegen_info_.tiling_scheme_;
   }
 
   int GetNumPartialResults() const {
@@ -225,16 +210,16 @@ class ReductionCodegenState {
   bool IsRaceFree() const { return reduction_codegen_info_.IsRaceFree(); }
 
   const ReductionCalculationState& GetCalculationStateFor(
-      int output_idx, int operand_idx) const {
-    const ReductionOpState& op_state = state_.at(output_idx);
+      const HloInstruction* instruction, int operand_idx) const {
+    const ReductionOpState& op_state = state_.at(instruction);
     CHECK_LT(operand_idx, op_state.size());
     return op_state[operand_idx];
   }
 
   void SetCalculationStateFor(
-      const ReductionCalculationState& calculation_state, int output_idx,
-      int operand_idx) {
-    ReductionOpState& op_state = state_[output_idx];
+      const ReductionCalculationState& calculation_state,
+      const HloInstruction* instruction, int operand_idx) {
+    ReductionOpState& op_state = state_[instruction];
     CHECK_EQ(operand_idx, op_state.size());
     op_state.push_back(calculation_state);
   }
@@ -245,8 +230,8 @@ class ReductionCodegenState {
   // One state per reduction operand.
   using ReductionOpState = absl::InlinedVector<ReductionCalculationState, 2>;
 
-  // output_index -> operand_idx -> cache
-  absl::flat_hash_map<int, ReductionOpState> state_;
+  // HloInstruction -> operand_idx -> cache
+  absl::flat_hash_map<const HloInstruction*, ReductionOpState> state_;
 };
 
 }  // end namespace gpu

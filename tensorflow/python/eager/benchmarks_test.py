@@ -32,7 +32,6 @@ import time
 
 import numpy as np
 import six
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop  # pylint: disable=unused-import
@@ -92,7 +91,7 @@ def run_benchmark(func, num_iters, execution_mode=None):
     if execution_mode == context.ASYNC:
       ctx.executor.wait()
     start = time.time()
-    for _ in xrange(num_iters):
+    for _ in range(num_iters):
       func()
     if execution_mode == context.ASYNC:
       ctx.executor.wait()
@@ -471,7 +470,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
                                             num_iters,
                                             execution_mode=None):
 
-    @def_function.function(experimental_relax_shapes=True)
+    @def_function.function(reduce_retracing=True)
     def defun_matmul(m):
       return math_ops.matmul(m, m)
 
@@ -1485,6 +1484,142 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
     self._run(fn, 100000)
 
+  def _boolean_mask_input(self):
+    n = 3000
+    return (array_ops.ones([n, n]), array_ops.fill([n, n], True))
+
+  def _boolean_mask_fn(self, input_tensor, mask):
+    return array_ops.boolean_mask(input_tensor, mask)
+
+  def benchmark_tf_boolean_mask_eager(self):
+    input_tensor, mask = self._boolean_mask_input()
+
+    self._run(lambda: self._boolean_mask_fn(input_tensor, mask), 10000)
+
+  def benchmark_tf_boolean_mask_graph(self):
+    input_tensor, mask = self._boolean_mask_input()
+    compiled_fn = def_function.function(self._boolean_mask_fn)
+
+    self._run(lambda: compiled_fn(input_tensor, mask), 10000)
+
+  def _benchmark_tf_range_var(self,
+                              limit=100,
+                              dtype=dtypes.int32,
+                              range_dtype=dtypes.int32,
+                              device=CPU,
+                              num_iters=1000):
+
+    def func(v, lim):
+      for _ in math_ops.range(lim, dtype=range_dtype):
+        v.assign_add(constant_op.constant(1, dtype=dtype))
+      return v
+
+    compiled_func = def_function.function(func)
+
+    with context.device(CPU):
+      m = resource_variable_ops.ResourceVariable(
+          constant_op.constant(1, dtype=dtype), dtype=dtype)
+      limit_t = constant_op.constant(limit, dtype=dtype)
+
+    with context.device(device):
+      compiled_func(m, limit_t)
+      self._run(lambda: compiled_func(m, limit_t), num_iters=num_iters)
+
+  def benchmark_tf_range_var_int32_CPU(self):
+    self._benchmark_tf_range_var()
+
+  def benchmark_tf_range_var_int64_CPU(self):
+    self._benchmark_tf_range_var(dtype=dtypes.int64, range_dtype=dtypes.int64)
+
+  def benchmark_tf_range_var_int32_GPU(self):
+    self._benchmark_tf_range_var(device=GPU)
+
+  def benchmark_tf_range_var_int64_GPU(self):
+    self._benchmark_tf_range_var(
+        dtype=dtypes.int64, range_dtype=dtypes.int64, device=GPU)
+
+  def _benchmark_tf_range_const(self,
+                                limit=100,
+                                dtype=dtypes.int32,
+                                range_dtype=dtypes.int32,
+                                device=CPU,
+                                num_iters=1000):
+
+    def func(c, lim):
+      for _ in math_ops.range(lim, dtype=range_dtype):
+        c += 1
+      return c
+
+    compiled_func = def_function.function(func)
+
+    with context.device(CPU):
+      input_c = constant_op.constant(1, dtype=dtype)
+      limit_t = constant_op.constant(limit, dtype=dtype)
+
+    with context.device(device):
+      compiled_func(input_c, limit_t)
+      self._run(lambda: compiled_func(input_c, limit_t), num_iters=num_iters)
+
+  # int32 constant, int32 range, CPU
+  def benchmark_tf_range_const_int32_int32_CPU(self):
+    self._benchmark_tf_range_const()
+
+  # int32 constant, int64 range, CPU
+  def benchmark_tf_range_const_int32_int64_CPU(self):
+    self._benchmark_tf_range_const(range_dtype=dtypes.int64)
+
+  # int64 constant, int32 range, CPU
+  def benchmark_tf_range_const_int64_int32_CPU(self):
+    self._benchmark_tf_range_const(dtype=dtypes.int64)
+
+  # int64 constant, int64 range, CPU
+  def benchmark_tf_range_const_int64_int64_CPU(self):
+    self._benchmark_tf_range_const(dtype=dtypes.int64, range_dtype=dtypes.int64)
+
+  # int32 constant, int32 range, GPU
+  def benchmark_tf_range_const_int32_int32_GPU(self):
+    self._benchmark_tf_range_const(device=GPU)
+
+  # int32 constant, int64 range, GPU
+  def benchmark_tf_range_const_int32_int64_GPU(self):
+    self._benchmark_tf_range_const(range_dtype=dtypes.int64, device=GPU)
+
+  # int64 constant, int32 range, GPU
+  def benchmark_tf_range_const_int64_int32_GPU(self):
+    self._benchmark_tf_range_const(dtype=dtypes.int64, device=GPU)
+
+  # int64 constant, int64 range, GPU
+  def benchmark_tf_range_const_int64_int64_GPU(self):
+    self._benchmark_tf_range_const(
+        dtype=dtypes.int64, range_dtype=dtypes.int64, device=GPU)
+
+  def _benchmark_tf_range_return(self,
+                                 limit=100000,
+                                 dtype=dtypes.int32,
+                                 device=CPU,
+                                 num_iters=100000):
+
+    def func(lim):
+      return math_ops.range(lim, dtype=dtype)
+
+    compiled_func = def_function.function(func)
+
+    with context.device(device):
+      limit_t = constant_op.constant(limit, dtype=dtype)
+      compiled_func(limit_t)
+      self._run(lambda: compiled_func(limit_t), num_iters=num_iters)
+
+  def benchmark_tf_range_return_int32_CPU(self):
+    self._benchmark_tf_range_return()
+
+  def benchmark_tf_range_return_int64_CPU(self):
+    self._benchmark_tf_range_return(dtype=dtypes.int64)
+
+  def benchmark_tf_range_return_int32_GPU(self):
+    self._benchmark_tf_range_return(device=GPU)
+
+  def benchmark_tf_range_return_int64_GPU(self):
+    self._benchmark_tf_range_return(dtype=dtypes.int64, device=GPU)
 
 if __name__ == "__main__":
   test.main()

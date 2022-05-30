@@ -56,18 +56,21 @@ class SimpleDelegateKernelInterface {
 
   // Actual subgraph inference should happen on this call.
   // Returns status, and signalling any errors.
+  // NOTE: Tensor data pointers (tensor->data) can change every inference, so
+  // the implementation of this method needs to take that into account.
   virtual TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) = 0;
 };
 
 // Pure Interface that clients should implement.
-// The Interface represents a delegate capabilities and provide factory
-// for SimpleDelegateKernelInterface
+// The Interface represents a delegate's capabilities and provides a factory
+// for SimpleDelegateKernelInterface.
 //
 // Clients should implement the following methods:
 // - IsNodeSupportedByDelegate
 // - Initialize
-// - name
+// - Name
 // - CreateDelegateKernelInterface
+// - DelegateOptions
 class SimpleDelegateInterface {
  public:
   // Options for configuring a delegate.

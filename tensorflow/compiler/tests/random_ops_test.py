@@ -212,6 +212,29 @@ class RandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         self._checkTruncatedNormalIsInRange(
             x, a=a, b=b, mu=mu, sigma=sigma, count=count, stat_test=True)
 
+  def testParameterizedTruncatedNormalBatched(self):
+    # TODO(b/112289993): Make this test work with dtype np.float64.
+    for dtype in self._random_types() & {np.float32}:
+      with self.session():
+        with self.test_scope():
+          count = 10000000
+          a = -100.
+          b = 100.
+          mu0 = 0.
+          mu1 = 1.
+          sigma = .1
+          x = random_ops.parameterized_truncated_normal(
+              shape=[2, count],
+              dtype=dtype,
+              means=[mu0, mu1],
+              stddevs=sigma,
+              minvals=[a],
+              maxvals=[b])
+        self._checkTruncatedNormalIsInRange(
+            x[0], a=a, b=b, mu=mu0, sigma=sigma, count=count, stat_test=True)
+        self._checkTruncatedNormalIsInRange(
+            x[1], a=a, b=b, mu=mu1, sigma=sigma, count=count, stat_test=True)
+
   def testParameterizedTruncatedNormalIsInRangeCenter(self):
     count = 10000000
     self._implParameterizedTruncatedNormalIsInRange(

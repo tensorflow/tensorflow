@@ -533,9 +533,12 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
                        explicit_paddings_, data_format_, &dims));
 
     OP_REQUIRES(context, dims.in_depth == filter.shape().dim_size(2),
-                errors::InvalidArgument("Computed input depth ", dims.in_depth,
-                                        " doesn't match filter input depth ",
-                                        filter.shape().dim_size(2)));
+                errors::InvalidArgument(
+                    "Gradients for grouped convolutions are not "
+                    "supported on CPU. Please file a feature request if you "
+                    "run into this issue. Computed input depth ",
+                    dims.in_depth, " doesn't match filter input depth ",
+                    filter.shape().dim_size(2)));
     OP_REQUIRES(
         context, dims.out_depth == filter.shape().dim_size(3),
         errors::InvalidArgument("Computed output depth ", dims.out_depth,

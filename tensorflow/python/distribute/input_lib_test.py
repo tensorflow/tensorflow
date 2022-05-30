@@ -30,10 +30,12 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
+from tensorflow.python.distribute import input_util
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import test_util
+from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -43,6 +45,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util as framework_test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -84,11 +87,11 @@ class DistributedIteratorTestBase(test.TestCase):
                 input_pipeline_id=i,
                 num_replicas_in_sync=len(devices)))
 
-      iterator = input_lib.InputFunctionIterator(dataset_or_input_fn,
-                                                 input_workers, input_contexts,
-                                                 strategy)
+      iterator = input_lib_v1.InputFunctionIterator(dataset_or_input_fn,
+                                                    input_workers,
+                                                    input_contexts, strategy)
     else:
-      iterator = input_lib.DatasetIterator(
+      iterator = input_lib_v1.DatasetIterator(
           dataset_or_input_fn,
           input_workers,
           strategy,
@@ -112,7 +115,7 @@ class DistributedIteratorTestBase(test.TestCase):
             num_replicas_in_sync=num_replicas_in_sync,
             input_context=input_context)
       else:
-        return input_lib.DistributedDatasetV1(
+        return input_lib_v1.DistributedDatasetV1(
             dataset,
             input_workers,
             strategy,
@@ -198,7 +201,7 @@ class DistributedIteratorTestBase(test.TestCase):
       if ops.executing_eagerly_outside_functions():
         iterator = iter(dataset)
       else:
-        if isinstance(dataset, input_lib.DistributedDatasetV1):
+        if isinstance(dataset, input_lib_v1.DistributedDatasetV1):
           iterator = dataset.make_initializable_iterator()
         else:
           self.skipTest("unsupported test combination")
@@ -292,7 +295,7 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
 
     input_workers = input_lib.InputWorkers(worker_device_pairs)
 
-    dist_dataset = input_lib.get_distributed_dataset(
+    dist_dataset = input_util.get_distributed_dataset(
         dataset_fn(distribute_lib.InputContext()), input_workers, distribution)
 
     iterator = dataset_ops.make_one_shot_iterator(dist_dataset)
@@ -492,8 +495,8 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
     input_workers = input_lib.InputWorkers(worker_device_pairs)
 
     dataset = dataset_ops.Dataset.range(10)
-    dist_dataset = input_lib.get_distributed_dataset(dataset, input_workers,
-                                                     distribution)
+    dist_dataset = input_util.get_distributed_dataset(dataset, input_workers,
+                                                      distribution)
 
     iterator = iter(dist_dataset)
     for i, element in enumerate(iterator):
@@ -1089,6 +1092,8 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
   def testRaggedSparse(self, distribution, input_type, drop_remainder,
                        defun_type):
     """Test with `RaggedTensor`s and `SparseTensor`s."""
+    self.skipTest("b/213596871, b/214574707")
+
     if not tf2.enabled():
       self.skipTest("Only V2 is supported.")
 
@@ -1509,6 +1514,7 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
         input_context=distribution.extended._make_input_context())
 
 
+@framework_test_util.with_eager_op_as_function
 class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
                                        parameterized.TestCase):
   """Tests for PER_WORKER and PER_REPLICA's InputOptions variants."""
@@ -1786,12 +1792,70 @@ class DistributedIteratorTfDataServiceTest(DistributedIteratorTestBase,
     dataset = dataset_ops.Dataset.range(1, 50)
     dataset = dataset.apply(
         data_service_ops._distribute(
-            processing_mode="parallel_epochs",
+            processing_mode=data_service_ops.ShardingPolicy.OFF,
             service=combinations.env().tf_data_service_dispatcher,
             job_name="foo"))
 
-    dist_dataset = input_lib.get_distributed_dataset(dataset, input_workers,
-                                                     distribution)
+    dist_dataset = input_util.get_distributed_dataset(dataset, input_workers,
+                                                      distribution)
+    iterator = iter(dist_dataset)
+    results = []
+    for element in iterator:
+      local_results = distribution.experimental_local_results(element)
+      for result in local_results:
+        # input_lib.distributed_dataset may add extra '0' elements to pad
+        # per-replica results.
+        if result.numpy() != 0:
+          results.append(result.numpy())
+    self.assertNotEmpty(results)
+    gathered = distribution.gather(constant_op.constant(results), axis=0)
+    self.assertCountEqual(self.num_workers * list(range(1, 50)), gathered)
+
+    histogram_proto = (
+        input_lib._distributed_dataset_initialization_time_milliseconds
+        .get_cell(distribution.__class__.__name__, "1").value())
+    self.assertGreater(histogram_proto.num, 0.0)
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.one_device_strategy,
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+              strategy_combinations.multi_worker_mirrored_2x2_gpu,
+              strategy_combinations.multi_worker_mirrored_2x2_gpu_no_merge_call,
+              strategy_combinations.multi_worker_mirrored_2x1_cpu,
+          ]))
+  def testDistributeDatasetFromFunction(self, distribution):
+    worker_device_pairs = [("/device:CPU:0", ["/device:CPU:0"])]
+    input_workers = input_lib.InputWorkers(worker_device_pairs)
+    input_contexts = []
+    num_workers = input_workers.num_workers
+    for i in range(num_workers):
+      input_contexts.append(distribute_lib.InputContext(
+          num_input_pipelines=num_workers,
+          input_pipeline_id=i,
+          num_replicas_in_sync=num_workers))
+
+    dataset = dataset_ops.Dataset.range(1, 50)
+    dataset_id = data_service_ops.register_dataset(
+        service=combinations.env().tf_data_service_dispatcher,
+        dataset=dataset)
+
+    def dataset_fn(input_context):
+      del input_context
+      return data_service_ops.from_dataset_id(
+          processing_mode=data_service_ops.ShardingPolicy.OFF,
+          service=combinations.env().tf_data_service_dispatcher,
+          dataset_id=dataset_id,
+          element_spec=dataset.element_spec,
+          job_name="shared_job")
+
+    dist_dataset = input_util.get_distributed_datasets_from_function(
+        dataset_fn, input_workers, input_contexts, distribution)
 
     iterator = iter(dist_dataset)
     results = []
@@ -1805,6 +1869,11 @@ class DistributedIteratorTfDataServiceTest(DistributedIteratorTestBase,
     self.assertNotEmpty(results)
     gathered = distribution.gather(constant_op.constant(results), axis=0)
     self.assertCountEqual(self.num_workers * list(range(1, 50)), gathered)
+    histogram_proto = (
+        input_lib
+        ._distributed_dataset_from_function_initialization_time_milliseconds
+        .get_cell(distribution.__class__.__name__, "1").value())
+    self.assertGreater(histogram_proto.num, 0.0)
 
 
 if __name__ == "__main__":

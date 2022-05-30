@@ -43,7 +43,7 @@ class Executor(object):
 
   def __del__(self):
     try:
-      # pywrap_tfe.TFE_ExecutorWaitForAllPendingNodes(self._handle)
+      self.wait()
       pywrap_tfe.TFE_DeleteExecutor(self._handle)
     except TypeError:
       # Suppress some exceptions, mainly for the case when we're running on
@@ -69,6 +69,6 @@ class Executor(object):
     pywrap_tfe.TFE_ExecutorClearError(self._handle)
 
 
-def new_executor(enable_async):
-  handle = pywrap_tfe.TFE_NewExecutor(enable_async)
+def new_executor(enable_async, enable_streaming_enqueue=True):
+  handle = pywrap_tfe.TFE_NewExecutor(enable_async, enable_streaming_enqueue)
   return Executor(handle)

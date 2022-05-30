@@ -2,6 +2,7 @@ load(":gen_saved_model.bzl", "gen_saved_model")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:tensorflow.bzl", "pytype_strict_binary")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 package(
     default_visibility = [":internal"],
@@ -10,7 +11,11 @@ package(
 
 package_group(
     name = "internal",
-    packages = ["//tensorflow/core/tfrt/saved_model/tests/..."],
+    packages = [
+        # copybara:uncomment "//third_party/auroraml/...",
+        "//tensorflow/core/tfrt/saved_model/tests/...",
+        "//tensorflow/core/tfrt/tfrt_session/...",
+    ],
 )
 
 py_library(name = "empty")
@@ -27,7 +32,6 @@ pytype_strict_binary(
     srcs_version = "PY3",
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
-        # google-internal: use_pure_python
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
@@ -55,7 +59,6 @@ pytype_strict_binary(
     srcs_version = "PY3",
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
-        # google-internal: use_pure_python
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:session",
@@ -76,7 +79,6 @@ pytype_strict_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        # google-internal: use_pure_python
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
@@ -98,7 +100,6 @@ pytype_strict_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        # google-internal: use_pure_python
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
@@ -121,7 +122,6 @@ pytype_strict_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        # google-internal: use_pure_python
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
@@ -145,12 +145,31 @@ pytype_strict_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        # google-internal: use_pure_python
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/module",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/saved_model:save_options",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
+    ],
+)
+
+pytype_strict_binary(
+    name = "gen_data",
+    srcs = ["gen_data.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/module",
         "//tensorflow/python/saved_model:save",
@@ -168,7 +187,6 @@ pytype_strict_binary(
     srcs_version = "PY3",
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
-        # google-internal: use_pure_python
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
@@ -177,6 +195,8 @@ pytype_strict_binary(
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/framework:test_ops",
+        "//tensorflow/python/framework:test_ops_kernels",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:save_options",
@@ -196,7 +216,6 @@ pytype_strict_binary(
     srcs_version = "PY3",
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
-        # google-internal: use_pure_python
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
@@ -223,7 +242,6 @@ pytype_strict_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        # google-internal: use_pure_python
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
@@ -242,13 +260,61 @@ pytype_strict_binary(
 )
 
 pytype_strict_binary(
+    name = "gen_matmul_gpu",
+    srcs = ["gen_matmul_gpu.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/module",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/saved_model:save_options",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
+    ],
+)
+
+pytype_strict_binary(
+    name = "gen_variable_on_tpu",
+    srcs = ["gen_variable_on_tpu.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/module",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/saved_model:save_options",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
+    ],
+)
+
+pytype_strict_binary(
     name = "gen_control_flow_v1",
     srcs = ["gen_control_flow_v1.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
-        # google-internal: use_pure_python
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
@@ -305,7 +371,6 @@ pytype_strict_binary(
     srcs_version = "PY3",
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
-        # google-internal: use_pure_python
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -335,7 +400,6 @@ pytype_strict_binary(
     srcs_version = "PY3",
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
-        # google-internal: use_pure_python
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -376,6 +440,16 @@ gen_saved_model(
 gen_saved_model(
     model_name = "toy_v2",
     script = "gen_saved_model_v2",
+)
+
+gen_saved_model(
+    model_name = "matmul_gpu",
+    script = "gen_matmul_gpu",
+)
+
+gen_saved_model(
+    model_name = "variable_on_tpu",
+    script = "gen_variable_on_tpu",
 )
 
 gen_saved_model(
@@ -477,11 +551,22 @@ genrule(
     exec_tools = ["gen_pow_v2"],
 )
 
+genrule(
+    name = "saved_model_gen_data",
+    srcs = [],
+    outs = [
+        "data/saved_model.pb",
+    ],
+    cmd = "$(location gen_data) --saved_model_path=$(RULEDIR)/data",
+    exec_tools = ["gen_data"],
+)
+
 tf_cc_test(
     name = "saved_model_test",
     srcs = ["saved_model_test.cc"],
     data = [
         "control_flow_v1/saved_model.pb",
+        "data/saved_model.pb",
         "dtype_coverage_v1/saved_model.pb",
         "dtype_coverage_v1/variables/variables.data-00000-of-00001",
         "dtype_coverage_v1/variables/variables.index",
@@ -506,6 +591,9 @@ tf_cc_test(
         "toy_v2/saved_model.pb",
         "toy_v2/variables/variables.data-00000-of-00001",
         "toy_v2/variables/variables.index",
+        "variable_on_tpu/saved_model.pb",
+        "variable_on_tpu/variables/variables.data-00000-of-00001",
+        "variable_on_tpu/variables/variables.index",
         "while_v1/saved_model.pb",
     ],
     tags = ["no_oss"],
@@ -519,6 +607,34 @@ tf_cc_test(
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
         "//tensorflow/core/tfrt/run_handler_thread_pool:run_handler_concurrent_work_queue",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
+        "//tensorflow/python/framework:test_ops_kernels",
+        "@com_google_googletest//:gtest",
+        "@tf_runtime//:core_runtime_alwayslink",
+        "@tf_runtime//:tensor",
+        "@tf_runtime//backends/cpu:core_runtime_alwayslink",
+        "@tf_runtime//backends/cpu:tf_ops_alwayslink",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "saved_model_gpu_test",
+    srcs = ["saved_model_gpu_test.cc"],
+    data = [
+        "matmul_gpu/saved_model.pb",
+        "matmul_gpu/variables/variables.data-00000-of-00001",
+        "matmul_gpu/variables/variables.index",
+    ],
+    tags = ["no_oss"],
+    deps = [
+        "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/cc/saved_model:reader",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
+        "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
+        "//tensorflow/python/framework:test_ops_kernels",
         "@com_google_googletest//:gtest",
         "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:tensor",

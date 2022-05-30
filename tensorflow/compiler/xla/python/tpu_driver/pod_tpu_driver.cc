@@ -25,7 +25,6 @@
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tpu_driver {
 namespace {
@@ -114,7 +113,7 @@ class CombinedEvent : public PodEvent {
   }
 
   void AddCallback(std::function<void(Status)> callback)
-      TF_LOCKS_EXCLUDED(mu_) override {
+      ABSL_LOCKS_EXCLUDED(mu_) override {
     bool all_events_completed = false;
     {
       absl::MutexLock l(&mu_);
@@ -129,7 +128,7 @@ class CombinedEvent : public PodEvent {
   }
 
  private:
-  void IncrementAndCheckComplete(Status s) TF_LOCKS_EXCLUDED(mu_) {
+  void IncrementAndCheckComplete(Status s) ABSL_LOCKS_EXCLUDED(mu_) {
     std::vector<std::function<void(Status)>> callbacks;
     {
       absl::MutexLock l(&mu_);
@@ -356,14 +355,14 @@ class PodTpuDriver : public TpuDriver {
 
     ScheduleRequest(
         operation_id,
-        [this, core_id, region, num_bytes,
-         operation_id]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-          underlying_buffers_.insert(
-              {operation_id,
-               core_to_driver_[core_id]->Allocate(core_to_driver_core_[core_id],
-                                                  region, num_bytes, {})});
-          return underlying_buffers_[operation_id]->OnReady();
-        },
+        [this, core_id, region, num_bytes, operation_id]()
+            ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+              underlying_buffers_.insert(
+                  {operation_id,
+                   core_to_driver_[core_id]->Allocate(
+                       core_to_driver_core_[core_id], region, num_bytes, {})});
+              return underlying_buffers_[operation_id]->OnReady();
+            },
         deps);
 
     return absl::make_unique<PodBufferHandle>(this, operation_id, num_bytes,
@@ -378,14 +377,14 @@ class PodTpuDriver : public TpuDriver {
 
     ScheduleRequest(
         operation_id,
-        [this, core_id, region, shape,
-         operation_id]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-          underlying_buffers_.insert(
-              {operation_id,
-               core_to_driver_[core_id]->Allocate(core_to_driver_core_[core_id],
-                                                  region, shape, {})});
-          return underlying_buffers_[operation_id]->OnReady();
-        },
+        [this, core_id, region, shape, operation_id]()
+            ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+              underlying_buffers_.insert(
+                  {operation_id,
+                   core_to_driver_[core_id]->Allocate(
+                       core_to_driver_core_[core_id], region, shape, {})});
+              return underlying_buffers_[operation_id]->OnReady();
+            },
         deps);
 
     return absl::make_unique<PodBufferHandle>(
@@ -400,7 +399,9 @@ class PodTpuDriver : public TpuDriver {
     auto deps = GetDependencyOperationIds(wait_for);
 
     std::vector<int64_t> children_ids;
-    for (int i = 0; i < children.size(); ++i) {
+    const size_t children_ids_size = children.size();
+    children_ids.reserve(children_ids_size);
+    for (size_t i = 0; i < children_ids_size; ++i) {
       auto child_op_id =
           static_cast<PodBufferHandle* const>(children[i])->operation_id();
       deps.insert(child_op_id);
@@ -409,23 +410,23 @@ class PodTpuDriver : public TpuDriver {
 
     ScheduleRequest(
         operation_id,
-        [this, core_id, region, children_ids,
-         operation_id]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_)
-            -> std::shared_ptr<Event> {
-          std::vector<BufferHandle*> child_buffers;
-          child_buffers.reserve(children_ids.size());
-          for (int i = 0; i < children_ids.size(); ++i) {
-            CHECK_EXISTS_OR_RETURN(underlying_buffers_, children_ids[i],
-                                   operation_id);
-            child_buffers.push_back(underlying_buffers_[children_ids[i]].get());
-          }
+        [this, core_id, region, children_ids, operation_id]()
+            ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) -> std::shared_ptr<Event> {
+              std::vector<BufferHandle*> child_buffers;
+              child_buffers.reserve(children_ids.size());
+              for (size_t i = 0; i < children_ids.size(); ++i) {
+                CHECK_EXISTS_OR_RETURN(underlying_buffers_, children_ids[i],
+                                       operation_id);
+                child_buffers.push_back(
+                    underlying_buffers_[children_ids[i]].get());
+              }
 
-          underlying_buffers_.insert(
-              {operation_id,
-               core_to_driver_[core_id]->AllocateTuple(
-                   core_to_driver_core_[core_id], region, child_buffers, {})});
-          return underlying_buffers_[operation_id]->OnReady();
-        },
+              underlying_buffers_.insert(
+                  {operation_id, core_to_driver_[core_id]->AllocateTuple(
+                                     core_to_driver_core_[core_id], region,
+                                     child_buffers, {})});
+              return underlying_buffers_[operation_id]->OnReady();
+            },
         deps);
 
     return absl::make_unique<PodBufferHandle>(this, operation_id, 0,
@@ -444,17 +445,17 @@ class PodTpuDriver : public TpuDriver {
 
     ScheduleRequest(
         operation_id,
-        [this, operation_id, op_id,
-         core_id]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) -> std::shared_ptr<Event> {
-          CHECK_EXISTS_OR_RETURN(underlying_buffers_, op_id, operation_id);
+        [this, operation_id, op_id, core_id]()
+            ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) -> std::shared_ptr<Event> {
+              CHECK_EXISTS_OR_RETURN(underlying_buffers_, op_id, operation_id);
 
-          auto buf_iter = underlying_buffers_.find(op_id);
-          auto underlying_hn = std::move(buf_iter->second);
-          underlying_buffers_.erase(buf_iter);
+              auto buf_iter = underlying_buffers_.find(op_id);
+              auto underlying_hn = std::move(buf_iter->second);
+              underlying_buffers_.erase(buf_iter);
 
-          return core_to_driver_[core_id]->Deallocate(std::move(underlying_hn),
-                                                      {});
-        },
+              return core_to_driver_[core_id]->Deallocate(
+                  std::move(underlying_hn), {});
+            },
         deps);
 
     return std::make_shared<PodEvent>(this, operation_id);
@@ -472,14 +473,14 @@ class PodTpuDriver : public TpuDriver {
 
     ScheduleRequest(
         operation_id,
-        [this, src, operation_id, op_id,
-         core_id]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) -> std::shared_ptr<Event> {
-          CHECK_EXISTS_OR_RETURN(underlying_buffers_, op_id, operation_id);
+        [this, src, operation_id, op_id, core_id]()
+            ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) -> std::shared_ptr<Event> {
+              CHECK_EXISTS_OR_RETURN(underlying_buffers_, op_id, operation_id);
 
-          auto buf_iter = underlying_buffers_.find(op_id);
-          return core_to_driver_[core_id]->TransferToDevice(
-              src, buf_iter->second.get(), {});
-        },
+              auto buf_iter = underlying_buffers_.find(op_id);
+              return core_to_driver_[core_id]->TransferToDevice(
+                  src, buf_iter->second.get(), {});
+            },
         deps);
 
     return std::make_shared<PodEvent>(this, operation_id);
@@ -497,13 +498,13 @@ class PodTpuDriver : public TpuDriver {
 
     ScheduleRequest(
         operation_id,
-        [this, dst, operation_id, op_id,
-         core_id]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) -> std::shared_ptr<Event> {
-          CHECK_EXISTS_OR_RETURN(underlying_buffers_, op_id, operation_id);
-          auto buf_iter = underlying_buffers_.find(op_id);
-          return core_to_driver_[core_id]->TransferFromDevice(
-              buf_iter->second.get(), dst, {});
-        },
+        [this, dst, operation_id, op_id, core_id]()
+            ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) -> std::shared_ptr<Event> {
+              CHECK_EXISTS_OR_RETURN(underlying_buffers_, op_id, operation_id);
+              auto buf_iter = underlying_buffers_.find(op_id);
+              return core_to_driver_[core_id]->TransferFromDevice(
+                  buf_iter->second.get(), dst, {});
+            },
         deps);
 
     return std::make_shared<PodEvent>(this, operation_id);
@@ -531,7 +532,7 @@ class PodTpuDriver : public TpuDriver {
       ScheduleRequest(
           operation_id,
           [this, operation_id, src_op_id, dst_op_id, dst_core_id]()
-              TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) -> std::shared_ptr<Event> {
+              ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) -> std::shared_ptr<Event> {
                 CHECK_EXISTS_OR_RETURN(underlying_buffers_, src_op_id,
                                        operation_id);
                 CHECK_EXISTS_OR_RETURN(underlying_buffers_, dst_op_id,
@@ -566,7 +567,7 @@ class PodTpuDriver : public TpuDriver {
     ScheduleRequest(
         operation_id,
         [this, operation_id, source,
-         num_replicas]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+         num_replicas]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
           auto cph_iterator =
               underlying_cph_
                   .insert(
@@ -601,19 +602,20 @@ class PodTpuDriver : public TpuDriver {
 
     ScheduleRequest(
         operation_id,
-        [this, operation_id, cph_op_id,
-         core_id]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) -> std::shared_ptr<Event> {
-          CHECK_EXISTS_OR_RETURN(underlying_cph_, cph_op_id, operation_id);
-          auto cph_iter = underlying_cph_.find(cph_op_id);
+        [this, operation_id, cph_op_id, core_id]()
+            ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) -> std::shared_ptr<Event> {
+              CHECK_EXISTS_OR_RETURN(underlying_cph_, cph_op_id, operation_id);
+              auto cph_iter = underlying_cph_.find(cph_op_id);
 
-          underlying_lph_.insert(
-              {operation_id,
-               core_to_driver_[core_id]->LoadProgram(
-                   core_to_driver_core_[core_id],
-                   cph_iter->second[core_to_driver_id_[core_id]].get(), {})});
+              underlying_lph_.insert(
+                  {operation_id,
+                   core_to_driver_[core_id]->LoadProgram(
+                       core_to_driver_core_[core_id],
+                       cph_iter->second[core_to_driver_id_[core_id]].get(),
+                       {})});
 
-          return underlying_lph_[operation_id]->OnReady();
-        },
+              return underlying_lph_[operation_id]->OnReady();
+            },
         deps);
 
     return absl::make_unique<PodLoadedProgramHandle>(this, operation_id,
@@ -634,16 +636,16 @@ class PodTpuDriver : public TpuDriver {
 
     ScheduleRequest(
         operation_id,
-        [this, operation_id, op_id,
-         core_id]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) -> std::shared_ptr<Event> {
-          CHECK_EXISTS_OR_RETURN(underlying_lph_, op_id, operation_id);
-          auto lph_iter = underlying_lph_.find(op_id);
-          auto event = core_to_driver_[core_id]->UnloadProgram(
-              std::move(lph_iter->second), {});
-          underlying_lph_.erase(lph_iter);
+        [this, operation_id, op_id, core_id]()
+            ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) -> std::shared_ptr<Event> {
+              CHECK_EXISTS_OR_RETURN(underlying_lph_, op_id, operation_id);
+              auto lph_iter = underlying_lph_.find(op_id);
+              auto event = core_to_driver_[core_id]->UnloadProgram(
+                  std::move(lph_iter->second), {});
+              underlying_lph_.erase(lph_iter);
 
-          return event;
-        },
+              return event;
+            },
         deps);
 
     return std::make_shared<PodEvent>(this, operation_id);
@@ -664,6 +666,8 @@ class PodTpuDriver : public TpuDriver {
 
     std::vector<int64_t> input_op_ids;
     std::vector<int64_t> output_op_ids;
+    input_op_ids.reserve(inputs.size());
+    output_op_ids.reserve(outputs.size());
 
     for (auto* input : inputs) {
       auto input_dep =
@@ -681,31 +685,32 @@ class PodTpuDriver : public TpuDriver {
     ScheduleRequest(
         operation_id,
         [this, operation_id, core_id, op_id, input_op_ids, output_op_ids,
-         device_assignment]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_)
-            -> std::shared_ptr<Event> {
-          std::vector<BufferHandle*> underlying_inputs;
-          std::vector<BufferHandle*> underlying_outputs;
+         device_assignment]()
+            ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) -> std::shared_ptr<Event> {
+              std::vector<BufferHandle*> underlying_inputs;
+              std::vector<BufferHandle*> underlying_outputs;
 
-          underlying_inputs.reserve(input_op_ids.size());
-          for (auto input_op_id : input_op_ids) {
-            CHECK_EXISTS_OR_RETURN(underlying_buffers_, input_op_id,
-                                   operation_id);
-            underlying_inputs.push_back(underlying_buffers_[input_op_id].get());
-          }
-          underlying_outputs.reserve(output_op_ids.size());
-          for (auto output_op_id : output_op_ids) {
-            CHECK_EXISTS_OR_RETURN(underlying_buffers_, output_op_id,
-                                   operation_id);
-            underlying_outputs.push_back(
-                underlying_buffers_[output_op_id].get());
-          }
+              underlying_inputs.reserve(input_op_ids.size());
+              for (auto input_op_id : input_op_ids) {
+                CHECK_EXISTS_OR_RETURN(underlying_buffers_, input_op_id,
+                                       operation_id);
+                underlying_inputs.push_back(
+                    underlying_buffers_[input_op_id].get());
+              }
+              underlying_outputs.reserve(output_op_ids.size());
+              for (auto output_op_id : output_op_ids) {
+                CHECK_EXISTS_OR_RETURN(underlying_buffers_, output_op_id,
+                                       operation_id);
+                underlying_outputs.push_back(
+                    underlying_buffers_[output_op_id].get());
+              }
 
-          CHECK_EXISTS_OR_RETURN(underlying_lph_, op_id, operation_id);
-          LoadedProgramHandle* handle = underlying_lph_[op_id].get();
-          return core_to_driver_[core_id]->ExecuteProgram(
-              handle, underlying_inputs, underlying_outputs, device_assignment,
-              {});
-        },
+              CHECK_EXISTS_OR_RETURN(underlying_lph_, op_id, operation_id);
+              LoadedProgramHandle* handle = underlying_lph_[op_id].get();
+              return core_to_driver_[core_id]->ExecuteProgram(
+                  handle, underlying_inputs, underlying_outputs,
+                  device_assignment, {});
+            },
         deps);
 
     return std::make_shared<PodEvent>(this, operation_id);
@@ -718,7 +723,7 @@ class PodTpuDriver : public TpuDriver {
   // Helper methods for Event scheduling
 
   absl::optional<Status> WaitForEvent(int64_t event_id, absl::Duration duration)
-      TF_LOCKS_EXCLUDED(mu_) {
+      ABSL_LOCKS_EXCLUDED(mu_) {
     std::shared_ptr<Event> underlying_event;
 
     {
@@ -771,7 +776,7 @@ class PodTpuDriver : public TpuDriver {
   }
 
   void AddCallbackForEvent(int64_t event_id, std::function<void(Status)> fn)
-      TF_LOCKS_EXCLUDED(mu_) {
+      ABSL_LOCKS_EXCLUDED(mu_) {
     absl::MutexLock l(&mu_);
     auto event = events_.find(event_id);
 
@@ -794,7 +799,7 @@ class PodTpuDriver : public TpuDriver {
 
   xla::Status GetCompiledProgramShape(int64_t op_id,
                                       xla::ProgramShapeProto* program_shape)
-      TF_LOCKS_EXCLUDED(mu_) {
+      ABSL_LOCKS_EXCLUDED(mu_) {
     absl::MutexLock l(&mu_);
 
     auto done = [this, op_id]() {
@@ -849,7 +854,8 @@ class PodTpuDriver : public TpuDriver {
   // EventCompleted is executed on the event_thread_ worker thread. We want
   // to propagate the fact that the event is completed to any subsequent events
   // that might depend on this event.
-  void EventCompleted(int64_t event_id, Status status) TF_LOCKS_EXCLUDED(mu_) {
+  void EventCompleted(int64_t event_id, Status status)
+      ABSL_LOCKS_EXCLUDED(mu_) {
     absl::MutexLock l(&mu_);
 
     absl::btree_map<int64_t, std::unique_ptr<EventInFlight>>::iterator
@@ -889,7 +895,7 @@ class PodTpuDriver : public TpuDriver {
   void ScheduleRequest(int64_t operation_id,
                        std::function<std::shared_ptr<Event>(void)> fn,
                        const absl::flat_hash_set<int64_t>& deps)
-      TF_LOCKS_EXCLUDED(mu_) {
+      ABSL_LOCKS_EXCLUDED(mu_) {
     absl::MutexLock l(&mu_);
     absl::btree_map<int64_t, std::unique_ptr<EventInFlight>>::iterator event;
     absl::flat_hash_set<int64_t> incomplete_deps;

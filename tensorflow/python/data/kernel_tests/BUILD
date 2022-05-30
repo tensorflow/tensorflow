@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "py_strict_test")
+
 # Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
@@ -68,6 +70,11 @@ tf_py_test(
     name = "cache_test",
     size = "small",
     srcs = ["cache_test.py"],
+    tags = [
+        "noasan",  # TODO(b/231479582): re-enable after flakiness resolved.
+        "notap",  # TODO(b/231479582): re-enable after flakiness resolved.
+        "notsan",  # TODO(b/206452257): re-enable after flakiness resolved.
+    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -533,7 +540,7 @@ tf_py_test(
 
 tf_py_test(
     name = "map_test",
-    size = "small",
+    size = "medium",
     srcs = ["map_test.py"],
     shard_count = 19,
     deps = [
@@ -700,6 +707,9 @@ tf_py_test(
     name = "prefetch_test",
     size = "small",
     srcs = ["prefetch_test.py"],
+    tags = [
+        "noasan",  # TODO(b/231979296)
+    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -728,7 +738,7 @@ tf_py_test(
 
 tf_py_test(
     name = "range_test",
-    size = "small",
+    size = "medium",
     srcs = ["range_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -786,7 +796,7 @@ tf_py_test(
 
 tf_py_test(
     name = "repeat_test",
-    size = "small",
+    size = "medium",
     srcs = ["repeat_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -956,6 +966,7 @@ py_library(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/experimental/ops:lookup_ops",
+        "//tensorflow/python/data/experimental/ops:random_access",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/eager:context",
@@ -1069,9 +1080,26 @@ tf_py_test(
     ],
 )
 
+py_strict_test(
+    name = "io_test",
+    srcs = ["io_test.py"],
+    deps = [
+        ":checkpoint_test_base",
+        ":test_base",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/experimental/ops:io",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 tf_py_test(
     name = "window_test",
-    size = "small",
+    size = "medium",
     srcs = ["window_test.py"],
     shard_count = 2,
     deps = [

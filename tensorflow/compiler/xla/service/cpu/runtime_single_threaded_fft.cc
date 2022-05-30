@@ -15,20 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_fft.h"
 
+#include "absl/base/dynamic_annotations.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fft_impl.h"
-#include "tensorflow/core/platform/dynamic_annotations.h"
-#include "tensorflow/core/platform/types.h"
 
-using ::int64_t;
-using tensorflow::int32;
-
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenSingleThreadedFft(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenSingleThreadedFft(
     const void* run_options_ptr, void* out, void* operand, int32_t fft_type,
     int32_t double_precision, int32_t fft_rank, int64_t input_batch,
     int64_t fft_length0, int64_t fft_length1, int64_t fft_length2) {
-  tensorflow::xla::EigenFftImpl(Eigen::DefaultDevice(), out, operand,
-                                static_cast<tensorflow::xla::FftType>(fft_type),
-                                static_cast<bool>(double_precision), fft_rank,
-                                input_batch, fft_length0, fft_length1,
-                                fft_length2);
+  xla::EigenFftImpl(Eigen::DefaultDevice(), out, operand,
+                    static_cast<xla::internal::FftType>(fft_type),
+                    static_cast<bool>(double_precision), fft_rank, input_batch,
+                    fft_length0, fft_length1, fft_length2);
 }

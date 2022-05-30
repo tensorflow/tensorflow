@@ -45,11 +45,15 @@ namespace {
 using tensorflow::data::AutoShardPolicy;
 
 constexpr char kAssertCardinalityDatasetOpName[] = "AssertCardinalityDataset";
+constexpr char kBatchDatasetOpName[] = "BatchDataset";
+constexpr char kBatchDatasetV2OpName[] = "BatchDatasetV2";
+constexpr char kMapAndBatchDatasetOpName[] = "MapAndBatchDataset";
 constexpr char kMapDatasetOpName[] = "MapDataset";
 constexpr char kShardDatasetOpName[] = "ShardDataset";
 constexpr char kShuffleDatasetOpName[] = "ShuffleDataset";
 constexpr char kShuffleDatasetV2OpName[] = "ShuffleDatasetV2";
 constexpr char kShuffleDatasetV3OpName[] = "ShuffleDatasetV3";
+constexpr char kParallelBatchDatasetOpName[] = "ParallelBatchDataset";
 constexpr char kPrefetchDatasetOpName[] = "PrefetchDataset";
 constexpr char kFinalizeDatasetOpName[] = "FinalizeDataset";
 constexpr char kOptionsDatasetOpName[] = "OptionsDataset";
@@ -165,14 +169,10 @@ constexpr std::array<const char*, 20> kBatchSizeOrthogonalDatasetOps = {
     "ThreadPoolDataset",
 };
 
-constexpr std::array<const char*, 2> kBatchDatasetOps = {
-    "BatchDataset",
-    "ParallelBatchDataset",
-};
-
-constexpr std::array<const char*, 2> kMapAndBatchDatasetOps = {
-    "ExperimentalMapAndBatchDataset",
-    "MapAndBatchDataset",
+constexpr std::array<const char*, 3> kBatchDatasetOps = {
+    kBatchDatasetOpName,
+    kMapAndBatchDatasetOpName,
+    kParallelBatchDatasetOpName,
 };
 
 // clang-format on
@@ -510,10 +510,20 @@ enum class DropRemainderValue { kUnknown, kTrue, kFalse };
 DropRemainderValue GetDropRemainder(const MutableGraphView& graph,
                                     const NodeDef& batch_node) {
   const NodeDef* drop_remainder = nullptr;
-  if (IsDatasetNodeOfType(batch_node, kBatchDatasetOps)) {
+  if (batch_node.op() == kBatchDatasetOpName ||
+      batch_node.op() == kBatchDatasetV2OpName) {
     drop_remainder = graph.GetNode(batch_node.input(2));
-  } else if (IsDatasetNodeOfType(batch_node, kMapAndBatchDatasetOps)) {
-    drop_remainder = graph.GetNode(batch_node.input(4));
+  } else if (batch_node.op() == kParallelBatchDatasetOpName) {
+    drop_remainder = graph.GetNode(batch_node.input(3));
+  } else if (batch_node.op() == kMapAndBatchDatasetOpName) {
+    int drop_remainder_index =
+        3 + batch_node.attr().at("Targuments").list().shape_size();
+    if (drop_remainder_index >= batch_node.input_size()) {
+      LOG(ERROR) << "Fail to find the drop_remainder of op: "
+                 << batch_node.DebugString();
+      return DropRemainderValue::kUnknown;
+    }
+    drop_remainder = graph.GetNode(batch_node.input(drop_remainder_index));
   } else {
     LOG(ERROR) << "Expect a batch node but get " << batch_node.DebugString();
     return DropRemainderValue::kUnknown;
@@ -840,8 +850,7 @@ bool IsEligibleRewriteBatchSize(const NodeDef& sink_node,
     }
     // 3. We arrive at a batch node. Examine its drop_remainder input and
     // cardinality to determine eligibility.
-    if (IsDatasetNodeOfType(*input_node, kBatchDatasetOps) ||
-        IsDatasetNodeOfType(*input_node, kMapAndBatchDatasetOps)) {
+    if (IsDatasetNodeOfType(*input_node, kBatchDatasetOps)) {
       DropRemainderValue drop_remainder = GetDropRemainder(graph, *input_node);
       int64_t cardinality = data::kUnknownCardinality;
       bool cardinality_available = true;

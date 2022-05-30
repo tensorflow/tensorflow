@@ -96,7 +96,6 @@ def make_batchmatmul_tests(options):
           outputs, feed_dict=dict(zip(inputs, [input0_value, input1_value])))
       return [input0_value, input1_value], output_values
 
-  options.use_experimental_converter = True
   make_zip_of_tests(
       options,
       test_parameters,

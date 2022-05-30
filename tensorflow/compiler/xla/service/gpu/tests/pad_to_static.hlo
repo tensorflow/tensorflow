@@ -29,7 +29,7 @@
 // CHECK:         %[[VAL_31:.*]] = icmp eq i32 0, %[[VAL_30]]
 // CHECK:         %[[VAL_32:.*]] = and i1 %[[VAL_29]], %[[VAL_31]]
 // CHECK:         br i1 %[[VAL_32]], label %[[VAL_33:.*]], label %[[VAL_34:.*]]
-// CHECK:       is_thred_0-after:                                 ; preds = %[[VAL_33]], %[[VAL_35:.*]]
+// CHECK:       is_thread_0-after:                                 ; preds = %[[VAL_33]], %[[VAL_35:.*]]
 // CHECK:         %[[VAL_36:.*]] = mul i32 1, %[[VAL_21]]
 // CHECK:         %[[VAL_37:.*]] = mul i32 %[[VAL_36]], %[[VAL_24]]
 // CHECK:         %[[VAL_38:.*]] = mul i32 %[[VAL_37]], %[[VAL_27]]
@@ -46,14 +46,14 @@
 // CHECK:         %[[VAL_48:.*]] = udiv i32 %[[VAL_42]], 4
 // CHECK:         %[[VAL_49:.*]] = icmp ult i32 %[[VAL_42]], 8
 // CHECK:         br i1 %[[VAL_49]], label %[[VAL_50:.*]], label %[[VAL_51:.*]]
-// CHECK:       custom-call.2.in_bounds-after:                    ; preds = %[[VAL_52:.*]], %[[VAL_34]]
+// CHECK:       custom_call_2.in_bounds-after:                    ; preds = %[[VAL_52:.*]], %[[VAL_34]]
 // CHECK:         ret void
-// CHECK:       is_thred_0-true:                                  ; preds = %[[VAL_35]]
+// CHECK:       is_thread_0-true:                                  ; preds = %[[VAL_35]]
 // CHECK:         store i32 %[[VAL_21]], i32* %[[VAL_8]], align 4
 // CHECK:         store i32 %[[VAL_24]], i32* %[[VAL_11]], align 4
 // CHECK:         store i32 %[[VAL_27]], i32* %[[VAL_14]], align 4
 // CHECK:         br label %[[VAL_34]]
-// CHECK:       custom-call.2.in_bounds-true:                     ; preds = %[[VAL_34]]
+// CHECK:       custom_call_2.in_bounds-true:                     ; preds = %[[VAL_34]]
 // CHECK:         %[[VAL_53:.*]] = mul nuw nsw i32 %[[VAL_45]], 1
 // CHECK:         %[[VAL_54:.*]] = add nuw nsw i32 0, %[[VAL_53]]
 // CHECK:         %[[VAL_55:.*]] = mul nuw nsw i32 %[[VAL_47]], 2
@@ -62,9 +62,9 @@
 // CHECK:         %[[VAL_58:.*]] = add nuw nsw i32 %[[VAL_56]], %[[VAL_57]]
 // CHECK:         %[[VAL_59:.*]] = icmp ult i32 %[[VAL_58]], %[[VAL_38]]
 // CHECK:         br i1 %[[VAL_59]], label %[[VAL_60:.*]], label %[[VAL_52]]
-// CHECK:       custom-call.2.in_dyn_bounds-after:                ; preds = %[[VAL_60]], %[[VAL_50]]
+// CHECK:       custom_call_2.in_dyn_bounds-after:                ; preds = %[[VAL_60]], %[[VAL_50]]
 // CHECK:         br label %[[VAL_51]]
-// CHECK:       custom-call.2.in_dyn_bounds-true:                 ; preds = %[[VAL_50]]
+// CHECK:       custom_call_2.in_dyn_bounds-true:                 ; preds = %[[VAL_50]]
 // CHECK:         %[[VAL_61:.*]] = udiv i32 %[[VAL_58]], 1
 // CHECK:         %[[VAL_62:.*]] = urem i32 %[[VAL_61]], %[[VAL_27]]
 // CHECK:         %[[VAL_63:.*]] = mul i32 1, %[[VAL_27]]
@@ -83,7 +83,7 @@ HloModule PadToStatic
 
 ENTRY main {
   %param = s32[2,<=2,2] parameter(0)
-  ROOT %custom-call.2 = (s32[2,2,2], s32[], s32[], s32[])
+  ROOT %custom_call_2 = (s32[2,2,2], s32[], s32[], s32[])
              custom-call(s32[2,<=2,2] %param),
              custom_call_target="PadToStatic"
 }

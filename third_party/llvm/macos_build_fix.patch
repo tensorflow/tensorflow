@@ -1,0 +1,46 @@
+From 7b4ce5b36f6fc0e35c3614861d394b9f48d950a4 Mon Sep 17 00:00:00 2001
+From: Dan F-M <foreman.mackey@gmail.com>
+Date: Wed, 27 Oct 2021 21:44:40 -0400
+Subject: [PATCH] Adding macos darwin config
+
+---
+ utils/bazel/llvm-project-overlay/llvm/BUILD.bazel | 8 ++++++++
+ utils/bazel/llvm-project-overlay/llvm/config.bzl  | 4 ++--
+ 2 files changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+index 3e8bbe8a1cc1..8883b16b7350 100644
+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+@@ -16,6 +16,14 @@ package(
+ 
+ exports_files(["LICENSE.TXT"])
+ 
++config_setting(
++    name = "macos_arm64",
++    values = {
++        "apple_platform_type": "macos",
++        "cpu": "darwin_arm64",
++    },
++)
++
+ # It may be tempting to add compiler flags here, but that should be avoided.
+ # The necessary warnings and other compile flags should be provided by the
+ # toolchain or the `.bazelrc` file. This is just a workaround until we have a
+diff --git a/utils/bazel/llvm-project-overlay/llvm/config.bzl b/utils/bazel/llvm-project-overlay/llvm/config.bzl
+index 5beb3cc7c410..b22f7c5660dd 100644
+--- a/utils/bazel/llvm-project-overlay/llvm/config.bzl
++++ b/utils/bazel/llvm-project-overlay/llvm/config.bzl
+@@ -82,8 +82,8 @@ os_defines = select({
+ # TODO: We should split out host vs. target here.
+ llvm_config_defines = os_defines + select({
+     "@bazel_tools//src/conditions:windows": native_arch_defines("X86", "x86_64-pc-win32"),
+-    "@bazel_tools//src/conditions:darwin_arm64": native_arch_defines("AArch64", "arm64-apple-darwin"),
+-    "@bazel_tools//src/conditions:darwin_x86_64": native_arch_defines("X86", "x86_64-unknown-darwin"),
++    "//llvm:macos_arm64": native_arch_defines("AArch64", "arm64-apple-darwin"),
++    "@bazel_tools//src/conditions:darwin": native_arch_defines("X86", "x86_64-unknown-darwin"),
+     "@bazel_tools//src/conditions:linux_aarch64": native_arch_defines("AArch64", "aarch64-unknown-linux-gnu"),
+     "@bazel_tools//src/conditions:linux_ppc64le": native_arch_defines("PowerPC", "powerpc64le-unknown-linux-gnu"),
+     "@bazel_tools//src/conditions:linux_s390x": native_arch_defines("SystemZ", "systemz-unknown-linux_gnu"),
+-- 
+2.30.1 (Apple Git-130)

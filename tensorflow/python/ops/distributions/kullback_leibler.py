@@ -158,7 +158,7 @@ def cross_entropy(ref, other,
 
 
 @tf_export(v1=["distributions.RegisterKL"])
-class RegisterKL(object):
+class RegisterKL:
   """Decorator to register a KL divergence implementation function.
 
   Usage:

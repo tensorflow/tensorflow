@@ -3,6 +3,7 @@ tf_class {
   is_instance: "<class \'tensorflow.python.eager.def_function.Function\'>"
   is_instance: "<class \'tensorflow.python.types.core.GenericFunction\'>"
   is_instance: "<class \'tensorflow.python.types.core.Callable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "function_spec"
@@ -13,12 +14,16 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "python_function"
     mtype: "<type \'property\'>"
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'python_function\', \'name\', \'input_signature\', \'autograph\', \'jit_compile\', \'experimental_implements\', \'experimental_autograph_options\', \'experimental_relax_shapes\', \'experimental_follow_type_hints\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\', \'None\', \'None\', \'False\', \'None\'], "
+    argspec: "args=[\'self\', \'python_function\', \'name\', \'input_signature\', \'autograph\', \'jit_compile\', \'reduce_retracing\', \'experimental_implements\', \'experimental_autograph_options\', \'experimental_follow_type_hints\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\', \'False\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "experimental_get_compiler_ir"

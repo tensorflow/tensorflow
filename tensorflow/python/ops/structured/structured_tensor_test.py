@@ -37,6 +37,7 @@ from tensorflow.python.ops.ragged import row_partition
 from tensorflow.python.ops.structured import structured_array_ops  # pylint: disable=unused-import
 
 from tensorflow.python.ops.structured import structured_tensor
+from tensorflow.python.ops.structured import structured_tensor_dynamic
 from tensorflow.python.ops.structured.structured_tensor import StructuredTensor
 from tensorflow.python.platform import googletest
 
@@ -76,6 +77,237 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     with self.assertRaisesRegex(ValueError,
                                 "StructuredTensor constructor is private"):
       structured_tensor.StructuredTensor({}, (), None, ())
+
+  @parameterized.named_parameters([
+      # Scalar (rank=0) StructuredTensors.
+      {
+          "testcase_name": "Rank0_WithTensorFields",
+          "rank": 0,
+          "fields": {"Foo": 5, "Bar": [1, 2, 3]},
+          "expected_shape": []
+      },
+      {
+          "testcase_name": "Rank0_WithRaggedFields",
+          "fields": {
+              # note: fields have varying rank & ragged_rank.
+              "p": ragged_factory_ops.constant_value([[1, 2], [3]]),
+              "q": ragged_factory_ops.constant_value([[[4]], [], [[5, 6]]]),
+              "r": ragged_factory_ops.constant_value([[[4]], [], [[5]]],
+                                                     ragged_rank=1),
+              "s": ragged_factory_ops.constant_value([[[4]], [], [[5]]],
+                                                     ragged_rank=2),
+          },
+          "rank": 0,
+          "expected_shape": [],
+      },
+      {
+          "testcase_name": "Rank0_WithStructuredFields",
+          "fields": lambda: {
+              "foo": StructuredTensor.from_pyval({"a": 1, "b": [1, 2, 3]}),
+              "bar": StructuredTensor.from_pyval(
+                  [[{"x": 12}], [{"x": 13}, {"x": 14}]]),
+              },
+          "rank": 0,
+          "expected_shape": [],
+      },
+      {
+          "testcase_name": "Rank0_WithMixedFields",
+          "fields": lambda: {
+              # TODO(martinz): should handle this, but can't.
+              "f1": 5,
+              "f2": [1, 2, 3],
+              "f3": ragged_factory_ops.constant_value([[1, 2], [3]]),
+              "f4": StructuredTensor.from_pyval({"a": 1, "b": [1, 2, 3]}),
+          },
+          "rank": 0,
+          "expected_shape": [],
+      },
+      # Vector (rank=1) StructuredTensors.
+      {
+          "testcase_name": "Rank1_WithExplicitNrows",
+          "fields": {"x": [1, 2], "y": [[1, 2], [3, 4]]},
+          "rank": 1,
+          "expected_shape": [2],
+      },
+      {
+          "testcase_name": "Rank1_WithTensorFields",
+          "fields": {"x": [1, 2], "y": [[1, 2], [3, 4]]},
+          "rank": 1,
+          "expected_shape": [2],
+
+      },
+      {
+          "testcase_name": "Rank1_WithRaggedFields",
+          "fields": {
+              # note: fields have varying rank & ragged_rank.
+              "p": ragged_factory_ops.constant_value([[1, 2], [3]]),
+              "q": ragged_factory_ops.constant_value([[[4]], [[5, 6], [7]]]),
+              "r": ragged_factory_ops.constant_value([[], [[[12]], [[13]]]]),
+              "s": ragged_factory_ops.constant_value([[], [[[12]], [[13]]]],
+                                                     ragged_rank=1),
+              "t": ragged_factory_ops.constant_value([[], [[[12]], [[13]]]],
+                                                     ragged_rank=2),
+          },
+          "rank": 1,
+          "expected_shape": [2],
+      },
+      {
+          "testcase_name": "Rank1_WithStructuredFields",
+          "fields": lambda: {
+              "foo": StructuredTensor.from_pyval(
+                  [{"a": 1, "b": [1, 2, 3]}, {"a": 2, "b": []}]),
+              "bar": StructuredTensor.from_pyval(
+                  [[{"x": 12}], [{"x": 13}, {"x": 14}]]),
+          },
+          "rank": 1,
+          "expected_shape": [2],
+      },
+      {
+          "testcase_name": "Rank1_WithMixedFields",
+          "fields": lambda: {
+              "x": [1, 2],
+              "y": [[1, 2], [3, 4]],
+              "r": ragged_factory_ops.constant_value([[1, 2], [3]]),
+              "s": StructuredTensor.from_pyval(
+                  [[{"x": 12}], [{"x": 13}, {"x": 14}]]),
+          },
+          "rank": 1,
+          "expected_shape": [2],
+      },
+      {
+          "testcase_name": "Rank1_WithNoElements",
+          "fields": lambda: {
+              "x": [],
+              "y": np.zeros([0, 8]),
+              "r": ragged_factory_ops.constant([], ragged_rank=1),
+              "s": StructuredTensor.from_pyval([]),
+          },
+          "rank": 1,
+          "expected_shape": [0],  # Note: could also be [None] (?)
+      },
+      {
+          "testcase_name": "Rank1_InferDimSize",
+          "fields": lambda: {
+              "x": [1, 2],
+              "y": [[1, 2], [3, 4]],
+              "r": ragged_factory_ops.constant_value([[1, 2], [3]]),
+              "p": ragged_factory_ops.constant_value([[4], [5, 6, 7]]),
+              "foo": StructuredTensor.from_pyval(
+                  [{"a": 1, "b": [1, 2, 3]}, {"a": 2, "b": []}]),
+              "bar": StructuredTensor.from_pyval(
+                  [[{"x": 12}], [{"x": 13}, {"x": 14}]]),
+          },
+          "rank": 1,
+          "expected_shape": [2],  # inferred from field values.
+      },
+      # Matrix (rank=2) StructuredTensors.
+      {
+          "testcase_name": "Rank2_WithTensorFields",
+          "fields": {
+              "x": [[1, 2, 3], [4, 5, 6]],
+              "y": np.ones([2, 3, 8])
+          },
+          "rank": 2,
+          "expected_shape": [2, 3],  # inferred from field values.
+      },
+      {
+          "testcase_name": "Rank2_WithRaggedFields",
+          "fields": {
+              # Note: fields must have identical row_splits.
+              "a": ragged_factory_ops.constant_value([[1, 2], [3]]),
+              "b": ragged_factory_ops.constant_value([[4, 5], [6]]),
+              "c": ragged_factory_ops.constant_value([[[1, 2], [3]], [[4, 5]]]),
+              "d": ragged_factory_ops.constant_value(
+                  [[[[1, 2], [3]], [[4], [], [5]]], [[[6, 7, 8], []]]]),
+          },
+          "rank": 2,
+          "expected_shape": [2, None],
+      },
+      {
+          "testcase_name": "Rank2_WithStructuredFields",
+          "fields": lambda: {
+              # Note: fields must have identical row_splits.
+              "a": StructuredTensor.from_pyval(
+                  [[{"x": 1}], [{"x": 2}, {"x": 3}]]),
+              "b": StructuredTensor.from_pyval(
+                  [[[{"y": 1}]], [[], [{"y": 2}, {"y": 3}]]]),
+          },
+          "rank": 2,
+          "expected_shape": [2, None],  # ragged shape = [[*], [*, *]]
+      },
+      {
+          "testcase_name": "Rank2_WithMixedFields",
+          "fields": lambda: {
+              "a": [[1, 2], [3, 4]],
+              "b": ragged_factory_ops.constant_value([[1, 2], [3, 4]]),
+              "c": StructuredTensor.from_pyval(
+                  [[[{"y": 1}], []], [[], [{"y": 2}, {"y": 3}]]]),
+              "d": ragged_factory_ops.constant_value(
+                  [[[1, 2], []], [[3], [4]]]),
+          },
+          "rank": 2,
+          "expected_shape": [2, 2],
+      },
+      # Rank=4 StructuredTensors.
+      {
+          "testcase_name": "Rank4_WithMixedFields",
+          "fields": lambda: {
+              "a": np.ones([1, 2, 3, 1]),
+              "b": np.ones([1, 2, 3, 1, 5]),
+              "c": ragged_factory_ops.constant(np.zeros([1, 2, 3, 1])),
+              "d": ragged_factory_ops.constant(
+                  np.zeros([1, 2, 3, 1, 3]).tolist(), ragged_rank=1),
+              "e": ragged_factory_ops.constant(
+                  np.zeros([1, 2, 3, 1, 2, 2]).tolist(), ragged_rank=2),
+              "f": ragged_factory_ops.constant(np.zeros([1, 2, 3, 1, 3])),
+              "g": StructuredTensor.from_pyval(
+                  [[[[{"x": j, "y": k}] for k in range(3)]
+                    for j in range(2)]]),
+              "h": StructuredTensor.from_pyval(
+                  [[[[[{"x": j, "y": k, "z": z} for z in range(j)]]
+                     for k in range(3)]
+                    for j in range(2)]]),
+          },
+          "rank": 4,
+          "expected_shape": [1, 2, 3, 1],  # inferred from field values.
+      },
+  ])  # pyformat: disable
+  def testFromFieldsAndRank(self, fields, rank, expected_shape):
+    if callable(fields):
+      fields = fields()  # deferred construction: fields may include tensors.
+
+    struct = StructuredTensor.from_fields_and_rank(fields, rank)
+    self.assertEqual(struct.shape.as_list(), expected_shape)
+
+  @parameterized.named_parameters([
+      {
+          "testcase_name": "NoFields",
+          "rank": 1,
+          "fields": {},
+          "msg": "Must provide at least one field"
+      },
+      {
+          "testcase_name": "IntegerRank",
+          "rank": 0.5,
+          "fields": {
+              "foo": [1]
+          },
+          "msg": "rank must be an integer"
+      },
+      {
+          "testcase_name": "NonNegativeRank",
+          "rank": -1,
+          "fields": {
+              "bar": [1, 2, 3]
+          },
+          "msg": "rank must be nonnegative"
+      },
+  ])
+  def testFromFieldsAndRankError(self, fields, rank, msg):
+    if callable(fields):
+      fields = fields()  # deferred construction: fields may include tensors.
+    with self.assertRaisesRegex(ValueError, msg):
+      StructuredTensor.from_fields_and_rank(fields, rank)
 
   @parameterized.named_parameters([
       # Scalar (rank=0) StructuredTensors.
@@ -974,6 +1206,13 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     result = st.merge_dims(outer_axis, inner_axis)
     self.assertAllEqual(result, expected)
 
+  def testMergeDimsDetail_3D_0_1(self):
+    st = StructuredTensor.from_pyval(
+        [[[{"x": 1}, {"x": 2}], [{"x": 3}]], [[{"x": 4}]]])
+    result = st.merge_dims(0, 1)
+    expected_shape = tensor_shape.TensorShape([3, None])
+    self.assertTrue(expected_shape.is_compatible_with(result.shape))
+
   def testMergeDims_0_1(self):
     rt = ragged_tensor.RaggedTensor.from_value_rowids(
         array_ops.constant([[1, 2], [3, 4], [5, 6]]), [0, 0, 1])
@@ -1340,7 +1579,8 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
 
     # Invalid shape change.
     with self.assertRaisesRegex(
-        ValueError, r"\('c'.*incompatible with the shape that was specified"):
+        ValueError,
+        r"`StructuredTensor.with_updates` failed for field \('c',\)"):
       st_with_shape = StructuredTensor.from_pyval([[{
           "c": {
               "a": 5,
@@ -1427,6 +1667,42 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     self.assertEqual(spec.shape.as_list(), [1, 2])
     spec = structured_tensor.StructuredTensorSpec([None], {})
     self.assertEqual(spec.shape.as_list(), [None])
+
+  def test_dynamic_ragged_shape_init_vector(self):
+    x = constant_op.constant([1, 2, 3, 4])
+    y = constant_op.constant([[1, 2], [3, 4], [5, 6], [7, 8]])
+    fields = {"x": x, "y": y}
+    nrows = constant_op.constant(4)
+    shape = tensor_shape.TensorShape((4,))
+    row_partitions = ()
+    rs = structured_tensor_dynamic._dynamic_ragged_shape_init(
+        fields, shape, nrows, row_partitions)
+    self.assertEqual(
+        repr(rs._to_tensor_shape()), repr(tensor_shape.TensorShape((4,))))
+
+  def test_dynamic_ragged_shape_init_scalar(self):
+    x = constant_op.constant([1, 2, 3, 4])
+    y = constant_op.constant([[1, 2], [3, 4], [5, 6], [7, 8]])
+    fields = {"x": x, "y": y}
+    nrows = None
+    shape = tensor_shape.TensorShape(())
+    row_partitions = ()
+
+    rs = structured_tensor_dynamic._dynamic_ragged_shape_init(
+        fields, shape, nrows, row_partitions)
+    self.assertEqual(
+        repr(rs._to_tensor_shape()), repr(tensor_shape.TensorShape(())))
+
+  def test_dynamic_ragged_shape_init_ragged(self):
+    x = ragged_factory_ops.constant_value([[1, 2, 3], [4]])
+    fields = {"x": x}
+    nrows = constant_op.constant(2, dtype=dtypes.int64)
+    shape = tensor_shape.TensorShape([2, None])
+    row_partitions = tuple(x._nested_row_partitions)
+    rs = structured_tensor_dynamic._dynamic_ragged_shape_init(
+        fields, shape, nrows, row_partitions)
+    self.assertEqual(
+        repr(rs._to_tensor_shape()), repr(tensor_shape.TensorShape((2, None))))
 
 
 if __name__ == "__main__":

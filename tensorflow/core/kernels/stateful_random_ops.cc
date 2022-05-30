@@ -35,7 +35,7 @@ struct UpdateVariableAndFill_Philox<CPUDevice, Distribution> {
       TF_UNLOCK_FUNCTION() {
     int64_t output_size = arg->output_size;
     int64_t alg_tag_skip = arg->alg_tag_skip;
-    ScopedUnlockUnrefVar* state_var_guard = arg->not_used;
+    ScopedUnlockUnrefVar* state_var_guard = arg->state_var_guard;
     Tensor* state_tensor = arg->state_tensor;
 
     auto state_tensor_flat = state_tensor->flat<StateElementType>();
@@ -113,7 +113,7 @@ Status UpdateVariableAndFill(
     UpdateVariableAndFill_Philox_Arg arg;
     arg.output_size = output_size;
     arg.alg_tag_skip = alg_tag_skip;
-    arg.not_used = &state_var_guard;
+    arg.state_var_guard = &state_var_guard;
     arg.state_tensor = var_tensor;
     functor::UpdateVariableAndFill_Philox<Device, Distribution>()(
         ctx, ctx->eigen_device<Device>(), dist, &arg, output_data);

@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/cost_constants.h"
+#include "tensorflow/core/common_runtime/cost_measurement.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 #include "tensorflow/core/common_runtime/cost_util.h"
 #include "tensorflow/core/common_runtime/request_cost_accessor.h"
@@ -91,6 +92,18 @@ void RecordInputBatchSizeV2(int32_t batch_size, const string& model_name,
       // It's 14 buckets with the last bucket being 2^13 to DBL_MAX;
       // so the limits are [1, 2, 4, 8, ..., 8 * 1024, DBL_MAX].
       monitoring::Buckets::Exponential(1, 2, 14));
+  cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_size));
+}
+
+// Record the actual batch size without padding.
+void RecordBatchSize(int32_t batch_size, const string& model_name,
+                     const string& op_name) {
+  static auto* cell = tensorflow::monitoring::Sampler<2>::New(
+      {"/tensorflow/serving/batching/batch_size",
+       "Tracks the batch size distribution on the batch result by model_name "
+       "(if available).",
+       "model_name", "op_name"},
+      monitoring::Buckets::Exponential(1, 1.5, 20));
   cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_size));
 }
 
@@ -413,6 +426,8 @@ Status BatchResourceBase::ConcatInputTensors(
                            context->op_kernel().name_view().data());
   RecordProcessedBatchSizeV2(padded_batch_size, GetModelName(context),
                              string(context->op_kernel().name_view()));
+  RecordBatchSize(batch.size(), GetModelName(context),
+                  string(context->op_kernel().name_view()));
 
   // All tasks should have the same number of input edges.
   const int num_inputs = batch.task(0).inputs.size();
@@ -635,9 +650,11 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
   // which are running this Session, of which this BatchOp is a part.
   WithContext wc(batch->task(batch->num_tasks() - 1).propagated_context);
 
-  // Creates the CostMeasurement within the same context that runs the Session.
-  std::unique_ptr<CostMeasurement> batch_cost_measurement =
-      CreateCostMeasurement();
+  // TODO(b/185852990): Add a unit test to check the context is correctly set.
+  // Creates the CostMeasurements within the same context that runs the Session.
+  const CostMeasurement::Context batching_context{/*is_per_query=*/false};
+  std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements =
+      CreateCostMeasurements(batching_context);
 
   auto& last_task = batch->task(batch->num_tasks() - 1);
   OpKernelContext* last_task_context = last_task.context;
@@ -649,12 +666,16 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
   bool cleanup_done = false;
   int64_t processed_size = batch->size();
   auto cleanup_fn = [&cleanup_done, &batch, &processed_size,
-                     &batch_cost_measurement](const Status& status) {
+                     &batch_cost_measurements](const Status& status) {
     if (cleanup_done) {
       return;
     }
-    SplitBatchCost(batch_cost_measurement.get(), processed_size, *batch);
+    SplitBatchCosts(batch_cost_measurements, processed_size, *batch);
+    // Clear the measurements before unblocking the batch task, as measurements
+    // are associated with the task's thread context.
+    batch_cost_measurements.clear();
     for (int i = 0; i < batch->num_tasks(); ++i) {
+      WithContext wc(batch->task(i).propagated_context);
       if (batch->task(i).is_partial) {
         batch->mutable_task(i)->status->Update(status);
       } else {
@@ -731,13 +752,15 @@ void BatchResourceBase::ProcessBatch(std::unique_ptr<BatchT> batch) const {
   // which are running this Session, of which this BatchOp is a part.
   WithContext wc(batch->task(batch->num_tasks() - 1).propagated_context);
 
+  // TODO(b/185852990): Add a unit test to check the context is correctly set.
   // Creates the CostMeasurement within the same context that runs the Session.
-  std::unique_ptr<CostMeasurement> batch_cost_measurement =
-      CreateCostMeasurement();
+  const CostMeasurement::Context batching_context{/*is_per_query=*/false};
+  std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements =
+      CreateCostMeasurements(batching_context);
 
   int64_t processed_size = batch->size();
   auto batch_cost_split_cleanup = gtl::MakeCleanup([&] {
-    SplitBatchCost(batch_cost_measurement.get(), processed_size, *batch);
+    SplitBatchCosts(batch_cost_measurements, processed_size, *batch);
   });
 
   OpKernelContext* last_task_context =
@@ -863,43 +886,44 @@ Status BatchResourceBase::CreateBatchTask(
   return Status::OK();
 }
 
-void BatchResourceBase::SplitBatchCost(CostMeasurement* batch_cost_measurement,
-                                       const int64_t processed_size,
-                                       BatchT& batch) {
-  if (batch_cost_measurement == nullptr ||
-      batch_cost_measurement->GetTotalCost() <= absl::ZeroDuration()) {
-    return;
-  }
-  if (batch.size() == 0) {  // NOLINT: empty() checks the batch contains 0
-                            // tasks. size() gets the sum of task sizes.
-    LOG_EVERY_N_SEC(ERROR, 60)
-        << "Non-zero cost collected but the batch size is 0.";
-    return;
-  }
-  if (processed_size == 0) {
-    LOG_EVERY_N_SEC(ERROR, 60)
-        << "Non-zero cost collected but the processed size is 0.";
-    return;
-  }
-  const absl::string_view cost_type = batch_cost_measurement->GetCostType();
-  const absl::Duration total_cost = batch_cost_measurement->GetTotalCost();
+void BatchResourceBase::SplitBatchCosts(
+    std::vector<std::unique_ptr<CostMeasurement>>& batch_cost_measurements,
+    const int64_t processed_size, BatchT& batch) {
+  for (auto& batch_cost_measurement : batch_cost_measurements) {
+    if (batch_cost_measurement->GetTotalCost() <= absl::ZeroDuration()) {
+      return;
+    }
+    if (batch.size() == 0) {  // NOLINT: empty() checks the batch contains 0
+                              // tasks. size() gets the sum of task sizes.
+      LOG_EVERY_N_SEC(ERROR, 60)
+          << "Non-zero cost collected but the batch size is 0.";
+      return;
+    }
+    if (processed_size == 0) {
+      LOG_EVERY_N_SEC(ERROR, 60)
+          << "Non-zero cost collected but the processed size is 0.";
+      return;
+    }
+    const absl::string_view cost_type = batch_cost_measurement->GetCostType();
+    const absl::Duration total_cost = batch_cost_measurement->GetTotalCost();
 
-  for (int i = 0; i < batch.num_tasks(); i++) {
-    RequestCost* request_cost = batch.task(i).request_cost;
-    // Skip recording the cost if the request_cost is null.
-    if (!request_cost) continue;
+    for (int i = 0; i < batch.num_tasks(); i++) {
+      RequestCost* request_cost = batch.task(i).request_cost;
+      // Skip recording the cost if the request_cost is null.
+      if (!request_cost) continue;
 
-    // Smeared cost: cost of paddings are assigned to each task.
-    const auto cost_with_smear =
-        total_cost / batch.size() * batch.task(i).size();
+      // Smeared cost: cost of paddings are assigned to each task.
+      const auto cost_with_smear =
+          total_cost / batch.size() * batch.task(i).size();
 
-    // Non-smeared cost: cost of paddings are not assigned to any tasks.
-    const auto cost_no_smear =
-        total_cost / processed_size * batch.task(i).size();
+      // Non-smeared cost: cost of paddings are not assigned to any tasks.
+      const auto cost_no_smear =
+          total_cost / processed_size * batch.task(i).size();
 
-    request_cost->RecordCost(
-        {{absl::StrCat(cost_type, kWithSmearSuffix), cost_with_smear},
-         {absl::StrCat(cost_type, kNoSmearSuffix), cost_no_smear}});
+      request_cost->RecordCost(
+          {{absl::StrCat(cost_type, kWithSmearSuffix), cost_with_smear},
+           {absl::StrCat(cost_type, kNoSmearSuffix), cost_no_smear}});
+    }
   }
 }
 

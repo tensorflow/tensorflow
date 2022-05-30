@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
 
+#include <string>
+
 #include "absl/time/time.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/util.h"
@@ -22,6 +24,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/random.h"
+
+namespace {
+constexpr int kBarrierTimedOut = -1000;
+}
 
 namespace xla {
 
@@ -70,7 +76,7 @@ xla::Status DistributedRuntimeServiceImpl::ValidateNodeId(int node_id) {
 }
 
 xla::Status DistributedRuntimeServiceImpl::ValidateSessionId(
-    uint64 session_id) {
+    uint64_t session_id) {
   if (session_id != session_id_) {
     return xla::FailedPrecondition(
         "Session ID of request %llu does not match active session ID %llu",
@@ -83,7 +89,7 @@ xla::Status DistributedRuntimeServiceImpl::ValidateSessionId(
     ::grpc::ServerContext* context, const ConnectRequest* request,
     ConnectResponse* response) {
   VLOG(10) << "Connect " << request->DebugString();
-  if (request->protocol_version() != kDistributedRuntimeProtocolVersion) {
+  if (request->protocol_version() != DistributedRuntimeProtocolVersion()) {
     return ToGrpcStatus(xla::InvalidArgument("Invalid protocol version %d",
                                              request->protocol_version()));
   }
@@ -350,6 +356,66 @@ void DistributedRuntimeServiceImpl::HeartbeatLoop() {
     }
   }
   return key_value_store_.Set(request->key(), request->value());
+}
+
+::grpc::Status DistributedRuntimeServiceImpl::WaitAtBarrier(
+    ::grpc::ServerContext* context, const WaitAtBarrierRequest* request,
+    WaitAtBarrierResponse* response) {
+  VLOG(10) << "WaitAtBarrier " << request->DebugString();
+  xla::Status status = ValidateSessionId(request->session_id());
+  if (!status.ok()) {
+    return ToGrpcStatus(status);
+  }
+  absl::MutexLock lock(&mu_);
+  if (state_ != State::kRunning) {
+    if (!service_status_.ok()) {
+      return ToGrpcStatus(service_status_);
+    }
+    return ToGrpcStatus(xla::FailedPrecondition(
+        "WaitAtBarrier() called when system is not running."));
+  }
+  int node_id = request->node_id();
+  status = ValidateNodeId(node_id);
+  if (!status.ok()) {
+    return ToGrpcStatus(status);
+  }
+
+  std::string barrier_id = request->barrier_id();
+
+  if (barrier_id_to_num_nodes_[barrier_id] == nodes_.size()) {
+    return ToGrpcStatus(
+        xla::FailedPrecondition("Calling WaitAtBarrier with the same id "
+                                "across barriers is not allowed. Please use "
+                                "unique barrier ids across barriers."));
+  }
+
+  if (barrier_id_to_num_nodes_[barrier_id] == kBarrierTimedOut) {
+    return ToGrpcStatus(xla::FailedPrecondition(
+        "A process timed out waiting at the barrier. Exiting early because the "
+        "current process will also timeout."));
+  }
+
+  ++barrier_id_to_num_nodes_[barrier_id];
+
+  absl::Duration timeout = absl::Milliseconds(request->timeout_milliseconds());
+  auto all_nodes_at_barrier = [&]() {
+    mu_.AssertHeld();
+    return barrier_id_to_num_nodes_[barrier_id] == nodes_.size() ||
+           !service_status_.ok();
+  };
+  // TODO(yashkatariya,hanyangtay): Do something similar to the coordination
+  // service here.
+  if (!mu_.AwaitWithTimeout(absl::Condition(&all_nodes_at_barrier), timeout)) {
+    barrier_id_to_num_nodes_[barrier_id] = kBarrierTimedOut;
+    return ToGrpcStatus(tensorflow::errors::DeadlineExceeded(
+        "Timed out after ", timeout,
+        " waiting for all nodes to be at WaitAtBarrier()"));
+  }
+
+  if (!service_status_.ok()) {
+    return ToGrpcStatus(service_status_);
+  }
+  return ::grpc::Status::OK;
 }
 
 xla::StatusOr<std::unique_ptr<DistributedRuntimeService>>

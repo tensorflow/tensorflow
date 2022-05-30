@@ -118,9 +118,6 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
 
   void UnloadAndDestroyPrograms() override;
 
-  Status LogCompilationStats(const TpuCompilationCacheKey& key,
-                             absl::Duration duration) override;
-
   const std::vector<bool>& may_modify_variables_list() const override;
   void set_may_modify_variables(const std::vector<bool>& may_modify_variables);
   bool may_modify_variables(int index) const override;

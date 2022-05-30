@@ -15,38 +15,35 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/dilated_conv.h"
 
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 
 namespace mlir {
 namespace TFL {
 namespace {
 
-struct IdentifyDilatedConvPass
-    : public PassWrapper<IdentifyDilatedConvPass, FunctionPass> {
-  void runOnFunction() override;
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-identify-dilated-conv";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Identify and replace patterns for dilated convolution.";
-  }
+struct IdentifyDilatedConvPass
+    : public IdentifyDilatedConvPassBase<IdentifyDilatedConvPass> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(IdentifyDilatedConvPass)
+  void runOnOperation() override;
 };
 
-void IdentifyDilatedConvPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
-  auto func = getFunction();
+void IdentifyDilatedConvPass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
+  auto func = getOperation();
 
-  patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>,
-                  ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(
+  patterns.add<ConvertTFDilatedConvOp<TF::Conv2DOp>,
+               ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(
       &getContext());
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 }  // namespace
-
-static PassRegistration<IdentifyDilatedConvPass> pass;
+std::unique_ptr<OperationPass<func::FuncOp>> CreateIdentifyDilatedConvPass() {
+  return std::make_unique<IdentifyDilatedConvPass>();
+}
 
 }  // namespace TFL
 }  // namespace mlir

@@ -37,6 +37,14 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "legacy"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "schedules"
     mtype: "<type \'module\'>"
   }

@@ -45,6 +45,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/core/platform/logging.h"
 
 #define DEBUG_TYPE "tf-executor-tpu-v1-island-coarsening"
@@ -54,25 +56,76 @@ namespace tf_executor {
 
 namespace {
 
-constexpr llvm::StringRef kTpuReplicateAttr = "_tpu_replicate";
 constexpr llvm::StringRef kTpuStatusAttr = "_tpu_compilation_status";
+constexpr llvm::StringRef kNoReplicationCluster = "__no_replication_cluster";
 
 // This pass is a variant of the island coarsening that is limited to
 // TPU-annotated operations and intended to preserve backward compatibility with
 // TFv1.
 struct TpuV1BridgeExecutorIslandCoarsening
-    : public PassWrapper<TpuV1BridgeExecutorIslandCoarsening,
-                         OperationPass<ModuleOp>> {
-  StringRef getArgument() const final {
-    return "tf-executor-tpu-v1-island-coarsening";
-  }
-
-  StringRef getDescription() const final {
-    return "Merges TPU clusters IslandOps, intended for V1 compatibility mode";
-  }
-
+    : public TF::TpuV1BridgeExecutorIslandCoarseningPassBase<
+          TpuV1BridgeExecutorIslandCoarsening> {
   void runOnOperation() override;
 };
+
+// Returns name of TPU cluster, if op belongs to a TPU cluster. Otherwise,
+// returns `llvm::None`.
+llvm::Optional<llvm::StringRef> GetTpuClusterName(Operation* op) {
+  if (auto tpu_status = op->getAttrOfType<StringAttr>(kTpuStatusAttr)) {
+    // Borrow cluster name from TPU status (for `TPUCompilationResult` op).
+    return tpu_status.getValue();
+  }
+  auto device_type = op->getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr);
+  if (!device_type || device_type.getValue() != TF::kTpuDevice) {
+    // Op does not belong to a TPU cluster.
+    return llvm::None;
+  }
+  // Op belongs to a TPU cluster.
+  if (auto replication_info =
+          op->getAttrOfType<StringAttr>(TF::kReplicationInfoAttr)) {
+    // Borrow cluster name from replication info.
+    return replication_info.getValue();
+  }
+  // Use special cluster name for non-replicated case.
+  return kNoReplicationCluster;
+}
+
+bool HasDataDependencyWithUnscheduledOp(
+    Operation& op, Block* block, SmallPtrSet<Operation*, 16>& unscheduled_ops) {
+  WalkResult ready_to_schedule = op.walk([&](Operation* nested_op) {
+    for (Value operand : nested_op->getOperands()) {
+      Operation* defining_op = operand.getDefiningOp();
+      if (!defining_op) continue;
+      Operation* producer_in_block = block->findAncestorOpInBlock(*defining_op);
+      if (producer_in_block && producer_in_block != &op &&
+          unscheduled_ops.count(producer_in_block)) {
+        // Found an operand that isn't scheduled yet, interrupt the walk.
+        return WalkResult::interrupt();
+      }
+    }
+    return WalkResult::advance();
+  });
+  return ready_to_schedule.wasInterrupted();
+}
+
+bool HasControlDependencyWithUnscheduledOp(
+    Operation& op, Block* block, SmallPtrSet<Operation*, 16>& unscheduled_ops) {
+  IslandOp island_op = dyn_cast<IslandOp>(op);
+  if (!island_op) {
+    return false;
+  }
+  for (Value input : island_op.controlInputs()) {
+    Operation* defining_op = input.getDefiningOp();
+    if (!defining_op) continue;
+    Operation* producer_in_block = block->findAncestorOpInBlock(*defining_op);
+    if (producer_in_block && producer_in_block != &op &&
+        unscheduled_ops.count(producer_in_block)) {
+      // Found an operand that isn't scheduled yet, return true.
+      return true;
+    }
+  }
+  return false;
+}
 
 // Sorts the operations in the provided range to enforce dominance.
 // This is useful after fusing / reorganizing Operations in a block and later
@@ -96,21 +149,10 @@ LogicalResult SortTopologically(Block::iterator begin, Block::iterator end) {
     // i.e. the ones for which there aren't any operand produced by an op in the
     // set, and "schedule" it (move it before the last_scheduled_op).
     for (Operation& op : llvm::make_range(last_scheduled_op, end)) {
-      WalkResult ready_to_schedule = op.walk([&](Operation* nested_op) {
-        for (Value operand : nested_op->getOperands()) {
-          Operation* defining_op = operand.getDefiningOp();
-          if (!defining_op) continue;
-          Operation* producer_in_block =
-              block->findAncestorOpInBlock(*defining_op);
-          if (producer_in_block && producer_in_block != &op &&
-              unscheduled_ops.count(producer_in_block)) {
-            // Found an operand that isn't scheduled yet, interrupt the walk.
-            return WalkResult::interrupt();
-          }
-        }
-        return WalkResult::advance();
-      });
-      if (ready_to_schedule.wasInterrupted()) continue;
+      if (HasDataDependencyWithUnscheduledOp(op, block, unscheduled_ops) ||
+          HasControlDependencyWithUnscheduledOp(op, block, unscheduled_ops)) {
+        continue;
+      }
       unscheduled_ops.erase(&op);
       if (Block::iterator(op) != last_scheduled_op)
         op.moveBefore(block, last_scheduled_op);
@@ -124,41 +166,18 @@ LogicalResult SortTopologically(Block::iterator begin, Block::iterator end) {
 }
 
 // Looks for an IslandOp that wraps a single operation tagged with the
-// _tpu_replicate attribute, and merges it with all the following operations in
-// the block. Sets the `changed` boolean to true if any island is merged.
+// _replication_info attribute, and merges it with all the following operations
+// in the block. Sets the `changed` boolean to true if any island is merged.
 // Returns a failure if a cycle prevents the merge from happening correctly
 // without breaking dominance. The IR is left in invalid state in case of
 // failure.
-LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
-                              is_op_calling_func_for_cluster,
-                          Operation* op, bool* changed) {
-  // Find the first island wrapping a single operation with the `_tpu_replicate`
-  // attribute, it'll be used as the root of the algorithm to find the other
-  // operations that are part of the same cluster.
-  IslandOp island = dyn_cast<IslandOp>(*op);
-  if (!island || !island.WrapsSingleOp()) return success();
-  Operation& wrapped_op = island.GetBody().front();
-
-  // TODO(b/188046643): Conservatively fail until pass is extended to fuse
-  // chains of these ops.
-  if (isa<TF::TPUPartitionedInputOp, TF::TPUPartitionedOutputOp>(wrapped_op)) {
-    return failure();
-  }
-
-  StringAttr cluster_name =
-      wrapped_op.getAttrOfType<StringAttr>(kTpuReplicateAttr);
-  if (!cluster_name)
-    cluster_name = wrapped_op.getAttrOfType<StringAttr>(kTpuStatusAttr);
-  if (!cluster_name) return success();
-
-  // We found a _tpu_replicate, let's build an island for the full cluster!
-  LLVM_DEBUG(llvm::dbgs() << "Processing candidate island: "
-                          << *island.getOperation() << "\n");
-
-  // Collect the islands to merge together in this new cluster starting with the
-  // given island.
-  SmallVector<IslandOp, 16> islands;
-  SmallPtrSet<Operation*, 16> wrapped_ops;
+void CollectCandidateIslands(
+    llvm::function_ref<bool(llvm::StringRef, Operation*)>
+        is_op_calling_func_for_cluster,
+    Operation* op, StringRef cluster_name,
+    SmallPtrSet<Operation*, 16>& islands_set,
+    SmallPtrSet<Operation*, 16>& wrapped_ops, IslandOp& last_island_added,
+    bool& has_unsupported_op) {
   for (Operation& candidate_op : llvm::make_early_inc_range(
            llvm::make_range(op->getIterator(), op->getBlock()->end()))) {
     IslandOp candidate_island = dyn_cast<IslandOp>(candidate_op);
@@ -170,17 +189,26 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
     // chains of these ops.
     if (isa<TF::TPUPartitionedInputOp, TF::TPUPartitionedOutputOp>(
             candidate_wrapped_op)) {
-      return failure();
+      has_unsupported_op = true;
+      return;
+    }
+    // The op might be a special TPU input/output op and may have been already
+    // added to the list of islands to be merged.
+    if (wrapped_ops.contains(&candidate_wrapped_op)) {
+      last_island_added = candidate_island;
+      continue;
     }
 
-    StringAttr candidate_cluster_name =
-        candidate_wrapped_op.getAttrOfType<StringAttr>(kTpuReplicateAttr);
-    if (!candidate_cluster_name)
-      candidate_cluster_name =
-          candidate_wrapped_op.getAttrOfType<StringAttr>(kTpuStatusAttr);
-    if (candidate_cluster_name != cluster_name &&
-        !is_op_calling_func_for_cluster(cluster_name, &candidate_wrapped_op))
-      continue;
+    llvm::Optional<llvm::StringRef> result =
+        GetTpuClusterName(&candidate_wrapped_op);
+    llvm::StringRef candidate_cluster_name;
+    if (result.hasValue()) {
+      candidate_cluster_name = result.getValue();
+    } else if (is_op_calling_func_for_cluster(cluster_name,
+                                              &candidate_wrapped_op)) {
+      candidate_cluster_name = cluster_name;
+    }
+    if (candidate_cluster_name != cluster_name) continue;
 
     // Look at captured operands to bring-in ReplicatedInputOp in the
     // island as well. Consider pulling in tf.Const, some optimizations can
@@ -192,10 +220,13 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
       if (!isa<TF::TPUReplicatedInputOp>(wrapped_op)) continue;
       if (wrapped_ops.count(&wrapped_op)) continue;
       wrapped_ops.insert(&wrapped_op);
-      islands.push_back(wrapper);
+      islands_set.insert(wrapper);
     }
-    islands.push_back(candidate_island);
+    // Add the current op to the set of ops which are planned to be merged into
+    // one cluster.
+    islands_set.insert(candidate_island);
     wrapped_ops.insert(&candidate_wrapped_op);
+    last_island_added = candidate_island;
 
     // Look at results to bring-in ReplicatedOutputOp in the island as well.
     for (Value result : candidate_island.getResults()) {
@@ -205,19 +236,14 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
         assert(!wrapped_ops.count(user) &&
                "unexpected already processed TPUReplicatedOutputOp");
         wrapped_ops.insert(user);
-        islands.push_back(cast<IslandOp>(user->getParentOp()));
+        islands_set.insert(cast<IslandOp>(user->getParentOp()));
       }
     }
   }
+}
 
-  // If no other island was found to merge with the existing one, just
-  // move on.
-  if (islands.size() <= 1) return success();
-
-  *changed = true;
-  auto first_op_after =
-      std::next(Block::iterator(islands.back().getOperation()));
-
+IslandOp CreateMergedIsland(IslandOp island, SmallVector<IslandOp, 16>& islands,
+                            SmallPtrSet<Operation*, 16>& wrapped_ops) {
   // Compute the result of the merged island, these are the values produced by
   // the islands that are merged if they have a use in an island not merged,
   // i.e. a value that escapes.
@@ -261,7 +287,7 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
   Value control = new_island.control();
   for (IslandOp island : islands) {
     YieldOp yield_op = island.GetYield();
-    for (auto idx_result : llvm::enumerate(island.outputs())) {
+    for (const auto& idx_result : llvm::enumerate(island.outputs())) {
       Value result = idx_result.value();
 
       bool has_external_use = false;
@@ -279,10 +305,80 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
     island.control().replaceAllUsesWith(control);
     island.erase();
   }
+  return new_island;
+}
+
+// Looks for an IslandOp that wraps a single operation tagged with the
+// _replication_info attribute, and merges it with all the following operations
+// in the block. Sets the `changed` boolean to true if any island is merged.
+// Returns a failure if a cycle prevents the merge from happening correctly
+// without breaking dominance. The IR is left in invalid state in case of
+// failure.
+LogicalResult MergeIsland(llvm::function_ref<bool(StringRef, Operation*)>
+                              is_op_calling_func_for_cluster,
+                          Operation* op, bool* changed) {
+  // Find the first island wrapping a single operation with the
+  // `_replication_info` attribute, it'll be used as the root of the algorithm
+  // to find the other operations that are part of the same cluster.
+  IslandOp island = dyn_cast<IslandOp>(*op);
+  if (!island || !island.WrapsSingleOp()) return success();
+  Operation& wrapped_op = island.GetBody().front();
+
+  // TODO(b/188046643): Conservatively fail until pass is extended to fuse
+  // chains of these ops.
+  if (isa<TF::TPUPartitionedInputOp, TF::TPUPartitionedOutputOp>(wrapped_op)) {
+    return failure();
+  }
+
+  llvm::Optional<llvm::StringRef> result = GetTpuClusterName(&wrapped_op);
+  if (!result.hasValue()) return success();
+  llvm::StringRef cluster_name = result.getValue();
+
+  // We found a _replication_info, let's build an island for the full cluster!
+  LLVM_DEBUG(llvm::dbgs() << "Processing candidate island: "
+                          << *island.getOperation() << "\n");
+
+  // Collect the islands to merge together in this new cluster starting with the
+  // given island.
+  SmallVector<IslandOp, 16> islands;
+  SmallPtrSet<Operation*, 16> islands_set;
+  SmallPtrSet<Operation*, 16> wrapped_ops;
+  IslandOp last_island_added;
+  bool has_unsupported_op = false;
+
+  CollectCandidateIslands(is_op_calling_func_for_cluster, op, cluster_name,
+                          islands_set, wrapped_ops, last_island_added,
+                          has_unsupported_op);
+
+  if (has_unsupported_op) {
+    return failure();
+  }
+
+  // Get the sequential order of the candidate islands in the block.
+  // Later we can merge the candidate islands in this order.
+  // The dominance is guaranteed in this order.
+  for (Operation& candidate_op : llvm::make_early_inc_range(
+           llvm::make_range(op->getBlock()->begin(), op->getBlock()->end()))) {
+    IslandOp candidate_island = dyn_cast<IslandOp>(candidate_op);
+    if (!candidate_island || !candidate_island.WrapsSingleOp()) continue;
+    if (islands_set.contains(candidate_island)) {
+      islands.push_back(candidate_island);
+    }
+  }
+
+  // If no other island was found to merge with the existing one, just move on.
+  if (islands.size() <= 1) return success();
+
+  *changed = true;
+  Operation* first_op_after = last_island_added->getNextNode();
+
+  // We create the merged island at the location of the first island that was
+  // merged (excluding special TPU input/output ops).
+  IslandOp new_island = CreateMergedIsland(island, islands, wrapped_ops);
 
   // Ensure dominance by sorting the range of islands that were merged.
   return SortTopologically(Block::iterator(new_island.getOperation()),
-                           first_op_after);
+                           Block::iterator(first_op_after));
 }
 
 // Returns all functions that can be reached from TPUPartitionedCall ops.
@@ -290,18 +386,18 @@ SmallPtrSet<Operation*, 16> FindTPUPartitionedCallReachableFunctions(
     ModuleOp module) {
   SymbolTableCollection table;
   SymbolUserMap symbol_map(table, module);
-  llvm::DenseMap<FuncOp, llvm::DenseSet<FuncOp>> caller_callee_map;
+  llvm::DenseMap<func::FuncOp, llvm::DenseSet<func::FuncOp>> caller_callee_map;
   // Creates work queue for determining reachability below.
-  std::queue<FuncOp> function_worklist;
+  std::queue<func::FuncOp> function_worklist;
 
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     for (auto user : symbol_map.getUsers(func)) {
       // Populates work queue with func ops called from TPUPartionedCall.
       if (llvm::isa<TF::TPUPartitionedCallOp>(user)) {
         function_worklist.push(func);
       }
       // Populates caller to called func map.
-      if (FuncOp caller = user->getParentOfType<FuncOp>()) {
+      if (func::FuncOp caller = user->getParentOfType<func::FuncOp>()) {
         caller_callee_map[caller].insert(func);
       }
     }
@@ -311,7 +407,7 @@ SmallPtrSet<Operation*, 16> FindTPUPartitionedCallReachableFunctions(
   // and iteratively descending through called ops.
   SmallPtrSet<Operation*, 16> reachable_functions;
   while (!function_worklist.empty()) {
-    FuncOp caller = function_worklist.front();
+    func::FuncOp caller = function_worklist.front();
     function_worklist.pop();
     if (reachable_functions.insert(caller).second) {
       for (auto callee : caller_callee_map[caller]) {
@@ -327,29 +423,29 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
 
   // Map tpu cluster names to the functions that contain operations for this
   // cluster.
-  DenseMap<StringRef, DenseSet<FuncOp>> tpu_funcs;
-  for (FuncOp func_op : getOperation().getOps<FuncOp>()) {
+  DenseMap<StringRef, DenseSet<func::FuncOp>> tpu_funcs;
+  for (func::FuncOp func_op : getOperation().getOps<func::FuncOp>()) {
     func_op.walk([&](Operation* op) {
-      StringAttr cluster_name =
-          op->getAttrOfType<StringAttr>(kTpuReplicateAttr);
-      if (!cluster_name)
-        cluster_name = op->getAttrOfType<StringAttr>(kTpuStatusAttr);
-      if (!cluster_name) return;
-      tpu_funcs[cluster_name.getValue()].insert(func_op);
+      llvm::Optional<llvm::StringRef> cluster_name_opt = GetTpuClusterName(op);
+      if (cluster_name_opt.hasValue()) {
+        tpu_funcs[cluster_name_opt.getValue()].insert(func_op);
+      }
     });
   }
 
   // Return true if the operation is containing a reference to a function
   // containing operations for this cluster.
-  auto is_op_calling_func_for_cluster = [&](StringAttr cluster, Operation* op) {
-    auto funcs_for_cluster = tpu_funcs.find(cluster.getValue());
+  auto is_op_calling_func_for_cluster = [&](llvm::StringRef cluster,
+                                            Operation* op) {
+    auto funcs_for_cluster = tpu_funcs.find(cluster);
     assert(funcs_for_cluster != tpu_funcs.end());
     assert(!funcs_for_cluster->second.empty());
     if (funcs_for_cluster->second.size() == 1) return false;
     for (NamedAttribute attr : op->getAttrs()) {
-      auto symbol_ref = attr.second.dyn_cast<FlatSymbolRefAttr>();
+      auto symbol_ref = attr.getValue().dyn_cast<FlatSymbolRefAttr>();
       if (!symbol_ref) continue;
-      FuncOp callee = symbol_table.lookup<FuncOp>(symbol_ref.getValue());
+      func::FuncOp callee =
+          symbol_table.lookup<func::FuncOp>(symbol_ref.getValue());
       if (!callee) continue;
       if (funcs_for_cluster->second.count(callee)) return true;
     }
@@ -359,7 +455,7 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
   // Populates skip set with functions reachable from TPUPartionedCall ops.
   const auto functions_to_skip =
       FindTPUPartitionedCallReachableFunctions(getOperation());
-  for (FuncOp func_op : getOperation().getOps<FuncOp>()) {
+  for (func::FuncOp func_op : getOperation().getOps<func::FuncOp>()) {
     if (functions_to_skip.contains(func_op)) {
       continue;
     }
@@ -398,8 +494,6 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorTPUV1IslandCoarseningPass() {
   return std::make_unique<TpuV1BridgeExecutorIslandCoarsening>();
 }
-
-static PassRegistration<TpuV1BridgeExecutorIslandCoarsening> tpu_pass;
 
 }  // namespace tf_executor
 }  // namespace mlir

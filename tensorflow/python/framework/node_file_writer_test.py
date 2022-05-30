@@ -26,6 +26,7 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework.test_util import IsMklEnabled
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
@@ -34,6 +35,7 @@ from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.platform import test
 
 
+@test_util.with_eager_op_as_function
 class NodeFileWriterTest(test.TestCase):
   """Tests for NodeFileWriter."""
 
@@ -92,7 +94,15 @@ class NodeFileWriterTest(test.TestCase):
       cur_pos += 8
       node_def = node_def_pb2.NodeDef()
       node_def.ParseFromString(node_def_bytes[cur_pos:cur_pos + size])
-      node_defs.append(node_def)
+      # When running eager op as function is enabled we expect these extra nodes
+      # to show up in the list of executed nodes.
+      ignored_ops = []
+      if context.run_eager_op_as_function_enabled():
+        ignored_ops.extend(['_Arg', '_Retval', 'NoOp'])
+        # TODO(b/206047926): Fix or remove _Recv/_HostRecv from the ignored_ops.
+        ignored_ops.extend(['_Recv', '_HostRecv'])
+      if node_def.op not in ignored_ops:
+        node_defs.append(node_def)
       cur_pos += size
     self.assertEqual(cur_pos, len(node_def_bytes))
     return node_defs
@@ -116,6 +126,7 @@ class NodeFileWriterTest(test.TestCase):
       return None
     return tensor_util.MakeNdarray(tensor_proto.tensor)
 
+  @test_util.disable_xla('b/201684914')
   def test_simple(self):
     with context.eager_mode():
       x32 = constant_op.constant(np.ones((2, 3)).astype(np.float32))
@@ -158,6 +169,7 @@ class NodeFileWriterTest(test.TestCase):
           self._get_input_dtypes(node_def3), [dtypes.float32, dtypes.float32])
       self.assertEqual(self._get_input_shapes(node_def3), [(4, 3), (3, 2)])
 
+  @test_util.disable_xla('b/201684914')
   def test_host_int32_inputs(self):
     with context.eager_mode():
       x = constant_op.constant(np.ones((2, 2)).astype(np.float32))
@@ -177,6 +189,7 @@ class NodeFileWriterTest(test.TestCase):
           self._get_input_tensor(node_def, 1), np.array([[1, 2], [3, 4]]))
       self.assertIsNone(self._get_input_tensor(node_def, 2))
 
+  @test_util.disable_xla('b/201684914')
   def test_skipped_ops(self):
     with context.eager_mode():
       x = constant_op.constant(np.ones((1, 1, 1, 1)).astype(np.float32))

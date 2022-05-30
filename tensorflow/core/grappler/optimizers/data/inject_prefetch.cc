@@ -32,10 +32,17 @@ namespace grappler {
 namespace {
 
 constexpr char kPrefetchDataset[] = "PrefetchDataset";
-constexpr std::array<const char*, 7> kDatasetsToSkip = {
-    "AssertNextDataset",        "ExperimentalAssertNextDataset",
-    "OptionsDataset",           "ModelDataset",
-    "OptimizeDataset",          "MaxIntraOpParallelismDataset",
+constexpr std::array<const char*, 5> kAsyncTransforms = {
+    "MapAndBatchDataset", "ParallelBatchDataset", "ParallelInterleaveDataset",
+    "ParallelMapDataset", "PrefetchDataset"};
+constexpr std::array<const char*, 8> kDatasetsToSkip = {
+    "AssertNextDataset",
+    "ExperimentalAssertNextDataset",
+    "IgnoreErrorsDataset",
+    "OptionsDataset",
+    "ModelDataset",
+    "OptimizeDataset",
+    "MaxIntraOpParallelismDataset",
     "PrivateThreadPoolDataset",
 };
 
@@ -57,10 +64,13 @@ bool ShouldInjectPrefetch(const NodeDef* last_node,
                "rewrite failed to find a dataset node.";
     return false;
   }
-  if (last_node->op() == kPrefetchDataset) {
-    VLOG(1)
-        << "The optimization inject_prefetch is not applied because the "
-           "last transformation of the input pipeline is already `prefetch`.";
+  if (absl::c_any_of(kAsyncTransforms, [last_node](const char* dataset) {
+        return data::MatchesAnyVersion(dataset, last_node->op());
+      })) {
+    VLOG(1) << "The optimization inject_prefetch is not applied because the "
+               "last transformation of the input pipeline is an asynchronous "
+               "transformation: "
+            << last_node->op();
     return false;
   }
   return true;
@@ -81,8 +91,9 @@ Status InjectPrefetch::OptimizeAndCollectStats(Cluster* cluster,
   MutableGraphView graph(output);
 
   // If the GrapplerItem is derived from a FunctionDef, we don't optimize it.
-  if (graph_utils::IsItemDerivedFromFunctionDef(item, graph))
+  if (graph_utils::IsItemDerivedFromFunctionDef(item, graph)) {
     return Status::OK();
+  }
 
   if (item.fetch.size() != 1) {
     return errors::InvalidArgument(

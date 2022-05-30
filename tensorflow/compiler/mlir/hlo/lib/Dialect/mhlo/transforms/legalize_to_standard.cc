@@ -15,12 +15,15 @@ limitations under the License.
 
 // This file implements logic for lowering MHLO dialect to Standard dialect.
 
-#include "llvm/ADT/StringSwitch.h"
+#include <utility>
+
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -50,21 +53,34 @@ class CompareIConvert : public OpRewritePattern<mhlo::CompareOp> {
         !rhs_type.getElementType().isSignlessInteger())
       return failure();
 
-    auto comparison_direction = op.comparison_direction();
-    auto compare_predicate =
-        llvm::StringSwitch<Optional<CmpIPredicate>>(comparison_direction)
-            .Case("EQ", CmpIPredicate::eq)
-            .Case("NE", CmpIPredicate::ne)
-            .Case("LT", CmpIPredicate::slt)
-            .Case("LE", CmpIPredicate::sle)
-            .Case("GT", CmpIPredicate::sgt)
-            .Case("GE", CmpIPredicate::sge)
-            .Default(llvm::None);
+    Optional<arith::CmpIPredicate> compare_predicate;
+    switch (op.comparison_direction()) {
+      case ComparisonDirection::EQ:
+        compare_predicate = arith::CmpIPredicate::eq;
+        break;
+      case ComparisonDirection::NE:
+        compare_predicate = arith::CmpIPredicate::ne;
+        break;
+      case ComparisonDirection::LT:
+        compare_predicate = arith::CmpIPredicate::slt;
+        break;
+      case ComparisonDirection::LE:
+        compare_predicate = arith::CmpIPredicate::sle;
+        break;
+      case ComparisonDirection::GT:
+        compare_predicate = arith::CmpIPredicate::sgt;
+        break;
+      case ComparisonDirection::GE:
+        compare_predicate = arith::CmpIPredicate::sge;
+        break;
+      default:
+        compare_predicate = llvm::None;
+    }
 
     if (!compare_predicate.hasValue()) return failure();
 
-    rewriter.replaceOpWithNewOp<CmpIOp>(op, compare_predicate.getValue(), lhs,
-                                        rhs);
+    rewriter.replaceOpWithNewOp<arith::CmpIOp>(op, compare_predicate.getValue(),
+                                               lhs, rhs);
     return success();
   }
 };
@@ -87,21 +103,34 @@ class CompareFConvert : public OpRewritePattern<mhlo::CompareOp> {
         !rhs_type.getElementType().isa<FloatType>())
       return failure();
 
-    auto comparison_direction = op.comparison_direction();
-    auto compare_predicate =
-        llvm::StringSwitch<Optional<CmpFPredicate>>(comparison_direction)
-            .Case("EQ", CmpFPredicate::OEQ)
-            .Case("NE", CmpFPredicate::UNE)
-            .Case("LT", CmpFPredicate::OLT)
-            .Case("LE", CmpFPredicate::OLE)
-            .Case("GT", CmpFPredicate::OGT)
-            .Case("GE", CmpFPredicate::OGE)
-            .Default(llvm::None);
+    Optional<arith::CmpFPredicate> compare_predicate;
+    switch (op.comparison_direction()) {
+      case ComparisonDirection::EQ:
+        compare_predicate = arith::CmpFPredicate::OEQ;
+        break;
+      case ComparisonDirection::NE:
+        compare_predicate = arith::CmpFPredicate::UNE;
+        break;
+      case ComparisonDirection::LT:
+        compare_predicate = arith::CmpFPredicate::OLT;
+        break;
+      case ComparisonDirection::LE:
+        compare_predicate = arith::CmpFPredicate::OLE;
+        break;
+      case ComparisonDirection::GT:
+        compare_predicate = arith::CmpFPredicate::OGT;
+        break;
+      case ComparisonDirection::GE:
+        compare_predicate = arith::CmpFPredicate::OGE;
+        break;
+      default:
+        compare_predicate = llvm::None;
+    }
 
     if (!compare_predicate.hasValue()) return failure();
 
-    rewriter.replaceOpWithNewOp<CmpFOp>(op, compare_predicate.getValue(), lhs,
-                                        rhs);
+    rewriter.replaceOpWithNewOp<arith::CmpFOp>(op, compare_predicate.getValue(),
+                                               lhs, rhs);
     return success();
   }
 };
@@ -133,7 +162,7 @@ class ConvertIotaOp : public OpRewritePattern<mhlo::IotaOp> {
     values.reserve(output_size);
 
     int64_t increase_stride = output_size;
-    for (int i = 0; i <= dimension; i++) {
+    for (uint64_t i = 0; i <= dimension; i++) {
       increase_stride /= output_type.getDimSize(i);
     }
 
@@ -148,7 +177,7 @@ class ConvertIotaOp : public OpRewritePattern<mhlo::IotaOp> {
         output_type.getShape(),
         IntegerType::get(rewriter.getContext(), bitwidth));
     auto loc = op.getLoc();
-    auto integer_const = rewriter.create<mlir::ConstantOp>(
+    auto integer_const = rewriter.create<mlir::arith::ConstantOp>(
         loc, DenseIntElementsAttr::get(int_shape_type, values));
 
     auto int_or_float_shape_ty =
@@ -165,7 +194,7 @@ class ConvertIotaOp : public OpRewritePattern<mhlo::IotaOp> {
 
     // For complex types, generate a constant tensor of zeroes for the imaginary
     // part and use iota_const for real part.
-    auto zeroes = rewriter.create<mlir::ConstantOp>(
+    auto zeroes = rewriter.create<mlir::arith::ConstantOp>(
         loc, DenseIntElementsAttr::get(int_shape_type, APInt(bitwidth, 0)));
     auto imag_zeroes =
         rewriter.create<ConvertOp>(loc, int_or_float_shape_ty, zeroes);
@@ -180,29 +209,32 @@ namespace {
 struct LegalizeToStandardPass
     : public LegalizeToStandardPassBase<LegalizeToStandardPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<StandardOpsDialect>();
+    registry.insert<arith::ArithmeticDialect, math::MathDialect,
+                    func::FuncDialect>();
   }
 
   /// Perform the lowering to Standard dialect.
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 }  // end anonymous namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> createLegalizeToStdPass() {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createLegalizeToStdPass() {
   return std::make_unique<LegalizeToStandardPass>();
 }
 
-void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
+void PopulateMhloToStdPatterns(RewritePatternSet *patterns,
                                mlir::MLIRContext *ctx) {
   mlir::populateWithGenerated(*patterns);
-  patterns->insert<CompareFConvert, CompareIConvert, ConvertIotaOp>(ctx);
+  patterns->add<CompareFConvert, CompareIConvert, ConvertIotaOp>(ctx);
 }
 
 /// Perform the lowering to standard dialect.
-void LegalizeToStandardPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
+void LegalizeToStandardPass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
   mlir::mhlo::PopulateMhloToStdPatterns(&patterns, &getContext());
-  (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+  if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
+    return signalPassFailure();
 }
 
 }  // end namespace mhlo

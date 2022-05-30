@@ -110,18 +110,16 @@ StatusOr<HloInstruction*> MakeConvolveHlo(
 
 StatusOr<HloInstruction*> MakeTransposeHlo(
     HloInstruction* operand, absl::Span<const int64_t> dimensions) {
-  HloComputation* computation = operand->parent();
   TF_ASSIGN_OR_RETURN(
       Shape transpose_shape,
       ShapeInference::InferTransposeShape(operand->shape(), dimensions));
-  return computation->AddInstruction(
+  return operand->AddInstruction(
       HloInstruction::CreateTranspose(transpose_shape, operand, dimensions));
 }
 
 StatusOr<HloInstruction*> MakeReshapeHlo(const Shape& result_shape,
                                          HloInstruction* operand) {
-  HloComputation* computation = operand->parent();
-  return computation->AddInstruction(
+  return operand->AddInstruction(
       HloInstruction::CreateReshape(result_shape, operand));
 }
 
@@ -261,6 +259,11 @@ HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type) {
   return hlo;
 }
 
+HloInstruction* MakeBitcastHlo(HloInstruction* hlo, const Shape& shape) {
+  return hlo->parent()->AddInstruction(
+      HloInstruction::CreateBitcast(shape, hlo));
+}
+
 HloInstruction* MakeBitcastConvertToHlo(HloInstruction* hlo,
                                         PrimitiveType type) {
   if (hlo->shape().element_type() == type) {
@@ -323,13 +326,23 @@ StatusOr<HloInstruction*> MakeMapHlo(absl::Span<HloInstruction* const> operands,
 StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
                                         HloInstruction* init_value,
                                         absl::Span<const int64_t> dimensions,
-                                        HloOpcode binary_opcode) {
+                                        HloComputation* reduce_computation) {
   auto scalar_shape = ShapeUtil::MakeShape(operand->shape().element_type(), {});
   auto result_shape = ShapeUtil::FilterDimensions(
       [&](const int64_t dim) {
         return !absl::c_linear_search(dimensions, dim);
       },
       operand->shape());
+
+  return operand->parent()->AddInstruction(HloInstruction::CreateReduce(
+      result_shape, operand, init_value, dimensions, reduce_computation));
+}
+
+StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
+                                        HloInstruction* init_value,
+                                        absl::Span<const int64_t> dimensions,
+                                        HloOpcode binary_opcode) {
+  auto scalar_shape = ShapeUtil::MakeShape(operand->shape().element_type(), {});
   HloComputation* reduce_computation;
   {
     HloComputation::Builder b(operand->name() + ".reduce_sub_computation");
@@ -342,9 +355,7 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
     reduce_computation =
         operand->parent()->parent()->AddEmbeddedComputation(b.Build());
   }
-
-  return operand->parent()->AddInstruction(HloInstruction::CreateReduce(
-      result_shape, operand, init_value, dimensions, reduce_computation));
+  return MakeReduceHlo(operand, init_value, dimensions, reduce_computation);
 }
 
 StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
@@ -367,9 +378,7 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
         HloInstruction::CreateBinary(scalar_shape, binary_opcode, lhs, rhs));
     reduce_computation = module->AddEmbeddedComputation(b.Build());
   }
-
-  return operand->parent()->AddInstruction(HloInstruction::CreateReduce(
-      scalar_shape, operand, init_value, all_dims, reduce_computation));
+  return MakeReduceHlo(operand, init_value, all_dims, reduce_computation);
 }
 
 StatusOr<HloInstruction*> MakeReverseHlo(HloInstruction* operand,
@@ -392,8 +401,7 @@ StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
   if (ShapeUtil::IsScalar(pred->shape())) {
     if (!ShapeUtil::IsScalar(op_shape) && !op_shape.IsTuple()) {
       // If the output is not scalar, we need to broadcast the condition
-      // to match the contract of kSelect. For tuples, we use kTupleSelect
-      // which expects the condition to be a scalar.
+      // to match the contract of kSelect.
       pred = computation->AddInstruction(HloInstruction::CreateBroadcast(
           ShapeUtil::ChangeElementType(op_shape, PrimitiveType::PRED), pred,
           {}));
@@ -402,8 +410,8 @@ StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
       }
     }
   }
-  HloOpcode select_op_code =
-      op_shape.IsTuple() ? HloOpcode::kTupleSelect : HloOpcode::kSelect;
+  TF_RET_CHECK(!op_shape.IsTuple());
+  HloOpcode select_op_code = HloOpcode::kSelect;
   TF_ASSIGN_OR_RETURN(Shape select_shape,
                       ShapeInference::InferTernaryOpShape(select_op_code, pred,
                                                           on_true, on_false));
@@ -414,6 +422,15 @@ StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
     derived_from->SetupDerivedInstruction(select);
   }
   return select;
+}
+
+HloInstruction* MaybeMakeTuple(absl::Span<HloInstruction* const> operands) {
+  CHECK(!operands.empty());
+  if (operands.size() == 1) {
+    return operands[0];
+  }
+  return operands[0]->parent()->AddInstruction(
+      HloInstruction::CreateTuple(operands));
 }
 
 StatusOr<HloInstruction*> MakeSortHlo(
@@ -597,7 +614,7 @@ HloInstruction* CreateDummyOp(HloComputation::Builder* b, const Shape& shape) {
 StatusOr<std::unique_ptr<HloComputation>> CreateComputationWithSignature(
     absl::Span<const Shape* const> domain, const Shape& range,
     absl::string_view name) {
-  HloComputation::Builder b{string(name)};
+  HloComputation::Builder b{std::string(name)};
   int64_t param_idx = 0;
   for (const Shape* param_shape : domain) {
     b.AddInstruction(HloInstruction::CreateParameter(

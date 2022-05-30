@@ -15,10 +15,22 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark_mlir_function.h"
 
+#include <functional>
+#include <memory>
+#include <utility>
+
+#include "llvm/Support/SourceMgr.h"
+#include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tfrt/runtime_fallback/runtime_fallback_executor.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tfrt/utils/host_context.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tfrt/host_context/execution_context.h"  // from @tf_runtime
+#include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
 namespace tensorflow {
 
+using ::tfrt::ArrayRef;
 using ::tfrt::AsyncValue;
 using ::tfrt::AsyncValuePtr;
 using ::tfrt::HostContext;
@@ -26,10 +38,12 @@ using ::tfrt::RCReference;
 using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
-using ::tfrt::cpu::jit::Executable;
-using ::tfrt::cpu::jit::JitExecutable;
-using ::tfrt::cpu::jit::MemrefDesc;
-using ::tfrt::cpu::jit::ReturnValueConverter;
+
+using ::tfrt::jitrt::Executable;
+using ::tfrt::jitrt::HostContextAsyncTaskRunner;
+using ::tfrt::jitrt::JitExecutable;
+using ::tfrt::jitrt::MemrefDesc;
+using ::tfrt::jitrt::ReturnValueConverter;
 
 // Returns random tensors generated based on the input specs.
 static llvm::SmallVector<Tensor> GetInputTensors(
@@ -46,6 +60,9 @@ static llvm::SmallVector<Tensor> GetInputTensors(
       case DT_FLOAT:
         input_tensors.back().flat<float>().setRandom();
         break;
+      case DT_INT64:
+        input_tensors.back().flat<int64_t>().setRandom();
+        break;
       default:
         CHECK(false) << "Unsupported dtype: " << spec.dtype;
     }
@@ -54,9 +71,15 @@ static llvm::SmallVector<Tensor> GetInputTensors(
   return input_tensors;
 }
 
-void RunMlirBenchmark(::testing::benchmark::State& state,
-                      llvm::StringRef mlir_input, llvm::StringRef function_name,
-                      llvm::ArrayRef<InputTensorSpec> input_specs) {
+// -------------------------------------------------------------------------- //
+// Run function benchmark via the TF JitRt compilation.
+// -------------------------------------------------------------------------- //
+
+void RunJitRtBenchmark(::testing::benchmark::State& state,
+                       llvm::StringRef mlir_input,
+                       llvm::StringRef function_name,
+                       llvm::ArrayRef<InputTensorSpec> input_specs,
+                       bool vectorize, bool codegen_transpose) {
   // Number of worker threads.
   int64_t num_threads = state.range(0);
 
@@ -65,10 +88,12 @@ void RunMlirBenchmark(::testing::benchmark::State& state,
       num_threads > 0 ? CreateMultiThreadedHostContext(num_threads)
                       : CreateSingleThreadedHostContext();
 
-  TfCpuRtPipelineOptions tf_cpurt_opts;
+  TfJitRtPipelineOptions tf_jitrt_opts;
+  tf_jitrt_opts.vectorize = vectorize;
+  tf_jitrt_opts.codegen_transpose = codegen_transpose;
   JitExecutable& jit_executable =
       CreateJitExecutable(*host, mlir_input, function_name,
-                          /*lower_from_tensorflow=*/true, tf_cpurt_opts);
+                          /*lower_from_tensorflow=*/true, tf_jitrt_opts);
 
   // Build an ExecutionContext from the HostContext.
   llvm::Expected<RCReference<RequestContext>> req_ctx =
@@ -78,46 +103,89 @@ void RunMlirBenchmark(::testing::benchmark::State& state,
   // Generate random inputs based on the tensor specs.
   llvm::SmallVector<Tensor> input_tensors = GetInputTensors(input_specs);
 
+  // Record data ptrs of inputs.
+  llvm::SmallVector<void*> input_ptrs;
   // Convert input tensors to memref descriptors.
   llvm::SmallVector<MemrefDesc> operands;
-  for (const Tensor& tensor : input_tensors)
+  for (const Tensor& tensor : input_tensors) {
+    input_ptrs.push_back(tensor.data());
     operands.emplace_back(TensorToMemrefDesc(tensor));
+  }
 
   // Get an executable that might be specialized to the operands.
-  AsyncValuePtr<Executable> executable =
-      jit_executable.GetExecutable(operands, exec_ctx);
+  llvm::Expected<AsyncValuePtr<Executable>> executable =
+      jit_executable.GetExecutable(operands);
+  if (auto err = executable.takeError())
+    LOG(FATAL) << "Failed to specialize executable: " << tfrt::StrCat(err);
 
   // Wait for the compilation completion.
-  host->Await({executable.CopyRef()});
+  host->Await({executable->CopyRef()});
 
-  CHECK(!executable.IsError())
-      << "Failed to get executable: " << StrCat(executable.GetError());
-  CHECK(!executable->IsAsync()) << "async results are not supported";
+  CHECK(!executable->IsError())
+      << "Failed to get executable: " << tfrt::StrCat(executable->GetError());
+  CHECK(!(*executable)->IsAsync()) << "async results are not supported";
 
   // Placeholders for returned values.
-  llvm::SmallVector<RCReference<AsyncValue>> result_values;
-  for (int i = 0; i < executable->signature().num_results(); ++i)
-    result_values.emplace_back();
+  unsigned num_results = (*executable)->num_results();
+  llvm::SmallVector<RCReference<AsyncValue>> result_values(num_results);
   RemainingResults results(result_values);
 
   // Free memory owned by the returned memrefs.
-  ReturnValueConverter<ResultConversionCtx> converter(results);
+  ResultConversionCtx result_ctx(std::move(input_ptrs));
+  ReturnValueConverter<ResultConversionCtx> converter(results, result_ctx);
   converter.AddConversion(FreeReturnedMemref);
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err =
-          executable->InitializeCallFrame(operands, &call_frame, nullptr))
+  if (auto err = (*executable)->InitializeCallFrame(operands, &call_frame))
     LOG(FATAL) << "Failed to initialize call frame";
 
-  for (auto _ : state) {
-    executable->Execute(call_frame, exec_ctx);
-    if (auto err = executable->ReturnResults(converter, &call_frame))
+  // Execute async tasks in the HostContext work queue.
+  Executable::ExecuteOpts opts;
+  HostContextAsyncTaskRunner async_task_runner(host.get());
+  opts.async_task_runner = &async_task_runner;
+
+  // Execute compiled kernel and return results.
+  auto execute = [&]() {
+    call_frame.args[0] = nullptr;  // reset kernel context argument
+    (*executable)->Execute(call_frame, opts);
+    if (auto err = (*executable)->ReturnResults(converter, &call_frame))
       LOG(FATAL) << "Failed to return compiled kernel results";
+  };
+
+  // Warm up to compile the kernel outside of the benchmark loop.
+  execute();
+
+  for (auto _ : state) {
+    execute();
   }
 }
 
-// Benchmark arbitrary compute function written as Eigen expression(s).
+// -------------------------------------------------------------------------- //
+// Run function benchmark via the TF->TFRT fallback lowering.
+// -------------------------------------------------------------------------- //
+
+void RunTfrtBenchmark(::testing::benchmark::State& state,
+                      llvm::StringRef mlir_input, llvm::StringRef function_name,
+                      ArrayRef<InputTensorSpec> input_specs) {
+  // Number of worker threads (intra-op concurrency for the fallback ops).
+  int64_t num_threads = state.range(0);
+  RuntimeFallbackExecutor executor(num_threads);
+
+  executor.Prepare(mlir_input);
+
+  // Generate random inputs based on the tensor specs.
+  llvm::SmallVector<Tensor> input_tensors = GetInputTensors(input_specs);
+
+  for (auto _ : state) {
+    executor.Execute(function_name, input_tensors);
+  }
+}
+
+// -------------------------------------------------------------------------- //
+// Run arbitrary benchark written as a function.
+// -------------------------------------------------------------------------- //
+
 void RunEigenBenchmark(
     ::testing::benchmark::State& state,
     std::function<void(llvm::ArrayRef<Tensor>,

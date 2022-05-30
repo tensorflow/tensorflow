@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/model.pb.h"
+#include "tensorflow/core/platform/refcount.h"
 
 namespace tensorflow {
 namespace data {
@@ -35,14 +36,19 @@ class RootDataset : public DatasetBase {
     int64_t private_threadpool_size = 0;
   };
 
-  static Status FromOptions(DatasetBase* input, DatasetBase** output);
+  static Status FromOptions(const DatasetBase* input, DatasetBase** output);
+  static Status FromOptions(core::RefCountPtr<DatasetBase> input,
+                            DatasetBase** output);
 
   ~RootDataset() override;
 
   const DataTypeVector& output_dtypes() const override;
   const std::vector<PartialTensorShape>& output_shapes() const override;
 
-  int64_t Cardinality() const override;
+  int64_t CardinalityInternal() const override;
+  int64_t CardinalityInternal(CardinalityOptions options) const override;
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override;
   Status CheckExternalState() const override;
   string DebugString() const override;
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override;
@@ -57,9 +63,12 @@ class RootDataset : public DatasetBase {
  private:
   class Iterator;
 
-  RootDataset(const DatasetBase* input, Params params);
+  RootDataset(const DatasetBase* input, const Params& params);
+
+  RootDataset(core::RefCountPtr<DatasetBase> input, const Params& params);
 
   const DatasetBase* input_;
+  core::RefCountPtr<DatasetBase> owned_input_;
   const Params params_;
   TraceMeMetadata traceme_metadata_;
 };
@@ -67,8 +76,9 @@ class RootDataset : public DatasetBase {
 // Finalizes the `input` dataset, which is expected to be called before the
 // dataset is about to be iterated. This can for instance apply static graph
 // optimizations or inject internal tf.data transformations responsible for
-// autotuning or threading configuration.
-Status FinalizeDataset(OpKernelContext* ctx, DatasetBase* input,
+// autotuning or threading configuration. The caller must ensure that the
+// input dataset to be finalized outlives the output.
+Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
                        DatasetBase** output);
 
 }  // namespace data

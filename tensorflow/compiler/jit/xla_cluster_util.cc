@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 
+#include <string>
 #include <unordered_map>
 
 #include "absl/algorithm/container.h"
@@ -30,6 +31,9 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/xla_config_registry.h"
@@ -37,7 +41,6 @@ limitations under the License.
 namespace tensorflow {
 
 const char* const kXlaClusterAttr = "_XlaCluster";
-const char* const kXlaOutsideCompilationAttr = "_XlaOutsideCompilation";
 const char* const kXlaCompileTimeConstantInputsAttr =
     "_XlaCompileTimeConstantInputs";
 
@@ -556,6 +559,24 @@ Status GetNodesRelatedToRefVariablesInDirection(
 
   return Status::OK();
 }
+
+// Sorts control inputs of a graphdef so that they are deterministically
+// ordered.
+void SortControlInputs(GraphDef* gdef) {
+  int64_t num_nodes = gdef->node_size();
+  for (int64_t i = 0; i < num_nodes; ++i) {
+    NodeDef* node = gdef->mutable_node(i);
+    // Stable sort control inputs and leave the order of data inputs unchanged.
+    std::stable_sort(node->mutable_input()->begin(),
+                     node->mutable_input()->end(),
+                     [](const string& a, const string& b) {
+                       bool a_is_control = absl::StartsWith(a, "^");
+                       bool b_is_control = absl::StartsWith(b, "^");
+                       return (!a_is_control && b_is_control) ||
+                              (a_is_control && b_is_control && a < b);
+                     });
+  }
+}
 }  // namespace
 
 StatusOr<absl::flat_hash_set<Node*>> GetNodesRelatedToRefVariables(
@@ -569,6 +590,29 @@ StatusOr<absl::flat_hash_set<Node*>> GetNodesRelatedToRefVariables(
   VLOG(1) << "GetNodesRelatedToRefVariables() found " << result.size()
           << " nodes";
   return result;
+}
+
+StatusOr<std::string> SerializeGraphDeterministic(const Graph& graph) {
+  GraphDef def;
+  graph.ToGraphDef(&def);
+
+  // Before serialization, sort each node's control inputs to achieve
+  // determinism. Sorting control inputs could help (but not necessarily) create
+  // a deterministic serialization and fingerprint. Other sources of
+  // nondeterminism include unstable node ordering.
+  SortControlInputs(&def);
+
+  std::string s;
+  if (!SerializeToStringDeterministic(def, &s)) {
+    return errors::Internal("Failed to serialize graphdef.");
+  }
+  return s;
+}
+
+StatusOr<uint64> FingerprintGraph(const Graph& graph) {
+  TF_ASSIGN_OR_RETURN(std::string serialized,
+                      SerializeGraphDeterministic(graph));
+  return Hash64(serialized.data(), serialized.size());
 }
 
 // Register a callback for querying XlaGlobalJitLevel.

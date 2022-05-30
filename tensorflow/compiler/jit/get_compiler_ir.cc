@@ -43,15 +43,16 @@ namespace tensorflow {
 static StatusOr<std::unique_ptr<xla::LocalExecutable>> BuildExecutable(
     xla::LocalClient* local_client,
     const XlaCompiler::CompilationResult& result,
-    const XlaCompiler::Options& options, const bool xla_dump_hlo = false) {
+    const XlaCompiler::Options& options,
+    const bool xla_embed_ir_in_executable = false) {
   std::vector<const xla::Shape*> argument_layouts(
       result.xla_input_shapes.size());
   for (int i = 0, end = result.xla_input_shapes.size(); i < end; ++i) {
     argument_layouts[i] = &result.xla_input_shapes[i];
   }
   xla::ExecutableBuildOptions build_options;
-  if (result.collective_reduce_info) {
-    build_options.set_num_replicas(result.collective_reduce_info->group_size);
+  if (result.collective_info) {
+    build_options.set_num_replicas(result.collective_info->group_size);
   }
   build_options.set_device_ordinal(
       options.device_ordinal != -1 ? options.device_ordinal
@@ -61,9 +62,10 @@ static StatusOr<std::unique_ptr<xla::LocalExecutable>> BuildExecutable(
   build_options.set_alias_passthrough_params(options.alias_passthrough_params);
   build_options.mutable_debug_options()->set_xla_detailed_logging_and_dumping(
       options.detailed_logging);
-  // If any of the xla_dump_hlo_* flags is set, hlo_proto will be dumped in
+  // If the embed_ir_in_executable is set, hlo_proto will be dumped in
   // executable. The hlo_proto contains HLO modules and buffer assignment.
-  build_options.mutable_debug_options()->set_xla_dump_hlo_as_text(xla_dump_hlo);
+  build_options.mutable_debug_options()->set_xla_embed_ir_in_executable(
+      xla_embed_ir_in_executable);
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<xla::LocalExecutable>> executables,
       local_client->Compile(*result.computation, argument_layouts,
@@ -128,9 +130,9 @@ StatusOr<std::string> GetCompilerIr(
   core::ScopedUnref cache_ref(cache);
 
   se::Stream* stream = nullptr;
-  if (const DeviceBase::GpuDeviceInfo* gpu_device_info =
-          dev->tensorflow_gpu_device_info()) {
-    stream = gpu_device_info->stream;
+  if (const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info =
+          dev->tensorflow_accelerator_device_info()) {
+    stream = accelerator_device_info->stream;
   }
 
   XlaCompiler::Options options =
@@ -155,6 +157,7 @@ StatusOr<std::string> GetCompilerIr(
 
   switch (stage) {
     case IrExportStage::HLO:
+    case IrExportStage::HLO_NO_METADATA:
     case IrExportStage::HLO_SERIALIZED: {
       TF_ASSIGN_OR_RETURN(xla::ProgramShape program_shape,
                           result.computation->GetProgramShape());
@@ -163,10 +166,15 @@ StatusOr<std::string> GetCompilerIr(
           std::unique_ptr<xla::HloModule> new_module,
           xla::HloModule::CreateFromProto(result.computation->proto(), config));
 
+      xla::HloPrintOptions opts;
+      if (stage == IrExportStage::HLO_NO_METADATA) {
+        opts.set_print_metadata(false);
+      }
+
       if (stage == IrExportStage::HLO_SERIALIZED) {
         return new_module->ToProto().SerializeAsString();
       } else {
-        return new_module->ToString();
+        return new_module->ToString(opts);
       }
     }
     case IrExportStage::OPTIMIZED_HLO:
@@ -183,7 +191,7 @@ StatusOr<std::string> GetCompilerIr(
     case IrExportStage::OPTIMIZED_HLO_PROTO_SERIALIZED: {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::LocalExecutable> executable,
                           BuildExecutable(local_client, result, options,
-                                          /*xla_dump_hlo=*/true));
+                                          /*xla_embed_ir_in_executable=*/true));
       return executable->executable()->hlo_proto()->SerializeAsString();
     }
     case IrExportStage::OPTIMIZED_HLO_DOT: {

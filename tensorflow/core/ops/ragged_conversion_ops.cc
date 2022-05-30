@@ -118,6 +118,7 @@ REGISTER_OP("RaggedTensorToVariant")
     .Attr("Tvalues: type")
     .Attr("Tsplits: {int32, int64} = DT_INT64")
     .Attr("batched_input: bool")
+    .SetTypeConstructor(full_type::Unary(TFT_RAGGED, "Tvalues"))
     .SetShapeFn(RaggedTensorToVariantShapeFn);
 
 REGISTER_OP("RaggedTensorFromVariant")
@@ -203,10 +204,6 @@ Status RaggedTensorToVariantShapeFn(InferenceContext* c) {
     c->set_output(0, c->Vector(num_rows));
   } else {
     c->set_output(0, c->Scalar());
-  }
-  if (batched && num_splits == 0) {
-    return errors::InvalidArgument(
-        "ragged_rank=0 is not currently supported when batched_input=true.");
   }
   return Status::OK();
 }

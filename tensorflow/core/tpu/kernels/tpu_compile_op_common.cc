@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/cleanup/cleanup.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -26,7 +28,10 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/error_payloads.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/protobuf/tpu/compilation_result.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/protobuf/tpu/dynamic_padding.pb.h"
@@ -44,6 +49,18 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_ops_c_api.h"
+
+namespace {
+
+std::string TruncateMessage(const std::string& msg, size_t max_len) {
+  if (msg.size() > max_len) {
+    return absl::StrCat(msg.substr(0, max_len), " ... [truncated]");
+  } else {
+    return msg;
+  }
+}
+
+}  // namespace
 
 namespace tensorflow {
 namespace tpu {
@@ -87,7 +104,7 @@ void CompileOpImplFactory::Register(CompileOpImplFactory* factory) {
     TF_RETURN_IF_ERROR(
         tpu::ShapeTensorToTensorShape(dynamic_shapes[i], &(*shapes)[i]));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
@@ -119,7 +136,7 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
   // doesn't hurt to also deregister the callback in the failure case; the
   // CancellationManager ensures that already-registered callbacks will be run
   // once cancellation has started.
-  auto cancellation_cleanup = xla::MakeCleanup([ctx, token, done] {
+  auto cancellation_cleanup = absl::MakeCleanup([ctx, token, done] {
     ctx->cancellation_manager()->DeregisterCallback(token);
     done->store(true);
   });
@@ -133,7 +150,8 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
            .has_value()) {
     tpu::CompilationResultProto proto;
     proto.set_status_code(compile_status.code());
-    proto.set_status_error_message(compile_status.error_message());
+    proto.set_status_error_message(
+        TruncateMessage(compile_status.error_message(), 128));
     status_payload = proto.SerializeAsString();
   }
   OP_REQUIRES_OK_OR_SET_PAYLOAD(ctx,
@@ -142,6 +160,21 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
 }
 
 Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
+    FunctionLibraryRuntime* flib_runtime,
+    const SessionMetadata* session_metadata,
+    const TpuMeshStateInterface* mesh_state,
+    const std::vector<TensorShape>& dynamic_shapes,
+    const OpInputList& guaranteed_constants, const TpuCompilationCacheKey& key,
+    TpuProgramGroupInterface* tpu_program_group) {
+  Status status = CompileLocallyAndFillHostCacheInternal(
+      flib_runtime, session_metadata, mesh_state, dynamic_shapes,
+      guaranteed_constants, key, tpu_program_group);
+  OkOrSetErrorCounterPayload(
+      tensorflow::core::platform::ErrorSourceProto::TPU_COMPILE_OP, status);
+  return status;
+}
+
+Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCacheInternal(
     FunctionLibraryRuntime* flib_runtime,
     const SessionMetadata* session_metadata,
     const TpuMeshStateInterface* mesh_state,
@@ -158,15 +191,16 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
     ConfigProto::Experimental::MlirBridgeRollout rollout_state =
         GetMlirBridgeRolloutState(config ? absl::make_optional(*config)
                                          : absl::nullopt);
-    compile_status = Compile(MlirToHloArgs{mlir_module_, rollout_state},
-                             mesh_state->data(), arg_shapes, tpu_program_group);
+    compile_status =
+        Compile(MlirToHloArgs{mlir_module_, rollout_state}, mesh_state->data(),
+                arg_shapes, &key, tpu_program_group);
   } else {
     compile_status =
         Compile(FunctionToHloArgs{&function_,
                                   flib_runtime->GetFunctionLibraryDefinition(),
                                   flib_runtime->graph_def_version(),
                                   {&guaranteed_constants}},
-                mesh_state->data(), arg_shapes, tpu_program_group);
+                mesh_state->data(), arg_shapes, &key, tpu_program_group);
   }
 
   absl::Time end_time = absl::Now();
@@ -177,10 +211,10 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
             << session_name << " took " << duration << " and "
             << (compile_status.ok() ? "succeeded" : "failed");
   tpu_program_group->LogProgramMemorySummary();
+  metrics::UpdateTpuErrorCounter("TpuCompileOp",
+                                 error_name(compile_status.code()));
   metrics::UpdateXlaCompilationTime(absl::ToInt64Microseconds(duration));
   TpuCompilationMetrics::IncrementCompilationCount(session_name);
-
-  TF_RETURN_IF_ERROR(tpu_program_group->LogCompilationStats(key, duration));
 
   return compile_status;
 }
@@ -207,10 +241,15 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
         ctx->input_list("guaranteed_constants", &guaranteed_constants));
   }
 
+  ResourceMgr* resource_mgr = ctx->resource_manager();
+
+  // The session_id needs to be unique among live sessions.
+  // Recycled session_id is acceptable if it is unique among live sessions.
+  uint64_t session_id = reinterpret_cast<uint64_t>(resource_mgr);
   const TpuCompilationCacheKey key = CreateCompilationCacheKey(
       function_.name(), metadata_.function_library_fingerprint(),
       mlir_module_fingerprint_, guaranteed_constants, dynamic_shapes, metadata_,
-      *mesh_state);
+      *mesh_state, session_id, resource_mgr);
 
   // Process-wide cache of TPU executables.
   TpuCompilationCacheInterface* cache;
@@ -238,7 +277,7 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
           ctx->resource_manager(), "ref_holder", &ref_holder,
           [cache](CompilationRefHolder** h) {
             *h = cache->MakePerStepRefHolder();
-            return Status::OK();
+            return OkStatus();
           }));
   core::ScopedUnref ref_holder_unref(ref_holder);
 
@@ -307,7 +346,7 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
                 kCompilationCacheUnloaderResourceName, &unloader,
                 [cache](TpuCompilationCacheEntryUnloader** new_unloader) {
                   *new_unloader = new TpuCompilationCacheEntryUnloader(cache);
-                  return Status::OK();
+                  return OkStatus();
                 }));
     // Note that LookupOrCreate puts two refcounts on unloader.
     core::ScopedUnref unloader_unref(unloader);
@@ -318,6 +357,10 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
   if (proto_key.size() == 1) {
     // SPMD produces 1 program for all cores.
     num_cores_with_compiled_programs = metadata_.num_cores_per_replica();
+    if (may_modify_variables.size() == 1) {
+      may_modify_variables.resize(metadata_.num_cores_per_replica(),
+                                  may_modify_variables[0]);
+    }
   }
   if (status.ok() &&
       num_cores_with_compiled_programs +
@@ -351,8 +394,8 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
     tpu::CompilationResultProto proto;
     proto.set_status_code(status.code());
     if (!status.ok()) {
-      proto.set_status_error_message(
-          absl::StrCat("Compilation failure: ", status.error_message()));
+      proto.set_status_error_message(TruncateMessage(
+          absl::StrCat("Compilation failure: ", status.error_message()), 128));
     }
     if (return_hlo_protos_) {
       // Return the HloProtos as part of compilation status.
@@ -364,7 +407,7 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
     SerializeToTString(proto, &output.scalar<tstring>()());
     ctx->set_output(0, output);
     status.SetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey,
-                      output.scalar<tstring>()());
+                      absl::Cord(output.scalar<tstring>()()));
   }
 
   if (status.ok()) {
@@ -435,7 +478,7 @@ Status TpuCompileOpKernelCommon::RegisterXLAFingerprints(
         rm->default_container(), tpu::kFingerprintLookupResourceName,
         &fingerprint_lookup, [&](tpu::TpuFingerprintLookup** new_lookup) {
           *new_lookup = tpu::TpuFingerprintLookup::Create();
-          return Status::OK();
+          return OkStatus();
         }));
     uint64 tf_fingerprint =
         tpu::CreateFingerprintWithNameAndShapes(fingerprint, arg_shapes);
@@ -445,7 +488,7 @@ Status TpuCompileOpKernelCommon::RegisterXLAFingerprints(
     fingerprint_lookup->RegisterIntermediateAndValuePair(
         tf_fingerprint, std::move(xla_fingerprint));
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace tpu
 }  // namespace tensorflow

@@ -1,6 +1,6 @@
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 
-func @main(tensor<40x37xf32>, tensor<40x37xf32>) -> tensor<40x40xf32> {
+func.func @main(tensor<40x37xf32>, tensor<40x37xf32>) -> tensor<40x40xf32> {
 ^bb0(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>):
   // CHECK:      {
   // CHECK-NEXT:  version: 3,
@@ -16,28 +16,32 @@ func @main(tensor<40x37xf32>, tensor<40x37xf32>) -> tensor<40x40xf32> {
   // CHECK-NEXT:      name: "arg0",
   // CHECK-NEXT:      quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:      }
+  // CHECK-NEXT:      },
+  // CHECK-NEXT:      has_rank: true
   // CHECK-NEXT:    }, {
   // CHECK-NEXT:      shape: [ 40, 37 ],
   // CHECK-NEXT:      buffer: 2,
   // CHECK-NEXT:      name: "arg1",
   // CHECK-NEXT:      quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:      }
+  // CHECK-NEXT:      },
+  // CHECK-NEXT:      has_rank: true
   // CHECK-NEXT:    }, {
   // CHECK-NEXT:      shape: [ 40, 40 ],
   // CHECK-NEXT:      buffer: 3,
   // CHECK-NEXT:      name: "tfl.fully_connected",
   // CHECK-NEXT:      quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:      }
+  // CHECK-NEXT:      },
+  // CHECK-NEXT:      has_rank: true
   // CHECK-NEXT:    }, {
   // CHECK-NEXT:      shape: [ 40, 40 ],
   // CHECK-NEXT:      buffer: 4,
   // CHECK-NEXT:      name: "tfl.fully_connected:1",
   // CHECK-NEXT:      quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:      }
+  // CHECK-NEXT:      },
+  // CHECK-NEXT:      has_rank: true
   // CHECK-NEXT:    } ],
   // CHECK-NEXT:    inputs: [ 0, 1 ],
   // CHECK-NEXT:    outputs: [ 2 ],
@@ -72,7 +76,7 @@ func @main(tensor<40x37xf32>, tensor<40x37xf32>) -> tensor<40x40xf32> {
   // CHECK-NEXT:  signature_defs: [ ]
   // CHECK-NEXT:}
 
-  %cst = constant unit
+  %cst = "tfl.no_value"() {value = unit} : () -> none
   %0:2 = "tfl.fully_connected"(%arg0, %arg1, %cst) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "SHUFFLED4x16INT8"} : (tensor<40x37xf32>, tensor<40x37xf32>, none) -> (tensor<40x40xf32>, tensor<40x40xf32>)
-  return %0 : tensor<40x40xf32>
+  func.return %0 : tensor<40x40xf32>
 }

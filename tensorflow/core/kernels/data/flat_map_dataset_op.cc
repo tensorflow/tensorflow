@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
+#include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
@@ -44,6 +45,7 @@ namespace data {
 /* static */ constexpr const char* const FlatMapDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const FlatMapDatasetOp::kOutputShapes;
 
+constexpr char kCycleLength[] = "cycle_length";
 constexpr char kElementIndex[] = "element_index";
 constexpr char kInputsSize[] = "inputs_size";
 constexpr char kInputs[] = "inputs";
@@ -144,7 +146,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           // next subelement.
           bool end_of_element;
           TF_RETURN_IF_ERROR(current_element_iterator_->GetNext(
-              ctx, out_tensors, &end_of_element));
+              MakeNestedIteratorContext(ctx), out_tensors, &end_of_element));
           if (!end_of_element) {
             // Produce the subelement as output.
             *end_of_sequence = false;
@@ -195,8 +197,8 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
         bool end_of_element;
         int last_num_skipped;
         TF_RETURN_IF_ERROR(current_element_iterator_->Skip(
-            ctx, num_to_skip - *num_skipped, &end_of_element,
-            &last_num_skipped));
+            MakeNestedIteratorContext(ctx), num_to_skip - *num_skipped,
+            &end_of_element, &last_num_skipped));
         *num_skipped += last_num_skipped;
         if (end_of_element) {
           // We have reached the end of the current element, so maybe move on
@@ -211,7 +213,9 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
-      return model::MakeInterleaveManyNode(std::move(args));
+      return model::MakeInterleaveManyNode(
+          std::move(args),
+          {model::MakeNonTunableParameter(kCycleLength, /*value=*/1)});
     }
 
     Status SaveInternal(SerializationContext* ctx,

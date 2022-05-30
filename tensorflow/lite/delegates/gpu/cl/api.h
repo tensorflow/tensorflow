@@ -27,7 +27,6 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/api.h"
-#include "tensorflow/lite/delegates/gpu/cl/serialization.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -157,11 +156,15 @@ class CLInferenceRunner : public ::tflite::gpu::InferenceRunner {
   virtual absl::Status RunWithoutExternalBufferCopy() = 0;
 
   // Copies from the external input tensor (normally CPU buffer) to the internal
-  // OpenCL buffer.  This call blocks until the copy is finished.
+  // OpenCL buffer.  The call only guarantees a queueing of the command. The
+  // caller is expected to hold a copy of the queue and wait for completion if
+  // the external buffer is a CPU buffer.
   virtual absl::Status CopyFromExternalInput(int index) = 0;
 
   // Copies from the internal output OpenCL buffer to the external output
-  // tensor.  This call blocks until the copy is finished.
+  // tensor.  The call only guarantees a queueing of the command. The caller
+  // is expected to hold a copy of the queue and wait for completion if the
+  // external buffer is a CPU buffer.
   virtual absl::Status CopyToExternalOutput(int index) = 0;
 };
 

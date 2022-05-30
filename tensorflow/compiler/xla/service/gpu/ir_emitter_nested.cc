@@ -13,20 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-#include <vector>
-
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_nested.h"
+
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
@@ -57,8 +62,12 @@ Status IrEmitterNested::CodegenNestedComputation() {
   std::vector<const HloInstruction*> io_hlos;
   std::vector<llvm::Type*> argument_types;
   std::vector<int64_t> argument_dereferenceable_bytes;
-  for (const HloInstruction* param :
-       nested_computation_.parameter_instructions()) {
+  const auto& params = nested_computation_.parameter_instructions();
+  const auto n = params.size() + 1;
+  io_hlos.reserve(n - 1);
+  argument_types.reserve(n);
+  argument_dereferenceable_bytes.reserve(n);
+  for (const HloInstruction* param : params) {
     io_hlos.push_back(param);
     const Shape& param_shape = param->shape();
     argument_types.push_back(
@@ -131,7 +140,9 @@ Status IrEmitterNested::CodegenNestedComputation() {
     llvm::Argument* out_parameter = std::prev(function->arg_end(), 1);
 
     if (ShapeUtil::IsScalar(return_shape)) {
-      llvm::Value* ret_value = Load(root_value, "load_ret_value");
+      llvm::Value* ret_value =
+          Load(llvm_ir::ShapeToIrType(return_shape, module_), root_value,
+               "load_ret_value");
       Store(ret_value,
             BitCast(out_parameter, root_value->getType(), "bitcast_ret_value"));
     } else {
@@ -142,15 +153,17 @@ Status IrEmitterNested::CodegenNestedComputation() {
 
       for (int i = 0; i < return_shape.tuple_shapes_size(); i++) {
         const Shape& element_shape = return_shape.tuple_shapes(i);
-        llvm::Value* destination =
-            llvm_ir::EmitGetTupleElement(element_shape,
-                                         /*index=*/i,
-                                         /*alignment=*/1, tuple_ptr, &b_);
-        llvm::Value* source =
-            llvm_ir::EmitGetTupleElement(element_shape,
-                                         /*index=*/i,
-                                         /*alignment=*/1, root_value, &b_);
-        Store(Load(source), destination);
+        llvm::Value* destination = llvm_ir::EmitGetTupleElement(
+            element_shape,
+            /*index=*/i,
+            /*alignment=*/1, tuple_ptr, tuple_type, &b_);
+        llvm::Value* source = llvm_ir::EmitGetTupleElement(
+            element_shape,
+            /*index=*/i,
+            /*alignment=*/1, root_value,
+            llvm_ir::ShapeToIrType(root_instruction->shape(), module_), &b_);
+        Store(Load(llvm_ir::ShapeToIrType(element_shape, module_), source),
+              destination);
       }
     }
   }
@@ -178,6 +191,57 @@ Status IrEmitterNested::EmitTargetElementLoop(
   }
   return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo, hlo), &b_)
       .EmitLoop();
+}
+
+Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
+  for (HloInstruction* instr : computation.instructions()) {
+    if (instr->opcode() != HloOpcode::kConstant) {
+      continue;
+    }
+    Literal& literal = *Cast<HloConstantInstruction>(instr)->mutable_literal();
+    const bool should_emit_initializer = ShouldEmitLiteralInLlvmIr(literal);
+    llvm::ArrayType* global_type =
+        llvm::ArrayType::get(b_.getInt8Ty(), literal.size_bytes());
+    llvm::Constant* initializer =
+        should_emit_initializer
+            ? llvm_ir::ConvertLiteralToIrConstant(literal, module_)
+            : llvm::ConstantAggregateZero::get(global_type);
+    if (should_emit_initializer) {
+      VLOG(3) << "Emitted initializer for constant with shape "
+              << ShapeUtil::HumanString(literal.shape());
+    }
+
+    // These globals will be looked up by name by GpuExecutable so we need to
+    // give them an external linkage.  Not all of their uses are visible in
+    // the LLVM IR (e.g. TupleThunk) so we can't give then a linkage that
+    // merely preserves their names (like available_externally), we also need
+    // to ensure that they stick around even if they're "unused".
+    //
+    // We may have to be more clever here in the future if we notice that we're
+    // keeping around too many globals because of their linkage.
+    std::string global_name = llvm_ir::ConstantHloToGlobalName(*instr);
+
+    llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
+        global_type, /*isConstant=*/should_emit_initializer,
+        llvm::GlobalValue::ExternalLinkage,
+        /*Initializer=*/initializer, global_name,
+        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+        /*AddressSpace=*/0,
+        /*isExternallyInitialized=*/false);
+    global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
+    ir_emitter_context_->llvm_module()->getGlobalList().push_back(
+        global_for_const);
+
+    GpuExecutable::ConstantInfo info;
+    info.symbol_name = global_name;
+
+    if (!should_emit_initializer) {
+      auto base = static_cast<const uint8_t*>(literal.untyped_data());
+      info.content.assign(base, base + literal.size_bytes());
+    }
+    ir_emitter_context_->constants().push_back(std::move(info));
+  }
+  return Status::OK();
 }
 
 }  // namespace gpu

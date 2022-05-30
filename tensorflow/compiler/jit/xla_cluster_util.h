@@ -18,6 +18,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_CLUSTER_UTIL_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_CLUSTER_UTIL_H_
 
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/optional.h"
@@ -33,10 +35,6 @@ namespace tensorflow {
 // The attribute that marks nodes to be grouped into functions by the
 // encapsulate subgraphs pass.
 extern const char* const kXlaClusterAttr;
-
-// The attribute that marks nodes in a cluster to be placed outside the xla
-// compilation by the encapsulate subgraphs pass.
-extern const char* const kXlaOutsideCompilationAttr;
 
 // The attribute that marks certain inputs to a Node as required to be a
 // constant at compile time.  If this attribute is present then the
@@ -102,6 +100,14 @@ XlaAutoClusteringSummary GetXlaAutoClusteringSummary(const Graph& graph);
 // all of the nodes that have ref variables as input or output.
 StatusOr<absl::flat_hash_set<Node*>> GetNodesRelatedToRefVariables(
     const Graph& graph, FunctionLibraryRuntime* lib_runtime);
+
+// Deterministically serialized the graph to a byte string.
+StatusOr<std::string> SerializeGraphDeterministic(const Graph& graph);
+
+// Computes a fingerprint of the given `graph`. The fingerprint can use used to
+// check if two graphs are likely the same but should not be relied on
+// determining if the graphs are identical.
+StatusOr<uint64> FingerprintGraph(const Graph& graph);
 
 }  // namespace tensorflow
 

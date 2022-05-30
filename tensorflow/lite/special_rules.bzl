@@ -5,6 +5,12 @@ load(
     "clean_dep",
 )
 
+# Dependencies for the bzl_library rule for this file.
+# This should include bzl_library targets for the bzl files loaded by the "load" statements above.
+SPECIAL_RULES_DEPS = [
+    "//tensorflow:tensorflow_bzl",
+]
+
 def tflite_portable_test_suite(**kwargs):
     """This is a no-op outside of Google."""
     _ignore = [kwargs]
@@ -48,8 +54,14 @@ def nnapi_plugin_impl_visibility_allowlist():
     This is a no-op outside of Google."""
     return []
 
-def nnapi_sl_headers_visibility_allowlist():
+def nnapi_sl_visibility_allowlist():
     """Returns a list of packages that can depend on tensorflow/lite/nnapi/sl:nnapi_support_library_headers.
+
+    This is a no-op outside of Google."""
+    return []
+
+def nnapi_native_srcs_visibility_allowlist():
+    """Returns a list of packages that can depend on tensorflow/lite/delegates/nnapi/java/src/main/native:native_srcs
 
     This is a no-op outside of Google."""
     return []

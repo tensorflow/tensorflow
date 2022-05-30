@@ -1,7 +1,7 @@
 // RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
 
 // Verify the ops generated when Ref type is used in a while loop.
-func @main() {
+func.func @main() {
   // CHECK:  op: "RefEnter"
   // CHECK:  op: "RefMerge"
   // CHECK:  op: "RefSwitch"
@@ -22,5 +22,5 @@ func @main() {
     tf_executor.NextIteration.Sink [%0#1] %11#0 : tensor<*x!tf_type.int32ref> {device = "", T = "tfdtype$DT_INT32"} loc("while/NextIteration")
     tf_executor.fetch
   }
-  return
+  func.return
 }

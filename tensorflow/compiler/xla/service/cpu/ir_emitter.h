@@ -18,10 +18,11 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <functional>
 #include <map>
 #include <memory>
+#include <ostream>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -52,8 +53,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace cpu {
@@ -80,13 +79,19 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   //              index in the profiling array.
   // computation_to_profile_idx: the mapping from HLO computations to their
   //              index in the profiling array.
+  // computation_transitively_contains_custom_call: the mapping from HLO
+  //   computations to whether or not they transitively contain a custom-call
+  //   instruction. All computations in the module must have a key in this
+  //   map.
   // emit_code_for_msan: whether emitted code should be compatible with msan.
   IrEmitter(mlir::MLIRContext* mlir_context, const HloModule& hlo_module,
             const BufferAssignment& assignment, llvm::Module* llvm_module,
-            std::unordered_map<const HloInstruction*, int64_t>
+            absl::flat_hash_map<const HloInstruction*, int64_t>
                 instruction_to_profile_idx,
-            std::unordered_map<const HloComputation*, int64_t>
+            absl::flat_hash_map<const HloComputation*, int64_t>
                 computation_to_profile_idx,
+            absl::flat_hash_map<const HloComputation*, bool>
+                computation_transitively_contains_custom_call,
             const TargetMachineFeatures* target_machine,
             bool emit_code_for_msan);
   ~IrEmitter() override;
@@ -108,10 +113,14 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // in the given order.  In this case, 'instruction_order' must be a
   // topological sort of the set of nodes accessible from the root of the
   // computation.
+  //
+  // If 'allow_reassociation' is true, the fast-math reassociation flag will
+  // be enabled in the function's body. This is used when emitting reducers.
   StatusOr<llvm::Function*> EmitComputation(
-      HloComputation* computation, const string& function_name_prefix,
+      HloComputation* computation, const std::string& function_name_prefix,
       bool is_top_level_computation,
-      absl::Span<HloInstruction* const> instruction_order);
+      absl::Span<HloInstruction* const> instruction_order,
+      bool allow_reassociation);
 
   llvm::IRBuilder<>* b() { return &b_; }
 
@@ -135,7 +144,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleCopy(HloInstruction* copy) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleSelect(HloInstruction* select) override;
-  Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleDot(HloInstruction* dot) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleFft(HloInstruction* fft) override;
@@ -167,6 +175,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleScatter(HloInstruction* scatter) override;
   Status HandleAfterAll(HloInstruction* after_all) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
+  Status HandlePartitionId(HloInstruction* hlo) override;
   Status HandleReplicaId(HloInstruction* hlo) override;
   Status HandleRng(HloInstruction* rng) override;
   Status HandleRngGetAndUpdateState(HloInstruction* rng_state) override;
@@ -189,7 +198,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleAllReduceMultipleReplica(HloInstruction* crs);
 
   // Private helper to initialize an IR function for the computation.
-  void InitializeIrFunction(const string& function_name);
+  void InitializeIrFunction(const std::string& function_name);
 
   // Emits the copying epilogue for the function,
   // where it copies the returned value to the reserved alloca.
@@ -209,7 +218,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   template <typename T>
   llvm::Value* GetProfileCounterCommon(
       const T& hlo,
-      const std::unordered_map<const T*, int64_t>& profile_index_map);
+      const absl::flat_hash_map<const T*, int64_t>& profile_index_map);
 
   // Gets the IR Value emitted previously for the given hlo.
   //
@@ -245,6 +254,10 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // computation function being emitted by this emitter.
   llvm::Value* GetProfileCountersArgument();
 
+  // Get the llvm::Value* that represents the "status" argument of the
+  // computation function being emitted by this emitter.
+  llvm::Value* GetStatusArgument();
+
   // Get the xla::ExecutableRunOptions that represents the "run_options"
   // argument of the computation function being emitted by this emitter.
   llvm::Value* GetExecutableRunOptionsArgument();
@@ -252,6 +265,13 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Get the llvm::Value* that represents the "buffer_table" argument of the
   // computation function being emitted by this emitter.
   llvm::Value* GetBufferTableArgument();
+
+  // Get the llvm::BasicBlock that contains the return instruction.
+  llvm::BasicBlock* GetReturnBlock();
+
+  // Emits code to check the state of the status object being threaded through
+  // each computation and return early if it's in an error state.
+  void EmitEarlyReturnIfErrorStatus();
 
   // Helper for EmitBufferPointer.
   llvm::Value* EmitGlobalBufferPointer(const BufferAllocation::Slice& slice,
@@ -274,7 +294,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // callee.  The return value is the scalar returned by the callee.
   std::vector<llvm::Value*> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
-      absl::string_view name);
+      absl::string_view name, bool is_reducer);
 
   // Similar to EmitThreadLocal, yet assumes that the function returns a scalar.
   llvm::Value* EmitScalarReturningThreadLocalCall(
@@ -348,7 +368,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                                       HloInstruction* init_value,
                                       absl::Span<const int64_t> dimensions,
                                       HloComputation* function,
-                                      string* failure_reason);
+                                      std::string* failure_reason);
 
   // We'd like to keep one or two one cache-line's worth of data in registers
   // without generating IR with illegal (e.g. excessively large or
@@ -390,7 +410,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // which can be used to generate the LLVM IR corresponding to said reduction.
   // On failure, this stores a reason string into "failure_reason".
   ReductionGenerator MatchReductionGenerator(HloComputation* function,
-                                             string* failure_reason) const;
+                                             std::string* failure_reason) const;
 
   // Emits the inner loop nest that runs the reduction.  Helper function for
   // EmitVectorizedReduce.
@@ -406,7 +426,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // string describing why it could not emit a fast concatenate.
   StatusOr<bool> EmitFastConcatenate(HloInstruction* concatenate,
                                      absl::Span<HloInstruction* const> operands,
-                                     string* failure_reason);
+                                     std::string* failure_reason);
 
   // Emits LLVM IR to transfer "element_count" elements of type "primitive_type"
   // from the address "source" to the address "target".
@@ -442,8 +462,27 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Used to produce unique names for generated functions.
   NameUniquer name_uniquer_;
 
+  struct ComputationToEmit {
+    const HloComputation* computation;
+    bool allow_reassociation;
+
+    bool operator==(const ComputationToEmit& other) const {
+      return computation == other.computation &&
+             allow_reassociation == other.allow_reassociation;
+    }
+
+    template <typename H>
+    friend H AbslHashValue(H h, const ComputationToEmit& c) {
+      return H::combine(std::move(h), c.computation, c.allow_reassociation);
+    }
+    friend std::ostream& operator<<(std::ostream& os,
+                                    const ComputationToEmit& c) {
+      return os << c.computation->name() << ", " << c.allow_reassociation;
+    }
+  };
+
   // Map containing all previously emitted computations.
-  std::map<const HloComputation*, llvm::Function*> emitted_functions_;
+  absl::flat_hash_map<ComputationToEmit, llvm::Function*> emitted_functions_;
 
   // Map containing all previously emitted thread-local temporary buffers.
   std::map<std::pair<llvm::Function*, BufferAllocation::Slice>, llvm::Value*>
@@ -456,6 +495,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   std::unique_ptr<IrFunction> compute_function_;
   llvm::IRBuilder<> b_;
   mlir::MLIRContext* mlir_context_;
+  bool allow_reassociation_;
 
   // The buffer allocation slice for the root of the computation being compiled.
   // Only relevant for thread local computations.
@@ -468,12 +508,29 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       computation_parameter_allocations_;
 
   // Maps HLO instructions to their index into the profile counter array.
-  const std::unordered_map<const HloInstruction*, int64_t>
+  const absl::flat_hash_map<const HloInstruction*, int64_t>
       instruction_to_profile_idx_;
 
   // Maps HLO computations to their index into the profile counter array.
-  const std::unordered_map<const HloComputation*, int64_t>
+  const absl::flat_hash_map<const HloComputation*, int64_t>
       computation_to_profile_idx_;
+
+  // Maps HLO computations to whether they contain a custom-call instruction
+  // (either directly, or transitively by e.g. calling another computation that
+  // does).
+  const absl::flat_hash_map<const HloComputation*, bool>
+      computation_transitively_contains_custom_call_;
+
+  // Accessor for the custom-call mapping that enforces the precondition that
+  // all computations must have a key in the map.
+  bool ComputationTransitivelyContainsCustomCall(
+      const HloComputation* computation) const {
+    auto it = computation_transitively_contains_custom_call_.find(computation);
+    CHECK(it != computation_transitively_contains_custom_call_.cend())
+        << "Must provide 'contains CustomCall' annotation for all computations "
+           "in the module";
+    return it->second;
+  }
 
   // Maps HLOs to Values emitted for them.
   absl::flat_hash_map<const HloInstruction*, llvm::Value*> emitted_value_;
@@ -531,7 +588,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
     // Maps HLOs to the value the cycle counter contained right before the HLO
     // began to execute.
-    std::unordered_map<const HloInstruction*, llvm::Value*> cycle_starts_;
+    absl::flat_hash_map<const HloInstruction*, llvm::Value*> cycle_starts_;
   };
 
   ProfilingState profiling_state_;
@@ -548,7 +605,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
    private:
     bool enabled_;
     // Maps from HLO to the activity id returned by xprof::TraceMe.
-    std::unordered_map<const HloInstruction*, llvm::Value*> activity_ids_;
+    absl::flat_hash_map<const HloInstruction*, llvm::Value*> activity_ids_;
   };
   TracingState tracing_state_;
 
@@ -594,7 +651,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   const TargetMachineFeatures& target_machine_features_;
 
   struct LiteralPtrHashFunctor {
-    size_t operator()(const Literal* literal) const { return literal->Hash(); }
+    size_t operator()(const Literal* literal) const {
+      return absl::HashOf(*literal);
+    }
   };
 
   struct LiteralPtrEqualityFunctor {
@@ -615,7 +674,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   bool emit_code_for_msan_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(IrEmitter);
+  IrEmitter(const IrEmitter&) = delete;
+  IrEmitter& operator=(const IrEmitter&) = delete;
 };
 
 }  // namespace cpu

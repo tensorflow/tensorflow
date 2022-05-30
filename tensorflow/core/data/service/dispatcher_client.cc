@@ -89,13 +89,14 @@ Status DataServiceDispatcherClient::GetDatasetDef(int64_t dataset_id,
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::GetSplit(int64_t job_id, int64_t repetition,
+Status DataServiceDispatcherClient::GetSplit(int64_t iteration_id,
+                                             int64_t repetition,
                                              int64_t split_provider_index,
                                              Tensor& split,
                                              bool& end_of_splits) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetSplitRequest req;
-  req.set_job_id(job_id);
+  req.set_iteration_id(iteration_id);
   req.set_repetition(repetition);
   req.set_split_provider_index(split_provider_index);
   GetSplitResponse resp;
@@ -114,14 +115,12 @@ Status DataServiceDispatcherClient::GetSplit(int64_t job_id, int64_t repetition,
 }
 
 Status DataServiceDispatcherClient::RegisterDataset(
-    const DatasetDef& dataset, const absl::optional<std::string>& element_spec,
+    const DatasetDef& dataset, const DataServiceMetadata& metadata,
     int64_t& dataset_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrRegisterDatasetRequest req;
   *req.mutable_dataset() = dataset;
-  if (element_spec.has_value()) {
-    req.set_element_spec(element_spec.value());
-  }
+  *req.mutable_metadata() = metadata;
 
   GetOrRegisterDatasetResponse resp;
   grpc::ClientContext client_ctx;
@@ -135,20 +134,21 @@ Status DataServiceDispatcherClient::RegisterDataset(
 
 Status DataServiceDispatcherClient::GetOrCreateJob(
     int64_t dataset_id, const ProcessingModeDef& processing_mode,
-    const absl::optional<JobKey>& job_key,
-    absl::optional<int64_t> num_consumers, TargetWorkers target_workers,
-    int64_t& job_client_id) {
+    const absl::optional<std::string>& job_name,
+    absl::optional<int64_t> num_consumers, bool use_cross_trainer_cache,
+    TargetWorkers target_workers, int64_t& job_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrCreateJobRequest req;
   req.set_dataset_id(dataset_id);
   *req.mutable_processing_mode_def() = processing_mode;
-  if (job_key.has_value()) {
-    *req.mutable_job_key() = job_key.value();
+  if (job_name.has_value()) {
+    req.set_job_name(job_name.value());
   }
   if (num_consumers.has_value()) {
     req.set_num_consumers(num_consumers.value());
   }
   req.set_target_workers(target_workers);
+  req.set_use_cross_trainer_cache(use_cross_trainer_cache);
   GetOrCreateJobResponse resp;
   grpc::ClientContext client_ctx;
   grpc::Status status = stub_->GetOrCreateJob(&client_ctx, req, &resp);
@@ -158,20 +158,41 @@ Status DataServiceDispatcherClient::GetOrCreateJob(
                      dataset_id),
         status);
   }
-  job_client_id = resp.job_client_id();
+  job_id = resp.job_id();
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::ReleaseJobClient(int64_t job_client_id) {
+Status DataServiceDispatcherClient::GetOrCreateIteration(
+    int64_t job_id, int64_t repetition, int64_t& iteration_client_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
-  ReleaseJobClientRequest req;
-  req.set_job_client_id(job_client_id);
-  ReleaseJobClientResponse resp;
+  GetOrCreateIterationRequest req;
+  req.set_job_id(job_id);
+  req.set_repetition(repetition);
+  GetOrCreateIterationResponse resp;
   grpc::ClientContext client_ctx;
-  grpc::Status status = stub_->ReleaseJobClient(&client_ctx, req, &resp);
+  grpc::Status status = stub_->GetOrCreateIteration(&client_ctx, req, &resp);
   if (!status.ok()) {
     return grpc_util::WrapError(
-        absl::StrCat("Failed to release job client with id ", job_client_id),
+        absl::StrCat("Failed to get or create iteration for job with id ",
+                     job_id),
+        status);
+  }
+  iteration_client_id = resp.iteration_client_id();
+  return Status::OK();
+}
+
+Status DataServiceDispatcherClient::ReleaseIterationClient(
+    int64_t iteration_client_id) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+  ReleaseIterationClientRequest req;
+  req.set_iteration_client_id(iteration_client_id);
+  ReleaseIterationClientResponse resp;
+  grpc::ClientContext client_ctx;
+  grpc::Status status = stub_->ReleaseIterationClient(&client_ctx, req, &resp);
+  if (!status.ok()) {
+    return grpc_util::WrapError(
+        absl::StrCat("Failed to release iteration client with id ",
+                     iteration_client_id),
         status);
   }
   return Status::OK();
@@ -224,19 +245,32 @@ Status DataServiceDispatcherClient::GetWorkers(
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::GetElementSpec(int64_t dataset_id,
-                                                   std::string& element_spec) {
+Status DataServiceDispatcherClient::GetDataServiceMetadata(
+    int64_t dataset_id, DataServiceMetadata& metadata) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
-
-  GetElementSpecRequest req;
+  GetDataServiceMetadataRequest req;
   req.set_dataset_id(dataset_id);
-  GetElementSpecResponse resp;
+  GetDataServiceMetadataResponse resp;
   grpc::ClientContext ctx;
-  grpc::Status s = stub_->GetElementSpec(&ctx, req, &resp);
+  grpc::Status s = stub_->GetDataServiceMetadata(&ctx, req, &resp);
   if (!s.ok()) {
-    return grpc_util::WrapError("Failed to get element_spec", s);
+    return grpc_util::WrapError("Failed to get data service metadata", s);
   }
-  element_spec = resp.element_spec();
+  metadata = resp.metadata();
+  return Status::OK();
+}
+
+Status DataServiceDispatcherClient::GetDataServiceConfig(
+    DataServiceConfig& config) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+  GetDataServiceConfigRequest request;
+  GetDataServiceConfigResponse response;
+  grpc::ClientContext ctx;
+  grpc::Status s = stub_->GetDataServiceConfig(&ctx, request, &response);
+  if (!s.ok()) {
+    return grpc_util::WrapError("Failed to get data service config", s);
+  }
+  config = response.config();
   return Status::OK();
 }
 

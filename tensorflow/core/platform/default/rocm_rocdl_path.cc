@@ -36,11 +36,7 @@ string RocmRoot() {
 }
 
 string RocdlRoot() {
-#if TF_ROCM_VERSION >= 30900
   return tensorflow::io::JoinPath(tensorflow::RocmRoot(), "amdgcn/bitcode");
-#else
-  return tensorflow::io::JoinPath(tensorflow::RocmRoot(), "lib");
-#endif
 }
 
 }  // namespace tensorflow

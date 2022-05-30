@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/core/lib/strings/numbers.h"
 
 namespace {
 
@@ -79,7 +78,7 @@ absl::optional<std::tuple<int64_t, int64_t, int64_t>> LlvmIrGemmTileSize(
     return absl::nullopt;
   }
 
-  std::vector<string> tile_components = absl::StrSplit(it->second, ':');
+  std::vector<std::string> tile_components = absl::StrSplit(it->second, ':');
   CHECK_EQ(tile_components.size(), 3);
 
   int64_t tile_size_m;

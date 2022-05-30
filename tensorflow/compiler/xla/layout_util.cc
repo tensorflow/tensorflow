@@ -19,23 +19,20 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <numeric>
 #include <random>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -321,13 +318,13 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
 /* static */ absl::Span<const int64_t> LayoutUtil::MinorToMajor(
     const Shape& shape) {
   CHECK(IsDenseArray(shape));
-  return AsInt64Slice(shape.layout().minor_to_major());
+  return shape.layout().minor_to_major();
 }
 
 /* static */ absl::Span<const int64_t> LayoutUtil::MinorToMajor(
     const Layout& layout) {
   CHECK(layout.format() == DENSE);
-  return AsInt64Slice(layout.minor_to_major());
+  return layout.minor_to_major();
 }
 
 /* static */ int64_t LayoutUtil::Major(const Layout& layout,
@@ -357,7 +354,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
   return logical_to_physical;
 }
 
-/* static */ string LayoutUtil::HumanString(const Layout& layout) {
+/* static */ std::string LayoutUtil::HumanString(const Layout& layout) {
   return layout.ToString();
 }
 
@@ -454,24 +451,52 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   return ret;
 }
 
-/*static*/ size_t LayoutUtil::Hash(const Layout& layout) {
-  using tensorflow::hash;
-  using tensorflow::Hash64Combine;
+/*static*/ int64_t LayoutUtil::LinearIndex(const Shape& shape,
+                                           absl::Span<const int64_t> indices) {
+  CHECK(shape.IsArray());
+  CHECK(shape.has_layout());
+  const int rank = shape.rank();
+  CHECK_EQ(rank, indices.size());
 
-  size_t hash_value = hash<Format>()(layout.format());
-
-  for (int64_t minor_to_major : layout.minor_to_major()) {
-    hash_value = Hash64Combine(hash_value, hash<int64_t>()(minor_to_major));
+  if (rank == 0) {
+    return 0;
   }
-  for (const Tile& tile : layout.tiles()) {
-    for (int64_t tile_dim : tile.dimensions()) {
-      hash_value = Hash64Combine(hash_value, hash<int64_t>()(tile_dim));
+  if (rank == 1) {
+    return indices[0];
+  }
+
+  Tile tile = {};
+  if (!shape.layout().tiles().empty()) {
+    tile = shape.layout().tiles()[0];
+  }
+
+  int64_t linear_index = 0;
+  int64_t tile_multiplier = 1;
+  // Initialize to number of elements in a tile.
+  for (int64_t i : tile.dimensions()) {
+    tile_multiplier *= i;
+  }
+  int64_t within_tile_multiplier = 1;
+
+  // We only look at the top-level tile.
+  for (int64_t minor = 0; minor < rank; minor++) {
+    int64_t logical_dim = Minor(shape.layout(), minor);
+    int64_t shape_dim_size = shape.dimensions(logical_dim);
+    int64_t index = indices[logical_dim];
+
+    if (minor < tile.dimensions().size()) {
+      int64_t tile_dim_size =
+          tile.dimensions()[tile.dimensions().size() - 1 - minor];
+      linear_index += tile_multiplier * (index / tile_dim_size) +
+                      within_tile_multiplier * (index % tile_dim_size);
+      tile_multiplier *= CeilOfRatio(shape_dim_size, tile_dim_size);
+      within_tile_multiplier *= tile_dim_size;
+    } else {
+      linear_index += index * tile_multiplier;
+      tile_multiplier *= shape_dim_size;
     }
   }
-  hash_value = Hash64Combine(hash_value, layout.element_size_in_bits());
-  hash_value = Hash64Combine(hash_value, layout.memory_space());
-
-  return hash_value;
+  return linear_index;
 }
 
 }  // namespace xla

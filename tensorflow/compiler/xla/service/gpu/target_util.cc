@@ -103,8 +103,8 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
 
 // Wrapper structure for carrying math functions for NVPTX/AMDGPU platforms.
 struct TargetDeviceFunction {
-  const string nvptx_root;
-  const string amdgpu_root;
+  const std::string nvptx_root;
+  const std::string amdgpu_root;
 };
 
 // Gets the device function name on different platforms (NVPTX, AMDGPU)
@@ -161,9 +161,9 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
 }
 }  // namespace
 
-string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
-                                PrimitiveType output_type,
-                                llvm::IRBuilder<>* b) {
+std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
+                                     PrimitiveType output_type,
+                                     llvm::IRBuilder<>* b) {
   // The device math functions differentiate between "double" and "float" by
   // appending a double or float specific suffix to a root name. The suffix and
   // the root name are specific to the target.
@@ -192,7 +192,7 @@ string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
 }
 
 llvm::CallInst* EmitDeviceFunctionCall(
-    const string& callee_name, absl::Span<llvm::Value* const> operands,
+    const std::string& callee_name, absl::Span<llvm::Value* const> operands,
     absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
     absl::Span<const llvm::Attribute::AttrKind> attributes,
     llvm::IRBuilder<>* b, absl::string_view name) {

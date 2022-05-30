@@ -15,6 +15,7 @@ py_library(
         ":metric_utils",
         ":utils",
         ":values",
+        ":watchdog",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:func_graph",
@@ -60,13 +61,14 @@ py_library(
 
 distribute_py_test(
     name = "cluster_coordinator_test",
-    size = "small",
     srcs = ["cluster_coordinator_test.py"],
     python_version = "PY3",
     shard_count = 50,
     tags = [
         "multi_gpu",
+        "no_oss",  # TODO(b/214432000): Very flaky under Docker
         "no_pip",
+        "noasan",  # TODO(b/171040359): Flaky timeout, even if maximum shards
         "notpu",
         "notsan",  # TODO(b/171040359): Flaky timeout, even if maximum shards
     ],
@@ -102,6 +104,7 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 36,
     tags = [
+        "no_oss",  # TODO(b/219580021)
         "noasan",  # Multi-process runner does not work with test sanitizers
         "nomac",  # TODO(b/177065434)
         "notsan",  # Multi-process runner does not work with test sanitizers
@@ -167,4 +170,21 @@ py_library(
     name = "remote_eager_lib",
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "watchdog",
+    srcs = ["watchdog.py"],
+    srcs_version = "PY3",
+    deps = [],
+)
+
+tf_py_test(
+    name = "watchdog_test",
+    srcs = ["watchdog_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":watchdog",
+        "//tensorflow/python/eager:test",
+    ],
 )

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
 
+#include <utility>
+
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #endif
@@ -185,27 +187,9 @@ bool GpuExecutor::FindOnDiskForISAVersion(absl::string_view filename,
 //                 returned string. Example: calling this from /usr/bin/foo
 //                 would return /usr/bin.
 static std::string GetBinaryDir(bool strip_exe) {
-  char exe_path[PATH_MAX] = {0};
-#if defined(__APPLE__)
-  uint32_t buffer_size = 0U;
-  _NSGetExecutablePath(nullptr, &buffer_size);
-  char unresolved_path[buffer_size];
-  _NSGetExecutablePath(unresolved_path, &buffer_size);
-  CHECK_ERR(realpath(unresolved_path, exe_path) ? 1 : -1);
-#else
-#if defined(PLATFORM_WINDOWS)
-  HMODULE hModule = GetModuleHandle(NULL);
-  GetModuleFileName(hModule, exe_path, MAX_PATH);
-#else
-  PCHECK(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1) != -1);
-#endif
-#endif
-  // Make sure it's null-terminated:
-  exe_path[sizeof(exe_path) - 1] = 0;
-
+  std::string exe_path = port::GetExecutablePath();
   if (strip_exe) {
     // The exe is the last component of the path, so remove one component.
-    std::string ret = exe_path;
     std::vector<std::string> components = absl::StrSplit(exe_path, '/');
     components.pop_back();
     return absl::StrJoin(components, "/");
@@ -377,6 +361,67 @@ bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
   const char* gpu_binary = reinterpret_cast<const char*>(module_handle.id());
   absl::MutexLock lock{&in_memory_modules_mu_};
   return UnloadGpuBinary(gpu_binary);
+}
+
+namespace {
+absl::uint128 Fingerprint128(const absl::string_view s) {
+  auto fp = tensorflow::Fingerprint128(s);
+  return absl::MakeUint128(fp.high64, fp.low64);
+}
+}  // namespace
+
+port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+GpuExecutor::CreateOrShareConstant(Stream* stream,
+                                   const std::vector<uint8_t>& content) {
+  absl::MutexLock lock{&shared_constants_mu_};
+  // We assume all constants are uniquely identified by this hash. In the
+  // (highly unlikely) event of a hash collision, the program will likely crash
+  // (because the cached constant that will be returned by mistake is unlikely
+  // to have the correct size).
+  absl::uint128 fingerprint = Fingerprint128(absl::string_view(
+      reinterpret_cast<const char*>(content.data()), content.size()));
+  // Must insert nullptr first to get an iterator to the insertion point.
+  auto insert_result = shared_constants_.insert(
+      {fingerprint, std::weak_ptr<DeviceMemoryBase>()});
+  auto it = insert_result.first;
+  bool was_already_in_cache = !insert_result.second;
+  std::shared_ptr<DeviceMemoryBase> shared_constant;
+
+  if (was_already_in_cache) {
+    shared_constant = it->second.lock();
+  }
+
+  if (shared_constant == nullptr) {
+    // Either the constant wasn't found in the cache, or it was but its
+    // weak_ptr had expired.
+    DeviceMemoryBase* new_constant =
+        new DeviceMemoryBase(Allocate(content.size(), /*memory_space=*/0));
+    if (new_constant->opaque() == nullptr) {
+      return port::InternalError(absl::StrFormat(
+          "Failed to allocate %d bytes for new constant", content.size()));
+    }
+
+    port::Status status =
+        stream->ThenMemcpy(new_constant, content.data(), content.size())
+            .BlockHostUntilDone();
+    if (!status.ok()) {
+      Deallocate(new_constant);
+      status.Update(port::InternalError(absl::StrFormat(
+          "Memcpy to device address %p failed", new_constant->opaque())));
+      return status;
+    }
+
+    // Capturing 'this' in the custom deleter means this executor must
+    // outlive all shared uses of this constant.
+    shared_constant = std::shared_ptr<DeviceMemoryBase>(
+        new_constant, [this](DeviceMemoryBase* p) {
+          Deallocate(p);
+          delete p;
+        });
+    it->second = std::weak_ptr<DeviceMemoryBase>(shared_constant);
+  }
+
+  return shared_constant;
 }
 
 port::Status GpuExecutor::GetKernelMetadata(GpuKernel* cuda_kernel,
@@ -695,11 +740,16 @@ Event::Status GpuExecutor::PollForEventStatus(Event* event) {
 }
 
 bool GpuExecutor::AllocateStream(Stream* stream) {
-  return AsGpuStream(stream)->Init();
+  absl::MutexLock l(&alive_gpu_streams_mu_);
+  bool out = AsGpuStream(stream)->Init();
+  alive_gpu_streams_[stream->implementation()->GpuStreamHack()] = stream;
+  return out;
 }
 
 void GpuExecutor::DeallocateStream(Stream* stream) {
   GpuStream* cuda_stream = AsGpuStream(stream);
+  absl::MutexLock l(&alive_gpu_streams_mu_);
+  alive_gpu_streams_.erase(cuda_stream->GpuStreamHack());
   if (!cuda_stream->IsIdle()) {
     LOG(ERROR) << "Deallocating stream with pending work";
   }
@@ -817,6 +867,8 @@ bool GpuExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
 bool GpuExecutor::GetSymbol(const std::string& symbol_name,
                             ModuleHandle module_handle, void** mem,
                             size_t* bytes) {
+  CHECK(static_cast<bool>(module_handle));
+
   auto lookup_in_module = [&](CUmodule module) {
     CHECK(module != nullptr);
     return GpuDriver::GetModuleSymbol(context_, module, symbol_name.c_str(),
@@ -826,20 +878,12 @@ bool GpuExecutor::GetSymbol(const std::string& symbol_name,
 
   {  // give limited scope to mutex_lock
     absl::MutexLock lock{&in_memory_modules_mu_};
-    if (static_cast<bool>(module_handle)) {
-      auto it = gpu_binary_to_module_.find(module_handle.id());
-      CHECK(it != gpu_binary_to_module_.end());
-      return lookup_in_module(it->second.first);
-    }
-
-    for (auto& it : gpu_binary_to_module_) {
-      if (lookup_in_module(it.second.first)) {
-        return true;
-      }
-    }
+    auto it = gpu_binary_to_module_.find(module_handle.id());
+    CHECK(it != gpu_binary_to_module_.end());
+    return lookup_in_module(it->second.first);
   }
 
-  LOG(INFO) << "Failed to find symbol in any modules: " << symbol_name;
+  LOG(INFO) << "Failed to find symbol: " << symbol_name;
   return false;
 }
 
@@ -857,6 +901,14 @@ bool FillBlockDimLimit(GpuDeviceHandle device, BlockDim* block_dim_limit) {
   block_dim_limit->y = y;
   block_dim_limit->z = z;
   return true;
+}
+
+bool GpuExecutor::SupportsBlasPlans() const {
+#if CUDA_VERSION >= 11000
+  return true;
+#else
+  return false;
+#endif
 }
 
 bool GpuExecutor::SupportsBlas() const { return true; }
@@ -901,9 +953,6 @@ static int TryToReadNumaNode(const std::string& pci_bus_id,
   return 0;
 #elif defined(PLATFORM_WINDOWS)
   // Windows support for NUMA is not currently implemented. Return node 0.
-  return 0;
-#elif defined(__aarch64__)
-  LOG(INFO) << "ARM64 does not support NUMA - returning NUMA node zero";
   return 0;
 #else
   VLOG(2) << "trying to read NUMA node for device ordinal: " << device_ordinal;

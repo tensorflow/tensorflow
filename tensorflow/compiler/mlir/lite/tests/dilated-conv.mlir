@@ -1,12 +1,12 @@
 // RUN: tf-opt %s -tfl-identify-dilated-conv | FileCheck %s
 
-func @testDilatedConv(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>) -> tensor<1x120x120x8xf32> {
-  %cst = constant dense<[2, 2]> : tensor<2xi32>
-  %cst_0 = constant dense<4> : tensor<2x2xi32>
+func.func @testDilatedConv(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>) -> tensor<1x120x120x8xf32> {
+  %cst = arith.constant dense<[2, 2]> : tensor<2xi32>
+  %cst_0 = arith.constant dense<4> : tensor<2x2xi32>
   %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_0) : (tensor<1x128x128x3xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68x3xf32>
   %1 = "tf.Conv2D"(%0, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x68x68x3xf32>, tensor<5x5x3x8xf32>) -> tensor<4x64x64x8xf32>
   %2 = "tf.BatchToSpaceND"(%1, %cst, %cst_0) : (tensor<4x64x64x8xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x120x120x8xf32>
-  return %2 : tensor<1x120x120x8xf32>
+  func.return %2 : tensor<1x120x120x8xf32>
 
   // CHECK-LABEL: testDilatedConv
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128x3xf32>, [[FILTER:%.*]]: tensor<5x5x3x8xf32>)
@@ -14,13 +14,13 @@ func @testDilatedConv(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>
   // CHECK-NEXT: return [[RESULT]] : tensor<1x120x120x8xf32>
 }
 
-func @testDilatedConvWithNonConstantPadAndCrops(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>) -> tensor<1x120x120x8xf32> {
-  %cst = constant dense<[2, 2]> : tensor<2xi32>
-  %cst_1 = constant dense<0> : tensor<2x2xi32>
+func.func @testDilatedConvWithNonConstantPadAndCrops(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>) -> tensor<1x120x120x8xf32> {
+  %cst = arith.constant dense<[2, 2]> : tensor<2xi32>
+  %cst_1 = arith.constant dense<0> : tensor<2x2xi32>
   %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_1) : (tensor<1x128x128x3xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x64x64x3xf32>
   %1 = "tf.Conv2D"(%0, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x64x64x3xf32>, tensor<5x5x3x8xf32>) -> tensor<4x60x60x8xf32>
   %2 = "tf.BatchToSpaceND"(%1, %cst, %cst_1) : (tensor<4x60x60x8xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x120x120x8xf32>
-  return %2 : tensor<1x120x120x8xf32>
+  func.return %2 : tensor<1x120x120x8xf32>
 
   // CHECK-LABEL: testDilatedConvWithNonConstantPadAndCrops
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128x3xf32>, [[FILTER:%.*]]: tensor<5x5x3x8xf32>)
@@ -28,14 +28,14 @@ func @testDilatedConvWithNonConstantPadAndCrops(%arg0: tensor<1x128x128x3xf32>, 
   // CHECK-NEXT: return [[RESULT]] : tensor<1x120x120x8xf32>
 }
 
-func @testDilatedConvWithNonZeroBasePadding(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>) -> tensor<1x128x128x8xf32> {
-  %cst = constant dense<[2, 2]> : tensor<2xi32>
-  %cst_0 = constant dense<4> : tensor<2x2xi32>
-  %cst_1 = constant dense<0> : tensor<2x2xi32>
+func.func @testDilatedConvWithNonZeroBasePadding(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>) -> tensor<1x128x128x8xf32> {
+  %cst = arith.constant dense<[2, 2]> : tensor<2xi32>
+  %cst_0 = arith.constant dense<4> : tensor<2x2xi32>
+  %cst_1 = arith.constant dense<0> : tensor<2x2xi32>
   %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_0) : (tensor<1x128x128x3xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68x3xf32>
   %1 = "tf.Conv2D"(%0, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x68x68x3xf32>, tensor<5x5x3x8xf32>) -> tensor<4x64x64x8xf32>
   %2 = "tf.BatchToSpaceND"(%1, %cst, %cst_1) : (tensor<4x64x64x8xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x128x128x8xf32>
-  return %2 : tensor<1x128x128x8xf32>
+  func.return %2 : tensor<1x128x128x8xf32>
 
   // CHECK-LABEL: testDilatedConvWithNonZeroBasePadding
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128x3xf32>, [[FILTER:%.*]]: tensor<5x5x3x8xf32>)
@@ -43,14 +43,14 @@ func @testDilatedConvWithNonZeroBasePadding(%arg0: tensor<1x128x128x3xf32>, %arg
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128x8xf32>
 }
 
-func @testDilatedConvWithNonTrivialDilations(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>) -> tensor<1x128x128x8xf32> {
-  %cst = constant dense<[2, 2]> : tensor<2xi32>
-  %cst_0 = constant dense<4> : tensor<2x2xi32>
-  %cst_1 = constant dense<0> : tensor<2x2xi32>
+func.func @testDilatedConvWithNonTrivialDilations(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>) -> tensor<1x128x128x8xf32> {
+  %cst = arith.constant dense<[2, 2]> : tensor<2xi32>
+  %cst_0 = arith.constant dense<4> : tensor<2x2xi32>
+  %cst_1 = arith.constant dense<0> : tensor<2x2xi32>
   %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_0) : (tensor<1x128x128x3xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68x3xf32>
   %1 = "tf.Conv2D"(%0, %arg1) {padding = "VALID", dilations = [1, 2, 2, 1], strides = [1, 1, 1, 1]} : (tensor<4x68x68x3xf32>, tensor<5x5x3x8xf32>) -> tensor<4x60x60x8xf32>
   %2 = "tf.BatchToSpaceND"(%1, %cst, %cst_1) : (tensor<4x60x60x8xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x128x128x8xf32>
-  return %2 : tensor<1x128x128x8xf32>
+  func.return %2 : tensor<1x128x128x8xf32>
 
   // CHECK-LABEL: testDilatedConvWithNonTrivialDilations
   // CHECK: [[STB:%.*]] = "tf.SpaceToBatchND"
@@ -59,14 +59,14 @@ func @testDilatedConvWithNonTrivialDilations(%arg0: tensor<1x128x128x3xf32>, %ar
   // CHECK-NEXT: return [[RESULT]]
 }
 
-func @testDilatedDepthWiseConv(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>) -> tensor<1x128x128x8xf32> {
-  %cst = constant dense<[2, 2]> : tensor<2xi32>
-  %cst_0 = constant dense<4> : tensor<2x2xi32>
-  %cst_1 = constant dense<0> : tensor<2x2xi32>
+func.func @testDilatedDepthWiseConv(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>) -> tensor<1x128x128x8xf32> {
+  %cst = arith.constant dense<[2, 2]> : tensor<2xi32>
+  %cst_0 = arith.constant dense<4> : tensor<2x2xi32>
+  %cst_1 = arith.constant dense<0> : tensor<2x2xi32>
   %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_0) : (tensor<1x128x128x3xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68x3xf32>
   %1 = "tf.DepthwiseConv2dNative"(%0, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x68x68x3xf32>, tensor<5x5x3x8xf32>) -> tensor<4x64x64x8xf32>
   %2 = "tf.BatchToSpaceND"(%1, %cst, %cst_1) : (tensor<4x64x64x8xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x128x128x8xf32>
-  return %2 : tensor<1x128x128x8xf32>
+  func.return %2 : tensor<1x128x128x8xf32>
 
   // CHECK-LABEL: testDilatedDepthWiseConv
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128x3xf32>, [[FILTER:%.*]]: tensor<5x5x3x8xf32>)
@@ -74,17 +74,17 @@ func @testDilatedDepthWiseConv(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128x8xf32>
 }
 
-func @testDilatedConvWithPad(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>, %arg2: tensor<8xf32>) -> tensor<1x128x128x8xf32> {
-  %cst = constant dense<[2, 2]> : tensor<2xi32>
-  %cst_0 = constant dense<4> : tensor<2x2xi32>
-  %cst_1 = constant dense<0> : tensor<2x2xi32>
-  %cst_2 = constant dense<0> : tensor<4x2xi32>
+func.func @testDilatedConvWithPad(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>, %arg2: tensor<8xf32>) -> tensor<1x128x128x8xf32> {
+  %cst = arith.constant dense<[2, 2]> : tensor<2xi32>
+  %cst_0 = arith.constant dense<4> : tensor<2x2xi32>
+  %cst_1 = arith.constant dense<0> : tensor<2x2xi32>
+  %cst_2 = arith.constant dense<0> : tensor<4x2xi32>
   %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_0) : (tensor<1x128x128x3xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68x3xf32>
   %1 = "tf.Conv2D"(%0, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x68x68x3xf32>, tensor<5x5x3x8xf32>) -> tensor<4x64x64x8xf32>
   %2 = "tf.Pad"(%1, %cst_2) : (tensor<4x64x64x8xf32>, tensor<4x2xi32>) -> tensor<4x64x64x8xf32>
   %3 = "tf.BatchToSpaceND"(%2, %cst, %cst_1) : (tensor<4x64x64x8xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x128x128x8xf32>
   %4 = "tf.BiasAdd"(%3, %arg2) : (tensor<1x128x128x8xf32>, tensor<8xf32>) -> tensor<1x128x128x8xf32>
-  return %4 : tensor<1x128x128x8xf32>
+  func.return %4 : tensor<1x128x128x8xf32>
 
   // CHECK-LABEL: testDilatedConvWithPad
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128x3xf32>, [[FILTER:%.*]]: tensor<5x5x3x8xf32>, [[BIAS:%.*]]: tensor<8xf32>)
@@ -93,17 +93,17 @@ func @testDilatedConvWithPad(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128x8xf32>
 }
 
-func @testDilatedDepthWiseConvWithPad(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>, %arg2: tensor<8xf32>) -> tensor<1x128x128x8xf32> {
-  %cst = constant dense<[2, 2]> : tensor<2xi32>
-  %cst_0 = constant dense<4> : tensor<2x2xi32>
-  %cst_1 = constant dense<0> : tensor<2x2xi32>
-  %cst_2 = constant dense<0> : tensor<4x2xi32>
+func.func @testDilatedDepthWiseConvWithPad(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>, %arg2: tensor<8xf32>) -> tensor<1x128x128x8xf32> {
+  %cst = arith.constant dense<[2, 2]> : tensor<2xi32>
+  %cst_0 = arith.constant dense<4> : tensor<2x2xi32>
+  %cst_1 = arith.constant dense<0> : tensor<2x2xi32>
+  %cst_2 = arith.constant dense<0> : tensor<4x2xi32>
   %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_0) : (tensor<1x128x128x3xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68x3xf32>
   %1 = "tf.DepthwiseConv2dNative"(%0, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x68x68x3xf32>, tensor<5x5x3x8xf32>) -> tensor<4x64x64x8xf32>
   %2 = "tf.Pad"(%1, %cst_2) : (tensor<4x64x64x8xf32>, tensor<4x2xi32>) -> tensor<4x64x64x8xf32>
   %3 = "tf.BatchToSpaceND"(%2, %cst, %cst_1) : (tensor<4x64x64x8xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x128x128x8xf32>
   %4 = "tf.BiasAdd"(%3, %arg2) : (tensor<1x128x128x8xf32>, tensor<8xf32>) -> tensor<1x128x128x8xf32>
-  return %4 : tensor<1x128x128x8xf32>
+  func.return %4 : tensor<1x128x128x8xf32>
 
   // CHECK-LABEL: testDilatedDepthWiseConvWithPad
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128x3xf32>, [[FILTER:%.*]]: tensor<5x5x3x8xf32>, [[BIAS:%.*]]: tensor<8xf32>)
@@ -112,15 +112,15 @@ func @testDilatedDepthWiseConvWithPad(%arg0: tensor<1x128x128x3xf32>, %arg1: ten
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128x8xf32>
 }
 
-func @testDilatedConvWithBiasAdd(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>, %arg2: tensor<8xf32>) -> tensor<1x128x128x8xf32> {
-  %cst = constant dense<[2, 2]> : tensor<2xi32>
-  %cst_0 = constant dense<4> : tensor<2x2xi32>
-  %cst_1 = constant dense<0> : tensor<2x2xi32>
+func.func @testDilatedConvWithBiasAdd(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>, %arg2: tensor<8xf32>) -> tensor<1x128x128x8xf32> {
+  %cst = arith.constant dense<[2, 2]> : tensor<2xi32>
+  %cst_0 = arith.constant dense<4> : tensor<2x2xi32>
+  %cst_1 = arith.constant dense<0> : tensor<2x2xi32>
   %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_0) : (tensor<1x128x128x3xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68x3xf32>
   %1 = "tf.Conv2D"(%0, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x68x68x3xf32>, tensor<5x5x3x8xf32>) -> tensor<4x64x64x8xf32>
   %2 = "tf.BatchToSpaceND"(%1, %cst, %cst_1) : (tensor<4x64x64x8xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x128x128x8xf32>
   %3 = "tf.BiasAdd"(%2, %arg2) : (tensor<1x128x128x8xf32>, tensor<8xf32>) -> tensor<1x128x128x8xf32>
-  return %3 : tensor<1x128x128x8xf32>
+  func.return %3 : tensor<1x128x128x8xf32>
 
   // CHECK-LABEL: testDilatedConvWithBiasAdd
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128x3xf32>, [[FILTER:%.*]]: tensor<5x5x3x8xf32>, [[BIAS:%.*]]: tensor<8xf32>)
@@ -129,15 +129,15 @@ func @testDilatedConvWithBiasAdd(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128x8xf32>
 }
 
-func @testDilatedDepthWiseConvWithBiasAdd(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>, %arg2: tensor<8xf32>) -> tensor<1x128x128x8xf32> {
-  %cst = constant dense<[2, 2]> : tensor<2xi32>
-  %cst_0 = constant dense<4> : tensor<2x2xi32>
-  %cst_1 = constant dense<0> : tensor<2x2xi32>
+func.func @testDilatedDepthWiseConvWithBiasAdd(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>, %arg2: tensor<8xf32>) -> tensor<1x128x128x8xf32> {
+  %cst = arith.constant dense<[2, 2]> : tensor<2xi32>
+  %cst_0 = arith.constant dense<4> : tensor<2x2xi32>
+  %cst_1 = arith.constant dense<0> : tensor<2x2xi32>
   %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_0) : (tensor<1x128x128x3xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68x3xf32>
   %1 = "tf.DepthwiseConv2dNative"(%0, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x68x68x3xf32>, tensor<5x5x3x8xf32>) -> tensor<4x64x64x8xf32>
   %2 = "tf.BatchToSpaceND"(%1, %cst, %cst_1) : (tensor<4x64x64x8xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x128x128x8xf32>
   %3 = "tf.BiasAdd"(%2, %arg2) : (tensor<1x128x128x8xf32>, tensor<8xf32>) -> tensor<1x128x128x8xf32>
-  return %3 : tensor<1x128x128x8xf32>
+  func.return %3 : tensor<1x128x128x8xf32>
 
   // CHECK-LABEL: testDilatedDepthWiseConvWithBiasAdd
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128x3xf32>, [[FILTER:%.*]]: tensor<5x5x3x8xf32>, [[BIAS:%.*]]: tensor<8xf32>)
@@ -146,18 +146,18 @@ func @testDilatedDepthWiseConvWithBiasAdd(%arg0: tensor<1x128x128x3xf32>, %arg1:
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128x8xf32>
 }
 
-func @testDilatedConvWithExpandSqueeze1(%arg0: tensor<1x128x128xf32>, %arg1: tensor<5x5x1x1xf32>, %arg2: tensor<128xf32>) -> tensor<1x128x128xf32> {
-  %cst = constant dense<[2, 2]> : tensor<2xi32>
+func.func @testDilatedConvWithExpandSqueeze1(%arg0: tensor<1x128x128xf32>, %arg1: tensor<5x5x1x1xf32>, %arg2: tensor<128xf32>) -> tensor<1x128x128xf32> {
+  %cst = arith.constant dense<[2, 2]> : tensor<2xi32>
   %cst_0 = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
-  %cst_1 = constant dense<4> : tensor<2x2xi32>
-  %cst_2 = constant dense<0> : tensor<2x2xi32>
+  %cst_1 = arith.constant dense<4> : tensor<2x2xi32>
+  %cst_2 = arith.constant dense<0> : tensor<2x2xi32>
   %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_1) : (tensor<1x128x128xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68xf32>
   %1 = "tf.ExpandDims"(%0, %cst_0) : (tensor<4x68x68xf32>, tensor<i32>) -> tensor<4x68x68x1xf32>
   %2 = "tf.Conv2D"(%1, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x68x68x1xf32>, tensor<5x5x1x1xf32>) -> tensor<4x64x64x1xf32>
   %3 = "tf.Squeeze"(%2) {squeeze_dims = [3]} : (tensor<4x64x64x1xf32>) -> tensor<4x64x64xf32>
   %4 = "tf.BatchToSpaceND"(%3, %cst, %cst_2) : (tensor<4x64x64xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x128x128xf32>
   %5 = "tf.BiasAdd"(%4, %arg2) : (tensor<1x128x128xf32>, tensor<128xf32>) -> tensor<1x128x128xf32>
-  return %5 : tensor<1x128x128xf32>
+  func.return %5 : tensor<1x128x128xf32>
 
   // CHECK-LABEL: testDilatedConvWithExpandSqueeze1
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128xf32>, [[FILTER:%.*]]: tensor<5x5x1x1xf32>, [[BIAS:%.*]]: tensor<128xf32>)
@@ -169,18 +169,18 @@ func @testDilatedConvWithExpandSqueeze1(%arg0: tensor<1x128x128xf32>, %arg1: ten
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128xf32>
 }
 
-func @testDilatedDepthWiseConvWithExpandSqueeze1(%arg0: tensor<1x128x128xf32>, %arg1: tensor<5x5x1x1xf32>, %arg2: tensor<128xf32>) -> tensor<1x128x128xf32> {
-  %cst = constant dense<[2, 2]> : tensor<2xi32>
+func.func @testDilatedDepthWiseConvWithExpandSqueeze1(%arg0: tensor<1x128x128xf32>, %arg1: tensor<5x5x1x1xf32>, %arg2: tensor<128xf32>) -> tensor<1x128x128xf32> {
+  %cst = arith.constant dense<[2, 2]> : tensor<2xi32>
   %cst_0 = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
-  %cst_1 = constant dense<4> : tensor<2x2xi32>
-  %cst_2 = constant dense<0> : tensor<2x2xi32>
+  %cst_1 = arith.constant dense<4> : tensor<2x2xi32>
+  %cst_2 = arith.constant dense<0> : tensor<2x2xi32>
   %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_1) : (tensor<1x128x128xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68xf32>
   %1 = "tf.ExpandDims"(%0, %cst_0) : (tensor<4x68x68xf32>, tensor<i32>) -> tensor<4x68x68x1xf32>
   %2 = "tf.DepthwiseConv2dNative"(%1, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x68x68x1xf32>, tensor<5x5x1x1xf32>) -> tensor<4x64x64x1xf32>
   %3 = "tf.Squeeze"(%2) {squeeze_dims = [3]} : (tensor<4x64x64x1xf32>) -> tensor<4x64x64xf32>
   %4 = "tf.BatchToSpaceND"(%3, %cst, %cst_2) : (tensor<4x64x64xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x128x128xf32>
   %5 = "tf.BiasAdd"(%4, %arg2) : (tensor<1x128x128xf32>, tensor<128xf32>) -> tensor<1x128x128xf32>
-  return %5 : tensor<1x128x128xf32>
+  func.return %5 : tensor<1x128x128xf32>
 
   // CHECK-LABEL: testDilatedDepthWiseConvWithExpandSqueeze1
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128xf32>, [[FILTER:%.*]]: tensor<5x5x1x1xf32>, [[BIAS:%.*]]: tensor<128xf32>)
@@ -192,18 +192,18 @@ func @testDilatedDepthWiseConvWithExpandSqueeze1(%arg0: tensor<1x128x128xf32>, %
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128xf32>
 }
 
-func @testDilatedConvWithExpandSqueeze2(%arg0: tensor<1x128x128xf32>, %arg1: tensor<5x5x1x1xf32>, %arg2: tensor<?xf32>) -> tensor<1x128x128xf32> {
-  %cst = constant dense<[2, 2]> : tensor<2xi32>
+func.func @testDilatedConvWithExpandSqueeze2(%arg0: tensor<1x128x128xf32>, %arg1: tensor<5x5x1x1xf32>, %arg2: tensor<?xf32>) -> tensor<1x128x128xf32> {
+  %cst = arith.constant dense<[2, 2]> : tensor<2xi32>
   %cst_0 = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
-  %cst_1 = constant dense<4> : tensor<2x2xi32>
-  %cst_2 = constant dense<0> : tensor<2x2xi32>
+  %cst_1 = arith.constant dense<4> : tensor<2x2xi32>
+  %cst_2 = arith.constant dense<0> : tensor<2x2xi32>
   %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_1) : (tensor<1x128x128xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x?x?xf32>
   %1 = "tf.ExpandDims"(%0, %cst_0) : (tensor<4x?x?xf32>, tensor<i32>) -> tensor<4x?x?x1xf32>
   %2 = "tf.Conv2D"(%1, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x?x?x1xf32>, tensor<5x5x1x1xf32>) -> tensor<4x?x?x1xf32>
   %3 = "tf.Squeeze"(%2) {squeeze_dims = [3]} : (tensor<4x?x?x1xf32>) -> tensor<4x?x?xf32>
   %4 = "tf.BiasAdd"(%3, %arg2) : (tensor<4x?x?xf32>, tensor<?xf32>) -> tensor<4x?x?xf32>
   %5 = "tf.BatchToSpaceND"(%4, %cst, %cst_2) : (tensor<4x?x?xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x128x128xf32>
-  return %5 : tensor<1x128x128xf32>
+  func.return %5 : tensor<1x128x128xf32>
 
   // CHECK-LABEL: testDilatedConvWithExpandSqueeze2
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128xf32>, [[FILTER:%.*]]: tensor<5x5x1x1xf32>, [[BIAS:%.*]]: tensor<?xf32>)
@@ -215,18 +215,18 @@ func @testDilatedConvWithExpandSqueeze2(%arg0: tensor<1x128x128xf32>, %arg1: ten
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128xf32>
 }
 
-func @testDilatedDepthWiseConvWithExpandSqueeze2(%arg0: tensor<1x128x128xf32>, %arg1: tensor<5x5x1x1xf32>, %arg2: tensor<?xf32>) -> tensor<1x128x128xf32> {
-  %cst = constant dense<[2, 2]> : tensor<2xi32>
+func.func @testDilatedDepthWiseConvWithExpandSqueeze2(%arg0: tensor<1x128x128xf32>, %arg1: tensor<5x5x1x1xf32>, %arg2: tensor<?xf32>) -> tensor<1x128x128xf32> {
+  %cst = arith.constant dense<[2, 2]> : tensor<2xi32>
   %cst_0 = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
-  %cst_1 = constant dense<4> : tensor<2x2xi32>
-  %cst_2 = constant dense<0> : tensor<2x2xi32>
+  %cst_1 = arith.constant dense<4> : tensor<2x2xi32>
+  %cst_2 = arith.constant dense<0> : tensor<2x2xi32>
   %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_1) : (tensor<1x128x128xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x?x?xf32>
   %1 = "tf.ExpandDims"(%0, %cst_0) : (tensor<4x?x?xf32>, tensor<i32>) -> tensor<4x?x?x1xf32>
   %2 = "tf.DepthwiseConv2dNative"(%1, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x?x?x1xf32>, tensor<5x5x1x1xf32>) -> tensor<4x?x?x1xf32>
   %3 = "tf.Squeeze"(%2) {squeeze_dims = [3]} : (tensor<4x?x?x1xf32>) -> tensor<4x?x?xf32>
   %4 = "tf.BiasAdd"(%3, %arg2) : (tensor<4x?x?xf32>, tensor<?xf32>) -> tensor<4x?x?xf32>
   %5 = "tf.BatchToSpaceND"(%4, %cst, %cst_2) : (tensor<4x?x?xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x128x128xf32>
-  return %5 : tensor<1x128x128xf32>
+  func.return %5 : tensor<1x128x128xf32>
 
   // CHECK-LABEL: testDilatedDepthWiseConvWithExpandSqueeze2
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128xf32>, [[FILTER:%.*]]: tensor<5x5x1x1xf32>, [[BIAS:%.*]]: tensor<?xf32>)
@@ -238,12 +238,12 @@ func @testDilatedDepthWiseConvWithExpandSqueeze2(%arg0: tensor<1x128x128xf32>, %
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128xf32>
 }
 
-func @testDilatedConvWithExpandSqueeze3(%arg0: tensor<1x128x128xf32>, %arg1: tensor<5x5x1x1xf32>, %arg2: tensor<128xf32>) -> tensor<1x128x128xf32> {
-  %cst = constant dense<[2, 2]> : tensor<2xi32>
+func.func @testDilatedConvWithExpandSqueeze3(%arg0: tensor<1x128x128xf32>, %arg1: tensor<5x5x1x1xf32>, %arg2: tensor<128xf32>) -> tensor<1x128x128xf32> {
+  %cst = arith.constant dense<[2, 2]> : tensor<2xi32>
   %cst_0 = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
-  %cst_1 = constant dense<4> : tensor<2x2xi32>
-  %cst_2 = constant dense<0> : tensor<2x2xi32>
-  %cst_3 = constant dense<0> : tensor<3x2xi32>
+  %cst_1 = arith.constant dense<4> : tensor<2x2xi32>
+  %cst_2 = arith.constant dense<0> : tensor<2x2xi32>
+  %cst_3 = arith.constant dense<0> : tensor<3x2xi32>
   %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_1) : (tensor<1x128x128xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68xf32>
   %1 = "tf.ExpandDims"(%0, %cst_0) : (tensor<4x68x68xf32>, tensor<i32>) -> tensor<4x68x68x1xf32>
   %2 = "tf.Conv2D"(%1, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x68x68x1xf32>, tensor<5x5x1x1xf32>) -> tensor<4x64x64x1xf32>
@@ -251,7 +251,7 @@ func @testDilatedConvWithExpandSqueeze3(%arg0: tensor<1x128x128xf32>, %arg1: ten
   %4 = "tf.Pad"(%3, %cst_3) : (tensor<4x64x64xf32>, tensor<3x2xi32>) -> tensor<4x64x64xf32>
   %5 = "tf.BatchToSpaceND"(%4, %cst, %cst_2) : (tensor<4x64x64xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x128x128xf32>
   %6 = "tf.BiasAdd"(%5, %arg2) : (tensor<1x128x128xf32>, tensor<128xf32>) -> tensor<1x128x128xf32>
-  return %6 : tensor<1x128x128xf32>
+  func.return %6 : tensor<1x128x128xf32>
 
   // CHECK-LABEL: testDilatedConvWithExpandSqueeze3
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128xf32>, [[FILTER:%.*]]: tensor<5x5x1x1xf32>, [[BIAS:%.*]]: tensor<128xf32>)
@@ -263,12 +263,12 @@ func @testDilatedConvWithExpandSqueeze3(%arg0: tensor<1x128x128xf32>, %arg1: ten
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128xf32>
 }
 
-func @testDilatedDepthWiseConvWithExpandSqueeze3(%arg0: tensor<1x128x128xf32>, %arg1: tensor<5x5x1x1xf32>, %arg2: tensor<128xf32>) -> tensor<1x128x128xf32> {
-  %cst = constant dense<[2, 2]> : tensor<2xi32>
+func.func @testDilatedDepthWiseConvWithExpandSqueeze3(%arg0: tensor<1x128x128xf32>, %arg1: tensor<5x5x1x1xf32>, %arg2: tensor<128xf32>) -> tensor<1x128x128xf32> {
+  %cst = arith.constant dense<[2, 2]> : tensor<2xi32>
   %cst_0 = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
-  %cst_1 = constant dense<4> : tensor<2x2xi32>
-  %cst_2 = constant dense<0> : tensor<2x2xi32>
-  %cst_3 = constant dense<0> : tensor<3x2xi32>
+  %cst_1 = arith.constant dense<4> : tensor<2x2xi32>
+  %cst_2 = arith.constant dense<0> : tensor<2x2xi32>
+  %cst_3 = arith.constant dense<0> : tensor<3x2xi32>
   %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_1) : (tensor<1x128x128xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68xf32>
   %1 = "tf.ExpandDims"(%0, %cst_0) : (tensor<4x68x68xf32>, tensor<i32>) -> tensor<4x68x68x1xf32>
   %2 = "tf.DepthwiseConv2dNative"(%1, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x68x68x1xf32>, tensor<5x5x1x1xf32>) -> tensor<4x64x64x1xf32>
@@ -276,7 +276,7 @@ func @testDilatedDepthWiseConvWithExpandSqueeze3(%arg0: tensor<1x128x128xf32>, %
   %4 = "tf.Pad"(%3, %cst_3) : (tensor<4x64x64xf32>, tensor<3x2xi32>) -> tensor<4x64x64xf32>
   %5 = "tf.BatchToSpaceND"(%4, %cst, %cst_2) : (tensor<4x64x64xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x128x128xf32>
   %6 = "tf.BiasAdd"(%5, %arg2) : (tensor<1x128x128xf32>, tensor<128xf32>) -> tensor<1x128x128xf32>
-  return %6 : tensor<1x128x128xf32>
+  func.return %6 : tensor<1x128x128xf32>
 
   // CHECK-LABEL: testDilatedDepthWiseConvWithExpandSqueeze3
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128xf32>, [[FILTER:%.*]]: tensor<5x5x1x1xf32>, [[BIAS:%.*]]: tensor<128xf32>)
@@ -288,18 +288,18 @@ func @testDilatedDepthWiseConvWithExpandSqueeze3(%arg0: tensor<1x128x128xf32>, %
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128xf32>
 }
 
-func @testAvoidDilatedConvWithExpand(%arg0: tensor<*xf32>, %arg1: tensor<5x5x1x1xf32>, %arg2: tensor<128xf32>) -> tensor<1x128x128xf32> {
-  %cst = constant dense<[2, 2]> : tensor<2xi32>
+func.func @testAvoidDilatedConvWithExpand(%arg0: tensor<*xf32>, %arg1: tensor<5x5x1x1xf32>, %arg2: tensor<128xf32>) -> tensor<1x128x128xf32> {
+  %cst = arith.constant dense<[2, 2]> : tensor<2xi32>
   %cst_0 = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
-  %cst_1 = constant dense<4> : tensor<2x2xi32>
-  %cst_2 = constant dense<0> : tensor<2x2xi32>
+  %cst_1 = arith.constant dense<4> : tensor<2x2xi32>
+  %cst_2 = arith.constant dense<0> : tensor<2x2xi32>
   %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_1) : (tensor<*xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68xf32>
   %1 = "tf.ExpandDims"(%0, %cst_0) : (tensor<4x68x68xf32>, tensor<i32>) -> tensor<4x68x68x1xf32>
   %2 = "tf.Conv2D"(%1, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x68x68x1xf32>, tensor<5x5x1x1xf32>) -> tensor<4x64x64x1xf32>
   %3 = "tf.Squeeze"(%2) {squeeze_dims = [3]} : (tensor<4x64x64x1xf32>) -> tensor<4x64x64xf32>
   %4 = "tf.BatchToSpaceND"(%3, %cst, %cst_2) : (tensor<4x64x64xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x128x128xf32>
   %5 = "tf.BiasAdd"(%4, %arg2) : (tensor<1x128x128xf32>, tensor<128xf32>) -> tensor<1x128x128xf32>
-  return %5 : tensor<1x128x128xf32>
+  func.return %5 : tensor<1x128x128xf32>
 
   // CHECK-LABEL: testAvoidDilatedConvWithExpand
   // CHECK: "tf.SpaceToBatchND"
@@ -310,17 +310,17 @@ func @testAvoidDilatedConvWithExpand(%arg0: tensor<*xf32>, %arg1: tensor<5x5x1x1
   // CHECK: "tf.BiasAdd"
 }
 
-func @testDilatedConvWithDifferentExpandSqueezeAxis(%arg0: tensor<1x128x128xf32>, %arg1: tensor<5x5x1x1xf32>) -> tensor<1x128x128x1xf32> {
-  %cst = constant dense<[2, 2]> : tensor<2xi32>
+func.func @testDilatedConvWithDifferentExpandSqueezeAxis(%arg0: tensor<1x128x128xf32>, %arg1: tensor<5x5x1x1xf32>) -> tensor<1x128x128x1xf32> {
+  %cst = arith.constant dense<[2, 2]> : tensor<2xi32>
   %cst_0 = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
-  %cst_1 = constant dense<4> : tensor<2x2xi32>
-  %cst_2 = constant dense<0> : tensor<2x2xi32>
+  %cst_1 = arith.constant dense<4> : tensor<2x2xi32>
+  %cst_2 = arith.constant dense<0> : tensor<2x2xi32>
   %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_1) : (tensor<1x128x128xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68xf32>
   %1 = "tf.ExpandDims"(%0, %cst_0) : (tensor<4x68x68xf32>, tensor<i32>) -> tensor<4x68x68x1xf32>
   %2 = "tf.Conv2D"(%1, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x68x68x1xf32>, tensor<5x5x1x1xf32>) -> tensor<4x64x64x1xf32>
   %3 = "tf.Squeeze"(%2) {squeeze_dims = [2]} : (tensor<4x64x64x1xf32>) -> tensor<4x64x64x1xf32>
   %4 = "tf.BatchToSpaceND"(%3, %cst, %cst_2) : (tensor<4x64x64x1xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x128x128x1xf32>
-  return %4 : tensor<1x128x128x1xf32>
+  func.return %4 : tensor<1x128x128x1xf32>
 
   // CHECK-LABEL: testDilatedConvWithDifferentExpandSqueezeAxis
   // CHECK: [[STB:%.*]] = "tf.SpaceToBatchND"
@@ -331,14 +331,14 @@ func @testDilatedConvWithDifferentExpandSqueezeAxis(%arg0: tensor<1x128x128xf32>
   // CHECK-NEXT: return [[RESULT]]
 }
 
-func @testNoDilatedConvWhenFirstDimIsDynamic(%arg0: tensor<?x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>) -> tensor<?x128x128x8xf32> {
-  %cst = constant dense<[2, 2]> : tensor<2xi32>
-  %cst_0 = constant dense<4> : tensor<2x2xi32>
-  %cst_1 = constant dense<0> : tensor<2x2xi32>
+func.func @testNoDilatedConvWhenFirstDimIsDynamic(%arg0: tensor<?x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>) -> tensor<?x128x128x8xf32> {
+  %cst = arith.constant dense<[2, 2]> : tensor<2xi32>
+  %cst_0 = arith.constant dense<4> : tensor<2x2xi32>
+  %cst_1 = arith.constant dense<0> : tensor<2x2xi32>
   %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_0) : (tensor<?x128x128x3xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<?x68x68x3xf32>
   %1 = "tf.Conv2D"(%0, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<?x68x68x3xf32>, tensor<5x5x3x8xf32>) -> tensor<?x64x64x8xf32>
   %2 = "tf.BatchToSpaceND"(%1, %cst, %cst_1) : (tensor<?x64x64x8xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<?x128x128x8xf32>
-  return %2 : tensor<?x128x128x8xf32>
+  func.return %2 : tensor<?x128x128x8xf32>
 
   // CHECK-LABEL: testNoDilatedConvWhenFirstDimIsDynamic
   // CHECK: [[STB:%.*]] = "tf.SpaceToBatchND"
@@ -347,14 +347,14 @@ func @testNoDilatedConvWhenFirstDimIsDynamic(%arg0: tensor<?x128x128x3xf32>, %ar
   // CHECK-NEXT: return [[RESULT]]
 }
 
-func @testNoDilatedConvWhenLastDimIsDynamic(%arg0: tensor<1x128x128x?xf32>, %arg1: tensor<5x5x3x8xf32>) -> tensor<1x128x128x?xf32> {
-  %cst = constant dense<[2, 2]> : tensor<2xi32>
-  %cst_0 = constant dense<4> : tensor<2x2xi32>
-  %cst_1 = constant dense<0> : tensor<2x2xi32>
+func.func @testNoDilatedConvWhenLastDimIsDynamic(%arg0: tensor<1x128x128x?xf32>, %arg1: tensor<5x5x3x8xf32>) -> tensor<1x128x128x?xf32> {
+  %cst = arith.constant dense<[2, 2]> : tensor<2xi32>
+  %cst_0 = arith.constant dense<4> : tensor<2x2xi32>
+  %cst_1 = arith.constant dense<0> : tensor<2x2xi32>
   %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_0) : (tensor<1x128x128x?xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68x?xf32>
   %1 = "tf.Conv2D"(%0, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x68x68x?xf32>, tensor<5x5x3x8xf32>) -> tensor<4x64x64x?xf32>
   %2 = "tf.BatchToSpaceND"(%1, %cst, %cst_1) : (tensor<4x64x64x?xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x128x128x?xf32>
-  return %2 : tensor<1x128x128x?xf32>
+  func.return %2 : tensor<1x128x128x?xf32>
 
   // CHECK-LABEL: testNoDilatedConvWhenLastDimIsDynamic
   // CHECK: [[STB:%.*]] = "tf.SpaceToBatchND"
@@ -363,13 +363,13 @@ func @testNoDilatedConvWhenLastDimIsDynamic(%arg0: tensor<1x128x128x?xf32>, %arg
   // CHECK-NEXT: return [[RESULT]]
 }
 
-func @testNoDilatedConvWhenGivenInputIsNonFloatType(%arg0: tensor<1x128x128x3xi32>, %arg1: tensor<5x5x3x8xi32>) -> tensor<1x120x120x8xi32> {
-  %cst = constant dense<[2, 2]> : tensor<2xi32>
-  %cst_0 = constant dense<4> : tensor<2x2xi32>
+func.func @testNoDilatedConvWhenGivenInputIsNonFloatType(%arg0: tensor<1x128x128x3xi32>, %arg1: tensor<5x5x3x8xi32>) -> tensor<1x120x120x8xi32> {
+  %cst = arith.constant dense<[2, 2]> : tensor<2xi32>
+  %cst_0 = arith.constant dense<4> : tensor<2x2xi32>
   %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_0) : (tensor<1x128x128x3xi32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68x3xi32>
   %1 = "tf.Conv2D"(%0, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x68x68x3xi32>, tensor<5x5x3x8xi32>) -> tensor<4x64x64x8xi32>
   %2 = "tf.BatchToSpaceND"(%1, %cst, %cst_0) : (tensor<4x64x64x8xi32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x120x120x8xi32>
-  return %2 : tensor<1x120x120x8xi32>
+  func.return %2 : tensor<1x120x120x8xi32>
 
   // CHECK-LABEL: testNoDilatedConvWhenGivenInputIsNonFloatType
   // CHECK: [[STB:%.*]] = "tf.SpaceToBatchND"
@@ -378,7 +378,7 @@ func @testNoDilatedConvWhenGivenInputIsNonFloatType(%arg0: tensor<1x128x128x3xi3
   // CHECK-NEXT: return [[RESULT]]
 }
 
-func @testDilatedConv1DExpandH(%arg0: tensor<1x128x3xf32>, %arg1: tensor<1x5x3x8xf32>) -> tensor<1x128x8xf32> {
+func.func @testDilatedConv1DExpandH(%arg0: tensor<1x128x3xf32>, %arg1: tensor<1x5x3x8xf32>) -> tensor<1x128x8xf32> {
   %cst = "tf.Const"() {value = dense<0> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
   %cst_0 = "tf.Const"() {value = dense<-3> : tensor<i32>} : () -> tensor<i32>
   %cst_1 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
@@ -388,7 +388,7 @@ func @testDilatedConv1DExpandH(%arg0: tensor<1x128x3xf32>, %arg1: tensor<1x5x3x8
   %2 = "tf.Conv2D"(%1, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<2x1x68x3xf32>, tensor<1x5x3x8xf32>) -> tensor<2x1x64x8xf32>
   %3 = "tf.Squeeze"(%2) {squeeze_dims = [-3]} : (tensor<2x1x64x8xf32>) -> tensor<2x64x8xf32>
   %4 = "tf.BatchToSpaceND"(%3, %cst_1, %cst) : (tensor<2x64x8xf32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x128x8xf32>
-  return %4 : tensor<1x128x8xf32>
+  func.return %4 : tensor<1x128x8xf32>
 
   // CHECK-LABEL: testDilatedConv1DExpandH
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x3xf32>, [[FILTER:%.*]]: tensor<1x5x3x8xf32>)
@@ -399,7 +399,7 @@ func @testDilatedConv1DExpandH(%arg0: tensor<1x128x3xf32>, %arg1: tensor<1x5x3x8
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x8xf32>
 }
 
-func @testDilatedConv1DExpandHWithBiasAdd(%arg0: tensor<1x128x3xf32>, %arg1: tensor<1x5x3x8xf32>, %arg2: tensor<8xf32>) -> tensor<1x128x8xf32> {
+func.func @testDilatedConv1DExpandHWithBiasAdd(%arg0: tensor<1x128x3xf32>, %arg1: tensor<1x5x3x8xf32>, %arg2: tensor<8xf32>) -> tensor<1x128x8xf32> {
   %cst = "tf.Const"() {value = dense<0> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
   %cst_0 = "tf.Const"() {value = dense<-3> : tensor<i32>} : () -> tensor<i32>
   %cst_1 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
@@ -410,7 +410,7 @@ func @testDilatedConv1DExpandHWithBiasAdd(%arg0: tensor<1x128x3xf32>, %arg1: ten
   %3 = "tf.Squeeze"(%2) {squeeze_dims = [-3]} : (tensor<2x1x64x8xf32>) -> tensor<2x64x8xf32>
   %4 = "tf.BatchToSpaceND"(%3, %cst_1, %cst) : (tensor<2x64x8xf32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x128x8xf32>
   %5 = "tf.BiasAdd"(%4, %arg2) : (tensor<1x128x8xf32>, tensor<8xf32>) -> tensor<1x128x8xf32>
-  return %5 : tensor<1x128x8xf32>
+  func.return %5 : tensor<1x128x8xf32>
 
   // CHECK-LABEL: testDilatedConv1DExpandHWithBiasAdd
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x3xf32>, [[FILTER:%.*]]: tensor<1x5x3x8xf32>, [[BIAS:%.*]]: tensor<8xf32>)
@@ -422,7 +422,7 @@ func @testDilatedConv1DExpandHWithBiasAdd(%arg0: tensor<1x128x3xf32>, %arg1: ten
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x8xf32>
 }
 
-func @testDilatedConv1DExpandW(%arg0: tensor<1x128x3xf32>, %arg1: tensor<5x1x3x8xf32>) -> tensor<1x128x8xf32> {
+func.func @testDilatedConv1DExpandW(%arg0: tensor<1x128x3xf32>, %arg1: tensor<5x1x3x8xf32>) -> tensor<1x128x8xf32> {
   %cst = "tf.Const"() {value = dense<0> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
   %cst_0 = "tf.Const"() {value = dense<-2> : tensor<i32>} : () -> tensor<i32>
   %cst_1 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
@@ -432,7 +432,7 @@ func @testDilatedConv1DExpandW(%arg0: tensor<1x128x3xf32>, %arg1: tensor<5x1x3x8
   %2 = "tf.Conv2D"(%1, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<2x68x1x3xf32>, tensor<5x1x3x8xf32>) -> tensor<2x64x1x8xf32>
   %3 = "tf.Squeeze"(%2) {squeeze_dims = [-2]} : (tensor<2x64x1x8xf32>) -> tensor<2x64x8xf32>
   %4 = "tf.BatchToSpaceND"(%3, %cst_1, %cst) : (tensor<2x64x8xf32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x128x8xf32>
-  return %4 : tensor<1x128x8xf32>
+  func.return %4 : tensor<1x128x8xf32>
 
   // CHECK-LABEL: testDilatedConv1DExpandW
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x3xf32>, [[FILTER:%.*]]: tensor<5x1x3x8xf32>)
@@ -443,7 +443,7 @@ func @testDilatedConv1DExpandW(%arg0: tensor<1x128x3xf32>, %arg1: tensor<5x1x3x8
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x8xf32>
 }
 
-func @testDilatedConv1DExpandWWithBiasAdd(%arg0: tensor<1x128x3xf32>, %arg1: tensor<5x1x3x8xf32>, %arg2: tensor<8xf32>) -> tensor<1x128x8xf32> {
+func.func @testDilatedConv1DExpandWWithBiasAdd(%arg0: tensor<1x128x3xf32>, %arg1: tensor<5x1x3x8xf32>, %arg2: tensor<8xf32>) -> tensor<1x128x8xf32> {
   %cst = "tf.Const"() {value = dense<0> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
   %cst_0 = "tf.Const"() {value = dense<-2> : tensor<i32>} : () -> tensor<i32>
   %cst_1 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
@@ -454,7 +454,7 @@ func @testDilatedConv1DExpandWWithBiasAdd(%arg0: tensor<1x128x3xf32>, %arg1: ten
   %3 = "tf.Squeeze"(%2) {squeeze_dims = [-2]} : (tensor<2x64x1x8xf32>) -> tensor<2x64x8xf32>
   %4 = "tf.BatchToSpaceND"(%3, %cst_1, %cst) : (tensor<2x64x8xf32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x128x8xf32>
   %5 = "tf.BiasAdd"(%4, %arg2) : (tensor<1x128x8xf32>, tensor<8xf32>) -> tensor<1x128x8xf32>
-  return %5 : tensor<1x128x8xf32>
+  func.return %5 : tensor<1x128x8xf32>
 
   // CHECK-LABEL: testDilatedConv1DExpandWWithBiasAdd
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x3xf32>, [[FILTER:%.*]]: tensor<5x1x3x8xf32>, [[BIAS:%.*]]: tensor<8xf32>)
@@ -466,7 +466,7 @@ func @testDilatedConv1DExpandWWithBiasAdd(%arg0: tensor<1x128x3xf32>, %arg1: ten
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x8xf32>
 }
 
-func @testDilatedConv1DWithMixedPostiveAndNegativeAxis(%arg0: tensor<1x128x3xf32>, %arg1: tensor<1x5x3x8xf32>) -> tensor<1x128x8xf32> {
+func.func @testDilatedConv1DWithMixedPostiveAndNegativeAxis(%arg0: tensor<1x128x3xf32>, %arg1: tensor<1x5x3x8xf32>) -> tensor<1x128x8xf32> {
   %cst = "tf.Const"() {value = dense<0> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
   %cst_0 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %cst_1 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
@@ -476,7 +476,7 @@ func @testDilatedConv1DWithMixedPostiveAndNegativeAxis(%arg0: tensor<1x128x3xf32
   %2 = "tf.Conv2D"(%1, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<2x1x68x3xf32>, tensor<1x5x3x8xf32>) -> tensor<2x1x64x8xf32>
   %3 = "tf.Squeeze"(%2) {squeeze_dims = [-3]} : (tensor<2x1x64x8xf32>) -> tensor<2x64x8xf32>
   %4 = "tf.BatchToSpaceND"(%3, %cst_1, %cst) : (tensor<2x64x8xf32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x128x8xf32>
-  return %4 : tensor<1x128x8xf32>
+  func.return %4 : tensor<1x128x8xf32>
 
   // CHECK-LABEL: testDilatedConv1DWithMixedPostiveAndNegativeAxis
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x3xf32>, [[FILTER:%.*]]: tensor<1x5x3x8xf32>)
@@ -487,7 +487,7 @@ func @testDilatedConv1DWithMixedPostiveAndNegativeAxis(%arg0: tensor<1x128x3xf32
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x8xf32>
 }
 
-func @testPaddedDilatedConv(%arg0 : tensor<2x1920x64xf32>) ->  tensor<2x1920x128xf32> {
+func.func @testPaddedDilatedConv(%arg0 : tensor<2x1920x64xf32>) ->  tensor<2x1920x128xf32> {
   %0 = "tf.Const"() {value = dense<[[0, 0], [2, 0], [0, 0]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32>
   %1 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
   %2 = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
@@ -499,7 +499,7 @@ func @testPaddedDilatedConv(%arg0 : tensor<2x1920x64xf32>) ->  tensor<2x1920x128
   %8 = "tf.Squeeze"(%7) {device = "", squeeze_dims = [2]} : (tensor<4x958x1x128xf32>) -> tensor<4x958x128xf32>
   %9 = "tf.Pad"(%8, %0) {device = ""} : (tensor<4x958x128xf32>, tensor<3x2xi32>) -> tensor<4x960x128xf32>
   %10 = "tf.BatchToSpaceND"(%9, %1, %3) {device = ""} : (tensor<4x960x128xf32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<2x1920x128xf32>
-  return %10 : tensor<2x1920x128xf32>
+  func.return %10 : tensor<2x1920x128xf32>
 
   // CHECK-LABEL: testPaddedDilatedConv
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<2x1920x64xf32>)
@@ -511,16 +511,16 @@ func @testPaddedDilatedConv(%arg0 : tensor<2x1920x64xf32>) ->  tensor<2x1920x128
   // CHECK-NEXT: return [[RESULT]] : tensor<2x1920x128xf32>
 }
 
-func @testDilatedConvInterleaved(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>) -> (tensor<1x120x120x8xf32>, tensor<1x120x120x8xf32>) {
-  %cst = constant dense<[2, 2]> : tensor<2xi32>
-  %cst_0 = constant dense<4> : tensor<2x2xi32>
+func.func @testDilatedConvInterleaved(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>) -> (tensor<1x120x120x8xf32>, tensor<1x120x120x8xf32>) {
+  %cst = arith.constant dense<[2, 2]> : tensor<2xi32>
+  %cst_0 = arith.constant dense<4> : tensor<2x2xi32>
   %0 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_0) : (tensor<1x128x128x3xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68x3xf32>
   %1 = "tf.SpaceToBatchND"(%arg0, %cst, %cst_0) : (tensor<1x128x128x3xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x68x68x3xf32>
   %2 = "tf.Conv2D"(%0, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x68x68x3xf32>, tensor<5x5x3x8xf32>) -> tensor<4x64x64x8xf32>
   %3 = "tf.Conv2D"(%1, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x68x68x3xf32>, tensor<5x5x3x8xf32>) -> tensor<4x64x64x8xf32>
   %4 = "tf.BatchToSpaceND"(%2, %cst, %cst_0) : (tensor<4x64x64x8xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x120x120x8xf32>
   %5 = "tf.BatchToSpaceND"(%3, %cst, %cst_0) : (tensor<4x64x64x8xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x120x120x8xf32>
-  return %4, %5: tensor<1x120x120x8xf32>, tensor<1x120x120x8xf32>
+  func.return %4, %5: tensor<1x120x120x8xf32>, tensor<1x120x120x8xf32>
 
   // CHECK-LABEL: testDilatedConvInterleaved
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128x3xf32>, [[FILTER:%.*]]: tensor<5x5x3x8xf32>)

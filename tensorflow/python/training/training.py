@@ -90,6 +90,7 @@ from tensorflow.python.training.checkpoint_management import latest_checkpoint
 from tensorflow.python.training.checkpoint_management import update_checkpoint_state
 from tensorflow.python.training.saver import export_meta_graph
 from tensorflow.python.training.saver import import_meta_graph
+from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.session_run_hook import SessionRunHook
 from tensorflow.python.training.session_run_hook import SessionRunArgs
 from tensorflow.python.training.session_run_hook import SessionRunContext
@@ -140,170 +141,310 @@ tf_export(v1=["train.SaverDef"])(SaverDef)
 tf_export("train.SequenceExample")(SequenceExample)
 tf_export("train.ServerDef")(ServerDef)
 
-# Docstring definitions for protos.
-
-# LINT.IfChange
 BytesList.__doc__ = """\
-Container that holds repeated fundamental values of byte type in the `tf.train.Feature` message.
+Used in `tf.train.Example` protos. Holds a list of byte-strings.
+
+An `Example` proto is a representation of the following python type:
+
+```
+Dict[str,
+     Union[List[bytes],
+           List[int64],
+           List[float]]]
+```
+
+This proto implements the `List[bytes]` portion.
+
+>>> from google.protobuf import text_format
+>>> example = text_format.Parse('''
+...   features {
+...     feature {key: "my_feature"
+...              value {bytes_list {value: ['abc', '12345' ]}}}
+...   }''',
+...   tf.train.Example())
+>>>
+>>> example.features.feature['my_feature'].bytes_list.value
+["abc", "12345"]
+
+Use `tf.io.parse_example` to extract tensors from a serialized `Example` proto:
+
+>>> tf.io.parse_example(
+...     example.SerializeToString(),
+...     features = {'my_feature': tf.io.RaggedFeature(dtype=tf.string)})
+{'my_feature': <tf.Tensor: shape=(2,), dtype=string,
+                           numpy=array([b'abc', b'12345'], dtype=object)>}
+
 
 See the [`tf.train.Example`](https://www.tensorflow.org/tutorials/load_data/tfrecord#tftrainexample)
 guide for usage details.
 """
 
 FloatList.__doc__ = """\
-Container that holds repeated fundamental values of float type in the `tf.train.Feature` message.
+Used in `tf.train.Example` protos. Holds a list of floats.
+
+An `Example` proto is a representation of the following python type:
+
+```
+Dict[str,
+     Union[List[bytes],
+           List[int64],
+           List[float]]]
+```
+
+This proto implements the `List[float]` portion.
+
+>>> from google.protobuf import text_format
+>>> example = text_format.Parse('''
+...   features {
+...     feature {key: "my_feature"
+...              value {float_list {value: [1., 2., 3., 4. ]}}}
+...   }''',
+...   tf.train.Example())
+>>>
+>>> example.features.feature['my_feature'].float_list.value
+[1.0, 2.0, 3.0, 4.0]
+
+Use `tf.io.parse_example` to extract tensors from a serialized `Example` proto:
+
+>>> tf.io.parse_example(
+...     example.SerializeToString(),
+...     features = {'my_feature': tf.io.RaggedFeature(dtype=tf.float32)})
+{'my_feature': <tf.Tensor: shape=(4,), dtype=float32,
+                           numpy=array([1., 2., 3., 4.], dtype=float32)>}
 
 See the [`tf.train.Example`](https://www.tensorflow.org/tutorials/load_data/tfrecord#tftrainexample)
 guide for usage details.
 """
 
 Int64List.__doc__ = """\
-Container that holds repeated fundamental value of int64 type in the `tf.train.Feature` message.
+Used in `tf.train.Example` protos. Holds a list of Int64s.
+
+An `Example` proto is a representation of the following python type:
+
+```
+Dict[str,
+     Union[List[bytes],
+           List[int64],
+           List[float]]]
+```
+
+This proto implements the `List[int64]` portion.
+
+>>> from google.protobuf import text_format
+>>> example = text_format.Parse('''
+...   features {
+...     feature {key: "my_feature"
+...              value {int64_list {value: [1, 2, 3, 4]}}}
+...   }''',
+...   tf.train.Example())
+>>>
+>>> example.features.feature['my_feature'].int64_list.value
+[1, 2, 3, 4]
+
+Use `tf.io.parse_example` to extract tensors from a serialized `Example` proto:
+
+>>> tf.io.parse_example(
+...     example.SerializeToString(),
+...     features = {'my_feature': tf.io.RaggedFeature(dtype=tf.int64)})
+{'my_feature': <tf.Tensor: shape=(4,), dtype=float32,
+                           numpy=array([1, 2, 3, 4], dtype=int64)>}
 
 See the [`tf.train.Example`](https://www.tensorflow.org/tutorials/load_data/tfrecord#tftrainexample)
 guide for usage details.
 """
 
 Feature.__doc__ = """\
-A `Feature` is a list which may hold zero or more values.
+Used in `tf.train.Example` protos. Contains a list of values.
 
-There are three base `Feature` types:
+An `Example` proto is a representation of the following python type:
+
+```
+Dict[str,
+     Union[List[bytes],
+           List[int64],
+           List[float]]]
+```
+
+This proto implements the `Union`.
+
+The contained list can be one of three types:
 
   - `tf.train.BytesList`
   - `tf.train.FloatList`
   - `tf.train.Int64List`
+
+>>> int_feature = tf.train.Feature(
+...     int64_list=tf.train.Int64List(value=[1, 2, 3, 4]))
+>>> float_feature = tf.train.Feature(
+...     float_list=tf.train.FloatList(value=[1., 2., 3., 4.]))
+>>> bytes_feature = tf.train.Feature(
+...     bytes_list=tf.train.BytesList(value=[b"abc", b"1234"]))
+>>>
+>>> example = tf.train.Example(
+...     features=tf.train.Features(feature={
+...         'my_ints': int_feature,
+...         'my_floats': float_feature,
+...         'my_bytes': bytes_feature,
+...     }))
+
+Use `tf.io.parse_example` to extract tensors from a serialized `Example` proto:
+
+>>> tf.io.parse_example(
+...     example.SerializeToString(),
+...     features = {
+...         'my_ints': tf.io.RaggedFeature(dtype=tf.int64),
+...         'my_floats': tf.io.RaggedFeature(dtype=tf.float32),
+...         'my_bytes': tf.io.RaggedFeature(dtype=tf.string)})
+{'my_bytes': <tf.Tensor: shape=(2,), dtype=string,
+                         numpy=array([b'abc', b'1234'], dtype=object)>,
+ 'my_floats': <tf.Tensor: shape=(4,), dtype=float32,
+                          numpy=array([1., 2., 3., 4.], dtype=float32)>,
+ 'my_ints': <tf.Tensor: shape=(4,), dtype=int64,
+                        numpy=array([1, 2, 3, 4])>}
+
 """
 
 Features.__doc__ = """\
-Protocol message for describing the `features` of a `tf.train.Example`.
+Used in `tf.train.Example` protos. Contains the mapping from keys to `Feature`.
 
-`Features` are organized into categories by name.  The `Features` message
-contains the mapping from name to `tf.train.Feature`.
-
-One item value of `Features` for a movie recommendation application:
+An `Example` proto is a representation of the following python type:
 
 ```
-    feature {
-      key: "age"
-      value { float_list {
-        value: 29.0
-      }}
-    }
-    feature {
-      key: "movie"
-      value { bytes_list {
-        value: "The Shawshank Redemption"
-        value: "Fight Club"
-      }}
-    }
-    feature {
-      key: "movie_ratings"
-      value { float_list {
-        value: 9.0
-        value: 9.7
-      }}
-    }
-    feature {
-      key: "suggestion"
-      value { bytes_list {
-        value: "Inception"
-      }}
-    }
-    feature {
-      key: "suggestion_purchased"
-      value { int64_list {
-        value: 1
-      }}
-    }
-    feature {
-      key: "purchase_price"
-      value { float_list {
-        value: 9.99
-      }}
-    }
+Dict[str,
+     Union[List[bytes],
+           List[int64],
+           List[float]]]
 ```
+
+This proto implements the `Dict`.
+
+>>> int_feature = tf.train.Feature(
+...     int64_list=tf.train.Int64List(value=[1, 2, 3, 4]))
+>>> float_feature = tf.train.Feature(
+...     float_list=tf.train.FloatList(value=[1., 2., 3., 4.]))
+>>> bytes_feature = tf.train.Feature(
+...     bytes_list=tf.train.BytesList(value=[b"abc", b"1234"]))
+>>>
+>>> example = tf.train.Example(
+...     features=tf.train.Features(feature={
+...         'my_ints': int_feature,
+...         'my_floats': float_feature,
+...         'my_bytes': bytes_feature,
+...     }))
+
+Use `tf.io.parse_example` to extract tensors from a serialized `Example` proto:
+
+>>> tf.io.parse_example(
+...     example.SerializeToString(),
+...     features = {
+...         'my_ints': tf.io.RaggedFeature(dtype=tf.int64),
+...         'my_floats': tf.io.RaggedFeature(dtype=tf.float32),
+...         'my_bytes': tf.io.RaggedFeature(dtype=tf.string)})
+{'my_bytes': <tf.Tensor: shape=(2,), dtype=string,
+                         numpy=array([b'abc', b'1234'], dtype=object)>,
+ 'my_floats': <tf.Tensor: shape=(4,), dtype=float32,
+                          numpy=array([1., 2., 3., 4.], dtype=float32)>,
+ 'my_ints': <tf.Tensor: shape=(4,), dtype=int64,
+                        numpy=array([1, 2, 3, 4])>}
+
 """
 
-FeatureList.__doc__ = "Contains zero or more values of `tf.train.Feature`s."
+FeatureList.__doc__ = """\
+Mainly used as part of a `tf.train.SequenceExample`.
 
-FeatureLists.__doc__ = ("Contains the mapping from name to "
-                        "`tf.train.FeatureList`.")
+Contains a list of `tf.train.Feature`s.
 
-# LINT.ThenChange(
-#     https://www.tensorflow.org/code/tensorflow/core/example/feature.proto)
+The `tf.train.SequenceExample` proto can be thought of as a
+proto implementation of the following python type:
 
-# LINT.IfChange
+```
+# tf.train.Feature
+Feature = Union[List[bytes],
+                List[int64],
+                List[float]]
+
+# tf.train.FeatureList
+FeatureList = List[Feature]
+
+# tf.train.FeatureLists
+FeatureLists = Dict[str, FeatureList]
+
+class SequenceExample(typing.NamedTuple):
+  context: Dict[str, Feature]
+  feature_lists: FeatureLists
+```
+
+This proto implements the `List[Feature]` portion.
+
+"""
+
+FeatureLists.__doc__ = """\
+Mainly used as part of a `tf.train.SequenceExample`.
+
+Contains a list of `tf.train.Feature`s.
+
+The `tf.train.SequenceExample` proto can be thought of as a
+proto implementation of the following python type:
+
+```
+# tf.train.Feature
+Feature = Union[List[bytes],
+                List[int64],
+                List[float]]
+
+# tf.train.FeatureList
+FeatureList = List[Feature]
+
+# tf.train.FeatureLists
+FeatureLists = Dict[str, FeatureList]
+
+class SequenceExample(typing.NamedTuple):
+  context: Dict[str, Feature]
+  feature_lists: FeatureLists
+```
+
+This proto implements the `Dict[str, FeatureList]` portion.
+"""
+
+
 Example.__doc__ = """\
-An `Example` is a mostly-normalized data format for storing data for training and inference.
+An `Example` is a standard proto storing data for training and inference.
 
-It contains a key-value store `features` where each key (string) maps to a
-`tf.train.Feature` message. This flexible and compact format allows the
-storage of large amounts of typed data, but requires that the data shape
-and use be determined by the configuration files and parsers that are used to
-read and write this format.
-
-In TensorFlow, `Example`s are read in row-major
-format, so any configuration that describes data with rank-2 or above
-should keep this in mind. For example, to store an `M x N` matrix of bytes,
-the `tf.train.BytesList` must contain M*N bytes, with `M` rows of `N` contiguous values
-each. That is, the `BytesList` value must store the matrix as:
-
-```.... row 0 .... // .... row 1 .... // ...........  // ... row M-1 ....```
-
-An `Example` for a movie recommendation application:
+An `Example` proto is a representation of the following python type:
 
 ```
-    features {
-      feature {
-        key: "age"
-        value { float_list {
-          value: 29.0
-        }}
-      }
-      feature {
-        key: "movie"
-        value { bytes_list {
-          value: "The Shawshank Redemption"
-          value: "Fight Club"
-        }}
-      }
-      feature {
-        key: "movie_ratings"
-        value { float_list {
-          value: 9.0
-          value: 9.7
-        }}
-      }
-      feature {
-        key: "suggestion"
-        value { bytes_list {
-          value: "Inception"
-        }}
-      }
-      # Note that this feature exists to be used as a label in training.
-      # E.g., if training a logistic regression model to predict purchase
-      # probability in our learning tool we would set the label feature to
-      # "suggestion_purchased".
-      feature {
-        key: "suggestion_purchased"
-        value { float_list {
-          value: 1.0
-        }}
-      }
-      # Similar to "suggestion_purchased" above this feature exists to be used
-      # as a label in training.
-      # E.g., if training a linear regression model to predict purchase
-      # price in our learning tool we would set the label feature to
-      # "purchase_price".
-      feature {
-        key: "purchase_price"
-        value { float_list {
-          value: 9.99
-        }}
-      }
-    }
+Dict[str,
+     Union[List[bytes],
+           List[int64],
+           List[float]]]
 ```
-A conformant `Example` dataset obeys the following conventions:
+
+It contains a key-value store `Example.features` where each key (string) maps
+to a `tf.train.Feature` message which contains a fixed-type list. This flexible
+and compact format allows the storage of large amounts of typed data, but
+requires that the data shape and use be determined by the configuration files
+and parsers that are used to read and write this format (refer to
+`tf.io.parse_example` for details).
+
+>>> from google.protobuf import text_format
+>>> example = text_format.Parse('''
+...   features {
+...     feature {key: "my_feature"
+...              value {int64_list {value: [1, 2, 3, 4]}}}
+...   }''',
+...   tf.train.Example())
+
+Use `tf.io.parse_example` to extract tensors from a serialized `Example` proto:
+
+>>> tf.io.parse_example(
+...     example.SerializeToString(),
+...     features = {'my_feature': tf.io.RaggedFeature(dtype=tf.int64)})
+{'my_feature': <tf.Tensor: shape=(4,), dtype=float32,
+                           numpy=array([1, 2, 3, 4], dtype=int64)>}
+
+While the list of keys, and the contents of each key _could_ be different for
+every `Example`, TensorFlow expects a fixed list of keys, each with a fixed
+`tf.dtype`. A conformant `Example` dataset obeys the following conventions:
 
   - If a Feature `K` exists in one example with data type `T`, it must be of
       type `T` in all other examples when present. It may be omitted.
@@ -317,7 +458,42 @@ A conformant `Example` dataset obeys the following conventions:
 """
 
 SequenceExample.__doc__ = """\
-A `SequenceExample` is a format for representing one or more sequences and some context.
+A `SequenceExample` represents a sequence of features and some context.
+
+It can be thought of as a proto-implementation of the following python type:
+
+```
+Feature = Union[List[bytes],
+                List[int64],
+                List[float]]
+
+class SequenceExample(typing.NamedTuple):
+  context: Dict[str, Feature]
+  feature_lists: Dict[str, List[Feature]]
+```
+
+To implement this as protos it's broken up into sub-messages as follows:
+
+```
+# tf.train.Feature
+Feature = Union[List[bytes],
+                List[int64],
+                List[float]]
+
+# tf.train.FeatureList
+FeatureList = List[Feature]
+
+# tf.train.FeatureLists
+FeatureLists = Dict[str, FeatureList]
+
+# tf.train.SequenceExample
+class SequenceExample(typing.NamedTuple):
+  context: Dict[str, Feature]
+  feature_lists: FeatureLists
+```
+
+To parse a `SequenceExample` in TensorFlow refer to the
+`tf.io.parse_sequence_example` function.
 
 The `context` contains features which apply to the entire
 example. The `feature_lists` contain a key, value map where each key is
@@ -554,6 +730,3 @@ determines if the feature sizes must match:
     } }
 ```
 """
-# pylint: enable=undefined-variable
-# LINT.ThenChange(
-#     https://www.tensorflow.org/code/tensorflow/core/example/example.proto)

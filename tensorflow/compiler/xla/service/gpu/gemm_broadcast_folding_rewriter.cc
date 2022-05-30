@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -70,13 +70,11 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
       }
 
       if (bcast_operand_index == 1) {
-        config.set_rhs_stride(0);
         CHECK_EQ(dim_nums->rhs_contracting_dimensions_size(), 1);
         dim_nums->set_rhs_contracting_dimensions(
             0, dim_nums->rhs_contracting_dimensions(0) - num_batch_dims);
         dim_nums->clear_rhs_batch_dimensions();
       } else {
-        config.set_lhs_stride(0);
         CHECK_EQ(dim_nums->lhs_contracting_dimensions_size(), 1);
         dim_nums->set_lhs_contracting_dimensions(
             0, dim_nums->lhs_contracting_dimensions(0) - num_batch_dims);

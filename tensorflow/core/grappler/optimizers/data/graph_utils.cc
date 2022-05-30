@@ -317,7 +317,8 @@ void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph,
   node->set_name(std::move(name));
 }
 
-void SetUniqueGraphFunctionName(StringPiece prefix, FunctionDefLibrary* library,
+void SetUniqueGraphFunctionName(StringPiece prefix,
+                                const FunctionDefLibrary* library,
                                 FunctionDef* function) {
   string name = string(prefix);
   int id = library->function_size();
@@ -430,6 +431,11 @@ const auto* kSloppyAttrOps = new absl::flat_hash_set<string>{
     "ParseExampleDataset",
 };
 
+const auto* kReplicateOnSplitAttrOps = new absl::flat_hash_set<string>{
+    "TensorSliceDataset",
+    "RangeDataset",
+};
+
 const auto* kDeterministicAttrOps = new absl::flat_hash_set<string>{
     "LegacyParallelInterleaveDatasetV2",
     "ParallelInterleaveDatasetV3",
@@ -440,6 +446,10 @@ const auto* kDeterministicAttrOps = new absl::flat_hash_set<string>{
 }  // anonymous namespace
 
 bool HasSloppyAttr(const string& op) { return kSloppyAttrOps->contains(op); }
+
+bool HasReplicateOnSplitAttr(const string& op) {
+  return kReplicateOnSplitAttrOps->contains(op);
+}
 
 bool HasDeterministicAttr(const string& op) {
   return kDeterministicAttrOps->contains(op);

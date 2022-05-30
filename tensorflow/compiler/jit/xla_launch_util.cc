@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -113,10 +114,13 @@ Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
     if (handle.device() != dev->attributes().name()) {
       std::string definition_location =
           DefinitionLocationMsg(handle.definition_stack_trace());
-      return errors::InvalidArgument("Trying to access resource ",
-                                     handle.name(), definition_location,
-                                     " located in device ", handle.device(),
-                                     " from device ", dev->attributes().name());
+      return errors::InvalidArgument(
+          "Trying to access resource ", handle.name(), definition_location,
+          " located in device ", handle.device(), " from device ",
+          dev->attributes().name(),
+          "\n Cf. "
+          "https://www.tensorflow.org/xla/"
+          "known_issues#tfvariable_on_a_different_device");
     }
     TF_RETURN_IF_ERROR(rm->LookupOrCreate<Var>(
         handle.container(), handle.name(), &variable, [](Var** ptr) {
@@ -619,14 +623,14 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
   DeviceContext* device_context = nullptr;
   TF_RETURN_IF_ERROR(device->TryGetDeviceContext(&device_context));
   bool using_default_context = false;
-  auto cleanup = xla::MakeCleanup([&] {
+  auto cleanup = absl::MakeCleanup([&] {
     if (device_context != nullptr && !using_default_context) {
       device_context->Unref();
     }
   });
   if (device_context == nullptr) {
     using_default_context = true;
-    auto* dev_info = device->tensorflow_gpu_device_info();
+    auto* dev_info = device->tensorflow_accelerator_device_info();
     if (dev_info) device_context = dev_info->default_context;
   }
 

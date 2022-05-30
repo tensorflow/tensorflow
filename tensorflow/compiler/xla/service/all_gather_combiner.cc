@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -59,7 +58,7 @@ Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine) {
 
   // Create a single bigger AllGather of the operands of the smaller AllGather.
   std::vector<HloInstruction*> operands;
-  std::vector<Shape> output_shapes;
+  std::vector<const Shape*> output_shapes;
   VLOG(1) << "Combining set";
   for (HloInstruction* hlo : to_combine) {
     VLOG(1) << "Set element: " << hlo->ToString();
@@ -70,7 +69,7 @@ Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine) {
     TF_RET_CHECK(hlo->shape().IsArray());
     for (HloInstruction* operand : hlo->operands()) {
       operands.push_back(operand);
-      output_shapes.push_back(hlo->shape());
+      output_shapes.push_back(&hlo->shape());
     }
   }
 
@@ -78,8 +77,8 @@ Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine) {
   // AllGather ops with more than one operand produce a tuple.
   TF_RET_CHECK(operands.size() >= 2);
   combined = computation.AddInstruction(HloInstruction::CreateAllGather(
-      ShapeUtil::MakeTupleShape(output_shapes), operands, all_gather_dimension,
-      to_combine.front()->replica_groups(),
+      ShapeUtil::MakeTupleShapeWithPtrs(output_shapes), operands,
+      all_gather_dimension, to_combine.front()->replica_groups(),
       /*constrain_layout=*/false, to_combine.front()->channel_id(),
       Cast<HloAllGatherInstruction>(to_combine.front())
           ->use_global_device_ids()));

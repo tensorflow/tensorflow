@@ -115,17 +115,17 @@ Status CpuLayoutAssignment::AddBackendConstraints(
   for (auto* instruction : computation->instructions()) {
     if (OperandsAndResultMustHaveRowMajorLayout(*instruction,
                                                 target_machine_features_)) {
-      TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
+      TF_RETURN_IF_ERROR(SetInstructionLayout(
           RowMajorShape(instruction->shape()), instruction));
       for (int i = 0; i < instruction->operand_count(); i++) {
-        TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
+        TF_RETURN_IF_ERROR(SetOperandLayout(
             RowMajorShape(instruction->operand(i)->shape()), instruction, i));
       }
     } else if (optional<int64_t> op_idx =
                    ShouldMakeOperandColumnMajor(&cache, *instruction)) {
       const HloInstruction* op = instruction->operand(*op_idx);
-      TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
-          ColMajorShape(op->shape()), instruction, *op_idx));
+      TF_RETURN_IF_ERROR(
+          SetOperandLayout(ColMajorShape(op->shape()), instruction, *op_idx));
     } else {
       for (int64_t operand_no = 0; operand_no < instruction->operand_count();
            ++operand_no) {
@@ -134,7 +134,7 @@ Status CpuLayoutAssignment::AddBackendConstraints(
           continue;
         }
         // Skip over forwarded operands.
-        if (constraints->AnyOperandBufferForwarded(instruction, operand_no)) {
+        if (AnyOperandBufferForwarded(instruction, operand_no)) {
           continue;
         }
         // Skip operands with non-array shapes.
@@ -143,8 +143,8 @@ Status CpuLayoutAssignment::AddBackendConstraints(
         }
         Shape operand_shape(
             RowMajorShape(instruction->operand(operand_no)->shape()));
-        TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
-            operand_shape, instruction, operand_no));
+        TF_RETURN_IF_ERROR(
+            SetOperandLayout(operand_shape, instruction, operand_no));
       }
       // Skip over the root instruction for the top-level computation.
       if (computation->parent()->entry_computation() == computation &&

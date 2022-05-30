@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "TensorListPushBackBatch"
   input_arg {
     name: "input_handles"
@@ -35,6 +35,35 @@ op {
       args {
         type_id: TFT_VAR
         s: "element_dtype"
+      }
+    }
+  }
+  attr {
+    name: "element_dtype"
+    type: "type"
+  }
+}
+op {
+  name: "TensorListPushBackBatch"
+  input_arg {
+    name: "input_handles"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "tensor"
+    type_attr: "element_dtype"
+  }
+  output_arg {
+    name: "output_handles"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_ARRAY
+      args {
+        type_id: TFT_TENSOR
+        args {
+          type_id: TFT_VAR
+          s: "element_dtype"
+        }
       }
     }
   }

@@ -18,7 +18,6 @@ import abc
 import itertools
 
 import numpy as np
-import six
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -47,7 +46,7 @@ from tensorflow.python.saved_model import save as save_model
 from tensorflow.python.util import nest
 
 
-class OperatorShapesInfo(object):
+class OperatorShapesInfo:
   """Object encoding expected shape for a test.
 
   Encodes the expected shape of a matrix for a test. Also
@@ -59,7 +58,7 @@ class OperatorShapesInfo(object):
     self.__dict__.update(kwargs)
 
 
-class CheckTapeSafeSkipOptions(object):
+class CheckTapeSafeSkipOptions:
 
   # Skip checking this particular method.
   DETERMINANT = "determinant"
@@ -68,8 +67,7 @@ class CheckTapeSafeSkipOptions(object):
   TRACE = "trace"
 
 
-@six.add_metaclass(abc.ABCMeta)  # pylint: disable=no-init
-class LinearOperatorDerivedClassTest(test.TestCase):
+class LinearOperatorDerivedClassTest(test.TestCase, metaclass=abc.ABCMeta):
   """Tests for derived classes.
 
   Subclasses should implement every abstractmethod, and this will enable all
@@ -197,6 +195,13 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     # To skip "test_foo", add "foo" to this list.
     return []
 
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    # Subclasses should over-ride if they want to add optional tests.
+    # To add "test_foo", add "foo" to this list.
+    return []
+
   def assertRaisesError(self, msg):
     """assertRaisesRegexp or OpError, depending on context.executing_eagerly."""
     if context.executing_eagerly():
@@ -277,6 +282,30 @@ class LinearOperatorDerivedClassTest(test.TestCase):
 # pylint:disable=missing-docstring
 
 
+def _test_slicing(use_placeholder, shapes_info, dtype):
+  def test_slicing(self):
+    with self.session(graph=ops.Graph()) as sess:
+      sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+      operator, mat = self.operator_and_matrix(
+          shapes_info, dtype, use_placeholder=use_placeholder)
+      batch_shape = shapes_info.shape[:-2]
+      # Don't bother slicing for uninteresting batch shapes.
+      if not batch_shape or batch_shape[0] <= 1:
+        return
+
+      slices = [slice(1, -1)]
+      if len(batch_shape) > 1:
+        # Slice out the last member.
+        slices += [..., slice(0, 1)]
+      sliced_operator = operator[slices]
+      matrix_slices = slices + [slice(None), slice(None)]
+      sliced_matrix = mat[matrix_slices]
+      sliced_op_dense = sliced_operator.to_dense()
+      op_dense_v, mat_v = sess.run([sliced_op_dense, sliced_matrix])
+      self.assertAC(op_dense_v, mat_v)
+  return test_slicing
+
+
 def _test_to_dense(use_placeholder, shapes_info, dtype):
   def test_to_dense(self):
     with self.session(graph=ops.Graph()) as sess:
@@ -321,6 +350,44 @@ def _test_log_abs_det(use_placeholder, shapes_info, dtype):
           [op_log_abs_det, mat_log_abs_det])
       self.assertAC(op_log_abs_det_v, mat_log_abs_det_v)
   return test_log_abs_det
+
+
+def _test_operator_matmul_with_same_type(use_placeholder, shapes_info, dtype):
+  """op_a.matmul(op_b), in the case where the same type is returned."""
+  def test_operator_matmul_with_same_type(self):
+    with self.session(graph=ops.Graph()) as sess:
+      sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+      operator_a, mat_a = self.operator_and_matrix(
+          shapes_info, dtype, use_placeholder=use_placeholder)
+      operator_b, mat_b = self.operator_and_matrix(
+          shapes_info, dtype, use_placeholder=use_placeholder)
+
+      mat_matmul = math_ops.matmul(mat_a, mat_b)
+      op_matmul = operator_a.matmul(operator_b)
+      mat_matmul_v, op_matmul_v = sess.run([mat_matmul, op_matmul.to_dense()])
+
+      self.assertIsInstance(op_matmul, operator_a.__class__)
+      self.assertAC(mat_matmul_v, op_matmul_v)
+  return test_operator_matmul_with_same_type
+
+
+def _test_operator_solve_with_same_type(use_placeholder, shapes_info, dtype):
+  """op_a.solve(op_b), in the case where the same type is returned."""
+  def test_operator_solve_with_same_type(self):
+    with self.session(graph=ops.Graph()) as sess:
+      sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+      operator_a, mat_a = self.operator_and_matrix(
+          shapes_info, dtype, use_placeholder=use_placeholder)
+      operator_b, mat_b = self.operator_and_matrix(
+          shapes_info, dtype, use_placeholder=use_placeholder)
+
+      mat_solve = linear_operator_util.matrix_solve_with_broadcast(mat_a, mat_b)
+      op_solve = operator_a.solve(operator_b)
+      mat_solve_v, op_solve_v = sess.run([mat_solve, op_solve.to_dense()])
+
+      self.assertIsInstance(op_solve, operator_a.__class__)
+      self.assertAC(mat_solve_v, op_solve_v)
+  return test_operator_solve_with_same_type
 
 
 def _test_matmul_base(
@@ -750,8 +817,7 @@ def _test_composite_tensor(use_placeholder, shapes_info, dtype):
       self.assertAC(loop_y_, mat_y_)
 
       # Ensure that the `TypeSpec` can be encoded.
-      struct_coder = nested_structure_coder.StructureCoder()
-      struct_coder.encode_structure(operator._type_spec)  # pylint: disable=protected-access
+      nested_structure_coder.encode_structure(operator._type_spec)  # pylint: disable=protected-access
   return test_composite_tensor
 
 
@@ -798,7 +864,9 @@ def _test_saved_model(use_placeholder, shapes_info, dtype):
 def add_tests(test_cls):
   """Add tests for LinearOperator methods."""
   test_name_dict = {
+      # All test classes should be added here.
       "add_to_tensor": _test_add_to_tensor,
+      "adjoint": _test_adjoint,
       "cholesky": _test_cholesky,
       "cond": _test_cond,
       "composite_tensor": _test_composite_tensor,
@@ -807,23 +875,38 @@ def add_tests(test_cls):
       "eigvalsh": _test_eigvalsh,
       "inverse": _test_inverse,
       "log_abs_det": _test_log_abs_det,
+      "operator_matmul_with_same_type": _test_operator_matmul_with_same_type,
+      "operator_solve_with_same_type": _test_operator_solve_with_same_type,
       "matmul": _test_matmul,
       "matmul_with_broadcast": _test_matmul_with_broadcast,
       "saved_model": _test_saved_model,
+      "slicing": _test_slicing,
       "solve": _test_solve,
       "solve_with_broadcast": _test_solve_with_broadcast,
       "to_dense": _test_to_dense,
       "trace": _test_trace,
   }
+  optional_tests = [
+      # Test classes need to explicitly add these to cls.optional_tests.
+      "operator_matmul_with_same_type",
+      "operator_solve_with_same_type",
+  ]
   tests_with_adjoint_args = [
       "matmul",
       "matmul_with_broadcast",
       "solve",
       "solve_with_broadcast",
   ]
+  if set(test_cls.skip_these_tests()).intersection(test_cls.optional_tests()):
+    raise ValueError(
+        "Test class {test_cls} had intersecting 'skip_these_tests' "
+        f"{test_cls.skip_these_tests()} and 'optional_tests' "
+        f"{test_cls.optional_tests()}.")
 
   for name, test_template_fn in test_name_dict.items():
     if name in test_cls.skip_these_tests():
+      continue
+    if name in optional_tests and name not in test_cls.optional_tests():
       continue
 
     for dtype, use_placeholder, shape_info in itertools.product(
@@ -857,8 +940,8 @@ def add_tests(test_cls):
                 use_placeholder, shape_info, dtype)))
 
 
-@six.add_metaclass(abc.ABCMeta)
-class SquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
+class SquareLinearOperatorDerivedClassTest(
+    LinearOperatorDerivedClassTest, metaclass=abc.ABCMeta):
   """Base test class appropriate for square operators.
 
   Sub-classes must still define all abstractmethods from
@@ -913,8 +996,8 @@ class SquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
       return 2
 
 
-@six.add_metaclass(abc.ABCMeta)
-class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
+class NonSquareLinearOperatorDerivedClassTest(
+    LinearOperatorDerivedClassTest, metaclass=abc.ABCMeta):
   """Base test class appropriate for generic rectangular operators.
 
   Square shapes are never tested by this class, so if you want to test your
@@ -935,7 +1018,7 @@ class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
         "solve",
         "solve_with_broadcast",
         "det",
-        "log_abs_det"
+        "log_abs_det",
     ]
 
   @staticmethod

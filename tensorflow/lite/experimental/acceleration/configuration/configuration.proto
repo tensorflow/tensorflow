@@ -60,6 +60,8 @@ enum Delegate {
   EDGETPU = 5;
   // The Coral EdgeTpu Dev Board / USB accelerator.
   EDGETPU_CORAL = 6;
+  // Apple CoreML.
+  CORE_ML = 7;
 }
 
 enum NNAPIExecutionPreference {
@@ -151,6 +153,11 @@ message NNAPISettings {
   // would significantly reduce overhead especially if the same delegate
   // instance is to be used for multiple inferences.
   optional bool use_burst_computation = 11;
+
+  // Optional pointer to NNAPI Support Library provided pointer to
+  // NnApiSLDriverImplFL5 which can be used to construct the
+  // NNAPI delegate.
+  optional int64 support_library_handle = 12;
 }
 
 // Which GPU backend to select. Default behaviour on Android is to try OpenCL
@@ -251,8 +258,53 @@ message HexagonSettings {
 //
 // See
 // https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h
+enum XNNPackFlags {
+  // These flags match the flags in xnnpack_delegate.h.
+  TFLITE_XNNPACK_DELEGATE_NO_FLAGS = 0;
+  // Enable fast signed integer XNNpack kernels.
+  TFLITE_XNNPACK_DELEGATE_FLAG_QS8 = 1;
+  // Enable fast unsigned integer XNNpack kernels.
+  TFLITE_XNNPACK_DELEGATE_FLAG_QU8 = 2;
+  // Enable both, signed and unsigned integer XNNpack kernels.
+  TFLITE_XNNPACK_DELEGATE_FLAG_QS8_QU8 = 3;
+  // Force 16-bit floating point inference.
+  TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16 = 4;
+}
+
 message XNNPackSettings {
   optional int32 num_threads = 1;
+  optional XNNPackFlags flags = 2 [default = TFLITE_XNNPACK_DELEGATE_NO_FLAGS];
+}
+
+// CoreML Delegate settings.
+//
+// See
+// https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/coreml/coreml_delegate.h
+message CoreMLSettings {
+  // Note the enum order change from the above header for better proto practice.
+  enum EnabledDevices {
+    // Always create Core ML delegate.
+    DEVICES_ALL = 0;
+    // Create Core ML delegate only on devices with Apple Neural Engine.
+    DEVICES_WITH_NEURAL_ENGINE = 1;
+  }
+  // Only create delegate when Neural Engine is available on the device.
+  optional EnabledDevices enabled_devices = 1;
+
+  // Specifies target Core ML version for model conversion.
+  // Core ML 3 come with a lot more ops, but some ops (e.g. reshape) is not
+  // delegated due to input rank constraint.
+  // if not set to one of the valid versions, the delegate will use highest
+  // version possible in the platform.
+  // Valid versions: (2, 3)
+  optional int32 coreml_version = 2;
+  // This sets the maximum number of Core ML delegates created.
+  // Each graph corresponds to one delegated node subset in the
+  // TFLite model. Set this to 0 to delegate all possible partitions.
+  optional int32 max_delegated_partitions = 3 [default = 0];
+  // This sets the minimum number of nodes per partition delegated with
+  // Core ML delegate. Defaults to 2.
+  optional int32 min_nodes_per_partition = 4 [default = 2];
 }
 
 // EdgeTPU device spec.
@@ -328,6 +380,12 @@ message EdgeTpuSettings {
     HALF = 3;
   }
 
+  enum QosClass {
+    QOS_UNDEFINED = 0;
+    BEST_EFFORT = 1;
+    REALTIME = 2;
+  }
+
   // Target inference power state for running the model.
   optional EdgeTpuPowerState inference_power_state = 1;
 
@@ -345,6 +403,9 @@ message EdgeTpuSettings {
 
   // Float truncation type for EdgeTPU.
   optional FloatTruncationType float_truncation_type = 6;
+
+  // QoS class to determine chunking size for PRO onward.
+  optional QosClass qos_class = 7 [default = QOS_UNDEFINED];
 }
 
 // Coral Dev Board / USB accelerator delegate settings.
@@ -395,6 +456,7 @@ message TFLiteSettings {
   optional GPUSettings gpu_settings = 3;
   optional HexagonSettings hexagon_settings = 4;
   optional XNNPackSettings xnnpack_settings = 5;
+  optional CoreMLSettings coreml_settings = 11;
 
   // How to configure CPU execution.
   optional CPUSettings cpu_settings = 6;
@@ -410,6 +472,9 @@ message TFLiteSettings {
 
   // Whether to automatically fall back to TFLite CPU path.
   optional FallbackSettings fallback_settings = 9;
+
+  // Whether to disable default delegates (XNNPack).
+  optional bool disable_default_delegates = 12;
 }
 
 // Whether to automatically fallback to TFLite CPU path on delegation errors.
@@ -615,7 +680,7 @@ message ModelFile {
 
 // Where to store mini-benchmark state.
 message BenchmarkStoragePaths {
-  // Base path to the files used to to store benchmark results in. Two files
+  // Base path to the files used to store benchmark results in. Two files
   // will be generated: one with the given path and an extra file to store
   // events related to best acceleration results at path storage_file_path +
   // ".extra.fb". Must be specific to the model.

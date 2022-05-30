@@ -22,12 +22,13 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stack_frame.h"
-#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
@@ -38,6 +39,12 @@ namespace tensorflow {
 class TF_MUST_USE_RESULT Status;
 #endif
 
+namespace errors {
+
+typedef ::tensorflow::error::Code Code;
+
+}  // namespace errors
+
 /// @ingroup core
 /// Denotes success or failure of a call in Tensorflow.
 class Status {
@@ -47,15 +54,7 @@ class Status {
 
   /// \brief Create a status with the specified error code and msg as a
   /// human-readable string containing more detailed information.
-  Status(tensorflow::error::Code code, tensorflow::StringPiece msg)
-      : Status(code, msg, {}) {}
-
-  /// \brief Create a status with the specified error code, msg, and stack trace
-  /// as a human-readable string containing more detailed information.
-#ifndef SWIG
-  Status(tensorflow::error::Code code, tensorflow::StringPiece msg,
-         std::vector<StackFrame>&& stack_trace);
-#endif
+  Status(tensorflow::error::Code code, absl::string_view msg);
 
   /// Copy the specified status.
   Status(const Status& s);
@@ -65,6 +64,7 @@ class Status {
   Status& operator=(Status&& s) noexcept;
 #endif  // SWIG
 
+  // Prefer using OkStatus().
   static Status OK() { return Status(); }
 
   /// Returns true iff the status indicates success.
@@ -76,10 +76,6 @@ class Status {
 
   const std::string& error_message() const {
     return ok() ? empty_string() : state_->msg;
-  }
-
-  const std::vector<StackFrame>& stack_trace() const {
-    return ok() ? empty_stack_trace() : state_->stack_trace;
   }
 
   bool operator==(const Status& x) const;
@@ -149,19 +145,17 @@ class Status {
   //
   // Returns the payload of a status given its unique `type_url` key, if
   // present.
-  absl::optional<tensorflow::StringPiece> GetPayload(
-      tensorflow::StringPiece type_url) const;
+  absl::optional<absl::Cord> GetPayload(absl::string_view type_url) const;
 
   // Sets the payload for a non-ok status using a `type_url` key, overwriting
   // any existing payload for that `type_url`.
   //
   // This function does nothing if the Status is ok.
-  void SetPayload(tensorflow::StringPiece type_url,
-                  tensorflow::StringPiece payload);
+  void SetPayload(absl::string_view type_url, absl::Cord payload);
 
   // Erases the payload corresponding to the `type_url` key.  Returns `true` if
   // the payload was present.
-  bool ErasePayload(tensorflow::StringPiece type_url);
+  bool ErasePayload(absl::string_view type_url);
 
   // Iterates over the stored payloads and calls the
   // `visitor(type_key, payload)` callable for each one.
@@ -170,17 +164,19 @@ class Status {
   // any time and any mutation on the same Status object during visitation is
   // forbidden and could result in undefined behavior.
   void ForEachPayload(
-      const std::function<void(tensorflow::StringPiece,
-                               tensorflow::StringPiece)>& visitor) const;
+      absl::FunctionRef<void(absl::string_view, const absl::Cord&)> visitor)
+      const;
+
+  void SetStackTrace(std::vector<StackFrame>);
+  std::vector<StackFrame> GetStackTrace() const;
 
  private:
   static const std::string& empty_string();
-  static const std::vector<StackFrame>& empty_stack_trace();
+  std::vector<StackFrame> stack_trace_;
   struct State {
     tensorflow::error::Code code;
     std::string msg;
-    std::vector<StackFrame> stack_trace;
-    std::unordered_map<std::string, std::string> payloads;
+    std::unordered_map<std::string, absl::Cord> payloads;
   };
 
   // OK status has a `NULL` state_.  Otherwise, `state_` points to
@@ -189,6 +185,57 @@ class Status {
 
   void SlowCopyFrom(const State* src);
 };
+
+// OkStatus()
+//
+// Returns an OK status, equivalent to a default constructed instance. Prefer
+// usage of `OkStatus()` when constructing such an OK status.
+Status OkStatus();
+
+// Convenience Status constructors, not having to specify the underlying Code.
+Status AbortedError(absl::string_view message);
+Status AlreadyExistsError(absl::string_view message);
+Status CancelledError(absl::string_view message);
+Status DataLossError(absl::string_view message);
+Status DeadlineExceededError(absl::string_view message);
+Status FailedPreconditionError(absl::string_view message);
+Status InternalError(absl::string_view message);
+Status InvalidArgumentError(absl::string_view message);
+Status NotFoundError(absl::string_view message);
+Status OutOfRangeError(absl::string_view message);
+Status PermissionDeniedError(absl::string_view message);
+Status ResourceExhaustedError(absl::string_view message);
+Status UnauthenticatedError(absl::string_view message);
+Status UnavailableError(absl::string_view message);
+Status UnimplementedError(absl::string_view message);
+Status UnknownError(absl::string_view message);
+
+// These convenience functions return `true` if a given status matches the
+// `Code` error code of its associated function.
+bool IsAborted(const Status& status);
+bool IsAlreadyExists(const Status& status);
+bool IsCancelled(const Status& status);
+bool IsDataLoss(const Status& status);
+bool IsDeadlineExceeded(const Status& status);
+bool IsFailedPrecondition(const Status& status);
+bool IsInternal(const Status& status);
+bool IsInvalidArgument(const Status& status);
+bool IsNotFound(const Status& status);
+bool IsOutOfRange(const Status& status);
+bool IsPermissionDenied(const Status& status);
+bool IsResourceExhausted(const Status& status);
+bool IsUnauthenticated(const Status& status);
+bool IsUnavailable(const Status& status);
+bool IsUnimplemented(const Status& status);
+bool IsUnknown(const Status& status);
+
+namespace errors {
+
+void SetStackTrace(::tensorflow::Status& status,
+                   std::vector<StackFrame> stack_trace);
+
+std::vector<StackFrame> GetStackTrace(const ::tensorflow::Status& status);
+}  // namespace errors
 
 // Helper class to manage multiple child status values.
 class StatusGroup {
@@ -212,7 +259,7 @@ class StatusGroup {
   // otherwise one payload value will be chosen in an unspecified but
   // deterministic order.
   // NOTE: The payload marking derived statuses as derived will not be returned.
-  std::unordered_map<std::string, std::string> GetPayloads() const;
+  std::unordered_map<std::string, absl::Cord> GetPayloads() const;
 
   // Return a merged status with combined child status messages with a summary.
   Status as_summary_status() const;
@@ -283,6 +330,8 @@ typedef std::function<void(const Status&)> StatusCallback;
 
 extern tensorflow::string* TfCheckOpHelperOutOfLine(
     const ::tensorflow::Status& v, const char* msg);
+
+std::string error_name(error::Code code);
 
 inline tensorflow::string* TfCheckOpHelper(::tensorflow::Status v,
                                            const char* msg) {

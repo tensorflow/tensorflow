@@ -117,6 +117,9 @@ class GrpcServer : public ServerInterface {
   // Pass coordination service agent instance to server's RPC handler
   Status SetCoordinationServiceAgentInstance(
       CoordinationServiceAgent* agent) override;
+  // TODO(hanyangtay): Remove this method once gRPC server clean shutdown is
+  // supported.
+  Status StopCoordinationService() override;
 
  protected:
   virtual Status GetHostAndPort(const ServerDef& server_def, string* host_name,
@@ -213,6 +216,10 @@ class GrpcServer : public ServerInterface {
   AsyncServiceInterface* eager_service_ = nullptr;
   std::unique_ptr<Thread> eager_thread_ TF_GUARDED_BY(mu_);
   std::shared_ptr<WorkerSession> worker_session_;
+
+  // Experimental coordination service implementation, and RPC polling thread.
+  AsyncServiceInterface* coordination_service_ = nullptr;
+  std::unique_ptr<Thread> coordination_thread_ TF_GUARDED_BY(mu_);
 
   // TensorFlow profiler service implementation.
   std::unique_ptr<grpc::ProfilerService::Service> profiler_service_ = nullptr;

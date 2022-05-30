@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +27,7 @@ import tensorflow.compat.v2 as tf
 # Prevent Python exception from circular dependencies (b/117329403) looking very
 # similar to https://bugs.python.org/issue43546.
 from tensorflow.python.distribute import distribution_strategy_context  # pylint: disable=unused-import
+from tensorflow.python.ops import logging_ops
 
 from tensorflow.tools.docs import tf_doctest_lib
 
@@ -36,6 +36,9 @@ from tensorflow.tools.docs import tf_doctest_lib
 import doctest  # pylint: disable=g-bad-import-order
 
 tf.compat.v1.enable_v2_behavior()
+
+# `enable_interactive_logging` must come after `enable_v2_behavior`.
+logging_ops.enable_interactive_logging()
 
 FLAGS = flags.FLAGS
 
@@ -147,6 +150,8 @@ def setup_gpu(required_gpus):
 class TfTestCase(tf.test.TestCase):
 
   def set_up(self, test):
+    # Enable soft device placement to run distributed doctests.
+    tf.config.set_soft_device_placement(True)
     self.setUp()
 
   def tear_down(self, test):
@@ -168,7 +173,14 @@ def load_tests(unused_loader, tests, unused_ignore):
     print('**************************************************')
     return tests
 
-  for module in tf_modules:
+  test_shard_index = int(os.environ.get('TEST_SHARD_INDEX', '0'))
+  total_test_shards = int(os.environ.get('TEST_TOTAL_SHARDS', '1'))
+
+  tf_modules = sorted(tf_modules, key=lambda mod: mod.__name__)
+  for n, module in enumerate(tf_modules):
+    if (n % total_test_shards) != test_shard_index:
+      continue
+
     # If I break the loop comprehension, then the test times out in `small`
     # size.
     if any(

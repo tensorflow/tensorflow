@@ -21,9 +21,11 @@ limitations under the License.
 include "mlir/Dialect/Shape/IR/ShapeBase.td"
 include "mlir/Dialect/Quant/QuantOpsBase.td"
 include "mlir/IR/OpBase.td"
+include "mlir/IR/FunctionInterfaces.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 
@@ -39,6 +41,8 @@ def TFR_Dialect : Dialect {
   }];
 
   let cppNamespace = "::mlir::TFR";
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
 //===----------------------------------------------------------------------===//
@@ -107,7 +111,7 @@ def TFR_allowedListResultType : Type<Or<[
 // Op classes
 //===----------------------------------------------------------------------===//
 
-class TFR_Op<string mnemonic, list<OpTrait> traits> :
+class TFR_Op<string mnemonic, list<Trait> traits> :
     Op<TFR_Dialect, mnemonic, traits>;
 
 def TFR_CallOp : TFR_Op<"call", [CallOpInterface]> {
@@ -302,7 +306,7 @@ def TFR_ConstantTensorOp : TFR_Op<"constant_tensor", [NoSideEffect]> {
 
   let hasCanonicalizer = 1;
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 def TFR_GetElementOp : TFR_Op<"get_element", [NoSideEffect]> {
@@ -382,7 +386,7 @@ def TFR_GetLengthOp : TFR_Op<"get_length", [NoSideEffect]> {
 
 def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
                                     DeclareOpInterfaceMethods<CallableOpInterface>,
-                                    FunctionLike,
+                                    FunctionOpInterface,
                                     IsolatedFromAbove, Symbol]> {
   let summary = "TFR Function defines a composition of other ops";
 
@@ -413,7 +417,7 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
   }];
 
   let arguments = (ins
-    TypeAttr:$type,
+    TypeAttrOf<FunctionType>:$function_type,
     StrAttr:$sym_name
   );
 
@@ -432,21 +436,27 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
   ];
 
   let extraClassDeclaration = [{
-    // FunctionLike trait needs access to the functions below.
-    friend class OpTrait::FunctionLike<TFRFuncOp>;
+    /// Returns the type of this function.
+    /// FIXME: We should drive this via the ODS `type` param.
+    FunctionType getFunctionType() {
+      return getFunctionTypeAttr().getValue().cast<FunctionType>();
+    }
+    LogicalResult verifyType() { return success(); }
 
-    // Hooks for the input/output type enumeration in FunctionLike .
-    unsigned getNumFuncArguments() { return getType().getNumInputs(); }
-    unsigned getNumFuncResults() { return getType().getNumResults(); }
+    /// Returns the argument types of this function.
+    ArrayRef<Type> getArgumentTypes() { return getFunctionType().getInputs(); }
+
+    /// Returns the result types of this function.
+    ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
 
     // Get the names of all defined attributes, including both derived and
     // non-derived ones.
     llvm::StringSet<> getDefinedAttributeNames() {
       llvm::StringSet<> all_attrs;
       for (auto& attr : (*this)->getAttrs()) {
-        all_attrs.insert(attr.first.strref());
+        all_attrs.insert(attr.getName().strref());
       }
-      for (const auto& operand : llvm::enumerate(getType().getInputs())) {
+      for (const auto& operand : llvm::enumerate(getArgumentTypes())) {
         if (auto attr_name = getArgAttrOfType<StringAttr>(
             operand.index(), kAttrArgumentNameAttr)) {
           all_attrs.insert(attr_name.getValue());
@@ -456,9 +466,8 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
     }
   }];
 
-  let verifier = [{ return Verify(*this); }];
-  let parser = [{ return ParseFuncOp(parser, &result); }];
-  let printer = [{ PrintFuncOp(p, *this); }];
+  let hasVerifier = 1;
+  let hasCustomAssemblyFormat = 1;
 }
 
 def TFR_TFRReturnOp : TFR_Op<"return", [HasParent<"TFRFuncOp">, NoSideEffect,
@@ -509,7 +518,7 @@ def TFR_TFRQuantActRangeOp : TFR_Op<"quant_act_range", [NoSideEffect]> {
 
 def TFR_TFRQuantRescaleOp : TFR_Op<"quant_rescale", [NoSideEffect]> {
   let description = [{
-   The `quant_rescale` rescales the elements of the integer tensor by the the
+   The `quant_rescale` rescales the elements of the integer tensor by the
    floating-point rescale factor. This op needs to be legalized to the preferred
    operations of the backends.
 

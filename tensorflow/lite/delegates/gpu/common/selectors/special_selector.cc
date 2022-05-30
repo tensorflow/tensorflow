@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/selectors/special_selector.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/flops_util.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -108,6 +112,17 @@ absl::Status TryDepthwiseConvPlus1x1Conv(
   auto operation = CreateDepthwiseConvPlus1x1Conv(op_def, gpu_info, dw_attr,
                                                   conv_attr, relu_attr_ptr);
   *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
+  (*gpu_op)->flops_ = GetDepthwiseConvolutionFlops(dw_outputs[0]->tensor.shape,
+                                                   dw_attr.weights.shape) +
+                      GetConvolutionFlops(conv_outputs[0]->tensor.shape,
+                                          conv_attr.weights.shape);
+  std::string fused_nodes = std::to_string(dw_node->id);
+  if (relu_node) {
+    fused_nodes += " " + std::to_string(relu_node->id);
+  }
+  fused_nodes += " " + std::to_string(conv_node->id);
+  gpu_subgraph->operations[0].name =
+      "depthwise_conv_plus_1x1_conv " + fused_nodes;
   consumed_nodes->insert(dw_node->id);
   if (relu_node) {
     consumed_nodes->insert(relu_node->id);
@@ -224,6 +239,11 @@ absl::Status TryFCFCAdd(
     fc = CreateFCFCAdd(gpu_info, op_def, fc0_attr, fc1_attr);
   }
   *gpu_op = absl::make_unique<FCFCAdd>(std::move(fc));
+  const std::string fused_nodes = std::to_string(fc0_node->id) + " " +
+                                  std::to_string(fc1_node->id) + " " +
+                                  std::to_string(add_node->id);
+  gpu_subgraph->operations[0].name =
+      "fully_connected_x2_and_add " + fused_nodes;
   consumed_nodes->insert(fc0_node->id);
   consumed_nodes->insert(fc1_node->id);
   consumed_nodes->insert(add_node->id);
@@ -235,28 +255,25 @@ absl::Status GPUSubgraphFromGraph(
     const GpuInfo& gpu_info, CalculationsPrecision precision,
     const GraphFloat32& graph, NodeId first_node_id,
     const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
-    std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph,
-    std::string* name) {
+    std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph) {
   if ((gpu_info.IsAdreno() || gpu_info.IsNvidia() || gpu_info.IsMali() ||
-       (gpu_info.IsApple() && gpu_info.apple_info.IsBionic())) &&
+       gpu_info.IsApple() || gpu_info.IsAMD()) &&
       TryDepthwiseConvPlus1x1Conv(gpu_info, precision, graph, first_node_id,
                                   tensor_descriptors, consumed_nodes,
                                   gpu_subgraph)
           .ok()) {
-    *name = "depthwise_conv_plus_1x1_conv";
     return absl::OkStatus();
   }
-  if ((gpu_info.IsIntel() || gpu_info.IsNvidia()) &&
+  if ((gpu_info.IsIntel() || gpu_info.IsNvidia() || gpu_info.IsAMD()) &&
       TryFCFCAdd(gpu_info, precision, graph, first_node_id, tensor_descriptors,
                  consumed_nodes, gpu_subgraph)
           .ok()) {
-    *name = "fully_connected_x2_and_add";
     return absl::OkStatus();
   }
   if (TryFusedPointwiseConv(graph, first_node_id, precision, tensor_descriptors,
                             consumed_nodes, gpu_subgraph)
           .ok()) {
-    *name = "slice_mul_mean_concat";
+    gpu_subgraph->operations[0].name = "slice_mul_mean_concat";
     return absl::OkStatus();
   }
   return absl::NotFoundError("No special combination.");

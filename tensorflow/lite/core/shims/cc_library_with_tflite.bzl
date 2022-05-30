@@ -8,6 +8,16 @@ load(
 )
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 
+def _concat(lists):
+    """Concatenate a list of lists, without requiring the inner lists to be iterable.
+
+    This allows the inner lists to be obtained by calls to select().
+    """
+    result = []
+    for selected_list in lists:
+        result = result + selected_list
+    return result
+
 def alias_with_tflite(name, actual, **kwargs):
     """Defines an alias for a target that uses the TFLite shims.
 
@@ -62,6 +72,7 @@ def cc_library_with_tflite(
         tflite_jni_binaries = [],
         deps = [],
         tflite_deps = [],
+        tflite_deps_selects = [],
         **kwargs):
     """Defines a cc_library that uses the TFLite shims.
 
@@ -81,12 +92,14 @@ def cc_library_with_tflite(
       deps: as for cc_library.
       tflite_deps: dependencies on rules that are themselves defined using
         'cc_library_with_tflite'.
+      tflite_deps_selects: A list of dictionaries that will be converted to dependencies
+        with select on rules.
       **kwargs: Additional cc_library parameters.
     """
     native.cc_library(
         name = name,
         srcs = srcs + tflite_jni_binaries,
-        deps = deps + tflite_deps,
+        deps = deps + tflite_deps + _concat([select(map) for map in tflite_deps_selects]),
         **kwargs
     )
 
@@ -121,6 +134,7 @@ def cc_test_with_tflite(
 def java_library_with_tflite(
         name,
         deps = [],
+        runtime_deps = [],
         tflite_deps = [],
         tflite_jni_binaries = [],
         exports = [],
@@ -133,12 +147,14 @@ def java_library_with_tflite(
 
     Note that this build rule doesn't itself add any dependencies on
     TF Lite; this macro should normally be used in conjunction with a
-    direct or indirect 'tflite_deps' dependency on one of the "shim"
-    library targets from //third_party/tensorflow/lite/core/shims:*.
+    direct or indirect 'tflite_deps' or 'tflite_jni_binaries' dependency
+    on one of the "shim" library targets from
+    //third_party/tensorflow/lite/core/shims:*.
 
     Args:
       name: as for java_library.
       deps: as for java_library.
+      runtime_deps: as for java_library.
       tflite_deps: dependencies on rules that are themselves defined using
         'cc_library_with_tflite' / 'java_library_with_tflite'.
       tflite_jni_binaries: dependencies on shared libraries that are defined
@@ -158,6 +174,7 @@ def java_library_with_tflite(
 def java_test_with_tflite(
         name,
         deps = [],
+        runtime_deps = [],
         tflite_deps = [],
         tflite_jni_binaries = [],
         **kwargs):
@@ -168,12 +185,14 @@ def java_test_with_tflite(
 
     Note that this build rule doesn't itself add any dependencies on
     TF Lite; this macro should normally be used in conjunction with a
-    direct or indirect 'tflite_deps' dependency on one of the "shim"
-    library targets from //third_party/tensorflow/lite/core/shims:*.
+    direct or indirect 'tflite_deps' or 'tflite_jni_binaries' dependency
+    on one of the "shim" library targets from
+    //third_party/tensorflow/lite/core/shims:*.
 
     Args:
       name: as for java_library.
       deps: as for java_library.
+      runtime_deps: as for java_library.
       tflite_deps: dependencies on rules that are themselves defined using
         'cc_library_with_tflite' / 'java_library_with_tflite'.
       tflite_jni_binaries: dependencies on shared libraries that are defined
@@ -182,7 +201,8 @@ def java_test_with_tflite(
     """
     native.java_test(
         name = name,
-        deps = deps + tflite_deps + tflite_jni_binaries,
+        deps = deps + tflite_deps,
+        runtime_deps = deps + tflite_jni_binaries,
         **kwargs
     )
 

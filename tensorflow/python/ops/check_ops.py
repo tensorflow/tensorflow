@@ -34,10 +34,12 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
-NUMERIC_TYPES = frozenset(
-    [dtypes.float32, dtypes.float64, dtypes.int8, dtypes.int16, dtypes.int32,
-     dtypes.int64, dtypes.uint8, dtypes.qint8, dtypes.qint32, dtypes.quint8,
-     dtypes.complex64])
+NUMERIC_TYPES = frozenset([
+    dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int8, dtypes.int16,
+    dtypes.int32, dtypes.int64, dtypes.uint8, dtypes.uint16, dtypes.uint32,
+    dtypes.uint64, dtypes.qint8, dtypes.qint16, dtypes.qint32, dtypes.quint8,
+    dtypes.quint16, dtypes.complex64, dtypes.complex128, dtypes.bfloat16
+])
 
 __all__ = [
     'assert_negative',
@@ -677,6 +679,7 @@ def assert_non_positive(x, data=None, summarize=None, message=None, name=None): 
 
 
 @tf_export('debugging.assert_equal', 'assert_equal', v1=[])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 def assert_equal_v2(x, y, message=None, summarize=None, name=None):
   """Assert the condition `x == y` holds element-wise.
@@ -712,6 +715,7 @@ def assert_equal_v2(x, y, message=None, summarize=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_equal', 'assert_equal'])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 @_binary_assert_doc('==', '[1, 2]')
 def assert_equal(x, y, data=None, summarize=None, message=None, name=None):  # pylint: disable=missing-docstring
@@ -724,6 +728,7 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):  # p
 
 
 @tf_export('debugging.assert_none_equal', v1=[])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 def assert_none_equal_v2(x, y, summarize=None, message=None, name=None):
   """Assert the condition `x != y` holds for all elements.
@@ -763,6 +768,7 @@ def assert_none_equal_v2(x, y, summarize=None, message=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_none_equal', 'assert_none_equal'])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_none_equal')
 @_binary_assert_doc('!=', '[2, 1]')
@@ -773,6 +779,7 @@ def assert_none_equal(
 
 
 @tf_export('debugging.assert_near', v1=[])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 def assert_near_v2(x, y, rtol=None, atol=None, message=None, summarize=None,
                    name=None):
@@ -827,6 +834,7 @@ def assert_near_v2(x, y, rtol=None, atol=None, message=None, summarize=None,
 
 
 @tf_export(v1=['debugging.assert_near', 'assert_near'])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_near')
 def assert_near(
@@ -910,6 +918,7 @@ def assert_near(
 
 
 @tf_export('debugging.assert_less', 'assert_less', v1=[])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 def assert_less_v2(x, y, message=None, summarize=None, name=None):
   """Assert the condition `x < y` holds element-wise.
@@ -946,6 +955,7 @@ def assert_less_v2(x, y, message=None, summarize=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_less', 'assert_less'])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 @_binary_assert_doc('<', '[2, 3]')
 def assert_less(x, y, data=None, summarize=None, message=None, name=None):
@@ -954,6 +964,7 @@ def assert_less(x, y, data=None, summarize=None, message=None, name=None):
 
 
 @tf_export('debugging.assert_less_equal', v1=[])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 def assert_less_equal_v2(x, y, message=None, summarize=None, name=None):
   """Assert the condition `x <= y` holds element-wise.
@@ -991,6 +1002,7 @@ def assert_less_equal_v2(x, y, message=None, summarize=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_less_equal', 'assert_less_equal'])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_less_equal')
 @_binary_assert_doc('<=', '[1, 3]')
@@ -1000,6 +1012,7 @@ def assert_less_equal(x, y, data=None, summarize=None, message=None, name=None):
 
 
 @tf_export('debugging.assert_greater', 'assert_greater', v1=[])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 def assert_greater_v2(x, y, message=None, summarize=None, name=None):
   """Assert the condition `x > y` holds element-wise.
@@ -1037,6 +1050,7 @@ def assert_greater_v2(x, y, message=None, summarize=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_greater', 'assert_greater'])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 @_binary_assert_doc('>', '[0, 1]')
 def assert_greater(x, y, data=None, summarize=None, message=None, name=None):  # pylint: disable=missing-docstring
@@ -1045,6 +1059,7 @@ def assert_greater(x, y, data=None, summarize=None, message=None, name=None):  #
 
 
 @tf_export('debugging.assert_greater_equal', v1=[])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 def assert_greater_equal_v2(x, y, message=None, summarize=None, name=None):
   """Assert the condition `x >= y` holds element-wise.
@@ -1083,6 +1098,7 @@ def assert_greater_equal_v2(x, y, message=None, summarize=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_greater_equal', 'assert_greater_equal'])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_greater_equal')
 @_binary_assert_doc('>=', '[1, 0]')
@@ -1233,7 +1249,7 @@ def assert_rank(x, rank, data=None, summarize=None, message=None, name=None):
             '%sTensor %s must have rank %d.  Received rank %d, shape %s' %
             (message, name, e.args[2], e.args[1], x.get_shape()))
       else:
-        raise
+        raise ValueError(e.args[0])
 
   return assert_op
 
@@ -1586,7 +1602,7 @@ def assert_type_v2(tensor, tf_type, message=None, name=None):
   >>> tf.debugging.assert_type(c, tf_type= tf.int32)
 
   Args:
-    tensor: A `Tensor`, `SparseTensor` or `tf.Variable .
+    tensor: A `Tensor`, `SparseTensor` or `tf.Variable` .
     tf_type: A tensorflow type (`dtypes.float32`, `tf.int64`, `dtypes.bool`,
       etc).
     message: A string to prefix to the default message.
@@ -1622,14 +1638,9 @@ def assert_type(tensor, tf_type, message=None, name=None):
     if not isinstance(tensor, sparse_tensor.SparseTensor):
       tensor = ops.convert_to_tensor(tensor, name='tensor')
     if tensor.dtype != tf_type:
-      if context.executing_eagerly():
-        raise TypeError('%s tensor must be of type %s' % (message, tf_type))
-      else:
-        raise TypeError(
-            '%s%s must be of type %s' %
-            (_message_prefix(message),
-             tensor.name if hasattr(tensor, 'name') else '',
-             tf_type))
+      raise TypeError(
+          f'{_message_prefix(message)}{getattr(tensor, "name", "tensor")}'
+          f' must be of type {tf_type!r}; got {tensor.dtype!r}')
 
     return control_flow_ops.no_op('statically_determined_correct_type')
 
@@ -1965,8 +1976,8 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
             specified_size = int(size_symbol)
             size_check_message = 'Specified explicitly'
           else:
-            specified_size, specified_by_y, specified_at_dim = \
-                size_specifications[size_symbol]
+            specified_size, specified_by_y, specified_at_dim = (
+                size_specifications[size_symbol])
             size_check_message = (
                 'Specified by tensor %s dimension %d' %
                 (tensor_name(specified_by_y), specified_at_dim))
@@ -2041,6 +2052,7 @@ def is_numeric_tensor(tensor):
 
   Specifically, returns `True` if the dtype of `tensor` is one of the following:
 
+  * `tf.float16`
   * `tf.float32`
   * `tf.float64`
   * `tf.int8`
@@ -2048,10 +2060,17 @@ def is_numeric_tensor(tensor):
   * `tf.int32`
   * `tf.int64`
   * `tf.uint8`
+  * `tf.uint16`
+  * `tf.uint32`
+  * `tf.uint64`
   * `tf.qint8`
+  * `tf.qint16`
   * `tf.qint32`
   * `tf.quint8`
+  * `tf.quint16`
   * `tf.complex64`
+  * `tf.complex128`
+  * `tf.bfloat16`
 
   Returns `False` if `tensor` is of a non-numeric type or if `tensor` is not
   a `tf.Tensor` object.

@@ -3351,7 +3351,7 @@ class SharedEmbeddingColumn(
 def _check_shape(shape, key):
   """Returns shape if it's valid, raises error otherwise."""
   assert shape is not None
-  if not nest.is_sequence(shape):
+  if not nest.is_nested(shape):
     shape = [shape]
   shape = tuple(shape)
   for dimension in shape:

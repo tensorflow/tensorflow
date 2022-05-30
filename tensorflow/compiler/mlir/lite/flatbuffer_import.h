@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_IMPORT_H_
 
 #include "absl/strings/string_view.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -33,7 +34,7 @@ namespace tflite {
 // instead of `tfl.const`.
 // If `experimental_prune_unreachable_nodes_unconditionally` is true, nodes that
 // are not ancestors of the output nodes will be pruned.
-mlir::OwningModuleRef FlatBufferToMlir(
+mlir::OwningOpRef<mlir::ModuleOp> FlatBufferToMlir(
     absl::string_view buffer, mlir::MLIRContext* context,
     mlir::Location base_loc, bool use_external_constant = false,
     const std::vector<std::string>& ordered_input_arrays = {},

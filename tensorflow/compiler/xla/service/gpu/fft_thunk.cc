@@ -23,40 +23,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/stream_executor/scratch_allocator.h"
 
 namespace xla {
 namespace gpu {
-
-FftScratchAllocator::FftScratchAllocator(
-    int device_ordinal, se::DeviceMemoryAllocator* memory_allocator)
-    : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
-
-int64_t FftScratchAllocator::GetMemoryLimitInBytes() {
-  constexpr int64_t kFftScratchSize = 1LL << 32;  // 4GB by default.
-  return kFftScratchSize;
-}
-
-StatusOr<se::DeviceMemory<uint8>> FftScratchAllocator::AllocateBytes(
-    int64_t byte_size) {
-  CHECK_GE(byte_size, 0) << "byte_size must be positive.";
-  if (byte_size > GetMemoryLimitInBytes()) {
-    return se::port::Status(
-        se::port::error::RESOURCE_EXHAUSTED,
-        absl::StrFormat(
-            "Allocating %d bytes exceeds the memory limit of %d bytes.",
-            byte_size, GetMemoryLimitInBytes()));
-  }
-
-  TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory allocated_buffer,
-                      memory_allocator_->Allocate(device_ordinal_, byte_size,
-                                                  /*retry_on_failure=*/false));
-  total_allocated_bytes_ += byte_size;
-
-  se::DeviceMemoryBase buffer_addr = *allocated_buffer;
-  allocated_buffers_.push_back(std::move(allocated_buffer));
-  return se::DeviceMemory<uint8>(buffer_addr);
-}
-
 namespace {
 
 se::fft::Type FftTypeToSeType(FftType type, bool double_precision) {
@@ -76,7 +46,7 @@ se::fft::Type FftTypeToSeType(FftType type, bool double_precision) {
   }
 }
 
-string FftTypeToString(se::fft::Type type) {
+std::string FftTypeToString(se::fft::Type type) {
   switch (type) {
     case se::fft::Type::kC2CForward:
     case se::fft::Type::kZ2ZForward:
@@ -122,8 +92,9 @@ Status FftThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Output shape: "
           << ShapeUtil::HumanStringWithLayout(output_shape_);
 
-  FftScratchAllocator scratch_allocator(buffer_allocations.device_ordinal(),
-                                        buffer_allocations.memory_allocator());
+  se::OwningScratchAllocator<2> scratch_allocator(
+      buffer_allocations.device_ordinal(),
+      buffer_allocations.memory_allocator());
   FftPlan* fft_plan_ptr;
   {
     absl::MutexLock lock(&mu_);
@@ -145,13 +116,13 @@ Status FftThunk::ExecuteOnStream(const ExecuteParams& params) {
     for (int i = 0; i < input_shape_.dimensions_size() - fft_rank; ++i) {
       batch_size *= input_shape_.dimensions(i);
     }
-    uint64 fft_length[3];
-    uint64 input_embed[3];
-    const uint64 input_stride = 1;
-    uint64 input_distance = 1;
-    uint64 output_embed[3];
-    const uint64 output_stride = 1;
-    uint64 output_distance = 1;
+    uint64_t fft_length[3];
+    uint64_t input_embed[3];
+    const uint64_t input_stride = 1;
+    uint64_t input_distance = 1;
+    uint64_t output_embed[3];
+    const uint64_t output_stride = 1;
+    uint64_t output_distance = 1;
 
     for (int i = 0; i < fft_rank; ++i) {
       auto dim_offset = input_shape_.dimensions_size() - fft_rank + i;

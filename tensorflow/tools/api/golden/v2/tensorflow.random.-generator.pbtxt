@@ -1,8 +1,8 @@
 path: "tensorflow.random.Generator"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.stateful_random_ops.Generator\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "algorithm"

@@ -26,29 +26,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/types.h"
-
-// Common place for all collective thunks to source nccl/rccl headers.
-// Also, all the RunNcclCollective() functions for various thunks should
-// use XLA_ENABLE_XCCL to guard use NCCL/RCCL usage (and not use GOOGLE_XCCL).
-#if GOOGLE_XCCL
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#define XLA_ENABLE_XCCL 1
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#endif  // GOOGLE_XCCL
 
 #if XLA_ENABLE_XCCL
-#if GOOGLE_CUDA
-#include "third_party/nccl/nccl.h"
-#elif TENSORFLOW_USE_ROCM
-#include "rocm/include/rccl/rccl.h"
-#else
-#error "Neither CUDA nor ROCm enabled but NCCL/RCCL enabled"
-#endif
-
-// Also include this file required by all collective thunks.
 #include "tensorflow/compiler/xla/service/gpu/nccl_utils.h"
-
 #endif  // XLA_ENABLE_XCCL
 
 struct ncclComm;
@@ -139,11 +119,24 @@ class NcclCollectiveThunk : public Thunk {
 
   // Logging support.
   std::string GetDeviceString(const ExecuteParams& params) const;
+
+ private:
+#if XLA_ENABLE_XCCL
+  bool first_call_to_execute_ = true;
+#endif  // XLA_ENABLE_XCCL
 };
 
 // Returns if the given data type is supported by NCCL.
 // Note: Keep this in sync with ToNcclDataType().
 bool IsTypeSupportedByNccl(PrimitiveType element_type);
+
+#if XLA_ENABLE_XCCL
+// TODO(hanbinyoon): Consider moving to nccl_utils.h when deprecating Thunks.
+StatusOr<NcclComm::Lock> LockNcclComm(
+    const NcclExecuteParams& params,
+    const std::vector<ReplicaGroup>& replica_groups,
+    CollectiveOpGroupMode group_mode, int64_t op_id);
+#endif  // XLA_ENABLE_XCCL
 
 }  // namespace gpu
 }  // namespace xla

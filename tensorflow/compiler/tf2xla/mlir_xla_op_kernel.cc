@@ -21,15 +21,19 @@ limitations under the License.
 
 namespace tensorflow {
 
-namespace {
+Status MlirXlaOpKernel::ContextToXlaArgs(
+    XlaOpKernelContext* ctx, std::vector<XlaCompiler::Argument>& xla_args) {
+  // Collect arguments that are registered as CompileTimeConstantInput.
+  std::vector<int> registered_consts_vec;
+  TF_RETURN_IF_ERROR(tensorflow::XlaOpRegistry::CompileTimeConstantInputs(
+      *this, &registered_consts_vec));
+  llvm::SmallDenseSet<int, 4> registered_consts;
+  registered_consts.insert(registered_consts_vec.begin(),
+                           registered_consts_vec.end());
 
-Status ContextToXlaArgs(XlaOpKernelContext* ctx,
-                        std::vector<XlaCompiler::Argument>& xla_args) {
   int num_inputs = ctx->num_inputs();
   xla_args.reserve(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
-    // TODO(b/180448676): If the input `XlaExpression` kind is `kConstant`, then
-    // create a constant `XlaArgument`.
     // TODO(b/180448774): Handle kResource and kTensorList.
     XlaExpression::Kind ctx_kind_i = ctx->InputExpression(i).kind();
     if (ctx_kind_i != XlaExpression::Kind::kXlaOp &&
@@ -38,16 +42,19 @@ Status ContextToXlaArgs(XlaOpKernelContext* ctx,
           absl::StrCat("Input ", i, " to an MlirXlaOpKernel is invalid: ",
                        ctx->InputExpression(i).HumanString()));
     XlaCompiler::Argument arg;
-    arg.kind = XlaCompiler::Argument::kParameter;
     arg.type = ctx->input_type(i);
     arg.shape = ctx->InputXlaShape(i).ValueOrDie();
     arg.name = absl::StrCat("_arg", i);
+    if (registered_consts.count(i)) {
+      arg.kind = XlaCompiler::Argument::kConstant;
+      TF_ASSIGN_OR_RETURN(arg.constant_value, ctx->ConstantInputTensor(i));
+    } else {
+      arg.kind = XlaCompiler::Argument::kParameter;
+    }
     xla_args.push_back(arg);
   }
   return Status::OK();
 }
-
-}  // namespace
 
 MlirXlaOpKernel::MlirXlaOpKernel(OpKernelConstruction* ctx)
     : XlaOpKernel(ctx),

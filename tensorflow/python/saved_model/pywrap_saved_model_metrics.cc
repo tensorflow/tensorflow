@@ -158,6 +158,46 @@ void DefineMetricsModule(py::module main_module) {
       py::kw_only(), py::arg("api_label"),
       py::doc("Get cell `api_label` for "
               "'/tensorflow/core/checkpoint/write/training_time_saved'."));
+
+  m.def(
+      "CalculateFileSize",
+      [](const char* filename) {
+        Env* env = Env::Default();
+        uint64 filesize = 0;
+        if (!env->GetFileSize(filename, &filesize).ok()) {
+          return (int64_t)-1;
+        }
+        // Convert to MB.
+        int64_t filesize_mb = filesize / 1000;
+        // Round to the nearest 100 MB.
+        // Smaller multiple.
+        int64_t a = (filesize_mb / 100) * 100;
+        // Larger multiple.
+        int64_t b = a + 100;
+        // Return closest of two.
+        return (filesize_mb - a > b - filesize_mb) ? b : a;
+      },
+      py::doc("Calculate filesize (MB) for `filename`, rounding to the nearest "
+              "100MB. Returns -1 if `filename` is invalid."));
+
+  m.def(
+      "RecordCheckpointSize",
+      [](const char* api_label, int64_t filesize) {
+        metrics::CheckpointSize(api_label, filesize).IncrementBy(1);
+      },
+      py::kw_only(), py::arg("api_label"), py::arg("filesize"),
+      py::doc("Increment the "
+              "'/tensorflow/core/checkpoint/write/checkpoint_size' counter for "
+              "cell (api_label, filesize) after writing a checkpoint."));
+
+  m.def(
+      "GetCheckpointSize",
+      [](const char* api_label, uint64 filesize) {
+        return metrics::CheckpointSize(api_label, filesize).value();
+      },
+      py::kw_only(), py::arg("api_label"), py::arg("filesize"),
+      py::doc("Get cell (api_label, filesize) for "
+              "'/tensorflow/core/checkpoint/write/checkpoint_size'."));
 }
 
 }  // namespace python

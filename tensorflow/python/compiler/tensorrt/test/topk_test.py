@@ -40,7 +40,7 @@ class TopKTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return {"TRTEngineOp_0": ["Const", "TopK"]}
+    return {"TRTEngineOp_000": ["Const", "TopK"]}
 
 
 class TopKOutputTypeTest(trt_test.TfTrtIntegrationTestBase):
@@ -65,7 +65,7 @@ class TopKOutputTypeTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return {"TRTEngineOp_0": ["Const", "TopK", "Reshape", "Reshape/shape"]}
+    return {"TRTEngineOp_000": ["Const", "TopK", "Reshape", "Reshape/shape"]}
 
 
 if __name__ == "__main__":

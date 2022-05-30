@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -61,7 +60,7 @@ Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
   // Create a single bigger AllReduce of the operands of the smaller
   // AllReduces.
   std::vector<HloInstruction*> operands;
-  std::vector<Shape> operand_shapes;
+  std::vector<const Shape*> operand_shapes;
   VLOG(1) << "Combining set";
   for (HloInstruction* hlo : to_combine) {
     VLOG(1) << "Set element: " << hlo->ToString();
@@ -74,7 +73,7 @@ Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
     TF_RET_CHECK(hlo->shape().IsArray());
     for (HloInstruction* operand : hlo->operands()) {
       operands.push_back(operand);
-      operand_shapes.push_back(operand->shape());
+      operand_shapes.push_back(&operand->shape());
     }
   }
 
@@ -82,7 +81,7 @@ Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
   // AllReduce ops with more than one operand produce a tuple.
   TF_RET_CHECK(operands.size() >= 2);
   combined = computation.AddInstruction(HloInstruction::CreateAllReduce(
-      ShapeUtil::MakeTupleShape(operand_shapes), operands, reduction,
+      ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes), operands, reduction,
       to_combine.front()->replica_groups(),
       /*constrain_layout=*/false, to_combine.front()->channel_id(),
       Cast<HloAllReduceInstruction>(to_combine.front())

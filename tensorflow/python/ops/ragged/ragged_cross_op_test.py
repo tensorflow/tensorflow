@@ -18,11 +18,14 @@ from absl.testing import parameterized
 
 import numpy as np
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import gen_ragged_array_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -358,6 +361,16 @@ class RaggedCrossOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                   dense_const([[2], [3]])],
           exception=(ValueError, errors.InvalidArgumentError),
           message='inputs must all have the same batch dimension size'),
+      dict(
+          testcase_name='3DDenseTensor',
+          inputs=[dense_const([[[1]]])],
+          exception=(ValueError, errors.InvalidArgumentError),
+          message='tf.ragged.cross only supports inputs with rank=2'),
+      dict(
+          testcase_name='0DDenseTensor',
+          inputs=[dense_const(1)],
+          exception=(ValueError, errors.InvalidArgumentError),
+          message='tf.ragged.cross only supports inputs with rank=2'),
   ])
   def testStaticError(self, inputs, exception=ValueError, message=None):
     with self.assertRaisesRegex(exception, message):
@@ -369,16 +382,35 @@ class RaggedCrossOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           inputs=[ragged_const([[[1]]], ragged_rank=1)],
           message='tf.ragged.cross only supports inputs with rank=2'),
       dict(
+          testcase_name='0DDenseTensor',
+          inputs=[dense_const(1)],
+          signature=[[tensor_spec.TensorSpec(None, dtypes.int32)]],
+          exception=(ValueError, errors.InvalidArgumentError),
+          message='tf.ragged.cross only supports inputs with rank=2'),
+      dict(
+          testcase_name='1DDenseTensor',
+          inputs=[dense_const([1])],
+          signature=[[tensor_spec.TensorSpec(None, dtypes.int32)]],
+          exception=(ValueError, errors.InvalidArgumentError),
+          message='tf.ragged.cross only supports inputs with rank=2'),
+      dict(
           testcase_name='3DDenseTensor',
           inputs=[dense_const([[[1]]])],
+          signature=[[tensor_spec.TensorSpec(None, dtypes.int32)]],
+          exception=(ValueError, errors.InvalidArgumentError),
           message='tf.ragged.cross only supports inputs with rank=2'),
   ])
   def testRuntimeError(self,
                        inputs,
                        exception=errors.InvalidArgumentError,
-                       message=None):
+                       message=None,
+                       signature=None):
+    @def_function.function(input_signature=signature)
+    def fn(x):
+      return ragged_array_ops.cross(x)
+
     with self.assertRaisesRegex(exception, message):
-      self.evaluate(ragged_array_ops.cross(inputs))
+      self.evaluate(fn(inputs))
 
   def _ragged_to_sparse(self, t):
     if ragged_tensor.is_ragged(t):
@@ -387,6 +419,42 @@ class RaggedCrossOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       return sparse_tensor.SparseTensor.from_value(t)
     else:
       return ops.convert_to_tensor(t)
+
+  def testSparseValuesAndIndicesMustMatch(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        'sparse indices and values must have the same length'):
+      self.evaluate(gen_ragged_array_ops.RaggedCross(
+          ragged_values=[],
+          ragged_row_splits=[],
+          sparse_indices=[[5]],
+          sparse_values=[],
+          sparse_shape=[5],
+          dense_inputs=[['a']],
+          input_order='RD',
+          hashed_output=False,
+          num_buckets=5,
+          hash_key=2,
+          out_values_type=dtypes.string,
+          out_row_splits_type=dtypes.int64))
+
+  def testRaggedValuesAndSplitsMustMatch(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        'ragged values and splits must have the same length'):
+      self.evaluate(gen_ragged_array_ops.RaggedCross(
+          ragged_values=[['a']],
+          ragged_row_splits=[],
+          sparse_indices=[],
+          sparse_values=[],
+          sparse_shape=[],
+          dense_inputs=[['a']],
+          input_order='RD',
+          hashed_output=False,
+          num_buckets=5,
+          hash_key=2,
+          out_values_type=dtypes.string,
+          out_row_splits_type=dtypes.int64))
 
 
 if __name__ == '__main__':

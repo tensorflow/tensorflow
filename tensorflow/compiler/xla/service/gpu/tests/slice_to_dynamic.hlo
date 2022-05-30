@@ -17,7 +17,7 @@
 // CHECK:         %[[VAL_13:.*]] = icmp eq i32 0, %[[VAL_12]]
 // CHECK:         %[[VAL_14:.*]] = and i1 %[[VAL_11]], %[[VAL_13]]
 // CHECK:         br i1 %[[VAL_14]], label %[[VAL_15:.*]], label %[[VAL_16:.*]]
-// CHECK:       is_thred_0-after:                                 ; preds = %[[VAL_15]], %[[VAL_17:.*]]
+// CHECK:       is_thread_0-after:                                 ; preds = %[[VAL_15]], %[[VAL_17:.*]]
 // CHECK:         %[[VAL_18:.*]] = mul i32 1, %[[VAL_7]]
 // CHECK:         %[[VAL_19:.*]] = mul i32 %[[VAL_18]], %[[VAL_8]]
 // CHECK:         %[[VAL_20:.*]] = mul i32 %[[VAL_19]], %[[VAL_9]]
@@ -34,9 +34,9 @@
 // CHECK:         %[[VAL_30:.*]] = udiv i32 %[[VAL_24]], 4
 // CHECK:         %[[VAL_31:.*]] = icmp ult i32 %[[VAL_24]], 8
 // CHECK:         br i1 %[[VAL_31]], label %[[VAL_32:.*]], label %[[VAL_33:.*]]
-// CHECK:       custom-call.in_bounds-after:                      ; preds = %[[VAL_34:.*]], %[[VAL_16]]
+// CHECK:       custom_call.in_bounds-after:                      ; preds = %[[VAL_34:.*]], %[[VAL_16]]
 // CHECK:         ret void
-// CHECK:       is_thred_0-true:                                  ; preds = %[[VAL_17]]
+// CHECK:       is_thread_0-true:                                  ; preds = %[[VAL_17]]
 // CHECK:         %[[VAL_35:.*]] = getelementptr inbounds i8, i8* %[[VAL_6]], i32 32
 // CHECK:         %[[VAL_36:.*]] = bitcast i8* %[[VAL_35]] to i32*
 // CHECK:         store i32 %[[VAL_7]], i32* %[[VAL_36]], align 4
@@ -47,7 +47,7 @@
 // CHECK:         %[[VAL_40:.*]] = bitcast i8* %[[VAL_39]] to i32*
 // CHECK:         store i32 %[[VAL_9]], i32* %[[VAL_40]], align 4
 // CHECK:         br label %[[VAL_16]]
-// CHECK:       custom-call.in_bounds-true:                       ; preds = %[[VAL_16]]
+// CHECK:       custom_call.in_bounds-true:                       ; preds = %[[VAL_16]]
 // CHECK:         %[[VAL_41:.*]] = mul nuw nsw i32 %[[VAL_27]], 1
 // CHECK:         %[[VAL_42:.*]] = add nuw nsw i32 0, %[[VAL_41]]
 // CHECK:         %[[VAL_43:.*]] = mul nuw nsw i32 %[[VAL_30]], 2
@@ -56,9 +56,9 @@
 // CHECK:         %[[VAL_46:.*]] = add nuw nsw i32 %[[VAL_44]], %[[VAL_45]]
 // CHECK:         %[[VAL_47:.*]] = icmp ult i32 %[[VAL_46]], %[[VAL_20]]
 // CHECK:         br i1 %[[VAL_47]], label %[[VAL_48:.*]], label %[[VAL_34]]
-// CHECK:       custom-call.in_dyn_bounds-after:                  ; preds = %[[VAL_48]], %[[VAL_32]]
+// CHECK:       custom_call.in_dyn_bounds-after:                  ; preds = %[[VAL_48]], %[[VAL_32]]
 // CHECK:         br label %[[VAL_33]]
-// CHECK:       custom-call.in_dyn_bounds-true:                   ; preds = %[[VAL_32]]
+// CHECK:       custom_call.in_dyn_bounds-true:                   ; preds = %[[VAL_32]]
 // CHECK:         %[[VAL_49:.*]] = udiv i32 %[[VAL_46]], 1
 // CHECK:         %[[VAL_50:.*]] = urem i32 %[[VAL_49]], %[[VAL_9]]
 // CHECK:         %[[VAL_51:.*]] = mul i32 1, %[[VAL_9]]

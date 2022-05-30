@@ -33,6 +33,7 @@ from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
+from tensorflow.python.util import traceback_utils
 
 
 def _is_gpu_device(device):
@@ -119,6 +120,15 @@ def _enter_graph(g, eager, creator_stack=None):
       yield
 
 
+@contextlib.contextmanager
+def _maybe_enter_eager_mode(eager):
+  if eager:
+    with context.eager_mode():
+      yield
+  else:
+    yield
+
+
 def _cpu_device(device):
   cpu_device = tf_device.DeviceSpec.from_string(device)
   cpu_device = cpu_device.replace(device_type="CPU", device_index=0)
@@ -127,6 +137,14 @@ def _cpu_device(device):
 
 class _RequestedStop(Exception):  # pylint: disable=g-bad-exception-name
   pass
+
+
+def _get_thread_local_configuration_callable():
+  if traceback_utils.is_traceback_filtering_enabled():
+    thread_local_callables = {traceback_utils.enable_traceback_filtering}
+  else:
+    thread_local_callables = {traceback_utils.disable_traceback_filtering}
+  return thread_local_callables
 
 
 def _call_for_each_replica(distribution, fn, args, kwargs):
@@ -157,6 +175,8 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
   shared_variable_store = {}
   devices = distribution.extended.worker_devices
 
+  thread_local_callables = _get_thread_local_configuration_callable()
+
   # TODO(isaprykin): Create these threads once instead of during every call.
   threads = []
   for index in range(len(devices)):
@@ -166,7 +186,8 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
                                variable_creator_fn, fn,
                                distribute_utils.caching_scope_local,
                                distribute_utils.select_replica(index, args),
-                               distribute_utils.select_replica(index, kwargs))
+                               distribute_utils.select_replica(index, kwargs),
+                               thread_local_callables)
     threads.append(t)
 
   for t in threads:
@@ -229,9 +250,29 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
           mtt_captured_control_deps = set()
           for t in threads:
             mtt_captured_control_deps.update(t.captured_control_deps)
-          with ops.name_scope(mtt_captured_name_scope),\
-              ops.control_dependencies(mtt_captured_control_deps), \
-              variable_scope.variable_scope(mtt_captured_var_scope):
+
+          # Control is transfered from _MirroredReplicaThread (MRT) to the main
+          # thread, i.e., here, to perform `merge_fn`, and thus we preserve the
+          # name scope,  control dependencies, etc. from MRT at the time
+          # `merge_call` is made.
+          # One special case is that the `merge_call` is made under an
+          # `tf.init_scope` in the MRT. `tf.init_scope` will clear control
+          # dependencies, pause gradient tape, and enter the lowest context on
+          # the `context_stack` that is not building a graph function. Entering
+          # the lowest context could be one of the two things: installation of a
+          # graph as the default graph or switch into eager mode. If the former
+          # is done and causes `merge_call` to be called in a different graph
+          # from the one in which `call_for_each_replica` is called, we do not
+          # allow this case (see comment in `_merge_call`) and we would not have
+          # arrived here due to the assertion in `_merge_call`. However, if the
+          # latter is done, we want to make sure the main thread enter an eager
+          # mode scope as well so that `merge_fn` does not have trouble
+          # accessing resources defined in MRT under the same context.
+          with ops.name_scope(
+              mtt_captured_name_scope), ops.control_dependencies(
+                  mtt_captured_control_deps), variable_scope.variable_scope(
+                      mtt_captured_var_scope), _maybe_enter_eager_mode(
+                          threads[0].merge_call_entered_in_eager):
             merge_result = threads[0].merge_fn(distribution, *merge_args,
                                                **merge_kwargs)
           for r, t in enumerate(threads):
@@ -248,7 +289,7 @@ class _MirroredReplicaThread(threading.Thread):
   """A thread that runs() a function on a device."""
 
   def __init__(self, dist, coord, replica_id, devices, variable_creator_fn, fn,
-               caching_scope, args, kwargs):
+               caching_scope, args, kwargs, thread_local_callables=None):
     super(_MirroredReplicaThread, self).__init__()
     self.coord = coord
     self.distribution = dist
@@ -314,6 +355,8 @@ class _MirroredReplicaThread(threading.Thread):
         self._name_scope = ""
       self._name_scope += "replica_%d/" % self.replica_id
 
+    self._thread_local_callables = thread_local_callables
+
   def run(self):
     self.should_run.wait()
     self.should_run.clear()
@@ -321,6 +364,7 @@ class _MirroredReplicaThread(threading.Thread):
       if self.coord.should_stop():
         return
       self.restore_thread_local_summary_state()
+      self.restore_thread_local_callable()
       self.restore_thread_local_eager_context_state()
       if (self.caching_scope_entered is not None and
           self.caching_scope_exited is not None):
@@ -376,6 +420,11 @@ class _MirroredReplicaThread(threading.Thread):
     eager_context_state.op_callbacks = self._eager_context_op_callbacks
     # TODO(b/125892694): record other fields in EagerContext.
 
+  def restore_thread_local_callable(self):
+    if self._thread_local_callables:
+      for fn in self._thread_local_callables:
+        fn()
+
 
 class _MirroredReplicaContext(distribute_lib.ReplicaContext):
   """ReplicaContext for synchronized replica."""
@@ -417,6 +466,8 @@ class _MirroredReplicaContext(distribute_lib.ReplicaContext):
 
     t.captured_var_scope = variable_scope.get_variable_scope()
     t.captured_control_deps = t.graph._current_control_dependencies()  # pylint: disable=protected-access
+
+    t.merge_call_entered_in_eager = context.context().executing_eagerly()
 
     # It is problematic if `merge_call` is called under a different graph other
     # than the one that `_call_for_each_replica` is called under, there are
@@ -468,6 +519,7 @@ class _MirroredReplicaContext(distribute_lib.ReplicaContext):
     t.should_run.clear()
     if t.coord.should_stop():
       raise _RequestedStop()
+    t.merge_call_entered_in_eager = None
     return t.merge_result
 
   @property

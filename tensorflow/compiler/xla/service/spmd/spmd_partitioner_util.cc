@@ -55,60 +55,50 @@ bool HasReplicatedSharding(const HloSharding& sharding) {
   return sharding.IsReplicated();
 }
 
-HloInstruction* CreateConstant(const Shape& shape, Literal value,
-                               SpmdBuilder* b) {
+static HloInstruction* CreateConstantBase(
+    const Shape& shape, Literal value, SpmdBuilder* b,
+    Literal (*literal_creator)(Literal, PrimitiveType)) {
   if (shape.IsTuple()) {
     std::vector<HloInstruction*> elements;
     for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
-      elements.push_back(CreateConstant(
-          ShapeUtil::GetTupleElementShape(shape, i), value.Clone(), b));
+      elements.push_back(
+          CreateConstantBase(ShapeUtil::GetTupleElementShape(shape, i),
+                             value.Clone(), b, literal_creator));
     }
     return b->AddInstruction(HloInstruction::CreateTuple(elements));
   }
 
-  CHECK(
-      ShapeUtil::IsScalarWithElementType(value.shape(), shape.element_type()));
-  auto c = b->AddInstruction(HloInstruction::CreateConstant(std::move(value)));
+  if (shape.IsToken()) {
+    return b->AddInstruction(HloInstruction::CreateToken());
+  }
+  auto c = b->AddInstruction(HloInstruction::CreateConstant(
+      literal_creator(std::move(value), shape.element_type())));
+  if (shape.rank() == 0) {
+    return c;
+  }
   return b->AddInstruction(HloInstruction::CreateBroadcast(shape, c, {}));
 }
 
-HloInstruction* CreateZero(const Shape& shape, SpmdBuilder* b) {
-  if (shape.IsTuple()) {
-    std::vector<HloInstruction*> elements;
-    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
-      elements.push_back(
-          CreateZero(ShapeUtil::GetTupleElementShape(shape, i), b));
-    }
-    return b->AddInstruction(HloInstruction::CreateTuple(elements));
-  }
-
-  if (shape.IsToken()) {
-    return b->AddInstruction(HloInstruction::CreateToken());
-  }
-  auto zero = b->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::Zero(shape.element_type())));
-  if (shape.rank() == 0) {
-    return zero;
-  }
-  return b->AddInstruction(HloInstruction::CreateBroadcast(shape, zero, {}));
+HloInstruction* CreateConstant(const Shape& shape, Literal value,
+                               SpmdBuilder* b) {
+  auto identity = [](Literal value, PrimitiveType primitive_type) {
+    CHECK(ShapeUtil::IsScalarWithElementType(value.shape(), primitive_type));
+    return value;
+  };
+  return CreateConstantBase(shape, std::move(value), b, identity);
 }
 
+HloInstruction* CreateZero(const Shape& shape, SpmdBuilder* b) {
+  auto zero = [](Literal /*unused*/, PrimitiveType primitive_type) {
+    return LiteralUtil::Zero(primitive_type);
+  };
+  return CreateConstantBase(shape, /*unused*/ Literal(), b, zero);
+}
 HloInstruction* CreateOne(const Shape& shape, SpmdBuilder* b) {
-  if (shape.IsTuple()) {
-    std::vector<HloInstruction*> elements;
-    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
-      elements.push_back(
-          CreateOne(ShapeUtil::GetTupleElementShape(shape, i), b));
-    }
-    return b->AddInstruction(HloInstruction::CreateTuple(elements));
-  }
-
-  if (shape.IsToken()) {
-    return b->AddInstruction(HloInstruction::CreateToken());
-  }
-  auto one = b->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::One(shape.element_type())));
-  return b->AddInstruction(HloInstruction::CreateBroadcast(shape, one, {}));
+  auto one = [](Literal /*unused*/, PrimitiveType primitive_type) {
+    return LiteralUtil::One(primitive_type);
+  };
+  return CreateConstantBase(shape, /*unused*/ Literal(), b, one);
 }
 
 HloComputation* MakeBinaryAdd(PrimitiveType type, HloModule* module) {
@@ -152,7 +142,9 @@ bool EvenlyPartitions(const Shape& shape, const HloSharding& sharding) {
 Shape MakePartitionedShape(const Shape& shape, const HloSharding& sharding) {
   if (sharding.IsTuple()) {
     std::vector<Shape> subshapes;
-    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+    const int64_t shape_n = ShapeUtil::TupleElementCount(shape);
+    subshapes.reserve(shape_n);
+    for (int64_t i = 0; i < shape_n; ++i) {
       subshapes.push_back(
           MakePartitionedShape(ShapeUtil::GetTupleElementShape(shape, i),
                                sharding.GetSubSharding(shape, {i})));
@@ -172,7 +164,9 @@ Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,
                                           int64_t partition_id) {
   if (sharding.IsTuple()) {
     std::vector<Shape> subshapes;
-    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+    const int64_t shape_n = ShapeUtil::TupleElementCount(shape);
+    subshapes.reserve(shape_n);
+    for (int64_t i = 0; i < shape_n; ++i) {
       subshapes.push_back(MakeNonPaddedShapeForGivenPartition(
           ShapeUtil::GetTupleElementShape(shape, i),
           sharding.GetSubSharding(shape, {i}), partition_id));
@@ -211,7 +205,7 @@ std::vector<HloInstruction*> MakePartitionOffsets(
     absl::Span<const int64_t> dims) {
   CHECK(!shape.IsTuple());
 
-  std::vector<std::vector<int32>> offset_arrays(shape.rank());
+  std::vector<std::vector<int32_t>> offset_arrays(shape.rank());
   for (int64_t i = 0; i < shape.rank(); ++i) {
     offset_arrays[i].resize(sharding.tile_assignment().num_elements());
   }
@@ -230,7 +224,7 @@ std::vector<HloInstruction*> MakePartitionOffsets(
           HloInstruction::CreateConstant(LiteralUtil::Zero(S32))));
     } else {
       auto offset_table = b->AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR1<int32>(offset_arrays[i])));
+          LiteralUtil::CreateR1<int32_t>(offset_arrays[i])));
       auto index = b->AddInstruction(HloInstruction::CreateDynamicSlice(
           ShapeUtil::MakeShape(S32, {1}), offset_table, {partition_id}, {1}));
       offsets.push_back(b->AddInstruction(
@@ -690,24 +684,24 @@ HloInstruction* MultiplyAddDivideOffsetCalculation::Calculate(
   auto scalar_shape = ShapeUtil::MakeShape(S32, {});
   if (multiplier_ == 0) {
     return b->AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR0<int32>(offset_ / divisor_)));
+        LiteralUtil::CreateR0<int32_t>(offset_ / divisor_)));
   }
   HloInstruction* result = shard_ordinal;
   if (multiplier_ != 1) {
     result = b->AddInstruction(HloInstruction::CreateBinary(
         scalar_shape, HloOpcode::kMultiply, shard_ordinal,
         b->AddInstruction(HloInstruction::CreateConstant(
-            LiteralUtil::CreateR0<int32>(multiplier_)))));
+            LiteralUtil::CreateR0<int32_t>(multiplier_)))));
   }
   if (offset_ != 0) {
-    auto offset = b->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(offset_)));
+    auto offset = b->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateR0<int32_t>(offset_)));
     result = b->AddInstruction(HloInstruction::CreateBinary(
         scalar_shape, HloOpcode::kAdd, result, offset));
   }
   if (divisor_ != 1) {
-    auto divisor = b->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(divisor_)));
+    auto divisor = b->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateR0<int32_t>(divisor_)));
     result = b->AddInstruction(HloInstruction::CreateBinary(
         scalar_shape, HloOpcode::kDivide, result, divisor));
   }
@@ -1084,7 +1078,7 @@ absl::optional<HloInstruction*> ExchangeHaloAndGetValidData(
           b->AddInstruction(HloInstruction::CreateBroadcast(
               index_shape,
               b->AddInstruction(
-                  HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(
+                  HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
                       explicit_left_padding_on_full_shape))),
               {}));
       predicates.push_back(b->AddInstruction(HloInstruction::CreateCompare(
@@ -1096,7 +1090,7 @@ absl::optional<HloInstruction*> ExchangeHaloAndGetValidData(
           b->AddInstruction(HloInstruction::CreateBroadcast(
               index_shape,
               b->AddInstruction(
-                  HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(
+                  HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
                       base_shape.dimensions(dim) +
                       explicit_left_padding_on_full_shape))),
               {}));
@@ -1135,10 +1129,9 @@ HloInstruction* HaloExchangeToPadOnLeft(PartitionedHlo& original,
     dim->set_window_reversal(false);
     int64_t low_padding = 0;
     if (absl::c_linear_search(dims, i)) {
-      low_padding =
-          RoundUpToNearest(original.base_shape().dimensions(i),
-                           original.sharding().tile_assignment().dim(i)) -
-          original.base_shape().dimensions(i);
+      low_padding = RoundUpTo(original.base_shape().dimensions(i),
+                              original.sharding().tile_assignment().dim(i)) -
+                    original.base_shape().dimensions(i);
     }
     dim->set_padding_low(low_padding);
     dim->set_padding_high(0);
@@ -1169,7 +1162,7 @@ bool IsNanSafeGt(HloComputation* comp) {
     return m::Select(
         m::Lt(param_s32, m::ConstantScalar(0)),
         m::BitcastConvert(
-            m::Subtract(m::ConstantScalar(std::numeric_limits<int32>::max()),
+            m::Subtract(m::ConstantScalar(std::numeric_limits<int32_t>::max()),
                         param_u32))
             .WithShape(m::Shape().WithElementType(S32)),
         param_s32);
@@ -1185,7 +1178,7 @@ bool IsNanSafeGt(HloComputation* comp) {
     return m::Select(
         m::Lt(param_s32, m::ConstantScalar(0)),
         m::BitcastConvert(
-            m::Subtract(m::ConstantScalar(std::numeric_limits<int32>::max()),
+            m::Subtract(m::ConstantScalar(std::numeric_limits<int32_t>::max()),
                         param_u32))
             .WithShape(m::Shape().WithElementType(S32)),
         param_s32);
@@ -1549,14 +1542,14 @@ HloInstruction* GetInGroupPartitionId(
     HloInstruction* partition_id,
     const std::vector<std::vector<int64_t>>& device_groups, SpmdBuilder* b) {
   int64_t total_devices = device_groups.size() * device_groups[0].size();
-  std::vector<uint32> in_group_ids(total_devices);
-  for (uint32 i = 0; i < device_groups.size(); ++i) {
-    for (uint32 j = 0; j < device_groups[i].size(); ++j) {
+  std::vector<uint32_t> in_group_ids(total_devices);
+  for (uint32_t i = 0; i < device_groups.size(); ++i) {
+    for (uint32_t j = 0; j < device_groups[i].size(); ++j) {
       in_group_ids[device_groups[i][j]] = j;
     }
   }
   auto id_table = b->AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<uint32>(in_group_ids)));
+      LiteralUtil::CreateR1<uint32_t>(in_group_ids)));
   return b->AddInstruction(HloInstruction::CreateReshape(
       ShapeUtil::MakeScalarShape(U32),
       b->AddInstruction(HloInstruction::CreateDynamicSlice(
@@ -1671,14 +1664,15 @@ HloInstruction* PerGroupSliceFromReplicated(
     const std::vector<std::vector<int64_t>>& device_groups,
     absl::Span<const int64_t> group_dims,
     absl::Span<const int64_t> group_dim_sizes, SpmdBuilder* b) {
-  std::vector<uint32> group_ids(device_groups.size() * device_groups[0].size());
+  std::vector<uint32_t> group_ids(device_groups.size() *
+                                  device_groups[0].size());
   for (int64_t g = 0; g < device_groups.size(); ++g) {
     for (int64_t device : device_groups[g]) {
       group_ids[device] = g;
     }
   }
-  auto group_id_table = b->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<uint32>(group_ids)));
+  auto group_id_table = b->AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<uint32_t>(group_ids)));
   auto group_id = b->AddInstruction(HloInstruction::CreateReshape(
       ShapeUtil::MakeScalarShape(U32),
       b->AddInstruction(HloInstruction::CreateDynamicSlice(
@@ -1734,9 +1728,6 @@ absl::optional<std::vector<int64_t>> FindMatchingPartitionedDimsForGrouping(
     return absl::nullopt;
   }
   int64_t rank = sharding.tile_assignment().num_dimensions();
-  if (sharding.ReplicateOnLastTileDim()) {
-    rank--;
-  }
   absl::flat_hash_map<int64_t, std::vector<int64_t>> device_to_index;
   sharding.tile_assignment().Each(
       [&](absl::Span<const int64_t> index, int64_t device) {

@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "StatelessSampleDistortedBoundingBox"
   input_arg {
     name: "image_size"

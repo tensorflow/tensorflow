@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -31,7 +32,7 @@ namespace gpu {
 
 namespace {
 std::string GenerateUploadByThreads(const std::string& local_ptr_name,
-                                    const std::string& global_ptr_name,
+                                    const std::string& name, bool use_ptrs,
                                     const std::string& global_offset_name,
                                     const std::string& lid_name,
                                     int total_work_items,
@@ -41,18 +42,20 @@ std::string GenerateUploadByThreads(const std::string& local_ptr_name,
       global_offset_name.empty() ? "" : global_offset_name + " + ";
   const int groups = elements_to_upload / total_work_items;
   const int reminder = elements_to_upload % total_work_items;
+  const std::string access_start = name + (use_ptrs ? "[" : ".Read(");
+  const std::string access_end = use_ptrs ? "]" : ")";
   for (int i = 0; i < groups; ++i) {
     c += "    " + local_ptr_name + "[" + lid_name + " + " +
-         std::to_string(total_work_items * i) + "] = " + global_ptr_name + "[" +
-         offset + lid_name + " + " + std::to_string(total_work_items * i) +
-         "];\n";
+         std::to_string(total_work_items * i) + "] = " + access_start + offset +
+         lid_name + " + " + std::to_string(total_work_items * i) + access_end +
+         ";\n";
   }
   if (reminder != 0) {
     c += "    if (" + lid_name + " < " + std::to_string(reminder) + ") {\n";
     c += "      " + local_ptr_name + "[" + lid_name + " + " +
-         std::to_string(total_work_items * groups) + "] = " + global_ptr_name +
-         "[" + offset + lid_name + " + " +
-         std::to_string(total_work_items * groups) + "];\n";
+         std::to_string(total_work_items * groups) + "] = " + access_start +
+         offset + lid_name + " + " + std::to_string(total_work_items * groups) +
+         access_end + ";\n";
     c += "    }\n";
   }
   return c;
@@ -175,7 +178,23 @@ ConvPowerVR::ConvPowerVR(const OperationDef& definition,
       padding_(-attr.padding.prepended.w, -attr.padding.prepended.h, 0, 0),
       kernel_size_(attr.weights.shape.w, attr.weights.shape.h, 1, 1),
       dilation_(attr.dilations.w, attr.dilations.h, 1, 1),
-      conv_params_(GuessBestParams(gpu_info, definition, attr, dst_shape)) {}
+      conv_params_(GuessBestParams(gpu_info, definition, attr, dst_shape)) {
+  const int src_slices = DivideRoundUp(attr.weights.shape.i, 4);
+  const int dst_slices = DivideRoundUp(attr.weights.shape.o, 4);
+  if (attr.groups != 1) {
+    conv_params_.groups_support = true;
+    const int dst_group_slices = dst_slices / attr.groups;
+    if (dst_group_slices % conv_params_.block_size.w != 0) {
+      if (conv_params_.block_size.w == 4 && dst_group_slices % 2 == 0) {
+        conv_params_.block_size.w = 2;
+      } else {
+        conv_params_.block_size.w = 1;
+      }
+    }
+    args_.AddInt("src_group_size", src_slices);
+    args_.AddInt("dst_group_size", dst_slices / attr.groups);
+  }
+}
 
 ConvPowerVR::ConvPowerVR(const OperationDef& definition,
                          const Convolution2DAttributes& attr,
@@ -246,6 +265,44 @@ void ConvPowerVR::GenerateCode(const GpuInfo& gpu_info) {
   }
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
+
+  auto src_desc = definition_.src_tensors[0];
+  src_desc.SetAddressMode(AddressMode::kZero);
+  if (definition_.IsBatchSupported()) {
+    src_desc.SetStateVar("BatchedWidth", "true");
+  }
+  AddSrcTensor("src_tensor", src_desc);
+  if (definition_.src_tensors.size() == 2) {  // dynamic weights
+    const DataType weights_type = definition_.GetDataType();
+    if (conv_params_.weights_layout == WeightsLayout::kOSpatialIOGroupI4O4 ||
+        conv_params_.weights_layout == WeightsLayout::kOSpatialIOGroupO4I4) {
+      definition_.src_tensors[1] = {weights_type, TensorStorageType::BUFFER,
+                                    Layout::HWC};
+      BufferDescriptor desc;
+      desc.element_type = weights_type;
+      desc.element_size = 4;
+      desc.memory_type = conv_params_.weights_upload_type ==
+                                 ConvPowerVR::WeightsUploadType::CONSTANT_MEM
+                             ? MemoryType::CONSTANT
+                             : MemoryType::GLOBAL;
+
+      AddSrcBuffer("weights", desc);
+    } else {
+      TensorDescriptor desc{weights_type, TensorStorageType::TEXTURE_2D,
+                            Layout::HWC};
+      definition_.src_tensors[1] = desc;
+      definition_.src_tensors.push_back(desc);
+      definition_.src_tensors.push_back(desc);
+      definition_.src_tensors.push_back(desc);
+      for (int i = 0; i < 4; ++i) {
+        Texture2DDescriptor desc;
+        desc.element_type = definition_.src_tensors[1 + i].data_type;
+        const std::string name = "weights" + std::to_string(i);
+        AddSrcTexture2D("weights" + std::to_string(i), desc);
+      }
+    }
+  }
+
   code_ = GenerateConv(gpu_info, definition_, stride_correction, conv_params_);
   if (definition_.precision == CalculationsPrecision::F16 &&
       gpu_info.IsPowerVR()) {
@@ -341,25 +398,6 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
                                       const OperationDef& op_def,
                                       bool stride_correction,
                                       const ConvParams& conv_params) {
-  auto src_desc = op_def.src_tensors[0];
-  src_desc.SetAddressMode(AddressMode::kZero);
-  if (op_def.IsBatchSupported()) {
-    src_desc.SetStateVar("BatchedWidth", "true");
-  }
-  AddSrcTensor("src_tensor", src_desc);
-  if (op_def.src_tensors.size() == 2) {
-    // dynamic weights
-    BufferDescriptor desc;
-    desc.element_type = op_def.src_tensors[1].data_type;
-    desc.element_size = 4;
-    desc.memory_type = conv_params.weights_upload_type ==
-                               ConvPowerVR::WeightsUploadType::CONSTANT_MEM
-                           ? MemoryType::CONSTANT
-                           : MemoryType::GLOBAL;
-
-    AddSrcBuffer("weights", desc);
-  }
-
   const auto& src_def = op_def.src_tensors[0];
 
   auto generate_id = [&](const std::string& x, const std::string& y,
@@ -393,7 +431,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
     const std::vector<std::string> coords{x, y, z};
     for (int i = 0; i < axes.size(); ++i) {
       const auto& axis = axes[i];
-      if (src_def.HasAxis(axis) && !src_def.SupportsZeroClamp(axis) &&
+      if (src_def.HasAxis(axis) && !src_def.SupportsZeroClamp(axis, gpu_info) &&
           !is_1[i]) {
         if (!check.empty()) {
           check += " && ";
@@ -519,6 +557,18 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
     c += "    return;\n";
     c += "  }\n";
   }
+  if (conv_params.groups_support) {
+    c += "      int conv_group_id = DST_S / args.dst_group_size;\n";
+    c += "      int src_start_slice = conv_group_id * args.src_group_size;\n";
+    c += "      int src_end_slice = src_start_slice + args.src_group_size;\n";
+  }
+  const std::string src_group_start_slice =
+      conv_params.groups_support ? "src_start_slice" : "0";
+  const std::string src_group_end_slice =
+      conv_params.groups_support ? "src_end_slice" : "args.src_tensor.Slices()";
+  const std::string src_group_slices = conv_params.groups_support
+                                           ? "args.src_group_size"
+                                           : "args.src_tensor.Slices()";
   if (conv_params.weights_upload_type ==
       ConvPowerVR::WeightsUploadType::LOCAL_MEM_BY_THREADS) {
     if (conv_params.linear_spatial) {
@@ -636,7 +686,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
       if (src_def.HasAxis(Axis::DEPTH) && !conv_params_.z_kernel_is_1) {
         kernel_spatial_offset += " * args.kernel_size_z";
       }
-      offset = "DST_S * 4 * args.src_tensor.Slices()" + kernel_spatial_offset;
+      offset = "DST_S * 4 * " + src_group_slices + kernel_spatial_offset;
     }
     if (gpu_info.SupportsPointersInKernels()) {
       c += "  " + weights_global_ptr +
@@ -651,7 +701,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
       const std::string zck = "zck" + std::to_string(z);
       c += "  int zck" + std::to_string(z) + " = kz * args.dilation_z + zc" +
            std::to_string(z) + ";\n";
-      if (!src_def.SupportsZeroClamp(Axis::DEPTH)) {
+      if (!src_def.SupportsZeroClamp(Axis::DEPTH, gpu_info)) {
         c += "  bool in_z" + std::to_string(z) + " = " + zck + " >= 0 && " +
              zck + " < args.src_tensor.Depth();\n";
         if (!src_def.CanReadOutOfBorder(Axis::DEPTH)) {
@@ -667,7 +717,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
       const std::string yck = "yck" + std::to_string(y);
       c += "  int " + yck + " = ky * args.dilation_y + yc" + std::to_string(y) +
            ";\n";
-      if (!src_def.SupportsZeroClamp(Axis::HEIGHT)) {
+      if (!src_def.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
         c += "  bool in_y" + std::to_string(y) + " = " + yck + " >= 0 && " +
              yck + " < args.src_tensor.Height();\n";
         if (!src_def.CanReadOutOfBorder(Axis::HEIGHT)) {
@@ -683,7 +733,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
       const std::string xck = "xck" + std::to_string(x);
       c += "  int xck" + std::to_string(x) + " = kx * args.dilation_x + xc" +
            std::to_string(x) + ";\n";
-      if (!src_def.SupportsZeroClamp(Axis::WIDTH)) {
+      if (!src_def.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
         c += "  bool in_x" + std::to_string(x) + " = " + xck + " >= 0 && " +
              xck + " < args.src_tensor.Width();\n";
         if (!src_def.CanReadOutOfBorder(Axis::WIDTH)) {
@@ -694,7 +744,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
     }
   }
   const bool need_multiple_slice_strides =
-      src_def.ReturnsZeroForNegOneRead() && !trivial_kernel_size;
+      src_def.ReturnsZeroForNegOneRead(gpu_info) && !trivial_kernel_size;
   for (int z = 0; z < block_size.z; ++z) {
     const std::string zind = std::to_string(z);
     for (int y = 0; y < block_size.y; ++y) {
@@ -711,8 +761,8 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
           coords += ", " + zc;
         }
         if (src_def.IsLinear()) {
-          c += "  args.src_tensor.GetAddress(addr" + id + ", " + coords +
-               ", 0);\n";
+          c += "  args.src_tensor.GetAddress(addr" + id + ", " + coords + ", " +
+               src_group_start_slice + ");\n";
           if (need_multiple_slice_strides) {
             const std::string check = generate_check(xind, yind, zind);
             c += "  addr" + id + " = select(-1, addr" + id + ", (" + check +
@@ -769,7 +819,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
             }
             address += ", s";
           }
-          if (src_def.ReturnsZeroForNegOneRead()) {
+          if (src_def.ReturnsZeroForNegOneRead(gpu_info)) {
             c += "    src" + id + " = args.src_tensor.Read<" + cl_type + ">(" +
                  address + ");\n";
             const std::string ds = trivial_kernel_size ? "ds" : "ds" + id;
@@ -799,6 +849,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
   const bool weights_type_as_accum_type =
       !(op_def.precision == CalculationsPrecision::F32_F16 &&
         conv_params.weights_data_type == DataType::FLOAT16);
+  bool use_fma = gpu_info.IsAMD() && gpu_info.IsApiOpenCl();
   auto conv_core = [&](int shared_offset) {
     const std::string channels[] = {"x", "y", "z", "w"};
     for (int s = 0; s < block_size.w; ++s) {
@@ -862,8 +913,13 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
                     w_val = "f" + weight_id;
                   }
                   if (GetWeightsDescription().IsI4O4()) {
-                    c += "    " + R + " += " + w_val + " * " + S + "." +
-                         channels[ch] + ";\n";
+                    if (use_fma) {
+                      c += "    " + R + " = fma(" + w_val + ", " + S + "." +
+                           channels[ch] + ", " + R + ");\n";
+                    } else {
+                      c += "    " + R + " += " + w_val + " * " + S + "." +
+                           channels[ch] + ";\n";
+                    }
                   } else {
                     c += "    " + R + "." + channels[ch] + " += dot(" + w_val +
                          ", " + S + ");\n";
@@ -914,7 +970,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
     }
   };
 
-  c += "  int s = 0;\n";
+  c += "  int s = " + src_group_start_slice + ";\n";
   c += "  do {\n";
   declare_src();
   const int total_work_items =
@@ -926,22 +982,36 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
   } else if (conv_params.weights_upload_type ==
              ConvPowerVR::WeightsUploadType::LOCAL_MEM_BY_THREADS) {
     c += "    " + barrier + ";\n";
-    c += GenerateUploadByThreads("weights_cache", "filters_loc",
-                                 /*global_offset_name*/ "", "lid",
-                                 total_work_items, local_mem_size);
+    if (gpu_info.SupportsPointersInKernels()) {
+      c += GenerateUploadByThreads(
+          "weights_cache", "filters_loc", /*use_ptrs*/ true,
+          /*global_offset_name*/ "", "lid", total_work_items, local_mem_size);
+    } else {
+      c += GenerateUploadByThreads("weights_cache", "args.weights",
+                                   /*use_ptrs*/ false, "filters_offset", "lid",
+                                   total_work_items, local_mem_size);
+    }
   } else if (use_simd_broadcast) {
     int parts = local_mem_size / simd_size;
     int reminder = local_mem_size % simd_size;
+    const std::string read_start = gpu_info.SupportsPointersInKernels()
+                                       ? "filters_loc["
+                                       : "args.weights.Read(filters_offset + ";
+    const std::string read_end =
+        gpu_info.SupportsPointersInKernels() ? "]" : ")";
     for (int i = 0; i < parts; ++i) {
-      c += "    FLT4 simd_w" + std::to_string(i) + " = filters_loc[simd_id + " +
-           std::to_string(i * simd_size) + "];\n";
+      const std::string weights_index =
+          "simd_id + " + std::to_string(i * simd_size);
+      c += "    FLT4 simd_w" + std::to_string(i) + " = " + read_start +
+           weights_index + read_end + ";\n";
     }
     if (reminder) {
+      const std::string weights_index =
+          "simd_id + " + std::to_string(parts * simd_size);
       c += "    FLT4 simd_w" + std::to_string(parts) + ";\n";
       c += "    if (simd_id < " + std::to_string(reminder) + ") {\n";
-      c += "      simd_w" + std::to_string(parts) +
-           " = filters_loc[simd_id + " + std::to_string(parts * simd_size) +
-           "];\n";
+      c += "      simd_w" + std::to_string(parts) + " = " + read_start +
+           weights_index + read_end + ";\n";
       c += "    }\n";
     }
   } else if (conv_params.AreWeightsBuffer()) {  // GLOBAL_MEM/CONSTANT_MEM
@@ -951,6 +1021,9 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
   } else {  // TEXTURES_MEM
     for (int dst_s = 0; dst_s < block_size.w; ++dst_s) {
       std::string f_y = trivial_kernel_size ? "s" : "filter_offset";
+      if (trivial_kernel_size && conv_params.groups_support) {
+        f_y = "s - src_start_slice";
+      }
       if (conv_params.different_weights_for_height) {
         f_y = "DST_Y * args.src_tensor.Slices() + s";
       }
@@ -986,7 +1059,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
       c += "    filters_offset += " + std::to_string(local_mem_size) + ";\n";
     }
   }
-  c += "  } while (s < args.src_tensor.Slices());\n";
+  c += "  } while (s < " + src_group_end_slice + ");\n";
   if (!conv_params.x_kernel_is_1) {
     c += "  };\n";
   }
@@ -1004,9 +1077,9 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
     } else if (conv_params.weights_upload_type ==
                ConvPowerVR::WeightsUploadType::LOCAL_MEM_BY_THREADS) {
       c += "  " + barrier + ";\n";
-      c += GenerateUploadByThreads("weights_cache", "args.biases.GetPtr()",
-                                   "DST_S", "lid", total_work_items,
-                                   block_size.w);
+      c += GenerateUploadByThreads("weights_cache", "args.biases",
+                                   /*use_ptrs*/ false, "DST_S", "lid",
+                                   total_work_items, block_size.w);
       c += "  " + barrier + ";\n";
     } else if (gpu_info.SupportsPointersInKernels()) {
       c += "  weights_cache = args.biases.GetPtr() + DST_S;\n";
@@ -1186,33 +1259,68 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
       conv_params.block_size.x = 2;
     }
   } else if (gpu_info.IsAMD()) {
-    if (different_weights_for_height) {
-      work_group_size_ = int3(32, 1, 1);
-      work_group_launch_order_ = int3(2, 0, 1);
-      conv_params.fixed_work_group_size = true;
-    } else {
-      work_group_size_ = int3(8, 4, 1);
-      work_group_launch_order_ = int3(2, 0, 1);
-      conv_params.fixed_work_group_size = true;
-    }
+    work_group_size_ = int3(8, 4, 1);
+    work_group_launch_order_ = int3(0, 1, 2);
+    conv_params.fixed_work_group_size = false;
 
-    conv_params.block_size = int4(2, 1, 1, 1);
-    if (x_kernel_is_1 && y_kernel_is_1) {
-      conv_params.block_size.y = 2;
-    }
-    conv_params.src_depth_loop_size = 1;
-    conv_params.weights_upload_type = WeightsUploadType::CONSTANT_MEM;
-    if (dst_depth % 8 == 0 || dst_depth >= 32) {
-      conv_params.block_size.w = 8;
-    } else if (dst_depth % 4 == 0 || dst_depth >= 8) {
-      conv_params.block_size.w = 4;
-    } else if (dst_depth % 2 == 0 || dst_depth >= 4) {
-      conv_params.block_size.w = 2;
+    if (gpu_info.IsApiOpenCl()) {
+      conv_params.weights_upload_type = WeightsUploadType::CONSTANT_MEM;
     } else {
-      conv_params.block_size.w = 1;
+      conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
     }
-    if (src_depth % 2 == 0 && src_depth >= 16) {
+    if (dst_depth % 4 == 0 || dst_depth >= 8) {
+      conv_params.block_size = int4(2, 2, 1, 4);
+    } else if (dst_depth % 2 == 0 || dst_depth >= 4) {
+      conv_params.block_size = int4(4, 2, 1, 2);
+    } else {
+      conv_params.block_size = int4(4, 4, 1, 1);
+    }
+    auto reduce_block_size_wzyx = [](int4* block_size) {
+      if (block_size->w % 2 == 0) {
+        block_size->w /= 2;
+      } else if (block_size->z % 2 == 0) {
+        block_size->z /= 2;
+      } else if (block_size->y % 2 == 0) {
+        block_size->y /= 2;
+      } else if (block_size->x % 2 == 0) {
+        block_size->x /= 2;
+      }
+    };
+    if (definition_.precision != CalculationsPrecision::F16) {
+      reduce_block_size_wzyx(&conv_params.block_size);
+    }
+    if (dst_shape) {
+      int task_size = dst_shape->w * dst_shape->b * dst_shape->h * dst_depth;
+      float task_size_per_cu =
+          static_cast<float>(task_size) / gpu_info.GetComputeUnitsCount();
+      int block_size = conv_params.block_size.x * conv_params.block_size.y *
+                       conv_params.block_size.w;
+      float threads_per_cu = task_size_per_cu / block_size;
+      float warps_per_cu = threads_per_cu / 64;
+      if (warps_per_cu < 4.0f) {
+        reduce_block_size_wzyx(&conv_params.block_size);
+      }
+      if (warps_per_cu < 2.0f) {
+        reduce_block_size_wzyx(&conv_params.block_size);
+      }
+      if (warps_per_cu < 1.0f) {
+        reduce_block_size_wzyx(&conv_params.block_size);
+      }
+      if (warps_per_cu < 0.5f) {
+        reduce_block_size_wzyx(&conv_params.block_size);
+      }
+    }
+    int block_size = conv_params.block_size.x * conv_params.block_size.y *
+                     conv_params.block_size.w;
+    conv_params.src_depth_loop_size = 1;
+    if (block_size <= 4 && src_depth % 2 == 0) {
       conv_params.src_depth_loop_size = 2;
+    }
+    if (block_size <= 2 && src_depth % 4 == 0) {
+      conv_params.src_depth_loop_size = 4;
+    }
+    if (block_size <= 1 && src_depth % 8 == 0) {
+      conv_params.src_depth_loop_size = 8;
     }
   } else if (gpu_info.IsMali()) {
     int block_size = 2;
@@ -1263,7 +1371,25 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     conv_params.fixed_work_group_size = false;
     conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
   } else if (gpu_info.IsAdreno()) {
-    conv_params.block_size = int4(2, 2, 1, 2);
+    if (dst_shape) {
+      const int wave_size = gpu_info.adreno_info.GetWaveSize(
+          definition.precision == CalculationsPrecision::F16);
+      const double task_size =
+          1.0 * dst_shape->w * dst_shape->b * dst_shape->h * dst_depth;
+      const double waves =
+          task_size / gpu_info.GetComputeUnitsCount() / wave_size;
+      if (waves <= 6.0f) {
+        conv_params.block_size = int4(1, 1, 1, 1);
+      } else if (waves <= 12.0f) {
+        conv_params.block_size = int4(2, 1, 1, 1);
+      } else if (waves <= 24.0f) {
+        conv_params.block_size = int4(2, 1, 1, 2);
+      } else {
+        conv_params.block_size = int4(2, 2, 1, 2);
+      }
+    } else {
+      conv_params.block_size = int4(2, 2, 1, 2);
+    }
     if (gpu_info.adreno_info.IsAdreno3xx()) {
       if (definition.precision == CalculationsPrecision::F16) {
         conv_params.block_size = int4(2, 2, 1, 2);
@@ -1277,12 +1403,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     work_group_launch_order_ = int3(0, 1, 2);
     conv_params.fixed_work_group_size = false;
     conv_params.src_depth_loop_size = 1;
-    if (definition.src_tensors.size() == 2) {
-      // dynamic weights supported only with buffers.
-      conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
-    } else {
-      conv_params.weights_upload_type = WeightsUploadType::TEXTURES_MEM_X4;
-    }
+    conv_params.weights_upload_type = WeightsUploadType::TEXTURES_MEM_X4;
   } else if (gpu_info.IsIntel()) {
     if (different_weights_for_height) {
       work_group_size_ = int3(16, 1, 1);

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOOLS_BENCHMARK_PROFILING_LISTENER_H_
 
 #include <memory>
+#include <string>
 
 #include "tensorflow/lite/profiling/buffered_profiler.h"
 #include "tensorflow/lite/profiling/profile_summarizer.h"
@@ -30,8 +31,8 @@ namespace benchmark {
 class ProfilingListener : public BenchmarkListener {
  public:
   ProfilingListener(
-      Interpreter* interpreter, uint32_t max_num_entries,
-      const std::string& csv_file_path = "",
+      Interpreter* interpreter, uint32_t max_num_initial_entries,
+      bool allow_dynamic_buffer_increase, const std::string& csv_file_path = "",
       std::shared_ptr<profiling::ProfileSummaryFormatter> summarizer_formatter =
           std::make_shared<profiling::ProfileSummaryDefaultFormatter>());
 

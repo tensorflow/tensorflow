@@ -312,7 +312,7 @@ Status EagerOperation::SetInput(size_t index,
 Status EagerOperation::Reset(
     const char* op, const char* device_name, bool remote,
     EagerExecutor* executor,
-    const absl::optional<EagerRemoteFunctionParams> remote_func_params) {
+    const absl::optional<EagerFunctionParams> eager_func_params) {
   DCHECK(inputs_.empty());
   ClearInferenceState();
   bool is_function = false;
@@ -344,7 +344,9 @@ Status EagerOperation::Reset(
   is_function_ = is_function;
   cancellation_manager_ = nullptr;
   executor_ = executor ? executor : &ctx_.Executor();
-  remote_func_params_ = remote_func_params;
+  if (eager_func_params.has_value()) {
+    eager_func_params_ = eager_func_params;
+  }
   op_name_ = op;
   return SetDeviceName(device_name);
 }

@@ -335,6 +335,27 @@ Status MutableHashTableShape(InferenceContext* c, const ShapeHandle& key,
   return Status::OK();
 }
 
+Status MutableHashTableShapeFn(InferenceContext* c) {
+  return MutableHashTableShape(c, /*key=*/c->Scalar(),
+                               /*value=*/c->Scalar());
+}
+
+Status MutableHashTableOfTensorsShapeFn(InferenceContext* c) {
+  PartialTensorShape value_p;
+  TF_RETURN_IF_ERROR(c->GetAttr("value_shape", &value_p));
+  ShapeHandle value_s;
+  TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(value_p, &value_s));
+  return MutableHashTableShape(c, /*key=*/c->Scalar(), /*value=*/value_s);
+}
+
+Status MutableDenseHashTableShapeFn(InferenceContext* c) {
+  PartialTensorShape value_p;
+  TF_RETURN_IF_ERROR(c->GetAttr("value_shape", &value_p));
+  ShapeHandle value_s;
+  TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(value_p, &value_s));
+  return MutableHashTableShape(c, /*key=*/c->input(0), /*value=*/value_s);
+}
+
 REGISTER_OP("HashTable")
     .Output("table_handle: Ref(string)")
     .Attr("container: string = ''")
@@ -380,10 +401,14 @@ REGISTER_OP("MutableHashTableV2")
     .Attr("key_dtype: type")
     .Attr("value_dtype: type")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) {
-      return MutableHashTableShape(c, /*key=*/c->Scalar(),
-                                   /*value=*/c->Scalar());
-    });
+    .SetShapeFn(MutableHashTableShapeFn);
+
+REGISTER_OP("AnonymousMutableHashTable")
+    .Output("table_handle: resource")
+    .Attr("key_dtype: type")
+    .Attr("value_dtype: type")
+    .SetIsStateful()
+    .SetShapeFn(MutableHashTableShapeFn);
 
 REGISTER_OP("MutableHashTableOfTensors")
     .Output("table_handle: Ref(string)")
@@ -405,13 +430,15 @@ REGISTER_OP("MutableHashTableOfTensorsV2")
     .Attr("value_dtype: type")
     .Attr("value_shape: shape = {}")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) {
-      PartialTensorShape value_p;
-      TF_RETURN_IF_ERROR(c->GetAttr("value_shape", &value_p));
-      ShapeHandle value_s;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(value_p, &value_s));
-      return MutableHashTableShape(c, /*key=*/c->Scalar(), /*value=*/value_s);
-    });
+    .SetShapeFn(MutableHashTableOfTensorsShapeFn);
+
+REGISTER_OP("AnonymousMutableHashTableOfTensors")
+    .Output("table_handle: resource")
+    .Attr("key_dtype: type")
+    .Attr("value_dtype: type")
+    .Attr("value_shape: shape = {}")
+    .SetIsStateful()
+    .SetShapeFn(MutableHashTableOfTensorsShapeFn);
 
 REGISTER_OP("MutableDenseHashTable")
     .Input("empty_key: key_dtype")
@@ -440,13 +467,19 @@ REGISTER_OP("MutableDenseHashTableV2")
     .Attr("initial_num_buckets: int = 131072")  // 2^17
     .Attr("max_load_factor: float = 0.8")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) {
-      PartialTensorShape value_p;
-      TF_RETURN_IF_ERROR(c->GetAttr("value_shape", &value_p));
-      ShapeHandle value_s;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(value_p, &value_s));
-      return MutableHashTableShape(c, /*key=*/c->input(0), /*value=*/value_s);
-    });
+    .SetShapeFn(MutableDenseHashTableShapeFn);
+
+REGISTER_OP("AnonymousMutableDenseHashTable")
+    .Input("empty_key: key_dtype")
+    .Input("deleted_key: key_dtype")
+    .Output("table_handle: resource")
+    .Attr("key_dtype: type")
+    .Attr("value_dtype: type")
+    .Attr("value_shape: shape = {}")
+    .Attr("initial_num_buckets: int = 131072")  // 2^17
+    .Attr("max_load_factor: float = 0.8")
+    .SetIsStateful()
+    .SetShapeFn(MutableDenseHashTableShapeFn);
 
 REGISTER_OP("InitializeTable")
     .Input("table_handle: Ref(string)")

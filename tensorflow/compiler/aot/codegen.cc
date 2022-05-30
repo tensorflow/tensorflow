@@ -502,7 +502,8 @@ namespace xla { class ExecutableRunOptions; }
 // (Implementation detail) Entry point to the function in the object file.
 extern "C" void {{ENTRY}}(
     void* result, const ::xla::ExecutableRunOptions* run_options,
-    const void** args, void** temps, int64_t* profile_counters);
+    const void** args, void** temps, XlaCustomCallStatus* status,
+    int64_t* profile_counters);
 
 {{DECLS_FROM_OBJ_FILE}}
 

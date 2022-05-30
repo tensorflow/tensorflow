@@ -22,10 +22,12 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
@@ -36,7 +38,7 @@ namespace mlir {
 namespace TFL {
 namespace tac {
 
-absl::StatusOr<mlir::OwningModuleRef> ImportFlatbufferOrMlir(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportFlatbufferOrMlir(
     const std::string& input_filename, bool input_mlir,
     llvm::SourceMgr* source_mgr, mlir::MLIRContext* context) {
   std::string error;
@@ -49,11 +51,12 @@ absl::StatusOr<mlir::OwningModuleRef> ImportFlatbufferOrMlir(
 
   if (input_mlir) {
     mlir::DialectRegistry registry;
-    registry
-        .insert<mlir::TFL::TensorFlowLiteDialect, mlir::StandardOpsDialect>();
+    registry.insert<mlir::TFL::TensorFlowLiteDialect,
+                    mlir::arith::ArithmeticDialect, mlir::func::FuncDialect>();
     context->appendDialectRegistry(registry);
     source_mgr->AddNewSourceBuffer(std::move(buffer), llvm::SMLoc());
-    return mlir::OwningModuleRef(mlir::parseSourceFile(*source_mgr, context));
+    return mlir::OwningOpRef<mlir::ModuleOp>(
+        mlir::parseSourceFile<mlir::ModuleOp>(*source_mgr, context));
   }
 
   mlir::Location loc =

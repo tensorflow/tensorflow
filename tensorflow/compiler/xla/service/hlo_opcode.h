@@ -55,6 +55,9 @@ namespace xla {
   V(kAllReduceStart, "all-reduce-start", kHloOpcodeIsVariadic)                 \
   V(kAllReduceDone, "all-reduce-done", 1)                                      \
   V(kAllToAll, "all-to-all", kHloOpcodeIsVariadic)                             \
+  V(kAsyncStart, "async-start", kHloOpcodeIsVariadic)                          \
+  V(kAsyncUpdate, "async-update", 1)                                           \
+  V(kAsyncDone, "async-done", 1)                                               \
   V(kAtan2, "atan2", 2)                                                        \
   V(kBatchNormGrad, "batch-norm-grad", 5)                                      \
   V(kBatchNormInference, "batch-norm-inference", 5)                            \
@@ -105,6 +108,7 @@ namespace xla {
   V(kLogistic, "logistic", 1)                                                  \
   V(kAnd, "and", 2)                                                            \
   V(kNot, "not", 1)                                                            \
+  V(kOptimizationBarrier, "opt-barrier", 1)                                    \
   V(kOr, "or", 2)                                                              \
   V(kXor, "xor", 2)                                                            \
   V(kMap, "map", kHloOpcodeIsVariadic)                                         \
@@ -134,8 +138,9 @@ namespace xla {
   V(kRngGetAndUpdateState, "rng-get-and-update-state", 0)                      \
   V(kRngBitGenerator, "rng-bit-generator", 1)                                  \
   V(kRoundNearestAfz, "round-nearest-afz", 1)                                  \
+  V(kRoundNearestEven, "round-nearest-even", 1)                                \
   V(kRsqrt, "rsqrt", 1)                                                        \
-  V(kScatter, "scatter", 3)                                                    \
+  V(kScatter, "scatter", kHloOpcodeIsVariadic)                                 \
   V(kSelect, "select", 3)                                                      \
   V(kSelectAndScatter, "select-and-scatter", 3)                                \
   V(kSend, "send", 2)                                                          \
@@ -151,11 +156,9 @@ namespace xla {
   V(kCbrt, "cbrt", 1)                                                          \
   V(kSubtract, "subtract", 2)                                                  \
   V(kTanh, "tanh", 1)                                                          \
-  V(kTrace, "trace", 1)                                                        \
   V(kTranspose, "transpose", 1)                                                \
   V(kTriangularSolve, "triangular-solve", 2)                                   \
   V(kTuple, "tuple", kHloOpcodeIsVariadic)                                     \
-  V(kTupleSelect, "tuple-select", 3)                                           \
   V(kWhile, "while", 1)
 
 enum class HloOpcode {
@@ -170,10 +173,10 @@ enum {
 };
 
 // Returns a string representation of the opcode.
-string HloOpcodeString(HloOpcode opcode);
+std::string HloOpcodeString(HloOpcode opcode);
 
 // Retrieves the opcode enum by name if the opcode exists.
-StatusOr<HloOpcode> StringToHloOpcode(const string& opcode_name);
+StatusOr<HloOpcode> StringToHloOpcode(const std::string& opcode_name);
 
 inline std::ostream& operator<<(std::ostream& os, HloOpcode opcode) {
   return os << HloOpcodeString(opcode);
@@ -188,6 +191,26 @@ bool HloOpcodeIsVariadic(HloOpcode opcode);
 // Returns the arity of opcode. If the opcode is variadic,
 // returns nullopt.
 absl::optional<int> HloOpcodeArity(HloOpcode opcode);
+
+// Returns true if the given opcode is one of kAsyncStart, kAsyncUpdate, or
+// kAsyncDone.
+bool HloOpcodeIsAsync(HloOpcode opcode);
+
+// True if the op takes two arguments and order doesn't matter.
+inline bool HloOpcodeIsBinaryCommutative(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kAdd:
+    case HloOpcode::kMultiply:
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
+    case HloOpcode::kAnd:
+    case HloOpcode::kOr:
+    case HloOpcode::kXor:
+      return true;
+    default:
+      return false;
+  }
+}
 
 // Returns the number of HloOpcode values.
 inline const uint32_t HloOpcodeCount() {

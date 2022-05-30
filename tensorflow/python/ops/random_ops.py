@@ -72,7 +72,8 @@ def random_normal(shape,
       The mean of the normal distribution.
     stddev: A Tensor or Python value of type `dtype`, broadcastable with `mean`.
       The standard deviation of the normal distribution.
-    dtype: The type of the output.
+    dtype: The float type of the output: `float16`, `bfloat16`, `float32`,
+      `float64`. Defaults to `float32`.
     seed: A Python integer. Used to create a random seed for the distribution.
       See
       `tf.random.set_seed`
@@ -268,8 +269,8 @@ def random_uniform(shape,
       `shape` (for integer types, broadcasting is not supported, so it needs to
       be a scalar). The upper bound on the range of random values to generate
       (exclusive). Defaults to 1 if `dtype` is floating point.
-    dtype: The type of the output: `float16`, `float32`, `float64`, `int32`,
-      or `int64`.
+    dtype: The type of the output: `float16`, `bfloat16`, `float32`, `float64`,
+      `int32`, or `int64`. Defaults to `float32`.
     seed: A Python integer. Used in combination with `tf.random.set_seed` to
       create a reproducible sequence of tensors across multiple calls.
     name: A name for the operation (optional).
@@ -281,11 +282,12 @@ def random_uniform(shape,
     ValueError: If `dtype` is integral and `maxval` is not specified.
   """
   dtype = dtypes.as_dtype(dtype)
-  if dtype not in (dtypes.float16, dtypes.bfloat16, dtypes.float32,
-                   dtypes.float64, dtypes.int32, dtypes.int64):
+  accepted_dtypes = (dtypes.float16, dtypes.bfloat16, dtypes.float32,
+                     dtypes.float64, dtypes.int32, dtypes.int64)
+  if dtype not in accepted_dtypes:
     raise ValueError(
-        ("Invalid dtype. Dtype should be one of float16, float32, "
-         f"float64, int32 and int64, but is {dtype}. "))
+        f"Argument `dtype` got invalid value {dtype}. Accepted dtypes are "
+        f"{accepted_dtypes}.")
   if maxval is None:
     if dtype.is_integer:
       raise ValueError("Must specify maxval for integer dtype %r" % dtype)
@@ -353,6 +355,9 @@ def random_shuffle(value, seed=None, name=None):
   seed1, seed2 = random_seed.get_seed(seed)
   return gen_random_ops.random_shuffle(
       value, seed=seed1, seed2=seed2, name=name)
+
+
+ops.NotDifferentiable("RandomShuffle")
 
 
 @tf_export("image.random_crop", v1=["image.random_crop", "random_crop"])
@@ -485,7 +490,8 @@ def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
     seed: A Python integer. Used to create a random seed for the distribution.
       See `tf.random.set_seed` for behavior.
     name: Optional name for the operation.
-    output_dtype: integer type to use for the output. Defaults to int64.
+    output_dtype: The integer type of the output: `int32` or `int64`. Defaults
+      to `int64`.
 
   Returns:
     The drawn samples of shape `[batch_size, num_samples]`.
@@ -511,7 +517,8 @@ def categorical(logits, num_samples, dtype=None, seed=None, name=None):
     logits: 2-D Tensor with shape `[batch_size, num_classes]`.  Each slice
       `[i, :]` represents the unnormalized log-probabilities for all classes.
     num_samples: 0-D.  Number of independent samples to draw for each row slice.
-    dtype: integer type to use for the output. Defaults to int64.
+    dtype: The integer type of the output: `int32` or `int64`. Defaults to
+      `int64`.
     seed: A Python integer. Used to create a random seed for the distribution.
       See `tf.random.set_seed` for behavior.
     name: Optional name for the operation.
@@ -526,6 +533,12 @@ def categorical(logits, num_samples, dtype=None, seed=None, name=None):
 def multinomial_categorical_impl(logits, num_samples, dtype, seed):
   """Implementation for random.categorical (v1) and random.categorical (v2)."""
   logits = ops.convert_to_tensor(logits, name="logits")
+  dtype = dtypes.as_dtype(dtype) if dtype else dtypes.int64
+  accepted_dtypes = (dtypes.int32, dtypes.int64)
+  if dtype not in accepted_dtypes:
+    raise ValueError(
+        f"Argument `dtype` got invalid value {dtype}. Accepted dtypes are "
+        f"{accepted_dtypes}.")
   seed1, seed2 = random_seed.get_seed(seed)
   return gen_random_ops.multinomial(
       logits, num_samples, seed=seed1, seed2=seed2, output_dtype=dtype)

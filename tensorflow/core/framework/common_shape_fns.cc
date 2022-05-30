@@ -161,7 +161,7 @@ Status EinsumShape(shape_inference::InferenceContext* c) {
   gtl::InlinedVector<string, 2> input_labels;
   string output_labels;
   TF_RETURN_IF_ERROR(
-      ParseEinsumEquation(equation, &input_labels, &output_labels));
+      ValidateEinsumEquation(equation, &input_labels, &output_labels));
 
   if (c->num_inputs() == 0 || c->num_inputs() > 2) {
     return errors::InvalidArgument("Expected either 1 or 2 inputs but got: ",
@@ -2005,7 +2005,7 @@ Status ConcatShapeHelper(InferenceContext* c, int start_value_index,
   }
 
   // Minimum required number of dimensions.
-  const int min_rank = concat_dim < 0 ? -concat_dim : concat_dim + 1;
+  const int64 min_rank = concat_dim < 0 ? -concat_dim : concat_dim + 1;
 
   ShapeHandle output_before;
   ShapeHandle output_after;
@@ -2407,7 +2407,8 @@ Status ScatterNdShapeHelper(InferenceContext* c, ShapeHandle indices_shape,
         "Indices and updates specified for empty input");
   }
 
-  if (c->RankKnown(indices_shape) && c->RankKnown(updates_shape)) {
+  if (c->RankKnown(indices_shape) && c->RankKnown(updates_shape) &&
+      c->Rank(updates_shape) != 0) {
     const int64_t outer_dims = c->Rank(indices_shape) - 1;
     const DimensionHandle ixdim = c->Dim(indices_shape, -1);
 
@@ -2558,6 +2559,9 @@ Status QuantizeV2Shape(InferenceContext* c) {
   Status s = c->GetAttr("axis", &axis);
   if (!s.ok() && s.code() != error::NOT_FOUND) {
     return s;
+  }
+  if (axis < -1) {
+    return errors::InvalidArgument("axis should be at least -1, got ", axis);
   }
   const int minmax_rank = (axis == -1) ? 0 : 1;
   TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));

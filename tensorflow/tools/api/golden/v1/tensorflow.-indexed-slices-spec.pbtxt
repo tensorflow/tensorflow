@@ -2,6 +2,7 @@ path: "tensorflow.IndexedSlicesSpec"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.indexed_slices.IndexedSlicesSpec\'>"
   is_instance: "<class \'tensorflow.python.framework.type_spec.TypeSpec\'>"
+  is_instance: "<class \'tensorflow.python.types.trace.TraceType\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "value_type"
@@ -14,6 +15,14 @@ tf_class {
   member_method {
     name: "is_compatible_with"
     argspec: "args=[\'self\', \'spec_or_value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_subtype_of"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "most_specific_common_supertype"
+    argspec: "args=[\'self\', \'others\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "most_specific_compatible_type"

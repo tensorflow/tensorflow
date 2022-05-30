@@ -17,12 +17,16 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_AUTO_MIXED_PRECISION_H_
 
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
 
-enum class AutoMixedPrecisionMode { CUDA, MKL };
+// CUDA: convert to float16 on GPU
+// MKL: convert to bfloat16 on CPU
+// CPU: emulate float16 on CPU without changing operator kernel
+enum class AutoMixedPrecisionMode { CUDA, MKL, CPU };
 
 // Convert data types to float16 or bfloat16 where appropriate to improve
 // performance on GPUs or CPUs.
@@ -38,8 +42,17 @@ class AutoMixedPrecision : public GraphOptimizer {
   ~AutoMixedPrecision() override {}
 
   string name() const override {
-    return mode_ == AutoMixedPrecisionMode::CUDA ? "auto_mixed_precision_cuda"
-                                                 : "auto_mixed_precision_mkl";
+    switch (mode_) {
+      case AutoMixedPrecisionMode::CUDA:
+        return "auto_mixed_precision";
+      case AutoMixedPrecisionMode::MKL:
+        return "auto_mixed_precision_mkl";
+      case AutoMixedPrecisionMode::CPU:
+        return "auto_mixed_precision_cpu";
+      default:
+        LOG(FATAL) << "Invalid value for AutoMixedPrecisionMode: "  // Crash Ok
+                   << static_cast<int>(mode_);
+    }
   };
 
   bool UsesFunctionLibrary() const override { return false; }

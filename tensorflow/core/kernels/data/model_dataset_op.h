@@ -38,7 +38,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
   // executing the ModelDatasetOp op kernel).
   static void MakeDatasetFromOptions(OpKernelContext* ctx, DatasetBase* input,
                                      model::AutotuneAlgorithm algorithm,
-                                     bool cpu_budget, bool ram_budget,
+                                     int64_t cpu_budget, int64_t ram_budget,
                                      DatasetBase** output);
 
   explicit ModelDatasetOp(OpKernelConstruction* ctx);

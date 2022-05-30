@@ -24,8 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 namespace status_macros {
@@ -78,7 +76,9 @@ class MakeErrorStream {
    private:
     MakeErrorStream* wrapped_error_stream_;
 
-    TF_DISALLOW_COPY_AND_ASSIGN(MakeErrorStreamWithOutput);
+    MakeErrorStreamWithOutput(const MakeErrorStreamWithOutput&) = delete;
+    MakeErrorStreamWithOutput& operator=(const MakeErrorStreamWithOutput&) =
+        delete;
   };
 
   // When starting from an existing error status, this determines whether we'll
@@ -130,7 +130,7 @@ class MakeErrorStream {
     tensorflow::error::Code code_;
 
     PriorMessageHandling prior_message_handling_ = kAppendToPriorMessage;
-    string prior_message_;
+    std::string prior_message_;
     bool is_done_;  // true after Status object has been returned
     std::ostringstream stream_;
     bool should_log_;
@@ -146,7 +146,8 @@ class MakeErrorStream {
     MakeErrorStreamWithOutput make_error_stream_with_output_wrapper_;
 
     friend class MakeErrorStream;
-    TF_DISALLOW_COPY_AND_ASSIGN(Impl);
+    Impl(const Impl&) = delete;
+    Impl& operator=(const Impl&) = delete;
   };
 
   void CheckNotDone() const;
@@ -157,7 +158,8 @@ class MakeErrorStream {
   // Store the actual data on the heap to reduce stack frame sizes.
   std::unique_ptr<Impl> impl_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(MakeErrorStream);
+  MakeErrorStream(const MakeErrorStream&) = delete;
+  MakeErrorStream& operator=(const MakeErrorStream&) = delete;
 };
 
 // Provides a conversion to bool so that it can be used inside an if statement
@@ -169,7 +171,7 @@ class StatusAdaptorForMacros {
   StatusAdaptorForMacros(const StatusAdaptorForMacros&) = delete;
   StatusAdaptorForMacros& operator=(const StatusAdaptorForMacros&) = delete;
 
-  explicit operator bool() const { return TF_PREDICT_TRUE(status_.ok()); }
+  explicit operator bool() const { return ABSL_PREDICT_TRUE(status_.ok()); }
 
   Status&& Consume() { return std::move(status_); }
 
@@ -181,7 +183,7 @@ class StatusAdaptorForMacros {
 }  // namespace xla
 
 #define TF_RET_CHECK(condition)                                           \
-  while (TF_PREDICT_FALSE(!(condition)))                                  \
+  while (ABSL_PREDICT_FALSE(!(condition)))                                \
   return xla::status_macros::MakeErrorStream(__FILE__, __LINE__,          \
                                              tensorflow::error::INTERNAL) \
       .with_log_stack_trace()                                             \

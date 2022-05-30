@@ -19,9 +19,59 @@ import enum
 from absl import logging
 
 from tensorflow.core.framework import dataset_options_pb2
+from tensorflow.core.framework import model_pb2
 from tensorflow.python.data.util import options as options_lib
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
+
+
+@tf_export("data.experimental.AutotuneAlgorithm")
+class AutotuneAlgorithm(enum.Enum):
+  """Represents the type of autotuning algorithm to use.
+
+  DEFAULT: The default behavior is implementation specific and may change over
+  time.
+
+  HILL_CLIMB: In each optimization step, this algorithm chooses the optimial
+  parameter and increases its value by 1.
+
+  GRADIENT_DESCENT: In each optimization step, this algorithm updates the
+  parameter values in the optimal direction.
+
+  MAX_PARALLELISM: Similar to HILL_CLIMB but uses a relaxed stopping condition,
+  allowing the optimization to oversubscribe the CPU.
+  """
+  DEFAULT = 0
+  HILL_CLIMB = 1
+  GRADIENT_DESCENT = 2
+  MAX_PARALLELISM = 3
+
+  @classmethod
+  def _to_proto(cls, obj):
+    if obj == cls.DEFAULT:
+      return model_pb2.AutotuneAlgorithm.DEFAULT
+    if obj == cls.HILL_CLIMB:
+      return model_pb2.AutotuneAlgorithm.HILL_CLIMB
+    if obj == cls.GRADIENT_DESCENT:
+      return model_pb2.AutotuneAlgorithm.GRADIENT_DESCENT
+    if obj == cls.MAX_PARALLELISM:
+      return model_pb2.AutotuneAlgorithm.MAX_PARALLELISM
+    raise ValueError(
+        f"Invalid `obj.` Supported values include `DEFAULT`, `HILL_CLIMB` and "
+        f"`GRADIENT_DESCENT`. Got {obj.name}.")
+
+  @classmethod
+  def _from_proto(cls, pb):
+    if pb == model_pb2.AutotuneAlgorithm.DEFAULT:
+      return cls.DEFAULT
+    if pb == model_pb2.AutotuneAlgorithm.HILL_CLIMB:
+      return cls.HILL_CLIMB
+    if pb == model_pb2.AutotuneAlgorithm.GRADIENT_DESCENT:
+      return cls.GRADIENT_DESCENT
+    if pb == model_pb2.AutotuneAlgorithm.MAX_PARALLELISM:
+      return cls.MAX_PARALLELISM
+    raise ValueError(f"Invalid `pb.` Supported values include `DEFAULT`, "
+                     f"`HILL_CLIMB` and `GRADIENT_DESCENT`. Got {pb}.")
 
 
 @tf_export("data.experimental.AutoShardPolicy")
@@ -162,6 +212,12 @@ class AutotuneOptions(options_lib.OptionsBase):
       "may result in OOM. If None, defaults to half of the available RAM in "
       "bytes.")
 
+  autotune_algorithm = options_lib.create_option(
+      name="autotune_algorithm",
+      ty=AutotuneAlgorithm,
+      docstring="When autotuning is enabled (through `autotune`), determines "
+      "the algorithm to use.")
+
   def _to_proto(self):
     pb = dataset_options_pb2.AutotuneOptions()
     if self.enabled is not None:
@@ -170,6 +226,9 @@ class AutotuneOptions(options_lib.OptionsBase):
       pb.cpu_budget = self.cpu_budget
     if self.ram_budget is not None:
       pb.ram_budget = self.ram_budget
+    if self.autotune_algorithm is not None:
+      pb.autotune_algorithm = AutotuneAlgorithm._to_proto(  # pylint: disable=protected-access
+          self.autotune_algorithm)
     return pb
 
   def _from_proto(self, pb):
@@ -179,6 +238,9 @@ class AutotuneOptions(options_lib.OptionsBase):
       self.cpu_budget = pb.cpu_budget
     if pb.WhichOneof("optional_ram_budget") is not None:
       self.ram_budget = pb.ram_budget
+    if pb.WhichOneof("optional_autotune_algorithm") is not None:
+      self.autotune_algorithm = AutotuneAlgorithm._from_proto(  # pylint: disable=protected-access
+          pb.autotune_algorithm)
 
   def _set_mutable(self, mutable):
     """Change the mutability value to `mutable` on this options and children."""
@@ -256,6 +318,21 @@ class OptimizationOptions(options_lib.OptionsBase):
       docstring=
       "Whether to fuse filter transformations. If None, defaults to False.")
 
+  filter_parallelization = options_lib.create_option(
+      name="filter_parallelization",
+      ty=bool,
+      docstring=
+      "Whether to parallelize stateless filter transformations. If None, "
+      "defaults to False.")
+
+  inject_prefetch = options_lib.create_option(
+      name="inject_prefetch",
+      ty=bool,
+      docstring=
+      "Whether to inject prefetch transformation as the last transformation "
+      "when the last transformation is a synchronous transformation. If None, "
+      "defaults to False.")
+
   map_and_batch_fusion = options_lib.create_option(
       name="map_and_batch_fusion",
       ty=bool,
@@ -292,13 +369,8 @@ class OptimizationOptions(options_lib.OptionsBase):
   parallel_batch = options_lib.create_option(
       name="parallel_batch",
       ty=bool,
-      docstring="Whether to parallelize copying of batch elements. This "
-      "optimization is highly experimental and can cause performance "
-      "degradation (e.g. when the parallelization overhead exceeds the "
-      "benefits of performing the data copies in parallel). You should only "
-      "enable this optimization if a) your input pipeline is bottlenecked on "
-      "batching and b) you have validated that this optimization improves "
-      "performance. If None, defaults to False.")
+      docstring="Whether to parallelize copying of batch elements. If None, "
+      "defaults to True.")
 
   shuffle_and_repeat_fusion = options_lib.create_option(
       name="shuffle_and_repeat_fusion",
@@ -312,6 +384,10 @@ class OptimizationOptions(options_lib.OptionsBase):
       pb.apply_default_optimizations = self.apply_default_optimizations
     if self.filter_fusion is not None:
       pb.filter_fusion = self.filter_fusion
+    if self.filter_parallelization is not None:
+      pb.filter_parallelization = self.filter_parallelization
+    if self.inject_prefetch is not None:
+      pb.inject_prefetch = self.inject_prefetch
     if self.map_and_batch_fusion is not None:
       pb.map_and_batch_fusion = self.map_and_batch_fusion
     if self.map_and_filter_fusion is not None:
@@ -333,6 +409,10 @@ class OptimizationOptions(options_lib.OptionsBase):
       self.apply_default_optimizations = pb.apply_default_optimizations
     if pb.WhichOneof("optional_filter_fusion") is not None:
       self.filter_fusion = pb.filter_fusion
+    if pb.WhichOneof("optional_filter_parallelization") is not None:
+      self.filter_parallelization = pb.filter_parallelization
+    if pb.WhichOneof("optional_inject_prefetch") is not None:
+      self.inject_prefetch = pb.inject_prefetch
     if pb.WhichOneof("optional_map_and_batch_fusion") is not None:
       self.map_and_batch_fusion = pb.map_and_batch_fusion
     if pb.WhichOneof("optional_map_and_filter_fusion") is not None:

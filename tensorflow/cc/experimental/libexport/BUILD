@@ -8,6 +8,7 @@ package(
     default_visibility =
         [
             "//tensorflow/cc/experimental/libtf:__subpackages__",
+            "//tensorflow/cc/experimental/tf2:__subpackages__",
             "//tensorflow/cc/saved_model:__subpackages__",
             "//tensorflow/python/saved_model:__subpackages__",
         ],
@@ -49,6 +50,8 @@ cc_library(
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/util/tensor_bundle",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 

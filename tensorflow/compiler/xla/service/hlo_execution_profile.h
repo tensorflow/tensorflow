@@ -16,15 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EXECUTION_PROFILE_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EXECUTION_PROFILE_H_
 
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile_data.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_profile_printer.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -38,7 +37,7 @@ class HloProfileIndexMap {
   explicit HloProfileIndexMap(const HloModule& module)
       : HloProfileIndexMap(module, {}) {}
   explicit HloProfileIndexMap(const HloModule& module,
-                              absl::Span<const string> extra_metrics);
+                              absl::Span<const std::string> extra_metrics);
 
   HloProfileIndexMap(const HloProfileIndexMap&) = default;
   HloProfileIndexMap(HloProfileIndexMap&&) = default;
@@ -54,7 +53,7 @@ class HloProfileIndexMap {
     return FindOrDie(computation_to_profile_idx(), &computation);
   }
 
-  size_t GetProfileIndexFor(const string& key) const {
+  size_t GetProfileIndexFor(const std::string& key) const {
     return xla::FindOrDie(extra_metric_to_profile_idx(), key);
   }
 
@@ -74,33 +73,34 @@ class HloProfileIndexMap {
     return instruction_count() + computation_count() + extra_metrics_count();
   }
 
-  const std::unordered_map<const HloInstruction*, int64_t>&
+  const absl::flat_hash_map<const HloInstruction*, int64_t>&
   instruction_to_profile_idx() const {
     return instruction_to_profile_idx_;
   }
 
-  const std::unordered_map<const HloComputation*, int64_t>&
+  const absl::flat_hash_map<const HloComputation*, int64_t>&
   computation_to_profile_idx() const {
     return computation_to_profile_idx_;
   }
 
-  const std::unordered_map<string, int64_t>& extra_metric_to_profile_idx()
+  const absl::flat_hash_map<std::string, int64_t>& extra_metric_to_profile_idx()
       const {
     return extra_metric_to_profile_idx_;
   }
 
  private:
-  std::unordered_map<const HloInstruction*, int64_t>
+  absl::flat_hash_map<const HloInstruction*, int64_t>
       instruction_to_profile_idx_;
-  std::unordered_map<const HloComputation*, int64_t>
+  absl::flat_hash_map<const HloComputation*, int64_t>
       computation_to_profile_idx_;
-  std::unordered_map<string, int64_t> extra_metric_to_profile_idx_;
+  absl::flat_hash_map<std::string, int64_t> extra_metric_to_profile_idx_;
 };
 
 // Create an instance of `HloProfilePrinterData`.
 std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
     const HloProfileIndexMap& hlo_profile_index_map,
-    const HloCostAnalysis& cost_analysis, const string& entry_computation_name);
+    const HloCostAnalysis& cost_analysis,
+    const std::string& entry_computation_name);
 
 // Describes how much time each HLO operation took.
 //
@@ -112,34 +112,34 @@ class HloExecutionProfile {
                       const HloProfileIndexMap* hlo_profile_index_map);
 
   // Record how many cycles this HLO took to execute.
-  void SetCyclesTakenBy(const HloInstruction* hlo, uint64 cycles_taken);
+  void SetCyclesTakenBy(const HloInstruction* hlo, uint64_t cycles_taken);
 
   // Record how many cycles this HLO took to execute.
-  void SetCyclesTakenBy(size_t index, uint64 cycles_taken);
+  void SetCyclesTakenBy(size_t index, uint64_t cycles_taken);
 
   // Returns how many cycles this HLO took to execute.  Profiling information
   // may not be available for some instructions in which case zero is returned.
-  uint64 GetCyclesTakenBy(const HloInstruction& hlo) const;
+  uint64_t GetCyclesTakenBy(const HloInstruction& hlo) const;
 
   // Returns how many cycles this HLO took to execute.  Profiling information
   // may not be available for some instructions in which case zero is returned.
-  uint64 GetCyclesTakenBy(size_t index) const;
+  uint64_t GetCyclesTakenBy(size_t index) const;
 
   // Return the number of cycles this computation took to execute.
-  uint64 total_cycles_executed(const HloComputation& computation) const {
+  uint64_t total_cycles_executed(const HloComputation& computation) const {
     return profile_counters_[hlo_profile_index_map_.GetProfileIndexFor(
         computation)];
   }
 
   // Record how many cycles a computation took to execute.
   void set_total_cycles_executed(const HloComputation& computation,
-                                 uint64 total_cycles_executed) {
+                                 uint64_t total_cycles_executed) {
     profile_counters_[hlo_profile_index_map_.GetProfileIndexFor(computation)] =
         total_cycles_executed;
   }
 
   // Record extra metric.
-  void set_extra_metrics(const string& metric, uint64 value) {
+  void set_extra_metrics(const std::string& metric, uint64_t value) {
     profile_counters_[hlo_profile_index_map_.GetProfileIndexFor(metric)] =
         value;
   }
@@ -149,7 +149,7 @@ class HloExecutionProfile {
   // frequency, and the effective throughput given the provided cost_analysis
   // for the operations in a given computation. Returns an empty string if it
   // wasn't possible to generate a printable version.
-  string ToString(float clock_rate_ghz) const {
+  std::string ToString(float clock_rate_ghz) const {
     return PrintHloProfile(hlo_profile_printer_data_, profile_counters_.data(),
                            clock_rate_ghz);
   }

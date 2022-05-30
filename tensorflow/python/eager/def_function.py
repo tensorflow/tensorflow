@@ -61,6 +61,7 @@ time if it sees variables on the first call.
 """
 
 import functools
+import os
 import threading
 import types as types_lib
 import weakref
@@ -72,6 +73,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
+from tensorflow.python.eager import function_spec as function_spec_lib
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import composite_tensor
@@ -150,9 +152,8 @@ class _FrequentTracingDetector(object):
           "a loop, (2) passing tensors with different shapes, (3) passing "
           "Python objects instead of tensors. For (1), please define your "
           "@tf.function outside of the loop. For (2), @tf.function has "
-          "experimental_relax_shapes=True option that relaxes argument "
-          "shapes that can avoid unnecessary retracing. For (3), please "
-          "refer to "
+          "reduce_retracing=True option that can avoid unnecessary "
+          "retracing. For (3), please refer to "
           "https://www.tensorflow.org/guide/function#controlling_retracing"
           " and https://www.tensorflow.org/api_docs/python/tf/function for "
           " more details.".format(
@@ -378,6 +379,10 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
             not_assign_fn, assign_fn)
 
 
+JIT_COMPILE_FUNCTIONS = (
+    os.getenv("TF_FUNCTION_JIT_COMPILE_DEFAULT", "false").lower()
+    in ("true", "1"))
+
 RUN_FUNCTIONS_EAGERLY = False
 
 
@@ -538,7 +543,7 @@ class OptionalXlaContext(object):
 
 # TODO(mdan): Consider expose this type for instance type checking.
 @tf_export("__internal__.function.Function", v1=[])
-class Function(core.GenericFunction):
+class Function(core.GenericFunction, trackable.Trackable):
   """A `tf.types.experimental.GenericFunction` created by `tf.function`.
 
   Currently, individual methods/attributes under this class are not guaranteed
@@ -551,9 +556,9 @@ class Function(core.GenericFunction):
                input_signature=None,
                autograph=True,
                jit_compile=None,
+               reduce_retracing=False,
                experimental_implements=None,
                experimental_autograph_options=None,
-               experimental_relax_shapes=False,
                experimental_follow_type_hints=None):
     """Initializes a `Function`.
 
@@ -563,18 +568,18 @@ class Function(core.GenericFunction):
       input_signature: See the documentation for `tf.function`.
       autograph: See the documentation for `tf.function`.
       jit_compile: See the documentation for `tf.function`.
+      reduce_retracing: See the documentation for `tf.function`.
       experimental_implements: See the documentation for `tf.function`.
       experimental_autograph_options: See the documentation for `tf.function`.
-      experimental_relax_shapes: See the documentation for `tf.function`.
       experimental_follow_type_hints: See the documentation for `tf.function`.
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
         argspec has keyword arguments.
     """
-    self._lock = threading.Lock()
+    self._lock = threading.RLock()
     self._python_function = python_function
-    self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
+    self._function_spec = function_spec_lib.FunctionSpec.from_function_and_signature(
         python_function,
         input_signature,
         jit_compile=jit_compile,
@@ -587,7 +592,7 @@ class Function(core.GenericFunction):
     self._shared_rendezvous = None
     self._autograph = autograph
     self._experimental_autograph_options = experimental_autograph_options
-    self._experimental_relax_shapes = experimental_relax_shapes
+    self._reduce_retracing = reduce_retracing
     self._jit_compile = jit_compile
     if experimental_follow_type_hints is None:
       experimental_follow_type_hints = False
@@ -602,6 +607,10 @@ class Function(core.GenericFunction):
     self._omit_frequent_tracing_warning = False
     ops._tf_function_api_guage.get_cell().set(True)  # pylint: disable=protected-access
 
+  @property
+  def name(self):
+    return self._name
+
   def __getstate__(self):
     """Custom pickling, to omit unpickleable objects."""
     result = self.__dict__.copy()
@@ -613,7 +622,7 @@ class Function(core.GenericFunction):
   def __setstate__(self, state):
     """Restore from pickled state."""
     self.__dict__ = state
-    self._lock = threading.Lock()
+    self._lock = threading.RLock()
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._key_for_call_stats = self._get_key_for_call_stats()
 
@@ -719,9 +728,9 @@ class Function(core.GenericFunction):
         attributes=attributes,
         autograph=self._autograph,
         jit_compile=self._jit_compile,
+        reduce_retracing=self._reduce_retracing,
         experimental_autograph_options=self._experimental_autograph_options,
-        experimental_follow_type_hints=self._experimental_follow_type_hints,
-        experimental_relax_shapes=self._experimental_relax_shapes)
+        experimental_follow_type_hints=self._experimental_follow_type_hints)
 
   def _initialize(self, args, kwds, add_initializers_to=None):
     """Initializes, on the first call.
@@ -797,9 +806,9 @@ class Function(core.GenericFunction):
         input_signature=self._input_signature,
         autograph=self._autograph,
         jit_compile=self._jit_compile,
+        reduce_retracing=self._reduce_retracing,
         experimental_implements=self._implements,
         experimental_autograph_options=self._experimental_autograph_options,
-        experimental_relax_shapes=self._experimental_relax_shapes,
         experimental_follow_type_hints=self._experimental_follow_type_hints)
 
     if self._shared_rendezvous:
@@ -830,7 +839,7 @@ class Function(core.GenericFunction):
           "Functions cannot be decorated after they have been traced.")
 
     self._python_function = decorator(self._python_function)
-    self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
+    self._function_spec = function_spec_lib.FunctionSpec.from_function_and_signature(
         self._python_function, self.input_signature)
 
   # TODO: Remove this private method after updating all its uses
@@ -970,9 +979,9 @@ class Function(core.GenericFunction):
         # stateless function.
         return self._stateless_fn(*args, **kwds)
     else:
-      _, _, _, filtered_flat_args = \
+      _, _, filtered_flat_args = (
           self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
-              *args, **kwds)
+              *args, **kwds))
       # If we did not create any variables the trace we have is good enough.
       return self._concrete_stateful_fn._call_flat(
           filtered_flat_args, self._concrete_stateful_fn.captured_inputs)  # pylint: disable=protected-access
@@ -980,46 +989,10 @@ class Function(core.GenericFunction):
     def fn_with_cond(inner_args, inner_kwds, inner_filtered_flat_args):
       """Conditionally runs initialization if it's needed."""
       condition = True
-      for wr in self._created_variables:
-        variable = wr()
-        if variable is None:
-          raise ValueError(
-              "A tf.Variable created inside your tf.function has been"
-              " garbage-collected. Your code needs to keep Python references"
-              " to variables created inside `tf.function`s.\n"
-              "\n"
-              "A common way to raise this error is to create and return a"
-              " variable only referenced inside your function:\n"
-              "\n"
-              "@tf.function\n"
-              "def f():\n"
-              "  v = tf.Variable(1.0)\n"
-              "  return v\n"
-              "\n"
-              "v = f()  # Crashes with this error message!\n"
-              "\n"
-              "The reason this crashes is that @tf.function annotated"
-              " function returns a **`tf.Tensor`** with the **value** of the"
-              " variable when the function is called rather than the"
-              " variable instance itself. As such there is no code holding a"
-              " reference to the `v` created inside the function and Python"
-              " garbage collects it.\n"
-              "\n"
-              "The simplest way to fix this issue is to create variables"
-              " outside the function and capture them:\n"
-              "\n"
-              "v = tf.Variable(1.0)\n"
-              "\n"
-              "@tf.function\n"
-              "def f():\n"
-              "  return v\n"
-              "\n"
-              "f()  # <tf.Tensor: numpy=1.>\n"
-              "v.assign_add(1.)\n"
-              "f()  # <tf.Tensor: numpy=2.>")
+      for v, _ in initializers:
         condition = math_ops.logical_and(
             condition, resource_variable_ops.var_is_initialized_op(
-                variable.handle))
+                v.handle))
       # We want to call stateless_fn if possible because it avoids recomputing
       # potentially expensive initializers.
       return control_flow_ops.cond(
@@ -1032,9 +1005,9 @@ class Function(core.GenericFunction):
 
     # We've created variables and are unable to lift the initialization graphs,
     # so we fall back to initializing with conds while running the function.
-    canon_args, canon_kwds, _, filtered_flat_args = \
+    canon_args, canon_kwds, filtered_flat_args = (
         self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
-            *args, **kwds)
+            *args, **kwds))
     return function_lib.defun(fn_with_cond)(canon_args, canon_kwds,
                                             filtered_flat_args)
 
@@ -1049,9 +1022,9 @@ class Function(core.GenericFunction):
     fn_name = concrete_fn.name
 
     # pylint: disable=protected-access
-    _, _, _, filtered_flat_args = \
+    _, _, filtered_flat_args = (
         concrete_fn._function_spec.canonicalize_function_inputs(
-            *args, **kwargs)
+            *args, **kwargs))
 
     def compiler_ir_generator(stage="hlo", device_name=None):
       # TODO(cheshire): This is a hack to get the current "preferred" device,
@@ -1176,10 +1149,10 @@ class Function(core.GenericFunction):
     # pylint: disable=protected-access
     if self._stateful_fn:
       concrete_functions.extend(
-          self._stateful_fn._function_cache.all_values())
+          self._stateful_fn._list_all_concrete_functions())
     if self._stateless_fn:
       concrete_functions.extend(
-          self._stateless_fn._function_cache.all_values())
+          self._stateless_fn._list_all_concrete_functions())
     # pylint: enable=protected-access
     return concrete_functions
 
@@ -1210,6 +1183,17 @@ class Function(core.GenericFunction):
     for args, kwargs in seen_signatures:
       concrete_functions.append(self.get_concrete_function(*args, **kwargs))
     return concrete_functions
+
+  def _trackable_children(self, save_type="checkpoint", **kwargs):
+    """For implementing `Trackable`."""
+    if save_type == "checkpoint":
+      return {}
+    return {f"trace_{n}": fn for n, fn in
+            enumerate(self._list_all_concrete_functions_for_serialization())}
+
+  def _deserialization_dependencies(self, children):
+    """Returns concrete functions which must be loaded before this object."""
+    return children
 
   def _get_concrete_function_garbage_collected(self, *args, **kwargs):
     """Returns a `ConcreteFunction` specialized to inputs and execution context.
@@ -1302,13 +1286,18 @@ class Function(core.GenericFunction):
 @deprecation.deprecated_args(None,
                              "experimental_compile is deprecated, use "
                              "jit_compile instead", "experimental_compile")
+@deprecation.deprecated_args(None,
+                             "experimental_relax_shapes is deprecated, use "
+                             "reduce_retracing instead",
+                             "experimental_relax_shapes")
 def function(func=None,
              input_signature=None,
              autograph=True,
              jit_compile=None,
+             reduce_retracing=False,
              experimental_implements=None,
              experimental_autograph_options=None,
-             experimental_relax_shapes=False,
+             experimental_relax_shapes=None,
              experimental_compile=None,
              experimental_follow_type_hints=None) -> core.GenericFunction:
   """Compiles a function into a callable TensorFlow graph.
@@ -1339,8 +1328,8 @@ def function(func=None,
 
   ## Features
 
-  `func` may use data-dependent control flow, including `if`, `for`, `while`
-  `break`, `continue` and `return` statements:
+  `func` may use data-dependent Python control flow statements, including `if`,
+  `for`, `while` `break`, `continue` and `return`:
 
   >>> @tf.function
   ... def f(x):
@@ -1531,7 +1520,7 @@ def function(func=None,
   `func` may contain TensorFlow operations mixed with pure Python operations.
   However, when the function is executed, only the TensorFlow operations will
   run. The Python operations run only once, at trace time. If TensorFlow
-  operations depend on results from Pyhton operations, those results will be
+  operations depend on results from Python operations, those results will be
   frozen into the graph.
 
   >>> @tf.function
@@ -1590,8 +1579,9 @@ def function(func=None,
       inferred input signature.  If input_signature is specified, every input to
       `func` must be a `Tensor`, and `func` cannot accept `**kwargs`.
     autograph: Whether autograph should be applied on `func` before tracing a
-      graph. Data-dependent control flow requires `autograph=True`. For more
-      information, see the [tf.function and AutoGraph guide](
+      graph. Data-dependent Python control flow statements require
+      `autograph=True`. For more information, see the
+      [tf.function and AutoGraph guide](
       https://www.tensorflow.org/guide/function#autograph_transformations).
     jit_compile: If `True`, compiles the function using
       [XLA](https://tensorflow.org/xla). XLA performs compiler optimizations,
@@ -1607,6 +1597,10 @@ def function(func=None,
       TPU cores, one TPU core and its host CPU).
       Not all functions are compilable, see a list of
       [sharp corners](https://tensorflow.org/xla/known_issues).
+    reduce_retracing: When True, `tf.function` attempts to reduce the
+      amount of retracing, for example by using more generic shapes. This
+      can be controlled for user objects by customizing their associated
+      `tf.types.experimental.TraceType`.
     experimental_implements: If provided, contains a name of a "known" function
       this implements. For example "mycompany.my_recurrent_cell".
       This is stored as an attribute in inference function,
@@ -1629,8 +1623,8 @@ def function(func=None,
       project.
     experimental_autograph_options: Optional tuple of
       `tf.autograph.experimental.Feature` values.
-    experimental_relax_shapes: When True, `tf.function` may generate fewer,
-      graphs that are less specialized on input shapes.
+    experimental_relax_shapes: Deprecated. Use `reduce_retracing`
+      instead.
     experimental_compile: Deprecated alias to 'jit_compile'.
     experimental_follow_type_hints: When True, the function may use type
       annotations from `func` to optimize the tracing performance. For example,
@@ -1653,6 +1647,13 @@ def function(func=None,
   if experimental_follow_type_hints is None:
     experimental_follow_type_hints = False
 
+  if jit_compile is None and JIT_COMPILE_FUNCTIONS:
+    jit_compile = True
+
+  # TODO(b/224808187): Remove after renaming usages.
+  if experimental_relax_shapes:
+    reduce_retracing = True
+
   def decorated(inner_function):
     try:
       name = inner_function.__name__
@@ -1667,7 +1668,7 @@ def function(func=None,
             input_signature=input_signature,
             autograph=autograph,
             experimental_autograph_options=experimental_autograph_options,
-            experimental_relax_shapes=experimental_relax_shapes,
+            reduce_retracing=reduce_retracing,
 
             # TODO(b/171825496): Update once `experimental_compile` is removed
             # entirely in favor of 'jit_compile'.

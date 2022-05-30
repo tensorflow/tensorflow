@@ -17,15 +17,16 @@
 import collections
 import contextlib
 
-from six.moves import xrange, zip  # pylint: disable=redefined-builtin
-
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function as framework_function
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework.func_graph import FuncGraph
@@ -202,9 +203,9 @@ def _DefaultGradYs(grad_ys,
       # Create a grad_y tensor in the name scope of the gradient.
       # Required for TensorArrays to identify which gradient call a
       # grad_y value is coming from.
-      if isinstance(grad_y, ops.IndexedSlices):
+      if isinstance(grad_y, indexed_slices.IndexedSlices):
         new_grad_ys.append(
-            ops.IndexedSlices(
+            indexed_slices.IndexedSlices(
                 indices=(array_ops.identity(
                     grad_y.indices, name="grad_ys_%d_indices" % i)
                          if isinstance(grad_y.indices, ops.Tensor) else
@@ -477,6 +478,26 @@ def _GradientsHelper(ys,
   if context.executing_eagerly():
     raise RuntimeError("tf.gradients is not supported when eager execution "
                        "is enabled. Use tf.GradientTape instead.")
+  ys = _AsList(ys)
+  xs = _AsList(xs)
+  if grad_ys is not None:
+    grad_ys = _AsList(grad_ys)
+
+  # Handle CompositeTensors.
+  if (any(isinstance(x, composite_tensor.CompositeTensor) for x in xs) or
+      any(isinstance(y, composite_tensor.CompositeTensor) for y in ys)):
+    flat_xs = composite_tensor_gradient.get_flat_tensors_for_gradients(xs)
+    flat_ys = composite_tensor_gradient.get_flat_tensors_for_gradients(ys)
+    flat_grad_ys = (
+        None if grad_ys is None else
+        composite_tensor_gradient.get_flat_tensors_for_gradients(grad_ys))
+    flat_grads = _GradientsHelper(flat_ys, flat_xs, flat_grad_ys, name,
+                                  colocate_gradients_with_ops, gate_gradients,
+                                  aggregation_method, stop_gradients,
+                                  unconnected_gradients, src_graph)
+    return composite_tensor_gradient.replace_flat_tensors_for_gradients(
+        xs, flat_grads)
+
   if src_graph is None:
     src_graph = ops.get_default_graph()
   try:
@@ -497,13 +518,9 @@ def _GradientsHelper(ys,
       assert isinstance(curr_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
       curr_graph = curr_graph._outer_graph  # pylint: disable=protected-access
 
-  ys = _AsList(ys)
-  xs = _AsList(xs)
   stop_gradients = [] if stop_gradients is None else _AsList(stop_gradients)
   if grad_ys is None:
     grad_ys = [None] * len(ys)
-  else:
-    grad_ys = _AsList(grad_ys)
 
   with ops.name_scope(
       name, "gradients",
@@ -729,7 +746,7 @@ def _HasAnyNotNoneGrads(grads, op):
   """Return true iff op has real gradient."""
   out_grads = _GetGrads(grads, op)
   for out_grad in out_grads:
-    if isinstance(out_grad, (ops.Tensor, ops.IndexedSlices)):
+    if isinstance(out_grad, (ops.Tensor, indexed_slices.IndexedSlices)):
       return True
     if out_grad and isinstance(out_grad, collections_abc.Sequence):
       if any(g is not None for g in out_grad):
@@ -780,7 +797,7 @@ def _SetGrad(grads, t, grad):
   op = t.op
   op_grads = grads.get(op)
   if not op_grads:
-    op_grads = [[] for _ in xrange(len(op.outputs))]
+    op_grads = [[] for _ in range(len(op.outputs))]
     grads[op] = op_grads
   t_grads = op_grads[t.value_index]
   if isinstance(t_grads, list):
@@ -827,7 +844,7 @@ def _GetGrads(grads, op):
   if op in grads:
     return grads[op]
   else:
-    return [[] for _ in xrange(len(op.outputs))]
+    return [[] for _ in range(len(op.outputs))]
 
 
 def _AccumulatorShape(inputs):
@@ -885,7 +902,7 @@ def _MultiDeviceAddN(tensor_list, gradient_uid):
 
 
 @tf_export("AggregationMethod")
-class AggregationMethod(object):
+class AggregationMethod:
   """A class listing aggregation methods used to combine gradients.
 
   Computing partial derivatives can require aggregating gradient
@@ -958,12 +975,12 @@ def _AggregatedGrads(grads,
   out_grads = _GetGrads(grads, op)
   for i, out_grad in enumerate(out_grads):
     if loop_state:
-      if isinstance(out_grad, (ops.Tensor, ops.IndexedSlices)):
+      if isinstance(out_grad, (ops.Tensor, indexed_slices.IndexedSlices)):
         assert control_flow_util.IsLoopSwitch(op)
         continue
     # Grads have to be Tensors or IndexedSlices
     if (isinstance(out_grad, collections_abc.Sequence) and not all(
-        isinstance(g, (ops.Tensor, ops.IndexedSlices))
+        isinstance(g, (ops.Tensor, indexed_slices.IndexedSlices))
         for g in out_grad
         if g is not None)):
       raise TypeError(f"Invalid gradient {out_grad} [index = {i}]. Gradients "

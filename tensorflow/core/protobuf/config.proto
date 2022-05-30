@@ -6,6 +6,7 @@ import "tensorflow/core/framework/cost_graph.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/step_stats.proto";
 import "tensorflow/core/protobuf/cluster.proto";
+import "tensorflow/core/protobuf/coordination_config.proto";
 import "tensorflow/core/protobuf/debug.proto";
 import "tensorflow/core/protobuf/rewriter_config.proto";
 
@@ -211,6 +212,11 @@ message GPUOptions {
 
     // When true, use CUDA cudaMallocAsync API instead of TF gpu allocator.
     bool use_cuda_malloc_async = 11;
+
+    // By default, BFCAllocator may sleep when it runs out of memory, in the
+    // hopes that another thread will free up memory in the meantime.  Setting
+    // this to true disables the sleep; instead we'll OOM immediately.
+    bool disallow_retry_on_allocation_failure = 12;
   }
 
   // Everything inside experimental is subject to change and is not subject
@@ -668,9 +674,9 @@ message ConfigProto {
     // Whether runtime execution uses TFRT.
     bool use_tfrt = 18;
 
-    // Distributed coordination service to be enabled if set.
-    // Currently only effective in multi-client setup.
-    string coordination_service = 19;
+    // The field "coordination_service was previously specified as a string;
+    // this has been replaced with a message below.
+    reserved 19;
 
     // We removed the flag fetch_remote_devices_in_multi_client. Marking the tag
     // number as reserved.
@@ -681,7 +687,14 @@ message ConfigProto {
     // kernels may not be loaded due to selective registration.
     bool disable_functional_ops_lowering = 21;
 
-    // Next: 22
+    // Provides a hint to XLA auto clustering to prefer forming a single large
+    // cluster that encompases most of the graph.
+    bool xla_prefer_single_graph_cluster = 22;
+
+    // Distributed coordination service configurations.
+    CoordinationServiceConfig coordination_config = 23;
+
+    // Next: 24
   }
 
   Experimental experimental = 16;
@@ -785,6 +798,9 @@ message RunMetadata {
   // level idea of what the built graph looks like (since the various graph
   // optimization passes might change the structure of the graph significantly).
   repeated FunctionGraphs function_graphs = 4;
+
+  // Metadata about the session.
+  SessionMetadata session_metadata = 5;
 }
 
 // Defines a connection between two tensors in a `GraphDef`.

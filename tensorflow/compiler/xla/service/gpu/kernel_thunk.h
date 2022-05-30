@@ -1,3 +1,4 @@
+#include "absl/container/flat_hash_map.h"
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,9 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace xla {
 namespace gpu {
@@ -48,7 +47,7 @@ class KernelThunk : public Thunk {
   // `hlo_instruction` is as in Thunk. Other arguments are as the class members.
   KernelThunk(ThunkInfo thunk_info,
               absl::Span<const BufferAllocation* const> args,
-              const string& kernel_name,
+              const std::string& kernel_name,
               const LaunchDimensions& launch_dimensions);
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
@@ -60,22 +59,30 @@ class KernelThunk : public Thunk {
                     se::StreamExecutor* executor) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  const std::vector<const BufferAllocation*>& arguments() const {
+    return args_;
+  }
+  const std::string& kernel_name() const { return kernel_name_; }
+  const LaunchDimensions& launch_dimensions() const {
+    return launch_dimensions_;
+  }
+
  private:
   // Buffers passed to the kernel as arguments.
   const std::vector<const BufferAllocation*> args_;
 
   // Entry kernel name for the computation.
-  const string kernel_name_;
+  const std::string kernel_name_;
 
   // The thread and block dimension used to launch the kernel.
   const LaunchDimensions launch_dimensions_;
 
-  mutable tensorflow::mutex mutex_;
+  mutable absl::Mutex mutex_;
 
   // Loaded kernels for each `StreamExecutor`.  Requires pointer stability of
   // values.
-  std::unordered_map<se::StreamExecutor*, std::unique_ptr<se::KernelBase>>
-      kernel_cache_ TF_GUARDED_BY(mutex_);
+  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::KernelBase>>
+      kernel_cache_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu

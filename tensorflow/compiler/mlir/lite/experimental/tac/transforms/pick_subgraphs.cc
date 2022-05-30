@@ -27,7 +27,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -95,11 +95,11 @@ struct GraphView {
 // with different hardwares.
 struct Subgraph {
   // The call can be thought as an "API".
-  CallOp call;
+  func::CallOp call;
 
   // available_choces can be viewed as "real implementation" assosicated with
   // the hardware.
-  std::unordered_map<InferenceDeviceType, FuncOp,
+  std::unordered_map<InferenceDeviceType, func::FuncOp,
                      InferenceDeviceType::inference_device_type_hash>
       available_choices;
 
@@ -114,10 +114,10 @@ struct Subgraph {
 
 // If the output is produced by a callop, will return the callop, otherwise,
 // will return nullptr.
-inline CallOp GetProducerCallOpOrNull(Value output) {
+inline func::CallOp GetProducerCallOpOrNull(Value output) {
   Operation* output_op = output.getDefiningOp();
-  if (output_op != nullptr && llvm::isa<CallOp>(output_op)) {
-    return llvm::cast<CallOp>(output_op);
+  if (output_op != nullptr && llvm::isa<func::CallOp>(output_op)) {
+    return llvm::cast<func::CallOp>(output_op);
   }
   return nullptr;
 }
@@ -125,52 +125,58 @@ inline CallOp GetProducerCallOpOrNull(Value output) {
 class PickSubgraphsPass
     : public mlir::PassWrapper<PickSubgraphsPass,
                                mlir::OperationPass<ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PickSubgraphsPass)
+
+ private:
   llvm::StringRef getArgument() const final { return "tfl-pick-subgraphs"; }
   llvm::StringRef getDescription() const final {
     return "Pick the best subgraphs to minimize the overall total costs.";
   }
   void runOnOperation() override;
 
-  std::unordered_map<std::string, std::vector<FuncOp>> CollectSubgraphFuncs(
-      ModuleOp module);
+  std::unordered_map<std::string, std::vector<func::FuncOp>>
+  CollectSubgraphFuncs(ModuleOp module);
 
   void BuildSubgraphs(
-      FuncOp main_fn,
-      const std::unordered_map<std::string, std::vector<FuncOp>>& func_impls,
+      func::FuncOp main_fn,
+      const std::unordered_map<std::string, std::vector<func::FuncOp>>&
+          func_impls,
       llvm::SetVector<Operation*>* unprocessed_subgraphs,
-      SmallVector<CallOp, 4>* output_subgraphs);
+      SmallVector<func::CallOp, 4>* output_subgraphs);
 
-  void ProcessSubgraph(CallOp current_graph,
+  void ProcessSubgraph(func::CallOp current_graph,
                        llvm::SetVector<Operation*>* unprocessed_subgraphs);
 
-  bool PickSubgraphs(llvm::SetVector<Operation*>* all_subgraphs,
-                     ArrayRef<CallOp> output_subgraphs,
-                     const std::unordered_map<std::string, std::vector<FuncOp>>&
-                         collected_impl_funcs,
-                     OpBuilder* builder);
+  bool PickSubgraphs(
+      llvm::SetVector<Operation*>* all_subgraphs,
+      ArrayRef<func::CallOp> output_subgraphs,
+      const std::unordered_map<std::string, std::vector<func::FuncOp>>&
+          collected_impl_funcs,
+      OpBuilder* builder);
 
   // Make the decisions based on the subgraphs.
   // It may be the case we cannot decide the best scenarios for the user,
   // in this case, we just return false.
-  bool MakeDecisions(ArrayRef<CallOp> output_subgraphs);
+  bool MakeDecisions(ArrayRef<func::CallOp> output_subgraphs);
 
   // Rewire the subgraphs based on the decisions made.
   // If we cannot make a decisions, we just don't do anything.
   // TODO(renjieliu): we may change the vector to a map of hardware with
   // corresponding ipml.
   void RewireSubgraphs(
-      const std::unordered_map<std::string, std::vector<FuncOp>>&
+      const std::unordered_map<std::string, std::vector<func::FuncOp>>&
           collected_impl_funcs,
       OpBuilder* builder);
 
-  float GetCostOrFail(FuncOp func);
+  float GetCostOrFail(func::FuncOp func);
 
   llvm::DenseMap<Operation*, Subgraph> subgraphs_;
 
   llvm::DenseMap<Operation*, InferenceDeviceType> decisions_;
 };
 
-float PickSubgraphsPass::GetCostOrFail(FuncOp func) {
+float PickSubgraphsPass::GetCostOrFail(func::FuncOp func) {
   float self_cost;
   if (!GetCostOnOp(func, &self_cost)) {
     func.emitError("we cannot find cost for this func");
@@ -212,13 +218,13 @@ float PickSubgraphsPass::GetCostOrFail(FuncOp func) {
 // or expanded more for more careful design.
 // TODO(renjieliu): We may revisit this later.
 void PickSubgraphsPass::ProcessSubgraph(
-    CallOp current_graph_call,
+    func::CallOp current_graph_call,
     llvm::SetVector<Operation*>* unprocessed_subgraphs) {
   Subgraph& current_subgraph = subgraphs_.find(current_graph_call)->second;
 
   std::vector<Subgraph*> input_subgraphs;
   for (auto input : current_graph_call.getOperands()) {
-    CallOp input_call = GetProducerCallOpOrNull(input);
+    func::CallOp input_call = GetProducerCallOpOrNull(input);
     // If the input subgraph is not processed yet, we just go ahead and process
     // that one first.
     if (input_call == nullptr) continue;
@@ -234,7 +240,7 @@ void PickSubgraphsPass::ProcessSubgraph(
   // Find the best plan for the current subgraph.
   for (const auto& kv : current_subgraph.available_choices) {
     const auto& current_inference_device_type = kv.first;
-    FuncOp impl_target = kv.second;
+    func::FuncOp impl_target = kv.second;
     float self_compute_cost = GetCostOrFail(impl_target);
 
     GraphView current_graph_view;
@@ -245,7 +251,7 @@ void PickSubgraphsPass::ProcessSubgraph(
       float input_total_cost = std::numeric_limits<float>::max();
       for (const auto& input_kv : input_subgraph->available_choices) {
         const auto& input_inference_device_type = input_kv.first;
-        FuncOp input_impl_target = input_kv.second;
+        func::FuncOp input_impl_target = input_kv.second;
         float input_compute_cost = GetCostOrFail(input_impl_target);
 
         float transfer_cost =
@@ -277,10 +283,11 @@ void PickSubgraphsPass::ProcessSubgraph(
 }
 
 void PickSubgraphsPass::BuildSubgraphs(
-    FuncOp fn,
-    const std::unordered_map<std::string, std::vector<FuncOp>>& func_impls,
+    func::FuncOp fn,
+    const std::unordered_map<std::string, std::vector<func::FuncOp>>&
+        func_impls,
     llvm::SetVector<Operation*>* unprocessed_subgraphs,
-    SmallVector<CallOp, 4>* output_subgraphs) {
+    SmallVector<func::CallOp, 4>* output_subgraphs) {
   llvm::DenseSet<Operation*> returned_call_op_set;
   // Collect all returns first from the main function.
   // all the outputs of the main function are actually the final outputs.
@@ -291,9 +298,9 @@ void PickSubgraphsPass::BuildSubgraphs(
   //   ...
   //  %outputn = call @subgraph_k...
   //  return %output1, output2, ..., outputn.
-  fn.walk([&](ReturnOp return_op) {
+  fn.walk([&](func::ReturnOp return_op) {
     for (auto output : return_op.getOperands()) {
-      CallOp output_call = GetProducerCallOpOrNull(output);
+      func::CallOp output_call = GetProducerCallOpOrNull(output);
       if (output_call != nullptr) {
         returned_call_op_set.insert(output_call);
       }
@@ -301,7 +308,7 @@ void PickSubgraphsPass::BuildSubgraphs(
   });
 
   // Each call op actually is the entry of the subgraph.
-  fn.walk([&](CallOp call_op) {
+  fn.walk([&](func::CallOp call_op) {
     auto interface_name = GetInterFaceName(call_op);
     // we only need to care about the call ops those have interface_name.
     if (!interface_name.hasValue()) return;
@@ -339,16 +346,17 @@ void PickSubgraphsPass::BuildSubgraphs(
 }
 
 // Collect all the subgraphs (and their alternatives) in the module.
-std::unordered_map<std::string, std::vector<FuncOp>>
+std::unordered_map<std::string, std::vector<func::FuncOp>>
 PickSubgraphsPass::CollectSubgraphFuncs(ModuleOp module) {
-  std::unordered_map<std::string, std::vector<FuncOp>> func_impls;
-  for (auto func : module.getOps<FuncOp>()) {
+  std::unordered_map<std::string, std::vector<func::FuncOp>> func_impls;
+  for (auto func : module.getOps<func::FuncOp>()) {
     auto interface_name = GetInterFaceName(func);
     if (interface_name.hasValue()) {
       auto impls_iter = func_impls.find(interface_name.getValue());
       if (impls_iter == func_impls.end())
         impls_iter =
-            func_impls.emplace(interface_name.getValue(), std::vector<FuncOp>())
+            func_impls
+                .emplace(interface_name.getValue(), std::vector<func::FuncOp>())
                 .first;
       impls_iter->second.push_back(func);
     }
@@ -359,10 +367,10 @@ PickSubgraphsPass::CollectSubgraphFuncs(ModuleOp module) {
 // Given the final outputs, evaluate on the overall costs and pick the best
 // plan, if we cannot make a decision, nothing would change, just fallback
 // to the original plan.
-bool PickSubgraphsPass::MakeDecisions(ArrayRef<CallOp> output_subgraphs) {
+bool PickSubgraphsPass::MakeDecisions(ArrayRef<func::CallOp> output_subgraphs) {
   // BFS to make decisions.
   std::queue<const GraphView*> processing_queue;
-  for (CallOp output : output_subgraphs) {
+  for (func::CallOp output : output_subgraphs) {
     const GraphView* preferred_graph_view;
     float minimum_cost = std::numeric_limits<float>::max();
 
@@ -383,7 +391,7 @@ bool PickSubgraphsPass::MakeDecisions(ArrayRef<CallOp> output_subgraphs) {
     const GraphView* current = processing_queue.front();
     processing_queue.pop();
     for (const auto& input_with_plans : current->input_subgraph_plans) {
-      CallOp input = llvm::cast<CallOp>(input_with_plans.first);
+      func::CallOp input = llvm::cast<func::CallOp>(input_with_plans.first);
       const InferenceDeviceType& input_decision = input_with_plans.second;
       auto made_input_decision_it = decisions_.find(input);
       if (made_input_decision_it == decisions_.end()) {
@@ -407,11 +415,11 @@ bool PickSubgraphsPass::MakeDecisions(ArrayRef<CallOp> output_subgraphs) {
 // This rewire subgraph is essentially "hook" the call op with the "best" choice
 // (subgraph).
 void PickSubgraphsPass::RewireSubgraphs(
-    const std::unordered_map<std::string, std::vector<FuncOp>>&
+    const std::unordered_map<std::string, std::vector<func::FuncOp>>&
         collected_impl_funcs,
     OpBuilder* builder) {
   for (auto& kv : decisions_) {
-    CallOp call = llvm::cast<CallOp>(kv.first);
+    func::CallOp call = llvm::cast<func::CallOp>(kv.first);
 
     const InferenceDeviceType& preferred_inference_device_type = kv.second;
 
@@ -422,11 +430,11 @@ void PickSubgraphsPass::RewireSubgraphs(
           GetInferenceDeviceTypeForOp(impl);
       if (impl_inference_device_type.getValue() ==
           preferred_inference_device_type) {
-        if (call.callee() != impl.getName()) {
+        if (call.getCallee() != impl.getName()) {
           // We need to rebuild the call op. :(
           builder->setInsertionPoint(call);
-          auto new_call =
-              builder->create<CallOp>(call.getLoc(), impl, call.getOperands());
+          auto new_call = builder->create<func::CallOp>(call.getLoc(), impl,
+                                                        call.getOperands());
 
           // Set interface_name & target to the call_op as well.
           new_call->setAttr(kInterfaceNameAttr,
@@ -449,8 +457,8 @@ void PickSubgraphsPass::RewireSubgraphs(
 
 bool PickSubgraphsPass::PickSubgraphs(
     llvm::SetVector<Operation*>* all_subgraphs,
-    ArrayRef<CallOp> output_subgraphs,
-    const std::unordered_map<std::string, std::vector<FuncOp>>&
+    ArrayRef<func::CallOp> output_subgraphs,
+    const std::unordered_map<std::string, std::vector<func::FuncOp>>&
         collected_impl_funcs,
     OpBuilder* builder) {
   // Process those collected unprocessed subgraphs.
@@ -466,7 +474,8 @@ bool PickSubgraphsPass::PickSubgraphs(
   // The process is essentially evaluating the accumulated cost for the dp table
   // for all the subgraphs (and their alternatives).
   while (!all_subgraphs->empty()) {
-    CallOp current_subgraph = llvm::cast<CallOp>(all_subgraphs->front());
+    func::CallOp current_subgraph =
+        llvm::cast<func::CallOp>(all_subgraphs->front());
     all_subgraphs->remove(current_subgraph);
     ProcessSubgraph(current_subgraph, all_subgraphs);
   }
@@ -490,12 +499,12 @@ void PickSubgraphsPass::runOnOperation() {
   // Also collect the output subgraphs.
   // Output subgraphs are essentially those subgraphs pointed by the return
   // op.
-  const std::unordered_map<std::string, std::vector<FuncOp>> func_impls =
+  const std::unordered_map<std::string, std::vector<func::FuncOp>> func_impls =
       CollectSubgraphFuncs(module);
   llvm::SetVector<Operation*> unprocessed_subgraphs;
-  SmallVector<CallOp, 4> output_subgraphs;
+  SmallVector<func::CallOp, 4> output_subgraphs;
 
-  for (auto fn : module.getOps<FuncOp>()) {
+  for (auto fn : module.getOps<func::FuncOp>()) {
     BuildSubgraphs(fn, func_impls, &unprocessed_subgraphs, &output_subgraphs);
   }
   OpBuilder builder(module);

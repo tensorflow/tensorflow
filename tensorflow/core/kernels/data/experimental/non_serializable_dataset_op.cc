@@ -87,7 +87,9 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
                                    " does not support serialization.");
     }
 
-    int64_t Cardinality() const override { return input_->Cardinality(); }
+    int64_t CardinalityInternal() const override {
+      return input_->Cardinality();
+    }
 
    private:
     class Iterator : public DatasetIterator<Dataset> {

@@ -22,6 +22,7 @@ import tempfile
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -31,7 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import checkpoint_management
@@ -410,24 +411,6 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(StopIteration):
       next(iterator)
 
-  @combinations.generate(test_base.eager_only_combinations())
-  def testCheckpointLargeCache(self):
-    # Tensor of size 100M
-    dataset = dataset_ops.Dataset.from_tensors(
-        array_ops.ones((25, 1000, 1000), dtype=dtypes.float32))
-    # Repeat 25 times to exceed the 2G proto limit
-    dataset = dataset.repeat(25)
-    dataset = dataset.cache()
-
-    # Iterate to fill the cache.
-    iterator = iter(dataset)
-    for _ in range(23):
-      next(iterator)
-    ckpt = trackable_utils.Checkpoint(iterator=iterator)
-    manager = checkpoint_management.CheckpointManager(
-        ckpt, self.get_temp_dir(), max_to_keep=1)
-    manager.save()
-
   @combinations.generate(test_base.default_test_combinations())
   def testName(self):
     dataset = dataset_ops.Dataset.from_tensors(42).cache(name="cache")
@@ -636,6 +619,68 @@ class CacheCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         ds_fn, [], self.num_outputs, verify_exhausted=False)
     self.assertSequenceEqual(outputs, list(range(10)) * 3)
 
+
+class CacheRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(index=[-1, 3, 4])))
+  def testInvalidIndex(self, index):
+    dataset = dataset_ops.Dataset.from_tensor_slices([1, 2, 3]).cache()
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheRangeDataset(self):
+    dataset = dataset_ops.Dataset.range(10).cache()
+    expected_elements = list(range(10))
+    self.verifyRandomAccess(dataset, expected_elements)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheOneDimensionalElements(self):
+    tensor = [1, 2, 3]
+    dataset = dataset_ops.Dataset.from_tensor_slices(tensor).cache()
+    self.verifyRandomAccess(dataset, tensor)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheTwoDimensionalElements(self):
+    tensor = [[1, 2], [3, 4]]
+    dataset = dataset_ops.Dataset.from_tensor_slices(tensor).cache()
+    self.verifyRandomAccess(dataset, tensor)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheThreeComponents(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        ([1, 2], [3, 4], [5, 6])).cache()
+    expected = [(1, 3, 5), (2, 4, 6)]
+    self.verifyRandomAccess(dataset, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheInputDatasetNotRandomlyAccessible(self):
+    dataset = dataset_ops.Dataset.range(10)
+    initial_state = constant_op.constant(0, dtypes.int64)
+    scan_func = lambda state, i: (state + i, state + i)
+    dataset = dataset.scan(
+        initial_state=initial_state, scan_func=scan_func).cache()
+    expected = [0, 1, 3, 6, 10, 15, 21, 28, 36, 45]
+    self.verifyRandomAccess(dataset, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheInputDatasetUnknownCardinality(self):
+    dataset = dataset_ops.Dataset.range(20).filter(
+        lambda x: math_ops.equal(x % 2, 0)).cache()
+    expected = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
+    self.verifyRandomAccess(dataset, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheInputDatasetInfiniteCardinality(self):
+    dataset = dataset_ops.Dataset.range(20).filter(
+        lambda x: math_ops.equal(x % 2, 0)).repeat(-1).cache()
+    expected = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 0, 2]
+    # Since the dataset has infinite cardinality, random access with caching
+    # will cache through the requested index. In this case, random access
+    # with caching will cache through index 11.
+    self.verifyRandomAccessInfiniteCardinality(dataset, expected)
 
 if __name__ == "__main__":
   test.main()

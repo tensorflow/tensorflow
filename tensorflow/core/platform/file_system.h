@@ -516,6 +516,11 @@ class FileSystem {
   /// \brief Decode transaction to human readable string.
   virtual std::string DecodeTransaction(const TransactionToken* token);
 
+  /// \brief Set File System Configuration Options
+  virtual Status SetOption(const string& key, const string& value) {
+    return errors::Unimplemented("SetOption");
+  }
+
   /// \brief Set File System Configuration Option
   virtual tensorflow::Status SetOption(const std::string& name,
                                        const std::vector<string>& values) {
@@ -893,7 +898,7 @@ class ReadOnlyMemoryRegion {
 /// the only `FileSystem` class and marked as `final`). But this will happen at
 /// a later time, after we convert all filesystems to the new API.
 ///
-/// TODO(mihaimaruseac): After all filesystems are converted, remove old
+/// TODO(b/139060984): After all filesystems are converted, remove old
 /// registration and update comment.
 class FileSystemRegistry {
  public:

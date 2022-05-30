@@ -24,11 +24,13 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -61,16 +63,20 @@ struct SparseFillEmptyRows<CPUDevice, T, Tindex> {
     bool* empty_row_indicator = nullptr;
     if (context->output_required(kEmptyRowIndicatorOutput)) {
       Tensor* empty_row_indicator_t = nullptr;
-      TF_RETURN_IF_ERROR(context->allocate_output(kEmptyRowIndicatorOutput,
-                                                  TensorShape({dense_rows}),
-                                                  &empty_row_indicator_t));
+      TensorShape output_shape;
+      TF_RETURN_IF_ERROR(
+          TensorShape::BuildTensorShape({dense_rows}, &output_shape));
+      TF_RETURN_IF_ERROR(context->allocate_output(
+          kEmptyRowIndicatorOutput, output_shape, &empty_row_indicator_t));
       empty_row_indicator = empty_row_indicator_t->vec<bool>().data();
     }
     Tindex* reverse_index_map = nullptr;
     if (context->output_required(kReverseIndexMapOutput)) {
       Tensor* reverse_index_map_t = nullptr;
+      TensorShape output_shape;
+      TF_RETURN_IF_ERROR(TensorShape::BuildTensorShape({N}, &output_shape));
       TF_RETURN_IF_ERROR(context->allocate_output(
-          kReverseIndexMapOutput, TensorShape({N}), &reverse_index_map_t));
+          kReverseIndexMapOutput, output_shape, &reverse_index_map_t));
       reverse_index_map = reverse_index_map_t->vec<Tindex>().data();
     }
 
@@ -84,7 +90,9 @@ struct SparseFillEmptyRows<CPUDevice, T, Tindex> {
             N);
       }
       Tensor* output_indices_t;
-      TensorShape output_indices_shape({0, rank});
+      TensorShape output_indices_shape;
+      TF_RETURN_IF_ERROR(
+          TensorShape::BuildTensorShape({0, rank}, &output_indices_shape));
       TF_RETURN_IF_ERROR(context->allocate_output(
           kOutputIndicesOutput, output_indices_shape, &output_indices_t));
       Tensor* output_values_t;
@@ -140,7 +148,9 @@ struct SparseFillEmptyRows<CPUDevice, T, Tindex> {
     } else {
       Tensor* output_indices_t;
       const Tindex N_full = csr_offset[dense_rows - 1];
-      TensorShape output_indices_shape({N_full, rank});
+      TensorShape output_indices_shape;
+      TF_RETURN_IF_ERROR(
+          TensorShape::BuildTensorShape({N_full, rank}, &output_indices_shape));
       TF_RETURN_IF_ERROR(context->allocate_output(
           kOutputIndicesOutput, output_indices_shape, &output_indices_t));
       auto output_indices = output_indices_t->matrix<Tindex>();
@@ -222,6 +232,12 @@ void SparseFillEmptyRowsOpImpl(OpKernelContext* context,
                     errors::InvalidArgument("values must be a vector, saw: ",
                                             values_t.shape().DebugString()),
                     done);
+  OP_REQUIRES_ASYNC(
+      context, indices_t.dim_size(0) == values_t.dim_size(0),
+      errors::InvalidArgument("The length of `values` (", values_t.dim_size(0),
+                              ") must match the first dimension of `indices` (",
+                              indices_t.dim_size(0), ")."),
+      done);
   OP_REQUIRES_ASYNC(
       context, TensorShapeUtils::IsScalar(default_value_t.shape()),
       errors::InvalidArgument("default_value must be a scalar, saw: ",

@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-# Lint as: python3
 """Generates a toy v1 saved model for testing."""
 
 import shutil
@@ -21,6 +19,7 @@ from absl import app
 from absl import flags
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
@@ -59,6 +58,9 @@ def main(argv):
   r32 = math_ops.add(x3, r31, name='result32')
   r33 = math_ops.add(x3, r32, name='result33')
 
+  # Sleep for 1 second.
+  sleep_op = test_ops.sleep_identity_op(1, x1, name='sleep')
+
   sess = session.Session()
 
   sess.run(variables.global_variables_initializer())
@@ -73,6 +75,7 @@ def main(argv):
   tensor_info_r31 = utils.build_tensor_info(r31)
   tensor_info_r32 = utils.build_tensor_info(r32)
   tensor_info_r33 = utils.build_tensor_info(r33)
+  tensor_info_sleep = utils.build_tensor_info(sleep_op)
 
   toy_signature = (
       signature_def_utils.build_signature_def(
@@ -96,6 +99,11 @@ def main(argv):
               'r33': tensor_info_r33,
           },
           method_name=signature_constants.PREDICT_METHOD_NAME))
+  sleep_signature = (
+      signature_def_utils.build_signature_def(
+          inputs={'x1': tensor_info_x1},
+          outputs={'sleep': tensor_info_sleep},
+          method_name=signature_constants.PREDICT_METHOD_NAME))
 
   sm_builder.add_meta_graph_and_variables(
       sess, [tag_constants.SERVING],
@@ -103,6 +111,7 @@ def main(argv):
           'toy': toy_signature,
           'another_toy': another_toy_signature,
           'yet_another_toy': yet_another_toy_signature,
+          'sleep': sleep_signature,
           signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: toy_signature,
       },
       strip_default_attrs=True)

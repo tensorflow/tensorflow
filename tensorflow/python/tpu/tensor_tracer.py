@@ -14,6 +14,8 @@
 # ========================================================================
 """A utility to trace tensor values on TPU."""
 
+import collections
+import hashlib
 import operator
 
 import os
@@ -24,6 +26,7 @@ import numpy as np
 import six
 
 from tensorflow.core.framework import summary_pb2
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
@@ -96,6 +99,7 @@ _TT_SUMMARY_MIN = tensor_tracer_flags.TT_SUMMARY_MIN
 _TT_SUMMARY_MEAN = tensor_tracer_flags.TT_SUMMARY_MEAN
 _TT_SUMMARY_VAR = tensor_tracer_flags.TT_SUMMARY_VAR
 _TT_SUMMARY_SIZE = tensor_tracer_flags.TT_SUMMARY_SIZE
+_TT_SUMMARY_SPARSITY = tensor_tracer_flags.TT_SUMMARY_SPARSITY
 
 _TT_SUMMARY_TAG = 'tensor_tracer_summary'
 _TT_TENSORBOARD_PLUGIN_NAME = 'tensor_tracer'
@@ -103,6 +107,21 @@ _TT_HOSTCALL_KEY = 'tensor_tracer_host_call'
 _TT_EVENT_FILE_SUFFIX = '.tensor_tracer'
 
 _TT_SUMMARY_MAX_QUEUE = 10
+
+tt_gauge = monitoring.BoolGauge('/tensorflow/api/tensor_tracer/v1',
+                                'tensor tracer usage', 'method')
+
+
+def _graph_summary_tag(graph):
+  """Generates and returns a summary tag name for the given graph."""
+
+  if graph is None:
+    raise RuntimeError('graph is None')
+  # The chance of collision with md5 is effectively 0.
+  hash_id = hashlib.md5()
+  hash_id.update(repr(graph).encode('utf-8'))
+  # hexdigest() returns a string.
+  return hash_id.hexdigest()
 
 
 def set_parameters(tensor_tracer_params=None):
@@ -216,12 +235,12 @@ def op_priority(op_type):
     return 7
 
   if op_type in ('Identity', 'Cast', 'Reshape', 'ExpandDims', 'StopGradient',
-                 'PreventGradient', 'Squeeze'):
+                 'PreventGradient', 'Squeeze', 'Gather', 'GatherNd'):
     # Operations without numerical effects.
     # They will be only if trace_level>=6
     return 6
   if op_type in ('ConcatV2', 'Concat', 'StridedSlice', 'Slice', 'Pack', 'Tile',
-                 'CollectivePermute', 'SplitV'):
+                 'CollectivePermute', 'SplitV', 'DynamicPartition'):
     # Operations that merge or slice an input, will be traced if trace_level>=5
     return 5
   if op_type in ('Pad', 'RandomUniformInt', 'GreaterEqual'):
@@ -237,10 +256,12 @@ def op_priority(op_type):
     # trace_level>=2
     return 2
   if op_type in ('Mul', 'Square', 'MatMul', 'RandomUniform', 'Select',
-                 'Maximum', 'Mean', 'Variance'):
+                 'Maximum', 'Mean', 'Variance', 'Exp', 'Rsqrt'):
     # Multiplication and some other operations, will be traced if trace_level>=1
     return 1
-  return 0
+
+  # Unclassified op_types default to being traced at level 2 and above.
+  return 2
 
 
 def read_tensor_tracer_event_file(event_file):
@@ -250,31 +271,55 @@ def read_tensor_tracer_event_file(event_file):
   by TensorTracer with trace_mode=full_tensor_summary.
 
   Example usage:
-    result_dict = tensor_tracer.read_tensor_tracer_event_file(event_file_path)
-    for step, tensor_dict in result_dict.items():
-      for tensor_name, full_tensor_content in tensor_dict.items():
-        logging.info(tensor_name, full_tensor_content)
+    result_dict_list = tensor_tracer.read_tensor_tracer_event_file(
+      event_file_path)
+    for result_dict in result_dict_list:
+      for step, tensor_dict in result_dict.items():
+        for tensor_name, full_tensor_content in tensor_dict.items():
+          logging.info(tensor_name, full_tensor_content)
 
   Args:
     event_file: Path to the event file that contains only tensor tracer events.
   Returns:
-    An event dictionary in the form of
-    {step_number: {tensor_name: tensor_content}}
+    A list of event dictionaries, each of which with the form:
+    {step_number: {tensor_name: tensor_content}}. This is a list instead of
+    a single event dictionary because it is possible that an event file may
+    have multiple event traces, each of them covering the same step ranges.
   Raises:
     ValueError: If an unexpected trace is found.
   """
-  event_dict = {}
+
+  # Keeps track of how many times that a step number shows up in these events.
+  step_occurrence_count = collections.defaultdict(int)
+
+  # List of step occurrences.
+  step_occurrence_list = []
+
   for trace_event in summary_iterator.summary_iterator(event_file):
     # First event is an event with file_version: "brain.Event:2"
     if not trace_event.HasField('summary'):
       continue
-    step = trace_event.step
-    if step not in event_dict:
-      event_dict[step] = {}
-
     if len(trace_event.summary.value) != 1:
       raise ValueError('Single step contains %d summary values,'
                        ' expected 1.' % len(trace_event.summary.value))
+    step = trace_event.step
+    step_occurrence_count[step] += 1  # a new occurrence for this step.
+
+    occurrence_idx = step_occurrence_count[step] - 1
+    occurrence_size = len(step_occurrence_list)
+
+    if occurrence_idx == occurrence_size:
+      # This particular occurrence isn't yet recorded on step_occurrence_list.
+      # So append this new occurrence to the end of step_occurrence_list.
+      new_occurrence = collections.defaultdict(dict)
+      step_occurrence_list.append(new_occurrence)
+    else:
+      # This particular occurrence must be already recorded on
+      # step_occurrence_list (i.e. occurrence_idx < occurrence_size).
+      if occurrence_idx > occurrence_size:
+        raise ValueError('Unexpected: occurrence_idx (%d) > '
+                         'occurrence_size (%d)' % (occurrence_idx,
+                                                   occurrence_size))
     tensor_value = trace_event.summary.value[0]
     tensor_name = tensor_value.tag
 
@@ -283,8 +328,8 @@ def read_tensor_tracer_event_file(event_file):
         tensor_value.tensor.tensor_content,
         dtypes.DType(tensor_value.tensor.dtype).as_numpy_dtype()
         ).reshape(real_shape)
-    event_dict[step][tensor_name] = tensor_content
-  return event_dict
+    step_occurrence_list[occurrence_idx][step][tensor_name] = tensor_content
+  return step_occurrence_list
 
 
 def trace_tensor(tensor, tracepoint_name=None):
@@ -390,7 +435,18 @@ class TensorTracer(object):
   @staticmethod
   def is_enabled():
     """Returns True if TensorTracer is enabled."""
-    return tensor_tracer_flags.TTParameters().is_enabled()
+    try:
+      enable = tensor_tracer_flags.TTParameters().is_enabled()
+      # Add metrics to determine API usage.
+      if enable: tt_gauge.get_cell('is_enabled').set(True)
+      return enable
+    except (ValueError, RuntimeError) as e:
+      logging.warning(
+          'Tensor Tracer V1 flags processing error encountered in is_enabled '
+          'check. %s', e)
+      # TODO(b/210212559): Find a more robust fix.
+      # Should only produce exception if Tensor Tracer is enabled.
+      return True
 
   @staticmethod
   def check_device_type(device_type):
@@ -508,10 +564,13 @@ class TensorTracer(object):
     self._tt_config = tensor_tracer_report.TensorTracerConfig()
     self._parameters = None
     self._host_call_fn = {}
+    # _cache_variables is a dict (key = graph, value = dicts
+    # (key = name, value = tensors))
     self._cache_variables = {}
     self._traced_op_names = set()
     self._report_proto = None
-    self._temp_cache_var = []
+    # _temp_cache_var is a dict (key = graph, value = [])
+    self._temp_cache_var = {}
     self._report_proto_path = ''
     self._outmost_context = None
 
@@ -539,10 +598,12 @@ class TensorTracer(object):
     """
     return self._report_proto_path
 
-  def _get_all_cache_variables(self):
-    return self._cache_variables
+  def _cache_variable_for_graph(self, graph):
+    if graph not in self._cache_variables:
+      self._cache_variables[graph] = {}
+    return self._cache_variables[graph]
 
-  def _create_or_get_tensor_values_cache(self, cache_name, graph=None,
+  def _create_or_get_tensor_values_cache(self, cache_name, graph,
                                          shape=None, dtype=dtypes.float32):
     """Creates a variable as the cache to store intermediate tensor values.
 
@@ -554,8 +615,9 @@ class TensorTracer(object):
     Returns:
       A ref to newly created or existing cache with the given dimensions.
     Raises:
-      ValueError: If missing graph and shape parameters while creating the
-      cache.
+      ValueError:
+        (1) If graph is None, or
+        (2) shape is None when a new cache needs to be created.
     """
 
     def _escape_namescopes(variable_name):
@@ -563,12 +625,14 @@ class TensorTracer(object):
       # and "foo_bar/mytensor".
       return variable_name.replace('/', '_').replace(':', '_')
 
-    if cache_name not in self._cache_variables:
-      if graph is None:
-        raise ValueError('Graph must be provided at cache creation.')
+    if graph is None:
+      raise ValueError('Invalid graph.')
+
+    graph_cache_var = self._cache_variable_for_graph(graph)
+
+    if cache_name not in graph_cache_var:
       if shape is None:
         raise ValueError('shape must be provided at cache creation.')
-      graph = graph or ops.get_default_graph()
       if dtype.is_integer:
         init_val = int(_COMPACT_TRACE_ENTRY_INIT_VALUE)
       else:
@@ -576,14 +640,14 @@ class TensorTracer(object):
 
       # Create in proper graph and base name_scope.
       with graph.as_default() as g, g.name_scope(None):
-        self._cache_variables[cache_name] = variable_scope.get_variable(
+        graph_cache_var[cache_name] = variable_scope.get_variable(
             _TT_SNAPSHOT + '_' + _escape_namescopes(cache_name),
             shape=shape, dtype=dtype,
             initializer=init_ops.constant_initializer(init_val),
             trainable=False,
             use_resource=True,
             collections=[_TENSOR_TRACER_STORAGE, ops.GraphKeys.LOCAL_VARIABLES])
-    return self._cache_variables[cache_name]
+    return graph_cache_var[cache_name]
 
   def _add_replica_id_to_graph(self):
     """Adds nodes for computing the replica ID to the graph."""
@@ -704,25 +768,36 @@ class TensorTracer(object):
                        'flag --signatures.')
     return updates
 
-  def _save_tensor_value_to_tmp_cache(self, cache_idx, updates):
+  def _save_tensor_value_to_tmp_cache(self, cache_idx, updates, graph):
     """Returns an op that will save the given updates to an entry in the cache.
 
     Args:
       cache_idx: The cache index of the tensor within the cache.
       updates: A dictionary of the signature updates from signature name to
       a tensor of dimension [1].
+      graph: A TensorFlow graph.
+    Raises:
+      RuntimeError:
+        (1) graph is not already in self._temp_cache_var, or
+        (2) cache_idx is out of range.
     """
     updates = self._merge_tensor_signatures(updates)
     updates = array_ops.reshape(updates,
                                 [self._num_signature_dimensions()])
-    self._temp_cache_var[cache_idx] = updates
+    if graph not in self._temp_cache_var:
+      raise RuntimeError('graph is not in self._temp_cache_var')
+    if cache_idx >= len(self._temp_cache_var[graph]):
+      raise RuntimeError('cache_idx (%d) is out of range (%d)' % (
+          cache_idx, len(self._temp_cache_var[graph])))
+    self._temp_cache_var[graph][cache_idx] = updates
 
-  def _save_tensor_value_to_cache_op(self, cache_idx, updates):
+  def _save_tensor_value_to_cache_op(self, cache_idx, updates, graph):
     """Returns an op that will save the given updates to an entry in the cache.
 
     Args:
       cache_idx: The cache index of the tensor within the cache.
       updates: A dictionary of the signature updates.
+      graph: A TensorFlow graph.
     Returns:
       Cache update operation.
     """
@@ -733,7 +808,7 @@ class TensorTracer(object):
     updates = array_ops.reshape(updates,
                                 [1, self._num_signature_dimensions()])
     indices = constant_op.constant([cache_idx])
-    cache = self._create_or_get_tensor_values_cache(_TT_SUMMARY_TAG)
+    cache = self._create_or_get_tensor_values_cache(_TT_SUMMARY_TAG, graph)
     return state_ops.scatter_update(cache, indices, updates).op
 
   def _snapshot_tensor(self, tensor):
@@ -808,6 +883,15 @@ class TensorTracer(object):
       # returns 0 for empty tensor
       return _compute_signature(tensor, linalg_ops.norm, cast_to_f32)
 
+    def _show_sparsity(tensor, cast_to_f32=True, tolerance=1e-06):
+      # returns nan for empty tensor and treats nans as non-zero numbers
+      def sparsity_fn(tensor):
+        non_zeros = math_ops.greater_equal(math_ops.abs(tensor), tolerance)
+        nans = math_ops.is_nan(tensor)
+        return nn_impl.zero_fraction(math_ops.logical_or(non_zeros, nans))
+
+      return _compute_signature(tensor, sparsity_fn, cast_to_f32)
+
     def _show_mean_and_variance(tensor, cast_to_f32=True):
       """Returns the mean and variance of the given tensor."""
       if cast_to_f32:
@@ -859,6 +943,8 @@ class TensorTracer(object):
           signature_result_tensor = _show_max_abs(tensor, cast_to_f32=False)
         elif signature_name == _TT_SUMMARY_MIN:
           signature_result_tensor = _show_min(tensor, cast_to_f32=False)
+        elif signature_name == _TT_SUMMARY_SPARSITY:
+          signature_result_tensor = _show_sparsity(tensor)
         elif signature_name == _TT_SUMMARY_SIZE:
           signature_result_tensor = _show_size(tensor)
         elif signature_name == _TT_SUMMARY_MEAN:
@@ -1225,7 +1311,7 @@ class TensorTracer(object):
         raise RuntimeError('Failed to create trace directory at %s' %
                            self._parameters.trace_dir)
 
-  def _create_temp_cache(self, num_traced_tensors, num_signatures):
+  def _create_temp_cache(self, num_traced_tensors, num_signatures, graph):
     """Creates a temporary cache with the given dimensions.
 
     Fills the self._temp_cache_var with num_traced_tensors tf.constant() ops
@@ -1234,18 +1320,22 @@ class TensorTracer(object):
       num_traced_tensors: Int, denoting total number of traced tensors.
       num_signatures: Int, denoting the number of statistics collected per
         tensors.
+      graph: TensorFlow graph.
     """
     init_value = constant_op.constant(_COMPACT_TRACE_ENTRY_INIT_VALUE,
                                       dtype=dtypes.float32,
                                       shape=[num_signatures])
-    self._temp_cache_var = [init_value for _ in range(num_traced_tensors)]
+    self._temp_cache_var[graph] = [
+        init_value for _ in range(num_traced_tensors)]
 
-  def _determine_trace_and_create_report(self, graph, ops_in_exec_path):
+  def _determine_trace_and_create_report(self, graph, ops_in_exec_path,
+                                         graph_summary_tag):
     """Work needs to be done prior to TPU or CPU tracing.
 
     Args:
       graph: tf.graph
       ops_in_exec_path: Set of operations in the execution path.
+      graph_summary_tag: the summary tag name for the given graph.
     Returns:
       An instance of tensor_tracer_report.TensorTraceOrder, containing list of
       tensors to be traced with their topological order information.
@@ -1267,7 +1357,7 @@ class TensorTracer(object):
     # Create a cache variable if compact_tracing is used.
     if num_signatures and self._use_tensor_values_cache():
       if self._use_temp_cache():
-        self._create_temp_cache(len(traced_tensors), num_signatures)
+        self._create_temp_cache(len(traced_tensors), num_signatures, graph)
       else:
         self._create_or_get_tensor_values_cache(_TT_SUMMARY_TAG,
                                                 graph,
@@ -1284,10 +1374,12 @@ class TensorTracer(object):
             self._parameters.trace_dir, self._report_proto.fingerprint)
         logging.info('TensorTracer updating trace_dir to %s',
                      self._parameters.trace_dir)
-      self._report_proto_path = tensor_tracer_report.report_proto_path(
-          self._parameters.trace_dir)
+      self._report_proto_path = report_handler.report_proto_path(
+          self._parameters.trace_dir, graph_summary_tag)
+
       if self._parameters.report_file_path != _SKIP_REPORT_FILE:
-        report_handler.write_report_proto(self._report_proto, self._parameters)
+        report_handler.write_report_proto(self._report_proto_path,
+                                          self._report_proto, self._parameters)
     else:
       report_handler.create_report(self._tt_config, self._parameters,
                                    tensor_trace_order, tensor_trace_points)
@@ -1322,6 +1414,11 @@ class TensorTracer(object):
             lambda: 'has no NaNs or Infs.')
       else:
         return tensor
+
+    # Check if there are graph operations being profiled.
+    if not tensor_trace_order.traced_tensors:
+      logging.warn('Inspect mode has no tensors in the cache to check.')
+      return control_flow_ops.no_op
 
     # Check if the cache includes any nan or inf
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_NAN_INF:
@@ -1368,13 +1465,15 @@ class TensorTracer(object):
     else:
       return ''
 
-  def _generate_flush_cache_op(self, num_replicas, on_tpu, tensor_trace_order):
+  def _generate_flush_cache_op(self, num_replicas, on_tpu,
+                               tensor_trace_order, graph):
     """Generates an Op that will flush the cache to file.
 
     Args:
       num_replicas: total number of replicas.
       on_tpu: if the graph is executed on TPU.
       tensor_trace_order: TensorTraceOrder object holding tensorname to id map.
+      graph: TensorFlow graph.
 
     Returns:
       The Op to flush the cache to file.
@@ -1435,7 +1534,7 @@ class TensorTracer(object):
       # only known during tf runtime, and we cannot create dynamic filenames.
       return control_flow_ops.case(flush_op_cases, exclusive=True)
 
-    cache = self._create_or_get_tensor_values_cache(_TT_SUMMARY_TAG)
+    cache = self._create_or_get_tensor_values_cache(_TT_SUMMARY_TAG, graph)
     if self._use_temp_cache():
       cache_val = cache
     else:
@@ -1452,8 +1551,9 @@ class TensorTracer(object):
           _flush_fun, cache_val, self._replica_id,
           array_ops.identity(training_util.get_or_create_global_step()))
     else:
-      flush_op = _flush_fun(cache_val, self._replica_id,
-                            training_util.get_or_create_global_step())
+      global_step = training_util.get_or_create_global_step()
+      flush_op = _flush_fun(cache_val, self._replica_id, global_step)
+
     if self._use_temp_cache():
       with ops.control_dependencies([flush_op]):
         return constant_op.constant(0).op
@@ -1468,7 +1568,7 @@ class TensorTracer(object):
           return constant_op.constant(0).op
 
   def _flush_tensor_values_cache(self, tensor_fetches, op_fetches, on_tpu,
-                                 tensor_trace_order):
+                                 tensor_trace_order, graph):
     """Flushes the intermediate tensor values in the graph to the cache.
 
     Args:
@@ -1476,16 +1576,20 @@ class TensorTracer(object):
       op_fetches: list of ops that are returned by the model_fn, e.g., train_op.
       on_tpu: if the graph is executed on TPU.
       tensor_trace_order: TensorTraceOrder object holding tensorname to id map.
+      graph: TensorFlow graph.
 
     Returns:
       An identical copy of tensor_fetches.
     """
     # Add a dependency to op and tensor fetches to make sure that all tracing
     # ops are executed before flushing trace results.
+    if not tensor_trace_order.traced_tensors:
+      logging.warn('No tensor values being traced. No flush cache op added.')
+      return tensor_fetches
     with ops.control_dependencies(op_fetches +
                                   [tensor.op for tensor in tensor_fetches]):
       flush_cache_op = self._generate_flush_cache_op(
-          self._tt_config.num_replicas, on_tpu, tensor_trace_order)
+          self._tt_config.num_replicas, on_tpu, tensor_trace_order, graph)
       return control_flow_ops.tuple(tensor_fetches,
                                     control_inputs=[flush_cache_op])
 
@@ -1620,12 +1724,15 @@ class TensorTracer(object):
     # structure num_cores x num_traced_tensors x num_signatures.
     return array_ops.expand_dims(transposed_signatures, axis=0)
 
-  def _prepare_host_call_fn(self, processed_t_fetches, op_fetches):
+  def _prepare_host_call_fn(self, processed_t_fetches,
+                            op_fetches, graph, graph_summary_tag):
     """Creates a host call function that will write the cache as tb summary.
 
     Args:
       processed_t_fetches: List of tensor provided to session.run.
       op_fetches: List of operations provided to session.run.
+      graph: TensorFlow graph.
+      graph_summary_tag: the summary_tag name for the given graph.
     Raises:
       ValueError if trace_dir is not set.
     """
@@ -1666,8 +1773,17 @@ class TensorTracer(object):
           self._parameters.trace_dir,
           filename_suffix=file_suffix,
           max_queue=_TT_SUMMARY_MAX_QUEUE)
-      ops.get_default_graph().add_to_collection(
+      graph.add_to_collection(
           TENSOR_TRACER_SUMMARY_COLLECTION, summary_writer)
+
+      step_value = step[0]
+      dt = step_value.dtype
+
+      # The step parameter to a summary write call must be 64-bit.
+      if dt.__ne__(dtypes.int64) and dt.__ne__(
+          dtypes.uint64) and dt.__ne__(dtypes.float64):
+        step_value = math_ops.cast(step_value, dtypes.int64)
+
       with summary_writer.as_default():
         summary_metadata = summary_pb2.SummaryMetadata(
             plugin_data=summary_pb2.SummaryMetadata.PluginData(
@@ -1682,21 +1798,22 @@ class TensorTracer(object):
             # aggregation.
             if key == _TT_SUMMARY_TAG and value.shape.as_list()[0] != 1:
               value = self.aggregate_global_cache(value)
-
           with ops.control_dependencies([summary_writer.init()]):
             summary_write_ops.append(summary.write(
-                _TT_SUMMARY_TAG + '/' + key, value, metadata=summary_metadata,
-                step=step[0]))
+                _TT_SUMMARY_TAG + '/' + key + '#' + graph_summary_tag + '#',
+                value, metadata=summary_metadata,
+                step=step_value))
       return control_flow_ops.group(summary_write_ops)
 
-    step = array_ops.reshape(training_util.get_or_create_global_step(), [1])
+    global_step = training_util.get_or_create_global_step()
+    step = array_ops.reshape(global_step, [1])
     self._host_call_fn = {}
 
     host_call_deps = op_fetches + [tensor.op for tensor in processed_t_fetches]
 
     caches_to_write = {}
     with ops.control_dependencies(host_call_deps):
-      all_caches = self._get_all_cache_variables()
+      all_caches = self._cache_variable_for_graph(graph)
       for cache_name, cache_variable in all_caches.items():
         # Increase the cache rank by 1, so that when host call concatenates
         # tensors from different replicas, we can identify them with [core_id].
@@ -1778,9 +1895,11 @@ class TensorTracer(object):
     # if fetches=None, then ops_in_exec_path = set(operations)
     exec_op_set = self._filter_execution_path_operations(graph.get_operations(),
                                                          all_fetches)
+    graph_summary_tag = _graph_summary_tag(graph)
+
     # Write report file, and determine the traced tensors.
     tensor_trace_order = self._determine_trace_and_create_report(
-        graph, exec_op_set)
+        graph, exec_op_set, graph_summary_tag)
 
     tensor_fetch_set = set(processed_t_fetches)
     tracing_ops = []
@@ -1827,12 +1946,15 @@ class TensorTracer(object):
           # the characteristics of the tensor.
           if self._use_temp_cache():
             cache_idx = tensor_trace_order.tensorname_to_cache_idx[tensor_name]
-            self._save_tensor_value_to_tmp_cache(cache_idx, processed_tensors)
+            self._save_tensor_value_to_tmp_cache(cache_idx,
+                                                 processed_tensors,
+                                                 graph)
             trace_op = None
           else:
             cache_idx = tensor_trace_order.tensorname_to_cache_idx[tensor_name]
             trace_op = self._save_tensor_value_to_cache_op(cache_idx,
-                                                           processed_tensors)
+                                                           processed_tensors,
+                                                           graph)
         elif self._use_tensor_buffer():
           if len(processed_tensors) != 1:
             raise RuntimeError('Multiple stats are only allowed in compact '
@@ -1887,10 +2009,14 @@ class TensorTracer(object):
       if self._use_temp_cache():
         # Create the temporary tf cache variable by concantanating all
         # statistics.
-        self._cache_variables[_TT_SUMMARY_TAG] = array_ops.stack(
-            self._temp_cache_var, axis=0, name='stack_all_op_signatures')
+        graph_cache_var = self._cache_variable_for_graph(graph)
+        if graph not in self._temp_cache_var:
+          raise RuntimeError('graph is not in self._temp_cache_var')
+        graph_cache_var[_TT_SUMMARY_TAG] = array_ops.stack(
+            self._temp_cache_var[graph], axis=0, name='stack_all_op_signatures')
       if self._create_host_call():
-        self._prepare_host_call_fn(processed_t_fetches, op_fetches)
+        self._prepare_host_call_fn(processed_t_fetches, op_fetches, graph,
+                                   graph_summary_tag)
         if not on_tpu:
           write_cache, caches_to_write = self._host_call_fn[_TT_HOSTCALL_KEY]
           cache_write_op = write_cache(**caches_to_write)
@@ -1926,7 +2052,8 @@ class TensorTracer(object):
       else:
         processed_t_fetches = self._flush_tensor_values_cache(
             processed_t_fetches, op_fetches, on_tpu=on_tpu,
-            tensor_trace_order=tensor_trace_order)
+            tensor_trace_order=tensor_trace_order,
+            graph=graph)
 
     # processed_t_fetches is a list at this point. Convert it to the same
     # format as given in tensor_fetches.

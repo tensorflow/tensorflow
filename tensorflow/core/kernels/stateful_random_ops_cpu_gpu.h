@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_STATEFUL_RANDOM_OPS_CPU_GPU_H_
 #define TENSORFLOW_CORE_KERNELS_STATEFUL_RANDOM_OPS_CPU_GPU_H_
 
-#include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/kernels/random_ops_util.h"
 #include "tensorflow/core/kernels/stateful_random_ops.h"
 
@@ -76,10 +75,12 @@ struct RngSkip_Philox;
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 
+class ScopedUnlockUnrefVar;
+
 struct UpdateVariableAndFill_Philox_Arg {
   int64_t output_size;
   int64_t alg_tag_skip;
-  ScopedUnlockUnrefVar* not_used;
+  ScopedUnlockUnrefVar* state_var_guard;
   Tensor* state_tensor;
 };
 

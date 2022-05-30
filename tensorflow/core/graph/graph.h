@@ -266,7 +266,15 @@ class Node {
   // property of the node (stored in props_).
   void UpdateProperties();
 
+  // Erases type information from the node.
+  void ClearTypeInfo();
+
+  // Called after an incident non-control edge has changed. Does nothing if not
+  // all input edges are defined.
+  void RunForwardTypeInference();
+
  private:
+  // TODO(mdan): Drop this.
   friend class Graph;
   Node();
 
@@ -542,6 +550,9 @@ class Graph {
   // Returns nullptr and sets *status on error.
   Node* AddNode(NodeDef node_def, Status* status);
 
+  // Same as above, but using StatusOr. This method is always preferred.
+  StatusOr<Node*> AddNode(NodeDef node_def);
+
   // Copies *node, which may belong to another graph, to a new node,
   // which is returned.  Does not copy any edges.  *this owns the
   // returned instance.
@@ -553,6 +564,10 @@ class Graph {
   void RemoveNode(Node* node);
 
   void Copy(const Graph& src);
+
+  // Removes all nodes from this graph, including all edges from or to them.
+  // No Node* references to the Graph are valid post.
+  void Clear();
 
   // Adds an edge that connects the xth output of `source` to the yth input of
   // `dest` and returns it. Does not update dest's NodeDef.

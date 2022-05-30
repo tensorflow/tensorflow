@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -45,9 +46,15 @@ class DynamicDimensionInferenceTest : public HloTestBase {
   }
 
   Status RunInference(
-      DynamicDimensionInference::CustomCallInferenceHandler handler = nullptr) {
-    TF_ASSIGN_OR_RETURN(DynamicDimensionInference inference,
-                        DynamicDimensionInference::Run(module_.get(), handler));
+      DynamicDimensionInference::CustomCallInferenceHandler handler = nullptr,
+      DynamicDimensionInference::ShapeCheckMode shape_check_mode =
+          DynamicDimensionInference::ShapeCheckMode::kIgnore,
+      const DynamicDimensionInference::AssertionGenerator& assertion_generator =
+          nullptr) {
+    TF_ASSIGN_OR_RETURN(
+        DynamicDimensionInference inference,
+        DynamicDimensionInference::Run(module_.get(), handler, shape_check_mode,
+                                       assertion_generator));
 
     inference_ = absl::make_unique<DynamicDimensionInference>(inference);
     return Status::OK();
@@ -671,7 +678,7 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeIntoScalar) {
 }
 
 TEST_F(DynamicDimensionInferenceTest, GatherTest) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule TensorFlowGatherV2
 
 ENTRY main {
@@ -1253,7 +1260,7 @@ TEST_F(DynamicDimensionInferenceTest, DynamicReshapeOp) {
   auto input = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {9}), "data_input"));
   auto six = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(6)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(6)));
   // Creates an input of shape [<=9], dynamic size is 6.
   auto dynamic_input =
       builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
@@ -1261,7 +1268,7 @@ TEST_F(DynamicDimensionInferenceTest, DynamicReshapeOp) {
   auto dynamic_size = builder.AddInstruction(HloInstruction::CreateParameter(
       1, ShapeUtil::MakeShape(S32, {}), "size_param"));
   auto three = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(3)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(3)));
 
   // Reshape [<=9] into [3, <=3]
 
@@ -1282,11 +1289,11 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeOpWithMultipleDynamicDimensions) {
   auto input = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {9, 2}), "data_input"));
   auto six = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(6)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(6)));
   input = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
       ShapeUtil::MakeShape(F32, {9, 2}, {true, false}), input, six, 0));
   auto one = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
   input = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
       ShapeUtil::MakeShape(F32, {9, 2}, {true, true}), input, one, 1));
 
@@ -1301,6 +1308,84 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeOpWithMultipleDynamicDimensions) {
   EXPECT_EQ(inference_->GetDynamicSize(dynamic_reshape, {}, 0), six);
   EXPECT_EQ(inference_->GetDynamicSize(dynamic_reshape, {}, 1), nullptr);
   EXPECT_EQ(inference_->GetDynamicSize(dynamic_reshape, {}, 2), one);
+}
+
+TEST_F(DynamicDimensionInferenceTest, HandleMapInDynamicDimensionInference) {
+  const char* module_str = R"(
+HloModule test_module
+
+%scatter-combiner.285 (p0.286: c128[], p1.287: c128[]) -> c128[] {
+  %p0.286 = c128[] parameter(0)
+  %p1.287 = c128[] parameter(1)
+  ROOT %add.288 = c128[] add(c128[] %p0.286, c128[] %p1.287)
+}
+
+ %while_body  {
+  %reshape.8 = s32[] parameter(4)
+  %reshape.7 = c128[1]{0} parameter(3)
+  %reduce = pred[] parameter(2)
+  %concatenate = s32[1]{0} parameter(1)
+  %slice.4 = s32[1]{0} slice(s32[1]{0} %concatenate), slice={[0 : 1]}
+  %broadcast.7 = pred[1]{0} broadcast(pred[] %reduce), dimensions={}
+  %param.1 = (s32[],c128[<=1]{0},s32[1]{0},c128[1]{0}) parameter(0)
+  %get-tuple-element.2 = c128[<=1]{0} get-tuple-element((s32[],c128[<=1]{0},s32[1]{0},c128[1]{0}) %param.1), index=1
+  %dynamic-slice.2 = c128[1]{0} dynamic-slice(c128[<=1]{0} %get-tuple-element.2,s32[] %reshape.8), dynamic_slice_sizes={1}
+  %map = c128[1]{0} map(c128[1]{0} %dynamic-slice.2,c128[1]{0} %reshape.7), dimensions={0}, to_apply=%scatter-combiner.285
+  %select = c128[1]{0} select(pred[1]{0} %broadcast.7,c128[1]{0} %map,c128[1]{0} %dynamic-slice.2)
+  %reshape.9 = s32[] reshape(s32[1]{0} %slice.4)
+  %dynamic-update-slice = c128[<=1]{0} dynamic-update-slice(c128[<=1]{0} %get-tuple-element.2,c128[1]{0} %select,s32[] %reshape.9)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnUnverifiedModule(module_str));
+  TF_ASSERT_OK(RunInference());
+}
+
+TEST_F(DynamicDimensionInferenceTest, RuntimeShapeCheck) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY computation {
+  a = f32[20,20] parameter(0)
+  a_size_1 = s32[] parameter(1)
+  a_size_2 = s32[] parameter(2)
+  b = f32[20,20] parameter(3)
+  b_size_1 = s32[] parameter(4)
+  b_size_2 = s32[] parameter(5)
+  ROOT f = add(a, b)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo));
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{1, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{2, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 1}));
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{4, {}},
+      DynamicParameterBinding::DynamicDimension{3, {}, 0}));
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{5, {}},
+      DynamicParameterBinding::DynamicDimension{3, {}, 1}));
+
+  TF_ASSERT_OK(RunInference(
+      /*handler=*/nullptr, DynamicDimensionInference::ShapeCheckMode::kRuntime,
+      /*assertion_generator=*/[&](HloInstruction* constraint) {
+        constraint->parent()->AddInstruction(HloInstruction::CreateCustomCall(
+            ShapeUtil::MakeTokenShape(), {constraint},
+            /*custom_call_target=*/"__xla__assert",
+            /*opaque=*/std::string{}, API_VERSION_STATUS_RETURNING));
+      }));
+
+  StatusOr<bool> filecheck_result = RunFileCheck(module_->ToString({}),
+                                                 R"(
+// CHECK: compare = pred[] compare(s32[] %a_size_1, s32[] %b_size_1), direction=EQ
+// CHECK: compare.1 = pred[] compare(s32[] %a_size_2, s32[] %b_size_2), direction=EQ
+// CHECK: and = pred[] and(pred[] %compare, pred[] %compare.1)
+// CHECK: custom-call(pred[] %and), custom_call_target="__xla__assert"
+                   )");
+  TF_ASSERT_OK(filecheck_result.status());
+  EXPECT_TRUE(*filecheck_result);
 }
 
 }  // namespace

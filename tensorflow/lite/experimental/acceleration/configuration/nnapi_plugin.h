@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/configuration/c/delegate_plugin.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h"
+#include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
 namespace tflite {
 namespace delegates {
@@ -34,8 +35,17 @@ namespace delegates {
 class NnapiPlugin : public DelegatePluginInterface {
  public:
   TfLiteDelegatePtr Create() override {
-    auto nnapi_delegate =
-        absl::make_unique<tflite::StatefulNnApiDelegate>(options_);
+    std::unique_ptr<tflite::StatefulNnApiDelegate> nnapi_delegate = nullptr;
+    if (!support_library_handle_) {
+      nnapi_delegate =
+          absl::make_unique<tflite::StatefulNnApiDelegate>(options_);
+    } else {
+      auto nnapi_support_library_driver =
+          reinterpret_cast<const NnApiSLDriverImplFL5*>(
+              support_library_handle_);
+      nnapi_delegate = absl::make_unique<tflite::StatefulNnApiDelegate>(
+          nnapi_support_library_driver, options_);
+    }
     return TfLiteDelegatePtr(
         nnapi_delegate.release(), [](TfLiteDelegate* delegate) {
           delete static_cast<tflite::StatefulNnApiDelegate*>(delegate);
@@ -80,8 +90,10 @@ class NnapiPlugin : public DelegatePluginInterface {
       options_.max_number_delegated_partitions =
           tflite_settings.max_delegated_partitions();
     }
+    support_library_handle_ = nnapi_settings->support_library_handle();
   }
   const tflite::StatefulNnApiDelegate::Options& Options() { return options_; }
+  const int64_t GetSupportLibraryHandle() { return support_library_handle_; }
 
  private:
   static inline tflite::StatefulNnApiDelegate::Options::ExecutionPreference
@@ -117,6 +129,7 @@ class NnapiPlugin : public DelegatePluginInterface {
 
   std::string accelerator_, cache_dir_, model_token_;
   tflite::StatefulNnApiDelegate::Options options_;
+  int64_t support_library_handle_ = 0;
 };
 
 }  // namespace delegates

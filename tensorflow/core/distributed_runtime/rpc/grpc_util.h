@@ -17,15 +17,19 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_UTIL_H_
 
 #include <memory>
+#include <string>
 
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/impl/codegen/proto_utils.h"
 #include "grpcpp/support/byte_buffer.h"
+#include "tensorflow/core/distributed_runtime/error_payloads.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/protobuf/distributed_runtime_payloads.pb.h"
 
 namespace tensorflow {
 
@@ -80,17 +84,44 @@ inline bool IsStreamRemovedError(const ::grpc::Status& s) {
          s.error_message() == kStreamRemovedMessage;
 }
 
-inline Status FromGrpcStatus(const ::grpc::Status& s) {
+inline std::string SerializePayloads(const ::tensorflow::Status& s) {
+  distributed_runtime::GrpcPayloadContainer container;
+  s.ForEachPayload(
+      [&container](tensorflow::StringPiece key, const absl::Cord& value) {
+        (*container.mutable_payloads())[std::string(key)] = std::string(value);
+      });
+  return container.SerializeAsString();
+}
+
+inline void InsertSerializedPayloads(::tensorflow::Status& s,
+                                     std::string payloads) {
+  distributed_runtime::GrpcPayloadContainer container;
+  if (container.ParseFromString(payloads)) {
+    for (const auto& key_val : container.payloads()) {
+      s.SetPayload(key_val.first, absl::Cord(key_val.second));
+    }
+  } else {
+    s.SetPayload(
+        kGrpcPayloadsLost,
+        absl::Cord(
+            distributed_runtime::GrpcPayloadsLost().SerializeAsString()));
+  }
+}
+
+inline ::tensorflow::Status FromGrpcStatus(const ::grpc::Status& s) {
   if (s.ok()) {
     return Status::OK();
   } else {
+    ::tensorflow::Status converted;
     // Convert "UNKNOWN" stream removed errors into unavailable, to allow
     // for retry upstream.
     if (IsStreamRemovedError(s)) {
-      return Status(tensorflow::error::UNAVAILABLE, s.error_message());
+      converted = Status(tensorflow::error::UNAVAILABLE, s.error_message());
     }
-    return Status(static_cast<tensorflow::error::Code>(s.error_code()),
-                  s.error_message());
+    converted = Status(static_cast<tensorflow::error::Code>(s.error_code()),
+                       s.error_message());
+    InsertSerializedPayloads(converted, s.error_details());
+    return converted;
   }
 }
 
@@ -103,10 +134,11 @@ inline ::grpc::Status ToGrpcStatus(const ::tensorflow::Status& s) {
       string scratch =
           strings::Printf("%.3072s ... [truncated]", s.error_message().c_str());
       LOG(ERROR) << "Truncated error message: " << s;
-      return ::grpc::Status(static_cast<::grpc::StatusCode>(s.code()), scratch);
+      return ::grpc::Status(static_cast<::grpc::StatusCode>(s.code()), scratch,
+                            SerializePayloads(s));
     }
     return ::grpc::Status(static_cast<::grpc::StatusCode>(s.code()),
-                          s.error_message());
+                          s.error_message(), SerializePayloads(s));
   }
 }
 

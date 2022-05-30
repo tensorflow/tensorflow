@@ -40,16 +40,24 @@ class GpuLayoutAssignment : public LayoutAssignment {
 
  protected:
   Status AddBackendConstraints(LayoutConstraints* constraints) override;
-  Status PropagateOperandConstraint(
-      const OperandLayoutConstraint& layout_constraint,
-      LayoutConstraints* constraints) override;
-  Status PropagateBufferConstraint(
-      const BufferLayoutConstraint& buffer_constraint,
-      LayoutConstraints* constraints) override;
 
  private:
   Status AddBackendConstraintsToDnnConvCustomCall(
       HloCustomCallInstruction* instr, LayoutConstraints* constraints);
+
+  Status SetOperandBatchRowsColsLayout(const HloInstruction* instruction,
+                                       int64_t operand,
+                                       absl::Span<const int64_t> batch_dims,
+                                       absl::Span<const int64_t> row_dims,
+                                       absl::Span<const int64_t> col_dims);
+
+  Status SetDotOperandLayout(const HloInstruction* instruction, int64_t operand,
+                             absl::Span<const int64_t> batch_dims,
+                             absl::Span<const int64_t> row_dims,
+                             absl::Span<const int64_t> col_dims);
+
+  Status SetDotLayout(const HloInstruction* instruction,
+                      LayoutConstraints* constraints);
 
   se::StreamExecutor* stream_executor_;
 };

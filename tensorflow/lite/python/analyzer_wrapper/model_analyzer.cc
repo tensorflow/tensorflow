@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -29,14 +30,58 @@ namespace tflite {
 namespace {
 
 const float kThreshold_zero_buffer_ratio = 10.0f;
+constexpr char kSectionSplitter[] =
+    "---------------------------------------------------------------\n";
+const int kMaxContentDumpCnt = 5;
+
+// Returns string representation of the given tensor data up to 5 elements.
+const std::string get_tensor_data_str(const tflite::Tensor* tensor,
+                                      const tflite::Model* model) {
+  std::stringstream ss;
+  auto buffer_idx = tensor->buffer();
+  if (buffer_idx != 0 && buffer_idx < model->buffers()->size()) {
+    auto* buffer = model->buffers()->Get(buffer_idx);
+    if (buffer->data() == nullptr) {
+      return "";
+    }
+    ss << "[";
+    if (buffer->data()->size() != 0) {
+      if (tensor->type() == tflite::TensorType_INT32) {
+        auto data = reinterpret_cast<const int32_t*>(buffer->data()->data());
+        int data_cnt = buffer->data()->size() / sizeof(int32_t);
+        for (int i = 0; i < std::min(kMaxContentDumpCnt, data_cnt); ++i) {
+          ss << data[i];
+          if (i != data_cnt - 1) {
+            ss << ", ";
+          }
+        }
+        if (data_cnt > kMaxContentDumpCnt) {
+          ss << "...";
+        }
+      }
+    }
+    ss << "]";
+  }
+  return ss.str();
+}
 
 // Returns string representation of the given tensor of the subgraph.
-const std::string tensor_str(const int tensor_idx, const int subgraph_idx) {
+const std::string tensor_str(const int tensor_idx, const int subgraph_idx,
+                             const tflite::Model* model = nullptr) {
   std::stringstream ss;
   if (subgraph_idx != 0 && tensor_idx != -1)
     ss << "T#" << subgraph_idx << "_" << tensor_idx;
   else
     ss << "T#" << tensor_idx;
+  if (model && tensor_idx != -1) {
+    const SubGraph* subgraph = model->subgraphs()->Get(subgraph_idx);
+    if (subgraph) {
+      auto tensor = subgraph->tensors()->Get(tensor_idx);
+      if (tensor) {
+        ss << get_tensor_data_str(tensor, model);
+      }
+    }
+  }
   return ss.str();
 }
 
@@ -71,7 +116,7 @@ void dump_tensor_detail(std::stringstream& out_stream,
       }
     }
     out_stream << "]";
-  } else {
+  } else if (tensor->shape()) {
     out_stream << "shape:[";
     for (int i = 0; i < tensor->shape()->Length(); ++i) {
       const int j = tensor->shape()->Get(i);
@@ -81,6 +126,8 @@ void dump_tensor_detail(std::stringstream& out_stream,
       }
     }
     out_stream << "]";
+  } else {
+    out_stream << "shape:n/a";
   }
   out_stream << ", type:" << EnumNameTensorType(tensor->type());
 
@@ -90,6 +137,7 @@ void dump_tensor_detail(std::stringstream& out_stream,
     auto* buffer = model->buffers()->Get(buffer_idx);
     if (buffer->data() && buffer->data()->size() != 0) {
       out_stream << " RO " << buffer->data()->size() << " bytes";
+      out_stream << ", data:" << get_tensor_data_str(tensor, model);
       stats->buffer_usage[subgraph_idx] += buffer->data()->size();
     }
   }
@@ -99,13 +147,18 @@ void dump_tensor_detail(std::stringstream& out_stream,
 // Dump list of input or output tensors.
 void dump_tensor_list(std::stringstream& out_stream,
                       const flatbuffers::Vector<int32_t>* tensors,
-                      const int subgraph_idx, bool verbose = false) {
+                      const int subgraph_idx,
+                      const tflite::Model* model = nullptr,
+                      bool verbose = false) {
+  if (tensors == nullptr) {
+    return;
+  }
   for (int i = 0; i < tensors->Length(); ++i) {
     const int tensor_idx = tensors->Get(i);
     if (verbose) {
       out_stream << "tensor #" << tensor_idx;
     } else {
-      out_stream << tensor_str(tensor_idx, subgraph_idx);
+      out_stream << tensor_str(tensor_idx, subgraph_idx, model);
     }
     if (i != tensors->Length() - 1) {
       if (verbose) {
@@ -130,10 +183,10 @@ const std::string get_op_name(const OperatorCode* op_code) {
 // Dump the given Operator node.
 void dump_node(std::stringstream& out_stream, const int node_no,
                const OperatorCode* op_code, const Operator* op,
-               const int subgraph_index) {
+               const int subgraph_index, const ::tflite::Model* model) {
   out_stream << "Op#" << node_no << " " << get_op_name(op_code);
   out_stream << "(";
-  dump_tensor_list(out_stream, op->inputs(), subgraph_index);
+  dump_tensor_list(out_stream, op->inputs(), subgraph_index, model);
   if (GetBuiltinCode(op_code) == BuiltinOperator_CALL_ONCE) {
     out_stream << subgraph_str(
         op->builtin_options_as_CallOnceOptions()->init_subgraph_index());
@@ -163,8 +216,8 @@ void dump_model_summary(std::stringstream& out_stream,
                         const ::tflite::Model* model) {
   auto* subgraphs = model->subgraphs();
   out_stream
-      << "Your TFLite model has ‘" << subgraphs->Length()
-      << "’ subgraph(s). In the subgraph description below,\nT# represents the "
+      << "Your TFLite model has '" << subgraphs->Length()
+      << "' subgraph(s). In the subgraph description below,\nT# represents the "
          "Tensor numbers. ";
   if (subgraphs->Length() > 0 && subgraphs->Get(0)->operators()->Length() > 0) {
     const Operator* first_op = subgraphs->Get(0)->operators()->Get(0);
@@ -172,10 +225,48 @@ void dump_model_summary(std::stringstream& out_stream,
         model->operator_codes()->Get(first_op->opcode_index());
     out_stream << "For example, in " << subgraph_str(0) << ", the "
                << get_op_name(first_op_code) << " op takes\n";
-    dump_tensor_list(out_stream, first_op->inputs(), 0, /*verbose=*/true);
+    dump_tensor_list(out_stream, first_op->inputs(), 0, nullptr,
+                     /*verbose=*/true);
     out_stream << " as input and produces ";
-    dump_tensor_list(out_stream, first_op->outputs(), 0, /*verbose=*/true);
+    dump_tensor_list(out_stream, first_op->outputs(), 0, nullptr,
+                     /*verbose=*/true);
     out_stream << " as output.\n\n";
+  }
+}
+
+// Dump the signature definitions of the given TFLite flatbuffer model.
+void dump_model_signature_defs(std::stringstream& out_stream,
+                               const ::tflite::Model* model) {
+  auto* signatures = model->signature_defs();
+  if (signatures == nullptr || signatures->Length() == 0) {
+    return;
+  }
+  out_stream << kSectionSplitter;
+  out_stream << "Your TFLite model has '" << signatures->Length()
+             << "' signature_def(s).\n\n";
+  for (int i = 0; i < signatures->Length(); ++i) {
+    auto* signature_def = signatures->Get(i);
+    out_stream << "Signature#" << i << " key: '"
+               << signature_def->signature_key()->str() << "'\n";
+    out_stream << "- Subgraph: "
+               << subgraph_str(signature_def->subgraph_index()) << "\n";
+    out_stream << "- Inputs: \n";
+    for (int j = 0; j < signature_def->inputs()->Length(); ++j) {
+      auto* input = signature_def->inputs()->Get(j);
+      out_stream << "    '" << input->name()->str() << "' : "
+                 << tensor_str(input->tensor_index(),
+                               signature_def->subgraph_index())
+                 << "\n";
+    }
+    out_stream << "- Outputs: \n";
+    for (int j = 0; j < signature_def->outputs()->Length(); ++j) {
+      auto* output = signature_def->outputs()->Get(j);
+      out_stream << "    '" << output->name()->str() << "' : "
+                 << tensor_str(output->tensor_index(),
+                               signature_def->subgraph_index())
+                 << "\n";
+    }
+    out_stream << "\n";
   }
 }
 
@@ -206,7 +297,7 @@ void dump_model_stats(std::stringstream& out_stream,
     total_buffer_size += buffer->data()->size();
   }
 
-  out_stream << "\n";
+  out_stream << kSectionSplitter;
   char temp[2048];
   snprintf(temp, sizeof(temp), "%24s: %10zu bytes\n", "Model size", model_size);
   out_stream << temp;
@@ -316,7 +407,7 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
       const OperatorCode* op_code =
           model->operator_codes()->Get(op->opcode_index());
       out_stream << "  ";  // indents for operators
-      dump_node(out_stream, /*node_no=*/j, op_code, op, i);
+      dump_node(out_stream, /*node_no=*/j, op_code, op, i, model);
       if (check_gpu_compatibility) {
         auto status =
             CheckGpuDelegateCompatibility(op_code, op, subgraph, model);
@@ -354,6 +445,7 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
            "delegate.\nThere could be some runtime incompatibililty happen.\n";
   }
 
+  dump_model_signature_defs(out_stream, model);
   dump_model_stats(out_stream, model, fb_model->allocation()->bytes(), &stats);
 
   return out_stream.str();

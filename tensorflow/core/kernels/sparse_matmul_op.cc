@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -66,7 +67,6 @@ using DSizes = Eigen::DSizes<Eigen::DenseIndex, 2>;
 
 // Two commonly used static dsizes. We use Eigen::type2index to allow as much
 // compile time optimization as possible.
-#ifdef EIGEN_HAS_INDEX_LIST
 inline Eigen::IndexList<Eigen::type2index<0>, Eigen::type2index<0>>
 dsizes_00() {
   return Eigen::IndexList<Eigen::type2index<0>, Eigen::type2index<0>>();
@@ -75,10 +75,6 @@ inline Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<0>>
 dsizes_10() {
   return Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<0>>();
 }
-#else
-inline DSizes dsizes_00() { return DSizes(0, 0); }
-inline DSizes dsizes_10() { return DSizes(1, 0); }
-#endif
 
 // Blocksizes
 // TODO(agarwal): compute these sizes based on cache sizes.
@@ -980,8 +976,17 @@ class SparseMatMulOp : public OpKernel {
                 errors::InvalidArgument(
                     "Matrix size incompatible: a: ", a.shape().DebugString(),
                     ", b: ", b.shape().DebugString()));
+    OP_REQUIRES(ctx, m >= 0 && n >= 0 && k >= 0,
+                errors::InvalidArgument(
+                    "Matrix dimensions cannot be negative: a: ",
+                    a.shape().DebugString(), ", b: ", b.shape().DebugString()));
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({m, n}), &output));
+
+    // Return early if at least one of the output dimension size is 0.
+    if (m == 0 || n == 0) {
+      return;
+    }
 
     if (k == 0) {
       // If the inner dimension k in the matrix multiplication is zero, we fill

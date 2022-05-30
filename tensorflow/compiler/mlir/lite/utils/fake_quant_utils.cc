@@ -25,7 +25,7 @@ namespace TFL {
 
 // Moves the TF operations out from the tfl.TFCustomOps wrappers inside the
 // function. This is a no-op for the ops which are not wrapped.
-LogicalResult UnwrapTFCustomOps(FuncOp fn, OpBuilder& builder) {
+LogicalResult UnwrapTFCustomOps(func::FuncOp fn, OpBuilder& builder) {
   llvm::SmallVector<Operation*, 4> wrapped_ops;
   fn.walk([&](TFL::CustomTfOp custom_op) {
     auto* real_op = &custom_op.body().front().front();
@@ -42,7 +42,7 @@ LogicalResult UnwrapTFCustomOps(FuncOp fn, OpBuilder& builder) {
     OperationState state(op->getLoc(), op->getName().getStringRef(),
                          parent_op->getOperands(), parent_op->getResultTypes(),
                          op->getAttrs(), op->getSuccessors());
-    Operation* inlined = builder.createOperation(state);
+    Operation* inlined = builder.create(state);
 
     parent_op->replaceAllUsesWith(inlined);
     parent_op->erase();
@@ -67,7 +67,8 @@ using PreparePerTensorFakeQuantWithMinMaxArgs =
 
 // Removes the wrapper of the tf.FakeQuant* ops and creates the tfl.quantize
 // and tfl.dequantize pairs before tf.FakeQuant* being foled.
-LogicalResult ConvertFakeQuantOps(FuncOp func, MLIRContext* ctx) {
+LogicalResult ConvertFakeQuantOps(func::FuncOp func, MLIRContext* ctx,
+                                  bool use_fake_quant_num_bits) {
   OpBuilder builder(func);
   if (failed(UnwrapTFCustomOps(func, builder))) {
     return failure();
@@ -77,15 +78,17 @@ LogicalResult ConvertFakeQuantOps(FuncOp func, MLIRContext* ctx) {
   // preserve the quantization parameters.
   func.walk([&](Operation* op) {
     if (auto fake_quant = llvm::dyn_cast<TF::FakeQuantWithMinMaxArgsOp>(op)) {
-      (void)PreparePerTensorFakeQuantWithMinMaxArgs().matchAndRewrite(
-          fake_quant, builder);
+      (void)PreparePerTensorFakeQuantWithMinMaxArgs(use_fake_quant_num_bits)
+          .matchAndRewrite(fake_quant, builder);
     } else if (auto fake_quant =
                    llvm::dyn_cast<TF::FakeQuantWithMinMaxVarsOp>(op)) {
-      (void)PreparePerTensorFakeQuant().matchAndRewrite(fake_quant, builder);
+      (void)PreparePerTensorFakeQuant(use_fake_quant_num_bits)
+          .matchAndRewrite(fake_quant, builder);
     } else if (auto fake_quant =
                    llvm::dyn_cast<TF::FakeQuantWithMinMaxVarsPerChannelOp>(
                        op)) {
-      (void)PreparePerChannelFakeQuant().matchAndRewrite(fake_quant, builder);
+      (void)PreparePerChannelFakeQuant(use_fake_quant_num_bits)
+          .matchAndRewrite(fake_quant, builder);
     }
   });
 

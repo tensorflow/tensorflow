@@ -3806,7 +3806,7 @@ def batch_set_value(tuples):
       tuples: a list of tuples `(tensor, value)`.
           `value` should be a Numpy array.
   """
-  if ops.executing_eagerly_outside_functions():
+  if context.executing_eagerly() or ops.inside_function():
     for x, value in tuples:
       x.assign(np.asarray(value, dtype=dtype_numpy(x)))
   else:
@@ -3853,10 +3853,9 @@ def print_tensor(x, message='', summarize=3):
   Example:
 
   >>> x = tf.constant([[1.0, 2.0], [3.0, 4.0]])
-  >>> tf.keras.backend.print_tensor(x)
-  <tf.Tensor: shape=(2, 2), dtype=float32, numpy=
-    array([[1., 2.],
-           [3., 4.]], dtype=float32)>
+  >>> _ = tf.keras.backend.print_tensor(x)
+  [[1 2]
+   [3 4]]
 
   Args:
       x: Tensor to print.

@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
@@ -28,15 +29,15 @@ namespace tf_framework {
 namespace {
 
 // Prepends argument type list of the function with an OpKernelContextType arg.
-class FuncOpConverter : public OpConversionPattern<FuncOp> {
+class FuncOpConverter : public OpConversionPattern<func::FuncOp> {
  public:
-  using OpConversionPattern<FuncOp>::OpConversionPattern;
+  using OpConversionPattern<func::FuncOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      FuncOp func, OpAdaptor /*adaptor*/,
+      func::FuncOp func, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
     // Convert function arguments using the provided TypeConverter.
-    auto func_type = func.getType();
+    auto func_type = func.getFunctionType();
     TypeConverter::SignatureConversion conversion(func_type.getNumInputs());
 
     conversion.addInputs(OpKernelContextType::get(rewriter.getContext()));
@@ -56,7 +57,7 @@ class FuncOpConverter : public OpConversionPattern<FuncOp> {
 };
 
 llvm::Optional<Value> FindOpKernelContext(Operation *op) {
-  auto func = op->getParentOfType<FuncOp>();
+  auto func = op->getParentOfType<func::FuncOp>();
   if (func.getNumArguments() == 0) {
     return llvm::None;
   }
@@ -112,7 +113,7 @@ struct DeallocOpConverter : public OpConversionPattern<memref::DeallocOp> {
 
     // Operand with no layout is expected.
     auto operand_memref_type = dealloc.memref().getType().cast<MemRefType>();
-    if (!operand_memref_type.getAffineMaps().empty()) {
+    if (!operand_memref_type.getLayout().isIdentity()) {
       return failure();
     }
     rewriter.replaceOpWithNewOp<TFDeallocOp>(dealloc, *ctx, adaptor.memref());
@@ -122,18 +123,18 @@ struct DeallocOpConverter : public OpConversionPattern<memref::DeallocOp> {
 
 // Converts std.assert to tf_framework.assert with using OpKernelContextType
 // arg of the parent function.
-struct AssertOpConverter : public OpConversionPattern<AssertOp> {
+struct AssertOpConverter : public OpConversionPattern<cf::AssertOp> {
  public:
-  using OpConversionPattern<AssertOp>::OpConversionPattern;
+  using OpConversionPattern<cf::AssertOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      AssertOp op, OpAdaptor adaptor,
+      cf::AssertOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     llvm::Optional<Value> ctx = FindOpKernelContext(op);
     if (!ctx) return failure();
-    rewriter.replaceOpWithNewOp<TFAssertOp>(op, *ctx, adaptor.arg(),
+    rewriter.replaceOpWithNewOp<TFAssertOp>(op, *ctx, adaptor.getArg(),
                                             ErrorCode::INVALID_ARGUMENT,
-                                            adaptor.msg().getValue());
+                                            adaptor.getMsg());
     return success();
   }
 };
@@ -173,12 +174,12 @@ struct JITCompileFromStrOpConverter
 }  // namespace
 
 void PopulateEmbedTFFrameworkAssertPattern(RewritePatternSet *patterns) {
-  patterns->insert<AssertOpConverter>(patterns->getContext());
+  patterns->add<AssertOpConverter>(patterns->getContext());
 }
 
 void PopulateEmbedTFFrameworkPatterns(RewritePatternSet *patterns) {
   // clang-format off
-  patterns->insert<
+  patterns->add<
       AllocOpConverter,
       AssertOpConverter,
       DeallocOpConverter,

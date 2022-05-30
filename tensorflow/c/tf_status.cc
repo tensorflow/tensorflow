@@ -15,13 +15,14 @@ limitations under the License.
 
 #include "tensorflow/c/tf_status.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/c/tf_status_internal.h"
-#include "tensorflow/core/platform/error.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 
-using ::tensorflow::IOError;
 using ::tensorflow::Status;
 using ::tensorflow::error::Code;
+using ::tensorflow::errors::IOError;
 
 TF_Status* TF_NewStatus() { return new TF_Status; }
 
@@ -36,12 +37,12 @@ void TF_SetStatus(TF_Status* s, TF_Code code, const char* msg) {
 }
 
 void TF_SetPayload(TF_Status* s, const char* key, const char* value) {
-  s->status.SetPayload(key, value);
+  s->status.SetPayload(key, absl::Cord(absl::string_view(value)));
 }
 
 void TF_SetStatusFromIOError(TF_Status* s, int error_code,
                              const char* context) {
-  // TODO(mihaimaruseac): Handle windows when changing its filesystem
+  // TODO(b/139060984): Handle windows when changing its filesystem
   s->status = IOError(context, error_code);
 }
 

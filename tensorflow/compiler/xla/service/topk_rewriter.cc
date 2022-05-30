@@ -36,7 +36,7 @@ static bool IsNanSafeGt(HloComputation* comp) {
     return m::Select(
         m::Lt(param_s32, m::ConstantScalar(0)),
         m::BitcastConvert(
-            m::Subtract(m::ConstantScalar(std::numeric_limits<int32>::max()),
+            m::Subtract(m::ConstantScalar(std::numeric_limits<int32_t>::max()),
                         param_u32))
             .WithShape(m::Shape().WithElementType(S32)),
         param_s32);
@@ -50,7 +50,7 @@ static bool IsNanSafeGt(HloComputation* comp) {
     auto param_u32 =
         m::BitcastConvert(param).WithShape(m::Shape().WithElementType(U32));
     auto max_u32 =
-        m::Convert(m::ConstantScalar(std::numeric_limits<int32>::max()))
+        m::Convert(m::ConstantScalar(std::numeric_limits<int32_t>::max()))
             .WithShape(m::Shape().WithElementType(U32));
     return m::Select(m::Lt(param_s32, m::ConstantScalar(0)),
                      m::BitcastConvert(m::Subtract(max_u32, param_u32))
@@ -69,7 +69,7 @@ static bool IsNanSafeGt(HloComputation* comp) {
     return m::Select(
         m::Lt(param_s32, m::ConstantScalar(0)),
         m::BitcastConvert(
-            m::Subtract(m::ConstantScalar(std::numeric_limits<int32>::max()),
+            m::Subtract(m::ConstantScalar(std::numeric_limits<int32_t>::max()),
                         param_u32))
             .WithShape(m::Shape().WithElementType(S32)),
         param_s32);
@@ -84,12 +84,18 @@ static bool IsNanSafeGt(HloComputation* comp) {
     auto param_u32 =
         m::BitcastConvert(param).WithShape(m::Shape().WithElementType(U32));
     auto max_u32 =
-        m::Convert(m::ConstantScalar(std::numeric_limits<int32>::max()))
+        m::Convert(m::ConstantScalar(std::numeric_limits<int32_t>::max()))
             .WithShape(m::Shape().WithElementType(U32));
     return m::Select(m::Lt(param_s32, m::ConstantScalar(0)),
                      m::BitcastConvert(m::Subtract(max_u32, param_u32))
                          .WithShape(m::Shape().WithElementType(S32)),
                      param_s32);
+  };
+
+  auto match_s32 = [](int64_t parameter_number) {
+    auto param = m::Parameter(parameter_number)
+                     .WithShape(m::Shape().WithElementType(S32));
+    return param;
   };
 
   return Match(comp->root_instruction(),
@@ -101,7 +107,8 @@ static bool IsNanSafeGt(HloComputation* comp) {
                      match_bitcast_f32_with_convert(1))) ||
          Match(comp->root_instruction(),
                m::Gt(match_bitcast_bf16_with_convert(0),
-                     match_bitcast_bf16_with_convert(1)));
+                     match_bitcast_bf16_with_convert(1))) ||
+         Match(comp->root_instruction(), m::Gt(match_s32(0), match_s32(1)));
 }
 
 absl::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {

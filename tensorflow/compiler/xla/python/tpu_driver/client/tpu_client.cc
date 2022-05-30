@@ -15,15 +15,19 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/tpu_driver/client/tpu_client.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/semaphore.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -45,6 +49,12 @@ TpuDevice::TpuDevice(int id, int process_index,
 std::string TpuDevice::DebugString() const {
   return absl::StrFormat("TPU_%i(host=%i,(%i,%i,%i,%i))", id(), process_index(),
                          coords_[0], coords_[1], coords_[2], core_on_chip_);
+}
+
+std::string TpuDevice::ToString() const {
+  return absl::StrFormat(
+      "TpuDevice(id=%i, process_index=%i, coords=(%s), core_on_chip=%i)", id(),
+      process_index(), absl::StrJoin(coords(), ","), core_on_chip());
 }
 
 xla::StatusOr<std::vector<std::shared_ptr<xla::PjRtDevice>>>
@@ -81,7 +91,7 @@ StatusOr<std::shared_ptr<PyTpuClient>> PyTpuClient::Get(
   TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<PjRtDevice>> devices,
                       TpuDevice::GetTpuDevices(system_info));
 
-  return std::make_shared<PyTpuClient>(kTpuPlatform, std::move(client),
+  return std::make_shared<PyTpuClient>(TpuPlatform(), std::move(client),
                                        std::move(devices),
                                        system_info.host_id());
 }
@@ -166,7 +176,7 @@ static Status CheckDataType(xla::PrimitiveType dtype) {
       dtype == xla::PrimitiveType::U64) {
     return InvalidArgument(
         "64-bit data types are not yet supported on the TPU driver API. "
-        "Convert inputs to float32/int32 before using.");
+        "Convert inputs to float32/int32_t before using.");
   }
   return Status::OK();
 }
@@ -863,6 +873,19 @@ PyTpuExecutable::ExecuteShardedOnLocalDevices(
   return absl::make_unique<PyTpuExecutable>(
       std::move(compiled_program), std::move(*device_assignment),
       std::move(client), std::move(result_layout), tuple_arguments);
+}
+
+/*static*/ StatusOr<std::unique_ptr<PyTpuExecutable>>
+PyTpuExecutable::CompileMlir(
+    mlir::ModuleOp module, absl::optional<std::vector<Shape>> argument_layouts,
+    const ExecutableBuildOptions* build_options,
+    std::shared_ptr<PyTpuClient> client, bool tuple_arguments) {
+  XlaComputation xla_computation;
+  TF_RETURN_IF_ERROR(MlirToXlaComputation(module, xla_computation,
+                                          /*use_tuple_args=*/tuple_arguments,
+                                          /*return_tuple=*/false));
+  return Compile(xla_computation, argument_layouts, build_options, client,
+                 tuple_arguments);
 }
 
 }  // namespace xla

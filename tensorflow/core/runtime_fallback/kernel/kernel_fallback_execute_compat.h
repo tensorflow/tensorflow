@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
-#include "tensorflow/core/tfrt/utils/model_metadata.h"
+#include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tfrt/core_runtime/op_attrs.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
@@ -39,21 +39,28 @@ class SyncKernelFrame;
 namespace tensorflow {
 namespace tfd {
 
-// `builder`, `eager_context`, and `pflr` can't be null.
+ABSL_CONST_INIT extern const char kOpKernelRunnerCacheResourceName[];
+
+// Set up fallback context with common tensorflow states such as devices,
+// function library runtime. They will be forwarded to tensorflow::OpKernel as
+// in tensorflow::Executor. If `runner` is nullptr, internally it will use a
+// default runner that executes tasks in the caller thread.
 Status SetUpKernelFallbackCompatRequestContext(
     tfrt::RequestContextBuilder* builder,
     const tensorflow::DeviceMgr* device_manager,
     const tensorflow::ProcessFunctionLibraryRuntime* pflr,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr,
-    const absl::optional<tfrt::ModelMetadata>& model_metadata = absl::nullopt);
+    const absl::optional<SessionMetadata>& model_metadata = absl::nullopt,
+    std::function<void(std::function<void()>)>* runner = nullptr);
 
 // Runner_table can be nullptr. In that case, kernel_fallback will use
 // the default runner_table.
 Status SetUpKernelFallbackCompatRequestContext(
-    tfrt::RequestContextBuilder* builder, OpKernelRunnerTable* runner_table,
+    tfrt::RequestContextBuilder* builder,
+    tfrt_stub::OpKernelRunnerTable* runner_table,
     tensorflow::EagerContext* eager_context,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr,
-    const absl::optional<tfrt::ModelMetadata>& model_metadata = absl::nullopt);
+    const absl::optional<SessionMetadata>& model_metadata = absl::nullopt);
 
 // The CoreRuntime dispatch function to run a TF kernel in kernel fallback
 // compat mode.
@@ -61,11 +68,8 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
     const tfrt::ExecutionContext& exec_ctx, tfrt::string_view op_name,
     tfrt::string_view device_name, llvm::ArrayRef<tfrt::Tensor*> arguments,
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results,
-    const tfrt::OpAttrsRef& attrs);
-
-// TODO(tfrt-devs): Consider moving following method to a separate file.
-llvm::Expected<Device*> GetTfDevice(const tfrt::ExecutionContext& exec_ctx,
-                                    const tfrt::Device& device);
+    const KernelFallbackCompatRequestState& fallback_request_state,
+    const tfrt_stub::OpKernelRunner& op_kernel_runner);
 
 }  // namespace tfd
 }  // namespace tensorflow

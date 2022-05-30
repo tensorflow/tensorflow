@@ -43,11 +43,9 @@ class RewriteQuantizedIOPass
 };
 
 void RewriteQuantizedIOPass::runOnOperation() {
-  void runOnOperation();
-
   ModuleOp module = getOperation();
   OpBuilder builder(module);
-  module.walk([&](FuncOp func) {
+  module.walk([&](func::FuncOp func) {
     Block& block = func.front();
     Operation* terminator = block.getTerminator();
 

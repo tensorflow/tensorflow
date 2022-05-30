@@ -24,7 +24,8 @@ namespace xla {
 namespace {
 
 namespace op = xla::testing::opcode_matchers;
-using memory_space_assignment::AsynchronousCopyOrdering;
+using memory_space_assignment::AsynchronousCopy;
+using memory_space_assignment::AsynchronousCopyResource;
 using memory_space_assignment::CostAnalysisPrefetchIntervalPicker;
 using memory_space_assignment::InstructionCountPrefetchIntervalPicker;
 using memory_space_assignment::MemorySpaceAssignment;
@@ -55,10 +56,11 @@ class MemorySpaceAssignmentTest : public HloTestBase,
   std::unique_ptr<PresetAssignments> AssignMemorySpaceUsingCostAnalysis(
       HloModule* module,
       absl::optional<Options> memory_space_assignment_options = absl::nullopt) {
-    HloCostAnalysis hlo_cost_analysis(ShapeSize);
-    hlo_cost_analysis.set_flops_per_second(kFlopsPerSecond);
-    hlo_cost_analysis.set_bytes_per_second(kBytesPerSecond);
-    hlo_cost_analysis.set_transcendentals_per_second(kTranscendentalsPerSecond);
+    HloCostAnalysis::Options cost_options{ShapeSize};
+    cost_options.set_flops_per_second(kFlopsPerSecond);
+    cost_options.set_bytes_per_second(kBytesPerSecond);
+    cost_options.set_transcendentals_per_second(kTranscendentalsPerSecond);
+    HloCostAnalysis hlo_cost_analysis(cost_options);
     for (HloComputation* computation : module->MakeNonfusionComputations()) {
       TF_CHECK_OK(computation->Accept(&hlo_cost_analysis));
     }
@@ -76,10 +78,10 @@ class MemorySpaceAssignmentTest : public HloTestBase,
                              .ValueOrDie();
     CostAnalysisPrefetchIntervalPicker prefetch_interval_picker(
         CostAnalysisPrefetchIntervalPicker(
-            *cost_analysis, /*min_async_copy_to_overlap_ratio=*/0.8,
-            /*max_async_copy_to_overlap_ratio=*/10.0,
-            /*preferred_async_copy_to_overlap_ratio=*/1.5,
-            /*buffer_size_for_max_async_copy=*/0));
+            *cost_analysis, /*min_overlap_to_async_copy_ratio=*/0.8,
+            /*preferred_overlap_to_async_copy_ratio=*/1.5,
+            /*max_overlap_to_mem_size_async_copy_ratio=*/10.0,
+            /*mem_size_bytes=*/128));
     return AssignMemorySpace(
         module, /*max_outstanding_async_copies=*/-1,
         MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
@@ -91,6 +93,7 @@ class MemorySpaceAssignmentTest : public HloTestBase,
       HloModule* module, int64_t max_outstanding_async_copies = -1,
       int64_t max_prefetch_interval = 10, int64_t min_prefetch_interval = 2,
       absl::optional<Options> options = absl::nullopt) {
+    MemorySpaceAssignmentUtils::HoistParameters(*module);
     MemorySpaceAssignmentUtils::HoistConstantOperations(*module);
     InstructionCountPrefetchIntervalPicker prefetch_interval_picker(
         min_prefetch_interval, max_prefetch_interval);
@@ -168,6 +171,7 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     if (check_parameters_in_default_memory) {
       CheckParametersInDefaultMemory(module);
     }
+    CheckRootInDefaultMemory(module);
     CheckPresetAssignments(preset_assignments.get());
     return preset_assignments;
   }
@@ -207,6 +211,15 @@ class MemorySpaceAssignmentTest : public HloTestBase,
             }
           });
     }
+  }
+
+  void CheckRootInDefaultMemory(const HloModule* module) {
+    EXPECT_EQ(module->entry_computation()
+                  ->root_instruction()
+                  ->shape()
+                  .layout()
+                  .memory_space(),
+              kDefaultMemorySpace);
   }
 
   struct OutstandingAsyncCopies {
@@ -1317,34 +1330,6 @@ TEST_P(MemorySpaceAssignmentTest, BitcastScheduleBug) {
   }
 }
 
-TEST_P(MemorySpaceAssignmentTest, TupleSelect) {
-  // Make sure tuple-select is not optimized away.
-  absl::string_view hlo_string = R"(
-  HloModule tuple, is_scheduled=true
-
-  ENTRY %main (a: f32[2], b: f32[2], c: f32[2], d: f32[2], cond: pred[]) -> f32[2] {
-    %cond = pred[]{:T(128)E(32)} parameter(4)
-    %token0 = token[] after-all()
-    %d = f32[2]{0:T(128)} parameter(3)
-    %c = f32[2]{0:T(128)} parameter(2)
-    %b = f32[2]{0:T(128)} parameter(1)
-    %a = f32[2]{0:T(128)} parameter(0)
-    %tup0 = (f32[2]{0:T(128)}, f32[2]{0:T(128)}) tuple(f32[2]{0:T(128)} %a, f32[2]{0:T(128)} %b)
-    %tup1 = (f32[2]{0:T(128)}, f32[2]{0:T(128)}) tuple(f32[2]{0:T(128)} %c, f32[2]{0:T(128)} %d)
-    %s = (f32[2]{0:T(128)}, f32[2]{0:T(128)}) tuple-select(pred[]{:T(128)E(32)} %cond, (f32[2]{0:T(128)}, f32[2]{0:T(128)}) %tup0, (f32[2]{0:T(128)}, f32[2]{0:T(128)}) %tup1)
-    %gte = f32[2]{0:T(128)} get-tuple-element((f32[2]{0:T(128)}, f32[2]{0:T(128)}) %s), index=0
-    ROOT %negate = f32[2]{0:T(128)} negate(f32[2]{0:T(128)} %gte)
-  }
-  )";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  AssignMemorySpace(module.get());
-
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Negate(op::GetTupleElement(op::TupleSelect())));
-}
-
 TEST_P(MemorySpaceAssignmentTest, AddDependency) {
   // Make sure add-dependency is not optimized away.
   absl::string_view hlo_string = R"(
@@ -1785,13 +1770,6 @@ TEST_P(MemorySpaceAssignmentTest, WhileCondAliasBug) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
-  // Expect the output to have default memory space.
-  EXPECT_EQ(module->entry_computation()
-                ->root_instruction()
-                ->shape()
-                .layout()
-                .memory_space(),
-            kDefaultMemorySpace);
 }
 
 TEST_P(MemorySpaceAssignmentTest, WhileInPlaceBuffer) {
@@ -1897,6 +1875,34 @@ TEST_P(MemorySpaceAssignmentTest, WhileSharedBufferVerificationBug) {
     while = (f32[3]{0}, f32[3]{0}, f32[3]{0}, pred[]) while(tuple), condition=while_cond, body=while_body
     ROOT gte = f32[3]{0} get-tuple-element(while), index=2
   }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+}
+
+TEST_P(MemorySpaceAssignmentTest, b228599972) {
+  absl::string_view hlo_string = R"(
+HloModule entry, is_scheduled=true
+
+fused_computation {
+  %p0 = f32[2,3]{1,0} parameter(0)
+  %result0 = f32[2,3]{1,0} copy(%p0)
+  %result1 = f32[2,3]{1,0} copy(%p0)
+  ROOT tuple = (f32[2,3]{1,0}, f32[2,3]{1,0}) tuple(%result0, %result1)
+}
+
+ENTRY entry {
+  %p0 = f32[2,3]{1,0} parameter(0)
+  %p1 = f32[2,3]{1,0} parameter(1)
+  %unused = (f32[2,3]{1,0}, f32[2,3]{1,0}) fusion(%p0), kind=kLoop, calls=%fused_computation
+  %unused.0 = f32[2,3]{1,0} get-tuple-element(%unused), index=0
+  %unused.1 = f32[2,3]{1,0} get-tuple-element(%unused), index=1
+  %negate.0 = f32[2,3]{1,0} negate(f32[2,3]{1,0} %unused.0)
+  %negate.1 = f32[2,3]{1,0} negate(f32[2,3]{1,0} %unused.1)
+
+  ROOT %result = f32[2,3]{1,0} negate(%p1)
+}
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -2372,6 +2378,54 @@ TEST_P(MemorySpaceAssignmentTest, NestedConditionalBufferReuseVerificationBug) {
 }
 
 TEST_P(MemorySpaceAssignmentTest,
+       ConditionalComputationBufferOverlapBeforeParam) {
+  absl::string_view hlo_string = R"(
+  HloModule CondAllocation, is_scheduled=true
+
+  true_computation {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    ROOT neg2 = f32[3]{0} negate(gte)
+  }
+
+  false_computation {
+    c = f32[3]{0} constant({0.0, 1.0, 2.0})
+    neg0 = f32[3]{0} negate(c)
+    neg1 = f32[3]{0} negate(neg0)
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    ROOT add = f32[3]{0} add(gte, neg1)
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = pred[] parameter(1)
+    copy = f32[3]{0} copy(p0)
+    tuple = (f32[3]{0}) tuple(copy)
+    ROOT conditional = f32[3]{0} conditional(p1, tuple, tuple), true_computation=true_computation, false_computation=false_computation
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto preset_assignments = AssignMemorySpace(module.get());
+
+  auto get_offset = [&](absl::string_view hlo_name) {
+    for (const auto& chunk : preset_assignments->chunks()) {
+      if (chunk.first.instruction->name() == hlo_name) {
+        return chunk.second.offset;
+      }
+    }
+    return static_cast<int64_t>(-1);
+  };
+
+  int64_t copy_offset = get_offset("copy");
+  int64_t neg0_offset = get_offset("neg0");
+  EXPECT_NE(copy_offset, -1);
+  EXPECT_NE(neg0_offset, -1);
+  EXPECT_NE(copy_offset, neg0_offset);
+}
+
+TEST_P(MemorySpaceAssignmentTest,
        RequestIdentifierShouldNotBeAllocatedInAlternateMem) {
   // Ensure that request identifier returned by Send/Recv HLOs are not allocated
   // in the alternate memory.
@@ -2519,121 +2573,6 @@ TEST_P(MemorySpaceAssignmentTest, LastUseOpt) {
           op::Subtract(op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
                                      op::Parameter(0)),
                        op::Add(op::Parameter(0), op::Parameter(0)))));
-}
-
-TEST_P(MemorySpaceAssignmentTest, CopyOrdering) {
-  // Test to make sure the CopyStarts follow the same CopyDone order. The shapes
-  // are picked in increasing order to exploit the fact that heap simulator
-  // processes larger tensors first. This checks the ability of the compiler to
-  // reschedule:
-  //
-  //  CS1            CD1
-  //   +--------------+
-  //    +-----------+
-  //   CS2         CD2
-  //
-  // into:
-  //
-  //    CS1          CD1
-  //     +------------+
-  //    +-----------+
-  //   CS2         CD2
-  HloComputation::Builder builder(TestName());
-  Shape shape1 = ShapeUtil::MakeShape(F32, {2, 1});
-  Shape shape2 = ShapeUtil::MakeShape(F32, {2, 2});
-  Shape shape3 = ShapeUtil::MakeShape(F32, {2, 3});
-  Shape shape4 = ShapeUtil::MakeShape(F32, {2, 4});
-  PaddingConfig padding_config = MakeEdgePaddingConfig({{0, 0}, {0, 1}});
-  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape3, shape4});
-  HloInstruction* p0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape, "p"));
-  HloInstruction* p4 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(shape4, p0, 1));
-  HloInstruction* p3 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(shape3, p0, 0));
-  HloInstruction* p2 =
-      builder.AddInstruction(HloInstruction::CreateParameter(2, shape2, "p2"));
-  HloInstruction* p1 =
-      builder.AddInstruction(HloInstruction::CreateParameter(1, shape1, "p1"));
-  HloInstruction* negate0 = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, p1));
-  HloInstruction* negate1 = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate0));
-  HloInstruction* negate2 = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate1));
-  HloInstruction* negate3 = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate2));
-  HloInstruction* negate4 = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate3));
-  HloInstruction* negate5 = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate4));
-  HloInstruction* negate6 = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate5));
-  HloInstruction* padding_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::Zero(F32)));
-  HloInstruction* add1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, negate6, p1));
-  HloInstruction* padded_add1 = builder.AddInstruction(
-      HloInstruction::CreatePad(shape2, add1, padding_value, padding_config));
-  HloInstruction* add2 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape2, HloOpcode::kAdd, padded_add1, p2));
-  HloInstruction* padded_add2 = builder.AddInstruction(
-      HloInstruction::CreatePad(shape3, add2, padding_value, padding_config));
-  HloInstruction* negate7 = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape4, HloOpcode::kNegate, p4));
-  HloInstruction* add3 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape3, HloOpcode::kAdd, padded_add2, p3));
-  HloInstruction* padded_add3 = builder.AddInstruction(
-      HloInstruction::CreatePad(shape4, add3, padding_value, padding_config));
-  HloInstruction* add4 = builder.AddInstruction(HloInstruction::CreateBinary(
-      shape4, HloOpcode::kAdd, padded_add3, negate7));
-
-  auto module = CreateNewVerifiedModule();
-  HloComputation* computation = module->AddEntryComputation(builder.Build());
-
-  HloSchedule schedule(module.get());
-  schedule.set_sequence(computation, {p0,
-                                      p4,
-                                      p3,
-                                      p2,
-                                      p1,
-                                      negate0,
-                                      negate1,
-                                      negate2,
-                                      negate3,
-                                      negate4,
-                                      negate5,
-                                      negate6,
-                                      padding_value,
-                                      add1,
-                                      padded_add1,
-                                      add2,
-                                      padded_add2,
-                                      negate7,
-                                      add3,
-                                      padded_add3,
-                                      add4});
-  TF_CHECK_OK(module->set_schedule(schedule));
-
-  // Use a large max prefetch interval to force CopyStart/CopyDone right after
-  // the parameters.
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
-                    /*max_prefetch_interval=*/50);
-
-  // Iterate over the schedule to make sure CopyStart order and the
-  // corresponding CopyDone order match.
-  std::list<const HloInstruction*> copy_starts;
-  for (HloInstruction* instruction : module->schedule()
-                                         .sequence(module->entry_computation())
-                                         .instructions()) {
-    if (instruction->opcode() == HloOpcode::kCopyStart) {
-      copy_starts.push_back(instruction);
-    }
-    if (instruction->opcode() == HloOpcode::kCopyDone) {
-      EXPECT_EQ(copy_starts.front(), instruction->operand(0));
-      copy_starts.pop_front();
-    }
-  }
 }
 
 TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule1) {
@@ -4054,125 +3993,6 @@ TEST_P(MemorySpaceAssignmentTest, PendingChunkMemoryCorruptionBug) {
                     buffer_interval_compare, &prefetch_interval_picker);
 }
 
-TEST_P(MemorySpaceAssignmentTest, MoveCopyDoneEarlier) {
-  // This tests the case where an earlier placed smaller buffer may block a
-  // larger buffer due to asynchronous copy ordering. The smaller buffer (the
-  // operand of sin) will be placed first. The cos, whose operand is 3 times
-  // larger than sin's, needs longer time for the asynhronous copy. The cos is
-  // placed right after sin, leading to a copy ordering violation:
-  //
-  // param1------------------>CS----->CD->sin
-  // param0------------->CS------------------->CD->cos
-  //
-  // To fix this, we need to move copy done for cos earlier and ensure both of
-  // these buffers get alternate memory allocations:
-  //
-  // param1------------------>CS----->CD->sin
-  // param0-->CS------------------->CD------------>cos
-  absl::string_view hlo_string = R"(
-  HloModule module, is_scheduled=true
-
-  ENTRY Entry {
-    param0 = f32[8,3] parameter(0)
-    param1 = f32[2,4] parameter(1)
-    a = f32[2,4] negate(param1)
-    b = f32[2,4] negate(a)
-    c = f32[2,4] negate(b)
-    d = f32[2,4] negate(c)
-    e = f32[2,4] negate(d)
-    f = f32[2,4] negate(e)
-    g = f32[2,4] negate(f)
-    h = f32[2,4] negate(g)
-    i = f32[2,4] negate(h)
-    j = f32[2,4] negate(i)
-    k = f32[2,4] negate(j)
-    l = f32[2,4] negate(k)
-    m = f32[2,4] negate(l)
-    n = f32[2,4] negate(m)
-    sin = f32[2,4] sine(param1)
-    o = f32[2,4] negate(n)
-    cos = f32[8,3] cosine(param0)
-    ROOT tuple = (f32[8,3], f32[2,4], f32[2,4]) tuple(cos, sin, o)
-  }
-  )";
-
-  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
-      [](const MemorySpaceAssignment::BufferInterval& a,
-         const MemorySpaceAssignment::BufferInterval& b) {
-        auto get_opcode_priority = [](const HloOpcode& opcode) {
-          switch (opcode) {
-            case HloOpcode::kSin:
-              return 0;
-            case HloOpcode::kCos:
-              return 1;
-            case HloOpcode::kTanh:
-              return 2;
-            default:
-              return 3;
-          }
-        };
-
-        auto get_user_priority = [&](const HloValue& value) {
-          int priority = INT_MAX;
-          for (const auto& use : value.uses()) {
-            priority = std::min(priority,
-                                get_opcode_priority(use.instruction->opcode()));
-          }
-          return priority;
-        };
-
-        return get_user_priority(*a.buffer) < get_user_priority(*b.buffer);
-      };
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-
-  HloCostAnalysis hlo_cost_analysis(ShapeSize);
-  Options options;
-  TF_ASSERT_OK_AND_ASSIGN(auto cost_analysis,
-                          FakeMemorySpaceAssignmentCostAnalysis::Create(
-                              hlo_cost_analysis, *module, options));
-  cost_analysis->SetOverrideForGetAsyncCopyElapsed([](const Shape& shape) {
-    // This should return 2 for f32[2,4] and 6 for f32[8,3].
-    return ShapeSize(shape) / 16;
-  });
-  CostAnalysisPrefetchIntervalPicker interval_picker(
-      *cost_analysis,
-      /*min_async_copy_to_overlap_ratio=*/1.0,
-      /*max_async_copy_to_overlap_ratio=*/4.0,
-      /*preferred_async_copy_to_overlap_ratio=*/1.5,
-      /*buffer_size_for_max_async_copy=*/0);
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
-                    buffer_interval_compare, &interval_picker);
-
-  // Check that both cos and sin could get their operands prefetched.
-  const HloInstruction* cos =
-      module->entry_computation()->GetInstructionWithName("cos");
-  const HloInstruction* sin =
-      module->entry_computation()->GetInstructionWithName("sin");
-  EXPECT_THAT(sin->operand(0),
-              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
-                            op::Parameter(1)));
-  EXPECT_THAT(cos->operand(0),
-              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
-                            op::Parameter(0)));
-
-  // Sanity check that the cos' operand copy-done is scheduled earlier than
-  // sin's operand.
-  auto find_schedule_index = [&](const HloInstruction* instruction) {
-    const auto& instructions =
-        module->schedule().sequence(module->entry_computation()).instructions();
-    for (int i = 0; i < instructions.size(); ++i) {
-      if (instruction == instructions[i]) {
-        return i;
-      }
-    }
-    CHECK(false);
-    return -1;
-  };
-  EXPECT_GT(find_schedule_index(sin->operand(0)),
-            find_schedule_index(cos->operand(0)));
-}
-
 TEST_P(MemorySpaceAssignmentTest, WhileAliasedArgumentRequiredAssignmentBug) {
   // Tests an overly pessimistic assertion when the same HloValue is passed
   // multiple times to a while HLO. We already handle this case that the two
@@ -4684,6 +4504,243 @@ TEST_P(MemorySpaceAssignmentTest, RedundantEvictionEliminationInChainedWhile) {
         FindInstruction(module.get(), "while1")->shape().tuple_shapes_size(),
         FindInstruction(module.get(), "while2")->shape().tuple_shapes_size() +
             1);
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, AvoidRedundantEvictionAfterWhile) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  while_cond {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    ROOT gte = pred[] get-tuple-element(p0), index=2
+  }
+
+  while_body {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    gte0 = f32[3]{0} get-tuple-element(p0), index=0
+    gte1 = f32[3]{0} get-tuple-element(p0), index=1
+    gte2 = pred[] get-tuple-element(p0), index=2
+    add = f32[3]{0} add(gte0, gte1)
+    ROOT tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(gte0, add, gte2)
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = pred[] parameter(1)
+    copy = f32[3]{0} copy(p0)
+    negate0 = f32[3]{0} negate(p0)
+    negate1 = f32[3]{0} negate(negate0)
+    negate2 = f32[3]{0} negate(negate1)
+    negate3 = f32[3]{0} negate(negate2)
+    negate4 = f32[3]{0} negate(negate3)
+    negate5 = f32[3]{0} negate(negate4)
+    negate6 = f32[3]{0} negate(negate5)
+    negate7 = f32[3]{0} negate(negate6)
+    negate8 = f32[3]{0} negate(negate7)
+    negate9 = f32[3]{0} negate(negate8)
+    negate10 = f32[3]{0} negate(negate9)
+    negate11 = f32[3]{0} negate(negate10)
+    negate12 = f32[3]{0} negate(negate11)
+    negate13 = f32[3]{0} negate(negate12)
+    negate14 = f32[3]{0} negate(negate13)
+    tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(copy, negate14, p1)
+    while = (f32[3]{0}, f32[3]{0}, pred[]) while(tuple), condition=while_cond, body=while_body
+    gte0 = f32[3]{0} get-tuple-element(while), index=0
+    gte1 = f32[3]{0} get-tuple-element(while), index=1
+    negate20 = f32[3]{0} negate(gte1)
+    negate21 = f32[3]{0} negate(negate20)
+    negate22 = f32[3]{0} negate(negate21)
+    negate23 = f32[3]{0} negate(negate22)
+    negate24 = f32[3]{0} negate(negate23)
+    negate25 = f32[3]{0} negate(negate24)
+    negate26 = f32[3]{0} negate(negate25)
+    negate27 = f32[3]{0} negate(negate26)
+    negate28 = f32[3]{0} negate(negate27)
+    negate29 = f32[3]{0} negate(negate28)
+    negate30 = f32[3]{0} negate(negate29)
+    negate31 = f32[3]{0} negate(negate30)
+    negate32 = f32[3]{0} negate(negate31)
+    negate33 = f32[3]{0} negate(negate32)
+    negate34 = f32[3]{0} negate(negate33)
+    ROOT add = f32[3]{0} add(negate34, gte0)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  if (GetParam()) {
+    EXPECT_THAT(
+        module->entry_computation()->root_instruction()->operand(1),
+        op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace, op::Copy()));
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, AvoidRedundantEvictionAfterWhile2) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  while_cond1 {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    ROOT gte = pred[] get-tuple-element(p0), index=2
+  }
+
+  while_body1 {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    gte0 = f32[3]{0} get-tuple-element(p0), index=0
+    gte1 = f32[3]{0} get-tuple-element(p0), index=1
+    gte2 = pred[] get-tuple-element(p0), index=2
+    add = f32[3]{0} add(gte0, gte1)
+    ROOT tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(gte0, add, gte2)
+  }
+
+  while_cond2 {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    ROOT gte = pred[] get-tuple-element(p0), index=2
+  }
+
+  while_body2 {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    gte0 = f32[3]{0} get-tuple-element(p0), index=0
+    gte1 = f32[3]{0} get-tuple-element(p0), index=1
+    gte2 = pred[] get-tuple-element(p0), index=2
+    add = f32[3]{0} add(gte0, gte1)
+    ROOT tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(gte0, add, gte2)
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = pred[] parameter(1)
+    copy = f32[3]{0} copy(p0)
+    tuple1 = (f32[3]{0}, f32[3]{0}, pred[]) tuple(copy, p0, p1)
+    while1 = (f32[3]{0}, f32[3]{0}, pred[]) while(tuple1), condition=while_cond1, body=while_body1
+    gte0 = f32[3]{0} get-tuple-element(while1), index=0
+    gte1 = f32[3]{0} get-tuple-element(while1), index=1
+    negate0 = f32[3]{0} negate(gte1)
+    negate1 = f32[3]{0} negate(negate0)
+    negate2 = f32[3]{0} negate(negate1)
+    negate3 = f32[3]{0} negate(negate2)
+    negate4 = f32[3]{0} negate(negate3)
+    negate5 = f32[3]{0} negate(negate4)
+    negate6 = f32[3]{0} negate(negate5)
+    negate7 = f32[3]{0} negate(negate6)
+    negate8 = f32[3]{0} negate(negate7)
+    negate9 = f32[3]{0} negate(negate8)
+    negate10 = f32[3]{0} negate(negate9)
+    negate11 = f32[3]{0} negate(negate10)
+    negate12 = f32[3]{0} negate(negate11)
+    negate13 = f32[3]{0} negate(negate12)
+    negate14 = f32[3]{0} negate(negate13)
+    tuple2 = (f32[3]{0}, f32[3]{0}, pred[]) tuple(gte0, negate14, p1)
+    while2 = (f32[3]{0}, f32[3]{0}, pred[]) while(tuple2), condition=while_cond2, body=while_body2
+    gte2 = f32[3]{0} get-tuple-element(while2), index=0
+    gte3 = f32[3]{0} get-tuple-element(while2), index=1
+    negate20 = f32[3]{0} negate(gte3)
+    negate21 = f32[3]{0} negate(negate20)
+    negate22 = f32[3]{0} negate(negate21)
+    negate23 = f32[3]{0} negate(negate22)
+    negate24 = f32[3]{0} negate(negate23)
+    negate25 = f32[3]{0} negate(negate24)
+    negate26 = f32[3]{0} negate(negate25)
+    negate27 = f32[3]{0} negate(negate26)
+    negate28 = f32[3]{0} negate(negate27)
+    negate29 = f32[3]{0} negate(negate28)
+    negate30 = f32[3]{0} negate(negate29)
+    negate31 = f32[3]{0} negate(negate30)
+    negate32 = f32[3]{0} negate(negate31)
+    negate33 = f32[3]{0} negate(negate32)
+    negate34 = f32[3]{0} negate(negate33)
+    ROOT add = f32[3]{0} add(negate34, gte2)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  if (GetParam()) {
+    EXPECT_THAT(
+        module->entry_computation()->root_instruction()->operand(1),
+        op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                      op::AsyncCopy(kDefaultMemorySpace, kAlternateMemorySpace,
+                                    op::GetTupleElement(op::While()))));
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest,
+       AfterWhileRedundantEarlierEvictionModifiedBuffer) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  while_cond {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    ROOT gte = pred[] get-tuple-element(p0), index=2
+  }
+
+  while_body {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    gte0 = f32[3]{0} get-tuple-element(p0), index=0
+    gte1 = f32[3]{0} get-tuple-element(p0), index=1
+    gte2 = pred[] get-tuple-element(p0), index=2
+    add = f32[3]{0} add(gte0, gte1)
+    negate = f32[3]{0} negate(gte0)
+    ROOT tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(negate, add, gte2)
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = pred[] parameter(1)
+    copy = f32[3]{0} copy(p0)
+    negate0 = f32[3]{0} negate(p0)
+    negate1 = f32[3]{0} negate(negate0)
+    negate2 = f32[3]{0} negate(negate1)
+    negate3 = f32[3]{0} negate(negate2)
+    negate4 = f32[3]{0} negate(negate3)
+    negate5 = f32[3]{0} negate(negate4)
+    negate6 = f32[3]{0} negate(negate5)
+    negate7 = f32[3]{0} negate(negate6)
+    negate8 = f32[3]{0} negate(negate7)
+    negate9 = f32[3]{0} negate(negate8)
+    negate10 = f32[3]{0} negate(negate9)
+    negate11 = f32[3]{0} negate(negate10)
+    negate12 = f32[3]{0} negate(negate11)
+    negate13 = f32[3]{0} negate(negate12)
+    negate14 = f32[3]{0} negate(negate13)
+    tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(copy, negate14, p1)
+    while = (f32[3]{0}, f32[3]{0}, pred[]) while(tuple), condition=while_cond, body=while_body
+    gte0 = f32[3]{0} get-tuple-element(while), index=0
+    gte1 = f32[3]{0} get-tuple-element(while), index=1
+    negate20 = f32[3]{0} negate(gte1)
+    negate21 = f32[3]{0} negate(negate20)
+    negate22 = f32[3]{0} negate(negate21)
+    negate23 = f32[3]{0} negate(negate22)
+    negate24 = f32[3]{0} negate(negate23)
+    negate25 = f32[3]{0} negate(negate24)
+    negate26 = f32[3]{0} negate(negate25)
+    negate27 = f32[3]{0} negate(negate26)
+    negate28 = f32[3]{0} negate(negate27)
+    negate29 = f32[3]{0} negate(negate28)
+    negate30 = f32[3]{0} negate(negate29)
+    negate31 = f32[3]{0} negate(negate30)
+    negate32 = f32[3]{0} negate(negate31)
+    negate33 = f32[3]{0} negate(negate32)
+    negate34 = f32[3]{0} negate(negate33)
+    ROOT add = f32[3]{0} add(negate34, gte0)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  if (GetParam()) {
+    EXPECT_THAT(
+        module->entry_computation()->root_instruction()->operand(1),
+        op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                      op::AsyncCopy(kDefaultMemorySpace, kAlternateMemorySpace,
+                                    op::GetTupleElement(op::While()))));
   }
 }
 
@@ -5581,13 +5638,6 @@ TEST_P(MemorySpaceAssignmentTest,
   AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
                     /*buffer_interval_compare=*/{}, &prefetch_interval_picker,
                     options);
-  // Make sure the root of the entry computation is in the default memory space.
-  EXPECT_EQ(module->entry_computation()
-                ->root_instruction()
-                ->shape()
-                .layout()
-                .memory_space(),
-            kDefaultMemorySpace);
 }
 
 TEST_P(MemorySpaceAssignmentTest, Determinism) {
@@ -5683,50 +5733,310 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
-  // Make sure the root of the entry computation is in the default memory space.
-  EXPECT_EQ(module->entry_computation()
-                ->root_instruction()
-                ->shape()
-                .layout()
-                .memory_space(),
-            kDefaultMemorySpace);
 }
 
 INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
                          MemorySpaceAssignmentTest,
                          ::testing::Values(false, true));
 
-using AsynchronousCopyOrderingTest = ::testing::Test;
+using AsynchronousCopyResourceTest = ::testing::Test;
 
-TEST_F(AsynchronousCopyOrderingTest, Simple) {
-  // Given asynchronous copies like the following, ensure the pipelining order
-  // is maintained (earlier start time must have earlier end time).
-  // 3,11       +-------+         OK
-  // 1,8      +------+            OK
-  // 5,14         +--------+      OK
-  // 7,14           +------+      OK
-  // 2,16      +-------------+    Violate
-  // 9,12             +--+        Violate
-  // 6,17          +----------+   Violate
-  // 5,13         +-------+       OK (same start as 5,14)
-  // 5,14         +--------+      OK (same as 5,14)
+TEST_F(AsynchronousCopyResourceTest, Simple) {
+  // time:      0 1 2 3 4 5 6 7 8 9
+  // resource:  2 3 1 6 7 1 7 2 2 4
+  // -1,3,5    +-----+                OK
+  // resource:  0 0 1 6 7 1 7 2 2 4
+  //  1,4,4        +---+              OK
+  // resource:  0 0 0 3 7 1 7 2 2 4
+  //  5,9,10               +-----+
+  // resource:  0 0 0 3 7 1 0 0 1 4
+  //  4,9,3              +-------+    Violate
+  //  4,8,2              +-----+      OK; The 5,9 copy shifts resource to right.
+  // resource:  0 0 0 3 7 0 0 0 0 4
   auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
-  AsynchronousCopyOrdering ordering;
-  EXPECT_FALSE(ordering.ViolatesOrdering(3, 11));
-  ordering.AddCopy({3, 11, 11, alternate_mem_space});
-  EXPECT_FALSE(ordering.ViolatesOrdering(1, 8));
-  ordering.AddCopy({1, 8, 8, alternate_mem_space});
-  EXPECT_FALSE(ordering.ViolatesOrdering(5, 14));
-  ordering.AddCopy({5, 14, 14, alternate_mem_space});
-  EXPECT_FALSE(ordering.ViolatesOrdering(7, 14));
-  ordering.AddCopy({7, 14, 14, alternate_mem_space});
-  EXPECT_TRUE(ordering.ViolatesOrdering(2, 16));
-  EXPECT_TRUE(ordering.ViolatesOrdering(9, 12));
-  EXPECT_TRUE(ordering.ViolatesOrdering(6, 17));
-  EXPECT_FALSE(ordering.ViolatesOrdering(5, 13));
-  ordering.AddCopy({5, 13, 13, alternate_mem_space});
-  EXPECT_FALSE(ordering.ViolatesOrdering(5, 14));
-  ordering.AddCopy({5, 14, 14, alternate_mem_space});
+  AsynchronousCopyResource resource(
+      {2.0, 3.0, 1.0, 6.0, 7.0, 1.0, 7.0, 2.0, 2.0, 4.0});
+  EXPECT_TRUE(resource.HasEnoughResource(-1, 3, 5.0));
+  resource.AddCopy({-1, 3, 5.0, alternate_mem_space, 0});
+  EXPECT_TRUE(resource.HasEnoughResource(1, 4, 4.0));
+  resource.AddCopy({1, 4, 4.0, alternate_mem_space, 1});
+  EXPECT_TRUE(resource.HasEnoughResource(5, 9, 10.0));
+  resource.AddCopy({5, 9, 10.0, alternate_mem_space, 2});
+  EXPECT_FALSE(resource.HasEnoughResource(4, 9, 3.0));
+  EXPECT_TRUE(resource.HasEnoughResource(4, 8, 2.0));
+  resource.AddCopy({4, 8, 2.0, alternate_mem_space, 3});
+}
+
+TEST_F(AsynchronousCopyResourceTest, Propagate) {
+  // time:      0 1 2 3 4 5 6 7 8 9
+  // resource:  2 2 2 2 2 2 2 2 2 2
+  // 6,10,2                  +-----+   OK
+  // resource:  2 2 2 2 2 2 2 0 2 2
+  // 5,9,2                 +-----+     OK
+  // resource:  2 2 2 2 2 2 0 0 2 2
+  // 4,8,2               +-----+       OK
+  // resource:  2 2 2 2 2 0 0 0 2 2
+  // 3,7,2             +-----+         OK
+  // resource:  2 2 2 2 0 0 0 0 2 2
+  // 2,6,2           +-----+           OK
+  // resource:  2 2 2 0 0 0 0 0 2 2
+  // 1,5,2         +-----+             OK
+  // resource:  2 2 0 0 0 0 0 0 2 2
+  // 0,4,3       +-----+               OK
+  // resource:  2 0 0 0 0 0 0 0 1 2
+  // 0,4,3       +-----+               OK
+  // resource:  2 0 0 0 0 0 0 0 0 0
+  // 0,4,1       +-----+               Violate
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyResource resource(
+      {2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0});
+  EXPECT_TRUE(resource.HasEnoughResource(6, 10, 2.0));
+  resource.AddCopy({6, 10, 2.0, alternate_mem_space, 0});
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 0.0, 2.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(5, 9, 2.0));
+  resource.AddCopy({5, 9, 2.0, alternate_mem_space, 1});
+  EXPECT_TRUE(resource.HasEnoughResource(4, 8, 2.0));
+  resource.AddCopy({4, 8, 2.0, alternate_mem_space, 2});
+  EXPECT_TRUE(resource.HasEnoughResource(3, 7, 2.0));
+  resource.AddCopy({3, 7, 2.0, alternate_mem_space, 3});
+  EXPECT_TRUE(resource.HasEnoughResource(2, 6, 2.0));
+  resource.AddCopy({2, 6, 2.0, alternate_mem_space, 4});
+  EXPECT_TRUE(resource.HasEnoughResource(1, 5, 2.0));
+  resource.AddCopy({1, 5, 2.0, alternate_mem_space, 5});
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(0, 4, 3.0));
+  resource.AddCopy({0, 4, 3.0, alternate_mem_space, 6});
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(0, 4, 3.0));
+  resource.AddCopy({0, 4, 3.0, alternate_mem_space, 7});
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}));
+  EXPECT_FALSE(resource.HasEnoughResource(0, 4, 1.0));
+}
+
+TEST_F(AsynchronousCopyResourceTest, CantPropagate) {
+  // time:      0 1 2 3 4 5 6 7 8 9
+  // resource:  2 2 2 2 2 2 2 2 2 2
+  // 5,10,2                +-------+   OK
+  // resource:  2 2 2 2 2 2 0 2 2 2
+  // 4,7,2               +---+         OK
+  // resource:  2 2 2 2 2 0 0 2 2 2
+  // 4,8,4               +-----+       OK
+  // resource:  2 2 2 2 2 0 0 0 0 2
+  // 3,6,4             +---+           Violate
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyResource resource(
+      {2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0});
+  EXPECT_TRUE(resource.HasEnoughResource(5, 10, 2.0));
+  resource.AddCopy({5, 10, 2.0, alternate_mem_space, 0});
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 0.0, 2.0, 2.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(4, 7, 2.0));
+  resource.AddCopy({4, 7, 2.0, alternate_mem_space, 1});
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 2.0, 2.0, 2.0, 2.0, 0.0, 0.0, 2.0, 2.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(4, 8, 4.0));
+  resource.AddCopy({4, 8, 4.0, alternate_mem_space, 2});
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 2.0, 2.0, 2.0, 2.0, 0.0, 0.0, 0.0, 0.0, 2.0}));
+  EXPECT_FALSE(resource.HasEnoughResource(3, 6, 4.0));
+}
+
+TEST_F(AsynchronousCopyResourceTest, Nested) {
+  // time:      0 1 2 3 4
+  // resource:  2 2 2 2 2
+  // 1,3,2         +-+       OK
+  // resource:  2 2 0 2 2
+  // 0,4,4       +-----+     Violate
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyResource resource({2.0, 2.0, 2.0, 2.0, 2.0});
+  EXPECT_TRUE(resource.HasEnoughResource(1, 3, 2.0));
+  resource.AddCopy({1, 3, 2.0, alternate_mem_space, 0});
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 0.0, 2.0, 2.0}));
+  EXPECT_FALSE(resource.HasEnoughResource(0, 4, 4.0));
+}
+
+TEST_F(AsynchronousCopyResourceTest, Remove) {
+  // time:      0 1 2 3 4
+  // resource:  2 2 2 2 2
+  // add:2,5,2       +---+   OK
+  // resource:  2 2 2 0 2
+  // add:-1,2,3+---+         OK
+  // resource:  0 1 2 0 2
+  // add:0,4,4   +-----+     OK
+  // resource:  0 0 0 0 1
+  // rem:0,4,4   +-----+
+  // resource:  0 1 2 0 2
+  // rem:2,5,2       +---+
+  // resource:  0 1 2 2 2
+  // rem:-1,2,3+---+
+  // resource:  2 2 2 2 2
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyResource resource({2.0, 2.0, 2.0, 2.0, 2.0});
+  AsynchronousCopy copy1{2, 5, 2.0, alternate_mem_space, 0};
+  AsynchronousCopy copy2{-1, 2, 3.0, alternate_mem_space, 1};
+  AsynchronousCopy copy3{0, 4, 4.0, alternate_mem_space, 2};
+  EXPECT_TRUE(resource.HasEnoughResource(2, 5, 2.0));
+  resource.AddCopy(copy1);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 2.0, 0.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(-1, 2, 3.0));
+  resource.AddCopy(copy2);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({0.0, 1.0, 2.0, 0.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(0, 4, 4.0));
+  resource.AddCopy(copy3);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({0.0, 0.0, 0.0, 0.0, 1.0}));
+  resource.RemoveCopy(copy3);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({0.0, 1.0, 2.0, 0.0, 2.0}));
+  resource.RemoveCopy(copy1);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({0.0, 1.0, 2.0, 2.0, 2.0}));
+  resource.RemoveCopy(copy2);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 2.0, 2.0, 2.0}));
+}
+
+TEST_F(AsynchronousCopyResourceTest, NestedRemove) {
+  // time:      0 1 2 3 4
+  // resource:  2 2 2 2 2
+  // add:1,3,2     +-+       OK
+  // resource:  2 2 0 2 2
+  // add:0,4,4   +-----+     Violate
+  // rem:1,3,2     +-+
+  // resource:  2 2 2 2 2
+  // add:0,4,4   +-----+     OK
+  // resource:  2 0 0 2 2
+  // add:1,3,2     +-+       Violate
+  // rem:0,4,4   +-----+
+  // resource:  2 2 2 2 2
+  // add:1,3,2     +-+       OK
+  // resource:  2 2 0 2 2
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyResource resource({2.0, 2.0, 2.0, 2.0, 2.0});
+  AsynchronousCopy copy1{1, 3, 2.0, alternate_mem_space, 0};
+  AsynchronousCopy copy2{0, 4, 4.0, alternate_mem_space, 1};
+  EXPECT_TRUE(resource.HasEnoughResource(1, 3, 2.0));
+  resource.AddCopy(copy1);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 0.0, 2.0, 2.0}));
+  EXPECT_FALSE(resource.HasEnoughResource(0, 4, 4.0));
+  resource.RemoveCopy(copy1);
+  auto current_resources = resource.GetCurrentResources();
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 2.0, 2.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(0, 4, 4.0));
+  resource.AddCopy(copy2);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 0.0, 0.0, 2.0, 2.0}));
+  EXPECT_FALSE(resource.HasEnoughResource(1, 3, 2.0));
+  resource.RemoveCopy(copy2);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({2.0, 2.0, 2.0, 2.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(1, 3, 2.0));
+}
+
+TEST_F(AsynchronousCopyResourceTest, PropagateRemove) {
+  // time:      0 1 2 3 4 5 6 7 8 9
+  // resource:  2 2 2 2 2 2 2 2 2 2
+  // add:6,10,2              +-----+   OK
+  // resource:  2 2 2 2 2 2 2 0 2 2
+  // add:5,9,2             +-----+     OK
+  // resource:  2 2 2 2 2 2 0 0 2 2
+  // add:4,8,2           +-----+       OK
+  // resource:  2 2 2 2 2 0 0 0 2 2
+  // add:3,7,2         +-----+         OK
+  // resource:  2 2 2 2 0 0 0 0 2 2
+  // add:2,6,2       +-----+           OK
+  // resource:  2 2 2 0 0 0 0 0 2 2
+  // add:1,5,2     +-----+             OK
+  // resource:  2 2 0 0 0 0 0 0 2 2
+  // add:0,4,3   +-----+               OK
+  // resource:  2 0 0 0 0 0 0 0 1 2
+  // add:0,5,3   +-------+             OK
+  // resource:  2 0 0 0 0 0 0 0 0 0
+  // rem:0,5,3   +-------+
+  // resource:  2 0 0 0 0 0 0 0 1 2
+  // rem:0,4,3   +-----+
+  // resource:  2 2 0 0 0 0 0 0 2 2
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyResource resource(
+      {2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0});
+  EXPECT_TRUE(resource.HasEnoughResource(6, 10, 2.0));
+  resource.AddCopy({6, 10, 2.0, alternate_mem_space, 0});
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 0.0, 2.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(5, 9, 2.0));
+  resource.AddCopy({5, 9, 2.0, alternate_mem_space, 1});
+  EXPECT_TRUE(resource.HasEnoughResource(4, 8, 2.0));
+  resource.AddCopy({4, 8, 2.0, alternate_mem_space, 2});
+  EXPECT_TRUE(resource.HasEnoughResource(3, 7, 2.0));
+  resource.AddCopy({3, 7, 2.0, alternate_mem_space, 3});
+  EXPECT_TRUE(resource.HasEnoughResource(2, 6, 2.0));
+  resource.AddCopy({2, 6, 2.0, alternate_mem_space, 4});
+  EXPECT_TRUE(resource.HasEnoughResource(1, 5, 2.0));
+  resource.AddCopy({1, 5, 2.0, alternate_mem_space, 5});
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 2.0}));
+  AsynchronousCopy copy1{0, 4, 3.0, alternate_mem_space, 6};
+  EXPECT_TRUE(resource.HasEnoughResource(0, 4, 3.0));
+  resource.AddCopy(copy1);
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 2.0}));
+  EXPECT_TRUE(resource.HasEnoughResource(0, 5, 3.0));
+  AsynchronousCopy copy2{0, 5, 3.0, alternate_mem_space, 7};
+  resource.AddCopy(copy2);
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}));
+  resource.RemoveCopy(copy2);
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 2.0}));
+  resource.RemoveCopy(copy1);
+  EXPECT_EQ(
+      resource.GetCurrentResources(),
+      std::vector<float>({2.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 2.0}));
+}
+
+TEST_F(AsynchronousCopyResourceTest, StartAtZeroAndRemove) {
+  // time:      0 1 2 3 4
+  // resource:  0 0 1 1 2
+  // add:0,4,2   +-----+     OK
+  // resource:  0 0 0 0 2
+  // rem:0,4,2   +-----+
+  // resource:  0 0 1 1 2
+  // add:0,4,2   +-----+     OK
+  // resource:  0 0 0 0 2
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyResource resource({0.0, 0.0, 1.0, 1.0, 2.0});
+  AsynchronousCopy copy1{0, 4, 2.0, alternate_mem_space, 0};
+  EXPECT_TRUE(resource.HasEnoughResource(0, 4, 2.0));
+  resource.AddCopy(copy1);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({0.0, 0.0, 0.0, 0.0, 2.0}));
+  resource.RemoveCopy(copy1);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({0.0, 0.0, 1.0, 1.0, 2.0}));
+  resource.AddCopy(copy1);
+  EXPECT_EQ(resource.GetCurrentResources(),
+            std::vector<float>({0.0, 0.0, 0.0, 0.0, 2.0}));
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTest) {
@@ -6213,6 +6523,106 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTupleTest) {
   EXPECT_EQ(cross_program_prefetches.size(), 0);
 }
 
+TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDupMayAlias) {
+  absl::string_view hlo_string = R"(
+  HloModule cross_program_prefetch, is_scheduled=true, input_output_alias={ {}: (0, {}, may-alias) }
+    ENTRY CrossProgramPrefetch {
+      c0 = s32[1,2] constant({{77, 77}})
+      c1 = s32[] constant(0)
+      p0 = s32[2,2] parameter(0)
+      ROOT dup = s32[2,2] dynamic-update-slice(s32[2,2] p0, s32[1,2] c0, s32[] c1, s32[] c1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto preset_assignments = AssignMemorySpace(
+      module.get(), /*max_outstanding_async_copies=*/-1,
+      /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 1);
+}
+
+TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDup) {
+  absl::string_view hlo_string = R"(
+  HloModule cross_program_prefetch, is_scheduled=true
+    ENTRY CrossProgramPrefetch {
+      c0 = s32[1,2] constant({{77, 77}})
+      c1 = s32[] constant(0)
+      p0 = s32[2,2] parameter(0)
+      ROOT dup = s32[2,2] dynamic-update-slice(s32[2,2] p0, s32[1,2] c0, s32[] c1, s32[] c1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto preset_assignments = AssignMemorySpace(
+      module.get(), /*max_outstanding_async_copies=*/-1,
+      /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 1);
+}
+
+TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDupDot) {
+  // Cross program prefetch since the parameter and the root don't alias.
+  absl::string_view hlo_string = R"(
+  HloModule cross_program_prefetch, is_scheduled=true
+    ENTRY CrossProgramPrefetch {
+      c0 = s32[1,2] constant({{77, 77}})
+      c1 = s32[] constant(0)
+      p0 = s32[2,2] parameter(0)
+      p1 = s32[2,2] parameter(1)
+      dup = s32[2,2] dynamic-update-slice(s32[2,2] p0, s32[1,2] c0, s32[] c1, s32[] c1)
+      ROOT dot = s32[2,2] dot(p1, dup), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto preset_assignments = AssignMemorySpace(
+      module.get(), /*max_outstanding_async_copies=*/-1,
+      /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 1);
+}
+
+TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDotMayAlias) {
+  absl::string_view hlo_string = R"(
+  HloModule cross_program_prefetch, is_scheduled=true, input_output_alias={ {}: (0, {}, may-alias) }
+    ENTRY CrossProgramPrefetch {
+      p0 = s32[2,2] parameter(0)
+      p1 = s32[2,2] parameter(1)
+      ROOT dot = s32[2,2] dot(p1, p0), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto preset_assignments = AssignMemorySpace(
+      module.get(), /*max_outstanding_async_copies=*/-1,
+      /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 1);
+}
+
+TEST_P(MemorySpaceAssignmentTest, CrossProgramRootParameter) {
+  absl::string_view hlo_string = R"(
+  HloModule cross_program_prefetch, is_scheduled=true
+    ENTRY CrossProgramPrefetch {
+      p0 = s32[2,2] parameter(0)
+      ROOT bitcast = u32[2,2] bitcast(p0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto preset_assignments = AssignMemorySpace(
+      module.get(), /*max_outstanding_async_copies=*/-1,
+      /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 1);
+}
+
 TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
   // This test is for checking if the cross-program-prefetched buffer is freed
   // after its last use and there is an end-of-program prefetch.
@@ -6259,14 +6669,14 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
            use.instruction->is_cross_program_prefetch();
   };
-  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_cross_program_prefetch),
             1);
   auto is_end_of_program_prefetch = [](const HloUse& use) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
            !use.instruction->is_cross_program_prefetch();
   };
-  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_end_of_program_prefetch),
             1);
   // Also verify that the copy-done for the end-of-program prefetch is the last
@@ -6338,14 +6748,14 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleNoReuse) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
            use.instruction->is_cross_program_prefetch();
   };
-  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_cross_program_prefetch),
             1);
   auto is_end_of_program_prefetch = [](const HloUse& use) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
            !use.instruction->is_cross_program_prefetch();
   };
-  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_end_of_program_prefetch),
             1);
   // Also verify that the copy-done for the end-of-program prefetch is the last
@@ -6417,14 +6827,14 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
            use.instruction->is_cross_program_prefetch();
   };
-  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_cross_program_prefetch),
             1);
   auto is_end_of_program_prefetch = [](const HloUse& use) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
            !use.instruction->is_cross_program_prefetch();
   };
-  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_end_of_program_prefetch),
             0);
 }
@@ -6477,14 +6887,14 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleReuse) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
            use.instruction->is_cross_program_prefetch();
   };
-  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_cross_program_prefetch),
             1);
   auto is_end_of_program_prefetch = [](const HloUse& use) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
            !use.instruction->is_cross_program_prefetch();
   };
-  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_end_of_program_prefetch),
             0);
 }
@@ -6531,10 +6941,10 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrder) {
                               hlo_cost_analysis, *module, options));
   CostAnalysisPrefetchIntervalPicker interval_picker(
       *cost_analysis,
-      /*min_async_copy_to_overlap_ratio=*/1.0,
-      /*max_async_copy_to_overlap_ratio=*/4.0,
-      /*preferred_async_copy_to_overlap_ratio=*/2.0,
-      /*buffer_size_for_max_async_copy=*/0);
+      /*min_overlap_to_async_copy_ratio=*/1.0,
+      /*preferred_overlap_to_async_copy_ratio=*/2.0,
+      /*max_overlap_to_mem_size_async_copy_ratio=*/4.0,
+      /*mem_size_bytes=*/32);
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};
@@ -6630,10 +7040,10 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrderWhile) {
                               hlo_cost_analysis, *module, options));
   CostAnalysisPrefetchIntervalPicker interval_picker(
       *cost_analysis,
-      /*min_async_copy_to_overlap_ratio=*/1.0,
-      /*max_async_copy_to_overlap_ratio=*/12.0,
-      /*preferred_async_copy_to_overlap_ratio=*/2.0,
-      /*buffer_size_for_max_async_copy=*/0);
+      /*min_overlap_to_async_copy_ratio=*/1.0,
+      /*preferred_overlap_to_async_copy_ratio=*/2.0,
+      /*max_overlap_to_mem_size_async_copy_ratio=*/12.0,
+      /*mem_size_bytes=*/32);
 
   EXPECT_EQ(cost_analysis->options()
                 .xla_tpu_memory_space_assignment_while_execution_count,
@@ -6715,10 +7125,10 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, NestedWhile) {
                               hlo_cost_analysis, *module, options));
   CostAnalysisPrefetchIntervalPicker interval_picker(
       *cost_analysis,
-      /*min_async_copy_to_overlap_ratio=*/1.0,
-      /*max_async_copy_to_overlap_ratio=*/12.0,
-      /*preferred_async_copy_to_overlap_ratio=*/2.0,
-      /*buffer_size_for_max_async_copy=*/0);
+      /*min_overlap_to_async_copy_ratio=*/1.0,
+      /*preferred_overlap_to_async_copy_ratio=*/2.0,
+      /*max_overlap_to_mem_size_async_copy_ratio=*/12.0,
+      /*mem_size_bytes=*/32);
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};
@@ -6783,10 +7193,10 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, ConsecutiveConditionals) {
                               hlo_cost_analysis, *module, options));
   CostAnalysisPrefetchIntervalPicker interval_picker(
       *cost_analysis,
-      /*min_async_copy_to_overlap_ratio=*/1.0,
-      /*max_async_copy_to_overlap_ratio=*/12.0,
-      /*preferred_async_copy_to_overlap_ratio=*/2.0,
-      /*buffer_size_for_max_async_copy=*/0);
+      /*min_overlap_to_async_copy_ratio=*/1.0,
+      /*preferred_overlap_to_async_copy_ratio=*/2.0,
+      /*max_overlap_to_mem_size_async_copy_ratio=*/12.0,
+      /*mem_size_bytes=*/32);
 
   LOG(INFO) << module->ToString();
 
@@ -6835,10 +7245,10 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, EarliestLatestWindowTooSmall) {
       });
   CostAnalysisPrefetchIntervalPicker interval_picker(
       *cost_analysis,
-      /*min_async_copy_to_overlap_ratio=*/1.0,
-      /*max_async_copy_to_overlap_ratio=*/4.0,
-      /*preferred_async_copy_to_overlap_ratio=*/2.0,
-      /*buffer_size_for_max_async_copy=*/0);
+      /*min_overlap_to_async_copy_ratio=*/1.0,
+      /*preferred_overlap_to_async_copy_ratio=*/2.0,
+      /*max_overlap_to_mem_size_async_copy_ratio=*/12.0,
+      /*mem_size_bytes=*/32);
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};

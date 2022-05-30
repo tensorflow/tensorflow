@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -33,7 +34,7 @@ namespace {
 struct ExecutorDialectToFunctionalConversion
     : public TF::ExecutorDialectToFunctionalPassBase<
           ExecutorDialectToFunctionalConversion> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Extracts inner ops of tf_executor.island ops in a tf_executor.graph, in the
@@ -68,8 +69,8 @@ LogicalResult LiftIslandOpInnerOpsFromGraph(tf_executor::GraphOp graph) {
   return success();
 }
 
-void ExecutorDialectToFunctionalConversion::runOnFunction() {
-  auto result = getFunction().walk([](tf_executor::GraphOp graph) {
+void ExecutorDialectToFunctionalConversion::runOnOperation() {
+  auto result = getOperation().walk([](tf_executor::GraphOp graph) {
     if (failed(LiftIslandOpInnerOpsFromGraph(graph)))
       return WalkResult::interrupt();
 
@@ -79,7 +80,7 @@ void ExecutorDialectToFunctionalConversion::runOnFunction() {
 }
 }  // end anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateExecutorDialectToFunctionalConversionPass() {
   return std::make_unique<ExecutorDialectToFunctionalConversion>();
 }

@@ -18,13 +18,17 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
 namespace {
 
+constexpr char kDeviceAttr[] = "device";
+constexpr char kTFDeviceAttr[] = "tf.device";
+
 class SimpleTFDeviceAssignmentPass
-    : public PassWrapper<SimpleTFDeviceAssignmentPass, FunctionPass> {
+    : public SimpleTFDeviceAssignmentPassBase<SimpleTFDeviceAssignmentPass> {
  public:
   SimpleTFDeviceAssignmentPass() = default;
   SimpleTFDeviceAssignmentPass(const SimpleTFDeviceAssignmentPass&) {}
@@ -32,43 +36,73 @@ class SimpleTFDeviceAssignmentPass
     default_device_ = std::string(default_device);
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     Builder builder(&getContext());
     Dialect* tf = getContext().getLoadedDialect<TensorFlowDialect>();
-    getFunction().walk([&](Operation* op) {
-      if (auto device_attr = op->getAttrOfType<StringAttr>("device")) {
+    getOperation().walk([&](Operation* op) {
+      if (auto device_attr = op->getAttrOfType<StringAttr>(kDeviceAttr)) {
         // We assign default device to ops with device attribute that is empty.
         if (device_attr.getValue().empty()) {
-          op->setAttr("device", builder.getStringAttr(default_device_));
+          op->setAttr(kDeviceAttr, builder.getStringAttr(default_device_));
         }
       } else if (op->getDialect() == tf) {
         // Assign default device to all ops in Tensorflow dialect that do not
         // have device attribute.
-        op->setAttr("device", builder.getStringAttr(default_device_));
+        op->setAttr(kDeviceAttr, builder.getStringAttr(default_device_));
       }
     });
   }
-
-  StringRef getArgument() const final { return "tf-simple-device-assignment"; }
-
-  StringRef getDescription() const final {
-    return "Simple device assignment in TF dialect.";
-  }
-
- private:
-  Option<std::string> default_device_{
-      *this, "default-device", llvm::cl::desc("The default device to assign."),
-      llvm::cl::init("cpu")};
 };
 
+// A pass to perform device assignment for TF dialect ops that do not
+// have device assignment, by using the device attribute of the function.
+// If device attribute is not found from the function, nothing is done.
+class TFDeviceAssignmentByFuncAttrPass
+    : public TFDeviceAssignmentByFuncAttrPassBase<
+          TFDeviceAssignmentByFuncAttrPass> {
+ public:
+  TFDeviceAssignmentByFuncAttrPass() = default;
+  TFDeviceAssignmentByFuncAttrPass(const TFDeviceAssignmentByFuncAttrPass&) {}
+
+  void runOnOperation() override {
+    func::FuncOp func = getOperation();
+    auto func_device_attr = func->getAttrOfType<StringAttr>(kTFDeviceAttr);
+
+    // Skip device assignment if there is no device specified in the function
+    // attribute.
+    if (!func_device_attr || func_device_attr.getValue().empty()) {
+      return;
+    }
+
+    Builder builder(&getContext());
+    Dialect* tf = getContext().getLoadedDialect<TensorFlowDialect>();
+    getOperation().walk([&](Operation* op) {
+      if (auto device_attr = op->getAttrOfType<StringAttr>(kDeviceAttr)) {
+        // Assign device to ops with device attribute that is empty.
+        if (device_attr.getValue().empty()) {
+          op->setAttr(kDeviceAttr,
+                      builder.getStringAttr(func_device_attr.getValue()));
+        }
+      } else if (op->getDialect() == tf) {
+        // Assign device to all ops in Tensorflow dialect that do not have
+        // device attribute.
+        op->setAttr(kDeviceAttr,
+                    builder.getStringAttr(func_device_attr.getValue()));
+      }
+    });
+  }
+};
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateSimpleTFDeviceAssignmentPass(
     llvm::StringRef default_device) {
   return std::make_unique<SimpleTFDeviceAssignmentPass>(default_device);
 }
 
-static PassRegistration<SimpleTFDeviceAssignmentPass> register_pass;
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTFDeviceAssignmentByFuncAttrPass() {
+  return std::make_unique<TFDeviceAssignmentByFuncAttrPass>();
+}
 
 }  // namespace TF
 }  // namespace mlir

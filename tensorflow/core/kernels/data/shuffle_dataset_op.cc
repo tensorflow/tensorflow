@@ -109,13 +109,23 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     return input_->output_shapes();
   }
 
-  int64_t Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     if (count_ == -1 || input_->Cardinality() == kInfiniteCardinality) {
       return kInfiniteCardinality;
     } else if (input_->Cardinality() == kUnknownCardinality) {
       return kUnknownCardinality;
     } else {
       return input_->Cardinality() * count_;
+    }
+  }
+
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    if (count_ == -1 || input_->Cardinality(options) == kInfiniteCardinality) {
+      return kInfiniteCardinality;
+    } else if (input_->Cardinality(options) == kUnknownCardinality) {
+      return kUnknownCardinality;
+    } else {
+      return input_->Cardinality(options) * count_;
     }
   }
 

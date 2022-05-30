@@ -27,7 +27,7 @@ namespace {
 struct TPUReorderReplicateAndPartitionedInputsPass
     : public TF::TPUReorderReplicateAndPartitionedInputsPassBase<
           TPUReorderReplicateAndPartitionedInputsPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 LogicalResult ReorderReplicateAndPartitionedInputs(
@@ -105,9 +105,9 @@ LogicalResult ReorderReplicateAndPartitionedInputs(
   return success();
 }
 
-void TPUReorderReplicateAndPartitionedInputsPass::runOnFunction() {
+void TPUReorderReplicateAndPartitionedInputsPass::runOnOperation() {
   auto result =
-      getFunction()->walk([](TF::TPUReplicatedInputOp replicated_input) {
+      getOperation()->walk([](TF::TPUReplicatedInputOp replicated_input) {
         if (llvm::none_of(replicated_input.inputs(), [](Value input) {
               return llvm::isa_and_nonnull<TF::TPUPartitionedInputOp>(
                   input.getDefiningOp());
@@ -126,14 +126,14 @@ void TPUReorderReplicateAndPartitionedInputsPass::runOnFunction() {
     return;
   }
 
-  getFunction()->walk([](TF::TPUPartitionedInputOp partitioned_input) {
+  getOperation()->walk([](TF::TPUPartitionedInputOp partitioned_input) {
     if (partitioned_input->use_empty()) partitioned_input->erase();
   });
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUReorderReplicateAndPartitionedInputsPass() {
   return std::make_unique<TPUReorderReplicateAndPartitionedInputsPass>();
 }

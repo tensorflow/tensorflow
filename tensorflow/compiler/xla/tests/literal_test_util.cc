@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/literal_comparison.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -26,17 +25,18 @@ namespace xla {
 namespace {
 
 // Writes the given literal to a file in the test temporary directory.
-void WriteLiteralToTempFile(const LiteralSlice& literal, const string& name) {
+void WriteLiteralToTempFile(const LiteralSlice& literal,
+                            const std::string& name) {
   // Bazel likes for tests to write "debugging outputs" like these to
   // TEST_UNDECLARED_OUTPUTS_DIR.  This plays well with tools that inspect test
   // results, especially when they're run on remote machines.
-  string outdir;
+  std::string outdir;
   if (!tensorflow::io::GetTestUndeclaredOutputsDir(&outdir)) {
     outdir = tensorflow::testing::TmpDir();
   }
 
   auto* env = tensorflow::Env::Default();
-  string filename = tensorflow::io::JoinPath(
+  std::string filename = tensorflow::io::JoinPath(
       outdir, absl::StrFormat("tempfile-%d-%s", env->NowMicros(), name));
   TF_CHECK_OK(tensorflow::WriteBinaryProto(env, absl::StrCat(filename, ".pb"),
                                            literal.ToProto()));
@@ -50,7 +50,8 @@ void WriteLiteralToTempFile(const LiteralSlice& literal, const string& name) {
 // miscomparison.
 void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
                   const LiteralSlice& mismatches,
-                  const ShapeIndex& /*shape_index*/) {
+                  const ShapeIndex& /*shape_index*/,
+                  const literal_comparison::ErrorBuckets& /*error_buckets*/) {
   LOG(INFO) << "expected: " << ShapeUtil::HumanString(expected.shape()) << " "
             << literal_comparison::ToStringTruncated(expected);
   LOG(INFO) << "actual:   " << ShapeUtil::HumanString(actual.shape()) << " "

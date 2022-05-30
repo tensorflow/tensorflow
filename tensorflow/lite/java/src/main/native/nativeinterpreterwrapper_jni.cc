@@ -28,8 +28,16 @@ limitations under the License.
 #include "tensorflow/lite/core/shims/cc/interpreter.h"
 #include "tensorflow/lite/core/shims/cc/interpreter_builder.h"
 #include "tensorflow/lite/core/shims/cc/model_builder.h"
+#include "tensorflow/lite/core/shims/cc/tools/verifier_internal.h"
+#if TFLITE_DISABLE_SELECT_JAVA_APIS
+#include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h"
+#include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/xnnpack_plugin.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#else
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
+#endif
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
+#include "tensorflow/lite/java/src/main/native/op_resolver_lazy_delegate_proxy.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/util.h"
 
@@ -57,10 +65,6 @@ BufferErrorReporter* convertLongToErrorReporter(JNIEnv* env, jlong handle) {
   return CastLongToPointer<BufferErrorReporter>(env, handle);
 }
 
-TfLiteOpaqueDelegate* convertLongToDelegate(JNIEnv* env, jlong handle) {
-  return CastLongToPointer<TfLiteOpaqueDelegate>(env, handle);
-}
-
 int getDataType(TfLiteType data_type) {
   switch (data_type) {
     case kTfLiteFloat32:
@@ -80,24 +84,9 @@ int getDataType(TfLiteType data_type) {
   }
 }
 
-void printDims(char* buffer, int max_size, int* dims, int num_dims) {
-  if (max_size <= 0) return;
-  buffer[0] = '?';
-  int size = 1;
-  for (int i = 1; i < num_dims; ++i) {
-    if (max_size > size) {
-      int written_size =
-          snprintf(buffer + size, max_size - size, ",%d", dims[i]);
-      if (written_size < 0) return;
-      size += written_size;
-    }
-  }
-}
-
 // TODO(yichengfan): evaluate the benefit to use tflite verifier.
-bool VerifyModel(const void* buf, size_t len) {
-  flatbuffers::Verifier verifier(static_cast<const uint8_t*>(buf), len);
-  return tflite::VerifyModelBuffer(verifier);
+bool VerifyModel(const void* buf, size_t length) {
+  return tflite_shims::internal::VerifyFlatBufferAndGetModel(buf, length);
 }
 
 // Verifies whether the model is a flatbuffer file.
@@ -106,7 +95,8 @@ class JNIFlatBufferVerifier : public tflite::TfLiteVerifier {
   bool Verify(const char* data, int length,
               tflite::ErrorReporter* reporter) override {
     if (!VerifyModel(data, length)) {
-      reporter->Report("The model is not a valid Flatbuffer file");
+      TF_LITE_REPORT_ERROR(reporter,
+                           "The model is not a valid Flatbuffer file");
       return false;
     }
     return true;
@@ -334,99 +324,6 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allowBufferHandleOutput(
 }
 
 JNIEXPORT jlong JNICALL
-Java_org_tensorflow_lite_NativeInterpreterWrapper_createXNNPACKDelegate(
-    JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
-    jint state, jint num_threads) {
-  if (!tflite::jni::CheckJniInitializedOrThrow(env)) return 0;
-
-  // If not using xnnpack, simply don't apply the delegate.
-  if (state == 0) return 0;
-
-  Interpreter* interpreter = convertLongToInterpreter(env, interpreter_handle);
-  if (interpreter == nullptr) return 0;
-
-  BufferErrorReporter* error_reporter =
-      convertLongToErrorReporter(env, error_handle);
-  if (error_reporter == nullptr) return 0;
-
-#if TFLITE_DISABLE_SELECT_JAVA_APIS
-  // TODO(b/173022832): Implement support for XNNPack unconditionally.
-  if (state == -1) {
-    // Instead of throwing an exception, we tolerate the fact that XNNPACK is
-    // not implemented yet, because we try to apply XNNPACK delegate by default.
-    TF_LITE_REPORT_ERROR(error_reporter,
-                         "WARNING: Not applying XNNPACK delegate by default "
-                         "because it isn't supported in this module.\n");
-    return 0;
-  } else {
-    // In this case, XNNPACK was explicitly requested, so we throw an exception.
-    ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                   "Not supported: XNNPACK delegate");
-    return 0;
-  }
-#else
-  // We use dynamic loading to avoid taking a hard dependency on XNNPack.
-  // This allows clients that use trimmed builds to save on binary size.
-  auto xnnpack_options_default =
-      reinterpret_cast<decltype(TfLiteXNNPackDelegateOptionsDefault)*>(
-          dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateOptionsDefault"));
-  auto xnnpack_create =
-      reinterpret_cast<decltype(TfLiteXNNPackDelegateCreate)*>(
-          dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateCreate"));
-  auto xnnpack_delete =
-      reinterpret_cast<decltype(TfLiteXNNPackDelegateDelete)*>(
-          dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateDelete"));
-
-  if (xnnpack_options_default && xnnpack_create && xnnpack_delete) {
-    TfLiteXNNPackDelegateOptions options = xnnpack_options_default();
-    if (num_threads > 0) {
-      options.num_threads = num_threads;
-    }
-    TfLiteDelegate* delegate = xnnpack_create(&options);
-    jlong delegate_handle = reinterpret_cast<jlong>(delegate);
-    jlong delete_handle = reinterpret_cast<jlong>(xnnpack_delete);
-
-    jclass xnnpack_delegate_class =
-        env->FindClass("org/tensorflow/lite/XnnpackDelegate");
-    if (xnnpack_delegate_class == nullptr) {
-      if (!env->ExceptionCheck()) {
-        ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                       "Internal error: "
-                       "Can't find org/tensorflow/lite/XnnpackDelegate class");
-      }
-      return 0;
-    }
-    jmethodID constructor =
-        env->GetMethodID(xnnpack_delegate_class, "<init>", "(JJ)V");
-    if (constructor == nullptr) {
-      if (!env->ExceptionCheck()) {
-        ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                       "Internal error: Can't find "
-                       "org/tensorflow/lite/XnnpackDelegate constructor");
-      }
-      return 0;
-    }
-    jobject xnnpack_delegate = env->NewObject(
-        xnnpack_delegate_class, constructor, delegate_handle, delete_handle);
-    return reinterpret_cast<jlong>(xnnpack_delegate);
-  } else if (state == -1) {
-    // Instead of throwing an exception, we tolerate the missing of such
-    // dependencies because we try to apply XNNPACK delegate by default.
-    TF_LITE_REPORT_ERROR(
-        error_reporter,
-        "WARNING: Missing necessary XNNPACK delegate dependencies to apply it "
-        "by default.\n");
-    return 0;
-  } else {
-    ThrowException(env, tflite::jni::kIllegalArgumentException,
-                   "Failed to load XNNPACK delegate from current runtime. "
-                   "Have you added the necessary dependencies?");
-    return 0;
-  }
-#endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
-}
-
-JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createErrorReporter(
     JNIEnv* env, jclass clazz, jint size) {
   if (!tflite::jni::CheckJniInitializedOrThrow(env)) return 0;
@@ -475,8 +372,9 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
       static_cast<char*>(env->GetDirectBufferAddress(model_buffer));
   jlong capacity = env->GetDirectBufferCapacity(model_buffer);
   if (!VerifyModel(buf, capacity)) {
-    ThrowException(env, tflite::jni::kIllegalArgumentException,
-                   "ByteBuffer is not a valid flatbuffer model");
+    ThrowException(
+        env, tflite::jni::kIllegalArgumentException,
+        "ByteBuffer is not a valid TensorFlow Lite model flatbuffer");
     return 0;
   }
 
@@ -494,25 +392,133 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
     JNIEnv* env, jclass clazz, jlong model_handle, jlong error_handle,
-    jint num_threads) {
+    jint num_threads, jboolean useXnnpack, jobject delegate_handle_list) {
   if (!tflite::jni::CheckJniInitializedOrThrow(env)) return 0;
+
+  static jclass list_class = env->FindClass("java/util/List");
+  if (list_class == nullptr) {
+    if (!env->ExceptionCheck()) {
+      ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                     "Internal error: Can't find java.util.List class.");
+    }
+    return 0;
+  }
+  static jmethodID list_size_method =
+      env->GetMethodID(list_class, "size", "()I");
+  if (list_size_method == nullptr) {
+    if (!env->ExceptionCheck()) {
+      ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                     "Internal error: Can't find java.util.List.size method.");
+    }
+    return 0;
+  }
+  static jmethodID list_get_method =
+      env->GetMethodID(list_class, "get", "(I)Ljava/lang/Object;");
+  if (list_get_method == nullptr) {
+    if (!env->ExceptionCheck()) {
+      ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                     "Internal error: Can't find java.util.List.get method.");
+    }
+    return 0;
+  }
+  static jclass long_class = env->FindClass("java/lang/Long");
+  if (long_class == nullptr) {
+    if (!env->ExceptionCheck()) {
+      ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                     "Internal error: "
+                     "Can't find java.lang.Long class.");
+    }
+    return 0;
+  }
+  static jmethodID long_value_method =
+      env->GetMethodID(long_class, "longValue", "()J");
+  if (long_value_method == nullptr) {
+    if (!env->ExceptionCheck()) {
+      ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                     "Internal error: "
+                     "Can't find java.lang.Long longValue method.");
+    }
+    return 0;
+  }
 
   FlatBufferModel* model = convertLongToModel(env, model_handle);
   if (model == nullptr) return 0;
+
   BufferErrorReporter* error_reporter =
       convertLongToErrorReporter(env, error_handle);
   if (error_reporter == nullptr) return 0;
-  std::unique_ptr<OpResolver> resolver = tflite_shims::CreateOpResolver();
+
+  std::unique_ptr<OpResolver> resolver =
+      std::make_unique<tflite::jni::OpResolverLazyDelegateProxy>(
+          tflite_shims::CreateOpResolver(), useXnnpack != JNI_FALSE);
+
   InterpreterBuilder interpreter_builder(*model, *resolver);
   interpreter_builder.SetNumThreads(static_cast<int>(num_threads));
+
+  // Add delegate_list to interpreter_builder.
+
+  // Java: int size = delegate_list.size();
+  jint size = env->CallIntMethod(delegate_handle_list, list_size_method);
+  for (jint i = 0; i < size; ++i) {
+    // Java: Long jdelegate_handle = delegate_handle_list->get(i);
+    jobject jdelegate_handle =
+        env->CallObjectMethod(delegate_handle_list, list_get_method, i);
+    if (jdelegate_handle == nullptr) {
+      if (!env->ExceptionCheck()) {
+        ThrowException(env, tflite::jni::kIllegalArgumentException,
+                       "Internal error: null object in Delegate handle list");
+      }
+      return 0;
+    }
+    // Java: long delegate_handle = jdelegate_handle.longValue();
+    jlong delegate_handle =
+        env->CallLongMethod(jdelegate_handle, long_value_method);
+    if (delegate_handle == 0) {
+      if (!env->ExceptionCheck()) {
+        ThrowException(env, tflite::jni::kIllegalArgumentException,
+                       "Internal error: Found invalid handle");
+      }
+      return 0;
+    }
+    auto delegate = reinterpret_cast<TfLiteOpaqueDelegate*>(delegate_handle);
+    interpreter_builder.AddDelegate(delegate);
+  }
+
+  // Create the Interpreter.
   std::unique_ptr<Interpreter> interpreter;
   TfLiteStatus status = interpreter_builder(&interpreter);
   if (status != kTfLiteOk) {
-    ThrowException(env, tflite::jni::kIllegalArgumentException,
-                   "Internal error: Cannot create interpreter: %s",
-                   error_reporter->CachedErrorMessage());
+    if (status == kTfLiteDelegateError) {
+      ThrowException(env, tflite::jni::kIllegalArgumentException,
+                     "Internal error: Failed to apply delegate: %s",
+                     error_reporter->CachedErrorMessage());
+    } else if (status == kTfLiteApplicationError) {
+      ThrowException(env, tflite::jni::kIllegalArgumentException,
+                     "Internal error: Error applying delegate: %s",
+                     error_reporter->CachedErrorMessage());
+    } else {
+      const char* error_message = error_reporter->CachedErrorMessage();
+      if (std::strcmp(
+              error_message,
+              "Restored original execution plan after delegate application "
+              "failure.") == 0 ||
+          std::strcmp(
+              error_message,
+              "Restored original execution plan after delegate application "
+              "failure.\n"
+              "Restored original execution plan after delegate application "
+              "failure.") == 0) {
+        ThrowException(env, tflite::jni::kIllegalArgumentException,
+                       "Internal error: Failed to apply delegate.");
+      } else {
+        ThrowException(env, tflite::jni::kIllegalArgumentException,
+                       "Internal error: Cannot create interpreter: %s",
+                       error_message);
+      }
+    }
     return 0;
   }
+
   // Note that tensor allocation is performed explicitly by the owning Java
   // NativeInterpreterWrapper instance.
   return reinterpret_cast<jlong>(interpreter.release());
@@ -596,30 +602,6 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
     }
   }
   return is_changed ? JNI_TRUE : JNI_FALSE;
-}
-
-JNIEXPORT void JNICALL
-Java_org_tensorflow_lite_NativeInterpreterWrapper_applyDelegate(
-    JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
-    jlong delegate_handle) {
-  if (!tflite::jni::CheckJniInitializedOrThrow(env)) return;
-
-  Interpreter* interpreter = convertLongToInterpreter(env, interpreter_handle);
-  if (interpreter == nullptr) return;
-
-  BufferErrorReporter* error_reporter =
-      convertLongToErrorReporter(env, error_handle);
-  if (error_reporter == nullptr) return;
-
-  TfLiteOpaqueDelegate* delegate = convertLongToDelegate(env, delegate_handle);
-  if (delegate == nullptr) return;
-
-  TfLiteStatus status = interpreter->ModifyGraphWithDelegate(delegate);
-  if (status != kTfLiteOk) {
-    ThrowException(env, tflite::jni::kIllegalArgumentException,
-                   "Internal error: Failed to apply delegate: %s",
-                   error_reporter->CachedErrorMessage());
-  }
 }
 
 JNIEXPORT jlong JNICALL

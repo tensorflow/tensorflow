@@ -46,7 +46,8 @@ void createTFLtoTOSALegalizationPipeline(
   // Perform main conversion.
   //----------------------------------------------------------------------------
   pm.addPass(mlir::tosa::createConvertTFLUint8Pass());
-  pm.addPass(mlir::tosa::createLegalizeTFLPass());
+  pm.addPass(mlir::tosa::createLegalizeTFLPass(opts.disabled_patterns,
+                                               opts.enabled_patterns));
 
   //----------------------------------------------------------------------------
   // Post conversion cleanup.

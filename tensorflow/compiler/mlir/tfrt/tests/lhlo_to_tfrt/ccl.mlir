@@ -1,7 +1,5 @@
-// RUN: lhlo-tfrt-opt %s    \
-// RUN:   -lmhlo-to-gpu     \
-// RUN:   -gpu-async-region \
-// RUN:   -gpu-to-tfrt-gpu  \
+// RUN: lhlo-tfrt-opt %s     \
+// RUN:   -lmhlo-to-tfrt-gpu \
 // RUN: | FileCheck %s
 
 // CHECK:      func @all_gather(
@@ -12,7 +10,7 @@
 // CHECK-SAME:   %arg4: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg5: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @all_gather(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result0: memref<2x2xf32>, %result1: memref<2x2xf32>) {
+func.func @all_gather(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result0: memref<2x2xf32>, %result1: memref<2x2xf32>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 
@@ -28,6 +26,7 @@ func @all_gather(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result
   "lmhlo.all_gather"(%operand0, %operand1, %result0, %result1) {
       all_gather_dimension = 0 : i64,
       replica_groups = dense<0> : tensor<1x1xi64>,
+      channel_id = { handle = 5 : i64, type = 2 : i64 },
       constrain_layout = false,
       use_global_device_ids = false
   } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
@@ -45,7 +44,7 @@ func @all_gather(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result
 // CHECK-SAME:   %arg4: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg5: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @all_reduce(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result0: memref<2x2xf32>, %result1: memref<2x2xf32>) {
+func.func @all_reduce(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result0: memref<2x2xf32>, %result1: memref<2x2xf32>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 
@@ -58,7 +57,7 @@ func @all_reduce(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result
   // CHECK: [[CHAIN3:%[0-9]+]] = tfrt_gpu.ccl.execute %arg1, [[HANDLE]],
   // CHECK-SAME: [[CHAIN2]]
 
-  "lmhlo.all_reduce"(%operand0, %operand1, %result0, %result1) ( {
+  "lmhlo.all_reduce"(%operand0, %operand1, %result0, %result1) ({
       ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
           %0 = mhlo.add %lhs, %rhs : tensor<f32>
           "mhlo.return"(%0) : (tensor<f32>) -> ()
@@ -82,7 +81,7 @@ func @all_reduce(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result
 // CHECK-SAME:   %arg4: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg5: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @reduce_scatter(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result0: memref<2x2xf32>, %result1: memref<2x2xf32>) {
+func.func @reduce_scatter(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result0: memref<2x2xf32>, %result1: memref<2x2xf32>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 
@@ -95,12 +94,13 @@ func @reduce_scatter(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %re
   // CHECK: [[CHAIN3:%[0-9]+]] = tfrt_gpu.ccl.execute %arg1, [[HANDLE]],
   // CHECK-SAME: [[CHAIN2]]
 
-  "lmhlo.reduce_scatter"(%operand0, %operand1, %result0, %result1) ( {
+  "lmhlo.reduce_scatter"(%operand0, %operand1, %result0, %result1) ({
       ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
           %0 = mhlo.add %lhs, %rhs : tensor<f32>
           "mhlo.return"(%0) : (tensor<f32>) -> ()
       }) {
           replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+          channel_id = { handle = 5 : i64, type = 2 : i64 },
           scatter_dimension = 1 : i64
       } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 
@@ -117,7 +117,7 @@ func @reduce_scatter(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %re
 // CHECK-SAME:   %arg4: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg5: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @all_to_all(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result0: memref<2x2xf32>, %result1: memref<2x2xf32>) {
+func.func @all_to_all(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result0: memref<2x2xf32>, %result1: memref<2x2xf32>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 
@@ -156,7 +156,7 @@ func @all_to_all(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result
 // CHECK-SAME:   %arg4: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg5: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @all_to_all_split_dimension(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result0: memref<2x2xf32>, %result1: memref<2x2xf32>) {
+func.func @all_to_all_split_dimension(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result0: memref<2x2xf32>, %result1: memref<2x2xf32>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 
@@ -188,14 +188,15 @@ func @all_to_all_split_dimension(%operand0: memref<2x2xf32>, %operand1: memref<2
 // CHECK-SAME:   %arg2: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg3: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @collective_permute(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
+func.func @collective_permute(%operand: memref<2x2xf32>, %result: memref<2x2xf32>)
+  attributes {replica_count = 0 : i32, num_partitions = 0 : i32} {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 
   // CHECK: [[CONTEXT:%[0-9]+]] = tfrt_gpu.stream.get_context %arg1
   // CHECK: [[HANDLE:%[0-9]+]] = xlir.ccl.create [[CONTEXT]]
   // CHECK: [[CHAIN1:%[0-9]+]] = xlir.ccl.collective_permute [[HANDLE]],
-  // CHECK-SAME: %arg2, %arg3, ncclFloat32, %arg0
+  // CHECK-SAME: %arg2, %arg3, ncclFloat32, 1, [0, 1, 2], [1, 2, 3], %arg0
   // CHECK: [[CHAIN2:%[0-9]+]] = tfrt_gpu.ccl.execute %arg1, [[HANDLE]],
   // CHECK-SAME: [[CHAIN1]]
 

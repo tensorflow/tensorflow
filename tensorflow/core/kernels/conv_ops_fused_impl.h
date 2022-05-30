@@ -71,8 +71,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-class AutotuneResult;
-
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
@@ -552,27 +550,55 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
                                    dnn_activation_mode,  // activation_mode
                                    /*is_contrib=*/false}};
 
-    auto config_or = AutotuneFusedConv<T>(
-        cudnn_use_autotune, AutotuneConv::GetInstance(), conv_parameters,
-        context, input_desc, filter_desc, bias_desc, output_desc, conv_desc,
-        dnn_activation_mode, kConvScale, kSideInputScale, input_ptr, filter_ptr,
-        output_ptr, bias_ptr, side_input_ptr, ConvolveScratchSize());
-    OP_REQUIRES_OK(context, config_or.status());
-    auto algorithm_config = config_or.ConsumeValueOrDie();
+    se::dnn::DataType element_type = se::dnn::ToDataType<T>::value;
+
+    auto entry_or = AutotuneFusedConv<T>(
+        cudnn_use_autotune, FusedConvAutotuneMap::GetInstance(),
+        conv_parameters, context, input_desc, filter_desc, bias_desc,
+        output_desc, conv_desc, dnn_activation_mode, kConvScale,
+        kSideInputScale, input_ptr, filter_ptr, output_ptr, bias_ptr,
+        side_input_ptr, ConvolveScratchSize());
+    OP_REQUIRES_OK(context, entry_or.status());
+    auto autotune_entry = entry_or.ConsumeValueOrDie();
 
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize(), context);
     Status cudnn_launch_status;
-    if (CudnnUseFrontend()) {
-      cudnn_launch_status = stream->FusedConvolveWithExecutionPlan(
-          input_desc, input_ptr,            // input
-          kConvScale,                       // input_scale
-          filter_desc, filter_ptr,          // filter
-          conv_desc,                        // conv
-          side_input_ptr, kSideInputScale,  // side_input
-          bias_desc, bias_ptr,              // bias
-          dnn_activation_mode,              // activation
-          output_desc, &output_ptr,         // output
-          &scratch_allocator, algorithm_config, nullptr);
+    if (!autotune_entry.is_algorithm_config()) {
+      auto& runners = autotune_entry.GetOpRunners();
+      se::dnn::FusedConvOp::Config config{se::dnn::ConvolutionKind::FORWARD,
+                                          element_type,
+                                          element_type,
+                                          element_type,
+                                          kConvScale,
+                                          kSideInputScale,
+                                          input_desc,
+                                          filter_desc,
+                                          bias_desc,
+                                          output_desc,
+                                          conv_desc,
+                                          dnn_activation_mode};
+      auto primary_or = runners.primary->GetOrCreateRunner(config, stream);
+      OP_REQUIRES_OK(context, primary_or.status());
+      auto* primary = primary_or.ValueOrDie();
+
+      const se::dnn::FusedConvRunner* no_scratch_fallback = nullptr;
+      if (runners.no_scratch_fallback) {
+        auto no_scratch_fallback_or =
+            runners.no_scratch_fallback->GetOrCreateRunner(config, stream);
+        OP_REQUIRES_OK(context, no_scratch_fallback_or.status());
+        no_scratch_fallback = no_scratch_fallback_or.ValueOrDie();
+      }
+
+      auto runner_and_scratch_or =
+          AllocateScratchOrFallback<se::dnn::FusedConvOp::Signature>(
+              &scratch_allocator, primary, no_scratch_fallback);
+      OP_REQUIRES_OK(context, runner_and_scratch_or.status());
+      auto runner_and_scratch = runner_and_scratch_or.ConsumeValueOrDie();
+      auto& runner =
+          *std::get<const se::dnn::FusedConvRunner*>(runner_and_scratch);
+      cudnn_launch_status = runner(
+          stream, nullptr, std::get<se::DeviceMemoryBase>(runner_and_scratch),
+          input_ptr, filter_ptr, side_input_ptr, bias_ptr, output_ptr);
     } else {
       cudnn_launch_status = stream->FusedConvolveWithAlgorithm(
           input_desc, input_ptr,            // input
@@ -583,7 +609,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
           bias_desc, bias_ptr,              // bias
           dnn_activation_mode,              // activation
           output_desc, &output_ptr,         // output
-          &scratch_allocator, algorithm_config, nullptr);
+          &scratch_allocator, autotune_entry.GetAlgorithmConfig(), nullptr);
     }
 
     OP_REQUIRES_OK(context, cudnn_launch_status);

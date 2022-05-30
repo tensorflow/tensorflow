@@ -65,7 +65,6 @@ pybind_extension(
     srcs = [
         "signature_def_util_wrapper_pybind11.cc",
     ],
-    module_name = "_pywrap_signature_def_util_wrapper",
     deps = [
         ":signature_def_util",
         "//tensorflow/lite:framework_lib",

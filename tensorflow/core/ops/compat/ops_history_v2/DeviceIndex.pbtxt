@@ -1,3 +1,14 @@
+op 	 {
+  name: "DeviceIndex"
+  output_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  attr {
+    name: "device_names"
+    type: "list(string)"
+  }
+}
 op {
   name: "DeviceIndex"
   output_arg {
@@ -8,4 +19,5 @@ op {
     name: "device_names"
     type: "list(string)"
   }
+  is_stateful: true
 }

@@ -18,7 +18,6 @@ import abc
 import contextlib
 
 import numpy as np
-import six
 
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
@@ -37,6 +36,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator_algebra
 from tensorflow.python.ops.linalg import linear_operator_util
+from tensorflow.python.ops.linalg import slicing
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import deprecation
@@ -49,8 +49,8 @@ __all__ = ["LinearOperator"]
 
 # TODO(langmore) Use matrix_solve_ls for singular or non-square matrices.
 @tf_export("linalg.LinearOperator")
-@six.add_metaclass(abc.ABCMeta)
-class LinearOperator(module.Module, composite_tensor.CompositeTensor):
+class LinearOperator(
+    module.Module, composite_tensor.CompositeTensor, metaclass=abc.ABCMeta):
   """Base class defining a [batch of] linear operator[s].
 
   Subclasses of `LinearOperator` provide access to common methods on a
@@ -166,7 +166,7 @@ class LinearOperator(module.Module, composite_tensor.CompositeTensor):
      )
      ...
      super().__init__(..., parameters=parameters)
-   ```
+  ```
 
    Users can then access `my_linear_operator.parameters` to see all arguments
    passed to its initializer.
@@ -184,7 +184,7 @@ class LinearOperator(module.Module, composite_tensor.CompositeTensor):
                is_square=None,
                name=None,
                parameters=None):
-    r"""Initialize the `LinearOperator`.
+    """Initialize the `LinearOperator`.
 
     **This is a private method for subclass use.**
     **Subclasses should copy-paste this `__init__` documentation.**
@@ -1192,8 +1192,27 @@ class LinearOperator(module.Module, composite_tensor.CompositeTensor):
     # `@make_composite_tensor` decorator.
     pass
 
+  def __getitem__(self, slices):
+    return slicing.batch_slice(self, params_overrides={}, slices=slices)
 
-class _LinearOperatorSpec(type_spec.TypeSpec):
+  @property
+  def _experimental_parameter_ndims_to_matrix_ndims(self):
+    """A dict of names to number of dimensions contributing to an operator.
+
+    This is a dictionary of parameter names to `int`s specifying the
+    number of right-most dimensions contributing to the **matrix** shape of the
+    densified operator.
+    If the parameter is a `Tensor`, this is mapped to an `int`.
+    If the parameter is a `LinearOperator` (called `A`), this specifies the
+    number of batch dimensions of `A` contributing to this `LinearOperator`s
+    matrix shape.
+    If the parameter is a structure, this is a structure of the same type of
+    `int`s.
+    """
+    return ()
+
+
+class _LinearOperatorSpec(type_spec.BatchableTypeSpec):
   """A tf.TypeSpec for `LinearOperator` objects."""
 
   __slots__ = ("_param_specs", "_non_tensor_params", "_prefer_static_fields")
@@ -1267,6 +1286,29 @@ class _LinearOperatorSpec(type_spec.TypeSpec):
     return (self._param_specs,
             self._non_tensor_params,
             self._prefer_static_fields)
+
+  def _copy(self, **overrides):
+    kwargs = {
+        "param_specs": self._param_specs,
+        "non_tensor_params": self._non_tensor_params,
+        "prefer_static_fields": self._prefer_static_fields
+    }
+    kwargs.update(overrides)
+    return type(self)(**kwargs)
+
+  def _batch(self, batch_size):
+    """Returns a TypeSpec representing a batch of objects with this TypeSpec."""
+    return self._copy(
+        param_specs=nest.map_structure(
+            lambda spec: spec._batch(batch_size),  # pylint: disable=protected-access
+            self._param_specs))
+
+  def _unbatch(self, batch_size):
+    """Returns a TypeSpec representing a single element of this TypeSpec."""
+    return self._copy(
+        param_specs=nest.map_structure(
+            lambda spec: spec._unbatch(),  # pylint: disable=protected-access
+            self._param_specs))
 
 
 def make_composite_tensor(cls, module_name="tf.linalg"):

@@ -36,10 +36,10 @@ namespace gpu {
 
 static constexpr double kTolerance = 0.1f;
 
-// Comparison kernel code: compare two buffers of bf16/fp16/fp32/fp64/int8/int32
-// of length buffer_length where the relative error does not exceed the passed
-// rel_error_threshold. Write the number of mismatches into out parameter
-// mismatch_count.
+// Comparison kernel code: compare two buffers of
+// bf16/fp16/fp32/fp64/int8_t/int32_t of length buffer_length where the relative
+// error does not exceed the passed rel_error_threshold. Write the number of
+// mismatches into out parameter mismatch_count.
 //
 // NaN's are considered equal, and for half's we clamp all numbers to largest
 // and smallest numbers representable to avoid miscomparisons due to overflows.
@@ -600,7 +600,7 @@ ret;
 template <typename ElementT>
 using ComparisonKernelT =
     se::TypedKernel<se::DeviceMemory<ElementT>, se::DeviceMemory<ElementT>,
-                    float, uint64, se::DeviceMemory<uint64_t>>;
+                    float, uint64_t, se::DeviceMemory<uint64_t>>;
 
 // Compares two buffers on the GPU.
 //
@@ -617,7 +617,7 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
   se::ScopedDeviceMemory<uint64_t> out_param =
       executor->AllocateOwnedScalar<uint64_t>();
 
-  stream->ThenMemZero(out_param.ptr(), sizeof(uint64));
+  stream->ThenMemZero(out_param.ptr(), sizeof(uint64_t));
   if (lhs.size() != rhs.size()) {
     return InternalError("Mismatched buffer size: %d bytes vs. %d bytes",
                          lhs.size(), rhs.size());
@@ -625,10 +625,10 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
 
   se::DeviceMemory<ElementT> lhs_typed(lhs);
   se::DeviceMemory<ElementT> rhs_typed(rhs);
-  uint64 buffer_size = lhs_typed.ElementCount();
+  uint64_t buffer_size = lhs_typed.ElementCount();
 
-  absl::Span<const uint8> compiled_ptx = {};
-  StatusOr<absl::Span<const uint8>> compiled_ptx_or =
+  absl::Span<const uint8_t> compiled_ptx = {};
+  StatusOr<absl::Span<const uint8_t>> compiled_ptx_or =
       se::CompileGpuAsmOrGetCached(
           executor->device_ordinal(), buffer_compare_ptx,
           PtxOptsFromDebugOptions(config.debug_options()));
@@ -649,7 +649,7 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ComparisonKernelT<ElementT>> comparison_kernel,
       (executor->CreateTypedKernel<se::DeviceMemory<ElementT>,
-                                   se::DeviceMemory<ElementT>, float, uint64,
+                                   se::DeviceMemory<ElementT>, float, uint64_t,
                                    se::DeviceMemory<uint64_t>>(
           kernel_name, buffer_compare_ptx, compiled_ptx)));
 
@@ -675,13 +675,13 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
 
   LaunchDimensions::Dim3D thread_counts = dim.thread_counts_per_block();
   LaunchDimensions::Dim3D block_counts = dim.block_counts();
-  stream->ThenLaunch(
+  TF_RETURN_IF_ERROR(stream->ThenLaunch(
       se::ThreadDim(thread_counts.x, thread_counts.y, thread_counts.z),
       se::BlockDim(block_counts.x, block_counts.y, block_counts.z),
       *comparison_kernel, lhs_typed, rhs_typed, static_cast<float>(kTolerance),
-      buffer_size, out_param.cref());
+      buffer_size, out_param.cref()));
 
-  uint64 result = -1;
+  uint64_t result = -1;
   CHECK_EQ(out_param->size(), sizeof(result));
   stream->ThenMemcpy(&result, *out_param, sizeof(result));
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
@@ -775,10 +775,10 @@ StatusOr<bool> BufferComparator::CompareEqual(se::Stream* stream,
       return CompareEqualParameterized<double, double>(
           stream, lhs, rhs, shape_, config_, "__xla_fp64_comparison");
     case xla::S8:
-      return CompareEqualParameterized<int8, float>(
+      return CompareEqualParameterized<int8_t, float>(
           stream, lhs, rhs, shape_, config_, "__xla_int8_comparison");
     case xla::S32:
-      return CompareEqualParameterized<int32, float>(
+      return CompareEqualParameterized<int32_t, float>(
           stream, lhs, rhs, shape_, config_, "__xla_int32_comparison");
     default:
       return Unimplemented("Unimplemented element type");

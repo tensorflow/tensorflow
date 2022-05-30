@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_ARRAY2D_H_
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <initializer_list>
 #include <iterator>
@@ -28,10 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/bits.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 
@@ -77,10 +75,10 @@ class Array2D : public Array<T> {
   //
   // This makes it easy to see distinct row/column values in the array.
   void FillUnique(T start_value = 0) {
+    int shift = Log2Ceiling<uint64_t>(n2());
     for (int64_t i0 = 0; i0 < n1(); ++i0) {
       for (int64_t i1 = 0; i1 < n2(); ++i1) {
-        (*this)(i0, i1) =
-            ((i0 << tensorflow::Log2Ceiling64(n2())) | i1) + start_value;
+        (*this)(i0, i1) = ((i0 << shift) | i1) + start_value;
       }
     }
   }

@@ -1,4 +1,3 @@
-# Lint as python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -269,6 +268,46 @@ class StructuredTensor(composite_tensor.CompositeTensor):
         row_partitions,
         internal=_structured_tensor_factory_key)
 
+  @classmethod
+  def from_fields_and_rank(cls, fields, rank, validate=False):
+    """Creates a `StructuredTensor` from a nonempty dictionary of fields.
+
+    Args:
+      fields: A dictionary mapping from string to `Tensor`, `RaggedTensor`, or
+        `StructuredTensor`, providing the values for individual fields in each
+        structure.  If `rank > 0`, then every tensor in `fields` must have
+        the same shape in the first `rank` dimensions. Cannot be empty.
+      rank: The rank of the resulting structured tensor.
+      validate: If true, then add runtime validation ops that check that the
+        field values all have compatible shapes in the outer `rank`
+        dimensions.
+
+    Returns:
+      A `StructuredTensor`.
+    Examples:
+      >>> StructuredTensor.from_fields_and_rank({'x': 1, 'y': [1, 2, 3]}, 0)
+      <StructuredTensor(
+        fields={
+          "x": tf.Tensor(1, shape=(), dtype=int32),
+          "y": tf.Tensor([1 2 3], shape=(3,), dtype=int32)},
+        shape=())>
+      >>> StructuredTensor.from_fields_and_rank({'foo': [1, 2], 'bar': [3, 4]},
+      ...                              1)
+      <StructuredTensor(
+        fields={
+          "bar": tf.Tensor([3 4], shape=(2,), dtype=int32),
+          "foo": tf.Tensor([1 2], shape=(2,), dtype=int32)},
+        shape=(2,))>
+    """
+    if not fields:
+      raise ValueError('Must provide at least one field')
+    if not isinstance(rank, int):
+      raise ValueError('rank must be an integer')
+    if rank < 0:
+      raise ValueError('rank must be nonnegative')
+    return StructuredTensor.from_fields(fields, shape=[None] * rank,
+                                        validate=validate)
+
   def with_updates(
       self,
       updates: Dict[FieldName, Union[FieldValue, FieldFn, None]],
@@ -436,15 +475,15 @@ class StructuredTensor(composite_tensor.CompositeTensor):
       return StructuredTensor.from_fields(
           new_fields,
           shape=self.shape,
-          row_partitions=self._row_partitions,
-          nrows=self._nrows,
+          row_partitions=self.row_partitions,
+          nrows=self.nrows(),
           validate=validate)
 
     except ValueError as e:
       msg = '`StructuredTensor.with_updates` failed'
       if error_prefix:
         msg = '{} for field {}'.format(msg, error_prefix)
-      raise ValueError('{}: {}'.format(msg, e))
+      raise ValueError(msg) from e
 
   def _promote_helper(self, source_path, new_parent_path):
     """Creates a promoted field without adding it to the structure.
@@ -809,8 +848,8 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     # If rank>0, then re-group each value from dict-of-list to list-of-dict.
     if len(self._shape) > 0:  # pylint: disable=g-explicit-length-test
       if not result:  # special-case for StructuredTensors w/ no fields.
-        return _empty_dict_pylist_from_row_partitions(self._row_partitions,
-                                                      self._nrows)
+        return _empty_dict_pylist_from_row_partitions(self.row_partitions,
+                                                      self.nrows())
       return _pyval_field_major_to_node_major(
           list(result.keys()), list(result.values()), self._shape.rank)
     else:
@@ -902,7 +941,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
         fields[key] = cls._from_pyval(target, None, path_so_far + (key,))
     else:
       field_specs = typespec._field_specs  # pylint: disable=protected-access
-      if ((not isinstance(typespec, StructuredTensorSpec)) or
+      if ((not isinstance(typespec, StructuredTensorSpec)) or  # pylint: disable=superfluous-parens
           (set(fields) - set(field_specs))):
         raise ValueError('Value at %r does not match typespec: %r vs %r' %
                          (path_so_far, pyval, typespec))
@@ -1046,7 +1085,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     <StructuredTensor(
       fields={
         "foo": tf.Tensor([12 33 99], shape=(3,), dtype=int32)},
-      shape=(3,))>
+      shape=(None,))>
 
     Args:
       outer_axis: `int`: The first dimension in the range of dimensions to
@@ -1260,8 +1299,9 @@ def _convert_to_structured_field_value(value):
   else:
     try:
       return ops.convert_to_tensor(value)
-    except (ValueError, TypeError):
-      raise TypeError('Unexpected type for value in `fields`: %r' % value)
+    except (ValueError, TypeError) as e:
+      raise TypeError('Unexpected type for value in `fields`: %r' %
+                      value) from e
 
 
 def _find_shape_dtype(fields, nrows, row_partitions):
@@ -1339,7 +1379,7 @@ def _merge_row_partitions(row_partitions, value, rank, dtype, validate):
     return tuple(value_row_partitions)
   else:
     return tuple([
-        p1.merge_precomputed_encodings(p2, validate)
+        p1._merge_precomputed_encodings(p2, validate)  # pylint: disable=protected-access
         for (p1, p2) in zip(row_partitions, value_row_partitions)
     ])
 
@@ -1609,10 +1649,7 @@ def _merge_dims(value, outer_axis, inner_axis):
 
     # Build the new shape.
     value_shape = value.shape
-    shape = (
-        value_shape[:outer_axis] +
-        [value_shape[outer_axis:inner_axis].num_elements()] +
-        value_shape[inner_axis + 1:])
+    shape = (value_shape[:outer_axis] + [None] + value_shape[inner_axis + 1:])
 
     # Build the new row_partitions & nrows
     if outer_axis == 0:

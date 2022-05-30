@@ -15,10 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/transforms/corert_converter.h"
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Identifier.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/PassManager.h"
@@ -59,7 +58,7 @@ void CoreRTConverter::MaterializeDerivedAttributes(mlir::Operation *op) {
   if (auto interface = llvm::dyn_cast<mlir::DerivedAttributeOpInterface>(op)) {
     auto derived_attrs = interface.materializeDerivedAttributes();
     for (auto named_attr : derived_attrs) {
-      op->setAttr(named_attr.first, named_attr.second);
+      op->setAttr(named_attr.getName(), named_attr.getValue());
     }
   }
 }
@@ -85,12 +84,12 @@ bool CoreRTConverter::IsSupportedNumericDType(mlir::Type type) const {
 mlir::ArrayAttr CoreRTConverter::CreateOpAttrs(ArrayRef<NamedAttribute> attrs) {
   llvm::SmallVector<mlir::Attribute, 4> attr_array;
   for (auto key_and_value : attrs) {
-    if (!IsUnusedAttribute(key_and_value.first)) {
-      auto converted = ConvertAttribute(key_and_value.second);
+    if (!IsUnusedAttribute(key_and_value.getName())) {
+      auto converted = ConvertAttribute(key_and_value.getValue());
       if (!converted) return {};
 
       mlir::StringAttr key =
-          builder_.getStringAttr(key_and_value.first.strref());
+          builder_.getStringAttr(key_and_value.getName().strref());
       attr_array.push_back(builder_.getArrayAttr({key, converted}));
     }
   }
@@ -99,11 +98,11 @@ mlir::ArrayAttr CoreRTConverter::CreateOpAttrs(ArrayRef<NamedAttribute> attrs) {
 
 mlir::ArrayAttr CoreRTConverter::CreateOpFuncAttrs(
     ArrayRef<NamedAttribute> attrs,
-    llvm::SmallVector<mlir::Identifier, 4> *func_attr_keys) {
+    llvm::SmallVector<mlir::StringAttr, 4> *func_attr_keys) {
   llvm::SmallVector<mlir::Attribute, 4> attr_array;
   for (auto key_and_value : attrs) {
-    auto attr_key = key_and_value.first;
-    auto attr_value = key_and_value.second;
+    auto attr_key = key_and_value.getName();
+    auto attr_value = key_and_value.getValue();
     if (!IsUnusedAttribute(attr_key) &&
         attr_value.isa<mlir::FlatSymbolRefAttr, mlir::SymbolRefAttr>()) {
       auto func_attr = attr_value.dyn_cast<mlir::FlatSymbolRefAttr>();
@@ -168,7 +167,7 @@ mlir::Value CoreRTConverter::ConvertOpHandler(
   ConversionPatternRewriter::InsertionGuard insertion_guard(*rewriter);
   rewriter->setInsertionPointToStart(block);
 
-  FuncOp func_op = op->getParentOfType<mlir::FuncOp>();
+  func::FuncOp func_op = op->getParentOfType<mlir::func::FuncOp>();
   mlir::Value in_chain = func_op.getArgument(0);
   auto get_op_handler_op = rewriter->create<tfrt::corert::GetOpHandler>(
       block->getParent()->getLoc(), op_handler_type(), in_chain,
@@ -179,7 +178,7 @@ mlir::Value CoreRTConverter::ConvertOpHandler(
 
 mlir::Value CoreRTConverter::GetDistributedContext(
     mlir::Operation *op, mlir::ConversionPatternRewriter *rewriter) {
-  mlir::FuncOp func_op = op->getParentOfType<mlir::FuncOp>();
+  mlir::func::FuncOp func_op = op->getParentOfType<mlir::func::FuncOp>();
   auto iter = distributed_context_by_func_.find(func_op.getOperation());
   if (iter != distributed_context_by_func_.end()) {
     return iter->second;
@@ -196,7 +195,7 @@ mlir::Value CoreRTConverter::GetDistributedContext(
 
 mlir::Value CoreRTConverter::GetRemoteChainManager(
     mlir::Operation *op, mlir::ConversionPatternRewriter *rewriter) {
-  mlir::FuncOp func_op = op->getParentOfType<mlir::FuncOp>();
+  mlir::func::FuncOp func_op = op->getParentOfType<mlir::func::FuncOp>();
   auto iter = remote_chain_mgr_by_func_.find(func_op.getOperation());
   if (iter != remote_chain_mgr_by_func_.end()) {
     return iter->second;
@@ -217,12 +216,15 @@ mlir::Value CoreRTConverter::GetRemoteChainManager(
 
 mlir::Value CoreRTConverter::GetLocalSideEffectChain(
     mlir::Operation *op, mlir::ConversionPatternRewriter *rewriter) {
-  auto func_op = op->getParentOfType<mlir::FuncOp>();
-  auto predecessors = side_effect_analysis_.DirectControlPredecessors(op);
+  auto func_op = op->getParentOfType<mlir::func::FuncOp>();
 
-  // If there is no side-effect predecessor, then the input side-effect chain
-  // is used.
-  if (predecessors.empty()) return func_op.getArgument(0);
+  llvm::SmallVector<mlir::Operation *, 4> predecessors;
+  if (llvm::isa<mlir::func::ReturnOp>(op)) {
+    auto sinks = side_effect_analysis_.ControlSinks();
+    predecessors.assign(sinks.begin(), sinks.end());
+  } else {
+    predecessors = side_effect_analysis_.DirectControlPredecessors(op);
+  }
 
   llvm::SmallVector<mlir::Value, 2> chains;
   for (auto *pred : predecessors) {
@@ -234,6 +236,8 @@ mlir::Value CoreRTConverter::GetLocalSideEffectChain(
       chains.push_back(chain);
   }
 
+  // If there is no side-effect predecessor, then the input side-effect chain
+  // is used.
   if (chains.empty()) return func_op.getArgument(0);
 
   if (chains.size() == 1) return chains[0];
@@ -249,7 +253,7 @@ mlir::Value CoreRTConverter::GetLocalSideEffectChain(
 mlir::Value CoreRTConverter::GetTaskHandle(
     mlir::Operation *op, StringRef task_name,
     mlir::ConversionPatternRewriter *rewriter) {
-  mlir::FuncOp func_op = op->getParentOfType<mlir::FuncOp>();
+  mlir::func::FuncOp func_op = op->getParentOfType<mlir::func::FuncOp>();
   llvm::StringMap<mlir::Value> &task_handle_by_name =
       task_handles_by_func_[func_op.getOperation()];
   auto iter = task_handle_by_name.find(task_name);

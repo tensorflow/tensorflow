@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -46,12 +45,13 @@ class RoundTripPackedLiteralTest : public ClientLibraryTestBase {
 };
 
 TEST_F(RoundTripPackedLiteralTest, RoundTripsR1F32Length2) {
-  string data(sizeof(float) * 2, 0);
+  std::string data(sizeof(float) * 2, 0);
   absl::Span<float> floats(absl::bit_cast<float*>(data.data()), 2);
   floats[0] = 42.0;
   floats[1] = 24.0;
 
-  string fname = tensorflow::testing::TmpDir() + "/RoundTripsR1F32Length2.data";
+  std::string fname =
+      tensorflow::testing::TmpDir() + "/RoundTripsR1F32Length2.data";
   EXPECT_TRUE(
       tensorflow::WriteStringToFile(tensorflow::Env::Default(), fname, data)
           .ok());
@@ -68,7 +68,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR1F32Length2) {
 }
 
 TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim0Minor) {
-  string data(sizeof(float) * 4, 0);
+  std::string data(sizeof(float) * 4, 0);
   absl::Span<float> floats(absl::bit_cast<float*>(data.data()), 4);
   // With x as the minor dimension, these will become:
   floats[0] = 42.0;  // y=0,x=0
@@ -76,7 +76,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim0Minor) {
   floats[2] = 64.0;  // y=1,x=0
   floats[3] = 46.0;  // y=1,x=1
 
-  string fname =
+  std::string fname =
       tensorflow::testing::TmpDir() + "/RoundTripsR2F32Size2x2Dim0Minor.data";
   EXPECT_TRUE(
       tensorflow::WriteStringToFile(tensorflow::Env::Default(), fname, data)
@@ -101,7 +101,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim0Minor) {
 }
 
 TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim1Minor) {
-  string data(sizeof(float) * 4, 0);
+  std::string data(sizeof(float) * 4, 0);
   absl::Span<float> floats(absl::bit_cast<float*>(data.data()), 4);
   // With y as the minor dimension, these will become:
   floats[0] = 42.0;  // y=0,x=0
@@ -109,7 +109,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim1Minor) {
   floats[2] = 64.0;  // y=0,x=1
   floats[3] = 46.0;  // y=1,x=1
 
-  string fname =
+  std::string fname =
       tensorflow::testing::TmpDir() + "/RoundTripsR2F32Size2x2Dim1Minor.data";
   EXPECT_TRUE(
       tensorflow::WriteStringToFile(tensorflow::Env::Default(), fname, data)

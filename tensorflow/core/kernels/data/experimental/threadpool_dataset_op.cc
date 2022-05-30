@@ -39,6 +39,22 @@ namespace experimental {
     PrivateThreadPoolDatasetOp::kDatasetType;
 /* static */ constexpr const char* const PrivateThreadPoolDatasetOp::kDatasetOp;
 
+namespace {
+// To prevent integer overflow issues when allocating threadpool memory for an
+// unreasonable number of threads.
+constexpr int kThreadLimit = 65536;
+
+Status ValidateNumThreads(int32_t num_threads) {
+  if (num_threads < 0) {
+    return errors::InvalidArgument("`num_threads` must be >= 0");
+  }
+  if (num_threads >= kThreadLimit) {
+    return errors::InvalidArgument("`num_threads` must be < ", kThreadLimit);
+  }
+  return Status::OK();
+}
+}  // namespace
+
 class ThreadPoolResource : public ResourceBase {
  public:
   ThreadPoolResource(Env* env, const ThreadOptions& thread_options,
@@ -83,9 +99,7 @@ class ThreadPoolHandleOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_threads", &num_threads_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("max_intra_op_parallelism",
                                      &max_intra_op_parallelism_));
-    OP_REQUIRES(
-        ctx, num_threads_ > 0,
-        errors::InvalidArgument("`num_threads` must be greater than zero."));
+    OP_REQUIRES_OK(ctx, ValidateNumThreads(num_threads_));
   }
 
   // The resource is deleted from the resource manager only when it is private
@@ -182,7 +196,9 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
       return "ThreadPoolDatasetOp::Dataset";
     }
 
-    int64_t Cardinality() const override { return input_->Cardinality(); }
+    int64_t CardinalityInternal() const override {
+      return input_->Cardinality();
+    }
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
@@ -302,7 +318,7 @@ class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
     return "MaxIntraOpParallelismDatasetOp::Dataset";
   }
 
-  int64_t Cardinality() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->clear();
@@ -443,7 +459,7 @@ class PrivateThreadPoolDatasetOp::Dataset : public DatasetBase {
     return "PrivateThreadPoolDatasetOp::Dataset";
   }
 
-  int64_t Cardinality() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->clear();
@@ -529,8 +545,7 @@ void PrivateThreadPoolDatasetOp::MakeDatasetFromOptions(OpKernelContext* ctx,
                                                         DatasetBase* input,
                                                         int32_t num_threads,
                                                         DatasetBase** output) {
-  OP_REQUIRES(ctx, num_threads >= 0,
-              errors::InvalidArgument("`num_threads` must be >= 0"));
+  OP_REQUIRES_OK(ctx, ValidateNumThreads(num_threads));
   *output = new Dataset(ctx,
                         DatasetContext(DatasetContext::Params(
                             {PrivateThreadPoolDatasetOp::kDatasetType,
@@ -544,8 +559,7 @@ void PrivateThreadPoolDatasetOp::MakeDataset(OpKernelContext* ctx,
   int64_t num_threads = 0;
   OP_REQUIRES_OK(
       ctx, ParseScalarArgument<int64_t>(ctx, "num_threads", &num_threads));
-  OP_REQUIRES(ctx, num_threads >= 0,
-              errors::InvalidArgument("`num_threads` must be >= 0"));
+  OP_REQUIRES_OK(ctx, ValidateNumThreads(num_threads));
   *output = new Dataset(ctx, input, num_threads);
 }
 

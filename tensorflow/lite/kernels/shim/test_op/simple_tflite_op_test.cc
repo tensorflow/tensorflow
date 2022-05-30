@@ -74,6 +74,7 @@ TEST(SimpleOpModel, OutputSize_5_N_2) {
   flexbuffers::Builder builder;
   builder.Map([&]() {
     builder.Int("output1_size", 5);
+    builder.String("output2_suffix", "foo");
     builder.Int("N", 2);
   });
   builder.Finish();
@@ -90,12 +91,13 @@ TEST(SimpleOpModel, OutputSize_5_N_2) {
   // Run the op
   SimpleOpModel m(/*op_options=*/builder.GetBuffer(), input_types, input_shapes,
                   input0, input1, output_types);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // Assertions
   EXPECT_THAT(m.GetOutput<int>(0), testing::ElementsAre(0, 1, 2, 3, 4));
   EXPECT_THAT(m.GetOutput<float>(1),
               testing::ElementsAre(0, 0.5, 1.0, 1.5, 2.0));
-  EXPECT_THAT(m.GetOutput<std::string>(2), testing::ElementsAre("0", "1", "2"));
+  EXPECT_THAT(m.GetOutput<std::string>(2),
+              testing::ElementsAre("0", "1", "2", "foo"));
   EXPECT_THAT(m.GetOutput<int64_t>(3), testing::ElementsAre(124));
   EXPECT_THAT(m.GetOutputShape(3), testing::ElementsAre());
   EXPECT_THAT(m.GetOutput<int64_t>(4), testing::ElementsAre(457, 790));
@@ -107,6 +109,7 @@ TEST(SimpleOpModel, OutputSize_3_N_0) {
   flexbuffers::Builder builder;
   builder.Map([&]() {
     builder.Int("output1_size", 3);
+    builder.String("output2_suffix", "foo");
     builder.Int("N", 0);
   });
   builder.Finish();
@@ -115,17 +118,17 @@ TEST(SimpleOpModel, OutputSize_3_N_0) {
   std::vector<tflite::TensorType> output_types = {tflite::TensorType_INT32,
                                                   tflite::TensorType_FLOAT32,
                                                   tflite::TensorType_STRING};
-  const std::string input0 = "dummy";
+  const std::string input0 = "abcde";
   const std::vector<std::vector<int64_t>> input1;
   // Run the op
   SimpleOpModel m(/*op_options=*/builder.GetBuffer(), input_types, input_shapes,
                   input0, input1, output_types);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // Assertions
   EXPECT_THAT(m.GetOutput<int>(0), testing::ElementsAre(0, 1, 2, 3, 4));
   EXPECT_THAT(m.GetOutput<float>(1), testing::ElementsAre(0, 0.5, 1.0));
   EXPECT_THAT(m.GetOutput<std::string>(2),
-              testing::ElementsAre("0", "1", "2", "3", "4"));
+              testing::ElementsAre("0", "1", "2", "3", "4", "foo"));
 }
 
 }  // namespace

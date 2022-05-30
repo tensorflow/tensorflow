@@ -18,6 +18,7 @@ limitations under the License.
 #include <iterator>
 #include <stack>
 #include <tuple>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
@@ -60,6 +61,17 @@ struct MovableAllReduceContext {
   // result. Otherwise, this field is undefined.
   std::vector<AccumulationContext> accumulation_contexts;
 };
+
+bool IsZero(const HloInstruction* hlo) {
+  if (hlo->IsConstant() && hlo->shape().rank() == 0 &&
+      hlo->literal().IsZero({})) {
+    return true;
+  }
+  if (hlo->opcode() == HloOpcode::kBroadcast) {
+    return IsZero(hlo->operand(0));
+  }
+  return false;
+}
 
 // Checks if an all-reduce instruction is eligible for sinking and finds all of
 // the all-reduce's accumulation uses inside the while body if eligible.
@@ -167,6 +179,17 @@ MovableAllReduceContext IsAllReduceMovable(HloInstruction* all_reduce,
             }
             break;
           }
+          case HloOpcode::kSelect: {
+            if ((user->operand_index(instruction) == 1 &&
+                 IsZero(user->operand(2))) ||
+                (user->operand_index(instruction) == 2 &&
+                 IsZero(user->operand(1)))) {
+              to_visit.push(user);
+            } else {
+              result.unsupported_operation = true;
+            }
+            break;
+          }
           case HloOpcode::kTuple: {
             if (!result.tuple_index.empty()) {
               // Note that we don't support nested tuples as of now.
@@ -241,6 +264,17 @@ MovableAllReduceContext IsAllReduceMovable(HloInstruction* all_reduce,
             case HloOpcode::kTranspose:
               to_visit.push(user);
               break;
+            case HloOpcode::kSelect: {
+              if ((user->operand_index(instruction) == 1 &&
+                   IsZero(user->operand(2))) ||
+                  (user->operand_index(instruction) == 2 &&
+                   IsZero(user->operand(1)))) {
+                to_visit.push(user);
+              } else {
+                return true;
+              }
+              break;
+            }
             case HloOpcode::kDynamicReshape: {
               if (instruction == user->operand(0)) {
                 to_visit.push(user);
@@ -302,6 +336,18 @@ MovableAllReduceContext IsAllReduceMovable(HloInstruction* all_reduce,
             }
             break;
           }
+          case HloOpcode::kSelect: {
+            if ((user->operand_index(instruction) == 1 &&
+                 IsZero(user->operand(2))) ||
+                (user->operand_index(instruction) == 2 &&
+                 IsZero(user->operand(1)))) {
+              to_visit.push(user);
+            } else {
+              is_all_reduce_movable = false;
+              break;
+            }
+            break;
+          }
           case HloOpcode::kAdd: {
             int64_t buffer_index = 1 - user->operand_index(instruction);
             HloInstruction* accumulation_buffer =
@@ -319,8 +365,8 @@ MovableAllReduceContext IsAllReduceMovable(HloInstruction* all_reduce,
             if (!output_buffer_tuple_index.unsupported_operation &&
                 output_buffer_tuple_index.returned_from_computation &&
                 !origin_buffer_tuple_index.tuple_index.empty() &&
-                ContainersEqual(origin_buffer_tuple_index.tuple_index,
-                                output_buffer_tuple_index.tuple_index)) {
+                absl::c_equal(origin_buffer_tuple_index.tuple_index,
+                              output_buffer_tuple_index.tuple_index)) {
               accumulation_contexts.push_back(AccumulationContext{
                   user, accumulation_buffer,
                   std::move(output_buffer_tuple_index.tuple_index)});

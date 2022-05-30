@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
-#include <unordered_map>
-
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -183,14 +181,16 @@ TEST_F(HloModuleTest, LargeConstantToString) {
   module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(
-      "HloModule LargeConstantToString\n\nENTRY %Constant () -> f32[16] {\n  "
-      "ROOT %constant = f32[16]{0} constant({...})\n}\n\n",
+      "HloModule LargeConstantToString, "
+      "entry_computation_layout={()->f32[16]{0}}\n\nENTRY %Constant () -> "
+      "f32[16] {\n  ROOT %constant = f32[16]{0} constant({...})\n}\n\n",
       module->ToString(HloPrintOptions().set_print_large_constants(false)));
 
   EXPECT_EQ(
-      "HloModule LargeConstantToString\n\nENTRY %Constant () -> f32[16] {\n  "
-      "ROOT %constant = f32[16]{0} constant({42, 42, 42, 42, 42, 42, 42, 42, "
-      "42, 42, 42, 42, 42, 42, 42, 42})\n}\n\n",
+      "HloModule LargeConstantToString, "
+      "entry_computation_layout={()->f32[16]{0}}\n\nENTRY %Constant () -> "
+      "f32[16] {\n  ROOT %constant = f32[16]{0} constant({42, 42, 42, 42, 42, "
+      "42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42})\n}\n\n",
       module->ToString(HloPrintOptions().set_print_large_constants(true)));
 }
 
@@ -201,7 +201,7 @@ TEST_F(HloModuleTest, UniqueModuleId) {
 }
 
 TEST_F(HloModuleTest, ProtoSerializationWithoutSchedule) {
-  const string text = R"(
+  const std::string text = R"(
 HloModule axpy_module
 
 ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
@@ -222,7 +222,7 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
 }
 
 TEST_F(HloModuleTest, ProtoSerializationWithSchedule) {
-  const string text = R"(
+  const std::string text = R"(
 HloModule axpy_module, is_scheduled=true
 
 ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
@@ -255,7 +255,7 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
 TEST_F(HloModuleTest, ProtoSerializationPreservesIds) {
   // Verify that serializing then deserializing an HLO proto preserves the
   // unique IDs of the instruction and module.
-  const string text =
+  const std::string text =
       R"(HloModule ReduceR3ToR2_module
 
 add_F32.v3 {
@@ -345,7 +345,7 @@ ENTRY ReduceR3ToR2.v3 {
 }
 
 TEST_F(HloModuleTest, VerifyReplaceComputationsWithSortOp) {
-  const string text = R"(
+  const std::string text = R"(
   HloModule sort
 
   compare {

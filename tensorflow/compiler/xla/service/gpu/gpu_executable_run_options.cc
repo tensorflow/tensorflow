@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 
 #include "absl/algorithm/container.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 
 namespace xla {
 namespace gpu {
@@ -47,6 +48,34 @@ GpuExecutableRunOptions& GpuExecutableRunOptions::set_nccl_unique_id_callback(
 const NcclUniqueIdCallback& GpuExecutableRunOptions::nccl_unique_id_callback()
     const {
   return nccl_unique_id_callback_;
+}
+
+NcclExecuteParams::NcclExecuteParams(
+    const ServiceExecutableRunOptions& run_options, se::Stream* stream)
+    : stream(stream),
+      run_id(run_options.run_options().run_id()),
+      device_assn(run_options.run_options().device_assignment()) {
+  const GpuExecutableRunOptions* gpu_options =
+      run_options.run_options().gpu_executable_run_options();
+  gpu_global_device_ids = gpu_options && gpu_options->gpu_global_device_ids()
+                              ? &*gpu_options->gpu_global_device_ids()
+                              : nullptr;
+  nccl_unique_id_callback =
+      gpu_options && gpu_options->nccl_unique_id_callback()
+          ? &gpu_options->nccl_unique_id_callback()
+          : nullptr;
+}
+
+StatusOr<GlobalDeviceId> NcclExecuteParams::GetGlobalDeviceId() const {
+  int64_t local_device_ordinal = stream->parent()->device_ordinal();
+  if (gpu_global_device_ids) {
+    TF_RET_CHECK(0 <= local_device_ordinal &&
+                 local_device_ordinal < gpu_global_device_ids->size());
+    return (*gpu_global_device_ids)[local_device_ordinal];
+  } else {
+    // No local -> global mapping was provided; assume the identity mapping.
+    return GlobalDeviceId(local_device_ordinal);
+  }
 }
 
 }  // namespace gpu

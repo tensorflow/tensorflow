@@ -163,8 +163,9 @@ class GPUCombination(combinations_lib.TestCombination):
     GPU_TEST: The environment is considered to have GPU hardware available if
               the name of the program contains "test_gpu" or "test_xla_gpu".
   """
-
-  GPU_TEST = re.search(r"(test_2?gpu|test_xla_2?gpu)$", sys.argv[0])
+  GPU_TEST = False
+  if sys.argv:
+    GPU_TEST = re.search(r"(test_2?gpu|test_xla_2?gpu)$", sys.argv[0])
 
   def should_execute_combination(self, kwargs):
     distributions = [
@@ -226,7 +227,9 @@ class TPUCombination(combinations_lib.TestCombination):
               the name of the program contains "test_tpu".
   """
 
-  TPU_TEST = "test_tpu" in sys.argv[0]
+  TPU_TEST = False
+  if sys.argv:
+    TPU_TEST = "test_tpu" in sys.argv[0]
 
   def should_execute_combination(self, kwargs):
     distributions = [

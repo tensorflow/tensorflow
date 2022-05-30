@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import forwardprop
 from tensorflow.python.eager import forwardprop_util
@@ -64,13 +65,17 @@ def _jacfwd(f, primals):
   """Compute the jacobian of `f` at `primals` using forward-mode autodiff."""
   jac_flat = []
   flat_primals = nest.flatten(primals)
-  tangent_mask = [array_ops.zeros_like(primal) for primal in flat_primals]
+  tangent_mask = [
+      array_ops.zeros_like(primal, dtype=primal.dtype)
+      for primal in flat_primals
+  ]
   for primal_index, primal in enumerate(flat_primals):
     primal_vector = array_ops.reshape(primal, [-1])
     primal_vector_length = array_ops.size(primal_vector)
     jac_columns = []
     for element_index in math_ops.range(primal_vector_length):
-      mask = array_ops.one_hot(element_index, primal_vector_length)
+      mask = array_ops.one_hot(
+          element_index, primal_vector_length, dtype=primal.dtype)
       tangent_mask[primal_index] = array_ops.reshape(mask,
                                                      array_ops.shape(primal))
       jac_columns.append(
@@ -197,7 +202,9 @@ def _test_gradients(testcase,
                     order,
                     delta=1e-3,
                     rtol=1e-2,
-                    atol=1e-6):
+                    atol=1e-6,
+                    srtol=1e-6,
+                    satol=1e-6):
   """Tests forward/backward jacobians of `f`'s [0, `order`)-order gradients."""
   if order < 1:
     raise ValueError(
@@ -210,16 +217,19 @@ def _test_gradients(testcase,
         order=order - 1,
         delta=delta,
         rtol=rtol,
-        atol=atol)
+        atol=atol,
+        srtol=srtol,
+        satol=satol)
   sym_jac_back, num_jac = gradient_checker_v2.compute_gradient(
       f, primals, delta=delta)
   testcase.assertAllClose(num_jac, sym_jac_back, rtol=rtol, atol=atol)
   sym_jac_fwd = _jacfwd(f, primals)
   testcase.assertAllClose(num_jac, sym_jac_fwd, rtol=rtol, atol=atol)
   # And the symbolic computations should be much closer.
-  testcase.assertAllClose(sym_jac_back, sym_jac_fwd)
+  testcase.assertAllClose(sym_jac_back, sym_jac_fwd, rtol=srtol, atol=satol)
 
 
+@test_util.with_eager_op_as_function
 class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
   def testJVPFunction(self):
@@ -327,13 +337,11 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testFunctionCacheLimited(self):
-    # Every time this test is executed, it will create a slightly larger Tensor
-    # and push it through Add's gradient. Since we check for new pyobjects after
-    # the warmup, retracing each time without cleaning up old traces fails the
-    # test. It works because of experimental_relax_shapes.
-    for _ in range(forwardprop._TRACE_COUNT_LIMIT):
-      execution_count = getattr(self, "_execution_count", 0)
-      self._execution_count = execution_count + 1
+    # Every time this loop is executed, it will create a slightly larger Tensor
+    # and push it through Add's gradient.
+    # We run TRACE_COUNT_LIMIT x 2 so that it is tested with both
+    # experimental_relax_shapes on and off.
+    for execution_count in range(forwardprop._TRACE_COUNT_LIMIT*2):
       x = array_ops.zeros([execution_count])
       with forwardprop.ForwardAccumulator(x, array_ops.ones_like(x)) as acc:
         y = x + x
@@ -430,8 +438,34 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       return math_ops.reduce_prod(
           pointwise + math_ops.reduce_sum(pointwise), axis=1)
 
+    if (context.run_eager_op_as_function_enabled() and
+        test_util.is_xla_enabled()):
+      # Autoclustering kicks in when eager_op_as_function is enabled.
+      # Under XLA the symbolic tolerances are less than under TF.
+      # Ref: b/202559426
+      _test_gradients(
+          self,
+          f, [constant_op.constant([[2.0, 3.0], [1.0, 4.0]])],
+          order=3,
+          srtol=1e-6,
+          satol=1e-3)
+    else:
+      _test_gradients(
+          self, f, [constant_op.constant([[2.0, 3.0], [1.0, 4.0]])], order=3)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testNumericHigherOrderFloat64(self):
+
+    def f(x):
+      pointwise = math_ops.sin(x) * math_ops.tan(x)
+      return math_ops.reduce_prod(
+          pointwise + math_ops.reduce_sum(pointwise), axis=1)
+
     _test_gradients(
-        self, f, [constant_op.constant([[2.0, 3.0], [1.0, 4.0]])], order=3)
+        self,
+        f,
+        [constant_op.constant([[2.0, 3.0], [1.0, 4.0]], dtype=dtypes.float64)],
+        order=3)
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testCustomGradient(self):

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 
 #include <vector>
+
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
@@ -299,19 +300,22 @@ TEST(TensorProtoUtil, CreatesStringTensorProto) {
 
   auto proto = tensor::CreateTensorProto(values, shape);
 
-  EXPECT_EQ(proto.DebugString(),
-            "dtype: DT_STRING\n"
-            "tensor_shape {\n"
-            "  dim {\n"
-            "    size: 1\n"
-            "  }\n"
-            "  dim {\n"
-            "    size: 3\n"
-            "  }\n"
-            "}\n"
-            "string_val: \"a\"\n"
-            "string_val: \"b\"\n"
-            "string_val: \"c\"\n");
+  TensorProto expected_tensor_proto;
+  protobuf::TextFormat::ParseFromString(
+      "dtype: DT_STRING\n"
+      "tensor_shape {\n"
+      "  dim {\n"
+      "    size: 1\n"
+      "  }\n"
+      "  dim {\n"
+      "    size: 3\n"
+      "  }\n"
+      "}\n"
+      "string_val: \"a\"\n"
+      "string_val: \"b\"\n"
+      "string_val: \"c\"\n",
+      &expected_tensor_proto);
+  EXPECT_EQ(proto.DebugString(), expected_tensor_proto.DebugString());
 }
 
 TEST(TensorProtoUtil, CreatesInt32TensorProto) {
@@ -320,15 +324,18 @@ TEST(TensorProtoUtil, CreatesInt32TensorProto) {
 
   auto proto = tensor::CreateTensorProto(values, shape);
 
-  EXPECT_EQ(proto.DebugString(),
-            "dtype: DT_INT32\n"
-            "tensor_shape {\n"
-            "  dim {\n"
-            "    size: 2\n"
-            "  }\n"
-            "}\n"
-            "int_val: 1\n"
-            "int_val: 2\n");
+  TensorProto expected_tensor_proto;
+  protobuf::TextFormat::ParseFromString(
+      "dtype: DT_INT32\n"
+      "tensor_shape {\n"
+      "  dim {\n"
+      "    size: 2\n"
+      "  }\n"
+      "}\n"
+      "int_val: 1\n"
+      "int_val: 2\n",
+      &expected_tensor_proto);
+  EXPECT_EQ(proto.DebugString(), expected_tensor_proto.DebugString());
 }
 
 TEST(TensorProtoUtil, CreatesInt64TensorProto) {
@@ -337,15 +344,18 @@ TEST(TensorProtoUtil, CreatesInt64TensorProto) {
 
   auto proto = tensor::CreateTensorProto(values, shape);
 
-  EXPECT_EQ(proto.DebugString(),
-            "dtype: DT_INT64\n"
-            "tensor_shape {\n"
-            "  dim {\n"
-            "    size: 2\n"
-            "  }\n"
-            "}\n"
-            "int64_val: 1\n"
-            "int64_val: 2\n");
+  TensorProto expected_tensor_proto;
+  protobuf::TextFormat::ParseFromString(
+      "dtype: DT_INT64\n"
+      "tensor_shape {\n"
+      "  dim {\n"
+      "    size: 2\n"
+      "  }\n"
+      "}\n"
+      "int64_val: 1\n"
+      "int64_val: 2\n",
+      &expected_tensor_proto);
+  EXPECT_EQ(proto.DebugString(), expected_tensor_proto.DebugString());
 }
 
 TEST(TensorProtoUtil, CreatesUInt32TensorProto) {
@@ -354,15 +364,18 @@ TEST(TensorProtoUtil, CreatesUInt32TensorProto) {
 
   auto proto = tensor::CreateTensorProto(values, shape);
 
-  EXPECT_EQ(proto.DebugString(),
-            "dtype: DT_UINT32\n"
-            "tensor_shape {\n"
-            "  dim {\n"
-            "    size: 2\n"
-            "  }\n"
-            "}\n"
-            "uint32_val: 1\n"
-            "uint32_val: 2\n");
+  TensorProto expected_tensor_proto;
+  protobuf::TextFormat::ParseFromString(
+      "dtype: DT_UINT32\n"
+      "tensor_shape {\n"
+      "  dim {\n"
+      "    size: 2\n"
+      "  }\n"
+      "}\n"
+      "uint32_val: 1\n"
+      "uint32_val: 2\n",
+      &expected_tensor_proto);
+  EXPECT_EQ(proto.DebugString(), expected_tensor_proto.DebugString());
 }
 
 TEST(TensorProtoUtil, CreatesUInt64TensorProto) {
@@ -371,15 +384,18 @@ TEST(TensorProtoUtil, CreatesUInt64TensorProto) {
 
   auto proto = tensor::CreateTensorProto(values, shape);
 
-  EXPECT_EQ(proto.DebugString(),
-            "dtype: DT_UINT64\n"
-            "tensor_shape {\n"
-            "  dim {\n"
-            "    size: 2\n"
-            "  }\n"
-            "}\n"
-            "uint64_val: 1\n"
-            "uint64_val: 2\n");
+  TensorProto expected_tensor_proto;
+  protobuf::TextFormat::ParseFromString(
+      "dtype: DT_UINT64\n"
+      "tensor_shape {\n"
+      "  dim {\n"
+      "    size: 2\n"
+      "  }\n"
+      "}\n"
+      "uint64_val: 1\n"
+      "uint64_val: 2\n",
+      &expected_tensor_proto);
+  EXPECT_EQ(proto.DebugString(), expected_tensor_proto.DebugString());
 }
 
 TEST(TensorProtoUtil, CreatesFloatTensorProto) {
@@ -388,15 +404,18 @@ TEST(TensorProtoUtil, CreatesFloatTensorProto) {
 
   auto proto = tensor::CreateTensorProto(values, shape);
 
-  EXPECT_EQ(proto.DebugString(),
-            "dtype: DT_FLOAT\n"
-            "tensor_shape {\n"
-            "  dim {\n"
-            "    size: 2\n"
-            "  }\n"
-            "}\n"
-            "float_val: 1.1\n"
-            "float_val: 2.2\n");
+  TensorProto expected_tensor_proto;
+  protobuf::TextFormat::ParseFromString(
+      "dtype: DT_FLOAT\n"
+      "tensor_shape {\n"
+      "  dim {\n"
+      "    size: 2\n"
+      "  }\n"
+      "}\n"
+      "float_val: 1.1\n"
+      "float_val: 2.2\n",
+      &expected_tensor_proto);
+  EXPECT_EQ(proto.DebugString(), expected_tensor_proto.DebugString());
 }
 
 TEST(TensorProtoUtil, CreatesDoubleTensorProto) {
@@ -405,15 +424,18 @@ TEST(TensorProtoUtil, CreatesDoubleTensorProto) {
 
   auto proto = tensor::CreateTensorProto(values, shape);
 
-  EXPECT_EQ(proto.DebugString(),
-            "dtype: DT_DOUBLE\n"
-            "tensor_shape {\n"
-            "  dim {\n"
-            "    size: 2\n"
-            "  }\n"
-            "}\n"
-            "double_val: 1.1\n"
-            "double_val: 2.2\n");
+  TensorProto expected_tensor_proto;
+  protobuf::TextFormat::ParseFromString(
+      "dtype: DT_DOUBLE\n"
+      "tensor_shape {\n"
+      "  dim {\n"
+      "    size: 2\n"
+      "  }\n"
+      "}\n"
+      "double_val: 1.1\n"
+      "double_val: 2.2\n",
+      &expected_tensor_proto);
+  EXPECT_EQ(proto.DebugString(), expected_tensor_proto.DebugString());
 }
 
 TEST(TensorProtoUtil, CreatesBoolTensorProto) {
@@ -422,15 +444,18 @@ TEST(TensorProtoUtil, CreatesBoolTensorProto) {
 
   auto proto = tensor::CreateTensorProto(values, shape);
 
-  EXPECT_EQ(proto.DebugString(),
-            "dtype: DT_BOOL\n"
-            "tensor_shape {\n"
-            "  dim {\n"
-            "    size: 2\n"
-            "  }\n"
-            "}\n"
-            "bool_val: true\n"
-            "bool_val: false\n");
+  TensorProto expected_tensor_proto;
+  protobuf::TextFormat::ParseFromString(
+      "dtype: DT_BOOL\n"
+      "tensor_shape {\n"
+      "  dim {\n"
+      "    size: 2\n"
+      "  }\n"
+      "}\n"
+      "bool_val: true\n"
+      "bool_val: false\n",
+      &expected_tensor_proto);
+  EXPECT_EQ(proto.DebugString(), expected_tensor_proto.DebugString());
 }
 
 TEST(TensorProtoUtil, CompressTensorProtoInPlaceTooSmall) {

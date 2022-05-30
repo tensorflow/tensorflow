@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/util/ptr_util.h"
 
-// TODO(mihaimaruseac): After all filesystems are converted, all calls to
+// TODO(b/139060984): After all filesystems are converted, all calls to
 // methods from `FileSystem` will have to be replaced to calls to private
 // methods here, as part of making this class a singleton and the only way to
 // register/use filesystems.

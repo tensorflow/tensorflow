@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/flex/buffer_map.h"
 
+#include <sys/types.h>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
@@ -158,6 +160,32 @@ TEST(BufferMapTest, SetFromTfLiteStringTwice) {
 
   EXPECT_THAT(GetTensorData<tensorflow::tstring>(buffer_map.GetTensor(0)),
               ElementsAre("", "", "", "s3", "", "", "s1", "s2"));
+}
+
+TEST(BufferMapTest, SetFromTfLiteBuiltinResource) {
+  BufferMap buffer_map;
+
+  // Constructs a fake resource tensor.
+  auto tensor = UniqueTfLiteTensor(new TfLiteTensor(), [](TfLiteTensor* t) {
+    TfLiteTensorDataFree(t);
+    TfLiteIntArrayFree(t->dims);
+    delete t;
+  });
+  tensor->allocation_type = kTfLiteDynamic;
+  tensor->type = kTfLiteResource;
+  tensor->dims = ConvertVectorToTfLiteIntArray({1});
+  TfLiteTensorRealloc(sizeof(int32_t), tensor.get());
+  tensor->delegate = nullptr;
+  tensor->data.i32[0] = 1;
+
+  buffer_map.SetFromTfLite(0, tensor.get());
+  // Also check details of the tensor.
+  tensorflow::Tensor out_tensor = buffer_map.GetTensor(0);
+  ASSERT_EQ(out_tensor.dtype(), tensorflow::DT_RESOURCE);
+  ASSERT_EQ(out_tensor.NumElements(), 1);
+  tensorflow::ResourceHandle handle =
+      out_tensor.flat<tensorflow::ResourceHandle>()(0);
+  EXPECT_EQ(handle.name(), "tflite_resource_variable:1");
 }
 
 TEST(BufferMapTest, SetFromTensorFlow) {

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
@@ -73,7 +74,7 @@ class TargetHardware {
 
   // Returns the cost of running the whole function on this hardware.
   // By default this is the sum of the cost of individual cost for each op.
-  virtual double GetFuncCost(FuncOp* func) const;
+  virtual double GetFuncCost(func::FuncOp* func) const;
 
   // Returns true if 'op' can run on this Hardware.
   virtual bool IsOpSupported(mlir::Operation* op) const;
@@ -84,7 +85,7 @@ class TargetHardware {
                                           size_t buffer_size) const = 0;
 
   // Returns a list of all patterns to apply for this hardware.
-  virtual mlir::OwningRewritePatternList GetTransformations(
+  virtual mlir::RewritePatternSet GetTransformations(
       MLIRContext* context) const = 0;
 
   // Returns TypeId for the provided hardware.

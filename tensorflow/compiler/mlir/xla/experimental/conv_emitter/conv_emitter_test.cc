@@ -19,12 +19,13 @@ limitations under the License.
 
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -51,16 +52,16 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
       hlo_module.entry_computation()->root_instruction();
 
   mlir::MLIRContext context;
-  context.loadDialect<mlir::AffineDialect, mlir::memref::MemRefDialect,
-                      mlir::StandardOpsDialect>();
-  mlir::OwningModuleRef mlir_module(
+  context.loadDialect<mlir::AffineDialect, mlir::arith::ArithmeticDialect,
+                      mlir::memref::MemRefDialect, mlir::func::FuncDialect>();
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module(
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context)));
 
-  mlir::FuncOp function =
+  mlir::func::FuncOp function =
       EmitConvolutionForwardAsMlir(conv, "Conv", &context).ValueOrDie();
 
   mlir_module->push_back(function);
-  (void)mlir_module->verify();
+  (void)mlir_module->verifyInvariants();
 
   std::string mlir_text;
   {
@@ -72,9 +73,9 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
   {
     mlir::PassManager pm(mlir_module->getContext());
     pm.addPass(mlir::createLowerAffinePass());
-    pm.addPass(mlir::createLowerToCFGPass());
+    pm.addPass(mlir::createConvertSCFToCFPass());
     pm.addPass(mlir::createMemRefToLLVMPass());
-    pm.addPass(mlir::createLowerToLLVMPass());
+    pm.addPass(mlir::createConvertFuncToLLVMPass());
     CHECK(mlir::succeeded(pm.run(*mlir_module)));
   }
 
@@ -100,7 +101,7 @@ CHECK-NEXT:         affine.for %arg6 = 0 to 7 {
 CHECK-NEXT:           %0 = memref.alloc() : memref<32x16xf32>
 CHECK-NEXT:           affine.for %arg7 = 0 to 32 {
 CHECK-NEXT:             affine.for %arg8 = 0 to 16 {
-CHECK-NEXT:               %cst = constant 0.000000e+00 : f32
+CHECK-NEXT:               %cst = arith.constant 0.000000e+00 : f32
 CHECK-NEXT:               affine.store %cst, %0[%arg7, %arg8] : memref<32x16xf32>
 CHECK-NEXT:             }
 CHECK-NEXT:           }
@@ -111,12 +112,12 @@ CHECK-NEXT:                 affine.for %arg10 = 0 to 32 {
 CHECK-NEXT:                   affine.for %arg11 = 0 to 16 {
 CHECK-NEXT:                     affine.for %arg12 = 0 to 4 {
 CHECK-NEXT:                       %1 = affine.load %arg1[%arg3, %arg5 * 2 + %arg8 - 3, (%arg6 * 16 + %arg11) * 2 + %arg9 - 3, %arg7 * 4 + %arg12] : memref<128x224x224x4xf16>
-CHECK-NEXT:                       %2 = fpext %1 : f16 to f32
+CHECK-NEXT:                       %2 = arith.extf %1 : f16 to f32
 CHECK-NEXT:                       %3 = affine.load %arg2[%arg4 * 32 + %arg10, %arg8, %arg9, %arg7 * 4 + %arg12] : memref<64x7x7x4xf16>
-CHECK-NEXT:                       %4 = fpext %3 : f16 to f32
+CHECK-NEXT:                       %4 = arith.extf %3 : f16 to f32
 CHECK-NEXT:                       %5 = affine.load %0[%arg10, %arg11] : memref<32x16xf32>
-CHECK-NEXT:                       %6 = mulf %2, %4 : f32
-CHECK-NEXT:                       %7 = addf %5, %6 : f32
+CHECK-NEXT:                       %6 = arith.mulf %2, %4 : f32
+CHECK-NEXT:                       %7 = arith.addf %5, %6 : f32
 CHECK-NEXT:                       affine.store %7, %0[%arg10, %arg11] : memref<32x16xf32>
 CHECK-NEXT:                     }
 CHECK-NEXT:                   }
@@ -127,7 +128,7 @@ CHECK-NEXT:           }
 CHECK-NEXT:           affine.for %arg7 = 0 to 32 {
 CHECK-NEXT:             affine.for %arg8 = 0 to 16 {
 CHECK-NEXT:               %1 = affine.load %0[%arg7, %arg8] : memref<32x16xf32>
-CHECK-NEXT:               %2 = fptrunc %1 : f32 to f16
+CHECK-NEXT:               %2 = arith.truncf %1 : f32 to f16
 CHECK-NEXT:               affine.store %2, %arg0[%arg3, %arg5, %arg6 * 16 + %arg8, %arg4 * 32 + %arg7] : memref<128x112x112x64xf16>
 CHECK-NEXT:             }
 CHECK-NEXT:           }

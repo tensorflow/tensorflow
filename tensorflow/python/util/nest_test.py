@@ -15,12 +15,12 @@
 """Tests for utilities working with arbitrarily nested structures."""
 
 import collections
+import collections.abc
 import time
 from typing import NamedTuple
 
 from absl.testing import parameterized
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -31,7 +31,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
-from tensorflow.python.util.compat import collections_abc
 
 try:
   import attr  # pylint:disable=g-import-not-at-top
@@ -39,7 +38,7 @@ except ImportError:
   attr = None
 
 
-class _CustomMapping(collections_abc.Mapping):
+class _CustomMapping(collections.abc.Mapping):
 
   def __init__(self, *args, **kwargs):
     self._wrapped = dict(*args, **kwargs)
@@ -58,7 +57,7 @@ class _CustomList(list):
   pass
 
 
-class _CustomSequenceThatRaisesException(collections.Sequence):
+class _CustomSequenceThatRaisesException(collections.abc.Sequence):
 
   def __len__(self):
     return 1
@@ -72,7 +71,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
   PointXY = collections.namedtuple("Point", ["x", "y"])  # pylint: disable=invalid-name
   unsafe_map_pattern = ("nest cannot guarantee that it is safe to map one to "
                         "the other.")
-  bad_pack_pattern = ("Attempted to pack value:\n  .+\ninto a sequence, but "
+  bad_pack_pattern = ("Attempted to pack value:\n  .+\ninto a structure, but "
                       "found incompatible type `<(type|class) 'str'>` instead.")
 
   if attr:
@@ -279,8 +278,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
 
   def testPackSequenceAs_wrongLengthsError(self):
     with self.assertRaisesRegex(
-        ValueError,
-        "Structure had 2 elements, but flat_sequence had 3 elements."):
+        ValueError, "Structure had 2 atoms, but flat_sequence had 3 items."):
       nest.pack_sequence_as(["hello", "world"],
                             ["and", "goodbye", "again"])
 
@@ -288,8 +286,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     val = ragged_tensor.RaggedTensor.from_row_splits(values=[1],
                                                      row_splits=[0, 1])
     with self.assertRaisesRegex(
-        ValueError,
-        "Structure had 2 elements, but flat_sequence had 1 elements."):
+        ValueError, "Structure had 2 atoms, but flat_sequence had 1 items."):
       nest.pack_sequence_as(val, [val], expand_composites=True)
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
@@ -1309,11 +1306,11 @@ class NestBenchmark(test.Benchmark):
   def run_and_report(self, s1, s2, name):
     burn_iter, test_iter = 100, 30000
 
-    for _ in xrange(burn_iter):
+    for _ in range(burn_iter):
       nest.assert_same_structure(s1, s2)
 
     t0 = time.time()
-    for _ in xrange(test_iter):
+    for _ in range(test_iter):
       nest.assert_same_structure(s1, s2)
     t1 = time.time()
 

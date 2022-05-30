@@ -1,5 +1,6 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps")
+load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gpu_delegate_linkopts")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_dylib")
 
@@ -30,17 +31,7 @@ cc_library(
     name = "gl_delegate",
     srcs = ["gl_delegate.cc"],
     hdrs = ["gl_delegate.h"],
-    linkopts = select({
-        "//tensorflow:android": [
-            "-lEGL",
-            # We don't need to link libGLESv3, because if it exists,
-            # it is a symlink to libGLESv2.
-            # See Compatibility Definition Document:
-            # https://source.android.com/compatibility/10/android-10-cdd#7_1_4_1_opengl_es
-            "-lGLESv2",
-        ],
-        "//conditions:default": [],
-    }),
+    linkopts = gpu_delegate_linkopts(),
     deps = [
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/types:span",
@@ -81,6 +72,8 @@ objc_library(
     name = "metal_delegate",
     srcs = ["metal_delegate.mm"],
     hdrs = ["metal_delegate.h"],
+    copts = ["-std=c++17"],
+    features = ["-layering_check"],
     module_name = "TensorFlowLiteCMetal",
     sdk_frameworks = ["Metal"],
     deps = [
@@ -100,6 +93,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/metal:buffer_convert",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
+        "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = 1,
@@ -108,10 +102,9 @@ objc_library(
 objc_library(
     name = "metal_delegate_internal",
     hdrs = ["metal_delegate_internal.h"],
+    copts = ["-std=c++17"],
     sdk_frameworks = ["Metal"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu:metal_delegate",
-    ],
+    deps = ["//tensorflow/lite/delegates/gpu:metal_delegate"],
     alwayslink = 1,
 )
 
@@ -120,12 +113,7 @@ cc_binary(
     name = "libtensorflowlite_gpu_gl.so",
     linkopts = [
         "-Wl,-soname=libtensorflowlite_gpu_gl.so",
-    ] + select({
-        "//tensorflow:android": [
-            "-lEGL",
-            "-lGLESv3",
-            "-fvisibility=hidden",
-        ],
+    ] + gpu_delegate_linkopts() + select({
         "//tensorflow:windows": [],
         "//conditions:default": [
             "-fvisibility=hidden",
@@ -145,12 +133,7 @@ cc_binary(
     name = "libtensorflowlite_gpu_delegate.so",
     linkopts = [
         "-Wl,-soname=libtensorflowlite_gpu_delegate.so",
-    ] + select({
-        "//tensorflow:android": [
-            "-lEGL",
-            "-lGLESv3",
-            "-fvisibility=hidden",
-        ],
+    ] + gpu_delegate_linkopts() + select({
         "//tensorflow:windows": [],
         "//conditions:default": [
             "-fvisibility=hidden",
@@ -232,34 +215,27 @@ cc_library(
     name = "delegate",
     srcs = ["delegate.cc"],
     hdrs = ["delegate.h"],
-    linkopts = select({
-        "//tensorflow:android": [
-            "-lEGL",
-            # We don't need to link libGLESv3, because if it exists,
-            # it is a symlink to libGLESv2.
-            # See Compatibility Definition Document:
-            # https://source.android.com/compatibility/10/android-10-cdd#7_1_4_1_opengl_es
-            "-lGLESv2",
-        ],
-        "//conditions:default": [],
-    }),
+    linkopts = gpu_delegate_linkopts(),
     deps = select({
         "//tensorflow/lite/delegates/gpu/cl:opencl_delegate_no_gl": [],
         "//conditions:default": [
             "//tensorflow/lite/delegates/gpu/gl:api2",
         ],
     }) + [
+        ":api",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
+        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates:serialization",
-        "//tensorflow/lite/delegates/gpu:api",
         "//tensorflow/lite/delegates/gpu/cl:api",
         "//tensorflow/lite/delegates/gpu/cl:opencl_wrapper",
         "//tensorflow/lite/delegates/gpu/cl:tensor_type_util",
+        "//tensorflow/lite/delegates/gpu/cl:util",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",

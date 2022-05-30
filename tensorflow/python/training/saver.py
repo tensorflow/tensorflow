@@ -20,6 +20,7 @@ Symbols in this file are deprecated. See replacements in
 tensorflow/python/training/trackable and tensorflow/python/training/saving.
 """
 import collections
+import glob
 import os.path
 import threading
 import time
@@ -63,7 +64,6 @@ checkpoint_exists = checkpoint_management.checkpoint_exists
 get_checkpoint_mtimes = checkpoint_management.get_checkpoint_mtimes
 remove_checkpoint = checkpoint_management.remove_checkpoint
 
-
 # Captures the timestamp of the first Saver object instantiation or end of a
 # save operation. Can be accessed by multiple Saver instances.
 _END_TIME_OF_LAST_WRITE = None
@@ -78,6 +78,17 @@ def _get_duration_microseconds(start_time_seconds, end_time_seconds):
     # Avoid returning negative value in case of clock skew.
     return 0
   return round((end_time_seconds - start_time_seconds) * 1000000)
+
+
+def _get_checkpoint_size(prefix):
+  """Calculates filesize of checkpoint based on prefix."""
+  size = 0
+  # Gather all files beginning with prefix (.index plus sharded data files).
+  files = glob.glob("{}*".format(prefix))
+  for file in files:
+    # Use TensorFlow's C++ FileSystem API.
+    size += metrics.CalculateFileSize(file)
+  return size
 
 
 class BaseSaverBuilder(object):
@@ -746,7 +757,7 @@ class Saver(object):
   saver = tf.compat.v1.train.Saver(...variables...)
   # Launch the graph and train, saving the model every 1,000 steps.
   sess = tf.compat.v1.Session()
-  for step in xrange(1000000):
+  for step in range(1000000):
       sess.run(..training_op..)
       if step % 1000 == 0:
           # Append the step number to the checkpoint name:
@@ -762,6 +773,7 @@ class Saver(object):
   If you create several savers, you can specify a different filename for the
   protocol buffer file in the call to `save()`.
   """
+
   # pylint: enable=line-too-long
 
   def __init__(self,
@@ -848,8 +860,8 @@ class Saver(object):
       write_version: controls what format to use when saving checkpoints.  It
         also affects certain filepath matching logic.  The V2 format is the
         recommended choice: it is much more optimized than V1 in terms of memory
-          required and latency incurred during restore.  Regardless of this
-          flag, the Saver is able to restore from both V2 and V1 checkpoints.
+        required and latency incurred during restore.  Regardless of this flag,
+        the Saver is able to restore from both V2 and V1 checkpoints.
       pad_step_number: if True, pads the global step number in the checkpoint
         filepaths to some fixed width (8 by default).  This is turned off by
         default.
@@ -1203,9 +1215,9 @@ class Saver(object):
       write_state: `Boolean` indicating whether or not to write the
         `CheckpointStateProto`.
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-        removed from the NodeDefs. For a detailed guide, see
-        [Stripping Default-Valued
-          Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+        removed from the NodeDefs. For a detailed guide, see [Stripping
+        Default-Valued
+        Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
       save_debug_info: If `True`, save the GraphDebugInfo to a separate file,
         which in the same directory of save_path and with `_debug` added before
         the file extension. This is only enabled when `write_meta_graph` is
@@ -1315,6 +1327,9 @@ class Saver(object):
     if self._is_empty:
       return None
     else:
+      metrics.RecordCheckpointSize(
+          api_label=_SAVER_LABEL,
+          filesize=_get_checkpoint_size(model_checkpoint_path))
       return model_checkpoint_path
 
   def export_meta_graph(self,
@@ -1340,9 +1355,9 @@ class Saver(object):
         graph (both Save/Restore ops and SaverDefs) that are not associated with
         this Saver.
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-        removed from the NodeDefs. For a detailed guide, see
-        [Stripping Default-Valued
-          Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+        removed from the NodeDefs. For a detailed guide, see [Stripping
+        Default-Valued
+        Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
       save_debug_info: If `True`, save the GraphDebugInfo to a separate file,
         which in the same directory of filename and with `_debug` added before
         the file extension.
@@ -1482,7 +1497,7 @@ def import_meta_graph(meta_graph_or_file,
   # Remember the training_op we want to run by adding it to a collection.
   tf.compat.v1.add_to_collection('train_op', train_op)
   sess = tf.compat.v1.Session()
-  for step in xrange(1000000):
+  for step in range(1000000):
       sess.run(train_op)
       if step % 1000 == 0:
           # Saves checkpoint, which by default also exports a meta_graph
@@ -1501,7 +1516,7 @@ def import_meta_graph(meta_graph_or_file,
     # tf.get_collection() returns a list. In this example we only want
     # the first one.
     train_op = tf.get_collection('train_op')[0]
-    for step in xrange(1000000):
+    for step in range(1000000):
       sess.run(train_op)
   ```
 
@@ -1662,8 +1677,9 @@ def export_meta_graph(filename=None,
       (both Save/Restore ops and SaverDefs) that are not associated with the
       provided SaverDef.
     strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-      removed from the NodeDefs. For a detailed guide, see
-      [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+      removed from the NodeDefs. For a detailed guide, see [Stripping
+      Default-Valued
+      Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
     save_debug_info: If `True`, save the GraphDebugInfo to a separate file,
       which in the same directory of filename and with `_debug` added before the
       file extend.

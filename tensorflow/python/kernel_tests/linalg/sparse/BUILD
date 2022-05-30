@@ -44,6 +44,7 @@ cuda_py_test(
     main = "csr_sparse_matrix_ops_test.py",
     shard_count = 10,
     tags = [
+        "no_gpu",  # b/203655060 (cuda 11.5 specific)
         "notsan",  # b/149115441
     ],
     deps = [

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_XLA_BUILDER_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_XLA_BUILDER_H_
 
+#include <cstdint>
+#include <functional>
 #include <map>
 #include <string>
 #include <type_traits>
@@ -39,9 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stacktrace.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -52,6 +52,9 @@ class HloInstruction;
 namespace internal {
 
 struct XlaBuilderFriend {
+  static XlaOp BuildAddDependency(XlaBuilder* builder, XlaOp operand,
+                                  XlaOp token, const Shape& shape);
+
   static XlaOp BuildFusion(XlaBuilder* builder,
                            absl::Span<const XlaOp> operands,
                            absl::string_view fusion_kind,
@@ -60,7 +63,14 @@ struct XlaBuilderFriend {
   static XlaOp BuildBitcast(XlaBuilder* builder, XlaOp operand,
                             const Shape& shape);
 
+  static XlaOp BuildPartitionId(XlaBuilder* builder, const Shape& shape);
+
+  static XlaOp BuildRngGetAndUpdateState(XlaBuilder* builder, int64_t delta,
+                                         const Shape& shape);
+
   static HloInstructionProto* GetInstruction(XlaOp op);
+  static HloInstructionProto* GetInstructionByHandle(XlaBuilder* builder,
+                                                     int64_t handle);
 };
 
 }  // namespace internal
@@ -156,7 +166,7 @@ XlaOp operator>>(XlaOp x, XlaOp y);
 class XlaBuilder {
  public:
   // computation_name: name to use for the built computation.
-  XlaBuilder(const string& computation_name);
+  explicit XlaBuilder(const std::string& computation_name);
 
   XlaBuilder(const XlaBuilder&) = delete;
   XlaBuilder& operator=(const XlaBuilder&) = delete;
@@ -164,7 +174,7 @@ class XlaBuilder {
   virtual ~XlaBuilder();
 
   // Returns the computation name.
-  const string& name() const { return name_; }
+  const std::string& name() const { return name_; }
 
   // Sets OpMetadata that will be added to all instructions until cleared.
   //
@@ -260,7 +270,8 @@ class XlaBuilder {
   // Returns a new XlaBuilder whose resultant Computation is used only by this
   // XlaBuilder. The sub-XlaBuilder has the same die_immediately_on_error
   // behavior as the parent.
-  std::unique_ptr<XlaBuilder> CreateSubBuilder(const string& computation_name);
+  std::unique_ptr<XlaBuilder> CreateSubBuilder(
+      const std::string& computation_name);
 
   // Builds the computation with the requested operations, or returns a non-ok
   // status. Note that all ops that have been enqueued will be moved to the
@@ -402,8 +413,8 @@ class XlaBuilder {
   //
   // Note: the attribute is only added to the HloInstruction, not to the
   // builder.
-  Status SetInstructionFrontendAttribute(XlaOp op, string attribute,
-                                         string value);
+  Status SetInstructionFrontendAttribute(XlaOp op, std::string attribute,
+                                         std::string value);
 
   // Returns shapes for the operands.
   StatusOr<std::vector<Shape>> GetOperandShapes(
@@ -423,10 +434,10 @@ class XlaBuilder {
   // functions section in this file.
 
   XlaOp Parameter(int64_t parameter_number, const Shape& shape,
-                  const string& name,
+                  const std::string& name,
                   const std::vector<bool>& replicated_at_leaf_buffers);
   XlaOp Parameter(int64_t parameter_number, const Shape& shape,
-                  const string& name) {
+                  const std::string& name) {
     std::vector<bool> empty_bools;
     return Parameter(parameter_number, shape, name, empty_bools);
   }
@@ -490,8 +501,6 @@ class XlaBuilder {
   virtual StatusOr<XlaOp> ConcatInDimInternal(const Shape& shape,
                                               absl::Span<const XlaOp> operands,
                                               int64_t dimension);
-
-  void Trace(const string& tag, XlaOp operand);
 
   XlaOp Select(XlaOp pred, XlaOp on_true, XlaOp on_false);
 
@@ -616,25 +625,27 @@ class XlaBuilder {
   virtual StatusOr<XlaOp> CholeskyInternal(const Shape& shape, XlaOp a,
                                            bool lower);
 
-  XlaOp Infeed(const Shape& shape, const string& config = "");
-  XlaOp InfeedWithToken(XlaOp token, const Shape& shape, const string& config);
+  XlaOp Infeed(const Shape& shape, const std::string& config = "");
+  XlaOp InfeedWithToken(XlaOp token, const Shape& shape,
+                        const std::string& config);
   virtual StatusOr<XlaOp> InfeedWithTokenInternal(
-      const Shape& infeed_instruction_shape, XlaOp token, const string& config);
+      const Shape& infeed_instruction_shape, XlaOp token,
+      const std::string& config);
 
   void Outfeed(XlaOp operand, const Shape& shape_with_layout,
-               const string& outfeed_config);
+               const std::string& outfeed_config);
   XlaOp OutfeedWithToken(XlaOp operand, XlaOp token,
                          const Shape& shape_with_layout,
-                         const string& outfeed_config);
+                         const std::string& outfeed_config);
   virtual StatusOr<XlaOp> OutfeedWithTokenInternal(
       XlaOp operand, XlaOp token, const Shape& shape_with_layout,
-      const string& outfeed_config);
+      const std::string& outfeed_config);
   XlaOp Call(const XlaComputation& computation,
              absl::Span<const XlaOp> operands);
 
   XlaOp CustomCall(
-      const string& call_target_name, absl::Span<const XlaOp> operands,
-      const Shape& shape_with_layout, const string& opaque,
+      const std::string& call_target_name, absl::Span<const XlaOp> operands,
+      const Shape& shape_with_layout, const std::string& opaque,
       absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
@@ -647,8 +658,8 @@ class XlaBuilder {
   // specific error handling and expects arguments to be legal. CustomCall
   // method above calls this method after error handling.
   virtual StatusOr<XlaOp> CustomCallInternal(
-      const string& call_target_name, absl::Span<const XlaOp> operands,
-      const Shape& shape_with_layout, const string& opaque,
+      const std::string& call_target_name, absl::Span<const XlaOp> operands,
+      const Shape& shape_with_layout, const std::string& opaque,
       absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
@@ -658,15 +669,17 @@ class XlaBuilder {
       CustomCallSchedule schedule, CustomCallApiVersion api_version);
 
   XlaOp CustomCall(
-      const string& call_target_name, absl::Span<const XlaOp> operands,
+      const std::string& call_target_name, absl::Span<const XlaOp> operands,
       const XlaComputation& computation, const Shape& shape_with_layout,
-      const string& opaque,
+      const std::string& opaque,
       absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
           output_operand_aliasing,
       const Literal* literal, CustomCallSchedule schedule,
       CustomCallApiVersion api_version);
+
+  XlaOp OptimizationBarrier(XlaOp operand);
 
   XlaOp Reduce(XlaOp operand, XlaOp init_value,
                const XlaComputation& computation,
@@ -739,10 +752,16 @@ class XlaBuilder {
       const absl::optional<Layout>& layout = absl::nullopt,
       const absl::optional<bool> use_global_device_ids = absl::nullopt);
 
+  // TODO(b/219961627): Allow the replica_groups to be inferred (one group
+  // containing all replicas).
   XlaOp AllToAll(XlaOp operand, int64_t split_dimension,
                  int64_t concat_dimension, int64_t split_count,
                  absl::Span<const ReplicaGroup> replica_groups,
                  const absl::optional<Layout>& layout = absl::nullopt);
+
+  XlaOp AllToAllTuple(absl::Span<const XlaOp> operands,
+                      absl::Span<const ReplicaGroup> replica_groups,
+                      const absl::optional<Layout>& layout);
 
   XlaOp AllToAllTuple(XlaOp operand, int64_t split_dimension,
                       int64_t concat_dimension, int64_t split_count,
@@ -853,10 +872,15 @@ class XlaBuilder {
                 const XlaComputation& update_computation,
                 const ScatterDimensionNumbers& dimension_numbers,
                 bool indices_are_sorted = false, bool unique_indices = false);
+  XlaOp Scatter(absl::Span<const XlaOp> inputs, XlaOp scatter_indices,
+                absl::Span<const XlaOp> updates,
+                const XlaComputation& update_computation,
+                const ScatterDimensionNumbers& dimension_numbers,
+                bool indices_are_sorted = false, bool unique_indices = false);
 
   virtual StatusOr<XlaOp> ScatterInternal(
-      const Shape& shape, XlaOp input, XlaOp scatter_indices, XlaOp updates,
-      const XlaComputation& update_computation,
+      const Shape& shape, absl::Span<const XlaOp> inputs, XlaOp scatter_indices,
+      absl::Span<const XlaOp> updates, const XlaComputation& update_computation,
       const ScatterDimensionNumbers& dimension_numbers, bool indices_are_sorted,
       bool unique_indices);
 
@@ -990,7 +1014,7 @@ class XlaBuilder {
       HloModuleProto* module, const ProgramShape& program_shape,
       const std::vector<InputOutputAlias>& input_output_aliases);
 
-  string name_;  // Name to use for the built computation.
+  std::string name_;  // Name to use for the built computation.
 
   // The next sequential ID for every instruction/computation contained within
   // this computation.
@@ -1004,8 +1028,9 @@ class XlaBuilder {
   tensorflow::SavedStackTrace first_error_backtrace_;
 
   // The instructions of this computation.
-  std::vector<HloInstructionProto> instructions_;
-
+  // Use a deque so pointers into this are stable, for example the return
+  // value of LookUpInstructionByHandle().
+  std::deque<HloInstructionProto> instructions_;
   // An cache for the HloInstructionProto shapes, to avoid recreating Shape
   // objects from protos and to support the GetShapePtr() API.
   std::vector<std::unique_ptr<Shape>> instruction_shapes_;
@@ -1057,7 +1082,7 @@ class XlaBuilder {
   FrontendAttributes frontend_attributes_;
 
   friend XlaOp Parameter(XlaBuilder* builder, int64_t parameter_number,
-                         const Shape& shape, const string& name,
+                         const Shape& shape, const std::string& name,
                          const std::vector<bool>& replicated_at_leaf_buffers);
   friend XlaOp ConstantLiteral(XlaBuilder* builder,
                                const LiteralSlice& literal);
@@ -1110,8 +1135,6 @@ class XlaBuilder {
 
   friend XlaOp ConcatInDim(XlaBuilder* builder,
                            absl::Span<const XlaOp> operands, int64_t dimension);
-
-  friend void Trace(const string& tag, XlaOp operand);
 
   friend XlaOp Select(XlaOp pred, XlaOp on_true, XlaOp on_false);
   friend XlaOp Tuple(XlaBuilder* builder, absl::Span<const XlaOp> elements);
@@ -1214,45 +1237,46 @@ class XlaBuilder {
                                TriangularSolveOptions::Transpose transpose_a);
   friend XlaOp Cholesky(XlaOp a, bool lower);
   friend XlaOp Infeed(XlaBuilder* builder, const Shape& shape,
-                      const string& config);
+                      const std::string& config);
   friend void Outfeed(XlaOp operand, const Shape& shape_with_layout,
-                      const string& outfeed_config);
+                      const std::string& outfeed_config);
   friend XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
                     absl::Span<const XlaOp> operands);
   friend XlaOp CustomCall(
-      XlaBuilder* builder, const string& call_target_name,
+      XlaBuilder* builder, const std::string& call_target_name,
       absl::Span<const XlaOp> operands, const Shape& shape,
-      const string& opaque, bool has_side_effect,
+      const std::string& opaque, bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
           output_operand_aliasing,
       const Literal* literal, CustomCallSchedule schedule,
       CustomCallApiVersion api_version);
   friend XlaOp CustomCallWithComputation(
-      XlaBuilder* builder, const string& call_target_name,
+      XlaBuilder* builder, const std::string& call_target_name,
       absl::Span<const XlaOp> operands, const XlaComputation& computation,
-      const Shape& shape, const string& opaque, bool has_side_effect,
+      const Shape& shape, const std::string& opaque, bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
           output_operand_aliasing,
       const Literal* literal, CustomCallSchedule schedule,
       CustomCallApiVersion api_version);
   friend XlaOp CustomCallWithLayout(
-      XlaBuilder* builder, const string& call_target_name,
+      XlaBuilder* builder, const std::string& call_target_name,
       absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
-      absl::Span<const Shape> operand_shapes_with_layout, const string& opaque,
-      bool has_side_effect,
+      absl::Span<const Shape> operand_shapes_with_layout,
+      const std::string& opaque, bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
           output_operand_aliasing,
       const Literal* literal, CustomCallSchedule schedule,
       CustomCallApiVersion api_version);
   friend XlaOp CustomCallWithConvDnums(
-      XlaBuilder* builder, const string& call_target_name,
+      XlaBuilder* builder, const std::string& call_target_name,
       absl::Span<const XlaOp> operands, const Shape& shape,
-      absl::Span<const Shape> operand_shapes_with_layout, const string& opaque,
-      bool has_side_effect,
+      absl::Span<const Shape> operand_shapes_with_layout,
+      const std::string& opaque, bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
           output_operand_aliasing,
       const Literal* literal, Window window, ConvolutionDimensionNumbers dnums,
       CustomCallSchedule schedule, CustomCallApiVersion api_version);
+  friend XlaOp OptimizationBarrier(XlaOp operand);
   friend XlaOp Complex(XlaOp real, XlaOp imag,
                        absl::Span<const int64_t> broadcast_dimensions);
   friend XlaOp Conj(XlaOp operand);
@@ -1343,6 +1367,9 @@ class XlaBuilder {
                         int64_t concat_dimension, int64_t split_count,
                         absl::Span<const ReplicaGroup> replica_groups,
                         const absl::optional<Layout>& layout);
+  friend XlaOp AllToAllTuple(absl::Span<const XlaOp> operands,
+                             absl::Span<const ReplicaGroup> replica_groups,
+                             const absl::optional<Layout>& layout);
   friend XlaOp AllToAllTuple(XlaOp operand, int64_t split_dimension,
                              int64_t concat_dimension, int64_t split_count,
                              absl::Span<const ReplicaGroup> replica_groups,
@@ -1432,6 +1459,11 @@ class XlaBuilder {
                        const XlaComputation& update_computation,
                        const ScatterDimensionNumbers& dimension_numbers,
                        bool indices_are_sorted, bool unique_indices);
+  friend XlaOp Scatter(absl::Span<const XlaOp> inputs, XlaOp scatter_indices,
+                       absl::Span<const XlaOp> updates,
+                       const XlaComputation& update_computation,
+                       const ScatterDimensionNumbers& dimension_numbers,
+                       bool indices_are_sorted, bool unique_indices);
   friend void Send(XlaOp operand, const ChannelHandle& handle);
   friend XlaOp Recv(XlaBuilder* builder, const Shape& shape,
                     const ChannelHandle& handle);
@@ -1453,10 +1485,10 @@ class XlaBuilder {
   friend XlaOp RecvFromHost(XlaOp token, const Shape& shape,
                             const ChannelHandle& handle);
   friend XlaOp InfeedWithToken(XlaOp token, const Shape& shape,
-                               const string& config);
+                               const std::string& config);
   friend XlaOp OutfeedWithToken(XlaOp operand, XlaOp token,
                                 const Shape& shape_with_layout,
-                                const string& outfeed_config);
+                                const std::string& outfeed_config);
   friend XlaOp CreateToken(XlaBuilder* builder);
   friend XlaOp AfterAll(XlaBuilder* builder, absl::Span<const XlaOp> tokens);
 
@@ -1568,7 +1600,10 @@ class XlaScopedFrontendAttributesAssignment {
   xla::XlaBuilder* const builder_;
   FrontendAttributes saved_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaScopedFrontendAttributesAssignment);
+  XlaScopedFrontendAttributesAssignment(
+      const XlaScopedFrontendAttributesAssignment&) = delete;
+  XlaScopedFrontendAttributesAssignment& operator=(
+      const XlaScopedFrontendAttributesAssignment&) = delete;
 };
 
 // RAII-style object: sets the current op metadata in builder on construction,
@@ -1586,7 +1621,9 @@ class XlaScopedOpMetadataAssignment {
   xla::XlaBuilder* const builder_;
   OpMetadata saved_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaScopedOpMetadataAssignment);
+  XlaScopedOpMetadataAssignment(const XlaScopedOpMetadataAssignment&) = delete;
+  XlaScopedOpMetadataAssignment& operator=(
+      const XlaScopedOpMetadataAssignment&) = delete;
 };
 
 // Free functions for building XlaOps. The intention is that these will
@@ -1597,11 +1634,11 @@ class XlaScopedOpMetadataAssignment {
 // Enqueues a "retrieve parameter value" instruction for a parameter that was
 // passed to the computation.
 XlaOp Parameter(XlaBuilder* builder, int64_t parameter_number,
-                const Shape& shape, const string& name);
+                const Shape& shape, const std::string& name);
 
 // Same as above, but with leaf buffer replication annotation.
 XlaOp Parameter(XlaBuilder* builder, int64_t parameter_number,
-                const Shape& shape, const string& name,
+                const Shape& shape, const std::string& name,
                 const std::vector<bool>& replicated_at_leaf_buffers);
 
 // Enqueues a constant with the value of the given literal onto the
@@ -1615,10 +1652,10 @@ XlaOp ConstantLiteral(XlaBuilder* builder, const LiteralSlice& literal);
 //  Native Type   PrimitiveType
 // -----------------------------
 //   bool           PRED
-//   int32          S32
-//   int64_t          S64
-//   uint32         U32
-//   uint64         U64
+//   int32_t        S32
+//   int64_t        S64
+//   uint32_t       U32
+//   uint64_t       U64
 //   float          F32
 //   double         F64
 //
@@ -1839,10 +1876,6 @@ XlaOp DynamicUpdateSlice(XlaOp operand, XlaOp update,
 XlaOp ConcatInDim(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                   int64_t dimension);
 
-// Enqueue a tracing operation onto the computation; the computation will emit
-// a logging message with the operand.
-void Trace(const string& tag, XlaOp operand);
-
 // Enqueues a conditional-move-like select operation onto the computation;
 // predicated on pred, selects between on_true and on_false.
 XlaOp Select(XlaOp pred, XlaOp on_true, XlaOp on_false);
@@ -2037,14 +2070,14 @@ XlaOp Cholesky(XlaOp a, bool lower);
 // Enqueues an infeed instruction onto the computation, which writes data of
 // the given shape to the infeed buffer of the device.
 XlaOp Infeed(XlaBuilder* builder, const Shape& shape,
-             const string& config = "");
+             const std::string& config = "");
 
 // Variant of Infeed which takes a token-shaped operand and produces a
 // two-element tuple containing the data value and a token-shaped value.
 // Tokens are used for ordering side-effecting operations.
 // TODO(b/110532604): Replace all uses of the non-token form with this variant.
 XlaOp InfeedWithToken(XlaOp token, const Shape& shape,
-                      const string& config = "");
+                      const std::string& config = "");
 
 // Enqueues an outfeed instruction onto the computation. This instruction
 // generates outgoing data transfers for the given data.
@@ -2053,14 +2086,14 @@ XlaOp InfeedWithToken(XlaOp token, const Shape& shape,
 // -- if !ShapeUtil::Compatible(GetShape(operand), shape_with_layout) an error
 // will occur.
 void Outfeed(XlaOp operand, const Shape& shape_with_layout,
-             const string& outfeed_config);
+             const std::string& outfeed_config);
 
 // Variant of Outfeed which takes a token-shaped operand and produces a
 // token-shaped value. Tokens are used for ordering side-effecting operations.
 // TODO(b/110532604): Replace all uses of the non-token form with this variant.
 XlaOp OutfeedWithToken(XlaOp operand, XlaOp token,
                        const Shape& shape_with_layout,
-                       const string& outfeed_config);
+                       const std::string& outfeed_config);
 
 // Enqueues a call instruction onto the computation.
 XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
@@ -2080,9 +2113,9 @@ XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
 // ShapeIndex, and the operand buffer is represented as the operand index and
 // the ShapeIndex.
 XlaOp CustomCall(
-    XlaBuilder* builder, const string& call_target_name,
+    XlaBuilder* builder, const std::string& call_target_name,
     absl::Span<const XlaOp> operands, const Shape& shape,
-    const string& opaque = "", bool has_side_effect = false,
+    const std::string& opaque = "", bool has_side_effect = false,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
         output_operand_aliasing = {},
     const Literal* literal = nullptr,
@@ -2091,9 +2124,10 @@ XlaOp CustomCall(
 
 // Overload which constructs a custom call that applies an Xla computation.
 XlaOp CustomCallWithComputation(
-    XlaBuilder* builder, const string& call_target_name,
+    XlaBuilder* builder, const std::string& call_target_name,
     absl::Span<const XlaOp> operands, const XlaComputation& computation,
-    const Shape& shape, const string& opaque = "", bool has_side_effect = false,
+    const Shape& shape, const std::string& opaque = "",
+    bool has_side_effect = false,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
         output_operand_aliasing = {},
     const Literal* literal = nullptr,
@@ -2106,10 +2140,10 @@ XlaOp CustomCallWithComputation(
 // layout specified by |shape_with_layout|. All shapes in |shape_with_layout|
 // and |operand_shapes_with_layout| must have layouts.
 XlaOp CustomCallWithLayout(
-    XlaBuilder* builder, const string& call_target_name,
+    XlaBuilder* builder, const std::string& call_target_name,
     absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
     absl::Span<const Shape> operand_shapes_with_layout,
-    const string& opaque = "", bool has_side_effect = false,
+    const std::string& opaque = "", bool has_side_effect = false,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
         output_operand_aliasing = {},
     const Literal* literal = nullptr,
@@ -2123,15 +2157,18 @@ XlaOp CustomCallWithLayout(
 // This sets the layout of its operands if operand_shapes_with_layout is
 // nonempty, and it sets the layout of its result if `shape` has a layout.
 XlaOp CustomCallWithConvDnums(
-    XlaBuilder* builder, const string& call_target_name,
+    XlaBuilder* builder, const std::string& call_target_name,
     absl::Span<const XlaOp> operands, const Shape& shape,
-    absl::Span<const Shape> operand_shapes_with_layout, const string& opaque,
-    bool has_side_effect,
+    absl::Span<const Shape> operand_shapes_with_layout,
+    const std::string& opaque, bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
         output_operand_aliasing,
     const Literal* literal, Window window, ConvolutionDimensionNumbers dnums,
     CustomCallSchedule schedule = CustomCallSchedule::SCHEDULE_NONE,
     CustomCallApiVersion api_version = API_VERSION_ORIGINAL);
+
+// Enqueues an optimization barrier onto the computation.
+XlaOp OptimizationBarrier(XlaOp operand);
 
 // The following methods enqueue element-wise binary arithmetic operations
 // onto the computation. The shapes of the operands have to match unless one
@@ -2315,6 +2352,10 @@ XlaOp AllToAll(XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
                int64_t split_count,
                absl::Span<const ReplicaGroup> replica_groups = {},
                const absl::optional<Layout>& layout = absl::nullopt);
+
+XlaOp AllToAllTuple(absl::Span<const XlaOp> operand,
+                    absl::Span<const ReplicaGroup> replica_groups = {},
+                    const absl::optional<Layout>& layout = absl::nullopt);
 
 XlaOp AllToAllTuple(XlaOp operand, int64_t split_dimension,
                     int64_t concat_dimension, int64_t split_count,
@@ -2537,6 +2578,11 @@ XlaOp Gather(XlaOp input, XlaOp start_indices,
 
 // Enqueues a Scatter node onto the computation.
 XlaOp Scatter(XlaOp input, XlaOp scatter_indices, XlaOp updates,
+              const XlaComputation& update_computation,
+              const ScatterDimensionNumbers& dimension_numbers,
+              bool indices_are_sorted = false, bool unique_indices = false);
+XlaOp Scatter(absl::Span<const XlaOp> inputs, XlaOp scatter_indices,
+              absl::Span<const XlaOp> updates,
               const XlaComputation& update_computation,
               const ScatterDimensionNumbers& dimension_numbers,
               bool indices_are_sorted = false, bool unique_indices = false);

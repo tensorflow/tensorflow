@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/tracing.h"
 
 // Polymorphic datasets should support all primitive TensorFlow
@@ -398,16 +399,17 @@ class IteratorContext {
           env(ctx->env()),
           flr(ctx->flr()),
           function_handle_cache(ctx->function_handle_cache()),
+          interleave_depth(ctx->interleave_depth()),
           is_restoring(ctx->is_restoring()),
-          resource_mgr(ctx->resource_mgr()),
           model(ctx->model()),
+          options(ctx->options()),
+          resource_mgr(ctx->resource_mgr()),
           runner(*(ctx->runner())),
           runner_threadpool_size(ctx->runner_threadpool_size()),
           split_providers(ctx->split_providers()),
           stats_aggregator(ctx->stats_aggregator()),
           thread_factory(ctx->thread_factory()),
-          thread_pool(ctx->thread_pool()),
-          interleave_depth(ctx->interleave_depth()) {}
+          thread_pool(ctx->thread_pool()) {}
 
     explicit Params(OpKernelContext* ctx)
         : collective_executor(ctx->collective_executor()),
@@ -456,15 +458,23 @@ class IteratorContext {
     // A FunctionHandleCache that owns all the function handles. Not owned.
     FunctionHandleCache* function_handle_cache = nullptr;
 
+    // Records the number of ParallelInterleave operations in the path from the
+    // root node to this node (not including this node) in the input pipeline
+    // tree.
+    int64 interleave_depth = 0;
+
     // Marks whether the iterator is restored from a checkpoint.
     bool is_restoring = false;
+
+    // If non-null, identifies the object used for performance modeling.
+    std::shared_ptr<model::Model> model = nullptr;
+
+    // The input pipeline options.
+    const Options* options = nullptr;
 
     // A resource manager for storing dataset-related state, e.g. random
     // seeds or cached tensors. Not owned.
     ResourceMgr* resource_mgr = nullptr;
-
-    // If non-null, identifies the object used for performance modeling.
-    std::shared_ptr<model::Model> model = nullptr;
 
     // Function call support.
     std::function<void(std::function<void()>)> runner = nullptr;
@@ -487,11 +497,6 @@ class IteratorContext {
 
     // A shared thread pool to schedule computation into.
     thread::ThreadPoolInterface* thread_pool = nullptr;
-
-    // Records the number of ParallelInterleave operations in the path from the
-    // root node to this node (not including this node) in the input pipeline
-    // tree.
-    int64 interleave_depth = 0;
   };
 
   explicit IteratorContext(IteratorContext* ctx) : params_(Params{ctx}) {}
@@ -524,11 +529,15 @@ class IteratorContext {
     return params_.function_handle_cache;
   }
 
+  int64 interleave_depth() { return params_.interleave_depth; }
+
   bool is_restoring() { return params_.is_restoring; }
 
-  ResourceMgr* resource_mgr() { return params_.resource_mgr; }
-
   const std::shared_ptr<model::Model>& model() { return params_.model; }
+
+  const Options* options() { return params_.options; }
+
+  ResourceMgr* resource_mgr() { return params_.resource_mgr; }
 
   std::function<void(std::function<void()>)>* runner() {
     return &params_.runner;
@@ -549,8 +558,6 @@ class IteratorContext {
   }
 
   thread::ThreadPoolInterface* thread_pool() { return params_.thread_pool; }
-
-  int64 interleave_depth() { return params_.interleave_depth; }
 
   std::unique_ptr<thread::ThreadPool> CreateThreadPool(const string& name,
                                                        int num_threads) {
@@ -726,6 +733,11 @@ class IteratorBase {
   // `false`, `*num_skipped` should equal to `num_to_skip`.
   virtual Status Skip(IteratorContext* ctx, int num_to_skip,
                       bool* end_of_sequence, int* num_skipped) = 0;
+
+  virtual Status Skip(IteratorContext&& ctx, int num_to_skip,
+                      bool* end_of_sequence, int* num_skipped) {
+    return Skip(&ctx, num_to_skip, end_of_sequence, num_skipped);
+  }
 
   // Returns a vector of DataType values, representing the respective
   // element types of each tuple component in the outputs of this
@@ -972,7 +984,24 @@ class DatasetBase : public core::RefCounted {
   virtual int64_t TotalBytes() const { return 0; }
 
   // Returns the cardinality of this dataset.
-  virtual int64_t Cardinality() const { return kUnknownCardinality; }
+  // TODO(shilpakrish): Remove this overload once all callers are migrated
+  // to the API which passes in the options parameter.
+  ABSL_DEPRECATED("Use the overload that passes in the options parameter.")
+  int64_t Cardinality() const;
+
+  // Returns the cardinality of this dataset based on the options.
+  int64_t Cardinality(CardinalityOptions options) const;
+
+  // Internal implementation of cardinality for a dataset.
+  // TODO(shilpakrish): Remove this overload once all callers are migrated
+  // to the API which passes in the options parameter.
+  ABSL_DEPRECATED("Use the overload that passes in the options parameter.")
+  virtual int64_t CardinalityInternal() const { return kUnknownCardinality; }
+
+  // Internal implementation of cardinality for a dataset based on the options.
+  virtual int64_t CardinalityInternal(CardinalityOptions options) const {
+    return kUnknownCardinality;
+  }
 
   // A human-readable debug string for this dataset.
   virtual string DebugString() const = 0;
@@ -998,6 +1027,13 @@ class DatasetBase : public core::RefCounted {
   virtual Status Get(OpKernelContext* ctx, int64 index,
                      std::vector<Tensor>* out_tensors) const;
 
+  // Return a finalized version of the dataset.  The returned DatasetBase is
+  // unowned and lives for as long as this dataset.
+  virtual StatusOr<DatasetBase*> Finalize(
+      OpKernelContext* ctx,
+      std::function<StatusOr<core::RefCountPtr<DatasetBase>>()>
+          make_finalized_dataset) const;
+
   // Wrapper around a GraphDefBuilder which provides support for serializing
   // Datasets as GraphDefs.
   class DatasetGraphDefBuilder : public GraphDefBuilderWrapper {
@@ -1020,10 +1056,6 @@ class DatasetBase : public core::RefCounted {
   };
 
  protected:
-  friend Status AsGraphDef(
-      OpKernelContext* ctx, const DatasetBase* dataset,
-      SerializationContext&& serialization_ctx,
-      GraphDef* graph_def);  // For access to graph related members.
   friend class CapturedFunction;
 
   // Serializes the dataset into a `GraphDef`, which has two uses:
@@ -1063,10 +1095,14 @@ class DatasetBase : public core::RefCounted {
   const string node_name_;
   Metadata metadata_;
   Options options_;
-  // The number of source datasets feeding into the dataset. A source dataset is
-  // a leaf in the subtree of dataset inputs.
+  mutable mutex mu_;
+  mutable mutex cardinality_mu_;
+  mutable core::RefCountPtr<DatasetBase> finalized_dataset_;
+  //  The number of source datasets feeding into the dataset. A source dataset
+  //  is a leaf in the subtree of dataset inputs.
   int64_t num_sources_ = -1;
-  int64_t cardinality_ = kUnknownCardinality;
+  mutable int64_t cardinality_ TF_GUARDED_BY(cardinality_mu_) =
+      kUnknownCardinality;
 };
 
 // Represents an iterator that is associated with a particular dataset.

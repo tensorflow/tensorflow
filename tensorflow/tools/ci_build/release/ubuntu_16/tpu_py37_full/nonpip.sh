@@ -30,8 +30,10 @@ bazel_args=(
   --config=release_cpu_linux \
   --repo_env=PYTHON_BIN_PATH="$(which python3.9)" \
   --build_tag_filters="${tag_filters}" \
+  --test_sharding_strategy=disabled \
   --test_tag_filters="${tag_filters}" \
-  --test_output=errors --verbose_failures=true --keep_going
+  --test_output=errors --verbose_failures=true --keep_going \
+  --build_tests_only
 )
 
 bazel build "${bazel_args[@]}" -- "${test_patterns[@]}"

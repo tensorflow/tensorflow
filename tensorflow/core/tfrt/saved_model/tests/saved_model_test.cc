@@ -23,8 +23,8 @@ limitations under the License.
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler_concurrent_work_queue.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 
-namespace tfrt {
-namespace saved_model_test {
+namespace tensorflow {
+namespace tfrt_stub {
 namespace {
 
 struct TestParams {
@@ -33,7 +33,7 @@ struct TestParams {
   bool enable_lazy_loading = false;
 };
 
-class SavedModelTest : public testing::TestWithParam<TestParams> {};
+class SavedModelTest : public ::testing::TestWithParam<TestParams> {};
 
 TEST_P(SavedModelTest, BasicV1) {
   // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
@@ -47,8 +47,10 @@ TEST_P(SavedModelTest, BasicV1) {
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
   options.enable_lazy_loading = GetParam().enable_lazy_loading;
-  options.compile_options.enable_native_ops = GetParam().enable_native_ops;
-  options.compile_options.enable_grappler = GetParam().enable_grappler;
+  options.graph_execution_options.compile_options.enable_native_ops =
+      GetParam().enable_native_ops;
+  options.graph_execution_options.compile_options.enable_grappler =
+      GetParam().enable_grappler;
 
   tensorflow::Status status;
   auto saved_model =
@@ -68,14 +70,14 @@ TEST_P(SavedModelTest, BasicV1) {
   ASSERT_EQ(outputs.size(), 1);
 
   EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
-              testing::ElementsAreArray({6}));
+              ::testing::ElementsAreArray({6}));
 }
 
 // Tests all the value combinations of `TestParams`. For readability, use
 // integers instead of booleans.
 INSTANTIATE_TEST_SUITE_P(
     SavedModelLiteTest, SavedModelTest,
-    testing::Values(
+    ::testing::Values(
         // The values below are for:
         // enable_native_ops, enable_grappler, enable_lazy_loading
         TestParams{0, 0, 0}, TestParams{0, 0, 1}, TestParams{0, 1, 0},
@@ -104,6 +106,40 @@ TEST(SavedModelTest, BasicV2) {
   std::vector<tensorflow::Tensor> outputs;
   TF_ASSERT_OK(
       test.GetSavedModel()->Run({}, "serving_default", inputs, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+  auto& output = outputs[0];
+
+  ASSERT_EQ(output.NumElements(), 1);
+  EXPECT_EQ(output.flat<int32_t>()(0), 6);
+}
+
+TEST(SavedModelTest, VariableOnTpu) {
+  // A ReadVariableOp on 'TPU' would behave exactly the same as a ReadVariableOp
+  // on 'CPU'. This is to be compatible with TF1 runtime.
+  std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/core/tfrt/saved_model/tests/variable_on_tpu");
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  auto options = DefaultSavedModelOptions(runtime.get());
+  options.graph_execution_options.compile_options.enable_native_ops = false;
+
+  tensorflow::Status status;
+  auto saved_model =
+      SavedModelImpl::LoadSavedModel(options, saved_model_dir,
+                                     /*tags=*/{"serve"}, &status);
+  TF_CHECK_OK(status);
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<tensorflow::Tensor> inputs;
+  inputs.emplace_back(tensorflow::DT_INT32,
+                      /*shape=*/tensorflow::TensorShape{1, 3});
+  auto flat = inputs.back().flat<int32_t>();
+  flat(0) = 1;
+  flat(1) = 1;
+  flat(2) = 1;
+
+  std::vector<tensorflow::Tensor> outputs;
+  TF_ASSERT_OK(saved_model->Run({}, "serving_default", inputs, &outputs));
   ASSERT_EQ(outputs.size(), 1);
   auto& output = outputs[0];
 
@@ -159,7 +195,7 @@ TEST(SavedModelTest, LoadSavedModelWithMetaGraphDef) {
   ASSERT_EQ(outputs.size(), 1);
 
   EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
-              testing::ElementsAreArray({6}));
+              ::testing::ElementsAreArray({6}));
 }
 
 TEST(SavedModelTest, RunMultipleSignatures) {
@@ -212,7 +248,7 @@ TEST(SavedModelTest, RunMultipleSignatures) {
 
     ASSERT_EQ(outputs[0].size(), 1);
     EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0][0]),
-                testing::ElementsAreArray(
+                ::testing::ElementsAreArray(
                     GetTfTensorData<int32_t>(expected_toy_outputs[0])));
   }
 
@@ -231,10 +267,10 @@ TEST(SavedModelTest, RunMultipleSignatures) {
 
     ASSERT_EQ(outputs[1].size(), 2);
     EXPECT_THAT(GetTfTensorData<int32_t>(outputs[1][0]),
-                testing::ElementsAreArray(
+                ::testing::ElementsAreArray(
                     GetTfTensorData<int32_t>(expected_another_toy_outputs[0])));
     EXPECT_THAT(GetTfTensorData<int32_t>(outputs[1][1]),
-                testing::ElementsAreArray(
+                ::testing::ElementsAreArray(
                     GetTfTensorData<int32_t>(expected_another_toy_outputs[1])));
   }
 
@@ -258,13 +294,13 @@ TEST(SavedModelTest, RunMultipleSignatures) {
 
     ASSERT_EQ(outputs[2].size(), 3);
     EXPECT_THAT(GetTfTensorData<int32_t>(outputs[2][0]),
-                testing::ElementsAreArray(GetTfTensorData<int32_t>(
+                ::testing::ElementsAreArray(GetTfTensorData<int32_t>(
                     expected_yet_another_toy_outputs[0])));
     EXPECT_THAT(GetTfTensorData<int32_t>(outputs[2][1]),
-                testing::ElementsAreArray(GetTfTensorData<int32_t>(
+                ::testing::ElementsAreArray(GetTfTensorData<int32_t>(
                     expected_yet_another_toy_outputs[1])));
     EXPECT_THAT(GetTfTensorData<int32_t>(outputs[2][2]),
-                testing::ElementsAreArray(GetTfTensorData<int32_t>(
+                ::testing::ElementsAreArray(GetTfTensorData<int32_t>(
                     expected_yet_another_toy_outputs[2])));
   }
 }
@@ -298,7 +334,7 @@ TEST(SavedModelTest, RunMultipleSignatures_OverlappingNodes) {
 
   ASSERT_EQ(outputs[0].size(), 1);
   EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0][0]),
-              testing::ElementsAreArray({6}));
+              ::testing::ElementsAreArray({6}));
 
   {
     auto another_toy_metadata = saved_model->GetFunctionMetadata("another_toy");
@@ -315,16 +351,16 @@ TEST(SavedModelTest, RunMultipleSignatures_OverlappingNodes) {
 
     ASSERT_EQ(outputs[1].size(), 2);
     EXPECT_THAT(GetTfTensorData<int32_t>(outputs[1][0]),
-                testing::ElementsAreArray(
+                ::testing::ElementsAreArray(
                     GetTfTensorData<int32_t>(expected_another_toy_outputs[0])));
     EXPECT_THAT(GetTfTensorData<int32_t>(outputs[1][1]),
-                testing::ElementsAreArray(
+                ::testing::ElementsAreArray(
                     GetTfTensorData<int32_t>(expected_another_toy_outputs[1])));
   }
 
   ASSERT_EQ(outputs[2].size(), 1);
   EXPECT_THAT(GetTfTensorData<int32_t>(outputs[2][0]),
-              testing::ElementsAreArray({6}));
+              ::testing::ElementsAreArray({6}));
 }
 
 class SavedModelRunByTensorNamesTest : public ::testing::Test {
@@ -373,11 +409,11 @@ TEST_F(SavedModelRunByTensorNamesTest, Basic) {
   ASSERT_EQ(outputs.size(), 3);
 
   // Check output "r1".
-  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]), testing::ElementsAre(6));
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]), ::testing::ElementsAre(6));
   // Check output "r21".
-  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[1]), testing::ElementsAre(12));
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[1]), ::testing::ElementsAre(12));
   // Check output "r31".
-  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[2]), testing::ElementsAre(18));
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[2]), ::testing::ElementsAre(18));
 }
 
 TEST_F(SavedModelRunByTensorNamesTest, NoTargetNodes) {
@@ -389,11 +425,11 @@ TEST_F(SavedModelRunByTensorNamesTest, NoTargetNodes) {
   ASSERT_EQ(outputs.size(), 3);
 
   // Check output "r1".
-  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]), testing::ElementsAre(6));
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]), ::testing::ElementsAre(6));
   // Check output "r21".
-  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[1]), testing::ElementsAre(12));
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[1]), ::testing::ElementsAre(12));
   // Check output "r31".
-  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[2]), testing::ElementsAre(18));
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[2]), ::testing::ElementsAre(18));
 }
 
 TEST_F(SavedModelRunByTensorNamesTest, NoOutputNodes) {
@@ -421,11 +457,11 @@ TEST_F(SavedModelRunByTensorNamesTest, ShuffleInputsAndOutputs) {
   ASSERT_EQ(outputs.size(), 3);
 
   // Check output "r22".
-  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]), testing::ElementsAre(30));
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]), ::testing::ElementsAre(30));
   // Check output "r1".
-  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[1]), testing::ElementsAre(6));
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[1]), ::testing::ElementsAre(6));
   // Check output "r31".
-  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[2]), testing::ElementsAre(18));
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[2]), ::testing::ElementsAre(18));
 }
 
 TEST(SavedModelTest, CustomWorkQueue) {
@@ -441,7 +477,7 @@ TEST(SavedModelTest, CustomWorkQueue) {
       std::make_unique<tfrt::tf::RunHandlerThreadWorkQueue>(queue_options));
 
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_native_ops = false;
+  options.graph_execution_options.compile_options.enable_native_ops = false;
 
   tensorflow::Status status;
   auto saved_model =
@@ -459,7 +495,7 @@ TEST(SavedModelTest, CustomWorkQueue) {
   ASSERT_EQ(outputs.size(), 1);
 
   EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
-              testing::ElementsAreArray({6}));
+              ::testing::ElementsAreArray({6}));
 
   // Run one more time to check per-request state is correct set up.
   outputs.clear();
@@ -467,7 +503,7 @@ TEST(SavedModelTest, CustomWorkQueue) {
   ASSERT_EQ(outputs.size(), 1);
 
   EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
-              testing::ElementsAreArray({6}));
+              ::testing::ElementsAreArray({6}));
 }
 
 // Verifies the savedmodel runs correctly with work queues specified in
@@ -479,7 +515,7 @@ TEST(SavedModelTest, RunOptionsWorkQueue) {
   auto runtime = tensorflow::tfrt_stub::Runtime::Create();
 
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_native_ops = false;
+  options.graph_execution_options.compile_options.enable_native_ops = false;
 
   tensorflow::Status status;
   auto saved_model =
@@ -508,7 +544,7 @@ TEST(SavedModelTest, RunOptionsWorkQueue) {
   ASSERT_EQ(outputs.size(), 1);
 
   EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
-              testing::ElementsAreArray({6}));
+              ::testing::ElementsAreArray({6}));
 
   // Run one more time to check per-request state is correct set up.
   outputs.clear();
@@ -516,7 +552,7 @@ TEST(SavedModelTest, RunOptionsWorkQueue) {
   ASSERT_EQ(outputs.size(), 1);
 
   EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
-              testing::ElementsAreArray({6}));
+              ::testing::ElementsAreArray({6}));
 }
 
 TEST(SavedModelTest, FunctionMetadata) {
@@ -530,17 +566,17 @@ TEST(SavedModelTest, FunctionMetadata) {
   ASSERT_TRUE(function_metadata.has_value());
 
   EXPECT_THAT(function_metadata->GetInputNames(),
-              testing::ElementsAreArray({"x1"}));
+              ::testing::ElementsAreArray({"x1"}));
   EXPECT_THAT(
       function_metadata->GetInputSpecs(),
-      testing::ElementsAreArray({TensorSpec(tensorflow::DT_INT32, {1, 3})}));
+      ::testing::ElementsAreArray({TensorSpec(tensorflow::DT_INT32, {1, 3})}));
 
   EXPECT_THAT(function_metadata->GetOutputNames(),
-              testing::ElementsAreArray({"r1"}));
+              ::testing::ElementsAreArray({"r1"}));
   EXPECT_THAT(function_metadata->GetOutputSpecs(),
               // Shape inference disabled, thus we only match dtype.
-              testing::ElementsAreArray(
-                  {testing::Field(&TensorSpec::dtype, tensorflow::DT_INT32)}));
+              ::testing::ElementsAreArray({::testing::Field(
+                  &TensorSpec::dtype, tensorflow::DT_INT32)}));
 }
 
 TEST(SavedModelTest, WrongShape) {
@@ -566,7 +602,7 @@ TEST(SavedModelTest, WrongShape) {
                                           inputs, &outputs);
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.error_message(),
-              testing::HasSubstr("input shape is wrong"));
+              ::testing::HasSubstr("input shape is wrong"));
 }
 
 TEST(SavedModelTest, RefTypeTensorInput) {
@@ -581,7 +617,7 @@ TEST(SavedModelTest, RefTypeTensorInput) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_grappler = true;
+  options.graph_execution_options.compile_options.enable_grappler = true;
 
   tensorflow::Status status;
   auto saved_model =
@@ -590,7 +626,7 @@ TEST(SavedModelTest, RefTypeTensorInput) {
   TF_ASSERT_OK(status);
   EXPECT_THAT(
       saved_model->GetFunctionNames(),
-      testing::UnorderedElementsAre(
+      ::testing::UnorderedElementsAre(
           "non_ref", "__tf_saved_model_session_initializer_save/restore_all"));
 }
 
@@ -601,9 +637,9 @@ TEST(SavedModelTest, HashTableAssetV1) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_native_ops = false;
-  options.compile_options.enable_grappler = true;
-  options.compile_options.hoist_invariant_ops = true;
+  options.graph_execution_options.compile_options.enable_native_ops = false;
+  options.graph_execution_options.compile_options.enable_grappler = true;
+  options.graph_execution_options.compile_options.hoist_invariant_ops = true;
 
   tensorflow::Status status;
   auto saved_model =
@@ -619,7 +655,7 @@ TEST(SavedModelTest, HashTableAssetV1) {
   ASSERT_EQ(outputs.size(), 1);
 
   EXPECT_THAT(GetTfTensorData<int64_t>(outputs[0]),
-              testing::ElementsAreArray({0}));
+              ::testing::ElementsAreArray({0}));
 }
 
 TEST(ControlFlowTest, CtrlFlow) {
@@ -653,7 +689,7 @@ TEST(ControlFlowTest, CtrlFlow) {
 
   EXPECT_THAT(
       GetTfTensorData<int32_t>(outputs[0]),
-      testing::ElementsAreArray(std::vector<int32_t>(
+      ::testing::ElementsAreArray(std::vector<int32_t>(
           tf_outputs[0].flat<int32_t>().data(),
           tf_outputs[0].flat<int32_t>().data() + tf_outputs[0].NumElements())));
 }
@@ -689,7 +725,7 @@ TEST(SavedModelTest, ResourceGather) {
 
   EXPECT_THAT(
       GetTfTensorData<int32_t>(outputs[0]),
-      testing::ElementsAreArray(std::vector<int32_t>(
+      ::testing::ElementsAreArray(std::vector<int32_t>(
           tf_outputs[0].flat<int32_t>().data(),
           tf_outputs[0].flat<int32_t>().data() + tf_outputs[0].NumElements())));
 }
@@ -746,15 +782,23 @@ TEST(SavedModelTest, Error) {
       status.error_message(), "You must feed a value for placeholder tensor"));
 }
 
-class SavedModelPowTest : public testing::TestWithParam<std::string> {};
+struct PowTestParam {
+  std::string path;
+  bool run_placer_grappler_on_functions;
+};
+
+class SavedModelPowTest : public ::testing::TestWithParam<PowTestParam> {};
 
 TEST_P(SavedModelPowTest, Pow) {
   std::string saved_model_dir =
-      tensorflow::GetDataDependencyFilepath(GetParam());
+      tensorflow::GetDataDependencyFilepath(GetParam().path);
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_grappler = true;
+  options.graph_execution_options.compile_options.enable_grappler = true;
+  options.graph_execution_options.enable_grappler_function_optimizer = true;
+  options.graph_execution_options.run_placer_grappler_on_functions =
+      GetParam().run_placer_grappler_on_functions;
 
   tensorflow::Status status;
   auto saved_model =
@@ -771,13 +815,41 @@ TEST_P(SavedModelPowTest, Pow) {
   TF_ASSERT_OK(saved_model->Run({}, "serving_default", inputs, &outputs));
   ASSERT_EQ(outputs.size(), 1);
 
-  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]), testing::ElementsAre(8));
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]), ::testing::ElementsAre(8));
 }
 
 INSTANTIATE_TEST_SUITE_P(
     SavedModelPowTest, SavedModelPowTest,
-    testing::Values("tensorflow/core/tfrt/saved_model/tests/pow",
-                    "tensorflow/core/tfrt/saved_model/tests/pow_v2"));
+    ::testing::Values(
+        PowTestParam{"tensorflow/core/tfrt/saved_model/tests/pow", false},
+        PowTestParam{"tensorflow/core/tfrt/saved_model/tests/pow_v2", false},
+        PowTestParam{"tensorflow/core/tfrt/saved_model/tests/pow_v2", true}));
+
+TEST(SavedModelPowTest, MapDataset) {
+  std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/core/tfrt/saved_model/tests/data");
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  auto options = DefaultSavedModelOptions(runtime.get());
+  options.graph_execution_options.compile_options.enable_grappler = true;
+
+  tensorflow::Status status;
+  auto saved_model =
+      SavedModelImpl::LoadSavedModel(options, saved_model_dir,
+                                     /*tags=*/{"serve"}, &status);
+  TF_CHECK_OK(status);
+
+  std::vector<int32_t> data = {2};
+  std::vector<tensorflow::Tensor> inputs;
+  inputs.push_back(
+      CreateTfTensor<int32_t>(/*shape=*/{}, absl::MakeConstSpan(data)));
+
+  std::vector<tensorflow::Tensor> outputs;
+  TF_ASSERT_OK(saved_model->Run({}, "serving_default", inputs, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]), ::testing::ElementsAre(3));
+}
 
 TEST(SavedModelTest, ControlFlowV1) {
   // This test checks that loading a savedmodel with V1 control flows works
@@ -790,7 +862,7 @@ TEST(SavedModelTest, ControlFlowV1) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_grappler = true;
+  options.graph_execution_options.compile_options.enable_grappler = true;
 
   tensorflow::Status status;
   auto saved_model =
@@ -809,7 +881,7 @@ TEST(SavedModelTest, WhileLoopV1) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_grappler = true;
+  options.graph_execution_options.compile_options.enable_grappler = true;
 
   tensorflow::Status status;
   auto saved_model =
@@ -826,7 +898,7 @@ TEST(SavedModelTest, WhileLoopV1) {
   TF_ASSERT_OK(saved_model->Run({}, "serving_default", inputs, &outputs));
   ASSERT_EQ(outputs.size(), 1);
 
-  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]), testing::ElementsAre(10));
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]), ::testing::ElementsAre(10));
 }
 
 TEST(SavedModelTest, SparseTensorInput) {
@@ -841,14 +913,14 @@ TEST(SavedModelTest, SparseTensorInput) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_grappler = true;
+  options.graph_execution_options.compile_options.enable_grappler = true;
 
   tensorflow::Status status;
   auto saved_model =
       SavedModelImpl::LoadSavedModel(options, saved_model_dir,
                                      /*tags=*/{"serve"}, &status);
   TF_ASSERT_OK(status);
-  EXPECT_THAT(saved_model->GetFunctionNames(), testing::ElementsAre("dense"));
+  EXPECT_THAT(saved_model->GetFunctionNames(), ::testing::ElementsAre("dense"));
 }
 
 TEST(SavedModelTest, DeadlineExceeded) {
@@ -877,9 +949,10 @@ TEST(SavedModelTest, DeadlineExceeded) {
   status = saved_model->Run(run_options, "toy", inputs, &outputs);
 
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(), testing::HasSubstr("Deadline exceeded"));
+  EXPECT_THAT(status.error_message(),
+              ::testing::HasSubstr("Deadline exceeded"));
 }
 
 }  // namespace
-}  // namespace saved_model_test
-}  // namespace tfrt
+}  // namespace tfrt_stub
+}  // namespace tensorflow

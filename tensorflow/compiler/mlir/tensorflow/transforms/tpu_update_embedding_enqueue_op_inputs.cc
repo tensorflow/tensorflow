@@ -42,7 +42,7 @@ constexpr char kTPUEmbeddingAttr[] = "_tpu_embedding_layer";
 struct TPUUpdateEmbeddingEnqueueOpInputsPass
     : public TF::TPUUpdateEmbeddingEnqueueOpInputsPassBase<
           TPUUpdateEmbeddingEnqueueOpInputsPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Extracts `_tpu_embedding_layer` attribute from TPU embedding ops and
@@ -63,7 +63,7 @@ LogicalResult ExtractEmbeddingAttribute(
 }
 
 LogicalResult FindTPUEmbeddingOps(
-    FuncOp func_op, llvm::StringMap<Operation*>* enqueue_op_map,
+    func::FuncOp func_op, llvm::StringMap<Operation*>* enqueue_op_map,
     llvm::StringMap<Operation*>* recv_activation_op_map,
     llvm::StringMap<Operation*>* send_gradient_op_map) {
   auto walk_result = func_op.walk([&](Operation* op) {
@@ -76,7 +76,8 @@ LogicalResult FindTPUEmbeddingOps(
         return WalkResult::interrupt();
 
     if (llvm::isa<TF::EnqueueTPUEmbeddingSparseTensorBatchOp,
-                  TF::EnqueueTPUEmbeddingRaggedTensorBatchOp>(op))
+                  TF::EnqueueTPUEmbeddingRaggedTensorBatchOp,
+                  TF::EnqueueTPUEmbeddingArbitraryTensorBatchOp>(op))
       if (failed(ExtractEmbeddingAttribute(op, enqueue_op_map)))
         return WalkResult::interrupt();
 
@@ -139,9 +140,9 @@ LogicalResult UpdateEmbeddingEnqueueOpInput(
   return success();
 }
 
-void TPUUpdateEmbeddingEnqueueOpInputsPass::runOnFunction() {
+void TPUUpdateEmbeddingEnqueueOpInputsPass::runOnOperation() {
   OpBuilder builder(&getContext());
-  auto func_op = getFunction();
+  auto func_op = getOperation();
 
   // All TPU embedding layer related ops are annotated with
   // `_tpu_embedding_layer` attribute along with corresponding string attribute.
@@ -171,7 +172,7 @@ void TPUUpdateEmbeddingEnqueueOpInputsPass::runOnFunction() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUUpdateEmbeddingEnqueueOpInputsPass() {
   return std::make_unique<TPUUpdateEmbeddingEnqueueOpInputsPass>();
 }

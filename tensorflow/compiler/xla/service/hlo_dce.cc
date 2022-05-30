@@ -16,11 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 
 #include <memory>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -33,11 +32,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 
-StatusOr<bool> HloDCE::RunOnComputation(
+/*static*/ StatusOr<bool> HloDCE::RunOnComputation(
     HloComputation* computation, bool remove_cross_partition_collective_ops) {
   bool changed = false;
   VLOG(3) << "Before dce:";
@@ -48,9 +48,7 @@ StatusOr<bool> HloDCE::RunOnComputation(
   std::vector<HloInstruction*> dead_roots;
   for (auto* instruction : computation->instructions()) {
     auto maybe_collective_op = DynCast<HloCollectiveInstruction>(instruction);
-    if (instruction != computation->root_instruction() &&
-        instruction->user_count() == 0 &&
-        computation->IsSafelyRemovable(instruction) &&
+    if (instruction->IsDead() && computation->IsSafelyRemovable(instruction) &&
         (!instruction->HasSideEffect() ||
          (remove_cross_partition_collective_ops && maybe_collective_op &&
           !maybe_collective_op->constrain_layout()))) {
@@ -60,7 +58,7 @@ StatusOr<bool> HloDCE::RunOnComputation(
 
   for (HloInstruction* dead_root : dead_roots) {
     VLOG(1) << "Removing dead root " << dead_root->ToString()
-            << " and it's unused operands";
+            << " and its unused operands";
     TF_RETURN_IF_ERROR(
         computation->RemoveInstructionAndUnusedOperands(dead_root));
     changed = true;
@@ -70,6 +68,71 @@ StatusOr<bool> HloDCE::RunOnComputation(
     XLA_VLOG_LINES(3, computation->ToString());
   }
   return changed;
+}
+
+Status HloDCE::RecursivelyRemoveDeadComputation(
+    HloModule* module, HloComputation* computation,
+    absl::flat_hash_map<HloComputation*, int>& live_call_counts) {
+  // First loops all the sub-instructions/sub-computations.
+  for (HloInstruction* instruction : computation->instructions()) {
+    for (HloComputation* subcomp : instruction->called_computations()) {
+      auto iter = live_call_counts.find(subcomp);
+      if (iter == live_call_counts.end()) {
+        return tensorflow::errors::Internal(
+            "called computation not found in live_call_counts table during "
+            "HloDCE");
+      }
+
+      // Decrements the live call count and sees if there are no more live
+      // calls to this computation.
+      int live_call_count = --iter->second;
+      CHECK_GE(live_call_count, 0);
+      if (live_call_count == 0) {
+        TF_RETURN_IF_ERROR(RecursivelyRemoveDeadComputation(module, subcomp,
+                                                            live_call_counts));
+      }
+    }
+  }
+  VLOG(1) << "Removing dead computation " << computation->name();
+  // After looping called subcomputations, now safe to delete the computation.
+  return module->RemoveEmbeddedComputation(computation);
+}
+
+StatusOr<bool> HloDCE::RecursivelyRemoveDeadComputations(HloModule* module) {
+  // Tracks whether any dead code is eliminated by this pass.
+  bool module_contains_dead_code = false;
+
+  // First, collect the computations that are
+  // referenced by some remaining instruction. We need to record this as a
+  // refcount map rather than a set since we cannot guarantee that control
+  // flow flattening has been done and there may be multiple call sites.
+  absl::flat_hash_map<HloComputation*, int> live_computation_call_count;
+  if (HloComputation* entry_computation = module->entry_computation()) {
+    ++live_computation_call_count[entry_computation];
+  }
+  for (auto* computation : module->MakeComputationPostOrder()) {
+    for (auto* instruction : computation->instructions()) {
+      for (auto* subcomp : instruction->called_computations()) {
+        ++live_computation_call_count[subcomp];
+      }
+    }
+  }
+
+  // Find dead computations.
+  absl::flat_hash_set<HloComputation*> dead_computations;
+  for (auto* computation : module->MakeComputationPostOrder()) {
+    // Finds all "top-level" dead computations not called by any instructions.
+    // contains(comp) = true and live_computation_call_count[comp] = 0 also
+    // implies that the computation is dead, but is nested in other dead
+    // computations. These inner computations are ignored here since they will
+    // be removed recursing through other computations.
+    if (!live_computation_call_count.contains(computation)) {
+      TF_RETURN_IF_ERROR(RecursivelyRemoveDeadComputation(
+          module, computation, live_computation_call_count));
+      module_contains_dead_code = true;
+    }
+  }
+  return module_contains_dead_code;
 }
 
 StatusOr<bool> HloDCE::Run(HloModule* module) {
@@ -86,27 +149,12 @@ StatusOr<bool> HloDCE::Run(HloModule* module) {
     changed |= changed_for_computation;
   }
 
-  // Now DCE HloComputations.  First, collect the computations that are
-  // referenced by some remaining instruction.
-  absl::flat_hash_set<HloComputation*> live_computations;
-  if (HloComputation* entry_computation = module->entry_computation()) {
-    live_computations.insert(entry_computation);
-  }
-  for (auto* computation : module->MakeComputationPostOrder()) {
-    for (auto* instruction : computation->instructions()) {
-      for (auto* subcomp : instruction->called_computations()) {
-        live_computations.insert(subcomp);
-      }
-    }
-  }
-
-  // Remove dead computations.
-  for (auto* computation : module->MakeComputationPostOrder()) {
-    if (!live_computations.contains(computation)) {
-      TF_RETURN_IF_ERROR(module->RemoveEmbeddedComputation(computation));
-      changed = true;
-    }
-  }
+  // Now DCE HloComputations.  Keep doing passes through the module until no
+  // more computations can be eliminated. The function removes all
+  // subcomputations that can be proved to have no remaining live callers.
+  TF_ASSIGN_OR_RETURN(bool module_contains_dead_code,
+                      RecursivelyRemoveDeadComputations(module));
+  changed |= module_contains_dead_code;
 
   VLOG(2) << "After dce:";
   XLA_VLOG_LINES(2, module->ToString());

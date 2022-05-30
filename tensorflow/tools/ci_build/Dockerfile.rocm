@@ -3,10 +3,10 @@
 FROM ubuntu:bionic
 MAINTAINER Jeff Poznanovic <jeffrey.poznanovic@amd.com>
 
-ARG ROCM_DEB_REPO=http://repo.radeon.com/rocm/apt/4.3.1/
+ARG ROCM_DEB_REPO=https://repo.radeon.com/rocm/apt/5.1/
 ARG ROCM_BUILD_NAME=ubuntu
 ARG ROCM_BUILD_NUM=main
-ARG ROCM_PATH=/opt/rocm-4.3.1
+ARG ROCM_PATH=/opt/rocm-5.1.0
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV TF_NEED_ROCM 1
@@ -15,8 +15,8 @@ RUN apt-get --allow-unauthenticated update && apt install -y wget software-prope
 
 # Add rocm repository
 RUN apt-get clean all
-RUN bin/bash -c 'if [[ $ROCM_DEB_REPO == http://repo.radeon.com/rocm/*  ]] ; then \
-      wget -qO - $ROCM_DEB_REPO/rocm.gpg.key | apt-key add -; \
+RUN wget -qO - https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -;
+RUN bin/bash -c 'if [[ $ROCM_DEB_REPO == https://repo.radeon.com/rocm/*  ]] ; then \
       echo "deb [arch=amd64] $ROCM_DEB_REPO $ROCM_BUILD_NAME $ROCM_BUILD_NUM" > /etc/apt/sources.list.d/rocm.list; \
     else \
       echo "deb [arch=amd64 trusted=yes] $ROCM_DEB_REPO $ROCM_BUILD_NAME $ROCM_BUILD_NUM" > /etc/apt/sources.list.d/rocm.list ; \
@@ -55,13 +55,15 @@ RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteracti
   pciutils \
   virtualenv \
   python-pip \
-  python3-pip \
   libxml2 \
   libxml2-dev \
   wget && \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/*
 
+# Add to get ppa
+RUN apt-get update
+RUN apt-get install -y software-properties-common
 # Install rocm pkgs
 RUN apt-get update --allow-insecure-repositories && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-unauthenticated \
@@ -94,18 +96,19 @@ RUN bash -c 'echo -e "gfx900\ngfx906\ngfx908" >> ${ROCM_PATH}/bin/target.lst'
 # Filed https://github.com/bazelbuild/bazel/issues/11163 for tracking this
 RUN touch ${ROCM_PATH}/.info/version
 
+ENV PATH="/root//bin:/root/.local/bin:$PATH"
 # Copy and run the install scripts.
 COPY install/*.sh /install/
+COPY release/common.sh /install/common.sh
+COPY release/* tensorflow/tools/ci_build/release/
 ARG DEBIAN_FRONTEND=noninteractive
-RUN /install/install_bootstrap_deb_packages.sh
 RUN /install/install_deb_packages.sh
-RUN /install/install_pip_packages.sh
-RUN /install/install_bazel.sh
-RUN /install/install_golang.sh
+RUN /install/install_pi_python3.9_toolchain.sh
 
+SHELL ["/bin/bash", "-c"]
+RUN /install/install_bazel.sh
 # Set up the master bazelrc configuration file.
 COPY install/.bazelrc /etc/bazel.bazelrc
-
 # Configure the build for our ROCm configuration.
 ENV TF_NEED_ROCM 1
 

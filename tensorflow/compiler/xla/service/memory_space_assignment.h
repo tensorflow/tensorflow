@@ -20,6 +20,12 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+// TODO(b/210891274): Use btree_map after build issue in Windows is resolved.
+#if defined(__GNUC__) || defined(__clang__)
+#include "absl/container/btree_map.h"
+#else
+#include <map>
+#endif
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_repacking.h"
@@ -106,6 +112,12 @@ class MemorySpaceAssignmentCostAnalysis {
     absl::flat_hash_map<const HloInstruction*, float> while_nest_multiplier;
   };
 
+  // Function type that can be used to indicate which input/output values are in
+  // the alternate memory.
+  using IsInAlternateMemoryFun =
+      std::function<bool(absl::optional<int> /*operand_num*/,
+                         const ShapeIndex& /*index*/, const Shape& /*shape*/)>;
+
   virtual ~MemorySpaceAssignmentCostAnalysis() = default;
 
   static StatusOr<std::unique_ptr<MemorySpaceAssignmentCostAnalysis>> Create(
@@ -120,6 +132,14 @@ class MemorySpaceAssignmentCostAnalysis {
   // priority it will be placed in the alternate memory.
   float GetAlternateMemoryBenefit(const HloInstruction& instruction,
                                   float elapsed_time_due_to_alternate_mem,
+                                  Cache* cache = nullptr) const;
+  // Like above, return the benefit of putting the output tensor in the
+  // alternate memory.
+  float GetAlternateMemoryBenefit(const HloPosition& position,
+                                  Cache* cache = nullptr) const;
+  // Like above, return the benefit of putting the input tensor in the alternate
+  // memory.
+  float GetAlternateMemoryBenefit(const HloUse& use,
                                   Cache* cache = nullptr) const;
 
   // Returns a heuristic value of memory boundedness for the given
@@ -144,6 +164,12 @@ class MemorySpaceAssignmentCostAnalysis {
           operands_in_alternate_mem = {},
       absl::Span<const ShapeIndex> outputs_in_alternate_mem = {}) const;
 
+  // Like above, only the inputs/outputs indicated by is_in_alternate_mem are in
+  // the alternate memory.
+  float GetInstructionElapsedDueToMemory(
+      const HloInstruction& instruction,
+      IsInAlternateMemoryFun is_in_alternate_mem) const;
+
   // Returns the estimated elapsed duration of the instruction in seconds.  It
   // assumes all operands and outputs of the instruction are in the default
   // memory.
@@ -158,6 +184,12 @@ class MemorySpaceAssignmentCostAnalysis {
       absl::Span<const std::pair<int64_t, ShapeIndex>>
           operands_in_alternate_mem,
       absl::Span<const ShapeIndex> outputs_in_alternate_mem) const;
+
+  // Like above, only the inputs/outputs indicated by is_in_alternate_mem are in
+  // the alternate memory.
+  float GetInstructionElapsedInAlternateMemory(
+      const HloInstruction& instruction,
+      IsInAlternateMemoryFun is_in_alternate_mem) const;
 
   // Returns the elapsed time it would take to asynchronously copy the shape
   // from default to alternate memory space (or vice versa).
@@ -251,9 +283,15 @@ class PrefetchIntervalPicker {
   // Returns true if the available prefetch intervals have been exhausted.
   virtual bool Done() const = 0;
 
+  // Returns the latest time the prefetch interval picker will have pick.
+  virtual int64_t latest_time() const = 0;
+
   // The retry number can be used to modify the interval picking policies. The
   // first attempt will have a retry_number of 0, then 1, etc.
-  virtual void SetRetryNumber(int retry_number) {}
+  virtual void SetRetryNumber(int retry_number) {
+    retry_number_ = retry_number;
+  }
+  int retry_number() const { return retry_number_; }
 
   // Returns a debug string for the current state of the prefetch interval
   // picker.
@@ -276,6 +314,7 @@ class PrefetchIntervalPicker {
  protected:
   const absl::flat_hash_map<const HloInstruction*, int64_t>*
       instruction_schedule_ = nullptr;
+  int retry_number_ = 0;
 };
 
 // Prefetch interval picker that uses instruction count to overlap asynchronous
@@ -322,6 +361,8 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
   int64_t Next() override;
   bool Done() const override;
 
+  int64_t latest_time() const override;
+
   std::string ToDebugString() const override;
   std::string ToNoCopyDebugString(const Shape& shape, int64_t start_time,
                                   int64_t end_time) const override;
@@ -336,23 +377,24 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
 // Forward Declaration of MemorySpaceAssignmentCostAnalysis
 class MemorySpaceAssignmentCostAnalysis;
 // Prefetch interval picker that uses cost analysis to overlap asynchronous
-// copies with independent computation. It uses min/max (asynchronous copy
-// duration) / (independent computation duration) ratios to guide whether the
-// prefetch is within those bounds. It starts with the preferred ratio in
-// Begin() and works its way for alternately earlier and later prefetches until
-// hitting min and max ratios. The value for buffer size for max async copy is a
-// mechanism to prevent copying small buffers between the two memories
-// unnecessarily. For calculating the max time that the buffer can reside in
-// alternate memory, we use the larger of this value and the actual size of the
-// buffer.
+// copies with independent computation. It uses min (independent computation
+// duration) / (asynchronous copy duration) ratio to guide whether the prefetch
+// is within the lower bound. For the upper bound, it restricts the maximum
+// duration that a buffer may occupy the alternate memory space as a multiple of
+// the time it would take to copy a buffer that is the size of the alternate
+// memory. It starts with the preferred ratio in Begin() and works its way for
+// alternately earlier and later prefetches until hitting min and max ratios.
+// The value for buffer size for max async copy is a mechanism to prevent
+// copying small buffers between the two memories unnecessarily. For calculating
+// the max time that the buffer can reside in alternate memory, we use the
+// larger of this value and the actual size of the buffer.
 class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
  public:
   CostAnalysisPrefetchIntervalPicker(
       const MemorySpaceAssignmentCostAnalysis& cost_analysis,
-      float min_async_copy_to_overlap_ratio,
-      float max_async_copy_to_overlap_ratio,
-      float preferred_async_copy_to_overlap_ratio,
-      int64_t buffer_size_for_max_async_copy);
+      float min_overlap_to_async_copy_ratio,
+      float preferred_overlap_to_async_copy_ratio,
+      float max_overlap_to_mem_size_async_copy_ratio, int64_t mem_size_bytes);
 
   bool CanAllocateInAlternateMemoryNoCopy(const Shape& shape,
                                           int64_t start_time,
@@ -384,6 +426,8 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   int64_t Next() override;
   bool Done() const override;
 
+  int64_t latest_time() const override;
+
   void SetRetryNumber(int retry_number) override;
 
   std::string ToDebugString() const override;
@@ -413,10 +457,9 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   std::vector<int> while_nest_level_change_;
 
   const MemorySpaceAssignmentCostAnalysis& cost_analysis_;
-  float min_async_copy_to_overlap_ratio_;
-  float max_async_copy_to_overlap_ratio_;
-  float preferred_async_copy_to_overlap_ratio_;
-  int64_t buffer_size_for_max_async_copy_;
+  float min_overlap_to_async_copy_ratio_;
+  float preferred_overlap_to_async_copy_ratio_;
+  float max_async_copy_elapsed_;
   float max_overlap_multiplier_ = 1.0;
 
   float async_copy_elapsed_;
@@ -614,7 +657,7 @@ class MemorySpaceAssignment {
     HloInstruction* copy_start() const { return copy_start_; }
     HloInstruction* copy_done() const { return copy_done_; }
 
-    // Returns the time the buffer is first available to be used. For For
+    // Returns the time the buffer is first available to be used. For
     // CopyAllocation, this is when the copy ends, which is
     // copy_done_schedule_before.
     int64_t earliest_available_time() const override {
@@ -630,6 +673,10 @@ class MemorySpaceAssignment {
 
     void set_copy_start_schedule_after(int64_t copy_start_schedule_after) {
       copy_start_schedule_after_ = copy_start_schedule_after;
+    }
+
+    void set_copy_done_schedule_before(int64_t copy_done_schedule_before) {
+      copy_done_schedule_before_ = copy_done_schedule_before;
     }
 
     bool is_cross_program_prefetch() const {
@@ -650,6 +697,30 @@ class MemorySpaceAssignment {
     bool is_cross_program_prefetch_;
     HloInstruction* copy_start_;
     HloInstruction* copy_done_;
+  };
+
+  // An allocation in the default memory space that mirrors another Allocation
+  // object. This is useful to model an eviction that happens before a while op
+  // so that we don't need to redundantly evict the buffer after the while op as
+  // well.
+  class MirroredAllocation : public Allocation {
+   public:
+    MirroredAllocation(const Allocation& original_allocation, int64_t time)
+        : Allocation(original_allocation.defining_position(),
+                     MemorySpace::kDefault, original_allocation.chunk(),
+                     /*start_time=*/time,
+                     /*end_time=*/time, /*is_scoped_allocation=*/false),
+          original_allocation_(original_allocation) {}
+
+    Status Process() override;
+
+    void MarkNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
+        const override;
+
+    std::string ToString() const override;
+
+   private:
+    const Allocation& original_allocation_;
   };
 
   // An allocation in default memory space that is defined in the parent
@@ -986,14 +1057,9 @@ struct Options {
   // max_outstanding_prefetches).
   int64_t while_use_extra_outstanding_prefetch_limit = 0;
 
-  // Specifies the maximum number of times we are willing to move a copy
-  // done of a prefetch earlier due to an asynchronous copy ordering
-  // violation.
-  int64_t prefetch_copy_done_reorder_max_retries = 1;
-
   // Specifies the maximum number of retries that will be performed for each
   // value in case prefetching failed due to running out of asynchronous
-  // copies or asynchronous copy ordering.
+  // copies or asynchronous copy resource.
   int64_t max_retries = 1;
 
   // The maximum number of repacks that we are willing to perform in case we
@@ -1004,7 +1070,7 @@ struct Options {
   // This variable is used by the cost analysis in estimating how many times
   // each while loop will execute. Nested loops will be assumed to have
   // executed pow(while_execution_count, nesting_level) times.
-  uint64 xla_tpu_memory_space_assignment_while_execution_count = 5ULL;
+  uint64_t xla_tpu_memory_space_assignment_while_execution_count = 5ULL;
 
   float async_copy_bandwidth_bytes_per_second = 0.0f;
 
@@ -1042,57 +1108,103 @@ struct Options {
   // cross-program-prefetched buffer can be reused.
   bool enable_cross_program_prefetch_freeing = true;
 
+  // Enable redundant eviction optimization in/around while loops. If enabled,
+  // this optimization would keep a copy of the buffer in the default memory in
+  // addition to alternate memory to eliminate redundant evictions.
+  bool enable_while_redundant_eviction_elimination = true;
+
   // An optional memory space assignment autotuning config, which is used
   // to sort allocated buffers.
   absl::optional<std::vector<uint64_t>> autotuning_config = absl::nullopt;
 };
 
 // A struct representing an asynchronous copy with its logical start and end
-// time (time that copy done is scheduled), estimated end time (time that the
-// async copy finishes),  and its destination memory space.
+// time (time that copy done is scheduled), the resource this copy would use,
+// its destination memory space, and a unique ID.
 struct AsynchronousCopy {
   int64_t start_time;
-  int64_t estimated_end_time;
   int64_t end_time;
+  float resource;
   MemorySpaceAssignment::MemorySpace destination;
+  int64_t id;
+
+  std::tuple<int64_t, int64_t, float, MemorySpaceAssignment::MemorySpace,
+             int64_t>
+  AsTuple() const {
+    return std::make_tuple(start_time, end_time, resource, destination, id);
+  }
 };
 
 // Compare asynchronous copies such that an earlier start time has the same or
 // earlier end time and an earlier end time has the same or earlier start time.
 bool operator<(const AsynchronousCopy& a, const AsynchronousCopy& b);
 
-// Helper class to enforce asynchronous copy ordering. We only allow
-// asynchronous copies that are pipelined: if an asynchronous copy ends earlier
-// than another asynchronous copy, it must start the same time or earlier than
-// the other asynchronous copy; and if an asynchronous copy starts earlier than
-// another asynchronous copy, it must end the same time or earlier than the
-// other asynchronous copy.
-class AsynchronousCopyOrdering {
- public:
-  AsynchronousCopyOrdering() = default;
+bool operator==(const AsynchronousCopy& a, const AsynchronousCopy& b);
+bool operator!=(const AsynchronousCopy& a, const AsynchronousCopy& b);
 
-  // Adds an asynchronous copy.
+// Helper class to enforce asynchronous copy resources by keeping track of
+// available copy bandwidth and elapsed times of overlapped operations. It
+// maintains a list of initial resources that correspond to the elapsed times of
+// overlapped operations. As asynchronous copies are added, the available
+// resource is subtracted to keep track of the current state.
+class AsynchronousCopyResource {
+ public:
+  AsynchronousCopyResource() = default;
+
+  // The constructor needs the initial resources.
+  explicit AsynchronousCopyResource(absl::Span<const float> initial_resources)
+      : initial_resources_(initial_resources.begin(), initial_resources.end()),
+        delay_(initial_resources.size(), 0) {}
+
+  // Adds the given asynchronous copy and updates the current resources. CHECK
+  // fails if there aren't enough resources to satisfy this copy (the caller
+  // should use HasEnoughResource first to ensure there is enough resource).
   void AddCopy(const AsynchronousCopy& copy);
 
-  // Removes an asynchronous copy. CHECKs that it is removed.
+  // Removes the given copy and frees the resource.
   void RemoveCopy(const AsynchronousCopy& copy);
 
-  // If the addition of an asynchronous copy in the given time interval would
-  // violate the asynchronous copy ordering, returns the violating
-  // already-committed asynchronous copy. E.g., consider the following scenario:
-  //                                  CS          CD
-  //  already committed async copy:   +-----------+
-  //                new async copy:     +--------+
-  //
-  // The new asynchronous copy would violate the ordering guarantee because the
-  // copy start is after an already committed asynchronous copy while its copy
-  // done is before the committed copy.
-  absl::optional<AsynchronousCopy> ViolatesOrdering(int64_t start_time,
-                                                    int64_t end_time) const;
+  // Returns true if a copy with the given start and end times and resource can
+  // be satisfied.
+  bool HasEnoughResource(int64_t start_time, int64_t end_time, float resource);
+
+  // This is only used for debugging and testing purposes, it returns the
+  // currently available resource at each logical time.
+  std::vector<float> GetCurrentResources() const {
+    std::vector<float> current_resources(initial_resources_.begin(),
+                                         initial_resources_.end());
+    for (int i = 0; i < current_resources.size(); ++i) {
+      current_resources[i] -= std::min(current_resources[i], delay_[i]);
+    }
+    return current_resources;
+  }
 
  private:
-  // Stores asynchronous copies in a tree set respecting the pipelining order.
-  std::set<AsynchronousCopy> ranges_;
+  // Internal helper method to implement adding/removing/checking resources.
+  // Only updates the current resources if update_current_resource is true. The
+  // current_copy points to an iterator in async_copies_ and this
+  bool ConsumeResource(
+      int64_t start_time, int64_t end_time, float resource,
+      bool update_current_resource,
+      const std::list<AsynchronousCopy>::iterator* current_copy = nullptr,
+      float resource_to_free = 0.0);
+
+  // We maintain a linked list of asynchronous copies sorted by the start times.
+  // This allows us to efficiently find the copy that starts right after another
+  // one because adding a copy might push a copy further into the future.
+  std::list<AsynchronousCopy> async_copies_;
+// To make the lookups into async_copies_ more efficient, we also maintain a
+// binary tree that is indexed by the start time, containing iterators into
+// async_copies_.
+// TODO(b/210891274): Use btree_map after build issue in Windows is resolved.
+#if defined(__GNUC__) || defined(__clang__)
+  absl::btree_map<int64_t, std::list<AsynchronousCopy>::iterator>
+      async_copy_time_map_;
+#else
+  std::map<int64_t, std::list<AsynchronousCopy>::iterator> async_copy_time_map_;
+#endif
+  std::vector<float> initial_resources_;
+  std::vector<float> delay_;
 };
 
 // This class inherits from GlobalDecreasingSizeBestFitHeap with a notion of
@@ -1106,17 +1218,7 @@ class AlternateMemoryBestFitHeap
   AlternateMemoryBestFitHeap(
       MemorySpaceAssignment::AllocationSequence* allocations,
       const Options& options, const HloAliasAnalysis& alias_analysis,
-      const HloLiveRange& hlo_live_range)
-      : GlobalDecreasingSizeBestFitHeap(options.alignment_in_bytes),
-        allocations_(allocations),
-        options_(options),
-        alias_analysis_(alias_analysis),
-        hlo_live_range_(hlo_live_range) {
-    // Override buffer interval compare if provided.
-    if (options.buffer_interval_compare) {
-      buffer_interval_compare_ = *options.buffer_interval_compare;
-    }
-  }
+      const HloLiveRange& hlo_live_range);
 
   // Allocates a buffer in preferred memory with whole program lifetime and
   // enables prefetching prefetch_candidate from default memory across program
@@ -1250,8 +1352,8 @@ class AlternateMemoryBestFitHeap
     // or eviction.
     kFailOutOfAsyncCopies = 16,
     // A prefetching couldn't be performed because the asynchronous copy
-    // ordering was violated.
-    kFailViolatesAsyncCopyOrdering = 32,
+    // resource was violated.
+    kFailViolatesAsyncCopyResource = 32,
     // An allocation failure happened that requires uncommitting all the pending
     // allocations. Usually this is due to a situation requiring an eviction but
     // the eviction couldn't be performed.
@@ -1281,7 +1383,7 @@ class AlternateMemoryBestFitHeap
   // ordering.
   static bool result_failed_because_of_async_copy(Result result) {
     return result_is(result, Result::kFailOutOfAsyncCopies) ||
-           result_is(result, Result::kFailViolatesAsyncCopyOrdering);
+           result_is(result, Result::kFailViolatesAsyncCopyResource);
   }
 
   // Allocates buffers for instructions that need reserved scoped allocations in
@@ -1355,7 +1457,7 @@ class AlternateMemoryBestFitHeap
   // Find the best possible chunk candidate, where it has the longest possible
   // availability if no preferred offset is given, or at the preferred_offset if
   // it is given.
-  absl::optional<ChunkCandidate> FindBestChunkCandidate(
+  absl::optional<Chunk> FindBestChunkCandidate(
       const AllocationRequest& request, const AliasedOffset* preferred_offset,
       BufferInterval* alternate_mem_interval) const;
 
@@ -1410,11 +1512,6 @@ class AlternateMemoryBestFitHeap
       int64_t start_time, int64_t end_time, bool is_prefetch,
       int64_t extra_async_copy_limit = 0) const;
 
-  // If the asynchronous copy would violate the pipelining order, returns the
-  // violating asynchronous copy.
-  absl::optional<AsynchronousCopy> ViolatesAsyncCopyOrdering(
-      int64_t start_time, int64_t end_time) const;
-
   // Exports the allocations for repacking and puts them into the vector in the
   // parameter.
   void ExportAllocationsForRepacking(
@@ -1431,14 +1528,14 @@ class AlternateMemoryBestFitHeap
                     int64_t start_time, int64_t end_time,
                     int64_t copy_done_schedule_before_time,
                     MemorySpaceAssignment::AllocationSequence* allocations,
-                    AliasedOffset* aliased_offset,
+                    AliasedOffset* aliased_offset, float resource,
                     bool is_cross_program_prefetch = false);
 
   // This method is used for committing the chunk candidate but adding it to
   // pending_chunks_ so that we can "uncommit" them in case we need to roll back
   // this allocation sequence.
   void AddToPendingChunks(const BufferInterval& buffer_interval,
-                          const ChunkCandidate& chunk_candidate);
+                          const Chunk& chunk);
   // If we need to remove the allocations for this allocation sequence, this
   // removes pending chunks and asynchronous copies in the respective pending
   // buffers from the interval trees. If an allocation request returns
@@ -1466,6 +1563,13 @@ class AlternateMemoryBestFitHeap
     return options_.max_size_in_bytes - reserved_in_bytes_;
   }
 
+  // Returns the earliest time in the [start_time, end_time] range that a new
+  // allocation with the given size would fit in the alternate memory. If it
+  // doesn't fit, it returns nullopt.
+  absl::optional<int> FindEarliestTimeToSatisfyPeakMemory(int start_time,
+                                                          int end_time,
+                                                          int64_t size) const;
+
   // Creates and returns a RepackAllocationBlock.
   static RepackAllocationBlock MakeRepackAllocationBlock(
       int64_t start_time, int64_t end_time, int64_t size,
@@ -1491,16 +1595,22 @@ class AlternateMemoryBestFitHeap
   // prefetches and evictions.
   BufferIntervalTree prefetch_interval_tree_;
   BufferIntervalTree eviction_interval_tree_;
-  AsynchronousCopyOrdering async_copy_ordering_;
+  AsynchronousCopyResource prefetch_async_copy_resource_;
+  AsynchronousCopyResource eviction_async_copy_resource_;
   // A list of RepackAllocationBlock objects that mirrors allocation sequences,
   // used for repacking. We use a list here because we need pointer stability
   // for aliased allocations.
   std::list<RepackAllocationBlock> repack_allocation_blocks_;
   int64_t num_repacks_ = 0;
-  std::vector<std::pair<BufferInterval, ChunkCandidate>> pending_chunks_;
+  std::vector<std::pair<BufferInterval, Chunk>> pending_chunks_;
   std::vector<AsynchronousCopy> pending_async_copies_;
   std::vector<std::pair<const HloValue*, RequiredMemoryAssignment>>
       pending_required_assignments_;
+  // A cache to keep the peak memory usage at each point in the graph. We use
+  // this to see if the proposed allocation in the alternate memory would fit
+  // ignoring fragmentation, and if not, we can skip the more expensive lookup
+  // in the BufferIntervalTree, which also considers fragmentation.
+  std::vector<int64_t> peak_memory_usage_;
   // The data structure that contains AliasedOffset objects and Allocation to
   // AliasedOffset map for efficient lookup.
   std::list<AliasedOffset> aliased_offsets_;
@@ -1512,6 +1622,11 @@ class AlternateMemoryBestFitHeap
       required_assignments_;
   // Number of bytes reserved in alternate memory space.
   int64_t reserved_in_bytes_ = 0;
+  // A rough measure of the memory pressure of the model, in bytes. Note that
+  // this is pressure for memory capacity (and not accessed bytes), and for
+  // alternate memory (not default memory).
+  int64_t memory_pressure_ = 0;
+  int64_t next_async_copy_id_ = 0;
   // Debug strings.
   std::string buffer_info_str_;
   std::string allocation_info_str_;

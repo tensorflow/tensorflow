@@ -73,9 +73,9 @@ def tf_fuzz_target(
     # Now, redirect to cc_test
     native.cc_test(
         name = name,
-        deps = deps,  # TODO(mihaimaruseac): fuzzing lib?
-        data = data,  # TODO(mihaimaruseac): dict, corpus, parsers??
-        tags = tags,  # TODO(mihaimaruseac): fuzzing tags?
+        deps = deps,
+        data = data,
+        tags = tags,
         linkstatic = 1,
         **kwargs
     )
@@ -91,6 +91,7 @@ def tf_py_fuzz_target(
         componentid = None,
         hotlists = [],
         # Additional py_test control
+        python_version = None,
         data = [],
         deps = [],
         tags = [],
@@ -116,6 +117,8 @@ def tf_py_fuzz_target(
 
       hotlists: Used internally for reporting fuzz discovered bugs.
 
+      python_version: Python version to run target with.
+
       data: Additional data dependencies passed to the underlying py_test rule.
 
       deps: An optional list of dependencies for the code you're fuzzing.
@@ -127,6 +130,7 @@ def tf_py_fuzz_target(
     """
     componentid = None
     hotlists = None
+    python_version = python_version or "PY3"
 
     # Fuzzers in open source must be run manually
     tags = tags + ["manual"]
@@ -134,6 +138,7 @@ def tf_py_fuzz_target(
     # Now, redirect to py_test
     native.py_test(
         name = name,
+        python_version = python_version,
         deps = deps,
         data = data,
         tags = tags,

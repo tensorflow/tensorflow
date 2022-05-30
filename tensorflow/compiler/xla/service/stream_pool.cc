@@ -23,7 +23,7 @@ namespace xla {
 StreamPool::Ptr StreamPool::BorrowStream(se::StreamExecutor* executor) {
   std::unique_ptr<se::Stream> stream;
   {
-    tensorflow::mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     while (!streams_.empty() && !stream) {
       // Re-use an existing stream from the pool.
       stream = std::move(streams_.back());
@@ -56,7 +56,7 @@ void StreamPool::ReturnStream(se::Stream* stream) {
   if (stream->ok()) {
     VLOG(1) << stream->DebugStreamPointers()
             << " StreamPool returning ok stream";
-    tensorflow::mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     streams_.emplace_back(stream);
   } else {
     // If the stream has encountered any errors, all subsequent operations on it

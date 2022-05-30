@@ -99,7 +99,8 @@ class FakeEagerClient : public EagerClient {
     impl_->RunComponentFunction(call_opts, request, response, std::move(done));
   }
 
-  void StreamingEnqueueAsync(CallOptions* call_opts,
+  void StreamingEnqueueAsync(bool enable_streaming_enqueue,
+                             CallOptions* call_opts,
                              const EnqueueRequest* request,
                              EnqueueResponse* response,
                              StatusCallback done) override {
@@ -954,7 +955,12 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
       /*composite_devices=*/{}, /*input_resource_dtypes_and_shapes=*/{},
       /*runner=*/nullptr,
       /*collective_executor=*/nullptr, local_device, fdef_.signature().name(),
-      /*outputs_on_op_device=*/false, ctx->RendezvousCreator(),
+      /*outputs_on_op_device=*/false,
+      /*allow_small_function_optimizations=*/false,
+      /*allow_control_flow_sync_execution=*/false,
+      /*shape_inference_on_tfe_dialect_import=*/true,
+      /*int_args_and_retvals_on_device=*/false,
+      /*xla_compile_device_type=*/absl::nullopt, ctx->RendezvousCreator(),
       [=]() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.
@@ -1003,7 +1009,12 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
       /*composite_devices=*/{}, /*input_resource_dtypes_and_shapes=*/{},
       /*runner=*/nullptr,
       /*collective_executor=*/nullptr, local_device, fdef_.signature().name(),
-      /*outputs_on_op_device=*/false, ctx->RendezvousCreator(),
+      /*outputs_on_op_device=*/false,
+      /*allow_small_function_optimizations=*/false,
+      /*allow_control_flow_sync_execution=*/false,
+      /*shape_inference_on_tfe_dialect_import=*/true,
+      /*int_args_and_retvals_on_device=*/false,
+      /*xla_compile_device_type=*/absl::nullopt, ctx->RendezvousCreator(),
       [=]() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.
@@ -1245,7 +1256,7 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
   // Unable to handle the request since there is no eager context.
   Status status = eager_service_impl.Enqueue(nullptr, &remote_enqueue_request,
                                              &remote_enqueue_response);
-  EXPECT_EQ(error::UNAVAILABLE, status.code());
+  EXPECT_EQ(error::ABORTED, status.code());
   EXPECT_TRUE(absl::StrContains(
       status.error_message(),
       "Unable to find a context_id matching the specified one"));
@@ -1282,7 +1293,7 @@ TEST_F(EagerServiceImplTest, KeepAliveTest) {
   Status status =
       eager_service_impl.KeepAlive(&keep_alive_request, &keep_alive_response);
 
-  EXPECT_EQ(status.code(), error::UNAVAILABLE);
+  EXPECT_EQ(status.code(), error::ABORTED);
   EXPECT_PRED_FORMAT2(::testing::IsSubstring, "Unable to find a context_id",
                       status.error_message());
 

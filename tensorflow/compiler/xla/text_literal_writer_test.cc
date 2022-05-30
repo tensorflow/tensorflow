@@ -24,9 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -36,13 +34,13 @@ TEST(TextLiteralWriterTest, WritesFloatLiteral) {
       {3.14, 2.17},
       {1.23, 4.56},
   });
-  string path;
+  std::string path;
   ASSERT_TRUE(tensorflow::Env::Default()->LocalTempFilename(&path));
   ASSERT_IS_OK(TextLiteralWriter::WriteToPath(literal, path));
-  string contents;
+  std::string contents;
   TF_ASSERT_OK(tensorflow::ReadFileToString(tensorflow::Env::Default(), path,
                                             &contents));
-  const string expected = R"(f32[2,2]
+  const std::string expected = R"(f32[2,2]
 (0, 0): 3.14
 (0, 1): 2.17
 (1, 0): 1.23

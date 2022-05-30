@@ -28,8 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -80,9 +78,6 @@ class DfsHloVisitorWithDefaultBase
   Status HandleSelect(HloInstructionPtr select) override {
     return DefaultAction(select);
   }
-  Status HandleTupleSelect(HloInstructionPtr tuple_select) override {
-    return DefaultAction(tuple_select);
-  }
   Status HandleDot(HloInstructionPtr dot) override {
     return DefaultAction(dot);
   }
@@ -96,6 +91,9 @@ class DfsHloVisitorWithDefaultBase
     return DefaultAction(hlo);
   }
   Status HandleCholesky(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
+  Status HandleOptimizationBarrier(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
   Status HandleAllGather(HloInstructionPtr crs) override {
@@ -228,6 +226,15 @@ class DfsHloVisitorWithDefaultBase
   Status HandleConditional(HloInstructionPtr conditional) override {
     return DefaultAction(conditional);
   }
+  Status HandleAsyncStart(HloInstructionPtr async_start) override {
+    return DefaultAction(async_start);
+  }
+  Status HandleAsyncUpdate(HloInstructionPtr async_update) override {
+    return DefaultAction(async_update);
+  }
+  Status HandleAsyncDone(HloInstructionPtr async_done) override {
+    return DefaultAction(async_done);
+  }
   Status HandleCopyStart(HloInstructionPtr copy_start) override {
     return DefaultAction(copy_start);
   }
@@ -272,7 +279,9 @@ class DfsHloVisitorWithDefaultBase
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(DfsHloVisitorWithDefaultBase);
+  DfsHloVisitorWithDefaultBase(const DfsHloVisitorWithDefaultBase&) = delete;
+  DfsHloVisitorWithDefaultBase& operator=(const DfsHloVisitorWithDefaultBase&) =
+      delete;
 };
 
 // Users should use these type aliases which are only two valid instantiations.
@@ -322,14 +331,25 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
   // Replaces the existing HLO instruction old_instruction, with
   // new_instruction, and marks the optimizer status as changed.
   // Returns the Status representing the result of the replace operation.
-  Status ReplaceInstruction(HloInstruction* old_instruction,
-                            HloInstruction* new_instruction) {
+  StatusOr<bool> ReplaceInstruction(HloInstruction* old_instruction,
+                                    HloInstruction* new_instruction,
+                                    bool preserve_sharding) {
     VLOG(3) << "Replacing instruction:";
     VLOG(3) << "  old: " << old_instruction->ToString();
     VLOG(3) << "  new: " << new_instruction->ToString();
-    TF_RETURN_IF_ERROR(old_instruction->parent()->ReplaceInstruction(
-        old_instruction, new_instruction));
-    changed_ = true;
+    TF_ASSIGN_OR_RETURN(
+        bool changed, old_instruction->parent()->ReplaceInstruction(
+                          old_instruction, new_instruction, preserve_sharding));
+    changed_ |= changed;
+    return changed;
+  }
+
+  Status ReplaceInstruction(HloInstruction* old_instruction,
+                            HloInstruction* new_instruction) {
+    TF_ASSIGN_OR_RETURN(bool changed,
+                        ReplaceInstruction(old_instruction, new_instruction,
+                                           /*preserve_sharding=*/false));
+    DCHECK(changed);
     return Status::OK();
   }
 
@@ -355,7 +375,8 @@ class FunctionVisitorBase
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(FunctionVisitorBase);
+  FunctionVisitorBase(const FunctionVisitorBase&) = delete;
+  FunctionVisitorBase& operator=(const FunctionVisitorBase&) = delete;
 
   std::function<Status(HloInstructionPtr)> visitor_func_;
 };

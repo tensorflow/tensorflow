@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/macros.h"
 namespace xla {
 struct DynamicWindowDims {
   HloInstruction* padding_before;

@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests to improve the the of tensorflow.
+"""Tests to improve the consistency of tensorflow.
 
 Basic tests show how to use the consistency test to test against function,
 eager, and xla function modes.

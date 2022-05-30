@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -48,22 +49,22 @@ class XlaBuilderTest : public ::testing::Test {
     context_.loadDialect<mlir::mhlo::MhloDialect>();
   }
 
-  string SetupTest() {
+  std::string SetupTest() {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 
   // Retuns the MLIR op string representation of the given XlaOp.
-  string GetMlirOpString(XlaOp xla_op) {
-    string str;
+  std::string GetMlirOpString(XlaOp xla_op) {
+    std::string str;
     llvm::raw_string_ostream ostream{str};
     xla_builder_.GetValue(xla_op).print(ostream);
     ostream.flush();
     return str;
   }
 
-  string name_;
+  std::string name_;
   mlir::MLIRContext context_;
-  mlir::OwningModuleRef module_;
+  mlir::OwningOpRef<mlir::ModuleOp> module_;
   mlir::OpBuilder builder_;
   MlirHloBuilder xla_builder_;
 };
@@ -85,7 +86,7 @@ TEST_F(XlaBuilderTest, Infeed) {
   TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
   ExpectHasSubstr(
       GetMlirOpString(infeed),
-      R"("mhlo.infeed"(%0) {infeed_config = ""} : (!mhlo.token) -> tuple<tensor<4x8xf32>, !mhlo.token>)");
+      R"("mhlo.tuple"(%1#0, %1#1) : (tensor<4x8xf32>, !mhlo.token) -> tuple<tensor<4x8xf32>)");
 }
 
 TEST_F(XlaBuilderTest, Outfeed) {

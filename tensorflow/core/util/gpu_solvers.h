@@ -98,6 +98,51 @@ template <typename T>
 inline typename ROCmComplexT<T>::type* ROCmComplex(T* p) {
   return reinterpret_cast<typename ROCmComplexT<T>::type*>(p);
 }
+
+// Type traits to get HIP complex types from std::complex<>
+
+template <typename T>
+struct HipComplexT {
+  typedef T type;
+};
+
+template <>
+struct HipComplexT<std::complex<float>> {
+  typedef hipFloatComplex type;
+};
+
+template <>
+struct HipComplexT<std::complex<double>> {
+  typedef hipDoubleComplex type;
+};
+
+// Convert pointers of std::complex<> to pointers of
+// hipFloatComplex/hipDoubleComplex. No type conversion for non-complex types.
+template <typename T>
+inline const typename HipComplexT<T>::type* AsHipComplex(const T* p) {
+  return reinterpret_cast<const typename HipComplexT<T>::type*>(p);
+}
+
+template <typename T>
+inline typename HipComplexT<T>::type* AsHipComplex(T* p) {
+  return reinterpret_cast<typename HipComplexT<T>::type*>(p);
+}
+// Template to give the Rocblas adjoint operation for real and complex types.
+template <typename T>
+rocblas_operation RocblasAdjointOp() {
+  return Eigen::NumTraits<T>::IsComplex ? rocblas_operation_conjugate_transpose
+                                        : rocblas_operation_transpose;
+}
+
+#if TF_ROCM_VERSION >= 40500
+using gpuSolverOp_t = hipsolverOperation_t;
+using gpuSolverFill_t = hipsolverFillMode_t;
+using gpuSolverSide_t = hipsolverSideMode_t;
+#else
+using gpuSolverOp_t = rocblas_operation;
+using gpuSolverFill_t = rocblas_fill;
+using gpuSolverSide_t = rocblas_side;
+#endif
 #endif
 
 // Container of LAPACK info data (an array of int) generated on-device by
@@ -225,41 +270,58 @@ class GpuSolver {
   // Wrappers for ROCSolver start here
   //
   // The method names below
-  // map to those in ROCSolver, which follow the naming
-  // convention in LAPACK see
+  // map to those in ROCSolver/Hipsolver, which follow the naming
+  // convention in LAPACK. See rocm_solvers.cc for a mapping of
+  // GpuSolverMethod to library API
 
   // LU factorization.
   // Computes LU factorization with partial pivoting P * A = L * U.
-
   template <typename Scalar>
   Status Getrf(int m, int n, Scalar* dev_A, int lda, int* dev_pivots,
                int* info);
 
   // Uses LU factorization to solve A * X = B.
   template <typename Scalar>
-  Status Getrs(const rocblas_operation trans, int n, int nrhs, Scalar* A,
-               int lda, const int* dev_pivots, Scalar* B, int ldb,
-               int* dev_lapack_info);
+  Status Getrs(const gpuSolverOp_t trans, int n, int nrhs, Scalar* A, int lda,
+               const int* dev_pivots, Scalar* B, int ldb, int* dev_lapack_info);
 
   template <typename Scalar>
   Status GetrfBatched(int n, Scalar** dev_A, int lda, int* dev_pivots,
                       DeviceLapackInfo* info, const int batch_count);
 
+  // No GetrsBatched for HipSolver yet.
   template <typename Scalar>
   Status GetrsBatched(const rocblas_operation trans, int n, int nrhs,
                       Scalar** A, int lda, int* dev_pivots, Scalar** B,
                       const int ldb, int* lapack_info, const int batch_count);
 
-  // Cholesky factorization
   // Computes the Cholesky factorization A = L * L^H for a single matrix.
   template <typename Scalar>
-  Status Potrf(rocblas_fill uplo, int n, Scalar* dev_A, int lda,
+  Status Potrf(gpuSolverFill_t uplo, int n, Scalar* dev_A, int lda,
                int* dev_lapack_info);
 
+  // Computes matrix inverses for a batch of small matrices. Uses the outputs
+  // from GetrfBatched. No HipSolver implementation yet
+  template <typename Scalar>
+  Status GetriBatched(int n, const Scalar* const host_a_dev_ptrs[], int lda,
+                      const int* dev_pivots,
+                      const Scalar* const host_a_inverse_dev_ptrs[], int ldainv,
+                      DeviceLapackInfo* dev_lapack_info, int batch_size);
+
+  // Computes matrix inverses for a batch of small matrices with size n < 32.
+  // Returns Status::OK() if the kernel was launched successfully. Uses
+  // GetrfBatched and GetriBatched
+  template <typename Scalar>
+  Status MatInvBatched(int n, const Scalar* const host_a_dev_ptrs[], int lda,
+                       const Scalar* const host_a_inverse_dev_ptrs[],
+                       int ldainv, DeviceLapackInfo* dev_lapack_info,
+                       int batch_size);
+
+  // Cholesky factorization
   // Computes the Cholesky factorization A = L * L^H for a batch of small
   // matrices.
   template <typename Scalar>
-  Status PotrfBatched(rocblas_fill uplo, int n,
+  Status PotrfBatched(gpuSolverFill_t uplo, int n,
                       const Scalar* const host_a_dev_ptrs[], int lda,
                       DeviceLapackInfo* dev_lapack_info, int batch_size);
 
@@ -267,6 +329,46 @@ class GpuSolver {
   Status Trsm(rocblas_side side, rocblas_fill uplo, rocblas_operation trans,
               rocblas_diagonal diag, int m, int n, const Scalar* alpha,
               const Scalar* A, int lda, Scalar* B, int ldb);
+
+  // QR factorization.
+  // Computes QR factorization A = Q * R.
+  template <typename Scalar>
+  Status Geqrf(int m, int n, Scalar* dev_A, int lda, Scalar* dev_tau,
+               int* dev_lapack_info);
+
+  // This function performs the matrix-matrix addition/transposition
+  //   C = alpha * op(A) + beta * op(B).
+  template <typename Scalar>
+  Status Geam(rocblas_operation transa, rocblas_operation transb, int m, int n,
+              const Scalar* alpha, /* host or device pointer */
+              const Scalar* A, int lda,
+              const Scalar* beta, /* host or device pointer */
+              const Scalar* B, int ldb, Scalar* C, int ldc);
+
+  // Overwrite matrix C by product of C and the unitary Householder matrix Q.
+  // The Householder matrix Q is represented by the output from Geqrf in dev_a
+  // and dev_tau.
+  template <typename Scalar>
+  Status Unmqr(gpuSolverSide_t side, gpuSolverOp_t trans, int m, int n, int k,
+               const Scalar* dev_a, int lda, const Scalar* dev_tau,
+               Scalar* dev_c, int ldc, int* dev_lapack_info);
+
+  // Overwrites QR factorization produced by Geqrf by the unitary Householder
+  // matrix Q. On input, the Householder matrix Q is represented by the output
+  // from Geqrf in dev_a and dev_tau. On output, dev_a is overwritten with the
+  // first n columns of Q. Requires m >= n >= 0.
+  template <typename Scalar>
+  Status Ungqr(int m, int n, int k, Scalar* dev_a, int lda,
+               const Scalar* dev_tau, int* dev_lapack_info);
+
+#if TF_ROCM_VERSION >= 40500
+  // Hermitian (Symmetric) Eigen decomposition.
+  template <typename Scalar>
+  Status Heevd(gpuSolverOp_t jobz, gpuSolverFill_t uplo, int n, Scalar* dev_A,
+               int lda, typename Eigen::NumTraits<Scalar>::Real* dev_W,
+               int* dev_lapack_info);
+#endif
+
 #else  // GOOGLE_CUDA
   // ====================================================================
   // Wrappers for cuSolverDN and cuBlas solvers start here.
@@ -445,7 +547,7 @@ class GpuSolver {
   cudaStream_t cuda_stream_;
   cusolverDnHandle_t cusolver_dn_handle_;
   cublasHandle_t cublas_handle_;
-#else  // TENSORLFOW_USE_ROCM
+#else  // TENSORFLOW_USE_ROCM
   hipStream_t hip_stream_;
   rocblas_handle rocm_blas_handle_;
 #endif

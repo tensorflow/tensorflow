@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir-hlo/Analysis/userange_analysis.h"
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Analysis/BufferViewFlowAnalysis.h"
+#include "mlir/Dialect/Bufferization/Transforms/BufferUtils.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/BufferUtils.h"
 
 namespace mlir {
 
@@ -30,17 +30,18 @@ struct TestUserangePass : public TestUserangeBase<TestUserangePass> {
     registry.insert<mlir::lmhlo::LmhloDialect>();
   }
 
-  void runOnFunction() override {
-    llvm::outs() << "Testing : " << getFunction().getName() << "\n";
-    UserangeAnalysis(getFunction(), BufferPlacementAllocs(getFunction()),
-                     BufferViewFlowAnalysis(getFunction()))
+  void runOnOperation() override {
+    llvm::outs() << "Testing : " << getOperation().getName() << "\n";
+    UserangeAnalysis(getOperation(),
+                     bufferization::BufferPlacementAllocs(getOperation()),
+                     BufferViewFlowAnalysis(getOperation()))
         .dump(llvm::outs());
   }
 };
 
 }  // end anonymous namespace
 
-std::unique_ptr<FunctionPass> createTestUserangePass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createTestUserangePass() {
   return std::make_unique<TestUserangePass>();
 }
 

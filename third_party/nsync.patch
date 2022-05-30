@@ -1,0 +1,9 @@
+The "version" file at the root of the nsync source tree conflicts with the C++20
+"version" header in Windows builds.
+diff --git a/VERSION b/VERSION
+deleted file mode 100644
+index 53cc1a6..0000000
+--- a/VERSION
++++ /dev/null
+@@ -1 +0,0 @@
+-1.24.0

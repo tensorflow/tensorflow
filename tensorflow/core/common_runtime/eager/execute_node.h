@@ -91,18 +91,18 @@ class ExecuteNodeArgs : public EagerKernelArgs {
 
 class ExecuteNode : public EagerNode {
  public:
-  ExecuteNode(
-      EagerContext* ctx, const absl::InlinedVector<TensorHandle*, 4>& inputs,
-      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
-      const core::RefCountPtr<KernelAndDevice>& kernel,
-      GraphCollector* graph_collector,
-      CancellationManager* cancellation_manager,
-      absl::Span<TensorHandle*> retvals,
-      absl::optional<ManagedStackTrace> stack_trace)
+  ExecuteNode(EagerContext* ctx,
+              const absl::InlinedVector<TensorHandle*, 4>& inputs,
+              const absl::optional<EagerFunctionParams>& eager_func_params,
+              const core::RefCountPtr<KernelAndDevice>& kernel,
+              GraphCollector* graph_collector,
+              CancellationManager* cancellation_manager,
+              absl::Span<TensorHandle*> retvals,
+              absl::optional<ManagedStackTrace> stack_trace)
       : EagerNode(),
         ctx_(ctx),
         inputs_(inputs),
-        remote_func_params_(remote_func_params),
+        eager_func_params_(eager_func_params),
         kernel_(kernel),
         graph_collector_(graph_collector),
         cancellation_manager_(cancellation_manager),
@@ -121,7 +121,7 @@ class ExecuteNode : public EagerNode {
       }
       ++i;
     }
-    return EagerKernelExecute(ctx_, inputs_, remote_func_params_, kernel_,
+    return EagerKernelExecute(ctx_, inputs_, eager_func_params_, kernel_,
                               graph_collector_, cancellation_manager_, retvals_,
                               stack_trace_);
   }
@@ -137,7 +137,7 @@ class ExecuteNode : public EagerNode {
  private:
   EagerContext* ctx_;
   const absl::InlinedVector<TensorHandle*, 4>& inputs_;
-  const absl::optional<EagerRemoteFunctionParams>& remote_func_params_;
+  const absl::optional<EagerFunctionParams>& eager_func_params_;
   const core::RefCountPtr<KernelAndDevice>& kernel_;
   GraphCollector* graph_collector_;
   CancellationManager* const cancellation_manager_;
@@ -147,18 +147,18 @@ class ExecuteNode : public EagerNode {
 
 class AsyncExecuteNode : public EagerNode {
  public:
-  AsyncExecuteNode(
-      EagerContext* ctx, const absl::InlinedVector<TensorHandle*, 4>& inputs,
-      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
-      core::RefCountPtr<KernelAndDevice> kernel,
-      GraphCollector* graph_collector,
-      CancellationManager* cancellation_manager,
-      absl::Span<TensorHandle*> retvals,
-      absl::optional<ManagedStackTrace> stack_trace)
+  AsyncExecuteNode(EagerContext* ctx,
+                   const absl::InlinedVector<TensorHandle*, 4>& inputs,
+                   const absl::optional<EagerFunctionParams>& eager_func_params,
+                   core::RefCountPtr<KernelAndDevice> kernel,
+                   GraphCollector* graph_collector,
+                   CancellationManager* cancellation_manager,
+                   absl::Span<TensorHandle*> retvals,
+                   absl::optional<ManagedStackTrace> stack_trace)
       : EagerNode(),
         ctx_(ctx),
         inputs_(inputs),
-        remote_func_params_(remote_func_params),
+        eager_func_params_(eager_func_params),
         kernel_(std::move(kernel)),
         graph_collector_(graph_collector),
         cancellation_manager_(cancellation_manager),
@@ -200,14 +200,11 @@ class AsyncExecuteNode : public EagerNode {
       ++i;
     }
     Status status = EagerKernelExecute(
-        ctx_, inputs_, remote_func_params_, kernel_, graph_collector_,
+        ctx_, inputs_, eager_func_params_, kernel_, graph_collector_,
         cancellation_manager_, absl::MakeSpan(retvals_), stack_trace_);
     if (!status.ok()) {
       if (stack_trace_.has_value()) {
-        Status with_stack_trace(status.code(), status.error_message(),
-                                stack_trace_->ToStackFrames({}, {}));
-        errors::CopyPayloads(status, with_stack_trace);
-        status = std::move(with_stack_trace);
+        errors::SetStackTrace(status, stack_trace_->ToStackFrames({}, {}));
       }
       Abort(status);
       return status;
@@ -234,7 +231,7 @@ class AsyncExecuteNode : public EagerNode {
  private:
   EagerContext* ctx_;
   absl::InlinedVector<TensorHandle*, 4> inputs_;
-  const absl::optional<EagerRemoteFunctionParams> remote_func_params_;
+  const absl::optional<EagerFunctionParams> eager_func_params_;
   core::RefCountPtr<KernelAndDevice> kernel_;
   GraphCollector* graph_collector_;
   CancellationManager* const cancellation_manager_;

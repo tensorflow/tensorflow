@@ -76,10 +76,8 @@ def _yield_value(iterable):
       yield value
 
 
-# See the swig file (../../util/util.i) for documentation.
-is_sequence = _pywrap_utils.IsSequenceForData
+is_nested = _pywrap_utils.IsNestedForData
 
-# See the swig file (../../util/util.i) for documentation.
 flatten = _pywrap_utils.FlattenForData
 
 
@@ -126,7 +124,7 @@ def _packed_nest_with_indices(structure, flat, index):
   """
   packed = []
   for s in _yield_value(structure):
-    if is_sequence(s):
+    if is_nested(s):
       new_index, child = _packed_nest_with_indices(s, flat, index)
       packed.append(nest._sequence_like(s, child))  # pylint: disable=protected-access
       index = new_index
@@ -154,11 +152,11 @@ def pack_sequence_as(structure, flat_sequence):
   Raises:
     ValueError: If nest and structure have different element counts.
   """
-  if not (is_sequence(flat_sequence) or isinstance(flat_sequence, list)):
+  if not (is_nested(flat_sequence) or isinstance(flat_sequence, list)):
     raise TypeError("Argument `flat_sequence` must be a sequence. Got "
                     f"'{type(flat_sequence).__name__}'.")
 
-  if not is_sequence(structure):
+  if not is_nested(structure):
     if len(flat_sequence) != 1:
       raise ValueError("Argument `structure` is a scalar but "
                        f"`len(flat_sequence)`={len(flat_sequence)} > 1")
@@ -232,7 +230,7 @@ def map_structure(func, *structure, **check_types_dict):
 
 def _yield_flat_up_to(shallow_tree, input_tree):
   """Yields elements `input_tree` partially flattened up to `shallow_tree`."""
-  if is_sequence(shallow_tree):
+  if is_nested(shallow_tree):
     for shallow_branch, input_branch in zip(_yield_value(shallow_tree),
                                             _yield_value(input_tree)):
       for input_leaf in _yield_flat_up_to(shallow_branch, input_branch):
@@ -277,8 +275,8 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
     ValueError: If the sequence lengths of `shallow_tree` are different from
       `input_tree`.
   """
-  if is_sequence(shallow_tree):
-    if not is_sequence(input_tree):
+  if is_nested(shallow_tree):
+    if not is_nested(input_tree):
       raise TypeError(
           "If shallow structure is a sequence, input must also be a sequence. "
           f"Input has type: '{type(input_tree).__name__}'.")

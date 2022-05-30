@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/types.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/framework/op_kernel.h"
@@ -35,7 +39,8 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 template <typename Tidx>
 class UnravelIndexOp : public OpKernel {
  public:
-  explicit UnravelIndexOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit UnravelIndexOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx), dtidx_(DataTypeToEnum<Tidx>::v()) {}
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& indices_tensor = ctx->input(0);
@@ -54,12 +59,31 @@ class UnravelIndexOp : public OpKernel {
 
     auto dims = dims_tensor.vec<Tidx>();
     // Make sure dims does not contain a zero
+    double prod = 1;
+    uint64_t limit;
+    if (dtidx_ == DataType::DT_INT64) {
+      limit = kint64max;
+    } else {
+      limit = kint32max;
+    }
+
     for (int i = 0; i < dims.size(); i++) {
       OP_REQUIRES(
           ctx, dims(i) != 0,
           errors::InvalidArgument("Input dims cannot contain a dim of zero, "
                                   "but dims contains zero at index ",
                                   i));
+      OP_REQUIRES(ctx, dims(i) > 0,
+                  errors::InvalidArgument(
+                      "Input dims cannot be negative. Got dim = ", dims(i),
+                      " at index ", i));
+      // Check interger overflow
+      OP_REQUIRES(
+          ctx, prod <= limit / dims(i),
+          errors::InvalidArgument("Input dims product is causing integer "
+                                  "overflow: (",
+                                  dims, ")"));
+      prod = (prod * dims(i));
     }
 
     // Check to make sure indices is not out of boundary
@@ -132,6 +156,7 @@ class UnravelIndexOp : public OpKernel {
                strides_shifted.reshape(reshape).broadcast(bcast);
     }
   }
+  const DataType dtidx_;
 };
 
 #define REGISTER_KERNEL(type)                                               \

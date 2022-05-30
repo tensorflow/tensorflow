@@ -50,7 +50,7 @@ def tf_deps(deps, suffix):
 # Modified from @cython//:Tools/rules.bzl
 def pyx_library(
         name,
-        deps = [],
+        cc_deps = [],
         py_deps = [],
         srcs = [],
         testonly = None,
@@ -59,16 +59,18 @@ def pyx_library(
     """Compiles a group of .pyx / .pxd / .py files.
 
     First runs Cython to create .cpp files for each input .pyx or .py + .pxd
-    pair. Then builds a shared object for each, passing "deps" to each cc_binary
+    pair. Then builds a shared object for each, passing "cc_deps" to each cc_binary
     rule (includes Python headers by default). Finally, creates a py_library rule
     with the shared objects and any pure Python "srcs", with py_deps as its
     dependencies; the shared objects can be imported like normal Python files.
 
     Args:
       name: Name for the rule.
-      deps: C/C++ dependencies of the Cython (e.g. Numpy headers).
+      cc_deps: C/C++ dependencies of the Cython (e.g. Numpy headers).
       py_deps: Pure Python dependencies of the final library.
       srcs: .py, .pyx, or .pxd files to either compile or pass through.
+      testonly: If True, the target can only be used with tests.
+      srcs_version: Version of python source files.
       **kwargs: Extra keyword arguments passed to the py_library.
     """
 
@@ -107,7 +109,7 @@ def pyx_library(
         native.cc_binary(
             name = shared_object_name,
             srcs = [stem + ".cpp"],
-            deps = deps + ["@org_tensorflow//third_party/python_runtime:headers"],
+            deps = cc_deps + ["@org_tensorflow//third_party/python_runtime:headers"],
             linkshared = 1,
             testonly = testonly,
         )
@@ -184,16 +186,14 @@ def cc_proto_library(
       protolib_deps: the dependencies to proto libraries.
       **kwargs: other keyword arguments that are passed to cc_library.
     """
-
-    wkt_deps = ["@com_google_protobuf//:cc_wkt_protos"]
-    all_protolib_deps = protolib_deps + wkt_deps
-
     includes = []
     if include != None:
         includes = [include]
     if protolib_name == None:
         protolib_name = name
 
+    genproto_deps = ([s + "_genproto" for s in protolib_deps] +
+                     ["@com_google_protobuf//:cc_wkt_protos_genproto"])
     if internal_bootstrap_hack:
         # For pre-checked-in generated files, we add the internal_bootstrap_hack
         # which will skip the codegen action.
@@ -203,7 +203,7 @@ def cc_proto_library(
             includes = includes,
             protoc = protoc,
             visibility = ["//visibility:public"],
-            deps = [s + "_genproto" for s in all_protolib_deps],
+            deps = genproto_deps,
         )
 
         # An empty cc_library to make rule dependency consistent.
@@ -235,7 +235,7 @@ def cc_proto_library(
         plugin_options = plugin_options,
         protoc = protoc,
         visibility = ["//visibility:public"],
-        deps = [s + "_genproto" for s in all_protolib_deps],
+        deps = genproto_deps,
     )
 
     if use_grpc_plugin:
@@ -419,7 +419,7 @@ def tf_proto_library_cc(
         )
         native.cc_library(
             name = cc_name + "_impl",
-            deps = [s + "_impl" for s in cc_deps] + ["@com_google_protobuf//:cc_wkt_protos"],
+            deps = [s + "_impl" for s in cc_deps],
         )
 
         return
@@ -443,7 +443,7 @@ def tf_proto_library_cc(
         use_grpc_plugin = use_grpc_plugin,
         use_grpc_namespace = use_grpc_namespace,
         visibility = visibility,
-        deps = cc_deps + ["@com_google_protobuf//:cc_wkt_protos"],
+        deps = cc_deps,
         protolib_deps = protolib_deps,
     )
 
@@ -518,7 +518,6 @@ def tf_proto_library(
     # ABI violations).
     _ignore = (
         js_codegen,
-        exports,
         create_service,
         create_java_proto,
         create_grpc_library,
@@ -530,6 +529,7 @@ def tf_proto_library(
         name = name,
         srcs = srcs,
         deps = protodeps + well_known_proto_libs(),
+        exports = exports,
         visibility = visibility,
         testonly = testonly,
         tags = tags,
@@ -657,7 +657,6 @@ def tf_additional_core_deps():
         clean_dep("//tensorflow:android"): [],
         clean_dep("//tensorflow:ios"): [],
         clean_dep("//tensorflow:linux_s390x"): [],
-        clean_dep("//tensorflow:no_gcp_support"): [],
         "//conditions:default": [
             "//tensorflow/core/platform/cloud:gcs_file_system",
         ],
@@ -683,7 +682,14 @@ def tf_pyclif_proto_library(
     native.filegroup(name = name + "_pb2")
 
 def tf_additional_binary_deps():
-    return [clean_dep("@nsync//:nsync_cpp")] + if_cuda(
+    return [
+        clean_dep("@nsync//:nsync_cpp"),
+        # TODO(allenl): Split these out into their own shared objects. They are
+        # here because they are shared between contrib/ op shared objects and
+        # core.
+        clean_dep("//tensorflow/core/kernels:lookup_util"),
+        clean_dep("//tensorflow/core/util/tensor_bundle"),
+    ] + if_cuda(
         [
             clean_dep("//tensorflow/stream_executor:cuda_platform"),
         ],
@@ -692,13 +698,7 @@ def tf_additional_binary_deps():
             clean_dep("//tensorflow/stream_executor:rocm_platform"),
             clean_dep("//tensorflow/core/platform/default/build_config:rocm"),
         ],
-    ) + [
-        # TODO(allenl): Split these out into their own shared objects (they are
-        # here because they are shared between contrib/ op shared objects and
-        # core).
-        clean_dep("//tensorflow/core/kernels:lookup_util"),
-        clean_dep("//tensorflow/core/util/tensor_bundle"),
-    ] + if_mkl_ml(
+    ) + if_mkl_ml(
         [
             clean_dep("//third_party/mkl:intel_binary_blob"),
         ],
@@ -788,3 +788,9 @@ def if_llvm_system_z_available(then, otherwise = []):
 
 def tf_tpu_dependencies():
     return if_libtpu(["//tensorflow/core/tpu/kernels"])
+
+def tf_dtensor_tpu_dependencies():
+    return if_libtpu(["//tensorflow/dtensor/cc:dtensor_tpu_kernels"])
+
+def tf_cuda_libdevice_path_deps():
+    return tf_platform_deps("cuda_libdevice_path")

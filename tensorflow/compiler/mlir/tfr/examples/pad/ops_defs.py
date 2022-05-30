@@ -103,11 +103,14 @@ def _composite_mirror_pad_grad(input_, paddings, mode):
     left_padding_size = tf.raw_ops.GatherNd(params=paddings, indices=[i, 0])
     right_padding_size = tf.raw_ops.GatherNd(params=paddings, indices=[i, 1])
 
-    left_padding, core, right_padding = tf.raw_ops.SplitV(
+    split_outputs = tf.raw_ops.SplitV(
         value=input_,
         size_splits=[left_padding_size, -1, right_padding_size],
         axis=i,
         num_split=3)
+    left_padding = split_outputs[0]
+    core = split_outputs[1]
+    right_padding = split_outputs[2]
     reversed_left_padding = tf.raw_ops.Reverse(tensor=left_padding, dims=rdims)
     reversed_right_padding = tf.raw_ops.Reverse(
         tensor=right_padding, dims=rdims)

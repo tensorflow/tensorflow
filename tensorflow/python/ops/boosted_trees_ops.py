@@ -48,7 +48,7 @@ from tensorflow.python.training import saver
 from tensorflow.python.training.tracking import tracking
 
 
-class PruningMode(object):
+class PruningMode:
   """Class for working with Pruning modes."""
   NO_PRUNING, PRE_PRUNING, POST_PRUNING = range(0, 3)
 

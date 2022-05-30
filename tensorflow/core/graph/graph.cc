@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_properties.h"
@@ -174,6 +175,13 @@ void Node::UpdateProperties() {
   }
 }
 
+void Node::ClearTypeInfo() {
+  if (props_->node_def.has_experimental_type()) {
+    MaybeCopyOnWrite();
+    props_->node_def.clear_experimental_type();
+  }
+}
+
 const std::string& Node::name() const { return props_->node_def.name(); }
 const std::string& Node::type_string() const { return props_->node_def.op(); }
 const NodeDef& Node::def() const { return props_->node_def; }
@@ -210,6 +218,7 @@ gtl::iterator_range<NeighborIter> Node::in_nodes() const {
 }
 
 void Node::MaybeCopyOnWrite() {
+  // TODO(mdan): As nodes become more dynamic, this may not be worth the cost.
   // NodeProperties may be shared between Nodes. Make a copy if so.
   if (!props_.unique()) {
     props_ = std::make_shared<NodeProperties>(*props_);
@@ -433,6 +442,15 @@ std::unique_ptr<Graph> Graph::Clone() {
   return new_graph;
 }
 
+void Graph::Clear() {
+  // Do a direct iteration clearing nodes removing the RemoveNode helper method.
+  // This could avoid this helper and clear directly if it becomes performance
+  // sensitive.
+  for (Node* n : nodes()) {
+    if (!n->IsSource() && !n->IsSink()) RemoveNode(n);
+  }
+}
+
 const VersionDef& Graph::versions() const { return *versions_; }
 void Graph::set_versions(const VersionDef& versions) { *versions_ = versions; }
 
@@ -467,6 +485,13 @@ void Graph::Copy(const Graph& src) {
   }
 }
 
+StatusOr<Node*> Graph::AddNode(NodeDef node_def) {
+  Status s;
+  Node* out = AddNode(std::move(node_def), &s);
+  TF_RETURN_IF_ERROR(s);
+  return out;
+}
+
 Node* Graph::AddNode(NodeDef node_def, Status* status) {
   const OpRegistrationData* op_reg_data;
   status->Update(ops_.LookUp(node_def.op(), &op_reg_data));
@@ -484,6 +509,26 @@ Node* Graph::AddNode(NodeDef node_def, Status* status) {
   Node::NodeClass node_class = op_reg_data->is_function_op
                                    ? Node::NC_FUNCTION_OP
                                    : Node::GetNodeClassForOp(node_def.op());
+
+  if (node_def.has_experimental_type()) {
+    VLOG(3) << "AddNode: node has type set, skipping type constructor "
+            << node_def.name();
+  } else {
+    if (op_reg_data->type_ctor != nullptr) {
+      VLOG(3) << "AddNode: found type constructor for " << node_def.name();
+      Status s =
+          full_type::SpecializeType(AttrSlice(node_def), op_reg_data->op_def,
+                                    *(node_def.mutable_experimental_type()));
+      if (!s.ok()) {
+        *status = errors::InvalidArgument("type error: ", s.ToString());
+        VLOG(3) << "AddNode: type inference failed for " << node_def.name()
+                << ": " << s;
+        return nullptr;
+      }
+    } else {
+      VLOG(3) << "AddNode: no type constructor for " << node_def.name();
+    }
+  }
 
   Node* node = AllocateNode(
       std::make_shared<NodeProperties>(&op_reg_data->op_def,
@@ -563,6 +608,7 @@ const Edge* Graph::AddEdge(Node* source, int x, Node* dest, int y) {
   CHECK(dest->in_edges_.insert(e).second);
   edges_.push_back(e);
   ++num_edges_;
+
   return e;
 }
 

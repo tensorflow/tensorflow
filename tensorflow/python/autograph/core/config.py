@@ -49,6 +49,7 @@ CONVERSION_RULES = (
     DoNotConvert('pandas'),
     DoNotConvert('tensorflow'),
     DoNotConvert('PIL'),
+    DoNotConvert('absl.logging'),
 
     # TODO(b/133417201): Remove.
     DoNotConvert('tensorflow_probability'),

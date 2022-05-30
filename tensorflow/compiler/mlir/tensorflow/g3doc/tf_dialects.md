@@ -63,7 +63,7 @@ func some_function(%input : tensor<*xf32>) -> tensor<*xf32> {
   // Operations have sequential execution semantics in a basic block, there are
   // no control dependencies.  The compiler can reorder operations according to
   // the as-if rule ( https://en.wikipedia.org/wiki/As-if_rule ).
-  %three = constant splat<tensor<f32>, 3.0>
+  %three = arith.constant splat<tensor<f32>, 3.0>
   %mul = tf.Mul %input, %three : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
 
   // Only control flow v2 is supported in TF dialect.

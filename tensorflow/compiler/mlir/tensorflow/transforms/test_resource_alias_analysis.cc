@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
-namespace TF {
+namespace tf_test {
 namespace {
 
 // A pass that annotates each operation with a resource type result with the
@@ -39,6 +39,8 @@ namespace {
 struct TestResourceAliasAnalysis
     : public TF::PerFunctionAggregateAnalysisConsumerPass<
           TestResourceAliasAnalysis, TF::ResourceAliasAnalysis> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TestResourceAliasAnalysis)
+
   StringRef getArgument() const final {
     return "tf-test-resource-alias-analysis";
   }
@@ -48,7 +50,7 @@ struct TestResourceAliasAnalysis
            "purpose.";
   }
 
-  void runOnFunction(FuncOp func,
+  void runOnFunction(func::FuncOp func,
                      const TF::ResourceAliasAnalysis::Info& analysis) {
     int64_t next_id = 0;
     llvm::SmallDenseMap<Value, int64_t, 8> ids;
@@ -80,12 +82,13 @@ struct TestResourceAliasAnalysis
     func.walk([&](Operation* op) {
       // For all attached regions, assign ID to the region arguments.
       for (Region& region : op->getRegions()) {
-        for (auto region_arg : filter_resources(region.getArguments()))
+        for (auto region_arg : TF::filter_resources(region.getArguments()))
           assign_id(region_arg);
       }
 
       // Assign ID for all results.
-      for (auto result : filter_resources(op->getResults())) assign_id(result);
+      for (auto result : TF::filter_resources(op->getResults()))
+        assign_id(result);
     });
 
     // Now walk each operation, and annotate it wil remarks for aliases for
@@ -93,7 +96,7 @@ struct TestResourceAliasAnalysis
     func.walk([&](Operation* op) {
       // For all attached regions, assign ID to the region arguments.
       for (Region& region : op->getRegions()) {
-        for (auto region_arg : filter_resources(region.getArguments())) {
+        for (auto region_arg : TF::filter_resources(region.getArguments())) {
           InFlightDiagnostic diag = op->emitRemark("Region #")
                                     << region.getRegionNumber() << ", Arg #"
                                     << region_arg.getArgNumber();
@@ -101,7 +104,7 @@ struct TestResourceAliasAnalysis
         }
       }
 
-      for (auto result : filter_resources(op->getResults())) {
+      for (auto result : TF::filter_resources(op->getResults())) {
         InFlightDiagnostic diag = op->emitRemark("Result #")
                                   << result.getResultNumber();
         print_aliases(diag, result);
@@ -110,8 +113,11 @@ struct TestResourceAliasAnalysis
   }
 };
 
-static mlir::PassRegistration<TestResourceAliasAnalysis> pass;
-
 }  // anonymous namespace
-}  // namespace TF
+
+std::unique_ptr<OperationPass<ModuleOp>> CreateTestResourceAliasAnalysisPass() {
+  return std::make_unique<TestResourceAliasAnalysis>();
+}
+
+}  // namespace tf_test
 }  // namespace mlir

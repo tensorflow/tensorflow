@@ -32,34 +32,32 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
+#if XLA_ENABLE_XCCL
+#include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#endif
+
 namespace xla {
 namespace gpu {
-namespace {
 
-Status RunAllReduce(const NcclAllReduceConfig& config,
-                    const std::vector<NcclCollectiveThunk::Buffer>& buffers,
-                    const BufferAllocations& buffer_allocations,
-                    se::Stream& stream, ncclComm_t comm) {
+Status RunAllReduce(ReductionKind reduction_kind,
+                    std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
+                    ncclComm_t comm) {
 #if XLA_ENABLE_XCCL
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-reduce from device ordinal: " << device_ordinal;
 
-  ncclRedOp_t reduce_op = ToNcclReduction(config.reduction_kind);
+  ncclRedOp_t reduce_op = ToNcclReduction(reduction_kind);
 
-  cudaStream_t* cu_stream = reinterpret_cast<cudaStream_t*>(
-      stream.implementation()->GpuStreamMemberHack());
+  se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
 
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
   for (size_t i = 0; i < buffers.size(); ++i) {
-    const NcclCollectiveThunk::Buffer& buffer = buffers[i];
-    const void* send_buffer =
-        buffer_allocations.GetDeviceAddress(buffer.source_buffer).opaque();
-    void* recv_buffer =
-        buffer_allocations.GetDeviceAddress(buffer.destination_buffer).opaque();
+    DeviceBufferPair& buffer = buffers[i];
+    const void* send_buffer = buffer.source_buffer.opaque();
+    void* recv_buffer = buffer.destination_buffer.opaque();
 
-    PrimitiveType element_type = config.config.operand_element_type[i];
     TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
-                        ToNcclDataTypeAndCountMultiplier(element_type));
+                        ToNcclDataTypeAndCountMultiplier(buffer.element_type));
     ncclDataType_t dtype = dtype_and_multiplier.first;
     int element_count = buffer.element_count * dtype_and_multiplier.second;
 
@@ -67,11 +65,11 @@ Status RunAllReduce(const NcclAllReduceConfig& config,
         "Calling ncclAllReduce(send_buffer=%p, recv_buffer=%p, count=%d, "
         "comm=%p, stream=%p)",
         send_buffer, recv_buffer, element_count, static_cast<const void*>(comm),
-        cu_stream);
+        gpu_stream);
 
     XLA_CUDA_RETURN_IF_ERROR(ncclAllReduce(send_buffer, recv_buffer,
                                            element_count, dtype, reduce_op,
-                                           comm, *cu_stream));
+                                           comm, gpu_stream));
   }
   return XLA_CUDA_STATUS(ncclGroupEnd());
 #else   // XLA_ENABLE_XCCL
@@ -79,6 +77,28 @@ Status RunAllReduce(const NcclAllReduceConfig& config,
       "NCCL support is not available: this binary was not built with a CUDA "
       "compiler, which is necessary to build the NCCL source library.");
 #endif  // XLA_ENABLE_XCCL
+}
+
+namespace {
+
+StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
+    const Thunk::ExecuteParams& params,
+    const std::vector<NcclCollectiveThunk::Buffer>& buffers,
+    const std::vector<PrimitiveType>& element_types) {
+  if (buffers.size() != element_types.size())
+    return FailedPrecondition("Mismatch in operand buffer counts.");
+
+  std::vector<DeviceBufferPair> device_buffers;
+  device_buffers.reserve(buffers.size());
+  for (int i = 0; i < buffers.size(); ++i) {
+    device_buffers.emplace_back(DeviceBufferPair{
+        element_types[i], buffers[i].element_count,
+
+        params.buffer_allocations->GetDeviceAddress(buffers[i].source_buffer),
+        params.buffer_allocations->GetDeviceAddress(
+            buffers[i].destination_buffer)});
+  }
+  return device_buffers;
 }
 
 bool IsValidOperand(mlir::Value operand) {
@@ -247,8 +267,12 @@ CollectiveOpGroupMode NcclAllReduceThunk::GetGroupMode(
 Status NcclAllReduceThunk::RunNcclCollective(const ExecuteParams& params,
                                              ncclComm_t comm) {
   se::Stream& stream = *params.stream;
-  TF_RETURN_IF_ERROR(RunAllReduce(config_, buffers_, *params.buffer_allocations,
-                                  stream, comm));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<DeviceBufferPair> device_buffers,
+      ConvertToDeviceBuffers(params, buffers_,
+                             config_.config.operand_element_type));
+  TF_RETURN_IF_ERROR(
+      RunAllReduce(config_.reduction_kind, device_buffers, stream, comm));
 
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Done performing all-reduce for ordinal: " << device_ordinal;
@@ -283,7 +307,11 @@ Status NcclAllReduceStartThunk::RunNcclCollective(const ExecuteParams& params,
   // Wait until compute inputs are ready.
   async_comms_stream.ThenWaitFor(params.stream);
 
-  TF_RETURN_IF_ERROR(RunAllReduce(config_, buffers_, *params.buffer_allocations,
+  TF_ASSIGN_OR_RETURN(
+      std::vector<DeviceBufferPair> device_buffers,
+      ConvertToDeviceBuffers(params, buffers_,
+                             config_.config.operand_element_type));
+  TF_RETURN_IF_ERROR(RunAllReduce(config_.reduction_kind, device_buffers,
                                   async_comms_stream, comm));
 
   // Create an event on the async stream for the completion of the all-reduce.
@@ -357,8 +385,8 @@ Status NcclReduceScatterThunk::RunNcclCollective(const ExecuteParams& params,
 
   ncclRedOp_t reduce_op = ToNcclReduction(config_.reduction_kind);
 
-  cudaStream_t* cu_stream = reinterpret_cast<cudaStream_t*>(
-      params.stream->implementation()->GpuStreamMemberHack());
+  se::gpu::GpuStreamHandle gpu_stream =
+      se::gpu::AsGpuStreamValue(params.stream);
 
   int num_participants = 0;
   XLA_CUDA_RETURN_IF_ERROR(ncclCommCount(comm, &num_participants));
@@ -391,10 +419,10 @@ Status NcclReduceScatterThunk::RunNcclCollective(const ExecuteParams& params,
         "recvcount=%d, "
         "comm=%p, stream=%p)",
         send_buffer, recv_buffer, recv_count, static_cast<const void*>(comm),
-        cu_stream);
+        gpu_stream);
     XLA_CUDA_RETURN_IF_ERROR(ncclReduceScatter(send_buffer, recv_buffer,
                                                recv_count, dtype, reduce_op,
-                                               comm, *cu_stream));
+                                               comm, gpu_stream));
   }
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 

@@ -35,6 +35,11 @@ Status DumpTextualIRToFile(const MlirDumpConfig& config, const Graph& graph,
 
 // Config of the textual dump.
 struct MlirDumpConfig {
+  enum class Dialect {
+    // Tensorflow Graph Dialect
+    kTFG,
+  };
+
   // The limit of element size that gets printed.
   MlirDumpConfig& elide_large_attributes(int large_element_limit = 16) {
     this->op_printing_flags.elideLargeElementsAttrs(large_element_limit);
@@ -49,8 +54,16 @@ struct MlirDumpConfig {
     return *this;
   }
 
+  MlirDumpConfig& emit_dialect(Dialect dialect) {
+    this->dialect = dialect;
+    return *this;
+  }
+
   // Op printing flags.
   mlir::OpPrintingFlags op_printing_flags = llvm::None;
+
+  // The target MLIR dialect.
+  Dialect dialect = Dialect::kTFG;
 };
 
 // Change DumpGraphToFile to dump MLIR textual IR instead of protobuf.

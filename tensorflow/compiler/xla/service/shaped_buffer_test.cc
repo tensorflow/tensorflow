@@ -56,7 +56,7 @@ class TestAllocator : public se::DeviceMemoryAllocator {
   // Pull in two-arg overload of Allocate.
   using se::DeviceMemoryAllocator::Allocate;
 
-  StatusOr<se::OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
+  StatusOr<se::OwningDeviceMemory> Allocate(int device_ordinal, uint64_t size,
                                             bool /*retry_on_failure*/,
                                             int64_t /*memory_space*/) override {
     // By contract, we must return null if size == 0.
@@ -141,14 +141,15 @@ TEST(ScopedShapedBufferTest, TestTakeSubTree) {
     }
     EXPECT_TRUE(buffers.find(orig_index)->second.IsSameAs(buffer));
   });
-  sb.buffers().ForEachElement(
-      [&](const xla::ShapeIndex& index, const se::DeviceMemoryBase& buffer) {
-        if (ShapeIndexView(index).StartsWith(subtree_index)) {
-          EXPECT_TRUE(buffer.is_null());
-        } else {
-          EXPECT_TRUE(buffers.find(index)->second.IsSameAs(buffer));
-        }
-      });
+  sb.buffers().ForEachElement([&](const xla::ShapeIndex& index,
+                                  const se::DeviceMemoryBase& buffer) {
+    if ((index.size() >= subtree_index.size()) &&
+        ShapeIndexView(index).first(subtree_index.size()) == subtree_index) {
+      EXPECT_TRUE(buffer.is_null());
+    } else {
+      EXPECT_TRUE(buffers.find(index)->second.IsSameAs(buffer));
+    }
+  });
 }
 
 TEST(ScopedShapedBufferTest, TestSubShapeTree) {

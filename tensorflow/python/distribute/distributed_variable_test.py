@@ -78,6 +78,7 @@ def mirrored_and_tpu_strategy_combinations():
             strategy_combinations.mirrored_strategy_with_two_gpus_no_merge_call,
             strategy_combinations.tpu_strategy,
             strategy_combinations.tpu_strategy_packed_var,
+            strategy_combinations.tpu_strategy_spmd,
             strategy_combinations.central_storage_strategy_with_gpu_and_cpu,
             strategy_combinations.multi_worker_mirrored_2x1_cpu,
             strategy_combinations.multi_worker_mirrored_2x1_gpu,
@@ -379,7 +380,7 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
       _test(lambda: self.assertIs(v.op, v._primary.op), v)
     _test(lambda: self.assertEqual(v.shape, tensor_shape.TensorShape(())), v)
     _test(lambda: self.assertEqual(v.synchronization, synchronization), v)
-    _test(lambda: self.assertTrue(v.trainable, True), v)
+    _test(lambda: self.assertEqual(v.trainable, True), v)
 
     # tf.Variable methods.
     _test(lambda: check_ops.assert_equal_v2(v.assign(1.), 1.), v)

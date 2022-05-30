@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/configuration/proto_to_flatbuffer.h"
 
+#include <cstdint>
+
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration.pb.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
@@ -59,6 +61,8 @@ Delegate ConvertDelegate(proto::Delegate delegate) {
       return Delegate_EDGETPU;
     case proto::Delegate::EDGETPU_CORAL:
       return Delegate_EDGETPU_CORAL;
+    case proto::Delegate::CORE_ML:
+      return Delegate_CORE_ML;
   }
   TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Unexpected value for Delegate: %d",
                   delegate);
@@ -197,7 +201,9 @@ Offset<NNAPISettings> ConvertNNAPISettings(const proto::NNAPISettings& settings,
       /*allow_fp16_precision_for_fp32=*/
       settings.allow_fp16_precision_for_fp32(),
       /*use_burst_computation=*/
-      settings.use_burst_computation());
+      settings.use_burst_computation(),
+      /*support_library_handle=*/
+      settings.support_library_handle());
 }
 
 Offset<GPUSettings> ConvertGPUSettings(const proto::GPUSettings& settings,
@@ -227,8 +233,32 @@ Offset<HexagonSettings> ConvertHexagonSettings(
 
 Offset<XNNPackSettings> ConvertXNNPackSettings(
     const proto::XNNPackSettings& settings, FlatBufferBuilder* builder) {
-  return CreateXNNPackSettings(*builder,
-                               /*num_threads=*/settings.num_threads());
+  return CreateXNNPackSettings(
+      *builder,
+      /*num_threads=*/settings.num_threads(),
+      /*flags=*/tflite::XNNPackFlags(settings.flags()));
+}
+
+Offset<CoreMLSettings> ConvertCoreMLSettings(
+    const proto::CoreMLSettings& settings, FlatBufferBuilder* builder) {
+  tflite::CoreMLSettings_::EnabledDevices enabled_devices =
+      tflite::CoreMLSettings_::EnabledDevices_DEVICES_ALL;
+  switch (settings.enabled_devices()) {
+    case proto::CoreMLSettings::DEVICES_ALL:
+      enabled_devices = tflite::CoreMLSettings_::EnabledDevices_DEVICES_ALL;
+      break;
+    case proto::CoreMLSettings::DEVICES_WITH_NEURAL_ENGINE:
+      enabled_devices =
+          tflite::CoreMLSettings_::EnabledDevices_DEVICES_WITH_NEURAL_ENGINE;
+      break;
+    default:
+      TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Invalid devices enum: %d",
+                      settings.enabled_devices());
+  }
+
+  return CreateCoreMLSettings(
+      *builder, enabled_devices, settings.coreml_version(),
+      settings.max_delegated_partitions(), settings.min_nodes_per_partition());
 }
 
 Offset<CPUSettings> ConvertCPUSettings(const proto::CPUSettings& settings,
@@ -296,7 +326,8 @@ Offset<EdgeTpuSettings> ConvertEdgeTpuSettings(
       inactive_power_configs, settings.inference_priority(),
       edgetpu_device_spec, model_token,
       static_cast<tflite::EdgeTpuSettings_::FloatTruncationType>(
-          settings.float_truncation_type()));
+          settings.float_truncation_type()),
+      static_cast<tflite::EdgeTpuSettings_::QosClass>(settings.qos_class()));
 }
 
 Offset<CoralSettings> ConvertCoralSettings(const proto::CoralSettings& settings,
@@ -315,11 +346,13 @@ Offset<TFLiteSettings> ConvertTfliteSettings(
       ConvertGPUSettings(settings.gpu_settings(), builder),
       ConvertHexagonSettings(settings.hexagon_settings(), builder),
       ConvertXNNPackSettings(settings.xnnpack_settings(), builder),
+      ConvertCoreMLSettings(settings.coreml_settings(), builder),
       ConvertCPUSettings(settings.cpu_settings(), builder),
       /*max_delegated_partitions=*/settings.max_delegated_partitions(),
       ConvertEdgeTpuSettings(settings.edgetpu_settings(), builder),
       ConvertCoralSettings(settings.coral_settings(), builder),
-      ConvertFallbackSettings(settings.fallback_settings(), builder));
+      ConvertFallbackSettings(settings.fallback_settings(), builder),
+      settings.disable_default_delegates());
 }
 
 Offset<ModelFile> ConvertModelFile(const proto::ModelFile& model_file,

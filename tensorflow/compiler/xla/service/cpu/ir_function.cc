@@ -33,7 +33,8 @@ static std::vector<llvm::Type*> GetComputeFunctionParams(
   llvm::Type* i64_ptr_type =
       llvm::Type::getInt64PtrTy(llvm_module->getContext());
   std::vector<llvm::Type*> compute_function_params(
-      {i8_ptr_type, i8_ptr_type, i8_ptr_ptr_type, i8_ptr_ptr_type});
+      {i8_ptr_type, i8_ptr_type, i8_ptr_ptr_type, i8_ptr_ptr_type,
+       i8_ptr_type});
   if (num_dynamic_loop_bounds > 0) {
     compute_function_params.push_back(i64_ptr_type);
   }
@@ -41,7 +42,7 @@ static std::vector<llvm::Type*> GetComputeFunctionParams(
   return compute_function_params;
 }
 
-IrFunction::IrFunction(const string& function_name,
+IrFunction::IrFunction(const std::string& function_name,
                        llvm::Function::LinkageTypes linkage,
                        const HloModuleConfig& module_config,
                        llvm::Module* llvm_module, llvm::IRBuilder<>* b,
@@ -67,7 +68,7 @@ DynamicLoopBounds IrFunction::GetDynamicLoopBounds() {
   return dynamic_loop_bounds;
 }
 
-void IrFunction::Initialize(const string& function_name,
+void IrFunction::Initialize(const std::string& function_name,
                             llvm::Function::LinkageTypes linkage,
                             const HloModuleConfig& module_config) {
   // The function signature is:
@@ -153,6 +154,8 @@ void IrFunction::Initialize(const string& function_name,
   parameters_arg_ = &*arg_iter;
   (++arg_iter)->setName("buffer_table");
   buffer_table_arg_ = &*arg_iter;
+  (++arg_iter)->setName("status");
+  status_arg_ = &*arg_iter;
   if (num_dynamic_loop_bounds_ > 0) {
     (++arg_iter)->setName("dynamic_loop_bounds");
     dynamic_loop_bounds_arg_ = &*arg_iter;
@@ -189,9 +192,11 @@ void IrFunction::Initialize(const string& function_name,
 llvm::Value* IrFunction::GetDynamicLoopBound(const int64_t offset) {
   CHECK_GT(num_dynamic_loop_bounds_, 0);
   CHECK_LT(offset, num_dynamic_loop_bounds_ * 2);
-  string name = absl::StrCat("dynamic_loop_bound_", offset);
-  return b_->CreateLoad(b_->CreateGEP(CHECK_NOTNULL(dynamic_loop_bounds_arg_),
-                                      b_->getInt64(offset), name));
+  llvm::Type* int64_ty = b_->getInt64Ty();
+  auto gep = b_->CreateGEP(int64_ty, CHECK_NOTNULL(dynamic_loop_bounds_arg_),
+                           b_->getInt64(offset));
+  return b_->CreateLoad(int64_ty, gep,
+                        "dynamic_loop_bound_" + llvm::Twine(offset));
 }
 
 llvm::Value* EncodeArrayFunctionArguments(
@@ -211,7 +216,7 @@ llvm::Value* EncodeArrayFunctionArguments(
           arguments[i], b->getInt8PtrTy(),
           absl::StrCat(name, "_parameter_", i, "_address_as_i8ptr"));
       llvm::Value* slot_in_param_addresses =
-          b->CreateInBoundsGEP(arguments_buffer, {b->getInt64(i)});
+          b->CreateInBoundsGEP(int8ptr_ty, arguments_buffer, b->getInt64(i));
       b->CreateStore(parameter_as_i8ptr, slot_in_param_addresses);
     }
   }
@@ -226,20 +231,19 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
     absl::Span<llvm::Value* const> parameter_addresses, llvm::IRBuilder<>* b,
     absl::string_view name, llvm::Value* return_value_buffer,
     llvm::Value* exec_run_options_arg, llvm::Value* buffer_table_arg,
-    llvm::Value* profile_counters_arg) {
+    llvm::Value* status_arg, llvm::Value* profile_counters_arg) {
   llvm::Value* parameter_addresses_buffer =
       EncodeArrayFunctionArguments(parameter_addresses, name, b);
 
   const auto to_int8_ptr = [=](llvm::Value* ptr) {
     return b->CreatePointerCast(ptr, b->getInt8PtrTy());
   };
-  std::vector<llvm::Value*> arguments{
-      to_int8_ptr(return_value_buffer), to_int8_ptr(exec_run_options_arg),
-      parameter_addresses_buffer, buffer_table_arg};
-  if (profile_counters_arg != nullptr) {
-    arguments.push_back(profile_counters_arg);
-  }
-  return arguments;
+  return std::vector<llvm::Value*>{to_int8_ptr(return_value_buffer),
+                                   to_int8_ptr(exec_run_options_arg),
+                                   parameter_addresses_buffer,
+                                   buffer_table_arg,
+                                   status_arg,
+                                   profile_counters_arg};
 }
 
 // Emits a call to a runtime fork/join function which dispatches parallel
@@ -248,7 +252,7 @@ Status EmitCallToParallelForkJoin(
     const std::vector<llvm::Value*>& arguments, const Shape& shape,
     const std::vector<int64_t>& dimension_partition_counts,
     llvm::IRBuilder<>* b, llvm::Function* parallel_function,
-    const string& name) {
+    const std::string& name) {
   llvm::Module* module = b->GetInsertBlock()->getModule();
 
   // Build ParallelForkJoin function type.

@@ -1149,7 +1149,7 @@ class History(Callback):
   >>> model = tf.keras.models.Sequential([tf.keras.layers.Dense(10)])
   >>> model.compile(tf.keras.optimizers.SGD(), loss='mse')
   >>> history = model.fit(np.arange(100).reshape(5, 20), np.zeros(5),
-  ...                     epochs=10)
+  ...                     epochs=10, verbose=1)
   >>> print(history.params)
   {'verbose': 1, 'epochs': 10, 'steps': 1}
   >>> # check the keys of history object

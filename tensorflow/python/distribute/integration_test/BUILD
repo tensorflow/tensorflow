@@ -12,6 +12,7 @@ distribute_py_test(
     srcs = ["saved_model_test.py"],
     tags = [
         "no_windows",  # TODO(b/171350360)
+        "nomultivm",  # multi_worker_test_base incompatible with multivm base
         "notsan",  # b/195248428
     ],
     deps = [
@@ -38,8 +39,24 @@ cuda_py_test(
     shard_count = 2,
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/227372713)
         "notsan",  # b/195248428
     ],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_process_runner",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:test_util",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
+    name = "mwms_peer_failure_test_lib",
+    srcs = ["mwms_peer_failure_test.py"],
+    visibility = ["//learning/brain/runtime/python:__pkg__"],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",

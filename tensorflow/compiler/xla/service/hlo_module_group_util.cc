@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -207,8 +206,9 @@ std::vector<HloInstruction*> HloModuleGroupUtil::RootInstructions(
   return roots;
 }
 
-string HloModuleGroupUtil::CycleToString(HloInstruction* init_instruction) {
-  std::vector<string> names;
+std::string HloModuleGroupUtil::CycleToString(
+    HloInstruction* init_instruction) {
+  std::vector<std::string> names;
   absl::flat_hash_set<HloInstruction*> seen;
 
   std::function<bool(HloInstruction*)> helper =

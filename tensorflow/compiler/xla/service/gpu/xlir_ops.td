@@ -38,10 +38,12 @@ def XLIR_Dialect : Dialect {
   }];
 
   let cppNamespace = "xla::gpu";
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
 // Base class for XLIR dialect ops.
-class XLIR_Op<string mnemonic, list<OpTrait> traits = []> :
+class XLIR_Op<string mnemonic, list<Trait> traits = []> :
     Op<XLIR_Dialect, mnemonic, traits> {
   let summary = !strconcat("xlir.", mnemonic, " operation");
   let assemblyFormat = "operands attr-dict";
@@ -55,8 +57,32 @@ def XLIR_ModuleLoadOp : XLIR_Op<"module.load"> {
     Example:
       %module = tfrt_gpu.module.load %ctx
   }];
-  let arguments = (ins GPU_ContextType:$ctx);
-  let results = (outs GPU_ModuleType);
+  let arguments = (ins TFRTGPU_ContextType:$ctx);
+  let results = (outs TFRTGPU_ModuleType);
+}
+
+def XLIR_ReplicaIdOp : XLIR_Op<"replica_id"> {
+  let description = [{
+    xlir.replica_id copies the 4-byte replica ID to the output buffer.
+  }];
+  let arguments = (ins TFRTGPU_StreamType:$stream, TFRTGPU_BufferType:$output,
+                   TFRT_ChainType:$chain);
+  let results = (outs TFRT_ChainType);
+  let assemblyFormat = [{
+    $stream`,` $output`,` $chain attr-dict
+  }];
+}
+
+def XLIR_PartitionIdOp : XLIR_Op<"partition_id"> {
+  let description = [{
+    xlir.partition_id copies the 4-byte partition ID to the output buffer.
+  }];
+  let arguments = (ins TFRTGPU_StreamType:$stream, TFRTGPU_BufferType:$output,
+                   TFRT_ChainType:$chain);
+  let results = (outs TFRT_ChainType);
+  let assemblyFormat = [{
+    $stream`,` $output`,` $chain attr-dict
+  }];
 }
 
 def XLIR_CclCreateOp : XLIR_Op<"ccl.create"> {
@@ -64,52 +90,84 @@ def XLIR_CclCreateOp : XLIR_Op<"ccl.create"> {
     xlir.ccl.create returns a ccl.handle, which can be populated with individual
     collective ops (e.g., using tfrt_gpu.ccl.all_reduce) to be executed as a
     single fused operation.
+    group_mode is the int64_t-cast CollectiveOpGroupMode (as described in
+    tensorflow/compiler/xla/service/collective_ops_utils.h). op_id is the
+    hlo.unique_id value if in cross-replica mode, or the op's channel ID if in
+    cross-module mode.
   }];
-  let arguments = (ins GPU_ContextType);
-  let results = (outs GPU_CclHandleType);
+  let arguments = (ins TFRTGPU_ContextType:$context, I64Attr:$group_mode,
+                   I64Attr:$op_id, TFRT_ChainType:$chain);
+  let results = (outs TFRTGPU_CclHandleType);
 }
 
 def XLIR_CclCollectivePermuteOp : XLIR_Op<"ccl.collective_permute"> {
   let description = [{
     xlir.ccl.collective_permute inserts into the ccl.handle operations to send
     data at the input buffer and receive data into the output buffer depending
-    on the source and target peers supplied in the ExecutionContext
-    (XcclContext).
+    on the paired list of source and target peers supplied as attributes.
+    group_mode is the int64_t-cast CollectiveOpGroupMode (as described in
+    tensorflow/compiler/xla/service/collective_ops_utils.h).
   }];
-  let arguments = (ins GPU_CclHandleType:$handle, GPU_BufferType:$input,
-                   GPU_BufferType:$output, GPU_CclDataTypeAttr:$data_type,
-                   TFRT_ChainType:$chain);
+  let arguments = (ins TFRTGPU_CclHandleType:$handle, TFRTGPU_BufferType:$input,
+                   TFRTGPU_BufferType:$output, TFRTGPU_CclDataTypeAttr:$data_type,
+                   I64Attr:$group_mode, I64ArrayAttr:$source_peers,
+                   I64ArrayAttr:$target_peers, TFRT_ChainType:$chain);
   let results = (outs TFRT_ChainType);
   let assemblyFormat = [{
-    $handle`,` $input`,` $output`,` custom<Enum>($data_type)`,` $chain attr-dict
+    $handle`,` $input`,` $output`,` custom<Enum>($data_type)`,` $group_mode`,`
+    $source_peers`,` $target_peers`,` $chain attr-dict
   }];
 }
 
 def XLIR_CustomCallOp : XLIR_Op<"custom_call"> {
   let description = [{
-    xlir.custom_call invokes a host function, supplied in the ExecutionContext
-    (CustomCallContext), using 'buffers' for the purposes of enqueuing
-    operations on the GPU device. 'opaque' is used to supply an arbitrary string
-    of bytes to the host function call.
+    xlir.custom_call invokes the host function 'symbol' from the
+    CustomCallTargetRegistry. The target must have the following signature:
 
-    Optionally specify an 'args_to_target_args' and/or
-    'results_to_target_results' to rearrange 'buffers' supplied to the host
-    function. Example:
-        buffers = [ A, B ]
-        args_to_target_args = [ 0, 2 ]
-        target_args_count = 5
-        (rearranged buffers = [ A, nullptr, B, nulltpr, nullptr ])
+    void target(void* stream, void* const pointers[],
+                const char* opaque, size_t opaque_size,
+                XlaCustomCallStatus* status);
+
+    The 'indices' maps the 'pointers' array to 'buffers', or nullptr for
+    negative values.
+
+    'opaque' is an arbitrary array of bytes passed as extra arguments.
   }];
-  let arguments = (ins GPU_StreamType:$stream, TFRT_ChainType:$chain,
-                   Variadic<GPU_BufferType>:$buffers,
-                   I64ArrayAttr:$args_to_target_args, StrAttr:$opaque,
-                   I64ArrayAttr:$results_to_target_results,
-                   I64Attr:$target_args_count, I64Attr:$target_results_count);
+  let arguments = (ins TFRTGPU_StreamType:$stream,
+                   Variadic<TFRTGPU_BufferType>:$buffers,
+                   TFRT_ChainType:$chain, StrAttr:$symbol,
+                   I32ArrayAttr:$indices, StrAttr:$opaque);
   let results = (outs TFRT_ChainType);
   let assemblyFormat = [{
-    $stream`,` $chain`,` $buffers`,` $args_to_target_args`,`
-    $results_to_target_results`,` $target_args_count`,` $target_results_count
-    attr-dict
+    $stream`,` $buffers`,` $chain attr-dict
+  }];
+}
+
+def XLIR_InfeedOp : XLIR_Op<"infeed"> {
+  let description = [{
+    xlir.infeed copies data from the streaming interface of the device to the
+    output buffers.
+  }];
+  let arguments = (ins TFRTGPU_StreamType:$stream,
+                   Variadic<TFRTGPU_BufferType>:$outputs,
+                   TFRT_ChainType:$chain);
+  let results = (outs TFRT_ChainType);
+  let assemblyFormat = [{
+    $stream `,` ($outputs^ `,`)?  $chain attr-dict
+  }];
+}
+
+def XLIR_OutfeedOp : XLIR_Op<"outfeed"> {
+  let description = [{
+    xlir.outfeed outputs data from the input buffers to the streaming interface
+    to the host.
+  }];
+  let arguments = (ins TFRTGPU_StreamType:$stream,
+                   Variadic<TFRTGPU_BufferType>:$inputs,
+                   TFRT_ChainType:$chain);
+  let results = (outs TFRT_ChainType);
+  let assemblyFormat = [{
+    $stream `,` ($inputs^ `,`)? $chain attr-dict
   }];
 }
 

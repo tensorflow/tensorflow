@@ -24,8 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -38,7 +36,7 @@ StatusOr<ChannelHandle> ChannelTracker::NewChannel(
       type != ChannelHandle::DEVICE_TO_HOST) {
     return InvalidArgument("Invalid channel type: %d", type);
   }
-  tensorflow::mutex_lock lock(channel_mutex_);
+  absl::MutexLock lock(&channel_mutex_);
 
   // Create a new channel handle with a unique value.
   ChannelHandle new_handle = AllocateHandle(type);
@@ -54,12 +52,12 @@ StatusOr<ChannelHandle> ChannelTracker::NewChannel(
 }
 
 Status ChannelTracker::RegisterSend(const ChannelHandle& handle) {
-  tensorflow::mutex_lock lock(channel_mutex_);
+  absl::MutexLock lock(&channel_mutex_);
   return RegisterSendInternal(handle);
 }
 
 Status ChannelTracker::RegisterRecv(const ChannelHandle& handle) {
-  tensorflow::mutex_lock lock(channel_mutex_);
+  absl::MutexLock lock(&channel_mutex_);
   return RegisterRecvInternal(handle);
 }
 

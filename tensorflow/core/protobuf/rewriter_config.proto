@@ -37,6 +37,13 @@ message RewriterConfig {
     // may break. For example, assume the shape of a placeholder matches its
     // actual feed.
     AGGRESSIVE = 3;
+    // Run MLIR pass if there's one implemented in TFG, do nothing otherwise.
+    // I.e., if there's no corresponding TFG pass, it's an OFF. This is supposed
+    // to be mapped with `ON` and there's no `AGGRESSIVE` in MLIR pass now.
+    EXPERIMENTAL_MLIR = 4;
+    // Run both MLIR and Grappler passes consecutively and MLIR pass will come
+    // first.
+    EXPERIMENTAL_BOTH = 5;
   }
 
   // Enum for layout conversion between NCHW and NHWC on CPU. Default is OFF.
@@ -104,10 +111,18 @@ message RewriterConfig {
   // This will try to use bfloat16 on CPUs, which is faster.
   // Note that this can change the numerical stability of the graph.
   Toggle auto_mixed_precision_mkl = 25;
+  // Emulate a model using data type float16 on CPU (default is OFF).
+  // This will try to emulate the float16 inputs and outputs of an operator
+  // on CPU to have better correlation with float16 on GPU; however the
+  // computation in the operator is based on float32.
+  // Note that this can change the numerical stability of the graph.
+  Toggle auto_mixed_precision_cpu = 29;
   // Disable the entire meta optimizer (off by default).
   bool disable_meta_optimizer = 19;
   // Optimizers registered by plugin (default is ON)
   Toggle use_plugin_optimizers = 28;
+  // Conditional code motion (default is ON).
+  Toggle experimental_conditional_code_motion = 30;
 
   // Controls how many times we run the optimizers in meta optimizer (default
   // is once).

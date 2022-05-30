@@ -88,10 +88,13 @@ class Env {
   ///
   /// Same as `RegisterFileSystem` but for filesystems provided by plugins.
   ///
-  /// TODO(mihaimaruseac): After all filesystems are converted, make this be the
+  /// TODO(b/139060984): After all filesystems are converted, make this be the
   /// canonical registration function.
   virtual Status RegisterFileSystem(const std::string& scheme,
                                     std::unique_ptr<FileSystem> filesystem);
+
+  Status SetOption(const std::string& scheme, const std::string& key,
+                   const std::string& value);
 
   Status SetOption(const std::string& scheme, const std::string& key,
                    const std::vector<string>& values);
@@ -645,7 +648,7 @@ Status ReadTextOrBinaryProto(Env* env, const std::string& fname,
 
 // The following approach to register filesystems is deprecated and will be
 // replaced with modular filesystem plugins registration.
-// TODO(mihaimaruseac): After all filesystems are converted, remove this.
+// TODO(b/139060984): After all filesystems are converted, remove this.
 namespace register_file_system {
 
 template <typename Factory>

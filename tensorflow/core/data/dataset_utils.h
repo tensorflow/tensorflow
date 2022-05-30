@@ -33,6 +33,9 @@ namespace data {
 // should be supplied by the auto-sharding rewrite.
 constexpr int kShardHint = -1;
 
+// The initial parallelism value before Autotune has a chance to optimize.
+constexpr int kAutotuneDefaultParallelism = 16;
+
 // Creates a resource handle with a unique name for the given resource where
 // the resource is managed by the Resource Manager.
 template <typename T>
@@ -53,8 +56,11 @@ Status CreateWeakHandle(OpKernelContext* ctx, T* resource,
 // resource is owned by the handle.
 template <typename T>
 Status CreateHandle(OpKernelContext* ctx, T* resource, ResourceHandle* handle) {
+  ResourceMgr* mgr = ctx->resource_manager();
   *handle =
       ResourceHandle::MakeRefCountingHandle(resource, ctx->device()->name());
+  TF_RETURN_IF_ERROR(
+      mgr->CreateUnowned<T>(handle->container(), handle->name(), resource));
   return Status::OK();
 }
 
@@ -100,10 +106,8 @@ class AnonymousResourceOp : public OpKernel {
       attr.set_on_host(true);
       OP_REQUIRES_OK(
           ctx, ctx->allocate_output(1, TensorShape({}), &deleter_t, attr));
-      if (ref_counting_) {
-        // A dummy output that does nothing when destroyed.
-        deleter_t->scalar<int>()() = 0;
-      } else {
+      // TODO(feyu): Consider returning an OptionalVariant.
+      if (!ref_counting_) {
         // A deleter output that deletes the resource when destroyed.
         deleter_t->scalar<Variant>()() =
             ResourceDeleter(handle, ctx->resource_manager());
@@ -325,13 +329,6 @@ void GetOptimizations(const Options& options,
                       absl::flat_hash_set<tstring>* optimizations_disabled,
                       absl::flat_hash_set<tstring>* optimizations_default);
 
-// Determines which optimizations should be applied.
-absl::flat_hash_set<tstring> SelectOptimizations(
-    const absl::flat_hash_set<string>& experiments,
-    const absl::flat_hash_set<tstring>& optimizations_enabled,
-    const absl::flat_hash_set<tstring>& optimizations_disabled,
-    const absl::flat_hash_set<tstring>& optimizations_default);
-
 // Creates graph rewrite configs based on the given options. The configs will
 // only be used if their corresponding optimizers registered with Grappler are
 // enabled.
@@ -359,6 +356,10 @@ inline int GetCpuBudget() {
   static bool in_experiment = GetExperiments().contains("tune_cpu_budget");
   return (in_experiment ? 1.2 : 1.0) * port::NumSchedulableCPUs();
 }
+
+// Returns the initial value for parallelism parameter before the first Autotune
+// optimization.
+int64 GetAutotuneDefaultParallelism(IteratorContext* ctx);
 
 // Registry of tf.data experiments.
 class DatasetExperimentRegistry {

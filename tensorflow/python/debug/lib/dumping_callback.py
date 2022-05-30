@@ -21,7 +21,6 @@ import socket
 import threading
 import uuid
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.protobuf import debug_event_pb2
@@ -649,7 +648,7 @@ class _DumpingCallback(object):
     tensor_ids = []
     if num_tensors:
       with self._symbolic_tensor_counter_lock:
-        for _ in xrange(num_tensors):
+        for _ in range(num_tensors):
           self._symbolic_tensor_counter += 1
           tensor_ids.append(self._symbolic_tensor_counter)
     return tensor_ids

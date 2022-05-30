@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_THREAD_SAFE_BUFFER_H_
 
 #include <deque>
+#include <utility>
 
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -62,8 +63,8 @@ template <class T>
 ThreadSafeBuffer<T>::ThreadSafeBuffer(size_t buffer_size)
     : buffer_size_(buffer_size) {
   DCHECK_GT(buffer_size, 0)
-      << "ThreadSafeBuffer must have a postive buffer size. Got " << buffer_size
-      << ".";
+      << "ThreadSafeBuffer must have a positive buffer size. Got "
+      << buffer_size << ".";
 }
 
 template <class T>

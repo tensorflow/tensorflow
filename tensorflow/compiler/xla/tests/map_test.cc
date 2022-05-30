@@ -27,12 +27,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -217,9 +217,9 @@ TEST_F(MapTest, MapEachF32ElementToS32Constant) {
       client_->TransferToServer(param0_literal).ConsumeValueOrDie();
 
   auto param = Parameter(&builder, 0, param0_literal.shape(), "param0");
-  Map(&builder, {param}, CreateScalarOne<int32>(), {0});
+  Map(&builder, {param}, CreateScalarOne<int32_t>(), {0});
 
-  ComputeAndCompareR1<int32>(&builder, {1, 1, 1, 1}, {param0_data.get()});
+  ComputeAndCompareR1<int32_t>(&builder, {1, 1, 1, 1}, {param0_data.get()});
 }
 
 TEST_F(MapTest, MapEachF32ElementToU32Constant) {
@@ -230,9 +230,9 @@ TEST_F(MapTest, MapEachF32ElementToU32Constant) {
       client_->TransferToServer(param0_literal).ConsumeValueOrDie();
 
   auto param = Parameter(&builder, 0, param0_literal.shape(), "param0");
-  Map(&builder, {param}, CreateScalarOne<uint32>(), {0});
+  Map(&builder, {param}, CreateScalarOne<uint32_t>(), {0});
 
-  ComputeAndCompareR1<uint32>(&builder, {1, 1, 1, 1}, {param0_data.get()});
+  ComputeAndCompareR1<uint32_t>(&builder, {1, 1, 1, 1}, {param0_data.get()});
 }
 
 TEST_F(MapTest, MapEachElemLongerChainR1) {
@@ -380,24 +380,24 @@ XLA_TEST_F(MapTest, AddWithMixedLayouts) {
   Map(&builder, {param0, param1}, CreateScalarAddComputation(S32, &builder),
       {0, 1});
 
-  Array2D<int32> expected(2, 2);
+  Array2D<int32_t> expected(2, 2);
   expected(0, 0) = 11;
   expected(0, 1) = 22;
   expected(1, 0) = 33;
   expected(1, 1) = 44;
-  ComputeAndCompareR2<int32>(&builder, expected,
-                             {param0_data.get(), param1_data.get()});
+  ComputeAndCompareR2<int32_t>(&builder, expected,
+                               {param0_data.get(), param1_data.get()});
 }
 
 XLA_TEST_F(MapTest, AddR3_3x0x2) {
   XlaBuilder builder(TestName());
   Literal param0_literal =
-      LiteralUtil::CreateR3FromArray3D<int32>(Array3D<int32>(3, 0, 2));
+      LiteralUtil::CreateR3FromArray3D<int32_t>(Array3D<int32_t>(3, 0, 2));
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(param0_literal).ConsumeValueOrDie();
 
   Literal param1_literal =
-      LiteralUtil::CreateR3FromArray3D<int32>(Array3D<int32>(3, 0, 2));
+      LiteralUtil::CreateR3FromArray3D<int32_t>(Array3D<int32_t>(3, 0, 2));
   std::unique_ptr<GlobalData> param1_data =
       client_->TransferToServer(param1_literal).ConsumeValueOrDie();
 
@@ -406,8 +406,8 @@ XLA_TEST_F(MapTest, AddR3_3x0x2) {
   Map(&builder, {param0, param1}, CreateScalarAddComputation(S32, &builder),
       {0, 1, 2});
 
-  ComputeAndCompareR3<int32>(&builder, Array3D<int32>(3, 0, 2),
-                             {param0_data.get(), param1_data.get()});
+  ComputeAndCompareR3<int32_t>(&builder, Array3D<int32_t>(3, 0, 2),
+                               {param0_data.get(), param1_data.get()});
 }
 
 TEST_F(MapTest, MapTernaryAdder) {
@@ -493,6 +493,31 @@ TEST_F(MapTest, MapOperationWithBuildError) {
   EXPECT_THAT(computation_status.status().ToString(),
               ::testing::HasSubstr("error from: ErrorAdd: Binary op add with "
                                    "different element types: f32[] and u16[]"));
+}
+
+class MapHloTest : public HloTestBase {};
+
+// TODO(b/230123847): Enable this on GPU once mhlo allows mixed-type map.
+XLA_TEST_F(MapHloTest, DISABLED_ON_GPU(MapWithMixedInputTypes)) {
+  absl::string_view hlo_string = R"(
+  HloModule MapMixedInputTypes
+
+  add {
+    op0 = f32[] parameter(0)
+    op1 = s32[] parameter(1)
+    cop1 = f32[] convert(op1)
+    ROOT result = f32[] add(op0, cop1)
+  }
+
+  ENTRY main {
+    in0 = f32[10,3] parameter(0)
+    in1 = s32[10,3] parameter(1)
+
+    ROOT out = f32[10,3] map(in0, in1), to_apply=add
+  }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 
 // MapTest disables inline and algsimp. MapTestWithFullOpt runs all

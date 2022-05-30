@@ -145,6 +145,7 @@ class Calibrator(object):
                              output_type,
                              allow_float,
                              activations_type=dtypes.int8,
+                             bias_type=dtypes.int32,
                              resize_input=True,
                              disable_per_channel=False):
     """Calibrates the model with specified generator and then quantizes it.
@@ -165,6 +166,7 @@ class Calibrator(object):
                    quantized, otherwise the model will fallback to float ops.
       activations_type: A tf.dtype representing the desired type for
                    activations.
+      bias_type: A tf.dtype representing the desired type for bias.
       resize_input: A boolean. True if the shape of the sample data is different
         from the input.
       disable_per_channel: A boolean. True if disabling per-channel
@@ -175,7 +177,7 @@ class Calibrator(object):
         np.dtype(input_type.as_numpy_dtype()).num,
         np.dtype(output_type.as_numpy_dtype()).num, allow_float,
         np.dtype(activations_type.as_numpy_dtype()).num,
-        disable_per_channel)
+        np.dtype(bias_type.as_numpy_dtype()).num, disable_per_channel)
 
   @convert_phase(Component.OPTIMIZE_TFLITE_MODEL,
                  SubComponent.QUANTIZE_USING_DEPRECATED_QUANTIZER)

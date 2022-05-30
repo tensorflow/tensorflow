@@ -359,6 +359,8 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
       uses_parallel()
 
   def test_checkpointing(self):
+    self.skipTest("b/216201668: revisit parallel device and checkpointing.")
+
     prefix = os.path.join(self.get_temp_dir(), "ckpt")
     different_values = self.device.pack(
         [constant_op.constant(-1.),
@@ -436,6 +438,8 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
     self.assertAllClose([0, 1], v_unpacked)
 
   def test_saved_model(self):
+    self.skipTest("b/216201668: revisit parallel device and saved model")
+
     different_values = self.device.pack(
         [constant_op.constant(-1.),
          constant_op.constant(3.)])
@@ -630,6 +634,7 @@ class LayerTests(_VirtualDeviceTestCase):
     self.assertIn(self.device.components[1], final_kernels[1].backing_device)
 
   def test_training_loop(self):
+    self.skipTest("b/216201668: revisit parallel device and checkpointing")
     for _ in range(5):
       layer = _Dense(5)
       checkpoint = tracking.Checkpoint(layer=layer)

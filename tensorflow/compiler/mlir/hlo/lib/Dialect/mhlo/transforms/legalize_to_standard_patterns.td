@@ -16,7 +16,9 @@ limitations under the License.
 // This is the legalization pattern definition file for MHLO to StandardOps.
 
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/StandardOps/IR/Ops.td"
+include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
+include "mlir/Dialect/Math/IR/MathOps.td"
+include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 
 //===----------------------------------------------------------------------===//
@@ -24,7 +26,7 @@ include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 //===----------------------------------------------------------------------===//
 
 def : Pat<(HLO_ConstOp ElementsAttr:$value),
-          (ConstantOp $value)>;
+          (Arith_ConstantOp $value)>;
 
 //===----------------------------------------------------------------------===//
 // Binary op patterns.
@@ -37,44 +39,44 @@ def IsSameSizeConstraint : Constraint<IsSameSizePred, "inputs are same size">;
 
 
 // Unary Lowering Patterns.
-def : Pat<(HLO_CeilOp HLO_FpTensor:$i), (CeilFOp $i)>;
+def : Pat<(HLO_CeilOp HLO_FpTensor:$i), (Math_CeilOp $i)>;
 
 // Binary Lowering Patterns.
 def : Pat<(HLO_AndOp HLO_IntTensor:$l, HLO_IntTensor:$r),
-          (AndOp $l, $r),
+          (Arith_AndIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_OrOp HLO_IntTensor:$l, HLO_IntTensor:$r),
-          (OrOp $l, $r),
+          (Arith_OrIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_AddOp HLO_FpTensor:$l, HLO_FpTensor:$r),
-          (AddFOp $l, $r),
+          (Arith_AddFOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_SubOp HLO_FpTensor:$l, HLO_FpTensor:$r),
-          (SubFOp $l, $r),
+          (Arith_SubFOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_MulOp HLO_FpTensor:$l, HLO_FpTensor:$r),
-          (MulFOp $l, $r),
+          (Arith_MulFOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_DivOp HLO_FpTensor:$l, HLO_FpTensor:$r),
-          (DivFOp $l, $r),
+          (Arith_DivFOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_RemOp HLO_FpTensor:$l, HLO_FpTensor:$r),
-          (RemFOp $l, $r),
+          (Arith_RemFOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_AddOp HLO_IntTensor:$l, HLO_IntTensor:$r),
-          (AddIOp $l, $r),
+          (Arith_AddIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_SubOp HLO_IntTensor:$l, HLO_IntTensor:$r),
-          (SubIOp $l, $r),
+          (Arith_SubIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_MulOp HLO_IntTensor:$l, HLO_IntTensor:$r),
-          (MulIOp $l, $r),
+          (Arith_MulIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_DivOp HLO_IntTensor:$l, HLO_IntTensor:$r),
-          (SignedDivIOp $l, $r),
+          (Arith_DivSIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_RemOp HLO_IntTensor:$l, HLO_IntTensor:$r),
-          (SignedRemIOp $l, $r),
+          (Arith_RemSIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
 
 def : Pat<(HLO_SelectOp HLO_PredTensor:$pred, HLO_Tensor:$tv, HLO_Tensor:$fv),

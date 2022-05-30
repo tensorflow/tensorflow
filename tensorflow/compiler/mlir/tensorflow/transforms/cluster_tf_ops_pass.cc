@@ -29,10 +29,11 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace mlir {
@@ -100,7 +101,7 @@ struct FunctionMetadata {
   // The operations to be included in the body of the function.
   llvm::SmallVector<Operation *, 4> ops;
 
-  FuncOp partition_op;
+  func::FuncOp partition_op;
 };
 
 // Returns a map that maps the host address to the metadata of the function
@@ -108,7 +109,7 @@ struct FunctionMetadata {
 // values, result values, result devices and the operations to be included in
 // the function body.
 llvm::Optional<llvm::StringMap<FunctionMetadata>> GetFunctionMetadatas(
-    FuncOp func_op) {
+    func::FuncOp func_op) {
   llvm::StringMap<FunctionMetadata> metadatas;
   WalkResult result = func_op.getBody().walk([&](Operation *op) {
     std::string op_host = GetHost(op);
@@ -205,7 +206,7 @@ void CreateFunctions(ModuleOp module_op,
     FunctionType func_type =
         FunctionType::get(context, input_types, result_types);
     Location loc = metadata.ops.front()->getLoc();
-    FuncOp func_op = FuncOp::create(loc, func_name, func_type);
+    func::FuncOp func_op = func::FuncOp::create(loc, func_name, func_type);
     // Sets the device attribute for every input and every result of the
     // function.
     for (int i : llvm::seq<int>(0, metadata.input_devices.size())) {
@@ -241,7 +242,7 @@ void CreateFunctions(ModuleOp module_op,
     for (Value result : metadata.results) {
       results_after_mapping.push_back(mapping.lookupOrDefault(result));
     }
-    builder.create<ReturnOp>(loc, results_after_mapping);
+    builder.create<func::ReturnOp>(loc, results_after_mapping);
     symbol_table.insert(func_op, metadata.insertion_point++);
     // Record the actual name. The symbol table might rename the FuncOp if there
     // is name collision.
@@ -298,19 +299,12 @@ void CreateRemoteRunCalls(MLIRContext *context,
 }
 
 class ClusterTFOpsByHostPass
-    : public PassWrapper<ClusterTFOpsByHostPass, OperationPass<ModuleOp>> {
-  StringRef getArgument() const final { return "cluster-tf-ops-by-host"; }
-
-  StringRef getDescription() const final {
-    return "Cluster the TensorFlow ops by host so that each function only "
-           "contains ops placed on the same host";
-  }
-
+    : public ClusterTFOpsByHostPassBase<ClusterTFOpsByHostPass> {
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     ModuleOp module_op = getOperation();
-    SmallVector<FuncOp, 4> original_func;
-    for (auto func_op : module_op.getOps<FuncOp>()) {
+    SmallVector<func::FuncOp, 4> original_func;
+    for (auto func_op : module_op.getOps<func::FuncOp>()) {
       original_func.push_back(func_op);
     }
     for (auto func_op : original_func) {
@@ -345,8 +339,6 @@ class ClusterTFOpsByHostPass
 std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateClusterTFOpsByHostPass() {
   return std::make_unique<ClusterTFOpsByHostPass>();
 }
-
-static PassRegistration<ClusterTFOpsByHostPass> pass;
 
 }  // namespace TF
 }  // namespace mlir

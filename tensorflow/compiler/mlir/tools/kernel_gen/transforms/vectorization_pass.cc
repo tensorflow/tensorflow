@@ -19,18 +19,18 @@ limitations under the License.
 #include "llvm/ADT/SmallPtrSet.h"
 #include "mlir/Analysis/BufferViewFlowAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
@@ -79,8 +79,8 @@ void SplitSCFForOp(scf::ForOp scf_for) {
   // Match only when the lower bound is zero and the step is constant.
   // TODO(TPOPP): Requiring constant steps and lower bound simplifies things
   // but isn't necesarilly needed
-  auto lower_bound_op =
-      llvm::dyn_cast<ConstantOp>(scf_for.lowerBound().getDefiningOp());
+  auto lower_bound_op = llvm::dyn_cast<arith::ConstantOp>(
+      scf_for.getLowerBound().getDefiningOp());
   if (!lower_bound_op) {
     return;
   }
@@ -90,7 +90,7 @@ void SplitSCFForOp(scf::ForOp scf_for) {
   }
 
   auto step_bound_op =
-      llvm::dyn_cast<ConstantOp>(scf_for.step().getDefiningOp());
+      llvm::dyn_cast<arith::ConstantOp>(scf_for.getStep().getDefiningOp());
   if (!step_bound_op) {
     return;
   }
@@ -115,14 +115,15 @@ void SplitSCFForOp(scf::ForOp scf_for) {
       }
       if (i == b.getAffineSymbolExpr(0) - b.getAffineDimExpr(0) &&
           min_op.getDimOperands().front() == iv &&
-          min_op.getSymbolOperands().front() == scf_for.upperBound())
+          min_op.getSymbolOperands().front() == scf_for.getUpperBound())
         continue;
       if (i == b.getAffineDimExpr(0) - b.getAffineDimExpr(1) &&
           min_op.getDimOperands().drop_front().front() == iv &&
-          min_op.getDimOperands().front() == scf_for.upperBound())
+          min_op.getDimOperands().front() == scf_for.getUpperBound())
         continue;
-      if (auto idx_op = scf_for.upperBound().getDefiningOp<ConstantIndexOp>()) {
-        auto val = idx_op.getValue();
+      if (auto idx_op =
+              scf_for.getUpperBound().getDefiningOp<arith::ConstantIndexOp>()) {
+        auto val = idx_op.value();
         if (i == b.getAffineConstantExpr(val) - b.getAffineDimExpr(0) &&
             min_op.getDimOperands().front() == iv)
           continue;
@@ -145,11 +146,11 @@ void SplitSCFForOp(scf::ForOp scf_for) {
 
   // Split the loop just before a possible last iteration.
   b.setInsertionPoint(scf_for);
-  Value split_point = b.create<SubIOp>(
-      scf_for.upperBound(),
-      b.create<UnsignedRemIOp>(
-          b.create<SubIOp>(scf_for.upperBound(), scf_for.lowerBound()),
-          scf_for.step()));
+  Value split_point = b.create<arith::SubIOp>(
+      scf_for.getUpperBound(),
+      b.create<arith::RemUIOp>(b.create<arith::SubIOp>(scf_for.getUpperBound(),
+                                                       scf_for.getLowerBound()),
+                               scf_for.getStep()));
 
   // New primary loop with relevant min ops replaced with their constant value
   BlockAndValueMapping mapper;
@@ -158,16 +159,17 @@ void SplitSCFForOp(scf::ForOp scf_for) {
 
   new_loop->walk([&](AffineMinOp min_op) {
     if (is_op_of_interest(min_op, new_loop.getInductionVar()))
-      min_op->replaceAllUsesWith(llvm::makeArrayRef(scf_for.step()));
+      min_op->replaceAllUsesWith(llvm::makeArrayRef(scf_for.getStep()));
   });
 
   // Peeled loop iteration (or nothing if perfectly aligned data and step sizes)
   BlockAndValueMapping tail_mapper;
-  tail_mapper.map(scf_for.getRegionIterArgs(), new_loop.results());
+  tail_mapper.map(scf_for.getRegionIterArgs(), new_loop.getResults());
   tail_mapper.map(scf_for.getInductionVar(), split_point);
   auto tail_if = b.create<scf::IfOp>(
       scf_for.getResultTypes(),
-      b.create<CmpIOp>(CmpIPredicate::ult, split_point, scf_for.upperBound()),
+      b.create<arith::CmpIOp>(arith::CmpIPredicate::ult, split_point,
+                              scf_for.getUpperBound()),
       [&](OpBuilder &then_b, Location loc) {
         for (auto &op : *scf_for.getBody()) {
           then_b.clone(op, tail_mapper);
@@ -190,39 +192,39 @@ void SplitSCFForOp(scf::ForOp scf_for) {
     // the min result is strictly less than the step value. Therefore, we can
     // take the predicate and a statement regarding the location of the min_op
     // (and the implied position of the step value) to evaluate the cmpi.
-    auto is_true_cmp = [](CmpIPredicate pred, bool min_is_op_0) {
+    auto is_true_cmp = [](arith::CmpIPredicate pred, bool min_is_op_0) {
       switch (pred) {
         // This loop splitting guarantees the step is not equal to the min on
         // the last iteration.
-        case CmpIPredicate::eq:
-        case CmpIPredicate::ne:
+        case arith::CmpIPredicate::eq:
+        case arith::CmpIPredicate::ne:
           return false;
-        case CmpIPredicate::sle:
-        case CmpIPredicate::slt:
-        case CmpIPredicate::ule:
-        case CmpIPredicate::ult:
+        case arith::CmpIPredicate::sle:
+        case arith::CmpIPredicate::slt:
+        case arith::CmpIPredicate::ule:
+        case arith::CmpIPredicate::ult:
           return min_is_op_0;
-        case CmpIPredicate::sge:
-        case CmpIPredicate::sgt:
-        case CmpIPredicate::uge:
-        case CmpIPredicate::ugt:
+        case arith::CmpIPredicate::sge:
+        case arith::CmpIPredicate::sgt:
+        case arith::CmpIPredicate::uge:
+        case arith::CmpIPredicate::ugt:
           return !min_is_op_0;
       }
     };
 
     for (auto user : min_op->getUsers()) {
-      if (auto cmp = dyn_cast<CmpIOp>(user)) {
+      if (auto cmp = dyn_cast<arith::CmpIOp>(user)) {
         if (cmp.getOperand(0) == min_op.getResult() &&
             cmp.getOperand(1) == step_bound_op) {
-          cmp.replaceAllUsesWith(
-              b.create<ConstantIntOp>(is_true_cmp(cmp.predicate(), true), 1)
-                  .getResult());
+          cmp.replaceAllUsesWith(b.create<arith::ConstantIntOp>(
+                                      is_true_cmp(cmp.getPredicate(), true), 1)
+                                     .getResult());
           cmp.erase();
         } else if (cmp.getOperand(0) == step_bound_op &&
                    cmp.getOperand(1) == min_op.getResult()) {
-          cmp.replaceAllUsesWith(
-              b.create<ConstantIntOp>(is_true_cmp(cmp.predicate(), false), 1)
-                  .getResult());
+          cmp.replaceAllUsesWith(b.create<arith::ConstantIntOp>(
+                                      is_true_cmp(cmp.getPredicate(), false), 1)
+                                     .getResult());
         }
       }
     }
@@ -244,7 +246,7 @@ void SplitSCFForOp(scf::ForOp scf_for) {
     min_op->replaceAllUsesWith(llvm::makeArrayRef(new_min));
   });
 
-  scf_for->replaceAllUsesWith(tail_if.results());
+  scf_for->replaceAllUsesWith(tail_if.getResults());
   scf_for.erase();
 }
 
@@ -253,7 +255,7 @@ void SplitSCFForOp(scf::ForOp scf_for) {
 // is determined by confirming all consumers of all aliases are only creating an
 // alias or writing data to an alias but never reading from or interacting with
 // the memref in other ways.
-void RemoveDeadMemrefCode(FuncOp func) {
+void RemoveDeadMemrefCode(func::FuncOp func) {
   BufferViewFlowAnalysis baa(func);
   llvm::SmallSet<Operation *, 8> to_remove;
 
@@ -264,8 +266,8 @@ void RemoveDeadMemrefCode(FuncOp func) {
     for (auto &alias : baa.resolve(op.getResult())) {
       for (auto user : alias.getUsers()) {
         if (!(isa<ViewLikeOpInterface>(user) ||
-              (isa<linalg::CopyOp>(user) &&
-               alias == cast<linalg::CopyOp>(user).output()) ||
+              (isa<memref::CopyOp>(user) &&
+               alias == cast<memref::CopyOp>(user).target()) ||
               (isa<linalg::FillOp>(user) &&
                alias == cast<linalg::FillOp>(user).output()))) {
           return;
@@ -290,12 +292,12 @@ struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
                     scf::SCFDialect>();
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     // This functions in 2 passes:
     // 1. Tile, promote, and vectorize to create elementwise operations on
     //    <(1x)*4xty> memrefs
     // 2. cast <(1x)*4xty> memrefs to <4xty>
-    auto f = getFunction();
+    auto f = getOperation();
 
     // Stage 1: Vectorize to form static shaped computations
     auto tiling_options =
@@ -303,41 +305,52 @@ struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
             [](OpBuilder b, Operation *op) {
               auto num_loops = llvm::cast<linalg::LinalgOp>(op).getNumLoops();
               SmallVector<Value> tiles(
-                  num_loops, b.create<ConstantIndexOp>(op->getLoc(), 1));
+                  num_loops, b.create<arith::ConstantIndexOp>(op->getLoc(), 1));
               if (!tiles.empty())
-                tiles.back() = b.create<ConstantIndexOp>(op->getLoc(), 4);
+                tiles.back() =
+                    b.create<arith::ConstantIndexOp>(op->getLoc(), 4);
               return tiles;
             });
     auto alignment = 16;
-    mlir::linalg::CodegenStrategy()
-        .tile<mlir::linalg::GenericOp>(tiling_options)
-        .promote<mlir::linalg::GenericOp>(
-            mlir::linalg::LinalgPromotionOptions()
-                .setAlignment(alignment)
-                .setUseFullTileBuffersByDefault(true)
-                .setUseAlloca(true))
-        .vectorize<mlir::linalg::GenericOp>()
-        .setEnableVectorTransferPartialRewrite(true)
-        .setVectorTransformsOptions(
-            mlir::vector::VectorTransformsOptions().setVectorTransferSplit(
-                mlir::vector::VectorTransferSplit::VectorTransfer))
-        .setEnableVectorToSCFConversion(true)
-        .setVectorTransferToSCFOptions(
-            mlir::VectorTransferToSCFOptions().setUnroll(true))
-        .setEnableVectorContractLowering(true)
-        .transform(f);
+
+    mlir::linalg::CodegenStrategy strategy;
+    strategy.tile(mlir::linalg::GenericOp::getOperationName(), tiling_options)
+        .promote(mlir::linalg::GenericOp::getOperationName(),
+                 mlir::linalg::LinalgPromotionOptions()
+                     .setAlignment(alignment)
+                     .setUseFullTileBuffersByDefault(true)
+                     .setUseAlloca(true))
+        .vectorize(mlir::linalg::GenericOp::getOperationName())
+        .vectorLowering(
+            mlir::linalg::LinalgVectorLoweringOptions()
+                .enableTransferLowering(false)
+                .enableTransferPartialRewrite()
+                .setVectorTransformsOptions(
+                    mlir::vector::VectorTransformsOptions()
+                        .setVectorTransferSplit(
+                            mlir::vector::VectorTransferSplit::VectorTransfer))
+                .enableTransferToSCFConversion()
+                .setVectorTransferToSCFOptions(
+                    mlir::VectorTransferToSCFOptions().enableFullUnroll())
+                .enableContractionLowering());
+
+    // Created a nested OpPassManager, populate the strategy and run.
+    OpPassManager dynamicPM("func.func");
+    strategy.configurePassPipeline(dynamicPM, f.getContext());
+    if (failed(runPipeline(dynamicPM, f))) return signalPassFailure();
 
     // Stage 2: Remove extent 1 dims to ensure correct 1-ranked vectorization
     auto ctx = f.getContext();
-    OwningRewritePatternList patterns(ctx);
+    RewritePatternSet patterns(ctx);
     mlir::vector::populateCastAwayVectorLeadingOneDimPatterns(patterns);
-    (void)applyPatternsAndFoldGreedily(f, std::move(patterns));
+    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
+      return signalPassFailure();
   }
 };
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> CreateVectorizationPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateVectorizationPass() {
   return std::make_unique<VectorizationPass>();
 }
 
@@ -348,14 +361,14 @@ struct VectorizationCleanupPass
                     vector::VectorDialect>();
   }
 
-  void runOnFunction() override {
-    getFunction().walk([](scf::ForOp op) { SplitSCFForOp(op); });
+  void runOnOperation() override {
+    getOperation().walk([](scf::ForOp op) { SplitSCFForOp(op); });
 
-    RemoveDeadMemrefCode(getFunction());
+    RemoveDeadMemrefCode(getOperation());
   }
 };
 
-std::unique_ptr<FunctionPass> CreateVectorizationCleanupPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateVectorizationCleanupPass() {
   return std::make_unique<VectorizationCleanupPass>();
 }
 

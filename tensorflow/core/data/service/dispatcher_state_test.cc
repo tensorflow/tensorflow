@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
@@ -35,8 +36,9 @@ namespace data {
 namespace {
 using Dataset = DispatcherState::Dataset;
 using Worker = DispatcherState::Worker;
-using NamedJobKey = DispatcherState::NamedJobKey;
+using IterationKey = DispatcherState::IterationKey;
 using Job = DispatcherState::Job;
+using Iteration = DispatcherState::Iteration;
 using Task = DispatcherState::Task;
 using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
@@ -57,16 +59,6 @@ Status RegisterDataset(int64_t id, DispatcherState& state) {
   return RegisterDataset(id, /*fingerprint=*/1, state);
 }
 
-Status SetElementSpec(int64_t dataset_id, const std::string& element_spec,
-                      DispatcherState& state) {
-  Update update;
-  SetElementSpecUpdate* set_element_spec = update.mutable_set_element_spec();
-  set_element_spec->set_dataset_id(dataset_id);
-  set_element_spec->set_element_spec(element_spec);
-  TF_RETURN_IF_ERROR(state.Apply(update));
-  return Status::OK();
-}
-
 Status RegisterWorker(std::string worker_address, DispatcherState& state) {
   Update update;
   update.mutable_register_worker()->set_worker_address(worker_address);
@@ -74,61 +66,67 @@ Status RegisterWorker(std::string worker_address, DispatcherState& state) {
   return Status::OK();
 }
 
-Status CreateAnonymousJob(int64_t job_id, int64_t dataset_id,
-                          DispatcherState& state) {
+Status CreateJob(int64_t job_id, int64_t dataset_id,
+                 const std::string& job_name, DispatcherState& state) {
   Update update;
   CreateJobUpdate* create_job = update.mutable_create_job();
   create_job->set_job_id(job_id);
   create_job->set_dataset_id(dataset_id);
-  create_job->mutable_processing_mode_def()->set_sharding_policy(
-      ProcessingModeDef::OFF);
+  create_job->set_job_name(job_name);
   TF_RETURN_IF_ERROR(state.Apply(update));
   return Status::OK();
 }
 
-Status CreateNamedJob(int64_t job_id, int64_t dataset_id,
-                      NamedJobKey named_job_key, DispatcherState& state) {
+Status CreateIteration(int64_t iteration_id, int64_t dataset_id,
+                       const IterationKey& named_iteration_key,
+                       DispatcherState& state) {
+  int64_t job_id = state.NextAvailableJobId();
+  TF_RETURN_IF_ERROR(
+      CreateJob(job_id, dataset_id, named_iteration_key.name, state));
   Update update;
-  CreateJobUpdate* create_job = update.mutable_create_job();
-  create_job->set_job_id(job_id);
-  create_job->set_dataset_id(dataset_id);
-  create_job->mutable_processing_mode_def()->set_sharding_policy(
-      ProcessingModeDef::OFF);
-  NamedJobKeyDef* key = create_job->mutable_named_job_key();
-  key->set_name(named_job_key.name);
-  key->set_index(named_job_key.index);
+  CreateIterationUpdate* create_iteration = update.mutable_create_iteration();
+  create_iteration->set_job_id(job_id);
+  create_iteration->set_iteration_id(iteration_id);
+  create_iteration->set_repetition(named_iteration_key.repetition);
   TF_RETURN_IF_ERROR(state.Apply(update));
   return Status::OK();
 }
 
-Status AcquireJobClientId(int64_t job_id, int64_t job_client_id,
-                          DispatcherState& state) {
+Status CreateIteration(int64_t iteration_id, int64_t dataset_id,
+                       DispatcherState& state) {
+  IterationKey key(/*name=*/absl::StrCat(random::New64()), /*repetition=*/0);
+  return CreateIteration(iteration_id, dataset_id, key, state);
+}
+
+Status AcquireIterationClientId(int64_t iteration_id,
+                                int64_t iteration_client_id,
+                                DispatcherState& state) {
   Update update;
-  AcquireJobClientUpdate* acquire_job_client =
-      update.mutable_acquire_job_client();
-  acquire_job_client->set_job_id(job_id);
-  acquire_job_client->set_job_client_id(job_client_id);
+  AcquireIterationClientUpdate* acquire_iteration_client =
+      update.mutable_acquire_iteration_client();
+  acquire_iteration_client->set_iteration_id(iteration_id);
+  acquire_iteration_client->set_iteration_client_id(iteration_client_id);
   TF_RETURN_IF_ERROR(state.Apply(update));
   return Status::OK();
 }
 
-Status ReleaseJobClientId(int64_t job_client_id, int64_t release_time,
-                          DispatcherState& state) {
+Status ReleaseIterationClientId(int64_t iteration_client_id,
+                                int64_t release_time, DispatcherState& state) {
   Update update;
-  ReleaseJobClientUpdate* release_job_client =
-      update.mutable_release_job_client();
-  release_job_client->set_job_client_id(job_client_id);
-  release_job_client->set_time_micros(release_time);
+  ReleaseIterationClientUpdate* release_iteration_client =
+      update.mutable_release_iteration_client();
+  release_iteration_client->set_iteration_client_id(iteration_client_id);
+  release_iteration_client->set_time_micros(release_time);
   TF_RETURN_IF_ERROR(state.Apply(update));
   return Status::OK();
 }
 
-Status CreateTask(int64_t task_id, int64_t job_id,
+Status CreateTask(int64_t task_id, int64_t iteration_id,
                   const std::string& worker_address, DispatcherState& state) {
   Update update;
   CreateTaskUpdate* create_task = update.mutable_create_task();
   create_task->set_task_id(task_id);
-  create_task->set_job_id(job_id);
+  create_task->set_iteration_id(iteration_id);
   create_task->set_worker_address(worker_address);
   TF_RETURN_IF_ERROR(state.Apply(update));
   return Status::OK();
@@ -143,23 +141,6 @@ Status FinishTask(int64_t task_id, DispatcherState& state) {
 }
 }  // namespace
 
-TEST(DispatcherState, SetElementSpec) {
-  int64_t dataset_id = 325;
-  DispatcherState state;
-  std::string element_spec = "test_element_spec";
-  TF_EXPECT_OK(SetElementSpec(dataset_id, element_spec, state));
-  std::string result;
-  TF_EXPECT_OK(state.GetElementSpec(dataset_id, result));
-  EXPECT_EQ(element_spec, result);
-}
-
-TEST(DispatcherState, MissingElementSpec) {
-  DispatcherState state;
-  std::string element_spec;
-  Status s = state.GetElementSpec(31414, element_spec);
-  EXPECT_EQ(s.code(), error::NOT_FOUND);
-}
-
 TEST(DispatcherState, RegisterDataset) {
   uint64 fingerprint = 20;
   DispatcherState state;
@@ -171,11 +152,51 @@ TEST(DispatcherState, RegisterDataset) {
     std::shared_ptr<const Dataset> dataset;
     TF_EXPECT_OK(state.DatasetFromFingerprint(fingerprint, dataset));
     EXPECT_EQ(dataset->dataset_id, id);
+    EXPECT_TRUE(dataset->metadata.element_spec().empty());
+    EXPECT_EQ(dataset->metadata.compression(),
+              DataServiceMetadata::COMPRESSION_UNSPECIFIED);
   }
   {
     std::shared_ptr<const Dataset> dataset;
     TF_EXPECT_OK(state.DatasetFromId(id, dataset));
     EXPECT_EQ(dataset->fingerprint, fingerprint);
+    EXPECT_TRUE(dataset->metadata.element_spec().empty());
+    EXPECT_EQ(dataset->metadata.compression(),
+              DataServiceMetadata::COMPRESSION_UNSPECIFIED);
+  }
+}
+
+TEST(DispatcherState, RegisterDatasetCompression) {
+  DispatcherState state;
+  const int64_t dataset_id = state.NextAvailableDatasetId();
+  Update update;
+  RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
+  register_dataset->set_dataset_id(dataset_id);
+  register_dataset->mutable_metadata()->set_compression(
+      DataServiceMetadata::COMPRESSION_SNAPPY);
+  TF_ASSERT_OK(state.Apply(update));
+  {
+    std::shared_ptr<const Dataset> dataset;
+    TF_EXPECT_OK(state.DatasetFromId(dataset_id, dataset));
+    EXPECT_EQ(dataset->metadata.compression(),
+              DataServiceMetadata::COMPRESSION_SNAPPY);
+  }
+}
+
+TEST(DispatcherState, RegisterDatasetElementSpec) {
+  DispatcherState state;
+  const int64_t dataset_id = state.NextAvailableDatasetId();
+  Update update;
+  RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
+  register_dataset->set_dataset_id(dataset_id);
+  register_dataset->set_fingerprint(20);
+  register_dataset->mutable_metadata()->set_element_spec(
+      "encoded_element_spec");
+  TF_ASSERT_OK(state.Apply(update));
+  {
+    std::shared_ptr<const Dataset> dataset;
+    TF_EXPECT_OK(state.DatasetFromId(dataset_id, dataset));
+    EXPECT_EQ(dataset->metadata.element_spec(), "encoded_element_spec");
   }
 }
 
@@ -285,77 +306,93 @@ TEST(DispatcherState, UnknownUpdate) {
   EXPECT_EQ(s.code(), error::INTERNAL);
 }
 
-TEST(DispatcherState, AnonymousJob) {
-  int64_t dataset_id = 10;
+TEST(DispatcherState, JobName) {
   DispatcherState state;
+  int64_t dataset_id = state.NextAvailableDatasetId();
   int64_t job_id = state.NextAvailableJobId();
+  std::string job_name = "test_name";
   TF_EXPECT_OK(RegisterDataset(dataset_id, state));
-  TF_EXPECT_OK(CreateAnonymousJob(job_id, dataset_id, state));
+  TF_EXPECT_OK(CreateJob(job_id, dataset_id, job_name, state));
   std::shared_ptr<const Job> job;
-  TF_EXPECT_OK(state.JobFromId(job_id, job));
+  TF_EXPECT_OK(state.JobByName(job_name, job));
   EXPECT_EQ(state.NextAvailableJobId(), job_id + 1);
   EXPECT_EQ(job->dataset_id, dataset_id);
-  EXPECT_EQ(job->job_id, job_id);
-  std::vector<std::shared_ptr<const Task>> tasks;
-  TF_EXPECT_OK(state.TasksForJob(job_id, tasks));
-  EXPECT_THAT(tasks, IsEmpty());
-  EXPECT_FALSE(job->finished);
+  EXPECT_FALSE(job->use_cross_trainer_cache);
 }
 
-TEST(DispatcherState, NamedJob) {
-  int64_t dataset_id = 10;
+TEST(DispatcherState, JobData) {
   DispatcherState state;
+  int64_t dataset_id = state.NextAvailableDatasetId();
   int64_t job_id = state.NextAvailableJobId();
-  TF_EXPECT_OK(RegisterDataset(dataset_id, state));
-  NamedJobKey named_job_key("test", 1);
-  TF_EXPECT_OK(CreateNamedJob(job_id, dataset_id, named_job_key, state));
-  std::shared_ptr<const Job> job;
-  TF_EXPECT_OK(state.NamedJobByKey(named_job_key, job));
-  EXPECT_EQ(state.NextAvailableJobId(), job_id + 1);
-  EXPECT_EQ(job->dataset_id, dataset_id);
-  EXPECT_EQ(job->job_id, job_id);
-  EXPECT_FALSE(job->finished);
-}
-
-TEST(DispatcherState, NumConsumersJob) {
-  int64_t dataset_id = 10;
   int64_t num_consumers = 8;
-  DispatcherState state;
-  int64_t job_id = state.NextAvailableJobId();
+  bool use_cross_trainer_cache = true;
   TF_ASSERT_OK(RegisterDataset(dataset_id, state));
   Update update;
   CreateJobUpdate* create_job = update.mutable_create_job();
   create_job->set_job_id(job_id);
   create_job->set_dataset_id(dataset_id);
-  create_job->mutable_processing_mode_def()->set_sharding_policy(
-      ProcessingModeDef::OFF);
   create_job->set_num_consumers(num_consumers);
+  create_job->set_use_cross_trainer_cache(use_cross_trainer_cache);
   TF_ASSERT_OK(state.Apply(update));
   std::shared_ptr<const Job> job;
   TF_ASSERT_OK(state.JobFromId(job_id, job));
   EXPECT_EQ(job->num_consumers, num_consumers);
+  EXPECT_EQ(job->use_cross_trainer_cache, use_cross_trainer_cache);
+}
+
+TEST(DispatcherState, MultiTrainerCacheTask) {
+  DispatcherState state;
+  int64_t dataset_id = state.NextAvailableDatasetId();
+  std::string worker_address = "test_worker_address";
+  TF_ASSERT_OK(RegisterDataset(dataset_id, state));
+
+  int64_t job_id = state.NextAvailableJobId();
+  Update job_update;
+  CreateJobUpdate* create_job = job_update.mutable_create_job();
+  create_job->set_job_id(job_id);
+  create_job->set_dataset_id(dataset_id);
+  create_job->set_use_cross_trainer_cache(true);
+  TF_ASSERT_OK(state.Apply(job_update));
+
+  int64_t iteration_id = state.NextAvailableIterationId();
+  Update iteration_update;
+  CreateIterationUpdate* create_iteration =
+      iteration_update.mutable_create_iteration();
+  create_iteration->set_job_id(job_id);
+  create_iteration->set_iteration_id(iteration_id);
+  TF_ASSERT_OK(state.Apply(iteration_update));
+
+  int64_t task_id = state.NextAvailableTaskId();
+  TF_EXPECT_OK(CreateTask(task_id, iteration_id, worker_address, state));
+  std::shared_ptr<const Task> task;
+  TF_EXPECT_OK(state.TaskFromId(task_id, task));
+  EXPECT_EQ(task->iteration->iteration_id, iteration_id);
+  EXPECT_EQ(task->task_id, task_id);
+  EXPECT_EQ(task->worker_address, worker_address);
+  EXPECT_TRUE(task->iteration->job->use_cross_trainer_cache);
 }
 
 TEST(DispatcherState, CreateTask) {
-  int64_t job_id = 3;
+  int64_t iteration_id = 3;
   int64_t dataset_id = 10;
   std::string worker_address = "test_worker_address";
   DispatcherState state;
   int64_t task_id = state.NextAvailableTaskId();
   TF_EXPECT_OK(RegisterDataset(dataset_id, state));
-  TF_EXPECT_OK(CreateAnonymousJob(job_id, dataset_id, state));
-  TF_EXPECT_OK(CreateTask(task_id, job_id, worker_address, state));
+  TF_EXPECT_OK(CreateIteration(iteration_id, dataset_id, state));
+  TF_EXPECT_OK(CreateTask(task_id, iteration_id, worker_address, state));
   EXPECT_EQ(state.NextAvailableTaskId(), task_id + 1);
   {
     std::shared_ptr<const Task> task;
     TF_EXPECT_OK(state.TaskFromId(task_id, task));
-    EXPECT_EQ(task->job->job_id, job_id);
+    EXPECT_EQ(task->iteration->iteration_id, iteration_id);
     EXPECT_EQ(task->task_id, task_id);
     EXPECT_EQ(task->worker_address, worker_address);
+    EXPECT_FALSE(task->iteration->job->use_cross_trainer_cache);
   }
   {
     std::vector<std::shared_ptr<const Task>> tasks;
-    TF_EXPECT_OK(state.TasksForJob(job_id, tasks));
+    TF_EXPECT_OK(state.TasksForIteration(iteration_id, tasks));
     EXPECT_THAT(tasks, SizeIs(1));
   }
   {
@@ -365,60 +402,60 @@ TEST(DispatcherState, CreateTask) {
   }
 }
 
-TEST(DispatcherState, CreateTasksForSameJob) {
-  int64_t job_id = 3;
+TEST(DispatcherState, CreateTasksForSameIteration) {
+  int64_t iteration_id = 3;
   int64_t dataset_id = 10;
   int64_t task_id_1 = 8;
   int64_t task_id_2 = 9;
   std::string worker_address = "test_worker_address";
   DispatcherState state;
   TF_EXPECT_OK(RegisterDataset(dataset_id, state));
-  TF_EXPECT_OK(CreateAnonymousJob(job_id, dataset_id, state));
-  TF_EXPECT_OK(CreateTask(task_id_1, job_id, worker_address, state));
-  TF_EXPECT_OK(CreateTask(task_id_2, job_id, worker_address, state));
+  TF_EXPECT_OK(CreateIteration(iteration_id, dataset_id, state));
+  TF_EXPECT_OK(CreateTask(task_id_1, iteration_id, worker_address, state));
+  TF_EXPECT_OK(CreateTask(task_id_2, iteration_id, worker_address, state));
   {
     std::vector<std::shared_ptr<const Task>> tasks;
-    TF_EXPECT_OK(state.TasksForJob(job_id, tasks));
+    TF_EXPECT_OK(state.TasksForIteration(iteration_id, tasks));
     EXPECT_THAT(tasks, SizeIs(2));
   }
 }
 
-TEST(DispatcherState, CreateTasksForDifferentJobs) {
-  int64_t job_id_1 = 3;
-  int64_t job_id_2 = 4;
+TEST(DispatcherState, CreateTasksForDifferentIterations) {
+  int64_t iteration_id_1 = 3;
+  int64_t iteration_id_2 = 4;
   int64_t dataset_id = 10;
   int64_t task_id_1 = 8;
   int64_t task_id_2 = 9;
   std::string worker_address = "test_worker_address";
   DispatcherState state;
   TF_EXPECT_OK(RegisterDataset(dataset_id, state));
-  TF_EXPECT_OK(CreateAnonymousJob(job_id_1, dataset_id, state));
-  TF_EXPECT_OK(CreateAnonymousJob(job_id_2, dataset_id, state));
-  TF_EXPECT_OK(CreateTask(task_id_1, job_id_1, worker_address, state));
-  TF_EXPECT_OK(CreateTask(task_id_2, job_id_2, worker_address, state));
+  TF_EXPECT_OK(CreateIteration(iteration_id_1, dataset_id, state));
+  TF_EXPECT_OK(CreateIteration(iteration_id_2, dataset_id, state));
+  TF_EXPECT_OK(CreateTask(task_id_1, iteration_id_1, worker_address, state));
+  TF_EXPECT_OK(CreateTask(task_id_2, iteration_id_2, worker_address, state));
   {
     std::vector<std::shared_ptr<const Task>> tasks;
-    TF_EXPECT_OK(state.TasksForJob(job_id_1, tasks));
+    TF_EXPECT_OK(state.TasksForIteration(iteration_id_1, tasks));
     EXPECT_THAT(tasks, SizeIs(1));
   }
   {
     std::vector<std::shared_ptr<const Task>> tasks;
-    TF_EXPECT_OK(state.TasksForJob(job_id_2, tasks));
+    TF_EXPECT_OK(state.TasksForIteration(iteration_id_2, tasks));
     EXPECT_THAT(tasks, SizeIs(1));
   }
 }
 
 TEST(DispatcherState, CreateTasksForSameWorker) {
-  int64_t job_id = 3;
+  int64_t iteration_id = 3;
   int64_t dataset_id = 10;
   int64_t task_id_1 = 8;
   int64_t task_id_2 = 9;
   std::string worker_address = "test_worker_address";
   DispatcherState state;
   TF_EXPECT_OK(RegisterDataset(dataset_id, state));
-  TF_EXPECT_OK(CreateAnonymousJob(job_id, dataset_id, state));
-  TF_EXPECT_OK(CreateTask(task_id_1, job_id, worker_address, state));
-  TF_EXPECT_OK(CreateTask(task_id_2, job_id, worker_address, state));
+  TF_EXPECT_OK(CreateIteration(iteration_id, dataset_id, state));
+  TF_EXPECT_OK(CreateTask(task_id_1, iteration_id, worker_address, state));
+  TF_EXPECT_OK(CreateTask(task_id_2, iteration_id, worker_address, state));
   {
     std::vector<std::shared_ptr<const Task>> tasks;
     TF_EXPECT_OK(state.TasksForWorker(worker_address, tasks));
@@ -427,7 +464,7 @@ TEST(DispatcherState, CreateTasksForSameWorker) {
 }
 
 TEST(DispatcherState, CreateTasksForDifferentWorkers) {
-  int64_t job_id = 3;
+  int64_t iteration_id = 3;
   int64_t dataset_id = 10;
   int64_t task_id_1 = 8;
   int64_t task_id_2 = 9;
@@ -435,9 +472,9 @@ TEST(DispatcherState, CreateTasksForDifferentWorkers) {
   std::string worker_address_2 = "test_worker_address_2";
   DispatcherState state;
   TF_EXPECT_OK(RegisterDataset(dataset_id, state));
-  TF_EXPECT_OK(CreateAnonymousJob(job_id, dataset_id, state));
-  TF_EXPECT_OK(CreateTask(task_id_1, job_id, worker_address_1, state));
-  TF_EXPECT_OK(CreateTask(task_id_2, job_id, worker_address_2, state));
+  TF_EXPECT_OK(CreateIteration(iteration_id, dataset_id, state));
+  TF_EXPECT_OK(CreateTask(task_id_1, iteration_id, worker_address_1, state));
+  TF_EXPECT_OK(CreateTask(task_id_2, iteration_id, worker_address_2, state));
   {
     std::vector<std::shared_ptr<const Task>> tasks;
     TF_EXPECT_OK(state.TasksForWorker(worker_address_1, tasks));
@@ -462,123 +499,136 @@ TEST(DispatcherState, GetTasksForWorkerEmpty) {
 }
 
 TEST(DispatcherState, FinishTask) {
-  int64_t job_id = 3;
+  int64_t iteration_id = 3;
   int64_t dataset_id = 10;
   int64_t task_id = 4;
   std::string worker_address = "test_worker_address";
   DispatcherState state;
   TF_EXPECT_OK(RegisterDataset(dataset_id, state));
-  TF_EXPECT_OK(CreateAnonymousJob(job_id, dataset_id, state));
-  TF_EXPECT_OK(CreateTask(task_id, job_id, worker_address, state));
+  TF_EXPECT_OK(CreateIteration(iteration_id, dataset_id, state));
+  TF_EXPECT_OK(CreateTask(task_id, iteration_id, worker_address, state));
   TF_EXPECT_OK(FinishTask(task_id, state));
   std::shared_ptr<const Task> task;
   TF_EXPECT_OK(state.TaskFromId(task_id, task));
   EXPECT_TRUE(task->finished);
-  std::shared_ptr<const Job> job;
-  TF_EXPECT_OK(state.JobFromId(job_id, job));
-  EXPECT_TRUE(job->finished);
+  std::shared_ptr<const Iteration> iteration;
+  TF_EXPECT_OK(state.IterationFromId(iteration_id, iteration));
+  EXPECT_TRUE(iteration->finished);
 }
 
-TEST(DispatcherState, FinishMultiTaskJob) {
-  int64_t job_id = 3;
+TEST(DispatcherState, FinishMultiTaskIteration) {
+  int64_t iteration_id = 3;
   int64_t dataset_id = 10;
   int64_t task_id_1 = 4;
   int64_t task_id_2 = 5;
   std::string worker_address = "test_worker_address";
   DispatcherState state;
   TF_EXPECT_OK(RegisterDataset(dataset_id, state));
-  TF_EXPECT_OK(CreateAnonymousJob(job_id, dataset_id, state));
-  TF_EXPECT_OK(CreateTask(task_id_1, job_id, worker_address, state));
-  TF_EXPECT_OK(CreateTask(task_id_2, job_id, worker_address, state));
+  TF_EXPECT_OK(CreateIteration(iteration_id, dataset_id, state));
+  TF_EXPECT_OK(CreateTask(task_id_1, iteration_id, worker_address, state));
+  TF_EXPECT_OK(CreateTask(task_id_2, iteration_id, worker_address, state));
 
   TF_EXPECT_OK(FinishTask(task_id_1, state));
   {
-    std::shared_ptr<const Job> job;
-    TF_EXPECT_OK(state.JobFromId(job_id, job));
-    EXPECT_FALSE(job->finished);
+    std::shared_ptr<const Iteration> iteration;
+    TF_EXPECT_OK(state.IterationFromId(iteration_id, iteration));
+    EXPECT_FALSE(iteration->finished);
   }
 
   TF_EXPECT_OK(FinishTask(task_id_2, state));
   {
-    std::shared_ptr<const Job> job;
-    TF_EXPECT_OK(state.JobFromId(job_id, job));
-    EXPECT_TRUE(job->finished);
+    std::shared_ptr<const Iteration> iteration;
+    TF_EXPECT_OK(state.IterationFromId(iteration_id, iteration));
+    EXPECT_TRUE(iteration->finished);
   }
 }
 
-TEST(DispatcherState, AcquireJobClientId) {
-  int64_t job_id = 3;
-  int64_t job_client_id_1 = 1;
-  int64_t job_client_id_2 = 2;
+TEST(DispatcherState, AcquireIterationClientId) {
+  int64_t iteration_id = 3;
+  int64_t iteration_client_id_1 = 1;
+  int64_t iteration_client_id_2 = 2;
   int64_t dataset_id = 10;
   DispatcherState state;
   TF_EXPECT_OK(RegisterDataset(dataset_id, state));
-  TF_EXPECT_OK(CreateAnonymousJob(job_id, dataset_id, state));
-  TF_EXPECT_OK(AcquireJobClientId(job_id, job_client_id_1, state));
+  TF_EXPECT_OK(CreateIteration(iteration_id, dataset_id, state));
+  TF_EXPECT_OK(
+      AcquireIterationClientId(iteration_id, iteration_client_id_1, state));
   {
-    std::shared_ptr<const Job> job;
-    TF_EXPECT_OK(state.JobFromId(job_id, job));
-    EXPECT_EQ(job->num_clients, 1);
-    TF_EXPECT_OK(AcquireJobClientId(job_id, job_client_id_2, state));
-    EXPECT_EQ(job->num_clients, 2);
+    std::shared_ptr<const Iteration> iteration;
+    TF_EXPECT_OK(state.IterationFromId(iteration_id, iteration));
+    EXPECT_EQ(iteration->num_clients, 1);
+    TF_EXPECT_OK(
+        AcquireIterationClientId(iteration_id, iteration_client_id_2, state));
+    EXPECT_EQ(iteration->num_clients, 2);
   }
   {
-    std::shared_ptr<const Job> job;
-    TF_EXPECT_OK(state.JobForJobClientId(job_client_id_1, job));
-    EXPECT_EQ(job->job_id, job_id);
+    std::shared_ptr<const Iteration> iteration;
+    TF_EXPECT_OK(
+        state.IterationForIterationClientId(iteration_client_id_1, iteration));
+    EXPECT_EQ(iteration->iteration_id, iteration_id);
   }
   {
-    std::shared_ptr<const Job> job;
-    TF_EXPECT_OK(state.JobForJobClientId(job_client_id_2, job));
-    EXPECT_EQ(job->job_id, job_id);
+    std::shared_ptr<const Iteration> iteration;
+    TF_EXPECT_OK(
+        state.IterationForIterationClientId(iteration_client_id_2, iteration));
+    EXPECT_EQ(iteration->iteration_id, iteration_id);
   }
 }
 
-TEST(DispatcherState, ReleaseJobClientId) {
-  int64_t job_id = 3;
+TEST(DispatcherState, ReleaseIterationClientId) {
+  int64_t iteration_id = 3;
   int64_t dataset_id = 10;
-  int64_t job_client_id = 6;
+  int64_t iteration_client_id = 6;
   int64_t release_time = 100;
   DispatcherState state;
   TF_EXPECT_OK(RegisterDataset(dataset_id, state));
-  TF_EXPECT_OK(CreateAnonymousJob(job_id, dataset_id, state));
-  TF_EXPECT_OK(AcquireJobClientId(job_id, job_client_id, state));
-  TF_EXPECT_OK(ReleaseJobClientId(job_client_id, release_time, state));
-  std::shared_ptr<const Job> job;
-  TF_EXPECT_OK(state.JobFromId(job_id, job));
-  EXPECT_EQ(job->num_clients, 0);
-  Status s = state.JobForJobClientId(job_client_id, job);
+  TF_EXPECT_OK(CreateIteration(iteration_id, dataset_id, state));
+  TF_EXPECT_OK(
+      AcquireIterationClientId(iteration_id, iteration_client_id, state));
+  TF_EXPECT_OK(
+      ReleaseIterationClientId(iteration_client_id, release_time, state));
+  std::shared_ptr<const Iteration> iteration;
+  TF_EXPECT_OK(state.IterationFromId(iteration_id, iteration));
+  EXPECT_EQ(iteration->num_clients, 0);
+  Status s =
+      state.IterationForIterationClientId(iteration_client_id, iteration);
   EXPECT_EQ(s.code(), error::NOT_FOUND);
 }
 
 TEST(DispatcherState, ListActiveClientsEmpty) {
-  int64_t job_id = 3;
+  int64_t iteration_id = 3;
   int64_t dataset_id = 10;
-  int64_t job_client_id = 6;
+  int64_t iteration_client_id = 6;
   int64_t release_time = 100;
   DispatcherState state;
   EXPECT_THAT(state.ListActiveClientIds(), IsEmpty());
   TF_EXPECT_OK(RegisterDataset(dataset_id, state));
-  TF_EXPECT_OK(CreateAnonymousJob(job_id, dataset_id, state));
-  TF_EXPECT_OK(AcquireJobClientId(job_id, job_client_id, state));
-  TF_EXPECT_OK(ReleaseJobClientId(job_client_id, release_time, state));
+  TF_EXPECT_OK(CreateIteration(iteration_id, dataset_id, state));
+  TF_EXPECT_OK(
+      AcquireIterationClientId(iteration_id, iteration_client_id, state));
+  TF_EXPECT_OK(
+      ReleaseIterationClientId(iteration_client_id, release_time, state));
   EXPECT_THAT(state.ListActiveClientIds(), IsEmpty());
 }
 
 TEST(DispatcherState, ListActiveClients) {
-  int64_t job_id = 3;
+  int64_t iteration_id = 3;
   int64_t dataset_id = 10;
-  int64_t job_client_id_1 = 6;
-  int64_t job_client_id_2 = 7;
-  int64_t job_client_id_3 = 8;
+  int64_t iteration_client_id_1 = 6;
+  int64_t iteration_client_id_2 = 7;
+  int64_t iteration_client_id_3 = 8;
   int64_t release_time = 100;
   DispatcherState state;
   TF_EXPECT_OK(RegisterDataset(dataset_id, state));
-  TF_EXPECT_OK(CreateAnonymousJob(job_id, dataset_id, state));
-  TF_EXPECT_OK(AcquireJobClientId(job_id, job_client_id_1, state));
-  TF_EXPECT_OK(AcquireJobClientId(job_id, job_client_id_2, state));
-  TF_EXPECT_OK(ReleaseJobClientId(job_client_id_2, release_time, state));
-  TF_EXPECT_OK(AcquireJobClientId(job_id, job_client_id_3, state));
+  TF_EXPECT_OK(CreateIteration(iteration_id, dataset_id, state));
+  TF_EXPECT_OK(
+      AcquireIterationClientId(iteration_id, iteration_client_id_1, state));
+  TF_EXPECT_OK(
+      AcquireIterationClientId(iteration_id, iteration_client_id_2, state));
+  TF_EXPECT_OK(
+      ReleaseIterationClientId(iteration_client_id_2, release_time, state));
+  TF_EXPECT_OK(
+      AcquireIterationClientId(iteration_id, iteration_client_id_3, state));
   EXPECT_THAT(state.ListActiveClientIds(), UnorderedElementsAre(6, 8));
 }
 

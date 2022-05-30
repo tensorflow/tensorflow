@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/schema/reflection/schema_generated.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/tools/serialization/enum_mapping.h"
+#include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
@@ -38,8 +39,12 @@ CreateOpCodeTableImpl(flatbuffers::FlatBufferBuilder* fbb,
   std::vector<flatbuffers::Offset<OperatorCode>> codes;
   for (const auto& it : *opcodes) {
     const char* custom_name = it.custom.empty() ? nullptr : it.custom.c_str();
-    codes.push_back(CreateOperatorCodeDirect(
-        *fbb, static_cast<BuiltinOperator>(it.builtin), custom_name));
+    // Use version 0 for builtin op. This is a way to serialize version field to
+    // flatbuffer (since 0 is non default) and it will be corrected later.
+    int32_t op_version = it.builtin != tflite::BuiltinOperator_CUSTOM ? 0 : 1;
+    codes.push_back(
+        CreateOperatorCodeDirect(*fbb, static_cast<BuiltinOperator>(it.builtin),
+                                 custom_name, op_version));
   }
   return fbb->template CreateVector<flatbuffers::Offset<OperatorCode>>(codes);
 }
@@ -232,7 +237,9 @@ SubgraphWriter::ExportTensors(flatbuffers::FlatBufferBuilder* fbb) {
       }
 
       // Shape
-      // TODO(b/188460235) Avoid generating the weird null dimension tensors.
+      // Some tensors added during op init are not registered formally as
+      // node temporaries. Some didn't get memory allocated for them, and we
+      // should avoid serializing those tensors.
       if (tensor->dims) {
         TfLiteIntArrayView shape_view(tensor->dims);
         std::vector<int> shape =
@@ -297,6 +304,7 @@ TfLiteStatus SubgraphWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
                            builder.CreateVector(subgraphs_as_vector),
                            description, buffers);
   ::tflite::FinishModelBuffer(builder, model);
+  ::tflite::UpdateOpVersion(builder.GetBufferPointer());
   const uint8_t* buffer = builder.GetBufferPointer();
   *size = builder.GetSize();
   (*out).reset(new uint8_t[*size]);
@@ -460,6 +468,7 @@ TfLiteStatus ModelWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
                            builder.CreateVector(subgraphs_as_vector),
                            description, buffers);
   ::tflite::FinishModelBuffer(builder, model);
+  ::tflite::UpdateOpVersion(builder.GetBufferPointer());
   const uint8_t* buffer = builder.GetBufferPointer();
   *size = builder.GetSize();
   (*out).reset(new uint8_t[*size]);
@@ -484,6 +493,14 @@ TfLiteStatus ModelWriter::SetCustomInputOutput(
     const std::vector<int>& outputs, const std::vector<int>& execution_plan) {
   return subgraph_writers_[subgraph_index].SetCustomInputOutput(inputs, outputs,
                                                                 execution_plan);
+}
+
+TfLiteStatus ModelWriter::RegisterCustomWriter(const std::string& custom_name,
+                                               CustomWriter custom_writer) {
+  for (auto& subgraph_writer : subgraph_writers_) {
+    subgraph_writer.RegisterCustomWriter(custom_name, custom_writer);
+  }
+  return kTfLiteOk;
 }
 
 }  // namespace tflite

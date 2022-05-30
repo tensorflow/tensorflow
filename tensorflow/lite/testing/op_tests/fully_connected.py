@@ -104,21 +104,23 @@ def make_fully_connected_tests(options):
       "constant_filter": [True],
       "fully_quantize": [True],
       "quant_16x8": [True]
+  }, {
+      "shape1": [[0, 3]],
+      "shape2": [[3, 3]],
+      "transpose_a": [False],
+      "transpose_b": [False],
+      "constant_filter": [True, False],
+      "fully_quantize": [False],
+      "quant_16x8": [False]
+  }, {
+      "shape1": [[3, 0]],
+      "shape2": [[0, 3]],
+      "transpose_a": [False],
+      "transpose_b": [False],
+      "constant_filter": [True, False],
+      "fully_quantize": [False],
+      "quant_16x8": [False]
   }]
-
-  if options.use_experimental_converter:
-    test_parameters = test_parameters + [
-        # Zero in input shape.
-        {
-            "shape1": [[0, 3]],
-            "shape2": [[3, 3]],
-            "transpose_a": [False],
-            "transpose_b": [False],
-            "constant_filter": [True, False],
-            "fully_quantize": [False],
-            "quant_16x8": [False]
-        }
-    ]
 
   def build_graph(parameters):
     """Build a matmul graph given `parameters`."""

@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Analysis/CallGraph.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -107,7 +108,7 @@ class BacktrackAnalysis {
   }
 
   // Returns backtracking analysis for the given function.
-  const InfoT& GetAnalysisForFunc(FuncOp func) const {
+  const InfoT& GetAnalysisForFunc(func::FuncOp func) const {
     return GetAnalysisForRegion(func.getBody());
   }
 
@@ -143,7 +144,7 @@ class BacktrackAnalysis {
     return &it->second;
   }
 
-  Optional<const InfoT*> GetAnalysisIfExists(FuncOp func) const {
+  Optional<const InfoT*> GetAnalysisIfExists(func::FuncOp func) const {
     return GetAnalysisIfExists(func.getBody());
   }
 
@@ -200,8 +201,8 @@ Value BacktrackAnalysis::BacktrackValue(Value value) {
     } else if (isa<IdentityNOp, IdentityOp>(op)) {
       value = op->getOperand(res_index);
     } else if (auto call = dyn_cast<CallOpInterface>(op)) {
-      FuncOp func =
-          dyn_cast<FuncOp>(call.resolveCallable(&symbol_table_collection_));
+      func::FuncOp func = dyn_cast<func::FuncOp>(
+          call.resolveCallable(&symbol_table_collection_));
       if (!func) break;
       // Check if the function being called has been analyzed. if not,
       // we cannot backtrack the value further.
@@ -280,7 +281,7 @@ void IncrementResourceTypeId(int64_t& resource_type_id) {
 
 // Constructs the analysis info by analyzing the given function.
 ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
-    FuncOp func_op, const BacktrackAnalysis& backtrack_analysis,
+    func::FuncOp func_op, const BacktrackAnalysis& backtrack_analysis,
     SymbolTableCollection& symbol_table_collection) {
   // This function populates resource_value_to_ids_ and id_to_resource_values_.
 
@@ -313,9 +314,9 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
         return func_op.getArgAttr(arg.getArgNumber(), kResourceArgUniqueIdAttr);
       });
   if (has_arg_unique_id_attrs) {
-    // Resource arguments have ID's attached (via `kResourceArgUniqueIdAttr`)
-    // that represent different resources. Map those ID's to the internal
-    // instance ID's used by this pass.
+    // Resource arguments have IDs attached (via `kResourceArgUniqueIdAttr`)
+    // that represent different resources. Map those IDs to the internal
+    // instance IDs used by this pass.
     llvm::SmallDenseMap<int64_t, int64_t> attr_id_to_internal_id;
     for (auto arg : filter_resources(func_op.getArguments())) {
       auto id_attr = func_op.getArgAttrOfType<IntegerAttr>(
@@ -332,7 +333,7 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
   } else {
     // No `kResourceArgUniqueIdAttr` attribute is present, so all resource
     // arguments must correspond to different resources and we can assign unique
-    // ID's.
+    // IDs.
     assign_unique_id_to_all(func_op.getArguments());
   }
 
@@ -359,6 +360,20 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
               resource_handle_id_map, next_unique_instance_id);
       for (auto& resource_handle : resources) {
         AddValueUniqueIDMapping(resource_handle.value, resource_handle.id);
+        // Keep track of IDs of resources that are allocated by ops with
+        // `UniqueResourceAllocation` trait, this can be utilized for while-loop
+        // parallelization (every iteration creates a new unique resource).
+        if (op->hasTrait<OpTrait::TF::UniqueResourceAllocation>()) {
+          unique_resource_allocation_ids_.insert(resource_handle.id);
+        }
+      }
+    } else if (llvm::isa<TPUReplicatedInputOp>(op)) {
+      // TPUReplicateInput only has a single result but we get all results
+      // to use filter_resources and for consistency.
+      for (auto result : filter_resources(op->getResults())) {
+        for (auto operand : op->getOperands()) {
+          PropagateInputToOutput(operand, result);
+        }
       }
     } else if (llvm::isa<IdentityNOp, IdentityOp>(op)) {
       for (auto result : filter_resources(op->getResults()))
@@ -371,7 +386,7 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
       AnalyzeWhileLoop(while_region, backtrack_analysis.GetAnalysisForRegion(
                                          while_region.body()));
     } else if (auto case_op = dyn_cast<CaseOp>(op)) {
-      llvm::SmallVector<FuncOp, 4> functions;
+      llvm::SmallVector<func::FuncOp, 4> functions;
       case_op.get_branch_functions(functions);
       AnalyzeFunctionalCaseOrIfOp(case_op, functions, backtrack_analysis);
     } else if (auto if_op = dyn_cast<IfOp>(op)) {
@@ -381,7 +396,7 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
     } else if (llvm::isa<CaseRegionOp, IfRegionOp>(op)) {
       AnalyzeRegionCaseOrIfOp(op, backtrack_analysis);
     } else if (auto call = dyn_cast<CallOpInterface>(op)) {
-      FuncOp func = dyn_cast_or_null<FuncOp>(
+      func::FuncOp func = dyn_cast_or_null<func::FuncOp>(
           call.resolveCallable(&symbol_table_collection));
       if (!func) {
         assign_unknown_id_to_all(op->getResults());
@@ -435,7 +450,7 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
   });
 }
 
-// Propagates the resource ID's from an input operand to a result. Returns true
+// Propagates the resource IDs from an input operand to a result. Returns true
 // if the mapping changed.
 bool ResourceAliasAnalysisInfo::PropagateInputToOutput(const Value& operand,
                                                        const OpResult& result) {
@@ -473,7 +488,7 @@ bool ResourceAliasAnalysisInfo::PropagateInputToOutput(const Value& operand,
 //
 void ResourceAliasAnalysisInfo::AnalyzeWhileLoop(
     Operation* while_op, const BacktrackAnalysisInfo& body_info) {
-  // Seed the resource ID's for the results using either the resource ID of the
+  // Seed the resource IDs for the results using either the resource ID of the
   // passthrough arg, or unknown. We need to perform further analysis if we
   // find a passthrough arg which is not the same as corresponding the result #.
   llvm::SmallVector<Optional<int>, 4> passthrough_args(
@@ -497,13 +512,13 @@ void ResourceAliasAnalysisInfo::AnalyzeWhileLoop(
   // We found a result that is not unknown and whose passthrough operand index
   // is not the same as the result index, which means there is "crosstalk"
   // between 2 or more operands. In that case, we do an iterative propagation
-  // of resource ID's till the results converge.
+  // of resource IDs till the results converge.
   bool change = true;
   while (change) {
     change = false;
     for (auto result : filter_resources(while_op->getResults())) {
       if (IsUnknownResource(result)) continue;
-      // If this result has a valid passthrough arg, propagate resource ID's
+      // If this result has a valid passthrough arg, propagate resource IDs
       // from the result of the passthrough arg
       int result_index = result.getResultNumber();
       int passthru_index = passthrough_args[result_index].getValue();
@@ -516,11 +531,11 @@ void ResourceAliasAnalysisInfo::AnalyzeWhileLoop(
 
 template <class CaseOrIfOp>
 void ResourceAliasAnalysisInfo::AnalyzeFunctionalCaseOrIfOp(
-    CaseOrIfOp case_or_if_op, llvm::ArrayRef<FuncOp> functions,
+    CaseOrIfOp case_or_if_op, llvm::ArrayRef<func::FuncOp> functions,
     const BacktrackAnalysis& backtrack_analysis) {
   llvm::SmallVector<const BacktrackAnalysisInfo*, 2> infos;
   infos.reserve(functions.size());
-  for (FuncOp func : functions)
+  for (func::FuncOp func : functions)
     infos.push_back(&backtrack_analysis.GetAnalysisForFunc(func));
 
   // If a result is a passthrough of all branches' inputs, merge the resource
@@ -623,7 +638,7 @@ ResourceAliasAnalysis::ResourceAliasAnalysis(ModuleOp module) {
   detail::BacktrackAnalysis backtrack_analysis(module, symbol_table_collection);
 
   // Analyze each function.
-  for (auto func : module.getOps<FuncOp>())
+  for (auto func : module.getOps<func::FuncOp>())
     this->info_map_.try_emplace(func, func, backtrack_analysis,
                                 symbol_table_collection);
 }

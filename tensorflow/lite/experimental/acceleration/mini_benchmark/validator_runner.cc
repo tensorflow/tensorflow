@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner.h"
 
 #include <fcntl.h>
+
 #ifndef _WIN32
 #include <dlfcn.h>
 #include <sys/file.h>
@@ -24,9 +25,11 @@ limitations under the License.
 
 #include <iostream>
 #include <memory>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include <thread>  // NOLINT: code only used on Android, where std::thread is allowed
+#include <vector>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
@@ -42,9 +45,12 @@ namespace acceleration {
 constexpr int kMaxAttempts = 2;
 constexpr int64_t ValidatorRunner::kDefaultEventTimeoutUs;
 
+using ::tflite::nnapi::NnApiSupportLibrary;
+
 ValidatorRunner::ValidatorRunner(const std::string& model_path,
                                  const std::string& storage_path,
                                  const std::string& data_directory_path,
+                                 const NnApiSLDriverImplFL5* nnapi_sl,
                                  const std::string validation_function_name,
                                  ErrorReporter* error_reporter)
     : model_path_(model_path),
@@ -52,12 +58,14 @@ ValidatorRunner::ValidatorRunner(const std::string& model_path,
       data_directory_path_(data_directory_path),
       storage_(storage_path_, error_reporter),
       validation_function_name_(validation_function_name),
-      error_reporter_(error_reporter) {}
+      error_reporter_(error_reporter),
+      nnapi_sl_(nnapi_sl) {}
 
 ValidatorRunner::ValidatorRunner(int model_fd, size_t model_offset,
                                  size_t model_size,
                                  const std::string& storage_path,
                                  const std::string& data_directory_path,
+                                 const NnApiSLDriverImplFL5* nnapi_sl,
                                  const std::string validation_function_name,
                                  ErrorReporter* error_reporter)
     :
@@ -72,7 +80,8 @@ ValidatorRunner::ValidatorRunner(int model_fd, size_t model_offset,
       data_directory_path_(data_directory_path),
       storage_(storage_path_, error_reporter),
       validation_function_name_(validation_function_name),
-      error_reporter_(error_reporter) {
+      error_reporter_(error_reporter),
+      nnapi_sl_(nnapi_sl) {
 }
 
 MinibenchmarkStatus ValidatorRunner::Init() {
@@ -80,6 +89,9 @@ MinibenchmarkStatus ValidatorRunner::Init() {
   fbb.Finish(CreateComputeSettings(fbb, tflite::ExecutionPreference_ANY,
                                    CreateTFLiteSettings(fbb)));
   std::unique_ptr<Validator> check_validator;
+  // We are not configuring the validator to use the NNAPI Support Library
+  // even if specified since we just want to check that the model can be loaded
+  // from disk and we are not interacting with NNAPI.
   if (!model_path_.empty()) {
     check_validator = std::make_unique<Validator>(
         model_path_,
@@ -120,6 +132,29 @@ MinibenchmarkStatus ValidatorRunner::Init() {
   if (status != kMinibenchmarkSuccess) {
     TF_LITE_REPORT_ERROR(error_reporter_, "Storage::Read failed");
     return status;
+  }
+
+  if (nnapi_sl_) {
+    Dl_info dl_info;
+    // Looking for the file where the NNAPI SL is loaded from. We are using
+    // the ANeuralNetworks_getRuntimeFeatureLevel because it is a required
+    // function for NNAPI drivers.
+    // If the function is not defined or it wasn't defined in any of the shared
+    // libraries loaded by the calling process we fail with a specific error
+    // code.
+    // This could happen only if the NNAPI Support Library pointer set into
+    // our TfLiteSettings comes from an invalid NNAPI SL library or there
+    // is some error in the NNAPI loading code.
+    if (!nnapi_sl_->ANeuralNetworks_getRuntimeFeatureLevel) {
+      return kMiniBenchmarkCannotLoadSupportLibrary;
+    }
+    int status = dladdr(reinterpret_cast<void*>(
+                            nnapi_sl_->ANeuralNetworks_getRuntimeFeatureLevel),
+                        &dl_info);
+    if (status == 0 || !dl_info.dli_fname) {
+      return kMiniBenchmarkCannotLoadSupportLibrary;
+    }
+    nnapi_sl_path_ = dl_info.dli_fname;
   }
 
   return kMinibenchmarkSuccess;
@@ -189,63 +224,73 @@ int ValidatorRunner::TriggerMissingValidation(
 
   // We purposefully detach the thread and have it own all the data. The
   // runner may potentially hang, so we can't wait for it to terminate.
-  std::thread detached_thread(
-      [model_path = model_path, storage_path = storage_path_,
-       data_directory_path = data_directory_path_, to_be_run,
-       validation_function_name = validation_function_name_]() {
-        FileLock lock(storage_path + ".parent_lock");
-        if (!lock.TryLock()) {
-          return;
-        }
-        for (auto one_to_run : to_be_run) {
-          FlatbufferStorage<BenchmarkEvent> storage(storage_path);
-          TFLiteSettingsT tflite_settings;
-          flatbuffers::GetRoot<TFLiteSettings>(one_to_run->GetBufferPointer())
-              ->UnPackTo(&tflite_settings);
-          int (*validation_entrypoint)(int, char**) = nullptr;
-          TFLITE_LOG_PROD(TFLITE_LOG_INFO,
-                          "Loading validation entry point '%s'",
-                          validation_function_name.c_str());
+  std::thread detached_thread([model_path = model_path,
+                               storage_path = storage_path_,
+                               data_directory_path = data_directory_path_,
+                               to_be_run,
+                               validation_function_name =
+                                   validation_function_name_,
+                               nnapi_sl_path = nnapi_sl_path_]() {
+    FileLock lock(storage_path + ".parent_lock");
+    if (!lock.TryLock()) {
+      return;
+    }
+    for (auto one_to_run : to_be_run) {
+      FlatbufferStorage<BenchmarkEvent> storage(storage_path);
+      TFLiteSettingsT tflite_settings;
+      flatbuffers::GetRoot<TFLiteSettings>(one_to_run->GetBufferPointer())
+          ->UnPackTo(&tflite_settings);
+      int (*validation_entrypoint)(int, char**) = nullptr;
+      TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Loading validation entry point '%s'",
+                      validation_function_name.c_str());
 #ifndef _WIN32
-          validation_entrypoint = reinterpret_cast<int (*)(int, char**)>(
-              dlsym(RTLD_DEFAULT, validation_function_name.c_str()));
+      validation_entrypoint = reinterpret_cast<int (*)(int, char**)>(
+          dlsym(RTLD_DEFAULT, validation_function_name.c_str()));
 #endif  // !_WIN32
-          ProcessRunner runner(data_directory_path,
-                               validation_function_name.c_str(),
-                               validation_entrypoint);
-          int exitcode = 0;
-          int signal = 0;
-          MinibenchmarkStatus status = runner.Init();
-          if (status == kMinibenchmarkSuccess) {
-            flatbuffers::FlatBufferBuilder fbb;
-            status = storage.Append(
-                &fbb,
-                CreateBenchmarkEvent(
-                    fbb, CreateTFLiteSettings(fbb, &tflite_settings),
-                    BenchmarkEventType_START, /* result */ 0, /* error */ 0,
-                    Validator::BootTimeMicros(), Validator::WallTimeMicros()));
-            if (status == kMinibenchmarkSuccess) {
-              std::vector<std::string> args{model_path, storage_path,
-                                            data_directory_path};
-              std::string output;
-              status = runner.Run(args, &output, &exitcode, &signal);
-            }
+      ProcessRunner runner(data_directory_path,
+                           validation_function_name.c_str(),
+                           validation_entrypoint);
+      int exitcode = 0;
+      int signal = 0;
+      MinibenchmarkStatus status = runner.Init();
+      if (status == kMinibenchmarkSuccess) {
+        flatbuffers::FlatBufferBuilder fbb;
+        status = storage.Append(
+            &fbb,
+            CreateBenchmarkEvent(
+                fbb, CreateTFLiteSettings(fbb, &tflite_settings),
+                BenchmarkEventType_START, /* result */ 0, /* error */ 0,
+                Validator::BootTimeMicros(), Validator::WallTimeMicros()));
+        if (status == kMinibenchmarkSuccess) {
+          std::vector<std::string> args{model_path, storage_path,
+                                        data_directory_path};
+          if (!nnapi_sl_path.empty() &&
+              tflite_settings.delegate == tflite::Delegate_NNAPI) {
+            TFLITE_LOG_PROD(
+                TFLITE_LOG_INFO,
+                "Running benchmark using NNAPI support library at path '%s'",
+                nnapi_sl_path.c_str());
+            args.push_back(nnapi_sl_path);
           }
-          if (status != kMinibenchmarkSuccess) {
-            std::cout << "Run() returned " << status << std::endl;
-            flatbuffers::FlatBufferBuilder fbb;
-            storage.Append(
-                &fbb,
-                CreateBenchmarkEvent(
-                    fbb, CreateTFLiteSettings(fbb, &tflite_settings),
-                    BenchmarkEventType_ERROR, /* result */ 0,
-                    CreateBenchmarkError(fbb, BenchmarkStage_UNKNOWN, status,
-                                         signal, {}, exitcode),
-                    Validator::BootTimeMicros(), Validator::WallTimeMicros()));
-          }
-          delete one_to_run;
+          std::string output;
+          status = runner.Run(args, &output, &exitcode, &signal);
         }
-      });
+      }
+      if (status != kMinibenchmarkSuccess) {
+        std::cout << "Run() returned " << status << std::endl;
+        flatbuffers::FlatBufferBuilder fbb;
+        storage.Append(
+            &fbb,
+            CreateBenchmarkEvent(
+                fbb, CreateTFLiteSettings(fbb, &tflite_settings),
+                BenchmarkEventType_ERROR, /* result */ 0,
+                CreateBenchmarkError(fbb, BenchmarkStage_UNKNOWN, status,
+                                     signal, {}, exitcode),
+                Validator::BootTimeMicros(), Validator::WallTimeMicros()));
+      }
+      delete one_to_run;
+    }
+  });
   detached_thread.detach();
 
   return to_be_run.size();

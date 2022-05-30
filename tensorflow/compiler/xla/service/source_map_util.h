@@ -19,7 +19,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 namespace source_map_util {
@@ -29,7 +28,7 @@ template <typename... Args>
 Status InvalidParameterArgument(const OpMetadata& op_metadata,
                                 const absl::FormatSpec<Args...>& format,
                                 const Args&... args) {
-  string message = absl::StrFormat(format, args...);
+  std::string message = absl::StrFormat(format, args...);
   if (!op_metadata.source_file().empty()) {
     absl::StrAppendFormat(&message, " (%s:%d)", op_metadata.source_file(),
                           op_metadata.source_line());

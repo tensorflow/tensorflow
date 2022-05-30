@@ -27,15 +27,16 @@ limitations under the License.
 
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
 
 TfLiteStatus UnresolvedOpInvoke(TfLiteContext* context, TfLiteNode* node) {
-  context->ReportError(context,
-                       "Encountered an unresolved custom op. Did you miss "
-                       "a custom op or delegate?");
+  TF_LITE_KERNEL_LOG(context,
+                     "Encountered an unresolved custom op. Did you miss "
+                     "a custom op or delegate?");
   return kTfLiteError;
 }
 
@@ -59,9 +60,9 @@ TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input) {
                                       input.data());
 }
 
-TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int rank, const int* dims) {
-  TfLiteIntArray* output = TfLiteIntArrayCreate(rank);
-  for (size_t i = 0; i < rank; i++) {
+TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int ndims, const int* dims) {
+  TfLiteIntArray* output = TfLiteIntArrayCreate(ndims);
+  for (size_t i = 0; i < ndims; i++) {
     output->data[i] = dims[i];
   }
   return output;
@@ -119,6 +120,9 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
     case kTfLiteComplex128:
       *bytes = sizeof(std::complex<double>);
       break;
+    case kTfLiteUInt16:
+      *bytes = sizeof(uint16_t);
+      break;
     case kTfLiteInt16:
       *bytes = sizeof(int16_t);
       break;
@@ -133,7 +137,7 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
       break;
     default:
       if (context) {
-        context->ReportError(
+        TF_LITE_KERNEL_LOG(
             context,
             "Type %d is unsupported. Only float16, float32, float64, int8, "
             "int16, int32, int64, uint8, uint64, bool, complex64 and "
@@ -175,5 +179,20 @@ std::string GetOpNameByRegistration(const TfLiteRegistration& registration) {
 bool IsValidationSubgraph(const char* name) {
   // NOLINTNEXTLINE: can't use absl::StartsWith as absl is not allowed.
   return name && std::string(name).find(kValidationSubgraphNamePrefix) == 0;
+}
+
+TfLiteStatus MultiplyAndCheckOverflow(size_t a, size_t b, size_t* product) {
+  // Multiplying a * b where a and b are size_t cannot result in overflow in a
+  // size_t accumulator if both numbers have no non-zero bits in their upper
+  // half.
+  constexpr size_t size_t_bits = 8 * sizeof(size_t);
+  constexpr size_t overflow_upper_half_bit_position = size_t_bits / 2;
+  *product = a * b;
+  // If neither integers have non-zero bits past 32 bits can't overflow.
+  // Otherwise check using slow devision.
+  if (TFLITE_EXPECT_FALSE((a | b) >> overflow_upper_half_bit_position != 0)) {
+    if (a != 0 && *product / a != b) return kTfLiteError;
+  }
+  return kTfLiteOk;
 }
 }  // namespace tflite

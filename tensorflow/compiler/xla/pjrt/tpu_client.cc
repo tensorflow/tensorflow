@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
 
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -34,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/tpu/tpu_initializer_helper.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/stream.h"
@@ -83,7 +86,7 @@ PjRtTpuClient::PjRtTpuClient(
     LocalClient* client,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
     int process_index)
-    : PjRtStreamExecutorClient(kTpuName, client, std::move(devices),
+    : PjRtStreamExecutorClient(TpuName(), client, std::move(devices),
                                process_index,
                                /*allocator=*/nullptr,
                                /*host_memory_allocator=*/nullptr,
@@ -99,7 +102,21 @@ PjRtTpuClient::PjRtTpuClient(
         return absl::StrCat(
             "libtpu version ", absl::StrJoin(version.version, "."), "\n",
             absl::string_view(version.metadata, version.metadata_size));
-      }()) {}
+      }()) {
+  // We always initialize the tpu client even if libtpu isn't linked in or
+  // initialized.
+  if (tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_InitFn !=
+      nullptr) {
+    tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_InitFn();
+  }
+}
+
+PjRtTpuClient::~PjRtTpuClient() {
+  if (tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_ShutdownFn !=
+      nullptr) {
+    tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_ShutdownFn();
+  }
+}
 
 StatusOr<DeviceAssignment> PjRtTpuClient::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
@@ -230,6 +247,9 @@ GetTpuDevices(
 
 StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
     int max_inflight_computations, absl::Duration init_retry_timeout) {
+#if !defined(PLATFORM_GOOGLE) || defined(LIBTPU_ON_GCE)
+  TF_RETURN_IF_ERROR(tensorflow::tpu::FindAndLoadTpuLibrary());
+#endif
   tf_tpu::TpuPlatformInterface* platform =
       tf_tpu::TpuPlatformInterface::GetRegisteredPlatform(
           /*initialize_platform=*/true, /*num_tries=*/1);

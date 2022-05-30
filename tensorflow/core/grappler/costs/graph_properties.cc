@@ -1134,7 +1134,12 @@ class SymbolicShapeRefiner {
         GetUnknownOutputShape(node, output_port);
     InferenceContext* ctx = GetContext(node);
     if (ctx == nullptr) {
-      return errors::InvalidArgument("Missing context");
+      return errors::InvalidArgument("SetUnknownShape: Missing context");
+    }
+    if (output_port < 0 || output_port >= ctx->num_outputs()) {
+      return errors::InvalidArgument(
+          "SetUnknownShape: output_port must be in [0, ", ctx->num_outputs(),
+          ") but was ", output_port);
     }
     ctx->set_output(output_port, shape);
     return Status::OK();
@@ -1298,14 +1303,15 @@ class SymbolicShapeRefiner {
     return true;
   }
 
-  Status AddFunction(const NodeDef* function_node, NameAttrList function) {
-    auto it = fun_to_grappler_function_item_.find(function.name());
+  Status AddFunction(const NodeDef* function_node,
+                     const std::string& function_name) {
+    auto it = fun_to_grappler_function_item_.find(function_name);
     if (it != fun_to_grappler_function_item_.end()) {
       return Status::OK();
     }
 
     const FunctionDef* function_def =
-        CHECK_NOTNULL(function_library_.Find(function.name()));
+        CHECK_NOTNULL(function_library_.Find(function_name));
     GrapplerFunctionItem grappler_function_item;
     Status function_instantiated =
         MakeGrapplerFunctionItem(*function_def, function_library_,
@@ -1353,7 +1359,7 @@ class SymbolicShapeRefiner {
         function_library_.LookUp(function.name(), &node_ctx.op_data));
 
     if (node_ctx.op_data->is_function_op) {
-      TF_RETURN_IF_ERROR(AddFunction(node, function));
+      TF_RETURN_IF_ERROR(AddFunction(node, function.name()));
     }
 
     TF_RETURN_IF_ERROR(InOutTypesForNode(*node, node_ctx.op_data->op_def,
@@ -2762,8 +2768,7 @@ Status GraphProperties::InferDynamically(Cluster* cluster) {
   return InferFromCostGraph(metadata.cost_graph());
 }
 
-Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def,
-                                             bool allow_symbolic_shapes) const {
+Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def) const {
   *output_graph_def = item_.graph;
   for (int i = 0; i < output_graph_def->node_size(); i++) {
     auto node = output_graph_def->mutable_node(i);
@@ -2772,11 +2777,9 @@ Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def,
     for (const auto& tensor_property : tensor_properties) {
       TensorShapeProto* proto = attr_output_shape.mutable_list()->add_shape();
       *proto = tensor_property.shape();
-      if (!allow_symbolic_shapes) {
-        NormalizeShapeForOutput(proto);
-      }
+      NormalizeShapeForOutput(proto);
     }
-    (*node->mutable_attr())["_output_shapes"] = attr_output_shape;
+    (*node->mutable_attr())["_output_shapes"] = std::move(attr_output_shape);
   }
   return Status::OK();
 }

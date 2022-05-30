@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
+#include "third_party/gpus/cudnn/cudnn.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
@@ -31,11 +33,14 @@ limitations under the License.
 namespace tensorflow {
 
 #if GOOGLE_CUDA
-template <typename LaunchFunc>
+namespace {
+
+template <typename LaunchFunc, typename Sig>
 StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneConvImpl(
-    OpKernelContext* ctx, const std::vector<se::dnn::AlgorithmConfig>& configs,
-    const LaunchFunc& launch_func, size_t scratch_size_limit,
-    const se::RedzoneAllocator& rz_allocator) {
+    OpKernelContext* ctx,
+    std::vector<std::unique_ptr<const se::dnn::OpRunner<Sig>>>& runners,
+    bool actually_do_autotune, const LaunchFunc& launch_func,
+    size_t scratch_size_limit, const se::RedzoneAllocator& rz_allocator) {
   auto* stream = ctx->op_device_context()->stream();
 
   se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
@@ -43,7 +48,7 @@ StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneConvImpl(
 
   std::vector<tensorflow::AutotuneResult> results;
   // TODO(reedwm): Warn if determinism is enabled after autotune is run
-  for (const auto& profile_config : configs) {
+  for (auto& runner : runners) {
     // TODO(zhengxq): profile each algorithm multiple times to better
     // accuracy.
     se::RedzoneAllocator rz_scratch_allocator(
@@ -55,23 +60,24 @@ StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneConvImpl(
             ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
             : static_cast<se::ScratchAllocator*>(&scratch_allocator);
 
+    SE_ASSIGN_OR_RETURN(auto desc, runner->ToAlgorithmDesc());
     se::dnn::ProfileResult profile_result;
     Status cudnn_launch_status =
-        launch_func(allocator_used, profile_config, &profile_result);
+        actually_do_autotune
+            ? launch_func(allocator_used, runner, &profile_result)
+            : Status::OK();
+    if (!actually_do_autotune) {
+      // Make the result valid according to `is_valid`.
+      profile_result.set_algorithm(desc);
+      profile_result.set_elapsed_time_in_ms(0);
+    }
 
+    // We need to make sure the profiling results are one-to-one with the
+    // "runners". So, we insert dummy results when the execution fails.
+    results.emplace_back();
+    auto& result = results.back();
+    *result.mutable_algorithm() = desc.ToProto();
     if (cudnn_launch_status.ok() && profile_result.is_valid()) {
-      results.emplace_back();
-      auto& result = results.back();
-      if (CudnnUseFrontend()) {
-        result.mutable_cuda_conv_plan()->set_exec_plan_id(
-            profile_config.algorithm()->exec_plan_id());
-      } else {
-        result.mutable_conv()->set_algorithm(
-            profile_config.algorithm()->algo_id());
-        result.mutable_conv()->set_tensor_ops_enabled(
-            profile_config.algorithm()->tensor_ops_enabled());
-      }
-
       result.set_scratch_bytes(
           !RedzoneCheckDisabled()
               ? rz_scratch_allocator.TotalAllocatedBytesExcludingRedzones()
@@ -81,31 +87,49 @@ StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneConvImpl(
 
       CheckRedzones(rz_scratch_allocator, &result);
       CheckRedzones(rz_allocator, &result);
-    } else if (CudnnUseFrontend()) {
-      // When CuDNN frontend APIs are used, we need to make sure the profiling
-      // results are one-to-one mapping of the "plans". So, we insert dummy
-      // results when the execution fails.
-      results.emplace_back();
-      auto& result = results.back();
+    } else {
       result.mutable_failure()->set_kind(AutotuneResult::UNKNOWN);
       result.mutable_failure()->set_msg(
-          absl::StrCat("Profiling failure on CUDNN engine: ",
-                       profile_config.algorithm()->exec_plan_id()));
+          absl::StrCat("Profiling failure on CUDNN engine ", desc.ToString(),
+                       ": ", cudnn_launch_status.ToString()));
     }
   }
 
   return results;
 }
+}  // namespace
 #endif  // GOOGLE_CUDA
+
+bool ComputeInNhwcEnabled(DataType data_type, se::Stream* stream,
+                          bool is_conv2d) {
+#if GOOGLE_CUDA
+  // Tensor Core supports efficient convolution with fp16 for NVIDIA Volta+
+  // GPUs and tf32 for Ampere+ GPUs in NHWC data layout. In all other
+  // configurations it's more efficient to run computation in NCHW data format.
+  bool use_nhwc_tf32 = data_type == DT_FLOAT &&
+                       stream->GetCudaComputeCapability().IsAtLeast(
+                           se::CudaComputeCapability::AMPERE) &&
+                       tensorflow::tensor_float_32_execution_enabled();
+  bool use_nhwc_fp16 =
+      data_type == DT_HALF && stream->GetCudaComputeCapability().IsAtLeast(
+                                  se::CudaComputeCapability::VOLTA);
+  if (is_conv2d) {
+    return use_nhwc_fp16 || use_nhwc_tf32;
+  }
+  return CUDNN_VERSION >= 8000 && (use_nhwc_fp16 || use_nhwc_tf32);
+#else
+  return false;
+#endif  // GOOGLE_CUDA
+}
 
 // Finds the best convolution algorithm for the given ConvLaunch (cuda
 // convolution on the stream) and parameters, by running all possible
 // algorithms and measuring execution time.
-// TODO(ezhulenev): Move it to conv_ops_gpu.h and share with conv_ops.cc.
 template <typename T>
-StatusOr<se::dnn::AlgorithmConfig> AutotuneFusedConv(
+StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
     bool cudnn_use_autotune,
-    AutotuneMap<ConvParameters, se::dnn::AlgorithmConfig>* autotune_map,
+    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::FusedConvOp>>*
+        autotune_map,
     const ConvParameters& params, OpKernelContext* ctx,
     const se::dnn::BatchDescriptor& input_desc,
     const se::dnn::FilterDescriptor& filter_desc,
@@ -118,51 +142,11 @@ StatusOr<se::dnn::AlgorithmConfig> AutotuneFusedConv(
     se::DeviceMemory<T> bias_ptr, se::DeviceMemory<T> side_input_ptr,
     int64_t scratch_size_limit) {
 #if GOOGLE_CUDA
-  se::dnn::AlgorithmConfig algorithm_config;
+  AutotuneEntry<se::dnn::FusedConvOp> autotune_entry;
   auto* stream = ctx->op_device_context()->stream();
 
-  if (cudnn_use_autotune) {
-    // Check if we already have an algorithm selected for the given parameters.
-    if (autotune_map->Find(params, &algorithm_config)) {
-      return algorithm_config;
-    }
+  if (!autotune_map->Find(params, &autotune_entry)) {
     profiler::ScopedAnnotation trace("cudnn_autotuning");
-
-    // Find all candidate algorithms or execution plans (for CuDNN frontend
-    // APIs).
-    std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
-    std::vector<se::dnn::AlgorithmDesc> algorithms;
-    std::vector<se::dnn::AlgorithmConfig> configs;
-    if (CudnnUseFrontend()) {
-      if (!stream->parent()
-               ->GetFusedConvolveExecutionPlans(
-                   se::dnn::ConvolutionKind::FORWARD,
-                   se::dnn::ToDataType<T>::value, conv_scale, side_input_scale,
-                   stream, input_desc, filter_desc, bias_desc, output_desc,
-                   conv_desc, activation_mode, &plans)
-               .ok()) {
-        return errors::Unknown(
-            "Failed to get convolution plans. This is probably because cuDNN "
-            "failed to initialize, so try looking to see if a warning log "
-            "message was printed above.");
-      }
-      for (const auto& plan : plans) {
-        configs.push_back(se::dnn::AlgorithmConfig(
-            se::dnn::AlgorithmDesc{plan->getTag(), plan->get_raw_desc()},
-            plan->getWorkspaceSize()));
-      }
-    } else {
-      if (!stream->parent()->GetConvolveAlgorithms(
-              se::dnn::ConvolutionKind::FORWARD, &algorithms)) {
-        return errors::Unknown(
-            "Failed to get convolution algorithm. This is probably because "
-            "cuDNN failed to initialize, so try looking to see if a warning "
-            "log message was printed above.");
-      }
-      for (const auto& algorithm : algorithms) {
-        configs.push_back(se::dnn::AlgorithmConfig(algorithm));
-      }
-    }
 
     se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
                                                 stream);
@@ -171,82 +155,94 @@ StatusOr<se::dnn::AlgorithmConfig> AutotuneFusedConv(
     se::DeviceMemory<T> output_ptr_rz(
         WrapRedzoneBestEffort(&rz_allocator, output_ptr));
 
-    auto launch_func = [&](se::ScratchAllocator* allocator_used,
-                           se::dnn::AlgorithmConfig profile_config,
-                           se::dnn::ProfileResult* profile_result) -> Status {
-      if (CudnnUseFrontend()) {
-        return stream->FusedConvolveWithExecutionPlan(
-            input_desc, input_ptr,             // input
-            conv_scale,                        // input_scale
-            filter_desc, filter_ptr,           // filter
-            conv_desc,                         // conv
-            side_input_ptr, side_input_scale,  // side_input
-            bias_desc, bias_ptr,               // bias
-            activation_mode,                   // activation
-            output_desc, &output_ptr_rz,       // output
-            allocator_used, profile_config, profile_result);
-      } else {
-        return stream->FusedConvolveWithAlgorithm(
-            input_desc, input_ptr,             // input
-            conv_scale,                        // input_scale
-            filter_desc, filter_ptr,           // filter
-            conv_desc,                         // conv
-            side_input_ptr, side_input_scale,  // side_input
-            bias_desc, bias_ptr,               // bias
-            activation_mode,                   // activation
-            output_desc, &output_ptr_rz,       // output
-            allocator_used, profile_config, profile_result);
-      }
+    std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>> runners;
+    auto element_type = se::dnn::ToDataType<T>::value;
+    SE_RETURN_IF_ERROR(stream->parent()->GetFusedConvolveRunners(
+        CudnnUseFrontend(), se::dnn::ConvolutionKind::FORWARD, element_type,
+        element_type, element_type, conv_scale, side_input_scale, stream,
+        input_desc, filter_desc, bias_desc, output_desc, conv_desc,
+        /*use_fallback=*/false, activation_mode, &runners));
+
+    auto launch_func =
+        [&](se::ScratchAllocator* allocator_used,
+            const std::unique_ptr<const se::dnn::FusedConvRunner>& runner,
+            se::dnn::ProfileResult* profile_result) -> Status {
+      TF_ASSIGN_OR_RETURN(auto scratch, allocator_used->AllocateBytes(
+                                            runner->GetWorkspaceSize()));
+      return (*runner)(stream, profile_result, scratch, input_ptr, filter_ptr,
+                       side_input_ptr, bias_ptr, output_ptr_rz);
     };
 
-    SE_ASSIGN_OR_RETURN(auto results,
-                        AutotuneConvImpl(ctx, configs, launch_func,
-                                         scratch_size_limit, rz_allocator));
-
+    SE_ASSIGN_OR_RETURN(
+        auto results,
+        AutotuneConvImpl(ctx, runners, cudnn_use_autotune, launch_func,
+                         scratch_size_limit, rz_allocator));
     // Only log on an AutotuneConv cache miss.
     LogFusedConvForwardAutotuneResults(
         se::dnn::ToDataType<T>::value, input_ptr, filter_ptr, output_ptr,
         bias_ptr, side_input_ptr, input_desc, filter_desc, output_desc,
         conv_desc, conv_scale, side_input_scale, activation_mode,
         stream->parent(), results);
-    TF_RETURN_IF_ERROR(
-        BestCudnnConvAlgorithm(results, &plans, &algorithm_config));
-    autotune_map->Insert(params, algorithm_config);
-  } else if (CudnnUseFrontend()) {
-    // FusedConvolveWithExecutionPlan does not fall back to a default algorithm
-    // if unspecified; we have to choose one.  Since autotuning is disabled,
-    // choose arbitrarily the first one we find that fits in the memory limit.
-    std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
-    TF_RETURN_IF_ERROR(stream->parent()->GetFusedConvolveExecutionPlans(
-        se::dnn::ConvolutionKind::FORWARD, se::dnn::ToDataType<T>::value,
-        conv_scale, side_input_scale, stream, input_desc, filter_desc,
-        bias_desc, output_desc, conv_desc, activation_mode, &plans));
-    for (auto& plan : plans) {
-      if (plan->getWorkspaceSize() <= scratch_size_limit) {
-        algorithm_config = se::dnn::AlgorithmConfig(
-            se::dnn::AlgorithmDesc{plan->getTag(), plan->get_raw_desc()},
-            plan->getWorkspaceSize());
-        algorithm_config.set_plan(plan);
+
+    // Two-level autotuning: Cudnn frontend supports two engine lists:
+    // heuristics and fallback. Heuristics engines are normally faster.
+    // To reduce autotuning time, we evaluate the fallback engines only when
+    // none of the heuristics engines work.
+    bool found_working_engine = false;
+    for (auto& result : results) {
+      if (!result.has_failure()) {
+        found_working_engine = true;
         break;
       }
     }
-    if (!algorithm_config.algorithm()) {
-      return errors::Internal(
-          absl::StrFormat("No available convolution algorithm fit in the "
-                          "scratch space limit of %d bytes",
-                          scratch_size_limit));
+
+    if (!CudnnUseFrontend() || found_working_engine) {
+      TF_ASSIGN_OR_RETURN(autotune_entry,
+                          BestCudnnConvAlgorithm<se::dnn::FusedConvOp>(
+                              results, std::move(runners)));
+    } else {
+      LOG(WARNING)
+          << "None of the algorithms provided by cuDNN frontend heuristics "
+             "worked; trying fallback algorithms.  Conv: "
+          << params.ToString();
+      std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>>
+          fallback_runners;
+      SE_RETURN_IF_ERROR(stream->parent()->GetFusedConvolveRunners(
+          CudnnUseFrontend(), se::dnn::ConvolutionKind::FORWARD, element_type,
+          element_type, element_type, conv_scale, side_input_scale, stream,
+          input_desc, filter_desc, bias_desc, output_desc, conv_desc,
+          /*use_fallback=*/true, activation_mode, &fallback_runners));
+
+      SE_ASSIGN_OR_RETURN(
+          auto fallback_results,
+          AutotuneConvImpl(ctx, fallback_runners, cudnn_use_autotune,
+                           launch_func, scratch_size_limit, rz_allocator));
+
+      LogFusedConvForwardAutotuneResults(
+          se::dnn::ToDataType<T>::value, input_ptr, filter_ptr, output_ptr,
+          bias_ptr, side_input_ptr, input_desc, filter_desc, output_desc,
+          conv_desc, conv_scale, side_input_scale, activation_mode,
+          stream->parent(), fallback_results);
+
+      TF_ASSIGN_OR_RETURN(autotune_entry,
+                          BestCudnnConvAlgorithm<se::dnn::FusedConvOp>(
+                              fallback_results, std::move(fallback_runners)));
     }
+
+    autotune_map->Insert(params, autotune_entry);
   }
-  return algorithm_config;
+  return autotune_entry;
 #else
   return errors::Unimplemented(
       "Fused conv not implemented on non-CUDA platforms.");
 #endif
 }
 
-template StatusOr<se::dnn::AlgorithmConfig> AutotuneFusedConv<double>(
+template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>>
+AutotuneFusedConv<double>(
     bool cudnn_use_autotune,
-    AutotuneMap<ConvParameters, se::dnn::AlgorithmConfig>* autotune_map,
+    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::FusedConvOp>>*
+        autotune_map,
     const ConvParameters& params, OpKernelContext* ctx,
     const se::dnn::BatchDescriptor& input_desc,
     const se::dnn::FilterDescriptor& filter_desc,
@@ -259,9 +255,10 @@ template StatusOr<se::dnn::AlgorithmConfig> AutotuneFusedConv<double>(
     se::DeviceMemory<double> bias_ptr, se::DeviceMemory<double> side_input_ptr,
     int64_t scratch_size_limit);
 
-template StatusOr<se::dnn::AlgorithmConfig> AutotuneFusedConv<float>(
+template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv<float>(
     bool cudnn_use_autotune,
-    AutotuneMap<ConvParameters, se::dnn::AlgorithmConfig>* autotune_map,
+    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::FusedConvOp>>*
+        autotune_map,
     const ConvParameters& params, OpKernelContext* ctx,
     const se::dnn::BatchDescriptor& input_desc,
     const se::dnn::FilterDescriptor& filter_desc,
@@ -275,9 +272,9 @@ template StatusOr<se::dnn::AlgorithmConfig> AutotuneFusedConv<float>(
     int64_t scratch_size_limit);
 
 template <typename T>
-StatusOr<se::dnn::AlgorithmConfig> AutotuneUnfusedConv(
+StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
     bool cudnn_use_autotune,
-    AutotuneMap<ConvParameters, se::dnn::AlgorithmConfig>* autotune_map,
+    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::ConvOp>>* autotune_map,
     const ConvParameters& conv_parameters, OpKernelContext* ctx,
     se::dnn::ConvolutionKind kind, const se::dnn::BatchDescriptor& input_desc,
     se::DeviceMemory<T> input_ptr, const se::dnn::FilterDescriptor& filter_desc,
@@ -285,195 +282,169 @@ StatusOr<se::dnn::AlgorithmConfig> AutotuneUnfusedConv(
     const se::dnn::ConvolutionDescriptor& conv_desc,
     const se::dnn::BatchDescriptor& output_desc, se::DeviceMemory<T> output_ptr,
     int64_t scratch_size_limit) {
-  se::dnn::AlgorithmConfig algorithm_config;
+  AutotuneEntry<se::dnn::ConvOp> autotune_entry;
 
   auto* stream = ctx->op_device_context()->stream();
 
-  // cudnn_use_autotune is applicable only the CUDA flow
-  // for ROCm/MIOpen, we need to call GetMIOpenConvolveAlgorithms explicitly
-  // if we do not have a cached algorithm_config for this conv_parameters
-  bool do_autotune =
-#if TENSORFLOW_USE_ROCM
-      true ||
-#endif
-      cudnn_use_autotune;
-  if (do_autotune) {
-    if (!autotune_map->Find(conv_parameters, &algorithm_config)) {
-      profiler::ScopedAnnotation annotation("cudnn_autotuning");
+  if (!autotune_map->Find(conv_parameters, &autotune_entry)) {
+    profiler::ScopedAnnotation annotation("cudnn_autotuning");
 
-      std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
 #if GOOGLE_CUDA
-      std::vector<se::dnn::AlgorithmDesc> algorithms;
-      std::vector<se::dnn::AlgorithmConfig> configs;
-      const auto get_algo_failed_error = errors::Unknown(
-          "Failed to get convolution algorithm. This is probably because cuDNN "
-          "failed to initialize, so try looking to see if a warning log "
-          "message "
-          "was printed above.");
+    se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
+                                                stream);
+    se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
+                                      se::GpuAsmOpts());
 
-      if (CudnnUseFrontend()) {
-        if (!stream->parent()->GetConvolveExecutionPlans(
-                kind, se::dnn::ToDataType<T>::value, stream, input_desc,
-                filter_desc, output_desc, conv_desc, &plans)) {
-          return get_algo_failed_error;
-        }
-        for (const auto& plan : plans) {
-          configs.push_back(se::dnn::AlgorithmConfig(
-              se::dnn::AlgorithmDesc{plan->getTag(), plan->get_raw_desc()},
-              plan->getWorkspaceSize()));
-        }
-      } else {
-        if (!stream->parent()->GetConvolveAlgorithms(kind, &algorithms)) {
-          return get_algo_failed_error;
-        }
-        for (const auto& algorithm : algorithms) {
-          configs.push_back(se::dnn::AlgorithmConfig(algorithm));
-        }
-      }
-
-      se::TfAllocatorAdapter tf_allocator_adapter(
-          ctx->device()->GetAllocator({}), stream);
-      se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
-                                        se::GpuAsmOpts());
-
-      // TODO(awpr): second-guess whether it's okay that this profiles
-      // convolutions on uninitialized memory.
-      switch (kind) {
-        case se::dnn::ConvolutionKind::FORWARD:
-        case se::dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION:
-          output_ptr = se::DeviceMemory<T>(
-              WrapRedzoneBestEffort(&rz_allocator, output_ptr));
-          break;
-        case se::dnn::ConvolutionKind::BACKWARD_DATA:
-          input_ptr = se::DeviceMemory<T>(
-              WrapRedzoneBestEffort(&rz_allocator, input_ptr));
-          break;
-        case se::dnn::ConvolutionKind::BACKWARD_FILTER:
-          filter_ptr = se::DeviceMemory<T>(
-              WrapRedzoneBestEffort(&rz_allocator, filter_ptr));
-          break;
-        default:
-          return errors::InvalidArgument(
-              absl::StrFormat("Unknown ConvolutionKind %d", kind));
-      }
-
-      auto launch_func = [&](se::ScratchAllocator* allocator_used,
-                             se::dnn::AlgorithmConfig profile_config,
-                             se::dnn::ProfileResult* profile_result) -> Status {
-        if (CudnnUseFrontend()) {
-          return stream->ConvolveWithExecutionPlan(
-              kind, input_desc, input_ptr, filter_desc, filter_ptr, output_desc,
-              output_ptr, conv_desc, allocator_used, profile_config,
-              profile_result);
-        } else {
-          return stream->ConvolveWithAlgorithm(
-              kind, input_desc, input_ptr, filter_desc, filter_ptr, output_desc,
-              output_ptr, conv_desc, allocator_used, profile_config,
-              profile_result);
-        }
-      };
-
-      SE_ASSIGN_OR_RETURN(auto results,
-                          AutotuneConvImpl(ctx, configs, launch_func,
-                                           scratch_size_limit, rz_allocator));
-#elif TENSORFLOW_USE_ROCM
-      DnnScratchAllocator scratch_allocator(scratch_size_limit, ctx);
-
-      std::vector<se::dnn::ProfileResult> algorithms;
-      if (!stream->parent()->GetMIOpenConvolveAlgorithms(
-              kind, se::dnn::ToDataType<T>::value, stream, input_desc,
-              input_ptr, filter_desc, filter_ptr, output_desc, output_ptr,
-              conv_desc, &scratch_allocator, &algorithms)) {
-        return errors::Unknown(
-            "Failed to get convolution algorithm. This is probably "
-            "because MIOpen failed to initialize, so try looking to "
-            "see if a warning log message was printed above.");
-      }
-
-      std::vector<tensorflow::AutotuneResult> results;
-      if (algorithms.size() == 1) {
-        auto profile_result = algorithms[0];
-        results.emplace_back();
-        auto& result = results.back();
-        result.mutable_conv()->set_algorithm(
-            profile_result.algorithm().algo_id());
-        result.mutable_conv()->set_tensor_ops_enabled(
-            profile_result.algorithm().tensor_ops_enabled());
-
-        result.set_scratch_bytes(profile_result.scratch_size());
-        *result.mutable_run_time() = proto_utils::ToDurationProto(
-            absl::Milliseconds(profile_result.elapsed_time_in_ms()));
-      } else {
-        for (auto miopen_algorithm : algorithms) {
-          auto profile_algorithm = miopen_algorithm.algorithm();
-          se::dnn::ProfileResult profile_result;
-          auto miopen_launch_status = stream->ConvolveWithAlgorithm(
-              kind, input_desc, input_ptr, filter_desc, filter_ptr, output_desc,
-              output_ptr, conv_desc, &scratch_allocator,
-              se::dnn::AlgorithmConfig(profile_algorithm,
-                                       miopen_algorithm.scratch_size()),
-              &profile_result);
-          if (miopen_launch_status.ok() && profile_result.is_valid()) {
-            results.emplace_back();
-            auto& result = results.back();
-            result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
-            result.mutable_conv()->set_tensor_ops_enabled(
-                profile_algorithm.tensor_ops_enabled());
-
-            result.set_scratch_bytes(scratch_allocator.TotalByteSize());
-            *result.mutable_run_time() = proto_utils::ToDurationProto(
-                absl::Milliseconds(profile_result.elapsed_time_in_ms()));
-          }
-        }
-      }
-#endif
-      LogConvAutotuneResults(kind, se::dnn::ToDataType<T>::value, input_ptr,
-                             filter_ptr, output_ptr, input_desc, filter_desc,
-                             output_desc, conv_desc, stream->parent(), results);
-
-      SE_RETURN_IF_ERROR(
-          BestCudnnConvAlgorithm(results, &plans, &algorithm_config));
-
-      autotune_map->Insert(conv_parameters, algorithm_config);
+    // TODO(awpr): second-guess whether it's okay that this profiles
+    // convolutions on uninitialized memory.
+    switch (kind) {
+      case se::dnn::ConvolutionKind::FORWARD:
+      case se::dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION:
+        output_ptr = se::DeviceMemory<T>(
+            WrapRedzoneBestEffort(&rz_allocator, output_ptr));
+        break;
+      case se::dnn::ConvolutionKind::BACKWARD_DATA:
+        input_ptr = se::DeviceMemory<T>(
+            WrapRedzoneBestEffort(&rz_allocator, input_ptr));
+        break;
+      case se::dnn::ConvolutionKind::BACKWARD_FILTER:
+        filter_ptr = se::DeviceMemory<T>(
+            WrapRedzoneBestEffort(&rz_allocator, filter_ptr));
+        break;
+      default:
+        return errors::InvalidArgument(
+            absl::StrFormat("Unknown ConvolutionKind %d", kind));
     }
-#if GOOGLE_CUDA
-  } else if (CudnnUseFrontend()) {
-    // Convolve.*WithExecutionPlan does not fall back to a default algorithm if
-    // unspecified; we have to choose one.  Since autotuning is disabled, choose
-    // arbitrarily the first one we find that fits in the memory limit.
-    std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
-    if (!stream->parent()->GetConvolveExecutionPlans(
-            kind, se::dnn::ToDataType<T>::value, stream, input_desc,
-            filter_desc, output_desc, conv_desc, &plans)) {
-      return errors::Unknown(
-          "Failed to get convolution algorithm. This is "
-          "probably because cuDNN failed to initialize, so try "
-          "looking to see if a warning log message was printed "
-          "above.");
-    }
-    for (auto& plan : plans) {
-      if (plan->getWorkspaceSize() <= scratch_size_limit) {
-        algorithm_config = se::dnn::AlgorithmConfig(
-            se::dnn::AlgorithmDesc{plan->getTag(), plan->get_raw_desc()},
-            plan->getWorkspaceSize());
-        algorithm_config.set_plan(plan);
+
+    const auto element_type = se::dnn::ToDataType<T>::value;
+    std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners;
+    TF_RETURN_IF_ERROR(stream->parent()->GetConvolveRunners(
+        CudnnUseFrontend(), kind, element_type, element_type, stream,
+        input_desc, input_ptr, filter_desc, filter_ptr, output_desc, output_ptr,
+        conv_desc, /*use_fallback=*/false, &rz_allocator, &runners));
+    auto launch_func =
+        [&](se::ScratchAllocator* allocator_used,
+            const std::unique_ptr<const se::dnn::ConvRunner>& runner,
+            se::dnn::ProfileResult* profile_result) -> Status {
+      TF_ASSIGN_OR_RETURN(auto scratch, allocator_used->AllocateBytes(
+                                            runner->GetWorkspaceSize()));
+      return (*runner)(stream, profile_result, scratch, input_ptr, filter_ptr,
+                       output_ptr);
+    };
+    SE_ASSIGN_OR_RETURN(
+        auto results,
+        AutotuneConvImpl(ctx, runners, cudnn_use_autotune, launch_func,
+                         scratch_size_limit, rz_allocator));
+
+    LogConvAutotuneResults(kind, se::dnn::ToDataType<T>::value, input_ptr,
+                           filter_ptr, output_ptr, input_desc, filter_desc,
+                           output_desc, conv_desc, stream->parent(), results);
+
+    // Two-level autotuning: Cudnn frontend supports two engine lists:
+    // heuristics and fallback. Heuristics engines are normally faster.
+    // To reduce autotuning time, we evaluate the fallback engines only when
+    // none of the heuristics engines work.
+    bool found_working_engine = false;
+    for (auto& result : results) {
+      if (!result.has_failure()) {
+        found_working_engine = true;
         break;
       }
     }
-    if (!algorithm_config.algorithm()) {
-      return errors::Internal(
-          absl::StrFormat("No available convolution algorithm fit in the "
-                          "scratch space limit of %d bytes",
-                          scratch_size_limit));
+
+    if (!CudnnUseFrontend() || found_working_engine) {
+      SE_ASSIGN_OR_RETURN(
+          autotune_entry,
+          BestCudnnConvAlgorithm<se::dnn::ConvOp>(results, std::move(runners)));
+    } else {
+      LOG(WARNING)
+          << "None of the algorithms provided by cuDNN frontend heuristics "
+             "worked; trying fallback algorithms.  Conv: "
+          << conv_parameters.ToString();
+      std::vector<std::unique_ptr<const se::dnn::ConvRunner>> fallback_runners;
+      TF_RETURN_IF_ERROR(stream->parent()->GetConvolveRunners(
+          CudnnUseFrontend(), kind, element_type, element_type, stream,
+          input_desc, input_ptr, filter_desc, filter_ptr, output_desc,
+          output_ptr, conv_desc, /*use_fallback=*/true, &rz_allocator,
+          &fallback_runners));
+
+      SE_ASSIGN_OR_RETURN(
+          auto fallback_results,
+          AutotuneConvImpl(ctx, fallback_runners, cudnn_use_autotune,
+                           launch_func, scratch_size_limit, rz_allocator));
+
+      LogConvAutotuneResults(kind, se::dnn::ToDataType<T>::value, input_ptr,
+                             filter_ptr, output_ptr, input_desc, filter_desc,
+                             output_desc, conv_desc, stream->parent(),
+                             fallback_results);
+
+      SE_ASSIGN_OR_RETURN(autotune_entry,
+                          BestCudnnConvAlgorithm<se::dnn::ConvOp>(
+                              fallback_results, std::move(fallback_runners)));
     }
+
+#elif TENSORFLOW_USE_ROCM
+    DnnScratchAllocator scratch_allocator(scratch_size_limit, ctx);
+
+    std::vector<se::dnn::ProfileResult> algorithms;
+    if (!stream->parent()->GetMIOpenConvolveAlgorithms(
+            kind, se::dnn::ToDataType<T>::value, stream, input_desc, input_ptr,
+            filter_desc, filter_ptr, output_desc, output_ptr, conv_desc,
+            &scratch_allocator, &algorithms)) {
+      return errors::Unknown(
+          "Failed to get convolution algorithm. This is probably "
+          "because MIOpen failed to initialize, so try looking to "
+          "see if a warning log message was printed above.");
+    }
+
+    std::vector<tensorflow::AutotuneResult> results;
+    if (algorithms.size() == 1) {
+      auto profile_result = algorithms[0];
+      results.emplace_back();
+      auto& result = results.back();
+      *result.mutable_algorithm() = profile_result.algorithm().ToProto();
+
+      result.set_scratch_bytes(profile_result.scratch_size());
+      *result.mutable_run_time() = proto_utils::ToDurationProto(
+          absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+    } else {
+      for (auto miopen_algorithm : algorithms) {
+        auto profile_algorithm = miopen_algorithm.algorithm();
+        se::dnn::ProfileResult profile_result;
+        auto miopen_launch_status = stream->ConvolveWithAlgorithm(
+            kind, input_desc, input_ptr, filter_desc, filter_ptr, output_desc,
+            output_ptr, conv_desc, &scratch_allocator,
+            se::dnn::AlgorithmConfig(profile_algorithm,
+                                     miopen_algorithm.scratch_size()),
+            &profile_result);
+        if (miopen_launch_status.ok() && profile_result.is_valid()) {
+          results.emplace_back();
+          auto& result = results.back();
+          *result.mutable_algorithm() = profile_algorithm.ToProto();
+
+          result.set_scratch_bytes(scratch_allocator.TotalByteSize());
+          *result.mutable_run_time() = proto_utils::ToDurationProto(
+              absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+        }
+      }
+    }
+    LogConvAutotuneResults(kind, se::dnn::ToDataType<T>::value, input_ptr,
+                           filter_ptr, output_ptr, input_desc, filter_desc,
+                           output_desc, conv_desc, stream->parent(), results);
+
+    SE_ASSIGN_OR_RETURN(auto algo_desc, BestCudnnConvAlgorithm(results));
+    autotune_entry = AutotuneEntry<se::dnn::ConvOp>(algo_desc);
 #endif
+
+    autotune_map->Insert(conv_parameters, autotune_entry);
   }
-  return algorithm_config;
+
+  return autotune_entry;
 }
 
-template StatusOr<se::dnn::AlgorithmConfig> AutotuneUnfusedConv<double>(
+template StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv<double>(
     bool cudnn_use_autotune,
-    AutotuneMap<ConvParameters, se::dnn::AlgorithmConfig>* autotune_map,
+    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::ConvOp>>* autotune_map,
     const ConvParameters& conv_parameters, OpKernelContext* ctx,
     se::dnn::ConvolutionKind kind, const se::dnn::BatchDescriptor& input_desc,
     se::DeviceMemory<double> input_ptr,
@@ -483,9 +454,9 @@ template StatusOr<se::dnn::AlgorithmConfig> AutotuneUnfusedConv<double>(
     const se::dnn::BatchDescriptor& output_desc,
     se::DeviceMemory<double> output_ptr, int64_t scratch_size_limit);
 
-template StatusOr<se::dnn::AlgorithmConfig> AutotuneUnfusedConv<float>(
+template StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv<float>(
     bool cudnn_use_autotune,
-    AutotuneMap<ConvParameters, se::dnn::AlgorithmConfig>* autotune_map,
+    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::ConvOp>>* autotune_map,
     const ConvParameters& conv_parameters, OpKernelContext* ctx,
     se::dnn::ConvolutionKind kind, const se::dnn::BatchDescriptor& input_desc,
     se::DeviceMemory<float> input_ptr,
@@ -495,9 +466,10 @@ template StatusOr<se::dnn::AlgorithmConfig> AutotuneUnfusedConv<float>(
     const se::dnn::BatchDescriptor& output_desc,
     se::DeviceMemory<float> output_ptr, int64_t scratch_size_limit);
 
-template StatusOr<se::dnn::AlgorithmConfig> AutotuneUnfusedConv<Eigen::half>(
+template StatusOr<AutotuneEntry<se::dnn::ConvOp>>
+AutotuneUnfusedConv<Eigen::half>(
     bool cudnn_use_autotune,
-    AutotuneMap<ConvParameters, se::dnn::AlgorithmConfig>* autotune_map,
+    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::ConvOp>>* autotune_map,
     const ConvParameters& conv_parameters, OpKernelContext* ctx,
     se::dnn::ConvolutionKind kind, const se::dnn::BatchDescriptor& input_desc,
     se::DeviceMemory<Eigen::half> input_ptr,

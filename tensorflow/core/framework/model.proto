@@ -13,12 +13,15 @@ enum NodeClass {
   KNOWN_RATIO = 3;
   ASYNC_KNOWN_RATIO = 4;
   UNKNOWN_RATIO = 5;
+  ASYNC_UNKNOWN_RATIO = 6;
 }
 
 // Algorithm used for model autotuning optimization.
 enum AutotuneAlgorithm {
-  HILL_CLIMB = 0;
-  GRADIENT_DESCENT = 1;
+  DEFAULT = 0;
+  HILL_CLIMB = 1;
+  GRADIENT_DESCENT = 2;
+  MAX_PARALLELISM = 3;
 }
 
 // Protocol buffer representing the data used by the autotuning modeling
@@ -50,7 +53,7 @@ message ModelProto {
     // The number of elements produced by the node.
     int64 num_elements = 8;
 
-    // The aggregate processing time spent in this node.
+    // The aggregate processing time spent in this node in nanoseconds.
     int64 processing_time = 9;
 
     // An indication whether this node records metrics about produced and

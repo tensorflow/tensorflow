@@ -58,7 +58,7 @@ TEST_F(GpuFusionTest, FusedReshape) {
 
 // Check that we limit the number of operands to fusions we create.
 TEST_F(GpuFusionTest, FusedBiggerThenThresholdButDoNotChangeTheFusionl) {
-  constexpr int64_t kNumParams = kMaxOperandsAndOutputsPerFusion + 1;
+  constexpr int64_t kNumParams = MaxOperandsAndOutputsPerFusion() + 1;
 
   // Compute
   //   p0 + p1 + p2 + ... + pn,

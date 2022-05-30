@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -241,7 +240,8 @@ class SliceR1Test : public ClientLibraryTestBase,
 // A version of SliceR1Test used to label and disable 'large' tests
 class SliceR1LargeTest : public SliceR1Test {};
 
-string SliceR1TestDataToString(const ::testing::TestParamInfo<R1Spec>& data) {
+std::string SliceR1TestDataToString(
+    const ::testing::TestParamInfo<R1Spec>& data) {
   const R1Spec& spec = data.param;
   return absl::StrFormat("%d_%d_%d_%d", spec.input_dim0, spec.slice_start,
                          spec.slice_limit, spec.slice_stride);
@@ -251,9 +251,9 @@ XLA_TEST_P(SliceR1Test, DoIt_F32) { Run<float>(GetParam()); }
 
 XLA_TEST_P(SliceR1Test, DoIt_F64) { Run<double>(GetParam()); }
 
-XLA_TEST_P(SliceR1Test, DoIt_U32) { Run<uint32>(GetParam()); }
+XLA_TEST_P(SliceR1Test, DoIt_U32) { Run<uint32_t>(GetParam()); }
 
-XLA_TEST_P(SliceR1Test, DoIt_S32) { Run<int32>(GetParam()); }
+XLA_TEST_P(SliceR1Test, DoIt_S32) { Run<int32_t>(GetParam()); }
 
 XLA_TEST_P(SliceR1Test, DoIt_U64) { Run<uint64_t>(GetParam()); }
 
@@ -270,11 +270,11 @@ XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_F64)) {
 }
 
 XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_U32)) {
-  Run<uint32>(GetParam());
+  Run<uint32_t>(GetParam());
 }
 
 XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_S32)) {
-  Run<int32>(GetParam());
+  Run<int32_t>(GetParam());
 }
 
 XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_U64)) {
@@ -285,7 +285,10 @@ XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_S64)) {
   Run<int64_t>(GetParam());
 }
 
-XLA_TEST_P(SliceR1Test, DoIt_PRED) { Run<bool>(GetParam()); }
+// TODO(b/232452122): Uses `operator++()` on bool, not supported in C++17
+// Note: Clang allows this (but is undefined behavior), only GCC has issues
+// See https://godbolt.org/z/1cEfcf3ad
+// XLA_TEST_P(SliceR1Test, DoIt_PRED) { Run<bool>(GetParam()); }
 
 // Tests for R1 slice ops.
 // The format for each testcase is {input size, start, limit, stride}.
@@ -400,7 +403,7 @@ class SliceR2Test : public ClientLibraryTestBase,
 
 XLA_TEST_P(SliceR2Test, DoIt) {
   const R2Spec& spec = GetParam();
-  Array2D<int32> input(spec.input_dim0, spec.input_dim1);
+  Array2D<int32_t> input(spec.input_dim0, spec.input_dim1);
   input.FillUnique();
   auto literal = LiteralUtil::CreateR2FromArray2DWithLayout(
       input, LayoutUtil::MakeLayout(spec.layout));
@@ -411,9 +414,9 @@ XLA_TEST_P(SliceR2Test, DoIt) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> arg,
                           client_->TransferToServer(literal));
-  std::unique_ptr<Array2D<int32>> expected = ReferenceUtil::Slice2D(
+  std::unique_ptr<Array2D<int32_t>> expected = ReferenceUtil::Slice2D(
       input, spec.slice_starts, spec.slice_limits, spec.slice_strides);
-  ComputeAndCompareR2<int32>(&builder, *expected, {arg.get()});
+  ComputeAndCompareR2<int32_t>(&builder, *expected, {arg.get()});
 }
 
 INSTANTIATE_TEST_CASE_P(
@@ -477,7 +480,7 @@ struct R4Spec {
   std::array<int64_t, 4> slice_strides;
 };
 
-string R4SpecToString(const ::testing::TestParamInfo<R4Spec>& data) {
+std::string R4SpecToString(const ::testing::TestParamInfo<R4Spec>& data) {
   const R4Spec& spec = data.param;
   return absl::StrCat("input_", absl::StrJoin(spec.input_dims, "x"),
                       "__layout_", absl::StrJoin(spec.input_layout, ""),

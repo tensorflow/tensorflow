@@ -16,7 +16,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -368,7 +370,7 @@ Status RunShapeInferenceOnComputation(
 
 Status CompileTFFunctionToHlo(
     const FunctionLibraryDefinition& flib_def, int graph_def_version,
-    const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     const std::vector<TensorShape>& arg_shapes,
     const GuaranteedConsts& guaranteed_constants, const NameAttrList& function,
     const tpu::TPUCompileMetadataProto& metadata,
@@ -385,7 +387,7 @@ Status CompileTFFunctionToHlo(
   compiler_options.allow_cpu_custom_calls = false;
   compiler_options.populate_resource_manager = &populate_resource_manager_fn;
   compiler_options.graph_def_version = graph_def_version;
-  compiler_options.shape_representation_fn = shape_representation_fn;
+  compiler_options.shape_determination_fns = shape_determination_fns;
 
   auto compiler = absl::make_unique<XlaCompiler>(compiler_options);
 
@@ -451,7 +453,7 @@ Status CompileTFFunctionToHlo(
 Status GetShardingInfo(
     const tpu::TPUCompileMetadataProto& metadata,
     absl::Span<const TensorShape> arg_shapes,
-    const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes) {
   arg_core_mapping->clear();
@@ -465,13 +467,15 @@ Status GetShardingInfo(
     const auto& proto_arg = metadata.args(i);
     TF_ASSIGN_OR_RETURN(auto arg_sharding,
                         xla::HloSharding::FromProto(proto_arg.sharding()));
-    TF_ASSIGN_OR_RETURN(
-        auto xla_arg_shape,
-        shape_representation_fn(arg_shapes[i], proto_arg.dtype(),
-                                /*use_fast_memory=*/false));
+    auto layout_preference = shape_determination_fns.layout_preference_fn(
+        arg_shapes[i], proto_arg.dtype(), absl::nullopt);
+    TF_ASSIGN_OR_RETURN(auto xla_arg_shape,
+                        shape_determination_fns.shape_representation_fn(
+                            arg_shapes[i], proto_arg.dtype(),
+                            /*use_fast_memory=*/false, layout_preference));
     TF_RETURN_IF_ERROR(
         RewriteLayoutWithShardedShape(arg_sharding, /*use_fast_memory=*/false,
-                                      shape_representation_fn, &xla_arg_shape));
+                                      shape_determination_fns, &xla_arg_shape));
     TF_RETURN_IF_ERROR(SetPerCoreArgShapes(
         proto_arg, i, &xla_arg_shape, arg_core_mapping, per_core_arg_shapes));
   }

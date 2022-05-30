@@ -72,10 +72,8 @@ namespace xla {
 //
 class ArCrsCombiner : public HloModulePass {
  public:
-  ArCrsCombiner(int num_spatial_partitions, int num_replicas,
-                bool spmd_partition)
+  ArCrsCombiner(int num_spatial_partitions, bool spmd_partition)
       : num_spatial_partitions_(num_spatial_partitions),
-        num_replicas_(num_replicas),
         spmd_partition_(spmd_partition) {}
   absl::string_view name() const override { return "ar-crs-combiner"; }
   StatusOr<bool> Run(HloModule* module) override;
@@ -98,8 +96,8 @@ class ArCrsCombiner : public HloModulePass {
               int64_t dist)
         : ar(all_reduce), crs(cross_replica_sum), distance(dist) {}
 
-    string ToString() {
-      std::vector<string> pieces;
+    std::string ToString() {
+      std::vector<std::string> pieces;
       pieces.push_back("(");
       HloInstruction* instruction = ar;
       while (instruction != crs) {
@@ -168,8 +166,6 @@ class ArCrsCombiner : public HloModulePass {
   StatusOr<bool> RewriteGraph();
 
   int num_spatial_partitions_;
-
-  int num_replicas_;
 
   // Run this combiner pass assuming the input module is an SPMD partitioned
   // module (as opposed to MPMD partitioned).

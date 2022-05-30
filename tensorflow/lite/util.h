@@ -54,8 +54,8 @@ TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input);
 
 // Converts an array (of the given size) to a `TfLiteIntArray`. The caller
 // takes ownership of the returned pointer, and must make sure 'dims' has at
-// least 'rank' elements.
-TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int rank, const int* dims);
+// least 'ndims' elements.
+TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int ndims, const int* dims);
 
 // Checks whether a `TfLiteIntArray` and an int array have matching elements.
 // The caller must guarantee that 'b' has at least 'b_size' elements.
@@ -99,6 +99,12 @@ constexpr char kValidationSubgraphNamePrefix[] = "VALIDATION:";
 // Checks whether the prefix of the subgraph name indicates the subgraph is a
 // validation subgraph.
 bool IsValidationSubgraph(const char* name);
+
+// Multiply two sizes and return true if overflow occurred;
+// This is based off tensorflow/overflow.h but is simpler as we already
+// have unsigned numbers. It is also generalized to work where sizeof(size_t)
+// is not 8.
+TfLiteStatus MultiplyAndCheckOverflow(size_t a, size_t b, size_t* product);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_UTIL_H_

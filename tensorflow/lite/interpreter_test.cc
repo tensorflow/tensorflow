@@ -191,9 +191,13 @@ TEST(BasicInterpreter, CheckAllocate) {
     TfLiteType type;
     size_t size;
   } cases[] = {
-      {kTfLiteFloat32, sizeof(float)},         {kTfLiteInt32, sizeof(int32_t)},
-      {kTfLiteUInt32, sizeof(uint32_t)},       {kTfLiteUInt8, sizeof(uint8_t)},
-      {kTfLiteInt64, sizeof(int64_t)},         {kTfLiteInt16, sizeof(int16_t)},
+      {kTfLiteFloat32, sizeof(float)},
+      {kTfLiteInt32, sizeof(int32_t)},
+      {kTfLiteUInt32, sizeof(uint32_t)},
+      {kTfLiteUInt8, sizeof(uint8_t)},
+      {kTfLiteInt64, sizeof(int64_t)},
+      {kTfLiteInt16, sizeof(int16_t)},
+      {kTfLiteUInt16, sizeof(uint16_t)},
       {kTfLiteFloat16, sizeof(TfLiteFloat16)},
   };
 
@@ -1056,6 +1060,59 @@ TEST(BasicInterpreter, DynamicTensorsResizeDescendants) {
   ASSERT_EQ(interpreter.tensor(3)->bytes, sizeof(float) * 10 * 14);
 }
 
+TEST(BasicInterpreter, ReleaseDynamicTensors) {
+  // Assemble a graph with a node that has dynamically sized output (via the
+  // pad op), followed by a node with a standard element-wise op (negate).
+  Interpreter interpreter;
+  interpreter.AddTensors(4);
+  interpreter.SetInputs({0, 1});
+  interpreter.SetOutputs({3});
+  TfLiteQuantizationParams quant;
+  interpreter.SetTensorParametersReadWrite(/*tensor_index=*/0,
+                                           /*type=*/kTfLiteFloat32, /*name=*/"",
+                                           /*dims=*/{2, 2, 1, 1},
+                                           /*quantization=*/quant);
+  interpreter.SetTensorParametersReadWrite(
+      /*tensor_index=*/1, /*type=*/kTfLiteInt32, /*name=*/"", /*dims=*/{4, 2},
+      /*quantization=*/quant);
+  interpreter.SetTensorParametersReadWrite(/*tensor_index=*/2,
+                                           /*type=*/kTfLiteFloat32, /*name=*/"",
+                                           /*dims=*/{}, /*quantization=*/quant);
+  interpreter.SetTensorParametersReadWrite(/*tensor_index=*/3,
+                                           /*type=*/kTfLiteFloat32, /*name=*/"",
+                                           /*dims=*/{}, /*quantization=*/quant);
+
+  TfLiteRegistration* pad_op = tflite::ops::builtin::Register_PADV2();
+  TfLiteRegistration* neg_op = tflite::ops::builtin::Register_NEG();
+  interpreter.AddNodeWithParameters(
+      /*inputs=*/{0, 1}, /*outputs=*/{2}, /*init_data=*/nullptr,
+      /*init_data_size=*/0, /*builtin_data=*/nullptr, /*registration=*/pad_op);
+  interpreter.AddNodeWithParameters(
+      /*inputs=*/{2}, /*outputs=*/{3}, /*init_data=*/nullptr,
+      /*init_data_size=*/0, /*builtin_data=*/nullptr, /*registration=*/neg_op);
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  // Configure [[2,2],[4,4]] padding and execute the graph.
+  const std::vector<int> padding = {2, 2, 2, 2, 0, 0, 0, 0};
+  int* tensor_value = interpreter.typed_tensor<int>(1);
+  for (int i = 0; i < padding.size(); ++i) {
+    tensor_value[i] = padding[i];
+  }
+
+  // Invoke without calling `EnsureDynamicTensorsAreReleased`.
+  ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
+  ASSERT_NE(interpreter.tensor(2)->data.raw, nullptr);
+
+  InterpreterOptions options;
+  options.SetEnsureDynamicTensorsAreReleased();
+  interpreter.ApplyOptions(&options);
+  ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
+
+  // Check that the intermediate dynamic tensor's memory is released.
+  ASSERT_EQ(interpreter.tensor(2)->data.raw, nullptr);
+  ASSERT_EQ(interpreter.tensor(3)->bytes, sizeof(float) * 6 * 6);
+}
+
 TEST(InterpreterTensorsCapacityTest, TestWithinHeadroom) {
   Interpreter interpreter;
   ASSERT_EQ(interpreter.AddTensors(Interpreter::kTensorsReservedCapacity),
@@ -1127,32 +1184,32 @@ TEST_F(InterpreterTest, GetSetResetExternalContexts) {
   };
 
   EXPECT_EQ(TestExternalContext::Get(context), nullptr);
-  ASSERT_EQ(interpreter_.SetNumThreads(4), kTfLiteOk);
+  ASSERT_EQ(interpreter_->SetNumThreads(4), kTfLiteOk);
 
   TestExternalContext::Set(context, &external_context);
   EXPECT_EQ(TestExternalContext::Get(context), &external_context);
-  ASSERT_EQ(interpreter_.SetNumThreads(4), kTfLiteOk);
-  ASSERT_EQ(interpreter_.SetNumThreads(5), kTfLiteOk);
+  ASSERT_EQ(interpreter_->SetNumThreads(4), kTfLiteOk);
+  ASSERT_EQ(interpreter_->SetNumThreads(5), kTfLiteOk);
   EXPECT_EQ(external_context.num_refreshes, 2);
 
   // Reset refresh count to 0
   external_context.num_refreshes = 0;
   // Below should not call external context refresh
-  ASSERT_EQ(interpreter_.SetNumThreads(-2), kTfLiteError);
+  ASSERT_EQ(interpreter_->SetNumThreads(-2), kTfLiteError);
   EXPECT_EQ(external_context.num_refreshes, 0);
 
-  ASSERT_EQ(interpreter_.SetNumThreads(-1), kTfLiteOk);
+  ASSERT_EQ(interpreter_->SetNumThreads(-1), kTfLiteOk);
   EXPECT_EQ(external_context.num_refreshes, 1);
 
   TestExternalContext::Set(context, nullptr);
   EXPECT_EQ(TestExternalContext::Get(context), nullptr);
-  ASSERT_EQ(interpreter_.SetNumThreads(4), kTfLiteOk);
+  ASSERT_EQ(interpreter_->SetNumThreads(4), kTfLiteOk);
 }
 
 TEST_F(InterpreterTest, SetNumThreadsSucceedsWithZero) {
-  ASSERT_EQ(interpreter_.SetNumThreads(0), kTfLiteOk);
+  ASSERT_EQ(interpreter_->SetNumThreads(0), kTfLiteOk);
   // num_threads == 0 has the same effect as num_threads == 1.
-  EXPECT_EQ(interpreter_.subgraph(0)->context()->recommended_num_threads, 1);
+  EXPECT_EQ(interpreter_->subgraph(0)->context()->recommended_num_threads, 1);
 }
 
 struct TestCpuBackendContext : public TfLiteInternalBackendContext {
@@ -1246,21 +1303,21 @@ class TestExecutionPlan : public InterpreterTest {
     CallReporting* call_reporting_1 =
         static_cast<CallReporting*>(malloc(sizeof(CallReporting)));
     new (call_reporting_1) CallReporting(input, &run_order_);
-    ASSERT_EQ(interpreter_.AddNodeWithParameters(
+    ASSERT_EQ(interpreter_->AddNodeWithParameters(
                   {0}, {2}, nullptr, 0, static_cast<void*>(call_reporting_1),
                   &copy_op),
               kTfLiteOk);
-    ASSERT_EQ(interpreter_.ResizeInputTensor(input, {3}), kTfLiteOk);
+    ASSERT_EQ(interpreter_->ResizeInputTensor(input, {3}), kTfLiteOk);
   }
 
   void SetUp() final {
     // Add two inputs and two outputs that don't depend on each other
-    ASSERT_EQ(interpreter_.AddTensors(4), kTfLiteOk);
-    interpreter_.SetInputs({0, 1});
-    interpreter_.SetOutputs({2, 3});
+    ASSERT_EQ(interpreter_->AddTensors(4), kTfLiteOk);
+    interpreter_->SetInputs({0, 1});
+    interpreter_->SetOutputs({2, 3});
     TfLiteQuantizationParams quantized;
     for (int tensor_index = 0; tensor_index < 4; tensor_index++) {
-      ASSERT_EQ(interpreter_.SetTensorParametersReadWrite(
+      ASSERT_EQ(interpreter_->SetTensorParametersReadWrite(
                     tensor_index, kTfLiteFloat32, "", {3}, quantized),
                 kTfLiteOk);
     }
@@ -1273,7 +1330,7 @@ class TestExecutionPlan : public InterpreterTest {
     MakeCopyNode(0, 2);
     MakeCopyNode(1, 3);
 
-    ASSERT_EQ(interpreter_.AllocateTensors(), kTfLiteOk);
+    ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   }
 
  protected:
@@ -1283,28 +1340,28 @@ class TestExecutionPlan : public InterpreterTest {
 
 TEST_F(TestExecutionPlan, DefaultExecutionPlan) {
   // Check default order
-  ASSERT_EQ(interpreter_.Invoke(), kTfLiteOk);
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   ASSERT_EQ(run_order_, std::vector<int>({0, 1}));
 }
 
 TEST_F(TestExecutionPlan, ReversedExecutionPlan) {
   // Check reversed order
   SetExecutionPlan({1, 0});
-  ASSERT_EQ(interpreter_.Invoke(), kTfLiteOk);
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   ASSERT_EQ(run_order_, std::vector<int>({1, 0}));
 }
 
 TEST_F(TestExecutionPlan, SubsetExecutionPlan) {
   // Check running only node index 1
   SetExecutionPlan({1});
-  ASSERT_EQ(interpreter_.Invoke(), kTfLiteOk);
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   ASSERT_EQ(run_order_, std::vector<int>({1}));
 }
 
 TEST_F(TestExecutionPlan, NullExecutionPlan) {
   // Check nothing executed.
   SetExecutionPlan({});
-  ASSERT_EQ(interpreter_.Invoke(), kTfLiteOk);
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   ASSERT_EQ(run_order_, std::vector<int>());
 }
 
@@ -1376,30 +1433,28 @@ bool CheckCancellation(void* data) {
 static struct CancellationData cancellation_data_;
 
 // Test fixture to test cancellation within the Interpreter.
-class CancellationTest : public ::testing::Test {
+class CancellationTest : public InterpreterTest {
  public:
-  TfLiteStatus Invoke() { return interpreter_.Invoke(); }
+  TfLiteStatus Invoke() { return interpreter_->Invoke(); }
   void Cancel() { cancellation_data_.is_cancelled = true; }
 
   // Adds an CancelOp with input tensor `input` and output tensor `output`.
   void MakeCancelNode(int input, int output) {
     TfLiteRegistration op = CancelOpRegistration();
-    ASSERT_EQ(interpreter_.AddNodeWithParameters({input}, {output}, nullptr, 0,
-                                                 nullptr, &op),
+    ASSERT_EQ(interpreter_->AddNodeWithParameters({input}, {output}, nullptr, 0,
+                                                  nullptr, &op),
               kTfLiteOk);
-    ASSERT_EQ(interpreter_.ResizeInputTensor(input, {3}), kTfLiteOk);
+    ASSERT_EQ(interpreter_->ResizeInputTensor(input, {3}), kTfLiteOk);
   }
 
   // Adds an OkOp with input tensor `input` and output tensor `output`.
   void MakeOkNode(int input, int output) {
     TfLiteRegistration op = OkOpRegistration();
-    ASSERT_EQ(interpreter_.AddNodeWithParameters({input}, {output}, nullptr, 0,
-                                                 nullptr, &op),
+    ASSERT_EQ(interpreter_->AddNodeWithParameters({input}, {output}, nullptr, 0,
+                                                  nullptr, &op),
               kTfLiteOk);
-    ASSERT_EQ(interpreter_.ResizeInputTensor(input, {3}), kTfLiteOk);
+    ASSERT_EQ(interpreter_->ResizeInputTensor(input, {3}), kTfLiteOk);
   }
-
-  Interpreter interpreter_;
 
  private:
   // Build the kernel registration for an op that cancels the operation.
@@ -1450,24 +1505,24 @@ class CancellationTest : public ::testing::Test {
 
     // Set up the interpreter. Create the input and output tensors.
     int num_tensors = 3;
-    ASSERT_EQ(interpreter_.AddTensors(num_tensors), kTfLiteOk);
-    interpreter_.SetInputs({0});
-    interpreter_.SetOutputs({2});
+    ASSERT_EQ(interpreter_->AddTensors(num_tensors), kTfLiteOk);
+    interpreter_->SetInputs({0});
+    interpreter_->SetOutputs({2});
     TfLiteQuantizationParams quantized;
     for (int tensor_index = 0; tensor_index < num_tensors; tensor_index++) {
-      ASSERT_EQ(interpreter_.SetTensorParametersReadWrite(
+      ASSERT_EQ(interpreter_->SetTensorParametersReadWrite(
                     tensor_index, kTfLiteFloat32, "", {3}, quantized),
                 kTfLiteOk);
     }
-    interpreter_.SetCancellationFunction(&cancellation_data_,
-                                         &CheckCancellation);
+    interpreter_->SetCancellationFunction(&cancellation_data_,
+                                          &CheckCancellation);
   }
 };
 
 TEST_F(CancellationTest, CancelBeforeInvoke) {
   // Cancel prior to calling Invoke.
   CancellationTest::MakeOkNode(1, 2);
-  ASSERT_EQ(interpreter_.AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
 
   CancellationTest::Cancel();
   TfLiteStatus invoke_error_code = CancellationTest::Invoke();
@@ -1482,14 +1537,14 @@ TEST_F(CancellationTest, CancelDuringInvoke) {
   // `kTfLiteOk` if executed.
   CancellationTest::MakeCancelNode(0, 1);
   CancellationTest::MakeOkNode(1, 2);
-  ASSERT_EQ(interpreter_.AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
 
   TfLiteStatus invoke_error_code = CancellationTest::Invoke();
   ASSERT_EQ(invoke_error_code, kTfLiteError);
 }
 
 // Tests functionality related to custom memory allocations in TFLite.
-class TestCustomAllocation : public ::testing::Test {
+class TestCustomAllocation : public InterpreterTest {
  protected:
   void SetUp() override {
     // Simple model with two custom ops that add 2 float tensors each.
@@ -1591,7 +1646,6 @@ class TestCustomAllocation : public ::testing::Test {
 
  protected:
   TfLiteAddParams add_params_;
-  std::unique_ptr<Interpreter> interpreter_;
   std::vector<std::unique_ptr<char[]>> custom_alloc_buffers_;
 };
 
@@ -1979,10 +2033,10 @@ class TestLazyDelegateProvider : public InterpreterTest {
   void InitWithLazyDelegate(bool create_dyanmic_tensor = false,
                             bool return_error = false) {
     TfLiteRegistration reg = {nullptr};
-    ASSERT_EQ(interpreter_.AddTensors(2), kTfLiteOk);
-    interpreter_.SetInputs({0});
-    interpreter_.SetOutputs({1});
-    interpreter_.AddNodeWithParameters({0}, {1}, nullptr, 0, nullptr, &reg);
+    ASSERT_EQ(interpreter_->AddTensors(2), kTfLiteOk);
+    interpreter_->SetInputs({0});
+    interpreter_->SetOutputs({1});
+    interpreter_->AddNodeWithParameters({0}, {1}, nullptr, 0, nullptr, &reg);
 
     Interpreter::TfLiteDelegatePtr delegate(
         TfLiteDelegateFactory::CreateSimpleDelegate(
@@ -1999,15 +2053,15 @@ class TestLazyDelegateProvider : public InterpreterTest {
 
     if (create_dyanmic_tensor) {
       // Mark the output as dynamic tensor.
-      interpreter_.tensor(1)->data.raw = nullptr;
-      interpreter_.tensor(1)->allocation_type = kTfLiteDynamic;
+      interpreter_->tensor(1)->data.raw = nullptr;
+      interpreter_->tensor(1)->allocation_type = kTfLiteDynamic;
     }
   }
 };
 
 TEST_F(TestLazyDelegateProvider, ApplicationSuccess) {
   InitWithLazyDelegate();
-  EXPECT_EQ(kTfLiteOk, interpreter_.AllocateTensors());
+  EXPECT_EQ(kTfLiteOk, interpreter_->AllocateTensors());
   // We clear Interpreter::lazy_delegate_providers_ after they are tried out.
   EXPECT_TRUE(mutable_lazy_delegate_providers()->empty());
   EXPECT_TRUE(HasDelegates());
@@ -2017,19 +2071,19 @@ TEST_F(TestLazyDelegateProvider, ApplicationSuccess) {
 TEST_F(TestLazyDelegateProvider, ApplicationFailure) {
   InitWithLazyDelegate(false /* create_dyanmic_tensor */,
                        true /* return_error */);
-  // As the the lazy delegate fails to prepare, kTfLiteDelegateError is
+  // As the lazy delegate fails to prepare, kTfLiteDelegateError is
   // returned and Interpreter::lazy_delegate_providers_ is cleared anyway.
   EXPECT_EQ(kTfLiteDelegateError, ApplyLazyDelegateProviders());
   EXPECT_TRUE(mutable_lazy_delegate_providers()->empty());
 
-  EXPECT_EQ(kTfLiteOk, interpreter_.AllocateTensors());
+  EXPECT_EQ(kTfLiteOk, interpreter_->AllocateTensors());
   EXPECT_FALSE(HasDelegates());
   EXPECT_FALSE(IsFullyDelegated());
 }
 
 TEST_F(TestLazyDelegateProvider, ApplicationSkipped) {
   InitWithLazyDelegate(true /* create_dyanmic_tensor */);
-  EXPECT_EQ(kTfLiteOk, interpreter_.AllocateTensors());
+  EXPECT_EQ(kTfLiteOk, interpreter_->AllocateTensors());
   EXPECT_TRUE(mutable_lazy_delegate_providers()->empty());
   // As the delegate doesn't allow dynamic tensor, the delegate won't be applied
   // and the interpreter doesn't have any delegate applied.
@@ -2041,7 +2095,7 @@ TEST_F(InterpreterTest, SingleSignature_get_signatures) {
   const char kSignatureKey[] = "test_method";
   BuildSignature(kSignatureKey, {{"Input1", 0}, {"Input2", 1}},
                  {{"Output1", 5}});
-  auto results = interpreter_.signature_keys();
+  auto results = interpreter_->signature_keys();
   ASSERT_EQ(1, results.size());
   EXPECT_EQ(kSignatureKey, *results[0]);
 }
@@ -2051,9 +2105,9 @@ TEST_F(InterpreterTest, SingleSignature_get_inputs) {
   const std::map<std::string, uint32_t> inputs = {{"Input1", 0}, {"Input2", 1}};
   const std::map<std::string, uint32_t> outputs = {{"Output1", 5}};
   BuildSignature(kSignatureKey, inputs, outputs);
-  EXPECT_THAT(interpreter_.signature_inputs(kSignatureKey),
+  EXPECT_THAT(interpreter_->signature_inputs(kSignatureKey),
               testing::Eq(inputs));
-  EXPECT_THAT(interpreter_.signature_outputs(kSignatureKey),
+  EXPECT_THAT(interpreter_->signature_outputs(kSignatureKey),
               testing::Eq(outputs));
 }
 
@@ -2063,38 +2117,41 @@ TEST_F(InterpreterTest, SingleSignature_validate_get_tensor) {
   const std::map<std::string, uint32_t> outputs = {{"Output1", 5}};
 
   BuildSignature(kSignatureKey, inputs, outputs);
-  ASSERT_EQ(interpreter_.AddTensors(6), kTfLiteOk);
-  ASSERT_EQ(interpreter_.SetInputs({0, 1}), kTfLiteOk);
-  ASSERT_EQ(interpreter_.SetOutputs({5}), kTfLiteOk);
-  ASSERT_EQ(interpreter_.SetTensorParametersReadWrite(
+  ASSERT_EQ(interpreter_->AddTensors(6), kTfLiteOk);
+  ASSERT_EQ(interpreter_->SetInputs({0, 1}), kTfLiteOk);
+  ASSERT_EQ(interpreter_->SetOutputs({5}), kTfLiteOk);
+  ASSERT_EQ(interpreter_->SetTensorParametersReadWrite(
                 0, kTfLiteFloat32, "", {3}, TfLiteQuantizationParams()),
             kTfLiteOk);
-  ASSERT_EQ(interpreter_.SetTensorParametersReadWrite(
+  ASSERT_EQ(interpreter_->SetTensorParametersReadWrite(
                 1, kTfLiteFloat32, "", {3}, TfLiteQuantizationParams()),
             kTfLiteOk);
-  ASSERT_EQ(interpreter_.ResizeInputTensor(interpreter_.inputs()[0], {1, 2, 3}),
-            kTfLiteOk);
-  ASSERT_EQ(interpreter_.ResizeInputTensor(interpreter_.inputs()[1], {1, 2, 3}),
-            kTfLiteOk);
-  ASSERT_EQ(interpreter_.AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(
+      interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1, 2, 3}),
+      kTfLiteOk);
+  ASSERT_EQ(
+      interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1, 2, 3}),
+      kTfLiteOk);
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
 
-  EXPECT_TRUE(interpreter_.input_tensor_by_signature("Input1", kSignatureKey) !=
-              nullptr);
-  EXPECT_TRUE(interpreter_.input_tensor_by_signature("Input2", kSignatureKey) !=
-              nullptr);
-  EXPECT_TRUE(interpreter_.output_tensor_by_signature(
+  EXPECT_TRUE(interpreter_->input_tensor_by_signature(
+                  "Input1", kSignatureKey) != nullptr);
+  EXPECT_TRUE(interpreter_->input_tensor_by_signature(
+                  "Input2", kSignatureKey) != nullptr);
+  EXPECT_TRUE(interpreter_->output_tensor_by_signature(
                   "Output1", kSignatureKey) != nullptr);
 
   // Invalid tensor
-  EXPECT_EQ(interpreter_.input_tensor_by_signature("Input3", kSignatureKey),
+  EXPECT_EQ(interpreter_->input_tensor_by_signature("Input3", kSignatureKey),
             nullptr);
-  EXPECT_EQ(interpreter_.output_tensor_by_signature("Input3", kSignatureKey),
+  EXPECT_EQ(interpreter_->output_tensor_by_signature("Input3", kSignatureKey),
             nullptr);
   // Invalid method
-  EXPECT_EQ(interpreter_.input_tensor_by_signature("Input1", "InvalidMethod"),
+  EXPECT_EQ(interpreter_->input_tensor_by_signature("Input1", "InvalidMethod"),
             nullptr);
-  EXPECT_EQ(interpreter_.output_tensor_by_signature("Output1", "InvalidMethod"),
-            nullptr);
+  EXPECT_EQ(
+      interpreter_->output_tensor_by_signature("Output1", "InvalidMethod"),
+      nullptr);
 }
 
 }  // namespace

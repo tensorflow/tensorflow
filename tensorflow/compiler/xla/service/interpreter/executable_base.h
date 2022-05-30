@@ -49,7 +49,14 @@ class InterpreterExecutableBase : public Executable {
       absl::Span<const Literal> arg_literals) = 0;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(InterpreterExecutableBase);
+  StatusOr<ExecutionOutput> AllocateOutputMemoryWithInputReuse(
+      const Shape& shape, const HloInputOutputAliasConfig& alias_config,
+      se::DeviceMemoryAllocator* allocator,
+      std::vector<ExecutionInput>* arguments, stream_executor::Stream* stream);
+
+  InterpreterExecutableBase(const InterpreterExecutableBase&) = delete;
+  InterpreterExecutableBase& operator=(const InterpreterExecutableBase&) =
+      delete;
 };
 
 }  // namespace interpreter

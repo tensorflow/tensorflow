@@ -15,12 +15,12 @@ limitations under the License.
 
 // This file defines the operations used in the MHLO dialect.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H_
+#ifndef MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H
+#define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H
 
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
@@ -37,9 +37,8 @@ limitations under the License.
 // clang-format off
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
-#include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
 // clang-format on
 
 namespace mlir {
@@ -56,6 +55,16 @@ class MhloDialect : public Dialect {
   // value with the desired resultant type.
   Operation *materializeConstant(OpBuilder &builder, Attribute value, Type type,
                                  Location loc) override;
+
+  // Registered hook to verify region arg attributes on operations.
+  LogicalResult verifyRegionArgAttribute(mlir::Operation *op,
+                                         unsigned region_index,
+                                         unsigned arg_index,
+                                         mlir::NamedAttribute attr) override;
+
+  // Registered hook to verify an attribute from this dialect on operations.
+  LogicalResult verifyOperationAttribute(mlir::Operation *op,
+                                         mlir::NamedAttribute attr) override;
 
   // Parses a type registered to this dialect.
   Type parseType(DialectAsmParser &parser) const override;
@@ -74,6 +83,10 @@ class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
  public:
   using Base::Base;
 };
+
+// Returns true if the given types are the same for the purposes of MHLO type
+// inference, accounting for special properties of quantization and sparsity.
+bool isCompatibleForMhloTypeInference(Type tp1, Type tp2);
 
 // Shape derivation function that computes the shape of the result based on an
 // operand. For a 2-dimensional input tensor, this produces IR of the form
@@ -99,4 +112,16 @@ TensorType getSameShapeTensorType(TensorType tensor_type, Type element_type);
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"
 
-#endif  //  TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H_
+namespace mlir {
+namespace mhlo {
+
+SortOp CreateSortOp(PatternRewriter *rewriter, const Location &loc,
+                    const llvm::ArrayRef<Value> &operands,
+                    const llvm::ArrayRef<Type> &element_types,
+                    int64_t dimension, bool is_stable,
+                    ComparisonDirection direction);
+
+}  // end namespace mhlo
+}  // end namespace mlir
+
+#endif  // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H

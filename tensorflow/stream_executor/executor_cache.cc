@@ -68,6 +68,24 @@ port::StatusOr<StreamExecutor*> ExecutorCache::Get(
   Entry* entry = nullptr;
   {
     absl::ReaderMutexLock lock{&mutex_};
+
+    {
+      if (config.gpu_stream) {
+        // Need to iterate through all stored executors.
+        for (auto& [ordinal, e] : cache_) {
+          absl::ReaderMutexLock l{&e.configurations_mutex};
+          for (auto& [c, executor] : e.configurations) {
+            if (executor->FindAllocatedStream(config.gpu_stream)) {
+              return executor.get();
+            }
+          }
+        }
+        return port::Status(
+            port::error::NOT_FOUND,
+            absl::StrFormat("No executors own stream %p", config.gpu_stream));
+      }
+    }
+
     auto it = cache_.find(config.ordinal);
     if (it != cache_.end()) {
       entry = &it->second;

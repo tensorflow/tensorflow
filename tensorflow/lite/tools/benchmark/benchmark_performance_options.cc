@@ -33,11 +33,6 @@ limitations under the License.
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/logging.h"
 
-#if (defined(ANDROID) || defined(__ANDROID__)) && \
-    (defined(__arm__) || defined(__aarch64__))
-#define TFLITE_ENABLE_HEXAGON
-#endif
-
 namespace tflite {
 namespace benchmark {
 

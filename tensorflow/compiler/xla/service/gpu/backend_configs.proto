@@ -3,6 +3,7 @@ syntax = "proto3";
 package xla.gpu;
 
 import "tensorflow/compiler/xla/xla_data.proto";
+import "tensorflow/stream_executor/dnn.proto";
 
 // Backend configs for XLA:GPU.
 //
@@ -19,13 +20,10 @@ import "tensorflow/compiler/xla/xla_data.proto";
 
 // Backend config for a convolution that runs through cudnn.
 message CudnnConvBackendConfig {
-  // Opaque algorithm number of cudnn algorithm chosen for this conv.
-  int64 algorithm = 1;
+  reserved 1, 2;
 
-  // Whether we may use tensor cores when running this conv.  Even if this is
-  // true, cudnn may choose not to use tensor cores, e.g. because the GPU or
-  // selected algorithm doesn't support it.
-  bool tensor_ops_enabled = 2;
+  // Opaque algorithm number and tuning knobs chosen for this conv.
+  stream_executor.dnn.AlgorithmProto algorithm = 6;
 
   // The scaling factor multiplied with the convolution result.
   double conv_result_scale = 4;
@@ -58,10 +56,9 @@ message GemmBackendConfig {
 
   xla.DotDimensionNumbers dot_dimension_numbers = 7;
 
-  int64 batch_size = 8;
-
-  int64 lhs_stride = 10;
-  int64 rhs_stride = 11;
+  // Deleted fields.
+  reserved 8, 10, 11;
+  reserved "batch_size", "lhs_stride", "rhs_stride";
 }
 
 // Backend config for bitcast operation generated from MLIR MHLO dialect.

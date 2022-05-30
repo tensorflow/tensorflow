@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "SparseReduceSum"
   input_arg {
     name: "input_indices"

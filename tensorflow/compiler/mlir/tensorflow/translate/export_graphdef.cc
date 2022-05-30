@@ -30,11 +30,10 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -73,10 +72,10 @@ using llvm::dyn_cast;
 using llvm::isa;
 using mlir::BlockArgument;
 using mlir::Dialect;
-using mlir::FuncOp;
 using mlir::Operation;
 using mlir::SymbolTable;
 using mlir::Value;
+using mlir::func::FuncOp;
 using stream_executor::port::StatusOr;
 
 namespace {
@@ -175,7 +174,7 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
 
   auto node_def = absl::make_unique<NodeDef>();
   if (!name.empty())
-    node_def->set_name(name.str());
+    node_def->set_name(std::string(ParseTensorName(name.str()).node()));
   else
     node_def->set_name(
         std::string(op_to_name_.GetUniqueName(func.getName().str())));
@@ -235,7 +234,7 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
     FuncOp function, Value operand, unsigned index, llvm::StringRef name) {
   auto node_def = absl::make_unique<NodeDef>();
   if (!name.empty())
-    node_def->set_name(name.str());
+    node_def->set_name(std::string(ParseTensorName(name.str()).node()));
   else
     node_def->set_name(
         std::string(op_to_name_.GetUniqueName(function.getName().str())));
@@ -364,9 +363,7 @@ Status Exporter::AddInstructionNode(Operation* inst) {
                       ConvertTFDialectOpToNodeDef(
                           inst, name, /*ignore_unregistered_attrs=*/false));
 
-  Status status;
-  Node* node = graph_->AddNode(*node_def, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * node, graph_->AddNode(*node_def));
   DCHECK(node != nullptr);
   nodes_[inst] = node;
   return Status::OK();
@@ -381,9 +378,7 @@ bool IsEntryFunctionArg(BlockArgument arg) {
 Status Exporter::AddArgumentNode(BlockArgument arg, unsigned index,
                                  llvm::StringRef name) {
   TF_ASSIGN_OR_RETURN(auto node_def, GetArgumentNode(arg, index, name));
-  Status status;
-  Node* node = graph_->AddNode(*node_def, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * node, graph_->AddNode(*node_def));
   args_[arg] = node;
   return Status::OK();
 }
@@ -392,7 +387,6 @@ Status Exporter::AddArgumentNode(BlockArgument arg, unsigned index,
 // names will be used per node in order instead of generating a unique name.
 Status Exporter::AddFetchNode(FuncOp function, mlir::tf_executor::FetchOp fetch,
                               llvm::ArrayRef<llvm::StringRef> names) {
-  Status status;
   auto& return_nodes = returns_[fetch];
   for (auto operand_and_idx : llvm::enumerate(fetch.getOperands())) {
     if (operand_and_idx.value().getType().isa<mlir::tf_executor::ControlType>())
@@ -403,8 +397,7 @@ Status Exporter::AddFetchNode(FuncOp function, mlir::tf_executor::FetchOp fetch,
         GetReturnNode(function, operand_and_idx.value(),
                       operand_and_idx.index(),
                       names.empty() ? "" : names[operand_and_idx.index()]));
-    Node* node = graph_->AddNode(*node_def, &status);
-    TF_RETURN_IF_ERROR(status);
+    TF_ASSIGN_OR_RETURN(Node * node, graph_->AddNode(*node_def));
     return_nodes.push_back(node);
   }
   return Status::OK();
@@ -437,6 +430,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   // Extract input & output names if set.
   llvm::SmallVector<llvm::StringRef, 2> input_names;
   llvm::SmallVector<llvm::StringRef, 2> output_names;
+  llvm::SmallVector<llvm::StringRef, 2> unique_output_names;
   auto dict_attr =
       function->getAttrOfType<mlir::DictionaryAttr>(kEntryFuncAttr);
   if (dict_attr) {
@@ -486,7 +480,8 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       mlir::LegalizeNodeName(tensor_id_node);
 
       // Ensure name does not get reused.
-      (void)exporter.op_to_name_.GetUniqueName(tensor_id_node);
+      unique_output_names.push_back(
+          exporter.op_to_name_.GetUniqueName(tensor_id_node));
     }
   }
 
@@ -549,7 +544,8 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       // tf_executor.NextIteration.Sink will be used instead.
       continue;
     } else if (auto fetch = llvm::dyn_cast<mlir::tf_executor::FetchOp>(inst)) {
-      TF_RETURN_IF_ERROR(exporter.AddFetchNode(function, fetch, output_names));
+      TF_RETURN_IF_ERROR(
+          exporter.AddFetchNode(function, fetch, unique_output_names));
     } else if (auto island =
                    llvm::dyn_cast<mlir::tf_executor::IslandOp>(inst)) {
       Operation& inner_op = island.GetBody().front();
@@ -660,18 +656,6 @@ Status Exporter::ConvertLibFunction(
       (*func_def.mutable_resource_arg_unique_id())[i] =
           resource_arg_unique_id_attr.getInt();
     }
-
-    llvm::ArrayRef<mlir::NamedAttribute> func_arg_i_attrs =
-        function.getArgAttrs(i);
-    if (func_arg_i_attrs.empty()) continue;
-    absl::flat_hash_set<absl::string_view> attrs_to_ignore = {
-        kDeviceAttr, kResourceArgUniqueIdAttr};
-    FunctionDef::ArgAttrs func_def_arg_i_attrs;
-    TF_RETURN_IF_ERROR(ConvertAttributes(func_arg_i_attrs, attrs_to_ignore,
-                                         /*remove_ref_type=*/false,
-                                         func_def_arg_i_attrs.mutable_attr()));
-    if (func_def_arg_i_attrs.attr().empty()) continue;
-    (*func_def.mutable_arg_attr())[i] = std::move(func_def_arg_i_attrs);
   }
 
   (*flib->add_function()) = std::move(func_def);
@@ -683,8 +667,8 @@ Status Exporter::Convert(mlir::ModuleOp module,
                          std::unique_ptr<Graph>* graph,
                          FunctionLibraryDefinition* flib_def,
                          absl::flat_hash_set<Node*>* control_ret_nodes) {
-  mlir::Identifier entry_func_id =
-      mlir::Identifier::get("main", module.getContext());
+  mlir::StringAttr entry_func_id =
+      mlir::StringAttr::get(module.getContext(), "main");
   absl::optional<FuncOp> entry_func;
   FunctionDefLibrary flib;
   llvm::SmallDenseSet<FuncOp> visited_functions;

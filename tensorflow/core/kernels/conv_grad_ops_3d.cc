@@ -741,6 +741,10 @@ class Conv3DBackpropFilterOp : public OpKernel {
     TensorShape filter_shape;
     if (takes_shape_) {
       const Tensor& filter_sizes = context->input(1);
+      OP_REQUIRES(context, TensorShapeUtils::IsVector(filter_sizes.shape()),
+                  errors::InvalidArgument(
+                      "filter_sizes shape must be rank 1 but is rank ",
+                      filter_sizes.shape().dims()));
       OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
                                   filter_sizes.vec<int32>(), &filter_shape));
     } else {
@@ -875,6 +879,10 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
     TensorShape filter_shape;
     if (takes_shape_) {
       const Tensor& filter_sizes = context->input(1);
+      OP_REQUIRES(context, TensorShapeUtils::IsVector(filter_sizes.shape()),
+                  errors::InvalidArgument(
+                      "filter_sizes shape must be rank 1 but is rank ",
+                      filter_sizes.shape().dims()));
       OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
                                   filter_sizes.vec<int32>(), &filter_shape));
     } else {
@@ -1197,9 +1205,10 @@ struct Conv3dBackwardDataAutotuneGroup {
 };
 
 typedef AutotuneSingleton<Conv3dBackwardDataAutotuneGroup, ConvParameters,
-                          se::dnn::AlgorithmConfig>
+                          AutotuneEntry<se::dnn::ConvOp>>
 
     AutotuneConv3dBwdData;
+
 template <typename T>
 class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
  public:
@@ -1357,8 +1366,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         << ", " << padding_planes << ")";
 
 #if GOOGLE_CUDA
-    const bool compute_in_nhwc =
-        CUDNN_VERSION >= 8000 && DataTypeToEnum<T>::value == DT_HALF;
+    const bool compute_in_nhwc = ComputeInNhwcEnabled(
+        DataTypeToEnum<T>::value, stream, /*is_conv2d=*/false);
 #else
     // fast NDHWC implementation is a CUDA only feature
     const bool compute_in_nhwc = false;
@@ -1505,38 +1514,24 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     using se::dnn::AlgorithmDesc;
     using se::dnn::ProfileResult;
 
-    auto config_or = AutotuneUnfusedConv(
+    auto entry_or = AutotuneUnfusedConv(
         cudnn_use_autotune_, AutotuneConv3dBwdData::GetInstance(),
         conv_parameters, context, se::dnn::ConvolutionKind::BACKWARD_DATA,
         input_desc, in_backprop_ptr, filter_desc, filter_ptr, conv_desc,
         output_desc, out_backprop_ptr, ConvolveBackwardDataScratchSize);
+    OP_REQUIRES_OK(context, entry_or.status());
+    auto autotune_entry = entry_or.ConsumeValueOrDie();
 
-    OP_REQUIRES_OK(context, config_or.status());
-    AlgorithmConfig algorithm_config = config_or.ConsumeValueOrDie();
-
-    Status cudnn_launch_status;
     DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                           context);
-    if (CudnnUseFrontend()) {
-      if (algorithm_config.algorithm().has_value()) {
-        VLOG(4) << "Conv3DBackpropInput Execution Plan: "
-                << algorithm_config.algorithm()->exec_plan_id();
-      } else {
-        VLOG(4) << "Convolution Autotune has been turned off";
-      }
-      cudnn_launch_status = stream->ConvolveWithExecutionPlan(
-          se::dnn::ConvolutionKind::BACKWARD_DATA, input_desc, in_backprop_ptr,
-          filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
-          &scratch_allocator, algorithm_config, nullptr);
-    } else {
-      cudnn_launch_status = stream->ConvolveWithAlgorithm(
-          se::dnn::ConvolutionKind::BACKWARD_DATA, input_desc, in_backprop_ptr,
-          filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
-          &scratch_allocator, algorithm_config, nullptr);
-    }
-
+    Status cudnn_launch_status = LaunchAutotunedConv(
+        autotune_entry, &scratch_allocator,
+        se::dnn::ConvolutionKind::BACKWARD_DATA, stream, input_desc,
+        in_backprop_ptr, filter_desc, filter_ptr, conv_desc, output_desc,
+        out_backprop_ptr);
     if (!cudnn_launch_status.ok()) {
       context->SetStatus(cudnn_launch_status);
+      return;
     }
 
     if (rows_odd || cols_odd || planes_odd) {
@@ -1588,7 +1583,7 @@ struct Conv3dBackwardFilterAutotuneGroup {
 };
 
 typedef AutotuneSingleton<Conv3dBackwardFilterAutotuneGroup, ConvParameters,
-                          se::dnn::AlgorithmConfig>
+                          AutotuneEntry<se::dnn::ConvOp>>
     AutotuneConv3dBwdFilter;
 
 template <typename T>
@@ -1651,6 +1646,10 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     TensorShape filter_shape;
     if (takes_shape_) {
       const Tensor& filter_sizes = context->input(1);
+      OP_REQUIRES(context, TensorShapeUtils::IsVector(filter_sizes.shape()),
+                  errors::InvalidArgument(
+                      "filter_sizes shape must be rank 1 but is rank ",
+                      filter_sizes.shape().dims()));
       OP_REQUIRES_OK(context, tensor::MakeShape(filter_sizes, &filter_shape));
     } else {
       filter_shape = context->input(1).shape();
@@ -1761,8 +1760,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         << ", " << padding_planes << ")";
 
 #if GOOGLE_CUDA
-    const bool compute_in_nhwc =
-        CUDNN_VERSION >= 8000 && DataTypeToEnum<T>::value == DT_HALF;
+    const bool compute_in_nhwc = ComputeInNhwcEnabled(
+        DataTypeToEnum<T>::value, stream, /*is_conv2d=*/false);
 #else
     // fast NDHWC implementation is a CUDA only feature
     const bool compute_in_nhwc = false;
@@ -1912,37 +1911,24 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     using se::dnn::AlgorithmDesc;
     using se::dnn::ProfileResult;
 
-    auto config_or = AutotuneUnfusedConv(
+    auto entry_or = AutotuneUnfusedConv(
         cudnn_use_autotune_, AutotuneConv3dBwdFilter::GetInstance(),
         conv_parameters, context, se::dnn::ConvolutionKind::BACKWARD_FILTER,
         input_desc, input_ptr, filter_desc, filter_backprop_ptr, conv_desc,
         output_desc, out_backprop_ptr, ConvolveBackwardFilterScratchSize);
-    OP_REQUIRES_OK(context, config_or.status());
-    AlgorithmConfig algorithm_config = config_or.ConsumeValueOrDie();
+    OP_REQUIRES_OK(context, entry_or.status());
+    auto autotune_entry = entry_or.ConsumeValueOrDie();
 
-    Status cudnn_launch_status;
     DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                           context);
-    if (CudnnUseFrontend()) {
-      if (algorithm_config.algorithm().has_value()) {
-        VLOG(4) << "Conv3DBackpropFilter Execution Plan: "
-                << algorithm_config.algorithm()->exec_plan_id();
-      } else {
-        VLOG(4) << "Convolution Autotune has been turned off";
-      }
-      cudnn_launch_status = stream->ConvolveWithExecutionPlan(
-          se::dnn::ConvolutionKind::BACKWARD_FILTER, input_desc, input_ptr,
-          filter_desc, filter_backprop_ptr, output_desc, out_backprop_ptr,
-          conv_desc, &scratch_allocator, algorithm_config, nullptr);
-    } else {
-      cudnn_launch_status = stream->ConvolveWithAlgorithm(
-          se::dnn::ConvolutionKind::BACKWARD_FILTER, input_desc, input_ptr,
-          filter_desc, filter_backprop_ptr, output_desc, out_backprop_ptr,
-          conv_desc, &scratch_allocator, algorithm_config, nullptr);
-    }
-
+    Status cudnn_launch_status = LaunchAutotunedConv(
+        autotune_entry, &scratch_allocator,
+        se::dnn::ConvolutionKind::BACKWARD_FILTER, stream, input_desc,
+        input_ptr, filter_desc, filter_backprop_ptr, conv_desc, output_desc,
+        out_backprop_ptr);
     if (!cudnn_launch_status.ok()) {
       context->SetStatus(cudnn_launch_status);
+      return;
     }
 
     auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };

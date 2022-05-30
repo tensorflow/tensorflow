@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -1409,6 +1408,7 @@ def manager():
   This method should only be called after multi_process_runner.test_main() is
   called.
   """
+  _check_initialization()
   global _manager
   with _manager_lock:
     if _manager is None:

@@ -25,36 +25,23 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "mkldnn.hpp"
-#include "tensorflow/core/framework/numeric_op.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/tensor_util.h"
-#include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/kernels/mkl/mkl_conv_ops.h"
-#include "tensorflow/core/kernels/ops_util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/util/mkl_util.h"
-#include "tensorflow/core/util/padding.h"
-#include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
+#ifdef DNNL_AARCH64_USE_ACL
+#include "tensorflow/core/platform/mutex.h"
+#endif
 
-using mkldnn::convolution_backward_data;
-using mkldnn::prop_kind;
-using mkldnn::stream;
+using dnnl::convolution_backward_data;
+using dnnl::prop_kind;
+using dnnl::stream;
 
 namespace tensorflow {
 
-using ConvBwdDataDesc = mkldnn::convolution_backward_data::desc;
-using ConvBwdDataPd = mkldnn::convolution_backward_data::primitive_desc;
+using ConvBwdDataDesc = dnnl::convolution_backward_data::desc;
+using ConvBwdDataPd = dnnl::convolution_backward_data::primitive_desc;
 
 // Utility classes for enabling primitive reuse for conv bwd input.
 struct MklConvBwdInputParams {
@@ -106,8 +93,11 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
   void Execute(const T* diff_src_data, const T* filter_data,
                const T* diff_dst_data,
                std::shared_ptr<stream> bwd_input_stream) {
+#ifdef DNNL_AARCH64_USE_ACL
+    mutex_lock lock(primitive_execution_mu_);
+#endif
 #ifndef ENABLE_ONEDNN_OPENMP
-    // TODO: Create a common function and avoid the duplicate code
+    // TODO(intel-tf): Create a common function and avoid the duplicate code
     context_.diff_src_mem->set_data_handle(
         static_cast<T*>(const_cast<T*>(diff_src_data)), *bwd_input_stream);
     context_.filter_mem->set_data_handle(
@@ -140,9 +130,9 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
   // Primitive reuse context for conv bwd input.
   struct ConvBwdInputContext {
     // MKL-DNN memory.
-    std::shared_ptr<mkldnn::memory> diff_src_mem;
-    std::shared_ptr<mkldnn::memory> filter_mem;
-    std::shared_ptr<mkldnn::memory> diff_dst_mem;
+    std::shared_ptr<dnnl::memory> diff_src_mem;
+    std::shared_ptr<dnnl::memory> filter_mem;
+    std::shared_ptr<dnnl::memory> diff_dst_mem;
 
     // Conv backward input primitive descriptor and descriptor.
     std::shared_ptr<ConvBwdDataPd> bwd_input_pd;
@@ -153,7 +143,7 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
     std::shared_ptr<ConvFwdDesc> fwd_desc;
 
     // Conv bwd input primitive.
-    std::shared_ptr<mkldnn::primitive> conv_bwd_input;
+    std::shared_ptr<dnnl::primitive> conv_bwd_input;
 
     // Memory descriptors: forward & backward share the same descriptors.
     std::shared_ptr<memory::desc> diff_src_md;
@@ -161,7 +151,7 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
     std::shared_ptr<memory::desc> diff_dst_md;
 
     // MKL-DNN pipeline for executing primitives.
-    std::vector<mkldnn::primitive> bwd_input_primitives;
+    std::vector<dnnl::primitive> bwd_input_primitives;
     std::vector<std::unordered_map<int, memory>> bwd_input_primitives_args;
 
     ConvBwdInputContext()
@@ -199,13 +189,13 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
 
     // Create descriptors for both conv fwd and conv bwd input.
     context_.bwd_input_desc.reset(new ConvBwdDataDesc(
-        mkldnn::algorithm::convolution_direct, *context_.diff_src_md,
+        dnnl::algorithm::convolution_direct, *context_.diff_src_md,
         *context_.filter_md, *context_.diff_dst_md, convBwdInputDims.strides,
         convBwdInputDims.dilations, convBwdInputDims.padding_left,
         convBwdInputDims.padding_right));
 
     context_.fwd_desc.reset(new ConvFwdDesc(
-        prop_kind::forward, mkldnn::algorithm::convolution_direct,
+        prop_kind::forward, dnnl::algorithm::convolution_direct,
         *context_.diff_src_md, *context_.filter_md, *context_.diff_dst_md,
         convBwdInputDims.strides, convBwdInputDims.dilations,
         convBwdInputDims.padding_left, convBwdInputDims.padding_right));
@@ -227,14 +217,17 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
     context_.conv_bwd_input.reset(
         new convolution_backward_data(*context_.bwd_input_pd));
     context_.bwd_input_primitives_args.push_back(
-        {{MKLDNN_ARG_DIFF_DST, *context_.diff_dst_mem},
-         {MKLDNN_ARG_WEIGHTS, *context_.filter_mem},
-         {MKLDNN_ARG_DIFF_SRC, *context_.diff_src_mem}});
+        {{DNNL_ARG_DIFF_DST, *context_.diff_dst_mem},
+         {DNNL_ARG_WEIGHTS, *context_.filter_mem},
+         {DNNL_ARG_DIFF_SRC, *context_.diff_src_mem}});
 
     context_.bwd_input_primitives.push_back(*context_.conv_bwd_input);
   }
 
   struct ConvBwdInputContext context_;
+#ifdef DNNL_AARCH64_USE_ACL
+  mutex primitive_execution_mu_;
+#endif
 };
 
 template <typename T>
@@ -495,7 +488,7 @@ class MklConvCustomBackpropInputOp
       if (do_not_cache) {
         delete conv_bwd_input;
       }
-    } catch (mkldnn::error& e) {
+    } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
@@ -558,7 +551,7 @@ class MklConvCustomBackpropInputOp
     return data_format;
   }
 
-  // TODO(bhavanis): Move this function to mkl_util.h since it is common to
+  // TODO(intel-tf): Move this function to mkl_util.h since it is common to
   // both the forward and backward implementations
   void AllocateOutputTensor(OpKernelContext* context,
                             const ConvBwdDataPd& conv_pd,

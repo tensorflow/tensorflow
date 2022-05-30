@@ -2,8 +2,8 @@
 
 // Tests that the pass can correctly transform a training loop with 2 replicas.
 
-!tf_res_f32 = type tensor<*x!tf_type.resource<tensor<f32>>>
-!tf_res_md_f32 = type tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>> // Multi-dim f32
+!tf_res_f32 = tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res_md_f32 = tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>> // Multi-dim f32
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
   // CHECK-LABEL: func @main
@@ -11,7 +11,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-SAME: %[[ARG1:.*]]: tensor<*x!tf_type.resource<tensor<f32>>> {tf.device = "/device:TPU:1"},
   // CHECK-SAME: %[[ARG2:.*]]: tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>> {tf.device = "/device:TPU:0"},
   // CHECK-SAME: %[[ARG3:.*]]: tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>> {tf.device = "/device:TPU:1"})
-  func @main(%arg0: !tf_res_f32 {tf.device = "/device:TPU:0"},
+  func.func @main(%arg0: !tf_res_f32 {tf.device = "/device:TPU:0"},
              %arg1: !tf_res_f32 {tf.device = "/device:TPU:1"},
              %arg2: !tf_res_md_f32 {tf.device = "/device:TPU:0"},
              %arg3: !tf_res_md_f32 {tf.device = "/device:TPU:1"}) {
@@ -22,7 +22,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK: %[[STATE1:.*]] = "tf.VarHandleOp"()
     // CHECK-SAME: device = "/device:TPU:1"
     // CHECK: %[[WHILE:.*]] = "tf.WhileRegion"(
-    %1 = "tf.WhileRegion"(%0) ( {
+    %1 = "tf.WhileRegion"(%0) ({
        // Condition region
        // CHECK: ^bb
        // CHECK: "tf.Yield"
@@ -38,7 +38,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
           %b1 = "tf.AddV2"(%barg0, %0) {T = i32, device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
           // CHECK: %[[COMPILE:.*]]:2 = "tf_device.launch"
           // CHECK-NEXT: "tf._TPUCompileMlir"()
-          %compile:2 = "tf_device.launch"() ( {
+          %compile:2 = "tf_device.launch"() ({
             %b2:2 = "tf._TPUCompileMlir"() {
               NumDynamicShapes = 0 : i64,
               // The metadata encodes 2 parameter and 2 return values.
@@ -46,7 +46,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
               mlir_module = "..."} : () -> (tensor<!tf_type.string>, tensor<2x!tf_type.string>)
             tf_device.return %b2#0, %b2#1 : tensor<!tf_type.string>, tensor<2x!tf_type.string>
           }) {device = "/device:CPU:0"} : () -> (tensor<!tf_type.string>, tensor<2x!tf_type.string>)
-          "tf_device.launch"() ( {
+          "tf_device.launch"() ({
             "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf_type.string>) -> ()
             tf_device.return
           }) {device = "/device:CPU:0"} : () -> ()
@@ -65,7 +65,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
             // CHECK-NEXT: tf_device.return
             // CHECK-NEXT: device = "TPU_REPLICATED_CORE_0"
             // CHECK: "tf.TPUExecuteAndUpdateVariables"(%[[ID]], %[[R1]], %[[COMPILE]]#1)
-            "tf_device.launch"() ( {
+            "tf_device.launch"() ({
               "tf.TPUExecuteAndUpdateVariables"(%id, %arg31, %compile#1)
                     {device_var_reads_indices = [0, 1], device_var_updates_indices = [0, 1]}
                       : (tensor<*x!tf_type.resource<tensor<f32>>>, tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>>, tensor<2x!tf_type.string>) -> ()
@@ -87,7 +87,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-NEXT: "tf.TPUReshardVariables"(%[[V0]], %[[V1]], %[[DEFAULT]], %[[STATE]])
     // CHECK-NEXT: tf_device.return
     // CHECK-NEXT: device = "TPU_REPLICATED_CORE_0"
-    return
+    func.return
   }
 }
 
@@ -96,20 +96,20 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
 // Tests that the pass does not format variables with other uses.
 
-!tf_res_f32 = type tensor<*x!tf_type.resource<tensor<f32>>>
-!tf_res_md_f32 = type tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>> // Multi-dim f32
+!tf_res_f32 = tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res_md_f32 = tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>> // Multi-dim f32
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
   // CHECK-LABEL: func @main
   // CHECK-NOT: TPUReshardVariables
-  func @main(%arg0: !tf_res_f32 {tf.device = "/device:TPU:0"},
+  func.func @main(%arg0: !tf_res_f32 {tf.device = "/device:TPU:0"},
              %arg1: !tf_res_f32 {tf.device = "/device:TPU:1"},
              %arg2: !tf_res_md_f32 {tf.device = "/device:TPU:0"},
              %arg3: !tf_res_md_f32 {tf.device = "/device:TPU:1"},
              %arg4: !tf_res_f32 {tf.device = "/device:TPU:1"}) {
 
     %0 = "tf.Const"() {value = dense<100> : tensor<i32>} : () -> tensor<i32>
-    %1 = "tf.WhileRegion"(%0) ( {
+    %1 = "tf.WhileRegion"(%0) ({
        // Condition region
        ^bb0(%carg0: tensor<i32>):
           %c0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
@@ -121,7 +121,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
        ^bb0(%barg0: tensor<i32>):
           %b0 = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
           %b1 = "tf.AddV2"(%barg0, %0) {T = i32, device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
-          %compile:2 = "tf_device.launch"() ( {
+          %compile:2 = "tf_device.launch"() ({
             %b2:2 = "tf._TPUCompileMlir"() {
               NumDynamicShapes = 0 : i64,
               // The metadata encodes 3 parameter and 3 return values.
@@ -129,7 +129,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
               mlir_module = "..."} : () -> (tensor<!tf_type.string>, tensor<2x!tf_type.string>)
             tf_device.return %b2#0, %b2#1 : tensor<!tf_type.string>, tensor<2x!tf_type.string>
           }) {device = "/device:CPU:0"} : () -> (tensor<!tf_type.string>, tensor<2x!tf_type.string>)
-          "tf_device.launch"() ( {
+          "tf_device.launch"() ({
             "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf_type.string>) -> ()
             tf_device.return
           }) {device = "/device:CPU:0"} : () -> ()
@@ -142,7 +142,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
                   {_mirrored_variable_indices = [0, 1, 2], devices = {TPU_REPLICATED_CORE_0 = ["/device:TPU:0", "/device:TPU:1"]}, n = 2 : i32} {
             // %arg30 is used in the cond function, %arg31 has other uses (%id0), and
             // %arg32 is not a pass-through.
-            "tf_device.launch"() ( {
+            "tf_device.launch"() ({
               "tf.TPUExecuteAndUpdateVariables"(%arg30, %arg31, %arg32, %compile#1)
                     {device_var_reads_indices = [0, 1, 2], device_var_updates_indices = [0, 1, 2]}
                       : (!tf_res_f32, !tf_res_md_f32, !tf_res_f32, tensor<2x!tf_type.string>) -> ()
@@ -153,7 +153,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
           }
           "tf.Yield"(%b1) :  (tensor<i32>) -> ()
       }) {device = "", is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
-    return
+    func.return
   }
 }
 
@@ -162,19 +162,19 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 // Tests that the pass does not format variables when model parallelism is
 // present.
 
-!tf_res_f32 = type tensor<*x!tf_type.resource<tensor<f32>>>
-!tf_res_md_f32 = type tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>> // Multi-dim f32
+!tf_res_f32 = tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res_md_f32 = tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>> // Multi-dim f32
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
   // CHECK-LABEL: func @main
   // CHECK-NOT: TPUReshardVariables
-  func @main(%arg0: !tf_res_f32 {tf.device = "/device:TPU:0"},
+  func.func @main(%arg0: !tf_res_f32 {tf.device = "/device:TPU:0"},
              %arg1: !tf_res_f32 {tf.device = "/device:TPU:1"},
              %arg2: !tf_res_md_f32 {tf.device = "/device:TPU:0"},
              %arg3: !tf_res_md_f32 {tf.device = "/device:TPU:1"}) {
 
     %0 = "tf.Const"() {value = dense<100> : tensor<i32>} : () -> tensor<i32>
-    %1 = "tf.WhileRegion"(%0) ( {
+    %1 = "tf.WhileRegion"(%0) ({
        // Condition region
        ^bb0(%carg0: tensor<i32>):
           %c0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
@@ -185,7 +185,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
        ^bb0(%barg0: tensor<i32>):
           %b0 = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
           %b1 = "tf.AddV2"(%barg0, %0) {T = i32, device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
-          %compile:2 = "tf_device.launch"() ( {
+          %compile:2 = "tf_device.launch"() ({
             %b2:2 = "tf._TPUCompileMlir"() {
               NumDynamicShapes = 0 : i64,
               // The metadata encodes 2 parameter and 2 return values.
@@ -193,7 +193,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
               mlir_module = "..."} : () -> (tensor<!tf_type.string>, tensor<2x!tf_type.string>)
             tf_device.return %b2#0, %b2#1 : tensor<!tf_type.string>, tensor<2x!tf_type.string>
           }) {device = "/device:CPU:0"} : () -> (tensor<!tf_type.string>, tensor<2x!tf_type.string>)
-          "tf_device.launch"() ( {
+          "tf_device.launch"() ({
             "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf_type.string>) -> ()
             tf_device.return
           }) {device = "/device:CPU:0"} : () -> ()
@@ -202,7 +202,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
                   {_mirrored_variable_indices = [0, 1], devices = {TPU_REPLICATED_CORE_0 = ["/device:TPU:0", "/device:TPU:1"]}, n = 2 : i32} {
             %id = "tf.Identity"(%arg30) : (tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<*x!tf_type.resource<tensor<f32>>>
             "tf_device.parallel_execute"() ({
-              "tf_device.launch"() ( {
+              "tf_device.launch"() ({
                 "tf.TPUExecuteAndUpdateVariables"(%id, %arg31, %compile#1)
                       {device_var_reads_indices = [0, 1], device_var_updates_indices = [0, 1]}
                         : (tensor<*x!tf_type.resource<tensor<f32>>>, tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>>, tensor<2x!tf_type.string>) -> ()
@@ -217,7 +217,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
           }
           "tf.Yield"(%b1) :  (tensor<i32>) -> ()
       }) {device = "", is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
-    return
+    func.return
   }
 }
 
@@ -225,15 +225,15 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
 // Tests that the pass can correctly transform a training loop with a packed
 // variable.
-!tf_res_f32 = type tensor<*x!tf_type.resource<tensor<f32>>>
-!tf_res_md_f32 = type tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>> // Multi-dim f32
+!tf_res_f32 = tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res_md_f32 = tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>> // Multi-dim f32
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
   // CHECK-LABEL: func @main
   // CHECK-SAME: %[[ARG0:.*]]: tensor<*x!tf_type.resource<tensor<f32>>> {tf.device = "/device:TPU:0"},
   // CHECK-SAME: %[[ARG1:.*]]: tensor<*x!tf_type.resource<tensor<f32>>> {tf.device = "/device:TPU:1"},
   // CHECK-SAME: %[[ARG2:.*]]: tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>> {tf.device = "/device:COMPOSITE:0"})
-  func @main(%arg0: !tf_res_f32 {tf.device = "/device:TPU:0"},
+  func.func @main(%arg0: !tf_res_f32 {tf.device = "/device:TPU:0"},
              %arg1: !tf_res_f32 {tf.device = "/device:TPU:1"},
              %arg2: !tf_res_md_f32 {tf.device = "/device:COMPOSITE:0"}) {
     %0 = "tf.Const"() {value = dense<100> : tensor<i32>} : () -> tensor<i32>
@@ -242,7 +242,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK: %[[STATE1:.*]] = "tf.VarHandleOp"()
     // CHECK-SAME: device = "/device:TPU:1"
     // CHECK: %[[WHILE:.*]] = "tf.WhileRegion"(
-    %1 = "tf.WhileRegion"(%0) ( {
+    %1 = "tf.WhileRegion"(%0) ({
        // Condition region
        // CHECK: ^bb
        // CHECK: "tf.Yield"
@@ -258,7 +258,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
           %b1 = "tf.AddV2"(%barg0, %0) {T = i32, device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
           // CHECK: %[[COMPILE:.*]]:2 = "tf_device.launch"
           // CHECK-NEXT: "tf._TPUCompileMlir"()
-          %compile:2 = "tf_device.launch"() ( {
+          %compile:2 = "tf_device.launch"() ({
             %b2:2 = "tf._TPUCompileMlir"() {
               NumDynamicShapes = 0 : i64,
               // The metadata encodes 2 parameter and 2 return values.
@@ -266,7 +266,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
               mlir_module = "..."} : () -> (tensor<!tf_type.string>, tensor<2x!tf_type.string>)
             tf_device.return %b2#0, %b2#1 : tensor<!tf_type.string>, tensor<2x!tf_type.string>
           }) {device = "/device:CPU:0"} : () -> (tensor<!tf_type.string>, tensor<2x!tf_type.string>)
-          "tf_device.launch"() ( {
+          "tf_device.launch"() ({
             "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf_type.string>) -> ()
             tf_device.return
           }) {device = "/device:CPU:0"} : () -> ()
@@ -285,7 +285,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
             // CHECK-NEXT: tf_device.return
             // CHECK-NEXT: device = "TPU_REPLICATED_CORE_0"
             // CHECK: "tf.TPUExecuteAndUpdateVariables"(%[[ID]], %[[R1]], %[[COMPILE]]#1)
-            "tf_device.launch"() ( {
+            "tf_device.launch"() ({
               "tf.TPUExecuteAndUpdateVariables"(%id, %arg31, %compile#1)
                     {device_var_reads_indices = [0, 1], device_var_updates_indices = [0, 1]}
                       : (tensor<*x!tf_type.resource<tensor<f32>>>, tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>>, tensor<2x!tf_type.string>) -> ()
@@ -307,6 +307,6 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-NEXT: "tf.TPUReshardVariables"(%[[V0]], %[[V1]], %[[DEFAULT]], %[[STATE]])
     // CHECK-NEXT: tf_device.return
     // CHECK-NEXT: device = "TPU_REPLICATED_CORE_0"
-    return
+    func.return
   }
 }

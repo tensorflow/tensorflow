@@ -78,7 +78,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "UnbatchDatasetOp::Dataset"; }
 
-    int64_t Cardinality() const override {
+    int64_t CardinalityInternal() const override {
       int64_t n = input_->Cardinality();
       if (n == kInfiniteCardinality || n == kUnknownCardinality) {
         return n;
@@ -137,8 +137,12 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
             out_tensors->clear();
             out_tensors->reserve(tensors_.size());
             for (int i = 0; i < tensors_.size(); ++i) {
-              out_tensors->push_back(
-                  MaybeCopySubSlice(tensors_[i], current_index_));
+              // TODO(b/201790899): Investigate why using MaybeCopySubSlice
+              // may lead to a memory leak.
+              out_tensors->emplace_back(ctx->allocator({}), tensors_[i].dtype(),
+                                        shapes_[i]);
+              TF_RETURN_IF_ERROR(batch_util::MaybeMoveSliceToElement(
+                  &tensors_[i], &out_tensors->back(), current_index_));
             }
             ++current_index_;
             *end_of_sequence = false;

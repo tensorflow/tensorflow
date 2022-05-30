@@ -104,6 +104,51 @@ with respect to the filter.
 expected to invoke these operators.
 )doc");
 
+REGISTER_OP("_MklNativeFusedConv3D")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("args: num_args * T")
+    .Output("output: T")
+    .Attr("T: {bfloat16, float}")
+    .Attr("num_args: int >= 0")
+    .Attr("strides: list(int) >= 5")
+    .Attr("is_filter_const: bool = false")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
+    .Attr("fused_ops: list(string) = []")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("leakyrelu_alpha: float = 0.2")
+    .SetShapeFn(shape_inference::Conv3DShape)
+    .Doc(R"doc(
+MKL version of Conv3D operator that does not depend on layout propagation.
+Uses oneDNN APIs to perform 3D convolution.
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_FusedConv3D")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("args: num_args * T")
+    .Output("output: T")
+    .Attr("T: {bfloat16, float}")
+    .Attr("num_args: int >= 0")
+    .Attr("strides: list(int) >= 5")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
+    .Attr("fused_ops: list(string) = []")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("leakyrelu_alpha: float = 0.2")
+    .SetShapeFn(shape_inference::Conv3DShape)
+    .Doc(R"doc(
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
 REGISTER_OP("_MklNativeDepthwiseConv2dNative")
     .Input("input: T")
     .Input("filter: T")
@@ -1734,6 +1779,54 @@ Uses oneDNN APIs to perform fused batch normalization and relu.
 *NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
+
+REGISTER_OP("_MklFusedMish")
+    .Input("features: T")
+    .Output("activations: T")
+    .Attr("T: {bfloat16, float}")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+oneDNN version of the Mish operator. Uses oneDNN APIs to implement Mish operator.
+
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is expected
+to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklFusedBatchMatMulV2")
+    .Input("x: T")
+    .Input("y: T")
+    .Input("args: num_args * T")
+    .Output("output: T")
+    .Attr("T: {bfloat16, float}")
+    .Attr("adj_x: bool = false")
+    .Attr("adj_y: bool = false")
+    .Attr("num_args: int >= 0")
+    .Attr("fused_ops: list(string) = []")
+    .SetShapeFn(shape_inference::BatchMatMulV2Shape)
+    .Doc(R"doc(
+*NOTE*: Do not invoke this operator directly in Python. Grappler is
+expected to create these operators.
+)doc");
+
+REGISTER_OP("_MklSwish")
+    .Input("features: T")
+    .Output("activations: T")
+    .Attr("T: {float, bfloat16} = DT_FLOAT")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+MKL version of Swish operator. Uses MKL DNN APIs to implement Swish operator.
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklLayerNorm")
+    .Input("x: T")
+    .Input("scale: T")
+    .Input("offset: T")
+    .Output("y: T")
+    .Attr("T: {float, bfloat16}")
+    .Attr("epsilon: float = 0.001")
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 }  // namespace tensorflow
 

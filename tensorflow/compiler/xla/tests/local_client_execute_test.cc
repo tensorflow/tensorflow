@@ -420,6 +420,7 @@ XLA_TEST_F(LocalClientExecuteTest, LargeTuple) {
 
   // Add each element's tuple index value to every element.
   std::vector<XlaOp> result_elements;
+  result_elements.reserve(kElementCount);
   for (int i = 0; i < kElementCount; ++i) {
     auto element = GetTupleElement(param, i);
     result_elements.push_back(Add(element, ConstantR0<float>(&builder, i)));
@@ -430,6 +431,7 @@ XLA_TEST_F(LocalClientExecuteTest, LargeTuple) {
   // Feed in a tuple where each two-element vector element is {tuple_index,
   // -tuple_index}.
   std::vector<Literal> arg_elements;
+  arg_elements.reserve(kElementCount);
   for (int i = 0; i < kElementCount; ++i) {
     arg_elements.push_back(LiteralUtil::CreateR1<float>({1.0f * i, -1.0f * i}));
   }
@@ -463,9 +465,11 @@ XLA_TEST_F(LocalClientExecuteTest, LargeNestedTuple) {
   // The computation increments each leaf value by an amount equal to the leaf's
   // ordinal position in a traversal of the tuple.
   std::vector<XlaOp> result_elements;
+  result_elements.reserve(kFanout);
   for (int i = 0; i < kFanout; ++i) {
     auto outer_element = GetTupleElement(param, i);
     std::vector<XlaOp> inner_result_elements;
+    inner_result_elements.reserve(kFanout);
     for (int j = 0; j < kFanout; ++j) {
       auto inner_element = GetTupleElement(outer_element, j);
       inner_result_elements.push_back(
@@ -478,8 +482,10 @@ XLA_TEST_F(LocalClientExecuteTest, LargeNestedTuple) {
 
   // Construct the argument to pass to the computation.
   std::vector<Literal> outer_tuple_elements;
+  outer_tuple_elements.reserve(kFanout);
   for (int i = 0; i < kFanout; ++i) {
     std::vector<Literal> inner_tuple_elements;
+    inner_tuple_elements.reserve(kFanout);
     for (int j = 0; j < kFanout; ++j) {
       inner_tuple_elements.push_back(LiteralUtil::CreateR0<float>(i + j));
     }
@@ -732,26 +738,6 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnUninitializedStream) {
               ContainsRegex("stream is uninitialized or in an error state"));
 }
 
-XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_GPU(SelectBetweenTuples)) {
-  XlaBuilder builder(TestName());
-
-  std::initializer_list<float> vec1 = {1.f, 2.f, 3.f};
-  std::initializer_list<float> vec2 = {2.f, 4.f, 6.f};
-  auto tuple12 = Tuple(&builder, {ConstantR1<float>(&builder, vec1),
-                                  ConstantR1<float>(&builder, vec2)});
-  auto tuple21 = Tuple(&builder, {ConstantR1<float>(&builder, vec2),
-                                  ConstantR1<float>(&builder, vec1)});
-  Select(ConstantR0<bool>(&builder, false), tuple12, tuple21);
-
-  ScopedShapedBuffer result =
-      ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {});
-  Literal tuple_literal = ShapedBufferToLiteral(result);
-  LiteralTestUtil::ExpectR1Equal<float>({2.0f, 4.0f, 6.0f},
-                                        LiteralSlice(tuple_literal, {0}));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0f, 2.0f, 3.0f},
-                                        LiteralSlice(tuple_literal, {1}));
-}
-
 XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
   XlaBuilder builder(TestName());
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
@@ -759,7 +745,7 @@ XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
   Add(x, y);
 
   Shape argument_layout =
-      local_client_->backend().compiler()->DeviceShapeRepresentation(
+      local_client_->backend().compiler()->DefaultDeviceShapeRepresentation(
           ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{3}, {0}));
   TF_ASSERT_OK_AND_ASSIGN(
       auto executables,
@@ -850,7 +836,7 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion) {
   test_to_device_and_back(LiteralUtil::CreateR1<float>({1.0, 42.0, 744.4}));
   test_to_device_and_back(
       LiteralUtil::CreateR2<float>({{1.0, 2.0, 3.0}, {44.0, 0.1, -3}}));
-  test_to_device_and_back(LiteralUtil::CreateR2<int32>({{2, 1}, {4444, 56}}));
+  test_to_device_and_back(LiteralUtil::CreateR2<int32_t>({{2, 1}, {4444, 56}}));
 
   // Null shape (empty tuple).
   test_to_device_and_back(LiteralUtil::MakeTuple({}));

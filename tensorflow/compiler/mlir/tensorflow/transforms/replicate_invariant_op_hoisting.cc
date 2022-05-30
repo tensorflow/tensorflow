@@ -40,7 +40,7 @@ constexpr char kDeviceAttr[] = "device";
 struct ReplicateInvariantOpHoistingPass
     : public TF::ReplicateInvariantOpHoistingPassBase<
           ReplicateInvariantOpHoistingPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
@@ -143,13 +143,13 @@ void HoistReplicateInvariantOps(tf_device::ReplicateOp replicate_op) {
   }
 }
 
-void ReplicateInvariantOpHoistingPass::runOnFunction() {
-  getFunction().walk(
+void ReplicateInvariantOpHoistingPass::runOnOperation() {
+  getOperation().walk(
       [](tf_device::ReplicateOp op) { HoistReplicateInvariantOps(op); });
 }
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateReplicateInvariantOpHoistingPass() {
   return std::make_unique<ReplicateInvariantOpHoistingPass>();
 }

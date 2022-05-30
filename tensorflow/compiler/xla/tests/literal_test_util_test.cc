@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
@@ -33,8 +32,8 @@ namespace {
 
 TEST(LiteralTestUtilTest, ComparesEqualTuplesEqual) {
   Literal literal = LiteralUtil::MakeTupleFromSlices({
-      LiteralUtil::CreateR0<int32>(42),
-      LiteralUtil::CreateR0<int32>(64),
+      LiteralUtil::CreateR0<int32_t>(42),
+      LiteralUtil::CreateR0<int32_t>(64),
   });
   EXPECT_TRUE(LiteralTestUtil::Equal(literal, literal));
 }
@@ -107,12 +106,12 @@ TEST(LiteralTestUtilTest, ComparesUnequalTuplesUnequal) {
   // death assertion.
   auto unequal_things_are_equal = [] {
     Literal lhs = LiteralUtil::MakeTupleFromSlices({
-        LiteralUtil::CreateR0<int32>(42),
-        LiteralUtil::CreateR0<int32>(64),
+        LiteralUtil::CreateR0<int32_t>(42),
+        LiteralUtil::CreateR0<int32_t>(64),
     });
     Literal rhs = LiteralUtil::MakeTupleFromSlices({
-        LiteralUtil::CreateR0<int32>(64),
-        LiteralUtil::CreateR0<int32>(42),
+        LiteralUtil::CreateR0<int32_t>(64),
+        LiteralUtil::CreateR0<int32_t>(42),
     });
     CHECK(LiteralTestUtil::Equal(lhs, rhs)) << "LHS and RHS are unequal";
   };
@@ -129,12 +128,12 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
 
   tensorflow::Env* env = tensorflow::Env::Default();
 
-  string outdir;
+  std::string outdir;
   if (!tensorflow::io::GetTestUndeclaredOutputsDir(&outdir)) {
     outdir = tensorflow::testing::TmpDir();
   }
-  string pattern = tensorflow::io::JoinPath(outdir, "tempfile-*.pb");
-  std::vector<string> files;
+  std::string pattern = tensorflow::io::JoinPath(outdir, "tempfile-*.pb");
+  std::vector<std::string> files;
   TF_CHECK_OK(env->GetMatchingPaths(pattern, &files));
   for (const auto& f : files) {
     TF_CHECK_OK(env->DeleteFile(f)) << f;
@@ -144,22 +143,22 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
 
   // Now check we wrote temporary files to the temporary directory that we can
   // read.
-  std::vector<string> results;
+  std::vector<std::string> results;
   TF_CHECK_OK(env->GetMatchingPaths(pattern, &results));
 
   LOG(INFO) << "results: [" << absl::StrJoin(results, ", ") << "]";
   EXPECT_EQ(3, results.size());
-  for (const string& result : results) {
+  for (const std::string& result : results) {
     LiteralProto literal_proto;
     TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(), result,
                                             &literal_proto));
     Literal literal =
         Literal::CreateFromProto(literal_proto).ConsumeValueOrDie();
-    if (result.find("expected") != string::npos) {
+    if (result.find("expected") != std::string::npos) {
       EXPECT_EQ("f32[] 2", literal.ToString());
-    } else if (result.find("actual") != string::npos) {
+    } else if (result.find("actual") != std::string::npos) {
       EXPECT_EQ("f32[] 4", literal.ToString());
-    } else if (result.find("mismatches") != string::npos) {
+    } else if (result.find("mismatches") != std::string::npos) {
       EXPECT_EQ("pred[] true", literal.ToString());
     } else {
       FAIL() << "unknown file in temporary directory: " << result;
@@ -168,8 +167,8 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
 }
 
 TEST(LiteralTestUtilTest, NotEqualHasValuesInMessage) {
-  auto expected = LiteralUtil::CreateR1<int32>({1, 2, 3});
-  auto actual = LiteralUtil::CreateR1<int32>({4, 5, 6});
+  auto expected = LiteralUtil::CreateR1<int32_t>({1, 2, 3});
+  auto actual = LiteralUtil::CreateR1<int32_t>({4, 5, 6});
   ::testing::AssertionResult result = LiteralTestUtil::Equal(expected, actual);
   EXPECT_THAT(result.message(),
               ::testing::HasSubstr("Expected literal:\ns32[3] {1, 2, 3}"));

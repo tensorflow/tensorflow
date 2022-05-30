@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -47,16 +47,16 @@ struct LaunchOutliningPass
 
 void ReplaceClusterReturnWithReturn(tf_device::ReturnOp cluster_return_op,
                                     OpBuilder* builder) {
-  builder->create<ReturnOp>(cluster_return_op.getLoc(),
-                            cluster_return_op.getOperands());
+  builder->create<func::ReturnOp>(cluster_return_op.getLoc(),
+                                  cluster_return_op.getOperands());
   cluster_return_op.erase();
 }
 
 // Builds a function that outlines region attached to cluster_op or launch_op,
 // and inserts built function into given module.
 template <typename ClusterOrLaunchOp>
-FuncOp BuildFunction(llvm::ArrayRef<Value> live_ins, ClusterOrLaunchOp op,
-                     SymbolTable* symbol_table, OpBuilder* builder) {
+func::FuncOp BuildFunction(llvm::ArrayRef<Value> live_ins, ClusterOrLaunchOp op,
+                           SymbolTable* symbol_table, OpBuilder* builder) {
   llvm::SmallVector<Type, 4> operand_types;
   operand_types.reserve(live_ins.size());
   for (Value v : live_ins) operand_types.emplace_back(v.getType());
@@ -65,7 +65,8 @@ FuncOp BuildFunction(llvm::ArrayRef<Value> live_ins, ClusterOrLaunchOp op,
 
   // TODO(lyandy): Define better name for outlined function. Potentially some
   // name can be added during cluster formation.
-  FuncOp outlined_func = FuncOp::create(op.getLoc(), "_func", func_type);
+  func::FuncOp outlined_func =
+      func::FuncOp::create(op.getLoc(), "_func", func_type);
 
   // This function is not externally visible and marking it private would allow
   // symbol-dce pass to remove it when it is not referenced anymore.
@@ -105,15 +106,15 @@ void OutlineCluster(tf_device::ClusterOp cluster_op, SymbolTable* symbol_table,
   llvm::SetVector<Value> live_ins;
   getUsedValuesDefinedAbove(cluster_op.body(), cluster_op.body(), live_ins);
 
-  FuncOp outlined_func =
+  func::FuncOp outlined_func =
       BuildFunction(live_ins.getArrayRef(), cluster_op, symbol_table, builder);
   cluster_op->setAttr(
-      builder->getIdentifier(kFuncAttr),
+      builder->getStringAttr(kFuncAttr),
       mlir::SymbolRefAttr::get(builder->getContext(), outlined_func.getName()));
 
   builder->setInsertionPoint(cluster_op);
   auto cluster_func_op = builder->create<tf_device::ClusterFuncOp>(
-      cluster_op.getLoc(), outlined_func.getType().getResults(),
+      cluster_op.getLoc(), outlined_func.getFunctionType().getResults(),
       live_ins.getArrayRef(), cluster_op->getAttrs());
 
   cluster_op.replaceAllUsesWith(cluster_func_op);
@@ -128,15 +129,15 @@ void OutlineLaunch(tf_device::LaunchOp launch_op, SymbolTable* symbol_table,
   llvm::SetVector<Value> live_ins;
   getUsedValuesDefinedAbove(launch_op.body(), launch_op.body(), live_ins);
 
-  FuncOp outlined_func =
+  func::FuncOp outlined_func =
       BuildFunction(live_ins.getArrayRef(), launch_op, symbol_table, builder);
   launch_op->setAttr(
-      builder->getIdentifier(kFuncAttr),
+      builder->getStringAttr(kFuncAttr),
       mlir::SymbolRefAttr::get(builder->getContext(), outlined_func.getName()));
 
   builder->setInsertionPoint(launch_op);
   auto cluster_func_op = builder->create<tf_device::LaunchFuncOp>(
-      launch_op.getLoc(), outlined_func.getType().getResults(),
+      launch_op.getLoc(), outlined_func.getFunctionType().getResults(),
       live_ins.getArrayRef(), launch_op->getAttrs());
 
   launch_op.replaceAllUsesWith(cluster_func_op);

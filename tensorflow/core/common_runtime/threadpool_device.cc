@@ -166,6 +166,10 @@ const absl::flat_hash_set<std::string>* GetOpsToLogFromEnv() {
 bool ShouldLogInputsAndOutputs(OpKernel* op_kernel) {
   static const absl::flat_hash_set<std::string>& ops_to_log =
       *GetOpsToLogFromEnv();
+  static const bool is_empty = ops_to_log.empty();
+  if (is_empty) {
+    return false;
+  }
   return ops_to_log.count(op_kernel->type_string());
 }
 }  // namespace

@@ -28,6 +28,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
+#if XLA_ENABLE_XCCL
+#include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#endif
+
 namespace xla {
 namespace gpu {
 
@@ -136,9 +140,10 @@ Status NcclCollectivePermuteThunk::RunNcclCollective(
           << device_ordinal;
 
   TF_ASSIGN_OR_RETURN(const GlobalDeviceId global_device_id,
-                      params.GetGlobalDeviceId());
-  TF_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID current_logical_id,
-                      params.device_assn->LogicalIdForDevice(global_device_id));
+                      params.nccl_params.GetGlobalDeviceId());
+  TF_ASSIGN_OR_RETURN(
+      const DeviceAssignment::LogicalID current_logical_id,
+      params.nccl_params.device_assn->LogicalIdForDevice(global_device_id));
   const int64_t current_id =
       config_.group_mode == CollectiveOpGroupMode::kCrossReplica
           ? current_logical_id.replica_id
@@ -181,8 +186,8 @@ Status NcclCollectivePermuteThunk::RunNcclCollective(
   ncclDataType_t dtype = dtype_and_multiplier.first;
   int element_count = buffer_.element_count * dtype_and_multiplier.second;
 
-  cudaStream_t* cu_stream = reinterpret_cast<cudaStream_t*>(
-      params.stream->implementation()->GpuStreamMemberHack());
+  se::gpu::GpuStreamHandle gpu_stream =
+      se::gpu::AsGpuStreamValue(params.stream);
 
   // send source buffer to target peer if needed.
   if (target_id) {
@@ -190,9 +195,9 @@ Status NcclCollectivePermuteThunk::RunNcclCollective(
         "%s : Calling ncclSend(sendbuff=%p, count=%d, peer=%d "
         "comm=%p, stream=%p)",
         GetDeviceString(params), src_addr.opaque(), element_count, *target_id,
-        static_cast<const void*>(comm), *cu_stream);
+        static_cast<const void*>(comm), gpu_stream);
     XLA_CUDA_RETURN_IF_ERROR(ncclSend(src_addr.opaque(), element_count, dtype,
-                                      *target_id, comm, *cu_stream));
+                                      *target_id, comm, gpu_stream));
   }
 
   // Receive data from the source peer to the destination buffer.
@@ -201,9 +206,9 @@ Status NcclCollectivePermuteThunk::RunNcclCollective(
         "%s : Calling ncclRecv(recvbuff=%p, count=%d, peer=%d comm=%p, "
         "stream=%p)",
         GetDeviceString(params), dest_addr.opaque(), element_count, *source_id,
-        static_cast<const void*>(comm), *cu_stream);
+        static_cast<const void*>(comm), gpu_stream);
     XLA_CUDA_RETURN_IF_ERROR(ncclRecv(dest_addr.opaque(), element_count, dtype,
-                                      *source_id, comm, *cu_stream));
+                                      *source_id, comm, gpu_stream));
   }
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 

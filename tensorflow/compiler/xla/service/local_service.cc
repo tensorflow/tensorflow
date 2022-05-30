@@ -97,8 +97,7 @@ absl::optional<const OpMetadata*> ParameterMetadata(
 
 }  // namespace
 
-StatusOr<std::vector<std::unique_ptr<Executable>>>
-LocalService::CompileExecutables(
+StatusOr<std::unique_ptr<HloModuleConfig>> LocalService::GetHloModuleConfig(
     const XlaComputation& computation,
     const absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& build_options) {
@@ -120,7 +119,7 @@ LocalService::CompileExecutables(
     if (!ShapeUtil::Compatible(argument_shape, program_shape.parameters(i))) {
       absl::optional<const OpMetadata*> metadata =
           ParameterMetadata(computation, /*parameter_number=*/i);
-      auto metadata_string = [&metadata]() -> string {
+      auto metadata_string = [&metadata]() -> std::string {
         if (!metadata.has_value()) {
           return "";
         }
@@ -146,9 +145,18 @@ LocalService::CompileExecutables(
   ExecutionOptions execution_options =
       CreateExecutionOptions(build_options, &program_shape);
 
+  return CreateModuleConfig(program_shape, argument_layouts,
+                            &execution_options);
+}
+
+StatusOr<std::vector<std::unique_ptr<Executable>>>
+LocalService::CompileExecutables(
+    const XlaComputation& computation,
+    const absl::Span<const Shape* const> argument_layouts,
+    const ExecutableBuildOptions& build_options) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
-      CreateModuleConfig(program_shape, argument_layouts, &execution_options));
+      GetHloModuleConfig(computation, argument_layouts, build_options));
 
   VLOG(3) << "Computation Layout: "
           << module_config->entry_computation_layout().ToString();
@@ -161,12 +169,13 @@ LocalService::CompileExecutables(
   // single partition computations are built using `BuildExecutables`, fix it,
   // and remove this special case (provided the performance if similar).
   if (build_options.num_partitions() == 1) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                        BuildExecutable(proto, std::move(module_config),
-                                        execute_backend_.get(), executor,
-                                        {build_options.device_allocator(),
-                                         build_options.compile_thread_pool()},
-                                        build_options.run_backend_only()));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<Executable> executable,
+        BuildExecutable(computation.proto(), std::move(module_config),
+                        execute_backend_.get(), executor,
+                        {build_options.device_allocator(),
+                         build_options.compile_thread_pool()},
+                        build_options.run_backend_only()));
     std::vector<std::unique_ptr<Executable>> executables;
     executables.push_back(std::move(executable));
     return executables;
@@ -179,12 +188,40 @@ LocalService::CompileExecutables(
                                                executor);
 
     return BuildExecutables(
-        /*module_protos=*/{&proto}, std::move(module_configs),
+        /*module_protos=*/{&computation.proto()}, std::move(module_configs),
         execute_backend_.get(), {executors},
         Compiler::CompileOptions{build_options.device_allocator(),
                                  build_options.compile_thread_pool()},
         build_options.run_backend_only());
   }
+}
+
+StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+LocalService::CompileAotResults(
+    const XlaComputation& computation,
+    const absl::Span<const Shape* const> argument_layouts,
+    const ExecutableBuildOptions& build_options) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModuleConfig> module_config,
+      GetHloModuleConfig(computation, argument_layouts, build_options));
+
+  TF_ASSIGN_OR_RETURN(
+      se::StreamExecutor * executor,
+      execute_backend_->stream_executor(build_options.device_ordinal()));
+
+  std::vector<std::unique_ptr<HloModuleConfig>> module_configs;
+  module_configs.push_back(std::move(module_config));
+  // BuildAotResults uses the executors length to determine the number of
+  // cores per module, but otherwise only uses the first executor.
+  std::vector<se::StreamExecutor*> executors(build_options.num_partitions(),
+                                             executor);
+
+  return BuildAotResults(
+      /*module_protos=*/{&computation.proto()}, std::move(module_configs),
+      execute_backend_.get(), {executors},
+      Compiler::CompileOptions{build_options.device_allocator(),
+                               build_options.compile_thread_pool()},
+      build_options.run_backend_only());
 }
 
 StatusOr<int> LocalService::ReplicaNumberToDeviceOrdinal(int replica_number) {
@@ -205,7 +242,8 @@ StatusOr<const ShapedBuffer*> LocalService::GlobalDataToShapedBuffer(
 }
 
 StatusOr<GlobalDataHandle> LocalService::RegisterReplicatedBuffers(
-    std::vector<ScopedShapedBuffer> replicated_buffers, const string& tag) {
+    std::vector<ScopedShapedBuffer> replicated_buffers,
+    const std::string& tag) {
   return allocation_tracker_.RegisterReplicatedBuffers(
       std::move(replicated_buffers), tag);
 }

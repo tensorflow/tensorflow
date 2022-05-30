@@ -23,7 +23,6 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -33,15 +32,31 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_phi_graph.h"
-#include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
+
+// Identifies one array input of an HloInstruction.
+struct HloOperandIndex {
+  // The operand number in which the array value appears.
+  int64_t operand_number;
+
+  // The shape index within the operand in which the array value appears.
+  ShapeIndex operand_index;
+
+  bool operator==(const HloOperandIndex& other) const {
+    return operand_number == other.operand_number &&
+           operand_index == other.operand_index;
+  }
+
+  bool operator!=(const HloOperandIndex& other) const {
+    return !(*this == other);
+  }
+};
 
 // Analysis which identifies all HLO values and their uses in an HLO module.
 class HloDataflowAnalysis {
@@ -81,8 +96,6 @@ class HloDataflowAnalysis {
       const HloModule& module, bool ssa_form = false,
       bool bitcast_defines_value = false,
       const CanShareBuffer& can_share_buffer = nullptr);
-
-  static bool AreTransitiveUsesElementwiseOrTuple(const HloInstruction* inst);
 
   // Returns true if 'instruction' defines an HLO value at the given shape index
   // of its output.
@@ -141,7 +154,7 @@ class HloDataflowAnalysis {
   // Returns the call graph used for computing the dataflow.
   const CallGraph& call_graph() const { return *call_graph_; }
 
-  string ToString() const;
+  std::string ToString() const;
 
   // Returns true if 'user' cannot possibly use the buffer at 'index' in
   // 'operand'. Returns false otherwise.
@@ -173,12 +186,28 @@ class HloDataflowAnalysis {
   static bool IsAsynchronousOperationStart(HloOpcode opcode);
   static bool IsAsynchronousOperationDone(HloOpcode opcode);
 
-  // Returns a vector consisting of the HloUse (operand number and shape index)
-  // and output shape index of the in-place operations within this HLO.
-  static std::vector<std::pair<HloUse, ShapeIndex>> GetInPlaceInputOutputPairs(
-      HloInstruction* instruction);
+  // Returns the pairs of inputs and outputs that must share the same buffer,
+  // according to the aliasing rules for that instruction.
+  //
+  // This function only considers array values as inputs and outputs, so
+  // when tuples are present it "sees through" to the array values inside. The
+  // HloUse describing the input parameter contains not only the operand number
+  // but also a shape index describing its position inside a nested tuple shape
+  // (if any). Similarly, the output parameter is described by a shape index
+  // into the nested tuple shape (if any) of the output value.
+  //
+  // For example, for this hypothetical op:
+  //   %foo = (f32[1], (f32[2], f32[3]))
+  //              op((f32[4], f32[5]) %arg0, f32[6] %arg1)
+  //
+  // ... the results can include any of the 3 * 3 = 9 possible pairs of
+  // input and output arrays.
+  static std::vector<std::pair<HloOperandIndex, ShapeIndex>>
+  GetInPlaceInputOutputPairs(const HloInstruction* instruction);
 
- protected:
+ private:
+  static bool AreTransitiveUsesElementwiseOrTuple(const HloInstruction* inst);
+
   HloDataflowAnalysis(const HloModule& module, bool ssa_form,
                       bool bitcast_defines_value = false,
                       const CanShareBuffer& can_share_buffer = nullptr);
@@ -226,10 +255,13 @@ class HloDataflowAnalysis {
   bool UpdateDomainValueSet(HloInstruction* domain);
   bool UpdateGetTupleElementValueSet(HloInstruction* gte);
   bool UpdateParameterValueSet(HloInstruction* parameter);
+  bool UpdateAsyncStartValueSet(HloInstruction* async_start);
+  bool UpdateAsyncUpdateValueSet(HloInstruction* async_update);
+  bool UpdateAsyncDoneValueSet(HloInstruction* async_done);
   bool UpdateCopyStartValueSet(HloInstruction* copy_start);
   bool UpdateCopyDoneValueSet(HloInstruction* copy_done);
+  bool UpdateOptimizationBarrierValueSet(HloInstruction* barrier);
   bool UpdateRecvDoneValueSet(HloInstruction* recv_done);
-  bool UpdateTupleSelectValueSet(HloInstruction* select);
   bool UpdateSendValueSet(HloInstruction* send);
   bool UpdateSetDimensionSizeValueSet(HloInstruction* set_dimension_size);
   bool UpdateTupleValueSet(HloInstruction* tuple);
@@ -237,7 +269,6 @@ class HloDataflowAnalysis {
   bool UpdateAddDependencyValueSet(HloInstruction* add_dependency);
   bool UpdateAllGatherStartValueSet(HloInstruction* all_gather_start);
   bool UpdateAllGatherDoneValueSet(HloInstruction* all_gather_done);
-  bool UpdateAllReduceStartValueSet(HloInstruction* all_reduce_start);
   bool UpdateAllReduceDoneValueSet(HloInstruction* all_reduce_done);
   bool UpdateCollectivePermuteStartValueSet(
       HloInstruction* collective_permute_start);
@@ -277,10 +308,12 @@ class HloDataflowAnalysis {
   // The map of all HloValues in the module. We pass around pointers to the
   // mapped HloValues, so the underlying container must keep them valid despite
   // mutations touching other map entries.
-  std::unordered_map<HloValue::Id, HloValue> values_;
+  absl::flat_hash_map<HloValue::Id, std::unique_ptr<HloValue>> values_;
 
   // A map from instruction to InstructionValueSet.
-  std::unordered_map<const HloInstruction*, InstructionValueSet> value_sets_;
+  absl::flat_hash_map<const HloInstruction*,
+                      std::unique_ptr<InstructionValueSet>>
+      value_sets_;
 
   // Values marked for deletion during construction. We don't delete them
   // immediately because references to them may remain in ValueSets temporarily

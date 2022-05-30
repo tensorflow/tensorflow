@@ -29,7 +29,7 @@ using testing::HasSubstr;
 
 TEST(ErrorUtilTest, StatusScopedDiagnosticHandler) {
   MLIRContext context;
-  auto id = Identifier::get("//tensorflow/python/test.py", &context);
+  auto id = StringAttr::get(&context, "//tensorflow/python/test.py");
   auto loc = FileLineColLoc::get(&context, id, 0, 0);
 
   // Test OK without diagnostic gets passed through.
@@ -78,21 +78,21 @@ TEST(ErrorUtilTest, StatusScopedDiagnosticHandlerWithFilter) {
   // pass the filter.
   MLIRContext context;
   auto id =
-      Identifier::get("//tensorflow/python/keras/keras_file.py", &context);
+      StringAttr::get(&context, "//tensorflow/python/keras/keras_file.py");
   auto loc = FileLineColLoc::get(&context, id, 0, 0);
   auto id2 =
-      Identifier::get("//tensorflow/python/something/my_test.py", &context);
+      StringAttr::get(&context, "//tensorflow/python/something/my_test.py");
   auto loc2 = FileLineColLoc::get(&context, id2, 0, 0);
-  auto id3 = Identifier::get("python/tensorflow/show_file.py", &context);
+  auto id3 = StringAttr::get(&context, "python/tensorflow/show_file.py");
   auto loc3 = FileLineColLoc::get(&context, id3, 0, 0);
 
   // These locations will be evalauted as internal frames, passing the
   // IsInternalFramesForFilenames() check so will be filtered out.
   auto id_filtered =
-      Identifier::get("//tensorflow/python/dir/filtered_file_A.py", &context);
+      StringAttr::get(&context, "//tensorflow/python/dir/filtered_file_A.py");
   auto loc_filtered = FileLineColLoc::get(&context, id_filtered, 0, 0);
   auto id_filtered2 =
-      Identifier::get("dir/tensorflow/python/filtered_file_B.py", &context);
+      StringAttr::get(&context, "dir/tensorflow/python/filtered_file_B.py");
   auto loc_filtered2 = FileLineColLoc::get(&context, id_filtered2, 0, 0);
 
   // Build a small stack for each error; the MLIR diagnostic filtering will
@@ -122,19 +122,19 @@ TEST(ErrorUtilTest, StatusScopedDiagnosticHandlerWithoutFilter) {
   MLIRContext context;
   // This file would pass the filter if it was on.
   auto id =
-      Identifier::get("//tensorflow/python/keras/keras_file.py", &context);
+      StringAttr::get(&context, "//tensorflow/python/keras/keras_file.py");
   auto loc = FileLineColLoc::get(&context, id, 0, 0);
 
   // The '_filtered' locations would be evaluated as internal frames, so would
   // not pass the filter if it was on.
   auto id_filtered =
-      Identifier::get("//tensorflow/python/dir/filtered_file_A.py", &context);
+      StringAttr::get(&context, "//tensorflow/python/dir/filtered_file_A.py");
   auto loc_filtered = FileLineColLoc::get(&context, id_filtered, 0, 0);
   auto id_filtered2 =
-      Identifier::get("dir/tensorflow/python/filtered_file_B.py", &context);
+      StringAttr::get(&context, "dir/tensorflow/python/filtered_file_B.py");
   auto loc_filtered2 = FileLineColLoc::get(&context, id_filtered2, 0, 0);
   auto id_filtered3 =
-      Identifier::get("//tensorflow/python/something/my_op.py", &context);
+      StringAttr::get(&context, "//tensorflow/python/something/my_op.py");
   auto loc_filtered3 = FileLineColLoc::get(&context, id_filtered3, 0, 0);
 
   // Build a small stack for each error; the MLIR diagnostic filtering will

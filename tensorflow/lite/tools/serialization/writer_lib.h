@@ -44,6 +44,12 @@ class SubgraphWriter;
 // TODO(b/174708523): Support custom I/O or unused tensors later.
 class ModelWriter {
  public:
+  // CustomWriter allows the delegate to customize the write to the flatbuffer.
+  typedef flatbuffers::Offset<Operator> (*CustomWriter)(
+      flatbuffers::FlatBufferBuilder* fbb, Subgraph* subgraph, int node_index,
+      flatbuffers::Offset<flatbuffers::Vector<uint8_t>>* output_options,
+      CustomOptionsFormat* custom_options_format);
+
   // Construct a writer for the specified `interpreter`. Then, use
   // .Write() or .GetBuffer(...) to extract the data.
   explicit ModelWriter(Interpreter* interpreter);
@@ -68,6 +74,11 @@ class ModelWriter {
                                     const std::vector<int>& inputs,
                                     const std::vector<int>& outputs,
                                     const std::vector<int>& execution_plan);
+
+  // Registers a custom writer for a custom op. The customization allows the
+  // caller to change the custom data.
+  TfLiteStatus RegisterCustomWriter(const std::string& custom_name,
+                                    CustomWriter custom_writer);
 
  private:
   template <class T>

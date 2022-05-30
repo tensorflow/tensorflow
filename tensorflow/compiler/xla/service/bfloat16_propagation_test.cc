@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/bfloat16_propagation.h"
+
 #include "tensorflow/compiler/xla/service/bfloat16_support.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -540,50 +541,6 @@ TEST_F(BFloat16PropagationTest, ConvertTupleFusionElementIfUsedByAdd) {
   EXPECT_TRUE(OutputsBF16(new_fusion_root->operand(0)));
 }
 
-// A select over tuples does not define the leaf buffers, so the types in
-// on_true and on_false must match, so that as long as one of them is F32, the
-// other must be F32 as well.
-TEST_F(BFloat16PropagationTest, SelectOverTuples) {
-  auto module = CreateNewVerifiedModule();
-  auto builder = HloComputation::Builder(TestName());
-  Shape shape = ShapeUtil::MakeShape(F32, {2, 4});
-
-  HloInstruction* param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, shape, "param"));
-  HloInstruction* pred = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeShape(PRED, {}), "pred"));
-
-  HloInstruction* add0 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param, param));
-  HloInstruction* add1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, add0, param));
-  HloInstruction* tuple0 =
-      builder.AddInstruction(HloInstruction::CreateTuple({param, add0}));
-  HloInstruction* tuple1 =
-      builder.AddInstruction(HloInstruction::CreateTuple({param, add1}));
-  HloInstruction* sel = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple0->shape(), HloOpcode::kTupleSelect, pred, tuple0, tuple1));
-  HloInstruction* gte0 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(shape, sel, 0));
-  HloInstruction* gte1 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(shape, sel, 1));
-  HloInstruction* xpose =
-      builder.AddInstruction(HloInstruction::CreateTranspose(
-          ShapeUtil::MakeShape(F32, {4, 2}), gte0, {1, 0}));
-  HloInstruction* dot = builder.AddInstruction(
-      CreateDot(ShapeUtil::MakeShape(F32, {4, 4}), xpose, gte1));
-
-  auto computation = module->AddEntryComputation(builder.Build());
-
-  EXPECT_TRUE(PropagatePrecision(module.get()));
-
-  EXPECT_EQ(computation->root_instruction(), dot);
-  EXPECT_FALSE(OutputsBF16(add0));
-  EXPECT_FALSE(OutputsBF16(add1));
-  EXPECT_FALSE(OutputsBF16(gte0));
-  EXPECT_FALSE(OutputsBF16(gte1));
-  EXPECT_TRUE(OutputsBF16(xpose));
-}
 
 // Tests that BF16 is propagated properly through a while computation with
 // non-tuple input/output.
@@ -1047,7 +1004,7 @@ TEST_F(BFloat16PropagationTest, TupleDomainNoPropagation) {
 }
 
 TEST_F(BFloat16PropagationTest, ConditionalSeparateBranchOperands) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule module
 
 true_branch {
@@ -1086,7 +1043,7 @@ ENTRY entry {
 }
 
 TEST_F(BFloat16PropagationTest, ConditionalSharedBranchOperands) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule module
 
 true_branch {
@@ -1121,7 +1078,7 @@ ENTRY entry {
 }
 
 TEST_F(BFloat16PropagationTest, ConditionalAliasingOutputs) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule module
 
 true_branch {
@@ -1160,7 +1117,7 @@ TEST_F(BFloat16PropagationTest, DynamicUpdateSlice) {
   // This test is crafted so that the DUS has an f32 input (due to parameter)
   // and bf16 output (due to dot). But we should enforce DUS operand 0 and
   // output to get the same precision since it's an in-place operation.
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule Module
 
 ENTRY main {
@@ -1188,7 +1145,7 @@ ENTRY main {
 // aliasing is not resolved until after the gte0 variale is already processed,
 // triggering incorrect type for gte0 if not repeating the aliasing analysis.
 TEST_F(BFloat16PropagationTest, ConditionalGTEWithFusion) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule module
 
 %add.0 (x: f32[4096,4096], y: f32[4096,4096]) -> f32[4096,4096] {

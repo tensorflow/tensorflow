@@ -34,7 +34,17 @@ struct SpaceToBatchController {
   // batch so that space-to-batch propagation through several convolutional
   // layers is consistent.
   int64_t number_of_splits = 8;
+  int64_t count_of_dimensions_to_convert = 1;
 };
+
+// Represents the different dimension mappings. Can be extended as needed.
+enum class SpaceToBatchDimMap : uint8_t {
+  kBatch = 0,
+  kFeature = 1,
+  kSpace0 = 2,
+};
+
+inline constexpr int64_t NumMappedDims() { return 3; }
 
 // A pass which rewrites convolutions such that space dimension is turned into
 // batch.

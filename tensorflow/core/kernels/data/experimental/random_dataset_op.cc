@@ -78,7 +78,7 @@ class RandomDatasetOp::Dataset : public DatasetBase {
                            seeds_.second, ")::Dataset");
   }
 
-  int64_t Cardinality() const override { return kInfiniteCardinality; }
+  int64_t CardinalityInternal() const override { return kInfiniteCardinality; }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     return Status::OK();

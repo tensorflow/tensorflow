@@ -95,6 +95,11 @@ class TensorBuffer : public core::RefCounted {
   /// \brief Whether this TensorBuffer owns the underlying memory.
   virtual bool OwnsMemory() const { return true; }
 
+  /// \brief The type of the underlying memory.
+  virtual AllocatorMemoryType GetMemoryType() const {
+    return AllocatorMemoryType::kUnknown;
+  }
+
  private:
   void* const data_;
 };
@@ -628,7 +633,7 @@ class Tensor {
   void* data() const;
 
   /// Copy the other tensor into this tensor, reshape it and reinterpret the
-  /// buffer's datatype. If Status::OK() is returned, the two tensors now share
+  /// buffer's datatype. If an ok Status is returned, the two tensors now share
   /// the same underlying storage.
   ///
   /// This call requires that the `other` tensor and the given type and shape
@@ -662,6 +667,9 @@ class Tensor {
   // Returns true if the refcount on buf_ and any possible underlying root
   // buffer is one.
   bool RefCountIsOne() const;
+
+  // Returns the type of the underlying memory.
+  AllocatorMemoryType GetMemoryType() const { return buf_->GetMemoryType(); }
 
  private:
   void CheckType(DataType expected_dtype) const;

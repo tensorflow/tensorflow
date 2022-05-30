@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -24,33 +24,28 @@ limitations under the License.
 namespace xla {
 
 ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
-    mlir::mhlo::ConvDimensionNumbers input) {
+    mlir::mhlo::ConvDimensionNumbersAttr input) {
   ConvolutionDimensionNumbers output;
 
-  output.set_input_batch_dimension(
-      input.input_batch_dimension().getValue().getSExtValue());
-  output.set_input_feature_dimension(
-      input.input_feature_dimension().getValue().getSExtValue());
-
-  for (auto v : input.input_spatial_dimensions().getValues<int64_t>()) {
+  output.set_input_batch_dimension(input.getInputBatchDimension());
+  output.set_input_feature_dimension(input.getInputFeatureDimension());
+  for (auto v : input.getInputSpatialDimensions()) {
     output.add_input_spatial_dimensions(v);
   }
 
   output.set_kernel_input_feature_dimension(
-      input.kernel_input_feature_dimension().getValue().getSExtValue());
+      input.getKernelInputFeatureDimension());
   output.set_kernel_output_feature_dimension(
-      input.kernel_output_feature_dimension().getValue().getSExtValue());
+      input.getKernelOutputFeatureDimension());
 
-  for (auto v : input.kernel_spatial_dimensions().getValues<int64_t>()) {
+  for (auto v : input.getKernelSpatialDimensions()) {
     output.add_kernel_spatial_dimensions(v);
   }
 
-  output.set_output_batch_dimension(
-      input.output_batch_dimension().getValue().getSExtValue());
-  output.set_output_feature_dimension(
-      input.output_feature_dimension().getValue().getSExtValue());
+  output.set_output_batch_dimension(input.getOutputBatchDimension());
+  output.set_output_feature_dimension(input.getOutputFeatureDimension());
 
-  for (auto v : input.output_spatial_dimensions().getValues<int64_t>()) {
+  for (auto v : input.getOutputSpatialDimensions()) {
     output.add_output_spatial_dimensions(v);
   }
 
@@ -58,14 +53,8 @@ ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
 }
 
 StatusOr<stream_executor::dnn::ActivationMode> ConvertConvActivationMode(
-    llvm::StringRef input) {
-  llvm::Optional<mlir::lmhlo_gpu::Activation> activation =
-      mlir::lmhlo_gpu::symbolizeActivation(input);
-  if (!activation) {
-    return InternalError("Unexpected activation");
-  }
-
-  switch (activation.getValue()) {
+    mlir::lmhlo_gpu::Activation activation) {
+  switch (activation) {
     case mlir::lmhlo_gpu::Activation::None:
       return stream_executor::dnn::kNone;
     case mlir::lmhlo_gpu::Activation::Sigmoid:
@@ -183,6 +172,8 @@ StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
       return xla::CustomCallApiVersion::API_VERSION_ORIGINAL;
     case mlir::mhlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
       return xla::CustomCallApiVersion::API_VERSION_STATUS_RETURNING;
+    case mlir::mhlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED:
+      return xla::CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED;
     default:
       return InvalidArgument("Unknown CustomCallApiVersion enum value #%d",
                              api_version);

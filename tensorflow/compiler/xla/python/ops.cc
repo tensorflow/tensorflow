@@ -22,6 +22,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "pybind11/attr.h"
 #include "pybind11/pybind11.h"
+#include "tensorflow/compiler/xla/client/lib/approx_topk.h"
+#include "tensorflow/compiler/xla/client/lib/approx_topk_shape.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/lib/lu_decomposition.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
@@ -63,7 +65,9 @@ void BuildOpsSubmodule(py::module* m) {
   py::enum_<CustomCallApiVersion>(ops, "CustomCallApiVersion")
       .value("API_VERSION_ORIGINAL", CustomCallApiVersion::API_VERSION_ORIGINAL)
       .value("API_VERSION_STATUS_RETURNING",
-             CustomCallApiVersion::API_VERSION_STATUS_RETURNING);
+             CustomCallApiVersion::API_VERSION_STATUS_RETURNING)
+      .value("API_VERSION_STATUS_RETURNING_UNIFIED",
+             CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED);
 
   ops.def("AfterAll", &AfterAll, py::arg("builder"), py::arg("tokens"));
   ops.def("AllGather", &AllGather, py::arg("operand"),
@@ -92,6 +96,20 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("concat_dimension"), py::arg("split_count"),
           py::arg("replica_groups") = py::list(),
           py::arg("layout") = absl::nullopt);
+  ops.def("ApproxTopK", &ApproxTopK, py::arg("builder"), py::arg("operands"),
+          py::arg("init_values"), py::arg("top_k"), py::arg("reduction_dim"),
+          py::arg("comparator"), py::arg("recall_target") = 0.9,
+          py::arg("aggregate_to_topk") = true,
+          py::arg("reduction_input_size_override") = -1);
+  ops.def("ApproxTopKFallback", &ApproxTopKFallback, py::arg("builder"),
+          py::arg("operands"), py::arg("init_values"), py::arg("top_k"),
+          py::arg("reduction_dim"), py::arg("comparator"),
+          py::arg("recall_target") = 0.9, py::arg("aggregate_to_topk") = true,
+          py::arg("reduction_input_size_override") = -1);
+  ops.def("ApproxTopKReductionOutputSize", &ApproxTopKReductionOutputSize,
+          py::arg("input_size"), py::arg("rank"), py::arg("top_k"),
+          py::arg("recall_target"), py::arg("aggregate_to_topk") = true,
+          py::arg("input_size_override") = -1);
   ops.def("BitcastConvertType", &BitcastConvertType, py::arg("operand"),
           py::arg("new_element_type"));
   ops.def("Broadcast", &Broadcast, py::arg("operand"), py::arg("sizes"));
@@ -260,6 +278,9 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("builder"), py::arg("parameter_number"), py::arg("shape"),
           py::arg("name") = "",
           py::arg("replicated_at_leaf_buffers") = std::vector<bool>());
+  ops.def("ProductOfElementaryHouseholderReflectors",
+          &ProductOfElementaryHouseholderReflectors, py::arg("a"),
+          py::arg("taus"));
   ops.def(
       "QR",
       [](XlaOp a, bool full_matrices) -> StatusOr<std::pair<XlaOp, XlaOp>> {
@@ -268,6 +289,13 @@ void BuildOpsSubmodule(py::module* m) {
         return std::make_pair(q, r);
       },
       py::arg("operand"), py::arg("full_matrices"));
+  ops.def(
+      "QrDecomposition",
+      [](XlaOp a) -> StatusOr<std::pair<XlaOp, XlaOp>> {
+        QrDecomposition d = Qr(a);
+        return std::make_pair(d.q_and_r, d.taus);
+      },
+      py::arg("operand"));
   ops.def("Reduce",
           static_cast<XlaOp (*)(XlaBuilder*, absl::Span<const XlaOp>,
                                 absl::Span<const XlaOp>, const XlaComputation&,
@@ -316,9 +344,22 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("shape"));
   ops.def("RngUniform", &RngUniform, py::arg("a"), py::arg("b"),
           py::arg("shape"));
-  ops.def("Scatter", &Scatter, py::arg("input"), py::arg("scatter_indices"),
-          py::arg("updates"), py::arg("update_computation"),
-          py::arg("dimension_numbers"), py::arg("indices_are_sorted") = false,
+  ops.def("Scatter",
+          static_cast<XlaOp (*)(XlaOp, XlaOp, XlaOp, const XlaComputation&,
+                                const ScatterDimensionNumbers&, bool, bool)>(
+              &Scatter),
+          py::arg("input"), py::arg("scatter_indices"), py::arg("updates"),
+          py::arg("update_computation"), py::arg("dimension_numbers"),
+          py::arg("indices_are_sorted") = false,
+          py::arg("unique_indices") = false);
+  ops.def("Scatter",
+          static_cast<XlaOp (*)(absl::Span<const XlaOp>, XlaOp,
+                                absl::Span<const XlaOp>, const XlaComputation&,
+                                const ScatterDimensionNumbers&, bool, bool)>(
+              &Scatter),
+          py::arg("inputs"), py::arg("scatter_indices"), py::arg("updates"),
+          py::arg("update_computation"), py::arg("dimension_numbers"),
+          py::arg("indices_are_sorted") = false,
           py::arg("unique_indices") = false);
   ops.def("Select", &Select, py::arg("pred"), py::arg("on_true"),
           py::arg("on_false"));
@@ -340,6 +381,7 @@ void BuildOpsSubmodule(py::module* m) {
          bool is_stable) -> XlaOp {
         return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
           std::vector<PrimitiveType> operand_types;
+          operand_types.reserve(operands.size());
           for (const auto& operand : operands) {
             TF_ASSIGN_OR_RETURN(auto operand_shape, builder->GetShape(operand));
             operand_types.push_back(operand_shape.element_type());
@@ -456,6 +498,7 @@ void BuildOpsSubmodule(py::module* m) {
   UNARY_OP(Real);
   UNARY_OP(Imag);
   UNARY_OP(Conj);
+  UNARY_OP(OptimizationBarrier);
 #undef UNARY_OP
 }
 

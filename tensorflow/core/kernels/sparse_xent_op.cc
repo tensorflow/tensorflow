@@ -137,6 +137,8 @@ REGISTER(CPU, double, int32)
 REGISTER(CPU, double, int64_t)
 REGISTER(CPU, Eigen::half, int32)
 REGISTER(CPU, Eigen::half, int64_t)
+REGISTER(CPU, bfloat16, int32)
+REGISTER(CPU, bfloat16, int64_t)
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER(GPU, float, int32)

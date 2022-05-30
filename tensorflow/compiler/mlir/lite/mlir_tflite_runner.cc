@@ -30,11 +30,12 @@ limitations under the License.
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export_flags.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -104,18 +105,19 @@ int main(int argc, char** argv) {
   // Load the MLIR module.
   mlir::DialectRegistry registry;
   registry.insert<mlir::TF::TensorFlowDialect, mlir::TFL::TensorFlowLiteDialect,
-                  mlir::StandardOpsDialect>();
+                  mlir::arith::ArithmeticDialect, mlir::func::FuncDialect>();
   mlir::MLIRContext context(registry);
 
   llvm::SourceMgr source_mgr;
   source_mgr.AddNewSourceBuffer(std::move(*file_or_err), llvm::SMLoc());
-  mlir::OwningModuleRef module(mlir::parseSourceFile(source_mgr, &context));
+  mlir::OwningOpRef<mlir::ModuleOp> module(
+      mlir::parseSourceFile<mlir::ModuleOp>(source_mgr, &context));
   if (!module) return 1;
 
   // TODO(jpienaar): Expand to support inputs.
-  mlir::FuncOp main = module->lookupSymbol<mlir::FuncOp>("main");
+  mlir::func::FuncOp main = module->lookupSymbol<mlir::func::FuncOp>("main");
   QCHECK(main) << "No 'main' function specified.";
-  if (main.getType().getNumInputs() != 0)
+  if (main.getFunctionType().getNumInputs() != 0)
     LOG(QFATAL) << "NYI: Only nullary functions supported.";
 
   // Convert to flatbuffer.
@@ -141,7 +143,8 @@ int main(int argc, char** argv) {
 
   // Print the resulting outputs.
   // TODO(jpienaar): Allow specifying output stream/file.
-  QCHECK(interpreter->outputs().size() == main.getType().getNumResults());
+  QCHECK(interpreter->outputs().size() ==
+         main.getFunctionType().getNumResults());
   for (int index : interpreter->outputs()) {
     const auto& out = *interpreter->tensor(index);
     // Print name if named.

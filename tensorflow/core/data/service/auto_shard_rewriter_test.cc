@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
@@ -42,14 +41,12 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+using ::tensorflow::data::testing::EqualsProto;
 using ::tensorflow::data::testing::RangeDatasetWithShardHint;
 using ::tensorflow::data::testing::RangeSquareDataset;
 using ::tensorflow::testing::IsOkAndHolds;
 using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
-using ::testing::MakePolymorphicMatcher;
-using ::testing::MatchResultListener;
-using ::testing::PolymorphicMatcher;
 using ::testing::SizeIs;
 
 StatusOr<NodeDef> GetNode(const GraphDef& graph_def, absl::string_view name) {
@@ -79,32 +76,6 @@ TaskDef GetTaskDef(const ProcessingModeDef::ShardingPolicy sharding_policy,
   task_def.set_num_workers(num_workers);
   task_def.set_worker_index(worker_index);
   return task_def;
-}
-
-// TODO(yangchen): Make EqualsProto available in Googletest
-// (https://github.com/google/googletest/issues/1761).
-class ProtoStringMatcher {
- public:
-  explicit ProtoStringMatcher(const tensorflow::protobuf::Message& expected)
-      : expected_(expected.ShortDebugString()) {}
-
-  template <typename Message>
-  bool MatchAndExplain(const Message& p, MatchResultListener*) const {
-    return p.ShortDebugString() == expected_;
-  }
-
-  void DescribeTo(::std::ostream* os) const { *os << expected_; }
-  void DescribeNegationTo(::std::ostream* os) const {
-    *os << "not equal to expected message: " << expected_;
-  }
-
- private:
-  const std::string expected_;
-};
-
-inline ::testing::PolymorphicMatcher<ProtoStringMatcher> EqualsProto(
-    const tensorflow::protobuf::Message& x) {
-  return ::testing::MakePolymorphicMatcher(ProtoStringMatcher(x));
 }
 
 TEST(AutoShardRewriterTest, AutoShard) {

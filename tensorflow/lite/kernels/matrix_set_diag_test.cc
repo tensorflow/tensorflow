@@ -82,7 +82,7 @@ TYPED_TEST(MatrixSetDiagOpTest, ThreeByThreeDiagScatter) {
                                                                  5, 6, 9});
   model.template PopulateTensor<typename TypeParam::ScalarType>(model.diag(),
                                                                 {0, 4, 2});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 3));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({0, 1, 2,  //
                                                    3, 4, 4,  //
@@ -96,7 +96,7 @@ TEST(MatrixSetDiagTest, Int32TestMoreColumnsThanRows) {
   model.PopulateTensor<int32_t>(model.input(), {0, 0, 0,  //
                                                 9, 9, 9});
   model.PopulateTensor<int32_t>(model.diag(), {1, 1});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 0, 0,  //
                                                    9, 1, 9}));
@@ -115,7 +115,7 @@ TEST(MatrixSetDiagTest, Int32TestTwoDimDiag) {
                                                 1, 1, 1, 1,  //
                                                 1, 1, 1, 1});
   model.PopulateTensor<int32_t>(model.diag(), {1, 2, 3, 4, 5, 6, 7, 8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 4, 4));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 5, 5, 5,  //
                                                    5, 2, 5, 5,  //

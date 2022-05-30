@@ -228,12 +228,18 @@ TensorStorageType GetStorageTypeWithMinimalMemoryConsumption(
       }
     }
   } else if (gpu_info.IsPowerVR()) {
-    return TensorStorageType::BUFFER;
+    if (gpu_info.opencl_info.IsImage2dFromBufferSupported() &&
+        CanUseSubBufferForImage2d(gpu_info)) {
+      return TensorStorageType::TEXTURE_2D;
+    } else {
+      return TensorStorageType::BUFFER;
+    }
   } else if (gpu_info.IsMali()) {
     const MaliInfo mali_info = gpu_info.mali_info;
     if (mali_info.IsMaliT8xx() || mali_info.IsBifrostGen3() ||
         mali_info.IsValhall()) {
-      if (gpu_info.opencl_info.IsImage2dFromBufferSupported()) {
+      if (gpu_info.opencl_info.IsImage2dFromBufferSupported() &&
+          CanUseSubBufferForImage2d(gpu_info)) {
         return TensorStorageType::TEXTURE_2D;
       } else {
         return TensorStorageType::BUFFER;
@@ -251,6 +257,26 @@ TensorStorageType GetStorageTypeWithMinimalMemoryConsumption(
     return TensorStorageType::BUFFER;
   }
   return TensorStorageType::BUFFER;
+}
+
+bool CanUseSubBufferForImage2d(const GpuInfo& gpu_info) {
+  if (!gpu_info.IsCL11OrHigher()) {
+    return false;
+  }
+  if (gpu_info.IsPowerVR()) {
+    // driver issue
+    return false;
+  }
+  if (gpu_info.IsNvidia()) {
+    return false;
+  }
+  if (gpu_info.IsMali() &&
+      (gpu_info.mali_info.IsBifrost() || gpu_info.mali_info.IsMidgard())) {
+    // Known driver issue on some G72 (Bifrost), G76 (Bifrost), T830 (Midgard),
+    // and T880 (Midgard) devices.
+    return false;
+  }
+  return true;
 }
 
 absl::Status CreateEnvironment(Environment* result) {

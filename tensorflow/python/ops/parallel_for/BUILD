@@ -140,7 +140,7 @@ cuda_py_test(
         # XLA is not enabled by default on Mac or Windows.
         "no_mac",
         "no_windows",
-        "nogpu",  # TODO(b/155761551): Flaky on GPU on TAP
+        "no_gpu",  # TODO(b/155761551): Flaky on GPU on TAP
         "no_tfrt",  # Note: Legacy XLA test, which depends on EncapsulateXlaComputationsPass.
     ],
     xla_enabled = True,
@@ -161,6 +161,7 @@ cuda_py_test(
     name = "array_test",
     srcs = ["array_test.py"],
     tags = [
+        "nogpu",  # b/217374776
         "notsan",  # TODO(b/170999669): Data race
     ],
     deps = [

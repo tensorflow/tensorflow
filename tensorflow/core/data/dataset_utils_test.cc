@@ -481,12 +481,13 @@ struct GetOptimizationsTestCase {
 
 // Tests the default.
 GetOptimizationsTestCase GetOptimizationTestCase1() {
-  return {/*options=*/Options(),
-          /*expected_enabled=*/{},
-          /*expected_disabled=*/{},
-          /*expected_default=*/
-          {"noop_elimination", "map_and_batch_fusion",
-           "shuffle_and_repeat_fusion", "map_parallelization"}};
+  return {
+      /*options=*/Options(),
+      /*expected_enabled=*/{},
+      /*expected_disabled=*/{},
+      /*expected_default=*/
+      {"noop_elimination", "map_and_batch_fusion", "shuffle_and_repeat_fusion",
+       "map_parallelization", "parallel_batch"}};
 }
 
 // Tests disabling application of default optimizations.
@@ -494,7 +495,8 @@ GetOptimizationsTestCase GetOptimizationTestCase2() {
   Options options;
   options.mutable_optimization_options()->set_apply_default_optimizations(
       false);
-  return {options, /*expected_enabled=*/{}, /*expected_disabled=*/{}, {}};
+  return {options, /*expected_enabled=*/{}, /*expected_disabled=*/{},
+          /*expected_default=*/{}};
 }
 
 // Tests explicitly enabling / disabling some default and non-default
@@ -505,11 +507,11 @@ GetOptimizationsTestCase GetOptimizationTestCase3() {
   options.mutable_optimization_options()->set_map_and_batch_fusion(true);
   options.mutable_optimization_options()->set_map_parallelization(false);
   options.mutable_optimization_options()->set_parallel_batch(false);
-  return {
-      options,
-      /*expected_enabled=*/{"make_sloppy", "map_and_batch_fusion"},
-      /*expected_disabled=*/{"parallel_batch", "map_parallelization"},
-      /*expected_default=*/{"noop_elimination", "shuffle_and_repeat_fusion"}};
+  return {options,
+          /*expected_enabled=*/{"make_sloppy", "map_and_batch_fusion"},
+          /*expected_disabled=*/{"parallel_batch", "map_parallelization"},
+          /*expected_default=*/
+          {"noop_elimination", "shuffle_and_repeat_fusion"}};
 }
 
 // Test enabling all / most available optimizations.
@@ -517,6 +519,7 @@ GetOptimizationsTestCase GetOptimizationTestCase4() {
   Options options;
   options.set_deterministic(false);
   options.mutable_optimization_options()->set_filter_fusion(true);
+  options.mutable_optimization_options()->set_filter_parallelization(true);
   options.mutable_optimization_options()->set_map_and_batch_fusion(true);
   options.mutable_optimization_options()->set_map_and_filter_fusion(true);
   options.mutable_optimization_options()->set_map_fusion(true);
@@ -524,13 +527,14 @@ GetOptimizationsTestCase GetOptimizationTestCase4() {
   options.mutable_optimization_options()->set_noop_elimination(true);
   options.mutable_optimization_options()->set_parallel_batch(true);
   options.mutable_optimization_options()->set_shuffle_and_repeat_fusion(true);
+  options.mutable_optimization_options()->set_inject_prefetch(true);
   options.set_slack(true);
   return {options,
           /*expected_enabled=*/
-          {"filter_fusion", "make_sloppy", "map_and_batch_fusion",
-           "map_and_filter_fusion", "map_fusion", "map_parallelization",
-           "noop_elimination", "parallel_batch", "shuffle_and_repeat_fusion",
-           "slack"},
+          {"filter_fusion", "filter_parallelization", "make_sloppy",
+           "map_and_batch_fusion", "map_and_filter_fusion", "map_fusion",
+           "map_parallelization", "noop_elimination", "parallel_batch",
+           "shuffle_and_repeat_fusion", "slack", "inject_prefetch"},
           /*expected_disabled=*/{},
           /*expected_default=*/{}};
 }
@@ -571,42 +575,6 @@ TEST(DeterministicOpsTest, GetOptimizations) {
               ::testing::UnorderedElementsAreArray({"make_deterministic"}));
   EXPECT_EQ(actual_disabled.size(), 0);
 }
-
-struct SelectOptimizationsTestCase {
-  absl::flat_hash_set<string> experiments;
-  absl::flat_hash_set<tstring> optimizations_enabled;
-  absl::flat_hash_set<tstring> optimizations_disabled;
-  absl::flat_hash_set<tstring> optimizations_default;
-  std::vector<string> expected;
-};
-
-class SelectOptimizationsTest
-    : public ::testing::TestWithParam<SelectOptimizationsTestCase> {};
-
-TEST_P(SelectOptimizationsTest, DatasetUtils) {
-  const SelectOptimizationsTestCase test_case = GetParam();
-  auto optimizations = SelectOptimizations(
-      test_case.experiments, test_case.optimizations_enabled,
-      test_case.optimizations_disabled, test_case.optimizations_default);
-  EXPECT_THAT(std::vector<string>(optimizations.begin(), optimizations.end()),
-              ::testing::UnorderedElementsAreArray(test_case.expected));
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    Test, SelectOptimizationsTest,
-    ::testing::Values(
-        SelectOptimizationsTestCase{
-            /*experiments=*/{}, /*optimizations_enabled=*/{},
-            /*optimizations_disabled=*/{}, /*optimizations_default=*/{},
-            /*expected=*/{}},
-        SelectOptimizationsTestCase{
-            /*experiments=*/{"foo"}, /*optimizations_enabled=*/{"bar"},
-            /*optimizations_disabled=*/{}, /*optimizations_default=*/{"baz"},
-            /*expected=*/{"foo", "bar", "baz"}},
-        SelectOptimizationsTestCase{
-            /*experiments=*/{"foo"}, /*optimizations_enabled=*/{"bar"},
-            /*optimizations_disabled=*/{"foo"},
-            /*optimizations_default=*/{"baz"}, /*expected=*/{"bar", "baz"}}));
 
 REGISTER_DATASET_EXPERIMENT("test_only_experiment", 42);
 

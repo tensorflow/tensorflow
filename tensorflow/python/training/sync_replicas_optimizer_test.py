@@ -17,6 +17,7 @@
 import time
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.test_util import create_local_cluster
@@ -48,7 +49,7 @@ def get_workers(num_workers, replicas_to_aggregate, workers):
         grads_0 = constant_op.constant(0.1 + worker_id * 0.2)
         grads_1 = constant_op.constant(0.9 + worker_id * 0.2)
         # This is to test against sparse gradients.
-        grads_sparse = ops.IndexedSlices(
+        grads_sparse = indexed_slices.IndexedSlices(
             constant_op.constant(
                 [0.1 + worker_id * 0.2], shape=[1, 1]),
             constant_op.constant([1]),

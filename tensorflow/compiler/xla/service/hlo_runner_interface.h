@@ -166,16 +166,13 @@ class HloRunnerInterface {
       std::function<Executable*(int64_t)> executable_provider,
       std::function<int64_t(int64_t)> argument_count_provider,
       std::function<const Literal*(int64_t, int64_t)> argument_provider,
-      const ReplicatedExecuteOptions& options) = 0;
+      const ReplicatedExecuteOptions& options,
+      DeviceAssignment* device_assignment) = 0;
 
   // Returns the name of this runner.
   virtual absl::string_view Name() const = 0;
 
   typedef std::function<Shape(const Shape&)> DeviceShapeRepresentationFn;
-
- protected:
-  void UpdateEntryComputationLayout(
-      HloModule* module, DeviceShapeRepresentationFn shape_representation_fn);
 };
 
 }  // namespace xla

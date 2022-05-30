@@ -13,10 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Stateless random ops which take seed as a tensor input."""
-
 import enum
 import numpy as np
-import six
 
 from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
@@ -25,6 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
+from tensorflow.python.ops import gen_random_index_shuffle_ops
 from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
@@ -41,13 +40,13 @@ ops.NotDifferentiable("StatelessRandomUniform")
 ops.NotDifferentiable("StatelessRandomUniformInt")
 ops.NotDifferentiable("StatelessRandomUniformFullInt")
 ops.NotDifferentiable("StatelessTruncatedNormal")
-
-
 ops.NotDifferentiable("StatelessRandomNormalV2")
 ops.NotDifferentiable("StatelessRandomUniformV2")
 ops.NotDifferentiable("StatelessRandomUniformIntV2")
 ops.NotDifferentiable("StatelessRandomUniformFullIntV2")
 ops.NotDifferentiable("StatelessTruncatedNormalV2")
+ops.NotDifferentiable("StatelessRandomShuffle")
+ops.NotDifferentiable("RandomIndexShuffle")
 
 
 @tf_export("random.Algorithm", "random.experimental.Algorithm")
@@ -68,7 +67,7 @@ def convert_alg_to_int(alg):
   Returns:
     An integer, unless the input is a Tensor in which case a Tensor is returned.
   """
-  if isinstance(alg, six.integer_types):
+  if isinstance(alg, int):
     return alg
   if isinstance(alg, Algorithm):
     return alg.value
@@ -242,6 +241,132 @@ def fold_in(seed, data, alg="auto_select"):
   return array_ops.stack([seed1, data])
 
 
+@tf_export("random.experimental.index_shuffle")
+@dispatch.add_dispatch_support
+def index_shuffle(index, seed, max_index):
+  """Outputs the position of `index` in a permutation of [0, ..., max_index].
+
+  For each possible `seed` and `max_index` there is one pseudorandom permutation
+  of the sequence S=[0, ..., max_index]. Instead of materializing the full array
+  we can compute the new position of any single element in S. This can be useful
+  for very large `max_index`s.
+
+  The input `index` and output can be used as indices to shuffle a vector.
+  For example:
+
+  >>> vector = tf.constant(['e0', 'e1', 'e2', 'e3'])
+  >>> indices = tf.random.experimental.index_shuffle(tf.range(4), [5, 9], 3)
+  >>> shuffled_vector = tf.gather(vector, indices)
+  >>> print(shuffled_vector)
+  tf.Tensor([b'e2' b'e0' b'e1' b'e3'], shape=(4,), dtype=string)
+
+  More usefully, it can be used in a streaming (aka online) scenario such as
+  `tf.data`,  where each element of `vector` is processed individually and the
+  whole `vector` is never materialized in memory.
+
+  >>> dataset = tf.data.Dataset.range(10)
+  >>> dataset = dataset.map(
+  ...  lambda idx: tf.random.experimental.index_shuffle(idx, [5, 8], 9))
+  >>> print(list(dataset.as_numpy_iterator()))
+  [3, 8, 0, 1, 2, 7, 6, 9, 4, 5]
+
+  This operation is stateless (like other `tf.random.stateless_*` functions),
+  meaning the output is fully determined by the `seed` (other inputs being
+  equal).
+  Each `seed` choice corresponds to one permutation, so when calling this
+  function
+  multiple times for the same shuffling, please make sure to use the same
+  `seed`. For example:
+
+  >>> seed = [5, 9]
+  >>> idx0 = tf.random.experimental.index_shuffle(0, seed, 3)
+  >>> idx1 = tf.random.experimental.index_shuffle(1, seed, 3)
+  >>> idx2 = tf.random.experimental.index_shuffle(2, seed, 3)
+  >>> idx3 = tf.random.experimental.index_shuffle(3, seed, 3)
+  >>> shuffled_vector = tf.gather(vector, [idx0, idx1, idx2, idx3])
+  >>> print(shuffled_vector)
+  tf.Tensor([b'e2' b'e0' b'e1' b'e3'], shape=(4,), dtype=string)
+
+  Args:
+    index: An integer scalar tensor or vector with values in [0, `max_index`].
+      It can be seen as either a value `v` in the sequence `S`=[0, ...,
+      `max_index`] to be permutated, or as an index of an element `e` in a
+      shuffled vector.
+    seed: A tensor of shape [2] or [n, 2] with dtype int32/uint32/int64/uint64.
+      The RNG seed. If the rank is unknown during graph building it must be 1 at
+      runtime.
+    max_index: A non-negative tensor with the same shape and dtype as `index`.
+      The upper bound (inclusive).
+
+  Returns:
+    If all inputs were scalar (shape [2] for `seed`) the output will be a scalar
+    with the same dtype as `index`. The output can be seen as the new position
+    of `v` in `S`, or as the index of `e` in the vector before shuffling.
+    If one or multiple inputs were vectors (shape [n, 2] for `seed`) then the
+    output will be a vector of the same size which each element shuffled
+    independently. Scalar values are broadcasted in this case.
+  """
+  # We expect users to pass a seed with shape [2] to be consistent with other
+  # stateless_* ops, but the raw op expects shape [3].
+  seed = ops.convert_to_tensor(seed)
+  # Pad the first dimension with an arbitrary number since our raw op expects
+  # shape [3].
+  if seed.shape.rank is None:
+    paddings = [[1, 0]]
+  else:
+    paddings = [[1, 0]] + (seed.shape.rank - 1) * [[0, 0]]
+  seed = array_ops.pad(seed, paddings, constant_values=498247692)
+  return gen_random_index_shuffle_ops.random_index_shuffle(
+      index, seed=seed, max_index=max_index)
+
+
+@tf_export("random.experimental.stateless_shuffle")
+@dispatch.add_dispatch_support
+def stateless_shuffle(value, seed, alg="auto_select", name=None):
+  """Randomly and deterministically shuffles a tensor along its first dimension.
+
+  The tensor is shuffled along dimension 0, such that each `value[j]` is mapped
+  to one and only one `output[i]`. For example, a mapping that might occur for a
+  3x2 tensor is:
+
+  ```python
+  [[1, 2],       [[5, 6],
+   [3, 4],  ==>   [1, 2],
+   [5, 6]]        [3, 4]]
+  ```
+
+  >>> v = tf.constant([[1, 2], [3, 4], [5, 6]])
+  >>> shuffled = tf.random.experimental.stateless_shuffle(v, seed=[8, 9])
+  >>> print(shuffled)
+  tf.Tensor(
+  [[5 6]
+    [1 2]
+    [3 4]], shape=(3, 2), dtype=int32)
+
+  This is a stateless version of `tf.random.shuffle`: if run twice with the
+  same `value` and `seed`, it will produce the same result.  The
+  output is consistent across multiple runs on the same hardware (and between
+  CPU and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
+  hardware.
+
+  Args:
+    value: A Tensor to be shuffled.
+    seed: A shape [2] Tensor. The seed to the random number generator. Must have
+      dtype `int32` or `int64`.
+    alg: The RNG algorithm used to generate the random numbers. See
+      `tf.random.stateless_uniform` for a detailed explanation.
+    name: A name for the operation.
+
+  Returns:
+    A tensor of same shape and type as `value`, shuffled along its first
+    dimension.
+  """
+  with ops.name_scope(name, "stateless_shuffle", [value, seed]) as name:
+    key, counter, alg = _get_key_counter_alg(seed, alg)
+    return gen_stateless_random_ops_v2.stateless_shuffle(
+        value, key=key, counter=counter, alg=alg)
+
+
 @tf_export("random.stateless_uniform")
 @dispatch.add_dispatch_support
 def stateless_random_uniform(shape,
@@ -293,9 +418,9 @@ def stateless_random_uniform(shape,
       be a scalar). The upper bound on the range of random values to generate.
       Defaults to 1 if `dtype` is floating point. Pass `None` for full-range
       integers.
-    dtype: The type of the output: `float16`, `float32`, `float64`, `int32`, or
-      `int64`. For unbounded uniform ints (`minval`, `maxval` both `None`),
-      `uint32` and `uint64` may be used.
+    dtype: The type of the output: `float16`, `bfloat16`, `float32`, `float64`,
+      `int32`, or `int64`. For unbounded uniform ints (`minval`, `maxval` both
+      `None`), `uint32` and `uint64` may be used. Defaults to `float32`.
     name: A name for the operation (optional).
     alg: The RNG algorithm used to generate the random numbers. Valid
       choices are `"philox"` for [the Philox
@@ -623,7 +748,8 @@ def stateless_random_normal(shape,
       distribution.
     stddev: A 0-D Tensor or Python value of type `dtype`. The standard deviation
       of the normal distribution.
-    dtype: The type of the output.
+    dtype: The float type of the output: `float16`, `bfloat16`, `float32`,
+      `float64`. Defaults to `float32`.
     name: A name for the operation (optional).
     alg: The RNG algorithm used to generate the random numbers. See
       `tf.random.stateless_uniform` for a detailed explanation.
@@ -726,7 +852,8 @@ def stateless_multinomial(logits,
     num_samples: 0-D.  Number of independent samples to draw for each row slice.
     seed: A shape [2] Tensor, the seed to the random number generator. Must have
       dtype `int32` or `int64`. (When using XLA, only `int32` is allowed.)
-    output_dtype: integer type to use for the output. Defaults to int64.
+    output_dtype: The integer type of the output: `int32` or `int64`. Defaults
+      to `int64`.
     name: Optional name for the operation.
 
   Returns:
@@ -768,7 +895,8 @@ def stateless_categorical(logits,
     num_samples: 0-D.  Number of independent samples to draw for each row slice.
     seed: A shape [2] Tensor, the seed to the random number generator. Must have
       dtype `int32` or `int64`. (When using XLA, only `int32` is allowed.)
-    dtype: integer type to use for the output. Defaults to int64.
+    dtype: The integer type of the output: `int32` or `int64`. Defaults to
+      `int64`.
     name: Optional name for the operation.
 
   Returns:
@@ -782,6 +910,12 @@ def stateless_categorical(logits,
 def stateless_multinomial_categorical_impl(logits, num_samples, dtype, seed):
   """Implementation for stateless multinomial/categorical ops (v1/v2)."""
   logits = ops.convert_to_tensor(logits, name="logits")
+  dtype = dtypes.as_dtype(dtype) if dtype else dtypes.int64
+  accepted_dtypes = (dtypes.int32, dtypes.int64)
+  if dtype not in accepted_dtypes:
+    raise ValueError(
+        f"Argument `dtype` got invalid value {dtype}. Accepted dtypes are "
+        f"{accepted_dtypes}.")
   return gen_stateless_random_ops.stateless_multinomial(
       logits, num_samples, seed, output_dtype=dtype)
 

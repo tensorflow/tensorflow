@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler.h"
 #include "tensorflow/lite/delegates/gpu/gl/egl_environment.h"
@@ -685,10 +686,7 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
     }
     InferenceOptions resolved_options = options;
     ResolveAutoPriority(&resolved_options);
-    if (!IsBatchMatchesForAllValues(model)) {
-      return absl::InvalidArgumentError(
-          "Only identical batch dimension is supported");
-    }
+    RETURN_IF_ERROR(CheckBatchSizeForAllValues(model));
     auto builder_impl = absl::make_unique<InferenceBuilderImpl>(
         env_options_, resolved_options, std::move(model), &gpu_info_);
     RETURN_IF_ERROR(builder_impl->Initialize());

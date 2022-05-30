@@ -80,8 +80,7 @@ inline bool NumConvOnDeviceWithDataTypeOverThreshold(
     if (!IsConv2D(*node_def) && !IsConv3D(*node_def)) {
       continue;
     }
-    const string& device_name =
-        GetDeviceName(context.virtual_placer.get(), *node_def);
+    const string& device_name = GetDeviceName(*node_def);
     string device_type;
     string task;
     if (!DeviceNameUtils::SplitDeviceName(device_name, &task, &device_type) ||
@@ -109,11 +108,19 @@ inline std::pair<string, string> GetSrcAndDstDataFormats(
     const TransposeContext& context, int num_gpus, int num_voltas) {
   string src_format = kNHWC;
   string dst_format = kNCHW;
-  if (((static_cast<float>(num_voltas) / static_cast<float>(num_gpus)) >=
+
+  const bool is_NHWC_enforced =
+      (!context.enforced_layout.empty() && context.enforced_layout == "NHWC");
+  const bool should_swap =
+      ((static_cast<float>(num_voltas) / static_cast<float>(num_gpus)) >=
        kVoltaGPURatioThreshold) &&
-      NumConvOnDeviceWithDataTypeOverThreshold(context, kGPU, DT_HALF)) {
+      NumConvOnDeviceWithDataTypeOverThreshold(context, kGPU, DT_HALF);
+  // We swap only if NHWC is enforced or no layout is enforced and the devices
+  // config meet the thresholds
+  if (is_NHWC_enforced || (context.enforced_layout.empty() && should_swap)) {
     std::swap(src_format, dst_format);
   }
+
   return {src_format, dst_format};
 }
 
@@ -408,23 +415,32 @@ Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
         << "generic layout optimizer was called with cluster == nullptr";
     return errors::Aborted("cluster == nullptr.");
   }
+  if (!enforced_layout_.empty() && enforced_layout_ != "NHWC" &&
+      enforced_layout_ != "NCHW") {
+    return Status(
+        tensorflow::error::Code::INVALID_ARGUMENT,
+        absl::StrCat("Invalid value for enforced_layout: ", enforced_layout_,
+                     ". Supported layouts: 'NHWC', 'NCHW'."));
+  }
   const auto num_gpus_and_num_volta = GetNumGPUs(*cluster);
   const int num_gpus = num_gpus_and_num_volta.first;
 
   const bool is_aggressive = opt_level_ == RewriterConfig::AGGRESSIVE;
 
   TransposeContext context;
+  context.enforced_layout = enforced_layout_;
+
   if (num_gpus > 0) {
-    TF_RETURN_IF_ERROR(
-        TransposeContext::InitializeTransposeContext(item, cluster, &context));
+    TF_RETURN_IF_ERROR(TransposeContext::InitializeTransposeContext(
+        /*assume_valid_feeds=*/is_aggressive, item, cluster, &context));
 
     const auto src_dst_formats = GetSrcAndDstDataFormats(
         context, num_gpus, num_gpus_and_num_volta.second);
     context.AssignDeviceAndDataFormats(kGPU, src_dst_formats.first,
                                        src_dst_formats.second);
   } else {
-    TF_RETURN_IF_ERROR(
-        TransposeContext::InitializeTransposeContext(item, cluster, &context));
+    TF_RETURN_IF_ERROR(TransposeContext::InitializeTransposeContext(
+        /*assume_valid_feeds=*/is_aggressive, item, cluster, &context));
     switch (cpu_layout_conversion_) {
       case RewriterConfig::NCHW_TO_NHWC:
         context.AssignDeviceAndDataFormats(kCPU, kNCHW, kNHWC);

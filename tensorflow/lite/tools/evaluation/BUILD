@@ -42,6 +42,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
     ] + select({
         "//tensorflow/lite/delegates/gpu:supports_gpu_delegate": [
             "//tensorflow/lite/delegates/gpu:delegate",
@@ -53,7 +54,7 @@ cc_library(
         ],
         "//conditions:default": [],
     }) + select({
-        "//tensorflow:linux_armhf": [],
+        "//tensorflow:linux_s390x": [],
         "//conditions:default": [
             "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         ],

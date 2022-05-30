@@ -13,11 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <atomic>
+#include <cstdint>
 #include <deque>
+#include <functional>
+#include <utility>
 
+#include "absl/time/time.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/metric_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/data/unbounded_thread_pool.h"
 #include "tensorflow/core/framework/cancellation.h"
@@ -26,11 +31,13 @@ limitations under the License.
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/data/iterator_ops.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -39,6 +46,7 @@ namespace data {
 namespace {
 
 const char kAnonymousMultiDeviceIterator[] = "AnonymousMultiDeviceIterator";
+const char kAnonymousMultiDeviceIteratorV3[] = "AnonymousMultiDeviceIteratorV3";
 const char kDevices[] = "devices";
 const char kOutputShapes[] = "output_shapes";
 const char kOutputTypes[] = "output_types";
@@ -74,7 +82,9 @@ class MultiDeviceIterator : public ResourceBase {
       std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
       FunctionLibraryRuntime* flr,
       std::unique_ptr<FunctionHandleCache> function_handle_cache)
-      : unbounded_thread_pool_(env, "tf_data_multi_device_iterator_resource"),
+      : metrics_collector_(flr ? flr->device()->device_type() : DEVICE_DEFAULT,
+                           *env),
+        unbounded_thread_pool_(env, "tf_data_multi_device_iterator_resource"),
         output_types_(output_types),
         output_shapes_(output_shapes),
         devices_(devices),
@@ -83,6 +93,11 @@ class MultiDeviceIterator : public ResourceBase {
         pflr_(std::move(pflr)),
         function_handle_cache_(std::move(function_handle_cache)) {
     DCHECK(flr_ != nullptr);
+    VLOG(2) << "Creating multi-device iterator.";
+  }
+
+  ~MultiDeviceIterator() override {
+    VLOG(2) << "Destroying multi-device iterator.";
   }
 
   string DebugString() const override {
@@ -91,7 +106,7 @@ class MultiDeviceIterator : public ResourceBase {
   }
 
   Status Init(std::unique_ptr<IteratorBase> iterator, int64_t max_buffer_size,
-              int64_t* incarnation_id) {
+              int64_t* incarnation_id, DatasetBase* dataset) {
     if (iterator) {
       TF_RETURN_IF_ERROR(
           VerifyTypesMatch(output_types_, iterator->output_dtypes()));
@@ -103,6 +118,8 @@ class MultiDeviceIterator : public ResourceBase {
     if (multi_device_buffer_) {
       multi_device_buffer_->Reset();
     }
+    dataset->Ref();
+    dataset_.reset(dataset);
 
     ++incarnation_id_;
     *incarnation_id = incarnation_id_;
@@ -148,6 +165,8 @@ class MultiDeviceIterator : public ResourceBase {
   ResourceMgr* resource_mgr() { return &resource_mgr_; }
 
   CancellationManager* cancellation_manager() { return &cancellation_manager_; }
+
+  IteratorMetricsCollector& metrics_collector() { return metrics_collector_; }
 
  private:
   // A private class that uses a background thread to keep a per device buffer
@@ -419,7 +438,6 @@ class MultiDeviceIterator : public ResourceBase {
     };
 
     mutex mu_;
-    std::unique_ptr<Thread> background_thread_ TF_GUARDED_BY(mu_);
     bool background_thread_finished_ TF_GUARDED_BY(mu_) = false;
     bool background_thread_started_ TF_GUARDED_BY(mu_) = false;
     bool end_of_iterator_ TF_GUARDED_BY(mu_) = false;
@@ -433,9 +451,12 @@ class MultiDeviceIterator : public ResourceBase {
     const std::unique_ptr<IteratorBase> host_iterator_;
     CancellationManager cancellation_manager_;
     MultiDeviceIterator* const parent_;  // Not owned.
+    std::unique_ptr<Thread> background_thread_ TF_GUARDED_BY(mu_);
   };
 
+  IteratorMetricsCollector metrics_collector_;
   UnboundedThreadPool unbounded_thread_pool_;
+
   mutex mu_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
@@ -449,6 +470,7 @@ class MultiDeviceIterator : public ResourceBase {
 
   int64_t incarnation_id_ TF_GUARDED_BY(mu_) = 0;
   std::unique_ptr<MultiDeviceBuffer> multi_device_buffer_ TF_GUARDED_BY(mu_);
+  core::RefCountPtr<DatasetBase> dataset_;
 };
 
 // Used to generate unique names for anonymous multi device iterators.
@@ -575,9 +597,12 @@ class AnonymousMultiDeviceIteratorOp
     : public AnonymousResourceOp<MultiDeviceIterator> {
  public:
   explicit AnonymousMultiDeviceIteratorOp(OpKernelConstruction* ctx)
-      : AnonymousResourceOp<MultiDeviceIterator>(ctx,
-                                                 /* ref_counting */ false,
-                                                 /* return_deleter */ true) {
+      : AnonymousResourceOp<MultiDeviceIterator>(
+            ctx,
+            /* ref_counting */ true,
+            /* Only V1 returns a deleter */
+            /* return_deleter */
+            ctx->def().op() == kAnonymousMultiDeviceIterator) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kDevices, &devices_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_dtypes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
@@ -606,6 +631,9 @@ class AnonymousMultiDeviceIteratorOp
 
 REGISTER_KERNEL_BUILDER(Name(kAnonymousMultiDeviceIterator).Device(DEVICE_CPU),
                         AnonymousMultiDeviceIteratorOp);
+REGISTER_KERNEL_BUILDER(
+    Name(kAnonymousMultiDeviceIteratorV3).Device(DEVICE_CPU),
+    AnonymousMultiDeviceIteratorOp);
 
 // Calls init on the MultiDeviceIterator.
 class MultiDeviceIteratorInitOp : public OpKernel {
@@ -647,7 +675,7 @@ class MultiDeviceIteratorInitOp : public OpKernel {
     core::ScopedUnref unref(finalized_dataset);
     int64_t incarnation_id;
     OP_REQUIRES_OK(ctx, resource->Init(std::move(iterator), max_buffer_size,
-                                       &incarnation_id));
+                                       &incarnation_id, dataset));
     Tensor tensor_incarnation_id(DT_INT64, TensorShape({}));
     tensor_incarnation_id.scalar<int64_t>()() = incarnation_id;
     OP_REQUIRES_OK(ctx,
@@ -683,8 +711,11 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
     background_worker_.Schedule(std::bind(
         [ctx, iterator, shard_num, incarnation_id](DoneCallback done) {
           Notification n;
+          absl::Time start_time = iterator->metrics_collector().RecordStart();
           MultiDeviceIteratorCallback callback = std::bind(
-              [ctx, &n](const HostBufferElement& elem) {
+              [ctx, iterator, start_time, &n](const HostBufferElement& elem) {
+                iterator->metrics_collector().RecordStop(start_time,
+                                                         elem.value);
                 Status s = elem.status;
                 if (!s.ok()) {
                   ctx->SetStatus(s);
@@ -818,10 +849,10 @@ class DeleteMultiDeviceIteratorOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     ResourceHandle handle = ctx->input(0).flat<ResourceHandle>()(0);
-    // The iterator resource is guaranteed to exist because the variant tensor
-    // wrapping the deleter is provided as an unused input to this op, which
-    // guarantees that it has not run yet.
-    OP_REQUIRES_OK(ctx, ctx->resource_manager()->Delete(handle));
+    // The iterator resource is guaranteed to
+    // exist because the variant tensor wrapping the deleter is provided as an
+    // unused input to this op, which guarantees that it has not run yet.
+    OP_REQUIRES_OK(ctx, DeleteResource(ctx, handle));
   }
 };
 

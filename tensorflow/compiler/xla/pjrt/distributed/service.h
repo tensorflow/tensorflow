@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_DISTRIBUTED_SERVICE_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_DISTRIBUTED_SERVICE_H_
 
+#include <string>
+
+#include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
@@ -88,18 +91,22 @@ class DistributedRuntimeServiceImpl final
                              const KeyValueSetRequest* request,
                              KeyValueSetResponse* response) override;
 
+  ::grpc::Status WaitAtBarrier(::grpc::ServerContext* context,
+                               const WaitAtBarrierRequest* request,
+                               WaitAtBarrierResponse* response) override;
+
  private:
   // Entry point for the heartbeat checking thread.
   void HeartbeatLoop();
 
   // Validates a session id number matches the current session id.
-  xla::Status ValidateSessionId(uint64 session_id);
+  xla::Status ValidateSessionId(uint64_t session_id);
 
   // Validates a node id number.
   xla::Status ValidateNodeId(int node_id);
 
   const Options options_;
-  const uint64 session_id_;
+  const uint64_t session_id_;
 
   absl::Mutex mu_;
   enum class State { kInitializing, kRunning, kClosed };
@@ -113,7 +120,7 @@ class DistributedRuntimeServiceImpl final
 
     // A unique ID belonging to the client. Used to identify the client that
     // most recently called Connect() with a particular task id.
-    uint64 client_id = 0;
+    uint64_t client_id = 0;
 
     // When did we last receive a heartbeat from this task?
     absl::Time last_heartbeat = absl::InfinitePast();
@@ -129,6 +136,10 @@ class DistributedRuntimeServiceImpl final
   // State for Shutdown(). Counter of how many nodes are blocked at the
   // Shutdown() barrier.
   int num_nodes_shutting_down_ ABSL_GUARDED_BY(mu_) = 0;
+
+  // This dictionary tracks the number of nodes per barrier.
+  absl::flat_hash_map<std::string, int> barrier_id_to_num_nodes_
+      ABSL_GUARDED_BY(mu_);
 
   // Key-value store, used by distributed GPU code to share NCCL state.
   KeyValueStore key_value_store_;

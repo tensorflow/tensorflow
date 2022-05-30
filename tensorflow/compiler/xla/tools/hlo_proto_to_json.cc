@@ -24,6 +24,7 @@ limitations under the License.
 //   --xla_dump_to=DIR --xla_dump_hlo_as_proto
 
 #include <stdio.h>
+
 #include <string>
 #include <vector>
 
@@ -36,14 +37,14 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
+using std::string;
 using tensorflow::Env;
-using xla::string;
 
 namespace xla {
 namespace tools {
 
-StatusOr<string> ToJson(const tensorflow::protobuf::Message& message) {
-  string json_output;
+StatusOr<std::string> ToJson(const tensorflow::protobuf::Message& message) {
+  std::string json_output;
   tensorflow::protobuf::util::JsonPrintOptions json_options;
   json_options.add_whitespace = true;
   json_options.always_print_primitive_fields = true;
@@ -56,7 +57,7 @@ StatusOr<string> ToJson(const tensorflow::protobuf::Message& message) {
   return json_output;
 }
 
-void RealMain(const string& input, const string& output) {
+void RealMain(const std::string& input, const std::string& output) {
   HloProto hlo_proto;
   TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(), input,
                                           &hlo_proto))
@@ -74,12 +75,12 @@ void RealMain(const string& input, const string& output) {
 }  // namespace xla
 
 int main(int argc, char** argv) {
-  string input_file, output_file;
+  std::string input_file, output_file;
   const std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("input_file", &input_file, "file to convert."),
       tensorflow::Flag("output_file", &output_file, "converted file"),
   };
-  const string usage = tensorflow::Flags::Usage(argv[0], flag_list);
+  const std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
   tensorflow::port::InitMain(usage.c_str(), &argc, &argv);
   QCHECK(parse_ok && argc == 1) << "\n" << usage;

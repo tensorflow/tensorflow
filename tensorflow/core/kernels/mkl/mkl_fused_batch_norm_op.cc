@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #ifdef INTEL_MKL
-#include "mkldnn.hpp"
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "dnnl.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -23,17 +24,20 @@ limitations under the License.
 #include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
+#ifdef DNNL_AARCH64_USE_ACL
+#include "tensorflow/core/platform/mutex.h"
+#endif
 
-#define GET_FLAG(bn_flag) static_cast<int>(mkldnn::normalization_flags::bn_flag)
+#define GET_FLAG(bn_flag) static_cast<int>(dnnl::normalization_flags::bn_flag)
 #define IS_SET(cflag) (context_.flags & GET_FLAG(cflag))
 
-using mkldnn::batch_normalization_backward;
-using mkldnn::batch_normalization_forward;
-using mkldnn::prop_kind;
-using mkldnn::stream;
+using dnnl::batch_normalization_backward;
+using dnnl::batch_normalization_forward;
+using dnnl::prop_kind;
+using dnnl::stream;
 
-using BatchNormFwdPd = mkldnn::batch_normalization_forward::primitive_desc;
-using BatchNormBwdPd = mkldnn::batch_normalization_backward::primitive_desc;
+using BatchNormFwdPd = dnnl::batch_normalization_forward::primitive_desc;
+using BatchNormBwdPd = dnnl::batch_normalization_backward::primitive_desc;
 
 namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
@@ -81,8 +85,11 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
   void Execute(const T* src_data, const U* weights_data, T* dst_data,
                U* mean_data, U* variance_data,
                std::shared_ptr<stream> fwd_stream, U* workspace_data) {
+#ifdef DNNL_AARCH64_USE_ACL
+    mutex_lock lock(primitive_execution_mu_);
+#endif
 #ifndef ENABLE_ONEDNN_OPENMP
-    // TODO: Create a common function and avoid the duplicate code
+    // TODO(intel-tf): Create a common function and avoid the duplicate code
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *fwd_stream);
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data),
@@ -154,22 +161,22 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
     int64 flags;
 
     // Algorithm kind.
-    mkldnn::prop_kind pkind;
+    dnnl::prop_kind pkind;
 
     // Inputs/outputs memory.
-    std::shared_ptr<mkldnn::memory> src_mem;
-    std::shared_ptr<mkldnn::memory> weights_mem;
-    std::shared_ptr<mkldnn::memory> dst_mem;
-    std::shared_ptr<mkldnn::memory> mean_mem;
-    std::shared_ptr<mkldnn::memory> variance_mem;
-    std::shared_ptr<mkldnn::memory> ws_mem;
+    std::shared_ptr<dnnl::memory> src_mem;
+    std::shared_ptr<dnnl::memory> weights_mem;
+    std::shared_ptr<dnnl::memory> dst_mem;
+    std::shared_ptr<dnnl::memory> mean_mem;
+    std::shared_ptr<dnnl::memory> variance_mem;
+    std::shared_ptr<dnnl::memory> ws_mem;
 
     // Forward BatchNorm primitive descriptor.
     std::shared_ptr<BatchNormFwdPd> fwd_pd;
 
     // BatchNorm forward primitive.
-    std::shared_ptr<mkldnn::primitive> bn_fwd;
-    std::vector<mkldnn::primitive> fwd_primitives;
+    std::shared_ptr<dnnl::primitive> bn_fwd;
+    std::vector<dnnl::primitive> fwd_primitives;
 
     std::vector<std::unordered_map<int, memory>> net_args;
 
@@ -201,7 +208,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
     // Create forward BatchNorm descriptor and primitive descriptor.
     auto fwd_desc = batch_normalization_forward::desc(
         context_.pkind, src_md, fwdParams.eps,
-        static_cast<mkldnn::normalization_flags>(context_.flags));
+        static_cast<dnnl::normalization_flags>(context_.flags));
 
     context_.fwd_pd.reset(new BatchNormFwdPd(fwd_desc, cpu_engine_));
 
@@ -237,83 +244,82 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
     // BatchNorm forward primitive.
     // TODO(intel-tf): Merge all the #ifdefs and simplify code
     if (!fwdParams.training && !(IS_SET(use_global_stats))) {
-      if ((IS_SET(use_scale_shift)) && mkldnn_use_scaleshift) {
-        context_.net_args.push_back(
-            {{MKLDNN_ARG_SRC, *context_.src_mem},
-             {MKLDNN_ARG_WEIGHTS, *context_.weights_mem},
-             {MKLDNN_ARG_DST, *context_.dst_mem}});
+      if (IS_SET(use_scale_shift)) {
+        context_.net_args.push_back({{DNNL_ARG_SRC, *context_.src_mem},
+                                     {DNNL_ARG_WEIGHTS, *context_.weights_mem},
+                                     {DNNL_ARG_DST, *context_.dst_mem}});
       } else {
-        context_.net_args.push_back({{MKLDNN_ARG_SRC, *context_.src_mem},
-                                     {MKLDNN_ARG_DST, *context_.dst_mem}});
+        context_.net_args.push_back({{DNNL_ARG_SRC, *context_.src_mem},
+                                     {DNNL_ARG_DST, *context_.dst_mem}});
       }
       context_.bn_fwd.reset(new batch_normalization_forward(*context_.fwd_pd));
     } else if (IS_SET(use_global_stats)) {
-      if ((IS_SET(use_scale_shift)) && GET_FLAG(use_scale_shift)) {
+      if (IS_SET(use_scale_shift)) {
         if (IS_SET(fuse_norm_relu)) {
           context_.net_args.push_back(
-              {{MKLDNN_ARG_SRC, *context_.src_mem},
-               {MKLDNN_ARG_MEAN, *context_.mean_mem},
-               {MKLDNN_ARG_VARIANCE, *context_.variance_mem},
-               {MKLDNN_ARG_WEIGHTS, *context_.weights_mem},
-               {MKLDNN_ARG_DST, *context_.dst_mem},
-               {MKLDNN_ARG_WORKSPACE, *context_.ws_mem}});
+              {{DNNL_ARG_SRC, *context_.src_mem},
+               {DNNL_ARG_MEAN, *context_.mean_mem},
+               {DNNL_ARG_VARIANCE, *context_.variance_mem},
+               {DNNL_ARG_WEIGHTS, *context_.weights_mem},
+               {DNNL_ARG_DST, *context_.dst_mem},
+               {DNNL_ARG_WORKSPACE, *context_.ws_mem}});
         } else {
           context_.net_args.push_back(
-              {{MKLDNN_ARG_SRC, *context_.src_mem},
-               {MKLDNN_ARG_MEAN, *context_.mean_mem},
-               {MKLDNN_ARG_VARIANCE, *context_.variance_mem},
-               {MKLDNN_ARG_WEIGHTS, *context_.weights_mem},
-               {MKLDNN_ARG_DST, *context_.dst_mem}});
+              {{DNNL_ARG_SRC, *context_.src_mem},
+               {DNNL_ARG_MEAN, *context_.mean_mem},
+               {DNNL_ARG_VARIANCE, *context_.variance_mem},
+               {DNNL_ARG_WEIGHTS, *context_.weights_mem},
+               {DNNL_ARG_DST, *context_.dst_mem}});
         }
       } else {
         if (IS_SET(fuse_norm_relu)) {
           context_.net_args.push_back(
-              {{MKLDNN_ARG_SRC, *context_.src_mem},
-               {MKLDNN_ARG_MEAN, *context_.mean_mem},
-               {MKLDNN_ARG_VARIANCE, *context_.variance_mem},
-               {MKLDNN_ARG_DST, *context_.dst_mem},
-               {MKLDNN_ARG_WORKSPACE, *context_.ws_mem}});
+              {{DNNL_ARG_SRC, *context_.src_mem},
+               {DNNL_ARG_MEAN, *context_.mean_mem},
+               {DNNL_ARG_VARIANCE, *context_.variance_mem},
+               {DNNL_ARG_DST, *context_.dst_mem},
+               {DNNL_ARG_WORKSPACE, *context_.ws_mem}});
         } else {
           context_.net_args.push_back(
-              {{MKLDNN_ARG_SRC, *context_.src_mem},
-               {MKLDNN_ARG_MEAN, *context_.mean_mem},
-               {MKLDNN_ARG_VARIANCE, *context_.variance_mem},
-               {MKLDNN_ARG_DST, *context_.dst_mem}});
+              {{DNNL_ARG_SRC, *context_.src_mem},
+               {DNNL_ARG_MEAN, *context_.mean_mem},
+               {DNNL_ARG_VARIANCE, *context_.variance_mem},
+               {DNNL_ARG_DST, *context_.dst_mem}});
         }
       }
       context_.bn_fwd.reset(new batch_normalization_forward(*context_.fwd_pd));
     } else {
-      if ((IS_SET(use_scale_shift)) && GET_FLAG(use_scale_shift)) {
+      if (IS_SET(use_scale_shift)) {
         if (IS_SET(fuse_norm_relu)) {
           context_.net_args.push_back(
-              {{MKLDNN_ARG_SRC, *context_.src_mem},
-               {MKLDNN_ARG_WEIGHTS, *context_.weights_mem},
-               {MKLDNN_ARG_DST, *context_.dst_mem},
-               {MKLDNN_ARG_MEAN, *context_.mean_mem},
-               {MKLDNN_ARG_VARIANCE, *context_.variance_mem},
-               {MKLDNN_ARG_WORKSPACE, *context_.ws_mem}});
+              {{DNNL_ARG_SRC, *context_.src_mem},
+               {DNNL_ARG_WEIGHTS, *context_.weights_mem},
+               {DNNL_ARG_DST, *context_.dst_mem},
+               {DNNL_ARG_MEAN, *context_.mean_mem},
+               {DNNL_ARG_VARIANCE, *context_.variance_mem},
+               {DNNL_ARG_WORKSPACE, *context_.ws_mem}});
         } else {
           context_.net_args.push_back(
-              {{MKLDNN_ARG_SRC, *context_.src_mem},
-               {MKLDNN_ARG_WEIGHTS, *context_.weights_mem},
-               {MKLDNN_ARG_DST, *context_.dst_mem},
-               {MKLDNN_ARG_MEAN, *context_.mean_mem},
-               {MKLDNN_ARG_VARIANCE, *context_.variance_mem}});
+              {{DNNL_ARG_SRC, *context_.src_mem},
+               {DNNL_ARG_WEIGHTS, *context_.weights_mem},
+               {DNNL_ARG_DST, *context_.dst_mem},
+               {DNNL_ARG_MEAN, *context_.mean_mem},
+               {DNNL_ARG_VARIANCE, *context_.variance_mem}});
         }
       } else {
         if (IS_SET(fuse_norm_relu)) {
           context_.net_args.push_back(
-              {{MKLDNN_ARG_SRC, *context_.src_mem},
-               {MKLDNN_ARG_DST, *context_.dst_mem},
-               {MKLDNN_ARG_MEAN, *context_.mean_mem},
-               {MKLDNN_ARG_VARIANCE, *context_.variance_mem},
-               {MKLDNN_ARG_WORKSPACE, *context_.ws_mem}});
+              {{DNNL_ARG_SRC, *context_.src_mem},
+               {DNNL_ARG_DST, *context_.dst_mem},
+               {DNNL_ARG_MEAN, *context_.mean_mem},
+               {DNNL_ARG_VARIANCE, *context_.variance_mem},
+               {DNNL_ARG_WORKSPACE, *context_.ws_mem}});
         } else {
           context_.net_args.push_back(
-              {{MKLDNN_ARG_SRC, *context_.src_mem},
-               {MKLDNN_ARG_DST, *context_.dst_mem},
-               {MKLDNN_ARG_MEAN, *context_.mean_mem},
-               {MKLDNN_ARG_VARIANCE, *context_.variance_mem}});
+              {{DNNL_ARG_SRC, *context_.src_mem},
+               {DNNL_ARG_DST, *context_.dst_mem},
+               {DNNL_ARG_MEAN, *context_.mean_mem},
+               {DNNL_ARG_VARIANCE, *context_.variance_mem}});
         }
       }
       context_.bn_fwd.reset(new batch_normalization_forward(*context_.fwd_pd));
@@ -323,6 +329,10 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
   }
 
   struct BatchNormFwdContext context_;
+
+#ifdef DNNL_AARCH64_USE_ACL
+  mutex primitive_execution_mu_;
+#endif
 };
 
 template <typename T, typename U>
@@ -428,8 +438,11 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
                const T* diff_dst_data, const U* weights_data, T* diff_src_data,
                U* diff_weights_data, U* res_space_data,
                std::shared_ptr<stream> bwd_stream) {
+#ifdef DNNL_AARCH64_USE_ACL
+    mutex_lock lock(primitive_execution_mu_);
+#endif
 #ifndef ENABLE_ONEDNN_OPENMP
-    // TODO: Create a common function and avoid the duplicate code
+    // TODO(intel-tf): Create a common function and avoid the duplicate code
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *bwd_stream);
     context_.mean_mem->set_data_handle(
@@ -495,20 +508,20 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
     int64 flags;
 
     // Inputs/output memory.
-    std::shared_ptr<mkldnn::memory> src_mem;
-    std::shared_ptr<mkldnn::memory> mean_mem;
-    std::shared_ptr<mkldnn::memory> variance_mem;
-    std::shared_ptr<mkldnn::memory> diff_dst_mem;
-    std::shared_ptr<mkldnn::memory> weights_mem;
-    std::shared_ptr<mkldnn::memory> diff_weights_mem;
-    std::shared_ptr<mkldnn::memory> diff_src_mem;
+    std::shared_ptr<dnnl::memory> src_mem;
+    std::shared_ptr<dnnl::memory> mean_mem;
+    std::shared_ptr<dnnl::memory> variance_mem;
+    std::shared_ptr<dnnl::memory> diff_dst_mem;
+    std::shared_ptr<dnnl::memory> weights_mem;
+    std::shared_ptr<dnnl::memory> diff_weights_mem;
+    std::shared_ptr<dnnl::memory> diff_src_mem;
 
     // Backward batch-normalization primitive descriptor.
     std::shared_ptr<BatchNormBwdPd> bwd_pd;
 
     // Backward batch-normalization primitive.
-    std::shared_ptr<mkldnn::primitive> bn_bwd;
-    std::vector<mkldnn::primitive> bwd_primitives;
+    std::shared_ptr<dnnl::primitive> bn_bwd;
+    std::vector<dnnl::primitive> bwd_primitives;
 
     std::vector<std::unordered_map<int, memory>> net_args;
 
@@ -542,9 +555,9 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
     // Forward batch-normalization descriptor and primitive descriptor.
     // Adding this back due to type difference with context.flags
     auto bn_flags = bwdParams.training
-                        ? mkldnn::normalization_flags::use_scale_shift
-                        : (mkldnn::normalization_flags::use_scale_shift |
-                           mkldnn::normalization_flags::use_global_stats);
+                        ? dnnl::normalization_flags::use_scale_shift
+                        : (dnnl::normalization_flags::use_scale_shift |
+                           dnnl::normalization_flags::use_global_stats);
     auto fwd_desc = batch_normalization_forward::desc(
         prop_kind::forward_training, src_md, bwdParams.eps, bn_flags);
     auto fwd_pd = BatchNormFwdPd(fwd_desc, cpu_engine_);
@@ -573,17 +586,21 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
 
     context_.bn_bwd.reset(new batch_normalization_backward(*context_.bwd_pd));
     context_.net_args.push_back(
-        {{MKLDNN_ARG_SRC, *context_.src_mem},
-         {MKLDNN_ARG_MEAN, *context_.mean_mem},
-         {MKLDNN_ARG_VARIANCE, *context_.variance_mem},
-         {MKLDNN_ARG_DIFF_DST, *context_.diff_dst_mem},
-         {MKLDNN_ARG_WEIGHTS, *context_.weights_mem},
-         {MKLDNN_ARG_DIFF_SRC, *context_.diff_src_mem},
-         {MKLDNN_ARG_DIFF_WEIGHTS, *context_.diff_weights_mem}});
+        {{DNNL_ARG_SRC, *context_.src_mem},
+         {DNNL_ARG_MEAN, *context_.mean_mem},
+         {DNNL_ARG_VARIANCE, *context_.variance_mem},
+         {DNNL_ARG_DIFF_DST, *context_.diff_dst_mem},
+         {DNNL_ARG_WEIGHTS, *context_.weights_mem},
+         {DNNL_ARG_DIFF_SRC, *context_.diff_src_mem},
+         {DNNL_ARG_DIFF_WEIGHTS, *context_.diff_weights_mem}});
     context_.bwd_primitives.push_back(*context_.bn_bwd);
   }
 
   struct BatchNormBwdContext context_;
+
+#ifdef DNNL_AARCH64_USE_ACL
+  mutex primitive_execution_mu_;
+#endif
 };
 
 template <typename T, typename U>
@@ -725,6 +742,43 @@ class MklFusedBatchNormOp : public OpKernel {
           errors::InvalidArgument("estimated_variance must be 1-dimensional",
                                   est_variance_tensor.shape().DebugString()));
 
+      int num_channels;
+      if (dnn_shape_src.IsMklTensor()) {
+        num_channels = dnn_shape_src.DimSize(MklDnnDims::Dim_C);
+      } else {
+        num_channels = GetTensorDim(src_tensor, tensor_format_, 'C');
+      }
+
+      OP_REQUIRES(context, scale_tensor.NumElements() == num_channels,
+                  errors::InvalidArgument(
+                      "scale must have the same number of elements "
+                      "as the channels of x, got ",
+                      scale_tensor.NumElements(), " and ", num_channels));
+
+      OP_REQUIRES(context, shift_tensor.NumElements() == num_channels,
+                  errors::InvalidArgument(
+                      "offset must have the same number of elements "
+                      "as the channels of x, got ",
+                      shift_tensor.NumElements(), " and ", num_channels));
+      if (!is_training_ || exponential_avg_factor_ != 1.) {
+        std::string prefix_msg = is_training_
+                                     ? "When exponential_avg_factor != 1"
+                                     : "When is_training=false";
+        OP_REQUIRES(context, est_mean_tensor.NumElements() == num_channels,
+                    errors::InvalidArgument(
+                        prefix_msg,
+                        ", mean must have the same number "
+                        "of elements as the channels of x, got ",
+                        est_mean_tensor.NumElements(), " and ", num_channels));
+        OP_REQUIRES(
+            context, est_variance_tensor.NumElements() == num_channels,
+            errors::InvalidArgument(
+                prefix_msg,
+                ", variance must have the same "
+                "number of elements as the channels of x, got ",
+                est_variance_tensor.NumElements(), " and ", num_channels));
+      }
+
       // Handle the special case: input with 0 element and 0 batch size.
       Tensor* dst_tensor = nullptr;
       TensorShape workspace_tf_shape;
@@ -818,7 +872,7 @@ class MklFusedBatchNormOp : public OpKernel {
       else
         SetMeanVariance(est_mean_tensor, est_variance_tensor);
 
-      // MKL-DNN packs scale & shift as "weights":
+      // oneDNN packs scale & shift as "weights":
       // <scale>...<scale><shift>...<shift>
       weights.AllocateBuffer(2 * depth_ * sizeof(U));
       U* weights_data = reinterpret_cast<U*>(weights.GetAllocatedBuffer());
@@ -912,7 +966,7 @@ class MklFusedBatchNormOp : public OpKernel {
         std::memcpy(batch_mean_data, mean_data, depth_ * sizeof(U));
         std::memcpy(batch_variance_data, variance_data, depth_ * sizeof(U));
       }
-    } catch (mkldnn::error& e) {
+    } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
@@ -1129,6 +1183,35 @@ class MklFusedBatchNormGradOp : public OpKernel {
           errors::InvalidArgument("saved variance must be 1-dimensional",
                                   saved_variance_tensor.shape().DebugString()));
 
+      OP_REQUIRES(context, tf_shape_src == tf_shape_diff_dst,
+                  errors::InvalidArgument(
+                      "x and y_backprop must have same shape, but x has shape ",
+                      src_tensor.shape(), " and y_backprop has shape ",
+                      diff_dst_tensor.shape()));
+
+      int num_channels;
+      if (dnn_shape_src.IsMklTensor()) {
+        num_channels = dnn_shape_src.DimSize(MklDnnDims::Dim_C);
+      } else {
+        num_channels = GetTensorDim(src_tensor, tensor_format_, 'C');
+      }
+      OP_REQUIRES(context, scale_tensor.NumElements() == num_channels,
+                  errors::InvalidArgument(
+                      "scale must have the same number of elements "
+                      "as the channels of x, got ",
+                      scale_tensor.NumElements(), " and ", num_channels));
+      OP_REQUIRES(context, saved_mean_tensor.NumElements() == num_channels,
+                  errors::InvalidArgument(
+                      "reserve_space_1 must have the same number of "
+                      "elements as the channels of x, got ",
+                      saved_mean_tensor.NumElements(), " and ", num_channels));
+      OP_REQUIRES(
+          context, saved_variance_tensor.NumElements() == num_channels,
+          errors::InvalidArgument(
+              "reserve_space_2 must have the same number of "
+              "elements as the channels of x, got ",
+              saved_variance_tensor.NumElements(), " and ", num_channels));
+
       // Handle the special case: input with 0 element and 0 batch size.
       Tensor* diff_src_tensor = nullptr;
       if (tf_shape_src.num_elements() == 0 ||
@@ -1194,9 +1277,9 @@ class MklFusedBatchNormGradOp : public OpKernel {
           static_cast<T*>(const_cast<T*>(src_tensor.flat<T>().data()));
 
       if (!native_format) {
-        // MKL-DNN requires src and diff_dst to be in same memory layout, either
+        // oneDNN requires src and diff_dst to be in same memory layout, either
         // blocked or native format. If these inputs are in different formats,
-        // convert the one in native format to blocked format as MKL-DNN gives
+        // convert the one in native format to blocked format as oneDNN gives
         // better performance for blocked format.
         if (dnn_shape_src.IsMklTensor() && !dnn_shape_diff_dst.IsMklTensor()) {
           reorder_diff_dst.SetUsrMem(diff_dst_md, &diff_dst_tensor);
@@ -1213,7 +1296,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
         }
       }
 
-      // weights -- MKL DNN packs scales/ shifts as weights in order
+      // weights -- oneDNN packs scales/shifts as weights in order
       // of scale, ..., scale, shift, ...., shift
       weights.AllocateBuffer(2 * depth_ * sizeof(U));
       U* weights_data_tf = reinterpret_cast<U*>(weights.GetAllocatedBuffer());
@@ -1249,7 +1332,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
       // Indices of output tensors
       const size_t kDiffSrcIndex = 0;
 
-      // Allocate output tensor diff_src, always set as MKL-DNN layout.
+      // Allocate output tensor diff_src, always set as oneDNN layout.
       MklDnnShape dnn_shape_diff_src;
       TensorShape tf_shape_diff_src;
       dnn_shape_diff_src.SetMklTensor(true);
@@ -1301,7 +1384,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
       std::memcpy(reinterpret_cast<char*>(diff_shift_data),
                   reinterpret_cast<char*>(diff_weights_data + depth_),
                   depth_ * sizeof(U));
-    } catch (mkldnn::error& e) {
+    } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
@@ -1471,9 +1554,9 @@ REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU(float, float);
 REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU(bfloat16, float);
 #undef REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU
 
-// TODO: FusedBatchNormV3 has an additional output that is used to
-//       hold intermediate results. This parameter functionality is
-//       not implemented on CPU.
+// TODO(intel-tf): FusedBatchNormV3 has an additional output that
+//       is used to hold intermediate results. This parameter
+//       functionality is not implemented on CPU.
 #define REGISTER_MKL_FUSED_BATCHNORM_V3_CPU(T, U)               \
   REGISTER_KERNEL_BUILDER(                                      \
       Name("_MklFusedBatchNormV3")                              \

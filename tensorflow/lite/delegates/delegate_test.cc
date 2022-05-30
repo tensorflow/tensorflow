@@ -484,7 +484,7 @@ TEST_F(TestDelegate, DelegateCustomOpResolution) {
 }
 
 TEST_F(TestDelegate, AllSubgraphsAreDelegatedByDefault) {
-  interpreter_->AddSubgraphs(1);
+  AddSubgraphs(1);
   SetUpSubgraph(interpreter_->subgraph(1));
   delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate({0, 1, 2}));
   ASSERT_EQ(
@@ -502,7 +502,7 @@ TEST_F(TestDelegate, AllSubgraphsAreDelegatedByDefault) {
 }
 
 TEST_F(TestDelegate, ValidationSubgraphsAreNotDelegated) {
-  interpreter_->AddSubgraphs(1);
+  AddSubgraphs(1);
   SetUpSubgraph(interpreter_->subgraph(1));
   interpreter_->subgraph(1)->SetName("VALIDATION:foo");
   delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate({0, 1, 2}));
@@ -852,7 +852,8 @@ INSTANTIATE_TEST_SUITE_P(
 class TestDelegateWithDynamicTensors : public ::testing::Test {
  protected:
   void SetUp() override {
-    interpreter_.reset(new Interpreter);
+    interpreter_ =
+        test_utils::TestDelegation::NewInterpreterWithDefaultDelegates();
 
     interpreter_->AddTensors(3);
     interpreter_->SetInputs({0});
@@ -874,9 +875,9 @@ class TestDelegateWithDynamicTensors : public ::testing::Test {
       TfLiteIntArray* execution_plan;
       TF_LITE_ENSURE_STATUS(
           context->GetExecutionPlan(context, &execution_plan));
-      context->ReplaceNodeSubsetsWithDelegateKernels(
+      TfLiteStatus status = context->ReplaceNodeSubsetsWithDelegateKernels(
           context, DelegateRegistration(), execution_plan, delegate);
-      return kTfLiteOk;
+      return status;
     };
     delegate_.flags = kTfLiteDelegateFlagsNone;
   }
@@ -991,6 +992,101 @@ TEST_F(TestDelegateWithDynamicTensors, ShapePropagation_FlagNotSet) {
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   ASSERT_EQ(interpreter_->ResizeInputTensor(0, {4}), kTfLiteOk);
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteError);
+}
+
+class TestReleaseDynamicTensorWithDelegate : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    interpreter_ =
+        test_utils::TestDelegation::NewInterpreterWithDefaultDelegates();
+
+    interpreter_->AddTensors(3);
+    interpreter_->SetInputs({0});
+    interpreter_->SetOutputs({2});
+    TfLiteQuantizationParams quant;
+    interpreter_->SetTensorParametersReadWrite(0, kTfLiteFloat32, "", {3},
+                                               quant);
+    interpreter_->SetTensorParametersReadWrite(1, kTfLiteFloat32, "", {3},
+                                               quant);
+    interpreter_->SetTensorParametersReadWrite(2, kTfLiteFloat32, "", {3},
+                                               quant);
+    TfLiteRegistration reg = DynamicCopyOpRegistration();
+    interpreter_->AddNodeWithParameters({0}, {1}, nullptr, 0, nullptr, &reg);
+    interpreter_->AddNodeWithParameters({1}, {2}, nullptr, 0, nullptr, &reg);
+
+    delegate_.Prepare = [](TfLiteContext* context,
+                           TfLiteDelegate* delegate) -> TfLiteStatus {
+      TfLiteIntArray* execution_plan;
+      TF_LITE_ENSURE_STATUS(
+          context->GetExecutionPlan(context, &execution_plan));
+      // Only replace the second execution node with delegate.
+      TfLiteIntArray* nodes_to_replace = TfLiteIntArrayCreate(1);
+      nodes_to_replace->data[0] = execution_plan->data[1];
+      TfLiteStatus status = context->ReplaceNodeSubsetsWithDelegateKernels(
+          context, DelegateRegistration(), nodes_to_replace, delegate);
+      TfLiteIntArrayFree(nodes_to_replace);
+      return status;
+    };
+    delegate_.flags = kTfLiteDelegateFlagsNone;
+  }
+
+  static TfLiteRegistration DynamicCopyOpRegistration() {
+    TfLiteRegistration reg = {nullptr, nullptr, nullptr, nullptr};
+
+    reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
+      // Output is dynamic and has the same size as input.
+      TfLiteTensor* output;
+      TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+      SetTensorToDynamic(output);
+      const TfLiteTensor* input;
+      TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+      TfLiteTensorRealloc(input->bytes, output);
+      return kTfLiteOk;
+    };
+
+    reg.invoke = [](TfLiteContext* context, TfLiteNode* node) {
+      // Not implemented since this isn't required in testing.
+      return kTfLiteOk;
+    };
+    return reg;
+  }
+
+  static TfLiteRegistration DelegateRegistration() {
+    TfLiteRegistration reg = {nullptr, nullptr, nullptr, nullptr};
+
+    reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
+      // Check that input is dynamic.
+      const TfLiteTensor* input;
+      TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+      TF_LITE_ENSURE(context, IsDynamicTensor(input));
+      return kTfLiteOk;
+    };
+    reg.invoke = [](TfLiteContext* context, TfLiteNode* node) {
+      // Not implemented since this isn't required in testing.
+      return kTfLiteOk;
+    };
+    return reg;
+  }
+
+  std::unique_ptr<Interpreter> interpreter_;
+  TfLiteDelegate delegate_;
+};
+
+TEST_F(TestReleaseDynamicTensorWithDelegate, ShapePropagation_FlagNotSet) {
+  delegate_.flags = kTfLiteDelegateFlagsAllowDynamicTensors;
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(&delegate_), kTfLiteOk);
+
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  ASSERT_NE(interpreter_->tensor(1)->data.raw, nullptr);
+
+  InterpreterOptions options;
+  options.SetEnsureDynamicTensorsAreReleased();
+  interpreter_->ApplyOptions(&options);
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  ASSERT_EQ(interpreter_->tensor(1)->data.raw, nullptr);
 }
 
 // Tests for FP16 graphs

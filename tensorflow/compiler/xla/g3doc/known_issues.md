@@ -5,8 +5,8 @@ the TensorFlow interop has a number of known sharp corners.
 
 ## `tf.Variable` on a different device
 
-*Error message*: INVALID_ARGUMENT: Trying to access resource <Variable> (defined
-@ <Loc>) located in device CPU:0 from device GPU:0`
+*Error message*: `INVALID_ARGUMENT: Trying to access resource <Variable>
+(defined @ <Loc>) located in device CPU:0 from device GPU:0`
 
 XLA cluster runs on exactly one device, and it can not read or write to
 `tf.Variable` located on a different device. Usually this error message
@@ -57,5 +57,10 @@ exceeds the original bound.
 
 XLA currently ignores TF seeds to random operations. This affects stateful TF
 random operations, such as `tf.random.normal`, or `tf.nn.dropout`. XLA will
-behave as if the compilation was seeded with a new unique seed at each run. This
-limitation does not apply to stateless random ops.
+behave as if the compilation was seeded with a new unique seed at each run
+within the same process (the first run of the process will always yield the same
+result).
+
+*Workaround*: use
+[the recommended RNGs](https://www.tensorflow.org/guide/random_numbers#stateless_rngs)
+such as `tf.random.stateless_uniform` or the `tf.random.Generator` directly.

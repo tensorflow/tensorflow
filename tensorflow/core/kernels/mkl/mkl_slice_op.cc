@@ -17,8 +17,8 @@ limitations under the License.
 
 #ifdef INTEL_MKL
 
-#include "mkldnn.hpp"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "dnnl.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -27,8 +27,11 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/prefetch.h"
 #include "tensorflow/core/util/mkl_util.h"
+#ifdef DNNL_AARCH64_USE_ACL
+#include "tensorflow/core/platform/mutex.h"
+#endif
 
-using mkldnn::stream;
+using dnnl::stream;
 
 namespace tensorflow {
 
@@ -185,6 +188,9 @@ class MklSlicePrimitive : public MklPrimitive {
 
   void Execute(const MklSliceParams& sliceParams,
                std::shared_ptr<stream> slice_stream) {
+#ifdef DNNL_AARCH64_USE_ACL
+    mutex_lock lock(primitive_execution_mu_);
+#endif
 #ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(sliceParams.from->get_data_handle(),
                                       *slice_stream);
@@ -211,13 +217,13 @@ class MklSlicePrimitive : public MklPrimitive {
 
  private:
   struct SliceContext {
-    std::shared_ptr<mkldnn::memory> src_mem;
-    std::shared_ptr<mkldnn::memory> dst_mem;
+    std::shared_ptr<dnnl::memory> src_mem;
+    std::shared_ptr<dnnl::memory> dst_mem;
     std::shared_ptr<primitive> reorder_prim;
     std::shared_ptr<reorder::primitive_desc> reorder_pd;
-    std::shared_ptr<mkldnn::stream> slice_stream;
-    std::vector<mkldnn::primitive> slice_primitives;
-    std::shared_ptr<mkldnn::memory> src_sub_mem;
+    std::shared_ptr<dnnl::stream> slice_stream;
+    std::vector<dnnl::primitive> slice_primitives;
+    std::shared_ptr<dnnl::memory> src_sub_mem;
     std::vector<std::unordered_map<int, memory>> slice_primitives_args;
     SliceContext()
         : src_mem(nullptr), dst_mem(nullptr), reorder_prim(nullptr) {}
@@ -237,13 +243,16 @@ class MklSlicePrimitive : public MklPrimitive {
     context_.reorder_pd = std::make_shared<reorder::primitive_desc>(
         reorder::primitive_desc(*context_.src_sub_mem, *context_.dst_mem));
     context_.reorder_prim =
-        std::make_shared<mkldnn::reorder>(reorder(*context_.reorder_pd));
+        std::make_shared<dnnl::reorder>(reorder(*context_.reorder_pd));
 
     context_.slice_primitives_args.push_back(
-        {{MKLDNN_ARG_SRC, *context_.src_mem},
-         {MKLDNN_ARG_DST, *context_.dst_mem}});
+        {{DNNL_ARG_SRC, *context_.src_mem}, {DNNL_ARG_DST, *context_.dst_mem}});
     context_.slice_primitives.push_back(*context_.reorder_prim);
   }
+
+#ifdef DNNL_AARCH64_USE_ACL
+  mutex primitive_execution_mu_;
+#endif
 };
 
 template <typename T>
@@ -277,7 +286,6 @@ class MklSlicePrimitiveFactory : public MklPrimitiveFactory<T> {
     memory::dims from_dims(from_desc.dims, &from_desc.dims[from_desc.ndims]);
     memory::dims to_dims(to_desc.dims, &to_desc.dims[to_desc.ndims]);
 
-    // MKL-DNN removes "struct view". Submemory has similar capability.
     auto from_strides = from_desc.format_desc.blocking.strides;
     auto to_strides = to_desc.format_desc.blocking.strides;
     memory::dims from_strides_outer_blocks(from_strides,
@@ -308,7 +316,7 @@ class MklSlicePrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 };
 
-// MKL-DNN implementation of Slice
+// oneDNN implementation of Slice
 template <typename Device, typename T>
 class MklSliceOp : public OpKernel {
  public:
@@ -325,8 +333,7 @@ class MklSliceOp : public OpKernel {
 
     if (!context->status().ok() || done == true) return;
 
-    // Though MKL-DNN supports more than 8 dimension and
-    // less than 12 dimension tensor.
+    // oneDNN supports more than 8 dimension and less than 12 dimension tensor.
     // But we are mimicking functionality of Eigen Slice op for CPU.
     if (begin.size() >= 8) {
       OP_REQUIRES(
@@ -338,12 +345,12 @@ class MklSliceOp : public OpKernel {
   }
 
  private:
-  // Slice op implemented using MKL-DNN APIs.
+  // Slice op implemented using oneDNN APIs.
   void ComputeMklSlice(OpKernelContext* context,
                        const gtl::InlinedVector<int64, 4>& begin,
                        const gtl::InlinedVector<int64, 4>& size) {
     try {
-      // MKL-DNN API usage below is guided by description at:
+      // oneDNN API usage below is guided by description at:
       //  https://github.com/01org/mkl-dnn/issues/69
       //
       // Relevant part of the description is copied below:
@@ -456,7 +463,7 @@ class MklSliceOp : public OpKernel {
       MklDnnThreadPool eigen_tp(context);
       slice_stream.reset(CreateStream(&eigen_tp, reorder_prim->GetEngine()));
       reorder_prim->Execute(sliceParams, slice_stream);
-    } catch (mkldnn::error& e) {
+    } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
@@ -501,7 +508,7 @@ class MklSliceOp : public OpKernel {
   }
 };
 
-// MKL-DNN Slice registration
+// oneDNN Slice registration
 #define REGISTER_MKL_SLICE(type)                               \
   REGISTER_KERNEL_BUILDER(                                     \
       Name("_MklSlice")                                        \

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/rearrange_function_argument.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -168,7 +170,7 @@ Status BuildComputation(
     const std::map<int, xla::OpSharding>& retval_shardings,
     const std::vector<std::unique_ptr<XlaResource>>& resources,
     std::unique_ptr<xla::XlaOp> token_output,
-    const XlaHelpers::ShapeRepresentationFn& shape_representation_fn,
+    const XlaShapeLayoutHelpers::ShapeDeterminationFns& shape_determination_fns,
     bool is_entry_computation, bool return_updated_values_for_all_resources,
     bool always_return_tuple, bool use_tuple_arg, bool alias_resource_update,
     xla::XlaBuilder* builder, xla::XlaComputation* computation,
@@ -231,12 +233,12 @@ Status BuildComputation(
         if (it != retval_shardings.end()) {
           retval_index_and_sharding[elems.size()] = it->second;
         }
-        if (shape_representation_fn) {
+        if (shape_determination_fns.shape_representation_fn) {
           TF_ASSIGN_OR_RETURN(auto original_shape, builder->GetShape(value));
           TF_ASSIGN_OR_RETURN(value,
                               ReshapeWithCorrectRepresentationAndSharding(
                                   builder, value, original_shape,
-                                  shape_representation_fn, sharding,
+                                  shape_determination_fns, sharding,
                                   /*fast_mem=*/false));
         }
         if (it != retval_shardings.end()) {
@@ -330,12 +332,13 @@ Status BuildComputation(
                           ? absl::optional<xla::OpSharding>()
                           : it->second;
       // Set layout of the retval to device representation layout.
-      if (shape_representation_fn) {
+      if (shape_determination_fns.layout_preference_fn &&
+          shape_determination_fns.shape_representation_fn) {
         TF_ASSIGN_OR_RETURN(auto original_shape, builder->GetShape(handle));
         TF_ASSIGN_OR_RETURN(
             handle, ReshapeWithCorrectRepresentationAndSharding(
                         builder, handle, original_shape,
-                        shape_representation_fn, sharding, arg.fast_mem));
+                        shape_determination_fns, sharding, arg.fast_mem));
       }
 
       // Request that the value be returned on a specific core.
@@ -524,9 +527,16 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
   local_flib_runtime_ = local_pflr_->GetFLR(device_->name());
   flib_runtime_ = pflr_->GetFLR(device_->name());
 
-  // The default shape representation function is the identity.
-  if (!options_.shape_representation_fn) {
-    options_.shape_representation_fn = IdentityShapeRepresentationFn();
+  // The default layout preference is no preference and the default shape
+  // representation function is the identity.
+  XlaShapeLayoutHelpers::ShapeDeterminationFns& shape_determination_fns =
+      options_.shape_determination_fns;
+  if (!shape_determination_fns.shape_representation_fn) {
+    shape_determination_fns.shape_representation_fn =
+        IdentityShapeRepresentationFn();
+  }
+  if (!shape_determination_fns.layout_preference_fn) {
+    shape_determination_fns.layout_preference_fn = UseNoPreferenceLayoutFn();
   }
 }
 
@@ -822,12 +832,11 @@ Status XlaCompiler::CompileFunction(
 
     std::vector<std::string> valid_control_rets =
         GetValidControlRets(fbody->control_ret_nodes, *graph);
-
     TF_RETURN_IF_ERROR(CompileGraphToXlaHlo(
         std::move(*graph), mlir::SpanToArrayRef<XlaCompiler::Argument>(args),
         valid_control_rets, options_.device_type.type_string(),
         options.use_tuple_arg, /*analyse_graph=*/false, *options_.flib_def,
-        debug_info, options_.shape_representation_fn, result));
+        debug_info, options_.shape_determination_fns, result));
   } else {
     VLOG(1) << "Using the old bridge to compile the function";
     TF_RETURN_IF_ERROR(
@@ -856,12 +865,17 @@ Status XlaCompiler::XLAShapeForArgument(
           TF_RETURN_IF_ERROR(
               XLAShapeToTensorShape(absl::get<xla::Shape>(arg.shape), &shape));
         }
-        TF_ASSIGN_OR_RETURN(*xla_shape, options_.shape_representation_fn(
-                                            shape, arg.type,
-                                            /*use_fast_memory=*/false));
+        auto layout_preference =
+            options_.shape_determination_fns.layout_preference_fn(
+                shape, arg.type, arg.kind);
+        TF_ASSIGN_OR_RETURN(
+            *xla_shape,
+            options_.shape_determination_fns.shape_representation_fn(
+                shape, arg.type,
+                /*use_fast_memory=*/false, layout_preference));
         TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
             arg_sharding, /*use_fast_memory=*/false,
-            options_.shape_representation_fn, xla_shape));
+            options_.shape_determination_fns, xla_shape));
       } else {
         if (absl::holds_alternative<xla::Shape>(arg.shape)) {
           *xla_shape = absl::get<xla::Shape>(arg.shape);
@@ -884,12 +898,16 @@ Status XlaCompiler::XLAShapeForArgument(
       switch (arg.resource_kind) {
         case XlaResource::kVariable: {
           TF_RET_CHECK(absl::holds_alternative<TensorShape>(arg.shape));
-          TF_ASSIGN_OR_RETURN(*xla_shape,
-                              options_.shape_representation_fn(
-                                  absl::get<TensorShape>(arg.shape), arg.type,
-                                  /*use_fast_memory=*/arg.fast_mem));
+          auto layout_preference =
+              options_.shape_determination_fns.layout_preference_fn(
+                  absl::get<TensorShape>(arg.shape), arg.type, arg.kind);
+          TF_ASSIGN_OR_RETURN(
+              *xla_shape,
+              options_.shape_determination_fns.shape_representation_fn(
+                  absl::get<TensorShape>(arg.shape), arg.type,
+                  /*use_fast_memory=*/arg.fast_mem, layout_preference));
           TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
-              arg_sharding, arg.fast_mem, options_.shape_representation_fn,
+              arg_sharding, arg.fast_mem, options_.shape_determination_fns,
               xla_shape));
           return Status::OK();
         }
@@ -1398,11 +1416,13 @@ Status XlaCompiler::CompileGraph(
   result->outputs.resize(context->retvals().size());
   std::vector<XlaExpression> retvals = context->retvals();
   ConvertConstantsToExpressions(&builder, absl::Span<XlaExpression>(retvals));
+  XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns{
+      UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
   TF_RETURN_IF_ERROR(BuildComputation(
       real_args, retvals, arg_shardings, retval_shardings, context->resources(),
       std::move(token_output),
-      options.is_entry_computation ? options_.shape_representation_fn
-                                   : XlaHelpers::ShapeRepresentationFn{},
+      options.is_entry_computation ? options_.shape_determination_fns
+                                   : shape_determination_fns,
       options.is_entry_computation,
       options.return_updated_values_for_all_resources,
       options.always_return_tuple, options.use_tuple_arg,
@@ -1415,7 +1435,7 @@ Status XlaCompiler::CompileGraph(
           << " nonconstant: " << num_nonconst_outputs;
   VLOG(2) << "XLA output shape: "
           << xla::ShapeUtil::HumanStringWithLayout(result->xla_output_shape);
-  result->collective_reduce_info = context->GetCollectiveReduceV2OpInfo();
+  result->collective_info = context->GetCollectiveInfo();
   return Status::OK();
 }
 
@@ -1541,7 +1561,7 @@ Status XlaCompiler::SetHostComputeControlDependency(
   if (host_compute_control_output_.find(host_compute_name) !=
       host_compute_control_output_.end()) {
     return errors::InvalidArgument(
-        "Duplicate control handles registered for for host compute Op ",
+        "Duplicate control handles registered for host compute Op ",
         host_compute_name);
   }
   host_compute_control_output_[host_compute_name] = handle;

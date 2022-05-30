@@ -17,8 +17,9 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/DenseSet.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -42,13 +43,13 @@ class LegalizeTFNoFallback
     allow_partial_conversion_ = allow_partial_conversion;
   }
   /// Performs the lowering to HLO dialect.
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void LegalizeTFNoFallback::runOnFunction() {
-  Operation *op = getFunction();
+void LegalizeTFNoFallback::runOnOperation() {
+  Operation *op = getOperation();
   MLIRContext *context = op->getContext();
-  OwningRewritePatternList patterns(context);
+  RewritePatternSet patterns(context);
 
   // Add TF->HLO legalization patterns.
   PopulateLegalizeTfPatterns(context, &patterns);
@@ -59,18 +60,19 @@ void LegalizeTFNoFallback::runOnFunction() {
   chlo::ConstantLikeOp::getCanonicalizationPatterns(patterns, context);
 
   ConversionTarget target(*context);
-  target.addLegalDialect<chlo::HloClientDialect>();
+  target.addLegalDialect<arith::ArithmeticDialect>();
+  target.addLegalDialect<chlo::ChloDialect>();
   target.addLegalDialect<MhloDialect>();
-  target.addLegalDialect<StandardOpsDialect>();
+  target.addLegalDialect<func::FuncDialect>();
   target.addLegalDialect<tensor::TensorDialect>();
   target.addLegalDialect<shape::ShapeDialect>();
-  target.addLegalOp<CallOp>();
+  target.addLegalOp<func::CallOp>();
 
   // Add TF->TF lowering patterns.
   TF::PopulateTFLoweringBeforeHLOPatterns(context, &patterns);
   if (!allow_partial_conversion_) {
     // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.
-    target.addLegalOp<ModuleOp, FuncOp, ::mlir::ReturnOp>();
+    target.addLegalOp<ModuleOp, func::FuncOp, ::mlir::func::ReturnOp>();
     llvm::DenseSet<Operation *> nonlegalized_ops;
     LogicalResult result = applyPartialConversion(
         op, target, std::move(patterns), &nonlegalized_ops);
@@ -86,7 +88,7 @@ void LegalizeTFNoFallback::runOnFunction() {
 
 }  // end namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFNoFallbackPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFNoFallbackPass(
     bool allow_partial_conversion) {
   return std::make_unique<LegalizeTFNoFallback>(allow_partial_conversion);
 }

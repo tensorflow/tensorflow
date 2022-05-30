@@ -25,7 +25,26 @@ set(SCHEMA_GENERATED_FILE ${SCHEMA_GENERATED_PATH}/schema_generated.h)
 
 # Use the util function in flatbuffer to generate the schema header.
 include(BuildFlatBuffers)
-set(FLATBUFFERS_FLATC_EXECUTABLE ${CMAKE_BINARY_DIR}/flatbuffers-flatc/bin/flatc)
+
+# For cross-compilation purposes a natively compiled 'flatc' compiler is required
+if(${CMAKE_CROSSCOMPILING})
+  set(FLATC_PATHS
+      ${TFLITE_HOST_TOOLS_DIR}
+      ${TFLITE_HOST_TOOLS_DIR}/bin
+      ${TFLITE_HOST_TOOLS_DIR}/flatbuffers-flatc/bin
+      )
+  find_program(FLATC_BIN flatc PATHS ${FLATC_PATHS})
+  if(${FLATC_BIN} STREQUAL "FLATC_BIN-NOTFOUND")
+    message(FATAL_ERROR "Natively compiled 'flatc' compiler has not been found in the following\
+    locations: ${FLATC_PATHS}")
+  else()
+    message(STATUS "Pre-built 'flatc' compiler for cross-compilation purposes found: ${FLATC_BIN}")
+    set(FLATBUFFERS_FLATC_EXECUTABLE ${FLATC_BIN})
+  endif()
+else()
+  set(FLATBUFFERS_FLATC_EXECUTABLE ${CMAKE_BINARY_DIR}/flatbuffers-flatc/bin/flatc)
+endif()
+
 set(FLATBUFFERS_FLATC_SCHEMA_EXTRA_ARGS
   -c
   --gen-object-api
@@ -41,18 +60,38 @@ build_flatbuffers(
   ""
 )
 
+set(DELEGATE_PROVIDERS_SUPP
+  ${TFLITE_SOURCE_DIR}/nnapi/sl/SupportLibrary.cc
+  ${TFLITE_SOURCE_DIR}/tools/delegates/delegate_provider.cc
+  ${TFLITE_SOURCE_DIR}/tools/evaluation/utils.cc
+)
+
+set(DELEGATE_PROVIDERS
+  ${DELEGATE_PROVIDERS_SUPP}
+  ${TFLITE_SOURCE_DIR}/tools/delegates/default_execution_provider.cc
+  # List of delegates referenced as options in the tensorflow/lite/CMakeLists.txt
+  ${TFLITE_SOURCE_DIR}/tools/delegates/gpu_delegate_provider.cc
+  ${TFLITE_SOURCE_DIR}/tools/delegates/nnapi_delegate_provider.cc
+  ${TFLITE_SOURCE_DIR}/tools/delegates/xnnpack_delegate_provider.cc
+)
+
+if(TFLITE_ENABLE_EXTERNAL_DELEGATE)
+  list(APPEND DELEGATE_PROVIDERS ${TFLITE_SOURCE_DIR}/tools/delegates/external_delegate_provider.cc)
+endif()
+
 set(TEST_FRAMEWORK_SRC
   ${TFLITE_SOURCE_DIR}/delegates/nnapi/acceleration_test_list.cc
   ${TFLITE_SOURCE_DIR}/delegates/nnapi/acceleration_test_util.cc
   ${TFLITE_SOURCE_DIR}/profiling/memory_info.cc
   ${TFLITE_SOURCE_DIR}/schema/schema_conversion_utils.cc
   ${TFLITE_SOURCE_DIR}/tools/command_line_flags.cc
-  ${TFLITE_SOURCE_DIR}/tools/delegates/nnapi_delegate_provider.cc
+  ${DELEGATE_PROVIDERS}
   ${TFLITE_SOURCE_DIR}/tools/optimize/model_utils.cc
   ${TFLITE_SOURCE_DIR}/tools/optimize/operator_property.cc
   ${TFLITE_SOURCE_DIR}/tools/optimize/quantization_utils.cc
   ${TFLITE_SOURCE_DIR}/tools/tool_params.cc
   ${TFLITE_SOURCE_DIR}/tools/versioning/op_version.cc
+  ${TFLITE_SOURCE_DIR}/tools/versioning/op_signature.cc
   ${TF_SOURCE_DIR}/core/platform/default/env_time.cc
   ${TF_SOURCE_DIR}/core/platform/default/logging.cc
   ${TF_SOURCE_DIR}/core/platform/default/mutex.cc
@@ -68,27 +107,34 @@ if(NOT _TFLITE_ENABLE_NNAPI)
     ${TFLITE_SOURCE_DIR}/nnapi/nnapi_util.cc
   )
 endif()
-set(TEST_FRAMEWORK_MAIN_SRC test_main.cc)
 
-add_library(tensorflow-lite-test ${TEST_FRAMEWORK_SRC})
-target_link_libraries(tensorflow-lite-test
+# Base library to be later linked with the gtest OR gtest_main library
+add_library(tensorflow-lite-test-base ${TEST_FRAMEWORK_SRC})
+target_link_libraries(tensorflow-lite-test-base
   gmock
-  gtest
   nsync_cpp
   re2
   tensorflow-lite
 )
-add_dependencies(tensorflow-lite-test mutable_schema_file)
-target_include_directories(tensorflow-lite-test PUBLIC ${SCHEMA_GENERATED_ROOT})
+add_dependencies(tensorflow-lite-test-base mutable_schema_file)
+target_include_directories(tensorflow-lite-test-base PUBLIC ${SCHEMA_GENERATED_ROOT})
 
-add_library(tensorflow-lite-test-with-main ${TEST_FRAMEWORK_MAIN_SRC})
-target_link_libraries(tensorflow-lite-test-with-main
+add_library(tensorflow-lite-test-gtest-main INTERFACE)
+target_link_libraries(tensorflow-lite-test-gtest-main INTERFACE
+  tensorflow-lite-test-base
+  gtest_main
+)
+
+set(TEST_FRAMEWORK_MAIN_SRC test_main.cc)
+add_library(tensorflow-lite-test-external-main ${TEST_FRAMEWORK_MAIN_SRC})
+target_link_libraries(tensorflow-lite-test-external-main
   # We need the nnapi related symbols later.
   # Please check:
   # https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/delegates/BUILD#L96
   -Wl,--whole-archive
-  tensorflow-lite-test
+  tensorflow-lite-test-base
   -Wl,--no-whole-archive
+  gtest
 )
 
 macro(add_kernel_test TEST_SRC TEST_LIB)
@@ -102,10 +148,20 @@ macro(add_kernel_test TEST_SRC TEST_LIB)
   add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME}
     WORKING_DIRECTORY ${TENSORFLOW_SOURCE_DIR}
   )
+  set_tests_properties(${TEST_NAME} PROPERTIES LABELS "plain")
+
+  if(_TFLITE_ENABLE_NNAPI OR TFLITE_ENABLE_EXTERNAL_DELEGATE OR TFLITE_ENABLE_XNNPACK)
+    set(DELEGATE_TEST "${TEST_NAME}_delegate")
+    add_test(
+      NAME ${DELEGATE_TEST}
+      COMMAND cmake -DTEST_EXECUTABLE=$<TARGET_FILE:${TEST_NAME}> -P run-tests.cmake
+    )
+    set_tests_properties(${DELEGATE_TEST} PROPERTIES LABELS "delegate")
+  endif()
 endmacro()
 
-# The tflite kernel test
-set(TEST_LIST
+# Tests where main() is provided by the file referenced in TEST_FRAMEWORK_MAIN_SRC
+set(TEST_WITH_EXTERNAL_MAIN_LIST
   internal/averagepool_quantized_test.cc
   internal/batch_to_space_nd_test.cc
   internal/conv_per_channel_quantized_16x8_test.cc
@@ -195,8 +251,7 @@ set(TEST_LIST
   pow_test.cc
   quant_basic_lstm_test.cc
   quantize_test.cc
-  random_standard_normal_test.cc
-  random_uniform_test.cc
+  random_ops_test.cc
   range_test.cc
   rank_test.cc
   reduce_test.cc
@@ -240,8 +295,8 @@ set(TEST_LIST
   while_test.cc
   zeros_like_test.cc
 )
-# The test which has main() function.
-set(TEST_WITH_MAIN_LIST
+# Tests where the main() provided by the GoogleTest framework
+set(TEST_WITH_GTEST_MAIN_LIST
   cpu_backend_gemm_test.cc
   cpu_backend_threadpool_test.cc
   eigen_support_test.cc
@@ -251,10 +306,19 @@ set(TEST_WITH_MAIN_LIST
   test_util_test.cc
 )
 
-foreach(test_src IN LISTS TEST_LIST)
-  add_kernel_test(${test_src} tensorflow-lite-test-with-main)
+foreach(test_src IN LISTS TEST_WITH_EXTERNAL_MAIN_LIST)
+  add_kernel_test(${test_src} tensorflow-lite-test-external-main)
 endforeach()
 
-foreach(test_src IN LISTS TEST_WITH_MAIN_LIST)
-  add_kernel_test(${test_src} tensorflow-lite-test)
+foreach(test_src IN LISTS TEST_WITH_GTEST_MAIN_LIST)
+  add_kernel_test(${test_src} tensorflow-lite-test-gtest-main)
 endforeach()
+
+# Copy the test utility that facilitates cross-compiled kernel tests run with launch arguments
+if(${CMAKE_CROSSCOMPILING})
+  configure_file(
+    ${TFLITE_SOURCE_DIR}/tools/cmake/test_utils/run-tests.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/run-tests.cmake
+    COPYONLY
+  )
+endif()

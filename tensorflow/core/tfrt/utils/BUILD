@@ -10,6 +10,7 @@ package_group(
     name = "friends",
     packages = [
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
+        # copybara:uncomment "//learning/brain/research/pjrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         "//tensorflow/c/eager/...",
         "//tensorflow/compiler/mlir/tfrt/...",
@@ -32,14 +33,19 @@ cc_library(
         "utils.h",
     ],
     deps = [
+        ":error_util",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/lib/gtl:array_slice",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/tfrt/eager:virtual_device",
+        "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tpu:virtual_device",
+        "@tf_runtime//:bef",
         "@tf_runtime//:befexecutor",
+        "@tf_runtime//:core_runtime",
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
@@ -68,13 +74,13 @@ cc_library(
         "tensor_util.h",
     ],
     deps = [
-        ":statusor",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:tstring",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
         "//tensorflow/core/runtime_fallback/util:tensor_util",
@@ -89,10 +95,7 @@ cc_library(
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
-        "//conditions:default": [
-            "//tensorflow/core/framework:tensor",
-            "//tensorflow/core/platform:status",
-        ],
+        "//conditions:default": ["//tensorflow/core/framework:tensor"],
     }),
 )
 
@@ -145,9 +148,41 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "statusor",
-    hdrs = ["statusor.h"],
-    deps = ["//tensorflow/stream_executor/lib"],
+    name = "graph_partition",
+    srcs = ["graph_partition.cc"],
+    hdrs = ["graph_partition.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime:device_set",
+        "//tensorflow/core/common_runtime:graph_constructor",
+        "//tensorflow/core/common_runtime:partitioning_utils",
+        "//tensorflow/core/grappler:utils",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cc_test(
+    name = "graph_partition_test",
+    srcs = ["graph_partition_test.cc"],
+    deps = [
+        ":graph_partition",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:core_cpu",
+        "//tensorflow/core/common_runtime:inline_function_utils",
+        "//tensorflow/core/common_runtime:placer",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/grappler/utils:grappler_test",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(
@@ -155,23 +190,28 @@ cc_library(
     srcs = ["tfrt_graph_execution_state.cc"],
     hdrs = ["tfrt_graph_execution_state.h"],
     deps = [
-        ":statusor",
+        ":graph_partition",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:upgrade_graph",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime:core_cpu_internal",
+        "//tensorflow/core/framework:attr_value_proto_cc",
+        "//tensorflow/core/framework:function_proto_cc",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/framework:op_def_proto_cc",
         "//tensorflow/core/framework:versions_proto_cc",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -187,17 +227,18 @@ tf_cc_test(
         "//tensorflow/cc:array_ops",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:const_op",
+        "//tensorflow/cc:functional_ops",
+        "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/cc:while_loop",
+        "//tensorflow/core:framework",
         "//tensorflow/core:test",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/grappler/utils:grappler_test",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_googletest//:gtest_main",
     ],
-)
-
-cc_library(
-    name = "model_metadata",
-    hdrs = ["model_metadata.h"],
-    deps = ["@com_google_absl//absl/base:core_headers"],
 )
 
 cc_library(
@@ -222,29 +263,25 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "test_util",
-    testonly = 1,
-    hdrs = ["test_util.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:threadpool_interface",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "bridge_graph_analysis",
     hdrs = ["bridge_graph_analysis.h"],
     visibility = [
-        "//tensorflow/core/tfrt/saved_model:__pkg__",
+        "//tensorflow/core/tfrt/graph_executor:__pkg__",
     ],
     deps = if_google([
         "//learning/brain/mlir/bridge:graph_analysis",
         "//tensorflow/core/platform:enable_tf2_utils",
     ]) + [
-        "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core:core_cpu_base",
+    ],
+)
+
+cc_library(
+    name = "thread_pool",
+    hdrs = ["thread_pool.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:threadpool_interface",
     ],
 )

@@ -313,6 +313,11 @@ class HostComputeOp : public XlaOpKernel {
     bool got_output_shapes = false;
     ShapeRefiner shape_refiner{graph->versions().producer(),
                                graph->op_registry()};
+
+    // Make sure all nodes can be reached from source node as
+    // `GetReversePostOrder` would only collect nodes reachable from source.
+    FixupSourceAndSinkEdges(graph);
+
     std::vector<Node*> nodes;
     GetReversePostOrder(*graph, &nodes);
     for (auto node : nodes) {

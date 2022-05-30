@@ -27,9 +27,9 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Host.h"
-#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "mlir/ExecutionEngine/OptUtils.h"  // from @llvm-project
@@ -109,7 +109,13 @@ Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
            llvm::ArrayRef<int64_t> tile_sizes,
            llvm::ArrayRef<int64_t> unroll_factors, int64_t max_supported_rank,
            bool embed_memref_prints, bool print_ptx, bool print_llvmir,
-           bool enable_ftz, bool cpu_codegen, bool jit_compile) {
+           bool enable_ftz, bool index_64bit, bool cpu_codegen,
+           bool jit_compile) {
+  // 64 bit indexing is not incorporated yet
+  if (index_64bit) {
+    return tensorflow::errors::Unimplemented(
+        "64 bit indexing is not supported yet");
+  }
   // Read TF code.
   std::string tf_code;
   TF_RETURN_IF_ERROR(
@@ -117,11 +123,13 @@ Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
   // Compile.
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(
-      mlir::OwningModuleRef module,
+      mlir::OwningOpRef<mlir::ModuleOp> module,
       GenerateKernelForTfCode(context, tf_code, architectures, tile_sizes,
                               unroll_factors, max_supported_rank,
                               embed_memref_prints, print_ptx, print_llvmir,
-                              enable_ftz, cpu_codegen, jit_compile));
+                              enable_ftz, index_64bit, cpu_codegen, jit_compile,
+                              /*jit_i64_indexed_for_large_tensors=*/false,
+                              /*apply_cl_options=*/true));
   // Get binary.
   TF_ASSIGN_OR_RETURN(std::string binary, EmitToBinary(*module));
 
@@ -144,6 +152,9 @@ int main(int argc, char** argv) {
       llvm::cl::init("foo.bin"));
   llvm::cl::opt<bool> cpu_codegen("cpu_codegen",
                                   llvm::cl::desc("enable CPU code generation"),
+                                  llvm::cl::init(false));
+  llvm::cl::opt<bool> index_64bit("index_64bit",
+                                  llvm::cl::desc("enable 64 bit indexing"),
                                   llvm::cl::init(false));
   llvm::cl::opt<bool> embed_memref_prints(
       "embed_memref_prints",
@@ -190,7 +201,7 @@ int main(int argc, char** argv) {
   auto status = tensorflow::kernel_gen::Run(
       input_file, output_file, architectures, tile_sizes, unroll_factors,
       max_supported_rank, embed_memref_prints, print_ptx, print_llvmir,
-      enable_ftz, cpu_codegen, jit_compile);
+      enable_ftz, index_64bit, cpu_codegen, jit_compile);
   if (!status.ok()) {
     LOG(ERROR) << status;
     return 1;

@@ -72,6 +72,8 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
     TfrtTpuCompileOptions tpu_compile_options;
     tpu_compile_options.move_resource_gather_to_host =
         options.tpu_move_resource_gather_to_host;
+    tpu_compile_options.gather_table_width_threshold_bytes =
+        options.tpu_gather_table_width_threshold_bytes;
 
     auto backward_compat_result =
         tensorflow::RunTPUBackwardCompatConversion(module, tpu_compile_options);
@@ -86,6 +88,13 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
 
     TF_RETURN_IF_ERROR(
         mlir::TFTPU::TPUBridge(module, /*enable_logging=*/VLOG_IS_ON(1)));
+  } else if (options.tpu_target == TfrtTpuInfraTarget::kTfFallback) {
+    auto tpu_partitioned_call_fallback_compat_result =
+        tensorflow::RunTPUPartitionedCallFallbackCompatConversion(module);
+    if (mlir::failed(tpu_partitioned_call_fallback_compat_result)) {
+      return diag_handler.Combine(tensorflow::errors::Internal(
+          "Failed to process TPUPartitionedCallOp for fallback execution"));
+    }
   }
 
   if (VLOG_IS_ON(1)) {
@@ -105,7 +114,7 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
 
   // TODO(b/187991150): Consider only decomposing read-only resource variable
   // ops.
-  pass_options.decompose_resource_ops = true;
+  pass_options.decompose_resource_ops = options.decompose_resource_ops;
   pass_options.enable_optimizer = options.enable_optimizer;
   pass_options.enable_native_ops = options.enable_native_ops;
   pass_options.target_tpurt =
@@ -115,6 +124,8 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
       options.use_tpu_host_allocator_for_inputs;
   pass_options.hoist_invariant_ops = options.hoist_invariant_ops;
   pass_options.func_use_fallback_tensor = true;
+  pass_options.enable_while_parallel_iterations =
+      options.enable_while_parallel_iterations;
   pass_options.auto_fusion_oplist = options.auto_fusion_oplist;
   pass_options.auto_fusion_min_cluster_size =
       options.auto_fusion_min_cluster_size;

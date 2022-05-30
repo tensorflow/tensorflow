@@ -15,13 +15,19 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
 
+#include <utility>
+
 #include "absl/functional/bind_front.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_support_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/stream_executor/device_description.h"
+#include "tensorflow/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {
@@ -91,6 +97,10 @@ static Status PadConv(HloCustomCallInstruction* conv,
   auto* new_conv =
       add(conv->CloneWithNewOperands(new_conv_shape, new_operands));
 
+  // Clone conv's name to new_conv.  This is safe because we're going to remove
+  // conv below.
+  new_conv->SetAndSanitizeName(conv->name());
+
   VLOG(2) << "Padded features of " << conv->ToString() << ", replaced with "
           << new_conv->ToString();
 
@@ -105,7 +115,7 @@ static Status PadConv(HloCustomCallInstruction* conv,
     auto* new_conv_result = add(
         HloInstruction::CreateGetTupleElement(new_result_shape, new_conv, 0));
     auto* empty_temp_buffer =
-        add(HloInstruction::CreateConstant(LiteralUtil::CreateR1<uint8>({})));
+        add(HloInstruction::CreateConstant(LiteralUtil::CreateR1<uint8_t>({})));
     auto* sliced_result = add(HloInstruction::CreateSlice(
         result_shape, new_conv_result, start_indices, end_indices, strides));
     new_conv =
@@ -224,7 +234,7 @@ static StatusOr<bool> TryResolvePaddedShapesForTensorCore(
     new_filter_shape->set_dimensions(dnums.kernel_input_feature_dimension(), 4);
   } else {
     auto pad_dim = [](Shape* s, int64_t dim) {
-      s->set_dimensions(dim, RoundUpToNearest<int64_t>(s->dimensions(dim), 8));
+      s->set_dimensions(dim, RoundUpTo<int64_t>(s->dimensions(dim), 8));
     };
     pad_dim(new_input_shape, dnums.input_feature_dimension());
     pad_dim(new_filter_shape, dnums.kernel_input_feature_dimension());
@@ -281,9 +291,10 @@ static StatusOr<bool> TryResolvePaddedShapesForTensorCore(
 
 // Adds padding to cudnn integer convolutions to make input and output feature
 // maps multiples of pad_to (usually 4 or 32).
-static StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
-    int pad_to, HloCustomCallInstruction* conv,
-    std::vector<Shape>* new_input_shapes_ptr, Shape* new_result_shape_ptr) {
+StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
+    int pad_to, const se::CudaComputeCapability& compute_capability,
+    HloCustomCallInstruction* conv, std::vector<Shape>* new_input_shapes_ptr,
+    Shape* new_result_shape_ptr) {
   TF_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(conv));
   const Shape& input_shape = conv->operand(0)->shape();
   const Shape& kernel_shape = conv->operand(1)->shape();
@@ -334,12 +345,20 @@ static StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
     return false;
   }
 
+  // Check that cudnn support our desired integer padding/vectorization.
+  TF_ASSIGN_OR_RETURN(bool cudnn_supports,
+                      CudnnSupportsOptimizedIntegerConvolution(
+                          compute_capability, *conv, pad_to));
+  if (!cudnn_supports) {
+    return false;
+  }
+
   // Pad the features to multiples of pad_to.
   {
     auto pad_dim = [&](Shape* s, int64_t dim, int64_t cur_vect_size) {
       CHECK_EQ(pad_to % cur_vect_size, 0);
-      s->set_dimensions(dim, RoundUpToNearest<int64_t>(s->dimensions(dim),
-                                                       pad_to / cur_vect_size));
+      s->set_dimensions(
+          dim, RoundUpTo<int64_t>(s->dimensions(dim), pad_to / cur_vect_size));
     };
 
     switch (kind) {
@@ -454,16 +473,16 @@ StatusOr<bool> CudnnPadForConvolutions::Run(HloModule* module) {
       if (compute_capability_.IsAtLeast(7, 5)) {
         TF_ASSIGN_OR_RETURN(
             local_changed,
-            ResolveAndPad(
-                conv, absl::bind_front(
-                          TryResolvePaddedShapesForIntegerConvolution, 32)));
+            ResolveAndPad(conv, absl::bind_front(
+                                    TryResolvePaddedShapesForIntegerConvolution,
+                                    32, compute_capability_)));
       }
       if (!local_changed) {
         TF_ASSIGN_OR_RETURN(
             local_changed,
-            ResolveAndPad(conv,
-                          absl::bind_front(
-                              TryResolvePaddedShapesForIntegerConvolution, 4)));
+            ResolveAndPad(conv, absl::bind_front(
+                                    TryResolvePaddedShapesForIntegerConvolution,
+                                    4, compute_capability_)));
       }
       changed |= local_changed;
     }

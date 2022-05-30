@@ -163,6 +163,52 @@ TEST(TestKernel, TestRegisterKernelBuilder) {
   ASSERT_TRUE(delete_called);
 }
 
+TEST(TestKernel, TF_RegisterKernelBuilderWithKernelDef) {
+  const char* node_name = "SomeNodeName";
+  const char* op_name = "FooOp1";
+  const char* device_name = "FakeDeviceName2";
+
+  REGISTER_OP(op_name)
+      .Input("input1: double")
+      .Input("input2: uint8")
+      .Output("output1: uint8")
+      .Attr("SomeDataTypeAttr: type");
+
+  TF_KernelBuilder* builder = TF_NewKernelBuilder(
+      op_name, device_name, &MyCreateFunc, &MyComputeFunc, &MyDeleteFunc);
+
+  KernelDef kernel_def;
+  kernel_def.set_op(op_name);
+  kernel_def.set_device_type(device_name);
+  std::string kernel_def_str = kernel_def.SerializePartialAsString();
+
+  {
+    TF_Status* status = TF_NewStatus();
+    TF_RegisterKernelBuilderWithKernelDef(kernel_def_str.data(), node_name,
+                                          builder, status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+    TF_Buffer* buf = TF_GetRegisteredKernelsForOp(op_name, status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+    KernelList list;
+    list.ParseFromArray(buf->data, buf->length);
+    ASSERT_EQ(1, list.kernel_size());
+    ASSERT_EQ(device_name, list.kernel(0).device_type());
+    TF_DeleteBuffer(buf);
+    TF_DeleteStatus(status);
+  }
+
+  {
+    Status status;
+    std::unique_ptr<OpKernel> kernel =
+        GetFakeKernel(device_name, op_name, node_name, &status);
+    TF_EXPECT_OK(status);
+    ASSERT_NE(nullptr, kernel.get());
+    kernel->Compute(nullptr);
+  }
+
+  ASSERT_TRUE(delete_called);
+}
+
 // REGISTER_OP for TF_OpKernelConstruction_GetAttr* test cases.
 // Registers two ops, each with a single attribute called 'Attr'.
 // The attribute in one op will have a type 'type', the other
@@ -678,6 +724,12 @@ TEST(TestKernel, TestInputAndOutputCount) {
 
     EXPECT_EQ(TF_UINT8, TF_ExpectedOutputDataType(ctx, 0));
 
+    EXPECT_DEATH({ TF_ExpectedOutputDataType(ctx, 1); },
+                 "Check failed: i < cc_ctx->num_outputs");
+
+    EXPECT_DEATH({ TF_ExpectedOutputDataType(ctx, -1); },
+                 "Check failed: i >= 0");
+
     TF_DeleteStatus(s);
     if (input != nullptr) {
       TF_DeleteTensor(input);
@@ -770,7 +822,10 @@ std::string ExpectedString(const char* type) {
     EXPECT_EQ(TF_OK, TF_GetCode(status));                                    \
     KernelList list;                                                         \
     list.ParseFromArray(buf->data, buf->length);                             \
-    ASSERT_EQ(ExpectedString(#dtype), list.DebugString());                   \
+    KernelList expected_proto;                                               \
+    protobuf::TextFormat::ParseFromString(ExpectedString(#dtype),            \
+                                          &expected_proto);                  \
+    ASSERT_EQ(expected_proto.DebugString(), list.DebugString());             \
                                                                              \
     TF_DeleteBuffer(buf);                                                    \
     TF_DeleteStatus(status);                                                 \
@@ -819,14 +874,17 @@ TEST(TestKernel, TestHostMemory) {
   EXPECT_EQ(TF_OK, TF_GetCode(status));
   KernelList list;
   list.ParseFromArray(buf->data, buf->length);
-  const auto expected_str = R"str(kernel {
+  KernelList expected_proto;
+  protobuf::TextFormat::ParseFromString(
+      R"str(kernel {
   op: "HostMemoryOp"
   device_type: "FakeDeviceName1"
   host_memory_arg: "input2"
   host_memory_arg: "output1"
 }
-)str";
-  ASSERT_EQ(expected_str, list.DebugString());
+)str",
+      &expected_proto);
+  ASSERT_EQ(list.DebugString(), expected_proto.DebugString());
 
   TF_DeleteBuffer(buf);
   TF_DeleteStatus(status);

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/special/depthwise_conv_plus_1x1_conv.h"
 
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
@@ -98,8 +99,9 @@ void UploadWeights(const DepthwiseConvolution2DAttributes& dw_attr,
   BufferDescriptor desc;
   desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
   desc.element_size = 4;
-  desc.memory_type =
-      gpu_info.IsMali() ? MemoryType::GLOBAL : MemoryType::CONSTANT;
+  desc.memory_type = gpu_info.IsMali() || gpu_info.IsAMD()
+                         ? MemoryType::GLOBAL
+                         : MemoryType::CONSTANT;
   desc.size = float_size * gpu_data.size();
   desc.data.resize(desc.size);
 
@@ -147,13 +149,11 @@ std::string GenerateCode(const OperationDef& op_def, const GpuInfo& gpu_info,
        "\n";
   c += "    return; \n";
   c += "  } \n";
-  std::string mem_type = gpu_info.IsMali() ? "__global" : "__constant";
-  c += "  " + mem_type + " FLT4* constants = args.constants.GetPtr();\n";
   int intermediate_depth = DivideRoundUp(dw_attr.weights.shape.i, 4);
   int weights_counter = 0;
   for (int d = 0; d < intermediate_depth; ++d) {
-    c += "  FLT4 dw_res_" + std::to_string(d) + " = constants[" +
-         std::to_string(weights_counter++) + "];\n";
+    c += "  FLT4 dw_res_" + std::to_string(d) + " = args.constants.Read(" +
+         std::to_string(weights_counter++) + ");\n";
   }
   c += "  int x_offseted = X * args.stride_x + args.padding_x;\n";
   c += "  int y_offseted = Y * args.stride_y + args.padding_y;\n";
@@ -165,7 +165,8 @@ std::string GenerateCode(const OperationDef& op_def, const GpuInfo& gpu_info,
     const std::vector<std::string> names{"x_in", "y_in", "z_in"};
     for (int i = 0; i < axes.size(); ++i) {
       const auto& axis = axes[i];
-      if (src_desc.HasAxis(axis) && !src_desc.SupportsZeroClamp(axis)) {
+      if (src_desc.HasAxis(axis) &&
+          !src_desc.SupportsZeroClamp(axis, gpu_info)) {
         if (!check.empty()) {
           check += " && ";
         }
@@ -175,10 +176,10 @@ std::string GenerateCode(const OperationDef& op_def, const GpuInfo& gpu_info,
     return check;
   };
   const std::string check = generate_check();
-  if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+  if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
     c += "  bool y_in;\n";
   }
-  if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
+  if (!src_desc.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
     c += "  bool x_in;\n";
   }
 
@@ -190,14 +191,14 @@ std::string GenerateCode(const OperationDef& op_def, const GpuInfo& gpu_info,
     for (int ky = 0; ky < dw_attr.weights.shape.h; ++ky) {
       c += "  y_c = y_offseted + " + std::to_string(ky) +
            " * args.dilation_y;\n";
-      if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+      if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
         c += "  y_in = y_c >= 0 && y_c < args.src_tensor.Height();\n";
         c += "  y_c = clamp(y_c, 0, args.src_tensor.Height() - 1);\n";
       }
       for (int kx = 0; kx < dw_attr.weights.shape.w; ++kx) {
         c += "  x_c = x_offseted + " + std::to_string(kx) +
              " * args.dilation_x;\n";
-        if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
+        if (!src_desc.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
           c += "  x_in = x_c >= 0 && x_c < args.src_tensor.Width();\n";
           c += "  x_c = clamp(x_c, 0, args.src_tensor.Width() - 1);\n";
         }
@@ -206,8 +207,8 @@ std::string GenerateCode(const OperationDef& op_def, const GpuInfo& gpu_info,
         c += "  src" + s_postfix + " = args.src_tensor.Read(x_c, y_c, " +
              std::to_string(d) + ")" + s_postfix + multiplier + ";\n";
         c += "  dw_res_" + std::to_string(d) + s_postfix + " += src" +
-             s_postfix + " * constants[" + std::to_string(weights_counter++) +
-             "]" + s_postfix + ";\n";
+             s_postfix + " * args.constants.Read(" +
+             std::to_string(weights_counter++) + ")" + s_postfix + ";\n";
       }
     }
   }
@@ -223,21 +224,21 @@ std::string GenerateCode(const OperationDef& op_def, const GpuInfo& gpu_info,
     }
   }
   for (int d = 0; d < result_depth; ++d) {
-    c += "  FLT4 conv_res_" + std::to_string(d) + " = constants[" +
-         std::to_string(weights_counter++) + "];\n";
+    c += "  FLT4 conv_res_" + std::to_string(d) + " = args.constants.Read(" +
+         std::to_string(weights_counter++) + ");\n";
   }
   for (int d = 0; d < result_depth; ++d) {
     for (int s = 0; s < intermediate_depth; ++s) {
       std::string src = "dw_res_" + std::to_string(s);
       std::string dst = "conv_res_" + std::to_string(d);
-      c += "  " + dst + " += " + src + ".x * constants[" +
-           std::to_string(weights_counter++) + "];\n";
-      c += "  " + dst + " += " + src + ".y * constants[" +
-           std::to_string(weights_counter++) + "];\n";
-      c += "  " + dst + " += " + src + ".z * constants[" +
-           std::to_string(weights_counter++) + "];\n";
-      c += "  " + dst + " += " + src + ".w * constants[" +
-           std::to_string(weights_counter++) + "];\n";
+      c += "  " + dst + " += " + src + ".x * args.constants.Read(" +
+           std::to_string(weights_counter++) + ");\n";
+      c += "  " + dst + " += " + src + ".y * args.constants.Read(" +
+           std::to_string(weights_counter++) + ");\n";
+      c += "  " + dst + " += " + src + ".z * args.constants.Read(" +
+           std::to_string(weights_counter++) + ");\n";
+      c += "  " + dst + " += " + src + ".w * args.constants.Read(" +
+           std::to_string(weights_counter++) + ");\n";
     }
     c += "  args.dst_tensor.Write(conv_res_" + std::to_string(d) + ", X, Y, " +
          std::to_string(d) + ");\n";
@@ -277,10 +278,15 @@ bool IsDepthwiseConvPlus1x1ConvSupported(
       return good_dw && good_conv && recommended_dw && recommended_conv;
     }
   } else if (gpu_info.IsMali()) {
-    if (gpu_info.mali_info.IsValhallGen2() &&
-        definition.precision == CalculationsPrecision::F16 &&
-        definition.src_tensors[0].SupportsZeroClamp(Axis::WIDTH) &&
-        definition.src_tensors[0].SupportsZeroClamp(Axis::HEIGHT)) {
+    if (!gpu_info.mali_info.IsValhall()) {
+      return false;
+    }
+    if (gpu_info.mali_info.IsValhallGen1()) {
+      return false;
+    }
+    if (definition.precision == CalculationsPrecision::F16 &&
+        definition.src_tensors[0].SupportsZeroClamp(Axis::WIDTH, gpu_info) &&
+        definition.src_tensors[0].SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
       bool recommended_dw = dw_shape.i <= 16 &&
                             dw_shape.i * dw_shape.h * dw_shape.w <= 3 * 3 * 16;
       bool recommended_conv =

@@ -230,6 +230,23 @@ For backwards compatibility, `processing_mode` may also be set to the strings
 `"parallel_epochs"` or `"distributed_epoch"`, which are respectively equivalent
 to `ShardingPolicy.OFF` and `ShardingPolicy.DYNAMIC`.
 
+### Coordinated Data Read
+
+By default, when multiple consumers read from the same job, they receive data on
+a first-come first-served basis. In some use cases, it is advantageous to
+coordinate the consumers. At each step, consumers read data from the same
+worker.
+
+For example, the tf.data service can be used to coordinate example sizes across
+a cluster during synchronous training, so that during each step all replicas
+train on similar-sized elements. To achieve this, define a dataset which
+generates rounds of `num_consumers` consecutive similar-sized batches, then
+enable coordinated reads by setting `consumer_index` and `num_consumers`.
+
+NOTE: To keep consumers in sync, coordinated reads require that the dataset have
+infinite cardinality. You can get this by adding `.repeat()` at the end of the
+dataset definition.
+
 ### Jobs
 
 A tf.data service "job" refers to the process of reading from a dataset managed
@@ -352,6 +369,38 @@ def new_dataset_fn(input_context):
 
 dataset = coordinator.create_per_worker_dataset(new_dataset_fn)
 ```
+
+### Sharing tf.data service with concurrent trainers
+
+If you run multiple trainers concurrently using the same training data, it could
+save resources to cache the data in one tf.data service cluster and share the
+cluster with the trainers. For example, if you use Vizier to tune
+hyperparameters, the Vizier jobs can run concurrently and share one tf.data
+service cluster.
+
+To enable this feature, each trainer needs to generate a unique trainer ID, and
+you pass the trainer ID to `tf.data.experimental.service.distribute`. Once a job
+has consumed data, the data remains in the cache and is re-used by jobs with
+different `trainer_id`s. Requests with the same `trainer_id` do not re-use data.
+For example:
+
+```
+dataset = expensive_computation()
+dataset = dataset.apply(tf.data.experimental.service.distribute(
+    processing_mode=tf.data.experimental.service.ShardingPolicy.OFF,
+    service=FLAGS.tf_data_service_address,
+    job_name="job",
+    cross_trainer_cache=data_service_ops.CrossTrainerCache(
+        trainer_id=trainer_id())))
+```
+
+tf.data service uses a sliding-window cache to store shared data. When one
+trainer consumes data, the data remains in the cache. When other trainers need
+data, they can get data from the cache instead of repeating the expensive
+computation. The cache has a bounded size, so some workers may not read the full
+dataset. To ensure all the trainers get sufficient training data, we require the
+input dataset to be infinite. This can be achieved, for example, by repeating
+the dataset and performing random augmentation on the training instances.
 
 ## Limitations
 

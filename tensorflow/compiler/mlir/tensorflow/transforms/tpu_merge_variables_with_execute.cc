@@ -28,10 +28,10 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -99,7 +99,7 @@ struct VariableAccessesForTPUExecute {
 // Returns true iff the read or assign op associated with `resource` can be
 // safely merged.
 //
-// `resource_ids` contains ID's of all previously accessed resources
+// `resource_ids` contains IDs of all previously accessed resources
 // `previous_unknown_resource_access` is true if we had any previous unknown
 // resource access.
 bool IsResourceSafeForMerge(
@@ -122,7 +122,7 @@ bool IsResourceSafeForMerge(
   return true;
 }
 
-// Adds ID's of resources which `op` accesses to `resource_ids`.
+// Adds IDs of resources which `op` accesses to `resource_ids`.
 // Returns true iff op accesses a resource unknown to `resource_analysis_info`
 // in which case we have to conservatively assume that any resource might be
 // accessed.
@@ -155,7 +155,7 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
   VariableAccessesForTPUExecute var_access_info;
   Attribute device_attr = execute_launch.deviceAttr();
   if (check_device && !device_attr) return var_access_info;
-  auto func = execute_launch->getParentOfType<mlir::FuncOp>();
+  auto func = execute_launch->getParentOfType<mlir::func::FuncOp>();
 
   // Track the first read op found, which is used later to check if there are
   // assign ops between it and the TPUExecute op. We will exclude reads before
@@ -557,7 +557,7 @@ bool ParentParallelExecuteWrapsSingleOp(Operation* op) {
 void TPUMergeVariablesWithExecutePass::runOnOperation() {
   ModuleOp module = getOperation();
   mlir::TF::ResourceAliasAnalysis resource_analysis(module);
-  module.walk([&](FuncOp func) {
+  module.walk([&](func::FuncOp func) {
     const auto& resource_analysis_info =
         resource_analysis.GetAnalysisForFunc(func);
     // Find all the executes first, since we will mutate the nodes around each

@@ -1,14 +1,14 @@
 path: "tensorflow.metrics.CategoricalCrossentropy"
 tf_class {
-  is_instance: "<class \'keras.metrics.CategoricalCrossentropy\'>"
-  is_instance: "<class \'keras.metrics.MeanMetricWrapper\'>"
-  is_instance: "<class \'keras.metrics.Mean\'>"
-  is_instance: "<class \'keras.metrics.Reduce\'>"
-  is_instance: "<class \'keras.metrics.Metric\'>"
+  is_instance: "<class \'keras.metrics.metrics.CategoricalCrossentropy\'>"
+  is_instance: "<class \'keras.metrics.base_metric.MeanMetricWrapper\'>"
+  is_instance: "<class \'keras.metrics.base_metric.Mean\'>"
+  is_instance: "<class \'keras.metrics.base_metric.Reduce\'>"
+  is_instance: "<class \'keras.metrics.base_metric.Metric\'>"
   is_instance: "<class \'keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<class \'keras.utils.version_utils.LayerVersionSelector\'>"
   is_instance: "<type \'object\'>"
   member {
@@ -145,7 +145,7 @@ tf_class {
   }
   member_method {
     name: "add_update"
-    argspec: "args=[\'self\', \'updates\', \'inputs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'updates\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "add_variable"
@@ -154,10 +154,6 @@ tf_class {
   member_method {
     name: "add_weight"
     argspec: "args=[\'self\', \'name\', \'shape\', \'aggregation\', \'synchronization\', \'initializer\', \'dtype\'], varargs=None, keywords=None, defaults=[\'()\', \'VariableAggregationV2.SUM\', \'VariableSynchronization.ON_READ\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "apply"
-    argspec: "args=[\'self\', \'inputs\'], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "build"
@@ -208,10 +204,6 @@ tf_class {
     argspec: "args=[\'self\', \'node_index\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "get_losses_for"
-    argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "get_output_at"
     argspec: "args=[\'self\', \'node_index\'], varargs=None, keywords=None, defaults=None"
   }
@@ -222,10 +214,6 @@ tf_class {
   member_method {
     name: "get_output_shape_at"
     argspec: "args=[\'self\', \'node_index\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "get_updates_for"
-    argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_weights"

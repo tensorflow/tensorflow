@@ -25,6 +25,7 @@ from absl.testing import parameterized
 from six.moves import range
 
 from tensorflow.python.autograph.core import converter
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import constant_op
@@ -36,6 +37,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -946,7 +948,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
         autograph=autograph,
         experimental_implements=implements,
         experimental_autograph_options=autograph_options,
-        experimental_relax_shapes=relax_shapes,
+        reduce_retracing=relax_shapes,
         jit_compile=compile_)
 
     if override_function:
@@ -962,7 +964,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(autograph, cloned._autograph)
     self.assertEqual(implements, cloned._implements)
     self.assertEqual(autograph_options, cloned._experimental_autograph_options)
-    self.assertEqual(relax_shapes, cloned._experimental_relax_shapes)
+    self.assertEqual(relax_shapes, cloned._reduce_retracing)
     self.assertEqual(compile_, cloned._jit_compile)
 
     # This test does not run with XLA JIT support linked in so we can only check
@@ -1028,7 +1030,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
         autograph=autograph,
         experimental_implements=implements,
         experimental_autograph_options=autograph_options,
-        experimental_relax_shapes=relax_shapes,
+        reduce_retracing=relax_shapes,
     )
 
     cloned = pickle.loads(pickle.dumps(func))
@@ -1038,7 +1040,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(autograph, cloned._autograph)
     self.assertEqual(implements, cloned._implements)
     self.assertEqual(autograph_options, cloned._experimental_autograph_options)
-    self.assertEqual(relax_shapes, cloned._experimental_relax_shapes)
+    self.assertEqual(relax_shapes, cloned._reduce_retracing)
 
     x = array_ops.ones([])
     self.assertEqual(self.evaluate(cloned(x)), self.evaluate(func(x)))
@@ -1260,6 +1262,117 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     obj2.testDouble(constant_op.constant('a'))
     self.assertAllEqual(obj2.testDouble.experimental_get_tracing_count(), 3)
     self.assertAllEqual(obj1.testDouble.experimental_get_tracing_count(), 2)
+
+  def test_recursive_tf_function(self):
+
+    @def_function.function
+    def recursive_fn(n):
+      if n > 0:
+        return recursive_fn(n - 1)
+      return 1
+
+    self.assertEqual(recursive_fn(5).numpy(), 1)
+
+  def test_recursive_tf_function_with_gradients(self):
+
+    @def_function.function
+    def recursive_fn(n, x):
+      if n > 0:
+        return n * recursive_fn(n - 1, x)
+      else:
+        return x
+
+    x = variables.Variable(1.0)
+    with backprop.GradientTape() as tape:
+      g = recursive_fn(5, x)
+
+    dg_dx = tape.gradient(g, x)
+    self.assertEqual(dg_dx.numpy(), 120)
+
+  def test_recursive_python_function(self):
+
+    def recursive_py_fn(n):
+      if n > 0:
+        return recursive_py_fn(n - 1)
+      return 1
+
+    @def_function.function
+    def recursive_fn(n):
+      return recursive_py_fn(n)
+
+    self.assertEqual(recursive_fn(5).numpy(), 1)
+
+  def test_recursive_python_function_with_gradients(self):
+
+    def recursive_py_fn(n, x):
+      if n > 0:
+        return n * recursive_py_fn(n - 1, x)
+      return x
+
+    @def_function.function
+    def recursive_fn(n, x):
+      return recursive_py_fn(n, x)
+
+    x = variables.Variable(1.0)
+    with backprop.GradientTape() as tape:
+      g = recursive_fn(5, x)
+
+    dg_dx = tape.gradient(g, x)
+    self.assertEqual(dg_dx.numpy(), 120)
+
+  def test_recursive_tf_function_call_each_other(self):
+
+    @def_function.function
+    def recursive_fn1(n):
+      if n <= 1:
+        return 1
+      return recursive_fn2(n - 1)
+
+    @def_function.function
+    def recursive_fn2(n):
+      if n <= 1:
+        return 2
+      return recursive_fn1(n - 1)
+
+    self.assertEqual(recursive_fn1(5).numpy(), 1)
+    self.assertEqual(recursive_fn1(6).numpy(), 2)
+    self.assertEqual(recursive_fn2(5).numpy(), 2)
+    self.assertEqual(recursive_fn2(6).numpy(), 1)
+
+  def test_recursive_tf_function_call_each_other_with_gradients(self):
+
+    @def_function.function
+    def recursive_fn1(n, x):
+      if n <= 1:
+        return x
+      return n * recursive_fn2(n - 1, x)
+
+    @def_function.function
+    def recursive_fn2(n, x):
+      if n <= 1:
+        return 2 * x
+      return n * recursive_fn1(n - 1, x)
+
+    x = variables.Variable(1.0)
+    with backprop.GradientTape() as tape:
+      g1 = recursive_fn1(5, x)
+
+    dg1_dx = tape.gradient(g1, x)
+    self.assertEqual(dg1_dx.numpy(), 120)
+
+    with backprop.GradientTape() as tape:
+      g2 = recursive_fn2(5, x)
+
+    dg2_dx = tape.gradient(g2, x)
+    self.assertEqual(dg2_dx.numpy(), 240)
+
+  def test_recursive_tf_function_with_cond(self):
+    @def_function.function(autograph=False)
+    def recursive_fn(n):
+      return cond_v2.cond_v2(n > 0, recursive_fn(n - 1), 1)
+
+    with self.assertRaises(RecursionError):
+      recursive_fn(constant_op.constant(5))
 
 
 if __name__ == '__main__':

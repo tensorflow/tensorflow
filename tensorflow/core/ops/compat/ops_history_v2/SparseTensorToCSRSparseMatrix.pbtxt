@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "SparseTensorToCSRSparseMatrix"
   input_arg {
     name: "indices"

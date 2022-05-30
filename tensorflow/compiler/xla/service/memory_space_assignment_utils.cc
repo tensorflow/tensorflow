@@ -39,19 +39,12 @@ bool MemorySpaceAssignmentUtils::IsValueAllowedInAlternateMemory(
     return false;
   }
 
-  // The semantics of TupleSelect are weird: TupleSelect doesn't define a
-  // buffer, but just forwards the buffers in the either left or right side.
-  // This means the two different inputs to TupleSelect must not alias, yet they
-  // should be allocated in the same memory space, and both buffers must be kept
-  // alive for the entire live range of TupleSelect. Instead, just don't
-  // allocate TupleSelect in the alternate memory space.
   // TODO(berkin): Not allocating add-dependencies either since they need to be
   // treated specially. We should revisit this later.
   for (const HloPosition& position : value->positions()) {
-    if (position.instruction->opcode() == HloOpcode::kTupleSelect ||
-        position.instruction->opcode() == HloOpcode::kAddDependency) {
+    if (position.instruction->opcode() == HloOpcode::kAddDependency) {
       VLOG(4) << "Keeping value " << value->ToShortString()
-              << " in default mem because it has a tuple-select or "
+              << " in default mem because it has a "
               << "add-dependency position.";
       return false;
     }
@@ -92,6 +85,52 @@ bool MemorySpaceAssignmentUtils::IsIntervalAllowedInAlternateMemory(
     const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval) {
   return IsValueAllowedInAlternateMemory(interval.buffer) &&
          absl::c_all_of(interval.colocations, IsValueAllowedInAlternateMemory);
+}
+
+/*static*/ void MemorySpaceAssignmentUtils::HoistParameters(HloModule& module) {
+  CHECK(module.has_schedule());
+  HloSchedule& schedule = module.schedule();
+  for (const HloComputation* computation : module.MakeNonfusionComputations()) {
+    CHECK(schedule.is_computation_scheduled(computation));
+    if (computation->num_parameters() == 0) {
+      continue;
+    }
+    const HloInstructionSequence& sequence = schedule.sequence(computation);
+    bool hoisting_needed = false;
+    int parameters_found = 0;
+    for (HloInstruction* instruction : sequence.instructions()) {
+      if (instruction->opcode() == HloOpcode::kParameter) {
+        ++parameters_found;
+      }
+      if (parameters_found == computation->num_parameters()) {
+        break;
+      }
+      if (instruction->opcode() != HloOpcode::kGetTupleElement &&
+          instruction->opcode() != HloOpcode::kTuple &&
+          instruction->opcode() != HloOpcode::kConstant &&
+          instruction->opcode() != HloOpcode::kBitcast &&
+          instruction->opcode() != HloOpcode::kParameter) {
+        hoisting_needed = true;
+        break;
+      }
+    }
+
+    if (!hoisting_needed) {
+      continue;
+    }
+    HloInstructionSequence new_sequence;
+    for (HloInstruction* parameter : computation->parameter_instructions()) {
+      TF_CHECK_OK(parameter->DropAllControlDeps());
+      new_sequence.push_back(parameter);
+    }
+    for (HloInstruction* instruction : sequence.instructions()) {
+      if (instruction->opcode() != HloOpcode::kParameter) {
+        new_sequence.push_back(instruction);
+      }
+    }
+    CHECK_EQ(new_sequence.size(), sequence.size());
+    schedule.set_sequence(computation, new_sequence);
+  }
 }
 
 /*static*/ void MemorySpaceAssignmentUtils::HoistConstantOperations(

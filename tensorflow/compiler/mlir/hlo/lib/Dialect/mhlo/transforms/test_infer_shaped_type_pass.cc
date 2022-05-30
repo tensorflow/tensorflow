@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/Identifier.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
@@ -27,13 +29,45 @@ namespace mlir {
 namespace mhlo {
 namespace {
 
+struct InferReturnTypesPattern : public RewritePattern {
+  explicit InferReturnTypesPattern(MLIRContext *context)
+      : RewritePattern("mhlo_test.get_return_types", 1, context) {}
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    if (op->getNumOperands() != 1) return failure();
+    auto *defining_op = op->getOperand(0).getDefiningOp();
+    auto defining_op_int =
+        llvm::dyn_cast_or_null<InferTypeOpInterface>(defining_op);
+    if (!defining_op_int) return failure();
+    SmallVector<Type, 4> types;
+    if (failed(defining_op_int.inferReturnTypes(
+            op->getContext(), op->getLoc(), defining_op->getOperands(),
+            defining_op->getAttrDictionary(), defining_op->getRegions(),
+            types))) {
+      return failure();
+    }
+
+    // Replace the op with another pass-through op with attributes added.
+    OperationState state(op->getLoc(), "mhlo_test.return_types",
+                         op->getOperands(), op->getResultTypes(),
+                         op->getAttrs());
+    auto *new_op = rewriter.create(state);
+    for (const auto &it : llvm::enumerate(types)) {
+      new_op->setAttr((StringRef("types") + Twine(it.index())).str(),
+                      TypeAttr::get(it.value()));
+    }
+    rewriter.replaceOp(op, {new_op->getResults()});
+    return success();
+  }
+};
+
 struct InferReturnTypeComponentsPattern : public RewritePattern {
   InferReturnTypeComponentsPattern(MLIRContext *context)
       : RewritePattern("mhlo_test.get_return_type_components", 1, context) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     if (op->getNumOperands() != 1) return failure();
-    auto defining_op = op->getOperand(0).getDefiningOp();
+    auto *defining_op = op->getOperand(0).getDefiningOp();
     auto defining_op_int =
         llvm::dyn_cast_or_null<InferShapedTypeOpInterface>(defining_op);
     if (!defining_op_int) return failure();
@@ -49,8 +83,8 @@ struct InferReturnTypeComponentsPattern : public RewritePattern {
     OperationState state(op->getLoc(), "mhlo_test.return_type_components",
                          op->getOperands(), op->getResultTypes(),
                          op->getAttrs());
-    auto new_op = rewriter.createOperation(state);
-    for (auto it : llvm::enumerate(components)) {
+    auto *new_op = rewriter.create(state);
+    for (const auto &it : llvm::enumerate(components)) {
       if (it.value().hasRank()) {
         new_op->setAttr((StringRef("dims") + Twine(it.index())).str(),
                         rewriter.getI64ArrayAttr(it.value().getDims()));
@@ -90,17 +124,22 @@ struct TestInferShapedTypeMethodsPass
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<shape::ShapeDialect>();
   }
-  void runOnFunction() override {
-    OwningRewritePatternList patterns(&getContext());
-    patterns.insert<ReifyReturnTypeShapesPattern>(&getContext());
-    patterns.insert<InferReturnTypeComponentsPattern>(&getContext());
-    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+  void runOnOperation() override {
+    RewritePatternSet patterns(&getContext());
+    patterns.add<InferReturnTypesPattern>(&getContext());
+    patterns.add<ReifyReturnTypeShapesPattern>(&getContext());
+    patterns.add<InferReturnTypeComponentsPattern>(&getContext());
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
+      return signalPassFailure();
+    }
   }
 };
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> createTestInferShapedTypeMethodsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+createTestInferShapedTypeMethodsPass() {
   return std::make_unique<TestInferShapedTypeMethodsPass>();
 }
 

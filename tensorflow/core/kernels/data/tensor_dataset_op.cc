@@ -72,13 +72,24 @@ class TensorDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t Cardinality() const override { return 1LL; }
+  int64_t CardinalityInternal() const override { return 1LL; }
+
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    return 1LL;
+  }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     return Status::OK();
   }
 
   Status CheckExternalState() const override { return Status::OK(); }
+
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+    *out_tensors = tensors_;
+    return Status::OK();
+  }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,

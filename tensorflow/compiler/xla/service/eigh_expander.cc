@@ -544,7 +544,7 @@ bool EighExpander::InstructionMatchesPattern(HloInstruction* instruction) {
 
 StatusOr<HloInstruction*> EighExpander::ExpandInstruction(
     HloInstruction* instruction) {
-  const string name =
+  const std::string name =
       absl::StrFormat("xla.%s_%s", instruction->custom_call_target(),
                       instruction->operand(0)->shape().ToString());
 

@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_DISTRIBUTED_CLIENT_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_DISTRIBUTED_CLIENT_H_
 
+#include <functional>
 #include <memory>
+#include <string>
 
-#include "absl/synchronization/mutex.h"
-#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "grpcpp/channel.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.grpc.pb.h"
@@ -33,7 +33,7 @@ class DistributedRuntimeClient {
  public:
   struct Options {
     // This node's global ID. Required.
-    int32 node_id = -1;
+    int32_t node_id = -1;
 
     // Environment used for starting threads.
     tensorflow::Env* env = tensorflow::Env::Default();
@@ -87,78 +87,43 @@ class DistributedRuntimeClient {
     // For testing. Should the client explicitly Shutdown() on destruction?
     bool shutdown_on_destruction = true;
   };
-  DistributedRuntimeClient(std::shared_ptr<::grpc::Channel> channel,
-                           const Options& options);
-  explicit DistributedRuntimeClient(std::shared_ptr<::grpc::Channel> channel)
-      : DistributedRuntimeClient(channel, Options()) {}
-  ~DistributedRuntimeClient();
+
+  virtual ~DistributedRuntimeClient() {}
 
   // Connects to the master, and blocks until all clients have successfully
   // connected.
   // Not thread-safe, i.e., calls to Connect()/Shutdown()/EnumerateDevices()
   // must be serialized by some other means.
-  xla::Status Connect();
+  virtual xla::Status Connect() = 0;
 
   // Reports to the master that the client is ready to shutdown, and blocks
   // until all clients are ready to shutdown or the shutdown timeout expires.
   // Not thread-safe.
-  xla::Status Shutdown();
+  virtual xla::Status Shutdown() = 0;
 
   // Blocking enumeration of global devices. Used by the GPU platform.
   // Not thread-safe.
-  xla::Status EnumerateDevices(const LocalTopologyProto& local_topology,
-                               GlobalTopologyProto* global_topology);
+  virtual xla::Status EnumerateDevices(
+      const LocalTopologyProto& local_topology,
+      GlobalTopologyProto* global_topology) = 0;
 
   // The following APIs are thread-safe.
-  xla::StatusOr<std::string> BlockingKeyValueGet(std::string key,
-                                                 absl::Duration timeout);
+  virtual xla::StatusOr<std::string> BlockingKeyValueGet(
+      std::string key, absl::Duration timeout) = 0;
 
-  xla::Status KeyValueSet(std::string key, std::string value);
+  virtual xla::Status KeyValueSet(std::string key, std::string value) = 0;
 
- private:
-  // Entry point for the heartbeat thread.
-  void HeartbeatLoop();
-
-  const std::unique_ptr<grpc::DistributedRuntimeService::Stub> stub_;
-  const Options options_;
-
-  // Possible states of the client.
-  // The only legal transitions are downwards in the order below. i.e., there is
-  // no way to reopen a closed client.
-  enum class State {
-    // The client has not yet connected to the server, i.e., had a Connect()
-    // RPC succeed.
-    kNotConnected,
-
-    // The client is connected to the server and as far as we are aware the
-    // connection is healthy.
-    kConnected,
-
-    // The client is in the process of shutting down, i.e., Shutdown() has been
-    // called.
-    kShuttingDown,
-
-    // The client has shut down its server connection, either due to an error
-    // or due to an explicit shutdown.
-    kClosed,
-  };
-
-  static absl::string_view StateToString(State state);
-
-  // state_ is protected by a mutex because the heartbeat thread needs to look
-  // at it.
-  absl::Mutex mu_;
-  State state_ ABSL_GUARDED_BY(mu_) = State::kNotConnected;
-
-  // A unique session ID, assigned by the server during Connect().
-  uint64 session_id_;
-
-  // Notification that tells the heartbeat thread to stop running.
-  absl::Notification stop_heartbeats_;
-
-  // Thread responsible for performing heartbeats.
-  std::unique_ptr<tensorflow::Thread> heartbeat_thread_;
+  // Blocks until all nodes are at the barrier or the barrier times out.
+  // `barrier_id` should be unique across barriers.
+  virtual xla::Status WaitAtBarrier(std::string barrier_id,
+                                    absl::Duration timeout) = 0;
 };
+
+// Creates a distributed runtime client.
+std::unique_ptr<DistributedRuntimeClient> GetDistributedRuntimeClient(
+    std::shared_ptr<::grpc::Channel> channel,
+    const DistributedRuntimeClient::Options& options,
+    bool use_coordination_service);
 
 }  // namespace xla
 

@@ -30,36 +30,24 @@ class ExecutionContext;
 namespace xla {
 namespace gpu {
 
-// Return whether --//...:enable_bef_thunk was specified on the command line.
-bool IsBefThunkEnabled();
-
 // Creates a Thunk that uses TFRT BEF execution to perform the work of various
 // Thunk types. A BefThunk is not restricted to a particular op function, unlike
 // GemmThunk, ConvolutionThunk, etc. Rather, a BefThunk is to stand in place of
 // an other Thunk type.
 StatusOr<std::unique_ptr<Thunk>> CreateBefThunk(
     Thunk::ThunkInfo thunk_info, mlir::Operation* op,
-    absl::Span<const BufferAllocation::Slice> inputs,
-    absl::Span<const BufferAllocation::Slice> outputs);
+    std::vector<BufferAllocation::Slice> buffers);
 
-// Creates a Thunk that uses TFRT BEF execution to perform Collective Permute.
-StatusOr<std::unique_ptr<Thunk>> CreateBefCollectivePermuteThunk(
+// Creates a Thunk that uses TFRT BEF execution to perform Collective ops.
+StatusOr<std::unique_ptr<Thunk>> CreateBefCollectiveThunk(
     Thunk::ThunkInfo thunk_info, mlir::Operation* op,
-    absl::Span<const BufferAllocation::Slice> inputs,
-    absl::Span<const BufferAllocation::Slice> outputs, int64_t replica_count,
+    std::vector<BufferAllocation::Slice> buffers, int64_t replica_count,
     int64_t partition_count);
 
 // Creates a Thunk that uses TFRT BEF execution to perform the work of a kernel.
 StatusOr<std::unique_ptr<Thunk>> CreateBefKernelThunk(
     Thunk::ThunkInfo thunk_info, absl::Span<const BufferAllocation* const> args,
     const std::string& kernel_name, const LaunchDimensions& launch_dimensions);
-
-// Creates a Thunk that uses TFRT BEF execution to perform CustomCall.
-StatusOr<std::unique_ptr<Thunk>> CreateBefCustomCallThunk(
-    Thunk::ThunkInfo thunk_info, mlir::Operation* op,
-    absl::Span<const BufferAllocation::Slice> inputs,
-    absl::Span<const BufferAllocation::Slice> outputs,
-    CustomCallThunk::CustomCallTarget call_target);
 
 }  // namespace gpu
 }  // namespace xla

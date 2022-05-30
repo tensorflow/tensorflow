@@ -79,6 +79,10 @@ struct StreamExecutorConfig {
   // Simple ordinal-setting constructor.
   explicit StreamExecutorConfig(int ordinal);
 
+  // The GPU stream for which we are searching the executor.
+  // If this field is specified for the search, others will be ignored.
+  void* gpu_stream = nullptr;
+
   // The ordinal of the device to be managed by the returned StreamExecutor.
   int ordinal;
 

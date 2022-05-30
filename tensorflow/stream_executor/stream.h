@@ -26,9 +26,8 @@ limitations under the License.
 #include <memory>
 #include <type_traits>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.h"
@@ -115,10 +114,6 @@ class Stream {
   // StreamExecutor's platform.
   explicit Stream(StreamExecutor *parent);
 
-  // Test only. Use an externally-populated value (like a mock) for the
-  // platform-specific stream implementation.
-  Stream(StreamExecutor *parent, internal::StreamInterface *implementation);
-
   // Deallocates any stream resources that the parent StreamExecutor has
   // bestowed
   // upon this object.
@@ -187,8 +182,8 @@ class Stream {
   // spit out helpful static_assert error traces with information as to the
   // argument number and types that were mismatched.
   template <typename... Params, typename... Args>
-  Stream &ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
-                     const TypedKernel<Params...> &kernel, Args... args);
+  port::Status ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
+                          const TypedKernel<Params...> &kernel, Args... args);
 
   // Record a "start" event for the interval timer at this point in the
   // stream's execution (relative to the previously and subsequently enqueued
@@ -361,33 +356,6 @@ class Stream {
     return port::UnimplementedError("DNN library is not found.");
   }
 
-  template <typename InputType, typename OutputType>
-  port::Status ConvolveWithExecutionPlan(
-      dnn::ConvolutionKind kind, const dnn::BatchDescriptor &input_descriptor,
-      DeviceMemory<InputType> input_data,
-      const dnn::FilterDescriptor &filter_descriptor,
-      DeviceMemory<InputType> filter_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<OutputType> output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &plan_config,
-      dnn::ProfileResult *output_profile_result) {
-#if GOOGLE_CUDA
-    dnn::DnnSupport *dnn = parent_->AsDnn();
-    if (dnn) {
-      gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport *>(dnn);
-      return cudnn_dnn->DoConvolveWithExecutionPlan(
-          kind, dnn::ToDataType<InputType>::value,
-          dnn::ToDataType<OutputType>::value, this, input_descriptor,
-          input_data, filter_descriptor, filter_data, output_descriptor,
-          output_data, convolution_descriptor, plan_config, scratch_allocator,
-          output_profile_result);
-    }
-#endif  // GOOGLE_CUDA
-    return port::UnimplementedError("DNN library is not found.");
-  }
-
   template <typename InputT, typename ScaleT, typename SideInputT,
             typename BiasT, typename OutputT>
   port::Status FusedConvolveWithAlgorithm(
@@ -416,34 +384,42 @@ class Stream {
     return port::UnimplementedError("DNN library is not found.");
   }
 
-  template <typename InputT, typename ScaleT, typename SideInputT,
-            typename BiasT, typename OutputT>
-  port::Status FusedConvolveWithExecutionPlan(
-      const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<InputT> &conv_input_data, ScaleT conv_input_scale,
+  port::StatusOr<std::unique_ptr<const dnn::ConvRunner>> ConvolveRunnerFromDesc(
+      const dnn::AlgorithmDesc &algorithm_desc, dnn::ConvolutionKind kind,
+      dnn::DataType element_type, dnn::DataType output_type,
+      const dnn::BatchDescriptor &input_descriptor,
       const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<InputT> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<SideInputT> &side_input_data, ScaleT side_input_scale,
-      const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<BiasT> &biases, dnn::ActivationMode activation_mode,
       const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<OutputT> *output, ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result) {
-#if GOOGLE_CUDA
-    dnn::DnnSupport *dnn = parent_->AsDnn();
-    if (dnn) {
-      gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport *>(dnn);
-      return cudnn_dnn->DoFusedConvolveWithExecutionPlan(
-          this, dnn::ToDataType<InputT>::value, conv_input_descriptor,
-          conv_input_data, conv_input_scale, filter_descriptor, filter_data,
-          convolution_descriptor, side_input_data, side_input_scale,
-          bias_descriptor, biases, activation_mode, output_descriptor, *output,
-          scratch_allocator, algorithm_config, output_profile_result);
+      const dnn::ConvolutionDescriptor &convolution_descriptor) {
+    dnn::DnnSupport *dnn_support = parent_->AsDnn();
+    if (!dnn_support) {
+      return port::UnimplementedError("DNN library is not found.");
     }
-#endif  // GOOGLE_CUDA
-    return port::UnimplementedError("DNN library is not found.");
+    return dnn_support->ConvolveRunnerFromDesc(
+        this, algorithm_desc, kind, element_type, output_type, input_descriptor,
+        filter_descriptor, output_descriptor, convolution_descriptor);
+  }
+
+  port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
+  FusedConvolveRunnerFromDesc(
+      const dnn::AlgorithmDesc &algorithm_desc, dnn::ConvolutionKind kind,
+      dnn::DataType element_type, dnn::DataType bias_type,
+      dnn::DataType output_type, double conv_input_scale,
+      double side_input_scale, const dnn::BatchDescriptor &input_descriptor,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const dnn::BatchDescriptor &bias_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      dnn::ActivationMode activation_mode) {
+    dnn::DnnSupport *dnn_support = parent_->AsDnn();
+    if (!dnn_support) {
+      return port::UnimplementedError("DNN library is not found.");
+    }
+    return dnn_support->FusedConvolveRunnerFromDesc(
+        this, algorithm_desc, kind, element_type, bias_type, output_type,
+        conv_input_scale, side_input_scale, input_descriptor, filter_descriptor,
+        bias_descriptor, output_descriptor, convolution_descriptor,
+        activation_mode);
   }
 
   Stream &ThenSeparableConvolve(
@@ -481,60 +457,41 @@ class Stream {
                       const dnn::BatchDescriptor &dimensions,
                       DeviceMemory<float> *output_data);
 
-  Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
-                          const dnn::BatchDescriptor &input_dimensions,
-                          const DeviceMemory<double> &input_data,
-                          const dnn::BatchDescriptor &output_dimensions,
-                          DeviceMemory<double> *output_data,
-                          ScratchAllocator *workspace_allocator = nullptr);
+  template <typename ElementType>
+  port::Status ThenPoolForward(
+      const dnn::PoolingDescriptor &pooling_dimensions,
+      const dnn::BatchDescriptor &input_dimensions,
+      const DeviceMemory<ElementType> &input_data,
+      const dnn::BatchDescriptor &output_dimensions,
+      DeviceMemory<ElementType> *output_data,
+      ScratchAllocator *workspace_allocator = nullptr) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      return dnn->DoPoolForward(dnn::ToDataType<ElementType>::value, this,
+                                pooling_dimensions, input_dimensions,
+                                input_data, output_dimensions, *output_data,
+                                workspace_allocator);
+    }
+    return port::UnimplementedError("DNN library is not found.");
+  }
 
-  Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
-                          const dnn::BatchDescriptor &input_dimensions,
-                          const DeviceMemory<float> &input_data,
-                          const dnn::BatchDescriptor &output_dimensions,
-                          DeviceMemory<float> *output_data,
-                          ScratchAllocator *workspace_allocator = nullptr);
-
-  Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
-                          const dnn::BatchDescriptor &input_dimensions,
-                          const DeviceMemory<Eigen::half> &input_data,
-                          const dnn::BatchDescriptor &output_dimensions,
-                          DeviceMemory<Eigen::half> *output_data,
-                          ScratchAllocator *workspace_allocator = nullptr);
-
-  Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
-                          const dnn::BatchDescriptor &input_dimensions,
-                          const DeviceMemory<int8> &input_data,
-                          const dnn::BatchDescriptor &output_dimensions,
-                          DeviceMemory<int8> *output_data,
-                          ScratchAllocator *workspace_allocator = nullptr);
-
-  Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
-                           const dnn::BatchDescriptor &input_dimensions,
-                           const DeviceMemory<double> &input_data,
-                           const dnn::BatchDescriptor &output_dimensions,
-                           const DeviceMemory<double> &output_data,
-                           const DeviceMemory<double> &input_diff_data,
-                           DeviceMemory<double> *output_diff_data,
-                           ScratchAllocator *workspace_allocator = nullptr);
-
-  Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
-                           const dnn::BatchDescriptor &input_dimensions,
-                           const DeviceMemory<float> &input_data,
-                           const dnn::BatchDescriptor &output_dimensions,
-                           const DeviceMemory<float> &output_data,
-                           const DeviceMemory<float> &input_diff_data,
-                           DeviceMemory<float> *output_diff_data,
-                           ScratchAllocator *workspace_allocator = nullptr);
-
-  Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
-                           const dnn::BatchDescriptor &input_dimensions,
-                           const DeviceMemory<Eigen::half> &input_data,
-                           const dnn::BatchDescriptor &output_dimensions,
-                           const DeviceMemory<Eigen::half> &output_data,
-                           const DeviceMemory<Eigen::half> &input_diff_data,
-                           DeviceMemory<Eigen::half> *output_diff_data,
-                           ScratchAllocator *workspace_allocator = nullptr);
+  template <typename ElementType>
+  port::Status ThenPoolBackward(
+      const dnn::PoolingDescriptor &pooling_dimensions,
+      const dnn::BatchDescriptor &input_dimensions,
+      const DeviceMemory<ElementType> &input_data,
+      const dnn::BatchDescriptor &output_dimensions,
+      const DeviceMemory<ElementType> &output_data,
+      const DeviceMemory<ElementType> &input_diff_data,
+      DeviceMemory<ElementType> *output_diff_data,
+      ScratchAllocator *workspace_allocator = nullptr) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      return dnn->DoPoolBackward(
+          dnn::ToDataType<ElementType>::value, this, pooling_dimensions,
+          input_dimensions, input_data, output_dimensions, output_data,
+          input_diff_data, *output_diff_data, workspace_allocator);
+    }
+    return port::UnimplementedError("DNN library is not found.");
+  }
 
   Stream &ThenNormalizeWithDimensions(
       const dnn::NormalizeDescriptor &normalize_descriptor,
@@ -1386,7 +1343,7 @@ class Stream {
                                     &beta_storage);
     port::Status st = blas->DoBlasGemmStridedBatchedWithAlgorithm(
         this, transa, transb, m, n, k, alpha_ptr, a,
-        blas::ToDataType<InputType>::value, stride_a, lda, b,
+        blas::ToDataType<InputType>::value, lda, stride_a, b,
         blas::ToDataType<InputType>::value, ldb, stride_b, beta_ptr, c,
         blas::ToDataType<OutputType>::value, ldc, stride_c, batch_count,
         computation_type, algorithm, output_profile_result);
@@ -1654,6 +1611,32 @@ class Stream {
                        uint64_t n, std::complex<double> alpha,
                        const DeviceMemory<std::complex<double>> &a, int lda,
                        DeviceMemory<std::complex<double>> *b, int ldb);
+
+  // See BlasSupport::DoBlasTrsmBatched.
+  Stream &ThenBlasTrsmBatched(blas::Side side, blas::UpperLower uplo,
+                              blas::Transpose transa, blas::Diagonal diag,
+                              uint64_t m, uint64 n, float alpha,
+                              const DeviceMemory<float *> &as, int lda,
+                              DeviceMemory<float *> *bs, int ldb,
+                              int batch_count);
+  Stream &ThenBlasTrsmBatched(blas::Side side, blas::UpperLower uplo,
+                              blas::Transpose transa, blas::Diagonal diag,
+                              uint64_t m, uint64 n, double alpha,
+                              const DeviceMemory<double *> &as, int lda,
+                              DeviceMemory<double *> *bs, int ldb,
+                              int batch_count);
+  Stream &ThenBlasTrsmBatched(blas::Side side, blas::UpperLower uplo,
+                              blas::Transpose transa, blas::Diagonal diag,
+                              uint64_t m, uint64 n, std::complex<float> alpha,
+                              const DeviceMemory<std::complex<float> *> &as,
+                              int lda, DeviceMemory<std::complex<float> *> *bs,
+                              int ldb, int batch_count);
+  Stream &ThenBlasTrsmBatched(blas::Side side, blas::UpperLower uplo,
+                              blas::Transpose transa, blas::Diagonal diag,
+                              uint64_t m, uint64 n, std::complex<double> alpha,
+                              const DeviceMemory<std::complex<double> *> &as,
+                              int lda, DeviceMemory<std::complex<double> *> *bs,
+                              int ldb, int batch_count);
 
   // See BlasSupport::DoBlatLtMatmul.
   // Note that we prevent alpha and beta from being used to deduce CType so that
@@ -2030,6 +2013,9 @@ class Stream {
     return parent()->GetDeviceDescription().cuda_compute_capability();
   }
 
+  RocmComputeCapability GetRocmComputeCapability() const {
+    return parent()->GetDeviceDescription().rocm_compute_capability();
+  }
   // Returns the (internal usage) temporary-memory-allocation manager associated
   // with this stream.
   internal::TemporaryMemoryManager *temporary_memory_manager();
@@ -2091,13 +2077,7 @@ class Stream {
 
   // Sets the error state if operation_retcode is false.
   // This is a useful shorthand for many stream routines.
-  void CheckError(bool operation_retcode) TF_LOCKS_EXCLUDED(mu_) {
-    if (operation_retcode) {
-      return;
-    }
-    absl::MutexLock lock(&mu_);
-    status_ = port::InternalError("Unknown error");
-  }
+  void CheckError(bool operation_retcode) TF_LOCKS_EXCLUDED(mu_);
 
   // Checks the status and logs the error message, if any.
   void CheckStatus(port::Status status) TF_LOCKS_EXCLUDED(mu_);
@@ -2128,16 +2108,16 @@ class Stream {
   // Whether Init() was successfully called to allocate this stream on the
   // underlying platform. It simply flips from 0 to 1 with a sanity check.
   // See StreamExecutor::AllocateStream.
-  bool allocated_ TF_GUARDED_BY(mu_);
+  bool allocated_ ABSL_GUARDED_BY(mu_);
 
   // The last error (if any) of all method calls.
-  port::Status status_ TF_GUARDED_BY(mu_);
+  port::Status status_ ABSL_GUARDED_BY(mu_);
 
   // Sub-streams that are generated from this stream. Each element has a pointer
   // to sub-stream and a boolean value indicating if this substream is ready to
   // be reused.
   std::vector<std::pair<std::unique_ptr<Stream>, bool>> sub_streams_
-      TF_GUARDED_BY(mu_);
+      ABSL_GUARDED_BY(mu_);
 
   // Streams can allocate temporary memories to help with work they enqueue
   // (e.g. for scratch memory spaces). This member tracks those allocations and
@@ -2147,7 +2127,7 @@ class Stream {
 
   // Callbacks enqueued to be run after the next call to BlockHostUntilDone().
   std::vector<std::function<void()>> after_block_host_until_done_callbacks_
-      TF_GUARDED_BY(mu_);
+      ABSL_GUARDED_BY(mu_);
 
   // Implementation of ThenBlasLtMatmul that is shared by all types.
   template <typename ABType, typename CType>
@@ -2192,29 +2172,23 @@ class Stream {
 // Inlines
 
 template <typename... Params, typename... Args>
-inline Stream &Stream::ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
-                                  const TypedKernel<Params...> &kernel,
-                                  Args... args) {
+inline port::Status Stream::ThenLaunch(ThreadDim thread_dims,
+                                       BlockDim block_dims,
+                                       const TypedKernel<Params...> &kernel,
+                                       Args... args) {
   KernelInvocationChecker<std::tuple<Params...>,
                           std::tuple<Args...>>::CheckAllStaticAssert();
-  if (ok()) {
-    // This is the core that allows type-safe kernel launching.
-    // Since the platforms take kernel arguments as tuples of (void *, size),
-    // we pack the variadic parameters passed as ...args into the desired
-    // tuple form and pass that packed form to the StreamExecutor::Launch()
-    // implementation.
-    KernelArgsArray<sizeof...(args)> kernel_args;
-    kernel.PackParams(&kernel_args, args...);
-    DCHECK(parent_ != nullptr);
-    bool ok =
-        parent_->Launch(this, thread_dims, block_dims, kernel, kernel_args)
-            .ok();
-    if (!ok) {
-      SetError();
-      LOG(WARNING) << "parent failed to launch kernel: " << &kernel;
-    }
-  }
-  return *this;
+
+  // This is the core that allows type-safe kernel launching.
+  // Since the platforms take kernel arguments as tuples of (void *, size),
+  // we pack the variadic parameters passed as ...args into the desired
+  // tuple form and pass that packed form to the StreamExecutor::Launch()
+  // implementation.
+  KernelArgsArray<sizeof...(args)> kernel_args;
+  kernel.PackParams(&kernel_args, args...);
+  TF_RETURN_IF_ERROR(
+      parent_->Launch(this, thread_dims, block_dims, kernel, kernel_args));
+  return port::Status::OK();
 }
 
 template <typename T>

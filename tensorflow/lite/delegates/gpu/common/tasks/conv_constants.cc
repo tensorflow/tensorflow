@@ -96,7 +96,8 @@ std::string GenerateConv(int src_size, int dst_size, bool use_dot_conv,
   return result;
 }
 
-std::string GenerateConvolutionConstantCode(const OperationDef& op_def,
+std::string GenerateConvolutionConstantCode(const GpuInfo& gpu_info,
+                                            const OperationDef& op_def,
                                             const OHWI& weights_shape,
                                             bool stride_correction,
                                             bool use_dot_conv,
@@ -150,7 +151,8 @@ std::string GenerateConvolutionConstantCode(const OperationDef& op_def,
     const std::vector<std::string> names{"x_out", "y_out", "z_out"};
     for (int i = 0; i < axes.size(); ++i) {
       const auto& axis = axes[i];
-      if (src_desc.HasAxis(axis) && !src_desc.SupportsZeroClamp(axis)) {
+      if (src_desc.HasAxis(axis) &&
+          !src_desc.SupportsZeroClamp(axis, gpu_info)) {
         if (!check.empty()) {
           check += " || ";
         }
@@ -172,7 +174,7 @@ std::string GenerateConvolutionConstantCode(const OperationDef& op_def,
                                   : "args.dilation_x";
     for (int ky = 0; ky < weights_shape.h; ++ky) {
       std::string s_y = absl::StrCat("(start_y + ", ky, " * args.dilation_y)");
-      if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+      if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
         c += "  {\n";
         c += "  bool y_out = " + s_y + " < 0 || " + s_y +
              " >= args.src_tensor.Height();\n";
@@ -181,7 +183,7 @@ std::string GenerateConvolutionConstantCode(const OperationDef& op_def,
         c += "  {\n";
         std::string s_x =
             absl::StrCat("(start_x + ", kx, " * " + dilation_x + ")");
-        if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
+        if (!src_desc.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
           c += "    bool x_out = " + s_x + " < 0 || " + s_x +
                ">= args.src_tensor.Width();\n";
         }
@@ -203,7 +205,7 @@ std::string GenerateConvolutionConstantCode(const OperationDef& op_def,
         }
         c += "  }\n";
       }
-      if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+      if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
         c += "  }\n";
       }
     }
@@ -256,6 +258,10 @@ bool IsConvConstantsSupported(const GpuInfo& gpu_info,
     }
   }
 
+  if (attr.groups != 1) {
+    return false;
+  }
+
   const bool use_dot_conv =
       IsDotConvBetter(attr.weights.shape.i, attr.weights.shape.o);
   const auto& w_shape = attr.weights.shape;
@@ -292,8 +298,9 @@ GPUOperation CreateConvConstants(const GpuInfo& gpu_info,
   const bool stride_correction =
       definition.IsBatchSupported() && attr.strides.w != 1;
 
-  op.code_ = GenerateConvolutionConstantCode(
-      definition, attr.weights.shape, stride_correction, use_dot_conv, &op);
+  op.code_ =
+      GenerateConvolutionConstantCode(gpu_info, definition, attr.weights.shape,
+                                      stride_correction, use_dot_conv, &op);
   if (definition.precision == CalculationsPrecision::F16 &&
       gpu_info.IsAdreno() && gpu_info.adreno_info.IsAdreno3xx()) {
     op.compiler_options_.push_back(CompilerOptions::kAdrenoFullSimd);

@@ -15,8 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_RUNTIME_WORK_QUEUE_INTERFACE_H_
 #define TENSORFLOW_CORE_TFRT_RUNTIME_WORK_QUEUE_INTERFACE_H_
 
-#include "tensorflow/core/platform/status.h"
+#include <cstdint>
+
+#include "tensorflow/core/platform/context.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/support/error_util.h"  // from @tf_runtime
 
@@ -28,35 +33,66 @@ namespace tfrt_stub {
 // methods (eg. create an intra op thread pool) without changing TFRT core.
 class WorkQueueInterface : public tfrt::ConcurrentWorkQueue {
  public:
+  explicit WorkQueueInterface(int64_t id) : id_(id) {}
+  WorkQueueInterface() = default;
   ~WorkQueueInterface() override = 0;
 
-  // TODO(tfrt-devs): Use StatusOr to return error or result once StatusOr is
-  // allowed generally in tensorflow.
-  virtual tensorflow::Status InitializeRequest(
+  // Returns per-request work queue if possible. A nullptr should be returned if
+  // the implementation does not implement the per-request work queue.
+  //
+  // TODO(b/198671794): Remove per-request concepts from the work queue
+  // interface so that the interface is more composable. Per-request logic
+  // should be handled separately.
+  ABSL_DEPRECATED("Create the instance directly instead.")
+  virtual StatusOr<std::unique_ptr<WorkQueueInterface>> InitializeRequest(
       tfrt::RequestContextBuilder* request_context_builder,
       thread::ThreadPoolInterface** intra_op_threadpool) const {
     *intra_op_threadpool = nullptr;
-    return tensorflow::Status::OK();
+    return {nullptr};
   }
 
+  int64_t id() const { return id_; }
+
  private:
-  // TODO(chky): The method below is not very useful right now because we have
-  // to initialize tensorflow specific concepts (eg. intra op threadpool) which
-  // cannot be known in TFRT core infra including ConcurrentWorkQueue. Consider
-  // removing this method from base, and consider whether we can introduce
-  // more interfaces in TFRT to support these tensorflow specific concepts.
-  llvm::Error InitRequest(tfrt::RequestContextBuilder*) final {
-    return llvm::Error::success();
-  }
+  int64_t id_ = 0;
 };
 
 inline WorkQueueInterface::~WorkQueueInterface() = default;
 
-// Create a WorkQueueInterface from a ConcurrentWorkQueue. The returned
+// Creates a WorkQueueInterface from a ConcurrentWorkQueue. The returned
 // WorkQueueInterface simply delegates all its public methods to the specified
 // ConcurrentWorkQueue.
 std::unique_ptr<WorkQueueInterface> WrapDefaultWorkQueue(
     std::unique_ptr<tfrt::ConcurrentWorkQueue> work_queue);
+
+// Creates a WorkQueueInterface from a ConcurrentWorkQueue. The returned
+// WorkQueueInterface simply delegates all its public methods to the specified
+// ConcurrentWorkQueue. The `intra_thread_pool` is stored and will be passed out
+// when `InitializeRequest()` is called.
+std::unique_ptr<WorkQueueInterface> WrapDefaultWorkQueue(
+    std::unique_ptr<tfrt::ConcurrentWorkQueue> work_queue,
+    thread::ThreadPoolInterface* intra_thread_pool);
+
+// A helper function that wraps tasks with traceme events.
+template <typename Callable>
+tfrt::TaskFunction WrapWork(int64_t id, absl::string_view name,
+                            Callable&& work) {
+  tensorflow::Context context(tensorflow::ContextKind::kThread);
+  return tfrt::TaskFunction([id, name = std::string(name),
+                             context = std::move(context),
+                             work = std::forward<Callable>(work)]() mutable {
+    // From TraceMeProducer in the function that launches graph execution, eg.
+    // SavedModelImpl::Run().
+    tensorflow::profiler::TraceMeConsumer activity(
+        [&]() {
+          return tensorflow::profiler::TraceMeEncode(name, {{"id", id}});
+        },
+        tensorflow::profiler::ContextType::kTfrtExecutor, id,
+        tensorflow::profiler::TraceMeLevel::kInfo);
+    tensorflow::WithContext wc(context);
+    std::forward<Callable>(work)();
+  });
+}
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

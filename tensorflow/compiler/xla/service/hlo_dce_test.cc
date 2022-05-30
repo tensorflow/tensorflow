@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -445,6 +444,68 @@ TEST_F(HloDceTest, KeepUsedSubcomputation) {
   // We shouldn't have DCE'ed reduce_subcomp, even though we removed one of
   // its users.
   EXPECT_EQ(module->MakeComputationPostOrder().size(), 2);
+}
+
+TEST_F(HloDceTest, RemovedNestedDeadComputations) {
+  auto module = CreateNewVerifiedModule();
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+
+  HloComputation::Builder called_subcomp_builder("called_dead_add");
+  {
+    auto* param0 =
+        called_subcomp_builder.AddInstruction(HloInstruction::CreateParameter(
+            /*parameter_number=*/0, shape, "param0"));
+    auto* param1 =
+        called_subcomp_builder.AddInstruction(HloInstruction::CreateParameter(
+            /*parameter_number=*/1, shape, "param1"));
+    called_subcomp_builder.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, param0, param1));
+  }
+  auto called_subcomp =
+      module->AddEmbeddedComputation(called_subcomp_builder.Build());
+
+  // Creates a module with unflattened control flow with two dead computations
+  // that both call the same subcomputation, which becomes dead after the two
+  // callers are removed.
+  {
+    HloComputation::Builder dead_subcomp_builder("dead_caller0");
+    auto* param0 = dead_subcomp_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, shape, "param0"));
+    auto* param1 = dead_subcomp_builder.AddInstruction(
+        HloInstruction::CreateParameter(1, shape, "param1"));
+    dead_subcomp_builder.AddInstruction(
+        HloInstruction::CreateCall(shape, {param0, param1}, called_subcomp));
+    module->AddEmbeddedComputation(dead_subcomp_builder.Build());
+  }
+
+  {
+    HloComputation::Builder dead_subcomp_builder("dead_caller1");
+    auto* param0 = dead_subcomp_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, shape, "param0"));
+    auto* param1 = dead_subcomp_builder.AddInstruction(
+        HloInstruction::CreateParameter(1, shape, "param1"));
+    dead_subcomp_builder.AddInstruction(
+        HloInstruction::CreateCall(shape, {param0, param1}, called_subcomp));
+    module->AddEmbeddedComputation(dead_subcomp_builder.Build());
+  }
+
+  HloComputation::Builder builder(TestName());
+
+  // Adds a constant instruction as the root of the computation.
+  builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0)));
+
+  module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(module->MakeComputationPostOrder().size(), 4);
+
+  HloDCE dce;
+  auto changed = dce.Run(module.get());
+  ASSERT_TRUE(changed.ok());
+  EXPECT_TRUE(*changed);
+
+  // Only the entry computation should be left after eliminating the dead caller
+  // and callee subcomputations.
+  EXPECT_EQ(module->MakeComputationPostOrder().size(), 1);
 }
 
 }  // namespace

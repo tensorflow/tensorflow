@@ -25,7 +25,6 @@ import tempfile
 import warnings
 
 import numpy as np
-import six
 
 from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
 from tensorflow.core.framework import graph_pb2
@@ -119,39 +118,28 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     return math_ops.erfc
 
   @property
+  def trt_incompatible_binary_op(self):
+    return math_ops.igamma
+
+  @property
   def precision_modes(self):
     return ["FP32", "FP16", "INT8"]
 
   # str is bytes in py2, but unicode in py3.
   def _ToUnicode(self, s):
-    if six.PY2:
-      if isinstance(s, unicode):
-        return s
-      return s.decode("utf-8")
-    else:
-      if isinstance(s, str):
-        return s
-      return s.decode("utf-8")
+    if isinstance(s, str):
+      return s
+    return s.decode("utf-8")
 
   def _ToBytes(self, s):
-    if six.PY2:
-      if isinstance(s, unicode):
-        return s.encode("utf-8")
-      return s
-    else:
-      if isinstance(s, str):
-        return s.encode("utf-8")
-      return s
+    if isinstance(s, str):
+      return s.encode("utf-8")
+    return s
 
   def _ToString(self, s):
-    if six.PY2:
-      if isinstance(s, unicode):
-        return s.encode("utf-8")
+    if isinstance(s, str):
       return s
-    else:
-      if isinstance(s, str):
-        return s
-      return s.decode("utf-8")
+    return s.decode("utf-8")
 
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(TfTrtIntegrationTestBase, self).__init__(methodName)
@@ -166,6 +154,15 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
     if not is_tensorrt_enabled():
       self.skipTest("Test requires TensorRT")
+
+  def tearDown(self):
+    """Making sure to clean artifact."""
+    idx = 0
+    while gc.garbage:
+      gc.collect()  # Force GC to destroy the TRT engine cache.
+      idx += 1
+      if idx >= 10:  # After 10 iterations, break to avoid infinite collect.
+        break
 
   def _GetTensorSpec(self, shape, mask, dtype, name):
     # Set dimension i to None if mask[i] == False
@@ -197,9 +194,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     """
 
     input_mask = [[False] + [True] * (len(shape) - 1) for shape in input_shapes]
-    output_mask = [
-        [False] + [True] * (len(shape) - 1) for shape in output_shapes
-    ]
+    output_mask = [[False] + [True] * (len(shape) - 1) if shape else []
+                   for shape in output_shapes]
 
     return self.BuildParamsWithMask(graph_fn, dtype, input_shapes,
                                     output_shapes, input_mask, output_mask, [],
@@ -301,6 +297,10 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def ExpectedEnginesToBuild(self, run_params):
     """Returns the expected engines to build, implemented by subclass."""
     raise NotImplementedError()
+
+  def ExpectedConnections(self, run_params):
+    """Returns the expected edges or an empty dict to skip the check."""
+    return {}
 
   def ExpectedMaxBatchSizes(self, run_params):
     """Returns the expected maximum batch sizes of the build engines."""
@@ -448,9 +448,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     if run_params.is_v2:
       converter_v2 = trt_convert.TrtGraphConverterV2(
           input_saved_model_dir=saved_model_dir,
-          conversion_params=conversion_params,
           use_dynamic_shape=run_params.dynamic_shape,
-          dynamic_shape_profile_strategy=self._profile_strategy)
+          dynamic_shape_profile_strategy=self._profile_strategy,
+          **conversion_params._asdict())
       if self._disable_non_trt_optimizers:
         converter_v2._test_only_disable_non_trt_optimizers = True  # pylint: disable=protected-access
       return converter_v2
@@ -483,14 +483,36 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
     converter = self._CreateConverter(run_params, saved_model_dir,
                                       conversion_params)
-    int8_gdef = converter.convert()
-    self._VerifyGraphDef(run_params, saved_model_dir, int8_gdef,
-                         GraphState.CALIBRATE)
+    if run_params.is_v2:
 
-    converter.calibrate(
-        fetch_names=self._GetFetchNames(),
-        num_runs=5,
-        feed_dict_fn=lambda: self._GetFeedDict(inputs_data[0]))
+      def CalibrationInputFn():
+        for data_tensors in inputs_data:
+          yield data_tensors
+
+      converter.convert(calibration_input_fn=CalibrationInputFn)
+    else:
+      int8_gdef = converter.convert()
+      self._VerifyGraphDef(run_params, saved_model_dir, int8_gdef,
+                           GraphState.CALIBRATE)
+
+      converter.calibrate(
+          fetch_names=self._GetFetchNames(),
+          num_runs=5,
+          feed_dict_fn=lambda: self._GetFeedDict(inputs_data[0]))
+
+    if run_params.dynamic_shape and self._ShouldConverterBuild(run_params):
+      logging.info("Using build mode")
+
+      def _BuildInputFn():
+        for shapes in self._GetParamsCached().input_dims:
+          yield [
+              array_ops.zeros(x, dtype=spec.dtype)
+              for (x, spec) in zip(shapes,
+                                   self._GetParamsCached().input_specs)
+          ]
+
+      converter.build(input_fn=_BuildInputFn)
+
     trt_saved_model_dir = self._GetSavedModelDir(run_params,
                                                  GraphState.CALIBRATE)
     converter.save(trt_saved_model_dir)
@@ -507,6 +529,13 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     converter = self._CreateConverter(run_params, saved_model_dir,
                                       conversion_params)
     converter.convert()
+
+    if run_params.is_v2:
+      try:
+        line_length = max(160, os.get_terminal_size().columns)
+      except OSError:
+        line_length = 160
+      converter.summary(line_length=line_length, detailed=True)
 
     if run_params.dynamic_shape and self._ShouldConverterBuild(run_params):
       logging.info("Using build mode")
@@ -587,7 +616,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def _MayRemoveGraphSequenceNumber(self, name):
     return self._RemoveGraphSequenceNumberImpl(name, False)
 
-  def _VerifyConnections(self, expected_engines, original_gdef, converted_gdef):
+  def _VerifyConnections(self, expected_engines, expected_input_map,
+                         original_gdef, converted_gdef):
+    """Checks that the converted graph contains the expected connections."""
     old_to_new_node_map = {
         self._ToString(node.name): self._ToString(node.name)
         for node in original_gdef.node
@@ -595,9 +626,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     for engine_name, node_names in expected_engines.items():
       for node_name in node_names:
         old_to_new_node_map[node_name] = engine_name
-    name_to_node_map = {
-        self._ToString(node.name): node for node in original_gdef.node
-    }
 
     def _InputName(inp):
       inp = self._ToString(inp)
@@ -609,37 +637,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       if len(parts) > 1 and parts[-1].isdigit():
         inp = inp[:-len(parts[-1]) - 1]
       return (prefix, inp)
-
-    # Compute the expected mapping from each node to its input nodes.
-    expected_input_map = {}
-    removed_const_nodes = set([
-        self._ToString(node.name)
-        for node in original_gdef.node
-        if node.op == "Const"
-    ])
-    for node in original_gdef.node:
-      name_str = self._ToString(node.name)
-      target_node_name = old_to_new_node_map[name_str]
-      is_engine_op = (target_node_name != name_str)
-      if target_node_name not in expected_input_map:
-        expected_input_map[target_node_name] = set()
-      input_set = expected_input_map[target_node_name]
-      for inp in node.input:
-        (prefix, inp_name) = _InputName(inp)
-        mapped_input = old_to_new_node_map[inp_name]
-        # Add the input only if it's outside the segment (note that it could be
-        # in a different engine).
-        if not is_engine_op or (mapped_input != target_node_name and
-                                name_to_node_map[inp_name].op != "Const"):
-          input_set.add(prefix + mapped_input)
-          if mapped_input in removed_const_nodes:
-            removed_const_nodes.remove(mapped_input)
-    # Remove const nodes that have no outputs.
-    expected_input_map = {
-        k: v
-        for k, v in expected_input_map.items()
-        if k not in removed_const_nodes
-    }
 
     # Compute the actual mapping from each node to its input nodes. If a cast
     # op doesn't exist in the original graph, we replace the use of the cast op
@@ -859,8 +856,10 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       self.assertEqual(0, num_engines)
     else:
       self.assertEqual(num_engines, len(expected_engines))
-      if isinstance(expected_engines, dict):
-        self._VerifyConnections(expected_engines, original_gdef, gdef_to_verify)
+      expected_connections = self.ExpectedConnections(run_params)
+      if expected_connections:
+        self._VerifyConnections(expected_engines, expected_connections,
+                                original_gdef, gdef_to_verify)
       self._VerifyMaxBatchSizeAnnotations(
           expected_engines=expected_engines,
           original_gdef=original_gdef,
@@ -1086,6 +1085,7 @@ def _GetTestConfigsV2():
   dynamic_engine = True
   # TODO(laigd): add support for calibration.
   no_calibration = False
+  use_calibration = True
 
   # Add all possible test cases and let the derived test class to decide
   # whether to run specific ones with ShouldRunTest().
@@ -1097,11 +1097,11 @@ def _GetTestConfigsV2():
   #   Grappler config in default eager context.
   # - INT8 without calibration behaves like FP32/FP16.
   opts = list(
-      itertools.product([FP32, FP16, INT8], [convert_offline], [dynamic_engine],
+      itertools.product([FP32, FP16], [convert_offline], [dynamic_engine],
                         [no_calibration], [False, True]))
   # We always run calibration with offline tool.
-  # TODO(aaroey): INT8+calibration is not supported yet in V2.
-  # opts.append((INT8, convert_offline, dynamic_engine, use_calibration))
+  opts.append((INT8, convert_offline, dynamic_engine, use_calibration, False))
+  opts.append((INT8, convert_offline, dynamic_engine, use_calibration, True))
   return opts
 
 

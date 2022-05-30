@@ -25,29 +25,32 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tensorflow/core/tfrt/utils/model_metadata.h"
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/support/pointer_util.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfd {
 
-class OpKernelRunnerCache;
-class OpKernelRunnerTable;
-
 // FallbackResourceArray holds the tensors that are computed only once during
 // initialization and read-only afterwards.
 class FallbackResourceArray {
  public:
-  // Set `tensor` in the array at `index`. `index` should be dense and duplicate
-  // indices are not allowed.
+  // Sets `tensor` in the array at `index`. `index` should be dense and
+  // duplicate indices are not allowed.
   void SetResource(int index, tensorflow::tfrt_stub::ImmutableTensor tensor);
 
-  // Get the resource tensor wrapped in AsyncValue value at `index`.
+  // Returns the resource tensor wrapped in AsyncValue value at `index`.
   tfrt::UnRefCountedAsyncValue<tensorflow::tfrt_stub::FallbackTensor>*
   GetResource(int index) const {
     return resource_async_values_.at(index).get();
+  }
+
+  // Returns the resource tensor at `index`.
+  const tensorflow::tfrt_stub::FallbackTensor& GetResourceAsFallbackTensor(
+      int index) const {
+    return resource_async_values_.at(index)->get();
   }
 
  private:
@@ -68,21 +71,25 @@ class KernelFallbackCompatRequestState {
  public:
   // NOTE: This is the constructor for training.
   KernelFallbackCompatRequestState(
+      std::function<void(std::function<void()>)>* runner,
       const tensorflow::DeviceMgr* device_manager, int64_t step_id,
       tfrt::OwnedOrUnownedPtr<ScopedStepContainer> step_container,
       std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
       core::RefCountPtr<Rendezvous> rendezvous,
-      OpKernelRunnerTable* runner_table, FallbackResourceArray* resource_array,
+      tfrt_stub::OpKernelRunnerTable* runner_table,
+      FallbackResourceArray* resource_array,
       tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-      const absl::optional<tfrt::ModelMetadata>& model_metadata,
+      const absl::optional<SessionMetadata>& model_metadata,
       const tensorflow::ProcessFunctionLibraryRuntime* pflr);
 
   // NOTE: This is the constructor for inference.
   KernelFallbackCompatRequestState(
+      std::function<void(std::function<void()>)>* runner,
       const tensorflow::DeviceMgr* device_manager, int64_t step_id,
-      OpKernelRunnerTable* runner_table, FallbackResourceArray* resource_array,
+      tfrt_stub::OpKernelRunnerTable* runner_table,
+      FallbackResourceArray* resource_array,
       tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-      const absl::optional<tfrt::ModelMetadata>& model_metadata,
+      const absl::optional<SessionMetadata>& model_metadata,
       const tensorflow::ProcessFunctionLibraryRuntime* pflr);
 
   // Returns the user-specified custom device for this request. It is currently
@@ -104,13 +111,11 @@ class KernelFallbackCompatRequestState {
     return collective_executor_;
   }
 
-  OpKernelRunnerTable* runner_table() const { return runner_table_; }
+  tfrt_stub::OpKernelRunnerTable* runner_table() const { return runner_table_; }
 
   FallbackResourceArray* resource_array() const { return resource_array_; }
 
-  std::function<void(std::function<void()>)>* runner() const {
-    return default_runner_;
-  }
+  std::function<void(std::function<void()>)>* runner() const { return runner_; }
 
   CancellationManager* cancellation_manager() const {
     return default_cancellation_manager_;
@@ -129,7 +134,7 @@ class KernelFallbackCompatRequestState {
 
  private:
   // Below are resources needed by current tensorflow.
-  std::function<void(std::function<void()>)>* default_runner_ = nullptr;
+  std::function<void(std::function<void()>)>* runner_ = nullptr;
   ::tfrt::OwnedOrUnownedPtr<ScopedStepContainer> step_container_;
   std::unique_ptr<tensorflow::Device> custom_device_;
   std::unique_ptr<CollectiveExecutor::Handle> collective_executor_handle_;
@@ -141,19 +146,19 @@ class KernelFallbackCompatRequestState {
 
   // `runner_table` holds the prepopulated tensorflow::OpKernel instances for
   // kernel fallback compat mode.
-  OpKernelRunnerTable* runner_table_ = nullptr;
+  tfrt_stub::OpKernelRunnerTable* runner_table_ = nullptr;
 
   // Resource array is used for keeping static values in the runtime. It is
   // accessed through tfrt_fallback_async.set_resource and
   // tfrt_fallback_async.get_resource kernels.
   FallbackResourceArray* resource_array_ = nullptr;
 
-  tensorflow::thread::ThreadPoolInterface* intra_op_threadpool_;
+  tensorflow::thread::ThreadPoolInterface* intra_op_threadpool_ = nullptr;
 
   // Model metadata used for monitoring and tracing purpose.
   SessionMetadata session_metadata_;
 
-  const tensorflow::ProcessFunctionLibraryRuntime* pflr_;
+  const tensorflow::ProcessFunctionLibraryRuntime* pflr_ = nullptr;
 
   bool log_device_placement_ = false;
 };

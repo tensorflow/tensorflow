@@ -175,7 +175,9 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
       ]
     group_size = num_processes * len(devices)
     collective = cross_device_ops_lib.CollectiveAllReduce(
-        devices=devices, group_size=group_size)
+        devices=devices,
+        group_size=group_size,
+        options=collective_util.Options())
     return collective, devices, cluster_resolver.task_id
 
   def as_list(self, value):

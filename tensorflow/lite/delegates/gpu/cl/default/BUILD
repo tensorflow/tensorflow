@@ -13,6 +13,5 @@ cc_library(
     srcs = ["recordable_queue.cc"],
     deps = [
         "//tensorflow/lite/delegates/gpu/cl:recordable_queue",
-        "//tensorflow/lite/delegates/gpu/common:status",
     ],
 )

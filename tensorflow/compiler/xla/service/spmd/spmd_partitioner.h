@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <unordered_map>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace spmd {
@@ -305,8 +306,8 @@ class PartitionedHlo {
           std::tuple<HloSharding, Window, WindowedInputShardReturnValue>>
           window_reshard_cache;
     };
-    // Use std::unordered_map for pointer stability.
-    std::unordered_map<HloInstruction*, PerHloCache> per_hlo_cache;
+    // Use absl::node_hash_map for pointer stability.
+    absl::node_hash_map<HloInstruction*, PerHloCache> per_hlo_cache;
     // Caches for nested partitioning of grouped sharding. Each string key
     // represents a unique way of grouping devices.
     absl::flat_hash_map<std::string, std::unique_ptr<ReshardCache>>
@@ -343,6 +344,12 @@ class PartitionedHlo {
   // allows specifying left-padded dimensions, which can be used during the
   // handling of kReverse, etc.
   PartitionedHlo PadWithValue(
+      HloInstruction* pad_value,
+      absl::Span<const int64_t> left_padded_dims = {},
+      absl::Span<const int64_t> skipped_dims = {}) const;
+
+  // Same as PadWithValue but does not create a new PartitionedHlo.
+  HloInstruction* PadWithValueHlo(
       HloInstruction* pad_value,
       absl::Span<const int64_t> left_padded_dims = {},
       absl::Span<const int64_t> skipped_dims = {}) const;
@@ -456,6 +463,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   Status HandleGather(HloInstruction* hlo) override;
   Status HandleGetTupleElement(HloInstruction* hlo) override;
   Status HandleInfeed(HloInstruction* hlo) override;
+  Status HandleOptimizationBarrier(HloInstruction* hlo) override;
   Status HandleOutfeed(HloInstruction* hlo) override;
   Status HandlePad(HloInstruction* hlo) override;
   Status HandleParameter(HloInstruction* hlo) override;
@@ -530,6 +538,23 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
                                      const HloSharding& root_sharding,
                                      const SpmdPartitionerOptions& options);
 
+  virtual double GetComputationTimeInMilliSec(HloInstruction* hlo) {
+    return 0.0;
+  }
+
+  virtual double GetCommunicationTimeInMilliSec(
+      int64_t bytes, absl::Span<const ReplicaGroup> device_groups) {
+    return 0.0;
+  }
+
+  virtual int GetCommunicationMultiplier(
+      absl::Span<const ReplicaGroup> device_groups) {
+    return 1;
+  }
+
+  std::vector<ReplicaGroup> CreateReplicaGroups(
+      std::vector<std::vector<int64_t>>& groups);
+
   // Information about a loop created for windowed dot-general. Used when
   // DoCodeMotionForWindowedDotGeneralLoops() executes after the visitor
   // finishes traversing the graph.
@@ -582,6 +607,8 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   std::vector<HloSharding> visiting_hlo_operand_shardings_;
   absl::optional<HloSharding> visiting_hlo_sharding_;
   absl::optional<int64_t> visiting_num_partitions_;
+  absl::optional<SPMDCollectiveOpsCreator> visiting_collective_ops_creator_;
+  absl::optional<HloInstruction*> visiting_partition_id_;
   std::vector<PartitionedHlo::PartitioningState> visiting_state_;
   std::vector<std::vector<int64_t>> device_groups_;
 };

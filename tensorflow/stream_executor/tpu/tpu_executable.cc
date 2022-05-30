@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/tpu/tpu_executable.h"
 
+#include "absl/cleanup/cleanup.h"
 #include "tensorflow/core/tpu/tpu_executor_api.h"
 #include "tensorflow/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
@@ -115,8 +116,8 @@ StatusOr<ExecutionOutput> TpuExecutable::ExecuteAsyncOnStream(
         se_run_options.device_assignment);
   }
   for (int i = 0; i < arguments.size(); ++i) {
-    ApiConverter::Free(&se_args[i]->shape_tree.shape);
-    ApiConverter::Free(&se_args[i]->dynamic_shape);
+    ApiConverter::Destroy(&se_args[i]->shape_tree.shape);
+    ApiConverter::Destroy(&se_args[i]->dynamic_shape);
     delete[] se_args[i]->unowned_indices;
     delete[] se_args[i]->shape_tree.buffers;
     delete se_args[i];
@@ -130,7 +131,7 @@ StatusOr<ExecutionOutput> TpuExecutable::ExecuteAsyncOnStream(
   xla::ScopedShapedBuffer result(
       ApiConverter::FromC(&se_execution_output.result),
       run_options->stream()->parent()->GetAllocator());
-  ApiConverter::Free(&se_execution_output.result);
+  ApiConverter::Destroy(&se_execution_output.result);
 
   ExecutionOutput output(std::move(result));
   for (int i = 0; i < se_execution_output.aliased_indices_size; ++i) {
@@ -162,7 +163,7 @@ absl::string_view TpuExecutable::fingerprint() const {
 
 StatusOr<std::string> TpuExecutable::Serialize() const {
   SE_ExecutableSerializationHandle* handle = nullptr;
-  auto cleanup = xla::MakeCleanup([&handle]() {
+  auto cleanup = absl::MakeCleanup([&handle]() {
     ExecutorApiFn()->TpuExecutableSerialize_FreeHandleFn(handle);
   });
   StatusHelper status;
@@ -201,7 +202,7 @@ StatusOr<std::unique_ptr<TpuExecutable>> TpuExecutable::Deserialize(
   XLA_HloModule c_module =
       ExecutorApiFn()->TpuExecutable_HloModuleFn(se_executable);
   auto cleanup_c_module =
-      xla::MakeCleanup([&c_module]() { ApiConverter::Free(&c_module); });
+      absl::MakeCleanup([&c_module]() { ApiConverter::Destroy(&c_module); });
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                       ApiConverter::FromC(c_module));
   return absl::make_unique<TpuExecutable>(se_executable, std::move(hlo_module));

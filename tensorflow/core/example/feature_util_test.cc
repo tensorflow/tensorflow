@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -244,10 +245,62 @@ TEST(AppendFeatureValuesTest, FloatValuesFromContainer) {
   EXPECT_NEAR(3.3, tag_ro.Get(2), kTolerance);
 }
 
+TEST(AppendFeatureValuesTest, FloatValuesFromContainerWithStringViewKey) {
+  Example example;
+
+  std::vector<double> values{1.1, 2.2, 3.3};
+  absl::string_view key("tag");
+  AppendFeatureValues(values, key, &example);
+
+  auto tag_ro = GetFeatureValues<float>("tag", example);
+  ASSERT_EQ(3, tag_ro.size());
+  EXPECT_NEAR(1.1, tag_ro.Get(0), kTolerance);
+  EXPECT_NEAR(2.2, tag_ro.Get(1), kTolerance);
+  EXPECT_NEAR(3.3, tag_ro.Get(2), kTolerance);
+}
+
 TEST(AppendFeatureValuesTest, FloatValuesUsingInitializerList) {
   Example example;
 
   AppendFeatureValues({1.1, 2.2, 3.3}, "tag", &example);
+
+  auto tag_ro = GetFeatureValues<float>("tag", example);
+  ASSERT_EQ(3, tag_ro.size());
+  EXPECT_NEAR(1.1, tag_ro.Get(0), kTolerance);
+  EXPECT_NEAR(2.2, tag_ro.Get(1), kTolerance);
+  EXPECT_NEAR(3.3, tag_ro.Get(2), kTolerance);
+}
+
+TEST(AppendFeatureValuesTest,
+     FloatValuesUsingInitializerListWithStringViewKey) {
+  Example example;
+  absl::string_view key("tag");
+  AppendFeatureValues({1.1, 2.2, 3.3}, key, &example);
+
+  auto tag_ro = GetFeatureValues<float>("tag", example);
+  ASSERT_EQ(3, tag_ro.size());
+  EXPECT_NEAR(1.1, tag_ro.Get(0), kTolerance);
+  EXPECT_NEAR(2.2, tag_ro.Get(1), kTolerance);
+  EXPECT_NEAR(3.3, tag_ro.Get(2), kTolerance);
+}
+
+TEST(AppendFeatureValuesTest, FloatValuesUsingIterators) {
+  Example example;
+  std::vector<double> values{1.1, 2.2, 3.3};
+  AppendFeatureValues(values.begin(), values.end(), "tag", &example);
+
+  auto tag_ro = GetFeatureValues<float>("tag", example);
+  ASSERT_EQ(3, tag_ro.size());
+  EXPECT_NEAR(1.1, tag_ro.Get(0), kTolerance);
+  EXPECT_NEAR(2.2, tag_ro.Get(1), kTolerance);
+  EXPECT_NEAR(3.3, tag_ro.Get(2), kTolerance);
+}
+
+TEST(AppendFeatureValuesTest, FloatValuesUsingIteratorsWithStringViewKey) {
+  Example example;
+  absl::string_view key("tag");
+  std::vector<double> values{1.1, 2.2, 3.3};
+  AppendFeatureValues(values.begin(), values.end(), key, &example);
 
   auto tag_ro = GetFeatureValues<float>("tag", example);
   ASSERT_EQ(3, tag_ro.size());
@@ -422,39 +475,41 @@ TEST(SequenceExampleTest, AppendFeatureValuesWithInitializerList) {
                       GetFeatureList("images", &se)->Add());
   AppendFeatureValues({"cam1-1", "cam2-2"},
                       GetFeatureList("images", &se)->Add());
-
-  EXPECT_EQ(se.DebugString(),
-            "context {\n"
-            "  feature {\n"
-            "    key: \"ids\"\n"
-            "    value {\n"
-            "      int64_list {\n"
-            "        value: 1\n"
-            "        value: 2\n"
-            "        value: 3\n"
-            "      }\n"
-            "    }\n"
-            "  }\n"
-            "}\n"
-            "feature_lists {\n"
-            "  feature_list {\n"
-            "    key: \"images\"\n"
-            "    value {\n"
-            "      feature {\n"
-            "        bytes_list {\n"
-            "          value: \"cam1-0\"\n"
-            "          value: \"cam2-0\"\n"
-            "        }\n"
-            "      }\n"
-            "      feature {\n"
-            "        bytes_list {\n"
-            "          value: \"cam1-1\"\n"
-            "          value: \"cam2-2\"\n"
-            "        }\n"
-            "      }\n"
-            "    }\n"
-            "  }\n"
-            "}\n");
+  SequenceExample expected_proto;
+  protobuf::TextFormat::ParseFromString(
+      "context {\n"
+      "  feature {\n"
+      "    key: \"ids\"\n"
+      "    value {\n"
+      "      int64_list {\n"
+      "        value: 1\n"
+      "        value: 2\n"
+      "        value: 3\n"
+      "      }\n"
+      "    }\n"
+      "  }\n"
+      "}\n"
+      "feature_lists {\n"
+      "  feature_list {\n"
+      "    key: \"images\"\n"
+      "    value {\n"
+      "      feature {\n"
+      "        bytes_list {\n"
+      "          value: \"cam1-0\"\n"
+      "          value: \"cam2-0\"\n"
+      "        }\n"
+      "      }\n"
+      "      feature {\n"
+      "        bytes_list {\n"
+      "          value: \"cam1-1\"\n"
+      "          value: \"cam2-2\"\n"
+      "        }\n"
+      "      }\n"
+      "    }\n"
+      "  }\n"
+      "}\n",
+      &expected_proto);
+  EXPECT_EQ(se.DebugString(), expected_proto.DebugString());
 }
 
 TEST(SequenceExampleTest, AppendFeatureValuesWithVectors) {
@@ -463,21 +518,24 @@ TEST(SequenceExampleTest, AppendFeatureValuesWithVectors) {
   std::vector<float> readings{1.0, 2.5, 5.0};
   AppendFeatureValues(readings, GetFeatureList("movie_ratings", &se)->Add());
 
-  EXPECT_EQ(se.DebugString(),
-            "feature_lists {\n"
-            "  feature_list {\n"
-            "    key: \"movie_ratings\"\n"
-            "    value {\n"
-            "      feature {\n"
-            "        float_list {\n"
-            "          value: 1\n"
-            "          value: 2.5\n"
-            "          value: 5\n"
-            "        }\n"
-            "      }\n"
-            "    }\n"
-            "  }\n"
-            "}\n");
+  SequenceExample expected_proto;
+  protobuf::TextFormat::ParseFromString(
+      "feature_lists {\n"
+      "  feature_list {\n"
+      "    key: \"movie_ratings\"\n"
+      "    value {\n"
+      "      feature {\n"
+      "        float_list {\n"
+      "          value: 1\n"
+      "          value: 2.5\n"
+      "          value: 5\n"
+      "        }\n"
+      "      }\n"
+      "    }\n"
+      "  }\n"
+      "}\n",
+      &expected_proto);
+  EXPECT_EQ(se.DebugString(), expected_proto.DebugString());
 }
 
 TEST(SequenceExampleTest, SetContextFeatureValuesWithInitializerList) {
@@ -490,22 +548,25 @@ TEST(SequenceExampleTest, SetContextFeatureValuesWithInitializerList) {
   // These values should be appended without overwriting.
   AppendFeatureValues({4, 5, 6}, "ids", se.mutable_context());
 
-  EXPECT_EQ(se.DebugString(),
-            "context {\n"
-            "  feature {\n"
-            "    key: \"ids\"\n"
-            "    value {\n"
-            "      int64_list {\n"
-            "        value: 1\n"
-            "        value: 2\n"
-            "        value: 3\n"
-            "        value: 4\n"
-            "        value: 5\n"
-            "        value: 6\n"
-            "      }\n"
-            "    }\n"
-            "  }\n"
-            "}\n");
+  SequenceExample expected_proto;
+  protobuf::TextFormat::ParseFromString(
+      "context {\n"
+      "  feature {\n"
+      "    key: \"ids\"\n"
+      "    value {\n"
+      "      int64_list {\n"
+      "        value: 1\n"
+      "        value: 2\n"
+      "        value: 3\n"
+      "        value: 4\n"
+      "        value: 5\n"
+      "        value: 6\n"
+      "      }\n"
+      "    }\n"
+      "  }\n"
+      "}\n",
+      &expected_proto);
+  EXPECT_EQ(se.DebugString(), expected_proto.DebugString());
 }
 
 TEST(SequenceExampleTest, SetFeatureValuesWithInitializerList) {
@@ -527,49 +588,52 @@ TEST(SequenceExampleTest, SetFeatureValuesWithInitializerList) {
   SetFeatureValues({"cam1-1", "cam2-1"},
                    GetFeatureList("more-images", &se)->Mutable(0));
 
-  EXPECT_EQ(se.DebugString(),
-            "context {\n"
-            "  feature {\n"
-            "    key: \"ids\"\n"
-            "    value {\n"
-            "      int64_list {\n"
-            "        value: 4\n"
-            "        value: 5\n"
-            "        value: 6\n"
-            "      }\n"
-            "    }\n"
-            "  }\n"
-            "}\n"
-            "feature_lists {\n"
-            "  feature_list {\n"
-            "    key: \"images\"\n"
-            "    value {\n"
-            "      feature {\n"
-            "        bytes_list {\n"
-            "          value: \"cam1-0\"\n"
-            "          value: \"cam2-0\"\n"
-            "        }\n"
-            "      }\n"
-            "      feature {\n"
-            "        bytes_list {\n"
-            "          value: \"cam1-1\"\n"
-            "          value: \"cam2-1\"\n"
-            "        }\n"
-            "      }\n"
-            "    }\n"
-            "  }\n"
-            "  feature_list {\n"
-            "    key: \"more-images\"\n"
-            "    value {\n"
-            "      feature {\n"
-            "        bytes_list {\n"
-            "          value: \"cam1-1\"\n"
-            "          value: \"cam2-1\"\n"
-            "        }\n"
-            "      }\n"
-            "    }\n"
-            "  }\n"
-            "}\n");
+  SequenceExample expected_proto;
+  protobuf::TextFormat::ParseFromString(
+      "context {\n"
+      "  feature {\n"
+      "    key: \"ids\"\n"
+      "    value {\n"
+      "      int64_list {\n"
+      "        value: 4\n"
+      "        value: 5\n"
+      "        value: 6\n"
+      "      }\n"
+      "    }\n"
+      "  }\n"
+      "}\n"
+      "feature_lists {\n"
+      "  feature_list {\n"
+      "    key: \"images\"\n"
+      "    value {\n"
+      "      feature {\n"
+      "        bytes_list {\n"
+      "          value: \"cam1-0\"\n"
+      "          value: \"cam2-0\"\n"
+      "        }\n"
+      "      }\n"
+      "      feature {\n"
+      "        bytes_list {\n"
+      "          value: \"cam1-1\"\n"
+      "          value: \"cam2-1\"\n"
+      "        }\n"
+      "      }\n"
+      "    }\n"
+      "  }\n"
+      "  feature_list {\n"
+      "    key: \"more-images\"\n"
+      "    value {\n"
+      "      feature {\n"
+      "        bytes_list {\n"
+      "          value: \"cam1-1\"\n"
+      "          value: \"cam2-1\"\n"
+      "        }\n"
+      "      }\n"
+      "    }\n"
+      "  }\n"
+      "}\n",
+      &expected_proto);
+  EXPECT_EQ(se.DebugString(), expected_proto.DebugString());
 }
 
 }  // namespace

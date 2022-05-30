@@ -242,34 +242,16 @@ TEST_F(GenericLayoutOptimizerTest, OptimizeSimpleConv2DGraph) {
   Status status;
   utils::GraphView graph_view(&output, &status);
   TF_ASSERT_OK(status);
-  // The expected optimized graph contains 2 extra sets of Transpose nodes and
-  // has the Conv2D's data_format set to "NCHW" on GPU, while "NHWC" on CPU.
-  auto* input_transpose_node = graph_view.GetNode(
-      absl::StrCat("Conv2D-0-Transpose", SRC_DATA_FORMAT, "To", DST_DATA_FORMAT,
-                   "-LayoutOptimizer"));
-
-  ASSERT_NE(input_transpose_node, nullptr);
-  ASSERT_EQ(input_transpose_node->NumRegularFanins(), 2);
-  VerifyRegularFaninMatch(input_transpose_node, 0, "Input", 0);
 
   auto* conv2d_node = graph_view.GetNode("Conv2D");
   ASSERT_NE(conv2d_node, nullptr);
   ASSERT_EQ(conv2d_node->NumRegularFanins(), 2);
-  VerifyRegularFaninMatch(conv2d_node, 0, input_transpose_node->GetName(), 0);
   VerifyRegularFaninMatch(conv2d_node, 1, "Filter", 0);
-  VerifyDataFormatAttributeMatch(conv2d_node, DST_DATA_FORMAT);
-
-  auto* output_transpose_node = graph_view.GetNode(
-      absl::StrCat("Conv2D-0-0-Transpose", DST_DATA_FORMAT, "To",
-                   SRC_DATA_FORMAT, "-LayoutOptimizer"));
-  ASSERT_NE(output_transpose_node, nullptr);
-  ASSERT_EQ(output_transpose_node->NumRegularFanins(), 2);
-  VerifyRegularFaninMatch(output_transpose_node, 0, conv2d_node->GetName(), 0);
+  VerifyDataFormatAttributeMatch(conv2d_node, SRC_DATA_FORMAT);
 
   auto* output_node = graph_view.GetNode("Output");
   ASSERT_NE(output_node, nullptr);
   ASSERT_EQ(output_node->NumRegularFanins(), 1);
-  VerifyRegularFaninMatch(output_node, 0, output_transpose_node->GetName(), 0);
 }
 
 TEST_F(GenericLayoutOptimizerTest, PreserveFetch) {
@@ -308,7 +290,7 @@ TEST_F(GenericLayoutOptimizerTest, EmptyDevice) {
   TF_ASSERT_OK(status);
   auto* conv_node = graph_view.GetNode("Conv2D");
   ASSERT_NE(conv_node, nullptr);
-  VerifyDataFormatAttributeMatch(conv_node, DST_DATA_FORMAT);
+  VerifyDataFormatAttributeMatch(conv_node, SRC_DATA_FORMAT);
 }
 
 TEST_F(GenericLayoutOptimizerTest, GPUDevice) {
@@ -430,19 +412,7 @@ TEST_F(GenericLayoutOptimizerTest, Conv2DBackpropInputNonConstInputSizes) {
     auto* conv2d_backprop_node = graph_view.GetNode("Conv2DBackpropInput");
     ASSERT_NE(conv2d_backprop_node, nullptr);
     ASSERT_EQ(conv2d_backprop_node->NumRegularFanins(), 3);
-    VerifyRegularFaninMatch(
-        conv2d_backprop_node, 0,
-        absl::StrCat("Conv2DBackpropInput-0-DataFormatVecPermute",
-                     SRC_DATA_FORMAT, "To", DST_DATA_FORMAT,
-                     "-LayoutOptimizer"),
-        0);
-    auto* input_sizes_node = graph_view.GetNode(absl::StrCat(
-        "Conv2DBackpropInput-0-DataFormatVecPermute", SRC_DATA_FORMAT, "To",
-        DST_DATA_FORMAT, "-LayoutOptimizer"));
-    ASSERT_NE(input_sizes_node, nullptr);
-    EXPECT_EQ(input_sizes_node->GetOp(), "DataFormatVecPermute");
-    ASSERT_EQ(input_sizes_node->NumRegularFanins(), 1);
-    VerifyRegularFaninMatch(input_sizes_node, 0, "InputSizesIdentity", 0);
+    VerifyRegularFaninMatch(conv2d_backprop_node, 0, "InputSizesIdentity", 0);
   }
 }
 
@@ -688,6 +658,7 @@ TEST_F(GenericLayoutOptimizerTest, PreserveInputShapes) {
   item.graph = test::function::GDef({NDef(
       "x", "_Arg", {},
       {{"T", DT_FLOAT}, {"index", 0}, {"_output_shapes", output_shapes}})});
+  item.feed.emplace_back("x", Tensor(DT_FLOAT));
 
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
@@ -699,6 +670,8 @@ TEST_F(GenericLayoutOptimizerTest, PreserveInputShapes) {
   auto* arg = graph_view.GetNode("x");
   ASSERT_NE(arg, nullptr);
   EXPECT_TRUE(arg->HasAttr("_output_shapes"));
+  EXPECT_EQ(arg->GetAttr("_output_shapes")->DebugString(),
+            output_shapes.DebugString());
 }
 
 // TODO(yanzha): Add more complex Graph for test.

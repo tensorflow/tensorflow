@@ -46,7 +46,7 @@ OpSharding Tile(const Shape& tile_shape,
   for (int64_t dim : tile_assignment.dimensions()) {
     result.add_tile_assignment_dimensions(dim);
   }
-  for (uint32 device : tile_assignment) {
+  for (uint32_t device : tile_assignment) {
     result.add_tile_assignment_devices(device);
   }
   return result;

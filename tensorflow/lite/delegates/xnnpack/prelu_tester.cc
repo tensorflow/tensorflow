@@ -27,6 +27,7 @@ limitations under the License.
 #include "fp16.h"  // from @FP16
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/delegates/xnnpack/test_util.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -38,6 +39,10 @@ namespace tflite {
 namespace xnnpack {
 
 void PreluTester::Test(TfLiteDelegate* delegate) const {
+  if (INT8ChannelWiseWeights()) {
+    ASSERT_FALSE(SlopeShape().empty());
+  }
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto input_rng = std::bind(std::uniform_real_distribution<float>(-1.0f, 1.0f),
@@ -75,6 +80,10 @@ void PreluTester::Test(TfLiteDelegate* delegate) const {
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
+  if (weights_cache_ != nullptr) {
+    TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache_);
+  }
+
   float* default_input_data = default_interpreter->typed_input_tensor<float>(0);
   std::generate(default_input_data,
                 default_input_data + ComputeSize(InputShape()),
@@ -107,7 +116,7 @@ std::vector<char> PreluTester::CreateTfLiteModel() const {
   flatbuffers::FlatBufferBuilder builder;
   std::vector<flatbuffers::Offset<OperatorCode>> operator_codes{
       {CreateOperatorCode(builder, BuiltinOperator_PRELU)}};
-  if (FP16Weights() || INT8Weights()) {
+  if (FP16Weights() || INT8Weights() || INT8ChannelWiseWeights()) {
     operator_codes.emplace_back(
         CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
   } else if (SparseWeights()) {
@@ -119,7 +128,9 @@ std::vector<char> PreluTester::CreateTfLiteModel() const {
       CreateBuffer(builder, builder.CreateVector({})),
   }};
 
-  float slope_scale = 0;
+  std::vector<float> slope_scales;
+  std::vector<int64_t> slope_zero_points;
+  int32_t slope_quantized_dimension = 0;
   if (FP16Weights()) {
     std::vector<uint16_t> slope_data(ComputeSize(SlopeShape()));
     std::generate(slope_data.begin(), slope_data.end(),
@@ -135,14 +146,31 @@ std::vector<char> PreluTester::CreateTfLiteModel() const {
 
     if (INT8Weights()) {
       std::vector<int8_t> quantized_slope_data(slope_data.size());
-      slope_scale = GetInt8QuantizationScale(slope_data);
+      slope_scales.resize(1, GetInt8QuantizationScale(slope_data));
+      slope_zero_points.resize(1, 0);
       std::transform(
           slope_data.begin(), slope_data.end(), quantized_slope_data.begin(),
-          std::bind(QuantizeInt8, std::placeholders::_1, 0, slope_scale));
+          std::bind(QuantizeInt8, std::placeholders::_1, 0, slope_scales[0]));
       buffers.push_back(CreateBuffer(
-          builder, builder.CreateVector(
-                       reinterpret_cast<const uint8_t*>(slope_data.data()),
-                       sizeof(int8_t) * slope_data.size())));
+          builder,
+          builder.CreateVector(
+              reinterpret_cast<const uint8_t*>(quantized_slope_data.data()),
+              sizeof(int8_t) * quantized_slope_data.size())));
+    } else if (INT8ChannelWiseWeights()) {
+      std::vector<int8_t> quantized_slope_data(slope_data.size());
+      slope_quantized_dimension = static_cast<int32_t>(SlopeShape().size()) - 1;
+      const int32_t num_scales = SlopeShape()[slope_quantized_dimension];
+      slope_scales = GetInt8QuantizationScalePerChannel(
+          slope_data.data(), slope_quantized_dimension, SlopeShape());
+      slope_zero_points.resize(num_scales, 0);
+      QuantizeInt8PerChannel(slope_scales.data(), slope_zero_points.data(),
+                             slope_quantized_dimension, slope_data.data(),
+                             quantized_slope_data.data(), SlopeShape());
+      buffers.push_back(CreateBuffer(
+          builder,
+          builder.CreateVector(
+              reinterpret_cast<const uint8_t*>(quantized_slope_data.data()),
+              sizeof(int8_t) * quantized_slope_data.size())));
     } else {
       buffers.push_back(CreateBuffer(
           builder, builder.CreateVector(
@@ -158,14 +186,17 @@ std::vector<char> PreluTester::CreateTfLiteModel() const {
         builder,
         builder.CreateVector<int32_t>(SlopeShape().data(), SlopeShape().size()),
         TensorType_FLOAT16, /*buffer=*/1));
-  } else if (INT8Weights()) {
+  } else if (INT8Weights() || INT8ChannelWiseWeights()) {
     tensors.emplace_back(CreateTensor(
         builder,
         builder.CreateVector<int32_t>(SlopeShape().data(), SlopeShape().size()),
         TensorType_INT8, /*buffer=*/1, /*name=*/0,
-        CreateQuantizationParameters(builder, /*min=*/0, /*max=*/0,
-                                     builder.CreateVector<float>({slope_scale}),
-                                     builder.CreateVector<int64_t>({0}))));
+        CreateQuantizationParameters(
+            builder, /*min=*/0, /*max=*/0,
+            builder.CreateVector<float>(slope_scales),
+            builder.CreateVector<int64_t>(slope_zero_points),
+            /*details_type=*/QuantizationDetails_NONE,
+            /*details=*/0, slope_quantized_dimension)));
   } else if (SparseWeights()) {
     const int dims_count = SlopeShape().size();
     std::vector<flatbuffers::Offset<DimensionMetadata>> dim_metadata(
@@ -185,7 +216,7 @@ std::vector<char> PreluTester::CreateTfLiteModel() const {
         TensorType_FLOAT32, /*buffer=*/1, /*name=*/0, /*quantization=*/0,
         /*is_variable=*/false, /*sparsity=*/sparsity_param));
   }
-  if (FP16Weights() || INT8Weights()) {
+  if (FP16Weights() || INT8Weights() || INT8ChannelWiseWeights()) {
     const std::array<int32_t, 1> dequantize_inputs{{0}};
     const std::array<int32_t, 1> dequantize_outputs{{2}};
     operators.emplace_back(CreateOperator(
@@ -212,7 +243,11 @@ std::vector<char> PreluTester::CreateTfLiteModel() const {
       builder,
       builder.CreateVector<int32_t>(SlopeShape().data(), SlopeShape().size()),
       TensorType_FLOAT32,
-      /*buffer=*/(FP16Weights() || INT8Weights() || SparseWeights()) ? 0 : 1));
+      /*buffer=*/
+      (FP16Weights() || INT8Weights() || INT8ChannelWiseWeights() ||
+       SparseWeights())
+          ? 0
+          : 1));
   tensors.emplace_back(CreateTensor(
       builder,
       builder.CreateVector<int32_t>(OutputShape().data(), OutputShape().size()),

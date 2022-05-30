@@ -34,6 +34,7 @@ struct GPUOperationWithRefs {
   // otherwise, we will use ids for newly allocated tensors
   std::vector<int> input_ids;
   std::vector<int> output_ids;
+  std::string name;
 };
 
 struct GPUOperationsSubgraph {

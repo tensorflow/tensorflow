@@ -26,7 +26,7 @@ limitations under the License.
 //      tf_executor.yield %2 : tensor<i1>
 //  }
 //  %3:2 = tf_executor.island(%0) {
-//    %4 = "tf_device.parallel_execute"() ( {
+//    %4 = "tf_device.parallel_execute"() ({
 //      %5 = "tf.opB"() : () -> tensor<i1>
 //      tf_device.return %5 : tensor<i1>
 //    }, {
@@ -74,23 +74,16 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFDevice {
 namespace {
 
 struct ParallelExecuteToIslandsPass
-    : public PassWrapper<ParallelExecuteToIslandsPass, FunctionPass> {
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tf-parallel-execute-to-islands";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Lowers device parallel_execute to executor islands";
-  }
-  void runOnFunction() override;
+    : public TF::ParallelExecuteToIslandsPassBase<
+          ParallelExecuteToIslandsPass> {
+  void runOnOperation() override;
 };
 
 // Convert parallel_execute op to a set of islands where each region of
@@ -187,11 +180,11 @@ void CreateIslandsFromParallelExecute(
   island_op.erase();
 }
 
-void ParallelExecuteToIslandsPass::runOnFunction() {
+void ParallelExecuteToIslandsPass::runOnOperation() {
   // Find islands with a single `tf_device.parallel_execute` and create
   // individual islands per execute region of the parallel_execute.
   llvm::SmallVector<tf_executor::IslandOp, 4> parallel_execute_op_islands;
-  getFunction().walk([&](tf_executor::GraphOp graph_op) {
+  getOperation().walk([&](tf_executor::GraphOp graph_op) {
     for (auto island_op : graph_op.getOps<tf_executor::IslandOp>()) {
       if (!island_op.WrapsSingleOp()) continue;
 
@@ -208,11 +201,10 @@ void ParallelExecuteToIslandsPass::runOnFunction() {
 }
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateParallelExecuteToIslandsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateParallelExecuteToIslandsPass() {
   return std::make_unique<ParallelExecuteToIslandsPass>();
 }
-
-static PassRegistration<ParallelExecuteToIslandsPass> pass;
 
 }  // namespace TFDevice
 }  // namespace mlir

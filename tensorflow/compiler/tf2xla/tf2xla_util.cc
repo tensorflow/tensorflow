@@ -184,9 +184,7 @@ Status ReplaceArgUsageWithConstNode(
     VLOG(2) << "Replace usages of _Arg " << arg_index;
     NodeDef const_def = iter.second->def();
     const_def.set_name(g->NewName(const_def.name()));
-    Status s;
-    Node* const_node = g->AddNode(const_def, &s);
-    TF_RETURN_IF_ERROR(s);
+    TF_ASSIGN_OR_RETURN(Node * const_node, g->AddNode(const_def));
     Node* arg_node = arg_nodes[arg_index];
     TF_RETURN_IF_ERROR(
         ReplaceSrcOutputUsageWithNode(g, arg_node, 0, const_node));
@@ -484,9 +482,6 @@ StatusOr<bool> IsLoopInvariant(const FunctionBody* loop_body, int index,
                          /*fallback_fld=*/nullptr, &cache);
 }
 
-const char kTpuReplicateAttrName[] = "_tpu_replicate";
-const char kXlaOutsideCompilationAttrName[] = "_xla_outside_compilation";
-
 Status ValidateConfig(const tf2xla::Config& config) {
   std::set<string> names;
   for (const tf2xla::Feed& feed : config.feed()) {
@@ -562,9 +557,7 @@ Status AddPlaceholdersForFeeds(
       // Now build the node from the copied node def.
       Graph g(op_registry);
       g.set_versions(graph_def->versions());
-      Status status;
-      Node* feed_node = g.AddNode(gd.node(0), &status);
-      TF_RETURN_IF_ERROR(status);
+      TF_ASSIGN_OR_RETURN(Node * feed_node, g.AddNode(gd.node(0)));
 
       if (info.feed->id().output_index() < feed_node->num_outputs()) {
         info.data_type =
@@ -818,9 +811,7 @@ Status RewriteAssociatedFunction(
                          : node->assigned_device_name());
       NodeDef node_def;
       TF_RETURN_IF_ERROR(builder.Finalize(&node_def));
-      Status s;
-      Node* new_node = graph->AddNode(node_def, &s);
-      TF_RETURN_IF_ERROR(s);
+      TF_ASSIGN_OR_RETURN(Node * new_node, graph->AddNode(node_def));
       for (auto edge : node->in_edges()) {
         graph->AddEdge(edge->src(), edge->src_output(), new_node,
                        edge->dst_input());
@@ -852,6 +843,11 @@ Status RewriteAssociatedFunction(
       NameAttrList func;
       TF_RETURN_IF_ERROR(
           GetNodeAttr(node->attrs(), associated_function.attr_name(), &func));
+      // Save the original function name in case TFRT fallbacks to use
+      // TPUPartitionedCall op in the runtime.
+      if (node->type_string() == "TPUPartitionedCall") {
+        node->AddAttr("_orig_f", func.name());
+      }
       node->ClearAttr(associated_function.attr_name());
       func.set_name(rewritten_function_name);
       node->AddAttr(associated_function.attr_name(), func);
@@ -888,11 +884,7 @@ Status CachedFunctionHandles::ReleaseAllHandles() {
 
 StatusOr<Node*> ReplaceNode(Graph* g, Node* n, const NodeDef& node_def) {
   // Create the replacement node.
-  Status s;
-  Node* new_node = g->AddNode(node_def, &s);
-  if (!s.ok()) {
-    return s;
-  }
+  TF_ASSIGN_OR_RETURN(Node * new_node, g->AddNode(node_def));
 
   // Record original node's output edges and remove them first. This is to avoid
   // multiple producers for dst nodes' input.
@@ -936,9 +928,7 @@ StatusOr<Node*> BuildIdentityNode(Graph* graph, const string& node_name,
     ndef.set_device(*requested_device);
   }
   AddNodeAttr("T", dtype, &ndef);
-  Status s;
-  Node* id_node = graph->AddNode(ndef, &s);
-  TF_RETURN_IF_ERROR(s);
+  TF_ASSIGN_OR_RETURN(Node * id_node, graph->AddNode(ndef));
   return id_node;
 }
 
@@ -1099,11 +1089,10 @@ Status RewriteTensorListWithConstElement(Graph* g,
     if (edges_to_replace.empty()) {
       continue;
     }
-    Status s;
     const_input_nodedef.set_name(
         bwd_fbody->graph->NewName(const_input_nodedef.name()));
-    Node* const_node = bwd_fbody->graph->AddNode(const_input_nodedef, &s);
-    TF_RETURN_IF_ERROR(s);
+    TF_ASSIGN_OR_RETURN(Node * const_node,
+                        bwd_fbody->graph->AddNode(const_input_nodedef));
     for (const Edge* e : edges_to_replace) {
       Node* dst = e->dst();
       int dst_input = e->dst_input();

@@ -15,8 +15,11 @@
 """It lists ops of RaggedTensor for the interest of test."""
 
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_impl
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import string_ops
@@ -71,6 +74,15 @@ UNARY_FLOAT_OPS = [
     math_ops.square,
     math_ops.tan,
     math_ops.tanh,
+    nn_ops.elu,
+    nn_ops.gelu,
+    nn_ops.leaky_relu,
+    nn_ops.log_softmax,
+    nn_ops.relu,
+    nn_ops.relu6,
+    nn_ops.selu,
+    nn_ops.softsign,
+    nn_impl.swish,
     array_ops.ones_like,
     array_ops.ones_like_v2,
     array_ops.zeros_like,
@@ -101,6 +113,8 @@ UNARY_STRING_OPS = [
     string_ops.decode_base64,
     string_ops.encode_base64,
     string_ops.string_strip,
+    string_ops.string_lower,
+    string_ops.string_upper,
     string_ops.string_length,
     string_ops.string_length_v2,
     parsing_ops.decode_compressed,
@@ -109,9 +123,11 @@ BINARY_FLOAT_OPS = [
     math_ops.add,
     math_ops.atan2,
     math_ops.complex,
+    math_ops.div,
     math_ops.div_no_nan,
     math_ops.divide,
     math_ops.equal,
+    math_ops.floor_div,
     math_ops.floordiv,
     math_ops.floormod,
     math_ops.greater,
@@ -128,6 +144,10 @@ BINARY_FLOAT_OPS = [
     math_ops.squared_difference,
     math_ops.subtract,
     math_ops.truediv,
+    math_ops.xdivy,
+    math_ops.xlog1py,
+    math_ops.xlogy,
+    math_ops.zeta,
 ]
 BINARY_BOOL_OPS = [
     math_ops.logical_and,
@@ -146,4 +166,20 @@ BINARY_INT_OPS = [
     gen_bitwise_ops.right_shift,
     math_ops.truncatediv,
     math_ops.truncatemod,
+]
+BINARY_ASSERT_OPS = [
+    check_ops.assert_equal,
+    check_ops.assert_equal_v2,
+    check_ops.assert_near,
+    check_ops.assert_near_v2,
+    check_ops.assert_none_equal,
+    check_ops.assert_none_equal_v2,
+    check_ops.assert_greater,
+    check_ops.assert_greater_v2,
+    check_ops.assert_greater_equal,
+    check_ops.assert_greater_equal_v2,
+    check_ops.assert_less,
+    check_ops.assert_less_v2,
+    check_ops.assert_less_equal,
+    check_ops.assert_less_equal_v2,
 ]

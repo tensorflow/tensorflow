@@ -16,6 +16,7 @@ import contextlib
 
 import numpy as np
 
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -110,6 +111,14 @@ class LinearOperatorCirculantTestSelfAdjointOperator(
     # real, the matrix will not be real.
     return [dtypes.complex64, dtypes.complex128]
 
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    return [
+        "operator_matmul_with_same_type",
+        "operator_solve_with_same_type",
+    ]
+
   def operator_and_matrix(self,
                           shape_info,
                           dtype,
@@ -171,6 +180,21 @@ class LinearOperatorCirculantTestHermitianSpectrum(
   dtypes here though.  So in some cases the matrix will be complex but with
   zero imaginary part.
   """
+
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
+  def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
+
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    return [
+        "operator_matmul_with_same_type",
+        "operator_solve_with_same_type",
+    ]
 
   def operator_and_matrix(self,
                           shape_info,
@@ -256,6 +280,14 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
   @staticmethod
   def skip_these_tests():
     return ["cholesky", "eigvalsh"]
+
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    return [
+        "operator_matmul_with_same_type",
+        "operator_solve_with_same_type",
+    ]
 
   def operator_and_matrix(self,
                           shape_info,
@@ -489,6 +521,13 @@ class LinearOperatorCirculant2DTestHermitianSpectrum(
   zero imaginary part.
   """
 
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
+  def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
+
   @staticmethod
   def skip_these_tests():
     return ["cond"]
@@ -623,7 +662,7 @@ class LinearOperatorCirculant2DTestNonHermitianSpectrum(
           [matrix_tensor, matrix_t, imag_matrix])
 
       np.testing.assert_allclose(0, imag_matrix, atol=1e-6)
-      self.assertAllClose(matrix, matrix_transpose, atol=0)
+      self.assertAllClose(matrix, matrix_transpose, atol=1e-6)
 
   def test_real_spectrum_gives_self_adjoint_operator(self):
     with self.cached_session():

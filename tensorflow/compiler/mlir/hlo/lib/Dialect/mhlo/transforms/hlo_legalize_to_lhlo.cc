@@ -18,17 +18,21 @@ limitations under the License.
 #include <algorithm>
 #include <utility>
 
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/lhlo/transforms/map_hlo_to_lhlo_op.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/map_hlo_to_lhlo_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
+#include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Func/Transforms/FuncConversions.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
+#include "mlir/Dialect/Shape/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
-#include "mlir/Dialect/StandardOps/Transforms/FuncConversions.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
@@ -41,7 +45,6 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/Bufferize.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
@@ -63,14 +66,15 @@ Value InsertDynamicAlloc(Location loc, Value result, Value shape_operand,
 
   // Extract the required element out of the vector.
   SmallVector<Value, 4> dynamic_operands;
-  for (auto shape_element : llvm::enumerate(result_type.getShape())) {
+  for (const auto& shape_element : llvm::enumerate(result_type.getShape())) {
     if (shape_element.value() != ShapedType::kDynamicSize) continue;
-    Value index = rewriter->create<ConstantIndexOp>(loc, shape_element.index());
+    Value index =
+        rewriter->create<arith::ConstantIndexOp>(loc, shape_element.index());
     Value alloc_operand =
         rewriter->create<tensor::ExtractOp>(loc, shape_operand, index);
     if (!alloc_operand.getType().isIndex()) {
-      alloc_operand = rewriter->create<IndexCastOp>(loc, alloc_operand,
-                                                    rewriter->getIndexType());
+      alloc_operand = rewriter->create<arith::IndexCastOp>(
+          loc, rewriter->getIndexType(), alloc_operand);
     }
     dynamic_operands.push_back(alloc_operand);
   }
@@ -99,7 +103,7 @@ LogicalResult ConvertResults(Operation* op, SmallVectorImpl<Value>& results,
                              ConversionPatternRewriter& rewriter) {
   size_t num_operands = results.size();
   SmallVector<Value, 2> tensor_operands;
-  for (auto result : llvm::enumerate(op->getResults())) {
+  for (const auto& result : llvm::enumerate(op->getResults())) {
     RankedTensorType resultType =
         result.value().getType().dyn_cast<RankedTensorType>();
     if (!resultType) return failure();
@@ -115,7 +119,7 @@ LogicalResult ConvertResults(Operation* op, SmallVectorImpl<Value>& results,
       for (auto operand : ArrayRef<Value>(results).take_front(num_operands)) {
         auto operand_type = operand.getType().dyn_cast<MemRefType>();
         if (!operand_type) return failure();
-        tensor_operands.push_back(rewriter.create<memref::TensorLoadOp>(
+        tensor_operands.push_back(rewriter.create<bufferization::ToTensorOp>(
             op->getLoc(),
             RankedTensorType::get(operand_type.getShape(),
                                   operand_type.getElementType()),
@@ -139,15 +143,15 @@ class HloToLhloOpConverter : public BaseOpConversion<HloOpTy> {
  public:
   using BaseOpConversion<HloOpTy>::BaseOpConversion;
   LogicalResult matchAndRewrite(
-      HloOpTy hloOp, ArrayRef<Value> operands,
+      HloOpTy hloOp, typename HloOpTy::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     Operation* op = hloOp.getOperation();
-    SmallVector<Value, 4> buffer_args(operands.begin(), operands.end());
+    SmallVector<Value, 4> buffer_args(adaptor.getOperands());
     if (failed(ConvertResults(op, buffer_args, rewriter))) return failure();
     rewriter.create<mhlo::HloToLhloOp<HloOpTy>>(op->getLoc(), llvm::None,
                                                 buffer_args, op->getAttrs());
-    rewriter.replaceOp(
-        op, llvm::makeArrayRef(buffer_args).drop_front(operands.size()));
+    rewriter.replaceOp(op, llvm::makeArrayRef(buffer_args)
+                               .drop_front(adaptor.getOperands().size()));
     return success();
   }
 };
@@ -162,10 +166,10 @@ class HloToLhloOpConverter<mhlo::DotOp> : public BaseOpConversion<mhlo::DotOp> {
  public:
   using BaseOpConversion<mhlo::DotOp>::BaseOpConversion;
   LogicalResult matchAndRewrite(
-      mhlo::DotOp hloOp, ArrayRef<Value> operands,
+      mhlo::DotOp hloOp, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     Operation* op = hloOp.getOperation();
-    SmallVector<Value, 2> buffer_args(operands.begin(), operands.end());
+    SmallVector<Value, 2> buffer_args(adaptor.getOperands());
     if (failed(ConvertResults(op, buffer_args, rewriter))) return failure();
 
     auto dotOp = rewriter.create<lmhlo::DotOp>(op->getLoc(), llvm::None,
@@ -176,7 +180,8 @@ class HloToLhloOpConverter<mhlo::DotOp> : public BaseOpConversion<mhlo::DotOp> {
         /*rhsBatchingDimensions=*/{}, /*lhsContractingDimensions=*/{1},
         /*rhsContractingDimensions=*/{0});
     dotOp.dot_dimension_numbersAttr(dimension_numbers);
-    rewriter.replaceOp(op, ArrayRef<Value>(buffer_args).slice(operands.size()));
+    rewriter.replaceOp(
+        op, ArrayRef<Value>(buffer_args).slice(adaptor.getOperands().size()));
     return success();
   }
 };
@@ -187,22 +192,24 @@ struct HloToLhloCustomCallOpConverter
   using BaseOpConversion<mhlo::CustomCallOp>::BaseOpConversion;
 
   LogicalResult matchAndRewrite(
-      mhlo::CustomCallOp hloOp, ArrayRef<Value> operands,
+      mhlo::CustomCallOp hloOp, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     Operation* op = hloOp.getOperation();
-    SmallVector<Value, 2> buffer_args(operands.begin(), operands.end());
+    SmallVector<Value, 2> buffer_args(adaptor.getOperands());
     if (failed(ConvertResults(op, buffer_args, rewriter))) return failure();
 
     auto lhloOp = rewriter.create<lmhlo::CustomCallOp>(
         op->getLoc(), llvm::None, buffer_args, op->getAttrs());
     // Setup AttrSizedOperandSegments attribute to indicate number of operands
     // for args and outputs.
-    const int32_t segments[2] = {static_cast<int32_t>(operands.size()),
-                                 static_cast<int32_t>(op->getNumResults())};
+    const int32_t segments[2] = {
+        static_cast<int32_t>(adaptor.getOperands().size()),
+        static_cast<int32_t>(op->getNumResults())};
     lhloOp->setAttr(lhloOp.getOperandSegmentSizeAttr(),
                     rewriter.getI32VectorAttr(segments));
 
-    rewriter.replaceOp(op, ArrayRef<Value>(buffer_args).slice(operands.size()));
+    rewriter.replaceOp(
+        op, ArrayRef<Value>(buffer_args).slice(adaptor.getOperands().size()));
     return success();
   }
 };
@@ -211,7 +218,7 @@ struct HloToLhloDotGeneralOpConverter
     : public BaseOpConversion<mhlo::DotGeneralOp> {
   using BaseOpConversion<mhlo::DotGeneralOp>::BaseOpConversion;
   LogicalResult matchAndRewrite(
-      mhlo::DotGeneralOp dotGeneralOp, ArrayRef<Value> operands,
+      mhlo::DotGeneralOp dotGeneralOp, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     Operation* op = dotGeneralOp.getOperation();
 
@@ -222,16 +229,17 @@ struct HloToLhloDotGeneralOpConverter
 
     // The third buffer argument will be filled with what used to be the return
     // type of the DotGeneral.
-    if (operands.size() != 2) return failure();
-    std::array<Value, 3> bufferArgs = {operands[0], operands[1], {}};
+    if (adaptor.getOperands().size() != 2) return failure();
+    std::array<Value, 3> bufferArgs = {
+        adaptor.getOperands()[0], adaptor.getOperands()[1], {}};
 
     if (resultType.hasStaticShape()) {
       bufferArgs[2] = InsertAlloc(op->getLoc(), result, &rewriter);
     } else {
       SmallVector<Value, 1> results_shape;
       auto shape_type_op = dyn_cast<InferShapedTypeOpInterface>(op);
-      if (failed(shape_type_op.reifyReturnTypeShapes(rewriter, operands,
-                                                     results_shape)))
+      if (failed(shape_type_op.reifyReturnTypeShapes(
+              rewriter, adaptor.getOperands(), results_shape)))
         return failure();
 
       bufferArgs[2] = InsertDynamicAlloc(op->getLoc(), result,
@@ -245,57 +253,65 @@ struct HloToLhloDotGeneralOpConverter
   }
 };
 
-struct HloToLhloReduceOpConverter : public BaseOpConversion<mhlo::ReduceOp> {
+template <typename HloOpTy>
+struct HloToLhloReduceLikeOpConverter : public BaseOpConversion<HloOpTy> {
  public:
-  using BaseOpConversion<mhlo::ReduceOp>::BaseOpConversion;
+  using BaseOpConversion<HloOpTy>::BaseOpConversion;
 
   LogicalResult matchAndRewrite(
-      mhlo::ReduceOp op, ArrayRef<Value> operands,
+      HloOpTy hloOp, typename HloOpTy::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
-    auto loc = op.getLoc();
-    if (!llvm::hasSingleElement(op.body())) {
-      return op.emitOpError()
+    Operation* op = hloOp.getOperation();
+    auto loc = op->getLoc();
+    if (!llvm::hasSingleElement(hloOp.body())) {
+      return op->emitOpError()
              << "tensor to buffer conversion expects a single block "
                 "in the region containing the operation";
     }
-    SmallVector<Value, 4> buffer_args(operands.begin(), operands.end());
+    SmallVector<Value, 4> buffer_args(adaptor.getOperands());
     if (failed(ConvertResults(op, buffer_args, rewriter))) return failure();
-    auto new_op = rewriter.create<lmhlo::ReduceOp>(loc, llvm::None, buffer_args,
-                                                   op->getAttrs());
+    auto new_op = rewriter.create<mhlo::HloToLhloOp<HloOpTy>>(
+        loc, llvm::None, buffer_args, op->getAttrs());
 
     // Copy over the operations inside the region.
-    rewriter.inlineRegionBefore(op.body(), new_op.body(), new_op.body().end());
+    rewriter.inlineRegionBefore(hloOp.body(), new_op.body(),
+                                new_op.body().end());
 
     // Convert the region signature to memref and add extra result.
     auto& entry_block = new_op.body().front();
-    TypeConverter::SignatureConversion sig_conversion(operands.size());
+    TypeConverter::SignatureConversion sig_conversion(
+        adaptor.getOperands().size());
     for (auto arg : entry_block.getArguments()) {
-      auto old_type = arg.getType().cast<TensorType>();
+      auto old_type = arg.getType().template cast<TensorType>();
       auto new_type =
           MemRefType::get(old_type.getShape(), old_type.getElementType());
       sig_conversion.addInputs(arg.getArgNumber(), new_type);
     }
     auto return_op = cast<mhlo::ReturnOp>(entry_block.getTerminator());
-    if (auto tuple_ty =
-            return_op.results().front().getType().dyn_cast<TupleType>()) {
-      auto tuple_op = return_op.getODSOperands(0).front().getDefiningOp();
+    if (auto tuple_ty = return_op.results()
+                            .front()
+                            .getType()
+                            .template dyn_cast<TupleType>()) {
+      auto* tuple_op = return_op.getODSOperands(0).front().getDefiningOp();
       return_op.getOperation()->dropAllReferences();
       rewriter.eraseOp(tuple_op);
       return_op.getOperation()->setOperands(tuple_op->getOperands());
       for (auto ty : tuple_ty) {
-        auto tensor_ty = ty.cast<TensorType>();
+        auto tensor_ty = ty.template cast<TensorType>();
         sig_conversion.addInputs(
             MemRefType::get(tensor_ty.getShape(), tensor_ty.getElementType()));
       }
     } else {
-      auto result_type =
-          return_op.results().front().getType().cast<TensorType>();
-      sig_conversion.addInputs({MemRefType::get(result_type.getShape(),
-                                                result_type.getElementType())});
+      for (auto result : return_op.results()) {
+        auto result_type = result.getType().template cast<TensorType>();
+        sig_conversion.addInputs({MemRefType::get(
+            result_type.getShape(), result_type.getElementType())});
+      }
     }
     rewriter.applySignatureConversion(&new_op.body(), sig_conversion);
 
-    rewriter.replaceOp(op, ArrayRef<Value>(buffer_args).slice(operands.size()));
+    rewriter.replaceOp(
+        op, ArrayRef<Value>(buffer_args).slice(adaptor.getOperands().size()));
 
     return success();
   }
@@ -307,42 +323,27 @@ struct HloToLhloReturnOpConverter : public BaseOpConversion<mhlo::ReturnOp> {
   using BaseOpConversion<mhlo::ReturnOp>::BaseOpConversion;
 
   LogicalResult matchAndRewrite(
-      mhlo::ReturnOp op, ArrayRef<Value> operands,
+      mhlo::ReturnOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = op.getLoc();
     auto& entry_block = op->getParentRegion()->front();
     auto num_arguments = entry_block.getNumArguments();
-    if (operands.size() > num_arguments) {
+    if (adaptor.getOperands().size() > num_arguments) {
       return op.emitError(
           "The number of operands that need Copy operations is more "
           "than the number of target function arguments.");
     }
 
     // The index of the first output block argument.
-    auto dest_arg_idx = num_arguments - operands.size();
+    auto dest_arg_idx = num_arguments - adaptor.getOperands().size();
 
     // Create a lmhlo.copy for each operand of mhlo.return.
-    for (Value operand : operands) {
+    for (Value operand : adaptor.getOperands()) {
       rewriter.create<lmhlo::CopyOp>(loc, operand,
                                      entry_block.getArgument(dest_arg_idx));
       ++dest_arg_idx;
     }
     rewriter.replaceOpWithNewOp<lmhlo::TerminatorOp>(op);
-    return success();
-  }
-};
-
-// TODO(b/175789537) Remove this pattern.
-class HloToLhloTensorStoreOpLegacyConverter
-    : public BaseOpConversion<mlir::memref::TensorStoreOp> {
- public:
-  using BaseOpConversion<mlir::memref::TensorStoreOp>::BaseOpConversion;
-
-  LogicalResult matchAndRewrite(
-      mlir::memref::TensorStoreOp op, ArrayRef<Value> operands,
-      ConversionPatternRewriter& rewriter) const final {
-    rewriter.replaceOpWithNewOp<lmhlo::CopyOp>(op, llvm::None, operands.front(),
-                                               operands.back());
     return success();
   }
 };
@@ -357,11 +358,11 @@ class HloToLhloTensorStoreOpLegacyConverter
 //              %arg2: memref<2x2xf32>,
 //              %arg3: memref<2x2xf32>) {
 //   "lmhlo.fusion"() ({
-//     %0 = tensor_load %arg1 : memref<2x2xf32>
-//     %1 = tensor_load %arg2 : memref<2x2xf32>
+//     %0 = bufferization.to_tensor %arg1 : memref<2x2xf32>
+//     %1 = bufferization.to_tensor %arg2 : memref<2x2xf32>
 //     %2 = "mhlo.add"(%0, %1) :
 //         (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-//     %3 = tensor_load %arg0 : memref<2x2xf32>
+//     %3 = bufferization.to_tensor %arg0 : memref<2x2xf32>
 //     %4 = "mhlo.multiply"(%2, %3) :
 //         (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
 //     tensor_store %4, %arg3 : memref<2x2xf32>
@@ -375,7 +376,7 @@ class HloToLhloTensorStoreOpLegacyConverter
 //              %arg1: memref<2x2xf32>,
 //              %arg2: memref<2x2xf32>,
 //              %arg3: memref<2x2xf32>) {
-//   "lmhlo.fusion"() ( {
+//   "lmhlo.fusion"() ({
 //     %0 = alloc() : memref<2x2xf32>
 //     "lmhlo.add"(%arg1, %arg2, %0) :
 //         (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
@@ -415,60 +416,70 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
   using HloLegalizeToLhloPassBase<HloLegalizeToLhlo>::HloLegalizeToLhloPassBase;
 
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<lmhlo::LmhloDialect, memref::MemRefDialect,
-                    shape::ShapeDialect>();
+    registry.insert<bufferization::BufferizationDialect, lmhlo::LmhloDialect,
+                    memref::MemRefDialect, shape::ShapeDialect>();
+    shape::registerBufferizableOpInterfaceExternalModels(registry);
   }
 
  public:
   HloLegalizeToLhlo() = default;
 
+  LogicalResult runOpInterfaceBufferization() {
+    // Bufferize ops using BufferizableOpInterface. This could be switched to
+    // One-Shot Bufferize in the future.
+    RewritePatternSet patterns(&getContext());
+    bufferization::BufferizationOptions options =
+        bufferization::getPartialBufferizationOptions();
+    // TODO(springerm): Add dialects to this filter as more and more dialects
+    // will be migrated to BufferizableOpInterface-based bufferization.
+    options.allowDialectInFilter<shape::ShapeDialect>();
+    return bufferization::bufferizeOp(getOperation(), options);
+  }
+
   void runOnOperation() override {
+    if (failed(runOpInterfaceBufferization())) {
+      signalPassFailure();
+      return;
+    }
+
     auto& context = getContext();
-    OwningRewritePatternList patterns(&context);
+    RewritePatternSet patterns(&context);
     ConversionTarget target(context);
-    target.addLegalDialect<lmhlo::LmhloDialect>();
-    target.addLegalDialect<StandardOpsDialect>();
-    target.addLegalDialect<memref::MemRefDialect>();
-    target.addLegalDialect<shape::ShapeDialect>();
-    target.addLegalDialect<tensor::TensorDialect>();
+    target.addLegalDialect<
+        arith::ArithmeticDialect, bufferization::BufferizationDialect,
+        lmhlo::LmhloDialect, memref::MemRefDialect, shape::ShapeDialect,
+        func::FuncDialect, tensor::TensorDialect>();
     target.addIllegalDialect<mhlo::MhloDialect>();
-    // Declare tensor_store illegal. tensor_load may be used to reify output
-    // shape computation during dialect conversion and will be handled later.
-    target.addIllegalOp<mlir::memref::TensorStoreOp>();
-    // buffer_cast is illegal if it has uses.
-    // TODO(b/175670649) Make buffer_cast illegal.
-    target.addDynamicallyLegalOp<mlir::memref::BufferCastOp>(
+    // bufferization.to_memref is illegal if it has uses.
+    // TODO(b/175670649) Make bufferization.to_memref illegal.
+    target.addDynamicallyLegalOp<mlir::bufferization::ToMemrefOp>(
         [](auto op) { return op->use_empty(); });
 
-    BufferizeTypeConverter converter;
+    bufferization::BufferizeTypeConverter converter;
     auto isMemRefType = [](Type type) { return type.isa<BaseMemRefType>(); };
-    target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
-      return converter.isSignatureLegal(op.getType()) &&
+    target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
+      return converter.isSignatureLegal(op.getFunctionType()) &&
              converter.isLegal(&op.getBody());
     });
-    target.addDynamicallyLegalOp<CallOp>([&](CallOp op) {
+    target.addDynamicallyLegalOp<func::CallOp>([&](func::CallOp op) {
       return std::all_of(op.operand_type_begin(), op.operand_type_end(),
                          isMemRefType) &&
              std::all_of(op.result_type_begin(), op.result_type_end(),
                          isMemRefType);
     });
-    target.addDynamicallyLegalOp<mlir::ReturnOp>([&](mlir::ReturnOp op) {
-      return std::all_of(op.operand_type_begin(), op.operand_type_end(),
-                         isMemRefType);
-    });
+    target.addDynamicallyLegalOp<mlir::func::ReturnOp>(
+        [&](mlir::func::ReturnOp op) {
+          return std::all_of(op.operand_type_begin(), op.operand_type_end(),
+                             isMemRefType);
+        });
 
     populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
-    populateFuncOpTypeConversionPattern(patterns, converter);
+    populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
+                                                                   converter);
     populateCallOpTypeConversionPattern(patterns, converter);
     populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
     populateReturnOpTypeConversionPattern(patterns, converter);
     populateEliminateBufferizeMaterializationsPatterns(converter, patterns);
-
-    populateShapeStructuralTypeConversionsAndLegality(converter, patterns,
-                                                      target);
-
-    // TODO(b/175789537) Remove this pattern.
-    patterns.insert<HloToLhloTensorStoreOpLegacyConverter>(&context);
 
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
@@ -479,10 +490,10 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
 
 // Simply lowers all mhlo ops to their lmhlo counterparts.
 void populateDynamicHLOToLHLOConversionPattern(
-    MLIRContext* context, BufferizeTypeConverter* converter,
-    OwningRewritePatternList* patterns) {
+    MLIRContext* context, bufferization::BufferizeTypeConverter* converter,
+    RewritePatternSet* patterns) {
   // clang-format off
-  patterns->insert<HloToLhloOpConverter<mhlo::DynamicBroadcastInDimOp>,
+  patterns->add<HloToLhloOpConverter<mhlo::DynamicBroadcastInDimOp>,
                    HloToLhloOpConverter<mhlo::DynamicGatherOp>,
                    HloToLhloOpConverter<mhlo::DynamicIotaOp>,
                    HloToLhloOpConverter<mhlo::DynamicPadOp>,
@@ -492,13 +503,13 @@ void populateDynamicHLOToLHLOConversionPattern(
   // clang-format on
 }
 
-void populateHLOToLHLOConversionPattern(MLIRContext* context,
-                                        BufferizeTypeConverter* converter,
-                                        OwningRewritePatternList* patterns) {
+void populateHLOToLHLOConversionPattern(
+    MLIRContext* context, bufferization::BufferizeTypeConverter* converter,
+    RewritePatternSet* patterns) {
   populateDynamicHLOToLHLOConversionPattern(context, converter, patterns);
 
   // clang-format off
-  patterns->insert<
+  patterns->add<
       HloToLhloCustomCallOpConverter,
       HloToLhloDotGeneralOpConverter,
       HloToLhloOpConverter<mhlo::AbsOp>,
@@ -507,6 +518,7 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
       HloToLhloOpConverter<mhlo::Atan2Op>,
       HloToLhloOpConverter<mhlo::BroadcastInDimOp>,
       HloToLhloOpConverter<mhlo::CeilOp>,
+      HloToLhloOpConverter<mhlo::ClampOp>,
       HloToLhloOpConverter<mhlo::CompareOp>,
       HloToLhloOpConverter<mhlo::ComplexOp>,
       HloToLhloOpConverter<mhlo::ConcatenateOp>,
@@ -549,7 +561,8 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
       HloToLhloOpConverter<mhlo::TanhOp>,
       HloToLhloOpConverter<mhlo::TransposeOp>,
       HloToLhloOpConverter<mhlo::XorOp>,
-      HloToLhloReduceOpConverter,
+      HloToLhloReduceLikeOpConverter<mhlo::ReduceOp>,
+      HloToLhloReduceLikeOpConverter<mhlo::ReduceWindowOp>,
       HloToLhloReturnOpConverter
   >(*converter, context);
   // clang-format on

@@ -21,9 +21,9 @@ include(OverridableFetchContent)
 
 OverridableFetchContent_Declare(
   eigen
-  GIT_REPOSITORY https://gitlab.com/libeigen/eigen
+  GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
   # Sync with tensorflow/third_party/eigen3/workspace.bzl
-  GIT_TAG 7792b1e909a98703181aecb8810b4b654004c25d
+  GIT_TAG b02c384ef4e8eba7b8bdef16f9dc6f8f4d6a6b2b
   # It's not currently (cmake 3.17) possible to shallow clone with a GIT TAG
   # as cmake attempts to git checkout the commit hash after the clone
   # which doesn't work as it's a shallow clone hence a different commit hash.
@@ -94,7 +94,7 @@ set(EIGEN_TEST_NO_EXPLICIT_VECTORIZATION OFF CACHE BOOL "Disable vectorization")
 set(EIGEN_TEST_X87 OFF CACHE BOOL "Disable X87 instructions test")
 set(EIGEN_TEST_32BIT OFF CACHE BOOL "Disable 32-bit instructions test")
 set(EIGEN_TEST_NO_EXPLICIT_ALIGNMENT OFF CACHE BOOL "Disable alignment test")
-set(EIGEN_TEST_NO_EXCEPTIONS OFF CACHE BOOL "Disable alignment test")
+set(EIGEN_TEST_NO_EXCEPTIONS OFF CACHE BOOL "Disable exceptions test")
 set(EIGEN_TEST_SYCL OFF CACHE BOOL "Disable Sycl test")
 set(EIGEN_SYCL_TRISYCL OFF CACHE BOOL "Disable triSYCL test")
 # Make sure only MPL2.0 or more permissively licensed code is included.

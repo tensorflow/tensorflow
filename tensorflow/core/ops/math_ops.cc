@@ -187,6 +187,8 @@ REGISTER_OP("Cast")
     .Attr("SrcT: type")
     .Attr("DstT: type")
     .Attr("Truncate: bool = false")
+    .SetTypeConstructor(full_type::NoOp())
+    .SetForwardTypeFn(full_type::KeepExisting())
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("_HostCast")
@@ -195,6 +197,8 @@ REGISTER_OP("_HostCast")
     .Attr("SrcT: type")
     .Attr("DstT: type")
     .Attr("Truncate: bool = false")
+    .SetTypeConstructor(full_type::NoOp())
+    .SetForwardTypeFn(full_type::KeepExisting())
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Cast x of type SrcT to y of DstT.
@@ -226,6 +230,14 @@ REGISTER_OP("ComplexAbs")
           "complex64, complex128}")                                        \
       .SetShapeFn(shape_inference::UnchangedShape)
 
+#define UNARY_UNSIGNED()                                                   \
+  Input("x: T")                                                            \
+      .Output("y: T")                                                      \
+      .Attr(                                                               \
+          "T: {bfloat16, half, float, double, int8, int16, int32, int64, " \
+          "uint8, uint16, uint32, uint64, complex64, complex128}")         \
+      .SetShapeFn(shape_inference::UnchangedShape)
+
 #define UNARY_REAL()                              \
   Input("x: T")                                   \
       .Output("y: T")                             \
@@ -255,7 +267,7 @@ REGISTER_OP("Reciprocal").UNARY();
 
 REGISTER_OP("ReciprocalGrad").UNARY_GRADIENT_COMPLEX();
 
-REGISTER_OP("Square").UNARY();
+REGISTER_OP("Square").UNARY_UNSIGNED();
 
 REGISTER_OP("Sqrt").UNARY_COMPLEX();
 
@@ -972,7 +984,7 @@ REGISTER_OP("_FusedMatMul")
     .Output("product: T")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {bfloat16, half, float}")
     .Attr("num_args: int >= 0")
     .Attr("fused_ops: list(string) = []")
     // Attributes for the FusedBatchNorm ----------- //
@@ -993,7 +1005,7 @@ the output of each fused_op must be of type T.
 Currently supported fused_op combinations are: ["BiasAdd"] and ["BiasAdd",A],
 where A is one of {"Elu","Relu","Relu6"}.
 
-* The first input to BiasAdd is the Conv2D result, and the additional BiasAdd
+* The first input to BiasAdd is the MatMul result, and the additional BiasAdd
 input is specified by `args`.
 * If there is an op A specified, the output of the BiasAdd is the input to op A,
 and op A produces the _FusedConv2D output. Otherwise, the BiasAdd produces the
@@ -1125,8 +1137,8 @@ REGISTER_OP("ArgMax")
     .Input("dimension: Tidx")
     .Output("output: output_type")
     .Attr("T: {numbertype, bool}")
-    .Attr("Tidx: {int32, int64} = DT_INT32")
-    .Attr("output_type: {int32, int64} = DT_INT64")
+    .Attr("Tidx: {int16, int32, int64} = DT_INT32")
+    .Attr("output_type: {int16, uint16, int32, int64} = DT_INT64")
     .SetShapeFn(ArgOpShape);
 
 REGISTER_OP("ArgMin")
@@ -1475,12 +1487,20 @@ Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
     return errors::InvalidArgument("Requires delta != 0");
   }
 
-  auto size = (std::is_integral<T>::value
-                   ? ((Eigen::numext::abs(limit - start) +
-                       Eigen::numext::abs(delta) - T(1)) /
-                      Eigen::numext::abs(delta))
-                   : (Eigen::numext::ceil(
-                         Eigen::numext::abs((limit - start) / delta))));
+  int64_t size;
+  if (std::is_integral<T>::value) {
+    size = Eigen::divup(static_cast<int64_t>(Eigen::numext::abs(limit - start)),
+                        static_cast<int64_t>(Eigen::numext::abs(delta)));
+  } else {
+    auto size_auto =
+        Eigen::numext::ceil(Eigen::numext::abs((limit - start) / delta));
+    if (size_auto > std::numeric_limits<int64_t>::max()) {
+      return errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
+                                     std::numeric_limits<int64_t>::max());
+    }
+    size = static_cast<int64_t>(size_auto);
+  }
+
   c->set_output(0, c->Vector(static_cast<int64_t>(size)));
   return Status::OK();
 }
@@ -1494,7 +1514,8 @@ REGISTER_OP("Range")
     .Output("output: Tidx")
     .Attr(
         "Tidx: "
-        "{bfloat16, half, float, double, int8, int16, int32, int64, uint32} = "
+        "{bfloat16, half, float, double, int8, int16, int32, int64, uint16, "
+        "uint32} = "
         "DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
@@ -1521,6 +1542,8 @@ REGISTER_OP("Range")
         return RangeSize<int8>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_INT64) {
         return RangeSize<int64_t>(start_t, limit_t, delta_t, c);
+      } else if (dtype == DT_UINT16) {
+        return RangeSize<uint16>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_UINT32) {
         return RangeSize<uint32>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_FLOAT) {
@@ -1691,6 +1714,11 @@ REGISTER_OP("Bincount")
         return Status::OK();
       }
 
+      if (size_tensor->dims() != 0) {
+        return errors::InvalidArgument("Shape must be rank 0 but is rank ",
+                                       size_tensor->dims());
+      }
+
       // Return `[size]` shape if size is known.
       int32_t size_val = size_tensor->scalar<int32>()();
       if (size_val < 0) {
@@ -1721,6 +1749,10 @@ REGISTER_OP("DenseBincount")
         // Return unknown shape if size is not known.
         c->set_output(0, c->UnknownShape());
         return Status::OK();
+      }
+      if (size_tensor->dims() != 0) {
+        return errors::InvalidArgument("Shape must be rank 0 but is rank ",
+                                       size_tensor->dims());
       }
 
       int64_t size_val;
@@ -1762,6 +1794,10 @@ REGISTER_OP("SparseBincount")
         // Return unknown shape if size is not known.
         c->set_output(0, c->UnknownShape());
         return Status::OK();
+      }
+      if (size_tensor->dims() != 0) {
+        return errors::InvalidArgument("Shape must be rank 0 but is rank ",
+                                       size_tensor->dims());
       }
 
       int64_t size_val;

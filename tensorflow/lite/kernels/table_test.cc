@@ -118,7 +118,7 @@ void TableWithExpLUTToInt8Test() {
   m.QuantizeAndPopulate<InputT>(m.input(),
                                 {-0.5f, -0.2f, 0.0f, 0.1f, 0.3f, 0.8f});
   m.PopulateTensor<TableT>(m.table(), table);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<OutputT>(),
               ElementsAreArray(ArrayFloatNear(
                   {std::exp(-0.5f), std::exp(-0.2f), std::exp(0.0f),
@@ -163,7 +163,7 @@ void TableWithExpLUTToInt16Test() {
   m.QuantizeAndPopulate<InputT>(m.input(),
                                 {-0.5f, -0.2f, 0.0f, 0.1f, 0.3f, 0.8f});
   m.PopulateTensor<TableT>(m.table(), table);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<OutputT>(),
               ElementsAreArray(ArrayFloatNear(
                   {std::exp(-0.5f), std::exp(-0.2f), std::exp(0.0f),

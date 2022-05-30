@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_TEXTURE2D_DESC_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_TEXTURE2D_DESC_H_
 
+#include <string>
+
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
@@ -28,8 +30,8 @@ struct Texture2DDescriptor : public GPUObjectDescriptor {
   DataType element_type;
   bool normalized = false;   // used with INT data types, if normalized, we read
                              // in kernel float data.
-  DataType normalized_type;  // can be FLOAT32 or FLOAT16, using with normalized
-                             // = true
+  DataType normalized_type = DataType::UNKNOWN;  // can be FLOAT32 or FLOAT16,
+                                                 // using with normalized = true
 
   // optional
   int2 size = int2(0, 0);
@@ -53,6 +55,7 @@ struct Texture2DDescriptor : public GPUObjectDescriptor {
                                    std::string* result) const;
 
   void Release() override;
+  uint64_t GetSizeInBytes() const override { return data.size(); };
 };
 
 }  // namespace gpu

@@ -37,7 +37,7 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -45,7 +45,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -55,7 +54,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
@@ -65,6 +64,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -72,7 +72,6 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 namespace {
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_helpers.inc"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_canonicalize.inc"
 }  // namespace
 
@@ -83,13 +82,14 @@ namespace {
 // This verifies that `_XlaHostComputeMlirOp` has a well-formed
 // `host_mlir_module` attribute.
 // For other attributes, there is no additional verification beyond the default.
-static LogicalResult Verify(_XlaHostComputeMlirOp op) {
+LogicalResult _XlaHostComputeMlirOp::verify() {
+  _XlaHostComputeMlirOp op = *this;
   // Extract the module and function.
   StringRef host_module = op.host_mlir_module();
 
   if (host_module.empty()) return success();
 
-  mlir::OwningModuleRef module_for_func;
+  mlir::OwningOpRef<mlir::ModuleOp> module_for_func;
   tensorflow::Status status = tensorflow::DeserializeMlirModule(
       host_module.str(), op->getContext(), &module_for_func);
   if (!status.ok()) {
@@ -98,21 +98,21 @@ static LogicalResult Verify(_XlaHostComputeMlirOp op) {
            << status.error_message();
   }
 
-  FuncOp func = module_for_func->lookupSymbol<FuncOp>("host_func");
+  func::FuncOp func = module_for_func->lookupSymbol<func::FuncOp>("host_func");
   if (!func)
     return op.emitError()
            << "serialized module in attribute 'host_mlir_module' does not "
               "contain 'host_func' function.";
 
-  if (op->getNumOperands() != func.getType().getNumInputs())
+  if (op->getNumOperands() != func.getFunctionType().getNumInputs())
     return op.emitError()
-           << "'host_func' has " << func.getType().getNumInputs()
+           << "'host_func' has " << func.getFunctionType().getNumInputs()
            << " inputs and '_XlaHostComputeMlir' has " << op->getNumOperands()
            << " operands.  Number of operands/inputs should be the same.";
 
-  if (op->getNumResults() != func.getType().getNumResults())
+  if (op->getNumResults() != func.getFunctionType().getNumResults())
     return op.emitError() << "'host_func' has "
-                          << func.getType().getNumResults()
+                          << func.getFunctionType().getNumResults()
                           << " results and '_XlaHostComputeMlir' has "
                           << op->getNumResults()
                           << " results.  Number of results should be the same.";
@@ -120,12 +120,59 @@ static LogicalResult Verify(_XlaHostComputeMlirOp op) {
   return success();
 }
 
-FuncOp _XlaHostComputeMlirOp::GetHostFunc(mlir::OwningModuleRef* mlir_module) {
+func::FuncOp _XlaHostComputeMlirOp::GetHostFunc(
+    mlir::OwningOpRef<mlir::ModuleOp>* mlir_module) {
   if (!tensorflow::DeserializeMlirModule(host_mlir_module().str(),
                                          this->getContext(), mlir_module)
            .ok())
     return nullptr;
-  return (*mlir_module)->lookupSymbol<FuncOp>("host_func");
+  return (*mlir_module)->lookupSymbol<func::FuncOp>("host_func");
+}
+
+//===----------------------------------------------------------------------===//
+// XLA Send/Recv ops
+//===----------------------------------------------------------------------===//
+
+// For XLA Send/Recv ops the key corresponds to the resource instance.
+
+std::string _XlaRecvAtHostOp::GetResourceInstanceStr() { return key().str(); }
+
+std::string _XlaRecvAtHostV2Op::GetResourceInstanceStr() { return key().str(); }
+
+std::string _XlaSendFromHostOp::GetResourceInstanceStr() { return key().str(); }
+
+std::string _XlaSendFromHostV2Op::GetResourceInstanceStr() {
+  return key().str();
+}
+
+namespace {
+std::string GetRendezvousKey(const std::string& send_device,
+                             const uint64_t send_device_incarnation,
+                             const std::string& recv_device,
+                             const std::string& tensor_name) {
+  return absl::StrCat(send_device, ";", send_device_incarnation, ";",
+                      recv_device, ";", tensor_name);
+}
+}  // namespace
+
+std::string _HostRecvOp::GetResourceInstanceStr() {
+  return GetRendezvousKey(send_device().str(), send_device_incarnation(),
+                          recv_device().str(), tensor_name().str());
+}
+
+std::string _HostSendOp::GetResourceInstanceStr() {
+  return GetRendezvousKey(send_device().str(), send_device_incarnation(),
+                          recv_device().str(), tensor_name().str());
+}
+
+std::string _RecvOp::GetResourceInstanceStr() {
+  return GetRendezvousKey(send_device().str(), send_device_incarnation(),
+                          recv_device().str(), tensor_name().str());
+}
+
+std::string _SendOp::GetResourceInstanceStr() {
+  return GetRendezvousKey(send_device().str(), send_device_incarnation(),
+                          recv_device().str(), tensor_name().str());
 }
 
 }  // namespace TF

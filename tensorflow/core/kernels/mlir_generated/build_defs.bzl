@@ -139,14 +139,9 @@ def _gen_kernel_bin_impl(ctx):
         requested_features = ctx.features,
         unsupported_features = ctx.disabled_features,
     )
-    name = ctx.attr.name
-    cmd_args = []
+    cmd_args = list(ctx.attr.extra_args)
     if ctx.attr.unroll_factors:
         cmd_args.append("--unroll_factors=%s" % ctx.attr.unroll_factors)
-    if ctx.attr.extra_args:
-        cmd_args.extend(ctx.attr.extra_args)
-    tile_sizes = ctx.attr.tile_size.replace("x", ",")
-    arch_flag = ",".join(ctx.attr.gpu_archs)
     gpu_bin = ctx.outputs.kernel
 
     # cc_binary seems not to bring its dependencies with it, so do that explicitly here.
@@ -155,9 +150,9 @@ def _gen_kernel_bin_impl(ctx):
         outputs = [gpu_bin],
         executable = ctx.executable._tool,
         arguments = cmd_args + [
-            "--tile_sizes=%s" % tile_sizes,
+            "--tile_sizes=%s" % ctx.attr.tile_size,
             "--max-supported-rank=%s" % ctx.attr.max_supported_rank,
-            "--arch=%s" % arch_flag,
+            "--arch=%s" % ",".join(ctx.attr.gpu_archs),
             "--input=%s" % ctx.file.mlir_op.path,
             "--output=%s" % gpu_bin.path,
             "--enable_ftz=%s" % (ctx.attr.data_type == "f32"),
@@ -193,28 +188,53 @@ _gen_kernel_bin_rule = rule(
         "unroll_factors": attr.string(),
         "max_supported_rank": attr.int(),
         "gpu_archs": attr.string_list(),
-        "jit": attr.bool(mandatory = False),
-        "cpu_codegen": attr.bool(mandatory = False),
+        "jit": attr.bool(),
+        "cpu_codegen": attr.bool(),
         "extra_args": attr.string_list(),
         # cc_binary seems not to bring its dependencies with it, so do that explicitly here.
         "_tfso": attr.label(
             default = Label("//tensorflow:libtensorflow_framework.so.2"),
-            cfg = "host",
+            cfg = "exec",
             allow_single_file = True,
         ),
         "_tool": attr.label(
             executable = True,
             default = Label("//tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel"),
-            cfg = "host",
+            cfg = "exec",
         ),
         "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"),
     },
     fragments = ["cpp"],
-    incompatible_use_toolchain_transition = True,
     outputs = {"kernel": "%{name}_kernel.o"},
     toolchains = ["@bazel_tools//tools/cpp:toolchain_type"],
     implementation = _gen_kernel_bin_impl,
 )
+
+# Returns the shape string (e.g. "4x4" or "16Bx2") as comma-separated integers.
+# If the leading dimension is specified as bytes, the value is divided by the
+# size of 'type'. 'overrides' is a type -> shape dict.
+def _get_shape(shape, type, overrides):
+    shape = overrides.get(type, shape)
+    if not shape:
+        return None
+    shape = shape.split("x")
+    if shape[0].endswith("B"):
+        shape[0] = str(int(shape[0][:-1]) // {
+            "i8": 1,
+            "i16": 2,
+            "i32": 4,
+            "i64": 8,
+            "ui8": 1,
+            "ui16": 2,
+            "ui32": 4,
+            "ui64": 8,
+            "f16": 2,
+            "f32": 4,
+            "f64": 8,
+            "c64": 8,
+            "c128": 16,
+        }[type])
+    return ",".join(shape)
 
 def _gen_kernel_library(
         name,
@@ -222,14 +242,15 @@ def _gen_kernel_library(
         types,
         platform,
         tile_size,
+        tile_size_override = {},
         max_supported_rank = 5,
-        output_types = None,
-        jit_types = None,
-        output_jit_types = None,
+        output_types = [],
+        jit_types = [],
+        output_jit_types = [],
         gpu_archs = [],
         tags = [],
         unroll_factors = None,
-        types_with_unrolling_disabled = [],
+        unroll_factors_override = {},
         extra_args = [],
         test_tags = [],
         test_size = "medium"):
@@ -239,7 +260,8 @@ def _gen_kernel_library(
       name: The name of the produced library with kernels.
       op: The name of the tensorflow op.
       types: The types ("f16", "f32", "f64") for which a kernel should be generated.
-      tile_size: The tiling specification, e.g. "16x16".
+      tile_size: The tiling specification, e.g. "16x16" or "16Bx16".
+      tile_size_override: dict of type-specific tile_size.
       max_supported_rank: Maximum supported rank for rank specialization.
       jit_types: The types ("f16", "f32", "f64") for which a kernel should be
                  generated. These kernels are different in that they are only
@@ -256,7 +278,8 @@ def _gen_kernel_library(
       gpu_archs: The list of GPU architectures to compile for. If empty, then
                  the compilation will happen for CPU.
       tags: The tags which should be added to the library.
-      unroll_factors: The unrolling specification, e.g. "4,4"
+      unroll_factors: The unrolling specification, e.g. "4x4" or "16B"
+      unroll_factors_override: dict of type-specific unroll_factors.
       types_with_unrolling_disabled: The types for which unrolling should be disabled.
       extra_args: Extra arguments to pass to the generator tool.
       test_tags: The tags to pass to the generated test.
@@ -264,29 +287,19 @@ def _gen_kernel_library(
     """
 
     enable_cpu = bool(platform == "cpu")
-    if not output_types:
-        output_types = types
-    if not jit_types:
-        jit_types = []
-    if not output_jit_types:
-        output_jit_types = jit_types
 
-    true_jits = [True for i in range(len(jit_types))]
-    all_jit_kernels = zip(jit_types, output_jit_types, true_jits)
-    false_jits = [False for i in range(len(types))]
-    all_precomp_kernels = zip(types, output_types, false_jits)
-    all_kernels = all_precomp_kernels
-    if if_mlir_generated_experimental_kernels_enabled(True, False):
-        all_kernels += all_jit_kernels
+    aot_kernels = zip(types, output_types or types, [False for t in types])
+    jit_kernels = zip(jit_types, output_jit_types or jit_types, [True for t in jit_types])
+    all_kernels = aot_kernels + jit_kernels
 
     if cuda_gpu_architectures() or rocm_gpu_architectures() or enable_cpu:
         for (type, output_type, jit) in all_kernels:
             # Disable unrolling for integer types while LLVM does not vectorize these.
             # See b/182343395 for context.
-            unrolling_disabled = (types_with_unrolling_disabled + ["i1", "i8", "i16", "i32", "i64"])
-            filtered_unroll_factors = ""
-            if type not in unrolling_disabled:
-                filtered_unroll_factors = unroll_factors
+            integer_types = ["i1", "i8", "i16", "i32", "i64", "ui8", "ui16", "ui32", "ui64"]
+            typed_unroll_factors = None if type in integer_types else unroll_factors
+            typed_unroll_factors = _get_shape(typed_unroll_factors, type, unroll_factors_override)
+            typed_tile_size = _get_shape(tile_size, type, tile_size_override)
             _gen_mlir_op(
                 op = op,
                 output_type = output_type,
@@ -312,8 +325,8 @@ def _gen_kernel_library(
                     type = type,
                     output_type = output_type,
                 ),
-                tile_size = tile_size,
-                unroll_factors = filtered_unroll_factors,
+                tile_size = typed_tile_size,
+                unroll_factors = typed_unroll_factors,
             )
 
             # We have to use a sh_test instead of build_test because it doesn't properly find the dependent targets.
@@ -327,11 +340,11 @@ def _gen_kernel_library(
                     output_type = output_type,
                 ),
                 "--cpu_codegen=true" if enable_cpu else "--arch={}".format(gpu_arch_option),
-                "--tile_sizes=%s" % tile_size,
+                "--tile_sizes=%s" % typed_tile_size,
                 "--enable_ftz=%s" % (type == "f32"),
             ]
-            if filtered_unroll_factors:
-                test_args.append("--unroll_factors=%s" % filtered_unroll_factors)
+            if typed_unroll_factors:
+                test_args.append("--unroll_factors=%s" % typed_unroll_factors)
             native.sh_test(
                 name = "{op}_{platform}_{type}_{output_type}_gen_test".format(
                     op = op,

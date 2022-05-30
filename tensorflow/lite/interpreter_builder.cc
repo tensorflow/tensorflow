@@ -144,7 +144,7 @@ std::map<std::string, uint32_t> GetMapFromTensorMap(
 }
 
 inline bool ShouldCreateLazyDelegateProviders(int num_fp32_tensors) {
-#ifdef TFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS
+#if defined(XNNPACK_DELEGATE_ENABLE_QS8) || defined(XNNPACK_DELEGATE_ENABLE_QU8)
   return true;
 #else
   return num_fp32_tensors > 0;
@@ -153,7 +153,7 @@ inline bool ShouldCreateLazyDelegateProviders(int num_fp32_tensors) {
 
 }  // namespace
 
-const char* kEmptyTensorName = "";
+constexpr const char* kEmptyTensorName = "";
 
 // Using weak symbols to create a delegate allows automatic injection of the
 // delegate simply by adding it as a dependency.
@@ -211,20 +211,30 @@ TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
   return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
 }
 
-InterpreterBuilder::InterpreterBuilder(const FlatBufferModel& model,
-                                       const OpResolver& op_resolver)
+InterpreterBuilder::InterpreterBuilder(
+    const FlatBufferModel& model, const OpResolver& op_resolver,
+    const InterpreterOptions* options_experimental)
     : model_(model.GetModel()),
       op_resolver_(op_resolver),
       error_reporter_(ValidateErrorReporter(model.error_reporter())),
       metadata_(model.ReadAllMetadata()),
-      allocation_(model.allocation()) {}
+      allocation_(model.allocation()) {
+  if (options_experimental) {
+    options_ = *options_experimental;
+  }
+}
 
-InterpreterBuilder::InterpreterBuilder(const ::tflite::Model* model,
-                                       const OpResolver& op_resolver,
-                                       ErrorReporter* error_reporter)
+InterpreterBuilder::InterpreterBuilder(
+    const ::tflite::Model* model, const OpResolver& op_resolver,
+    ErrorReporter* error_reporter,
+    const InterpreterOptions* options_experimental)
     : model_(model),
       op_resolver_(op_resolver),
-      error_reporter_(ValidateErrorReporter(error_reporter)) {}
+      error_reporter_(ValidateErrorReporter(error_reporter)) {
+  if (options_experimental) {
+    options_ = *options_experimental;
+  }
+}
 
 InterpreterBuilder::~InterpreterBuilder() {}
 
@@ -663,7 +673,7 @@ TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter) {
   // Apply Flex delegate if applicable.
   if (has_flex_op_) {
     if (Interpreter::TfLiteDelegatePtr flex_delegate = AcquireFlexDelegate()) {
-      TF_LITE_ENSURE_STATUS(interpreter->ModifyGraphWithDelegate(
+      TF_LITE_ENSURE_STATUS(interpreter->ModifyGraphWithDelegateImpl(
           // Transfers ownership of flex_delegate to the interpreter.
           std::move(flex_delegate)));
     }
@@ -671,7 +681,7 @@ TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter) {
   for (TfLiteDelegate* delegate : delegates_) {
     // Note that we DON'T transfer ownership of the delegate to the interpreter.
     // (Doing that would cause problems if operator() was invoked twice.)
-    TF_LITE_ENSURE_STATUS(interpreter->ModifyGraphWithDelegate(delegate));
+    TF_LITE_ENSURE_STATUS(interpreter->ModifyGraphWithDelegateImpl(delegate));
   }
   return kTfLiteOk;
 }
@@ -749,16 +759,18 @@ TfLiteStatus InterpreterBuilder::operator()(
   }
 
   interpreter->reset(new Interpreter(error_reporter_));
-  (*interpreter)->SetNumThreads(num_threads_);
   if (subgraphs->size() > 1) {
     (*interpreter)->AddSubgraphs(subgraphs->size() - 1);
   }
 
-  if (preserve_all_tensors_) {
-    (*interpreter)->PreserveAllTensorsExperimental();
-  }
+  // Set num threads after all the subgraphs are added.
+  (*interpreter)->SetNumThreads(num_threads_);
 
-  (*interpreter)->SetProfiler(tflite::profiling::MaybeCreatePlatformProfiler());
+  // Set Interpreter options
+  (*interpreter)->ApplyOptionsImpl(&options_);
+
+  (*interpreter)
+      ->SetProfilerImpl(tflite::profiling::MaybeCreatePlatformProfiler());
 
   for (int subgraph_index = 0; subgraph_index < subgraphs->size();
        ++subgraph_index) {
@@ -776,7 +788,6 @@ TfLiteStatus InterpreterBuilder::operator()(
     if (modified_subgraph->AddTensors(tensors->size()) != kTfLiteOk) {
       return cleanup_and_error();
     }
-    // Set num threads
     // Parse inputs/outputs
     modified_subgraph->SetInputs(
         FlatBufferIntArrayToVector(subgraph->inputs()));

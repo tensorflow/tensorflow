@@ -21,23 +21,58 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/memory/memory.h"
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
+
+// Represents a parsed static while loop. We normalize the loop representation
+// so that it starts from the induction_var_init_value and increments by
+// step_size until it exceeds or goes below loop_bound.
+struct ParsedStaticWhileLoop {
+  // The number of iterations to be executed.
+  int64_t trip_count = -1;
+  // The tuple index of the induction variable in the while argument tuple.
+  int64_t induction_var_index = -1;
+  // The induction variable's initial value.
+  int64_t induction_var_init_value = -1;
+  // The induction variable is incremented by this number (could be negative)
+  // in each iteration.
+  int64_t step_size = -1;
+  int64_t loop_bound = -1;
+};
+
+// Indicates whether a parsed while loop is static or dynamic. If the loop is
+// static, it contains a value for StaticLoopInfo; otherwise the loop is
+// dynamic. We consider a loop dynamic if its induction variable's initial
+// value or the loop bound's value depends on the while's parent computation's
+// parameter.
+struct ParsedWhileLoop {
+  absl::optional<ParsedStaticWhileLoop> static_while_loop;
+  bool is_dynamic() const { return !static_while_loop.has_value(); }
+};
+constexpr ParsedWhileLoop kParsedDynamicWhileLoop = ParsedWhileLoop();
+
+// Tries to parse a while loop using a set of predefined patterns.
+// Returns the parsing result.
+absl::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
+    HloInstruction* while_op);
 
 // Responsible for evaluating HLO and obtain literal as the evaluation results.
 //
@@ -47,6 +82,14 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // Only evaluate up to max_loop_iterations per while-loop execution if
   // specified.
   explicit HloEvaluator(int64_t max_loop_iterations = -1);
+
+  // Called by the evaluator to create an embedded evaluator to execute a
+  // sub-region of control flow. Subclasses should override this to return an
+  // instance of the subclass instead.
+  virtual std::unique_ptr<HloEvaluator> CreateEmbedded(
+      int64_t max_loop_iterations) {
+    return std::make_unique<HloEvaluator>(max_loop_iterations);
+  }
 
   // Evaluates an HLO module and an array of pointers to literals.  Returns the
   // evaluated result as a literal if successful.
@@ -100,12 +143,18 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   // Gets the value of running a single HLO instruction.
   //
-  // All of the operands to this instruction must be constants.
-  StatusOr<Literal> Evaluate(HloInstruction* instruction);
+  // This function may recursively evaluate the dependency of this instruction
+  // within its parent computation until it encounters something that cannot be
+  // evaluated, such as an Infeed or a Parameter instruction.
+  // It makes best effort to partially evaluate a dependency if possible.
+  StatusOr<Literal> Evaluate(
+      HloInstruction* instruction,
+      bool recursively_evaluate_nonconstant_operands = false);
 
   // Same as Evaluate, except returning false on error and accepts an output
   // pointer.
-  bool TryEvaluate(HloInstruction* instruction, Literal* result);
+  bool TryEvaluate(HloInstruction* instruction, Literal* result,
+                   bool recursively_evaluate_nonconstant_operands = false);
 
   // Evaluates a single HLO instruction, substituting the given literals for
   // some of the instruction's operands.
@@ -114,7 +163,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // {A = x, C = y}, this evaluates op(x, B, y).
   StatusOr<Literal> EvaluateWithSubstitutions(
       const HloInstruction* instruction,
-      const std::unordered_map<const HloInstruction*, const Literal*>&
+      const absl::flat_hash_map<const HloInstruction*, const Literal*>&
           substitutions);
 
   StatusOr<Literal> EvaluateElementwiseBinaryOp(HloOpcode opcode,
@@ -179,10 +228,21 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   static std::unique_ptr<Array2D<std::complex<double>>> MatmulArray2D(
       const Array2D<std::complex<double>>& lhs,
       const Array2D<std::complex<double>>& rhs);
-  static std::unique_ptr<Array2D<int32>> MatmulArray2D(
-      const Array2D<int32>& lhs, const Array2D<int32>& rhs);
+  static std::unique_ptr<Array2D<int32_t>> MatmulArray2D(
+      const Array2D<int32_t>& lhs, const Array2D<int32_t>& rhs);
 
  protected:
+  // Evaluates the given instruction, and stores the evaluation result in the
+  // evaluated_ map.
+  // When a non-empty shape_index is given, the instruction may be partially
+  // evaluated at the given shape_index and the rest of the result could be
+  // marked as undetermined unless it has been previously evaluated using
+  // EvaluateInternal. Such partial evaluation reduces the computation and
+  // memory overhead in cases where we need only one tuple element by avoiding
+  // the evaluation of a full tuple.
+  Status EvaluateInternal(
+      HloInstruction* instruction, const ShapeIndex& shape_index = {},
+      bool recursively_evaluate_nonconstant_operands = false);
   // Make HloEvaluatorTypedVisitor a friend because it is logically part of this
   // class.
   //
@@ -215,6 +275,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleParameter(HloInstruction* parameter) override;
 
+  Status HandleInfeed(HloInstruction* infeed) override;
+
   Status HandleConstant(HloInstruction* constant) override;
 
   Status HandleConcatenate(HloInstruction* concatenate) override;
@@ -233,7 +295,15 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleGather(HloInstruction* gather) override;
 
+  Status HandleScatter(HloInstruction* hlo) override;
+
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
+
+  Status HandleAsyncStart(HloInstruction* async_start) override;
+
+  Status HandleAsyncUpdate(HloInstruction* async_update) override;
+
+  Status HandleAsyncDone(HloInstruction* async_done) override;
 
   Status HandleCopy(HloInstruction* copy) override;
 
@@ -250,8 +320,6 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   Status HandleWhile(HloInstruction* while_hlo) override;
 
   Status HandleSelect(HloInstruction* select) override;
-
-  Status HandleTupleSelect(HloInstruction* tuple_select) override;
 
   Status HandleBroadcast(HloInstruction* broadcast) override;
 
@@ -279,22 +347,19 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // handled by the evaluator.
   Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override {
     return Unimplemented("BatchNormGrad HLO is unsupported by the evaluator.");
-  };
+  }
   Status HandleBatchNormInference(
       HloInstruction* batch_norm_inference) override {
     return Unimplemented(
         "BatchNormInference HLO is unsupported by the evaluator.");
-  };
+  }
   Status HandleBatchNormTraining(HloInstruction* batch_norm_training) override {
     return Unimplemented(
         "BatchNormTraining HLO is unsupported by the evaluator.");
-  };
-  Status HandleInfeed(HloInstruction* infeed) override {
-    return Unimplemented("Infeed HLO is unsupported by the evaluator.");
-  };
+  }
   Status HandleOutfeed(HloInstruction* outfeed) override {
     return Unimplemented("Outfeed HLO is unsupported by the evaluator.");
-  };
+  }
 
   // Returns the already-evaluated literal result for the instruction.
   //
@@ -309,13 +374,36 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
     if (hlo->IsConstant()) {
       return hlo->literal();
     }
-    if (hlo->opcode() == HloOpcode::kParameter) {
+    if (hlo->opcode() == HloOpcode::kParameter && !arg_literals_.empty()) {
       return *arg_literals_.at(hlo->parameter_number());
     }
+
     auto it = evaluated_.find(hlo);
     CHECK(it != evaluated_.end())
         << "could not find evaluated value for: " << hlo->ToString();
     return it->second;
+  }
+
+  // Returns true if the given hlo has been evaluated and cached.
+  bool IsAlreadyEvaluated(const HloInstruction* hlo,
+                          const ShapeIndex& shape_index = {}) {
+    if (hlo->IsConstant()) {
+      return true;
+    }
+    if (hlo->opcode() == HloOpcode::kParameter && !arg_literals_.empty()) {
+      return true;
+    }
+    auto it = evaluated_.find(hlo);
+    if (it == evaluated_.end()) {
+      return false;
+    }
+    // We may evaluate some elements of a tuple-shaped instruction and mark
+    // the other elements as undetermined. This way we avoid the computation
+    // and memory overhead of evaluating a large tuple when only some elements
+    // are needed. By marking the other elements undetermined, we allow the
+    // evaluator to update the cached tuple literal when more elements are
+    // evaluated.
+    return it->second.IsDetermined(shape_index);
   }
 
   // Tracks the HLO instruction and its evaluated literal result.
@@ -332,6 +420,11 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // Storing Literal in place requires the container to have pointer stability
   // so we cannot use flat_hash_map any more.
   absl::node_hash_map<const HloInstruction*, Literal> evaluated_;
+  // Set by EvaluateInternal and opportunitiscally used by the HandleXXX
+  // functions. When non-empty, the HandleXXX function may evaluate the
+  // instruction at only the given shape index.
+  ShapeIndex visitor_shape_index_;
+  bool enable_partial_evaluation_ = false;
 
   // Use fast path that uses eigen in the evaluator.
   bool use_fast_path_ = false;
@@ -367,7 +460,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   int64_t max_loop_iterations_ = 0;
 
   // Module-level seed handle.
-  uint64 seed_ = 0;
+  uint64_t seed_ = 0;
   // RNG engine.
   std::minstd_rand0 engine_;
 
@@ -380,7 +473,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
                                   absl::Span<const Literal*> operands)>
       custom_call_handler_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(HloEvaluator);
+  HloEvaluator(const HloEvaluator&) = delete;
+  HloEvaluator& operator=(const HloEvaluator&) = delete;
 };
 
 std::unique_ptr<Array2D<float>> MatmulArray2D(const Array2D<float>& lhs,

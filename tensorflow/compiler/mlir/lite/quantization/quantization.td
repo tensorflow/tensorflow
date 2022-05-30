@@ -127,6 +127,65 @@ def SameOperandsAndResultsScale : OpInterface<"SameScalesOpInterface"> {
   }];
 }
 
+def DynamicRangeQuantizedOpInterface : OpInterface<
+  "DynamicRangeQuantizedOpInterface"> {
+  let description = [{
+    Interface for ops dynamic range quantization is supported.
+
+    If the op has the kernel support for dynamic range quantization, Q/DQ op
+    pairs connected to the op are rewritten by its quantized alternatives where
+    a new op uses Q ops for its operands instead of DQ op. Otherwise, it is
+    left as is for weight-only which means the weight is dequantized at runtime.
+
+    For example, if the kernel does not support dynamic range quantization the
+    graph will be converted into the following IR:
+
+    %q_w = "tfl.pseudo_qconst"() {
+         qtype = tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
+    %w = "tfl.dequantize"(%q_w) :
+         (tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) ->
+         tensor<64x3x3x3xf32>
+    %conv = "tfl.conv_2d"(%input_act, %w, %bias)
+
+    but if it is supported, it will be rewritten as:
+
+    %q_w = "tfl.pseudo_qconst"() {
+         qtype = tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
+    %conv = "tfl.conv_2d"(%input_act, %q_w, %bias)
+
+    Note that this is part of reaching feature parity with the old quantizer for
+    dynamic range quantization except:
+    - Only use_updated_hybrid_scheme=True is supported which means the ops with
+    the asymmetrically quantizing input support is enabled to use this feature
+    during MLIR graph rewriting passes while it is configurable in the old
+    quantizer. So when those ops are matched during graph rewriting passes,
+    MLIR quantizer will always ignore the pre-set value of the attribute, if
+    there's any, and set it to True. The reason behind this decision is that
+    generally activations of these ops show better accuracy with asymmetric
+    input quantization so we want to deprecate symmetric activation quantization
+    for those ops eventually.
+    - Unlike to the old quantizer, per-channel quantization is supported for
+    weight-only TransposeConvOp.
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      [{Returns the quantizable operand indices of the op.}],
+      "std::vector<int>", "GetQuantizableOperandIndices",
+      (ins), [{}], [{return {};}]>,
+    InterfaceMethod<
+      [{Returns whether the op has the kernel support for dynamic range
+      quantization.}],
+      "bool", "GetDynamicRangeQuantKernelSupport",
+      (ins), [{}], [{return false;}]>,
+    InterfaceMethod<
+      [{Returns whether the op requires asymmetric quantize input attribute
+      setting.}],
+      "bool", "RequireAsymmetricQuantizeInputsAttr",
+      (ins), [{}], [{return false;}]>,
+  ];
+}
+
 // Specify this trait if the op has a fixed output value range.
 class FixedResultScale<QuantizedType qt> : NativeOpTrait<!strconcat(
   "quant::FixedResult", qt.name, "Scale<", qt.asTraitArgsStr, ">::Impl")>;
@@ -146,8 +205,7 @@ class AffineOpCoefficient<int dim, int index> : NativeOpTrait<
              !interleave([dim, index], ", "),
              ">::Impl")>;
 
-// Specify this trait if the op doesn't have quantizable output. We shouldn't
+// Specify this trait if the op does have quantizable output. Quantizers will
 // apply quantization on this op.
-def NoQuantizableResult : NativeOpTrait<"quant::NoQuantizableResult">;
-
+def QuantizableResult : NativeOpTrait<"quant::QuantizableResult">;
 #endif // TF_Quantization

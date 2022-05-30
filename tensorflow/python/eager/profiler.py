@@ -60,8 +60,11 @@ class ProfilerNotRunningError(Exception):
 
 
 @deprecated('2020-07-01', 'use `tf.profiler.experimental.start` instead.')
-def start():
+def start(options=None):
   """Start profiling.
+
+  Args:
+    options: profiler options.
 
   Raises:
     ProfilerAlreadyRunningError: If another profiling session is running.
@@ -74,7 +77,7 @@ def start():
       context.ensure_initialized()
     _profiler = _pywrap_profiler.ProfilerSession()
     try:
-      _profiler.start('', {})
+      _profiler.start('', options if options is not None else {})
     except errors.AlreadyExistsError:
       logging.warning('Another profiler session is running which is probably '
                       'created by profiler server. Please avoid using profiler '

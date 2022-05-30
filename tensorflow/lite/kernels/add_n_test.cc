@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/kernels/add_n_test_common.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -25,45 +26,6 @@ namespace tflite {
 namespace {
 
 using ::testing::ElementsAreArray;
-
-class BaseAddNOpModel : public SingleOpModel {
- public:
-  BaseAddNOpModel(const std::vector<TensorData>& inputs,
-                  const TensorData& output) {
-    int num_inputs = inputs.size();
-    std::vector<std::vector<int>> input_shapes;
-
-    for (int i = 0; i < num_inputs; ++i) {
-      inputs_.push_back(AddInput(inputs[i]));
-      input_shapes.push_back(GetShape(inputs_[i]));
-    }
-
-    output_ = AddOutput(output);
-    SetBuiltinOp(BuiltinOperator_ADD_N, BuiltinOptions_AddNOptions,
-                 CreateAddNOptions(builder_).Union());
-    BuildInterpreter(input_shapes);
-  }
-
-  int input(int i) { return inputs_[i]; }
-
- protected:
-  std::vector<int> inputs_;
-  int output_;
-};
-
-class FloatAddNOpModel : public BaseAddNOpModel {
- public:
-  using BaseAddNOpModel::BaseAddNOpModel;
-
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
-};
-
-class IntegerAddNOpModel : public BaseAddNOpModel {
- public:
-  using BaseAddNOpModel::BaseAddNOpModel;
-
-  std::vector<int32_t> GetOutput() { return ExtractVector<int32_t>(output_); }
-};
 
 TEST(FloatAddNOpModel, AddMultipleTensors) {
   FloatAddNOpModel m({{TensorType_FLOAT32, {1, 2, 2, 1}},
@@ -73,7 +35,7 @@ TEST(FloatAddNOpModel, AddMultipleTensors) {
   m.PopulateTensor<float>(m.input(0), {-2.0, 0.2, 0.7, 0.8});
   m.PopulateTensor<float>(m.input(1), {0.1, 0.2, 0.3, 0.5});
   m.PopulateTensor<float>(m.input(2), {0.5, 0.1, 0.1, 0.2});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.4, 0.5, 1.1, 1.5}));
 }
 
@@ -85,7 +47,7 @@ TEST(IntegerAddNOpModel, AddMultipleTensors) {
   m.PopulateTensor<int32_t>(m.input(0), {-20, 2, 7, 8});
   m.PopulateTensor<int32_t>(m.input(1), {1, 2, 3, 5});
   m.PopulateTensor<int32_t>(m.input(2), {10, -5, 1, -2});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-9, -1, 11, 11}));
 }
 

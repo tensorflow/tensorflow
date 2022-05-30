@@ -19,13 +19,17 @@ import sys
 # available in sys.modules
 # pylint: disable=unused-import
 from tensorflow import python as _tf_for_api_traversal
+from tensorflow.dtensor import python as _dtensor_for_api_traversal
 from tensorflow.lite.python import lite as _tflite_for_api_traversal
 from tensorflow.lite.python.authoring import authoring
 from tensorflow.python import modules_with_exports
+from tensorflow.python.distribute import merge_call_interim
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
+from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute.coordinator import cluster_coordinator
+from tensorflow.python.distribute.failure_handling import failure_handling
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import test_combinations
 # pylint: enable=unused-import

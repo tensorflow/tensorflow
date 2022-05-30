@@ -119,7 +119,7 @@ def _push_critical_section_stack(signature):
 
 
 @tf_export("CriticalSection")
-class CriticalSection(object):
+class CriticalSection:
   """Critical section.
 
   A `CriticalSection` object is a resource in the graph which executes subgraphs
@@ -194,7 +194,7 @@ class CriticalSection(object):
     context.ensure_initialized()
     if critical_section_def and name is not None:
       raise ValueError(f"Arguments critical_section_def={critical_section_def} "
-                       "and shared_name={shared_name} are mutually exclusive. "
+                       f"and shared_name={shared_name} are mutually exclusive. "
                        "Please only specify one of them.")
     if critical_section_def:
       raise ValueError("Argument `critical_section_def` is not supported.")

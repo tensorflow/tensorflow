@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/stream_executor/stream.h"
@@ -88,6 +87,9 @@ Status LocalDeviceState::SynchronizeAllActivity() {
     for (auto& callback_stream : callback_stream_map_.value()) {
       status.Update(callback_stream.second->BlockHostUntilDone());
     }
+  }
+  for (auto& stream : device_to_host_streams_) {
+    status.Update(stream->BlockHostUntilDone());
   }
   bool ok = compute_stream_->parent()->SynchronizeAllActivity();
   if (!ok) {

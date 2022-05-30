@@ -15,15 +15,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/lite/tfl_to_std.h"
 
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 
 namespace mlir {
 namespace TFL {
 
-void ConvertTFLQuantOpsToMlirQuantOps(FuncOp func) {
+void ConvertTFLQuantOpsToMlirQuantOps(func::FuncOp func) {
   OpBuilder b(func);
   func.walk([&](Operation* op) {
     b.setInsertionPoint(op);
@@ -40,8 +41,12 @@ void ConvertTFLQuantOpsToMlirQuantOps(FuncOp func) {
     } else if (auto q = llvm::dyn_cast<ConstOp>(op)) {
       auto value = q.value();
       auto type = q.getResult().getType();
-      if (ConstantOp::isBuildableWith(value, type)) {
-        auto c = b.create<ConstantOp>(q.getLoc(), q.value());
+      if (arith::ConstantOp::isBuildableWith(value, type)) {
+        auto c = b.create<arith::ConstantOp>(q.getLoc(), q.value());
+        q.output().replaceAllUsesWith(c);
+        q.erase();
+      } else if (TFL::NoValueOp::isBuildableWith(value, type)) {
+        auto c = b.create<TFL::NoValueOp>(q.getLoc(), type, mlir::UnitAttr());
         q.output().replaceAllUsesWith(c);
         q.erase();
       }
@@ -49,7 +54,7 @@ void ConvertTFLQuantOpsToMlirQuantOps(FuncOp func) {
   });
 }
 
-void ConvertMlirQuantOpsToTFLQuantOps(FuncOp func) {
+void ConvertMlirQuantOpsToTFLQuantOps(func::FuncOp func) {
   OpBuilder b(func);
   func.walk([&](Operation* op) {
     b.setInsertionPoint(op);

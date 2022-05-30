@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/types.h"
@@ -43,7 +44,7 @@ mlir::mhlo::DotDimensionNumbersAttr ConvertDotDimensionNumbers(
     const DotDimensionNumbers& dnums, mlir::Builder* builder);
 
 // Converts the conv dimensions to attributes.
-mlir::mhlo::ConvDimensionNumbers ConvertConvDimensionNumbers(
+mlir::mhlo::ConvDimensionNumbersAttr ConvertConvDimensionNumbers(
     const xla::ConvolutionDimensionNumbers& dnums, mlir::Builder* builder);
 
 StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type);
@@ -52,6 +53,17 @@ StatusOr<mlir::mhlo::Transpose> ConvertTranspose(
 
 StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
     xla::CustomCallApiVersion api_version);
+
+// Extracts layouts from shapes and converts it into layout attributes (array of
+// rank-1 index tensors). Returns an error if any of the shapes is a tuple.
+StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
+    const absl::Span<const Shape> shapes_with_layouts, mlir::Builder* builder);
+
+// Extracts the layouts of each element from a tuple shape and returns them as
+// an array of rank-1 index tensors. Returns an error in presence of nested
+// tuple shapes.
+StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(const xla::Shape shape,
+                                                  mlir::Builder* builder);
 
 }  // namespace xla
 

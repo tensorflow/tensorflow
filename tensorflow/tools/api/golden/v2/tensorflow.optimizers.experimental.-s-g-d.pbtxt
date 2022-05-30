@@ -1,0 +1,98 @@
+path: "tensorflow.optimizers.experimental.SGD"
+tf_class {
+  is_instance: "<class \'keras.optimizers.optimizer_experimental.sgd.SGD\'>"
+  is_instance: "<class \'keras.optimizers.optimizer_experimental.optimizer.Optimizer\'>"
+  is_instance: "<class \'keras.optimizers.optimizer_experimental.optimizer._BaseOptimizer\'>"
+  is_instance: "<class \'tensorflow.python.module.module.Module\'>"
+  is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "iterations"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "learning_rate"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "lr"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "name_scope"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "non_trainable_variables"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "submodules"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "trainable_variables"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "variables"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'learning_rate\', \'momentum\', \'nesterov\', \'amsgrad\', \'clipnorm\', \'clipvalue\', \'global_clipnorm\', \'use_ema\', \'ema_momentum\', \'ema_overwrite_frequency\', \'jit_compile\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'0.01\', \'0.0\', \'False\', \'False\', \'None\', \'None\', \'None\', \'False\', \'0.99\', \'None\', \'True\', \'SGD\'], "
+  }
+  member_method {
+    name: "add_variable"
+    argspec: "args=[\'self\', \'shape\', \'dtype\', \'initializer\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'zeros\', \'None\'], "
+  }
+  member_method {
+    name: "add_variable_from_reference"
+    argspec: "args=[\'self\', \'model_variable\', \'variable_name\', \'shape\', \'initial_value\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "aggregate_gradients"
+    argspec: "args=[\'self\', \'grads_and_vars\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "apply_gradients"
+    argspec: "args=[\'self\', \'grads_and_vars\', \'skip_gradients_aggregation\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
+    name: "build"
+    argspec: "args=[\'self\', \'var_list\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "compute_gradients"
+    argspec: "args=[\'self\', \'loss\', \'var_list\', \'tape\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "finalize_variable_values"
+    argspec: "args=[\'self\', \'var_list\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_config"
+    argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_config"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "minimize"
+    argspec: "args=[\'self\', \'loss\', \'var_list\', \'tape\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "update_step"
+    argspec: "args=[\'self\', \'gradient\', \'variable\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_name_scope"
+    argspec: "args=[\'cls\', \'method\'], varargs=None, keywords=None, defaults=None"
+  }
+}
