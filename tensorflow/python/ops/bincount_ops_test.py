@@ -169,17 +169,14 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
      "testcase_name": "_baseline_test",
      "x": np.array([1, 1, 2, 3, 2, 4, 4, 5], dtype=np.int32),
      "expected_values": [0, 2, 2, 1, 2, 1],
-     "expected_shape": [6]
     }, {
      "testcase_name": "_no_maxlength",
      "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
      "expected_values": [1, 1, 1, 2, 1],
-     "expected_shape": [2, 6]
     })
-  def test_compiled_dense_input(self,
+  def test_compiled_dense(self,
                        x,
                        expected_values,
-                       expected_shape,
                        minlength=None,
                        maxlength=None,
                        binary_output=False,
@@ -198,7 +195,6 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
       return y
     y = f()
     self.assertAllEqual(expected_values, y)
-    #self.assertAllEqual(expected_shape, y)
 
 
   @parameterized.named_parameters(
