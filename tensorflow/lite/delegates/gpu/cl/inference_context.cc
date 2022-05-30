@@ -334,6 +334,13 @@ absl::Status InferenceContext::InitFromGpuModel(
   return absl::OkStatus();
 }
 
+absl::Status InferenceContext::AddToCommanBuffer(cl_command_buffer_khr cb) {
+  for (auto& node : nodes_) {
+    RETURN_IF_ERROR(node.cl_operation.AddToCommanBuffer(cb));
+  }
+  return absl::OkStatus();
+}
+
 absl::Status InferenceContext::RestoreDeserialized(
     const absl::Span<const uint8_t> serialized_model, Environment* env,
     CreateGpuModelInfo* create_info) {
