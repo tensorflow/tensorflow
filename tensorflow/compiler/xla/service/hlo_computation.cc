@@ -1138,7 +1138,7 @@ void SortClonedInstructionUsersAndControlLists(
     const HloComputation::InstructionList& sorted_instructions) {
   using InstructionSorter = MappedPtrContainerSorter<HloInstruction>;
   InstructionSorter::MapPtrFn instruction_mapper =
-      [context, &replace](const HloInstruction* i) {
+      [&context, &replace](const HloInstruction* i) {
         return context.FindInstruction(replace(i));
       };
   for (const std::unique_ptr<HloInstruction>& instruction :
