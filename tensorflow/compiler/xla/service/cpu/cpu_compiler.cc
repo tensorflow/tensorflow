@@ -950,12 +950,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addNestedPass<mlir::func::FuncOp>(mlir::memref::createExpandOpsPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createLowerAffinePass());
   pm.addPass(mlir::mhlo::CreateLegalizeXLAFrameworkToLLVMPass());
-  pm.addPass(mlir::createMemRefToLLVMPass());
-  pm.addPass(mlir::createConvertSCFToCFPass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::createConvertMathToLLVMPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::arith::createConvertArithmeticToLLVMPass());
-  pm.addPass(mlir::createConvertFuncToLLVMPass());
+  pm.addPass(mlir::hlo::createGenericHostToLLVMPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   if (pm.run(mlir_module).failed()) {
     mlir_module->dump();
