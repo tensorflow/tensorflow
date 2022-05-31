@@ -328,6 +328,27 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
       DynamicRaggedShape.from_lengths(
           lengths, num_row_partitions=num_row_partitions)
 
+  def testGetItemSliceRankUnknownA(self):
+    if not context.executing_eagerly():
+      original_t = array_ops.placeholder_with_default(np.array([4, 5, 3]), None)
+      sh = DynamicRaggedShape.from_tensor(original_t)
+      known = sh[:1]
+      self.assertIsNone(known.rank)
+
+  def testGetItemSliceRankUnknownLong(self):
+    if not context.executing_eagerly():
+      original_t = array_ops.placeholder_with_default(np.array([4, 5, 3]), None)
+      sh = DynamicRaggedShape.from_tensor(original_t)
+      unknown = sh[:20]
+      self.assertIsNone(unknown.rank)
+
+  def testGetItemSliceRankKnownLong(self):
+    if not context.executing_eagerly():
+      original_t = constant_op.constant([4, 5, 3], dtypes.float32)
+      sh = DynamicRaggedShape.from_tensor(original_t)
+      unknown = sh[:20]
+      self.assertEqual(unknown.rank, 1)
+
   def testGetBroadcaster(self):
     origin_shape = DynamicRaggedShape(
         [RowPartition.from_uniform_row_length(1, 3)], inner_shape=[3])
@@ -2582,6 +2603,16 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
       rt_shape = DynamicRaggedShape.from_tensor(rt)
       new_flat_values = constant_op.constant(['a', 'b', 'c', 'd', 'e'])
       rt_shape._add_row_partitions(new_flat_values, validate=True)
+
+  def testGetItemRankNoneTruncate(self):
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
+    def foo(x):
+      rts = DynamicRaggedShape.from_tensor(x)
+      actual = rts[:1]
+      self.assertShapeEq(rts, actual)
+
+    foo([1, 2, 3])
 
 
 class DynamicRaggedShapeErrorTest(parameterized.TestCase):
