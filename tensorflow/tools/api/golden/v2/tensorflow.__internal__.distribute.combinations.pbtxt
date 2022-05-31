@@ -49,6 +49,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
   }
   member {
+    name: "multi_worker_mirrored_2x1_gpu_noshare"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
     name: "multi_worker_mirrored_2x2_gpu"
     mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
   }

@@ -72,6 +72,9 @@
         not warnings will be printed when operations in the provided `fn` fall
         back to a while loop.
 
+*   XLA:
+    *   MWMS is now compilable with XLA.
+
 ## Bug Fixes and Other Changes
 
 *   `tf.keras`:
