@@ -14,9 +14,16 @@ cc_library(
     hdrs = ["preemption_sync_manager.h"],
     deps = [
         ":preemption_notifier",
+        "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/protobuf:coordination_service_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -36,13 +43,13 @@ cc_library(
 
 tf_cc_test(
     name = "preemption_sync_manager_test",
+    size = "small",
     srcs = ["preemption_sync_manager_test.cc"],
     deps = [
         ":preemption_notifier",
         ":preemption_sync_manager",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/time",
-        "//tensorflow/core/platform:errors",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/distributed_runtime/coordination:coordination_client",
@@ -54,6 +61,9 @@ tf_cc_test(
         "//tensorflow/core/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/protobuf:for_core_protos_cc",
     ] + tf_grpc_cc_dependencies(),
 )
