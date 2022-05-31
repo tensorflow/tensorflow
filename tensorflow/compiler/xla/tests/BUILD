@@ -2147,6 +2147,31 @@ xla_test(
 )
 
 xla_test(
+    name = "matmul_test",
+    srcs = ["matmul_test.cc"],
+    backends = [
+        "gpu",
+    ],
+    deps = [
+        ":client_library_test_base",
+        ":hlo_test_base",
+        ":literal_test_util",
+        ":test_macros_header",
+        ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
+    ],
+)
+
+xla_test(
     name = "compilation_cache_test",
     srcs = ["compilation_cache_test.cc"],
     deps = [

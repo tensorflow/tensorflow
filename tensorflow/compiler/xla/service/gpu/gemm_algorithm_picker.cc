@@ -287,12 +287,12 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* gemm,
   int device_id = stream->parent()->device_ordinal();
   bool trans_x = lhs.transpose == se::blas::Transpose::kTranspose;
   bool trans_y = rhs.transpose == se::blas::Transpose::kTranspose;
-  bool broadcast = batch_size == 1;
+  bool broadcast_lhs = lhs.batch_stride == 0;
+  bool broadcast_rhs = rhs.batch_stride == 0;
 
   se::BatchMatmulParameters matmul_parameters(
-      trans_x, trans_y, false, false, m, n, k, batch_size,
-      /*broadcast_a=*/broadcast, /*broadcast_b=*/broadcast, dtype, dtype,
-      device_id);
+      trans_x, trans_y, false, false, m, n, k, batch_size, broadcast_lhs,
+      broadcast_rhs, dtype, dtype, device_id);
 
   BlasPlansAutotuneCache& cache = GetBlasPlansAutotuneCache();
   if (cache.Find(matmul_parameters)) {
