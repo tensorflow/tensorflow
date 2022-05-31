@@ -20,6 +20,8 @@
 #include <utility>
 
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -73,6 +75,7 @@ using mlir::gpu::GPUModuleOp;
 using mlir::gpu::LaunchFuncOp;
 using mlir::gpu::MemcpyOp;
 using mlir::lmhlo::AllReduceOp;
+using mlir::lmhlo::CaseOp;
 using mlir::lmhlo::InfeedOp;
 using mlir::lmhlo::OutfeedOp;
 using mlir::lmhlo::TerminatorOp;
@@ -112,7 +115,8 @@ class ConvertLmhloGpuToJitRtPass
 
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<mlir::func::FuncDialect, mlir::arith::ArithmeticDialect,
-                    mlir::scf::SCFDialect, mlir::memref::MemRefDialect>();
+                    mlir::scf::SCFDialect, mlir::memref::MemRefDialect,
+                    mlir::cf::ControlFlowDialect>();
   }
 };
 
@@ -468,6 +472,90 @@ class WhileOpLowering : public OpRewritePattern<WhileOp> {
 
 // -------------------------------------------------------------------------- //
 
+class CaseOpLowering : public OpRewritePattern<CaseOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(CaseOp op,
+                                PatternRewriter& rewriter) const override {
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    // Copy index buffer to the host ...
+    auto index_type = op.index().getType().dyn_cast<MemRefType>();
+    Value index_on_host = b.create<memref::AllocaOp>(index_type);
+    b.create<gpu::MemcpyOp>(TypeRange(),
+                            ValueRange({index_on_host, op.index()}));
+
+    // Get the index value from the buffer.
+    Value index = b.create<memref::LoadOp>(index_type.getElementType(),
+                                           index_on_host, ValueRange());
+
+    bool is_predicate = index_type.getElementType().isInteger(1);
+
+    // For binary index (predicate) convert i1 to i32 index.
+    if (is_predicate) {
+      Value c0 = b.create<ConstantOp>(b.getI32IntegerAttr(0));
+      Value c1 = b.create<ConstantOp>(b.getI32IntegerAttr(1));
+      index = b.create<arith::SelectOp>(index, c0, c1);
+    }
+
+    // For integer index make sure that it is within range.
+    if (!is_predicate) {
+      unsigned n = op.getNumRegions() - 1;
+      Value c0 = b.create<ConstantOp>(b.getI32IntegerAttr(0));
+      Value cN = b.create<ConstantOp>(b.getI32IntegerAttr(n));
+
+      Value too_small = b.create<arith::CmpIOp>(
+          b.getI1Type(), arith::CmpIPredicate::slt, index, c0);
+      Value too_large = b.create<arith::CmpIOp>(
+          b.getI1Type(), arith::CmpIPredicate::sgt, index, cN);
+
+      Value out_of_range = b.create<arith::OrIOp>(too_small, too_large);
+      index = b.create<arith::SelectOp>(out_of_range, cN, index);
+    }
+
+    // Split block right at the case operation.
+    Block* cont = rewriter.splitBlock(op->getBlock(), op->getIterator());
+    Block* orig = cont->getPrevNode();
+
+    // Prepare case destinations for the `scf.switch` operation.
+    llvm::SmallVector<llvm::APInt> case_values;
+    llvm::SmallVector<Block*> case_blocks;
+    llvm::SmallVector<ValueRange> case_operands;
+
+    // Create blocks from each of the case regions.
+    for (Region& region : op->getRegions()) {
+      // Move `lmhlo.case` block before the continuation.
+      Block& block = region.front();
+      block.moveBefore(cont);
+
+      // Erase original `lmhlo.terminator`.
+      rewriter.eraseOp(block.getTerminator());
+
+      // Branch into the continuation block.
+      b.setInsertionPointToEnd(&block);
+      b.create<cf::BranchOp>(cont);
+
+      // Add a `cf.switch` case.
+      int32_t idx = case_blocks.size();
+      case_values.push_back(b.getI32IntegerAttr(idx).getValue());
+      case_blocks.push_back(&block);
+      case_operands.push_back({});
+    }
+
+    // Replace `lmhlo.case` with a `cf.switch` operation on the host.
+    b.setInsertionPointToEnd(orig);
+    b.create<cf::SwitchOp>(index, cont, ValueRange(), case_values, case_blocks,
+                           case_operands);
+
+    // Erase the original case operation.
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+};
+// -------------------------------------------------------------------------- //
+
 using GlobalConstantsArgs = llvm::DenseMap<FuncOp, llvm::StringMap<Value>>;
 
 // Returns a mapping from a global constant name to the function argument.
@@ -771,7 +859,7 @@ void ConvertLmhloGpuToJitRtPass::runOnOperation() {
   RewritePatternSet patterns(ctx);
   patterns.insert<GemmOpLowering, GemmBiasOpLowering>(ctx, uid);
   patterns.insert<AllReduceOpLowering, CholeskyOpLowering, WhileOpLowering,
-                  TerminatorOpLowering>(ctx);
+                  CaseOpLowering, TerminatorOpLowering>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();
