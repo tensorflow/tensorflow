@@ -3,6 +3,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
@@ -91,6 +92,7 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
+        "config-cuda-only",
         "no_oss",
         "requires-gpu-nvidia",
     ],  # TODO(phawkins): This test passes, but requires --config=monolithic.
@@ -244,24 +246,31 @@ cc_library(
 cc_library(
     name = "py_client",
     srcs = [
+        "callback.cc",
         "py_buffer.cc",
         "py_client.cc",
         "py_executable.cc",
         "py_values.cc",
         "sharded_device_array.cc",
-    ],
+    ] + if_cuda([
+        "py_client_gpu.cc",
+    ]),
     hdrs = [
+        "callback.h",
         "py_buffer.h",
         "py_client.h",
         "py_executable.h",
         "py_values.h",
         "sharded_device_array.h",
-    ],
+    ] + if_cuda([
+        "py_client_gpu.h",
+    ]),
     compatible_with = [],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
+    defines = if_cuda(["GOOGLE_CUDA=1"]),
     features = ["-use_header_modules"],
     deps = [
         ":exceptions",
@@ -272,6 +281,15 @@ cc_library(
         ":transfer_guard_lib",
         ":types",
         ":util",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
+        "@pybind11",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -288,16 +306,9 @@ cc_library(
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/python/lib/core:numpy_lib",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
-        "@com_google_absl//absl/types:variant",
-        "@pybind11",
-    ],
+    ] + if_cuda([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
 )
 
 cc_library(
