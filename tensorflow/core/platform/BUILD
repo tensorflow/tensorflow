@@ -1357,7 +1357,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//third_party/eigen3",
-        "@com_google_absl//absl/strings:cord",
     ],
 )
 

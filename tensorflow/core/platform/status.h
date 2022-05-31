@@ -44,7 +44,6 @@ namespace errors {
 typedef ::tensorflow::error::Code Code;
 
 }  // namespace errors
-
 /// @ingroup core
 /// Denotes success or failure of a call in Tensorflow.
 class Status {
@@ -145,13 +144,14 @@ class Status {
   //
   // Returns the payload of a status given its unique `type_url` key, if
   // present.
-  absl::optional<absl::Cord> GetPayload(absl::string_view type_url) const;
+  absl::optional<absl::string_view> GetPayload(
+      absl::string_view type_url) const;
 
   // Sets the payload for a non-ok status using a `type_url` key, overwriting
   // any existing payload for that `type_url`.
   //
   // This function does nothing if the Status is ok.
-  void SetPayload(absl::string_view type_url, absl::Cord payload);
+  void SetPayload(absl::string_view type_url, absl::string_view payload);
 
   // Erases the payload corresponding to the `type_url` key.  Returns `true` if
   // the payload was present.
@@ -164,7 +164,7 @@ class Status {
   // any time and any mutation on the same Status object during visitation is
   // forbidden and could result in undefined behavior.
   void ForEachPayload(
-      absl::FunctionRef<void(absl::string_view, const absl::Cord&)> visitor)
+      const std::function<void(absl::string_view, absl::string_view)>& visitor)
       const;
 
   void SetStackTrace(std::vector<StackFrame>);
@@ -176,7 +176,7 @@ class Status {
   struct State {
     tensorflow::error::Code code;
     std::string msg;
-    std::unordered_map<std::string, absl::Cord> payloads;
+    std::unordered_map<std::string, std::string> payloads;
   };
 
   // OK status has a `NULL` state_.  Otherwise, `state_` points to
@@ -229,6 +229,7 @@ bool IsUnavailable(const Status& status);
 bool IsUnimplemented(const Status& status);
 bool IsUnknown(const Status& status);
 
+// TODO(b/197552541) Move this namespace to errors.h.
 namespace errors {
 
 void SetStackTrace(::tensorflow::Status& status,
@@ -259,7 +260,7 @@ class StatusGroup {
   // otherwise one payload value will be chosen in an unspecified but
   // deterministic order.
   // NOTE: The payload marking derived statuses as derived will not be returned.
-  std::unordered_map<std::string, absl::Cord> GetPayloads() const;
+  std::unordered_map<std::string, std::string> GetPayloads() const;
 
   // Return a merged status with combined child status messages with a summary.
   Status as_summary_status() const;

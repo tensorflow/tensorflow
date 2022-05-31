@@ -30,7 +30,7 @@ Status WithErrorSourcePayload(Status error) {
   error_source_proto.set_error_source(
       core::platform::ErrorSourceProto::EAGER_REMOTE_MGR);
   error.SetPayload(tensorflow::kErrorSource,
-                   absl::Cord(error_source_proto.SerializeAsString()));
+                   error_source_proto.SerializeAsString());
   return error;
 }
 }  // namespace

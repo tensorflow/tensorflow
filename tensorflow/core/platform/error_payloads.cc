@@ -27,7 +27,7 @@ void OkOrSetErrorCounterPayload(
     ErrorSourceProto error_source_proto;
     error_source_proto.set_error_source(error_source);
     status.SetPayload(tensorflow::kErrorSource,
-                      absl::Cord(error_source_proto.SerializeAsString()));
+                      error_source_proto.SerializeAsString());
   }
 }
 

@@ -20,9 +20,7 @@ limitations under the License.
 #include <deque>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <string>
-#include <utility>
 
 #include "absl/base/call_once.h"
 #include "absl/strings/escaping.h"
@@ -216,10 +214,10 @@ std::string Status::ToString() const {
     result += ": ";
     result += state_->msg;
 
-    for (const std::pair<const std::string, absl::Cord>& element :
+    for (const std::pair<const std::string, std::string>& element :
          state_->payloads) {
       absl::StrAppend(&result, " [", element.first, "='",
-                      absl::CHexEscape(std::string(element.second)), "']");
+                      absl::CHexEscape(element.second), "']");
     }
 
     return result;
@@ -230,17 +228,17 @@ void Status::IgnoreError() const {
   // no-op
 }
 
-void Status::SetPayload(absl::string_view type_url, absl::Cord payload) {
+void Status::SetPayload(absl::string_view type_url, absl::string_view payload) {
   if (ok()) return;
-  state_->payloads[std::string(type_url)] = std::move(payload);
+  state_->payloads[std::string(type_url)] = std::string(payload);
 }
 
-absl::optional<absl::Cord> Status::GetPayload(
+absl::optional<absl::string_view> Status::GetPayload(
     absl::string_view type_url) const {
   if (ok()) return absl::nullopt;
   auto payload_iter = state_->payloads.find(std::string(type_url));
   if (payload_iter == state_->payloads.end()) return absl::nullopt;
-  return payload_iter->second;
+  return absl::string_view(payload_iter->second);
 }
 
 bool Status::ErasePayload(absl::string_view type_url) {
@@ -252,7 +250,7 @@ bool Status::ErasePayload(absl::string_view type_url) {
 }
 
 void Status::ForEachPayload(
-    absl::FunctionRef<void(absl::string_view, const absl::Cord&)> visitor)
+    const std::function<void(absl::string_view, absl::string_view)>& visitor)
     const {
   if (ok()) return;
   for (const auto& payload : state_->payloads) {
@@ -424,7 +422,7 @@ Status StatusGroup::MakeDerived(const Status& s) {
     // TODO(b/200167936): Serialize an instance of DerivedStatus proto instead
     // of using the string directly. The string is never used so it is not
     // causing any issues at the moment.
-    derived.SetPayload(kDerivedStatusProtoUrl, absl::Cord(""));
+    derived.SetPayload(kDerivedStatusProtoUrl, "");
     return derived;
   }
 }
@@ -453,11 +451,11 @@ void StatusGroup::Update(const Status& s) {
 static constexpr int kMaxAggregatedStatusMessageSize = 8 * 1024;
 static constexpr int kMaxAttachedLogMessageSize = 512;
 
-std::unordered_map<std::string, absl::Cord> StatusGroup::GetPayloads() const {
-  std::unordered_map<std::string, absl::Cord> payloads;
+std::unordered_map<std::string, std::string> StatusGroup::GetPayloads() const {
+  std::unordered_map<std::string, std::string> payloads;
   auto capture_payload = [&payloads](absl::string_view key,
-                                     const absl::Cord& value) {
-    payloads[std::string(key)] = value;
+                                     absl::string_view value) {
+    payloads[std::string(key)] = std::string(value);
   };
 
   for (const auto& status : derived_) {
@@ -475,8 +473,9 @@ std::unordered_map<std::string, absl::Cord> StatusGroup::GetPayloads() const {
   return payloads;
 }
 
-Status MakeStatus(tensorflow::error::Code code, absl::string_view message,
-                  const std::unordered_map<std::string, absl::Cord>& payloads) {
+Status MakeStatus(
+    tensorflow::error::Code code, absl::string_view message,
+    const std::unordered_map<std::string, std::string>& payloads) {
   Status status(code, message);
   for (const auto& payload : payloads) {
     status.SetPayload(payload.first, payload.second);
