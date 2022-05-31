@@ -16,6 +16,7 @@
 
 import enum
 import tempfile
+from typing import List, Set
 import uuid
 import warnings
 
@@ -309,8 +310,8 @@ def _static_range_quantize(saved_model_path: str,
 
 
 def _dynamic_range_quantize(saved_model_path: str,
-                            signature_keys: list[str],
-                            tags: set[str],
+                            signature_keys: List[str],
+                            tags: Set[str],
                             output_directory: str = ''):
   """Quantizes the given SavedModel via post-training dynamic range quantization.
 
