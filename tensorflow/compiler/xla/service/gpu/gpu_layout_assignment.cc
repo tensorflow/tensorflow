@@ -94,11 +94,14 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     return kAllNHWC;
   }
 
+  // If we're on Ampere with fp32 and tf32 is on and conv2D, we will use NHWC to
+  // better use Tensor Cores.
   bool valid_tf32 = input_ty == F32 &&
                     stream_executor->GetDeviceDescription()
                         .cuda_compute_capability()
                         .IsAtLeast(se::CudaComputeCapability::AMPERE) &&
-                    tensorflow::tensor_float_32_execution_enabled();
+                    tensorflow::tensor_float_32_execution_enabled() &&
+                    instr->shape().tuple_shapes(0).dimensions_size() == 4;
   if (valid_tf32) {
     VLOG(2) << "Using NHWC for tf32 conv " << instr->ToString();
     return kAllNHWC;
