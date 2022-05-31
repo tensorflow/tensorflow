@@ -5235,6 +5235,41 @@ static bool MatchArgMax(const HloInstruction* hlo) {
   return MatchArgMinMax(hlo->to_apply()->root_instruction(), /*is_max=*/true);
 }
 
+static bool ReductionComputationsEquivalent(const HloComputation& a,
+                                            const HloComputation& b) {
+  if (a == b) {
+    return true;
+  }
+
+  // Check for simple commutative reduction functions.
+  enum CommutativeFnKind { kAdd, kMul, kAnd, kOr };
+  auto categorize_computation =
+      [](const HloComputation& c) -> std::optional<CommutativeFnKind> {
+    if (c.num_parameters() != 2) {
+      return std::nullopt;
+    }
+
+    const HloInstruction* root = c.root_instruction();
+    if (Match(root, m::AddAnyOrder(m::Parameter(0), m::Parameter(1)))) {
+      return kAdd;
+    }
+    if (Match(root, m::MultiplyAnyOrder(m::Parameter(0), m::Parameter(1)))) {
+      return kMul;
+    }
+    if (Match(root, m::AndAnyOrder(m::Parameter(0), m::Parameter(1)))) {
+      return kAnd;
+    }
+    if (Match(root, m::OrAnyOrder(m::Parameter(0), m::Parameter(1)))) {
+      return kOr;
+    }
+    return std::nullopt;
+  };
+  auto category_a = categorize_computation(a);
+  auto category_b = categorize_computation(b);
+  return category_a.has_value() && category_b.has_value() &&
+         category_a == category_b;
+}
+
 Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   HloReduceInstruction* reduce = Cast<HloReduceInstruction>(hlo);
   bool multi_output_reduce = reduce->shape().IsTuple();
@@ -5375,7 +5410,7 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   // they can be combined into a single reduce.
   if (arg->opcode() == HloOpcode::kReduce &&
       init_value->Identical(*arg->operand(1)) &&
-      *function == *arg->to_apply()) {
+      ReductionComputationsEquivalent(*function, *arg->to_apply())) {
     // Create a new reduce with the combined reduction dimensions of both
     // reduces.
     std::vector<int64_t> arg_dims = *arg->mutable_dimensions();
@@ -5475,7 +5510,7 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   if (options_.enable_dot_strength_reduction() &&
       Match(arg, m::Dot(&dot, m::Op(&lhs), m::Op(&rhs)).WithOneUser()) &&
       Match(reduce->to_apply()->root_instruction(),
-            m::Add(m::Parameter(), m::Parameter())) &&
+            m::AddAnyOrder(m::Parameter(0), m::Parameter(1))) &&
       absl::c_any_of(reduce->dimensions(), [&](int64_t dim) {
         return dim < dot->dot_dimension_numbers().lhs_batch_dimensions_size();
       })) {
