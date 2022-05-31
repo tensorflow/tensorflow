@@ -792,15 +792,15 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
   if (auto qtype = element_type.dyn_cast<mlir::quant::UniformQuantizedType>()) {
     q_params = tflite::CreateQuantizationParameters(
         builder_, /*min=*/0, /*max=*/0,
-        builder_.CreateVector<float>({static_cast<float>(qtype.getScale())}),
-        builder_.CreateVector<int64_t>({qtype.getZeroPoint()}));
+        builder_.CreateVector<float>({static_cast<float>(qtype.getScale())}, 1),
+        builder_.CreateVector<int64_t>({qtype.getZeroPoint()}, 1));
   } else if (auto qtype =
                  element_type
                      .dyn_cast<mlir::quant::CalibratedQuantizedType>()) {
     q_params = tflite::CreateQuantizationParameters(
         builder_,
-        builder_.CreateVector<float>({static_cast<float>(qtype.getMin())}),
-        builder_.CreateVector<float>({static_cast<float>(qtype.getMax())}));
+        builder_.CreateVector<float>({static_cast<float>(qtype.getMin())}, 1),
+        builder_.CreateVector<float>({static_cast<float>(qtype.getMax())}, 1));
   }
   return tflite::CreateTensor(
       builder_, builder_.CreateVector(shape), tflite_element_type,
