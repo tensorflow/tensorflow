@@ -26,9 +26,9 @@ namespace tensorflow {
 namespace {
 
 // TODO: This is only a dummy kernel
-class BincountOp : public XlaOpKernel {
+class DenseBincountOp : public XlaOpKernel {
  public:
-  explicit BincountOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+  explicit DenseBincountOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     DataType dtype;
   }
   
@@ -88,7 +88,7 @@ class BincountOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Bincount").CompileTimeConstantInput("size"), BincountOp);
+REGISTER_XLA_OP(Name("DenseBincount").CompileTimeConstantInput("size"), DenseBincountOp);
 
 }  // namespace
 }  // namespace tensorflow

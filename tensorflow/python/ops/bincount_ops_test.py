@@ -30,7 +30,6 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
-
 class TestSparseCount(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
@@ -173,18 +172,8 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
         "testcase_name": "_no_maxlength",
         "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
         "expected_values": [[0, 1, 1, 1, 0, 0],[0, 0, 0, 0, 2, 1]]
-    }, {
-        "testcase_name": "_maxlength",
-        "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
-        "maxlength": 7,
-        "expected_values": [[0, 1, 1, 1, 0, 0, 0],[1, 0, 0, 0, 2, 0, 0]]
-    }, {
-          "testcase_name": "_minlength",
-          "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
-          "minlength": 9,
-          "expected_values": [[0, 1, 1, 1, 0, 0, 0, 1, 0], 
-                              [1, 0, 0, 0, 2, 0, 0, 1, 0]]
-    })
+    },)
+
   def test_compiled_dense(self,
                        x,
                        expected_values,
@@ -194,7 +183,12 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
                        weights=None,
                        axis=-1):
     @def_function.function(jit_compile=True)
-    def f():
+    def f(x,
+          weights=weights,
+          minlength=minlength,
+          maxlength=maxlength,
+          binary_output=binary_output,
+          axis=axis):
       y = bincount_ops.bincount(
             x,
             weights=weights,
@@ -204,7 +198,12 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
             axis=axis
         )
       return y
-    y = f()
+    y = f(x,           
+          weights=weights,
+          minlength=minlength,
+          maxlength=maxlength,
+          binary_output=binary_output,
+          axis=axis)
     self.assertAllEqual(expected_values, y)
 
 
