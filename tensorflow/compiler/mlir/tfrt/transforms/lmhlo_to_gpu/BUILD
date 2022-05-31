@@ -179,6 +179,7 @@ cc_library(
         ":lmhlo_to_gpu_binary",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
+        "//tensorflow/compiler/mlir/xla:attribute_exporter",
         "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:ControlFlowOps",

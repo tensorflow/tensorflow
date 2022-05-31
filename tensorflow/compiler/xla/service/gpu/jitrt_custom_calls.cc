@@ -25,6 +25,7 @@
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
@@ -53,6 +54,7 @@ namespace xla {
 namespace gpu {
 
 using llvm::ArrayRef;
+using llvm::Optional;
 using llvm::orc::MangleAndInterner;
 using llvm::orc::SymbolMap;
 
@@ -523,6 +525,340 @@ static bool GemmBias(runtime::KernelContext* ctx, void** args, void** attrs) {
           .Attr<ArrayRef<int64_t>>("rhs_contracting_dimensions")
           .Attr<int64_t>("uid")
           .To<RuntimeChecks()>(GemmBias::Handler())
+          .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+// -------------------------------------------------------------------------- //
+
+// TODO(ezhulenev): We need to find a better way to pass structured attributes
+// to JitRt custom calls.
+
+// TODO(ezhulenev): Add caching layer for convolution configs and runners.
+
+namespace {
+
+struct InputDimensions {
+  int64_t input_batch_dim;
+  int64_t input_feature_dim;
+  ArrayRef<int64_t> input_spatial_dims;
+};
+
+struct KernelDimensions {
+  int64_t kernel_in_feature_dim;
+  int64_t kernel_out_feature_dim;
+  ArrayRef<int64_t> kernel_spatial_dims;
+};
+
+struct OutputDimensions {
+  int64_t output_batch_dim;
+  int64_t output_feature_dim;
+  ArrayRef<int64_t> output_spatial_dims;
+};
+
+struct Window {
+  ArrayRef<int64_t> window_strides;
+  ArrayRef<int64_t> padding;
+  ArrayRef<int64_t> lhs_dilation;
+  ArrayRef<int64_t> rhs_dilation;
+  ArrayRef<int64_t> window_reversal;
+};
+
+struct BackendConfig {
+  int64_t algorithm;
+  bool tensor_ops_enabled;
+  bool is_cudnn_frontend;
+  ArrayRef<int64_t> knob_ids;
+  ArrayRef<int64_t> knob_values;
+  ArrayRef<int64_t> operand_0_layout;
+  ArrayRef<int64_t> operand_1_layout;
+  ArrayRef<int64_t> result_layout;
+  int64_t workspace_size;
+};
+
+struct ConvAttrs {
+  int64_t feature_group_count;
+  double result_scale;
+};
+
+struct FusedConvAttrs {
+  int64_t activation_mode;
+};
+
+struct SideInputAttrs {
+  double side_input_scale;
+};
+
+}  // namespace
+
+static GpuConvDescriptor GetConvDescriptor(
+    CudnnConvKind kind,
+    // Arguments
+    jitrt::StridedMemrefView operand0, jitrt::StridedMemrefView operand1,
+    jitrt::StridedMemrefView output, jitrt::FlatMemrefView scratch,
+    // Attributes
+    InputDimensions i, KernelDimensions k, OutputDimensions o, Window w,
+    BackendConfig b, ConvAttrs attrs,
+    // Conv-specific arguments and attributes
+    Optional<FusedConvAttrs> fused = llvm::None,
+    Optional<SideInputAttrs> side_input = llvm::None) {
+  // Build a convolution descriptor from the attributes.
+  GpuConvDescriptor descriptor;
+  descriptor.kind = kind;
+
+  // Apply backend config layout to the shape.
+  auto apply_layout = [](jitrt::StridedMemrefView& memref,
+                         ArrayRef<int64_t> minor_to_major) {
+    Shape shape = ToShape(memref);
+    return ShapeUtil::MakeShapeWithLayout(shape.element_type(),
+                                          shape.dimensions(), minor_to_major);
+  };
+
+  descriptor.operand0_shape = apply_layout(operand0, b.operand_0_layout);
+  descriptor.operand1_shape = apply_layout(operand1, b.operand_1_layout);
+  descriptor.result_shape = apply_layout(output, b.result_layout);
+
+  // Set up convolution dimensions numbers.
+  ConvolutionDimensionNumbers dns;
+  dns.set_input_batch_dimension(i.input_batch_dim);
+  dns.set_input_feature_dimension(i.input_feature_dim);
+  dns.set_kernel_input_feature_dimension(k.kernel_in_feature_dim);
+  dns.set_kernel_output_feature_dimension(k.kernel_out_feature_dim);
+  dns.set_output_batch_dimension(o.output_batch_dim);
+  dns.set_output_feature_dimension(o.output_feature_dim);
+  for (int64_t d : i.input_spatial_dims) dns.add_input_spatial_dimensions(d);
+  for (int64_t d : k.kernel_spatial_dims) dns.add_kernel_spatial_dimensions(d);
+  for (int64_t d : o.output_spatial_dims) dns.add_output_spatial_dimensions(d);
+  descriptor.dnums = std::move(dns);
+
+  // Put together convolution window config.
+  for (auto index : llvm::seq<int>(0, w.window_strides.size())) {
+    WindowDimension* dim = descriptor.window.add_dimensions();
+    // Window size for a convolution is the same as the kernel size.
+    // Kernel size of the convolution is operand1_shape. We need to look at
+    // the convolution dimension numbers kernel spatial dimensions to get
+    // the window size.
+    int kernel_dim = descriptor.dnums.kernel_spatial_dimensions(index);
+    dim->set_size(descriptor.operand0_shape.dimensions(kernel_dim));
+    dim->set_stride(w.window_strides[index]);
+    dim->set_padding_low(w.padding[index]);
+    dim->set_padding_high(w.padding[index]);
+    dim->set_base_dilation(w.lhs_dilation[index]);
+    dim->set_window_dilation(w.rhs_dilation[index]);
+    dim->set_window_reversal(w.window_reversal[index]);
+  }
+
+  descriptor.scratch_size = scratch.size_in_bytes;
+  descriptor.feature_group_count = attrs.feature_group_count;
+  descriptor.backend_config.set_conv_result_scale(attrs.result_scale);
+
+  // Set up convolution algorigthm.
+  auto* algo = descriptor.backend_config.mutable_algorithm();
+  algo->set_algo_id(b.algorithm);
+  algo->set_math_type(b.tensor_ops_enabled
+                          ? se::dnn::AlgorithmProto::TENSOR_OP_MATH
+                          : se::dnn::AlgorithmProto::DEFAULT_MATH);
+  algo->set_is_cudnn_frontend(b.is_cudnn_frontend);
+
+  if (b.workspace_size >= 0)
+    algo->mutable_workspace_size()->set_value(b.workspace_size);
+
+  for (unsigned i = 0; i < b.knob_ids.size(); ++i) {
+    algo->mutable_tuning_knobs()->insert({b.knob_ids[i], b.knob_values[i]});
+  }
+
+  // Set attributes specific for fused convolutions.
+  if (fused.hasValue())
+    descriptor.backend_config.set_activation_mode(fused->activation_mode);
+
+  // Set attributes specific for convolutions with side input.
+  if (side_input.hasValue())
+    descriptor.backend_config.set_side_input_scale(
+        side_input->side_input_scale);
+
+  return descriptor;
+}
+
+namespace {
+struct Conv {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  LogicalResult operator()(
+      const ServiceExecutableRunOptions* run_options,
+      const DebugOptions* debug_options, jitrt::StridedMemrefView operand0,
+      jitrt::StridedMemrefView operand1, Optional<jitrt::FlatMemrefView> bias,
+      Optional<jitrt::StridedMemrefView> side_input,
+      jitrt::StridedMemrefView output, jitrt::FlatMemrefView scratch,
+      // Convolution input dimensions numbers
+      int64_t input_batch_dim, int64_t input_feature_dim,
+      ArrayRef<int64_t> input_spatial_dims,
+      // Convolution kernel dimensions numbers
+      int64_t kernel_in_feature_dim, int64_t kernel_out_feature_dim,
+      ArrayRef<int64_t> kernel_spatial_dims,
+      // Output dimensions numbers
+      int64_t output_batch_dim, int64_t output_feature_dim,
+      ArrayRef<int64_t> output_spatial_dims,
+      // Window config
+      ArrayRef<int64_t> window_strides, ArrayRef<int64_t> padding,
+      ArrayRef<int64_t> lhs_dilation, ArrayRef<int64_t> rhs_dilation,
+      ArrayRef<int64_t> window_reversal,
+      // Backend config attributes
+      int64_t algorithm, bool tensor_ops_enabled, bool is_cudnn_frontend,
+      ArrayRef<int64_t> knob_ids, ArrayRef<int64_t> knob_values,
+      ArrayRef<int64_t> operand_0_layout, ArrayRef<int64_t> operand_1_layout,
+      ArrayRef<int64_t> result_layout, int64_t workspace_size,
+      // Remaining attributes
+      int64_t feature_group_count, double result_scale,
+      // Optional attributes for fused convolutions.
+      Optional<int64_t> activation_mode = llvm::None,
+      Optional<double> side_input_scale = llvm::None) const {
+    // Build config for optional attributes.
+    Optional<FusedConvAttrs> fused_attrs = llvm::None;
+    if (activation_mode.hasValue()) fused_attrs = {*activation_mode};
+
+    Optional<SideInputAttrs> side_input_attrs = llvm::None;
+    if (side_input_scale.hasValue()) side_input_attrs = {*side_input_scale};
+
+    // Prepare a descriptor for the XLA convolution.
+    GpuConvDescriptor descriptor = GetConvDescriptor(
+        kind, operand0, operand1, output, scratch,
+        {input_batch_dim, input_feature_dim, input_spatial_dims},
+        {kernel_in_feature_dim, kernel_out_feature_dim, kernel_spatial_dims},
+        {output_batch_dim, output_feature_dim, output_spatial_dims},
+        {window_strides, padding, lhs_dilation, rhs_dilation, window_reversal},
+        {algorithm, tensor_ops_enabled, is_cudnn_frontend, knob_ids,
+         knob_values, operand_0_layout, operand_1_layout, result_layout,
+         workspace_size},
+        {feature_group_count, result_scale}, fused_attrs, side_input_attrs);
+
+    // Convert descriptor to the Conv config.
+    StatusOr<GpuConvConfig> config = GetGpuConvConfig(descriptor, "");
+    if (!config.ok()) return failure();
+
+    // Prepare buffer arguments.
+    std::vector<se::DeviceMemoryBase> buffers = {GetDeviceAddress(operand0),
+                                                 GetDeviceAddress(operand1)};
+    if (bias.hasValue()) buffers.push_back(GetDeviceAddress(*bias));
+    if (side_input.hasValue()) buffers.push_back(GetDeviceAddress(*side_input));
+
+    se::DeviceMemoryBase result_buffer = GetDeviceAddress(output);
+    se::DeviceMemoryBase scratch_buffer = GetDeviceAddress(scratch);
+
+    RunConvOptions opts;
+
+    // Create a runner for the given config.
+    MaybeFusedConvRunner runner(*config);
+    opts.runner_cache = &runner;
+
+    // Run the convolution.
+    auto st = RunGpuConv(*config, buffers, result_buffer, scratch_buffer,
+                         run_options->stream(), opts);
+    if (!st.ok() || !run_options->stream()->ok()) return failure();
+
+    return success();
+  }
+
+  static Conv Handler(CudnnConvKind kind) { return Conv{kind}; }
+
+  CudnnConvKind kind;
+};
+
+}  // namespace
+
+// Adds custom call bindings for convolution operations.
+template <typename... Ts>
+static auto BindConvAttributes(jitrt::CustomCallBinding<Ts...> binding) {
+  return std::move(binding)
+      // Convolution dimensions numbers
+      .template Attr<int64_t>("input_batch_dim")
+      .template Attr<int64_t>("input_feature_dim")
+      .template Attr<ArrayRef<int64_t>>("input_spatial_dims")
+      // Convolution kernel dimensions
+      .template Attr<int64_t>("kernel_in_feature_dim")
+      .template Attr<int64_t>("kernel_out_feature_dim")
+      .template Attr<ArrayRef<int64_t>>("kernel_spatial_dims")
+      // Output dimensions
+      .template Attr<int64_t>("output_batch_dim")
+      .template Attr<int64_t>("output_feature_dim")
+      .template Attr<ArrayRef<int64_t>>("output_spatial_dims")
+      // Window config
+      .template Attr<ArrayRef<int64_t>>("window_strides")
+      .template Attr<ArrayRef<int64_t>>("padding")
+      .template Attr<ArrayRef<int64_t>>("lhs_dilation")
+      .template Attr<ArrayRef<int64_t>>("rhs_dilation")
+      .template Attr<ArrayRef<int64_t>>("window_reversal")
+      // Backend config attributes
+      .template Attr<int64_t>("algorithm")
+      .template Attr<bool>("tensor_ops_enabled")
+      .template Attr<bool>("is_cudnn_frontend")
+      .template Attr<ArrayRef<int64_t>>("knob_ids")
+      .template Attr<ArrayRef<int64_t>>("knob_values")
+      .template Attr<ArrayRef<int64_t>>("operand_0_layout")
+      .template Attr<ArrayRef<int64_t>>("operand_1_layout")
+      .template Attr<ArrayRef<int64_t>>("result_layout")
+      .template Attr<int64_t>("workspace_size")
+      // Remaining attributes.
+      .template Attr<int64_t>("feature_group_count")
+      .template Attr<double>("result_scale");
+}
+
+template <CudnnConvKind kind>
+static bool ConvFn(runtime::KernelContext* ctx, void** args, void** attrs) {
+  static auto* handler =
+      BindConvAttributes(CustomCall::Bind("xla.gpu.conv")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .UserData<const DebugOptions*>()
+                             .Arg<jitrt::StridedMemrefView>()  // operand0
+                             .Arg<jitrt::StridedMemrefView>()  // operand1
+                             .Value(CustomCall::None)          // bias
+                             .Value(CustomCall::None)          // side_input
+                             .Arg<jitrt::StridedMemrefView>()  // output
+                             .Arg<jitrt::FlatMemrefView>()     // scratch
+                         )
+          .To(Conv::Handler(kind))
+          .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+template <CudnnConvKind kind>
+static bool ConvFusedFn(runtime::KernelContext* ctx, void** args,
+                        void** attrs) {
+  static auto* handler =
+      BindConvAttributes(CustomCall::Bind("xla.gpu.conv.fused")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .UserData<const DebugOptions*>()
+                             .Arg<jitrt::StridedMemrefView>()  // operand0
+                             .Arg<jitrt::StridedMemrefView>()  // operand1
+                             .Arg<jitrt::FlatMemrefView>()     // bias
+                             .Value(CustomCall::None)          // side_input
+                             .Arg<jitrt::StridedMemrefView>()  // output
+                             .Arg<jitrt::FlatMemrefView>()     // scratch
+                         )
+          .Attr<int64_t>("activation_mode")
+          .To(Conv::Handler(kind))
+          .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+template <CudnnConvKind kind>
+static bool ConvFuseSideInputdFn(runtime::KernelContext* ctx, void** args,
+                                 void** attrs) {
+  static auto* handler =
+      BindConvAttributes(CustomCall::Bind("xla.gpu.conv.fused.side_input")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .UserData<const DebugOptions*>()
+                             .Arg<jitrt::StridedMemrefView>()  // operand0
+                             .Arg<jitrt::StridedMemrefView>()  // operand1
+                             .Arg<jitrt::FlatMemrefView>()     // bias
+                             .Arg<jitrt::StridedMemrefView>()  // side_input
+                             .Arg<jitrt::StridedMemrefView>()  // output
+                             .Arg<jitrt::FlatMemrefView>()     // scratch
+                         )
+          .Attr<int64_t>("activation_mode")
+          .Attr<double>("side_input_scale")
+          .To(Conv::Handler(kind))
           .release();
 
   return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
@@ -1034,12 +1370,22 @@ SymbolMap JitRtCustomCallsSymbolMap(MangleAndInterner mangle) {
         llvm::pointerToJITTargetAddress(symbol_ptr), llvm::JITSymbolFlags());
   };
 
+  auto conv = [](StringRef name) { return ("xla.gpu.conv." + name).str(); };
+
   bind("xla.gpu.all_gather", &xla::gpu::AllGather);
   bind("xla.gpu.all_reduce", &xla::gpu::AllReduce);
   bind("xla.gpu.cholesky", &xla::gpu::Cholesky);
   bind("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
   bind("xla.gpu.gemm", &xla::gpu::Gemm);
   bind("xla.gpu.gemm.bias", &xla::gpu::GemmBias);
+
+  bind(conv("forward"), &ConvFn<CudnnConvKind::kForward>);
+  bind(conv("backward.input"), &ConvFn<CudnnConvKind::kBackwardInput>);
+  bind(conv("backward.filter"), &ConvFn<CudnnConvKind::kBackwardFilter>);
+  bind(conv("forward.fused"), &ConvFusedFn<CudnnConvKind::kForwardActivation>);
+  bind(conv("forward.fused.side_input"),
+       &ConvFuseSideInputdFn<CudnnConvKind::kForwardActivation>);
+
   bind("xla.gpu.memcpy.d2d", &MemcpyFn<MemcpyDirection::kDeviceToDevice>);
   bind("xla.gpu.memcpy.h2d", &MemcpyFn<MemcpyDirection::kHostToDevice>);
   bind("xla.gpu.memcpy.d2h", &MemcpyFn<MemcpyDirection::kDeviceToHost>);

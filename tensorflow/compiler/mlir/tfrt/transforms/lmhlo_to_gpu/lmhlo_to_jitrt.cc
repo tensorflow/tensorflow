@@ -26,6 +26,7 @@
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -43,6 +44,7 @@
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu_binary.h"
+#include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
@@ -55,6 +57,8 @@ namespace {
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/jitrt_passes.h.inc"
 
+using mlir::ArrayAttr;
+using mlir::Attribute;
 using mlir::DialectRegistry;
 using mlir::FunctionType;
 using mlir::IntegerAttr;
@@ -85,10 +89,19 @@ using mlir::lmhlo::ReplicaIdOp;
 using mlir::lmhlo::TerminatorOp;
 using mlir::lmhlo::WhileOp;
 using mlir::lmhlo_gpu::CholeskyOp;
+using mlir::lmhlo_gpu::ConvBackwardFilterOp;
+using mlir::lmhlo_gpu::ConvBackwardInputOp;
+using mlir::lmhlo_gpu::ConvForwardFusedOp;
+using mlir::lmhlo_gpu::ConvForwardFusedSideInputOp;
+using mlir::lmhlo_gpu::ConvForwardOp;
+using mlir::lmhlo_gpu::ConvolutionBackendConfig;
 using mlir::lmhlo_gpu::GEMM_BiasOp;
 using mlir::lmhlo_gpu::GEMMOp;
 using mlir::memref::AllocaOp;
 using mlir::memref::GetGlobalOp;
+using mlir::mhlo::ConvDimensionNumbersAttr;
+
+using xla::ConvertConvActivationMode;
 
 class ConvertLmhloConstantToArgPass
     : public ConvertLmhloConstantToArgPassBase<ConvertLmhloConstantToArgPass> {
@@ -422,6 +435,188 @@ class GemmOpLowering : public GemmLowering<GEMMOp> {
 class GemmBiasOpLowering : public GemmLowering<GEMM_BiasOp> {
  public:
   using GemmLowering::GemmLowering;
+};
+
+// -------------------------------------------------------------------------- //
+
+template <typename Conv>
+class ConvOpLowering : public OpRewritePattern<Conv> {
+ public:
+  explicit ConvOpLowering(MLIRContext* ctx) : OpRewritePattern<Conv>(ctx) {}
+
+  static StringRef CustomCallTarget(ConvForwardOp) {
+    return "xla.gpu.conv.forward";
+  }
+
+  static StringRef CustomCallTarget(ConvForwardFusedOp) {
+    return "xla.gpu.conv.forward.fused";
+  }
+
+  static StringRef CustomCallTarget(ConvForwardFusedSideInputOp) {
+    return "xla.gpu.conv.forward.fused.side_input";
+  }
+
+  static StringRef CustomCallTarget(ConvBackwardFilterOp) {
+    return "xla.gpu.conv.backward.filter";
+  }
+
+  static StringRef CustomCallTarget(ConvBackwardInputOp) {
+    return "xla.gpu.conv.backward.input";
+  }
+
+  LogicalResult matchAndRewrite(Conv op,
+                                PatternRewriter& rewriter) const override {
+    MLIRContext* ctx = this->getContext();
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    ModuleOp module = op->template getParentOfType<ModuleOp>();
+
+    // Custom call target.
+    NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
+                          b.getStringAttr(CustomCallTarget(op)));
+
+    // Create a custom call function declaration.
+    auto custom_call_type =
+        FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
+    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
+    auto custom_call = FuncOp::create(op.getLoc(), CustomCallTarget(op),
+                                      custom_call_type, custom_call_attrs);
+    custom_call.setPrivate();
+
+    SymbolTable sym_table(module);
+    auto inserted = sym_table.insert(custom_call);
+    rewriter.notifyOperationInserted(custom_call);
+
+    // Convert Conv to a function call.
+    auto call = rewriter.create<CallOp>(op.getLoc(), inserted, TypeRange(),
+                                        op.getOperands());
+
+    // Helper functins to copy attributes from the conv op to the custom call.
+    auto set_attr = [&](StringRef name, Attribute attr) {
+      call->setAttr(b.getStringAttr(name), attr);
+    };
+
+    auto set_i64 = [&](StringRef name, int64_t value) {
+      set_attr(name, b.getI64IntegerAttr(value));
+    };
+
+    auto set_i64s = [&](StringRef name, ArrayRef<int64_t> values) {
+      set_attr(name, b.getI64TensorAttr(values));
+    };
+
+    auto set_xi64 = [&](StringRef name, Optional<DenseIntElementsAttr> attr) {
+      SmallVector<int64_t> values;
+      if (attr.hasValue()) values = llvm::to_vector(attr->getValues<int64_t>());
+      set_attr(name, b.getI64TensorAttr(values));
+    };
+
+    // Convert `BoolElementsAttr` to i64 before passing to the runtime.
+    // TODO(ezhulenev): Allow passing boolean tensors to the JitRt custom calls.
+    auto set_xi1 = [&](StringRef name, Optional<DenseElementsAttr> attr) {
+      SmallVector<int64_t> values;
+      if (attr.hasValue())
+        values.assign(attr->getValues<bool>().begin(),
+                      attr->getValues<bool>().end());
+      set_attr(name, b.getI64TensorAttr(values));
+    };
+
+    // Convert array attribute to an i64 vector.
+    auto to_i64s = [](ArrayAttr arr) {
+      auto range = llvm::map_range(arr.getValue(), [](Attribute attr) {
+        return attr.cast<IntegerAttr>().getInt();
+      });
+      return SmallVector<int64_t>(range.begin(), range.end());
+    };
+
+    // Copy dimension number attributes.
+    ConvDimensionNumbersAttr dims = op.dimension_numbers();
+
+    set_i64("input_batch_dim", dims.getInputBatchDimension());
+    set_i64("input_feature_dim", dims.getInputFeatureDimension());
+    set_i64s("input_spatial_dims", dims.getInputSpatialDimensions());
+
+    set_i64("kernel_in_feature_dim", dims.getKernelInputFeatureDimension());
+    set_i64("kernel_out_feature_dim", dims.getKernelOutputFeatureDimension());
+    set_i64s("kernel_spatial_dims", dims.getKernelSpatialDimensions());
+
+    set_i64("output_batch_dim", dims.getOutputBatchDimension());
+    set_i64("output_feature_dim", dims.getOutputFeatureDimension());
+    set_i64s("output_spatial_dims", dims.getOutputSpatialDimensions());
+
+    // Copy convolution window attributes.
+    set_xi1("window_reversal", op.window_reversal());
+    set_xi64("window_strides", op.window_strides());
+    set_xi64("lhs_dilation", op.lhs_dilation());
+    set_xi64("rhs_dilation", op.rhs_dilation());
+    set_xi64("padding", op.padding());
+
+    // Copy backend config.
+    ConvolutionBackendConfig backend = op.backend_config();
+
+    set_attr("algorithm", backend.algorithm());
+    set_attr("tensor_ops_enabled", backend.tensor_ops_enabled());
+    set_attr("is_cudnn_frontend", backend.is_cudnn_frontend());
+    set_attr("workspace_size", backend.workspace_size());
+
+    set_i64s("knob_ids", to_i64s(backend.knob_ids()));
+    set_i64s("knob_values", to_i64s(backend.knob_values()));
+    set_i64s("operand_0_layout", to_i64s(backend.operand_0_layout()));
+    set_i64s("operand_1_layout", to_i64s(backend.operand_1_layout()));
+    set_i64s("result_layout", to_i64s(backend.result_layout()));
+
+    // Copy remaining attributes.
+    set_attr("feature_group_count", op.feature_group_countAttr());
+    set_attr("result_scale", op.result_scaleAttr());
+
+    // Copy attributes specific for fused convolutions.
+    if (auto fused = dyn_cast<ConvForwardFusedOp>(op.getOperation())) {
+      auto activation_mode = ConvertConvActivationMode(fused.activation_mode());
+      if (!activation_mode.ok())
+        return op.emitOpError("failed to convert activation mode");
+      set_i64("activation_mode", static_cast<int64_t>(*activation_mode));
+    }
+
+    // Copy attributes specific for fused convolutions with side input.
+    if (auto fused = dyn_cast<ConvForwardFusedSideInputOp>(op.getOperation())) {
+      auto activation_mode = ConvertConvActivationMode(fused.activation_mode());
+      if (!activation_mode.ok())
+        return op.emitOpError("failed to convert activation mode");
+      set_i64("activation_mode", static_cast<int64_t>(*activation_mode));
+      set_attr("side_input_scale", fused.side_input_scaleAttr());
+    }
+
+    // Erase the original conv operation.
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+};
+
+class ConvForwardOpLowering : public ConvOpLowering<ConvForwardOp> {
+ public:
+  using ConvOpLowering::ConvOpLowering;
+};
+
+class ConvForwardFusedOpLowering : public ConvOpLowering<ConvForwardFusedOp> {
+ public:
+  using ConvOpLowering::ConvOpLowering;
+};
+
+class ConvBackwardFilterOpLowering
+    : public ConvOpLowering<ConvBackwardFilterOp> {
+ public:
+  using ConvOpLowering::ConvOpLowering;
+};
+
+class ConvBackwardInputOpLowering : public ConvOpLowering<ConvBackwardInputOp> {
+ public:
+  using ConvOpLowering::ConvOpLowering;
+};
+
+class ConvForwardFusedSideInputOpLowering
+    : public ConvOpLowering<ConvForwardFusedSideInputOp> {
+ public:
+  using ConvOpLowering::ConvOpLowering;
 };
 
 // -------------------------------------------------------------------------- //
@@ -1014,9 +1209,12 @@ void ConvertLmhloGpuToJitRtPass::runOnOperation() {
   // Convert lmhlo_gpu operations to JitRt gpu runtime custom calls.
   RewritePatternSet patterns(ctx);
   patterns.insert<GemmOpLowering, GemmBiasOpLowering>(ctx, uid);
-  patterns.insert<AllGatherOpLowering, AllReduceOpLowering, CholeskyOpLowering,
-                  ReplicaIdOpLowering, WhileOpLowering, CaseOpLowering,
-                  CustomCallOpLowering, TerminatorOpLowering>(ctx);
+  patterns
+      .insert<AllGatherOpLowering, AllReduceOpLowering, CholeskyOpLowering,
+              ReplicaIdOpLowering, WhileOpLowering, CaseOpLowering,
+              CustomCallOpLowering, TerminatorOpLowering, ConvForwardOpLowering,
+              ConvForwardFusedOpLowering, ConvForwardFusedSideInputOpLowering,
+              ConvBackwardFilterOpLowering, ConvBackwardInputOpLowering>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();
@@ -1047,12 +1245,14 @@ void populateLmhloToJitRtPasses(mlir::OpPassManager& pm) {
   // code generation. If constant will be embedded into the device module, we
   // should not inline it too early. Currently it's hardcoded to `1` element.
   pm.addPass(createConvertLmhloConstantToArgPass(/*min_num_elements=*/2));
+  pm.addPass(createSymbolDCEPass());  // Clean up unused global constants.
 
   // Small global constants will be embedded into the device modules.
   pm.addPass(createConvertLmhloToGpuBinaryPass());
 
   // Convert remaining small global memrefs corresponding to constant arguments.
   pm.addPass(createConvertLmhloConstantToArgPass());
+  pm.addPass(createSymbolDCEPass());  // Clean up unused global constants.
 
   // Lower all Gpu operations to the JitRt Gpu runtime intrinsics.
   pm.addPass(createConvertLmhloGpuToJitRtPass());

@@ -659,6 +659,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:custom_call_status_internal",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service/gpu:gpu_conv_runner",
         "//tensorflow/stream_executor/gpu:gpu_stream",
         "//tensorflow/stream_executor/gpu:gpu_types_header",
         "@llvm-project//llvm:OrcJIT",
