@@ -42,9 +42,26 @@ class OpcodeCollector : public ConstDfsHloVisitorWithDefault {
         break;
       case HloOpcode::kParameter:
         break;
+      case HloOpcode::kAdd:
+      case HloOpcode::kSubtract:
+      case HloOpcode::kMultiply:
+      case HloOpcode::kDivide:
+      case HloOpcode::kAbs:
+      case HloOpcode::kNegate:
+      case HloOpcode::kSign:
+      case HloOpcode::kCeil:
+      case HloOpcode::kFloor:
+      case HloOpcode::kAtan2:
+      case HloOpcode::kSin:
+      case HloOpcode::kCos:
+      case HloOpcode::kTanh:
+      case HloOpcode::kExp:
+      case HloOpcode::kLog:
+      case HloOpcode::kSqrt:
+      case HloOpcode::kRsqrt:
+        opcodes_.insert("cwise");
+        break;
       default:
-        // TODO(tjoerg): Consider to aggregrate ops that are very similar, e.g.
-        // cwise ops.
         opcodes_.insert(HloOpcodeString(instr->opcode()));
     }
     return Status::OK();

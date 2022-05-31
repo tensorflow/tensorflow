@@ -93,7 +93,32 @@ TEST_F(HloFusionStatsTest, LoopFusionAndReduceFusion) {
   ASSERT_TRUE(absl::StrContains(stats, "Number of kLoop fusions: 2"));
   ASSERT_TRUE(absl::StrContains(stats, "{broadcast, compare, select}: 2"));
   ASSERT_TRUE(absl::StrContains(stats, "Number of kInput fusions: 1"));
-  ASSERT_TRUE(absl::StrContains(stats, "{multiply, reduce, tuple}: 1"));
+  ASSERT_TRUE(absl::StrContains(stats, "{cwise, reduce, tuple}: 1"));
+}
+
+TEST_F(HloFusionStatsTest, AggregateCwiseOps) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    fused_computation {
+      p0.1 = f32[8,1,5,16,1,2]{5,4,3,2,1,0} parameter(0)
+      mul = f32[8,1,5,16,1,2]{5,4,3,2,1,0} multiply(p0.1, p0.1)
+      ROOT exp = f32[8,1,5,16,1,2]{5,4,3,2,1,0} exponential(mul)
+    }
+
+    ENTRY entry {
+      p0 = f32[8,1,5,16,1,2]{5,4,3,2,1,0} parameter(0)
+      ROOT fusion = f32[8,1,5,16,1,2]{5,4,3,2,1,0} fusion(p0), kind=kLoop,
+        calls=fused_computation
+    })")
+                    .ValueOrDie();
+  HloFusionStatsVisitor fusion_stats_visitor;
+  TF_ASSERT_OK(
+      module.get()->entry_computation()->Accept(&fusion_stats_visitor));
+  SCOPED_TRACE(module->ToString());
+
+  std::string stats = fusion_stats_visitor.ToString();
+  ASSERT_TRUE(absl::StrContains(stats, "{cwise}: 1")) << stats;
 }
 
 }  // namespace
