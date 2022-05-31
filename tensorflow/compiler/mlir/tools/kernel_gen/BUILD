@@ -47,6 +47,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:all_passes",
+        "//tensorflow/compiler/mlir/hlo:gpu_passes",
         "//tensorflow/compiler/mlir/hlo:legalize_trigonometric_to_approximation",
         "//tensorflow/compiler/mlir/hlo:shape_simplification",
         "//tensorflow/compiler/mlir/tensorflow",

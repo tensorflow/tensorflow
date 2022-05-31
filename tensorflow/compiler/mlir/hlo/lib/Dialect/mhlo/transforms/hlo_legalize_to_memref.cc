@@ -71,7 +71,7 @@ struct ReshapeOpInterface
     auto reshape_op = cast<mhlo::ReshapeOp>(op);
     auto unranked_operand_type =
         reshape_op.operand().getType().dyn_cast<UnrankedTensorType>();
-    if (unranked_operand_type == nullptr) return failure();
+    if (unranked_operand_type == nullptr) return success();
 
     // The buffer still has the old (pre-reshape) type.
     FailureOr<Value> operand_buffer =
@@ -289,7 +289,7 @@ struct DynamicBroadcastInDimOpInterface
     auto broadcast_in_dim_op = cast<mhlo::DynamicBroadcastInDimOp>(op);
     auto result_type =
         broadcast_in_dim_op.getType().dyn_cast<RankedTensorType>();
-    if (!result_type) return failure();
+    if (!result_type) return success();
 
     // The buffer still has the old (pre-reshape) type.
     FailureOr<Value> operand_buffer = state.getBuffer(

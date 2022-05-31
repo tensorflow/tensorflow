@@ -48,20 +48,16 @@ class TileLoopsPass : public TileLoopsPassBase<TileLoopsPass> {
 
 }  // namespace
 
-// Checks if the access pattern in the `scf.parallel` loop `ploop` is "complex".
-// I.e., its memory load patterns include more than just scalar accesses, and
-// accesses with offsets corresponding to loop inductions variables.
+// Returns whether the access pattern in `ploop` is "complex". That is, whether
+// any memref.load op in its region uses indices that don't correspond to the
+// loop induction variables.
 static bool IsComplexAccessPattern(ParallelOp ploop) {
-  for (Operation& nested : ploop.getBody()->without_terminator()) {
-    if (auto load_op = llvm::dyn_cast<memref::LoadOp>(nested)) {
-      if (!load_op.getMemRefType().getLayout().isIdentity() ||
-          (!load_op.getIndices().empty() &&
-           load_op.getIndices() != ploop.getInductionVars())) {
-        return true;
-      }
-    }
-  }
-  return false;
+  auto is_complex = [&](memref::LoadOp load_op) {
+    if (!load_op.getMemRefType().getLayout().isIdentity()) return true;
+    if (load_op.getIndices().empty()) return false;
+    return load_op.getIndices() != ploop.getInductionVars();
+  };
+  return llvm::any_of(ploop.getBody()->getOps<memref::LoadOp>(), is_complex);
 }
 
 void TileLoopsPass::runOnOperation() {

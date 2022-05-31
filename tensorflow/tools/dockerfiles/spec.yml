@@ -160,7 +160,7 @@ slice_sets:
               - CHECKOUT_TF_SRC=1
 
     onednn:
-        - add_to_name: "-16.04"
+        - add_to_name: "-ubuntu-16.04"
           dockerfile_exclusive_name: "ubuntu-16.04"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -175,7 +175,7 @@ slice_sets:
               - TF_PACKAGE=intel-tensorflow
               - UBUNTU_VERSION=16.04
               - PYTHON=python3.6
-        - add_to_name: "-18.04"
+        - add_to_name: "-ubuntu-18.04"
           dockerfile_exclusive_name: "ubuntu-18.04"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -190,7 +190,7 @@ slice_sets:
               - TF_PACKAGE=intel-tensorflow
               - UBUNTU_VERSION=18.04
               - PYTHON=python3
-        - add_to_name: "-20.04"
+        - add_to_name: "-ubuntu-20.04"
           dockerfile_exclusive_name: "ubuntu-20.04"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -205,7 +205,7 @@ slice_sets:
               - TF_PACKAGE=intel-tensorflow
               - UBUNTU_VERSION=20.04
               - PYTHON=python3
-        - add_to_name: "-7"
+        - add_to_name: "-centos-7"
           dockerfile_exclusive_name: "centos-7"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -222,7 +222,7 @@ slice_sets:
               - CENTOS_VERSION=7
               - PYTHON=python3
               - HOROVOD_VERSION=v0.21.1
-        - add_to_name: "-8"
+        - add_to_name: "-centos-8"
           dockerfile_exclusive_name: "centos-8"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -238,9 +238,25 @@ slice_sets:
               - CENTOS_VERSION=8
               - PYTHON=python3
               - HOROVOD_VERSION=v0.21.1
+        - add_to_name: "-redhat-8"
+          dockerfile_exclusive_name: "redhat-8"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/redhat/version
+              - onednn/redhat/cpu
+              - onednn/redhat/python
+              - tensorflow
+              - shell
+          tests:
+              - import-onednn.sh
+          args:
+              - TF_PACKAGE=intel-tensorflow
+              - REDHAT_VERSION=latest
+              - PYTHON=python3
+              - HOROVOD_VERSION=v0.21.1
 
     devel-onednn:
-        - add_to_name: "-16.04-devel"
+        - add_to_name: "-ubuntu-16.04-devel"
           dockerfile_exclusive_name: "ubuntu-16.04-devel"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -256,7 +272,7 @@ slice_sets:
               - CHECKOUT_TF_SRC=1
               - TF_BRANCH=master
               - PYTHON=python3.6
-        - add_to_name: "-18.04-devel"
+        - add_to_name: "-ubuntu-18.04-devel"
           dockerfile_exclusive_name: "ubuntu-18.04-devel"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -272,7 +288,7 @@ slice_sets:
               - CHECKOUT_TF_SRC=1
               - TF_BRANCH=master
               - PYTHON=python3
-        - add_to_name: "-20.04-devel"
+        - add_to_name: "-ubuntu-20.04-devel"
           dockerfile_exclusive_name: "ubuntu-20.04-devel"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -288,7 +304,7 @@ slice_sets:
               - CHECKOUT_TF_SRC=1
               - TF_BRANCH=master
               - PYTHON=python3
-        - add_to_name: "-7-devel"
+        - add_to_name: "-centos-7-devel"
           dockerfile_exclusive_name: "centos-7-devel"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -307,7 +323,7 @@ slice_sets:
               - TF_BRANCH=master
               - PYTHON=python3
               - HOROVOD_VERSION=v0.21.1
-        - add_to_name: "-8-devel"
+        - add_to_name: "-centos-8-devel"
           dockerfile_exclusive_name: "centos-8-devel"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -325,9 +341,27 @@ slice_sets:
               - TF_BRANCH=master
               - PYTHON=python3
               - HOROVOD_VERSION=v0.21.1
+        - add_to_name: "-redhat-8-devel"
+          dockerfile_exclusive_name: "redhat-8-devel"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/redhat/version
+              - onednn/redhat/devel-8
+              - onednn/redhat/devel
+              - onednn/redhat/python
+              - onednn/redhat/bazel
+              - shell
+          tests:
+              - ""
+          args:
+              - REDHAT_VERSION=latest
+              - CHECKOUT_TF_SRC=1
+              - TF_BRANCH=master
+              - PYTHON=python3
+              - HOROVOD_VERSION=v0.21.1
 
     onednn-mpi-horovod:
-        - add_to_name: "-16.04-mpi-horovod"
+        - add_to_name: "-ubuntu-16.04-mpi-horovod"
           dockerfile_exclusive_name: "ubuntu-16.04-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -345,7 +379,7 @@ slice_sets:
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
               - PYTHON=python3.6
-        - add_to_name: "-18.04-mpi-horovod"
+        - add_to_name: "-ubuntu-18.04-mpi-horovod"
           dockerfile_exclusive_name: "ubuntu-18.04-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -363,7 +397,7 @@ slice_sets:
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
               - PYTHON=python3
-        - add_to_name: "-20.04-mpi-horovod"
+        - add_to_name: "-ubuntu-20.04-mpi-horovod"
           dockerfile_exclusive_name: "ubuntu-20.04-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -381,7 +415,7 @@ slice_sets:
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
               - PYTHON=python3
-        - add_to_name: "-7-mpi-horovod"
+        - add_to_name: "-centos-7-mpi-horovod"
           dockerfile_exclusive_name: "centos-7-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -400,7 +434,7 @@ slice_sets:
               - PYTHON=python3
               - TF_PACKAGE=intel-tensorflow
               - HOROVOD_VERSION=v0.21.1
-        - add_to_name: "-8-mpi-horovod"
+        - add_to_name: "-centos-8-mpi-horovod"
           dockerfile_exclusive_name: "centos-8-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -418,8 +452,27 @@ slice_sets:
               - PYTHON=python3
               - TF_PACKAGE=intel-tensorflow
               - HOROVOD_VERSION=v0.21.1
+        - add_to_name: "-redhat-8-mpi-horovod"
+          dockerfile_exclusive_name: "redhat-8-mpi-horovod"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/redhat/version
+              - onednn/redhat/cpu
+              - onednn/redhat/python
+              - tensorflow
+              - onednn/redhat/mpi
+              - onednn/redhat/horovod
+              - shell
+          tests:
+              - import-onednn-horovod.sh
+          args:
+              - REDHAT_VERSION=latest
+              - PYTHON=python3
+              - TF_PACKAGE=intel-tensorflow
+              - HOROVOD_VERSION=v0.21.1
+
     devel-onednn-mpi-horovod:
-        - add_to_name: "-16.04-devel-mpi-horovod"
+        - add_to_name: "-ubuntu-16.04-devel-mpi-horovod"
           dockerfile_exclusive_name: "ubuntu-16.04-devel-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -438,7 +491,7 @@ slice_sets:
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
               - PYTHON=python3.6
-        - add_to_name: "-18.04-devel-mpi-horovod"
+        - add_to_name: "-ubuntu-18.04-devel-mpi-horovod"
           dockerfile_exclusive_name: "ubuntu-18.04-devel-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -457,7 +510,7 @@ slice_sets:
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
               - PYTHON=python3
-        - add_to_name: "-20.04-devel-mpi-horovod"
+        - add_to_name: "-ubuntu-20.04-devel-mpi-horovod"
           dockerfile_exclusive_name: "ubuntu-20.04-devel-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -476,7 +529,7 @@ slice_sets:
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
               - PYTHON=python3
-        - add_to_name: "-7-devel-mpi-horovod"
+        - add_to_name: "-centos-7-devel-mpi-horovod"
           dockerfile_exclusive_name: "centos-7-devel-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -497,8 +550,7 @@ slice_sets:
               - CHECKOUT_TF_SRC=1
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
-
-        - add_to_name: "-8-devel-mpi-horovod"
+        - add_to_name: "-centos-8-devel-mpi-horovod"
           dockerfile_exclusive_name: "centos-8-devel-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -518,9 +570,29 @@ slice_sets:
               - CHECKOUT_TF_SRC=1
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
+        - add_to_name: "-redhat-8-devel-mpi-horovod"
+          dockerfile_exclusive_name: "redhat-8-devel-mpi-horovod"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/redhat/version
+              - onednn/redhat/devel-8
+              - onednn/redhat/devel
+              - onednn/redhat/python
+              - onednn/redhat/bazel
+              - onednn/redhat/mpi
+              - onednn/redhat/devel-horovod
+              - shell
+          tests:
+              - ""
+          args:
+              - REDHAT_VERSION=latest
+              - PYTHON=python3
+              - CHECKOUT_TF_SRC=1
+              - CHECKOUT_HOROVOD_SRC=1
+              - HOROVOD_BRANCH=master
 
     onednn-mpich-horovod:
-        - add_to_name: "-16.04-mpich-horovod"
+        - add_to_name: "-ubuntu-16.04-mpich-horovod"
           dockerfile_exclusive_name: "ubuntu-16.04-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -538,7 +610,7 @@ slice_sets:
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
               - PYTHON=python3.6
-        - add_to_name: "-18.04-mpich-horovod"
+        - add_to_name: "-ubuntu-18.04-mpich-horovod"
           dockerfile_exclusive_name: "ubuntu-18.04-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -556,7 +628,7 @@ slice_sets:
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
               - PYTHON=python3
-        - add_to_name: "-20.04-mpich-horovod"
+        - add_to_name: "-ubuntu-20.04-mpich-horovod"
           dockerfile_exclusive_name: "ubuntu-20.04-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -574,7 +646,7 @@ slice_sets:
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
               - PYTHON=python3
-        - add_to_name: "-7-mpich-horovod"
+        - add_to_name: "-centos-7-mpich-horovod"
           dockerfile_exclusive_name: "centos-7-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -593,7 +665,7 @@ slice_sets:
               - PYTHON=python3
               - TF_PACKAGE=intel-tensorflow
               - HOROVOD_VERSION=v0.21.1
-        - add_to_name: "-8-mpich-horovod"
+        - add_to_name: "-centos-8-mpich-horovod"
           dockerfile_exclusive_name: "centos-8-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -611,9 +683,27 @@ slice_sets:
               - PYTHON=python3
               - TF_PACKAGE=intel-tensorflow
               - HOROVOD_VERSION=v0.21.1
+        - add_to_name: "-redhat-8-mpich-horovod"
+          dockerfile_exclusive_name: "redhat-8-mpich-horovod"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/redhat/version
+              - onednn/redhat/cpu
+              - onednn/redhat/python
+              - tensorflow
+              - onednn/redhat/mpich
+              - onednn/redhat/horovod
+              - shell
+          tests:
+              - import-onednn-horovod.sh
+          args:
+              - REDHAT_VERSION=latest
+              - PYTHON=python3
+              - TF_PACKAGE=intel-tensorflow
+              - HOROVOD_VERSION=v0.21.1
 
     devel-onednn-mpich-horovod:
-        - add_to_name: "-16.04-devel-mpich-horovod"
+        - add_to_name: "-ubuntu-16.04-devel-mpich-horovod"
           dockerfile_exclusive_name: "ubuntu-16.04-devel-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -632,7 +722,7 @@ slice_sets:
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
               - PYTHON=python3.6
-        - add_to_name: "-18.04-devel-mpich-horovod"
+        - add_to_name: "-ubuntu-18.04-devel-mpich-horovod"
           dockerfile_exclusive_name: "ubuntu-18.04-devel-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -651,7 +741,7 @@ slice_sets:
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
               - PYTHON=python3
-        - add_to_name: "-20.04-devel-mpich-horovod"
+        - add_to_name: "-ubuntu-20.04-devel-mpich-horovod"
           dockerfile_exclusive_name: "ubuntu-20.04-devel-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -670,7 +760,7 @@ slice_sets:
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
               - PYTHON=python3
-        - add_to_name: "-7-devel-mpich-horovod"
+        - add_to_name: "-centos-7-devel-mpich-horovod"
           dockerfile_exclusive_name: "centos-7-devel-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -691,7 +781,7 @@ slice_sets:
               - CHECKOUT_TF_SRC=1
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
-        - add_to_name: "-8-devel-mpich-horovod"
+        - add_to_name: "-centos-8-devel-mpich-horovod"
           dockerfile_exclusive_name: "centos-8-devel-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -707,6 +797,26 @@ slice_sets:
               - ""
           args:
               - CENTOS_VERSION=8
+              - PYTHON=python3
+              - CHECKOUT_TF_SRC=1
+              - CHECKOUT_HOROVOD_SRC=1
+              - HOROVOD_BRANCH=master
+        - add_to_name: "-redhat-8-devel-mpich-horovod"
+          dockerfile_exclusive_name: "redhat-8-devel-mpich-horovod"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/redhat/version
+              - onednn/redhat/devel-8
+              - onednn/redhat/devel
+              - onednn/redhat/python
+              - onednn/redhat/bazel
+              - onednn/redhat/mpich
+              - onednn/redhat/devel-horovod
+              - shell
+          tests:
+              - ""
+          args:
+              - REDHAT_VERSION=latest
               - PYTHON=python3
               - CHECKOUT_TF_SRC=1
               - CHECKOUT_HOROVOD_SRC=1

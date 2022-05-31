@@ -420,7 +420,7 @@ Status InferAllocAttr(const Node* n, const Node* dst,
 
 Status GraphView::SetAllocAttrs(const Graph* g, const Device* device) {
   Status s;
-  DeviceNameUtils::ParsedName local_dev_name = device->parsed_name();
+  const DeviceNameUtils::ParsedName& local_dev_name = device->parsed_name();
 
   std::vector<const Node*> scoped_allocator_instances;
   for (const Node* n : g->nodes()) {

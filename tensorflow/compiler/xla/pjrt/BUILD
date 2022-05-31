@@ -576,3 +576,12 @@ tf_cc_test(
         "@com_google_absl//absl/numeric:int128",
     ],
 )
+
+cc_library(
+    name = "pjrt_c_api_client",
+    srcs = ["pjrt_c_api_client.cc"],
+    hdrs = ["pjrt_c_api_client.h"],
+    deps = [
+        ":pjrt_client",
+    ],
+)

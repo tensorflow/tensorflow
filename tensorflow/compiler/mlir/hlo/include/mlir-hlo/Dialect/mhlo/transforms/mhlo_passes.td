@@ -233,6 +233,11 @@ def ConvertToSignlessPass : Pass<"convert-to-signless", "ModuleOp"> {
   let constructor = "createConvertToSignlessPass()";
 }
 
+def SparseRewritingPass : Pass<"mhlo-sparse-rewriting", "func::FuncOp"> {
+  let summary = "Pass to rewrite mhlo sparse tensor types.";
+  let constructor = "createSparseRewritingPass()";
+}
+
 /// Rank specialization passes.
 
 def RankSpecializationClusterPass

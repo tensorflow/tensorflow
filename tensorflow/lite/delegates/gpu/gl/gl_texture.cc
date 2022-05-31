@@ -129,8 +129,9 @@ absl::Status CreateReadOnlyRgba2dImageTexture(DataType data_type,
         "expected dimensions.");
   }
   const GLenum kTarget = GL_TEXTURE_2D;
-  GLenum internal_format = ToTextureInternalFormat(data_type);
-  GLenum format = ToTextureFormat(data_type);
+  const bool normalized = data_type == DataType::UINT8;
+  GLenum internal_format = ToTextureInternalFormat(data_type, normalized);
+  GLenum format = ToTextureFormat(data_type, normalized);
   GLenum type = ToTextureDataType(data_type);
   gl_texture_internal::TextureId id;
   gl_texture_internal::TextureBinder binder(kTarget, id.id());
@@ -156,8 +157,9 @@ absl::Status CreateReadOnlyRgba3dImageTexture(DataType data_type,
         "product.");
   }
   const GLenum kTarget = GL_TEXTURE_2D_ARRAY;
-  GLenum internal_format = ToTextureInternalFormat(data_type);
-  GLenum format = ToTextureFormat(data_type);
+  const bool normalized = data_type == DataType::UINT8;
+  GLenum internal_format = ToTextureInternalFormat(data_type, normalized);
+  GLenum format = ToTextureFormat(data_type, normalized);
   GLenum type = ToTextureDataType(data_type);
   gl_texture_internal::TextureId id;
   gl_texture_internal::TextureBinder binder(kTarget, id.id());
@@ -219,7 +221,8 @@ absl::Status CreateReadWriteRgbaImageTexture(DataType data_type,
                                              const uint2& size,
                                              GlTexture* gl_texture) {
   const GLenum kTarget = GL_TEXTURE_2D;
-  const GLenum internal_format = ToTextureInternalFormat(data_type);
+  const bool normalized = data_type == DataType::UINT8;
+  const GLenum internal_format = ToTextureInternalFormat(data_type, normalized);
   gl_texture_internal::TextureId id;
   gl_texture_internal::TextureBinder binder(kTarget, id.id());
   RETURN_IF_ERROR(SetTextureWrapAndFilter(kTarget, internal_format));
@@ -237,7 +240,8 @@ absl::Status CreateReadWriteRgbaImageTexture(DataType data_type,
                                              const uint3& size,
                                              GlTexture* gl_texture) {
   const GLenum kTarget = GL_TEXTURE_2D_ARRAY;
-  GLenum internal_format = ToTextureInternalFormat(data_type);
+  const bool normalized = data_type == DataType::UINT8;
+  GLenum internal_format = ToTextureInternalFormat(data_type, normalized);
   gl_texture_internal::TextureId id;
   gl_texture_internal::TextureBinder binder(kTarget, id.id());
   RETURN_IF_ERROR(SetTextureWrapAndFilter(kTarget, internal_format));

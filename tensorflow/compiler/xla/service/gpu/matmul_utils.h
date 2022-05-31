@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_MATMUL_UTILS_H_
 
 #include <cstdint>
+#include <optional>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -25,6 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/stream_executor/blas.h"
+#include "tensorflow/stream_executor/matmul_util.h"
+#include "tensorflow/stream_executor/scratch_allocator.h"
 
 namespace xla {
 namespace gpu {
@@ -103,6 +107,41 @@ void MakeBlasGemmCompatible(int64_t& m, int64_t& n,
                             se::blas::MatrixDescriptor& lhs,
                             se::blas::MatrixDescriptor& rhs,
                             se::blas::MatrixDescriptor& output);
+
+// Run the given GEMM instruction `gemm` subject to the configuration
+// in `gemm_config` and the passed buffers.
+//
+// If `algorithm` is provided, it overrides the one specified in `config`.
+Status RunGemm(
+    const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
+    se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
+    se::Stream* stream,
+    absl::optional<se::blas::AlgorithmType> algorithm = absl::nullopt,
+    se::blas::ProfileResult* profile_result = nullptr);
+
+Status RunBlasLtMatmul(
+    const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
+    se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
+    se::Stream* stream, se::ScratchAllocator& scratch_allocator,
+    const se::blas::IBlasLtMatmulAlgorithm* algorithm = nullptr,
+    se::blas::ProfileResult* profile_result = nullptr);
+
+class BlasPlansAutotuneCache {
+ public:
+  BlasPlansAutotuneCache() = default;
+
+  std::optional<se::blas::AlgorithmConfig> Find(
+      const se::BatchMatmulParameters& params) const;
+  void Insert(se::BatchMatmulParameters params,
+              se::blas::AlgorithmConfig config);
+
+ private:
+  mutable absl::Mutex mu_;
+  absl::flat_hash_map<se::BatchMatmulParameters, se::blas::AlgorithmConfig>
+      blas_plans_algorithms_map_ ABSL_GUARDED_BY(mu_);
+};
+
+BlasPlansAutotuneCache& GetBlasPlansAutotuneCache();
 
 }  // namespace gpu
 }  // namespace xla

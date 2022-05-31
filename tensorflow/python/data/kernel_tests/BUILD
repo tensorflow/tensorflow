@@ -540,7 +540,7 @@ tf_py_test(
 
 tf_py_test(
     name = "map_test",
-    size = "small",
+    size = "medium",
     srcs = ["map_test.py"],
     shard_count = 19,
     deps = [
@@ -738,7 +738,7 @@ tf_py_test(
 
 tf_py_test(
     name = "range_test",
-    size = "small",
+    size = "medium",
     srcs = ["range_test.py"],
     deps = [
         ":checkpoint_test_base",

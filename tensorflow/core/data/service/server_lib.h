@@ -97,8 +97,9 @@ class DispatchGrpcDataServer : public GrpcDataServerBase {
 
   // Returns the number of workers registered with the dispatcher.
   Status NumWorkers(int* num_workers);
-  // Returns the number of active (non-finished) jobs running on the dispatcher.
-  size_t NumActiveJobs();
+  // Returns the number of active (non-finished) iterations running on the
+  // dispatcher.
+  size_t NumActiveIterations();
 
   ServerStateExport ExportState() const override;
 

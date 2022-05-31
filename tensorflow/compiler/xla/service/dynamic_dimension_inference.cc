@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dynamic_window_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -86,11 +87,19 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
                     DynamicDimensionInference::CustomCallInferenceHandler
                         custom_call_handler = nullptr,
                     DynamicDimensionInference::ShapeCheckMode shape_check_mode =
-                        DynamicDimensionInference::ShapeCheckMode::kIgnore) {
+                        DynamicDimensionInference::ShapeCheckMode::kIgnore,
+                    const DynamicDimensionInference::AssertionGenerator&
+                        assertion_generator = nullptr) {
     DynamicDimensionInferenceVisitor visitor(param_bindings, parent,
                                              std::move(custom_call_handler),
                                              shape_check_mode);
-    return computation->Accept(&visitor);
+
+    TF_RETURN_IF_ERROR(computation->Accept(&visitor));
+    if (visitor.shape_assertion_ != nullptr) {
+      CHECK(assertion_generator);
+      assertion_generator(visitor.shape_assertion_);
+    }
+    return Status::OK();
   }
 
   Status HandleParameter(HloInstruction* hlo) override;
@@ -215,6 +224,9 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
 
   // Indicates what to do at places where shape check is needed.
   DynamicDimensionInference::ShapeCheckMode shape_check_mode_;
+
+  // Value which has to be `true` for the shapes to match.
+  HloInstruction* shape_assertion_ = nullptr;
 };
 
 Status DynamicDimensionInferenceVisitor::DefaultAction(HloInstruction* hlo) {
@@ -1787,18 +1799,30 @@ Status DynamicDimensionInferenceVisitor::ForEachDynamicDimension(
 Status DynamicDimensionInferenceVisitor::InsertShapeCheck(
     HloInstruction* dim1, HloInstruction* dim2,
     bool support_implicit_broadcast) {
-  if (shape_check_mode_ == DynamicDimensionInference::ShapeCheckMode::kIgnore) {
-    return Status::OK();
+  switch (shape_check_mode_) {
+    case DynamicDimensionInference::kIgnore:
+      return Status::OK();
+    case DynamicDimensionInference::kCompileTime:
+      return InvalidArgument(
+          "Fail to proof the equality of two dimensions at compile time: "
+          "%s vs %s",
+          dim1->ToString(), dim2->ToString());
+    case DynamicDimensionInference::kRuntime: {
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * assertion,
+          MakeCompareHlo(Comparison::Direction::kEq, dim1, dim2));
+      if (shape_assertion_ == nullptr) {
+        shape_assertion_ = assertion;
+      } else {
+        TF_ASSIGN_OR_RETURN(
+            shape_assertion_,
+            MakeBinaryHlo(HloOpcode::kAnd, shape_assertion_, assertion));
+      }
+      return Status::OK();
+    }
+    default:
+      LOG(FATAL) << "Unreachable";
   }
-  if (shape_check_mode_ ==
-      DynamicDimensionInference::ShapeCheckMode::kCompileTime) {
-    return InvalidArgument(
-        "Fail to proof the equality of two dimensions at compile time: "
-        "%s vs %s",
-        dim1->ToString(), dim2->ToString());
-  }
-  return Unimplemented(
-      "Runtime dimension check is not supported on this backend.");
 }
 
 Status DynamicDimensionInferenceVisitor::ForEachDynamicDimensionInOperand(
@@ -1864,10 +1888,11 @@ void DynamicDimensionInference::CopyMapping(HloInstruction* from,
 /* static */
 StatusOr<DynamicDimensionInference> DynamicDimensionInference::Run(
     HloModule* module, CustomCallInferenceHandler custom_call_handler,
-    ShapeCheckMode shape_check_mode) {
+    ShapeCheckMode shape_check_mode,
+    const AssertionGenerator& assertion_generator) {
   VLOG(2) << "Param Config " << module->dynamic_parameter_binding().ToString();
   DynamicDimensionInference inference(module, std::move(custom_call_handler),
-                                      shape_check_mode);
+                                      shape_check_mode, assertion_generator);
   TF_RETURN_IF_ERROR(inference.AnalyzeDynamicDimensions());
   return inference;
 }
@@ -1888,15 +1913,16 @@ std::string DynamicDimensionInference::ToString() const {
 
 DynamicDimensionInference::DynamicDimensionInference(
     HloModule* module, CustomCallInferenceHandler custom_call_handler,
-    ShapeCheckMode shape_check_mode)
+    ShapeCheckMode shape_check_mode, AssertionGenerator assertion_generator)
     : module_(module),
       custom_call_handler_(std::move(custom_call_handler)),
-      shape_check_mode_(shape_check_mode) {}
+      shape_check_mode_(shape_check_mode),
+      assertion_generator_(assertion_generator) {}
 
 Status DynamicDimensionInference::AnalyzeDynamicDimensions() {
   return DynamicDimensionInferenceVisitor::Run(
       module_->entry_computation(), module_->dynamic_parameter_binding(), this,
-      custom_call_handler_, shape_check_mode_);
+      custom_call_handler_, shape_check_mode_, assertion_generator_);
 }
 
 void DynamicDimensionInference::ReplaceAllDynamicDimensionUsesWith(

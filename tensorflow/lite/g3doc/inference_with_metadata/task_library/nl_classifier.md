@@ -22,7 +22,7 @@ API.
     sentiment classification</a> model.
 
 *   Models with `average_word_vec` spec created by
-    [TensorFlow Lite Model Maker for text Classification](https://www.tensorflow.org/lite/tutorials/model_maker_text_classification).
+    [TensorFlow Lite Model Maker for text Classification](https://www.tensorflow.org/lite/models/modify/model_maker/text_classification).
 
 *   Custom models that meet the
     [model compatibility requirements](#model-compatibility-requirements).

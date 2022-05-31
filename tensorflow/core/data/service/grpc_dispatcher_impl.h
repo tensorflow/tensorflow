@@ -36,7 +36,7 @@ class GrpcDispatcherImpl : public DispatcherService::Service {
 
   Status Start();
 
-  size_t NumActiveJobs();
+  size_t NumActiveIterations();
 
   DispatcherStateExport ExportState() const;
 
@@ -50,9 +50,9 @@ class GrpcDispatcherImpl : public DispatcherService::Service {
   HANDLER(GetSplit);
   HANDLER(GetVersion);
   HANDLER(GetOrRegisterDataset);
-  HANDLER(ReleaseJobClient);
+  HANDLER(ReleaseIterationClient);
   HANDLER(MaybeRemoveTask);
-  HANDLER(GetOrCreateJob);
+  HANDLER(GetOrCreateIteration);
   HANDLER(ClientHeartbeat);
   HANDLER(GetWorkers);
   HANDLER(GetDataServiceMetadata);

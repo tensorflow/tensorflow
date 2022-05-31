@@ -227,7 +227,7 @@ MinibenchmarkStatus Validator::CheckModel(bool load_only) {
 }
 
 MinibenchmarkStatus Validator::LoadDelegate() {
-  if (!interpreter_ || !compute_settings_) {
+  if (!compute_settings_) {
     return kMinibenchmarkPreconditionNotMet;
   }
 
@@ -309,11 +309,13 @@ MinibenchmarkStatus Validator::RunValidation(Results* results_out) {
   if (!results_out) {
     return kMinibenchmarkPreconditionNotMet;
   }
-  MinibenchmarkStatus mb_status = CheckModel();
+  // The lifetime of the delegate must be at least as long as the lifetime of
+  // any Interpreter.
+  MinibenchmarkStatus mb_status = LoadDelegate();
   if (mb_status != kMinibenchmarkSuccess) {
     return mb_status;
   }
-  mb_status = LoadDelegate();
+  mb_status = CheckModel();
   if (mb_status != kMinibenchmarkSuccess) {
     return mb_status;
   }

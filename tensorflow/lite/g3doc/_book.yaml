@@ -223,27 +223,26 @@ upper_tabs:
         status: experimental
         section:
         - title: "Overview"
-          path: /lite/guide/model_maker
+          path: /lite/models/modify/model_maker
         - heading: "Images & video"
         - title: "Image classification"
-          path: /lite/tutorials/model_maker_image_classification
+          path: /lite/models/modify/model_maker/image_classification
         - title: "Object detection"
-          path: /lite/tutorials/model_maker_object_detection
+          path: /lite/models/modify/model_maker/object_detection
 
         - heading: "Text"
         - title: "Text classification"
-          path: /lite/tutorials/model_maker_text_classification
+          path: /lite/models/modify/model_maker/text_classification
         - title: "BERT question & answer"
-          path: /lite/tutorials/model_maker_question_answer
+          path: /lite/models/modify/model_maker/question_answer
         - title: "Text search"
-          path: /lite/tutorials/model_maker_text_searcher
+          path: /lite/models/modify/model_maker/text_searcher
           status: New
-
         - heading: "Audio"
         - title: "Audio classification"
-          path: /lite/tutorials/model_maker_audio_classification
+          path: /lite/models/modify/model_maker/audio_classification
         - title: "Speech recognition"
-          path: /lite/tutorials/model_maker_speech_recognition
+          path: /lite/models/modify/model_maker/speech_recognition
 
       - heading: "Design and build models"
       - title: "Performance best practices"

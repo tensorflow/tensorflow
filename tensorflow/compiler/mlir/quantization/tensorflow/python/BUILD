@@ -137,7 +137,7 @@ pytype_strict_library(
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/saved_model:utils",
-        "//tensorflow/python/training/tracking:trackable_utils",
+        "//tensorflow/python/trackable:trackable_utils",
     ],
 )
 

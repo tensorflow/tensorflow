@@ -309,10 +309,12 @@ tf_cc_test(
     name = "dispatcher_client_test",
     srcs = ["dispatcher_client_test.cc"],
     deps = [
+        ":common_proto_cc",
         ":data_transfer",
         ":dispatcher_client",
         ":test_cluster",
         ":test_util",
+        "@com_google_absl//absl/types:optional",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
@@ -363,6 +365,7 @@ cc_library(
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:thread_annotations",
     ] + tf_grpc_cc_dependencies(),
 )

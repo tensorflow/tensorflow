@@ -6,7 +6,7 @@ passage.
 Note: (1) To integrate an existing model, try
 [TensorFlow Lite Task Library](https://www.tensorflow.org/lite/inference_with_metadata/task_library/bert_question_answerer).
 (2) To customize a model, try
-[TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/tutorials/model_maker_question_answer).
+[TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/models/modify/model_maker/question_answer).
 
 ## Get started
 

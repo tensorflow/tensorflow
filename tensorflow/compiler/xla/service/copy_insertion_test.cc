@@ -3370,5 +3370,23 @@ ENTRY %main.13 (Arg_0.1: pred[], Arg_1.2: u8[300,451,3]) -> u8[300,451,3] {
   EXPECT_THAT(reverse->operand(0), op::Copy());
 }
 
+TEST_F(CopyInsertionTest, InputOutputAliasCopy) {
+  const char* const kModuleString = R"(
+HloModule main_tf2xla.11, input_output_alias={ {0}: (0, {1}, may-alias) }
+
+ENTRY %main_tf2xla.11 (arg_tuple.1: (f32[], f32[])) -> (f32[], f32[]) {
+ROOT %arg_tuple.1 = (f32[]{:T(256)}, f32[]{:T(256)}) parameter(0), parameter_replication={false,false}, sharding={{replicated}, {replicated}}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kModuleString));
+
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(2) << module->ToString();
+}
+
 }  // namespace
 }  // namespace xla

@@ -4347,7 +4347,7 @@ func.func @conv3d_simple(%arg0: tensor<256x32x32x32x6xf32>, %arg1: tensor<3x3x3x
 // -----
 
 // CHECK-LABEL: depthwiseconv_simple
-func.func @depthwiseconv_simple(%arg0: tensor<2x4x5x3xf32>, %arg1: tensor<2x2x3x3xf32>) -> tensor<2x3x4x9xf32> {
+func.func @depthwiseconv_simple(%arg0: tensor<?x4x5x3xf32>, %arg1: tensor<2x2x3x3xf32>) -> tensor<?x3x4x9xf32> {
   // CHECK: %[[RESHAPED_FILTER:.*]] = "mhlo.reshape"(%arg1) : (tensor<2x2x3x3xf32>) -> tensor<2x2x1x9xf32>
   // CHECK: mhlo.convolution(%arg0, %[[RESHAPED_FILTER]])
   // CHECK-SAME: feature_group_count = 3
@@ -4358,8 +4358,8 @@ func.func @depthwiseconv_simple(%arg0: tensor<2x4x5x3xf32>, %arg1: tensor<2x2x3x
     explicit_paddings = [],
     padding = "VALID",
     strides = [1, 1, 1, 1]
-  } : (tensor<2x4x5x3xf32>, tensor<2x2x3x3xf32>) -> tensor<2x3x4x9xf32>
-  func.return %0 : tensor<2x3x4x9xf32>
+  } : (tensor<?x4x5x3xf32>, tensor<2x2x3x3xf32>) -> tensor<?x3x4x9xf32>
+  func.return %0 : tensor<?x3x4x9xf32>
 }
 
 // -----
@@ -5175,6 +5175,17 @@ func.func @tensor_scatter_add(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi
 
 // -----
 
+// CHECK-LABEL: @tensor_scatter_add_scalar_update
+func.func @tensor_scatter_add_scalar_update(%tensor: tensor<4x3xi32>, %indices: tensor<2x1xi32>, %updates: tensor<i32>) -> tensor<4x3xi32> {
+  // CHECK: mhlo.constant dense<[2, 3]> : tensor<2xi64>
+  // CHECK: "mhlo.dynamic_broadcast_in_dim"(%arg2, %0) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<i32>, tensor<2xi64>) -> tensor<2x3xi32>
+  // CHECK: "mhlo.scatter"
+  %0 = "tf.TensorScatterAdd"(%tensor, %indices, %updates) : (tensor<4x3xi32>, tensor<2x1xi32>, tensor<i32>) -> tensor<4x3xi32>
+  func.return %0 : tensor<4x3xi32>
+}
+
+// -----
+
 // CHECK-LABEL: @tensor_scatter_sub
 func.func @tensor_scatter_sub(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32>, %updates: tensor<?x?xf32>) -> tensor<?x?x?xf32> {
   // CHECK: "mhlo.scatter"(%arg0, %arg1, %arg2) ({
@@ -5843,15 +5854,17 @@ func.func @xla_dynamic_update_slice2(%arg0: tensor<4xf32>, %arg1: tensor<2xf32>,
 // -----
 
 // CHECK-LABEL: func @alltoall_basic
-func.func @alltoall_basic(%input: tensor<10xf32>) -> tensor<10xf32> {
+// See https://www.tensorflow.org/api_docs/python/tf/raw_ops/AllToAll
+func.func @alltoall_basic(%input: tensor<1x2xf32>) -> tensor<2x1xf32> {
   %group_assignment = "tf.Const" () {
-    value = dense<[[0, 2, 4, 6], [1, 3, 5, 7], [3, 5, 6, 8]]> : tensor<3x4xi32>
-  } : () -> tensor<3x4xi32>
-  %result = "tf.AllToAll"(%input, %group_assignment) {T = f32, concat_dimension = 1 : i64, split_count = 2 : i64, split_dimension = 0 : i64} :  (tensor<10xf32>, tensor<3x4xi32>)  -> tensor<10xf32>
+    value = dense<[[0, 1]]> : tensor<1x2xi32>
+  } : () -> tensor<1x2xi32>
+  %result = "tf.AllToAll"(%input, %group_assignment) {T = f32, concat_dimension = 0 : i64, split_count = 2 : i64, split_dimension = 1 : i64} :  (tensor<1x2xf32>, tensor<1x2xi32>)  -> tensor<2x1xf32>
   // CHECK: mhlo.all_to_all
-  // CHECK-SAME: replica_groups = dense<{{\[}}[0, 2, 4, 6], [1, 3, 5, 7], [3, 5, 6, 8]]> : tensor<3x4xi64>
-  func.return %result : tensor<10xf32>
+  // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+  func.return %result : tensor<2x1xf32>
 }
+
 
 //===----------------------------------------------------------------------===//
 // Cumsum op legalizations.

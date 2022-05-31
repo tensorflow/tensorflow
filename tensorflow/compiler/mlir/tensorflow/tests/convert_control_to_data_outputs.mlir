@@ -1,6 +1,6 @@
 // RUN: tf-opt -tf-executor-convert-control-to-data-outputs %s | FileCheck %s
 
-!tf_res = type tensor<!tf_type.resource<tensor<f32>>>
+!tf_res = tensor<!tf_type.resource<tensor<f32>>>
 
 // Tests independent chains of two resources.
 

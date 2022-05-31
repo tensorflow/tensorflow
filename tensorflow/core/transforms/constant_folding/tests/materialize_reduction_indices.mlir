@@ -1,4 +1,4 @@
-// RUN: tfg-transforms-opt -constant-folding %s | FileCheck %s
+// RUN: tfg-transforms-opt -tfg-constant-folding %s | FileCheck %s
 
 module {
   tfg.graph #tf_type.version<producer = 1010, min_consumer = 0> {

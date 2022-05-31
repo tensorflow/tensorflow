@@ -2337,7 +2337,7 @@ void ModelTiming::ComputeTiming() {
   ComputeTotalTimes(nodes);
 }
 
-const ModelTiming::NodeTiming* ModelTiming::GetTiming(Node* node) const {
+const ModelTiming::NodeTiming* ModelTiming::GetTiming(const Node* node) const {
   if (timing_nodes_.find(node) == timing_nodes_.end()) {
     return nullptr;
   }

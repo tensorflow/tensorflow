@@ -9,8 +9,8 @@
 // This is shown on the device function by setting `tf.aliasing_output`
 // attribute of argument `a` to `b`.
 
-!tf_res_i32 = type tensor<*x!tf_type.resource<tensor<i32>>>
-!tf_res_f32 = type tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res_i32 = tensor<*x!tf_type.resource<tensor<i32>>>
+!tf_res_f32 = tensor<*x!tf_type.resource<tensor<f32>>>
 
 // CHECK-LABEL: func @simple_input_output_pairs
 func.func @simple_input_output_pairs(%arg0: !tf_res_i32, %arg1: !tf_res_f32, %arg2: !tf_res_f32) {

@@ -84,7 +84,7 @@ def validation_model(
     zeropoint_arg = ""
     if scale:
         scale_arg = "--scale=" + scale
-        zeropoint_arg = "--zeropoint=" + zeropoint
+        zeropoint_arg = "--zero_point=" + zeropoint
     native.genrule(
         name = name,
         testonly = testonly,
@@ -118,13 +118,15 @@ def validation_model(
         ],
     )
 
-def validation_test(name, validation_model, tags = []):
+def validation_test(name, validation_model, tags = [], copts = [], deps = []):
     """Create a test binary for the given model with validation.
 
     Args:
         name: name of the target.
         validation_model: tflite model with validation target.
         tags: to be passed to cc_test.
+        copts: to be passed to cc_test.
+        deps: to be passed to cc_test.
     """
     embed_name = name + "_embed_model"
     embedded_binary(
@@ -136,11 +138,11 @@ def validation_test(name, validation_model, tags = []):
         name = name,
         srcs = ["//tensorflow/lite/experimental/acceleration/mini_benchmark:model_validation_test.cc"],
         tags = tags + ["no_mac", "no_windows", "tflite_not_portable_ios"],
-        copts = [
+        copts = copts + [
             "-DTENSORFLOW_ACCELERATION_MODEL_DATA_VARIABLE=\"g_tflite_acceleration_%s_model\"" % name,
             "-DTENSORFLOW_ACCELERATION_MODEL_LENGTH_VARIABLE=\"g_tflite_acceleration_%s_model_len\"" % name,
         ],
-        deps = [
+        deps = deps + [
             embed_name,
             "@com_google_googletest//:gtest_main",
             "@flatbuffers",

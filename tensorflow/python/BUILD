@@ -67,6 +67,7 @@ visibility = [
     "//third_party/py/tensorflow_numerics:__subpackages__",
     "//third_party/py/tensorflow_privacy:__subpackages__",
     "//third_party/reverb:__subpackages__",
+    "//research/graph/fairness/inproc_fair_reg:__subpackages__",
 ]
 
 package(
@@ -295,6 +296,7 @@ py_library(
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:sharded_variable",
+        "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
     ],
 )
 
@@ -2962,7 +2964,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/math_ops_test.py"],
     python_version = "PY3",
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_windows_gpu",
+    ],
     deps = [
         ":array_ops",
         ":gradients",
@@ -4514,6 +4518,21 @@ alias(
 alias(
     name = "session_run_hook",
     actual = "//tensorflow/python/training:session_run_hook",
+)
+
+alias(
+    name = "checkpoint",
+    actual = "//tensorflow/python/checkpoint:checkpoint",
+)
+
+alias(
+    name = "checkpoint_lib",
+    actual = "//tensorflow/python/checkpoint:checkpoint_lib",
+)
+
+alias(
+    name = "trackable",
+    actual = "//tensorflow/python/trackable:trackable",
 )
 
 alias(

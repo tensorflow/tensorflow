@@ -79,19 +79,15 @@ StatusOr<Histogram> Histogram::Subtract(const Histogram& other) const {
 
 size_t Percentiles::num() const { return percentiles_.total_samples; }
 
-double Percentiles::sum() const { return percentiles_.accumulator; }
+double Percentiles::sum() const {
+  return std::isnan(percentiles_.accumulator) ? 0 : percentiles_.accumulator;
+}
 
 Percentiles Percentiles::Subtract(const Percentiles& other) const {
   tensorflow::monitoring::Percentiles delta;
   delta.unit_of_measure = percentiles_.unit_of_measure;
-  delta.total_samples =
-      percentiles_.total_samples - other.percentiles_.total_samples;
-
-  delta.accumulator =
-      (std::isnan(percentiles_.accumulator) ? 0 : percentiles_.accumulator) -
-      (std::isnan(other.percentiles_.accumulator)
-           ? 0
-           : other.percentiles_.accumulator);
+  delta.total_samples = num() - other.num();
+  delta.accumulator = sum() - other.sum();
   return Percentiles(delta);
 }
 

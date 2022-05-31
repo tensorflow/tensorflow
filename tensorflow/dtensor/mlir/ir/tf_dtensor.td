@@ -490,6 +490,22 @@ def TF_DTensorRetrieveTPUEmbeddingParametersOp : TF_Op<"DTensorRetrieveTPUEmbedd
   TF_DerivedResultSizeAttr num_tables = TF_DerivedResultSizeAttr<0>;
 }
 
+def TF_DTensorSendEmbeddingGradientsOp : TF_Op<"DTensorSendEmbeddingGradients", [AttrSizedOperandSegments]> {
+  let summary = "";
+
+  let arguments = (ins
+    Variadic<TF_Float32Tensor>:$gradients,
+    Variadic<TF_Float32Tensor>:$learning_rates,
+
+    StrAttr:$config
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr num_lr_tags = TF_DerivedOperandSizeAttr<1>;
+  TF_DerivedOperandSizeAttr num_tables = TF_DerivedOperandSizeAttr<0>;
+}
+
 // Op has no outputs, so we do not inlude the NosideEffect tag so that it will
 // not get pruned.
 def TF_ApplyEmbeddingOptimizerOp : TF_Op<"ApplyEmbeddingOptimizer", []> {
@@ -552,6 +568,20 @@ def TF_TPUDenseEmbeddingLookUpOp : TF_Op<"TPUDenseEmbeddingLookUp", [NoSideEffec
   let summary = "";
 
   let arguments = (ins
+    TF_Int32Tensor:$ids,
+    TF_Float32Tensor:$table
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$output
+  );
+}
+
+def TF_TPUDenseEmbeddingLookUpGradOp : TF_Op<"TPUDenseEmbeddingLookUpGrad", [NoSideEffect]> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_Float32Tensor:$gradients,
     TF_Int32Tensor:$ids,
     TF_Float32Tensor:$table
   );

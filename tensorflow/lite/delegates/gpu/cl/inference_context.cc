@@ -505,6 +505,10 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
   const size_t base_align_bytes =
       std::max<size_t>(gpu_info.opencl_info.base_addr_align_in_bits >> 3, 1);
 
+  if (buffer_usage_records.empty()) {
+    return absl::OkStatus();
+  }
+
   if (use_offset_assignment) {
     if (!shared_buffers_parent_ptr_) {
       Buffer shared_buffer;

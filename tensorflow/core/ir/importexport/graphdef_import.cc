@@ -699,9 +699,15 @@ StatusOr<unsigned> GraphDefImporter::ArgNumType(const NamedAttrList &attrs,
                                                 SmallVectorImpl<Type> &types) {
   // Check whether a type list attribute is specified.
   if (!arg_def.type_list_attr().empty()) {
-    if (auto v = attrs.get(arg_def.type_list_attr()).dyn_cast<ArrayAttr>()) {
-      for (Type dtype : v.getAsValueRange<TypeAttr>()) {
-        types.push_back(UnrankedTensorType::get(dtype));
+    if (auto v =
+            attrs.get(arg_def.type_list_attr()).dyn_cast_or_null<ArrayAttr>()) {
+      for (Attribute attr : v) {
+        if (auto dtype = attr.dyn_cast<TypeAttr>()) {
+          types.push_back(UnrankedTensorType::get(dtype.getValue()));
+        } else {
+          return InvalidArgument("Expected '", arg_def.type_list_attr(),
+                                 "' to be a list of types");
+        }
       }
       return v.size();
     }
@@ -711,7 +717,8 @@ StatusOr<unsigned> GraphDefImporter::ArgNumType(const NamedAttrList &attrs,
   unsigned num = 1;
   // Check whether a number attribute is specified.
   if (!arg_def.number_attr().empty()) {
-    if (auto v = attrs.get(arg_def.number_attr()).dyn_cast<IntegerAttr>()) {
+    if (auto v =
+            attrs.get(arg_def.number_attr()).dyn_cast_or_null<IntegerAttr>()) {
       num = v.getValue().getZExtValue();
     } else {
       return NotFound("Type attr not found: ", arg_def.number_attr());
@@ -726,7 +733,7 @@ StatusOr<unsigned> GraphDefImporter::ArgNumType(const NamedAttrList &attrs,
     return InvalidArgument("Arg '", arg_def.name(),
                            "' has invalid type and no type attribute");
   } else {
-    if (auto v = attrs.get(arg_def.type_attr()).dyn_cast<TypeAttr>()) {
+    if (auto v = attrs.get(arg_def.type_attr()).dyn_cast_or_null<TypeAttr>()) {
       dtype = v.getValue();
     } else {
       return NotFound("Type attr not found: ", arg_def.type_attr());

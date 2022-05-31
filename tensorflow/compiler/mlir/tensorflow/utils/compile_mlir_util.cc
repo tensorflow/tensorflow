@@ -312,7 +312,8 @@ Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
 void CreateConvertMlirToXlaHloPipeline(
     mlir::OpPassManager& pm, llvm::StringRef device_type, bool prefer_tf2xla,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-        custom_legalization_passes) {
+        custom_legalization_passes,
+    bool allow_partial_conversion) {
   // Note that the region-based control-flow produced here still contains
   // function call ops which get inlined by the subsequent inliner pass.
   pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
@@ -377,7 +378,8 @@ void CreateConvertMlirToXlaHloPipeline(
   // necessary for the second LegalizeTFPass(allow_partial_conversion=false)
   // invocation.
   pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
-      /*allow_partial_conversion=*/false, /*legalize_chlo=*/true,
+      /*allow_partial_conversion=*/allow_partial_conversion,
+      /*legalize_chlo=*/true,
       /*tf2xla_fallback_device_type=*/device_type, prefer_tf2xla));
 
   if (CanInlineFunctionsPostLegalization(device_type))

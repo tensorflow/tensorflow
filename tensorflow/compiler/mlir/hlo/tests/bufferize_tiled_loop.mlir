@@ -130,7 +130,7 @@ func.func @init_tensor_multiple_users(%arg0: tensor<1x?xf32>)
   %c8 = arith.constant 8 : index
   %c1 = arith.constant 1 : index
   %0 = tensor.dim %arg0, %c1 : tensor<1x?xf32>
-  %init = linalg.init_tensor [1, %0] : tensor<1x?xf32>
+  %init = bufferization.alloc_tensor(%0) : tensor<1x?xf32>
   %2 = affine.apply #map0()[%0]
   %3 = gml_st.loop (%i, %j) = (%c0, %c0) to (%c1, %2) step (%c1, %c8)
       ins (%arg3 = %arg0: tensor<1x?xf32>)

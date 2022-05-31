@@ -3233,3 +3233,15 @@ func.func @lowered_cumprod(%arg0: tensor<4x12xf32>) -> tensor<4x12xf32> {
   }) {base_dilations = dense<1> : tensor<2xi64>, padding = dense<[[0, 0], [11, 0]]> : tensor<2x2xi64>, window_dilations = dense<1> : tensor<2xi64>, window_dimensions = dense<[1, 12]> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>} : (tensor<4x12xf32>, tensor<f32>) -> tensor<4x12xf32>
   func.return %1 : tensor<4x12xf32>
 }
+
+// CHECK-LABEL: reduce_window_trivial_window_dims
+func.func @reduce_window_trivial_window_dims(%arg0: tensor<4x12xf32>) -> tensor<4x12xf32> {
+  %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
+  // expected-error @+1 {{no reduced dimension is found.}}
+  %1 = "mhlo.reduce_window"(%arg0, %0) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    %2 = mhlo.add %arg1, %arg2 : tensor<f32>
+    "mhlo.return"(%2) : (tensor<f32>) -> ()
+  }) {padding = dense<0> : tensor<2x2xi64>, window_dimensions = dense<1> : tensor<2xi64>} : (tensor<4x12xf32>, tensor<f32>) -> tensor<4x12xf32>
+  func.return %1 : tensor<4x12xf32>
+}

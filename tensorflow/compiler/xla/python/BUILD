@@ -1,3 +1,4 @@
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
@@ -647,9 +648,36 @@ cc_library(
     ],
 )
 
+# TODO(phawkins): the configuration settings here are overly confusing. The right fix is to split
+# xla_extension.so so that each backend is a separate plugin, however that must wait for a clean
+# ABI separation between devices.
 config_setting(
-    name = "enable_gpu",
+    name = "link_gpu_plugin",
     define_values = {"xla_python_enable_gpu": "true"},
+)
+
+bool_flag(
+    name = "enable_gpu",
+    build_setting_default = True,
+)
+
+config_setting(
+    name = "gpu_enabled",
+    flag_values = {
+        ":enable_gpu": "True",
+    },
+)
+
+bool_flag(
+    name = "enable_tpu",
+    build_setting_default = True,
+)
+
+config_setting(
+    name = "tpu_enabled",
+    flag_values = {
+        ":enable_tpu": "True",
+    },
 )
 
 pybind_extension(
@@ -657,56 +685,72 @@ pybind_extension(
     srcs = [
         "xla.cc",
     ],
+    defines = select({
+        ":gpu_enabled": ["XLA_PYTHON_ENABLE_GPU=1"],
+        "//conditions:default": [],
+    }) + select({
+        ":tpu_enabled": ["XLA_PYTHON_ENABLE_TPU=1"],
+        "//conditions:default": [],
+    }),
     pytype_deps = [
         "//third_party/py/numpy",
     ],
     pytype_srcs = glob(["xla_extension/*.pyi"]),
     deps = [
-        ":dlpack",
-        ":jax_jit",
-        ":mlir",
-        ":ops",
-        ":pmap_lib",
-        ":pprof_profile_builder",
-        ":profiler",
-        ":transfer_guard_lib",
-        ":py_client",
-        ":pytree",
-        ":python_ref_manager",
-        ":traceback",
-        ":outfeed_receiver_py",
-        ":types",
-        ":xla_compiler",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-        "@pybind11",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
-        "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/pjrt:cpu_device",
-        "//tensorflow/compiler/xla/pjrt:interpreter_device",
-        "//tensorflow/compiler/xla/pjrt:gpu_device",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
-        "//tensorflow/compiler/xla/pjrt:tpu_client",
-        "//tensorflow/compiler/xla/pjrt/distributed",
-        "//tensorflow/compiler/xla/pjrt/distributed:client",
-        "//tensorflow/compiler/xla/pjrt/distributed:service",
-        "//tensorflow/core:lib",
-        # Do NOT remove this dependency. The XLA Python extension must not
-        # depend on any part of TensorFlow at runtime, **including**
-        # libtensorflow_framework.so. The XLA module is deployed self-contained
-        # without any TF dependencies as "jaxlib" on Pypi, and "jaxlib" does
-        # not require Tensorflow.
-        "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
-        "//tensorflow/python:bfloat16_lib",
-    ] + select({
-        ":enable_gpu": ["//tensorflow/compiler/xla/service:gpu_plugin"],
-        "//conditions:default": [],
-    }),
+               ":dlpack",
+               ":jax_jit",
+               ":mlir",
+               ":ops",
+               ":pmap_lib",
+               ":pprof_profile_builder",
+               ":profiler",
+               ":transfer_guard_lib",
+               ":py_client",
+               ":pytree",
+               ":python_ref_manager",
+               ":traceback",
+               ":outfeed_receiver_py",
+               ":types",
+               ":xla_compiler",
+               "@com_google_absl//absl/strings",
+               "@com_google_absl//absl/strings:str_format",
+               "@com_google_absl//absl/types:span",
+               "@pybind11",
+               "//third_party/python_runtime:headers",  # buildcleaner: keep
+               "//tensorflow/compiler/xla:literal",
+               "//tensorflow/compiler/xla:shape_util",
+               "//tensorflow/compiler/xla:status",
+               "//tensorflow/compiler/xla:statusor",
+               "//tensorflow/compiler/xla:types",
+               "//tensorflow/compiler/xla:util",
+               "//tensorflow/compiler/xla/pjrt:cpu_device",
+               "//tensorflow/compiler/xla/pjrt:interpreter_device",
+               "//tensorflow/compiler/xla/pjrt:pjrt_client",
+               "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
+               "//tensorflow/compiler/xla/pjrt/distributed",
+               "//tensorflow/compiler/xla/pjrt/distributed:client",
+               "//tensorflow/compiler/xla/pjrt/distributed:service",
+               "//tensorflow/core:lib",
+               # Do NOT remove this dependency. The XLA Python extension must not
+               # depend on any part of TensorFlow at runtime, **including**
+               # libtensorflow_framework.so. The XLA module is deployed self-contained
+               # without any TF dependencies as "jaxlib" on Pypi, and "jaxlib" does
+               # not require Tensorflow.
+               "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
+               "//tensorflow/python:bfloat16_lib",
+           ] + select({
+               ":gpu_enabled": [
+                   "//tensorflow/compiler/xla/pjrt:gpu_device",
+               ],
+               "//conditions:default": [],
+           }) + select({
+               ":link_gpu_plugin": ["//tensorflow/compiler/xla/service:gpu_plugin"],
+               "//conditions:default": [],
+           }) +
+           select({
+               ":tpu_enabled": [
+                   "//tensorflow/compiler/xla/pjrt:tpu_client",
+               ],
+               "//conditions:default": [],
+           }),
 )

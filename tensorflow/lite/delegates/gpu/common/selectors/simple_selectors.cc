@@ -95,8 +95,9 @@ absl::Status SelectGather(const GatherAttributes& attr,
   return absl::OkStatus();
 }
 
-std::unique_ptr<GPUOperation> SelectResampler(const OperationDef& op_def) {
-  GPUOperation operation = CreateResampler(op_def);
+std::unique_ptr<GPUOperation> SelectResampler(const OperationDef& op_def,
+                                              const GpuInfo& gpu_info) {
+  GPUOperation operation = CreateResampler(gpu_info, op_def);
   return absl::make_unique<GPUOperation>(std::move(operation));
 }
 
@@ -219,7 +220,8 @@ std::unique_ptr<GPUOperation> SelectWinograd4x4To36(
     const GpuInfo& gpu_info, const Padding2D& padding,
     const OperationDef& op_def) {
   if (gpu_info.IsApple() || gpu_info.IsAMD()) {
-    Winograd4x4To36 operation = CreateWinograd4x4To36(op_def, padding);
+    Winograd4x4To36 operation =
+        CreateWinograd4x4To36(op_def, padding, gpu_info);
     return absl::make_unique<Winograd4x4To36>(std::move(operation));
   }
   return absl::make_unique<Winograd4x4To36TileX6>(

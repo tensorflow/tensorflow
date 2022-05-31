@@ -260,6 +260,50 @@ class PmapFunction {
     std::swap(python_shard_arg_fallback_, python_shard_arg_fallback);
   }
 
+  // Updates the signature of arguments for a pmapped function.
+  //
+  // It deals with the arguments signatures and also of the global and
+  // thread-local jit context.
+  xla::Status UpdateArgsSignature(const py::args& args,
+                                  const py::kwargs& kwargs,
+                                  ParsedArgumentsAsBuffers& arguments) {
+    arguments.signature.function_name = function_name_;
+
+    // Get dynamic argument signatures.
+    JitState& global_state = jax::GetGlobalState();
+    JitState& tls = jax::GetLocalState();
+    const bool jax_enable_x64 = GetEnableX64();
+    arguments.signature.jax_enable_x64 = jax_enable_x64;
+    for (py::handle arg : arguments.flat_dynamic_args) {
+      auto signature_or_error = xla::PyArgSignatureOfValue(arg, jax_enable_x64);
+      if (!signature_or_error.ok()) {
+        VLOG(2) << "PyArgSignatureOfValue failed: "
+                << signature_or_error.status();
+        return signature_or_error.status();
+      }
+      arguments.signature.dynamic_arg_signatures.push_back(
+          std::move(signature_or_error).ValueOrDie());
+    }
+    arguments.signature.global_extra_jit_context =
+        global_state.extra_jit_context;
+    arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;
+    return xla::Status();
+  }
+
+  // Returns, for debugging purposes (e.g. finding why some call misses the
+  // cache and recompiles), the list of the string representations of the keys.
+  //
+  // The format can change at any time.
+  std::string DebugCacheKeys() const {
+    std::vector<std::string> key_strings = {
+        absl::StrCat("The cache contains ", executables_.size(), " elements:")};
+    // We will be able to use auto& [key, _] when TF uses C++ 17.
+    for (auto& pair : executables_) {
+      key_strings.push_back(pair.first.DebugString());
+    }
+    return absl::StrJoin(key_strings, "\n\n");
+  }
+
  private:
   // Mutates `cache_entry` in place.
   void PopulateCacheEntry(PmapCacheEntry& cache_entry,
@@ -360,7 +404,6 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
   }
 
   ParsedArgumentsAsBuffers arguments;
-  arguments.signature.function_name = function_name_;
   xla::Status status = ParseArguments(args, kwargs, static_argnums_,
                                       /*static_argnames=*/{}, arguments);
   if (!status.ok()) {
@@ -368,23 +411,10 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
     return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
   }
 
-  // Get dynamic argument signatures.
-  JitState& global_state = jax::GetGlobalState();
-  JitState& tls = jax::GetLocalState();
-  const bool jax_enable_x64 = GetEnableX64();
-  arguments.signature.jax_enable_x64 = jax_enable_x64;
-  for (py::handle arg : arguments.flat_dynamic_args) {
-    auto signature_or_error = xla::PyArgSignatureOfValue(arg, jax_enable_x64);
-    if (!signature_or_error.ok()) {
-      VLOG(2) << "PyArgSignatureOfValue failed: "
-              << signature_or_error.status();
-      return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
-    }
-    arguments.signature.dynamic_arg_signatures.push_back(
-        std::move(signature_or_error).ValueOrDie());
+  status = UpdateArgsSignature(args, kwargs, arguments);
+  if (!status.ok()) {
+    return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
   }
-  arguments.signature.global_extra_jit_context = global_state.extra_jit_context;
-  arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;
 
   // Retrieve/Maybe add the executable to the cache.
   absl::flat_hash_map<CallSignature, std::unique_ptr<PmapCacheEntry>>::iterator
@@ -868,12 +898,41 @@ void BuildPmapSubmodule(py::module& m) {
       },
       py::is_method(cfun_type));
 
-  // This is only for testing/debugging purposes
+  // This is only for testing/debugging purposes.
   cfun.attr("_cache_size") =
       property_readonly([](py::handle self) -> xla::StatusOr<py::object> {
         TF_ASSIGN_OR_RETURN(PmapFunction * fun, AsPmapFunction(self));
         return py::cast<int>(fun->cache_size());
       });
+
+  cfun.attr("_debug_cache_keys") = py::cpp_function(
+      [](py::handle self) -> xla::StatusOr<std::string> {
+        TF_ASSIGN_OR_RETURN(PmapFunction * fun, AsPmapFunction(self));
+        return fun->DebugCacheKeys();
+      },
+      py::is_method(cfun_type));
+
+  // Accepts _arbitrary_ arguments for a pmapped function and returns the
+  // corresponding signatures that are used as cache keys. No-op.
+  //
+  // This function allows to pass partial args, which is especially useful when
+  // the full list of arguments is too long and results in enormous signatures.
+  // For example, this function can be multiple times as
+  // > fn._debug_compute_cache_key(arg[0])
+  // > fn._debug_compute_cache_key(arg[1])
+  // > fn._debug_compute_cache_key(arg[-3:-1])
+  // ...
+  cfun.attr("_debug_compute_cache_key") = py::cpp_function(
+      [](const PmapFunction::object& self, const py::args& args,
+         const py::kwargs& kwargs) -> xla::StatusOr<std::string> {
+        ParsedArgumentsAsBuffers arguments;
+        TF_ASSIGN_OR_RETURN(PmapFunction * fun, AsPmapFunction(self));
+        TF_RETURN_IF_ERROR(ParseArguments(args, kwargs, fun->static_argnums(),
+                                          /*static_argnames=*/{}, arguments));
+        TF_RETURN_IF_ERROR(fun->UpdateArgsSignature(args, kwargs, arguments));
+        return arguments.signature.DebugString();
+      },
+      py::is_method(cfun_type));
 
   pmap_lib.def("pmap",
                [](py::function fun, py::function cache_miss,

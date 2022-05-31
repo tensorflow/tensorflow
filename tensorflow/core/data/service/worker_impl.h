@@ -131,7 +131,7 @@ class DataServiceWorkerImpl {
   std::string transfer_address_;
   std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
 
-  mutex mu_;
+  mutable mutex mu_;
   condition_variable cv_;
   // Information about tasks, keyed by task ids. The tasks are updated based on
   // the heartbeat responses from the dispatcher.

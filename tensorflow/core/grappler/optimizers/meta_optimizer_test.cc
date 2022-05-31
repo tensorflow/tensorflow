@@ -1078,6 +1078,7 @@ TEST_F(MetaOptimizerTest, TestTFGRemoveDeadArguments) {
       /*funcs=*/
       {case_func});
   item.fetch = {"case"};
+  item.keep_ops = {"x"};
 
   GraphDef output;
   ConfigProto config_proto;
@@ -1088,7 +1089,7 @@ TEST_F(MetaOptimizerTest, TestTFGRemoveDeadArguments) {
   EXPECT_EQ(output.library().function_size(), 1);
   // One of the arguments was removed.
   auto& func = output.library().function(0);
-  EXPECT_EQ(func.signature().input_arg_size(), 1);
+  ASSERT_EQ(func.signature().input_arg_size(), 1);
   EXPECT_EQ(func.signature().input_arg(0).name(), "x_tfg_result_0");
 }
 

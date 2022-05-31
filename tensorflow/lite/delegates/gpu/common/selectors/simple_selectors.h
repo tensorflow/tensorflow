@@ -54,7 +54,8 @@ absl::Status SelectResize(const Resize2DAttributes& attr,
                           const OperationDef& op_def,
                           std::unique_ptr<GPUOperation>* ptr);
 
-std::unique_ptr<GPUOperation> SelectResampler(const OperationDef& op_def);
+std::unique_ptr<GPUOperation> SelectResampler(const OperationDef& op_def,
+                                              const GpuInfo& gpu_info);
 
 absl::Status SelectConcat(const ConcatAttributes& attr,
                           const std::vector<int>& channels,

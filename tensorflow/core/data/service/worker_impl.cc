@@ -106,6 +106,38 @@ WorkerConfig ApplyWorkerDefaults(const WorkerConfig& config) {
   }
   return new_config;
 }
+
+TaskDef Export(const TaskDef& task) {
+  TaskDef result;
+  switch (task.dataset_case()) {
+    case TaskDef::kDatasetDef:
+      result.set_path(
+          "In-memory dataset graphs are omitted for brevity. To view datasets "
+          "stored on the dispatcher, configure a `work_dir`.");
+      break;
+    case TaskDef::kPath:
+      result.set_path(task.path());
+      break;
+    default:
+      break;
+  }
+  result.set_dataset_id(task.dataset_id());
+  result.set_task_id(task.task_id());
+  result.set_iteration_id(task.iteration_id());
+  result.set_num_split_providers(task.num_split_providers());
+  result.set_worker_address(task.worker_address());
+  *result.mutable_processing_mode_def() = task.processing_mode_def();
+  switch (task.optional_num_consumers_case()) {
+    case TaskDef::kNumConsumers:
+      result.set_num_consumers(task.num_consumers());
+      break;
+    default:
+      break;
+  }
+  result.set_num_workers(task.num_workers());
+  result.set_worker_index(task.worker_index());
+  return result;
+}
 }  // namespace
 
 mutex LocalWorkers::mu_(LINKER_INITIALIZED);
@@ -214,9 +246,9 @@ Status DataServiceWorkerImpl::GetElementResult(
         return errors::FailedPrecondition(
             "Got request for local task ", request->task_id(), " of worker ",
             worker_address_, ", which has been deleted. You may be creating ",
-            "a duplicate job which has already finished. To fix this, make "
-            "sure to create your dataset only once, as opposed to re-creating "
-            "it repeatedly inside a loop.");
+            "a duplicate iteration which has already finished. To fix this, "
+            "make sure to create your dataset only once, as opposed to "
+            "re-creating it repeatedly inside a loop.");
       }
       if (finished_tasks_.contains(request->task_id())) {
         VLOG(3) << "Task is already finished";
@@ -350,8 +382,8 @@ DataServiceWorkerImpl::MakeDatasetIterator(standalone::Dataset& dataset,
     split_providers.reserve(task_def.num_split_providers());
     for (int i = 0; i < task_def.num_split_providers(); ++i) {
       split_providers.push_back(absl::make_unique<DataServiceSplitProvider>(
-          config_.dispatcher_address(), config_.protocol(), task_def.job_id(),
-          i, config_.dispatcher_timeout_ms()));
+          config_.dispatcher_address(), config_.protocol(),
+          task_def.iteration_id(), i, config_.dispatcher_timeout_ms()));
     }
     TF_RETURN_IF_ERROR(
         dataset.MakeIterator(std::move(split_providers), &iterator));
@@ -399,7 +431,7 @@ Status DataServiceWorkerImpl::GetWorkerTasks(
     TaskInfo* task_info = response->add_tasks();
     task_info->set_worker_address(worker_address_);
     task_info->set_task_id(task->task_def.task_id());
-    task_info->set_job_id(task->task_def.job_id());
+    task_info->set_iteration_id(task->task_def.iteration_id());
   }
   return Status::OK();
 }
@@ -553,6 +585,13 @@ void DataServiceWorkerImpl::DeleteLocalTask(const TaskInfo& task_info)
 WorkerStateExport DataServiceWorkerImpl::ExportState() const {
   WorkerStateExport worker_state_export;
   *worker_state_export.mutable_worker_config() = config_;
+  mutex_lock l(mu_);
+  if (!registered_) {
+    return worker_state_export;
+  }
+  for (const auto& task : tasks_) {
+    *worker_state_export.add_tasks() = Export(task.second->task_def);
+  }
   return worker_state_export;
 }
 

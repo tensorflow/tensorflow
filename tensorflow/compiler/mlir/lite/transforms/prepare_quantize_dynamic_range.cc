@@ -53,9 +53,8 @@ static llvm::cl::opt<bool> enable_float16_quantization(
 // NOLINTNEXTLINE
 static llvm::cl::opt<std::string> enable_custom_op_quantization(
     "tfl-enable-custom-op-quantization",
-    llvm::cl::desc(
-        "Specifies which pairs of a custom op and indicies are "
-        "quantizable where the indicies are separated with a space."),
+    llvm::cl::desc("Specifies which pairs of a custom op and indices are "
+                   "quantizable where the indices are separated with a space."),
     llvm::cl::ZeroOrMore);
 
 //===----------------------------------------------------------------------===//

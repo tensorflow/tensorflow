@@ -30,6 +30,13 @@ tf_proto {
       type: TYPE_MESSAGE
       type_name: ".tensorflow.RunMetadata.FunctionGraphs"
     }
+    field {
+      name: "session_metadata"
+      number: 5
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.SessionMetadata"
+    }
     nested_type {
       name: "FunctionGraphs"
       field {

@@ -50,13 +50,15 @@ class Winograd4x4To36 : public GPUOperation {
   Winograd4x4To36(const OperationDef& definition, const Padding2D& padding)
       : GPUOperation(definition), padding_(padding) {}
   friend Winograd4x4To36 CreateWinograd4x4To36(const OperationDef& definition,
-                                               const Padding2D& padding);
+                                               const Padding2D& padding,
+                                               const GpuInfo& gpu_info);
 
   Padding2D padding_;
 };
 
 Winograd4x4To36 CreateWinograd4x4To36(const OperationDef& definition,
-                                      const Padding2D& padding);
+                                      const Padding2D& padding,
+                                      const GpuInfo& gpu_info);
 
 class Winograd4x4To36TileX6 : public GPUOperation {
  public:

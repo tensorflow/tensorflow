@@ -99,7 +99,6 @@ cc_library(
     name = "gpu_passes",
     srcs = [
         "gpu_kernel_to_blob_pass.cc",
-        "kernel_lowering_passes.cc",
         "map_parallel_loops_to_gpu.cc",
         "tf_kernel_to_llvm_pass.cc",
     ],
@@ -124,8 +123,6 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:GPUToGPURuntimeTransforms",
-        "@llvm-project//mlir:GPUToNVVMTransforms",
-        "@llvm-project//mlir:GPUToROCDLTransforms",
         "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
@@ -135,12 +132,10 @@ cc_library(
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MemRefToLLVM",
         "@llvm-project//mlir:MemRefTransforms",
-        "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:NVVMToLLVMIRTranslation",  # buildcleaner: keep
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:LLVMCommonConversion",
-        "@llvm-project//mlir:ROCDLDialect",
         "@llvm-project//mlir:ROCDLToLLVMIRTranslation",  # buildcleaner: keep
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFTransforms",

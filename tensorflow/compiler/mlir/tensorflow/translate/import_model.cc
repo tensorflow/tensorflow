@@ -2605,8 +2605,31 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
         return errors::InvalidArgument("Input ", i, "has invalid data type");
       }
     }
-    TF_RETURN_IF_ERROR(
-        ::tensorflow::ConvertDataType(imported_dtype, builder, &element_type));
+    // Check if we have subtypes first
+    if (!node_info.subtypes.empty()) {
+      std::vector<mlir::TensorType> subtypes;
+      for (const auto& st : node_info.subtypes) {
+        mlir::Type st_data_type;
+        llvm::SmallVector<int64_t> shape;
+        TF_RETURN_IF_ERROR(ConvertToMlirShape(st.shape, &shape));
+        TF_RETURN_IF_ERROR(
+            ConvertDataType(st.imported_dtype, builder, &st_data_type));
+        subtypes.push_back(mlir::RankedTensorType::get(shape, st_data_type));
+      }
+      if (imported_dtype == DT_RESOURCE) {
+        element_type =
+            mlir::TF::ResourceType::get(subtypes, builder.getContext());
+      } else if (imported_dtype == DT_VARIANT) {
+        element_type =
+            mlir::TF::VariantType::get(subtypes, builder.getContext());
+      } else {
+        return errors::InvalidArgument(DataType_Name(imported_dtype),
+                                       " takes no subtypes.");
+      }
+    } else {
+      TF_RETURN_IF_ERROR(
+          ConvertDataType(imported_dtype, builder, &element_type));
+    }
     if (node_info.shape.unknown_rank()) {
       arg_types.push_back(mlir::UnrankedTensorType::get(element_type));
     } else {
