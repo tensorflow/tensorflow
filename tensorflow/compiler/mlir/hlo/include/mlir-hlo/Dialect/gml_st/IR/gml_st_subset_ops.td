@@ -26,7 +26,6 @@ include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
 // Base class of all subset types.
 class GMLST_Subset<string name> : TypeDef<GmlSt_Dialect, name> { }
 
-// TODO: Have a type trait for all subset.
 def GMLST_TileType : GMLST_Subset<"Tile"> {
   let mnemonic = "tile";
   let summary = "Type that represents a tile of an index space.";
@@ -41,7 +40,7 @@ def GMLST_PointType : GMLST_Subset<"Point"> {
 }
 
 // Whether a type is a subset type.
-def IsSubsetTypePred : CPred<"$_self.isa<::mlir::gml_st::PointType, ::mlir::gml_st::TileType>()">;
+def IsSubsetTypePred : Or<[GMLST_TileType.predicate, GMLST_PointType.predicate]>;
 
 def AnySubset : Type<IsSubsetTypePred, "subset type">;
 
@@ -49,29 +48,29 @@ def GMLST_SpaceOp : GMLST_Op<"space",
     [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let arguments = (ins Variadic<Index>:$shapes,
                        I64ArrayAttr:$static_shapes);
-  let results = (outs AnySubset:$result);
+  let results = (outs GMLST_TileType:$result);
   let assemblyFormat = [{
     custom<OperandsOrIntegersSizesList>($shapes, $static_shapes)
-    attr-dict `:` type($result)
+    attr-dict `:` qualified(type($result))
   }];
-  let hasVerifier = 0;
+  let hasVerifier = 1;
 }
 
 def GMLST_PointOp : GMLST_Op<"point", []> {
   let arguments = (ins AnySubset:$subset,
                        Variadic<Index>:$indices,
                        I64ArrayAttr:$static_indices);
-  let results = (outs AnySubset:$result);
+  let results = (outs GMLST_PointType:$result);
   let assemblyFormat = [{
     $subset
     custom<OperandsOrIntegersOffsetsOrStridesList>($indices, $static_indices)
-    attr-dict `:` type($subset) `to` type($result)
+    attr-dict `:` qualified(type($subset)) `to` qualified(type($result))
   }];
-  let hasVerifier = 0;
+  let hasVerifier = 1;
 }
 
 def GMLST_TileOp : GMLST_Op<"tile", [AttrSizedOperandSegments]> {
-  let arguments = (ins AnySubset:$subset,
+  let arguments = (ins GMLST_TileType:$subset,
                        Variadic<Index>:$offsets,
                        Variadic<Index>:$sizes,
                        Variadic<Index>:$strides,
@@ -84,7 +83,7 @@ def GMLST_TileOp : GMLST_Op<"tile", [AttrSizedOperandSegments]> {
     custom<OperandsOrIntegersOffsetsOrStridesList>($offsets, $static_offsets)
     custom<OperandsOrIntegersSizesList>($sizes, $static_sizes)
     custom<OperandsOrIntegersOffsetsOrStridesList>($strides, $static_strides)
-    attr-dict `:` type($subset) `to` type($result)
+    attr-dict `:` qualified(type($subset)) `to` qualified(type($result))
   }];
   let hasVerifier = 0;
 }
