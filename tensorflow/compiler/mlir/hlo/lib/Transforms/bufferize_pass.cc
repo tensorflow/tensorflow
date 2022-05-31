@@ -143,12 +143,12 @@ struct ComputeOpAndFuncBufferizePass
         bufferization::getPartialBufferizationOptions();
     // TODO(springerm): Add dialects to this filter as more and more dialects
     // will be migrated to BufferizableOpInterface-based bufferization.
-    options.allowDialectInFilter<bufferization::BufferizationDialect,
-                                 linalg::LinalgDialect, mhlo::MhloDialect,
-                                 shape::ShapeDialect, tensor::TensorDialect,
-                                 vector::VectorDialect>();
+    options.opFilter.allowDialect<bufferization::BufferizationDialect,
+                                  linalg::LinalgDialect, mhlo::MhloDialect,
+                                  shape::ShapeDialect, tensor::TensorDialect,
+                                  vector::VectorDialect>();
     // Ops inside TiledLoopOps have special handling.
-    options.denyOperationInFilter([](Operation* op) {
+    options.opFilter.denyOperation([](Operation* op) {
       return mlir::isa<gml_st::LoopOp>(op->getParentOp());
     });
 
@@ -289,7 +289,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     options.bufferAlignment = alignment_;
     // TODO(springerm): Add dialects to this filter as more and more dialects
     // will be migrated to BufferizableOpInterface-based bufferization.
-    options.allowDialectInFilter<
+    options.opFilter.allowDialect<
         arith::ArithmeticDialect, bufferization::BufferizationDialect,
         linalg::LinalgDialect, func::FuncDialect, shape::ShapeDialect,
         tensor::TensorDialect, vector::VectorDialect>();

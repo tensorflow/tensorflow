@@ -273,8 +273,7 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
 
   if (!cpu_codegen) {
     // Greedily map the remaining loop to GPU hardware dimensions.
-    pm.addNestedPass<FuncOp>(
-        mlir::kernel_gen::transforms::CreateMapParallelLoopsPass());
+    pm.addNestedPass<FuncOp>(mlir::createGpuMapParallelLoopsPass());
   }
 
   // Expand memref_reshape to its ranked form so that we can propagate

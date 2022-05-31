@@ -117,15 +117,6 @@ def EmbedMemRefPrintsPass : Pass<"embed-memref-prints", "mlir::ModuleOp"> {
   let dependentDialects = ["LLVM::LLVMDialect"];
 }
 
-def MapParallelLoopsPass
-    : Pass<"map-parallel-loops-to-gpu", "mlir::func::FuncOp"> {
-  let summary = "Greedily maps loops to GPU hardware dimensions.";
-  let constructor = "transforms::CreateMapParallelLoopsPass()";
-  let description = [{
-    Greedily maps loops to GPU hardware dimensions.
-  }];
-}
-
 def FuseInnerParallelLoopsPass
     : Pass<"fuse-inner-parallel-loops", "mlir::func::FuncOp"> {
   let summary = "Limited pass to forward stores to loads.";
