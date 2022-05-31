@@ -786,12 +786,12 @@ Status InferenceContext::InternalMakeShapeFromTensor(
       return ReturnUnknownShape(out);
     }
     const auto num_dims = Value(shape_dim);
-    // TODO(mihaimaruseac): Should be `TensorShape::MaxDimensions()` as we are
-    // not able to materialize shapes with more than this number of dimensions
-    // but then shape inference would fail for operations such as
-    // `tf.range`/`tf.ones`, etc. where the shape is not really materialized,
-    // only used during the inference. Hence, just prevent doing a `reserve`
-    // with a very large argument.
+    // Note: This should be `TensorShape::MaxDimensions()` as we are not able to
+    // materialize shapes with more than this number of dimensions but then
+    // shape inference would fail for operations such as `tf.range`/`tf.ones`,
+    // etc. where the shape is not really materialized, only used during the
+    // inference. Hence, just prevent doing a `reserve` with a very large
+    // argument.
     const int64_t max_dimensions = 1 << 25;
     if (num_dims >= max_dimensions) {
       return errors::Internal(
