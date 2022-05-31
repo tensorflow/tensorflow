@@ -237,12 +237,12 @@ class PjRtStreamExecutorClient : public PjRtClient {
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
                               PjRtDevice* device,
-                              PjRtCrossHostRecvNotifier&& notifier) override;
+                              PjRtCrossHostRecvNotifier notifier) override;
 
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffersForGather(
       absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
-      PjRtDevice* device, PjRtCrossHostRecvNotifier&& notifier) override;
+      PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
@@ -289,7 +289,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
   virtual Status EnqueueCrossHostReceive(
       absl::Span<const std::unique_ptr<PjRtBuffer>> buffers,
       std::shared_ptr<BufferSequencingEvent> definition_event,
-      PjRtCrossHostRecvNotifier&& notifier,
+      PjRtCrossHostRecvNotifier notifier,
       absl::optional<std::vector<GatherDetails>> gather_details) const {
     return Unimplemented("Cross host receives not implemented.");
   }

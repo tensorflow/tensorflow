@@ -276,8 +276,8 @@ PyClient::MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
   TF_ASSIGN_OR_RETURN(
       auto buffers, pjrt_client_->MakeCrossHostReceiveBuffers(
                         shapes, device,
-                        [&done, &recv_descriptors_or, &mu](
-                            StatusOr<PjRtCrossHostRecvState>&& recv_state_or) {
+                        [&done, &recv_descriptors_or,
+                         &mu](StatusOr<PjRtCrossHostRecvState> recv_state_or) {
                           absl::MutexLock l(&mu);
                           if (recv_state_or.ok()) {
                             py::gil_scoped_acquire gil;
