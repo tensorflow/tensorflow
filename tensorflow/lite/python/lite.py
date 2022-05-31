@@ -1662,8 +1662,10 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       MLIR-based quantization conversion instead of Flatbuffer-based conversion.
       (default True)
     experimental_enable_resource_variables: Experimental flag, subject to
-      change. Enables resource variables to be converted by this converter. This
-      is only allowed if from_saved_model interface is used. (default True)
+      change. Enables 
+      [resource variables](https://tensorflow.org/guide/migrate/tf1_vs_tf2#resourcevariables_instead_of_referencevariables)
+      to be converted by this converter. This is only allowed if the
+      from_saved_model interface is used. (default True)
 
   Example usage:
 
