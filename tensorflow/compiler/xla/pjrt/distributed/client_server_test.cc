@@ -720,14 +720,8 @@ TEST_P(ClientServerTest, WaitAtBarrier_FailWithSameBarrierId) {
     }
   }
   for (int i = 0; i < num_nodes; ++i) {
-    if (GetParam().use_coordination_service) {
-      // Co-ordination service returns OK because the previous barrier has
-      // already passed.
-      TF_EXPECT_OK(statuses[i]);
-    } else {
-      EXPECT_EQ(statuses[i].code(), tensorflow::error::FAILED_PRECONDITION)
-          << " node id: " << i;
-    }
+    EXPECT_EQ(statuses[i].code(), tensorflow::error::FAILED_PRECONDITION)
+        << " node id: " << i;
   }
 }
 

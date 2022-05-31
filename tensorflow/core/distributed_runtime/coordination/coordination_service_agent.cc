@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/notification.h"
@@ -134,6 +135,10 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   mutable mutex state_mu_;
   State state_ TF_GUARDED_BY(state_mu_) = State::UNINITIALIZED;
   Status status_ TF_GUARDED_BY(state_mu_) = Status::OK();
+  // Note: this set grows without bounds. For now, this is okay as most users
+  // require < 100 barriers. If there is a use case that requires many barriers,
+  // consider using a monotonic sequence number to track instead.
+  absl::flat_hash_set<std::string> used_barrier_ids_ TF_GUARDED_BY(state_mu_);
 
   uint64_t leader_incarnation_ = 0;
   CoordinationServiceDeviceInfo cluster_devices_;
@@ -684,6 +689,17 @@ void CoordinationServiceAgentImpl::WaitAtBarrierAsync(
   if (!agent_running_status.ok()) {
     done(agent_running_status);
     return;
+  }
+  {
+    mutex_lock l(state_mu_);
+    auto [it, inserted] = used_barrier_ids_.insert(barrier_id);
+    if (!inserted) {
+      done(errors::FailedPrecondition(
+          "WaitAtBarrier() should not be called with the same id more than "
+          "once. Barrier id: ",
+          barrier_id));
+      return;
+    }
   }
   auto request = std::make_shared<BarrierRequest>();
   auto response = std::make_shared<BarrierResponse>();
