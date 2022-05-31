@@ -21,6 +21,8 @@
 
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
+#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
@@ -32,6 +34,8 @@
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/stream_executor/gpu/gpu_types.h"
 #include "tfrt/jitrt/custom_call.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
@@ -780,6 +784,91 @@ static bool Cholesky(runtime::KernelContext* ctx, void** args, void** attrs) {
 }
 
 // -------------------------------------------------------------------------- //
+// Implements JitRt custom call that forward to the Xla Custom Call handler.
+//
+// Longer term all Xla custom calls probably should be directly implemented as
+// JitRt custom calls. However for smooth migration from Thunks to JitRt we have
+// to seamlessly support all current XLA users.
+namespace {
+struct XlaCustomCall {
+  using Stream = se::gpu::GpuStreamHandle;
+
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           CustomCall::RemainingArgs args,
+                           StringRef call_target_name, int32_t api_version,
+                           StringRef backend_config) const;
+  static XlaCustomCall Handler() { return XlaCustomCall(); }
+};
+}  // namespace
+
+LogicalResult XlaCustomCall::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    CustomCall::RemainingArgs args, StringRef call_target_name,
+    int32_t api_version, StringRef backend_config) const {
+  // Find the Xla custom call handler.
+  auto& platform_name = run_options->stream()->parent()->platform()->Name();
+  void* call_target = CustomCallTargetRegistry::Global()->Lookup(
+      call_target_name.str(), platform_name);
+  if (!call_target) return failure();
+
+  // Prepare pointers to buffers to pass to the Xla custom call handler.
+  llvm::SmallVector<void*> buffers;
+  for (unsigned i = 0; i < args.size(); ++i) {
+    auto memref = args.get<jitrt::FlatMemrefView>(i);
+    if (failed(memref)) return failure();
+
+    // We use zero-sized memrefs to represent holes in custom calls with target
+    // arguments mapping (see `CustomCallTargetArgMapping`).
+    buffers.push_back(memref->size_in_bytes == 0 ? nullptr : memref->data);
+  }
+
+  // Original custom call API version that doesn't support returning status.
+  if (api_version == CustomCallApiVersion::API_VERSION_ORIGINAL) {
+    using XlaCustomCallType = void (*)(Stream, void**, const char*, size_t);
+    auto xla_call_target = reinterpret_cast<XlaCustomCallType>(call_target);
+
+    xla_call_target(se::gpu::AsGpuStreamValue(run_options->stream()),
+                    buffers.data(), backend_config.data(),
+                    backend_config.size());
+
+    return success();
+  }
+
+  // Xla Custom call API returning status.
+  if (api_version == CustomCallApiVersion::API_VERSION_STATUS_RETURNING) {
+    using XlaCustomCallType =
+        void (*)(Stream, void**, const char*, size_t, XlaCustomCallStatus*);
+    auto xla_call_target = reinterpret_cast<XlaCustomCallType>(call_target);
+
+    XlaCustomCallStatus custom_call_status;
+    xla_call_target(se::gpu::AsGpuStreamValue(run_options->stream()),
+                    buffers.data(), backend_config.data(),
+                    backend_config.size(), &custom_call_status);
+
+    if (auto message = CustomCallStatusGetMessage(&custom_call_status)) {
+      return failure();
+    } else {
+      return success();
+    }
+  }
+
+  return failure();
+}
+
+static bool CustomCall(runtime::KernelContext* ctx, void** args, void** attrs) {
+  static auto* handler = CustomCall::Bind("xla.gpu.memcpy")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .Arg<jitrt::CustomCall::RemainingArgs>()  // args
+                             .Attr<StringRef>("call_target_name")
+                             .Attr<int32_t>("api_version")
+                             .Attr<StringRef>("backend_config")
+                             .To<RuntimeChecks()>(XlaCustomCall::Handler())
+                             .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+// ------------------------------------------------------------------------- //
 
 namespace {
 struct AllReduce {
@@ -957,6 +1046,7 @@ SymbolMap JitRtCustomCallsSymbolMap(MangleAndInterner mangle) {
   bind("xla.gpu.infeed", &xla::gpu::Infeed);
   bind("xla.gpu.outfeed", &xla::gpu::Outfeed);
   bind("xla.gpu.replica_id", &xla::gpu::ReplicaId);
+  bind("xla.gpu.custom_call", &xla::gpu::CustomCall);
 
   return symbol_map;
 }

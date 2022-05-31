@@ -78,6 +78,7 @@ using mlir::gpu::MemcpyOp;
 using mlir::lmhlo::AllGatherOp;
 using mlir::lmhlo::AllReduceOp;
 using mlir::lmhlo::CaseOp;
+using mlir::lmhlo::CustomCallOp;
 using mlir::lmhlo::InfeedOp;
 using mlir::lmhlo::OutfeedOp;
 using mlir::lmhlo::ReplicaIdOp;
@@ -86,6 +87,7 @@ using mlir::lmhlo::WhileOp;
 using mlir::lmhlo_gpu::CholeskyOp;
 using mlir::lmhlo_gpu::GEMM_BiasOp;
 using mlir::lmhlo_gpu::GEMMOp;
+using mlir::memref::AllocaOp;
 using mlir::memref::GetGlobalOp;
 
 class ConvertLmhloConstantToArgPass
@@ -557,6 +559,81 @@ class CaseOpLowering : public OpRewritePattern<CaseOp> {
     return success();
   }
 };
+
+// -------------------------------------------------------------------------- //
+
+class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(CustomCallOp op,
+                                PatternRewriter& rewriter) const override {
+    MLIRContext* ctx = this->getContext();
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    // Custom call target.
+    NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
+                          b.getStringAttr(Twine("xla.gpu.custom_call")));
+
+    // By default all operands passed to the custom call handler.
+    llvm::SmallVector<Value> operands = op.getOperands();
+
+    // If custom call has target arguments mapping, then we need to pass empty
+    // memrefs in place of holes.
+    if (op.target_arg_mapping().hasValue()) {
+      auto mapping = *op.target_arg_mapping();
+      int64_t num_args = mapping.num_args().getInt();
+      int64_t num_results = mapping.num_results().getInt();
+
+      // We represent holes as empty i8 memrefs.
+      Value hole = b.create<AllocaOp>(MemRefType::get({0}, b.getI8Type()));
+      operands = llvm::SmallVector<Value>(num_args + num_results, hole);
+
+      // Update operands to mapped custom call arguments.
+      auto args = mapping.args_to_target_args().getAsRange<IntegerAttr>();
+      for (auto& indexed : llvm::enumerate(args))
+        operands[indexed.value().getInt()] = op.args()[indexed.index()];
+
+      // Update operands to mapped custom call results.
+      auto res = mapping.results_to_target_results().getAsRange<IntegerAttr>();
+      for (auto& indexed : llvm::enumerate(res))
+        operands[num_args + indexed.value().getInt()] =
+            op.output()[indexed.index()];
+    }
+
+    // Create a custom call function declaration.
+    auto custom_call_type =
+        FunctionType::get(ctx, TypeRange(ValueRange(operands)), TypeRange());
+
+    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
+    auto custom_call = FuncOp::create(op.getLoc(), "custom_call",
+                                      custom_call_type, custom_call_attrs);
+    custom_call.setPrivate();
+
+    SymbolTable sym_table(op->getParentOfType<ModuleOp>());
+    auto inserted = sym_table.insert(custom_call);
+    rewriter.notifyOperationInserted(custom_call);
+
+    // Call the runtime intrinsic with the original operands.
+    auto call =
+        rewriter.create<CallOp>(op.getLoc(), inserted, TypeRange(), operands);
+
+    // Pass attributes to the custom call handler.
+    auto set_attr = [&](StringRef name, Attribute attr) {
+      call->setAttr(b.getStringAttr(name), attr);
+    };
+
+    set_attr("api_version", op.api_versionAttr());
+    set_attr("backend_config", op.backend_configAttr());
+    set_attr("call_target_name", op.call_target_nameAttr());
+
+    // Erase the original infeed/outfeed operation.
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+};
+
 // -------------------------------------------------------------------------- //
 
 using GlobalConstantsArgs = llvm::DenseMap<FuncOp, llvm::StringMap<Value>>;
@@ -939,7 +1016,7 @@ void ConvertLmhloGpuToJitRtPass::runOnOperation() {
   patterns.insert<GemmOpLowering, GemmBiasOpLowering>(ctx, uid);
   patterns.insert<AllGatherOpLowering, AllReduceOpLowering, CholeskyOpLowering,
                   ReplicaIdOpLowering, WhileOpLowering, CaseOpLowering,
-                  TerminatorOpLowering>(ctx);
+                  CustomCallOpLowering, TerminatorOpLowering>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();
