@@ -138,6 +138,17 @@ StatusOr<NcclComm::Lock> LockNcclComm(
     CollectiveOpGroupMode group_mode, int64_t op_id);
 #endif  // XLA_ENABLE_XCCL
 
+struct DeviceBufferPair {
+  PrimitiveType element_type;
+  int64_t element_count;
+  se::DeviceMemoryBase source_buffer;
+  se::DeviceMemoryBase destination_buffer;
+};
+StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
+    const Thunk::ExecuteParams& params,
+    const std::vector<NcclCollectiveThunk::Buffer>& buffers,
+    const std::vector<PrimitiveType>& element_types);
+
 }  // namespace gpu
 }  // namespace xla
 

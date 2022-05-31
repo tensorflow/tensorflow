@@ -149,6 +149,26 @@ StatusOr<NcclComm::Lock> LockNcclComm(
 }
 #endif  // XLA_ENABLE_XCCL
 
+StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
+    const Thunk::ExecuteParams& params,
+    const std::vector<NcclCollectiveThunk::Buffer>& buffers,
+    const std::vector<PrimitiveType>& element_types) {
+  if (buffers.size() != element_types.size())
+    return FailedPrecondition("Mismatch in operand buffer counts.");
+
+  std::vector<DeviceBufferPair> device_buffers;
+  device_buffers.reserve(buffers.size());
+  for (int i = 0; i < buffers.size(); ++i) {
+    device_buffers.emplace_back(DeviceBufferPair{
+        element_types[i], buffers[i].element_count,
+
+        params.buffer_allocations->GetDeviceAddress(buffers[i].source_buffer),
+        params.buffer_allocations->GetDeviceAddress(
+            buffers[i].destination_buffer)});
+  }
+  return device_buffers;
+}
+
 Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 #if XLA_ENABLE_XCCL
   VLOG(1) << absl::StreamFormat("Starting %s.", Thunk::KindToString(kind()));
