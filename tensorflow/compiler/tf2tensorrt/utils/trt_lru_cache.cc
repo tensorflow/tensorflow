@@ -86,7 +86,7 @@ string TRTEngineCacheResource::DebugString() const {
   for (const auto& item : cache_) {
     mutex_lock lock(item.second->mu);
     oss << TensorShapeUtils::ShapeListString(item.first) << ": " << hex
-        << "ICudaEngine: " << item.second->cuda_engine.get() << ", "
+        << "ICudaEngine: " << item.second->GetCudaEngine() << ", "
         << "IExecutionContext: ";
     absl::c_for_each(
         item.second->execution_contexts,
