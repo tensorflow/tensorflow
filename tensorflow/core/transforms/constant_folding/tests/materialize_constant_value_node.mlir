@@ -12,7 +12,7 @@ module {
     %Const, %ctl_2 = Const name("Const/Const") {dtype = i32, value = dense<[4, 3, 2, 1]> : tensor<4xi32>} : () -> (tensor<4xi32>)
     // CHECK-DAG: {{.*}}, %[[CTRL2:.*]] = {{.*}} name("Const_1/Const")
     %Const_3, %ctl_4 = Const name("Const_1/Const") {dtype = i32, value = dense<42> : tensor<i32>} : () -> (tensor<i32>)
-    // CHECK: Const [%[[CTRL1]], %[[CTRL2]]] name("tfg.FillConst_folded") {{.*}} value = dense<42> : tensor<4x3x2x1xi32>
+    // CHECK: Const [%[[CTRL1]], %[[CTRL2]]] name("fill/const_folded") {{.*}} value = dense<42> : tensor<4x3x2x1xi32>
     %Fill, %ctl_5 = Fill(%Const, %Const_3) name("fill") {T = i32, index_type = i32} : (tensor<4xi32>, tensor<i32>) -> (tensor<4x3x2x1xi32>)
     // CHECK: Fill(%[[PLACEHOLDER]], %{{.*}}) name("fill_1")
     %Fill_1, %ctl_6 = Fill(%Placeholder, %Const_3) name("fill_1") {T = i32, index_type = i32} : (tensor<1x2x3x4xf32>, tensor<i32>) -> (tensor<*xi32>)
