@@ -140,40 +140,222 @@ void AppendToMessage(::tensorflow::Status* status, Args... args) {
 //   status.Update(errors::InvalidArgument("The ", foo, " isn't right."));
 //   if (errors::IsInvalidArgument(status)) { ... }
 //   switch (status.code()) { case error::INVALID_ARGUMENT: ... }
+//
+// Prefer using directly:
+// tensorflow::InvalidArgumentError(StrCat("The ", foo, " isn't right."));
 
-#define DECLARE_ERROR(FUNC, CONST)                                        \
-  template <typename... Args>                                             \
-  ::tensorflow::Status FUNC(Args... args) {                               \
-    return ::tensorflow::Status(                                          \
-        ::tensorflow::error::CONST,                                       \
-        ::tensorflow::strings::StrCat(                                    \
-            ::tensorflow::errors::internal::PrepareForStrCat(args)...));  \
-  }                                                                       \
-  template <typename... Args>                                             \
-  ::tensorflow::Status FUNC##WithPayloads(                                \
-      const ::tensorflow::StringPiece& message,                           \
-      const std::unordered_map<std::string, std::string>& payloads) {     \
-    return errors::Create(::tensorflow::error::CONST, message, payloads); \
-  }
+// Cancelled
+template <typename... Args>
+::tensorflow::Status Cancelled(Args... args) {
+  return ::tensorflow::CancelledError(::tensorflow::strings::StrCat(
+      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+}
+template <typename... Args>
+::tensorflow::Status CancelledWithPayloads(
+    const ::tensorflow::StringPiece& message,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  return errors::Create(::tensorflow::error::CANCELLED, message, payloads);
+}
 
-DECLARE_ERROR(Cancelled, CANCELLED)
-DECLARE_ERROR(InvalidArgument, INVALID_ARGUMENT)
-DECLARE_ERROR(NotFound, NOT_FOUND)
-DECLARE_ERROR(AlreadyExists, ALREADY_EXISTS)
-DECLARE_ERROR(ResourceExhausted, RESOURCE_EXHAUSTED)
-DECLARE_ERROR(Unavailable, UNAVAILABLE)
-DECLARE_ERROR(FailedPrecondition, FAILED_PRECONDITION)
-DECLARE_ERROR(OutOfRange, OUT_OF_RANGE)
-DECLARE_ERROR(Unimplemented, UNIMPLEMENTED)
-DECLARE_ERROR(Internal, INTERNAL)
-DECLARE_ERROR(Aborted, ABORTED)
-DECLARE_ERROR(DeadlineExceeded, DEADLINE_EXCEEDED)
-DECLARE_ERROR(DataLoss, DATA_LOSS)
-DECLARE_ERROR(Unknown, UNKNOWN)
-DECLARE_ERROR(PermissionDenied, PERMISSION_DENIED)
-DECLARE_ERROR(Unauthenticated, UNAUTHENTICATED)
+// InvalidArgument
+template <typename... Args>
+::tensorflow::Status InvalidArgument(Args... args) {
+  return ::tensorflow::InvalidArgumentError(::tensorflow::strings::StrCat(
+      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+}
+template <typename... Args>
+::tensorflow::Status InvalidArgumentWithPayloads(
+    const ::tensorflow::StringPiece& message,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  return errors::Create(::tensorflow::error::INVALID_ARGUMENT, message,
+                        payloads);
+}
 
-#undef DECLARE_ERROR
+// NotFound
+template <typename... Args>
+::tensorflow::Status NotFound(Args... args) {
+  return ::tensorflow::NotFoundError(::tensorflow::strings::StrCat(
+      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+}
+template <typename... Args>
+::tensorflow::Status NotFoundWithPayloads(
+    const ::tensorflow::StringPiece& message,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  return errors::Create(::tensorflow::error::NOT_FOUND, message, payloads);
+}
+
+// AlreadyExists
+template <typename... Args>
+::tensorflow::Status AlreadyExists(Args... args) {
+  return ::tensorflow::AlreadyExistsError(::tensorflow::strings::StrCat(
+      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+}
+template <typename... Args>
+::tensorflow::Status AlreadyExistsWithPayloads(
+    const ::tensorflow::StringPiece& message,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  return errors::Create(::tensorflow::error::ALREADY_EXISTS, message, payloads);
+}
+
+// ResourceExhausted
+template <typename... Args>
+::tensorflow::Status ResourceExhausted(Args... args) {
+  return ::tensorflow::ResourceExhaustedError(::tensorflow::strings::StrCat(
+      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+}
+template <typename... Args>
+::tensorflow::Status ResourceExhaustedWithPayloads(
+    const ::tensorflow::StringPiece& message,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  return errors::Create(::tensorflow::error::RESOURCE_EXHAUSTED, message,
+                        payloads);
+}
+
+// Unavailable
+template <typename... Args>
+::tensorflow::Status Unavailable(Args... args) {
+  return ::tensorflow::UnavailableError(::tensorflow::strings::StrCat(
+      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+}
+template <typename... Args>
+::tensorflow::Status UnavailableWithPayloads(
+    const ::tensorflow::StringPiece& message,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  return errors::Create(::tensorflow::error::UNAVAILABLE, message, payloads);
+}
+
+// FailedPrecondition
+template <typename... Args>
+::tensorflow::Status FailedPrecondition(Args... args) {
+  return ::tensorflow::FailedPreconditionError(::tensorflow::strings::StrCat(
+      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+}
+template <typename... Args>
+::tensorflow::Status FailedPreconditionWithPayloads(
+    const ::tensorflow::StringPiece& message,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  return errors::Create(::tensorflow::error::FAILED_PRECONDITION, message,
+                        payloads);
+}
+
+// OutOfRange
+template <typename... Args>
+::tensorflow::Status OutOfRange(Args... args) {
+  return ::tensorflow::OutOfRangeError(::tensorflow::strings::StrCat(
+      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+}
+template <typename... Args>
+::tensorflow::Status OutOfRangeWithPayloads(
+    const ::tensorflow::StringPiece& message,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  return errors::Create(::tensorflow::error::OUT_OF_RANGE, message, payloads);
+}
+
+// Unimplemented
+template <typename... Args>
+::tensorflow::Status Unimplemented(Args... args) {
+  return ::tensorflow::UnimplementedError(::tensorflow::strings::StrCat(
+      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+}
+template <typename... Args>
+::tensorflow::Status UnimplementedWithPayloads(
+    const ::tensorflow::StringPiece& message,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  return errors::Create(::tensorflow::error::UNIMPLEMENTED, message, payloads);
+}
+
+// Internal
+template <typename... Args>
+::tensorflow::Status Internal(Args... args) {
+  return ::tensorflow::InternalError(::tensorflow::strings::StrCat(
+      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+}
+template <typename... Args>
+::tensorflow::Status InternalWithPayloads(
+    const ::tensorflow::StringPiece& message,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  return errors::Create(::tensorflow::error::INTERNAL, message, payloads);
+}
+
+// Aborted
+template <typename... Args>
+::tensorflow::Status Aborted(Args... args) {
+  return ::tensorflow::AbortedError(::tensorflow::strings::StrCat(
+      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+}
+template <typename... Args>
+::tensorflow::Status AbortedWithPayloads(
+    const ::tensorflow::StringPiece& message,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  return errors::Create(::tensorflow::error::ABORTED, message, payloads);
+}
+
+// DeadlineExceeded
+template <typename... Args>
+::tensorflow::Status DeadlineExceeded(Args... args) {
+  return ::tensorflow::DeadlineExceededError(::tensorflow::strings::StrCat(
+      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+}
+template <typename... Args>
+::tensorflow::Status DeadlineExceededWithPayloads(
+    const ::tensorflow::StringPiece& message,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  return errors::Create(::tensorflow::error::DEADLINE_EXCEEDED, message,
+                        payloads);
+}
+
+// DataLoss
+template <typename... Args>
+::tensorflow::Status DataLoss(Args... args) {
+  return ::tensorflow::DataLossError(::tensorflow::strings::StrCat(
+      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+}
+template <typename... Args>
+::tensorflow::Status DataLossWithPayloads(
+    const ::tensorflow::StringPiece& message,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  return errors::Create(::tensorflow::error::DATA_LOSS, message, payloads);
+}
+
+// Unknown
+template <typename... Args>
+::tensorflow::Status Unknown(Args... args) {
+  return ::tensorflow::UnknownError(::tensorflow::strings::StrCat(
+      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+}
+template <typename... Args>
+::tensorflow::Status UnknownPayloads(
+    const ::tensorflow::StringPiece& message,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  return errors::Create(::tensorflow::error::UNKNOWN, message, payloads);
+}
+// PermissionDenied
+template <typename... Args>
+::tensorflow::Status PermissionDenied(Args... args) {
+  return ::tensorflow::PermissionDeniedError(::tensorflow::strings::StrCat(
+      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+}
+template <typename... Args>
+::tensorflow::Status PermissionDeniedWithPayloads(
+    const ::tensorflow::StringPiece& message,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  return errors::Create(::tensorflow::error::PERMISSION_DENIED, message,
+                        payloads);
+}
+
+// Unauthenticated
+template <typename... Args>
+::tensorflow::Status Unauthenticated(Args... args) {
+  return ::tensorflow::UnauthenticatedError(::tensorflow::strings::StrCat(
+      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+}
+template <typename... Args>
+::tensorflow::Status UnauthenticatedWithPayloads(
+    const ::tensorflow::StringPiece& message,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  return errors::Create(::tensorflow::error::UNAUTHENTICATED, message,
+                        payloads);
+}
 
 bool IsAborted(const Status& status);
 bool IsAlreadyExists(const Status& status);
