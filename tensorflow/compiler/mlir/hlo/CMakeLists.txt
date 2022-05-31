@@ -155,6 +155,7 @@ add_custom_target(check-mlir-hlo)
 add_subdirectory(include/mlir-hlo)
 add_subdirectory(lib)
 add_subdirectory(tools)
+add_subdirectory(tosa)
 add_subdirectory(tests)
 
 if(MHLO_ENABLE_BINDINGS_PYTHON)
