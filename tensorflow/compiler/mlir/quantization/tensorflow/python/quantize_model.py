@@ -168,8 +168,8 @@ def _static_range_quantize(saved_model_path: str,
     representative_dataset: a generator that returns a dictionary in
       {input_name: input_tensor} format or a tuple with signature key and a
       dictionary in {input_name: input_tensor} format that feeds calibration
-        data for quantizing model. This should be provided when the model is not
-        a QAT model.
+      data for quantizing model. This should be provided when the model is not a
+      QAT model.
 
   Returns:
     A SavedModel object with TF quantization applied.
@@ -308,6 +308,65 @@ def _static_range_quantize(saved_model_path: str,
   return saved_model_load(output_directory)
 
 
+def _dynamic_range_quantize(saved_model_path: str,
+                            signature_keys: list[str],
+                            tags: set[str],
+                            output_directory: str = ''):
+  """Quantizes the given SavedModel via post-training dynamic range quantization.
+
+  Args:
+    saved_model_path: Path to the saved model.
+    signature_keys: List of keys identifying SignatureDef containing inputs and
+      outputs.
+    tags: Set of tags identifying the MetaGraphDef within the SavedModel to
+      analyze.
+    output_directory: The path to save the output SavedModel (must be an empty
+      directory).
+
+  Returns:
+    A SavedModel object with TF quantization applied.
+
+  Raises:
+    ValueError: when the model is QAT model.
+  """
+  is_qat_saved_model = _is_qat_saved_model(saved_model_path)
+  signatures = _get_signatures_from_saved_model(saved_model_path,
+                                                signature_keys, tags)
+
+  # Checks if the model is from QAT.
+  if is_qat_saved_model:
+    raise ValueError(
+        'The models trained with quantization-aware training (QAT) is not '
+        'supported.')
+
+  # Apply post-training dynamic range quantization to the model.
+  graph_def_serialized = (
+      quantize_model_wrapper.quantize_ptq_dynamic_range(
+          saved_model_path, ','.join(signature_keys), ','.join(tags)))
+
+  graph_def = graph_pb2.GraphDef()
+  graph_def.ParseFromString(graph_def_serialized)
+
+  if not output_directory:
+    output_directory = tempfile.mkdtemp()
+  v1_builder = builder.SavedModelBuilder(output_directory)
+
+  with session.Session(graph=ops.Graph()) as sess:
+    importer.import_graph_def(graph_def, name='')
+    working_graph = ops.get_default_graph()
+
+    signatures = _fix_tensor_names(signatures, working_graph)
+    if signatures is None:
+      raise ValueError("The input SavedModel doesn't contain a valid signature")
+
+    v1_builder.add_meta_graph_and_variables(
+        sess, [tag_constants.SERVING], signature_def_map=signatures)
+
+  v1_builder.save()
+
+  return saved_model_load(output_directory)
+
+
 def quantize(saved_model_path: str,
              signature_keys=None,
              tags=None,
@@ -330,8 +389,8 @@ def quantize(saved_model_path: str,
     representative_dataset: a generator that returns a dictionary in
       {input_name: input_tensor} format or a tuple with signature key and a
       dictionary in {input_name: input_tensor} format that feeds calibration
-        data for quantizing model. This should be provided when the model is not
-        a QAT model.
+      data for quantizing model. This should be provided when the model is a PTQ
+      model.
 
   Returns:
     A SavedModel object with TF quantization applied.
@@ -352,6 +411,12 @@ def quantize(saved_model_path: str,
         tags=tags,
         output_directory=output_directory,
         representative_dataset=representative_dataset)
+  elif optimization_method == OptimizationMethod.DYNAMIC_RANGE_QUANT:
+    return _dynamic_range_quantize(
+        saved_model_path=saved_model_path,
+        signature_keys=signature_keys,
+        tags=tags,
+        output_directory=output_directory)
   else:
     raise NotImplementedError(
         'Optimization method "%s" is not implemented yet' %

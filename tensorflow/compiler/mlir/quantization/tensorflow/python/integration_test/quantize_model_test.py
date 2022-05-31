@@ -503,7 +503,41 @@ class AutomaticQuantizationTest(test.TestCase, parameterized.TestCase):
 
 class DynamicRangeQuantizationTest(test.TestCase, parameterized.TestCase):
 
-  def test_conv_ptq_model(self):
+  def test_matmul_model(self):
+
+    class MatmulModel(module.Module):
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[1, 4], dtype=dtypes.float32)
+      ])
+      def matmul(self, input_tensor):
+        filters = np.random.uniform(
+            low=-1.0, high=1.0, size=(4, 3)).astype('f4')
+        out = math_ops.matmul(input_tensor, filters)
+        return {'output': out}
+
+    model = MatmulModel()
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    tags = [tag_constants.SERVING]
+    output_directory = self.create_tempdir().full_path
+    converted_model = quantize_model.quantize(
+        input_saved_model_path, ['serving_default'],
+        tags,
+        output_directory,
+        optimization_method=quantize_model.OptimizationMethod
+        .DYNAMIC_RANGE_QUANT)
+    self.assertIsNotNone(converted_model)
+    self.assertEqual(
+        list(converted_model.signatures._signatures.keys()),
+        ['serving_default'])
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+
+  def test_conv_model(self):
 
     class ConvModel(module.Module):
 
@@ -531,13 +565,22 @@ class DynamicRangeQuantizationTest(test.TestCase, parameterized.TestCase):
 
     tags = [tag_constants.SERVING]
     output_directory = self.create_tempdir().full_path
-    with self.assertRaises(NotImplementedError):
-      quantize_model.quantize(
-          input_saved_model_path, ['serving_default'],
-          tags,
-          output_directory,
-          optimization_method=quantize_model.OptimizationMethod
-          .DYNAMIC_RANGE_QUANT)
+    converted_model = quantize_model.quantize(
+        input_saved_model_path, ['serving_default'],
+        tags,
+        output_directory,
+        optimization_method=quantize_model.OptimizationMethod
+        .DYNAMIC_RANGE_QUANT)
+
+    self.assertIsNotNone(converted_model)
+    self.assertEqual(
+        list(converted_model.signatures._signatures.keys()),
+        ['serving_default'])
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    # Currently conv is not supported.
+    self.assertFalse(_contains_quantized_function_call(output_meta_graphdef))
 
 
 if __name__ == '__main__':
