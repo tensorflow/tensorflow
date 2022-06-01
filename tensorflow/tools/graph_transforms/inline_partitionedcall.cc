@@ -143,7 +143,7 @@ Status InlinePartitionedCall(const GraphDef& input_graph_def,
           return input_name;
         });
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("inline_partitionedcall", InlinePartitionedCall);
