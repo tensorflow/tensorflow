@@ -56,7 +56,7 @@ Status ValidateUpdateShape(const TensorShape& buffer_shape,
   };
 
   if (updates_shape.dims() == 0 && broadcast_scalar_update) {
-    return Status::OK();
+    return OkStatus();
   }
 
   if (updates_shape.dims() < batch_dim) return shape_err();
@@ -79,7 +79,7 @@ Status ValidateUpdateShape(const TensorShape& buffer_shape,
       return shape_err();
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 class ScatterNdOp : public XlaOpKernel {
