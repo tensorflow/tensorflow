@@ -284,7 +284,7 @@ Status Exporter::AddEdgeBetweenNodes(Value src, Node* dst_node,
       graph_->AddEdge(node_it->second, input_result.getResultNumber(), dst_node,
                       dst_index);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   auto input_arg = src.cast<BlockArgument>();
@@ -293,7 +293,7 @@ Status Exporter::AddEdgeBetweenNodes(Value src, Node* dst_node,
       << "Use of BlockArgument encounted before def!";
   // For argument, there is only one result output, so the index is always 0.
   graph_->AddEdge(input_node_it->second, 0, dst_node, dst_index);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Exporter::AddEdge(Operation* inst) {
@@ -308,7 +308,7 @@ Status Exporter::AddEdge(Operation* inst) {
       TF_RETURN_IF_ERROR(AddEdgeBetweenNodes(operand, dst_node, 0));
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   // For tf_executor.NextIteration.Sink, skip its token operand and add data and
@@ -322,14 +322,14 @@ Status Exporter::AddEdge(Operation* inst) {
       TF_RETURN_IF_ERROR(AddEdgeBetweenNodes(control_and_idx.value(), dst_node,
                                              control_and_idx.index() + 1));
 
-    return Status::OK();
+    return OkStatus();
   }
 
   // For tf_executor.NextIteration.Source, op can be skipped as it is assumed
   // there are no operands.
   if (llvm::isa<mlir::tf_executor::NextIterationSourceOp>(inst)) {
     assert(inst->getNumOperands() == 0);
-    return Status::OK();
+    return OkStatus();
   }
 
   Operation* op = GetIslandInnerOpOrSelf(inst);
@@ -351,7 +351,7 @@ Status Exporter::AddEdge(Operation* inst) {
         AddEdgeBetweenNodes(operand_and_idx.value(), dst_node,
                             operand_and_idx.index() + operand_offset));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Exporter::AddInstructionNode(Operation* inst) {
@@ -366,7 +366,7 @@ Status Exporter::AddInstructionNode(Operation* inst) {
   TF_ASSIGN_OR_RETURN(Node * node, graph_->AddNode(*node_def));
   DCHECK(node != nullptr);
   nodes_[inst] = node;
-  return Status::OK();
+  return OkStatus();
 }
 
 bool IsEntryFunctionArg(BlockArgument arg) {
@@ -380,7 +380,7 @@ Status Exporter::AddArgumentNode(BlockArgument arg, unsigned index,
   TF_ASSIGN_OR_RETURN(auto node_def, GetArgumentNode(arg, index, name));
   TF_ASSIGN_OR_RETURN(Node * node, graph_->AddNode(*node_def));
   args_[arg] = node;
-  return Status::OK();
+  return OkStatus();
 }
 
 // Creates return nodes per operand of a FetchOp. If names is supplied, those
@@ -400,7 +400,7 @@ Status Exporter::AddFetchNode(FuncOp function, mlir::tf_executor::FetchOp fetch,
     TF_ASSIGN_OR_RETURN(Node * node, graph_->AddNode(*node_def));
     return_nodes.push_back(node);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Collects control ret Nodes based on tf_executor.graph's associated
@@ -417,7 +417,7 @@ Status Exporter::GetControlRetNodes(
       control_ret_nodes->insert(node_it->second);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
@@ -526,7 +526,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       // library rather than the all the functions exported so far.
       TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(*flib));
     }
-    return Status::OK();
+    return OkStatus();
   };
 
   // Adds nodes for operations.
@@ -591,7 +591,7 @@ Status Exporter::ConvertLibFunction(
     llvm::SmallDenseSet<FuncOp>& visited_functions) {
   // Return early if the function has already been exported.
   bool is_new_function = visited_functions.insert(function).second;
-  if (!is_new_function) return Status::OK();
+  if (!is_new_function) return OkStatus();
 
   auto function_name = function.getName().str();
 
@@ -659,7 +659,7 @@ Status Exporter::ConvertLibFunction(
   }
 
   (*flib->add_function()) = std::move(func_def);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Exporter::Convert(mlir::ModuleOp module,
@@ -713,7 +713,7 @@ Status Exporter::Convert(mlir::ModuleOp module,
   for (auto& grad_def : flib.gradient()) {
     TF_RETURN_IF_ERROR(flib_def->AddGradientDef(grad_def));
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -785,7 +785,7 @@ stream_executor::port::Status ConvertMlirFunctionToFunctionLibraryDef(
   for (auto& func_def : flib.function()) {
     if (func_def.signature().name() == func.getName()) {
       *function_def = func_def;
-      return Status::OK();
+      return OkStatus();
     }
   }
   return errors::InvalidArgument(

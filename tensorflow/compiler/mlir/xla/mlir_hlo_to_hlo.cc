@@ -2464,7 +2464,7 @@ Status PrepareForExport(mlir::ModuleOp module) {
   pm.addNestedPass<mlir::func::FuncOp>(mhlo::CreatePrepareForExport());
   if (failed(pm.run(module)))
     return tensorflow::errors::Internal("Unable to optimize for XLA export");
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace
@@ -2478,7 +2478,7 @@ Status ConvertRegionToComputation(mlir::Region* region,
   if (failed(converter.LowerRegionAsComputation(region, func)))
     return tensorflow::errors::Internal(
         "failed to convert region to computation");
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status ConvertMlirHloToHlo(
@@ -2497,7 +2497,7 @@ Status ConvertMlirHloToHlo(
   StringRef module_name = module.getName() ? *module.getName() : "main";
   hlo_module.set_name(module_name.str());
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
@@ -2542,7 +2542,7 @@ Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
     }
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace mlir
