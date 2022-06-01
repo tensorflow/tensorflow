@@ -98,22 +98,22 @@ class StderrWritableFile : public WritableFile {
 
   Status Append(StringPiece data) override {
     fprintf(stderr, "%.*s", static_cast<int>(data.size()), data.data());
-    return Status::OK();
+    return OkStatus();
   }
 
-  Status Close() override { return Status::OK(); }
+  Status Close() override { return OkStatus(); }
 
   Status Flush() override {
     fflush(stderr);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Name(StringPiece* result) const override {
     *result = "stderr";
-    return Status::OK();
+    return OkStatus();
   }
 
-  Status Sync() override { return Status::OK(); }
+  Status Sync() override { return OkStatus(); }
 
   Status Tell(int64_t* position) override {
     return errors::Unimplemented("Stream not seekable");
@@ -151,7 +151,7 @@ Status CreateWritableFile(Env* env, const string& dirname, const string& name,
   if (dir == "-") {
     *file = std::make_unique<StderrWritableFile>();
     *filepath = "(stderr)";
-    return Status::OK();
+    return OkStatus();
   }
 
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(dir));
