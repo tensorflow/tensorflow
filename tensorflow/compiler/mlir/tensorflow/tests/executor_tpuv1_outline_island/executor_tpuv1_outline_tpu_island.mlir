@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-executor-tpu-v1-island-outlining | FileCheck %s
+// RUN: tf-opt %s -split-input-file -tf-executor-tpu-v1-island-outlining | FileCheck %s
 
 
 // CHECK-LABEL: @func0
@@ -56,3 +56,33 @@ func.func @func2(%arg0 : tensor<i1>) -> tensor<i1> {
 // CHECK-NEXT: tf.opA
 // CHECK-NEXT: tf.opA
 // CHECK-NEXT: tf.SomeOp
+
+// -----
+
+// Check single-core TPU case (no `_replication_info`, no `TPUReplicateMetadata`).
+
+// CHECK-LABEL: @func3
+func.func @func3(%arg0 : tensor<i1>) -> tensor<f32> {
+  %0 = tf_executor.graph {
+// CHECK: island
+// CHECK: PartitionedCall
+// CHECK-SAME: @_tpu_v1_compat_outlined::@_tpu_v1_compat_outlined_func0
+    %1:2 = tf_executor.island {
+     "tf.SomeTpuOp"() {_xla_compile_device_type = "TPU", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
+      %3 = "tf.SomeOtherTpuOp"(%arg0) {_xla_compile_device_type = "TPU"} : (tensor<i1>) -> tensor<i1>
+      tf_executor.yield %3 : tensor<i1>
+    }
+    %2:2 = tf_executor.island(%1#1) {
+      %4 = "tf.opB"() : () -> tensor<f32>
+      tf_executor.yield %4 : tensor<f32>
+    }
+    tf_executor.fetch %2#0 : tensor<f32>
+  }
+  func.return %0 : tensor<f32>
+}
+
+// CHECK: module
+// CHECK-SAME: @_tpu_v1_compat_outlined
+// CHECK-LABEL: func nested @_tpu_v1_compat_outlined_func0(%arg0: tensor<i1>) -> tensor<i1>
+// CHECK-NEXT: tf.SomeTpuOp
+// CHECK-NEXT: tf.SomeOtherTpuOp
