@@ -42,8 +42,8 @@ def concat(values: typing.List[ragged_tensor.RaggedOrDense], axis, name=None):
       `tf.concat`, they can have arbitrary shapes.
     axis: A python integer, indicating the dimension along which to concatenate.
       (Note: Unlike `tf.concat`, the `axis` parameter must be statically known.)
-      Negative values are supported only if the rank of at least one `values`
-      value is statically known.
+        Negative values are supported only if the rank of at least one
+        `values` value is statically known.
     name: A name prefix for the returned tensor (optional).
 
   Returns:
@@ -72,7 +72,9 @@ def concat(values: typing.List[ragged_tensor.RaggedOrDense], axis, name=None):
 @tf_export('ragged.stack')
 @dispatch.add_dispatch_support
 @dispatch.dispatch_for_api(array_ops.stack)
-def stack(values: typing.List[ragged_tensor.RaggedOrDense], axis=0, name=None):
+def stack(values: typing.List[ragged_tensor.RaggedOrDense],
+          axis=0,
+          name=None):
   """Stacks a list of rank-`R` tensors into one rank-`(R+1)` `RaggedTensor`.
 
   Given a list of tensors or ragged tensors with the same rank `R`
@@ -101,8 +103,8 @@ def stack(values: typing.List[ragged_tensor.RaggedOrDense], axis=0, name=None):
       `tf.stack`, they can have arbitrary dimension sizes.
     axis: A python integer, indicating the dimension along which to stack.
       (Note: Unlike `tf.stack`, the `axis` parameter must be statically known.)
-      Negative values are supported only if the rank of at least one `values`
-      value is statically known.
+      Negative values are supported only if the rank of at least one
+      `values` value is statically known.
     name: A name prefix for the returned tensor (optional).
 
   Returns:
@@ -167,8 +169,7 @@ def _ragged_stack_concat_helper(rt_inputs, axis, stack_values):
     return ragged_tensor.RaggedTensor.from_row_lengths(
         values=array_ops.concat(rt_inputs, axis=0),
         row_lengths=array_ops.concat([array_ops.shape(r) for r in rt_inputs],
-                                     axis=0),
-        validate=False)
+                                     axis=0))
 
   # If all the inputs are Tensors, and we're combining the final dimension,
   # then we can delegate to the tf.stack/tf.concat operation, and return a
@@ -189,10 +190,8 @@ def _ragged_stack_concat_helper(rt_inputs, axis, stack_values):
 
   # Convert the input tensors to all have the same ragged_rank.
   ragged_rank = max(max(rt.ragged_rank for rt in rt_inputs), 1)
-  rt_inputs = [
-      _increase_ragged_rank_to(rt, ragged_rank, row_splits_dtype)
-      for rt in rt_inputs
-  ]
+  rt_inputs = [_increase_ragged_rank_to(rt, ragged_rank, row_splits_dtype)
+               for rt in rt_inputs]
 
   if axis == 0:
     return _ragged_stack_concat_axis_0(rt_inputs, stack_values)
@@ -204,8 +203,7 @@ def _ragged_stack_concat_helper(rt_inputs, axis, stack_values):
     with ops.control_dependencies(ragged_util.assert_splits_match(splits)):
       return ragged_tensor.RaggedTensor.from_row_splits(
           _ragged_stack_concat_helper(values, axis - 1, stack_values),
-          splits[0][0],
-          validate=False)
+          splits[0][0], validate=False)
 
 
 def _ragged_stack_concat_axis_0(rt_inputs, stack_values):
