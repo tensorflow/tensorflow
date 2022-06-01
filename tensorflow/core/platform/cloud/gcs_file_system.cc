@@ -151,7 +151,7 @@ constexpr char kComposeAppend[] = "compose";
 
 Status GetTmpFilename(string* filename) {
   *filename = io::GetTempFilename("");
-  return Status::OK();
+  return OkStatus();
 }
 
 /// Appends a trailing slash if the name doesn't already have one.
@@ -202,7 +202,7 @@ Status ParseJson(StringPiece json, Json::Value* result) {
   if (!reader.parse(json.data(), json.data() + json.size(), *result)) {
     return errors::Internal("Couldn't parse JSON response from GCS.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseJson(const std::vector<char>& json, Json::Value* result) {
@@ -217,7 +217,7 @@ Status GetValue(const Json::Value& parent, const char* name,
     return errors::Internal("The field '", name,
                             "' was expected in the JSON response.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /// Reads a string JSON value with the given name from a parent JSON value.
@@ -231,7 +231,7 @@ Status GetStringValue(const Json::Value& parent, const char* name,
         "' in the JSON response was expected to be a string.");
   }
   *result = result_value.asString();
-  return Status::OK();
+  return OkStatus();
 }
 
 /// Reads a long JSON value with the given name from a parent JSON value.
@@ -241,11 +241,11 @@ Status GetInt64Value(const Json::Value& parent, const char* name,
   TF_RETURN_IF_ERROR(GetValue(parent, name, &result_value));
   if (result_value.isNumeric()) {
     *result = result_value.asInt64();
-    return Status::OK();
+    return OkStatus();
   }
   if (result_value.isString() &&
       strings::safe_strto64(result_value.asCString(), result)) {
-    return Status::OK();
+    return OkStatus();
   }
   return errors::Internal(
       "The field '", name,
@@ -262,7 +262,7 @@ Status GetBoolValue(const Json::Value& parent, const char* name, bool* result) {
         "' in the JSON response was expected to be a boolean.");
   }
   *result = result_value.asBool();
-  return Status::OK();
+  return OkStatus();
 }
 
 /// A GCS-based implementation of a random access file with an LRU block cache.
@@ -277,7 +277,7 @@ class GcsRandomAccessFile : public RandomAccessFile {
 
   Status Name(StringPiece* result) const override {
     *result = filename_;
-    return Status::OK();
+    return OkStatus();
   }
 
   /// The implementation of reads with an LRU block cache. Thread safe.
@@ -311,7 +311,7 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
 
   Status Name(StringPiece* result) const override {
     *result = filename_;
-    return Status::OK();
+    return OkStatus();
   }
 
   /// The implementation of reads with an read buffer. Thread safe.
@@ -353,7 +353,7 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
                                   " bytes from ", offset, ".");
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -497,7 +497,7 @@ class GcsWritableFile : public WritableFile {
       return errors::Internal(
           "Could not append to the internal temporary file.");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Close() override {
@@ -509,7 +509,7 @@ class GcsWritableFile : public WritableFile {
       }
       return sync_status;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Flush() override {
@@ -525,7 +525,7 @@ class GcsWritableFile : public WritableFile {
     VLOG(3) << "Sync started:" << GetGcsPath();
     TF_RETURN_IF_ERROR(CheckWritable());
     if (!sync_needed_) {
-      return Status::OK();
+      return OkStatus();
     }
     Status status = SyncImpl();
     VLOG(3) << "Sync finished " << GetGcsPath();
@@ -540,7 +540,7 @@ class GcsWritableFile : public WritableFile {
     if (*position == -1) {
       return errors::Internal("tellp on the internal temporary file failed");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -591,7 +591,7 @@ class GcsWritableFile : public WritableFile {
               // It's unclear why UploadToSession didn't return OK in the
               // previous attempt, but GCS reports that the file is fully
               // uploaded, so succeed.
-              return Status::OK();
+              return OkStatus();
             }
           }
           first_attempt = false;
@@ -620,7 +620,7 @@ class GcsWritableFile : public WritableFile {
       return errors::FailedPrecondition(
           "The internal temporary file is not writable.");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetCurrentFileSize(uint64* size) {
@@ -630,7 +630,7 @@ class GcsWritableFile : public WritableFile {
           "Could not get the size of the internal temporary file.");
     }
     *size = tellp;
-    return Status::OK();
+    return OkStatus();
   }
 
   /// Initiates a new resumable upload session.
@@ -672,7 +672,7 @@ class GcsWritableFile : public WritableFile {
           request->SetPostFromBuffer(request_body.c_str(), request_body.size());
           TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(),
                                           " when composing to ", GetGcsPath());
-          return Status::OK();
+          return OkStatus();
         },
         retry_config_));
 
@@ -993,7 +993,7 @@ Status GcsFileSystem::NewRandomAccessFile(
                                   " bytes were read out of ", n,
                                   " bytes requested.");
       }
-      return Status::OK();
+      return OkStatus();
     }));
   } else {
     result->reset(new BufferedGcsRandomAccessFile(
@@ -1010,10 +1010,10 @@ Status GcsFileSystem::NewRandomAccessFile(
                                       " bytes were read out of ", n,
                                       " bytes requested.");
           }
-          return Status::OK();
+          return OkStatus();
         }));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void GcsFileSystem::ResetFileBlockCache(size_t block_size_bytes,
@@ -1100,7 +1100,7 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& fname, size_t offset,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 /// Initiates a new upload session.
@@ -1131,7 +1131,7 @@ Status GcsFileSystem::CreateNewUploadSession(
                               gcs_path, ": 'Location' header not returned.");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GcsFileSystem::UploadToSession(const std::string& session_uri,
@@ -1155,7 +1155,7 @@ Status GcsFileSystem::UploadToSession(const std::string& session_uri,
                                              start_offset + already_uploaded));
   TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when uploading ",
                                   file_path);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GcsFileSystem::RequestUploadSessionStatus(const string& session_uri,
@@ -1176,7 +1176,7 @@ Status GcsFileSystem::RequestUploadSessionStatus(const string& session_uri,
   Status status = request->Send();
   if (status.ok()) {
     *completed = true;
-    return Status::OK();
+    return OkStatus();
   }
   *completed = false;
   if (request->GetResponseCode() != HTTP_CODE_RESUME_INCOMPLETE) {
@@ -1221,7 +1221,7 @@ Status GcsFileSystem::RequestUploadSessionStatus(const string& session_uri,
     // If GCS returned "Range: 0-10", this means 11 bytes were uploaded.
     *uploaded = range_parts[1] + 1;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GcsFileSystem::ParseGcsPathForScheme(StringPiece fname, string scheme,
@@ -1244,7 +1244,7 @@ Status GcsFileSystem::ParseGcsPathForScheme(StringPiece fname, string scheme,
     return errors::InvalidArgument("GCS path doesn't contain an object name: ",
                                    fname);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GcsFileSystem::ParseGcsPath(StringPiece fname, bool empty_object_ok,
@@ -1296,7 +1296,7 @@ Status GcsFileSystem::NewWritableFile(const string& fname,
         },
         retry_config_));
     *generation = stat.generation_number;
-    return Status::OK();
+    return OkStatus();
   };
 
   result->reset(new GcsWritableFile(
@@ -1304,7 +1304,7 @@ Status GcsFileSystem::NewWritableFile(const string& fname,
       [this, fname]() { ClearFileCaches(fname); }, retry_config_,
       compose_append_, session_creator, object_uploader, status_poller,
       generation_getter));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Reads the file from GCS in chunks and stores it in a tmp file,
@@ -1373,7 +1373,7 @@ Status GcsFileSystem::NewAppendableFile(const string& fname,
         },
         retry_config_));
     *generation = stat.generation_number;
-    return Status::OK();
+    return OkStatus();
   };
 
   // Create a writable file and pass the old content to it.
@@ -1384,7 +1384,7 @@ Status GcsFileSystem::NewAppendableFile(const string& fname,
       [this, fname]() { ClearFileCaches(fname); }, retry_config_,
       compose_append_, session_creator, object_uploader, status_poller,
       generation_getter));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GcsFileSystem::NewReadOnlyMemoryRegionFromFile(
@@ -1401,7 +1401,7 @@ Status GcsFileSystem::NewReadOnlyMemoryRegionFromFile(
   TF_RETURN_IF_ERROR(file->Read(0, size, &piece, data.get()));
 
   result->reset(new GcsReadOnlyMemoryRegion(std::move(data), size));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GcsFileSystem::FileExists(const string& fname, TransactionToken* token) {
@@ -1411,7 +1411,7 @@ Status GcsFileSystem::FileExists(const string& fname, TransactionToken* token) {
     bool result;
     TF_RETURN_IF_ERROR(BucketExists(bucket, &result));
     if (result) {
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -1426,7 +1426,7 @@ Status GcsFileSystem::FileExists(const string& fname, TransactionToken* token) {
   bool result;
   TF_RETURN_IF_ERROR(FolderExists(fname, &result));
   if (result) {
-    return Status::OK();
+    return OkStatus();
   }
   return errors::NotFound("The specified path ", fname, " was not found.");
 }
@@ -1438,10 +1438,10 @@ Status GcsFileSystem::ObjectExists(const string& fname, const string& bucket,
   switch (status.code()) {
     case errors::Code::OK:
       *result = !stat.base.is_directory;
-      return Status::OK();
+      return OkStatus();
     case errors::Code::NOT_FOUND:
       *result = false;
-      return Status::OK();
+      return OkStatus();
     default:
       return status;
   }
@@ -1499,7 +1499,7 @@ Status GcsFileSystem::UncachedStatForObject(const string& fname,
   } else {
     stat->base.is_directory = false;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GcsFileSystem::StatForObject(const string& fname, const string& bucket,
@@ -1514,7 +1514,7 @@ Status GcsFileSystem::StatForObject(const string& fname, const string& bucket,
       [this, &bucket, &object](const string& fname, GcsFileStat* stat) {
         return UncachedStatForObject(fname, bucket, object, stat);
       }));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GcsFileSystem::BucketExists(const string& bucket, bool* result) {
@@ -1522,10 +1522,10 @@ Status GcsFileSystem::BucketExists(const string& bucket, bool* result) {
   switch (status.code()) {
     case errors::Code::OK:
       *result = true;
-      return Status::OK();
+      return OkStatus();
     case errors::Code::NOT_FOUND:
       *result = false;
-      return Status::OK();
+      return OkStatus();
     default:
       return status;
   }
@@ -1533,7 +1533,7 @@ Status GcsFileSystem::BucketExists(const string& bucket, bool* result) {
 
 Status GcsFileSystem::CheckBucketLocationConstraint(const string& bucket) {
   if (allowed_locations_.empty()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Avoid calling external API's in the constructor
@@ -1546,7 +1546,7 @@ Status GcsFileSystem::CheckBucketLocationConstraint(const string& bucket) {
   string location;
   TF_RETURN_IF_ERROR(GetBucketLocation(bucket, &location));
   if (allowed_locations_.find(location) != allowed_locations_.end()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   return errors::FailedPrecondition(strings::Printf(
@@ -1567,13 +1567,13 @@ Status GcsFileSystem::GetBucketLocation(const string& bucket,
         GetStringValue(result, kBucketMetadataLocationKey, &bucket_location));
     // Lowercase the GCS location to be case insensitive for allowed locations.
     *location = absl::AsciiStrToLower(bucket_location);
-    return Status::OK();
+    return OkStatus();
   };
 
   TF_RETURN_IF_ERROR(
       bucket_location_cache_->LookupOrCompute(bucket, location, compute_func));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GcsFileSystem::GetBucketMetadata(const string& bucket,
@@ -1599,7 +1599,7 @@ Status GcsFileSystem::FolderExists(const string& dirname, bool* result) {
                            true /* include_self_directory_marker */));
     if (!children.empty()) {
       stat->base = DIRECTORY_STAT;
-      return Status::OK();
+      return OkStatus();
     } else {
       return errors::InvalidArgument("Not a directory!");
     }
@@ -1609,11 +1609,11 @@ Status GcsFileSystem::FolderExists(const string& dirname, bool* result) {
                                           compute_func);
   if (s.ok()) {
     *result = stat.base.is_directory;
-    return Status::OK();
+    return OkStatus();
   }
   if (errors::IsInvalidArgument(s)) {
     *result = false;
-    return Status::OK();
+    return OkStatus();
   }
   return s;
 }
@@ -1664,11 +1664,11 @@ Status GcsFileSystem::GetMatchingPaths(const string& pattern,
             results->push_back(full_path);
           }
         }
-        return Status::OK();
+        return OkStatus();
       };
   TF_RETURN_IF_ERROR(
       matching_paths_cache_->LookupOrCompute(pattern, results, compute_func));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GcsFileSystem::GetChildrenBounded(const string& dirname,
@@ -1745,7 +1745,7 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
           result->emplace_back(relative_path);
         }
         if (++retrieved_results >= max_results) {
-          return Status::OK();
+          return OkStatus();
         }
       }
     }
@@ -1772,13 +1772,13 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
         }
         result->emplace_back(relative_path);
         if (++retrieved_results >= max_results) {
-          return Status::OK();
+          return OkStatus();
         }
       }
     }
     const auto token = root.get("nextPageToken", Json::Value::null);
     if (token.isNull()) {
-      return Status::OK();
+      return OkStatus();
     }
     if (!token.isString()) {
       return errors::Internal(
@@ -1800,7 +1800,7 @@ Status GcsFileSystem::Stat(const string& fname, TransactionToken* token,
     TF_RETURN_IF_ERROR(BucketExists(bucket, &is_bucket));
     if (is_bucket) {
       *stat = DIRECTORY_STAT;
-      return Status::OK();
+      return OkStatus();
     }
     return errors::NotFound("The specified bucket ", fname, " was not found.");
   }
@@ -1809,7 +1809,7 @@ Status GcsFileSystem::Stat(const string& fname, TransactionToken* token,
   const Status status = StatForObject(fname, bucket, object, &gcs_stat);
   if (status.ok()) {
     *stat = gcs_stat.base;
-    return Status::OK();
+    return OkStatus();
   }
   if (status.code() != errors::Code::NOT_FOUND) {
     return status;
@@ -1818,7 +1818,7 @@ Status GcsFileSystem::Stat(const string& fname, TransactionToken* token,
   TF_RETURN_IF_ERROR(FolderExists(fname, &is_folder));
   if (is_folder) {
     *stat = DIRECTORY_STAT;
-    return Status::OK();
+    return OkStatus();
   }
   return errors::NotFound("The specified path ", fname, " was not found.");
 }
@@ -1836,7 +1836,7 @@ Status GcsFileSystem::DeleteFile(const string& fname, TransactionToken* token) {
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when deleting ", fname);
   ClearFileCaches(fname);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GcsFileSystem::CreateDir(const string& dirname,
@@ -1850,7 +1850,7 @@ Status GcsFileSystem::CreateDir(const string& dirname,
   if (object.empty()) {
     bool is_bucket;
     TF_RETURN_IF_ERROR(BucketExists(bucket, &is_bucket));
-    return is_bucket ? Status::OK()
+    return is_bucket ? OkStatus()
                      : errors::NotFound("The specified bucket ",
                                         dirname_with_slash, " was not found.");
   }
@@ -1876,7 +1876,7 @@ Status GcsFileSystem::CreateDir(const string& dirname,
   const Status& status = request->Send();
   if (status.ok()) {
     VLOG(3) << "CreateDir: finished uploading directory " << dirname;
-    return Status::OK();
+    return OkStatus();
   }
   if (request->GetResponseCode() != HTTP_CODE_PRECONDITION_FAILED) {
     TF_RETURN_WITH_CONTEXT_IF_ERROR(status, " when uploading ",
@@ -1907,7 +1907,7 @@ Status GcsFileSystem::DeleteDir(const string& dirname,
     // This is the directory marker object. Delete it.
     return DeleteFile(MaybeAppendSlash(dirname), token);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GcsFileSystem::GetFileSize(const string& fname, TransactionToken* token,
@@ -1923,7 +1923,7 @@ Status GcsFileSystem::GetFileSize(const string& fname, TransactionToken* token,
   FileStatistics stat;
   TF_RETURN_IF_ERROR(Stat(fname, token, &stat));
   *file_size = stat.length;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GcsFileSystem::RenameFile(const string& src, const string& target,
@@ -1940,7 +1940,7 @@ Status GcsFileSystem::RenameFile(const string& src, const string& target,
     TF_RETURN_IF_ERROR(
         RenameObject(JoinGcsPath(src, subpath), JoinGcsPath(target, subpath)));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Uses a GCS API command to copy the object and then deletes the old one.
@@ -1997,7 +1997,7 @@ Status GcsFileSystem::IsDirectory(const string& fname,
     bool is_bucket;
     TF_RETURN_IF_ERROR(BucketExists(bucket, &is_bucket));
     if (is_bucket) {
-      return Status::OK();
+      return OkStatus();
     }
     return errors::NotFound("The specified bucket gs://", bucket,
                             " was not found.");
@@ -2005,7 +2005,7 @@ Status GcsFileSystem::IsDirectory(const string& fname,
   bool is_folder;
   TF_RETURN_IF_ERROR(FolderExists(fname, &is_folder));
   if (is_folder) {
-    return Status::OK();
+    return OkStatus();
   }
   bool is_object;
   TF_RETURN_IF_ERROR(ObjectExists(fname, bucket, object, &is_object));
@@ -2055,7 +2055,7 @@ Status GcsFileSystem::DeleteRecursively(const string& dirname,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Flushes all caches for filesystem metadata and file contents. Useful for
@@ -2126,7 +2126,7 @@ Status GcsFileSystem::CreateHttpRequest(std::unique_ptr<HttpRequest>* request) {
   }
 
   *request = std::move(new_request);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow
