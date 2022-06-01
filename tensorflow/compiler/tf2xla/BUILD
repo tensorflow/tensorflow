@@ -697,7 +697,6 @@ tf_cc_test(
 
 cc_library(
     name = "tf2xla_defs",
-    srcs = ["tf2xla_defs.cc"],
     hdrs = ["tf2xla_defs.h"],
     visibility = [":friends"],
     deps = [
