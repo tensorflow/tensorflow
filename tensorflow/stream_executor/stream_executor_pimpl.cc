@@ -224,8 +224,7 @@ void StreamExecutor::Deallocate(DeviceMemoryBase* mem) {
   mem->Reset(nullptr, 0);
 }
 
-void StreamExecutor::GetMemAllocs(
-    absl::node_hash_map<void*, AllocRecord>* records_out) {
+void StreamExecutor::GetMemAllocs(std::map<void*, AllocRecord>* records_out) {
   absl::ReaderMutexLock lock(&mu_);
   *records_out = mem_allocs_;
 }

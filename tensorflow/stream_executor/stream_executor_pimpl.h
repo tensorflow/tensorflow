@@ -24,8 +24,6 @@ limitations under the License.
 
 #include "absl/base/macros.h"
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_set.h"
-#include "absl/container/node_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
@@ -200,7 +198,7 @@ class StreamExecutor {
   //
   // Note: this will only be populated if --check_device_leaks flag is
   // activated.
-  void GetMemAllocs(absl::node_hash_map<void*, AllocRecord>* records_out);
+  void GetMemAllocs(std::map<void*, AllocRecord>* records_out);
 
   // Allocates unified memory space of the given size, if supported.
   // See
@@ -716,7 +714,7 @@ class StreamExecutor {
   // A mapping of pointer (to device memory) to string representation of the
   // stack (of the allocating thread) at the time at which the pointer was
   // allocated.
-  absl::node_hash_map<void*, AllocRecord> mem_allocs_ ABSL_GUARDED_BY(mu_);
+  std::map<void*, AllocRecord> mem_allocs_ ABSL_GUARDED_BY(mu_);
 
   // Memoized BLAS support object -- we only want to create this once when asked
   // for a BLAS interface.
@@ -775,7 +773,7 @@ class StreamExecutor {
   bool tracing_enabled_;
 
   // The set of TraceListeners registered for this StreamExecutor.
-  absl::flat_hash_set<TraceListener*> listeners_ ABSL_GUARDED_BY(mu_);
+  std::set<TraceListener*> listeners_ ABSL_GUARDED_BY(mu_);
 
   // Allocated memory in bytes.
   int64_t mem_alloc_bytes_;
