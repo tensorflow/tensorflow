@@ -79,6 +79,7 @@ class DenseBincountOp : public XlaOpKernel {
       if (rank == 1) {
         auto data = xla::DynamicSlice(data_stack, {counter}, {1});
         auto accum = xla::DynamicSlice(accum_stack, {data}, {1});
+        accum = xla::Reshape(accum, {0}, {});
         auto data_scalar = xla::Reshape(data, {0}, {});
 
         auto condition_shape = xla::ShapeUtil::MakeTupleShape(
@@ -87,7 +88,7 @@ class DenseBincountOp : public XlaOpKernel {
         xla::XlaComputation update;
         { 
           std::unique_ptr<xla::XlaBuilder> true_builder =
-              builder->CreateSubBuilder("update");
+              ctx->builder()->CreateSubBuilder("update");
           auto param = Parameter(true_builder.get(), 0, condition_shape, "param");
           auto data_scalar = xla::GetTupleElement(param, 0);
           auto accum = xla::GetTupleElement(param, 1);
@@ -102,7 +103,7 @@ class DenseBincountOp : public XlaOpKernel {
         xla::XlaComputation no_update;
         {
           std::unique_ptr<xla::XlaBuilder> false_builder =
-              builder->CreateSubBuilder("no_update");
+              ctx->builder()->CreateSubBuilder("no_update");
           auto param = Parameter(false_builder.get(), 0, condition_shape, "param");
           auto data = xla::GetTupleElement(param, 0);
           auto accum = xla::GetTupleElement(param, 1);
@@ -111,11 +112,9 @@ class DenseBincountOp : public XlaOpKernel {
           no_update = false_builder->Build().ValueOrDie();
         }
 
-        std::unique_ptr<xla::XlaBuilder> cond_builder =
-            builder->CreateSubBuilder("cond");
-        auto output_size_xla = xla::ConstantR0<int32_t>(cond_builder.get(), output_size);
+        auto output_size_xla = xla::ConstantR0<int32_t>(builder.get(), output_size);
         auto pred = xla::Lt(data_scalar, output_size_xla);
-        auto tuple = xla::Tuple(cond_builder.get(), {data_scalar, accum, accum_stack});
+        auto tuple = xla::Tuple(builder.get(), {data_scalar, accum, accum_stack});
         auto cond = xla::Conditional(pred, tuple, update, tuple, no_update);
         accum = xla::GetTupleElement(cond, 0);
         accum_stack = xla::GetTupleElement(cond, 1);
@@ -130,6 +129,7 @@ class DenseBincountOp : public XlaOpKernel {
         auto data = xla::DynamicSlice(data_stack, {idx_1, idx_2}, {1, 1});
         auto data_scalar = xla::Reshape(data, {0,1}, {});
         auto accum = xla::DynamicSlice(accum_stack, {idx_1, data_scalar}, {1, 1});
+        accum = xla::Reshape(accum, {0,1}, {});
 
         xla::XlaComputation update;
         {
@@ -160,12 +160,10 @@ class DenseBincountOp : public XlaOpKernel {
           xla::Tuple(false_builder.get(), {accum, accum_stack});
           no_update = false_builder->Build().ValueOrDie();
         }
-        std::unique_ptr<xla::XlaBuilder> cond_builder =
-              builder->CreateSubBuilder("cond_rank2");
-        auto output_size_xla = xla::ConstantR0<int32_t>(builder.get(), output_size);
+        auto limit = xla::ConstantR0<int32_t>(builder.get(), output_size);
         
-        auto pred = xla::Lt(data_scalar, output_size_xla);
-        auto tuple = xla::Tuple(cond_builder.get(), {data_scalar, idx_1, accum_stack, accum});
+        auto pred = xla::Lt(data_scalar, limit);
+        auto tuple = xla::Tuple(builder.get(), {data_scalar, idx_1, accum_stack, accum});
         auto cond = xla::Conditional(pred, tuple, update, tuple, no_update);
         accum = xla::GetTupleElement(cond, 0);
         accum_stack = xla::GetTupleElement(cond, 1);
