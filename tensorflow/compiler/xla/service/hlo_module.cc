@@ -460,9 +460,6 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
                                    /*preserve_entry_layouts=*/false);
   }
   TF_RET_CHECK(module->entry_computation_ != nullptr);
-  if (proto.has_schedule()) {
-    TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
-  }
   TF_ASSIGN_OR_RETURN(
       module->input_output_alias_config_,
       HloInputOutputAliasConfig::CreateFromProto(
