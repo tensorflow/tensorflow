@@ -290,7 +290,7 @@ Status XlaCompilationCache::BuildExecutable(
       client_->Compile(*result.computation, argument_layouts, build_options));
   TF_RET_CHECK(executables.size() == 1);
   *executable = std::move(executables[0]);
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::unique_ptr<xla::AotCompilationResult>>
@@ -589,7 +589,7 @@ Status XlaCompilationCache::CompileStrict(
       serialized_entry.has_value());
   TF_RETURN_IF_ERROR(BroadcastXlaActivity(std::move(jit_compilation_activity)));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaCompilationCache::CompileAsynchronous(
@@ -641,7 +641,7 @@ Status XlaCompilationCache::CompileAsynchronous(
       entry->executable = std::move(local_entry.executable);
     }
   });
-  return Status::OK();
+  return OkStatus();
 }
 
 bool XlaCompilationCache::ShouldCompileCluster(CompileMode compile_mode,
@@ -799,14 +799,14 @@ Status XlaCompilationCache::CompileImpl(
     if (!ShouldCompileCluster(compile_mode, is_megamorphic, is_first_execution,
                               current_request_count, function)) {
       VLOG(2) << "Not compiling for signature: " << human_signature;
-      return Status::OK();
+      return OkStatus();
     } else if (compile_mode == CompileMode::kAsync) {
       VLOG(2) << "Queueing asynchronous compilation for signature: "
               << human_signature;
       TF_RETURN_IF_ERROR(CompileAsynchronous(signature, entry, compile_options,
                                              options, args, function, ctx,
                                              scope));
-      return Status::OK();
+      return OkStatus();
     } else {
       VLOG(2) << "Instantly compiling for signature: " << human_signature;
       TF_RETURN_IF_ERROR(CompileStrict(signature, entry, compile_options,
@@ -815,7 +815,7 @@ Status XlaCompilationCache::CompileImpl(
   } else if (state == CompileState::kCompiling) {
     VLOG(2) << "Ongoing asynchronous compilation for signature: "
             << human_signature;
-    return Status::OK();
+    return OkStatus();
   } else if (state == CompileState::kCompiled) {
     VLOG(2) << "Already Compiled for signature: " << human_signature;
   }
@@ -823,7 +823,7 @@ Status XlaCompilationCache::CompileImpl(
   TF_RETURN_IF_ERROR(entry->compilation_status);
   *out_compilation_result = &entry->compilation_result;
   *out_executable = entry->executable.get();
-  return Status::OK();
+  return OkStatus();
 }
 
 XlaSerializedCacheKey XlaCompilationCache::BuildSerializedCacheKey(
@@ -866,7 +866,7 @@ Status XlaCompilationCache::VerifyLoadedCacheEntry(
   if (entry.executable().empty()) {
     return errors::InvalidArgument("No binary found in serialized entry.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<XlaSerializedCacheEntry> XlaCompilationCache::SerializeEntry(

@@ -47,7 +47,7 @@ Status XlaGpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
   if (!flags->tf_xla_enable_xla_devices && !XlaDevicesCreationRequired()) {
     VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set "
                "and XLA devices creation not required";
-    return Status::OK();
+    return OkStatus();
   }
 
   auto platform =
@@ -55,12 +55,12 @@ Status XlaGpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
   if (!platform.ok()) {
     // Treat failures as non-fatal; there might not be a GPU in the machine.
     VLOG(1) << "Failed to create XLA_GPU device: " << platform.status();
-    return Status::OK();
+    return OkStatus();
   }
 
   int device_count = platform.ValueOrDie()->VisibleDeviceCount();
   if (device_count <= 0) {
-    return Status::OK();
+    return OkStatus();
   }
 
   for (int i = 0; i < device_count; ++i) {
@@ -68,7 +68,7 @@ Status XlaGpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
         absl::StrCat("/physical_device:", DEVICE_XLA_GPU, ":", i));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaGpuDeviceFactory::CreateDevices(
@@ -77,7 +77,7 @@ Status XlaGpuDeviceFactory::CreateDevices(
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
   if (!flags->tf_xla_enable_xla_devices && !XlaDevicesCreationRequired()) {
     VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
-    return Status::OK();
+    return OkStatus();
   }
 
   XlaOpRegistry::DeviceRegistration registration;
@@ -104,14 +104,14 @@ Status XlaGpuDeviceFactory::CreateDevices(
   if (!platform.ok()) {
     // Treat failures as non-fatal; there might not be a GPU in the machine.
     VLOG(1) << "Failed to create XLA_GPU device: " << platform.status();
-    return Status::OK();
+    return OkStatus();
   }
 
   auto iter = session_options.config.device_count().find("GPU");
   if (iter != session_options.config.device_count().end() &&
       iter->second == 0) {
     // Device count for GPU is 0.
-    return Status::OK();
+    return OkStatus();
   }
 
   string allowed_gpus =
@@ -148,7 +148,7 @@ Status XlaGpuDeviceFactory::CreateDevices(
 
     devices->push_back(std::move(device));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_GPU, XlaGpuDeviceFactory);

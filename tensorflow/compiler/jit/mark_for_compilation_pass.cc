@@ -612,7 +612,7 @@ Status IgnoreResourceOpForSafetyAnalysis(
 
   if (n.assigned_device_name().empty()) {
     *ignore = false;
-    return Status::OK();
+    return OkStatus();
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -624,7 +624,7 @@ Status IgnoreResourceOpForSafetyAnalysis(
   } else {
     *ignore = registration->cluster_resource_variable_ops_unsafely;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<bool> MarkForCompilationPassImpl::Initialize() {
@@ -867,7 +867,7 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
                       }));
   TF_RET_CHECK(!changed);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MarkForCompilationPassImpl::DeclusterNodes() {
@@ -897,7 +897,7 @@ Status MarkForCompilationPassImpl::DeclusterNodes() {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Tracks monotonic sequence numbers for graphs.
@@ -982,7 +982,7 @@ Status MarkForCompilationPassImpl::CreateClusters() {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MarkForCompilationPassImpl::DumpDebugInfo() {
@@ -994,7 +994,7 @@ Status MarkForCompilationPassImpl::DumpDebugInfo() {
 
   VLogClusteringSummary();
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<bool>
@@ -1153,7 +1153,7 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
     cluster_for_node_[node->id()].Get() = new_cluster;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
@@ -1405,7 +1405,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
 
   VLOG(2) << "compilation_candidates_.size() = "
           << compilation_candidates_.size();
-  return Status::OK();
+  return OkStatus();
 }
 
 bool MarkForCompilationPassImpl::CompilationDisallowedByXlaCompileAttr(
@@ -1526,7 +1526,7 @@ Status MarkForCompilationPassImpl::Run() {
   if (!initialized) {
     // Initialization exited early which means this instance of
     // MarkForCompilationPassImpl is not set up to run the subsequent phases.
-    return Status::OK();
+    return OkStatus();
   }
 
   TF_RETURN_IF_ERROR(RunEdgeContractionLoop());
@@ -1534,7 +1534,7 @@ Status MarkForCompilationPassImpl::Run() {
   TF_RETURN_IF_ERROR(CreateClusters());
   TF_RETURN_IF_ERROR(DumpDebugInfo());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void MarkForCompilationPassImpl::DumpPostClusteringGraphs() {
@@ -1801,14 +1801,14 @@ Status MarkForCompilation(
   for (Node* n : graph->nodes()) {
     // See explanation on `kXlaAlreadyClustered`.
     if (n->attrs().Find(kXlaAlreadyClustered)) {
-      return Status::OK();
+      return OkStatus();
     }
     // Skip the pass if we found TPUExecute or TPUExecuteAndUpdateVariables ops
     // in the graph, which indicates the graph is produced by TPU TF-XLA bridge
     // and doesn't require auto clustering.
     if (n->type_string() == "TPUExecute" ||
         n->type_string() == "TPUExecuteAndUpdateVariables") {
-      return Status::OK();
+      return OkStatus();
     }
   }
 

@@ -43,11 +43,11 @@ Status XlaCpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
   if (!flags->tf_xla_enable_xla_devices && !XlaDevicesCreationRequired()) {
     VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set "
                "and XLA device creation not requested";
-    return Status::OK();
+    return OkStatus();
   }
 
   devices->push_back(absl::StrCat("/physical_device:", DEVICE_XLA_CPU, ":0"));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaCpuDeviceFactory::CreateDevices(
@@ -56,7 +56,7 @@ Status XlaCpuDeviceFactory::CreateDevices(
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
   if (!flags->tf_xla_enable_xla_devices && !XlaDevicesCreationRequired()) {
     VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
-    return Status::OK();
+    return OkStatus();
   }
   bool compile_on_demand = flags->tf_xla_compile_on_demand;
 
@@ -107,7 +107,7 @@ Status XlaCpuDeviceFactory::CreateDevices(
     return status;
   }
   devices->push_back(std::move(device));
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_CPU, XlaCpuDeviceFactory);
