@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 namespace mlir {
@@ -76,25 +75,13 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
   symbol_table.insert(outlined_module);
   SymbolTable outlined_symbol_table(outlined_module);
 
-  // Find every island that contains a TPU node and extract it into a new module
-  // to run the V1 bridge there.
-  llvm::SmallVector<IslandOp, 8> islands_to_outline;
-  getOperation().walk([&](IslandOp island_op) {
-    for (Operation &op : island_op.GetBody().without_terminator()) {
-      if (isa<TF::TPUReplicateMetadataOp>(&op)) {
-        // For replicated TPU case.
-        islands_to_outline.push_back(island_op);
-        break;
-      }
-      auto device_type =
-          op.getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr);
-      if (device_type && device_type.getValue() == TF::kTpuDevice &&
-          !op.hasAttrOfType<StringAttr>(TF::kReplicationInfoAttr)) {
-        // For single-core TPU case (no `TPUReplicateMetadataOp`).
-        islands_to_outline.push_back(island_op);
-        break;
-      }
-    }
+  // Find every island that contains a TPUReplicateMetadata node and extract it
+  // in a new module to run the V1 bridge there.
+  SmallVector<IslandOp, 8> islands_to_outline;
+  getOperation().walk([&](TF::TPUReplicateMetadataOp replicate_op) {
+    auto island_op = cast<IslandOp>(replicate_op->getParentOp());
+    if (!island_op || island_op.WrapsSingleOp()) return;
+    islands_to_outline.push_back(island_op);
   });
   int prefix_id = 0;
   for (IslandOp island_op : islands_to_outline) {
