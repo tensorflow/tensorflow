@@ -303,7 +303,8 @@ xla::gpu::NcclCollectiveConfig GetNcclCollectiveConfig(lmhlo::AllToAllOp op,
 xla::gpu::NcclCollectiveConfig GetNcclCollectiveConfig(
     lmhlo::CollectivePermuteOp op, int replica_count, int num_partitions) {
   return xla::gpu::NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
-      op, replica_count, num_partitions);
+             op, replica_count, num_partitions)
+      .config;
 }
 
 template <class CclOpType>
