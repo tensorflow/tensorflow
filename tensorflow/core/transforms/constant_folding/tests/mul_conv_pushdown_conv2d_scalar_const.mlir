@@ -8,7 +8,7 @@ module {
     %Conv2D, %ctl_1 = Conv2D(%Placeholder, %Const) name("conv") {T = f32, data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true} : (tensor<4x10x10x3xf32>, tensor<2x2x3x5xf32>) -> (tensor<4x9x9x5xf32>)
     %Const_2, %ctl_3 = Const name("c") {dtype = f32, value = dense<3.000000e+00> : tensor<f32>} : () -> (tensor<f32>)
     // CHECK-DAG: Conv2D(%[[PLACEHOLDER]], %[[CONST:.*]]) name("mul")
-    // CHECK: %[[CONST]], {{.*}} = Const {{.*}} name("conv/merged_input")
+    // CHECK: %[[CONST]], {{.*}} = Const {{.*}} name("conv/merged_input/eval_0/const_folded")
     %Mul, %ctl_4 = Mul(%Const_2, %Conv2D) name("mul") {T = f32} : (tensor<f32>, tensor<4x9x9x5xf32>) -> (tensor<4x9x9x5xf32>)
   }
 }

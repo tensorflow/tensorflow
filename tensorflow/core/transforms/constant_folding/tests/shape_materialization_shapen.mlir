@@ -13,9 +13,9 @@ module {
     %Identity_8, %ctl_9 = Identity(%ShapeN#1) name("i2a") {T = i32} : (tensor<*xi32>) -> (tensor<*xi32>)
     %Identity_10, %ctl_11 = Identity(%ShapeN#1) name("i2b") {T = i32} : (tensor<*xi32>) -> (tensor<*xi32>)
     %Identity_12, %ctl_13 = Identity(%ShapeN#1) name("i2c") {T = i32} : (tensor<*xi32>) -> (tensor<*xi32>)
-    // CHECK: Const [%[[CTRL2]]] name("i3a")
+    // CHECK: Const [%[[CTRL2]]] name("i3a/eval_0/const_folded")
     %Identity_14, %ctl_15 = Identity(%ShapeN#2) name("i3a") {T = i32} : (tensor<*xi32>) -> (tensor<*xi32>)
-    // CHECK: Const [%[[CTRL1]]] name("i3b")
+    // CHECK: Const [%[[CTRL1]]] name("i3b/eval_0/const_folded")
     %Identity_16, %ctl_17 = Identity(%ShapeN#2) name("i3b") {T = i32} : (tensor<*xi32>) -> (tensor<*xi32>)
   }
 }
