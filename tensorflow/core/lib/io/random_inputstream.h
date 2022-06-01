@@ -45,7 +45,7 @@ class RandomAccessInputStream : public InputStreamInterface {
 
   Status Seek(int64_t position) {
     pos_ = position;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Reset() override { return Seek(0); }

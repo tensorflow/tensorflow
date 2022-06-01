@@ -37,7 +37,7 @@ void BlockHandle::EncodeTo(string* dst) const {
 
 Status BlockHandle::DecodeFrom(StringPiece* input) {
   if (core::GetVarint64(input, &offset_) && core::GetVarint64(input, &size_)) {
-    return Status::OK();
+    return OkStatus();
   } else {
     return errors::DataLoss("bad block handle");
   }
@@ -158,7 +158,7 @@ Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
       return errors::DataLoss("bad block type");
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace table
