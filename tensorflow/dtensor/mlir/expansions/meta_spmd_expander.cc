@@ -262,7 +262,7 @@ Status VerifyPaddedDimensionNotSharded(const Layout& layout,
           "Padding over sharded dimension is not allowed.");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -354,7 +354,7 @@ Status VerifyTileOperandLayout(const Layout& operand_layout,
           "tile op with input sharded at dimension where `multiple` > 1 is not "
           "supported.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -982,7 +982,7 @@ Status RelayoutOneHotInput(const absl::optional<Layout>& input_layout,
 
   one_hot->setOperand(0, new_input);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
