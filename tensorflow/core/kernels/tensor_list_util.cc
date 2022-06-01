@@ -56,7 +56,7 @@ Status TensorListBinaryAdd(
     TF_RETURN_IF_ERROR(binary_add_func(c, a_tensor, b_tensor, &out_tensor));
     out->tensors().push_back(out_tensor);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TensorListZerosLike(
@@ -72,7 +72,7 @@ Status TensorListZerosLike(
     TF_RETURN_IF_ERROR(zeros_like_func(c, t, &out_tensor));
     y->tensors().emplace_back(out_tensor);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

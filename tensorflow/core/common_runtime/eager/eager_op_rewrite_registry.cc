@@ -53,7 +53,7 @@ Status EagerOpRewriteRegistry::RunRewrite(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

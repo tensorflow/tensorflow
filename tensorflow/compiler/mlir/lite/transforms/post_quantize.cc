@@ -28,83 +28,51 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 
-// NOLINTNEXTLINE
-static llvm::cl::opt<std::string> enable_custom_op_no_side_effect(
-    "tfl-enable-no-side-effect",
-    llvm::cl::desc("Specifies which custom ops are NoSideEffect."),
-    llvm::cl::ZeroOrMore);
-
 //===----------------------------------------------------------------------===//
 // The post-quantize Passes.
 //
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // Applies all the clean up steps after quantization.
-class PostQuantizePass
-    : public PassWrapper<PostQuantizePass, OperationPass<FuncOp>> {
+class PostQuantizePass : public PostQuantizePassBase<PostQuantizePass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PostQuantizePass)
 
   // Constructor used by the PassRegistration. This will remove the adaptor ops.
-  explicit PostQuantizePass() : emit_quant_adaptor_ops_(false) {
-    ParseCustomOpSpecs(enable_custom_op_no_side_effect,
-                       quant::CustomOpUpdateOptions::kNoSideEffect,
-                       custom_op_map_);
-  }
+  explicit PostQuantizePass() { this->emit_quant_adaptor_ops_ = false; }
 
   // Constructor used by manually creating the pass.
   explicit PostQuantizePass(bool emit_quant_adaptor_ops,
                             const quant::CustomOpMap& custom_op_map)
-      : emit_quant_adaptor_ops_(emit_quant_adaptor_ops),
-        custom_op_map_(custom_op_map) {}
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-post-quantize";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Apply post quantization clean up after quantization";
+      : custom_op_map_(custom_op_map) {
+    // Set this flag to true if the inputs and outputs are in floating point.
+    // The quant adaptor ops convert them to fixed point values (i.e. quantize)
+    // before feeding them to the model and convert them back to floating point
+    // (i.e. dequantize) as the output.
+    this->emit_quant_adaptor_ops_ = emit_quant_adaptor_ops;
   }
 
   void runOnOperation() override;
 
  private:
-  // Set this flag to true if the inputs and outputs are in floating point. The
-  // quant adaptor ops convert them to fixed point values (i.e. quantize) before
-  // feeding them to the model and convert them back to floating point
-  // (i.e. dequantize) as the output.
-  bool emit_quant_adaptor_ops_;
   quant::CustomOpMap custom_op_map_;
 };
 
 // Cleans up unnecessary QDQ pattern for input/output ops.
 class PostQuantizeRemoveQDQPass
-    : public PassWrapper<PostQuantizeRemoveQDQPass, OperationPass<FuncOp>> {
+    : public PostQuantizeRemoveQDQPassBase<PostQuantizeRemoveQDQPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PostQuantizeRemoveQDQPass)
-
-  // Constructor used by the PassRegistration. This will remove QDQ ops.
-  explicit PostQuantizeRemoveQDQPass() {}
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-post-quantize-remove-qdq";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Remove qdq from input and output nodes after quantization";
-  }
 
   void runOnOperation() override;
 };
 
 // TODO(fengliuai): migrate to use modify_io_nodes pass.
-void RemoveQuantizationAdaptorOps(FuncOp func) {
+void RemoveQuantizationAdaptorOps(func::FuncOp func) {
   mlir::OpBuilder builder(func.getBody());
   auto& bb = func.front();
   auto loc = func.getLoc();
@@ -257,6 +225,12 @@ struct PruneUnusedOpsWithSideEffect : public OpRewritePattern<OpTy> {
 #include "tensorflow/compiler/mlir/lite/transforms/generated_post_quantize.inc"
 
 void PostQuantizePass::runOnOperation() {
+  if (!enable_custom_op_no_side_effect_.empty()) {
+    ParseCustomOpSpecs(enable_custom_op_no_side_effect_,
+                       quant::CustomOpUpdateOptions::kNoSideEffect,
+                       custom_op_map_);
+  }
+
   RewritePatternSet patterns(&getContext());
   auto func = getOperation();
   auto* ctx = func.getContext();
@@ -293,21 +267,21 @@ void PostQuantizeRemoveQDQPass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PostQuantize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizePass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass(
     bool emit_quant_adaptor_ops, const quant::CustomOpMap& custom_op_map) {
   return std::make_unique<PostQuantizePass>(emit_quant_adaptor_ops,
                                             custom_op_map);
 }
 
-// Creates an instance of the TensorFlow Lite dialect PostQuantizeRemoveQDQ
-// pass.
-std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizeRemoveQDQPass() {
-  return std::make_unique<PostQuantizeRemoveQDQPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass() {
+  return std::make_unique<PostQuantizePass>();
 }
 
-static PassRegistration<PostQuantizePass> pass;
-
-static PassRegistration<PostQuantizeRemoveQDQPass> remove_qdq_pass;
+// Creates an instance of the TensorFlow Lite dialect PostQuantizeRemoveQDQ
+// pass.
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizeRemoveQDQPass() {
+  return std::make_unique<PostQuantizeRemoveQDQPass>();
+}
 
 }  // namespace TFL
 }  // namespace mlir

@@ -491,10 +491,12 @@ TEST(MapCovariant, Basic) {
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
-  EXPECT_EQ(rt.type_id(), TFT_DATASET);
+  ASSERT_EQ(rt.type_id(), TFT_PRODUCT);
   ASSERT_EQ(rt.args_size(), 1);
-  EXPECT_EQ(rt.args(0).type_id(), TFT_INT32);
-  ASSERT_EQ(rt.args(0).args_size(), 0);
+  EXPECT_EQ(rt.args(0).type_id(), TFT_DATASET);
+  ASSERT_EQ(rt.args(0).args_size(), 1);
+  EXPECT_EQ(rt.args(0).args(0).type_id(), TFT_INT32);
+  ASSERT_EQ(rt.args(0).args(0).args_size(), 0);
 }
 
 TEST(MapCovariant, IgnoresUnset) {

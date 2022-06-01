@@ -1308,15 +1308,15 @@ LogicalResult ConvertTFLBatchMatMulOp::matchAndRewrite(
   auto result_ty = tfl_mm_op.getType().cast<ShapedType>();
   Value lhs = tfl_mm_op.x();
   Value rhs = tfl_mm_op.y();
-  ShapedType lhs_type = lhs.getType().cast<ShapedType>();
-  ShapedType rhs_type = rhs.getType().cast<ShapedType>();
+  RankedTensorType lhs_ty = lhs.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType rhs_ty = rhs.getType().dyn_cast<RankedTensorType>();
   bool transpose_lhs = tfl_mm_op.adj_x();
   bool transpose_rhs = tfl_mm_op.adj_y();
 
-  bool lhs_is_qtype =
-      lhs_type.getElementType().isa<mlir::quant::QuantizedType>();
-  bool rhs_is_qtype =
-      rhs_type.getElementType().isa<mlir::quant::QuantizedType>();
+  if (!lhs_ty || !rhs_ty) return failure();
+
+  bool lhs_is_qtype = lhs_ty.getElementType().isa<mlir::quant::QuantizedType>();
+  bool rhs_is_qtype = rhs_ty.getElementType().isa<mlir::quant::QuantizedType>();
   bool result_is_qtype =
       result_ty.getElementType().isa<mlir::quant::QuantizedType>();
 
@@ -1326,8 +1326,34 @@ LogicalResult ConvertTFLBatchMatMulOp::matchAndRewrite(
         "be all quantized or all floating-point.");
   }
 
+  auto batch_dims = lhs_ty.getShape().drop_back(2);
+  if (batch_dims.size() > 1) {
+    int64_t N = 1;
+    for (auto d : batch_dims) {
+      N = N < 0 || d < 0 ? -1 : N * d;
+    }
+
+    llvm::SmallVector<int64_t> new_lhs_shape{N};
+    llvm::SmallVector<int64_t> new_rhs_shape{N};
+    auto lhs_shape_end = lhs_ty.getShape().take_back(2);
+    auto rhs_shape_end = rhs_ty.getShape().take_back(2);
+
+    new_lhs_shape.append(lhs_shape_end.begin(), lhs_shape_end.end());
+    new_rhs_shape.append(rhs_shape_end.begin(), rhs_shape_end.end());
+
+    lhs = CreateOpAndInfer<tosa::ReshapeOp>(
+        rewriter, op->getLoc(),
+        UnrankedTensorType::get(lhs_ty.getElementType()), lhs,
+        rewriter.getI64ArrayAttr(new_lhs_shape));
+    rhs = CreateOpAndInfer<tosa::ReshapeOp>(
+        rewriter, op->getLoc(),
+        UnrankedTensorType::get(rhs_ty.getElementType()), rhs,
+        rewriter.getI64ArrayAttr(new_rhs_shape));
+    lhs_ty = lhs.getType().cast<RankedTensorType>();
+    rhs_ty = rhs.getType().cast<RankedTensorType>();
+  }
+
   if (transpose_lhs) {
-    auto lhs_ty = lhs.getType().cast<ShapedType>();
     Value perms =
         getConstTensor<int32_t>(rewriter, op, /*vec=*/{0, 2, 1}, /*shape=*/{3})
             .getValue();
@@ -1338,7 +1364,6 @@ LogicalResult ConvertTFLBatchMatMulOp::matchAndRewrite(
   }
 
   if (transpose_rhs) {
-    auto rhs_ty = rhs.getType().cast<ShapedType>();
     Value perms =
         getConstTensor<int32_t>(rewriter, op, /*vec=*/{0, 2, 1}, /*shape=*/{3})
             .getValue();
@@ -1348,12 +1373,32 @@ LogicalResult ConvertTFLBatchMatMulOp::matchAndRewrite(
               .getResult();
   }
 
-  auto matmul = CreateOpAndInfer<tosa::MatMulOp>(rewriter, op->getLoc(),
-                                                 result_ty, lhs, rhs)
-                    .getResult();
+  auto matmul =
+      CreateOpAndInfer<tosa::MatMulOp>(
+          rewriter, op->getLoc(),
+          UnrankedTensorType::get(result_ty.getElementType()), lhs, rhs)
+          .getResult();
+
+  // Conditionally reshape rank back to expected rank.
+  auto matmul_ty = matmul.getType().cast<RankedTensorType>();
+  if (batch_dims.size() > 1) {
+    llvm::SmallVector<int64_t> new_shape{};
+    for (auto d : batch_dims) {
+      new_shape.push_back(d);
+    }
+
+    for (auto d : matmul_ty.getShape().take_back(2)) {
+      new_shape.push_back(d);
+    }
+
+    matmul = CreateOpAndInfer<tosa::ReshapeOp>(
+        rewriter, op->getLoc(),
+        UnrankedTensorType::get(matmul_ty.getElementType()), matmul,
+        rewriter.getI64ArrayAttr(new_shape));
+  }
 
   if (lhs_is_qtype) {
-    matmul = buildRescaleOpConvOutput(rewriter, op, matmul, lhs_type, rhs_type,
+    matmul = buildRescaleOpConvOutput(rewriter, op, matmul, lhs_ty, rhs_ty,
                                       result_ty);
   }
 
@@ -3354,7 +3399,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
 }
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTFL pass.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFLPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFLPass(
     ArrayRef<std::string> disabled_patterns,
     ArrayRef<std::string> enabled_patterns) {
   return std::make_unique<LegalizeTFL>(disabled_patterns, enabled_patterns);

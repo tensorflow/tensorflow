@@ -70,11 +70,11 @@ Status ParseActivationMode(OpKernelConstruction* context,
 
   if (activation_mode_str == "Identity") {
     *activation_mode = FusedBatchNormActivationMode::kIdentity;
-    return Status::OK();
+    return OkStatus();
   }
   if (activation_mode_str == "Relu") {
     *activation_mode = FusedBatchNormActivationMode::kRelu;
-    return Status::OK();
+    return OkStatus();
   }
   return errors::InvalidArgument("Unsupported activation mode: ",
                                  activation_mode_str);
@@ -822,7 +822,7 @@ struct FusedBatchNorm<GPUDevice, T, U, is_training> {
         Tensor* dummy_reserve_space = nullptr;
         return context->allocate_output(5, {}, &dummy_reserve_space);
       }
-      return Status::OK();
+      return OkStatus();
     };
 
     // If input is empty, return NaN mean/variance

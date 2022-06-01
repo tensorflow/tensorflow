@@ -41,7 +41,7 @@ void TF_SetPayload(TF_Status* s, const char* key, const char* value) {
 
 void TF_SetStatusFromIOError(TF_Status* s, int error_code,
                              const char* context) {
-  // TODO(mihaimaruseac): Handle windows when changing its filesystem
+  // TODO(b/139060984): Handle windows when changing its filesystem
   s->status = IOError(context, error_code);
 }
 

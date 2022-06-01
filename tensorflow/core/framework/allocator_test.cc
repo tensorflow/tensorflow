@@ -235,7 +235,7 @@ TEST(CPUAllocatorTest, ProfilerReporting) {
 
   // Get profiling results
   tensorflow::profiler::XSpace xspace;
-  EXPECT_EQ(tensorflow::Status::OK(), profiler->CollectData(&xspace));
+  EXPECT_EQ(OkStatus(), profiler->CollectData(&xspace));
 
   // Validate the output
   ASSERT_EQ(xspace.planes_size(), 1) << "XSpace: " << xspace.DebugString();

@@ -100,6 +100,9 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorEmbeddingPassV2();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDTensorEmbeddingCheckpointPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateFunctionRenamingPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>

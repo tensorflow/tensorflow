@@ -89,7 +89,7 @@ Status GenerateXlaDeviceAssignment(
       (*device_assignment)(r, c) = coords.value(3);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 class XRTCompileOp : public OpKernel {
@@ -115,7 +115,7 @@ Status CompilationCacheKey(const xrt::XLAComputation& computation,
       SerializeToBufferDeterministic(computation, serialized.get(), size));
   uint64 fingerprint = Fingerprint64(absl::string_view(serialized.get(), size));
   *key = absl::StrCat(fingerprint);
-  return Status::OK();
+  return OkStatus();
 }
 
 XRTCompileOp::XRTCompileOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
@@ -182,7 +182,7 @@ Status XRTCompileOp::Compile(OpKernelContext* ctx,
       client->Compile(computation, argument_layout_ptrs, build_options));
   TF_RET_CHECK(executables.size() == 1);
   *program = std::move(executables[0]);
-  return Status::OK();
+  return OkStatus();
 }
 
 void XRTCompileOp::Compute(OpKernelContext* ctx) {

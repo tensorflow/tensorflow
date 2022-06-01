@@ -49,7 +49,7 @@ class ExpandHloTuplesPass
 
   // Expands the mhlo.tuple used in return op. Also updates function
   // signature accordingly.
-  void ExpandTupledTensorInReturnOp(FuncOp func) {
+  void ExpandTupledTensorInReturnOp(func::FuncOp func) {
     FunctionType old_func_type = func.getFunctionType();
     // Update input signatures.
     // We will flatten the tuples for the function inputs as well.
@@ -116,7 +116,7 @@ class ExpandHloTuplesPass
       }
     }
 
-    if (expanded_return_operands.empty()) return;
+    if (return_op.getOperands() == expanded_return_operands) return;
 
     OpBuilder builder(return_op);
     builder.create<mlir::func::ReturnOp>(return_op.getLoc(),
@@ -131,7 +131,8 @@ class ExpandHloTuplesPass
   void runOnOperation() override {
     auto module = getOperation();
     // Find `main` function.
-    auto entry_function = module.lookupSymbol<FuncOp>(entry_function_name_);
+    auto entry_function =
+        module.lookupSymbol<func::FuncOp>(entry_function_name_);
     if (!entry_function) {
       return;
     }

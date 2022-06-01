@@ -266,7 +266,7 @@ static tensorflow::Status InjectTfGpuResourcesHelper(
           tfrt::gpu::wrapper::Device(gpu_ordinal, platform), gpu_resources);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 tensorflow::Status InjectTfGpuResources() {
@@ -290,7 +290,7 @@ tensorflow::Status InjectTfGpuResources() {
     already_injected_gpu_devices = true;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -350,7 +350,7 @@ static tensorflow::Status DecodeDenseAttrToTensorInterface(
   tensorflow::Tensor t;
   TF_RETURN_IF_ERROR(TF_TensorToTensor(tf_tensor.get(), &t));
   *result = tensorflow::TensorInterface(std::move(t));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Handle attributes.
@@ -569,7 +569,7 @@ Status CallEagerExecute(const tfrt::ExecutionContext& exec_ctx,
   TF_RETURN_IF_ERROR(eager_op->Execute(
       absl::MakeSpan(result_tensor_handles.data(), num_retvals), &num_retvals));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 static bool ShouldAddHostContextAttr(const char* op_name) {

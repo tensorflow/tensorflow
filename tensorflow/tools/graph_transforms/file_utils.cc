@@ -32,7 +32,7 @@ Status LoadTextOrBinaryGraphFile(const string& file_name, GraphDef* graph_def) {
   Status load_status = ReadBinaryProto(Env::Default(), file_name, graph_def);
   if (!load_status.ok()) {
     if (protobuf::TextFormat::ParseFromString(file_data, graph_def)) {
-      load_status = Status::OK();
+      load_status = OkStatus();
     } else {
       errors::AppendToMessage(&load_status,
                               " (both text and binary parsing failed for file ",

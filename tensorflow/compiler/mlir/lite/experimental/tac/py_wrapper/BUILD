@@ -33,7 +33,6 @@ pybind_extension(
     ],
     hdrs = ["tac_wrapper.h"],
     link_in_framework = True,
-    module_name = "_pywrap_tac_wrapper",
     static_deps = [
         "@arm_neon_2_x86_sse//:__subpackages__",
         "@bazel_tools//:__subpackages__",

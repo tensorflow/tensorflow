@@ -504,3 +504,7 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
   @property
   def _composite_tensor_fields(self):
     return ("operators",)
+
+  @property
+  def _experimental_parameter_ndims_to_matrix_ndims(self):
+    return {"operators": [0] * len(self.operators)}

@@ -90,6 +90,11 @@ class TfrtCpuDevice final : public PjRtDevice {
     return nullptr;
   }
 
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    return attributes_;
+  }
+
  private:
   int id_;
   PjRtClient* client_ = nullptr;
@@ -98,6 +103,7 @@ class TfrtCpuDevice final : public PjRtDevice {
   // Semaphore used to limit how many programs can be enqueued by the host
   // ahead of the device.
   Semaphore max_inflight_computations_semaphore_;
+  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_ = {};
 };
 
 class TfrtCpuExecutable;
@@ -181,16 +187,19 @@ class TfrtCpuClient final : public PjRtClient {
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) override;
 
-  void MakeCrossHostReceiveBuffers(
-      absl::Span<const Shape> shapes, PjRtDevice* device,
-      PjRtCrossHostRecvNotifier&& notifier) override {
-    LOG(FATAL) << "MakeCrossHostReceiveBuffers not implemented.";
+  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
+                              PjRtDevice* device,
+                              PjRtCrossHostRecvNotifier notifier) override {
+    return Unimplemented("MakeCrossHostReceiveBuffers not implemented.");
   }
 
-  void MakeCrossHostReceiveBuffersForGather(
+  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  MakeCrossHostReceiveBuffersForGather(
       absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
-      PjRtDevice* device, PjRtCrossHostRecvNotifier&& notifier) override {
-    LOG(FATAL) << "MakeCrossHostReceiveBuffersForGather not implemented.";
+      PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) override {
+    return Unimplemented(
+        "MakeCrossHostReceiveBuffersForGather not implemented.");
   }
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
@@ -682,7 +691,15 @@ class TfrtCpuExecutable final : public PjRtExecutable {
   bool cheap_computation_;
 };
 
+// Creates a CPU client with one Device. For testing purposes, you can set the
+// number of devices passing the --xla_force_host_platform_device_count flag to
+// the XLA_FLAGS environment variable.
 StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous);
+
+// Similar to the function above, but you can set the number of devices
+// explicitly.
+StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous,
+                                                       int cpu_device_count);
 
 }  // namespace xla
 

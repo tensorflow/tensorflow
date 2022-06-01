@@ -28,7 +28,7 @@ namespace {
 
 // Legalize TF quantization emulation ops to that in Quant ops dialect.
 struct LegalizeTFToQuant
-    : public PassWrapper<LegalizeTFToQuant, OperationPass<FuncOp>> {
+    : public PassWrapper<LegalizeTFToQuant, OperationPass<func::FuncOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeTFToQuant)
 
   explicit LegalizeTFToQuant() = default;
@@ -159,7 +159,7 @@ void LegalizeTFToQuant::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow dialect to QuantOps dialect pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFToQuantPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeTFToQuantPass() {
   return std::make_unique<LegalizeTFToQuant>();
 }
 

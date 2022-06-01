@@ -21,7 +21,6 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
         "//tensorflow/core/tpu:tpu_api",
-        "//tensorflow/core/tpu:tpu_api_dlsym_initializer",
         "//tensorflow/core/tpu:tpu_initializer_helper",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:status_helper",

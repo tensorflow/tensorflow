@@ -54,6 +54,8 @@ add_mlir_library(ChloPasses
 add_mlir_library(MhloPasses
   broadcast_propagation.cc
   collapse_elementwise_map.cc
+  constraint_fusion_pass.cc
+  convert_to_signless_pass.cc
   expand_hlo_tuples.cc
   group_reduction_dimensions.cc
   legalize_shape_computations.cc
@@ -70,7 +72,10 @@ add_mlir_library(MhloPasses
   optimize_mhlo.cc
   optimize_mhlo_pass.cc
   rank_specialization.cc
+  restrict_max_rank.cc
+  shape_reification_pass.cc
   sink_constants_to_control_flow.cc
+  sparse_rewriting.cc
   test_infer_shaped_type_pass.cc
   unfuse_batch_norm.cc
   unfuse_batch_norm_pass.cc
@@ -87,6 +92,7 @@ add_mlir_library(MhloPasses
   LINK_LIBS PUBLIC
   ChloDialect
   MhloDialect
+  MhloTypeConversion
   MLIRIR
   MLIRMhloUtils
   MLIRPass

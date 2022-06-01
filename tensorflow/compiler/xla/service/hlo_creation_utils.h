@@ -122,6 +122,9 @@ StatusOr<HloInstruction*> MakeConcatHlo(
 // the given primitive type.
 HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type);
 
+// Creates a Bitcast HLO instruction to the given shape+layout.
+HloInstruction* MakeBitcastHlo(HloInstruction* hlo, const Shape& shape);
+
 // Creates a BitcastConvert HLO instruction.
 HloInstruction* MakeBitcastConvertToHlo(HloInstruction* hlo,
                                         PrimitiveType type);
@@ -176,6 +179,10 @@ StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
                                         HloInstruction* on_true,
                                         HloInstruction* on_false,
                                         HloInstruction* derived_from = nullptr);
+
+// Forwards the first operand if operands.size() == 1, or creates a tuple
+// instruction with all the operands. Crashes if `operands` is empty.
+HloInstruction* MaybeMakeTuple(absl::Span<HloInstruction* const> operands);
 
 // Creates a Sort HLO instruction and adds it to the computation containing the
 // operands. All operands must be in the same computation. Also creates a

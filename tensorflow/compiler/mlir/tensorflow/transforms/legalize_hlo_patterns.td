@@ -49,32 +49,32 @@ def : Pat<(HLO_ConstOp $value), (TF_ConstOp $value)>;
 // context, getting to these ops may require some raising.
 //===----------------------------------------------------------------------===//
 
-foreach fromToBinPair = [[HLO_AddOp, HLOClient_BroadcastAddOp, TF_AddV2Op],
-                         [HLO_DivOp, HLOClient_BroadcastDivOp, TF_DivOp],
-                         [HLO_ShiftLeftOp, HLOClient_BroadcastShiftLeftOp, TF_LeftShiftOp],
-                         [HLO_MaxOp, HLOClient_BroadcastMaxOp, TF_MaximumOp],
-                         [HLO_MinOp, HLOClient_BroadcastMinOp, TF_MinimumOp],
-                         [HLO_MulOp, HLOClient_BroadcastMulOp, TF_MulOp],
-                         [HLO_PowOp, HLOClient_BroadcastPowOp, TF_PowOp],
-                         [HLO_SubOp, HLOClient_BroadcastSubOp, TF_SubOp],
-                         [HLO_Atan2Op, HLOClient_BroadcastAtan2Op, TF_Atan2Op]] in {
+foreach fromToBinPair = [[HLO_AddOp, CHLO_BroadcastAddOp, TF_AddV2Op],
+                         [HLO_DivOp, CHLO_BroadcastDivOp, TF_DivOp],
+                         [HLO_ShiftLeftOp, CHLO_BroadcastShiftLeftOp, TF_LeftShiftOp],
+                         [HLO_MaxOp, CHLO_BroadcastMaxOp, TF_MaximumOp],
+                         [HLO_MinOp, CHLO_BroadcastMinOp, TF_MinimumOp],
+                         [HLO_MulOp, CHLO_BroadcastMulOp, TF_MulOp],
+                         [HLO_PowOp, CHLO_BroadcastPowOp, TF_PowOp],
+                         [HLO_SubOp, CHLO_BroadcastSubOp, TF_SubOp],
+                         [HLO_Atan2Op, CHLO_BroadcastAtan2Op, TF_Atan2Op]] in {
   def : Pat<(fromToBinPair[0] $l, $r), (fromToBinPair[2] $l, $r)>;
   def : Pat<(fromToBinPair[1] $l, $r, $broadcast_dimensions),
             (fromToBinPair[2] $l, $r),
             [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 }
 
-foreach pair  = [[HLO_AndOp, HLOClient_BroadcastAndOp, TF_BitwiseAndOp],
-                 [HLO_OrOp, HLOClient_BroadcastOrOp, TF_BitwiseOrOp],
-                 [HLO_XorOp, HLOClient_BroadcastXorOp, TF_BitwiseXorOp]] in {
+foreach pair  = [[HLO_AndOp, CHLO_BroadcastAndOp, TF_BitwiseAndOp],
+                 [HLO_OrOp, CHLO_BroadcastOrOp, TF_BitwiseOrOp],
+                 [HLO_XorOp, CHLO_BroadcastXorOp, TF_BitwiseXorOp]] in {
   def : Pat<(pair[0] TF_IntTensor:$l, TF_IntTensor:$r), (pair[2] $l, $r)>;
   def : Pat<(pair[1] TF_IntTensor:$l, TF_IntTensor:$r, $broadcast_dimensions),
             (pair[2] $l, $r),
             [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 }
 
-foreach pair  = [[HLO_AndOp, HLOClient_BroadcastAndOp, TF_LogicalAndOp],
-                 [HLO_OrOp, HLOClient_BroadcastOrOp, TF_LogicalOrOp]] in {
+foreach pair  = [[HLO_AndOp, CHLO_BroadcastAndOp, TF_LogicalAndOp],
+                 [HLO_OrOp, CHLO_BroadcastOrOp, TF_LogicalOrOp]] in {
   def : Pat<(pair[0] I1Tensor:$l, I1Tensor:$r), (pair[2] $l, $r)>;
   def : Pat<(pair[1] I1Tensor:$l, I1Tensor:$r, $broadcast_dimensions),
             (pair[2] $l, $r),
@@ -82,18 +82,18 @@ foreach pair  = [[HLO_AndOp, HLOClient_BroadcastAndOp, TF_LogicalAndOp],
 }
 
 def : Pat<(HLO_ShiftRightArithmeticOp $l, $r), (TF_RightShiftOp $l, $r)>;
-def : Pat<(HLOClient_BroadcastShiftRightArithmeticOp $l, $r,
+def : Pat<(CHLO_BroadcastShiftRightArithmeticOp $l, $r,
                                                      $broadcast_dimensions),
           (TF_RightShiftOp $l, $r),
           [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 def : Pat<(HLO_ShiftRightLogicalOp $l, $r), (TF_RightShiftOp $l, $r)>;
-def : Pat<(HLOClient_BroadcastShiftRightLogicalOp $l, $r,
+def : Pat<(CHLO_BroadcastShiftRightLogicalOp $l, $r,
                                                   $broadcast_dimensions),
           (TF_RightShiftOp $l, $r),
           [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 
 def : Pat<(HLO_FloorOp (HLO_DivOp $l, $r)), (TF_FloorDivOp $l, $r)>;
-def : Pat<(HLO_FloorOp (HLOClient_BroadcastDivOp $l, $r,
+def : Pat<(HLO_FloorOp (CHLO_BroadcastDivOp $l, $r,
                                                  $broadcast_dimensions)),
           (TF_FloorDivOp $l, $r),
           [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
@@ -101,7 +101,7 @@ def : Pat<(HLO_FloorOp (HLOClient_BroadcastDivOp $l, $r,
 def : Pat<(HLO_ComplexOp $r, $i), (TF_ComplexOp $r, $i)>;
 
 def : Pat<(HLO_RemOp TF_FpOrI32OrI64Tensor:$l, TF_FpOrI32OrI64Tensor:$r), (TF_ModOp $l, $r)>;
-def : Pat<(HLOClient_BroadcastRemOp TF_FpOrI32OrI64Tensor:$l, TF_FpOrI32OrI64Tensor:$r, $broadcast_dimensions),
+def : Pat<(CHLO_BroadcastRemOp TF_FpOrI32OrI64Tensor:$l, TF_FpOrI32OrI64Tensor:$r, $broadcast_dimensions),
           (TF_ModOp $l, $r),
           [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 
@@ -193,7 +193,7 @@ class HLO_ComparisonDirectionValue<string enumStr> :
 
 foreach p = [[TF_EqualOp, HLO_ComparisonDirectionValue<"EQ">],
              [TF_NotEqualOp, HLO_ComparisonDirectionValue<"NE">]] in {
-  def : Pat<(HLOClient_BroadcastCompareOp $l, $r, $broadcast_dimensions, p[1],
+  def : Pat<(CHLO_BroadcastCompareOp $l, $r, $broadcast_dimensions, p[1],
                                           IsTFCompareType:$type),
             (p[0] $l, $r, ConstBoolAttrTrue),
             [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
@@ -205,7 +205,7 @@ foreach pair = [[TF_GreaterEqualOp, HLO_ComparisonDirectionValue<"GE">],
                 [TF_GreaterOp, HLO_ComparisonDirectionValue<"GT">],
                 [TF_LessEqualOp, HLO_ComparisonDirectionValue<"LE">],
                 [TF_LessOp, HLO_ComparisonDirectionValue<"LT">]] in {
-  def : Pat<(HLOClient_BroadcastCompareOp $l, $r, $broadcast_dimensions,
+  def : Pat<(CHLO_BroadcastCompareOp $l, $r, $broadcast_dimensions,
                                           pair[1], IsTFCompareType:$type),
             (pair[0] $l, $r),
             [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
@@ -240,7 +240,8 @@ class FloatValueEquals<string val> : Constraint<CPred<
   "$0.cast<SplatElementsAttr>().getSplatValue<APFloat>().isExactlyValue(" # val # ")">>;
 def FloatValueGreaterThanZero : Constraint<CPred<
   "$0.isa<SplatElementsAttr>() && "
-  "!$0.cast<SplatElementsAttr>().getSplatValue<APFloat>().isNegative()">>;
+  "!$0.cast<SplatElementsAttr>().getSplatValue<APFloat>().isNegative() && "
+  "!$0.cast<SplatElementsAttr>().getSplatValue<APFloat>().isZero()">>;
 def FloatValueIsReciprocal : Constraint<CPred<
   "$0.isa<SplatElementsAttr>() && $1.isa<SplatElementsAttr>() &&"
   "($0.cast<SplatElementsAttr>().getSplatValue<APFloat>() * "
@@ -256,9 +257,9 @@ def FloatOrDefaultCompare : Constraint<CPred<
 // frac = x - floor(x)
 // to_even = (floor(x) - 2 * floor(0.5 * x)) == 1
 // if frac > 0.5 || (frac == 0.5 && to_even)
-//   return floor + 1
+//   return floor(x) + 1
 // else
-//   return floor
+//   return floor(x)
 def : Pat<(HLO_SelectOp
             (HLO_OrOp
               (HLO_CompareOp (HLO_SubOp:$frac
@@ -304,34 +305,33 @@ def : Pat<(HLO_SelectOp
 //
 // rem = remainder(arg0, arg1)
 // for i in 0 to len(arg1):
-//    if ((rem[i] < 0 != arg0[i] < 0) && arg0[i] != 0)
+//    if ((rem[i] < 0) != (arg0[i] < 0) && arg0[i] != 0)
 //       rem[i] += arg1[i]
 // return rem
-def : Pat<
-(HLO_SelectOp
-  (HLO_AndOp
-    (HLO_CompareOp
-      (HLO_CompareOp:$rltz
-        (HLO_RemOp:$rem $arg, $arg1),
-        (HLO_ConstOp $cst),
-        HLO_ComparisonDirectionValue<"LT">,
-        $compare_type),
-      (HLO_CompareOp:$arg1ltz $arg1, (HLO_ConstOp $cst1), HLO_ComparisonDirectionValue<"LT">, $compare_type1),
-      HLO_ComparisonDirectionValue<"NE">,
-      $compare_type2),
-    (HLO_CompareOp:$rnz $rem1, (HLO_ConstOp $cst2), HLO_ComparisonDirectionValue<"NE">, $compare_type3)),
-  (HLO_AddOp $rem2, $arg1),
-  $rem3),
-(TF_FloorModOp $arg, $arg1),
-[(FloatValueEquals<"0.0"> $cst),
-(FloatValueEquals<"0.0"> $cst1),
-(FloatValueEquals<"0.0"> $cst2),
-(SameValue $rem, $rem1),
-(SameValue $rem, $rem2),
-(SameValue $rem, $rem3),
-(FloatOrDefaultCompare $compare_type),
-(FloatOrDefaultCompare $compare_type1),
-(FloatOrDefaultCompare $compare_type2)]>;
+def : Pat<(HLO_SelectOp
+            (HLO_AndOp
+              (HLO_CompareOp
+                (HLO_CompareOp:$rltz
+                  (HLO_RemOp:$rem $arg, $arg1),
+                  (HLO_ConstOp $cst),
+                  HLO_ComparisonDirectionValue<"LT">,
+                  $compare_type),
+                (HLO_CompareOp:$arg1ltz $arg1, (HLO_ConstOp $cst1), HLO_ComparisonDirectionValue<"LT">, $compare_type1),
+                HLO_ComparisonDirectionValue<"NE">,
+                $compare_type2),
+              (HLO_CompareOp:$rnz $rem1, (HLO_ConstOp $cst2), HLO_ComparisonDirectionValue<"NE">, $compare_type3)),
+            (HLO_AddOp $rem2, $arg1),
+            $rem3),
+          (TF_FloorModOp $arg, $arg1),
+          [(FloatValueEquals<"0.0"> $cst),
+           (FloatValueEquals<"0.0"> $cst1),
+           (FloatValueEquals<"0.0"> $cst2),
+           (SameValue $rem, $rem1),
+           (SameValue $rem, $rem2),
+           (SameValue $rem, $rem3),
+           (FloatOrDefaultCompare $compare_type),
+           (FloatOrDefaultCompare $compare_type1),
+           (FloatOrDefaultCompare $compare_type2)]>;
 
 // Converts a dag of HLOs representing floor_mod with a constant to
 // tf.FloorMod. The pattern matched executes the following computation:
@@ -342,28 +342,26 @@ def : Pat<
 //    if (rem[i] < 0 && rem[i] != 0)
 //       rem[i] += cst
 // return rem
-def : Pat<
-(HLO_SelectOp
-  (HLO_AndOp
-    (HLO_CompareOp:$rltz
-      (HLO_RemOp:$rem $arg, (HLO_ConstOp $cst)),
-      (HLO_ConstOp $cst1),
-      HLO_ComparisonDirectionValue<"LT">,
-      $compare_type),
-    (HLO_CompareOp:$rnz $rem1, (HLO_ConstOp $cst2), HLO_ComparisonDirectionValue<"NE">, $compare_type3)),
-  (HLO_AddOp $rem2, (HLO_ConstOp $cst3)),
-  $rem3),
-(TF_FloorModOp $arg, (TF_ConstOp $cst3)),
-[(FloatValueGreaterThanZero $cst),
-(FloatValueEquals<"0.0"> $cst1),
-(FloatValueEquals<"0.0"> $cst2),
-(FloatValueGreaterThanZero $cst3),
-(SameValue $cst, $cst3),
-(SameValue $rem, $rem1),
-(SameValue $rem, $rem2),
-(SameValue $rem, $rem3),
-(FloatOrDefaultCompare $compare_type),
-(FloatOrDefaultCompare $compare_type3)]>;
+def : Pat<(HLO_SelectOp
+            (HLO_AndOp
+              (HLO_CompareOp:$rltz
+                (HLO_RemOp:$rem $arg, (HLO_ConstOp $cst)),
+                (HLO_ConstOp $cst1),
+                HLO_ComparisonDirectionValue<"LT">,
+                $compare_type),
+              (HLO_CompareOp:$rnz $rem1, (HLO_ConstOp $cst2), HLO_ComparisonDirectionValue<"NE">, $compare_type3)),
+            (HLO_AddOp $rem2, (HLO_ConstOp $cst3)),
+            $rem3),
+          (TF_FloorModOp $arg, (TF_ConstOp $cst3)),
+          [(FloatValueGreaterThanZero $cst),
+           (FloatValueEquals<"0.0"> $cst1),
+           (FloatValueEquals<"0.0"> $cst2),
+           (SameValue $cst, $cst3),
+           (SameValue $rem, $rem1),
+           (SameValue $rem, $rem2),
+           (SameValue $rem, $rem3),
+           (FloatOrDefaultCompare $compare_type),
+           (FloatOrDefaultCompare $compare_type3)]>;
 
 // Converts a dag of HLOs representing floor_div to tf.FloorDiv.
 // The pattern matched executes the following computation:
@@ -390,34 +388,33 @@ def : Pat<
 // the same function in this case the sign function. Named values like 'div'
 // refer to the same value produced by the same function, in this case division.
 // Mathematical symbols do not indicate a re-use of the value.
-def : Pat<
-(HLO_RoundOp
-  (HLO_SelectOp
-    (HLO_AndOp
-      (HLO_CompareOp
-        (HLO_RemOp:$rem $arg0, $arg1),
-        (HLO_ConstOp $cst),
-        HLO_ComparisonDirectionValue<"NE">,
-        $compare_type),
-      (HLO_CompareOp
-        (HLO_SignOp $arg1),
-        (HLO_SignOp $rem1),
-        HLO_ComparisonDirectionValue<"NE">,
-        $compare_type1)),
-    (HLO_AddOp
-      (HLO_DivOp:$div
-        (HLO_SubOp $arg0, $rem2),
-        $arg1b),
-      (HLO_ConstOp $cst_neg1)),
-    $div1)),
-(TF_FloorDivOp $arg0, $arg1),
-[(FloatValueEquals<"0.0"> $cst),
-(FloatValueEquals<"-1.0"> $cst_neg1),
-(SameValue $div, $div1),
-(SameValue $rem, $rem1),
-(SameValue $rem, $rem2),
-(FloatOrDefaultCompare $compare_type),
-(FloatOrDefaultCompare $compare_type1)]>;
+def : Pat<(HLO_RoundOp
+            (HLO_SelectOp
+              (HLO_AndOp
+                (HLO_CompareOp
+                  (HLO_RemOp:$rem $arg0, $arg1),
+                  (HLO_ConstOp $cst),
+                  HLO_ComparisonDirectionValue<"NE">,
+                  $compare_type),
+                (HLO_CompareOp
+                  (HLO_SignOp $arg1),
+                  (HLO_SignOp $rem1),
+                  HLO_ComparisonDirectionValue<"NE">,
+                  $compare_type1)),
+              (HLO_AddOp
+                (HLO_DivOp:$div
+                  (HLO_SubOp $arg0, $rem2),
+                  $arg1b),
+                (HLO_ConstOp $cst_neg1)),
+              $div1)),
+          (TF_FloorDivOp $arg0, $arg1),
+          [(FloatValueEquals<"0.0"> $cst),
+           (FloatValueEquals<"-1.0"> $cst_neg1),
+           (SameValue $div, $div1),
+           (SameValue $rem, $rem1),
+           (SameValue $rem, $rem2),
+           (FloatOrDefaultCompare $compare_type),
+           (FloatOrDefaultCompare $compare_type1)]>;
 
 // Converts a dag of HLOs representing floor_div with a splat constant to
 // tf.FloorDiv. The pattern matched executes the following computation:
@@ -447,36 +444,35 @@ def : Pat<
 // the same function in this case the sign function. Named values like 'div'
 // refer to the same value produced by the same function, in this case division.
 // Mathematical symbols do not indicate a re-use of the value.
-def : Pat<
-(HLO_RoundOp
-  (HLO_SelectOp
-    (HLO_AndOp
-      (HLO_CompareOp
-        (HLO_RemOp:$rem $arg0, (HLO_ConstOp:$cst $cstv)),
-        (HLO_ConstOp $cst_zero),
-        HLO_ComparisonDirectionValue<"NE">,
-        $compare_type),
-      (HLO_CompareOp
-        (HLO_ConstOp $cst_sgn),
-        (HLO_SignOp $rem1),
-        HLO_ComparisonDirectionValue<"NE">,
-        $compare_type1)),
-    (HLO_AddOp
-      (HLO_MulOp:$mul
-        (HLO_SubOp $arg0, $rem2),
-        (HLO_ConstOp $cst_recip)),
-      (HLO_ConstOp $cst_neg1)),
-    $mul1)),
-(TF_FloorDivOp $arg0, $cst),
-[(FloatValueEquals<"0.0"> $cst_zero),
-(FloatValueEquals<"-1.0"> $cst_neg1),
-(FloatTensorIsSign $cstv, $cst_sgn),
-(FloatValueIsReciprocal $cstv, $cst_recip),
-(SameValue $mul, $mul1),
-(SameValue $rem, $rem1),
-(SameValue $rem, $rem2),
-(FloatOrDefaultCompare $compare_type),
-(FloatOrDefaultCompare $compare_type1)]>;
+def : Pat<(HLO_RoundOp
+            (HLO_SelectOp
+              (HLO_AndOp
+                (HLO_CompareOp
+                  (HLO_RemOp:$rem $arg0, (HLO_ConstOp:$cst $cstv)),
+                  (HLO_ConstOp $cst_zero),
+                  HLO_ComparisonDirectionValue<"NE">,
+                  $compare_type),
+                (HLO_CompareOp
+                  (HLO_ConstOp $cst_sgn),
+                  (HLO_SignOp $rem1),
+                  HLO_ComparisonDirectionValue<"NE">,
+                  $compare_type1)),
+              (HLO_AddOp
+                (HLO_MulOp:$mul
+                  (HLO_SubOp $arg0, $rem2),
+                  (HLO_ConstOp $cst_recip)),
+                (HLO_ConstOp $cst_neg1)),
+              $mul1)),
+          (TF_FloorDivOp $arg0, $cst),
+          [(FloatValueEquals<"0.0"> $cst_zero),
+           (FloatValueEquals<"-1.0"> $cst_neg1),
+           (FloatTensorIsSign $cstv, $cst_sgn),
+           (FloatValueIsReciprocal $cstv, $cst_recip),
+           (SameValue $mul, $mul1),
+           (SameValue $rem, $rem1),
+           (SameValue $rem, $rem2),
+           (FloatOrDefaultCompare $compare_type),
+           (FloatOrDefaultCompare $compare_type1)]>;
 
 // Converts a dag of HLOs representing floor_div with a splat constant to
 // tf.FloorDiv. The pattern matched executes the following computation:
@@ -506,36 +502,35 @@ def : Pat<
 // the same function in this case the sign function. Named values like 'div'
 // refer to the same value produced by the same function, in this case division.
 // Mathematical symbols do not indicate a re-use of the value.
-def : Pat<
-(HLO_RoundOp
-  (HLO_SelectOp
-    (HLO_AndOp
-      (HLO_CompareOp
-        (HLO_RemOp:$rem $arg0, (HLO_ConstOp:$cst $cstv)),
-        (HLO_ConstOp $cst_zero),
-        HLO_ComparisonDirectionValue<"NE">,
-        $compare_type),
-      (HLO_CompareOp
-        (HLO_ConstOp $cst_sgn),
-        (HLO_SignOp $rem1),
-        HLO_ComparisonDirectionValue<"NE">,
-        $compare_type1)),
-    (HLO_AddOp
-      (HLO_DivOp:$div
-        (HLO_SubOp $arg0, $rem2),
-        (HLO_ConstOp $cstv1)),
-      (HLO_ConstOp $cst_neg1)),
-    $div1)),
-(TF_FloorDivOp $arg0, $cst),
-[(FloatValueEquals<"0.0"> $cst_zero),
-(FloatValueEquals<"-1.0"> $cst_neg1),
-(FloatTensorIsSign $cstv, $cst_sgn),
-(SameValue $div, $div1),
-(SameValue $rem, $rem1),
-(SameValue $rem, $rem2),
-(SameValue $cstv1, $cstv),
-(FloatOrDefaultCompare $compare_type),
-(FloatOrDefaultCompare $compare_type1)]>;
+def : Pat<(HLO_RoundOp
+            (HLO_SelectOp
+              (HLO_AndOp
+                (HLO_CompareOp
+                  (HLO_RemOp:$rem $arg0, (HLO_ConstOp:$cst $cstv)),
+                  (HLO_ConstOp $cst_zero),
+                  HLO_ComparisonDirectionValue<"NE">,
+                  $compare_type),
+                (HLO_CompareOp
+                  (HLO_ConstOp $cst_sgn),
+                  (HLO_SignOp $rem1),
+                  HLO_ComparisonDirectionValue<"NE">,
+                  $compare_type1)),
+              (HLO_AddOp
+                (HLO_DivOp:$div
+                  (HLO_SubOp $arg0, $rem2),
+                  (HLO_ConstOp $cstv1)),
+                (HLO_ConstOp $cst_neg1)),
+              $div1)),
+          (TF_FloorDivOp $arg0, $cst),
+          [(FloatValueEquals<"0.0"> $cst_zero),
+           (FloatValueEquals<"-1.0"> $cst_neg1),
+           (FloatTensorIsSign $cstv, $cst_sgn),
+           (SameValue $div, $div1),
+           (SameValue $rem, $rem1),
+           (SameValue $rem, $rem2),
+           (SameValue $cstv1, $cstv),
+           (FloatOrDefaultCompare $compare_type),
+           (FloatOrDefaultCompare $compare_type1)]>;
 
 // Converts a dag of HLOs representing floor_div with a broadcasted vector
 // constant to tf.FloorDiv. The pattern matched executes the following
@@ -569,44 +564,43 @@ def : Pat<
 // the same function in this case the sign function. Named values like 'div'
 // refer to the same value produced by the same function, in this case division.
 // Mathematical symbols do not indicate a re-use of the value.
-def : Pat<
-(HLO_RoundOp
-  (HLO_SelectOp
-    (HLO_AndOp
-      (HLO_CompareOp
-        (HLO_RemOp:$rem $arg0,
-          (HLO_BroadcastInDimOp:$bcst
-            (HLO_ConstOp $cstv),
-            $broadcast_dimension)),
-        (HLO_ConstOp $cst_zero),
-        HLO_ComparisonDirectionValue<"NE">,
-        $compare_type),
-      (HLO_CompareOp
-        (HLO_ConstOp $cst_sgn),
-        (HLO_SignOp $rem1),
-        HLO_ComparisonDirectionValue<"NE">,
-        $compare_type1)),
-    (HLO_AddOp
-      (HLO_DivOp:$div
-        (HLO_SubOp $arg0, $rem2),
-        $bcst1),
-      (HLO_ConstOp $cst_neg1)),
-    $div1)),
-(TF_FloorDivOp $arg0, $bcst),
-[(FloatValueEquals<"0.0"> $cst_zero),
-(FloatValueEquals<"-1.0"> $cst_neg1),
-(FloatTensorIsSign $cstv, $cst_sgn),
-(SameValue $bcst, $bcst1),
-(SameValue $div, $div1),
-(SameValue $rem, $rem1),
-(SameValue $rem, $rem2),
-(FloatOrDefaultCompare $compare_type),
-(FloatOrDefaultCompare $compare_type1)]>;
+def : Pat<(HLO_RoundOp
+            (HLO_SelectOp
+              (HLO_AndOp
+                (HLO_CompareOp
+                  (HLO_RemOp:$rem $arg0,
+                    (HLO_BroadcastInDimOp:$bcst
+                      (HLO_ConstOp $cstv),
+                      $broadcast_dimension)),
+                  (HLO_ConstOp $cst_zero),
+                  HLO_ComparisonDirectionValue<"NE">,
+                  $compare_type),
+                (HLO_CompareOp
+                  (HLO_ConstOp $cst_sgn),
+                  (HLO_SignOp $rem1),
+                  HLO_ComparisonDirectionValue<"NE">,
+                  $compare_type1)),
+              (HLO_AddOp
+                (HLO_DivOp:$div
+                  (HLO_SubOp $arg0, $rem2),
+                  $bcst1),
+                (HLO_ConstOp $cst_neg1)),
+              $div1)),
+          (TF_FloorDivOp $arg0, $bcst),
+          [(FloatValueEquals<"0.0"> $cst_zero),
+           (FloatValueEquals<"-1.0"> $cst_neg1),
+           (FloatTensorIsSign $cstv, $cst_sgn),
+           (SameValue $bcst, $bcst1),
+           (SameValue $div, $div1),
+           (SameValue $rem, $rem1),
+           (SameValue $rem, $rem2),
+           (FloatOrDefaultCompare $compare_type),
+           (FloatOrDefaultCompare $compare_type1)]>;
 
 //===----------------------------------------------------------------------===//
 // TorchIndexSelect op patterns.
 //===----------------------------------------------------------------------===//
 
 def : Pat<(HLO_TorchIndexSelectOp $params, $indices, $axis, $batch_dims),
-      (TF_GatherV2Op $params, $indices, (TF_ConstOp $axis), $batch_dims)>;
+          (TF_GatherV2Op $params, $indices, (TF_ConstOp $axis), $batch_dims)>;
 

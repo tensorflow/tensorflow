@@ -48,6 +48,7 @@ limitations under the License.
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/pjrt/lru_cache.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
@@ -81,8 +82,19 @@ ABSL_CONST_INIT thread_local JitState thread_local_state;  // NOLINT
 
 }  // namespace
 
+// `thread_local_state.extra_jit_context` is set from Python. It's done when
+// loading the Python jax modules on the main-thread. For other threads, we
+// need to initialize the field the first time we access `thread_local_state`.
+py::object& initialize_local_state = *new py::object();
+
 JitState& GetGlobalState() { return global_state; }
-JitState& GetLocalState() { return thread_local_state; }
+JitState& GetLocalState() {
+  if (thread_local_state.extra_jit_context == std::nullopt) {
+    CHECK(initialize_local_state.ptr() != nullptr);
+    initialize_local_state();
+  }
+  return thread_local_state;
+}
 
 bool GetDisableJit() {
   CHECK(global_state.disable_jit.has_value());
@@ -194,7 +206,7 @@ H AbslHashValue(H h, const CallSignature& s) {
     } catch (const py::error_already_set& e) {
       if (!e.matches(PyExc_TypeError)) throw;
       throw std::invalid_argument(absl::StrCat(
-          "Non-hashable static arguments are not supported. An error occured "
+          "Non-hashable static arguments are not supported. An error occurred "
           "during a call to '",
           s.function_name, "' while trying to hash an object of type ",
           py::cast<std::string>(py::str(py::type::of(static_arg))), ", ",
@@ -302,7 +314,7 @@ xla::Status ParseArguments(py::handle args,
       }
     }
   }
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 namespace {
@@ -313,7 +325,7 @@ struct CacheEntry {
   //
   // The first thread (holding the GIL) will create the CacheEntry associated to
   // a signature and fill it. Other threads will wait for the notification.
-  // If an error occured during the compilation, `fall_back_to_python` is set
+  // If an error occurred during the compilation, `fall_back_to_python` is set
   // to `true`, and other threads will fail with the same error.
   absl::Notification compilation_complete;
 
@@ -682,7 +694,7 @@ xla::Status ComputeSignature(bool jax_enable_x64,
                         xla::PyArgSignatureOfValue(arg, jax_enable_x64));
     arguments.signature.dynamic_arg_signatures.push_back(std::move(sig));
   }
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Copy buffers to device, skipping pruned arguments.
@@ -718,7 +730,7 @@ xla::Status CopyBuffersToDevice(
           std::move(on_device.owning_pybuffer));
     }
   }
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 void CompiledFunction::PopulateCacheEntry(
@@ -928,7 +940,7 @@ xla::StatusOr<py::object> CompiledFunction::Call(
     }
   }
   // It's hard to reraise the exact same kind of errors when a compilation error
-  // occured. If the first compilation failed, other threads will also execute
+  // occurred. If the first compilation failed, other threads will also execute
   // the Python path.
   if (cache_entry->fall_back_to_python) {
     return py::object(
@@ -1339,6 +1351,8 @@ void BuildJaxjitSubmodule(py::module& m) {
 
   jitlib.def("jit_is_disabled", &GetDisableJit);
   jitlib.def("get_enable_x64", &GetEnableX64);
+  jitlib.def("set_thread_local_state_initialization_callback",
+             [](py::object f) { initialize_local_state = f; });
 
   jitlib.def(
       "jit",
@@ -1377,7 +1391,7 @@ void BuildJaxjitSubmodule(py::module& m) {
                xla::StatusOr<xla::DevicePutResult> results =
                    DevicePut(obj, to_device.contents, options);
                if (!results.ok()) {
-                 throw std::runtime_error(results.status().error_message());
+                 throw xla::XlaRuntimeError(results.status().error_message());
                }
                if (results->owned_buffer) {
                  auto buffer = xla::PyBuffer::Make(
@@ -1424,7 +1438,7 @@ void BuildJaxjitSubmodule(py::module& m) {
       [](py::handle self) -> xla::Status {
         TF_ASSIGN_OR_RETURN(CompiledFunction * fun, AsCompiledFunction(self));
         fun->ClearCache();
-        return xla::Status::OK();
+        return ::tensorflow::OkStatus();
       },
       py::is_method(cfun));
   jitlib.def("_is_float0", &xla::IsFloat0);

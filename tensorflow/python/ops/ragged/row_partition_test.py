@@ -33,6 +33,15 @@ from tensorflow.python.ops.ragged.row_partition import RowPartitionSpec
 from tensorflow.python.platform import googletest
 
 
+def _get_specified_row_partition():
+  """Needed for merge_with_spec tests. Normally, nvals isn't set."""
+  return RowPartition(
+      row_splits=constant_op.constant([0, 3, 8], dtype=dtypes.int64),
+      nrows=constant_op.constant(2, dtype=dtypes.int64),
+      nvals=constant_op.constant(8, dtype=dtypes.int64),
+      internal=row_partition._row_partition_factory_key)
+
+
 @test_util.run_all_in_graph_and_eager_modes
 class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   #=============================================================================
@@ -709,6 +718,46 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.named_parameters([
       dict(
+          testcase_name='NoneSpecified',
+          rp=(lambda: RowPartition.from_row_splits([0, 3, 8])),
+          spec=RowPartitionSpec(nrows=None, nvals=None, dtype=dtypes.int64)),
+      dict(
+          testcase_name='NRowsSpecified',
+          rp=(lambda: RowPartition.from_row_splits([0, 3, 8])),
+          spec=RowPartitionSpec(nrows=2, nvals=None, dtype=dtypes.int64)),
+      dict(
+          testcase_name='NValsSpecified',
+          rp=_get_specified_row_partition,
+          spec=RowPartitionSpec(nrows=None, nvals=8, dtype=dtypes.int64))
+  ])
+  def testMergeWithSpecNoop(self, rp, spec):
+    rp = rp()
+    actual = rp._merge_with_spec(spec)
+    self.assertAllEqual(actual.row_splits(), rp.row_splits())
+    self.assertAllEqual(actual.static_nrows, rp.static_nrows)
+    self.assertAllEqual(actual.static_nvals, rp.static_nvals)
+
+  @parameterized.named_parameters([
+      dict(
+          testcase_name='NRowsNValsUpdated',
+          rp=(lambda: RowPartition.from_row_splits([0, 3, 8])),
+          spec=RowPartitionSpec(nrows=2, nvals=8, dtype=dtypes.int64),
+          expected=_get_specified_row_partition),
+      dict(
+          testcase_name='NValsUpdated',
+          rp=(lambda: RowPartition.from_row_splits([0, 3, 8])),
+          spec=RowPartitionSpec(nrows=None, nvals=8, dtype=dtypes.int64),
+          expected=_get_specified_row_partition)])
+  def testMergeWithSpecUpdate(self, rp, spec, expected):
+    rp = rp()
+    expected = expected()
+    actual = rp._merge_with_spec(spec)
+    self.assertAllEqual(actual.row_splits(), expected.row_splits())
+    self.assertAllEqual(actual.static_nrows, expected.static_nrows)
+    self.assertAllEqual(actual.static_nvals, expected.static_nvals)
+
+  @parameterized.named_parameters([
+      dict(
           testcase_name='from_uniform_row_length',
           x=lambda: RowPartition.from_uniform_row_length(5, nvals=20),
           expected=True),
@@ -1067,6 +1116,56 @@ class RowPartitionSpecTest(test_util.TensorFlowTestCase,
             RowPartition.from_uniform_row_length(
                 nvals=12, uniform_row_length=3)),
         RowPartitionSpec(nvals=12, uniform_row_length=3))
+
+  @parameterized.parameters([
+      dict(original=RowPartitionSpec(),
+           dtype=dtypes.int32,
+           expected=RowPartitionSpec(dtype=dtypes.int32)),
+      dict(original=RowPartitionSpec(dtype=dtypes.int32),
+           dtype=dtypes.int64,
+           expected=RowPartitionSpec()),
+      dict(original=RowPartitionSpec(nvals=20, nrows=4, uniform_row_length=5),
+           dtype=dtypes.int32,
+           expected=RowPartitionSpec(nvals=20, nrows=4, uniform_row_length=5,
+                                     dtype=dtypes.int32)),
+  ])
+  def testWithDType(self, original, dtype, expected):
+    actual = original.with_dtype(dtype)
+    self.assertEqual(actual, expected)
+
+  @parameterized.parameters([
+      dict(a=RowPartitionSpec(),
+           b=RowPartitionSpec(nrows=3, uniform_row_length=5),
+           expected=RowPartitionSpec(nrows=3, uniform_row_length=5)),
+      dict(a=RowPartitionSpec(nrows=3),
+           b=RowPartitionSpec(uniform_row_length=5),
+           expected=RowPartitionSpec(nrows=3, uniform_row_length=5)),
+      dict(a=RowPartitionSpec(nvals=20),
+           b=RowPartitionSpec(nrows=3),
+           expected=RowPartitionSpec(nvals=20, nrows=3)),
+      dict(a=RowPartitionSpec(nvals=20, dtype=dtypes.int32),
+           b=RowPartitionSpec(nrows=3, dtype=dtypes.int32),
+           expected=RowPartitionSpec(nvals=20, nrows=3, dtype=dtypes.int32)),
+  ])
+  def testMergeWith(self, a, b, expected):
+    actual = a._merge_with(b)
+    actual_rev = b._merge_with(a)
+    self.assertEqual(actual, expected)
+    self.assertEqual(actual_rev, expected)
+
+  @parameterized.parameters([
+      dict(a=RowPartitionSpec(nrows=3, nvals=10),
+           b=RowPartitionSpec(uniform_row_length=5),
+           error_type=ValueError,
+           error_regex='Merging incompatible RowPartitionSpecs'),
+      dict(a=RowPartitionSpec(uniform_row_length=5, dtype=dtypes.int32),
+           b=RowPartitionSpec(uniform_row_length=5, dtype=dtypes.int64),
+           error_type=ValueError,
+           error_regex='Merging RowPartitionSpecs with incompatible dtypes'),
+  ])
+  def testMergeWithRaises(self, a, b, error_type, error_regex):
+    with self.assertRaisesRegex(error_type, error_regex):
+      a._merge_with(b)
 
 
 def _assert_row_partition_equal(test_class, actual, expected):

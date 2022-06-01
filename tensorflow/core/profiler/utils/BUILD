@@ -174,6 +174,7 @@ cc_library(
     name = "time_utils",
     hdrs = ["time_utils.h"],
     copts = tf_profiler_copts(),
+    visibility = [":friends"],
     deps = [
         ":math_utils",
         "//tensorflow/core:lib",
@@ -272,6 +273,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:context_types",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -322,7 +324,6 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = [":friends"],
     deps = [
-        ":time_utils",
         ":timespan",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -418,8 +419,8 @@ cc_library(
     hdrs = ["derived_timeline.h"],
     copts = tf_profiler_copts(),
     deps = [
+        ":gpu_event_stats",
         ":group_events",
-        ":math_utils",
         ":tf_op_utils",
         ":tf_xplane_visitor",
         ":timespan",
@@ -430,8 +431,9 @@ cc_library(
         ":xplane_visitor",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/convert:xla_op_utils",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "@com_google_absl//absl/algorithm:container",
+        "//tensorflow/core/util:stats_calculator_portable",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -594,5 +596,19 @@ tf_cc_test(
         ":buffer_pool",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "gpu_event_stats",
+    srcs = ["gpu_event_stats.cc"],
+    hdrs = ["gpu_event_stats.h"],
+    copts = tf_profiler_copts(),
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_visitor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )

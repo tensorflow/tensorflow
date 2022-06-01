@@ -163,7 +163,7 @@ Status OptimizeAndConvertHloToLmhlo(std::unique_ptr<HloModule> hlo_module,
       HloToLhloModule(**assignment, **optimized_hlo_module, module),
       "converting HLO to LHLO");
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 namespace {
@@ -251,7 +251,7 @@ Status LhloDialectEmitter::CreateOperands(
   TF_RETURN_IF_ERROR(
       GetOrCreateView(instr, &operands, /*result_subset=*/{}, token_mode));
   num_results = operands.size() - num_arguments;
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 template <typename OpType>
@@ -491,7 +491,7 @@ Status WalkTuplePostOrder(Value v,
       for (Value sub_v : tuple.val()) {
         TF_RETURN_IF_ERROR(WalkTuplePostOrder(sub_v, visitor));
       }
-      return Status::OK();
+      return ::tensorflow::OkStatus();
     }
   }
   return visitor(v);
@@ -576,7 +576,7 @@ StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
     TF_RETURN_IF_ERROR(GetOrCreateView(instr, &output));
     TF_RETURN_IF_ERROR(WalkTuplePostOrder(result, [&](Value v) mutable {
       region_builder.create<memref::TensorStoreOp>(loc, v, output[i++]);
-      return Status::OK();
+      return ::tensorflow::OkStatus();
     }));
     if (i != output.size()) {
       return xla::InternalError("output sizes don't match");
@@ -804,9 +804,6 @@ StatusOr<Operation*> LhloDialectEmitter::EmitGemm(
     op.dot_dimension_numbersAttr(mlir_dims);
     op.alpha_realAttr(builder_.getF64FloatAttr(config.alpha_real()));
     op.alpha_imagAttr(builder_.getF64FloatAttr(config.alpha_imag()));
-    op.batch_sizeAttr(builder_.getI64IntegerAttr(config.batch_size()));
-    op.lhs_strideAttr(builder_.getI64IntegerAttr(config.lhs_stride()));
-    op.rhs_strideAttr(builder_.getI64IntegerAttr(config.rhs_stride()));
     if (config.algorithm_case() ==
         xla::gpu::GemmBackendConfig::kSelectedAlgorithm) {
       op.algorithmAttr(builder_.getI64IntegerAttr(config.selected_algorithm()));
@@ -953,7 +950,7 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
     auto activation_attr = ::mlir::lmhlo_gpu::ActivationAttr::get(
         getLocation(custom_call).getContext(), activation);
     op.activation_modeAttr(activation_attr);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   switch (kind) {
@@ -1079,7 +1076,7 @@ Status SetupCommonCollectiveOpAttributes(OpT op, const HloInstruction* instr,
   op->setAttr(replica_groups_attr.getName(), replica_groups_attr.getValue());
   op.constrain_layoutAttr(builder.getBoolAttr(collective->constrain_layout()));
   SetupChannelIdAttribute(op, collective, builder);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 }  // namespace
 
@@ -1315,7 +1312,7 @@ Status LhloDialectEmitter::ImportAsLmhloRegion(xla::HloComputation* computation,
   TF_RETURN_IF_ERROR(
       computation->AcceptOrdered(this, schedule->instructions()));
   builder_.create<lmhlo::TerminatorOp>(builder_.getUnknownLoc());
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<lmhlo::CaseOp> LhloDialectEmitter::EmitCaseOp(
@@ -1445,13 +1442,13 @@ Status LhloDialectEmitter::GetOrCreateViewImpl(
                               current_shape_index, values, token_mode));
       current_shape_index->pop_back();
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (current_shape.IsArray()) {
     TF_ASSIGN_OR_RETURN(auto v, GetOrCreateArrayView(instr, current_shape,
                                                      *current_shape_index));
     values->push_back(v);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (current_shape.IsToken()) {
     switch (token_mode) {
@@ -1462,7 +1459,7 @@ Status LhloDialectEmitter::GetOrCreateViewImpl(
 
       case TokenLoweringMode::kUseNull:
         values->push_back(Value{});
-        return Status::OK();
+        return ::tensorflow::OkStatus();
     }
   }
   return xla::InternalError("Unexpected shape kind for %s and shape index %s",
@@ -1494,8 +1491,8 @@ Status LhloDialectEmitter::Initialize() {
 
   // Create the function as () -> (), we'll compute the arguments from the
   // buffer allocation and update the type then.
-  auto func_op = FuncOp::create(builder_.getUnknownLoc(), function_name,
-                                builder_.getFunctionType({}, {}));
+  auto func_op = func::FuncOp::create(builder_.getUnknownLoc(), function_name,
+                                      builder_.getFunctionType({}, {}));
 
   {
     // This is an optional attribute used by the XLA backend. If the resulting
@@ -1554,7 +1551,7 @@ Status LhloDialectEmitter::Initialize() {
         TF_RET_CHECK(slice.offset() == 0);
         TF_RET_CHECK(slice.size() == alloc->size());
         allocation_to_output_info[alloc] = std::make_pair(&sub_shape, index);
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       }));
 
   // The function signature will be composed of:
@@ -1640,7 +1637,7 @@ Status LhloDialectEmitter::Initialize() {
       builder_.create<lmhlo::TerminatorOp>(builder_.getUnknownLoc());
   builder_ = OpBuilder(return_op);
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 std::unique_ptr<OperationPass<ModuleOp>> createXlaHloToLhloWithXlaPass() {

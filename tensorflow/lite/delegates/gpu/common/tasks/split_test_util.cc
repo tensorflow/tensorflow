@@ -48,7 +48,7 @@ absl::Status SplitChannelsTest(TestExecutionEnvironment* env) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor0, dst_tensor1;
-      Split operation = CreateSplit(op_def, attr);
+      Split operation = CreateSplit(op_def, attr, {2, 3});
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {src_tensor}, absl::make_unique<Split>(std::move(operation)),
           {BHWC(1, 3, 2, 2), BHWC(1, 3, 2, 3)}, {&dst_tensor0, &dst_tensor1}));
@@ -92,7 +92,7 @@ absl::Status SplitChannelsX4Test(TestExecutionEnvironment* env) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor0, dst_tensor1;
-      Split operation = CreateSplit(op_def, attr);
+      Split operation = CreateSplit(op_def, attr, {4, 4});
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {src_tensor}, absl::make_unique<Split>(std::move(operation)),
           {BHWC(1, 2, 2, 4), BHWC(1, 2, 2, 4)}, {&dst_tensor0, &dst_tensor1}));
@@ -136,7 +136,7 @@ absl::Status SplitWidthTest(TestExecutionEnvironment* env) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor0, dst_tensor1;
-      Split operation = CreateSplit(op_def, attr);
+      Split operation = CreateSplit(op_def, attr, {1, 1});
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {src_tensor}, absl::make_unique<Split>(std::move(operation)),
           {BHWC(1, 6, 2, 1), BHWC(1, 6, 3, 1)}, {&dst_tensor0, &dst_tensor1}));
@@ -179,7 +179,7 @@ absl::Status SplitHeightTest(TestExecutionEnvironment* env) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor0, dst_tensor1;
-      Split operation = CreateSplit(op_def, attr);
+      Split operation = CreateSplit(op_def, attr, {1, 1});
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {src_tensor}, absl::make_unique<Split>(std::move(operation)),
           {BHWC(1, 2, 5, 1), BHWC(1, 4, 5, 1)}, {&dst_tensor0, &dst_tensor1}));
@@ -221,7 +221,7 @@ absl::Status SplitBatchTest(TestExecutionEnvironment* env) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::BHWC});
       TensorFloat32 dst_tensor0, dst_tensor1;
-      Split operation = CreateSplit(op_def, attr);
+      Split operation = CreateSplit(op_def, attr, {1, 1});
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {src_tensor}, absl::make_unique<Split>(std::move(operation)),
           {BHWC(1, 1, 5, 1), BHWC(5, 1, 5, 1)}, {&dst_tensor0, &dst_tensor1}));
@@ -263,7 +263,7 @@ absl::Status SplitDepthTest(TestExecutionEnvironment* env) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWDC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWDC});
       Tensor5DFloat32 dst_tensor0, dst_tensor1;
-      Split operation = CreateSplit(op_def, attr);
+      Split operation = CreateSplit(op_def, attr, {1, 1});
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {src_tensor}, absl::make_unique<Split>(std::move(operation)),
           {BHWDC(1, 6, 1, 2, 1), BHWDC(1, 6, 1, 3, 1)},

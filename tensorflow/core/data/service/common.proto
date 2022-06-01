@@ -13,12 +13,12 @@ message DatasetDef {
 }
 
 // Next tag: 3
-message JobKeyDef {
+message IterationKeyDef {
   string name = 1;
   int64 iteration = 2;
 }
 
-// Next tag: 13
+// Next tag: 14
 message TaskDef {
   reserved 6;
   // The dataset to iterate over.
@@ -28,7 +28,7 @@ message TaskDef {
   }
   int64 dataset_id = 3;
   int64 task_id = 4;
-  int64 job_id = 5;
+  int64 iteration_id = 5;
   // In distributed epoch processing mode, we use one split provider for each
   // source that feeds into the dataset. In parallel_epochs mode,
   // `num_split_providers` is always zero.
@@ -45,6 +45,8 @@ message TaskDef {
   // `processing_mode_def` specifies a static sharding policy.
   int64 num_workers = 11;
   int64 worker_index = 12;
+  // True if cross-trainer cache is enabled.
+  bool use_cross_trainer_cache = 13;
 }
 
 // Next tag: 8
@@ -60,8 +62,8 @@ message TaskInfo {
   repeated string worker_tags = 6;
   // The task id.
   int64 task_id = 2;
-  // The id of the job that the task is part of.
-  int64 job_id = 3;
+  // The id of the iteration that the task is part of.
+  int64 iteration_id = 3;
   // The UID of the worker Borg job, used for telemetry.
   int64 worker_uid = 7;
   // The round to start reading from the task in. For non-round-robin reads,

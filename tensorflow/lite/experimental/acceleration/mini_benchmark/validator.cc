@@ -18,7 +18,10 @@ limitations under the License.
 #include <time.h>
 
 #include <iostream>
+#include <string>
+#include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h"
@@ -153,6 +156,11 @@ MinibenchmarkStatus Validator::CheckModel(bool load_only) {
     return kMinibenchmarkSuccess;
   }
 
+  if (compute_settings_->tflite_settings() &&
+      compute_settings_->tflite_settings()->disable_default_delegates()) {
+    resolver_ =
+        ::tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates();
+  }
   resolver_.AddCustom("validation/call",
                       ::tflite::acceleration::ops::Register_CALL(), 1);
   resolver_.AddCustom(
@@ -220,7 +228,7 @@ MinibenchmarkStatus Validator::CheckModel(bool load_only) {
 }
 
 MinibenchmarkStatus Validator::LoadDelegate() {
-  if (!interpreter_ || !compute_settings_) {
+  if (!compute_settings_) {
     return kMinibenchmarkPreconditionNotMet;
   }
 
@@ -250,7 +258,8 @@ MinibenchmarkStatus Validator::LoadDelegate() {
   return kMinibenchmarkSuccess;
 }
 
-MinibenchmarkStatus Validator::ApplyComputeSettings(int* delegate_error_out) {
+MinibenchmarkStatus Validator::ApplyComputeSettings(
+    int* delegate_error_out, int* delegated_kernels_out) {
   if (!delegate_error_out) {
     return kMinibenchmarkPreconditionNotMet;
   }
@@ -280,6 +289,34 @@ MinibenchmarkStatus Validator::ApplyComputeSettings(int* delegate_error_out) {
   ValidatorProfiler profiler;
   main_model_->SetProfiler(&profiler, 0);
   TfLiteStatus status = interpreter_->ModifyGraphWithDelegate(delegate_.get());
+
+  // Check if the model is actually going to execute on the delegate.
+  // For now just give a warning, with the exception of NNAPI SL mini benchmark.
+  // Can consider changing to error in other contexts.
+  // The logic is copy/pasted from benchmark_tflite_model.cc
+  absl::flat_hash_set<int> checked_node_ids;
+  int num_delegated_kernels = 0;
+  for (int i = 0; i < interpreter_->execution_plan().size(); ++i) {
+    int node_id = interpreter_->execution_plan()[i];
+    if (checked_node_ids.find(node_id) != checked_node_ids.end()) {
+      continue;
+    }
+    const TfLiteNode& node =
+        interpreter_->node_and_registration(node_id)->first;
+    if (node.delegate != nullptr) {
+      num_delegated_kernels++;
+      checked_node_ids.insert(node_id);
+    }
+  }
+  *delegated_kernels_out = num_delegated_kernels;
+  bool fully_delegated = (num_delegated_kernels == 1 &&
+                          interpreter_->execution_plan().size() == 1);
+  if (!fully_delegated) {
+    TFLITE_LOG_PROD(TFLITE_LOG_WARNING,
+                    "The model will be %s executed by the delegate.",
+                    num_delegated_kernels > 0 ? "partially" : "not");
+  }
+
   main_model_->SetProfiler(nullptr, 0);
   for (const auto& e : profiler.events()) {
     if (e.tag == "ModifyGraphWithDelegate" && e.start_time_us != -1 &&
@@ -302,15 +339,18 @@ MinibenchmarkStatus Validator::RunValidation(Results* results_out) {
   if (!results_out) {
     return kMinibenchmarkPreconditionNotMet;
   }
-  MinibenchmarkStatus mb_status = CheckModel();
+  // The lifetime of the delegate must be at least as long as the lifetime of
+  // any Interpreter.
+  MinibenchmarkStatus mb_status = LoadDelegate();
   if (mb_status != kMinibenchmarkSuccess) {
     return mb_status;
   }
-  mb_status = LoadDelegate();
+  mb_status = CheckModel();
   if (mb_status != kMinibenchmarkSuccess) {
     return mb_status;
   }
-  mb_status = ApplyComputeSettings(&(results_out->delegate_error));
+  mb_status = ApplyComputeSettings(&results_out->delegate_error,
+                                   &results_out->delegated_kernels);
   if (mb_status != kMinibenchmarkSuccess) {
     return mb_status;
   }

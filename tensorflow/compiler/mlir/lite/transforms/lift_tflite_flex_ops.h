@@ -24,7 +24,7 @@ namespace TFL {
 
 // Creates an instance of the lift TFLite Flex ops pass that lifts TFLite Flex
 // ops into TF dialect operations.
-std::unique_ptr<OperationPass<FuncOp>> CreateLiftTfliteFlexOpsPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLiftTfliteFlexOpsPass();
 
 }  // namespace TFL
 }  // namespace mlir

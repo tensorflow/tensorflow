@@ -93,7 +93,8 @@ RunOptions* kEmptyRunOptions() {
 class SessionLogger {
  public:
   SessionLogger() {
-    std::string log_name = getenv("TF_REPLAY_LOG_FILE");
+    const char* log_file_env = getenv("TF_REPLAY_LOG_FILE");
+    std::string log_name = log_file_env ? std::string(log_file_env) : ".";
     LOG(INFO) << "Constructing new session logger for " << log_name;
     TF_CHECK_OK(
         Env::Default()->RecursivelyCreateDir(string(io::Dirname(log_name))));

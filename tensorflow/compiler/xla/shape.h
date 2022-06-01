@@ -115,8 +115,16 @@ class Shape {
   // Methods for accessing the dimensions array.
   int dimensions_size() const { return dimensions_.size(); }
   int64_t dimensions(int index) const { return dimensions_.at(index); }
+  int64_t dimensions_minor(int index) const {
+    CHECK(has_layout());
+    return dimensions_.at(layout_.minor_to_major(index));
+  }
   void set_dimensions(int index, int64_t value) {
     dimensions_.at(index) = value;
+  }
+  void set_dimensions_minor(int index, int64_t value) {
+    CHECK(has_layout());
+    dimensions_.at(layout_.minor_to_major(index)) = value;
   }
   void add_dimensions(int64_t value) {
     dimensions_.push_back(value);

@@ -23,9 +23,9 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
 // CHECK: tfg.func @[[THEN]]
 // CHECK-SAME: (%[[VALUE:.*]]: tensor<{{.*}}>
 // CHECK-NEXT:  %[[BARRIER:.*]]: tensor<{{.*}}>
-// CHECK: return(%[[VALUE]]) [%[[BARRIER]].ctl {tfg.name = "barrier_tfg_result_0"}]
+// CHECK: return(%[[VALUE]]) [%[[BARRIER]].ctl {tfg.name = "barrier_tfg_result_0_0"}]
 
 // CHECK: tfg.func @[[ELSE]]
 // CHECK-SAME: (%[[VALUE:.*]]: tensor<{{.*}}>
 // CHECK-NEXT:  %[[BARRIER:.*]]: tensor<{{.*}}>
-// CHECK: return(%[[VALUE]]) [%[[BARRIER]].ctl {tfg.name = "barrier_tfg_result_0"}]
+// CHECK: return(%[[VALUE]]) [%[[BARRIER]].ctl {tfg.name = "barrier_tfg_result_0_0"}]

@@ -51,7 +51,7 @@ HostStream::~HostStream() {
 bool HostStream::EnqueueTask(std::function<void()> task) {
   return EnqueueTaskWithStatus([task = std::move(task)]() {
     task();
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   });
 }
 
@@ -96,7 +96,7 @@ port::Status HostStream::BlockUntilDone() {
     // with the result of the task (always OK() in this case), so we don't need
     // to worry about locking access to 'status_'.
     status = status_;
-    status_ = port::Status::OK();
+    status_ = ::tensorflow::OkStatus();
     done.Notify();
   });
   done.WaitForNotification();

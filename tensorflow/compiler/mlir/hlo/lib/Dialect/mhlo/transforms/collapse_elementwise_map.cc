@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
@@ -92,7 +93,8 @@ struct CollapseElementwiseMapPass
 };
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createCollapseElementwiseMapPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+createCollapseElementwiseMapPass() {
   return std::make_unique<CollapseElementwiseMapPass>();
 }
 

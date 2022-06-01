@@ -281,7 +281,7 @@ struct MergeRankSpecializationClusterOpsPattern
 struct RankSpecializationClusterPass
     : public RankSpecializationClusterPassBase<RankSpecializationClusterPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mhlo::MhloDialect, chlo::HloClientDialect>();
+    registry.insert<mhlo::MhloDialect, chlo::ChloDialect>();
   }
 
   void runOnOperation() override {
@@ -919,8 +919,8 @@ struct RankSpecializationToSCFPass
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mhlo::MhloDialect, chlo::HloClientDialect,
-                    func::FuncDialect, shape::ShapeDialect, scf::SCFDialect>();
+    registry.insert<mhlo::MhloDialect, chlo::ChloDialect, func::FuncDialect,
+                    shape::ShapeDialect, scf::SCFDialect>();
   }
 
   void runOnOperation() override {
@@ -953,11 +953,12 @@ void PopulateRankSpecializationToSCFPatterns(MLIRContext *context,
   shape::AnyOp::getCanonicalizationPatterns(*patterns, context);
 }
 
-std::unique_ptr<OperationPass<FuncOp>> createRankSpecializationClusterPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+createRankSpecializationClusterPass() {
   return std::make_unique<RankSpecializationClusterPass>();
 }
 
-std::unique_ptr<OperationPass<FuncOp>> createRankSpecializationToSCFPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createRankSpecializationToSCFPass(
     int64_t max_target_rank) {
   return std::make_unique<RankSpecializationToSCFPass>(max_target_rank);
 }

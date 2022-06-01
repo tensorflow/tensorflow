@@ -105,7 +105,7 @@ Status PropagateFromArgOp(
 
   int index;
   TF_RETURN_IF_ERROR(GetNodeAttr(n.attrs(), "index", &index));
-  if (!resource_arg_indices.contains(index)) return Status::OK();
+  if (!resource_arg_indices.contains(index)) return OkStatus();
 
   TF_RET_CHECK(function_name.has_value())
       << "ResourceUsageAnalysis does not support analyzing _Arg nodes "
@@ -123,7 +123,7 @@ Status PropagateFromArgOp(
     (*user_to_source)[o] = src_node_info;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status UpdateResourceUsageFromFunctionBodyAnalysis(
@@ -177,7 +177,7 @@ Status UpdateResourceUsageFromFunctionBodyAnalysis(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PropagateThroughCallOp(
@@ -220,7 +220,7 @@ Status PropagateThroughCallOp(
   TF_RETURN_IF_ERROR(UpdateResourceUsageFromFunctionBodyAnalysis(
       n, function_name, *fbody, called_function_source_to_path, user_to_source,
       source_to_path));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Analyzes pass through values for Identity and IdentityN ops.
@@ -247,7 +247,7 @@ Status PropagateThroughIdentityOp(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AnalyzeResourceUsage(
@@ -314,7 +314,7 @@ Status AnalyzeResourceUsage(
                                          it.first->dst()->type_string());
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // anonymous namespace

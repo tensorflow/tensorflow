@@ -34,8 +34,8 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
 // CHECK-SAME: (%[[INIT_NAME]]_tfg_result_0: tensor<{{.*}}> {tf._some_attr, tfg.name = "[[INIT_NAME]]_tfg_result_0", tfg.regenerate_output_shapes},
 // CHECK-NEXT:  %[[CONST_NAME]]_tfg_result_0: tensor<{{.*}}> {tfg.name = "[[CONST_NAME]]_tfg_result_0", tfg.regenerate_output_shapes})
 // CHECK-NEXT:  -> (tensor<{{.*}}> {tf._other_attr, tfg.name = "[[DOUBLE_NAME:.*]]_tfg_result_0", tfg.regenerate_output_shapes},
-// CHECK-NEXT:      tensor<{{.*}}> {tfg.name = "[[CONST_NAME]]_tfg_result_0", tfg.regenerate_output_shapes})
+// CHECK-NEXT:      tensor<{{.*}}> {tfg.name = "[[CONST_NAME]]_tfg_result_0_0", tfg.regenerate_output_shapes})
 // CHECK-NEXT: attributes {tf._a} {
 // CHECK-NEXT:   %[[DOUBLE:.*]], %[[CTL:.*]] = Double(%[[INIT_NAME]]_tfg_result_0, %[[CONST_NAME]]_tfg_result_0) name("[[DOUBLE_NAME]]")
-// CHECK-NEXT:   return(%[[DOUBLE]], %[[CONST_NAME]]_tfg_result_0) [%[[CONST_NAME]]_tfg_result_0.ctl {tfg.name = "[[CONST_NAME]]_tfg_result_0"}]
+// CHECK-NEXT:   return(%[[DOUBLE]], %[[CONST_NAME]]_tfg_result_0) [%[[CONST_NAME]]_tfg_result_0.ctl {tfg.name = "[[CONST_NAME]]_tfg_result_0_1"}]
 // CHECK-NEXT: }

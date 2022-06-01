@@ -140,9 +140,10 @@ Status NcclCollectivePermuteThunk::RunNcclCollective(
           << device_ordinal;
 
   TF_ASSIGN_OR_RETURN(const GlobalDeviceId global_device_id,
-                      params.GetGlobalDeviceId());
-  TF_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID current_logical_id,
-                      params.device_assn->LogicalIdForDevice(global_device_id));
+                      params.nccl_params.GetGlobalDeviceId());
+  TF_ASSIGN_OR_RETURN(
+      const DeviceAssignment::LogicalID current_logical_id,
+      params.nccl_params.device_assn->LogicalIdForDevice(global_device_id));
   const int64_t current_id =
       config_.group_mode == CollectiveOpGroupMode::kCrossReplica
           ? current_logical_id.replica_id
@@ -218,7 +219,7 @@ Status NcclCollectivePermuteThunk::RunNcclCollective(
                                   GetDeviceString(params));
     params.stream->ThenMemZero(&dest_addr, dest_addr.size());
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "

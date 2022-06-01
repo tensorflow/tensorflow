@@ -47,7 +47,7 @@ void FillRangeOutput(const Array& start_array, const Array& limit_array,
   const auto it = model->operators.begin() + op_index;
   auto* base_op = it->get();
   if (base_op->type != OperatorType::kRange) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   auto* op = static_cast<RangeOperator*>(base_op);
 
@@ -55,23 +55,23 @@ void FillRangeOutput(const Array& start_array, const Array& limit_array,
   const auto& start_array = model->GetArray(op->inputs[0]);
   if (!start_array.has_shape()) {
     // Yield until all input dims have been resolved.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   const auto& limit_array = model->GetArray(op->inputs[1]);
   if (!limit_array.has_shape()) {
     // Yield until all input dims have been resolved.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   const auto& delta_array = model->GetArray(op->inputs[2]);
   if (!delta_array.has_shape()) {
     // Yield until all input dims have been resolved.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   for (const auto& input : op->inputs) {
     if (!IsConstantParameterArray(*model, input)) {
       // yield if any input is mutable
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     }
   }
 
@@ -79,7 +79,7 @@ void FillRangeOutput(const Array& start_array, const Array& limit_array,
   auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.data_type == ArrayDataType::kNone) {
     // Yield until the output type has been set by PropagateArrayDataTypes
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   CHECK_EQ(RequiredBufferSizeForShape(start_array.shape()), 1)
@@ -107,7 +107,7 @@ void FillRangeOutput(const Array& start_array, const Array& limit_array,
 
   DeleteOpAndArrays(model, op);
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

@@ -97,7 +97,7 @@ class Thunk {
   // time spent initializing doesn't count towards our execution profile.
   virtual Status Initialize(const GpuExecutable& /*executable*/,
                             se::StreamExecutor* /*executor*/) {
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Parameters passed to ExecuteOnStream.  Encapsulated in a struct so that
@@ -110,12 +110,7 @@ class Thunk {
     const BufferAllocations* buffer_allocations;  // never null
     se::Stream* stream;
     se::Stream* async_comms_stream;
-    RunId run_id;
-    const DeviceAssignment* device_assn;                          // never null
-    const std::vector<GlobalDeviceId>* gpu_global_device_ids;     // may be null
-    const NcclUniqueIdCallback* nccl_unique_id_callback;          // may be null
-
-    StatusOr<GlobalDeviceId> GetGlobalDeviceId() const;
+    NcclExecuteParams nccl_params;
   };
 
   // Execute the kernel for the thunk on the given stream. This method must be

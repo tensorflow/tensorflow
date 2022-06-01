@@ -26,7 +26,7 @@ Status OptionalZerosLike(OpKernelContext* ctx, const OptionalVariant& x,
                              zeros_like_func) {
   if (!x.has_value()) {
     *y = x;
-    return Status::OK();
+    return OkStatus();
   }
   std::vector<Tensor> zero_tensors;
   for (const Tensor& tensor : x.get_values()) {
@@ -35,7 +35,7 @@ Status OptionalZerosLike(OpKernelContext* ctx, const OptionalVariant& x,
     zero_tensors.push_back(std::move(zero_t));
   }
   *y = OptionalVariant(zero_tensors);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OptionalBinaryAdd(
@@ -51,7 +51,7 @@ Status OptionalBinaryAdd(
   }
   if (!a.has_value()) {
     *out = a;
-    return Status::OK();
+    return OkStatus();
   }
   if (a.get_values().size() != b.get_values().size()) {
     return errors::InvalidArgument(
@@ -68,7 +68,7 @@ Status OptionalBinaryAdd(
     out_tensors.push_back(std::move(out_tensor));
   }
   *out = OptionalVariant(out_tensors);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace data

@@ -43,7 +43,7 @@ static inline Status AddVariantTo(
   Variant* c = &temp->at(lhs_ix);
   TF_RETURN_IF_ERROR(binary_add_variant(ctx, a, b, c));
   temp_filled->at(lhs_ix) = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 void AddNVariant(OpKernelContext* ctx,

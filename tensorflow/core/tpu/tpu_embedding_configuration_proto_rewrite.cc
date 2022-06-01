@@ -43,7 +43,7 @@ Status ValidateBatchSizeAndFeatureCounts(
           table_config.num_features(), table_config.name()));
     }
   }  // table_config
-  return Status::OK();
+  return OkStatus();
 }
 
 // Validates that the batch_size_per_tensor_core and
@@ -67,7 +67,7 @@ Status ValidateBatchSizeAndFeatureCountsAreEmpty(
           table_config.num_features(), table_config.name()));
     }
   }  // table_config
-  return Status::OK();
+  return OkStatus();
 }
 
 // Validates that the feature_descriptor fields have been correctly filled in.
@@ -110,7 +110,7 @@ Status ValidateFeatureDescriptors(
           config.table_descriptor(table_id).name(), table_id));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Populates the feature_descriptor fields with default values when they have
@@ -210,7 +210,7 @@ Status PopulateMissingFieldsInTPUEmbeddingConfig(
     TF_RETURN_IF_ERROR(ValidateFeatureDescriptors(*config));
     PopulateBatchSizeAndFeatureCounts(config);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

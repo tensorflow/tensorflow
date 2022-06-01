@@ -47,16 +47,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
-// The cmd line flag to turn on/off Tf.Text API fusion.
-// NOLINTNEXTLINE
-static llvm::cl::opt<bool> fuse_tftext_flag(
-    "tfl-fuse-tftext", llvm::cl::value_desc("bool"),
-    llvm::cl::desc("Fuse TF.Text API ops when it's true"),
-    llvm::cl::init(false));
-
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 constexpr char kTFAPIImplements[] = "tf.api_implements";
 constexpr char kTFTextAPIPrefix[] = "tftext:";
@@ -108,7 +103,7 @@ LogicalResult CreateTflFusableOpCustomOptions(
 
 // Convert func annotated with `tfl_fusable_op` attribute to tfl custom op.
 LogicalResult ConvertTflFusableOp(
-    FuncOp func, StringRef custom_op_name,
+    func::FuncOp func, StringRef custom_op_name,
     ArrayRef<std::pair<StringRef, Attribute>> attrs) {
   func.eraseBody();
   func.addEntryBlock();
@@ -130,7 +125,7 @@ LogicalResult ConvertTflFusableOp(
 // Abstracts the conversion of the embedded lookup composite function.
 class ConvertEmbeddedLookupFunc {
  public:
-  explicit ConvertEmbeddedLookupFunc(FuncOp func) : func_(func) {}
+  explicit ConvertEmbeddedLookupFunc(func::FuncOp func) : func_(func) {}
 
   void RewriteFunc() {
     func_->setAttr(kTFImplements,
@@ -160,18 +155,11 @@ class ConvertEmbeddedLookupFunc {
   }
 
  private:
-  FuncOp func_;
+  func::FuncOp func_;
 };
 
-// This pass uses mechanisms listed in RFC:
-// https://github.com/tensorflow/community/pull/113
-// It prepares composite functions that are attributed to indicate
-// a specific interface (LSTM, SVDF, Embedding lookup etc.) by replacing the
-// body with the corresponding fused TFLite op. The replacement need not always
-// be a fused op, though that is the primary use case.
 class PrepareCompositeFunctionsPass
-    : public PassWrapper<PrepareCompositeFunctionsPass,
-                         OperationPass<ModuleOp>> {
+    : public PrepareCompositeFunctionsPassBase<PrepareCompositeFunctionsPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TFL::TensorFlowLiteDialect>();
   }
@@ -181,25 +169,17 @@ class PrepareCompositeFunctionsPass
 
   explicit PrepareCompositeFunctionsPass() {}
 
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-prepare-composite-funcs-tf";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Prepares composite functions in Tensorflow dialect of MLIR";
-  }
-
  private:
   // TODO(b/160915525): Consolidate FuncAttr and StringAttr into one.
-  void ConvertTFImplements(FuncOp func, StringAttr attr);
-  void ConvertTFImplementsWithAttributes(FuncOp func, FuncAttr attr);
-  void ConvertTFAPIImplements(FuncOp func, StringAttr attr, ModuleOp module);
+  void ConvertTFImplements(func::FuncOp func, StringAttr attr);
+  void ConvertTFImplementsWithAttributes(func::FuncOp func, FuncAttr attr);
+  void ConvertTFAPIImplements(func::FuncOp func, StringAttr attr,
+                              ModuleOp module);
   void runOnOperation() override;
 };
 
-LogicalResult CheckFusableLayerNormalizedLstmCellSimple(FuncOp lstm_func) {
+LogicalResult CheckFusableLayerNormalizedLstmCellSimple(
+    func::FuncOp lstm_func) {
   for (int i = 0; i < 5; ++i) {
     auto input = lstm_func.getArgument(i);
     auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
@@ -214,7 +194,7 @@ LogicalResult CheckFusableLayerNormalizedLstmCellSimple(FuncOp lstm_func) {
   return success();
 }
 
-LogicalResult CheckFusableLstmCellSimple(FuncOp lstm_func) {
+LogicalResult CheckFusableLstmCellSimple(func::FuncOp lstm_func) {
   for (int i = 0; i < 4; ++i) {
     auto input = lstm_func.getArgument(i);
     auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
@@ -245,11 +225,11 @@ LogicalResult CheckOutputConsumer(
   return success();
 }
 
-LogicalResult CheckFusableKerasLstm(FuncOp lstm_func, ModuleOp module) {
-  for (auto func : module.getOps<FuncOp>()) {
+LogicalResult CheckFusableKerasLstm(func::FuncOp lstm_func, ModuleOp module) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     if (func == lstm_func) continue;
     auto result = func.walk([&](CallOpInterface op) {
-      if (dyn_cast<FuncOp>(op.resolveCallable()) == lstm_func) {
+      if (dyn_cast<func::FuncOp>(op.resolveCallable()) == lstm_func) {
         // Keras LSTM have 5 outputs.
         // We should make sure only the first or the second output are
         // consumed.
@@ -312,7 +292,7 @@ LogicalResult CheckFusableKerasLstm(FuncOp lstm_func, ModuleOp module) {
   return success();
 }
 
-void PrepareCompositeFunctionsPass::ConvertTFImplements(FuncOp func,
+void PrepareCompositeFunctionsPass::ConvertTFImplements(func::FuncOp func,
                                                         StringAttr attr) {
   if (attr.getValue() == "embedding_matmul") {
     // Convert the composite embedding_matmul function body to a
@@ -359,10 +339,10 @@ void PrepareCompositeFunctionsPass::ConvertTFImplements(FuncOp func,
 }
 
 void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
-    FuncOp func, FuncAttr attr) {
+    func::FuncOp func, FuncAttr attr) {
   StringRef api_name = attr.getName().getLeafReference().getValue();
   bool enable_fuse_tftext =
-      fuse_tftext_flag || IsTFTextRegistered(tensorflow::OpRegistry::Global());
+      tfl_fuse_tftext_ || IsTFTextRegistered(tensorflow::OpRegistry::Global());
   if (api_name.startswith(kTFTextAPIPrefix) && enable_fuse_tftext) {
     if (failed(ConvertTFTextAPI(func, api_name, attr))) {
       return signalPassFailure();
@@ -404,7 +384,7 @@ void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
   }
 }
 
-void PrepareCompositeFunctionsPass::ConvertTFAPIImplements(FuncOp func,
+void PrepareCompositeFunctionsPass::ConvertTFAPIImplements(func::FuncOp func,
                                                            StringAttr attr,
                                                            ModuleOp module) {
   // Keras lstm tf.api_implements usually has attribute like "lstm_abcde91...".
@@ -425,7 +405,7 @@ void PrepareCompositeFunctionsPass::ConvertTFAPIImplements(FuncOp func,
 
 void PrepareCompositeFunctionsPass::runOnOperation() {
   auto module = getOperation();
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     // We have three kinds of implements:
     // 1) tf._implements, with string attributes.
     // 2) tf._implements, with proto attributes.
@@ -457,8 +437,6 @@ void PrepareCompositeFunctionsPass::runOnOperation() {
 std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareCompositeFunctionsPass() {
   return std::make_unique<PrepareCompositeFunctionsPass>();
 }
-
-static PassRegistration<PrepareCompositeFunctionsPass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

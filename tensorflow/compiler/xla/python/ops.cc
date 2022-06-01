@@ -65,7 +65,9 @@ void BuildOpsSubmodule(py::module* m) {
   py::enum_<CustomCallApiVersion>(ops, "CustomCallApiVersion")
       .value("API_VERSION_ORIGINAL", CustomCallApiVersion::API_VERSION_ORIGINAL)
       .value("API_VERSION_STATUS_RETURNING",
-             CustomCallApiVersion::API_VERSION_STATUS_RETURNING);
+             CustomCallApiVersion::API_VERSION_STATUS_RETURNING)
+      .value("API_VERSION_STATUS_RETURNING_UNIFIED",
+             CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED);
 
   ops.def("AfterAll", &AfterAll, py::arg("builder"), py::arg("tokens"));
   ops.def("AllGather", &AllGather, py::arg("operand"),
@@ -276,6 +278,9 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("builder"), py::arg("parameter_number"), py::arg("shape"),
           py::arg("name") = "",
           py::arg("replicated_at_leaf_buffers") = std::vector<bool>());
+  ops.def("ProductOfElementaryHouseholderReflectors",
+          &ProductOfElementaryHouseholderReflectors, py::arg("a"),
+          py::arg("taus"));
   ops.def(
       "QR",
       [](XlaOp a, bool full_matrices) -> StatusOr<std::pair<XlaOp, XlaOp>> {
@@ -284,6 +289,13 @@ void BuildOpsSubmodule(py::module* m) {
         return std::make_pair(q, r);
       },
       py::arg("operand"), py::arg("full_matrices"));
+  ops.def(
+      "QrDecomposition",
+      [](XlaOp a) -> StatusOr<std::pair<XlaOp, XlaOp>> {
+        QrDecomposition d = Qr(a);
+        return std::make_pair(d.q_and_r, d.taus);
+      },
+      py::arg("operand"));
   ops.def("Reduce",
           static_cast<XlaOp (*)(XlaBuilder*, absl::Span<const XlaOp>,
                                 absl::Span<const XlaOp>, const XlaComputation&,
@@ -332,9 +344,22 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("shape"));
   ops.def("RngUniform", &RngUniform, py::arg("a"), py::arg("b"),
           py::arg("shape"));
-  ops.def("Scatter", &Scatter, py::arg("input"), py::arg("scatter_indices"),
-          py::arg("updates"), py::arg("update_computation"),
-          py::arg("dimension_numbers"), py::arg("indices_are_sorted") = false,
+  ops.def("Scatter",
+          static_cast<XlaOp (*)(XlaOp, XlaOp, XlaOp, const XlaComputation&,
+                                const ScatterDimensionNumbers&, bool, bool)>(
+              &Scatter),
+          py::arg("input"), py::arg("scatter_indices"), py::arg("updates"),
+          py::arg("update_computation"), py::arg("dimension_numbers"),
+          py::arg("indices_are_sorted") = false,
+          py::arg("unique_indices") = false);
+  ops.def("Scatter",
+          static_cast<XlaOp (*)(absl::Span<const XlaOp>, XlaOp,
+                                absl::Span<const XlaOp>, const XlaComputation&,
+                                const ScatterDimensionNumbers&, bool, bool)>(
+              &Scatter),
+          py::arg("inputs"), py::arg("scatter_indices"), py::arg("updates"),
+          py::arg("update_computation"), py::arg("dimension_numbers"),
+          py::arg("indices_are_sorted") = false,
           py::arg("unique_indices") = false);
   ops.def("Select", &Select, py::arg("pred"), py::arg("on_true"),
           py::arg("on_false"));

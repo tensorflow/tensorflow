@@ -70,7 +70,7 @@ Status FunctionDefToBodyHelper(
 
   *fbody = absl::make_unique<FunctionBody>(fdef, result.arg_types,
                                            result.ret_types, graph.release());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FunctionDefToBodyHelper(const FunctionDef& fdef, const AttrSlice& attrs,

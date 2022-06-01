@@ -87,8 +87,10 @@ StatusOr<std::unique_ptr<RequestInfo>> SetUpRequestContext(
   // Create request context and prepare deadline tracker.
   // TODO(tfrt-devs): Consider using an ID unique within each model to reduce
   // contention.
+  int64_t request_id = work_queue->id();
+  if (request_id == 0) request_id = tfrt::GetUniqueInt();
   tfrt::RequestContextBuilder request_context_builder(host, resource_context,
-                                                      tfrt::GetUniqueInt());
+                                                      request_id);
 
   // TODO(b/198671794): `intra_op_threadpool` should be passed through Run()
   // directly.
@@ -295,6 +297,7 @@ StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
   TfrtGraphExecutionState::Options graph_execution_state_options;
   graph_execution_state_options.run_placer_grappler_on_functions =
       options.run_placer_grappler_on_functions;
+  graph_execution_state_options.enable_tfrt_gpu = options.enable_tfrt_gpu;
 
   TF_ASSIGN_OR_RETURN(
       auto graph_execution_state,
@@ -405,7 +408,7 @@ tensorflow::Status GraphExecutor::Run(
     ++flat_output_iter;
   }
 
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 tensorflow::Status GraphExecutor::Extend(const GraphDef& graph) {
@@ -491,7 +494,7 @@ tensorflow::Status GraphExecutor::InitBef(
   TF_RETURN_IF_ERROR(
       RunRuntimeInitializer(exec_ctx, bef_file, "_tfrt_resource_init"));
 
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::reference_wrapper<const GraphExecutor::LoadedClientGraph>>

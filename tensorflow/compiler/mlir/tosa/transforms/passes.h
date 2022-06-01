@@ -29,20 +29,20 @@ namespace tosa {
 void populateLegalizeTFPatterns(MLIRContext* ctx, RewritePatternSet& patterns);
 void populateLegalizeTFLPatterns(MLIRContext* ctx, RewritePatternSet& patterns);
 
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass();
-std::unique_ptr<OperationPass<FuncOp>> createFuseBiasTFPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createFuseBiasTFPass();
 
 // `disabledPatterns` is a set of labels used to filter out input patterns with
 // a debug label or debug name in this set.
 // `enabledPatterns` is a set of labels used to filter out input patterns that
 //  do not have one of the labels in this set.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFLPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFLPass(
     ArrayRef<std::string> disabled_patterns = llvm::None,
     ArrayRef<std::string> enabled_patterns = llvm::None);
 
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFTFLPass();
-std::unique_ptr<OperationPass<FuncOp>> createConvertTFLUint8Pass();
-std::unique_ptr<OperationPass<FuncOp>> createStripQuantTypesPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFTFLPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createConvertTFLUint8Pass();
+std::unique_ptr<OperationPass<func::FuncOp>> createStripQuantTypesPass();
 
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"

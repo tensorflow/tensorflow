@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef HLO_OPS_BASE
 #define HLO_OPS_BASE
 
+include "mlir/Dialect/Quant/QuantOpsBase.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/OpBase.td"
 
@@ -36,11 +38,55 @@ def HLO_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
 
 // TODO(hinsu): Use signed integers instead of signless integer which is being
 // used for legacy reasons.
-def HLO_SInt : SignlessIntOfWidths<[8, 16, 32, 64]>;
-def HLO_UInt : UnsignedIntOfWidths<[8, 16, 32, 64]>;
+def HLO_SInt : SignlessIntOfWidths<[4, 8, 16, 32, 64]>;
+def HLO_UInt : UnsignedIntOfWidths<[4, 8, 16, 32, 64]>;
 def HLO_Int : AnyTypeOf<[HLO_SInt, HLO_UInt]>;
 
 def HLO_Complex : Complex<AnyTypeOf<[F32, F64]>>;
+
+//===----------------------------------------------------------------------===//
+// Quantized element type definitions.
+//===----------------------------------------------------------------------===//
+
+// TODO(b/230381284): Upstream width-specific uniform quantized element types.
+class UniformQuantizedSignedInt<int width>
+  : Type<And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedType>()">,
+              CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
+                    ".getStorageTypeIntegralWidth() == " # width>,
+              CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
+                    ".isSigned()">]>,
+    "QI" # width # " type"> {
+  string name = "UniformQuantizedSignedInt";
+  int bitwidth = width;
+}
+
+class UniformQuantizedUnsignedInt<int width>
+  : Type<And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedType>()">,
+              CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
+                    ".getStorageTypeIntegralWidth() == " # width>,
+              CPred<"!$_self.cast<mlir::quant::UniformQuantizedType>()" #
+                    ".isSigned()">]>,
+    "QUI" # width # " type"> {
+  string name = "UniformQuantizedUnsignedInt";
+  int bitwidth = width;
+}
+
+class UniformQuantizedSignedIntOfWidths<list<int> widths> :
+    AnyTypeOf<!foreach(w, widths, UniformQuantizedSignedInt<w>),
+              !interleave(widths, "/") # "-bit uniform quantized signed " #
+              "integer">;
+
+class UniformQuantizedUnsignedIntOfWidths<list<int> widths> :
+    AnyTypeOf<!foreach(w, widths, UniformQuantizedUnsignedInt<w>),
+              !interleave(widths, "/") # "-bit uniform quantized unsigned " #
+              "integer">;
+
+// Integer-based uniform quantized types. The definitions can be used to specify
+// operand's tensor types.
+def HLO_QuantizedSignedInt : UniformQuantizedSignedIntOfWidths<[4, 8, 16, 32]>;
+def HLO_QuantizedUnsignedInt : UniformQuantizedUnsignedIntOfWidths<[4, 8, 16, 32]>;
+def HLO_QuantizedInt :
+    AnyTypeOf<[HLO_QuantizedSignedInt, HLO_QuantizedUnsignedInt]>;
 
 // The broadcasting dimensions correspond to a tuple that describes how a
 // smaller rank shape is broadcast into a larger rank shape. For example,
@@ -64,9 +110,12 @@ def HLO_ScalarIntTensor : 0DTensorOf<[HLO_Int]>;
 // Any floating-point tensor types
 def HLO_FpTensor : TensorOf<[AnyFloat]>;
 
+// Any quantized integer tensor types
+def HLO_QuantizedIntTensor : TensorOf<[HLO_QuantizedInt]>;
+
 def HLO_PredTensor : TensorOf<[HLO_Pred]>;
 
-def HLO_Tensor : TensorOf<[AnyFloat, HLO_Pred, HLO_Int, HLO_Complex]>;
+def HLO_Tensor : TensorOf<[AnyFloat, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt]>;
 
 def HLO_ComplexTensor : TensorOf<[HLO_Complex]>;
 
@@ -78,7 +127,7 @@ def HLO_TensorOrToken : AnyTypeOf<[HLO_Tensor, HLO_Token]>;
 
 def HLO_TensorOrTokenOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Token, HLO_Tuple]>;
 
-def HLO_DimensionValue : AnyTypeOf<[Index, HLO_Pred, HLO_Int]>;
+def HLO_DimensionValue : AnyTypeOf<[Index, HLO_Int]>;
 
 // Dynamic representation of a shape vector as a tensor.
 def HLO_DimensionTensor : 1DTensorOf<[HLO_DimensionValue]>;
@@ -86,7 +135,7 @@ def HLO_DimensionTensor : 1DTensorOf<[HLO_DimensionValue]>;
 // In general, static shaped tensor constraints should be avoided unless
 // it is for a legacy op which is only correct with static shapes.
 def HLO_StaticShapeTensor : StaticShapeTensorOf<[
-      AnyFloat, HLO_Pred, HLO_Int, HLO_Complex]>;
+      AnyFloat, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt]>;
 
 //===----------------------------------------------------------------------===//
 // MHLO on tensors combined type definitions.
@@ -154,13 +203,13 @@ def ConvolutionAttributes {
   dag attributes = (ins
     // Default value: one for each of the spatial dimension.
     OptionalAttr<I64ElementsAttr>:$window_strides,
-    // Default value: zero for each of the spatial dimension.
+    // Default value: two zeros for each of the spatial dimension.
     OptionalAttr<I64ElementsAttr>:$padding,
     // Default value: one for each of the spatial dimension.
     OptionalAttr<I64ElementsAttr>:$lhs_dilation,
     // Default value: one for each of the spatial dimension.
     OptionalAttr<I64ElementsAttr>:$rhs_dilation,
-    // Default value: one for each of the spatial dimension.
+    // Default value: false for each of the spatial dimension.
     OptionalAttr<BoolElementsAttr>:$window_reversal,
     ConvDimensionNumbers:$dimension_numbers,
     I64Attr:$feature_group_count,
@@ -187,5 +236,17 @@ def HLO_BroadcastingElementwise : HLO_NativeOpTrait<"BroadcastingElementwise">;
 // TODO(b/195086460) Promote this to be an mlir trait and remove it here.
 def HLO_PairwiseSameOperandAndResultType :
   HLO_NativeOpTrait<"PairwiseSameOperandAndResultType">;
+
+// Op has operand and result types compatible with each other according to
+// the rules implemented in isCompatibleForMhloTypeInference, which account for
+// special properties dynamism, quantization and sparsity.
+def HLO_CompatibleOperandsAndResultType : TraitList<
+  // TODO(b/231358795): Review the use of InferTypeOpInterface for ops that
+  // support quantization or sparsity.
+  [
+    InferTypeOpInterface,
+    DeclareOpInterfaceMethods<InferShapedTypeOpInterface, ["inferReturnTypeComponents"]>,
+    HLO_NativeOpTrait<"CompatibleOperandsAndResultType">
+  ]>;
 
 #endif // HLO_OPS_BASE

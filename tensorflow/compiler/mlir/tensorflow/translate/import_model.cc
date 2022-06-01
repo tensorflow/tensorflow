@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
+#include "absl/synchronization/mutex.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -111,11 +113,13 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/crash_analysis.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -132,6 +136,8 @@ static inline absl::string_view StringRefToView(llvm::StringRef ref) {
 }
 
 namespace tensorflow {
+
+constexpr size_t kNumThreadToConvertSignatures = 10;
 
 const char kImportModelDefaultGraphFuncName[] = "main";
 const char kOutputShapesAttrName[] = "_output_shapes";
@@ -497,7 +503,7 @@ Status UpdateLegacyFedInputNode(const GraphDef& graph_def,
   auto it = inputs.find(node_name);
 
   // Node is not an input.
-  if (it == inputs.end()) return Status::OK();
+  if (it == inputs.end()) return OkStatus();
 
   if (HasNonPrimaryOutputInUse(graph_def, node_name)) {
     return errors::InvalidArgument(
@@ -518,7 +524,7 @@ Status UpdateLegacyFedInputNode(const GraphDef& graph_def,
   node->clear_input();
   AddNodeAttr("dtype", dtype, node);
   AddNodeAttr("shape", it->second.shape, node);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Preprocesses GraphDef before it can be converted to Graph by,
@@ -544,7 +550,7 @@ Status PreprocessGraphDef(const GraphImportConfig* specs, GraphDef* graph_def) {
     }
     ::tensorflow::AddDefaultsToNodeDef(op_reg_data->op_def, &node_def);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Mapping from node name to feed (index and ArrayInfo). Node name must outlive
@@ -660,7 +666,7 @@ Status ImporterBase::ConvertDeferredFunctions() {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ImporterBase::RemoveBackedges() {
@@ -687,7 +693,7 @@ Status ImporterBase::RemoveBackedges() {
   GetReversePostOrder(
       *graph_, &ordered_nodes_,
       [](const Node* n1, const Node* n2) { return n1->name() < n2->name(); });
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CopyStackTraces(const Graph& from, Graph* to) {
@@ -713,7 +719,7 @@ Status CopyStackTraces(const Graph& from, Graph* to) {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::pair<Node*, bool>> ImporterBase::CreatePlaceholderNodeForFeed(
@@ -776,7 +782,7 @@ Status ImporterBase::GetInputOutputNodes(
           absl::StrCat("Graph does not contain node: ", name));
     }
     nodes->insert(it->second);
-    return Status::OK();
+    return OkStatus();
   };
 
   // Remap feeds and fetches to newly created Placeholder nodes.
@@ -803,7 +809,7 @@ Status ImporterBase::GetInputOutputNodes(
   for (const auto& control_output : specs_.control_outputs)
     TF_RETURN_IF_ERROR(add_node(control_output));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // TODO(jpienaar): Remove this post shape inference on import flag is removed.
@@ -902,7 +908,7 @@ Status ImporterBase::AddNodesToShapeRefiner(
                      << kOutputShapesAttrName
                      << " attribute specifies shapes for " << list.shape_size()
                      << " outputs";
-        return Status::OK();
+        return OkStatus();
       }
 
       for (auto shape : llvm::enumerate(list.shape())) {
@@ -915,7 +921,7 @@ Status ImporterBase::AddNodesToShapeRefiner(
         }
         node_context->set_output(shape.index(), handle);
       }
-      return Status::OK();
+      return OkStatus();
     };
 
     // If it is the argument node, the shape handle is set explicitly, so it
@@ -1037,7 +1043,7 @@ Status ImporterBase::AddNodesToShapeRefiner(
   }
   VLOG(1) << "Graph shapes were inferred with " << (i - 1)
           << " extra rounds of analysis to reach a fixpoint.";
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<mlir::Type> ImporterBase::InferInputType(const Node& node, int idx,
@@ -1300,7 +1306,7 @@ Status ImporterBase::ConvertFunctionCallAttribute(const std::string& base_name,
                                                   NamedAttrList* attributes) {
   TF_ASSIGN_OR_RETURN(auto func_attr,
                       ConvertFunctionCallName(value.func().name()));
-  if (!func_attr) return Status::OK();
+  if (!func_attr) return OkStatus();
   attributes->push_back(builder_.getNamedAttr(base_name, func_attr));
 
   for (const auto& it : value.func().attr()) {
@@ -1308,7 +1314,7 @@ Status ImporterBase::ConvertFunctionCallAttribute(const std::string& base_name,
     TF_ASSIGN_OR_RETURN(auto value, ConvertAttributeValue(it.second));
     attributes->push_back(builder_.getNamedAttr(name, value));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<mlir::FlatSymbolRefAttr> ImporterBase::ConvertFunctionCallName(
@@ -1380,7 +1386,7 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
   // done.
   if (tf_name_to_mlir_name_->find(std::string(func_name)) !=
       tf_name_to_mlir_name_->end())
-    return Status::OK();
+    return OkStatus();
 
   std::string mlir_func_name(
       function_name_uniquifier_->GetUniqueName(func_name));
@@ -1427,7 +1433,7 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
   }
 
   deferred_functions_.emplace(func_name.str(), attributes);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ImporterBase::PruneUnreachableNodes(
@@ -1444,7 +1450,7 @@ Status ImporterBase::PruneUnreachableNodes(
   } else {
     VLOG(1) << "No output nodes specified, skipping pruning";
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ImporterBase::ConvertFeedsToPlaceholders(
@@ -1493,7 +1499,7 @@ Status ImporterBase::ConvertFeedsToPlaceholders(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ImporterBase::PrepareConvert(const Graph& graph,
@@ -1537,7 +1543,7 @@ Status ImporterBase::PrepareConvert(const Graph& graph,
         [](const Node* n1, const Node* n2) { return n1->name() < n2->name(); });
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ImporterBase::Convert(
@@ -1591,7 +1597,7 @@ Status ImporterBase::Convert(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ImporterBase::ConvertFunctionArgAndRets(
@@ -1628,7 +1634,7 @@ Status ImporterBase::ConvertFunctionArgAndRets(
         ret_attrs[index].set(dialect_attribute, converted_attr);
       }
     }
-    return Status::OK();
+    return OkStatus();
   };
 
   auto* bb = &func.front();
@@ -1722,7 +1728,7 @@ Status ImporterBase::ConvertFunctionArgAndRets(
         return list.getDictionary(context_);
       })));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 mlir::Location ImporterBase::GetLocation(const Node& node) {
@@ -2013,7 +2019,7 @@ Status ImporterBase::ConvertNode(const Node& node) {
   if (!node.IsOp()) {
     // Don't import the pseudo-nodes _SOURCE or _SINK. These are added by
     // Graph and don't exist in GraphDef.
-    return Status::OK();
+    return OkStatus();
   }
 
   // If it is a custom OP, its definition should be found in the library. We
@@ -2201,7 +2207,7 @@ Status ImporterBase::ConvertNode(const Node& node) {
   // Register the mapping between the TF node and the newly created operation.
   node_values_[node.id()] =
       CreateOperation(node, node_type_name, result, control_operands);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Add the backedges to the CFG. Given a backedge, we replace the original
@@ -2227,7 +2233,7 @@ Status ImporterBase::AddBackedges() {
     auto* dst = node_values_[edge.dst->id()];
     TF_RETURN_IF_ERROR(AddBackedge(sink, dst, edge.dst_input));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ImporterBase::AddBackedge(mlir::Operation* sink, mlir::Operation* dst,
@@ -2263,7 +2269,7 @@ Status ImporterBase::AddBackedge(mlir::Operation* sink, mlir::Operation* dst,
   }
   dst->dropAllReferences();
   dst->erase();
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<mlir::FunctionType> ImporterBase::InferLibFunctionType(
@@ -2516,6 +2522,9 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
                           : mlir::func::FuncOp::Visibility::Private;
     function.setVisibility(visibility);
   }
+  VLOG(1) << "Imported: "
+          << tensorflow::DumpMlirOpToFile("tf_mlir_imported_base",
+                                          module.get());
   return module;
 }
 
@@ -2596,8 +2605,31 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
         return errors::InvalidArgument("Input ", i, "has invalid data type");
       }
     }
-    TF_RETURN_IF_ERROR(
-        ::tensorflow::ConvertDataType(imported_dtype, builder, &element_type));
+    // Check if we have subtypes first
+    if (!node_info.subtypes.empty()) {
+      std::vector<mlir::TensorType> subtypes;
+      for (const auto& st : node_info.subtypes) {
+        mlir::Type st_data_type;
+        llvm::SmallVector<int64_t> shape;
+        TF_RETURN_IF_ERROR(ConvertToMlirShape(st.shape, &shape));
+        TF_RETURN_IF_ERROR(
+            ConvertDataType(st.imported_dtype, builder, &st_data_type));
+        subtypes.push_back(mlir::RankedTensorType::get(shape, st_data_type));
+      }
+      if (imported_dtype == DT_RESOURCE) {
+        element_type =
+            mlir::TF::ResourceType::get(subtypes, builder.getContext());
+      } else if (imported_dtype == DT_VARIANT) {
+        element_type =
+            mlir::TF::VariantType::get(subtypes, builder.getContext());
+      } else {
+        return errors::InvalidArgument(DataType_Name(imported_dtype),
+                                       " takes no subtypes.");
+      }
+    } else {
+      TF_RETURN_IF_ERROR(
+          ConvertDataType(imported_dtype, builder, &element_type));
+    }
     if (node_info.shape.unknown_rank()) {
       arg_types.push_back(mlir::UnrankedTensorType::get(element_type));
     } else {
@@ -2651,7 +2683,7 @@ GraphDefImporter::GetArgsRetsAndTypesFromFunctionGraph(
                                      (*nodes)[index].node->name(), "'");
     (*nodes)[index] = {node, 0};
 
-    return Status::OK();
+    return OkStatus();
   };
 
   // Collect arg and ret nodes from graph.
@@ -2695,7 +2727,7 @@ GraphDefImporter::GetArgsRetsAndTypesFromFunctionGraph(
 Status GraphDefImporter::GetControlRetsFromGraph(
     llvm::ArrayRef<std::string> control_outputs,
     absl::InlinedVector<Node*, 4>* control_ret_nodes) {
-  if (control_outputs.empty()) return Status::OK();
+  if (control_outputs.empty()) return OkStatus();
 
   llvm::SmallDenseMap<llvm::StringRef, int32_t> controls_to_idx;
   for (auto control_and_idx : llvm::enumerate(control_outputs))
@@ -2716,7 +2748,7 @@ Status GraphDefImporter::GetControlRetsFromGraph(
       return errors::InvalidArgument(
           "Control output '", std::get<1>(node_and_name), "' is missing");
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Stateful helper class to import a TensorFlow model expressed in SavedModel
@@ -2997,7 +3029,7 @@ Status DiagnoseMultipleConcreteFunctions(const SavedObjectGraph& object_graph,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Recursively traverses a StructuredValue, linearizing all the leaves.
@@ -3295,7 +3327,7 @@ Status CreateSavedModelIR(
           const TrackableObjectGraph::TrackableObject& trackable_object) {
         restored_objects.insert(
             std::make_pair(saved_node_id, &trackable_object));
-        return Status::OK();
+        return OkStatus();
       }));
 
   for (int node_id = 0; node_id < object_graph.nodes_size(); node_id++) {
@@ -3472,7 +3504,7 @@ Status CreateSavedModelIR(
   module->setAttr("tf_saved_model.semantics", builder.getUnitAttr());
   SortSavedModelModule(module);
   MarkSavedModelFunctionVisibility(module);
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
@@ -3734,7 +3766,8 @@ class SavedModelSignatureDefImporterLite {
   absl::flat_hash_set<std::string> original_func_tf_names_;
   absl::optional<absl::Span<const std::string>> exported_names_;
   mlir::OwningOpRef<mlir::ModuleOp> module_;
-  mlir::SymbolTable symbol_table_;
+  absl::Mutex symbol_table_mu_;
+  mlir::SymbolTable symbol_table_ ABSL_GUARDED_BY(symbol_table_mu_);
   bool import_restore_ = true;
   bool unconditionally_use_set_output_shapes_ = false;
 };
@@ -3802,11 +3835,12 @@ Status SavedModelSignatureDefImporterLite::MoveConvertedFunctionsToModule(
 
   // Copy all functions used by this signature to the final MLIR module.
   for (auto func : sub_module.getOps<mlir::func::FuncOp>()) {
+    absl::MutexLock l(&symbol_table_mu_);
     // The insert here is a NO-OP if the function already exists.
     symbol_table_.insert(func.clone());
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SavedModelSignatureDefImporterLite::ConvertInitializer(
@@ -3984,22 +4018,38 @@ SavedModelSignatureDefImporterLite::ConvertSignatures() {
     exported_name_set.insert(exported_names_->begin(), exported_names_->end());
   }
 
-  for (const auto& key_and_signature_def : signatures) {
-    const std::string& sig_def_key = key_and_signature_def.first;
-    const SignatureDef& signature_def = key_and_signature_def.second;
+  absl::Mutex error_status_mu;  // Needed since `error_status` is non-atomic.
+  tensorflow::Status error_status;
+  {
+    // Start a threadpool to convert signatures, since signature conversion can
+    // be time consuming especially for large models. Threadpool destructor
+    // blocks until all work is done.
+    thread::ThreadPool thread_pool(Env::Default(), "ConvertSignatures",
+                                   kNumThreadToConvertSignatures);
+    for (const auto& key_and_signature_def : signatures) {
+      const std::string& sig_def_key = key_and_signature_def.first;
+      const SignatureDef& signature_def = key_and_signature_def.second;
 
-    // It is safe to skip "__saved_model_init_op" since it is an internal
-    // signature that is not user-accessible. This signature will be handled in
-    // ConvertInitializer().
-    if (sig_def_key == "__saved_model_init_op") {
-      continue;
-    }
-    if (!import_all_signatures && exported_name_set.count(sig_def_key) == 0) {
-      continue;
-    }
+      // It is safe to skip "__saved_model_init_op" since it is an internal
+      // signature that is not user-accessible. This signature will be handled
+      // in ConvertInitializer().
+      if (sig_def_key == "__saved_model_init_op") {
+        continue;
+      }
+      if (!import_all_signatures && exported_name_set.count(sig_def_key) == 0) {
+        continue;
+      }
 
-    TF_RETURN_IF_ERROR(ConvertSignature(sig_def_key, signature_def));
+      thread_pool.Schedule([&]() {
+        auto status = ConvertSignature(sig_def_key, signature_def);
+        if (!status.ok()) {
+          absl::MutexLock l(&error_status_mu);
+          error_status = std::move(status);
+        }
+      });
+    }
   }
+  TF_RETURN_IF_ERROR(error_status);
 
   TF_ASSIGN_OR_RETURN(auto assets, ConvertAssets());
 
@@ -4144,7 +4194,7 @@ Status SavedModelSignatureDefImporter::LiftVariables(
     return diag_handler.Combine(
         errors::Internal("Failed to dedup bound inputs."));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

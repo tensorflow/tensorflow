@@ -185,8 +185,8 @@ class MlirHloBuilder : public XlaBuilder {
       absl::Span<const int64_t> slice_sizes, bool indices_are_sorted) override;
 
   StatusOr<XlaOp> ScatterInternal(
-      const Shape& shape, XlaOp input, XlaOp scatter_indices, XlaOp updates,
-      const XlaComputation& update_computation,
+      const Shape& shape, absl::Span<const XlaOp> inputs, XlaOp scatter_indices,
+      absl::Span<const XlaOp> updates, const XlaComputation& update_computation,
       const ScatterDimensionNumbers& dimension_numbers, bool indices_are_sorted,
       bool unique_indices) override;
 

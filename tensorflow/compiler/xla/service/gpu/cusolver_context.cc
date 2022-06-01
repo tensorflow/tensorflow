@@ -132,7 +132,7 @@ cublasFillMode_t GpuBlasUpperLower(se::blas::UpperLower uplo) {
 Status ConvertStatus(cusolverStatus_t status) {
   switch (status) {
     case CUSOLVER_STATUS_SUCCESS:
-      return Status::OK();
+      return ::tensorflow::OkStatus();
     case CUSOLVER_STATUS_NOT_INITIALIZED:
       return FailedPrecondition("cuSolver has not been initialized");
     case CUSOLVER_STATUS_ALLOC_FAILED:

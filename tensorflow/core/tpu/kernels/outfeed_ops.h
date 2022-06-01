@@ -64,7 +64,7 @@ class TpuOutfeedDequeueOp : public T {
 
     VLOG(1) << "TransferLiteralFromOutfeed complete.";
 
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -116,7 +116,7 @@ class TpuOutfeedDequeueTupleOp : public T {
       TF_RETURN_IF_ERROR(
           T::transfer_op_->TransferLiteralFromOutfeed(device_ordinal, literal));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

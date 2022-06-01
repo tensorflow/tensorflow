@@ -233,7 +233,7 @@ void ClusterFormationPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateClusterFormationPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateClusterFormationPass() {
   return std::make_unique<ClusterFormationPass>();
 }
 

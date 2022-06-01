@@ -47,6 +47,7 @@ wll be replaced by `_tpu_replicate="cluster"` as follows,
 %control = tf_executor.island wraps "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster", allow_soft_placement = false, computation_shape = [], device = "", device_assignment = [], host_compute_core = [], name = "TPUReplicateMetadata", num_cores_per_replica = 1 : i64, num_replicas = 1 : i64, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", use_tpu = true, use_spmd_for_xla_partitioning = false} : () -> ()
 ```
 ### `-tf-data-optimization`: Performs tf.data optimizations
+### `-tf-device-assignment-by-func-attr`: Device assignment in TF dialect using the device specified in the function attribute.
 ### `-tf-device-cluster-formation`: Form clusters from instructions assigned to same device
 Clusters operations with the same device assignment id. For each
 cluster, creates a "tf_device.device_launch" op with a Region containing the
@@ -175,11 +176,11 @@ This pass analyzes the inputs and outputs to device cluster and marks those
 input-output pairs as aliases (using `tf.aliasing_output` attribute) which read
 and write to the same resource. This aliasing information can then be propagated
 to XLA compiler for input/output buffer space optimizations.
-### `-tf-drop-while-shape-invariant`: Drop `shape_invariant` attrbute from While/WhileRegion ops.
+### `-tf-drop-while-shape-invariant`: Drop `shape_invariant` attribute from While/WhileRegion ops.
 Drop `shape_invariant` attribute from tf.While and tf.WhileRegion op. This
 would allow shape inference pass to further refine operand/result shapes of
 these ops. This is only safe to do when compiling to XLA.
-### `-tf-drop-while-shape-invariant-in-device-cluster`: Drop `shape_invariant` attrbute from While/WhileRegion ops inside device cluster.
+### `-tf-drop-while-shape-invariant-in-device-cluster`: Drop `shape_invariant` attribute from While/WhileRegion ops inside device cluster.
 Drop `shape_invariant` attribute from tf.While and tf.WhileRegion op only
 inside device cluster. This would allow shape inference pass to further
 refine operand/result shapes of these ops. This is only safe to do when
@@ -489,7 +490,7 @@ a single value from first replica.
 
 The benefit of this optimization is reduced memory requirement on host. For
 multiple writes (one from each replica) to such variables, the host would
-allocate buffer space to recieve the device output from all replicas, which is
+allocate buffer space to receive the device output from all replicas, which is
 not required. We can use the output of first replica in such cases.
 ### `-tf-init-text-file-to-import`: convert InitializeTableFromTextFileV2 ops to LookupTableImportV2Op to remove the dependency on asset files
 
@@ -1429,7 +1430,7 @@ For example, given the following `cluster_func` wrapping `func`:
   }
 ```
 
-Now, cluster_func recieves the following `*_sharding_configuration`
+Now, cluster_func receives the following `*_sharding_configuration`
 attributes, and `func` receives the mhlo.sharding attribute:
 
 ```mlir

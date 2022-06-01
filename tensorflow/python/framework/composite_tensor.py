@@ -118,3 +118,13 @@ def replace_composites_with_components(structure):
 # @TODO(edloper): Can we replace convert_to_tensor_or_xyz with just
 # convert_to_tensor_or_composite?  Alternatively, should composite tensors
 # register a dispatch override for tf.convert_to_tensor?
+
+# Note about the internal encoding of composite tensors when they are "lowered"
+# from Python objects to tensors. The usual encoding is "component encoding"
+# which uses the dense tensors that represent a composite tensor.
+# A second encoding, "batchable tensor list encoding", is used by datasets
+# and map_fn which in addition to supporting batching also can use ops
+# for encoding and decoding, e.g. for encoding/decoding to/from a
+# single variant that represents a composite tensor. Some internal properties
+# for type specs for composite tensors use `flat` as a nickname for
+# "batchable tensor list encoding". (e.g. `flat_tensor_specs`).

@@ -31,7 +31,7 @@ Status ParseUnicodeEncoding(const string& str, UnicodeEncoding* encoding) {
         strings::StrCat("Invalid encoding \"", str,
                         "\": Should be one of: UTF-8, UTF-16-BE, UTF-32-BE"));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Sets unit value based on str.
@@ -44,7 +44,7 @@ Status ParseCharUnit(const string& str, CharUnit* unit) {
     return errors::InvalidArgument(strings::StrCat(
         "Invalid unit \"", str, "\": Should be one of: BYTE, UTF8_CHAR"));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Return the number of Unicode characters in a UTF-8 string.

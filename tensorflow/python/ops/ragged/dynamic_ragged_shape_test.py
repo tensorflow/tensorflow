@@ -328,6 +328,27 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
       DynamicRaggedShape.from_lengths(
           lengths, num_row_partitions=num_row_partitions)
 
+  def testGetItemSliceRankUnknownA(self):
+    if not context.executing_eagerly():
+      original_t = array_ops.placeholder_with_default(np.array([4, 5, 3]), None)
+      sh = DynamicRaggedShape.from_tensor(original_t)
+      known = sh[:1]
+      self.assertIsNone(known.rank)
+
+  def testGetItemSliceRankUnknownLong(self):
+    if not context.executing_eagerly():
+      original_t = array_ops.placeholder_with_default(np.array([4, 5, 3]), None)
+      sh = DynamicRaggedShape.from_tensor(original_t)
+      unknown = sh[:20]
+      self.assertIsNone(unknown.rank)
+
+  def testGetItemSliceRankKnownLong(self):
+    if not context.executing_eagerly():
+      original_t = constant_op.constant([4, 5, 3], dtypes.float32)
+      sh = DynamicRaggedShape.from_tensor(original_t)
+      unknown = sh[:20]
+      self.assertEqual(unknown.rank, 1)
+
   def testGetBroadcaster(self):
     origin_shape = DynamicRaggedShape(
         [RowPartition.from_uniform_row_length(1, 3)], inner_shape=[3])
@@ -1035,6 +1056,23 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
     ]
     inner_shape = [3]
     rts = DynamicRaggedShape(row_partitions, inner_shape, validate=True)
+    static_inner_shape = tensor_util.constant_value(rts.inner_shape)
+    static_valid_rowids0 = tensor_util.constant_value(
+        rts.row_partitions[0].value_rowids())
+    static_valid_rowids1 = tensor_util.constant_value(
+        rts.row_partitions[1].value_rowids())
+    self.assertAllEqual(static_inner_shape, [3])
+    self.assertAllEqual(static_valid_rowids0, [0, 2, 4])
+    self.assertAllEqual(static_valid_rowids1, [0, 1, 2])
+
+  def testConstructorWithStaticInnerShape(self):
+    row_partitions = [
+        RowPartition.from_value_rowids([0, 2, 4], nrows=5),
+        RowPartition.from_value_rowids([0, 1, 2], nrows=3)
+    ]
+    inner_shape = [3]
+    rts = DynamicRaggedShape(row_partitions, inner_shape, validate=True,
+                             static_inner_shape=[3])
     static_inner_shape = tensor_util.constant_value(rts.inner_shape)
     static_valid_rowids0 = tensor_util.constant_value(
         rts.row_partitions[0].value_rowids())
@@ -2064,6 +2102,54 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
     result = shape._with_num_row_partitions(2)
     self.assertEqual(result.dtype, dtypes.int32)
 
+  def test_merge_with(self):
+    original = DynamicRaggedShape.from_lengths([2, (3, 5), 6])
+    result = original._merge_with(original)
+    self.assertShapeEq(result, original)
+
+  def test_merge_with_spec(self):
+    original = DynamicRaggedShape.from_lengths([2, (3, 5), 6],
+                                               dtype=dtypes.int64)
+    spec = DynamicRaggedShape.Spec(
+        row_partitions=[
+            RowPartitionSpec(nrows=2,
+                             nvals=8,
+                             dtype=dtypes.int64)
+        ],
+        static_inner_shape=tensor_shape.TensorShape([8, 6]),
+        dtype=dtypes.int64)
+    result = original._merge_with_spec(spec)
+    self.assertShapeEq(result, original)
+
+  def test_merge_with_spec_raises(self):
+    original = DynamicRaggedShape.from_lengths([2, (3, 5), 6],
+                                               dtype=dtypes.int64)
+    spec = DynamicRaggedShape.Spec(
+        row_partitions=[
+            RowPartitionSpec(nrows=2,
+                             nvals=8,
+                             dtype=dtypes.int32)
+        ],
+        static_inner_shape=tensor_shape.TensorShape([8, 6]),
+        dtype=dtypes.int32)
+    with self.assertRaisesRegex(
+        ValueError,
+        'RowPartition and RowPartitionSpec are not compatible'):
+      original._merge_with_spec(spec)
+
+  def test_merge_with_spec_uniform(self):
+    original = DynamicRaggedShape.from_lengths(
+        [2, (4, 4), 6], dtype=dtypes.int64)
+    spec = DynamicRaggedShape.Spec._from_tensor_shape(
+        tensor_shape.TensorShape([2, 4, 6]),
+        num_row_partitions=0,
+        dtype=dtypes.int64)
+    result = original._merge_with_spec(spec)
+    original = DynamicRaggedShape.from_lengths([2, 4, 6],
+                                               num_row_partitions=1,
+                                               dtype=dtypes.int64)
+    self.assertShapeEq(result, original)
+
   @parameterized.parameters([
       dict(
           doc='x.shape=[3, (D1)]; y.shape=[3, 1]; bcast.shape=[3, (D1)]',
@@ -2566,6 +2652,16 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
       new_flat_values = constant_op.constant(['a', 'b', 'c', 'd', 'e'])
       rt_shape._add_row_partitions(new_flat_values, validate=True)
 
+  def testGetItemRankNoneTruncate(self):
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
+    def foo(x):
+      rts = DynamicRaggedShape.from_tensor(x)
+      actual = rts[:1]
+      self.assertShapeEq(rts, actual)
+
+    foo([1, 2, 3])
+
 
 class DynamicRaggedShapeErrorTest(parameterized.TestCase):
 
@@ -2841,7 +2937,7 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
           num_row_partitions=1,
           dtype=dtypes.int32,
           expected=dynamic_ragged_shape.DynamicRaggedShape.Spec(
-              _row_partitions=[
+              row_partitions=[
                   RowPartitionSpec(
                       nrows=None,
                       nvals=None,
@@ -2853,42 +2949,42 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
                       uniform_row_length=None,
                       dtype=dtypes.int32)
               ],
-              _static_inner_shape=tensor_shape.TensorShape(None),
-              _inner_shape=tensor_spec.TensorSpec([None], dtypes.int32))),
+              static_inner_shape=tensor_shape.TensorShape(None),
+              dtype=dtypes.int32)),
       # Unknown dimension, dense
       dict(
           shape=tensor_shape.TensorShape(None),
           num_row_partitions=0,
           dtype=dtypes.int32,
           expected=dynamic_ragged_shape.DynamicRaggedShape.Spec(
-              _row_partitions=[],
-              _static_inner_shape=tensor_shape.TensorShape(None),
-              _inner_shape=tensor_spec.TensorSpec([None], dtypes.int32))),
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape(None),
+              dtype=dtypes.int32)),
       # Scalar
       dict(
           shape=tensor_shape.TensorShape([]),
           num_row_partitions=0,
           dtype=dtypes.int32,
           expected=dynamic_ragged_shape.DynamicRaggedShape.Spec(
-              _row_partitions=[],
-              _static_inner_shape=tensor_shape.TensorShape([]),
-              _inner_shape=tensor_spec.TensorSpec([0], dtypes.int32))),
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape([]),
+              dtype=dtypes.int32)),
       # Vector
       dict(
           shape=tensor_shape.TensorShape([7]),
           num_row_partitions=0,
           dtype=dtypes.int32,
           expected=dynamic_ragged_shape.DynamicRaggedShape.Spec(
-              _row_partitions=[],
-              _static_inner_shape=tensor_shape.TensorShape([7]),
-              _inner_shape=tensor_spec.TensorSpec([1], dtypes.int32))),
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape([7]),
+              dtype=dtypes.int32)),
       # Generic
       dict(
           shape=tensor_shape.TensorShape([5, 3, None, 4, 2, 5]),
           num_row_partitions=3,
           dtype=dtypes.int32,
           expected=dynamic_ragged_shape.DynamicRaggedShape.Spec(
-              _row_partitions=[
+              row_partitions=[
                   RowPartitionSpec(
                       nrows=5,
                       nvals=15,
@@ -2905,18 +3001,18 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
                       uniform_row_length=4,
                       dtype=dtypes.int32)
               ],
-              _static_inner_shape=tensor_shape.TensorShape([None, 2, 5]),
-              _inner_shape=tensor_spec.TensorSpec([3], dtypes.int32))),
+              static_inner_shape=tensor_shape.TensorShape([None, 2, 5]),
+              dtype=dtypes.int32)),
       # Generic, Dense
       dict(
           shape=tensor_shape.TensorShape([5, 3, None, 4, 2, 5]),
           num_row_partitions=0,
           dtype=dtypes.int32,
           expected=dynamic_ragged_shape.DynamicRaggedShape.Spec(
-              _row_partitions=[],
-              _static_inner_shape=tensor_shape.TensorShape(
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape(
                   [5, 3, None, 4, 2, 5]),
-              _inner_shape=tensor_spec.TensorSpec([6], dtypes.int32))),
+              dtype=dtypes.int32)),
   ])
   def test_from_tensor_shape(self, shape, num_row_partitions, dtype, expected):
     spec = DynamicRaggedShape.Spec._from_tensor_shape(shape, num_row_partitions,
@@ -2961,7 +3057,7 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
   def test_from_row_partition_inner_shape_and_dtype_raises_dtype(self):
     with self.assertRaisesRegex(
         ValueError, r'dtype of .* is .*int64.*: expected .*int32.*'):
-      DynamicRaggedShape.Spec._from_row_partitions_inner_shape_and_dtype(
+      DynamicRaggedShape.Spec(
           row_partitions=[
               RowPartitionSpec(
                   nrows=None,
@@ -3087,6 +3183,68 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
     with self.assertRaisesRegex(error_type, error_regex):
       spec._num_slices_in_dimension(dimension)
 
+  def test_with_dtype(self):
+    spec = DynamicRaggedShape.Spec._from_tensor_shape(
+        shape=tensor_shape.TensorShape([5, 3, 7, 4, None, 5]),
+        num_row_partitions=2,
+        dtype=dtypes.int32)
+    actual = spec.with_dtype(dtypes.int64)
+    self.assertEqual(actual.dtype, dtypes.int64)
+    self.assertEqual(actual._row_partitions[0].dtype, dtypes.int64)
+    self.assertEqual(actual._row_partitions[1].dtype, dtypes.int64)
+
+  @parameterized.parameters([
+      dict(
+          original=DynamicRaggedShape.Spec._from_tensor_shape(
+              shape=tensor_shape.TensorShape([5, 3, 7, 4, None, 5]),
+              num_row_partitions=2,
+              dtype=dtypes.int32),
+          num_row_partitions=3,
+          expected=DynamicRaggedShape.Spec._from_tensor_shape(
+              shape=tensor_shape.TensorShape([5, 3, 7, 4, None, 5]),
+              num_row_partitions=3,
+              dtype=dtypes.int32)),
+      dict(
+          original=DynamicRaggedShape.Spec._from_tensor_shape(
+              shape=tensor_shape.TensorShape([5, 3, 7, 4, None, 5]),
+              num_row_partitions=2,
+              dtype=dtypes.int32),
+          num_row_partitions=1,
+          expected=DynamicRaggedShape.Spec._from_tensor_shape(
+              shape=tensor_shape.TensorShape([5, 3, 7, 4, None, 5]),
+              num_row_partitions=1,
+              dtype=dtypes.int32)),
+  ])
+  def test_with_num_row_partitions(self, original, num_row_partitions,
+                                   expected):
+    actual = original._with_num_row_partitions(num_row_partitions)
+    self.assertDynamicRaggedShapeSpecEqual(actual, expected)
+
+  @parameterized.parameters([
+      dict(
+          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
+              None, 0, dtypes.int32),
+          num_row_partitions=2,
+          error_type=ValueError,
+          error_regex='Changing num_row_partitions with unknown rank'),
+      dict(
+          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
+              [1, 2, 3, 4], 0, dtypes.int32),
+          num_row_partitions=4,
+          error_type=ValueError,
+          error_regex='Number of row partitions too large'),
+      dict(
+          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
+              [1, 2, 3, 4], 0, dtypes.int32),
+          num_row_partitions=-3,
+          error_type=ValueError,
+          error_regex='Number of row partitions negative'),
+  ])
+  def test_with_num_row_partitions_raises(self, spec, num_row_partitions,
+                                          error_type, error_regex):
+    with self.assertRaisesRegex(error_type, error_regex):
+      spec._with_num_row_partitions(num_row_partitions)
+
   def test_truncate(self):
     spec = dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
         shape=tensor_shape.TensorShape([5, 3, 7, 4, None, 5]),
@@ -3101,6 +3259,553 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
             truncation._dimension(i), spec._dimension(i),
             'Mismatch on new_rank ' + str(new_rank) + ' on dimension ' + str(i))
 
+  def test_truncate_unknown(self):
+    spec = DynamicRaggedShape.Spec(
+        row_partitions=[
+            RowPartitionSpec(
+                nrows=3, nvals=7, uniform_row_length=None, dtype=dtypes.int32),
+            RowPartitionSpec(
+                nrows=7,
+                nvals=None,
+                uniform_row_length=None,
+                dtype=dtypes.int32)
+        ],
+        static_inner_shape=tensor_shape.TensorShape(None),
+        dtype=dtypes.int32)
+    expected = DynamicRaggedShape.Spec(
+        row_partitions=[
+            RowPartitionSpec(
+                nrows=3, nvals=7, uniform_row_length=None, dtype=dtypes.int32),
+            RowPartitionSpec(
+                nrows=7,
+                nvals=None,
+                uniform_row_length=None,
+                dtype=dtypes.int32)
+        ],
+        static_inner_shape=tensor_shape.TensorShape([None, None]),
+        dtype=dtypes.int32)
+    actual = spec._truncate(4)
+    self.assertDynamicRaggedShapeSpecEqual(actual, expected)
+
+  @parameterized.parameters([
+      # Standard scalar
+      dict(
+          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape([]),
+              dtype=dtypes.int32),
+          expected=0),
+      dict(
+          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(
+                      nrows=None,
+                      nvals=None,
+                      uniform_row_length=None,
+                      dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape([None]),
+              dtype=dtypes.int64),
+          expected=1),
+      # Not knowing the shape of the inner shape is weird.
+      dict(
+          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(
+                      nrows=None,
+                      nvals=None,
+                      uniform_row_length=None,
+                      dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape(None),
+              dtype=dtypes.int64),
+          expected=None),
+  ])
+  def test_inner_rank(self, spec, expected):
+    actual = spec.inner_rank
+    self.assertEqual(expected, actual)
+
+  @parameterized.parameters([
+      # Standard scalar
+      dict(
+          other_spec=tensor_spec.TensorSpec([], dtypes.float32),
+          expected=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape([]),
+              dtype=dtypes.int64)),
+      dict(
+          other_spec=ragged_tensor.RaggedTensorSpec([None, None], dtypes.int32),
+          expected=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(nrows=None,
+                                   nvals=None,
+                                   uniform_row_length=None,
+                                   dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape([None]),
+              dtype=dtypes.int64)),
+      dict(
+          other_spec=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(nrows=None,
+                                   nvals=None,
+                                   uniform_row_length=None,
+                                   dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape([None]),
+              dtype=dtypes.int64),
+          expected=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(nrows=None,
+                                   nvals=None,
+                                   uniform_row_length=None,
+                                   dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape([None]),
+              dtype=dtypes.int64)),
+  ])
+  def test_from_spec(self, other_spec, expected):
+    actual = DynamicRaggedShape.Spec._from_spec(other_spec)
+    self.assertDynamicRaggedShapeSpecEqual(expected, actual)
+
+  @parameterized.parameters([
+      dict(
+          row_partitions=[
+              RowPartitionSpec(
+                  nrows=None,
+                  nvals=None,
+                  uniform_row_length=None,
+                  dtype=dtypes.int64)
+          ],
+          static_inner_shape=tensor_shape.TensorShape([None]),
+          inner_shape=tensor_spec.TensorSpec([1], dtypes.int64)),
+      dict(
+          row_partitions=[
+              RowPartitionSpec(
+                  nrows=None,
+                  nvals=None,
+                  uniform_row_length=None,
+                  dtype=dtypes.int64)
+          ],
+          static_inner_shape=tensor_shape.TensorShape([None, 3]),
+          inner_shape=tensor_spec.TensorSpec([2], dtypes.int64)),
+      dict(
+          row_partitions=[
+              RowPartitionSpec(
+                  nrows=6,
+                  nvals=None,
+                  uniform_row_length=None,
+                  dtype=dtypes.int64)
+          ],
+          static_inner_shape=tensor_shape.TensorShape([None]),
+          inner_shape=tensor_spec.TensorSpec([1], dtypes.int64)),
+      dict(
+          row_partitions=[
+              RowPartitionSpec(
+                  nrows=6, nvals=60, uniform_row_length=10, dtype=dtypes.int64)
+          ],
+          static_inner_shape=tensor_shape.TensorShape([60]),
+          inner_shape=tensor_spec.TensorSpec([1], dtypes.int64)),
+      dict(
+          row_partitions=[
+              RowPartitionSpec(
+                  nrows=6, nvals=60, uniform_row_length=10, dtype=dtypes.int64),
+              RowPartitionSpec(
+                  nrows=60,
+                  nvals=120,
+                  uniform_row_length=None,
+                  dtype=dtypes.int64)
+          ],
+          static_inner_shape=tensor_shape.TensorShape([120]),
+          inner_shape=tensor_spec.TensorSpec([1], dtypes.int64)),
+      dict(
+          row_partitions=[
+              RowPartitionSpec(
+                  nrows=6, nvals=60, uniform_row_length=10, dtype=dtypes.int64)
+          ],
+          static_inner_shape=tensor_shape.TensorShape(None),
+          inner_shape=tensor_spec.TensorSpec([None], dtypes.int64))
+  ])
+  def test_constructor_idempotent(self, row_partitions, static_inner_shape,
+                                  inner_shape):
+    # The constructor detects if there is any additional information that
+    # can be inferred from what is given.
+    original = dynamic_ragged_shape.DynamicRaggedShape.Spec(
+        row_partitions, static_inner_shape, inner_shape.dtype)
+    self.assertTensorShapeEqual(original._static_inner_shape,
+                                static_inner_shape)
+    self.assertTensorSpecEqual(original._inner_shape, inner_shape)
+    for i, (a, b) in enumerate(zip(original._row_partitions, row_partitions)):
+      self.assertRowPartitionSpecEqual(a, b, 'Error in partition ' + str(i))
+
+  @parameterized.parameters([
+      dict(
+          original=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(
+                      nrows=3,
+                      nvals=None,
+                      uniform_row_length=4,
+                      dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape([None]),
+              dtype=dtypes.int64),
+          expected_row_partitions=[
+              RowPartitionSpec(
+                  nrows=3, nvals=12, uniform_row_length=4, dtype=dtypes.int64)
+          ],
+          expected_static_inner_shape=tensor_shape.TensorShape([12]),
+          expected_inner_shape=tensor_spec.TensorSpec([1], dtypes.int64)),
+      dict(
+          original=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(
+                      nrows=None,
+                      nvals=None,
+                      uniform_row_length=3,
+                      dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape([30]),
+              dtype=dtypes.int64),
+          expected_row_partitions=[
+              RowPartitionSpec(
+                  nrows=10, nvals=30, uniform_row_length=3, dtype=dtypes.int64)
+          ],
+          expected_static_inner_shape=tensor_shape.TensorShape([30]),
+          expected_inner_shape=tensor_spec.TensorSpec([1], dtypes.int64)),
+      dict(
+          original=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(
+                      nrows=6,
+                      nvals=None,
+                      uniform_row_length=10,
+                      dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape([None]),
+              dtype=dtypes.int64),
+          expected_row_partitions=[
+              RowPartitionSpec(
+                  nrows=6, nvals=60, uniform_row_length=10, dtype=dtypes.int64)
+          ],
+          expected_static_inner_shape=tensor_shape.TensorShape([60]),
+          expected_inner_shape=tensor_spec.TensorSpec([1], dtypes.int64)),
+      dict(
+          original=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(
+                      nrows=6,
+                      nvals=None,
+                      uniform_row_length=None,
+                      dtype=dtypes.int64),
+                  RowPartitionSpec(
+                      nrows=60,
+                      nvals=None,
+                      uniform_row_length=None,
+                      dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape([120]),
+              dtype=dtypes.int64),
+          expected_row_partitions=[
+              RowPartitionSpec(
+                  nrows=6,
+                  nvals=60,
+                  uniform_row_length=None,
+                  dtype=dtypes.int64),
+              RowPartitionSpec(
+                  nrows=60,
+                  nvals=120,
+                  uniform_row_length=None,
+                  dtype=dtypes.int64)
+          ],
+          expected_static_inner_shape=tensor_shape.TensorShape([120]),
+          expected_inner_shape=tensor_spec.TensorSpec([1], dtypes.int64)),
+  ])
+  def test_constructor_improvements(self, original, expected_row_partitions,
+                                    expected_static_inner_shape,
+                                    expected_inner_shape):
+    # Note that self_merge is only idempotent if no data is partially present.
+    self.assertTensorShapeEqual(original._static_inner_shape,
+                                expected_static_inner_shape)
+    self.assertTensorSpecEqual(original._inner_shape, expected_inner_shape)
+    for i, (a, b) in enumerate(
+        zip(original._row_partitions, expected_row_partitions)):
+      self.assertRowPartitionSpecEqual(a, b, 'Error in partition ' + str(i))
+
+  @parameterized.parameters([
+      dict(
+          row_partitions=[
+              RowPartitionSpec(
+                  nrows=3, nvals=12, uniform_row_length=4, dtype=dtypes.int64)
+          ],
+          static_inner_shape=tensor_shape.TensorShape([]),
+          dtype=dtypes.int64,
+          error_type=ValueError,
+          msg='If row_partitions are provided, must have inner_rank > 0'),
+      dict(
+          row_partitions=RowPartitionSpec(
+              nrows=3, nvals=12, uniform_row_length=4, dtype=dtypes.int64),
+          static_inner_shape=tensor_shape.TensorShape([]),
+          dtype=dtypes.int64,
+          error_type=TypeError,
+          msg='row_partitions should be an Iterable'),
+      dict(
+          row_partitions=[1, 2, 3],
+          static_inner_shape=tensor_shape.TensorShape([12]),
+          dtype=dtypes.int64,
+          error_type=TypeError,
+          msg='row_partitions should be an Iterable of RowPartitionSpecs'),
+      dict(
+          row_partitions=[
+              RowPartitionSpec(
+                  nrows=3, nvals=12, uniform_row_length=4, dtype=dtypes.int64)
+          ],
+          static_inner_shape=3,
+          dtype=dtypes.int64,
+          error_type=ValueError,
+          msg='Dimensions 12 and 3'),
+      dict(
+          row_partitions=[
+              RowPartitionSpec(
+                  nrows=3, nvals=12, uniform_row_length=4, dtype=dtypes.int64)
+          ],
+          static_inner_shape=tensor_shape.TensorShape([2]),
+          dtype=456,
+          error_type=TypeError,
+          msg='Cannot convert'),
+      dict(
+          row_partitions=[
+              RowPartitionSpec(
+                  nrows=3, nvals=12, uniform_row_length=4, dtype=dtypes.int64)
+          ],
+          static_inner_shape=tensor_shape.TensorShape([12]),
+          dtype=dtypes.int32,
+          error_type=ValueError,
+          msg='dtype of RowPartitionSpec'),
+      dict(
+          row_partitions=[
+              RowPartitionSpec(
+                  nrows=3, nvals=12, uniform_row_length=4, dtype=dtypes.int64)
+          ],
+          static_inner_shape=tensor_shape.TensorShape([11]),
+          dtype=dtypes.int64,
+          error_type=ValueError,
+          msg='Dimensions 12 and 11 are not compatible'),
+      dict(
+          row_partitions=[
+              RowPartitionSpec(nvals=3, dtype=dtypes.int64),
+              RowPartitionSpec(uniform_row_length=4, dtype=dtypes.int64),
+              RowPartitionSpec(nrows=17, dtype=dtypes.int64),
+          ],
+          static_inner_shape=tensor_shape.TensorShape([20]),
+          dtype=dtypes.int64,
+          error_type=ValueError,
+          msg='Dimensions 17 and 12 are not compatible'),
+  ])
+  def test_constructor_raises(self, row_partitions, static_inner_shape,
+                              dtype, error_type, msg):
+    # Note that self_merge is only idempotent if no data is partially present.
+    with self.assertRaisesRegex(error_type, msg):
+      dynamic_ragged_shape.DynamicRaggedShape.Spec(
+          row_partitions=row_partitions,
+          static_inner_shape=static_inner_shape,
+          dtype=dtype)
+
+  @parameterized.parameters([
+      # Unknown rank
+      dict(
+          original=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape(None),
+              dtype=dtypes.int64),
+          expected=tensor_shape.TensorShape(None)),
+      # Scalar
+      dict(
+          original=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape([]),
+              dtype=dtypes.int64),
+          expected=tensor_shape.TensorShape([])),
+      # Vector
+      dict(
+          original=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape([3]),
+              dtype=dtypes.int64),
+          expected=tensor_shape.TensorShape([3])),
+      # Dense
+      dict(
+          original=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape([3, 2, None]),
+              dtype=dtypes.int64),
+          expected=tensor_shape.TensorShape([3, 2, None])),
+      # Ragged
+      dict(
+          original=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(nrows=6,
+                                   nvals=None,
+                                   uniform_row_length=10,
+                                   dtype=dtypes.int64),
+                  RowPartitionSpec(nrows=60,
+                                   nvals=None,
+                                   uniform_row_length=None,
+                                   dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape([120]),
+              dtype=dtypes.int64),
+          expected=tensor_shape.TensorShape([6, 10, None])),
+
+  ])
+  def test_to_tensor_shape(self, original, expected):
+    # Note that self_merge is only idempotent if no data is partially present.
+    actual = original._to_tensor_shape()
+    self.assertEqual(actual, expected)
+
+  @parameterized.parameters([
+      dict(
+          a=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape([]),
+              dtype=dtypes.int32),
+          b=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape([]),
+              dtype=dtypes.int32),
+          expected=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape([]),
+              dtype=dtypes.int32)),
+      dict(
+          a=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape([3, None]),
+              dtype=dtypes.int32),
+          b=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape([None, 4]),
+              dtype=dtypes.int32),
+          expected=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape([3, 4]),
+              dtype=dtypes.int32)),
+      dict(
+          a=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(
+                      nrows=6,
+                      nvals=None,
+                      uniform_row_length=None,
+                      dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape([None]),
+              dtype=dtypes.int64),
+          b=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(
+                      nrows=6,
+                      nvals=None,
+                      uniform_row_length=10,
+                      dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape([None]),
+              dtype=dtypes.int64),
+          expected=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(
+                      nrows=6,
+                      nvals=60,
+                      uniform_row_length=10,
+                      dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape([60]),
+              dtype=dtypes.int64)),
+      dict(
+          a=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(
+                      nrows=6,
+                      nvals=None,
+                      uniform_row_length=None,
+                      dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape([None]),
+              dtype=dtypes.int64),
+          b=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape([None, 10]),
+              dtype=dtypes.int64),
+          expected=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(
+                      nrows=6,
+                      nvals=60,
+                      uniform_row_length=10,
+                      dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape([60]),
+              dtype=dtypes.int64))
+  ])
+  def test_merge_with(self,
+                      a: DynamicRaggedShape.Spec,
+                      b: DynamicRaggedShape.Spec,
+                      expected: DynamicRaggedShape.Spec):
+    actual = a._merge_with(b)
+    actual_rev = b._merge_with(a)
+
+    self.assertDynamicRaggedShapeSpecEqual(actual, expected)
+    self.assertDynamicRaggedShapeSpecEqual(actual_rev, expected)
+
+  def test_repr(self):
+    original = dynamic_ragged_shape.DynamicRaggedShape.Spec(
+        row_partitions=[
+            RowPartitionSpec(
+                nrows=6,
+                nvals=None,
+                uniform_row_length=None,
+                dtype=dtypes.int64)
+        ],
+        static_inner_shape=tensor_shape.TensorShape([None]),
+        dtype=dtypes.int64)
+    representation = repr(original)
+    static_inner_shape = tensor_shape.TensorShape([None])
+    expected = ('DynamicRaggedShape.Spec(' +
+                'row_partitions=(RowPartitionSpec(' +
+                'nrows=6, nvals=None, uniform_row_length=None, ' +
+                'dtype=tf.int64),), ' +
+                f'static_inner_shape={static_inner_shape!r}, ' +
+                'dtype=tf.int64)')
+    self.assertEqual(representation, expected)
+
+  @parameterized.parameters([
+      dict(
+          lengths=[3, 4, 5],
+          expected=DynamicRaggedShape.Spec(
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape([3, 4, 5]),
+              dtype=dtypes.int64)),
+      dict(
+          lengths=[2, (4, 1), 5],
+          expected=DynamicRaggedShape.Spec(
+              row_partitions=[RowPartitionSpec(nrows=2, nvals=5)],
+              static_inner_shape=tensor_shape.TensorShape([5, 5]),
+              dtype=dtypes.int64)),
+      dict(
+          lengths=[2, (4, 1), 5],
+          dtype=dtypes.int32,
+          expected=DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(nrows=2, nvals=5, dtype=dtypes.int32)],
+              static_inner_shape=tensor_shape.TensorShape([5, 5]),
+              dtype=dtypes.int32)),
+  ])
+  def test_from_value(self, lengths, expected, dtype=None):
+    original = DynamicRaggedShape.from_lengths(lengths)
+    if dtype is not None:
+      original = original.with_dtype(dtype)
+    actual = dynamic_ragged_shape.DynamicRaggedShape.Spec.from_value(original)
+    self.assertTensorShapeEqual(actual, expected)
 
 if __name__ == '__main__':
   googletest.main()

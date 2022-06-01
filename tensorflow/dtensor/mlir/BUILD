@@ -171,6 +171,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:TensorDialect",
     ],
     alwayslink = 1,
 )
@@ -494,6 +495,7 @@ cc_library(
         ":op_utils",
         ":tf_dtensor_dialect",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/core:lib",
         "//tensorflow/dtensor/cc:dstatus",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

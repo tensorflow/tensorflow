@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <iostream>
+#include <iterator>
 #include <ostream>
 #include <set>
 #include <string>
@@ -46,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_op_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
+#include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -54,6 +56,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/human_readable_json.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -833,8 +836,12 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       auto scatter_dimension_numbers =
           absl::make_unique<ScatterDimensionNumbers>(
               proto.scatter_dimension_numbers());
+      auto operands = all_operands();
+      auto operand_span = absl::MakeConstSpan(operands);
+      auto input_count = operands.size() / 2;
       instruction =
-          CreateScatter(shape, operands(0), operands(1), operands(2),
+          CreateScatter(shape, operand_span.first(input_count),
+                        operands[input_count], operand_span.last(input_count),
                         computations(0), *scatter_dimension_numbers,
                         proto.indices_are_sorted(), proto.unique_indices());
       break;
@@ -1111,7 +1118,6 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
   switch (opcode) {
     case HloOpcode::kClamp:
     case HloOpcode::kSelect:
-    case HloOpcode::kTupleSelect:
       break;
     default:
       LOG(FATAL) << "Invalid ternary instruction opcode "
@@ -1876,12 +1882,12 @@ bool HloInstruction::HasSideEffect() const {
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTuple(
     absl::Span<HloInstruction* const> elements) {
-  std::vector<Shape> element_shapes;
+  std::vector<const Shape*> element_shapes;
   element_shapes.reserve(elements.size());
   for (auto element : elements) {
-    element_shapes.push_back(element->shape());
+    element_shapes.push_back(&element->shape());
   }
-  Shape tuple_shape = ShapeUtil::MakeTupleShape(element_shapes);
+  Shape tuple_shape = ShapeUtil::MakeTupleShapeWithPtrs(element_shapes);
   return CreateVariadic(tuple_shape, HloOpcode::kTuple, elements);
 }
 
@@ -1900,9 +1906,25 @@ bool HloInstruction::HasSideEffect() const {
     HloComputation* update_computation,
     const ScatterDimensionNumbers& scatter_dim_numbers, bool indices_are_sorted,
     bool unique_indices) {
-  return absl::make_unique<HloScatterInstruction>(
-      shape, operand, scatter_indices, updates, update_computation,
-      scatter_dim_numbers, indices_are_sorted, unique_indices);
+  return absl::WrapUnique(new HloScatterInstruction(
+      shape, {operand, scatter_indices, updates}, update_computation,
+      scatter_dim_numbers, indices_are_sorted, unique_indices));
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateScatter(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloInstruction* scatter_indices, absl::Span<HloInstruction* const> updates,
+    HloComputation* update_computation,
+    const ScatterDimensionNumbers& scatter_dim_numbers, bool indices_are_sorted,
+    bool unique_indices) {
+  absl::InlinedVector<HloInstruction*, 3> args;
+  args.reserve(operands.size() + updates.size() + 1);
+  absl::c_copy(operands, std::back_inserter(args));
+  args.push_back(scatter_indices);
+  absl::c_copy(updates, std::back_inserter(args));
+  return std::make_unique<HloScatterInstruction>(
+      shape, args, update_computation, scatter_dim_numbers, indices_are_sorted,
+      unique_indices);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDomain(
@@ -2046,7 +2068,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     // Ternary ops.
     case HloOpcode::kClamp:
     case HloOpcode::kSelect:
-    case HloOpcode::kTupleSelect:
       CHECK_EQ(new_operands.size(), 3);
       clone = CreateTernary(shape, opcode_, new_operands[0], new_operands[1],
                             new_operands[2]);
@@ -2475,7 +2496,6 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
     case HloOpcode::kTuple:
-    case HloOpcode::kTupleSelect:
       return true;
 
     // This opcode has complex or special behavior so just return false.
@@ -2602,6 +2622,33 @@ Status HloInstruction::ReplaceUseWithDifferentShape(
     TF_RETURN_IF_ERROR(
         Cast<HloFusionInstruction>(user)->DeduplicateFusionOperands());
   }
+  return Status::OK();
+}
+
+Status HloInstruction::ReplaceUseWith(HloInstruction* user, int operand_number,
+                                      HloInstruction* new_producer) {
+  TF_RET_CHECK(
+      ShapeUtil::CompatibleIgnoringFpPrecision(shape(), new_producer->shape()))
+      << "this shape: " << ShapeUtil::HumanString(shape())
+      << ", replacement shape: "
+      << ShapeUtil::HumanString(new_producer->shape());
+  return ReplaceUseWithDifferentShape(user, operand_number, new_producer);
+}
+
+Status HloInstruction::ReplaceUseWithDifferentShape(
+    HloInstruction* user, int operand_number, HloInstruction* new_producer) {
+  VLOG(3) << "Replacing operand " << operand_number << " of " << name()
+          << " in " << user->name() << " with " << new_producer->name();
+
+  if (absl::c_count(user->operands_, this) == 1) {
+    RemoveUser(user);
+  }
+
+  TF_RET_CHECK(user->operand(operand_number) == this)
+      << "Expected operand " << operand_number << " of " << user->ToString()
+      << " to be equal to " << ToString();
+  user->operands_[operand_number] = new_producer;
+  new_producer->AddUser(user);
   return Status::OK();
 }
 
@@ -3457,8 +3504,6 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleRemainder(this);
     case HloOpcode::kSelect:
       return visitor->HandleSelect(this);
-    case HloOpcode::kTupleSelect:
-      return visitor->HandleTupleSelect(this);
     case HloOpcode::kConvolution:
       return visitor->HandleConvolution(this);
     case HloOpcode::kFft:
@@ -4227,8 +4272,10 @@ Status HloInstruction::GetBackendConfigInternal(
   proto->Clear();
 
   if (auto* proto_ptr = backend_config_.GetProtoPtr()) {
-    proto->CopyFrom(*proto_ptr);
-    return Status::OK();
+    if (proto_ptr->GetDescriptor() == proto->GetDescriptor()) {
+      proto->CopyFrom(*proto_ptr);
+      return Status::OK();
+    }
   }
 
   auto& raw_string = raw_backend_config_string();
@@ -4344,6 +4391,36 @@ void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
 void HloInstruction::set_outer_dimension_partitions(
     const std::vector<int64_t>& outer_dimension_partitions) {
   outer_dimension_partitions_ = outer_dimension_partitions;
+}
+
+void HloInstruction::SortInstructionUsersAndControlLists(
+    const MappedPtrContainerSorter<HloInstruction>::MapPtrFn& map_fn,
+    const HloInstruction& sorted_instruction) {
+  using Sorter = MappedPtrContainerSorter<HloInstruction>;
+  auto status = Sorter::Sort(map_fn, Sorter::IndexAfterMappedElementsFn(),
+                             sorted_instruction.users_, users_);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to sort instruction users for " << name() << "; "
+               << status;
+  }
+  user_map_.clear();
+  for (uint64_t i = 0; i < users_.size(); ++i) {
+    user_map_[users_[i]] = i;
+  }
+  status = Sorter::Sort(map_fn, Sorter::IndexAfterMappedElementsFn(),
+                        sorted_instruction.control_predecessors_,
+                        control_predecessors_);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to sort instruction control predecessors for "
+               << name() << "; " << status;
+  }
+  status =
+      Sorter::Sort(map_fn, Sorter::IndexAfterMappedElementsFn(),
+                   sorted_instruction.control_successors_, control_successors_);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to sort instruction control successors for " << name()
+               << "; " << status;
+  }
 }
 
 // TODO(b/80131774): Remove these temporary methods after transition.

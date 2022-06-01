@@ -49,7 +49,7 @@ Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
     return MissingAttributeError(attr_name);
   }
   *value = view.str();
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>
@@ -62,7 +62,7 @@ Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
     return MissingAttributeError(attr_name);
   }
   *value = tfd::ConvertToTfDataType(attrtype);
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>
@@ -83,7 +83,7 @@ Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
     return MissingAttributeError(attr_name);
   }
   *value = arrayref;
-  return Status::OK();
+  return OkStatus();
 }
 
 void TFRTOpKernelConstruction::CtxFailure(const Status& s) {
@@ -154,7 +154,7 @@ Status TFRTOpKernelContext::allocate_temp(DataType type,
                                           const TensorShape& shape,
                                           Tensor* out_temp) {
   *out_temp = Tensor(type, shape);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TFRTOpKernelContext::allocate_output(int index, const TensorShape& shape,
@@ -163,7 +163,7 @@ Status TFRTOpKernelContext::allocate_output(int index, const TensorShape& shape,
   DataType output_type = op_meta_->output_type(index);
   outputs_[index] = Tensor(output_type, shape);
   *tensor = &outputs_[index];
-  return Status::OK();
+  return OkStatus();
 }
 
 DataType TFRTOpKernelContext::expected_output_dtype(int i) const {
@@ -291,7 +291,7 @@ Status ValidKernelAttr(StringPiece kernel_class_name,
           " does not match attribute type ", DataTypeString(type), ".");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 std::unique_ptr<TFRTOpKernel> TFRTOpKernelFactories::CreateKernel(

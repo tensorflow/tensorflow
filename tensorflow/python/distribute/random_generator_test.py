@@ -39,6 +39,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
 from tensorflow.python.training.tracking import util as tracking_util
+from tensorflow.python.util import deprecation
 
 
 def get_num_local_replicas(strat, values=None):
@@ -359,4 +360,5 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
 
 
 if __name__ == "__main__":
-  multi_process_runner.test_main()
+  with deprecation.silence():
+    multi_process_runner.test_main()

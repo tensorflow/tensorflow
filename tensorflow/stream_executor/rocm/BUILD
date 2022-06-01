@@ -8,7 +8,7 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "filegroup")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured", "rocm_copts")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 
 package(
@@ -140,7 +140,6 @@ cc_library(
         ":rocm_platform_id",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
-        "//tensorflow/core:lib",
         "//tensorflow/stream_executor",  # buildcleaner: keep
         "//tensorflow/stream_executor:executor_cache",
         "//tensorflow/stream_executor:multi_platform_manager",
@@ -192,7 +191,6 @@ cc_library(
         ":rocm_gpu_executor",
         ":rocm_platform_id",
         "//third_party/eigen3",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:event",
@@ -269,7 +267,6 @@ cc_library(
         ":rocm_gpu_executor",
         ":rocm_platform_id",
         "//third_party/eigen3",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor:dnn",
         "//tensorflow/stream_executor:event",
@@ -414,6 +411,16 @@ cc_library(
 )
 
 cc_library(
+    name = "rocm_helpers",
+    srcs = if_rocm_is_configured(["rocm_helpers.cu.cc"]),
+    copts = rocm_copts(),
+    deps = if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
+    alwayslink = True,
+)
+
+cc_library(
     name = "all_runtime",
     copts = tf_copts(),
     visibility = ["//visibility:public"],
@@ -424,6 +431,7 @@ cc_library(
         ":rocrand_plugin",
         ":rocm_driver",
         ":rocm_platform",
+        ":rocm_helpers",
     ]),
     alwayslink = 1,
 )

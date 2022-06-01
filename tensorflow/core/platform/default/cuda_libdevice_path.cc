@@ -26,8 +26,12 @@ limitations under the License.
 namespace tensorflow {
 
 std::vector<string> CandidateCudaRoots() {
+#if !defined(PLATFORM_GOOGLE)
   VLOG(3) << "CUDA root = " << TF_CUDA_TOOLKIT_PATH;
   return {TF_CUDA_TOOLKIT_PATH, string("/usr/local/cuda")};
+#else
+  return {string("/usr/local/cuda")};
+#endif
 }
 
 bool PreferPtxasFromPath() { return true; }

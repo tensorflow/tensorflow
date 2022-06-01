@@ -710,6 +710,31 @@ TEST_F(HloInstructionTest, PreserveMetadataInFusionAndClone) {
   EXPECT_TRUE(protobuf_util::ProtobufEquals(metadata, fusion->metadata()));
 }
 
+TEST_F(HloInstructionTest, AsyncOp) {
+  HloComputation::Builder builder(TestName());
+  // Create a call instruction containing a single binary operation.
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f)));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.1f)));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      r0f32_, HloOpcode::kAdd, constant1, constant2));
+  auto module = CreateNewVerifiedModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(auto* async_done,
+                          computation->CreateAsyncInstructions(
+                              add, {ShapeUtil::MakeScalarShape(U32)}));
+  auto* async_start = async_done->operand(0);
+
+  EXPECT_EQ(async_start->shape().tuple_shapes_size(), 3);
+  EXPECT_TRUE(ShapeUtil::Equal(async_start->shape().tuple_shapes(2),
+                               ShapeUtil::MakeScalarShape(U32)));
+  EXPECT_THAT(async_start->operands(), ElementsAre(constant1, constant2));
+  EXPECT_THAT(constant1->users(), ElementsAre(async_start));
+  EXPECT_THAT(constant2->users(), ElementsAre(async_start));
+  EXPECT_EQ(computation->root_instruction(), async_done);
+}
+
 TEST_F(HloInstructionTest, PreserveOutfeedShapeThroughClone) {
   HloComputation::Builder builder(TestName());
   auto constant = builder.AddInstruction(
@@ -1606,8 +1631,8 @@ TEST_F(HloInstructionTest, StringifyScatter) {
 TEST_F(HloInstructionTest, StringifyAsyncOps) {
   const Shape s1 = ShapeUtil::MakeShape(F32, {10});
   const Shape s2 = ShapeUtil::MakeShape(F32, {20});
-  const Shape s_tuple =
-      ShapeUtil::MakeTupleShape({s1, s2, ShapeUtil::MakeShape(S32, {})});
+  const Shape s_tuple = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeTupleShape({s1}), s2, ShapeUtil::MakeShape(S32, {})});
 
   HloComputation::Builder async_builder("AsyncOp");
   HloInstruction* param = async_builder.AddInstruction(
@@ -1634,19 +1659,19 @@ TEST_F(HloInstructionTest, StringifyAsyncOps) {
   module->AddEmbeddedComputation(std::move(async_computation));
 
   const std::string expected_with_syntax_sugar =
-      R"(HloModule StringifyAsyncOps
+      R"(HloModule StringifyAsyncOps, entry_computation_layout={(f32[10]{0})->f32[20]{0}}
 
 ENTRY %Entry (p0: f32[10]) -> f32[20] {
   %p0 = f32[10]{0} parameter(0)
-  %async-start = (f32[10]{0}, f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), custom_call_target="foo"
-  %async-update = (f32[10]{0}, f32[20]{0}, s32[]) custom-call-update((f32[10]{0}, f32[20]{0}, s32[]) %async-start), custom_call_target="foo"
-  ROOT %async-done = f32[20]{0} custom-call-done((f32[10]{0}, f32[20]{0}, s32[]) %async-update), custom_call_target="foo"
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), custom_call_target="foo"
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), custom_call_target="foo"
+  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), custom_call_target="foo"
 }
 
 )";
   EXPECT_EQ(module->ToString(), expected_with_syntax_sugar);
   const std::string expected_without_syntax_sugar =
-      R"(HloModule StringifyAsyncOps
+      R"(HloModule StringifyAsyncOps, entry_computation_layout={(f32[10]{0})->f32[20]{0}}
 
 %AsyncOp (p0.1: f32[10]) -> f32[20] {
   %p0.1 = f32[10]{0} parameter(0)
@@ -1655,9 +1680,9 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 
 ENTRY %Entry (p0: f32[10]) -> f32[20] {
   %p0 = f32[10]{0} parameter(0)
-  %async-start = (f32[10]{0}, f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), calls=%AsyncOp
-  %async-update = (f32[10]{0}, f32[20]{0}, s32[]) async-update((f32[10]{0}, f32[20]{0}, s32[]) %async-start), calls=%AsyncOp
-  ROOT %async-done = f32[20]{0} async-done((f32[10]{0}, f32[20]{0}, s32[]) %async-update), calls=%AsyncOp
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), calls=%AsyncOp
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), calls=%AsyncOp
+  ROOT %async-done = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), calls=%AsyncOp
 }
 
 )";

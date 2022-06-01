@@ -14,12 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/iterator_ops.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
@@ -28,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/finalization_utils.h"
+#include "tensorflow/core/data/metric_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/utils.h"
@@ -76,9 +79,6 @@ const char kIteratorVariantTypeName[] = "tensorflow::Iterator";
 const char kOutputShapes[] = "output_shapes";
 const char kOutputTypes[] = "output_types";
 
-// Safely subtracts x from y avoiding underflow.
-inline uint64 safe_sub(uint64 x, uint64 y) { return x >= y ? x - y : 0; }
-
 }  // namespace
 
 /* static */ constexpr const char* const
@@ -91,17 +91,14 @@ IteratorResource::IteratorResource(
     std::unique_ptr<FunctionLibraryDefinition> flib_def,
     std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
     FunctionLibraryRuntime* flr)
-    : unbounded_thread_pool_(env, "tf_data_iterator_resource"),
+    : metrics_collector_(flr->device()->device_type(), *env),
+      unbounded_thread_pool_(env, "tf_data_iterator_resource"),
       device_mgr_(std::move(device_mgr)),
       iterator_state_(std::make_shared<State>(std::move(flib_def),
                                               std::move(pflr), flr,
                                               /*iterator=*/nullptr)),
       output_dtypes_(output_dtypes),
-      output_shapes_(output_shapes),
-      // We do not collect iterator resource metrics for non-CPU devices. This
-      // is a heuristic to avoid collecting metrics for device-side iterators
-      // created by the multi-device iterator mechanism.
-      collect_metrics_(flr->device()->device_type() == DEVICE_CPU) {
+      output_shapes_(output_shapes) {
   VLOG(2) << "creating iterator resource";
 }
 
@@ -136,41 +133,12 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
       [cm = params.cancellation_manager]() { cm->StartCancel(); },
       &deregister_fn));
   auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
-  const uint64 start_time_us = ctx->env()->NowMicros();
-  if (collect_metrics_) {
-    mutex_lock l(mu_);
-    if (get_next_end_time_us_ == 0) {
-      // We initialize `get_next_end_time_us_` to the start time of the first
-      // request to make it possible to use the delta between
-      // `get_next_end_time_us_` and subsequent `GetNext()` end time to
-      // incrementally collect the duration of the iterator's lifetime.
-      get_next_end_time_us_ = start_time_us;
-    }
-    uint64 gap_time_us = 0;
-    if (num_get_next_calls_ == 0) {
-      get_next_start_time_us_ = start_time_us;
-      gap_time_us = safe_sub(start_time_us, get_next_end_time_us_);
-    }
-    metrics::RecordTFDataIteratorGap(gap_time_us);
-    num_get_next_calls_++;
-  }
+
+  const absl::Time start_time = metrics_collector_.RecordStart();
   auto iterator_ = captured_state->iterator();
   auto status = iterator_->GetNext(IteratorContext(std::move(params)),
                                    out_tensors, end_of_sequence);
-  if (collect_metrics_) {
-    const uint64 end_time_us = ctx->env()->NowMicros();
-    AddLatencySample(safe_sub(end_time_us, start_time_us));
-    IncrementThroughput(GetTotalBytes(*out_tensors));
-    mutex_lock l(mu_);
-    metrics::RecordTFDataIteratorLifetime(
-        safe_sub(end_time_us, get_next_end_time_us_));
-    get_next_end_time_us_ = std::max(get_next_end_time_us_, end_time_us);
-    num_get_next_calls_--;
-    if (num_get_next_calls_ == 0) {
-      metrics::RecordTFDataIteratorBusy(
-          safe_sub(get_next_end_time_us_, get_next_start_time_us_));
-    }
-  }
+  metrics_collector_.RecordStop(start_time, *out_tensors);
   return status;
 }
 

@@ -830,7 +830,7 @@ Status Scatter(OpKernelContext* c, const Tensor& value, const Tensor& indices,
     copy_tensor(c, tmp, aligned);
     std::swap(list->tensors()[i], aligned);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Device, typename T>

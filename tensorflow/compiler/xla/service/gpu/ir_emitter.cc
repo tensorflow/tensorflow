@@ -53,8 +53,8 @@ static llvm::Value* AddrCastToDefault(llvm::Value* arg, llvm::IRBuilder<>& b) {
   llvm::Type* arg_type = arg->getType();
   CHECK(arg_type->isPointerTy());
   if (arg_type->getPointerAddressSpace() != 0) {
-    llvm::Type* generic_arg_type =
-        arg_type->getPointerElementType()->getPointerTo(0);
+    llvm::Type* generic_arg_type = llvm::PointerType::getWithSamePointeeType(
+        llvm::cast<llvm::PointerType>(arg_type), 0);
     llvm::Value* addrspacecast_arg =
         b.CreateAddrSpaceCast(arg, generic_arg_type);
     return addrspacecast_arg;
@@ -92,7 +92,7 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
 }
 
 Status IrEmitter::HandleConstant(HloInstruction* constant) {
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
@@ -104,7 +104,7 @@ Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
   if (bindings_.BoundToIrValue(*operand)) {
     bindings_.BindHloToIrValue(*add_dependency, GetBasePointer(*operand));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
@@ -116,8 +116,9 @@ Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
           get_tuple_element->shape(), get_tuple_element->tuple_index(),
           // TODO(b/26344050): tighten the alignment here
           // based on the real element type.
-          /*alignment=*/1, GetBasePointer(*operand), &b_));
-  return Status::OK();
+          /*alignment=*/1, GetBasePointer(*operand),
+          llvm_ir::ShapeToIrType(operand->shape(), module_), &b_));
+  return ::tensorflow::OkStatus();
 }
 
 Status IrEmitter::HandleSend(HloInstruction*) {
@@ -146,7 +147,7 @@ Status IrEmitter::HandleTuple(HloInstruction* tuple) {
     base_ptrs.push_back(GetBasePointer(*operand));
   }
   llvm_ir::EmitTuple(GetIrArray(*tuple, *tuple), base_ptrs, &b_);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status IrEmitter::EmitCallToNestedComputation(
@@ -177,7 +178,7 @@ Status IrEmitter::EmitCallToNestedComputation(
 
   Call(emitted_function, arguments);
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 bool IrEmitter::MaybeEmitDirectAtomicOperation(
@@ -190,7 +191,9 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
       computation.root_instruction()->shape().element_type();
   bool is_atomic_integral = element_type == S32 || element_type == U32 ||
                             element_type == S64 || element_type == U64;
-  llvm::Value* source = Load(source_address, "source");
+  llvm::Value* source =
+      Load(llvm_ir::PrimitiveTypeToIrType(element_type, module_),
+           source_address, "source");
 
   // Just passing along RHS -> atomic store.
   if (computation.instruction_count() == 2 &&
@@ -328,13 +331,13 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
 //
 Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
                                               llvm::Value* output_address,
-                                              llvm::Value* source_address) {
+                                              llvm::Value* source_address,
+                                              llvm::Type* element_type) {
   llvm::PointerType* output_address_type =
       llvm::dyn_cast<llvm::PointerType>(output_address->getType());
   CHECK_NE(output_address_type, nullptr);
+  CHECK(output_address_type->isOpaqueOrPointeeTypeMatches(element_type));
 
-  // element_type is the data type for the binary operation.
-  llvm::Type* element_type = output_address_type->getPointerElementType();
   int element_size = llvm_ir::GetSizeInBits(element_type);
 
   int atomic_size = (element_size < 32) ? 32 : element_size;
@@ -345,9 +348,9 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
   // cas_old_output_address and cas_new_output_address point to the scratch
   // memory where we store the old and new values for the repeated atomicCAS
   // operations.
-  llvm::Value* cas_old_output_address = llvm_ir::EmitAllocaAtFunctionEntry(
+  llvm::AllocaInst* cas_old_output_address = llvm_ir::EmitAllocaAtFunctionEntry(
       atomic_type, "cas_old_output_address", &b_);
-  llvm::Value* cas_new_output_address = llvm_ir::EmitAllocaAtFunctionEntry(
+  llvm::AllocaInst* cas_new_output_address = llvm_ir::EmitAllocaAtFunctionEntry(
       atomic_type, "cas_new_output_address", &b_);
 
   // Emit preparation code to the preheader.
@@ -388,7 +391,8 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
 
   // Use the value from the memory that atomicCAS operates on to initialize
   // cas_old_output.
-  llvm::Value* cas_old_output = Load(atomic_memory_address, "cas_old_output");
+  llvm::Value* cas_old_output =
+      Load(atomic_type, atomic_memory_address, "cas_old_output");
   Store(cas_old_output, cas_old_output_address);
 
   llvm::BasicBlock* loop_exit_bb = loop_preheader_bb->splitBasicBlock(
@@ -402,14 +406,16 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
   // Emit the body of the loop that repeatedly invokes atomicCAS.
   //
   // Use cas_old_output to initialize cas_new_output.
-  cas_old_output = Load(cas_old_output_address, "cas_old_output");
+  cas_old_output = Load(cas_old_output_address->getAllocatedType(),
+                        cas_old_output_address, "cas_old_output");
   Store(cas_old_output, cas_new_output_address);
   // Emits code to calculate new_output = operation(old_output, source);
   TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
       computation, {binop_output_address, source_address},
       binop_output_address));
 
-  llvm::Value* cas_new_output = Load(cas_new_output_address, "cas_new_output");
+  llvm::Value* cas_new_output = Load(cas_new_output_address->getAllocatedType(),
+                                     cas_new_output_address, "cas_new_output");
 
   // If cas_new_output == cas_old_output, we're not asking for anything to
   // change, so we're done here!
@@ -437,12 +443,12 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
   // Set the insertion point to the exit basic block so that the caller of
   // this method can continue emitting code to the right place.
   SetToFirstInsertPoint(loop_exit_bb, &b_);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status IrEmitter::EmitAtomicOperationForNestedComputation(
     const HloComputation& computation, llvm::Value* output_address,
-    llvm::Value* source_address) {
+    llvm::Value* source_address, llvm::Type* element_type) {
   if (computation.num_parameters() != 2) {
     // TODO(b/30258929): We only accept binary computations so far.
     return Unimplemented(
@@ -453,11 +459,11 @@ Status IrEmitter::EmitAtomicOperationForNestedComputation(
 
   if (MaybeEmitDirectAtomicOperation(computation, output_address,
                                      source_address)) {
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   return EmitAtomicOperationUsingCAS(computation, output_address,
-                                     source_address);
+                                     source_address, element_type);
 }
 
 bool IrEmitter::IsEmittingForAMDGPU() const {
@@ -478,9 +484,9 @@ void IrEmitter::EmitAMDGPUAtomicAdd(llvm::Value* output_address,
           // the compiler will only generate a global_atomic_fadd if the pointer
           // is in global addrspace (1)
           b_.CreateAddrSpaceCast(
-              output_address, llvm::PointerType::get(
-                                  output_address_type->getPointerElementType(),
-                                  /*AddressSpace=*/1))
+              output_address,
+              llvm::PointerType::getWithSamePointeeType(output_address_type,
+                                                        /*AddressSpace=*/1))
           :
           // adds to shared memory are always atomic.
           output_address;
@@ -494,12 +500,6 @@ llvm::SyncScope::ID IrEmitter::DetermineSyncScope() const {
   return (IsEmittingForAMDGPU())
              ? b_.getContext().getOrInsertSyncScopeID("agent")
              : llvm::SyncScope::System;
-}
-
-Status IrEmitter::HandleTupleSelect(HloInstruction* tuple_select) {
-  return InternalError(
-      "Dynamic selection of tuples is not supported. Please file a bug against "
-      "XLA/GPU if you need it");
 }
 
 namespace {
@@ -531,7 +531,7 @@ std::pair<llvm::Value*, llvm::Value*> MultiplyComplex(llvm::Value* lhs_value,
 Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
   if (ShapeUtil::IsZeroElementArray(convolution->shape())) {
     // Emit no code for an empty output.
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   // TODO(b/31409998): Support convolution with dilation.
   return Unimplemented(
@@ -541,7 +541,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
 Status IrEmitter::HandleFft(HloInstruction* fft) {
   if (ShapeUtil::IsZeroElementArray(fft->shape())) {
     // Emit no code for an empty output.
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   return Unimplemented("Hit a case for fft that is not implemented on GPU.");
 }
@@ -552,7 +552,7 @@ Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
 }
 
 Status IrEmitter::HandleParameter(HloInstruction* parameter) {
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status IrEmitter::HandleFusion(HloInstruction* fusion) {
@@ -651,7 +651,8 @@ StatusOr<std::vector<llvm::Value*>> IrEmitter::ComputeNestedElementFromAddrs(
   std::vector<llvm::Value*> returned_scalars;
   returned_scalars.reserve(allocas_for_returned_scalars.size());
   for (llvm::Value* addr : allocas_for_returned_scalars) {
-    returned_scalars.push_back(Load(addr));
+    auto alloca = llvm::cast<llvm::AllocaInst>(addr);
+    returned_scalars.push_back(Load(alloca->getAllocatedType(), alloca));
   }
   return returned_scalars;
 }

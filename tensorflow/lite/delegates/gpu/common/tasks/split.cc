@@ -22,10 +22,12 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-Split::Split(const OperationDef& definition, const SplitAttributes& attr)
+Split::Split(const OperationDef& definition, const SplitAttributes& attr,
+             const std::vector<int>& channels)
     : GPUOperation(definition), attr_(attr) {
   work_group_size_ = int3(8, 4, 1);
-  code_ = attr.axis == Axis::CHANNELS ? GetSplitChannelsCode() : GetSplitCode();
+  code_ = attr.axis == Axis::CHANNELS ? GetSplitChannelsCode(channels)
+                                      : GetSplitCode();
 }
 
 std::string Split::GetSplitCode() {
@@ -116,7 +118,7 @@ std::string Split::GetSplitCode() {
   return c;
 }
 
-std::string Split::GetSplitChannelsCode() {
+std::string Split::GetSplitChannelsCode(const std::vector<int>& channels) {
   AddSrcTensor("src_tensor", definition_.src_tensors[0]);
   for (int i = 0; i < definition_.dst_tensors.size(); ++i) {
     AddDstTensor("dst_tensor_" + std::to_string(i), definition_.dst_tensors[i]);
@@ -146,22 +148,41 @@ std::string Split::GetSplitChannelsCode() {
     c += "  int Y = GLOBAL_ID_1;\n";
     c += "  if (Y >= args.src_tensor.Height()) return;\n";
   }
-  c += "  int src_channel = 0;\n";
-  const std::string postfixes[] = {"x", "y", "z", "w"};
-  for (int i = 0; i < definition_.dst_tensors.size(); ++i) {
-    const std::string dst_name = "args.dst_tensor_" + std::to_string(i);
-    c += "  for (int i = 0; i < " + dst_name + ".Slices(); ++i) {\n";
-    c += "    args.src_tensor::type result = args.src_tensor::zero_value;\n";
-    for (int j = 0; j < 4; ++j) {
-      c += "    if (i * 4 + " + std::to_string(j) + " < " + dst_name +
-           ".Channels()) {\n";
-      c += "      args.src_tensor.ReadPerChannel(result." + postfixes[j] +
-           ", " + coords + ", src_channel" + batch_coord + ");\n";
-      c += "      src_channel++;\n";
-      c += "    }\n";
+  int src_channels = 0;
+  for (auto dst_ch : channels) {
+    src_channels += dst_ch;
+  }
+  const int src_slices = DivideRoundUp(src_channels, 4);
+  int dst_ch = 0;
+  int dst_slice = 0;
+  int dst_tensor = 0;
+  const std::string postfix[] = {".x", ".y", ".z", ".w"};
+  c += "  args.src_tensor::type dst_val;\n";
+  for (int s = 0; s < src_slices; ++s) {
+    c += "  if (" + std::to_string(s) + " < args.src_tensor.Slices()) {\n";
+    c += "    args.src_tensor::type src_val = args.src_tensor.Read(" + coords +
+         ", " + std::to_string(s) + batch_coord + ");\n";
+    for (int k = 0; k < 4; ++k) {
+      c += "    dst_val" + postfix[dst_ch % 4] + " = src_val" + postfix[k] +
+           ";\n";
+      dst_ch++;
+      if (dst_ch == channels[dst_tensor]) {
+        const std::string dst_name =
+            "args.dst_tensor_" + std::to_string(dst_tensor);
+        c += "    " + dst_name + ".Write(dst_val, " + coords + ", " +
+             std::to_string(dst_slice) + batch_coord + ");\n";
+        dst_tensor += 1;
+        dst_ch = 0;
+        dst_slice = 0;
+      }
+      if (dst_ch != 0 && dst_ch % 4 == 0) {
+        const std::string dst_name =
+            "args.dst_tensor_" + std::to_string(dst_tensor);
+        c += "    " + dst_name + ".Write(dst_val, " + coords + ", " +
+             std::to_string(dst_slice) + batch_coord + ");\n";
+        dst_slice += 1;
+      }
     }
-    c += "    " + dst_name + ".Write(result, " + coords + ", i" + batch_coord +
-         ");\n";
     c += "  }\n";
   }
   c += "}\n";
@@ -180,8 +201,9 @@ int3 Split::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Split CreateSplit(const OperationDef& definition, const SplitAttributes& attr) {
-  return Split(definition, attr);
+Split CreateSplit(const OperationDef& definition, const SplitAttributes& attr,
+                  const std::vector<int>& channels) {
+  return Split(definition, attr, channels);
 }
 
 }  // namespace gpu

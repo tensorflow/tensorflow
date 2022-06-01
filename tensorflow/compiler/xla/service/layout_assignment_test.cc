@@ -247,41 +247,6 @@ TEST_F(LayoutAssignmentTest, TupleLayout) {
       ShapeUtil::GetTupleElementShape(tuple->shape(), 1), constant1->shape()));
 }
 
-TEST_F(LayoutAssignmentTest, TupleSelect) {
-  // Verify layouts of a select with tuple operands is assigned properly.
-  auto builder = HloComputation::Builder(TestName());
-  auto constant0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR2WithLayout<float>(
-          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({0, 1}))));
-  auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR2WithLayout<float>(
-          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({1, 0}))));
-  auto tuple0 = builder.AddInstruction(
-      HloInstruction::CreateTuple({constant0, constant1}));
-  auto tuple1 = builder.AddInstruction(
-      HloInstruction::CreateTuple({constant0, constant1}));
-
-  auto pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
-
-  auto select = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple0->shape(), HloOpcode::kTupleSelect, pred, tuple0, tuple1));
-
-  auto m = CreateNewVerifiedModule();
-  m->AddEntryComputation(builder.Build());
-
-  ComputationLayout computation_layout(
-      m->entry_computation()->ComputeProgramShape());
-  Shape result_shape =
-      ShapeUtil::MakeTupleShape({constant0->shape(), constant1->shape()});
-  TF_CHECK_OK(computation_layout.mutable_result_layout()->CopyLayoutFromShape(
-      result_shape));
-
-  AssignLayouts(m.get(), &computation_layout);
-
-  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(result_shape, select->shape()));
-}
-
 TEST_F(LayoutAssignmentTest, ConflictingLayoutTuple) {
   // Construct following computation which has conflicting layouts for two
   // elements of a tuple which share the same source logicalb buffer:
@@ -504,7 +469,6 @@ TEST_F(LayoutAssignmentTest, ReshapeOperandHasMultipleUsers) {
       ShapeLayout(ShapeUtil::MakeTupleShape(
           {transpose_shape_with_layout, broadcast2_shape_with_layout}));
   AssignLayouts(m.get(), &computation_layout);
-
   EXPECT_THAT(broadcast->shape().layout().minor_to_major(), ElementsAre(0, 1));
   EXPECT_THAT(transpose->shape().layout().minor_to_major(), ElementsAre(1, 0));
   EXPECT_THAT(tanh->shape().layout().minor_to_major(), ElementsAre(0, 1));
@@ -1630,7 +1594,6 @@ ENTRY main {
       ShapeUtil::MakeShapeWithLayout(F32, {64, 243, 243, 384}, {3, 0, 2, 1}));
   *computation_layout.mutable_result_layout() = ShapeLayout(
       ShapeUtil::MakeShapeWithLayout(F32, {64, 243, 243, 384}, {3, 0, 2, 1}));
-  std::cerr << "Entry layout:" << computation_layout.ToString() << "\n";
   ChannelLayoutConstraints channel_constraints;
   LayoutAssignment layout_assignment(
       &computation_layout,

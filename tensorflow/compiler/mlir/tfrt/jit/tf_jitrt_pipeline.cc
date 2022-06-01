@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
 // -------------------------------------------------------------------------- //
@@ -101,18 +100,22 @@ void AddLinalgTransformations(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(CreateVectorizeTiledOpsPass());
 }
 
-void AddBufferizationPasses(OpPassManager& pm) {
+void AddBufferizationPasses(OpPassManager& pm, bool one_shot_bufferize) {
+  // Rewrite init_tensor ops to alloc_tensor ops.
+  pm.addNestedPass<FuncOp>(mlir::createLinalgInitTensorToAllocTensorPass());
+  // Run One-Shot Bufferize.
+  if (one_shot_bufferize) {
+    pm.addPass(mlir::hlo::CreateOneShotBufferizePass());
+    return;
+  }
   // Now bufferize all the compute operations (hlo + linalg) and func signature.
-  pm.addPass(
-      mlir::kernel_gen::transforms::CreateComputeOpAndFuncBufferizePass());
-  pm.addNestedPass<FuncOp>(
-      mlir::kernel_gen::transforms::CreateTiledLoopBufferizePass());
+  pm.addPass(mlir::CreateComputeOpAndFuncBufferizePass());
+  pm.addNestedPass<FuncOp>(mlir::gml_st::CreateTiledLoopBufferizePass());
   // Always run CSE and canonicalizer (which does dead code removal) before
   // bufferizing anything.
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(
-      mlir::kernel_gen::transforms::CreateFinalBufferizePass(/*alignment=*/64));
+  pm.addPass(mlir::CreateFinalBufferizePass(/*alignment=*/64));
 }
 
 }  // namespace
@@ -185,7 +188,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // Now that all compute operations are converted to standard (as a side effect
   // of bufferizing to memref dialect) we can remove the remaining references
   // to unsigned types.
-  pm.addPass(mlir::kernel_gen::transforms::CreateConvertToSignlessPass());
+  pm.addPass(mlir::mhlo::createConvertToSignlessPass());
 
   // Lower shape dialect to standard to enable linalg canonicalizations (e.g.
   // use linalg inputs instead of outputs for memref.dim operations).
@@ -212,7 +215,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // anything.
   pm.addPass(mlir::createCanonicalizerPass());
 
-  AddBufferizationPasses(pm);
+  AddBufferizationPasses(pm, options.one_shot_bufferize || options.vectorize);
 
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());

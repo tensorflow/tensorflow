@@ -37,7 +37,6 @@ pybind_extension(
     srcs = ["wrapper/metrics_wrapper_pybind11.cc"],
     hdrs = ["wrapper/metrics_wrapper.h"],
     compatible_with = get_compatible_with_portable(),
-    module_name = "_pywrap_tensorflow_lite_metrics_wrapper",
     visibility = ["//visibility:private"],
     deps = [
         ":metrics_wrapper_lib",

@@ -83,6 +83,33 @@ def GetResourceOp : FallbackSync_Op<"get_resource",
   let assemblyFormat = "attr-dict `:` type($results)";
 }
 
+def CreateOp: FallbackSync_Op<"createop", [CoreRT_TypedAttributeTrait]> {
+  let summary = "The Fallback CreateOp";
+
+  let description = [{
+    The CreateOp creates the tensorflow::OpKernel in the fallback context.
+
+    op_key: The unique key to identify this op.
+    num_args: The number of inputs.
+    device: The tensorflow device. eg. "/CPU:0"
+    op_attrs: The tensorflow attributes excluding the func attrs.
+    op_name: The tensorflow op name. eg. "tf.AddV2"
+
+    Example:
+      tfrt_fallback_async.createop() key(0) device("/CPU:0")
+        "some.op"() {attr1 = value, attr2 = value2} {f_attr1 = "fn1", f_attr2 = "fn2"} num_args(1)
+  }];
+
+  let arguments = (ins
+    I64Attr:$num_args,
+    ArrayAttr:$op_attrs,
+    I64Attr:$op_key,
+    StrAttr:$op_name
+  );
+
+  let results = (outs);
+}
+
 def ExecuteOp : FallbackSync_Op<"executeop",
     [NoSideEffect, CoreRT_TypedAttributeTrait]> {
   let summary = "The Fallback Sync ExecuteOp";

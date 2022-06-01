@@ -513,6 +513,35 @@ Literal MakeRandomIndex(int64_t index_bound, std::minstd_rand0* engine) {
   return LiteralUtil::CreateR0<int32_t>(generator(*engine));
 }
 
+// Returns true if `dest' is reachable from `src' through data-formatting and
+// custom call instructions within the same computation.
+bool ReachableViaDataFormatting(const HloInstruction* src,
+                                const HloInstruction* dest) {
+  if (src == dest) {
+    return true;
+  }
+  switch (dest->opcode()) {
+    case HloOpcode::kReshape:
+    case HloOpcode::kTranspose:
+    case HloOpcode::kCopy:
+    case HloOpcode::kSlice:
+      break;
+    case HloOpcode::kCustomCall:
+      if (dest->custom_call_target() == "AssumeGatherIndicesInBound") {
+        break;
+      }
+      return false;
+    default:
+      return false;
+  }
+  for (const auto* operand : dest->operands()) {
+    if (ReachableViaDataFormatting(src, operand)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Use dataflow analysis on each parameter to see if there are uses that would
 // be problematic when generating input data.  Returns the list of instructions
 // that correspond to their uses.
@@ -553,6 +582,19 @@ std::vector<HloInstruction*> FindConstrainedUses(
         // (two-operand) kSort instructions. Since sort stability is not
         // guaranteed, constrain keys of key-value sort not to have duplicates,
         // since otherwise the value order may legitimately differ.
+        constrained_uses.push_back(instruction);
+      }
+    }
+  }
+
+  for (auto* instruction : param.parent()->instructions()) {
+    const HloOpcode opcode = instruction->opcode();
+    if (opcode == HloOpcode::kGather || opcode == HloOpcode::kScatter) {
+      if (instruction->operand(1) == &param) {
+        // Above already covers this case.
+        continue;
+      }
+      if (ReachableViaDataFormatting(&param, instruction->operand(1))) {
         constrained_uses.push_back(instruction);
       }
     }
@@ -598,16 +640,13 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
       case HloOpcode::kGather:
       case HloOpcode::kScatter: {
         const Shape& operand_shape = use->operand(0)->shape();
-        if (use->operand(1) == &param) {
-          auto index_map =
-              use->opcode() == HloOpcode::kGather
-                  ? use->gather_dimension_numbers().start_index_map()
-                  : use->scatter_dimension_numbers()
-                        .scatter_dims_to_operand_dims();
-          for (const auto dim_in_operand : index_map) {
-            index_bound =
-                std::min(index_bound, operand_shape.dimensions(dim_in_operand));
-          }
+        auto index_map = use->opcode() == HloOpcode::kGather
+                             ? use->gather_dimension_numbers().start_index_map()
+                             : use->scatter_dimension_numbers()
+                                   .scatter_dims_to_operand_dims();
+        for (const auto dim_in_operand : index_map) {
+          index_bound = std::min(index_bound,
+                                 operand_shape.dimensions(dim_in_operand) - 1);
         }
         if (use->opcode() == HloOpcode::kScatter) {
           needs_sorted_indices |=
@@ -647,7 +686,7 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
     return Unimplemented("Conflicting operand generation constraints.");
   }
   if (index_bound != INT64_MAX) {
-    return MakeFakeLiteralInternalWithBounds(param_shape, engine, -1,
+    return MakeFakeLiteralInternalWithBounds(param_shape, engine, 0,
                                              index_bound, needs_sorted_indices);
   } else if (needs_constant) {
     switch (constant_type) {

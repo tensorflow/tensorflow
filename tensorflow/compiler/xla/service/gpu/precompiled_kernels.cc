@@ -24,6 +24,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
 
+#if TENSORFLOW_USE_ROCM
+#include "tensorflow/stream_executor/gpu/gpu_stream.h"
+namespace stream_executor {
+namespace gpu {
+
+extern void rocm_MakeBatchPointers(void* stream, char* base, int stride, int n,
+                                   void** ptrs_out);
+
+}
+}  // namespace stream_executor
+#endif
+
 namespace xla {
 namespace gpu {
 namespace {
@@ -145,6 +157,12 @@ class LazyKernel {
 Status MakeBatchPointers(se::Stream* stream, const se::GpuAsmOpts& asm_opts,
                          se::DeviceMemoryBase base_ptr, int stride_bytes, int n,
                          se::DeviceMemoryBase ptrs_out) {
+#if TENSORFLOW_USE_ROCM
+  stream_executor::gpu::rocm_MakeBatchPointers(
+      se::gpu::AsGpuStreamValue(stream),
+      reinterpret_cast<char*>(base_ptr.opaque()), stride_bytes, n,
+      reinterpret_cast<void**>(ptrs_out.opaque()));
+#else
   static auto* lazy_kernel =
       new LazyKernel<se::DeviceMemoryBase /*base_ptr*/, int /*stride_bytes*/,
                      int /*n*/, se::DeviceMemoryBase /*ptrs_out*/>(
@@ -153,10 +171,12 @@ Status MakeBatchPointers(se::Stream* stream, const se::GpuAsmOpts& asm_opts,
   TF_ASSIGN_OR_RETURN(auto kernel, lazy_kernel->Get(stream->parent()));
 
   constexpr int kThreads = 128;
-  stream->ThenLaunch(se::ThreadDim(kThreads, 1, 1),
-                     se::BlockDim(CeilOfRatio(n, kThreads), 1, 1), *kernel,
-                     base_ptr, stride_bytes, n, ptrs_out);
-  return Status::OK();
+  TF_RETURN_IF_ERROR(
+      stream->ThenLaunch(se::ThreadDim(kThreads, 1, 1),
+                         se::BlockDim(CeilOfRatio(n, kThreads), 1, 1), *kernel,
+                         base_ptr, stride_bytes, n, ptrs_out));
+#endif
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace gpu

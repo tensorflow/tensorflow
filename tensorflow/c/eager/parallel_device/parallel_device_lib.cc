@@ -75,7 +75,7 @@ class DeviceThread {
         // TODO(allenl): We should have an async API that works with the
         // parallel device.
         device_(device),
-        executor_(TFE_NewExecutor(is_async)),
+        executor_(TFE_NewExecutor(is_async, /*enable_streaming_enqueue=*/true)),
         op_(nullptr),
         thread_(tensorflow::Env::Default()->StartThread(
             tensorflow::ThreadOptions(), "parallel_device_execute",
@@ -570,7 +570,7 @@ Status ParallelTensor::Shape(const std::vector<int64_t>** shape) const {
     shape_ = std::vector<int64_t>(dim_sizes.begin(), dim_sizes.end());
   }
   *shape = &*shape_;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParallelTensor::SummarizeValue(std::string& summary) {
@@ -590,7 +590,7 @@ Status ParallelTensor::SummarizeValue(std::string& summary) {
                     "\": ", component_summary);
   }
   summary += "}";
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace parallel_device

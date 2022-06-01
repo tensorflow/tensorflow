@@ -18,11 +18,12 @@ limitations under the License.
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 
 namespace mlir {
 namespace TF {
 
-// TODO(b/228344955) use inline constexpr with C++17
+// TODO(b/229028654) see comment in source file
 
 // Marks a node for XLA compilation. The attribute value indicates the
 // compilation device type.
@@ -32,7 +33,9 @@ extern const llvm::StringRef kCompileDeviceTypeAttr;
 extern const llvm::StringRef kReplicationInfoAttr;
 // Marks a node for XLA-TPU compilation. The attribute value indicates the
 // associated compilation cluster and replication metadata op.
-extern const llvm::StringRef kTPUReplicateAttr;
+extern const llvm::StringRef kTpuReplicateAttr;
+// Device types.
+extern const llvm::StringRef kTpuDevice;
 
 // Copies attributes that satisfy the given predicate from `from` to `to`.
 template <typename Predicate>

@@ -85,7 +85,7 @@ Status SetPerCoreArgShapes(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Adds TPU_REPLICATED_CORE device assignments to the _Arg and _Retval
@@ -112,7 +112,7 @@ Status AssignDevicesToArgsAndRetvals(
           << sharding.DebugString();
     }
     node->AddAttr("_XlaSharding", sharding.SerializeAsString());
-    return Status::OK();
+    return OkStatus();
   };
   for (Node* node : graph->op_nodes()) {
     if (node->type_string() == kArgOp) {
@@ -129,7 +129,7 @@ Status AssignDevicesToArgsAndRetvals(
       TF_RETURN_IF_ERROR(assign(node, retval_core_mapping[index].sharding));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void ConvertGraphShapeInfoToShapeMap(
@@ -211,7 +211,7 @@ Status OptimizeGraph(const tpu::TPUCompileMetadataProto& metadata,
 
   TF_RETURN_IF_ERROR(RewriteTensorListWithConstElement(graph->get(), fld));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Populates the mapping from return value to ShardingAndIndex.
@@ -244,7 +244,7 @@ Status AssignReturnValueToCore(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Populates the arguments, core mapping and per core argument shape for the
@@ -330,7 +330,7 @@ Status BuildComputationArgumentDescriptions(
   TF_RET_CHECK(constant_count == guaranteed_constants_size)
       << "Not all of the constant tensors were consumed.";
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -374,7 +374,6 @@ Status CompileTFFunctionToHlo(
     const std::vector<TensorShape>& arg_shapes,
     const GuaranteedConsts& guaranteed_constants, const NameAttrList& function,
     const tpu::TPUCompileMetadataProto& metadata,
-    std::function<Status(ResourceMgr*)> populate_resource_manager_fn,
     xla::CompileOnlyClient* client,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
@@ -385,7 +384,6 @@ Status CompileTFFunctionToHlo(
   compiler_options.client = client;
   compiler_options.flib_def = &flib_definition;
   compiler_options.allow_cpu_custom_calls = false;
-  compiler_options.populate_resource_manager = &populate_resource_manager_fn;
   compiler_options.graph_def_version = graph_def_version;
   compiler_options.shape_determination_fns = shape_determination_fns;
 
@@ -479,7 +477,7 @@ Status GetShardingInfo(
     TF_RETURN_IF_ERROR(SetPerCoreArgShapes(
         proto_arg, i, &xla_arg_shape, arg_core_mapping, per_core_arg_shapes));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tpu

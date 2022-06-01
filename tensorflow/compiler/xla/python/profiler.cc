@@ -18,7 +18,6 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/rpc/client/capture_profile.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
@@ -76,7 +75,6 @@ void BuildProfilerSubmodule(py::module* m) {
              tensorflow::profiler::XSpace xspace;
              // Disables the ProfilerSession
              TF_RETURN_IF_ERROR(sess->CollectData(&xspace));
-             xspace.add_hostnames(tensorflow::port::Hostname());
              return tensorflow::profiler::ExportToTensorBoard(xspace,
                                                               tensorboard_dir);
            });

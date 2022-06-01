@@ -152,6 +152,9 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   // Remove all DTensorLayout ops after the expansion is done.
   pm->addPass(CreateDTensorSPMDExpansion());
 
+  // Insert functions to save or load embeddings when using tpu device.
+  AddDTensorEmbeddingCheckpointPass(pm);
+
   // Expand all ops that consume SparseTensors to possibly new ops.
   // Remove any unused SparseToDense, Layout, and Const Ops after
   // the expansion is done.
@@ -279,13 +282,13 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
 
     // Convert compilation and replication attributes to unified attributes
     // expected by TPURewritePass.
-    pm->addNestedPass<mlir::FuncOp>(
+    pm->addNestedPass<mlir::func::FuncOp>(
         mlir::TFTPU::CreateCanonicalizeCompileAndReplicateAttributesPass());
     // Create TPU Compile and TPU Execute ops for each TPU devices.
     pm->addPass(mlir::TFTPU::CreateTPURewritePass());
     // Convert unified compilation and replication attributes back to legacy
     // attributes for subsequent passes.
-    pm->addNestedPass<mlir::FuncOp>(
+    pm->addNestedPass<mlir::func::FuncOp>(
         mlir::TFTPU::CreateConvertToLegacyCompileAndReplicateAttributesPass());
 
     // Add placeholder device attributes to resource arguments of TPU

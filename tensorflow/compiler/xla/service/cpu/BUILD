@@ -45,6 +45,14 @@ cc_library(
     ],
 )
 
+# When using mlir based HloLowering, the following utils will sometimes be needed to define used symbols.
+cc_library(
+    name = "runtime_mlir_utils",
+    deps = [
+        "@llvm-project//mlir:mlir_c_runner_utils",
+    ],
+)
+
 filegroup(
     name = "runtime_srcs",
     srcs = [
@@ -204,6 +212,7 @@ cc_library(
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:MemRefToLLVM",
+        "@llvm-project//mlir:TensorToLinalg",
         "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
@@ -217,7 +226,6 @@ cc_library(
         "@llvm-project//mlir:VectorToSCF",
         "//tensorflow/compiler/mlir/hlo:all_passes",
         "//tensorflow/compiler/mlir/hlo:legalize_trigonometric_to_approximation",
-        "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
         "//tensorflow/compiler/mlir/xla:hlo_to_mlir_hlo",
         "//tensorflow/compiler/xla/service/spmd:stateful_rng_spmd_partitioner",
         "//tensorflow/compiler/xla/service:all_gather_decomposer",

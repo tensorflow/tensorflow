@@ -55,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -83,11 +84,11 @@ std::string CreateMissingAttributeMsg(llvm::StringRef attribute) {
   return llvm::formatv("requires attribute '{0}'", attribute).str();
 }
 
-LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
+LogicalResult EncapsulateFuncAndSerialize(func::FuncOp entry_func,
                                           std::string* serialized_func_module) {
   ModuleOp module = entry_func->getParentOfType<ModuleOp>();
   SymbolTable entry_module_table(module);
-  llvm::SmallVector<FuncOp, 4> referenced({entry_func});
+  llvm::SmallVector<func::FuncOp, 4> referenced({entry_func});
 
   // Create a new module to hold func and all referenced functions.
   OwningOpRef<mlir::ModuleOp> module_for_func =
@@ -104,7 +105,7 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
     auto func = referenced.pop_back_val();
 
     // Skip functions that have already been cloned into new module.
-    if (symbol_table.lookup<FuncOp>(func.getName())) continue;
+    if (symbol_table.lookup<func::FuncOp>(func.getName())) continue;
 
     // Find any SymbolRefAttr in func that maps to a FuncOp. We need to clone
     // all found FuncOps to new_module to make sure new_module is
@@ -112,7 +113,7 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
     Optional<SymbolTable::UseRange> uses = SymbolTable::getSymbolUses(func);
     assert(uses && "expected to be able to collect symbol uses");
     for (SymbolTable::SymbolUse use : *uses) {
-      FuncOp referenced_func = entry_module_table.lookup<FuncOp>(
+      func::FuncOp referenced_func = entry_module_table.lookup<func::FuncOp>(
           use.getSymbolRef().cast<FlatSymbolRefAttr>().getValue());
 
       // Skip Symbols that do not map to a function.
@@ -279,6 +280,13 @@ LogicalResult SetMetadataProtoFromClusterFuncOp(
     tf_device::ClusterFuncOp op, int num_replicas, int num_cores_per_replica,
     llvm::Optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
     tensorflow::tpu::TPUCompileMetadataProto* metadata) {
+  if (auto options_attr =
+          op->getAttrOfType<StringAttr>("tpu_compile_options_proto")) {
+    if (!metadata->mutable_compile_options()->ParseFromArray(
+            options_attr.data(), options_attr.size())) {
+      return failure();
+    }
+  }
   metadata->set_num_replicas(num_replicas);
   metadata->set_num_cores_per_replica(num_cores_per_replica);
 
@@ -332,7 +340,6 @@ Operation* BuildCompileOp(
           std::move(xla_device_assignment), &metadata)))
     return nullptr;
 
-
   // Build a shape op for each input to cluster_func.
   // TODO(b/139377366): When shape inference is ready, we can use compile time
   // shape inference to get inputs that have static shapes and only use shape
@@ -354,8 +361,9 @@ Operation* BuildCompileOp(
   }
 
   FlatSymbolRefAttr func_attr = cluster_func.funcAttr();
-  FuncOp func = cluster_func->getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(
-      func_attr.getValue());
+  func::FuncOp func =
+      cluster_func->getParentOfType<ModuleOp>().lookupSymbol<func::FuncOp>(
+          func_attr.getValue());
 
   std::string txt_module;
   if (failed(EncapsulateFuncAndSerialize(func, &txt_module))) return nullptr;
@@ -370,10 +378,13 @@ Operation* BuildCompileOp(
   metadata.set_mlir_fingerprint(mlir_fingerprint);
 
   std::string txt_metadata;
-  if (tpu_compile_metadata_debug)
-    txt_metadata = metadata.DebugString();
-  else
+  if (tpu_compile_metadata_debug) {
+    ::tensorflow::protobuf::TextFormat::Printer printer;
+    printer.SetExpandAny(true);
+    printer.PrintToString(metadata, &txt_metadata);
+  } else {
     metadata.SerializeToString(&txt_metadata);
+  }
 
   auto compile_op = builder->create<TF::_TPUCompileMlirOp>(
       cluster_func.getLoc(),

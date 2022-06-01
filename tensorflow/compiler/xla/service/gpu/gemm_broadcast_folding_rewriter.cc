@@ -58,7 +58,7 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
       // broadcast dimensions have been inserted on the left.
       for (int64_t bcast_dim : bcast->dimensions()) {
         if (bcast_dim < num_bcast_dims) {
-          return Status::OK();
+          return ::tensorflow::OkStatus();
         }
       }
 
@@ -66,17 +66,15 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
       // there is at least one batch dimension.
       CHECK_GT(num_bcast_dims, 0);
       if (num_bcast_dims != num_batch_dims) {
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       }
 
       if (bcast_operand_index == 1) {
-        config.set_rhs_stride(0);
         CHECK_EQ(dim_nums->rhs_contracting_dimensions_size(), 1);
         dim_nums->set_rhs_contracting_dimensions(
             0, dim_nums->rhs_contracting_dimensions(0) - num_batch_dims);
         dim_nums->clear_rhs_batch_dimensions();
       } else {
-        config.set_lhs_stride(0);
         CHECK_EQ(dim_nums->lhs_contracting_dimensions_size(), 1);
         dim_nums->set_lhs_contracting_dimensions(
             0, dim_nums->lhs_contracting_dimensions(0) - num_batch_dims);
@@ -86,7 +84,7 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
           bcast_operand_index, bcast->mutable_operand(0)));
       TF_RETURN_IF_ERROR(existing_gemm->set_backend_config(config));
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 };
 

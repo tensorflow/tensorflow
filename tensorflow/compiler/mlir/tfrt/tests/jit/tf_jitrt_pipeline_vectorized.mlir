@@ -72,3 +72,24 @@ func.func @reduce_1d_dynamic(%input: tensor<?xf32>) -> tensor<f32> {
 // CHECK: scf.for
 // CHECK:   arith.addf %{{.*}}, %{{.*}} : vector<8xf32>
 // CHECK: vector.reduction
+
+// -----
+
+// CHECK-LABEL: @reduction_of_cast
+func.func @reduction_of_cast(%arg0: tensor<?xi64>) -> tensor<i32> {
+  %cst = "tf.Const"()
+    {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
+  %0 = "tf.Cast"(%arg0) {Truncate = false}
+    : (tensor<?xi64>) -> tensor<?xi32>
+  %1 = "tf.Prod"(%0, %cst) {keep_dims = false}
+    : (tensor<?xi32>, tensor<1xi32>) -> tensor<i32>
+  func.return %1 : tensor<i32>
+}
+// CHECK: scf.for
+// CHECK:   arith.trunci %{{.*}} : vector<4x8xi64> to vector<4x8xi32>
+// CHECK:   arith.muli %{{.*}}, %{{.*}} : vector<8xi32>
+// CHECK: vector.reduction
+// CHECK: scf.for
+// CHECK:   linalg.generic
+// CHECK:     arith.trunci
+// CHECK:     arith.muli

@@ -5253,6 +5253,56 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfNonCanonicalBatchDotCantSimplify) {
   EXPECT_FALSE(changed);
 }
 
+TEST_F(AlgebraicSimplifierTest, DynamicSliceOfTranspose) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      param = f32[12,10,8] parameter(0)
+      i0 = s32[] parameter(1)
+      i1 = s32[] parameter(2)
+      i2 = s32[] parameter(3)
+      transpose = f32[12,8,10] transpose(param), dimensions={0,2,1}
+      ROOT slice = f32[2,3,5] dynamic-slice(transpose, i0, i1, i2),
+        dynamic_slice_sizes={2,3,5}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Transpose(
+                        m::DynamicSlice(m::Parameter(0), m::Parameter(1),
+                                        m::Parameter(3), m::Parameter(2)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, SliceOfTranspose) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      param = f32[12,10,8] parameter(0)
+      transpose = f32[8,12,10] transpose(param), dimensions={2,0,1}
+      ROOT slice = f32[2,3,5] slice(transpose), slice={[4:6],[0:12:4],[3:8]}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Transpose(m::Slice())));
+  auto slice = root->operand(0);
+  EXPECT_THAT(slice->slice_starts(), ElementsAre(0, 3, 4));
+  EXPECT_THAT(slice->slice_limits(), ElementsAre(12, 8, 6));
+  EXPECT_THAT(slice->slice_strides(), ElementsAre(4, 1, 1));
+}
+
 TEST_F(AlgebraicSimplifierTest, SliceOfPadLow) {
   const char* hlo_string = R"(
     HloModule module
@@ -7298,6 +7348,32 @@ TEST_F(AlgebraicSimplifierTest, ReduceOfBatchDotToContractingDimension) {
               GmockMatch(m::Dot(m::Parameter(0), m::Parameter(1))));
 }
 
+TEST_F(AlgebraicSimplifierTest, ReduceAddIsCommutative) {
+  const char* kModuleStr = R"(
+    HloModule m
+    fn1 {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+    fn2 {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p1, p0)
+    }
+    test {
+      p0 = f32[10,10,10] parameter(0)
+      zero = f32[] constant(0)
+      r1 = f32[10,10] reduce(p0, zero), dimensions={0}, to_apply=fn1
+      ROOT r2 = f32[10] reduce(r1, zero), dimensions={0}, to_apply=fn2
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Reduce(m::Parameter(0), m::ConstantScalar(0))));
+}
+
 TEST_F(AlgebraicSimplifierTest, RsqrtOfRPower) {
   const char* kModuleStr = R"(
     HloModule m
@@ -8225,6 +8301,40 @@ TEST_F(AlgebraicSimplifierTest, SimplifyRedundantBitcastConvert) {
               GmockMatch(m::Concatenate(m::Parameter(0), m::Parameter(1))));
 }
 
+TEST_F(AlgebraicSimplifierTest, SimplifyOptimizationBarrier) {
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY entry {
+      param.0 = f32[] parameter(0)
+      param.1 = f32[] parameter(1)
+      add.0 = f32[] add(param.0, param.1)
+      sub.0 = f32[] subtract(param.0, param.1)
+      mul.0 = f32[] multiply(param.0, param.1)
+      tuple.0 = (f32[], f32[], f32[]) tuple(mul.0, sub.0, add.0)
+      b = (f32[], f32[], f32[]) opt-barrier(tuple.0)
+      gte.0 = f32[] get-tuple-element(b), index=1
+      ROOT  t = (f32[], f32[]) tuple(mul.0,gte.0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_EQ(m->entry_computation()
+                ->root_instruction()
+                ->operand(1)
+                ->operand(0)
+                ->operand(0)
+                ->operand_count(),
+            3);
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_EQ(m->entry_computation()
+                ->root_instruction()
+                ->operand(1)
+                ->operand(0)
+                ->operand(0)
+                ->operand_count(),
+            2);
+}
+
 TEST_F(AlgebraicSimplifierTest, GTETupleShardingLoss) {
   // Verify the gte(tuple) folding does not happen if it loses sharding info.
   const char* kModuleStr = R"(
@@ -8260,5 +8370,43 @@ TEST_F(AlgebraicSimplifierTest, DynamicSliceShapeLayout) {
   EXPECT_EQ(slice_shape.layout().tiles_size(), 1);
 }
 
+// Fold a sequence of copy bitcast copy
+TEST_F(AlgebraicSimplifierTest, CopyBitcastCopy) {
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+     fusion.1235 = bf16[1600,50,512]{2,0,1:T(8,128)(2,1)} parameter(0)
+     copy.3038 = bf16[1600,50,512]{0,2,1:T(8,128)(2,1)} copy(fusion.1235)
+     bitcast.8 = bf16[1600,50,16,32]{0,3,2,1:T(8,128)(2,1)} bitcast(copy.3038)
+     copy.3045 = bf16[1600,50,16,32]{1,3,2,0:T(8,128)(2,1)} copy(bitcast.8)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Bitcast(m::Copy(m::Parameter()))));
+}
+
+TEST_F(AlgebraicSimplifierTest, CopyBitcastCopy2) {
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+     %Arg_0.1 = f32[8,3,3,7,7]{4,0,3,2,1:T(8,128)} parameter(0)
+     %copy.1 = f32[8,3,3,7,7]{4,3,2,1,0:T(8,128)} copy(f32[8,3,3,7,7]{4,0,3,2,1:T(8,128)} %Arg_0.1)
+     %bitcast = f32[1,72,7,7]{3,2,1,0:T(8,128)} bitcast(f32[8,3,3,7,7]{4,3,2,1,0:T(8,128)} %copy.1)
+     %copy.2 = f32[1,72,7,7]{1,3,2,0:T(8,128)} copy(f32[1,72,7,7]{3,2,1,0:T(8,128)} %bitcast)
+    }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
+}
 }  // namespace
 }  // namespace xla

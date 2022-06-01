@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/numbers.h"
@@ -323,11 +322,6 @@ absl::InlinedVector<std::pair<int64_t, int64_t>, 8> CommonFactors(
   }
 
   for (int64_t partial_size_a = 1, partial_size_b = 1;;) {
-    if (partial_size_a == partial_size_b && (i > prior_i || j > prior_j)) {
-      std::tie(prior_i, prior_j) = std::make_pair(i, j);
-      bounds.emplace_back(i, j);
-      continue;
-    }
     if (partial_size_a == partial_size_b && (i > prior_i || j > prior_j)) {
       std::tie(prior_i, prior_j) = std::make_pair(i, j);
       bounds.emplace_back(i, j);

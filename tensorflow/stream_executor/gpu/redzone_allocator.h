@@ -97,6 +97,8 @@ class RedzoneAllocator : public ScratchAllocator {
   //  - A stream error, if loading or launching the kernel has failed.
   port::StatusOr<RedzoneCheckStatus> CheckRedzones() const;
 
+  Stream* stream() const { return stream_; }
+
  private:
   const int device_ordinal_;
   Stream* stream_;

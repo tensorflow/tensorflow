@@ -273,7 +273,7 @@ py::handle ShardedDeviceArray::AsHandle() {
       [](ShardedDeviceArray::object self) { return self.sda()->is_deleted(); },
       py::is_method(type));
 
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace jax

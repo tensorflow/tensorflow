@@ -103,6 +103,8 @@ class MultiTrainerCache {
       size_t max_cache_size_bytes,
       std::unique_ptr<CachableSequence<ElementType>> cachable_sequence);
   virtual ~MultiTrainerCache() = default;
+  MultiTrainerCache(const MultiTrainerCache&) = delete;
+  MultiTrainerCache& operator=(const MultiTrainerCache&) = delete;
 
   // Gets the next element for a trainer. A `trainer_id` identifies the trainer
   // reading from the cache. A trainer reads the next element it hasn't read
@@ -120,6 +122,14 @@ class MultiTrainerCache {
   bool IsCancelled() const;
 
  private:
+  struct CacheQueryResult {
+    std::shared_ptr<const ElementType> element;
+    bool cache_hit;
+  };
+
+  // Returns the next element and metrics about this query.
+  StatusOr<CacheQueryResult> GetCacheQueryResult(const std::string& trainer_id);
+
   // Returns true if element is ready for `trainer_id`. An element is ready if
   // other trainers have read the data and the data remains in the cache. If the
   // data is not ready, one of the trainers need to extend the cache.
@@ -140,6 +150,9 @@ class MultiTrainerCache {
   // `new_element_size_bytes` is the size of the new element being inserted.
   void FreeSpace(size_t new_element_size_bytes);
 
+  // Records the cache hit rate and cache size.
+  void RecordMetrics(const CacheQueryResult& result);
+
   // Maximum cache size in bytes.
   const size_t max_cache_size_bytes_;
 
@@ -151,7 +164,7 @@ class MultiTrainerCache {
 
   // If `status_` is non-OK, the cache is cancelled, and all method calls will
   // return this status.
-  Status status_ TF_GUARDED_BY(mu_) = Status::OK();
+  Status status_ TF_GUARDED_BY(mu_) = OkStatus();
 
   // `cache_` stores the cached elements.
   std::deque<std::shared_ptr<const ElementType>> cache_ TF_GUARDED_BY(mu_);
@@ -185,19 +198,29 @@ StatusOr<std::shared_ptr<const ElementType>>
 MultiTrainerCache<ElementType>::Get(const std::string& trainer_id)
     TF_LOCKS_EXCLUDED(mu_) {
   if (trainer_id.empty()) {
-    return errors::Internal(
-        "tf.data service multi-trainer cache trainer ID must be non-empty.");
+    return errors::InvalidArgument(
+        "tf.data service cross-trainer cache requires a non-empty trainer ID.");
   }
 
+  TF_ASSIGN_OR_RETURN(CacheQueryResult result, GetCacheQueryResult(trainer_id));
+  RecordMetrics(result);
+  return result.element;
+}
+
+template <class ElementType>
+StatusOr<typename MultiTrainerCache<ElementType>::CacheQueryResult>
+MultiTrainerCache<ElementType>::GetCacheQueryResult(
+    const std::string& trainer_id) {
   bool should_extend_cache = false;
   while (true) {
     {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(status_);
       if (IsElementReady(trainer_id)) {
-        metrics::RecordTFDataServiceMultiTrainerCacheQuery(
-            /*cache_hit=*/!should_extend_cache);
-        return GetElement(trainer_id);
+        TF_ASSIGN_OR_RETURN(std::shared_ptr<const ElementType> element,
+                            GetElement(trainer_id));
+        return CacheQueryResult{element,
+                                /*is_cache_hit=*/!should_extend_cache};
       }
 
       // Extends the cache or waits for another thread to extend the cache. When
@@ -272,7 +295,7 @@ Status MultiTrainerCache<ElementType>::ExtendCache() TF_LOCKS_EXCLUDED(mu_) {
   FreeSpace(new_element_size_bytes);
   cache_.push_back(std::make_shared<ElementType>(std::move(element)));
   cache_size_bytes_ += new_element_size_bytes;
-  return Status::OK();
+  return OkStatus();
 }
 
 template <class ElementType>
@@ -313,6 +336,19 @@ bool MultiTrainerCache<ElementType>::IsCancelled() const
   mutex_lock l(mu_);
   return !status_.ok();
 }
+
+template <class ElementType>
+void MultiTrainerCache<ElementType>::RecordMetrics(
+    const CacheQueryResult& result) {
+  metrics::RecordTFDataServiceMultiTrainerCacheQuery(result.cache_hit);
+  size_t cache_size_bytes = 0;
+  {
+    mutex_lock l(mu_);
+    cache_size_bytes = cache_size_bytes_;
+  }
+  metrics::RecordTFDataServiceMultiTrainerCacheSizeBytes(cache_size_bytes);
+}
+
 }  // namespace data
 }  // namespace tensorflow
 

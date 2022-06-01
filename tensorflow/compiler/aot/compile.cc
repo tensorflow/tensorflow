@@ -99,7 +99,7 @@ Status CompileXla(xla::CompileOnlyClient* client,
   compile_result->entry_point = aot_opts.entry_point_name();
   compile_result->pointer_size =
       xla::CompileOnlyClient::PointerSizeForTriple(aot_opts.triple());
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -241,7 +241,7 @@ Status Main(const MainFlags& flags) {
       nodes.insert(fetch.id().node_name());
     }
     std::cout << absl::StrJoin(nodes, ",");
-    return Status::OK();
+    return OkStatus();
   }
 
   // Read and initialize the graph.
@@ -286,7 +286,7 @@ Status Main(const MainFlags& flags) {
   TF_RETURN_IF_ERROR(GenerateHeader(codegen_opts, config, compile_result,
                                     metadata_result, &header));
   TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_header, header));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tfcompile

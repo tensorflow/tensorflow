@@ -74,7 +74,7 @@ Status RewriteLayoutWithShardedShape(
                             layout_preference));
     *xla_shape->mutable_layout() = per_device_xla_shape.layout();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // There is a shape_representation_fn or sharding for an output, this function

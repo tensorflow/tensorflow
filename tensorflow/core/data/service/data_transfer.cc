@@ -101,7 +101,7 @@ Status DataTransferServer::Build(std::string name, GetElementT get_element,
   auto it = transfer_server_factories().find(name);
   if (it != transfer_server_factories().end()) {
     *out = it->second(get_element);
-    return Status::OK();
+    return OkStatus();
   }
 
   std::vector<string> available_names;

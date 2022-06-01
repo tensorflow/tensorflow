@@ -93,7 +93,6 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleGetTupleElement(
       const HloInstruction* get_tuple_element) override;
   Status HandleSelect(const HloInstruction* hlo) override;
-  Status HandleTupleSelect(const HloInstruction* hlo) override;
   Status HandleCompare(const HloInstruction* compare) override;
   Status HandleClamp(const HloInstruction* clamp) override;
   Status HandleReducePrecision(const HloInstruction* hlo) override;
@@ -165,7 +164,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleWhile(const HloInstruction* xla_while) override;
   Status HandleConditional(const HloInstruction* conditional) override;
   Status HandleGather(const HloInstruction* gather) override;
-  Status HandleScatter(const HloInstruction* scatter) override;
+  Status HandleScatter(const HloInstruction* hlo) override;
   Status HandleGetDimensionSize(const HloInstruction* get_size) override;
   Status HandleSetDimensionSize(const HloInstruction* set_size) override;
   Status FinishVisit(const HloInstruction* root) override;

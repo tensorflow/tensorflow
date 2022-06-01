@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
@@ -140,7 +139,7 @@ static Status RunLmhloGpuToTfrtConversionPipeline(mlir::ModuleOp module) {
   tensorflow::populateLmhloToTfrtGpuPasses(pass_manager);
   if (failed(pass_manager.run(module)))
     return tensorflow::errors::Internal("Failed to run pass pipeline.");
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Converts `module` to BEF.
@@ -389,12 +388,13 @@ static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
     const Thunk::ExecuteParams& params,
     tfrt::RequestContextBuilder request_context_builder) {
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
-                      params.GetGlobalDeviceId());
-  request_context_builder.context_data().emplace<XlaGpuParams>(XlaGpuParams{
-      params.run_id, params.device_assn, params.gpu_global_device_ids,
-      params.nccl_unique_id_callback, global_device_id,
-      GetOrCreateInfeedManager(params.stream->parent()),
-      GetOrCreateOutfeedManager(params.stream->parent())});
+                      params.nccl_params.GetGlobalDeviceId());
+  request_context_builder.context_data().emplace<XlaGpuParams>(
+      XlaGpuParams{params.nccl_params.run_id, params.nccl_params.device_assn,
+                   params.nccl_params.gpu_global_device_ids,
+                   params.nccl_params.nccl_unique_id_callback, global_device_id,
+                   GetOrCreateInfeedManager(params.stream->parent()),
+                   GetOrCreateOutfeedManager(params.stream->parent())});
 
   auto expected_req_ctx = std::move(request_context_builder).build();
   if (!expected_req_ctx) {
@@ -413,7 +413,7 @@ static Status InsertKernelRequestContext(
   }
   request_context_builder->context_data().emplace<GpuModuleData>(
       *gpu_module_data);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status BefThunk::Initialize(const GpuExecutable& executable,
@@ -434,7 +434,7 @@ Status BefThunk::Initialize(const GpuExecutable& executable,
       gpu_module_data_ = module_data;
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -510,7 +510,7 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (auto* error = result->GetErrorIfPresent())
     return tensorflow::errors::Internal(tfrt::StrCat(*error));
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace gpu

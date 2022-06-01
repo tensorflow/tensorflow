@@ -62,6 +62,9 @@ class HloModule;
 // f(y), f(z)].)
 class HloComputation {
  public:
+  // Used by instructions_.
+  using InstructionList = std::list<std::unique_ptr<HloInstruction>>;
+
   // Builder class for HloComputation.
   class Builder {
    public:
@@ -323,6 +326,14 @@ class HloComputation {
       absl::Span<HloInstruction* const> instructions_to_fuse,
       HloInstruction::FusionKind fusion_kind);
 
+  // Creates an async start/done instruction pair where instruction is wrapped
+  // inside an asynchronous computation. The context shapes are appended to the
+  // output tuple of the asynchronous start which is backend specific. Returns
+  // the async done instruction. The new async start instruction is the operand
+  // of the async done instruction so that can be accessed using that.
+  StatusOr<HloInstruction*> CreateAsyncInstructions(
+      HloInstruction* instruction, absl::Span<const Shape> context_shapes);
+
   // Create a deep copy of the given instruction and return the instruction
   // producing the copied result. All instructions performing the copy are added
   // to the computation. For array-shaped values, this method trivially returns
@@ -448,6 +459,7 @@ class HloComputation {
   // Like Clone(), but if an instruction is present in replacement_map, we use
   // the map's value to replace that instruction in the cloned computation.
   //
+  // If replacements is nullptr, don't perform replacement.
   // If replacements maps a key to nullptr, we remove that instruction from the
   // new computation.  If an element of `replacements` references an instruction
   // that's not already in the computation, it's cloned and added to the new
@@ -459,9 +471,8 @@ class HloComputation {
   // All relevant instructions are cloned, *including* unique_ptr in the
   // `replacements` map.
   std::unique_ptr<HloComputation> CloneWithReplacements(
-      absl::flat_hash_map<const HloInstruction*,
-                          std::unique_ptr<HloInstruction>>
-          replacements,
+      const absl::flat_hash_map<const HloInstruction*,
+                                std::unique_ptr<HloInstruction>>* replacements,
       absl::Span<const HloInstruction* const> extra_parameters = {},
       HloCloneContext* context = nullptr, const std::string& suffix = "clone",
       const HloInstruction* new_root = nullptr);
@@ -543,14 +554,32 @@ class HloComputation {
   }
 
   // Returns if this computation is an async computation.
-  bool IsAsyncComputation() const { return is_async_computation_; }
+  bool IsAsyncComputation() const { return !async_instructions_.empty(); }
 
-  // Returns the owning async instruction, or nullptr if this is not an async
+  // Returns the owning async instruction. It's empty if this is not an async
   // computation.
-  HloInstruction* AsyncInstruction() const { return async_instruction_; }
-  void SetAsyncInstruction(HloInstruction* async_instruction) {
-    async_instruction_ = async_instruction;
-    is_async_computation_ |= (async_instruction != nullptr);
+  const std::vector<HloInstruction*>& AsyncInstructions() const {
+    return async_instructions_;
+  }
+
+  std::vector<HloInstruction*>& AsyncInstructions() {
+    return async_instructions_;
+  }
+
+  void AddAsyncInstruction(HloInstruction* async_instruction) {
+    CHECK(async_instruction != nullptr)
+        << "Nullptr shouldn't be added as commputation's async instruction. ";
+    async_instructions_.push_back(async_instruction);
+  }
+
+  void RemoveAsyncInstruction(HloInstruction* async_instruction) {
+    if (async_instruction == nullptr) {
+      return;
+    }
+    async_instructions_.erase(
+        std::remove(async_instructions_.begin(), async_instructions_.end(),
+                    async_instruction),
+        async_instructions_.end());
   }
 
   // Returns if this computation is invoked by an Hlo instruction.
@@ -653,11 +682,9 @@ class HloComputation {
   bool is_custom_call_computation_;
 
   // If this computation is an async computation, this field points to the
-  // corresponding async instruction (if it is live). Otherwise, this is null.
-  HloInstruction* async_instruction_;
-
-  // Determines whether this computation is an async computation.
-  bool is_async_computation_;
+  // corresponding async instructions (if live) that call this computation.
+  // Otherwise, this is empty.
+  std::vector<HloInstruction*> async_instructions_;
 
   // Module containing this computation.
   HloModule* parent_ = nullptr;
@@ -665,7 +692,6 @@ class HloComputation {
   // Store instructions in std::list as they can be added and removed
   // arbitrarily and we want a stable iteration order. Keep a map from
   // instruction pointer to location in the list for fast lookup.
-  using InstructionList = std::list<std::unique_ptr<HloInstruction>>;
   InstructionList instructions_;
   absl::flat_hash_map<const HloInstruction*, InstructionList::iterator>
       instruction_iterators_;

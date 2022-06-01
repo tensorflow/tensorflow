@@ -386,6 +386,8 @@ enum BuiltinOperator : int32 {
   MULTINOMIAL = 149,
   GELU = 150,
   DYNAMIC_UPDATE_SLICE = 151,
+  RELU_0_TO_1 = 152,
+  UNSORTED_SEGMENT_PROD = 153,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -508,6 +510,7 @@ union BuiltinOptions {
   BucketizeOptions,
   GeluOptions,
   DynamicUpdateSliceOptions,
+  UnsortedSegmentProdOptions,
 }
 
 // LINT.IfChange
@@ -1117,6 +1120,10 @@ table GeluOptions {
 }
 
 table DynamicUpdateSliceOptions {
+}
+
+table UnsortedSegmentProdOptions {
+  num_segments:int;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

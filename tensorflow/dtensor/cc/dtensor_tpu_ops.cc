@@ -44,24 +44,13 @@ REGISTER_OP("ConfigureAndInitializeGlobalTPU")
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 0, &input));
       }
       c->set_output(0, c->Vector(c->UnknownDim()));
-      return Status::OK();
-    })
-    .Doc(R"doc(
-An op that sets up the centralized structures for a distributed TPU
-system.
-
-output: A vector containing the global TPU id of each TPU on the host.
-)doc");
+      return OkStatus();
+    });
 
 REGISTER_OP("ShutdownTPUSystem")
     .SetIsStateful()
     .Output("success: bool")
-    .Doc(R"doc(
-An op that shuts down the TPU system.
-
-success: A boolean that indicates if the shut down process succeeds.
-)doc");
-
+    .SetShapeFn(shape_inference::ScalarShape);
 
 }  // namespace dtensor
 }  // namespace tensorflow

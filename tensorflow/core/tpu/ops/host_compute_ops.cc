@@ -83,7 +83,7 @@ REGISTER_OP("XlaHostCompute")
               c->MakeShapeFromShapeProto(shapes->list().shape(i), &handle));
           c->set_output(i, handle);
         }
-        return Status::OK();
+        return OkStatus();
       } else {
         // There is a shape inference graph so the output shapes are not
         // statically known.
@@ -117,7 +117,7 @@ REGISTER_OP("XlaRecvFromHost")
       TF_RETURN_IF_ERROR(
           c->MakeShapeFromShapeProto(shape_attr->shape(), &handle));
       c->set_output(0, handle);
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

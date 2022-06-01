@@ -55,7 +55,7 @@ Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
     *cache = new XlaCompilationCache(
         std::move(cache_config), platform_info.xla_device_metadata()->client(),
         platform_info.xla_device_metadata()->jit_device_type());
-    return Status::OK();
+    return OkStatus();
   }
 
   auto platform =
@@ -111,7 +111,7 @@ Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
   *cache = new XlaCompilationCache(
       std::move(cache_config), client.ValueOrDie(),
       DeviceType(registration->compilation_device_name));
-  return Status::OK();
+  return OkStatus();
 }
 
 XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {

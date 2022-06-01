@@ -613,7 +613,7 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
     VLOG(1) << "No constant foldable nodes found";
     *was_mutated = false;
     // This is not an error, so return the status as OK.
-    return Status::OK();
+    return OkStatus();
   }
 
   std::map<NodeAndOutput, NodeAndOutput> tensors_to_fetch;
@@ -626,7 +626,7 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
     VLOG(1) << "No constant nodes found that feed into the original graph.";
     *was_mutated = false;
     // This is not an error, so return the status as OK.
-    return Status::OK();
+    return OkStatus();
   }
   VLOG(1) << "Constant foldable " << constant_graph->num_node_ids() << " : "
           << graph->num_node_ids();
@@ -683,7 +683,7 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
   DumpGraph("After", graph);
 
   *was_mutated = (num_nodes_replaced > 0);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

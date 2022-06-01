@@ -313,7 +313,6 @@ HLO_MATCHER(Subtract);
 HLO_MATCHER(Tanh);
 HLO_MATCHER(Transpose);
 HLO_MATCHER(Tuple);
-HLO_MATCHER(TupleSelect);
 HLO_MATCHER(While);
 HLO_MATCHER(Xor);
 HLO_MATCHER(OptimizationBarrier);

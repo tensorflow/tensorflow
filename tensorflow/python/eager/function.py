@@ -36,6 +36,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
 from tensorflow.python.eager import function_context
+from tensorflow.python.eager import function_saved_model_utils
 from tensorflow.python.eager import function_spec
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager import tape
@@ -2357,6 +2358,45 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
       return "ConcreteFunction {}".format(self.pretty_printed_signature())
     else:
       return self.__repr__()
+
+  def _trackable_children(self, save_type="checkpoint", **kwargs):
+    """Implements `Trackable`."""
+    if save_type == "checkpoint":
+      # Checkpoint dependencies do not include functions at all. Users
+      # expect the checkpointed variables to be saved using the model
+      # architecture, e.g. `model.layers[1].kernel` or `model.variables`.
+      return {}
+
+    captured_trackables = {}
+    for n, (capture, _) in enumerate(self.graph.captures):
+      if (capture.dtype not in (dtypes.variant, dtypes.resource) and
+          not resource_variable_ops.is_resource_variable(capture)):
+        # Variant/resource type tensors are skipped since we have no way of
+        # getting the `Trackable` wrapper for these tensors. The wrappers are
+        # expected to be elsewhere in the saved object graph.
+        # TODO(b/223866972): Directly encode/decode tensor captures.
+
+        # Resource variable captures are also skipped at this time, to maintain
+        # existing behavior.
+        # TODO(b/217979389): Return the non-constant captures as children.
+
+        captured_trackables[f"capture_{n}"] = capture
+
+    return captured_trackables
+
+  def _deserialization_dependencies(self, children):
+    return children
+
+  def _export_to_saved_model_graph(self, object_map, tensor_map,
+                                   **unused_kwargs):
+    if not self.graph.saveable:
+      raise ValueError(
+          (f"Unable to save function {self.name} for the following reason(s):\n"
+           + "\n".join(self.graph.saving_errors)))
+    self.add_to_graph()
+    object_map[self] = function_saved_model_utils.ExportedConcreteFunction(
+        self, tensor_map)
+    return []
 
 
 _pywrap_utils.RegisterType("Tensor", ops.Tensor)

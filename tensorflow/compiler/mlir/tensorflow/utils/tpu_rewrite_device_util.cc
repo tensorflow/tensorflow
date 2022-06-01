@@ -112,7 +112,7 @@ Status GetTPUSystemDevices(Devices devices,
 
   matched_devices->swap(system_devices);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Finds TPU devices associated to system device based on spec (e.g. from
@@ -159,7 +159,7 @@ Status GetTPUDevices(
     tpu_devices->push_back(std::move(host_tpu_devices));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Finds the compilation device from system device.

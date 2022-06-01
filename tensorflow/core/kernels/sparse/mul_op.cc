@@ -146,7 +146,7 @@ class CSRSparseMatrixMulScalar<GPUDevice, T> {
     functor::BinaryFunctor<GPUDevice, functor::mul<T>, 1>().Right(
         d, c_values, a_values, b, error_ptr);
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 

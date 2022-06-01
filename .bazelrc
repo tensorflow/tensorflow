@@ -22,10 +22,6 @@
 #
 # Compiler options:
 #     cuda_clang:             Use clang when building CUDA code.
-#     c++17:                  Build with C++17 options (links with libc++)
-#     c++1z:                  Build with C++17 options (links with libc++)
-#     c++17_gcc:              Build with C++17 options (links with stdlibc++)
-#     c++1z_gcc:              Build with C++17 options (links with stdlibc++)
 #     avx_linux:              Build with avx instruction set on linux.
 #     avx2_linux:             Build with avx2 instruction set on linux.
 #     native_arch_linux:      Build with instruction sets available to the host machine on linux
@@ -149,6 +145,9 @@ build --define=no_hdfs_support=true
 # TODO(rostam): Remove when `cc_shared_library` is enabled by default
 build --experimental_cc_shared_library
 
+# cc_shared_library ensures no library is linked statically more than once.
+build --experimental_link_static_libraries_once=true
+
 # Default options should come above this line.
 
 # Allow builds using libc++ as a linker library
@@ -195,6 +194,8 @@ build:ios_armv7 --config=ios
 build:ios_armv7 --cpu=ios_armv7
 build:ios_arm64 --config=ios
 build:ios_arm64 --cpu=ios_arm64
+build:ios_sim_arm64 --config=ios
+build:ios_sim_arm64 --cpu=ios_sim_arm64
 build:ios_i386 --config=ios
 build:ios_i386 --cpu=ios_i386
 build:ios_x86_64 --config=ios
@@ -207,6 +208,7 @@ build:ios_fat --ios_multi_cpus=armv7,arm64,i386,x86_64
 # By default, TensorFlow will build with a dependence on
 # //tensorflow:libtensorflow_framework.so.
 build:monolithic --define framework_shared_object=false
+build:monolithic --experimental_link_static_libraries_once=false  # b/229868128
 
 # Please note that MKL on MacOS or windows is still not supported.
 # If you would like to use a local MKL instead of downloading, please set the
@@ -223,9 +225,7 @@ build:mkl_threadpool --define=build_with_mkl_opensource=true
 build:mkl_threadpool -c opt
 
 # Config setting to build oneDNN with Compute Library for the Arm Architecture (ACL).
-# This build is for the inference regime only.
 build:mkl_aarch64 --define=build_with_mkl_aarch64=true
-build:mkl_aarch64 --define=tensorflow_mkldnn_contraction_kernel=0
 build:mkl_aarch64 --define=build_with_openmp=true
 build:mkl_aarch64 -c opt
 
@@ -263,6 +263,7 @@ build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
 build:rocm --define=using_rocm_hipcc=true
 build:rocm --define=tensorflow_mkldnn_contraction_kernel=0
 build:rocm --repo_env TF_NEED_ROCM=1
+build:rocm --experimental_link_static_libraries_once=false  # b/230048163
 
 # Options extracted from configure script
 build:numa --define=with_numa_support=true
@@ -279,13 +280,6 @@ build:stackdriver_support --define=stackdriver_support=true
 build:dynamic_kernels --define=dynamic_loaded_kernels=true
 build:dynamic_kernels --copt=-DAUTOLOAD_DYNAMIC_KERNELS
 
-# Build TF with C++ 17 features.
-build:c++17 --cxxopt=-std=c++1z
-build:c++17 --cxxopt=-stdlib=libc++
-build:c++1z --config=c++17
-build:c++17_gcc --cxxopt=-std=c++1z
-build:c++1z_gcc --config=c++17_gcc
-
 # Don't trigger --config=<host platform> when cross-compiling.
 build:android --noenable_platform_specific_config
 build:ios --noenable_platform_specific_config
@@ -298,10 +292,18 @@ build:linux --host_copt=-w
 build:macos --copt=-w
 build:windows --copt=/W0
 
+# On Windows, `__cplusplus` is wrongly defined without this switch
+# See https://devblogs.microsoft.com/cppblog/msvc-now-correctly-reports-__cplusplus/
+build:windows --copt=/Zc:__cplusplus
+
 # Tensorflow uses M_* math constants that only get defined by MSVC headers if
 # _USE_MATH_DEFINES is defined.
 build:windows --copt=/D_USE_MATH_DEFINES
 build:windows --host_copt=/D_USE_MATH_DEFINES
+
+# Windows has a relatively short command line limit, which TF has begun to hit.
+# See https://docs.bazel.build/versions/main/windows.html
+build:windows --features=compiler_param_file
 
 # Speed Windows compile times. Available in VS 16.4 (we are on 16.11). See
 # https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
@@ -319,17 +321,17 @@ build:macos --define=INCLUDEDIR=$(PREFIX)/include
 build:macos --define=PROTOBUF_INCLUDE_PATH=$(PREFIX)/include
 # TF_SYSTEM_LIBS do not work on windows.
 
-# By default, build TF in C++ 14 mode.
-build:android --cxxopt=-std=c++14
-build:android --host_cxxopt=-std=c++14
-build:ios --cxxopt=-std=c++14
-build:ios --host_cxxopt=-std=c++14
-build:linux --cxxopt=-std=c++14
-build:linux --host_cxxopt=-std=c++14
-build:macos --cxxopt=-std=c++14
-build:macos --host_cxxopt=-std=c++14
-build:windows --cxxopt=/std:c++14
-build:windows --host_cxxopt=/std:c++14
+# By default, build TF in C++ 17 mode.
+build:android --cxxopt=-std=c++17
+build:android --host_cxxopt=-std=c++17
+build:ios --cxxopt=-std=c++17
+build:ios --host_cxxopt=-std=c++17
+build:linux --cxxopt=-std=c++17
+build:linux --host_cxxopt=-std=c++17
+build:macos --cxxopt=-std=c++17
+build:macos --host_cxxopt=-std=c++17
+build:windows --cxxopt=/std:c++17
+build:windows --host_cxxopt=/std:c++17
 
 # On windows, we still link everything into a single DLL.
 build:windows --config=monolithic
@@ -614,7 +616,7 @@ build:release_gpu_linux --config=release_cpu_linux
 build:release_gpu_linux --config=release_gpu_base
 build:release_gpu_linux --config=tensorrt
 build:release_gpu_linux --action_env=CUDA_TOOLKIT_PATH="/usr/local/cuda-11.2"
-build:release_gpu_linux --action_env=LD_LIBRARY_PATH="/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/tensorrt/lib"
+build:release_gpu_linux --action_env=LD_LIBRARY_PATH="/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda-11.1/lib64:/usr/local/tensorrt/lib"
 build:release_gpu_linux --action_env=GCC_HOST_COMPILER_PATH="/dt9/usr/bin/gcc"
 build:release_gpu_linux --crosstool_top=@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain
 
@@ -657,7 +659,7 @@ build:ubsan --linkopt -fsanitize=undefined
 build:ubsan --linkopt -lubsan
 
 # Disable TFRT integration for now unless --config=tfrt is specified.
-build      --deleted_packages=tensorflow/compiler/mlir/tfrt,tensorflow/compiler/mlir/tfrt/benchmarks,tensorflow/compiler/mlir/tfrt/jit/python_binding,tensorflow/compiler/mlir/tfrt/jit/transforms,tensorflow/compiler/mlir/tfrt/python_tests,tensorflow/compiler/mlir/tfrt/tests,tensorflow/compiler/mlir/tfrt/tests/ir,tensorflow/compiler/mlir/tfrt/tests/analysis,tensorflow/compiler/mlir/tfrt/tests/jit,tensorflow/compiler/mlir/tfrt/tests/lhlo_to_tfrt,tensorflow/compiler/mlir/tfrt/tests/tf_to_corert,tensorflow/compiler/mlir/tfrt/tests/tf_to_tfrt_data,tensorflow/compiler/mlir/tfrt/tests/saved_model,tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu,tensorflow/core/runtime_fallback,tensorflow/core/runtime_fallback/conversion,tensorflow/core/runtime_fallback/kernel,tensorflow/core/runtime_fallback/opdefs,tensorflow/core/runtime_fallback/runtime,tensorflow/core/runtime_fallback/util,tensorflow/core/tfrt/common,tensorflow/core/tfrt/eager,tensorflow/core/tfrt/eager/backends/cpu,tensorflow/core/tfrt/eager/backends/gpu,tensorflow/core/tfrt/eager/core_runtime,tensorflow/core/tfrt/eager/cpp_tests/core_runtime,tensorflow/core/tfrt/gpu,tensorflow/core/tfrt/run_handler_thread_pool,tensorflow/core/tfrt/runtime,tensorflow/core/tfrt/saved_model,tensorflow/core/tfrt/graph_executor,tensorflow/core/tfrt/saved_model/tests,tensorflow/core/tfrt/tpu,tensorflow/core/tfrt/utils
+build      --deleted_packages=tensorflow/compiler/mlir/tfrt,tensorflow/compiler/mlir/tfrt/benchmarks,tensorflow/compiler/mlir/tfrt/jit/python_binding,tensorflow/compiler/mlir/tfrt/jit/transforms,tensorflow/compiler/mlir/tfrt/python_tests,tensorflow/compiler/mlir/tfrt/tests,tensorflow/compiler/mlir/tfrt/tests/ir,tensorflow/compiler/mlir/tfrt/tests/analysis,tensorflow/compiler/mlir/tfrt/tests/jit,tensorflow/compiler/mlir/tfrt/tests/lhlo_to_tfrt,tensorflow/compiler/mlir/tfrt/tests/lhlo_to_jitrt,tensorflow/compiler/mlir/tfrt/tests/tf_to_corert,tensorflow/compiler/mlir/tfrt/tests/tf_to_tfrt_data,tensorflow/compiler/mlir/tfrt/tests/saved_model,tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu,tensorflow/core/runtime_fallback,tensorflow/core/runtime_fallback/conversion,tensorflow/core/runtime_fallback/kernel,tensorflow/core/runtime_fallback/opdefs,tensorflow/core/runtime_fallback/runtime,tensorflow/core/runtime_fallback/util,tensorflow/core/tfrt/common,tensorflow/core/tfrt/eager,tensorflow/core/tfrt/eager/backends/cpu,tensorflow/core/tfrt/eager/backends/gpu,tensorflow/core/tfrt/eager/core_runtime,tensorflow/core/tfrt/eager/cpp_tests/core_runtime,tensorflow/core/tfrt/gpu,tensorflow/core/tfrt/run_handler_thread_pool,tensorflow/core/tfrt/runtime,tensorflow/core/tfrt/saved_model,tensorflow/core/tfrt/graph_executor,tensorflow/core/tfrt/saved_model/tests,tensorflow/core/tfrt/tpu,tensorflow/core/tfrt/utils
 build:tfrt --deleted_packages=
 
 # Experimental configuration for building XLA GPU lowering to TFRT.

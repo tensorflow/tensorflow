@@ -2,8 +2,8 @@
 
 // Tests that the pass can correctly transform a training loop with 2 replicas.
 
-!tf_res_f32 = type tensor<*x!tf_type.resource<tensor<f32>>>
-!tf_res_md_f32 = type tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>> // Multi-dim f32
+!tf_res_f32 = tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res_md_f32 = tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>> // Multi-dim f32
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
   // CHECK-LABEL: func @main
@@ -96,8 +96,8 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
 // Tests that the pass does not format variables with other uses.
 
-!tf_res_f32 = type tensor<*x!tf_type.resource<tensor<f32>>>
-!tf_res_md_f32 = type tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>> // Multi-dim f32
+!tf_res_f32 = tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res_md_f32 = tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>> // Multi-dim f32
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
   // CHECK-LABEL: func @main
@@ -162,8 +162,8 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 // Tests that the pass does not format variables when model parallelism is
 // present.
 
-!tf_res_f32 = type tensor<*x!tf_type.resource<tensor<f32>>>
-!tf_res_md_f32 = type tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>> // Multi-dim f32
+!tf_res_f32 = tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res_md_f32 = tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>> // Multi-dim f32
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
   // CHECK-LABEL: func @main
@@ -225,8 +225,8 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
 // Tests that the pass can correctly transform a training loop with a packed
 // variable.
-!tf_res_f32 = type tensor<*x!tf_type.resource<tensor<f32>>>
-!tf_res_md_f32 = type tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>> // Multi-dim f32
+!tf_res_f32 = tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res_md_f32 = tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>> // Multi-dim f32
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
   // CHECK-LABEL: func @main

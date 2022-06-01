@@ -343,4 +343,31 @@ bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
   return true;
 }
 
+bool IsCollective(const HloInstruction* instruction) {
+  switch (instruction->opcode()) {
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduceDone:
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllGatherDone:
+    case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectivePermuteStart:
+    case HloOpcode::kCollectivePermuteDone:
+      return true;
+    case HloOpcode::kFusion:
+      if (instruction->IsCustomFusion()) {
+        for (const auto* inner_inst : instruction->fused_instructions()) {
+          if (IsCollective(inner_inst)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    default:
+      return false;
+  }
+}
+
 }  // end namespace xla

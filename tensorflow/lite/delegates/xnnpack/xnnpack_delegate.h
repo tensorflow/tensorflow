@@ -72,9 +72,25 @@ TFL_CAPI_EXPORT void TfLiteXNNPackDelegateDelete(TfLiteDelegate* delegate);
 // instances.
 TFL_CAPI_EXPORT struct TfLiteXNNPackDelegateWeightsCache*
 TfLiteXNNPackDelegateWeightsCacheCreate();
+// Soft-finalize a weights cache. Extra space will be left in the weights cache
+// to allow for cache "insertion" only if it is a cache hit. This has memory
+// overhead compared to TfLiteXNNPackDelegateWeightsCacheFinalizeHard. Use this
+// if the number of interpreter instances using XNNPACK delegate is not fixed
+// (e.g. created based on workload in a server daemon).
+// Returns true on success, false on error.
+TFL_CAPI_EXPORT bool TfLiteXNNPackDelegateWeightsCacheFinalizeSoft(
+    struct TfLiteXNNPackDelegateWeightsCache* cache);
+// Hard-finalize a weights cache, cache is effectively frozen and no more cache
+// operations are allowed. Memory is resized to smallest possible. Use this if
+// the number of interpreter instances using XNNPACK delegate can be fixed and
+// all creation of instances can happen up front. This has the lowest memory
+// usage.
+// Returns true on success, false on error.
+TFL_CAPI_EXPORT bool TfLiteXNNPackDelegateWeightsCacheFinalizeHard(
+    struct TfLiteXNNPackDelegateWeightsCache* cache);
 // Destroys a weights cache created with
 // `TfLiteXNNPackDelegateWeightsCacheCreate` call.
-TFL_CAPI_EXPORT void TfLiteXNNPackWeightsCacheDelete(
+TFL_CAPI_EXPORT void TfLiteXNNPackDelegateWeightsCacheDelete(
     struct TfLiteXNNPackDelegateWeightsCache* cache);
 
 #ifdef __cplusplus

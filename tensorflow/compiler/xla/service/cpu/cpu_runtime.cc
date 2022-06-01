@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/device_memory.h"
@@ -191,7 +190,7 @@ struct AllToAllParticipantData : xla::ParticipantData {
   xla::GlobalDeviceId device_id;
 
   // Replica ids participating in AllToAll, concatenation happens in the order
-  // of appearence.
+  // of appearance.
   std::vector<xla::GlobalDeviceId> devices_to_copy_to;
 
   std::string ToString() const override {

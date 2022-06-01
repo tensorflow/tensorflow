@@ -73,14 +73,14 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
   }
 
   // Compute the shape of the while op after we remove the dead indices.
-  std::vector<Shape> new_while_tuple_elem_shapes;
+  std::vector<const Shape*> new_while_tuple_elem_shapes;
   new_while_tuple_elem_shapes.reserve(new_to_old_tuple_idx.size());
   for (int64_t old_idx : new_to_old_tuple_idx) {
     new_while_tuple_elem_shapes.push_back(
-        while_init->shape().tuple_shapes(old_idx));
+        &while_init->shape().tuple_shapes(old_idx));
   }
   Shape new_while_shape =
-      ShapeUtil::MakeTupleShape(new_while_tuple_elem_shapes);
+      ShapeUtil::MakeTupleShapeWithPtrs(new_while_tuple_elem_shapes);
 
   // Returns a map from elements in the computation to new instructions which
   // replace the old instructions after we remove unused elements from the while
@@ -134,9 +134,10 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
   };
 
   // Create the new while condition, body, and init value.
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+      while_cond_replacements = make_while_computation_replacements(while_cond);
   std::unique_ptr<HloComputation> new_while_cond =
-      while_cond->CloneWithReplacements(
-          make_while_computation_replacements(while_cond));
+      while_cond->CloneWithReplacements(&while_cond_replacements);
 
   absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       while_body_replacements = make_while_computation_replacements(while_body);
@@ -149,7 +150,7 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
   while_body_replacements.emplace(
       while_body_root, HloInstruction::CreateTuple(new_while_body_root_elems));
   std::unique_ptr<HloComputation> new_while_body =
-      while_body->CloneWithReplacements(std::move(while_body_replacements));
+      while_body->CloneWithReplacements(&while_body_replacements);
 
   // Add a new while_init instruction that repackages the old while_init
   // instruction's elements.  We rely on the AlgebraicSimplifier and DCE to
@@ -658,13 +659,14 @@ static StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
 
   // OK, we found some constant elements of the while parameter!  Eliminate
   // them.
-  std::vector<Shape> new_while_shape_elems;
+  std::vector<const Shape*> new_while_shape_elems;
   for (int i = 0; i < while_shape.tuple_shapes_size(); ++i) {
     if (!constant_tuple_indices.count(i)) {
-      new_while_shape_elems.push_back(while_shape.tuple_shapes(i));
+      new_while_shape_elems.push_back(&while_shape.tuple_shapes(i));
     }
   }
-  Shape new_while_shape = ShapeUtil::MakeTupleShape(new_while_shape_elems);
+  Shape new_while_shape =
+      ShapeUtil::MakeTupleShapeWithPtrs(new_while_shape_elems);
 
   // `new_instrs` holds instructions created outside of a computation for
   // cloning.  Elements added here just need to live until the end of the
@@ -1012,14 +1014,15 @@ static StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
     return false;
   }
 
-  std::vector<Shape> flattened_shape_elems;
+  std::vector<const Shape*> flattened_shape_elems;
   ShapeUtil::ForEachSubshape(while_shape,
                              [&](const Shape& s, const ShapeIndex& /*index*/) {
                                if (!s.IsTuple()) {
-                                 flattened_shape_elems.push_back(s);
+                                 flattened_shape_elems.push_back(&s);
                                }
                              });
-  Shape flattened_shape = ShapeUtil::MakeTupleShape(flattened_shape_elems);
+  Shape flattened_shape =
+      ShapeUtil::MakeTupleShapeWithPtrs(flattened_shape_elems);
 
   // `new_instrs` holds instructions created outside of a computation for
   // cloning.  Elements added here just need to live until the end of the

@@ -2071,7 +2071,7 @@ TEST_F(TestLazyDelegateProvider, ApplicationSuccess) {
 TEST_F(TestLazyDelegateProvider, ApplicationFailure) {
   InitWithLazyDelegate(false /* create_dyanmic_tensor */,
                        true /* return_error */);
-  // As the the lazy delegate fails to prepare, kTfLiteDelegateError is
+  // As the lazy delegate fails to prepare, kTfLiteDelegateError is
   // returned and Interpreter::lazy_delegate_providers_ is cleared anyway.
   EXPECT_EQ(kTfLiteDelegateError, ApplyLazyDelegateProviders());
   EXPECT_TRUE(mutable_lazy_delegate_providers()->empty());

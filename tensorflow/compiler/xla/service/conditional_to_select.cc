@@ -53,6 +53,10 @@ static StatusOr<bool> DoConditionalToSelect(HloInstruction* conditional) {
           conditional->false_computation()));
   conditional->SetupDerivedInstruction(else_call_op);
   HloInstruction* condition = conditional->mutable_operand(0);
+  if (else_call_op->shape().IsTuple()) {
+    VLOG(1) << "Not transforming tuples to 'select'";
+    return false;
+  }
   TF_ASSIGN_OR_RETURN(
       HloInstruction * select_op,
       MakeSelectHlo(condition, if_call_op, else_call_op, conditional));

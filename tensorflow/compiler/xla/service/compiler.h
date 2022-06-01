@@ -98,6 +98,9 @@ class AotCompilationOptions {
     return {};
   }
   virtual bool deduplicate_hlo() const { return false; }
+  virtual PrecisionConfig::Precision matrix_unit_operand_precision() const {
+    return PrecisionConfig::DEFAULT;
+  }
 
   // Optional allocator that may be used for allocating temp space on the device
   // during compilation.
@@ -140,11 +143,11 @@ class AotCompilationOptions {
   se::StreamExecutor* executor() const { return executor_; }
   void set_executor(se::StreamExecutor* executor) { executor_ = executor; }
 
-  // Optional profile_handle and cache key may be used to trigger recompilation
+  // Optional profile_version and cache key may be used to trigger recompilation
   // when a compilation cache is used.
-  uint64_t profile_handle() const { return profile_handle_; }
-  void set_profile_handle(uint64_t profile_handle) {
-    profile_handle_ = profile_handle;
+  int64_t profile_version() const { return profile_version_; }
+  void set_profile_version(int64_t profile_version) {
+    profile_version_ = profile_version;
   }
 
   absl::string_view cache_key() const { return cache_key_; }
@@ -182,7 +185,7 @@ class AotCompilationOptions {
   FusionConfigCollection fusion_config_collection_ =
       FusionConfigCollection::kOff;
   se::StreamExecutor* executor_ = nullptr;
-  uint64_t profile_handle_ = 0;
+  int64_t profile_version_ = 0;
   std::string cache_key_;
   bool run_backend_only_ = false;
   bool sanitize_dataflow_ = false;

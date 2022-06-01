@@ -54,34 +54,13 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:Transforms",
-    ],
-)
-
-cc_library(
-    name = "bufferize_tiled_loop",
-    srcs = ["bufferize_tiled_loop.cc"],
-    hdrs = ["rewriters.h"],
-    compatible_with = get_compatible_with_cloud(),
-    deps = [
-        "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:gml_st",
-        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
-        "@llvm-project//mlir:BufferizationDialect",
-        "@llvm-project//mlir:BufferizationTransforms",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgOps",
-        "@llvm-project//mlir:LinalgTransforms",
-        "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -120,8 +99,6 @@ cc_library(
     name = "gpu_passes",
     srcs = [
         "gpu_kernel_to_blob_pass.cc",
-        "kernel_lowering_passes.cc",
-        "map_parallel_loops_to_gpu.cc",
         "tf_kernel_to_llvm_pass.cc",
     ],
     hdrs = ["passes.h"],
@@ -145,8 +122,6 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:GPUToGPURuntimeTransforms",
-        "@llvm-project//mlir:GPUToNVVMTransforms",
-        "@llvm-project//mlir:GPUToROCDLTransforms",
         "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
@@ -156,12 +131,10 @@ cc_library(
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MemRefToLLVM",
         "@llvm-project//mlir:MemRefTransforms",
-        "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:NVVMToLLVMIRTranslation",  # buildcleaner: keep
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:LLVMCommonConversion",
-        "@llvm-project//mlir:ROCDLDialect",
         "@llvm-project//mlir:ROCDLToLLVMIRTranslation",  # buildcleaner: keep
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFTransforms",
@@ -205,7 +178,6 @@ cc_library(
     srcs = [
         "buffer_reuse_pass.cc",
         "bufferize_pass.cc",
-        "convert_to_signless_pass.cc",
         "copy_cleanup_pass.cc",
         "embed_memref_prints.cc",
         "embed_tf_framework_pass.cc",
@@ -222,12 +194,12 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":bufferize",  # buildcleaner: keep
-        ":bufferize_tiled_loop",  # buildcleaner: keep
         ":embed_tf_framework",  # buildcleaner: keep
         ":kernel_gen_passes_inc_gen",
         ":tf_framework_legalize_to_llvm",  # buildcleaner: keep
         ":utils",
         "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/hlo:bufferize_pass",
         "//tensorflow/compiler/mlir/hlo:gml_st",
         "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_memref",
         "//tensorflow/compiler/mlir/hlo:lhlo",

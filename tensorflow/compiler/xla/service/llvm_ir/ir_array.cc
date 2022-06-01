@@ -90,9 +90,12 @@ void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
     // linear is in bounds.
     auto* quot = b->CreateUDiv(linear, divisor, "quot");
     if (i < layout.minor_to_major_size() - 1) {
+      llvm::Value* casted_dynamic_dim =
+          b->CreateIntCast(dynamic_dims[dimension], quot->getType(),
+                           /*isSigned=*/true);
       (*multidim)[dimension] =
-          b->CreateURem(quot, dynamic_dims[dimension], "dim_value");
-      divisor = b->CreateMul(divisor, dynamic_dims[dimension], "divisor");
+          b->CreateURem(quot, casted_dynamic_dim, "dim_value");
+      divisor = b->CreateMul(divisor, casted_dynamic_dim, "divisor");
     } else {
       (*multidim)[dimension] = quot;
     }

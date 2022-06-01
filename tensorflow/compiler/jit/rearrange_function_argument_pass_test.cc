@@ -118,7 +118,7 @@ TEST(RearrangeFunctionArgumentForFunctionTest, Basic) {
                                                    &fld, &new_fbody));
         *fbody = new_fbody.get();
         fbodies.push_back(std::move(new_fbody));
-        return Status::OK();
+        return OkStatus();
       },
       g.get(), &fld));
 
@@ -229,7 +229,7 @@ TEST(RearrangeFunctionArgumentForFunctionTest,
                                                    &fld, &new_fbody));
         *fbody = new_fbody.get();
         fbodies.push_back(std::move(new_fbody));
-        return Status::OK();
+        return OkStatus();
       },
       g.get(), &fld);
   EXPECT_EQ(status.code(), error::UNIMPLEMENTED);

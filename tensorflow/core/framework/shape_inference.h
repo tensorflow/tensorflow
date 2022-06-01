@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
@@ -691,7 +690,7 @@ class InferenceContext {
     return output_handle_shapes_and_types_[idx].get();
   }
 
-  // Returns the inputs handle shapes and types, for the resource tensor output
+  // Returns the inputs handle shapes and types, for the resource tensor input
   // at index <idx>. Returns NULL if the shape and types were not available.
   const std::vector<ShapeAndType>* input_handle_shapes_and_types(int idx) {
     return input_handle_shapes_and_types_[idx].get();
@@ -699,8 +698,8 @@ class InferenceContext {
 
   void set_output_handle_shapes_and_types(
       int idx, const std::vector<ShapeAndType>& shapes_and_types) {
-    output_handle_shapes_and_types_[idx].reset(
-        new std::vector<ShapeAndType>(shapes_and_types));
+    output_handle_shapes_and_types_[idx] =
+        absl::make_unique<std::vector<ShapeAndType>>(shapes_and_types);
   }
 
   // Note that shape functions should usually call MakeShapeFromShapeTensor,
@@ -770,12 +769,12 @@ class InferenceContext {
 
   Status ReturnUnknownShape(ShapeHandle* out) {
     *out = UnknownShape();
-    return Status::OK();
+    return OkStatus();
   }
   Status ReturnCreatedShape(const std::vector<DimensionHandle>& dims,
                             ShapeHandle* out) {
     *out = MakeShape(dims);
-    return Status::OK();
+    return OkStatus();
   }
 
   // Adds additional context to the given status.

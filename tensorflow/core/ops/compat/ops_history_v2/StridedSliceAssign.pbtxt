@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "StridedSliceAssign"
   input_arg {
     name: "ref"

@@ -172,9 +172,19 @@ if (interpreter1->ModifyGraphWithDelegate(delegate2) != kTfLiteOk) {
     // cache.
 }
 
+// Finalize the weights cache.
+// Hard finalization has the lowest memory overhead, but requires that all
+// TFLite interpreter instances must be created up front before any finalization
+// and inference.
+TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache);
+
+// Alternatively, soft-finalizate the weights cache. This is useful if more
+// delegates using the same model will to be created after finalization.
+// TfLiteXNNPackDelegateWeightsCacheFinalizeSoft(weights_cache);
+
 // Later, after all the interpreters and XNNPACK delegates using the cache are
 // destroyed, release the weights cache.
-TfLiteXNNPackWeightsCacheDelete(weights_cache);
+TfLiteXNNPackDelegateWeightsCacheDelete(weights_cache);
 ```
 
 The weights cache is a contents-based cache. Every time XNNPACK has to pack
@@ -183,6 +193,17 @@ packed weights can be found in the weights cache, based on the contents of the
 packed weights. If it can be found, we access the packed weights in the
 cache for subsequent operations, and the temporary buffer is freed. Otherwise,
 the packed weights is added to the cache.
+
+The weights cache has to be finalized before any inference, it will be an error
+otherwise. Hard finalization and soft finalization depends on whether new
+XNNPACK delegate instances will be created after finalization. Hard finalization
+does not allow new instances to be created, and has lower memory overhead. Soft
+finalization allows new instances to be created, and has higher memory overhead
+(up to the size of the largest packed weights, rounded up to page alignment).
+
+## Profiling
+When TfLite profiling is enabled, XNNPACK will time each operator and report the
+results to TfLite which will print them as part of the overall execution profile.
 
 ## Limitations and supported operators
 
@@ -383,6 +404,12 @@ Below is the list of currently supported floating-point operators:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+#### `TRANSPOSE`
+
+* The first input and the output must be in 32-bit floating-point format.
+* The second input (the input with the permutation specification) must be
+  static (use `kTfLiteMmapRo` allocation type).
+
 #### `TRANSPOSE_CONV`
 
 * Input, filter, bias (if present) and output tensors must be in 32-bit
@@ -399,7 +426,7 @@ inference when the following conditions are met:
 * XNNPACK runs on hardware that natively supports computations in IEEE FP16
 format. Currently, this hardware is limited to ARM64 devices with ARMv8.2 FP16
 arithmetics extension, and includes Android phones starting with Pixel 3,
-Galaxy S9 (Snadrapgon SoC), Galaxy S10 (Exynos SoC), iOS devices with A11 or
+Galaxy S9 (Snapdragon SoC), Galaxy S10 (Exynos SoC), iOS devices with A11 or
 newer SoCs, and all Apple Silicon Macs.
 
 * IEEE FP16 inference is supported for every floating-point operator in the
@@ -459,6 +486,14 @@ Below is the list of operators supported in IEEE FP16 inference:
 * Must satisfy constraints on the floating-point (FP32) operator.
 * Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
 
+#### `AVERAGE_POOL_2D`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `CEIL`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
 #### `CONV_2D`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
@@ -473,6 +508,19 @@ Below is the list of operators supported in IEEE FP16 inference:
 * Must satisfy constraints on the floating-point (FP32) operator.
 
 #### `DEPTHWISE_CONV_2D`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `DIV`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
+#### `FLOOR`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `FULLY_CONNECTED`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
@@ -492,9 +540,19 @@ Below is the list of operators supported in IEEE FP16 inference:
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
+#### `MAXIMUM`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
 #### `MEAN`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `MINIMUM`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
 
 #### `MUL`
 
@@ -533,11 +591,37 @@ Below is the list of operators supported in IEEE FP16 inference:
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
+#### `ROUND`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
 #### `SPLIT`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
+#### `SOFTMAX`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `SQRT`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
 #### `SQUARE`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `SQUARED_DIFFERENCE`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
+#### `SUB`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
+#### `TRANSPOSE`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
@@ -676,6 +760,12 @@ Below is the list of currently supported quantized operators:
 * Inputs and outputs must be in 8-bit quantized format.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `TRANSPOSE`
+
+* The first input and the output must be in 8-bit quantized format.
+* The second input (the input with the permutation specification) must be
+  static (use `kTfLiteMmapRo` allocation type).
 
 #### `TRANSPOSE_CONV`
 

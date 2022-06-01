@@ -30,40 +30,23 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 
-// NOLINTNEXTLINE
-static llvm::cl::list<std::string> io_node_types(
-    "tfl-test-io-types", llvm::cl::value_desc("list"),
-    llvm::cl::desc("comma separated type strings. Allowed values: "
-                   "'int8', 'uint8', 'float32']"),
-    llvm::cl::CommaSeparated);
-
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
-// This transformation pass modifies the input and output types of the function
-// to what are specified. The task was not just adding cast operations, but,
-// instead, using tfl.quantize and tfl.dequantize ops to scale the tensors.
-struct ModifyIONodesPass
-    : public PassWrapper<ModifyIONodesPass, OperationPass<FuncOp>> {
+struct ModifyIONodesPass : public ModifyIONodesPassBase<ModifyIONodesPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ModifyIONodesPass)
 
   explicit ModifyIONodesPass() {}
-  explicit ModifyIONodesPass(mlir::Type input_type, mlir::Type output_type)
-      : input_type(input_type), output_type(output_type) {}
+  explicit ModifyIONodesPass(mlir::Type input_type, mlir::Type output_type) {
+    this->input_type = input_type;
+    this->output_type = output_type;
+  }
 
   void runOnOperation() override;
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-modify-io-nodes";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Modify the type of the model io nodes.";
-  }
 
  private:
   // Assign the io types from the command line flag. This is only required for
@@ -72,13 +55,13 @@ struct ModifyIONodesPass
 
   // Modifies the element types of entry block arguments to be user specified
   // and returns  the new argument types.
-  LogicalResult ModifyInputNodes(FuncOp func,
+  LogicalResult ModifyInputNodes(func::FuncOp func,
                                  llvm::SmallVectorImpl<Type>& new_input_types,
                                  OpBuilder builder);
 
   // Modifies the element types of entry block returns to be user specified
   // and returns the new return types.
-  LogicalResult ModifyOutputNodes(FuncOp func,
+  LogicalResult ModifyOutputNodes(func::FuncOp func,
                                   llvm::SmallVectorImpl<Type>& new_output_types,
                                   OpBuilder builder);
 
@@ -101,14 +84,14 @@ LogicalResult ModifyIONodesPass::SetupInputOutputTypesIfNull(
       return {};
     }
   };
-  if (io_node_types.size() < 2) return failure();
-  if (!input_type) input_type = convert_str_to_type(io_node_types[0]);
-  if (!output_type) output_type = convert_str_to_type(io_node_types[1]);
+  if (io_node_types_.size() < 2) return failure();
+  if (!input_type) input_type = convert_str_to_type(io_node_types_[0]);
+  if (!output_type) output_type = convert_str_to_type(io_node_types_[1]);
   return success();
 }
 
 LogicalResult ModifyIONodesPass::ModifyInputNodes(
-    FuncOp func, llvm::SmallVectorImpl<Type>& new_input_types,
+    func::FuncOp func, llvm::SmallVectorImpl<Type>& new_input_types,
     OpBuilder builder) {
   if (input_type.isa<FloatType>()) {
     return success();
@@ -161,7 +144,7 @@ LogicalResult ModifyIONodesPass::ModifyInputNodes(
 }
 
 LogicalResult ModifyIONodesPass::ModifyOutputNodes(
-    FuncOp func, llvm::SmallVectorImpl<Type>& new_output_types,
+    func::FuncOp func, llvm::SmallVectorImpl<Type>& new_output_types,
     OpBuilder builder) {
   Block& block = func.front();
   auto* terminator = block.getTerminator();
@@ -245,12 +228,14 @@ void ModifyIONodesPass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite modify io nodes pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateModifyIONodesPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateModifyIONodesPass(
     Type input_type, Type output_type) {
   return std::make_unique<ModifyIONodesPass>(input_type, output_type);
 }
 
-static PassRegistration<ModifyIONodesPass> pass;
+std::unique_ptr<OperationPass<func::FuncOp>> CreateModifyIONodesPass() {
+  return std::make_unique<ModifyIONodesPass>();
+}
 
 }  // namespace TFL
 }  // namespace mlir

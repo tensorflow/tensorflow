@@ -7,6 +7,7 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load(
     "//tensorflow:tensorflow.bzl",
     "VERSION",
+    "VERSION_MAJOR",
     "if_google",
     "if_oss",
     "tf_cc_shared_object",
@@ -447,6 +448,16 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# This condition takes precedence over :linux_x86_64
+config_setting(
+    name = "linux_x86_64_no_sse",
+    values = {
+        "cpu": "k8",
+        "copt": "-mno-sse4.2",
+    },
+    visibility = ["//visibility:public"],
+)
+
 config_setting(
     name = "linux_ppc64le",
     values = {"cpu": "ppc"},
@@ -856,6 +867,7 @@ package_group(
         "//tensorflow_decision_forests/...",
         "//tensorflow_federated/...",
         "//third_party/cloud_tpu/inference_converter/...",
+        "//third_party/py/cloud_ml_autoflow/...",
         "//third_party/py/envlogger/...",
         "//third_party/py/keras/...",
         "//third_party/yggdrasil_decision_forests/...",
@@ -985,6 +997,7 @@ tf_cc_shared_library(
         "//tensorflow:tf_framework_version_script.lds",
         "//tensorflow:tf_private_symbols.lds",
     ],
+    exports_filter = PACKAGE_STATIC_DEPS,
     framework_so = [],
     linkopts = select({
         "//tensorflow:macos": [
@@ -1002,10 +1015,7 @@ tf_cc_shared_library(
     }),
     linkstatic = 1,
     per_os_targets = True,
-    soversion = VERSION,
-    static_deps = PACKAGE_STATIC_DEPS,
-    visibility = ["//visibility:public"],
-    deps = [
+    roots = [
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/c/experimental/stream_executor:stream_executor",
         "//tensorflow/c:env",
@@ -1015,6 +1025,7 @@ tf_cc_shared_library(
         "//tensorflow/c:ops",
         "//tensorflow/cc/saved_model:loader_lite_impl",
         "//tensorflow/cc/saved_model:metrics_impl",
+        "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
         "//tensorflow/core/common_runtime:core_cpu_impl",
         "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
@@ -1026,6 +1037,9 @@ tf_cc_shared_library(
         "//tensorflow/lite/kernels/shim:tf_kernel_shim",
         "//tensorflow/stream_executor:stream_executor_impl",
     ] + tf_additional_binary_deps(),
+    soversion = VERSION,
+    static_deps = PACKAGE_STATIC_DEPS,
+    visibility = ["//visibility:public"],
 )
 
 # This is intended to be the same as tf_binary_additional_srcs:
@@ -1036,7 +1050,7 @@ cc_import(
     name = "libtensorflow_framework_import_lib",
     shared_library = select({
         "//tensorflow:macos": ":libtensorflow_framework.dylib",
-        "//conditions:default": ":libtensorflow_framework.so",
+        "//conditions:default": ":libtensorflow_framework.so.%s" % VERSION_MAJOR,
     }),
 )
 
@@ -1106,6 +1120,11 @@ tf_cc_shared_library(
         "//tensorflow:tf_private_symbols.lds",
         "//tensorflow:tf_version_script.lds",
     ],
+    dynamic_deps = select({
+        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+    }),
+    framework_so = [],
     linkopts = select({
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow:tf_exported_symbols.lds)",
@@ -1125,13 +1144,32 @@ tf_cc_shared_library(
     # copybara:comment_end
     deps = [
         "//tensorflow/c:c_api",
+        "//tensorflow/c:env",
+        "//tensorflow/c:kernels",
+        "//tensorflow/c:kernels_experimental",
+        "//tensorflow/c:logging",
+        "//tensorflow/c:ops",
         "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/experimental/filesystem:filesystem_interface",
+        "//tensorflow/c/experimental/stream_executor:stream_executor",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:scope",
+        "//tensorflow/cc/saved_model:loader_lite_impl",
+        "//tensorflow/cc/saved_model:metrics_impl",
+        "//tensorflow/core:framework_internal_impl",
+        "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/data:standalone",
-    ],
+        "//tensorflow/core/common_runtime:core_cpu_impl",
+        "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
+        "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
+        "//tensorflow/core/profiler:profiler_impl",
+        "//tensorflow/core/util:determinism",
+        "//tensorflow/lite/kernels/shim:tf_kernel_shim",
+        "//tensorflow/stream_executor:stream_executor_impl",
+    ] + tf_additional_binary_deps(),
 )
 
 # ** Targets for Windows build (start) **

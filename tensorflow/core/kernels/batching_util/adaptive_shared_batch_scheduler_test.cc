@@ -469,7 +469,7 @@ TEST(AdaptiveSharedBatchSchedulerTest, TruncateBatches) {
           output_tasks->emplace_back(new FakeTask(task_size));
           remaining_size -= task_size;
         }
-        return Status::OK();
+        return OkStatus();
       };
   TF_ASSERT_OK(scheduler->AddQueue(queue_options, queue_callback, &queue));
   TF_ASSERT_OK(ScheduleTask(30, queue.get()));

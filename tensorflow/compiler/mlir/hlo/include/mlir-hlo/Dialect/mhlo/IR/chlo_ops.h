@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.h"
 #include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
@@ -35,13 +34,12 @@ limitations under the License.
 namespace mlir {
 namespace chlo {
 
-class HloClientDialect : public Dialect {
+class ChloDialect : public Dialect {
   void initialize();
 
  public:
-  explicit HloClientDialect(MLIRContext* context)
-      : Dialect(getDialectNamespace(), context,
-                TypeID::get<HloClientDialect>()) {
+  explicit ChloDialect(MLIRContext* context)
+      : Dialect(getDialectNamespace(), context, TypeID::get<ChloDialect>()) {
     initialize();
   }
   Operation* materializeConstant(OpBuilder& builder, Attribute value, Type type,

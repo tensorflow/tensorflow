@@ -22,9 +22,11 @@ namespace tflite {
 namespace gpu {
 namespace gl {
 
-GLenum ToTextureFormat(DataType type) {
+GLenum ToTextureFormat(DataType type, bool normalized) {
   switch (type) {
     case DataType::INT8:
+    case DataType::UINT8:
+      return normalized ? GL_RGBA : GL_RGBA_INTEGER;
     case DataType::UINT16:
     case DataType::UINT32:
     case DataType::INT16:
@@ -32,19 +34,18 @@ GLenum ToTextureFormat(DataType type) {
       return GL_RGBA_INTEGER;
     case DataType::FLOAT16:
     case DataType::FLOAT32:
-    case DataType::UINT8:  // this requires GL_RGBA8 internal format
       return GL_RGBA;
     default:
       return 0;
   }
 }
 
-GLenum ToTextureInternalFormat(DataType type) {
+GLenum ToTextureInternalFormat(DataType type, bool normalized) {
   switch (type) {
     case DataType::UINT8:
-      return GL_RGBA8;  // this requires GL_RGBA format
+      return normalized ? GL_RGBA8 : GL_RGBA8UI;
     case DataType::INT8:
-      return GL_RGBA8I;
+      return normalized ? GL_RGBA8_SNORM : GL_RGBA8I;
     case DataType::UINT16:
       return GL_RGBA16UI;
     case DataType::UINT32:

@@ -48,7 +48,7 @@ def LegalizeTF : Pass<"xla-legalize-tf", "mlir::func::FuncOp"> {
   ];
 
   let constructor = "mlir::mhlo::createLegalizeTFPass()";
-  let dependentDialects = ["arith::ArithmeticDialect, chlo::HloClientDialect",
+  let dependentDialects = ["arith::ArithmeticDialect, chlo::ChloDialect",
                            "memref::MemRefDialect", "mhlo::MhloDialect",
                            "shape::ShapeDialect", "func::FuncDialect"];
 }
@@ -67,7 +67,7 @@ def LegalizeTFNoFallback : Pass<"xla-legalize-tf-no-fallback", "mlir::func::Func
   ];
 
   let constructor = "mlir::mhlo::createLegalizeTFNoFallbackPass()";
-  let dependentDialects = ["arith::ArithmeticDialect", "chlo::HloClientDialect",
+  let dependentDialects = ["arith::ArithmeticDialect", "chlo::ChloDialect",
                            "memref::MemRefDialect", "mhlo::MhloDialect",
                            "shape::ShapeDialect", "func::FuncDialect"];
 }

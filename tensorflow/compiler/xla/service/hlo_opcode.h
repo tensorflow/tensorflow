@@ -140,7 +140,7 @@ namespace xla {
   V(kRoundNearestAfz, "round-nearest-afz", 1)                                  \
   V(kRoundNearestEven, "round-nearest-even", 1)                                \
   V(kRsqrt, "rsqrt", 1)                                                        \
-  V(kScatter, "scatter", 3)                                                    \
+  V(kScatter, "scatter", kHloOpcodeIsVariadic)                                 \
   V(kSelect, "select", 3)                                                      \
   V(kSelectAndScatter, "select-and-scatter", 3)                                \
   V(kSend, "send", 2)                                                          \
@@ -159,7 +159,6 @@ namespace xla {
   V(kTranspose, "transpose", 1)                                                \
   V(kTriangularSolve, "triangular-solve", 2)                                   \
   V(kTuple, "tuple", kHloOpcodeIsVariadic)                                     \
-  V(kTupleSelect, "tuple-select", 3)                                           \
   V(kWhile, "while", 1)
 
 enum class HloOpcode {

@@ -66,6 +66,8 @@ class Validator {
     std::vector<int64_t> execution_time_us;
     // Any possible error from the delegate.
     int delegate_error = 0;
+    // Number of delegated kernels
+    int delegated_kernels = 0;
   };
   // Run the validation graph and return validation results.
   MinibenchmarkStatus RunValidation(Results* results_out);
@@ -86,7 +88,8 @@ class Validator {
   MinibenchmarkStatus LoadDelegate();
   // Apply the compute settings (typically applying a delegate to the
   // interpreter).
-  MinibenchmarkStatus ApplyComputeSettings(int* delegate_error_out);
+  MinibenchmarkStatus ApplyComputeSettings(int* delegate_error_out,
+                                           int* delegated_kernels_out);
 
   std::string model_path_;
   int model_fd_ = -1;

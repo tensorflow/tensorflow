@@ -953,6 +953,19 @@ Status CheckConstantLayout(HloInstruction* constant) {
   return Status::OK();
 }
 
+Layout GetBroadcastLayoutFromOutput(const Layout& layout,
+                                    const HloInstruction* hlo) {
+  CHECK_EQ(hlo->opcode(), HloOpcode::kBroadcast);
+  Shape shape = hlo->shape();
+  *shape.mutable_layout() = layout;
+  shape = ShapeUtil::FilterDimensions(
+      [&](int64_t dim) {
+        return absl::c_linear_search(hlo->dimensions(), dim);
+      },
+      shape);
+  return shape.layout();
+}
+
 }  // namespace
 
 StatusOr<HloInstruction*> LayoutAssignment::CreateCopyWithNewLayout(
@@ -1707,6 +1720,14 @@ Status LayoutAssignment::PropagateBufferConstraintToOperands(
             buffer_constraint.layout(), instruction, operand_no,
             /*mandatory=*/true, /*dfs=*/true, current_priority_));
       }
+    } else if (instruction->opcode() == HloOpcode::kBroadcast) {
+      Layout layout =
+          GetBroadcastLayoutFromOutput(buffer_constraint.layout(), instruction);
+      TF_RETURN_IF_ERROR(SetArrayOperandLayout(
+          layout, instruction, operand_no, /*mandatory=*/true,
+          /*dfs=*/
+          InstructionShouldPropagateDepthFirst(*instruction),
+          current_priority_));
     } else {
       if (!buffer.IsTopLevel() ||
           !instruction->operand(operand_no)->shape().IsArray()) {
@@ -2553,7 +2574,6 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kPopulationCount:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kCholesky:
-    case HloOpcode::kTupleSelect:
     case HloOpcode::kWhile:
     case HloOpcode::kSetDimensionSize:
     // AllReduce is variadic so it needs to be careful to assign the same layout

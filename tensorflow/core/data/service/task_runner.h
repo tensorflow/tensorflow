@@ -193,14 +193,14 @@ class PrefetchThread {
   // Buffered results for the next round.
   std::vector<std::unique_ptr<Element>> buffer_ TF_GUARDED_BY(mu_);
   // The status if the prefetch thread fails.
-  Status status_ TF_GUARDED_BY(mu_) = Status::OK();
-  // Thread which constantly tries to fill `buffer_` up with
-  // `num_consumers` elements.
-  std::unique_ptr<Thread> thread_;
+  Status status_ TF_GUARDED_BY(mu_) = OkStatus();
   // Condition variable notified when elements are added to or removed from
   // `buffer_`, or when `status_` is changed.
   condition_variable cv_;
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
+  // Thread which constantly tries to fill `buffer_` up with
+  // `num_consumers` elements.
+  std::unique_ptr<Thread> thread_;
 };
 
 // A task runner which enforces round-robin order for consuming a task's

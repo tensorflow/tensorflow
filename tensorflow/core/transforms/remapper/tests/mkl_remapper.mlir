@@ -1,4 +1,4 @@
-// RUN: tfg-transforms-opt -remapper=enable-mkl-patterns %s | FileCheck %s
+// RUN: tfg-transforms-opt -tfg-remapper=enable-mkl-patterns %s | FileCheck %s
 
 module {
   // CHECK: %[[ARG0:.*]]: tensor<64x64xf32> {tfg.name = "arg0"}

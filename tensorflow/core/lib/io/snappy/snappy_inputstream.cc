@@ -65,7 +65,7 @@ Status SnappyInputStream::ReadNBytes(int64_t bytes_to_read, tstring* result) {
     result_ptr += bytes_read;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #if defined(TF_CORD_SUPPORT)
@@ -76,7 +76,7 @@ Status SnappyInputStream::ReadNBytes(int64_t bytes_to_read,
   TF_RETURN_IF_ERROR(ReadNBytes(bytes_to_read, &buf));
   result->Clear();
   result->Append(buf.data());
-  return Status::OK();
+  return OkStatus();
 }
 #endif
 
@@ -126,7 +126,7 @@ Status SnappyInputStream::Inflate() {
   }
   avail_out_ += uncompressed_length;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 size_t SnappyInputStream::ReadBytesFromCache(size_t bytes_to_read,
@@ -147,7 +147,7 @@ Status SnappyInputStream::Reset() {
   TF_RETURN_IF_ERROR(input_stream_->Reset());
   avail_out_ = 0;
   bytes_read_ = 0;
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace io

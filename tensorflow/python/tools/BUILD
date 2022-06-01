@@ -333,6 +333,7 @@ py_library(
         "//tensorflow/python/debug/wrappers:local_cli_wrapper",
     ] + if_google([
         "//tensorflow/core/tfrt/tfrt_session",
+        "//tensorflow_text:tensorflow_text",
     ]),
 )
 

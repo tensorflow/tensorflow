@@ -12,6 +12,7 @@ distribute_py_test(
     srcs = ["saved_model_test.py"],
     tags = [
         "no_windows",  # TODO(b/171350360)
+        "nomultivm",  # multi_worker_test_base incompatible with multivm base
         "notsan",  # b/195248428
     ],
     deps = [

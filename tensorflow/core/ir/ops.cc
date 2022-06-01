@@ -114,16 +114,30 @@ void TFGraphDialect::initialize() {
   // Create the fallback OpAsmOpInterface instance.
   fallbackOpAsmInterface_ = new TFGraphOpAsmInterface;
 
+  // Register the memory effects interface adaptor.
+  addInterfaces<StatefulMemoryEffectInterface>();
+
+  // Initialized the cached operation names.
+#define GET_OP_NAME_DEFS
+#include "tensorflow/core/ir/tf_op_names.inc"
+
   // Caching some often used context-owned informations for fast-access.
   name_key_ = StringAttr::get(getContext(), getNameAttrKey());
   device_key_ = StringAttr::get(getContext(), getDeviceAttrKey());
   assigned_device_key_ =
       StringAttr::get(getContext(), getAssignedDeviceAttrKey());
-  tfg_name_key_ = StringAttr::get(getContext(), getTfgNameAttrKey());
-  control_ty_ = ControlType::get(getContext());
-  tfg_tpu_replicate_key_ =
-      StringAttr::get(getContext(), getTfgTpuReplicateAttrKey());
   fulltype_key_ = StringAttr::get(getContext(), getFullTypeAttrKey());
+  lifted_graph_func_name_ =
+      StringAttr::get(getContext(), getLiftedGraphFuncNameKey());
+  tfg_name_key_ = StringAttr::get(getContext(), getTfgNameAttrKey());
+  tfg_description_key_ =
+      StringAttr::get(getContext(), getTfgDescriptionAttrKey());
+  tfg_is_ref_key_ = StringAttr::get(getContext(), getTfgIsRefAttrKey());
+  tfg_handle_data_key_ =
+      StringAttr::get(getContext(), getTfgHandleDataAttrKey());
+  tfg_full_type_key_ = StringAttr::get(getContext(), getTfgFullTypeAttrKey());
+
+  control_ty_ = ControlType::get(getContext());
 }
 
 // Provides a hook for op interface.
@@ -131,13 +145,25 @@ void *TFGraphDialect::getRegisteredInterfaceForOp(TypeID interface,
                                                   OperationName opName) {
   if (interface == TypeID::get<OpAsmOpInterface>()) {
     return fallbackOpAsmInterface_;
-  } else if (interface == TypeID::get<TensorFlowRegistryInterface>()) {
+  }
+
+  // Intrinsic operations explicitly implement intefaces.
+  if (opName.hasTrait<OpTrait::IntrinsicOperation>()) {
+    return nullptr;
+  }
+
+  if (interface == TypeID::get<TensorFlowRegistryInterface>()) {
     if (auto *instance =
             getRegisteredInterface<TensorFlowRegistryInterfaceBase>()) {
       // Important: cast to (Concept *) to shift the pointer off the vtable.
       return static_cast<TensorFlowRegistryInterfaceBase::Concept *>(
           const_cast<TensorFlowRegistryInterfaceBase *>(instance));
     }
+  } else if (interface == TypeID::get<MemoryEffectOpInterface>()) {
+    auto *instance = getRegisteredInterface<StatefulMemoryEffectInterface>();
+    assert(instance && "expected the memory interface to be registered");
+    return static_cast<StatefulMemoryEffectInterface::Concept *>(
+        const_cast<StatefulMemoryEffectInterface *>(instance));
   }
 
   return nullptr;
@@ -145,21 +171,24 @@ void *TFGraphDialect::getRegisteredInterfaceForOp(TypeID interface,
 
 TFGraphDialect::~TFGraphDialect() { delete fallbackOpAsmInterface_; }
 
+// The name of certain optional attributes.
+static std::array<StringRef, 3> keyword_attrs{
+    "_mlir_device", "_mlir_assigned_device", "_mlir_name"};
+
 static void PrintKeywordAttributes(Operation *op, OpAsmPrinter &printer,
                                    ArrayRef<StringRef> elided_attrs = {}) {
   // Handles the optional "device" and "name" attribute.
-  std::array<StringRef, 3> keywords{"_mlir_device", "_mlir_assigned_device",
-                                    "_mlir_name"};
-  for (StringRef keyword : keywords) {
-    if (StringAttr value_attr = op->getAttrOfType<StringAttr>(keyword))
-      if (!value_attr.getValue().empty())
-        printer << " " << keyword.drop_front(/*len(_mlir_)*/ 6) << "(\""
-                << value_attr.getValue() << "\")";
+  for (StringRef keyword : keyword_attrs) {
+    if (StringAttr value_attr = op->getAttrOfType<StringAttr>(keyword)) {
+      assert(!value_attr.getValue().empty());
+      printer << " " << keyword.drop_front(/*len(_mlir_)*/ 6) << "(\""
+              << value_attr.getValue() << "\")";
+    }
   }
 
   // Print attributes (other than name and device).
   SmallVector<StringRef> attrs_to_elide = llvm::to_vector(elided_attrs);
-  llvm::append_range(attrs_to_elide, keywords);
+  llvm::append_range(attrs_to_elide, keyword_attrs);
   printer.printOptionalAttrDict(op->getAttrs(), attrs_to_elide);
 }
 
@@ -297,7 +326,8 @@ static ParseResult ParseCustomTfOp(OpAsmParser &parser,
   // The control input are elided from the type list, add them here.
   arg_types.resize(op_infos.size(), control_type);
   if (!arg_types.empty())
-    parser.resolveOperands(op_infos, arg_types, loc, result.operands);
+    if (parser.resolveOperands(op_infos, arg_types, loc, result.operands))
+      return failure();
   if (result.name.getStringRef() != "tfg.return")
     result.types.push_back(control_type);
   return success();
@@ -334,6 +364,18 @@ static bool VerifyGenericTFGOperation(Operation &op) {
   };
   if (!check_ctl_at_end(op.getOperandTypes(), "input")) return false;
   if (!check_ctl_at_end(op.getResultTypes(), "result")) return false;
+
+  // Certain attributes are supposed to be inserted with non-empty value.
+  for (StringRef keyword : keyword_attrs) {
+    if (StringAttr value_attr = op.getAttrOfType<StringAttr>(keyword)) {
+      if (value_attr.getValue().empty()) {
+        op.emitOpError() << keyword
+                         << " has empty value. Only insert this attribute when "
+                            "it has a value";
+      }
+    }
+  }
+
   return true;
 }
 
@@ -465,16 +507,12 @@ LogicalResult GraphFuncOp::verify() {
   if (func_op.getNumArguments() % 2)
     return func_op.emitOpError() << "expects an even number of arguments";
   ArrayAttr args_attrs = func_op.getAllArgAttrs();
-  if (!args_attrs)
-    return func_op.emitOpError() << "missing argument attributes array";
-  if (args_attrs.size() != func_op.getNumArguments())
+  if (args_attrs && args_attrs.size() != func_op.getNumArguments())
     return func_op.emitOpError()
            << "expects argument attributes for each argument ("
            << args_attrs.size() << " vs " << func_op.getNumArguments() << ")";
   ArrayAttr res_attrs = func_op.getAllResultAttrs();
-  if (!res_attrs)
-    return func_op.emitOpError() << "missing results attributes array";
-  if (res_attrs.size() != func_op.getNumResults())
+  if (res_attrs && res_attrs.size() != func_op.getNumResults())
     return func_op.emitOpError()
            << "expects results attributes for each result (" << res_attrs.size()
            << " vs " << func_op.getNumResults() << ")";
@@ -521,7 +559,7 @@ ParseResult GraphFuncOp::parse(OpAsmParser &parser, OperationState &result) {
     // Parse argument name if present.
     entry_args.emplace_back();
     arg_types.emplace_back();
-    if (parser.parseRegionArgument(entry_args.back()) ||
+    if (parser.parseOperand(entry_args.back(), /*allowResultNumber=*/false) ||
         parser.parseColonType(arg_types.back()))
       return failure();
 
@@ -555,17 +593,19 @@ ParseResult GraphFuncOp::parse(OpAsmParser &parser, OperationState &result) {
   // Parse the result types and their attributes.
   if (succeeded(parser.parseOptionalArrow())) {
     if (failed(parser.parseLParen())) return failure();
-    // Parse individual function results.
-    do {
-      result_types.emplace_back();
-      NamedAttrList result_attr;
-      if (parser.parseType(result_types.back()) ||
-          parser.parseOptionalAttrDict(result_attr)) {
-        return failure();
-      }
-      result_attrs.push_back(builder.getDictionaryAttr(result_attr));
-    } while (succeeded(parser.parseOptionalComma()));
-    if (parser.parseRParen()) return failure();
+    if (failed(parser.parseOptionalRParen())) {
+      // Parse individual function results.
+      do {
+        result_types.emplace_back();
+        NamedAttrList result_attr;
+        if (parser.parseType(result_types.back()) ||
+            parser.parseOptionalAttrDict(result_attr)) {
+          return failure();
+        }
+        result_attrs.push_back(builder.getDictionaryAttr(result_attr));
+      } while (succeeded(parser.parseOptionalComma()));
+      if (parser.parseRParen()) return failure();
+    }
   }
 
   auto type = builder.getFunctionType(arg_types, result_types);
@@ -590,10 +630,16 @@ ParseResult GraphFuncOp::parse(OpAsmParser &parser, OperationState &result) {
   // Parse the function body.
   auto *body = result.addRegion();
   llvm::SMLoc loc = parser.getCurrentLocation();
-  if (failed(parser.parseRegion(
-          *body, entry_args, entry_args.empty() ? ArrayRef<Type>() : arg_types,
-          /*argLocations=*/{},
-          /*enableNameShadowing=*/false)))
+  SmallVector<OpAsmParser::Argument> args;
+  if (entry_args.size()) {
+    for (auto argAndType : llvm::zip(entry_args, arg_types)) {
+      auto &arg = args.emplace_back();
+      arg.ssaName = std::get<0>(argAndType);
+      arg.type = std::get<1>(argAndType);
+    }
+  }
+
+  if (failed(parser.parseRegion(*body, args, /*enableNameShadowing=*/false)))
     return failure();
 
   // Function body was parsed, make sure it's not empty.
@@ -1342,10 +1388,10 @@ LogicalResult ForRegionOp::verify() {
         "expected the body block to have at least have the loop index as an "
         "argument");
   }
-  auto index = args.front().getType().dyn_cast<RankedTensorType>();
-  if (!index || index.getRank() != 0 ||
-      !index.getElementType().isSignlessInteger(32)) {
-    return emitOpError("expected first body block argument to be tensor<i32>");
+  auto index = args.front().getType().dyn_cast<TensorType>();
+  if (!index || !index.getElementType().isSignlessInteger(32)) {
+    return emitOpError(
+        "expected first body block argument to be an i32 tensor");
   }
 
   if (failed(VerifyLoopRegionArgs(*this, body_region()))) return failure();
@@ -1393,13 +1439,19 @@ FunctionTable::FunctionTable(ModuleOp module) {
   }
 }
 
-bool FunctionTable::MaybeCall(Operation *op) {
-  if (functions.count(op->getName().stripDialect())) return true;
-  for (NamedAttribute named_attr : op->getAttrs()) {
-    // Treat any operation that references a FuncAttr as a call.
-    if (named_attr.getValue().isa<FuncAttr>()) return true;
-  }
-  return false;
+bool FunctionTable::MayBeCall(Operation *op) const {
+  if (IsLegacyCall(op)) return true;
+  // The operation might be a call if it references a symbol.
+  bool references_symbol = false;
+  op->getAttrDictionary().walkSubAttrs(
+      [&](Attribute attr) { references_symbol |= attr.isa<SymbolRefAttr>(); });
+  return references_symbol;
+}
+
+bool FunctionTable::IsLegacyCall(Operation *op) const {
+  // If the operation name refers to a function in the module, then it is
+  // guaranteed to be a legacy call. Otherwise, it is not.
+  return functions.count(op->getName().stripDialect());
 }
 
 }  // namespace tfg

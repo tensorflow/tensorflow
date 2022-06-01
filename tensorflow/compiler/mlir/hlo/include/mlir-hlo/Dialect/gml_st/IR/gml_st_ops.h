@@ -29,12 +29,12 @@ limitations under the License.
 // Generated dialect declarations.
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_dialect.h.inc"
 
-// Generated operation classes.
-#define GET_OP_CLASSES
-#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h.inc"
-
 // Generated custom type declarations.
 #define GET_TYPEDEF_CLASSES
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_types.h.inc"
+
+// Generated operation classes.
+#define GET_OP_CLASSES
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h.inc"
 
 #endif  // MLIR_HLO_DIALECT_GML_ST_IR_GML_ST_OPS_H

@@ -64,7 +64,7 @@ struct RegionControlFlowToFunctional
   std::string GetName(Operation* op, StringRef suffix);
 
   tensorflow::OpOrArgLocNameMapper mapper;
-  llvm::SmallVector<FuncOp, 4> worklist;
+  llvm::SmallVector<func::FuncOp, 4> worklist;
 };
 
 std::string RegionControlFlowToFunctional::GetName(Operation* op,
@@ -122,7 +122,7 @@ void CopyAndOverrideAttributes(Operation* src, Operation* dst,
 // are also added as return values from the function
 void ExtractSingleBlockRegion(Region& region, StringRef name,
                               llvm::SmallVectorImpl<Value>& extern_values,
-                              llvm::SmallVectorImpl<FuncOp>& worklist,
+                              llvm::SmallVectorImpl<func::FuncOp>& worklist,
                               bool extern_values_passthrough) {
   ModuleOp module = region.getParentOfType<ModuleOp>();
   auto builder = OpBuilder::atBlockBegin(module.getBody());
@@ -145,7 +145,7 @@ void ExtractSingleBlockRegion(Region& region, StringRef name,
   auto type = FunctionType::get(region.getContext(), input_types, return_types);
 
   // Create new function and extract region body into the function.
-  auto outlined_func = builder.create<FuncOp>(loc, name, type);
+  auto outlined_func = builder.create<func::FuncOp>(loc, name, type);
   Region& func_region = outlined_func.getBody();
   func_region.takeBody(region);
   Block& first_block = func_region.front();
@@ -461,9 +461,9 @@ void RegionControlFlowToFunctional::runOnOperation() {
   ModuleOp module = getOperation();
 
   // Seed worklist with all functions in the module.
-  worklist = llvm::to_vector<4>(module.getOps<FuncOp>());
+  worklist = llvm::to_vector<4>(module.getOps<func::FuncOp>());
   while (!worklist.empty()) {
-    FuncOp function = worklist.pop_back_val();
+    func::FuncOp function = worklist.pop_back_val();
 
     auto result = function.walk([&](Operation* op) {
       if (auto if_region = llvm::dyn_cast<IfRegionOp>(op)) {

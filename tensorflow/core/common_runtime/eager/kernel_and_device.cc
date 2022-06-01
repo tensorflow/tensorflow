@@ -60,7 +60,7 @@ Status EagerKernelArgs::GetLocalArg(const FunctionArgIndex& index,
   Tensor* arg = tensor_args_.at(index.index).tensor;
   if (arg) {
     *val = *arg;
-    return Status::OK();
+    return OkStatus();
   } else {
     return errors::NotFound("Argument ", index.index, " has no local tensor.");
   }
@@ -133,7 +133,7 @@ Status KernelAndDeviceOp::Init(const bool log_device_placement,
                                        tensorflow::HOST_MEMORY);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status KernelAndDeviceFunc::InstantiateFunc(const bool log_device_placement,
@@ -345,7 +345,7 @@ Status KernelAndDeviceOp::Run(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 std::shared_ptr<FunctionLibraryRuntime::Options>

@@ -35,10 +35,10 @@ namespace tfr {
 
 Status CompositeOpExpansion::Run(EagerOperation* orig_op,
                                  std::unique_ptr<EagerOperation>* out_op) {
-  if (!IsEnabled()) return Status::OK();
+  if (!IsEnabled()) return OkStatus();
   // This can be the default cpu device.
-  if (orig_op->Device() != kVariantDeviceNull) return Status::OK();
-  if (orig_op->is_function()) return Status::OK();
+  if (orig_op->Device() != kVariantDeviceNull) return OkStatus();
+  if (orig_op->is_function()) return OkStatus();
 
   // TODO(fengliuai): We need a better condition to skip the rewrite. Currently,
   // The rewrite is enabled for all the tf ops and it is a no-op if the tf op
@@ -52,7 +52,7 @@ Status CompositeOpExpansion::Run(EagerOperation* orig_op,
       "VarHandleOp",       // b/176819198
   };
   for (const char* skip : kOpsToSkip) {
-    if (absl::StartsWith(orig_op->op_name(), skip)) return Status::OK();
+    if (absl::StartsWith(orig_op->op_name(), skip)) return OkStatus();
   }
 
   tf_core_op_expansion_node_counter->GetCell()->IncrementBy(1);
@@ -89,7 +89,7 @@ Status CompositeOpExpansion::Run(EagerOperation* orig_op,
       << "Finish Node Expansion Passes. Rewrite the op to call function: "
       << fname;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_REWRITE(EagerOpRewriteRegistry::POST_PLACEMENT, 20000,

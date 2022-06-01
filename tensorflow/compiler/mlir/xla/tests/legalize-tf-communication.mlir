@@ -618,7 +618,7 @@ func.func @if_function_call(%arg0: tensor<i1>, %arg1: tensor<f32>) -> tensor<f32
   // CHECK:      [[INIT_TOKEN:%.*]] = "mhlo.create_token"
   // CHECK: "mhlo.if"
   %0 = "mhlo.if"(%arg0) ({
-    // CHECK:      [[CALL_TOKEN:%.*]] = call @callee([[ARG1]], [[INIT_TOKEN]])
+    // CHECK:      [[CALL_TOKEN:%.*]] = func.call @callee([[ARG1]], [[INIT_TOKEN]])
     func.call @callee(%arg1) : (tensor<f32>) -> ()
 
     // CHECK:      "mhlo.return"([[ARG1]], [[CALL_TOKEN]])

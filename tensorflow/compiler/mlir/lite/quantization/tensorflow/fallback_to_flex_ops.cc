@@ -171,7 +171,7 @@ inline OpaqueElementsAttr CustomOptionForFlexOp(OpBuilder *builder,
 
 // Fallbacks ops that are not supported by TF Quantization to TFLite Flex ops.
 class FallbackToFlexOps
-    : public PassWrapper<FallbackToFlexOps, OperationPass<FuncOp>> {
+    : public PassWrapper<FallbackToFlexOps, OperationPass<func::FuncOp>> {
  public:
   FallbackToFlexOps() {}
   explicit FallbackToFlexOps(const std::string &mode) { mode_ = mode; }
@@ -273,7 +273,7 @@ bool RankEquals(Value value, int rank) {
 void FallbackToFlexOps::runOnOperation() {
   if (mode_.empty()) return;
 
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
   MLIRContext *ctx = &getContext();
 
   // Convert binary ops to BiasAdd ops if possible.
@@ -295,7 +295,7 @@ void FallbackToFlexOps::runOnOperation() {
 }
 }  // namespace internal
 
-std::unique_ptr<OperationPass<FuncOp>> CreateFallbackToFlexOpsPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateFallbackToFlexOpsPass(
     const std::string &mode) {
   return std::make_unique<internal::FallbackToFlexOps>(mode);
 }

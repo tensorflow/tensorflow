@@ -264,3 +264,7 @@ class LinearOperatorPermutation(linear_operator.LinearOperator):
   @property
   def _composite_tensor_fields(self):
     return ("perm", "dtype")
+
+  @property
+  def _experimental_parameter_ndims_to_matrix_ndims(self):
+    return {"perm": 1}

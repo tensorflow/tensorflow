@@ -92,10 +92,15 @@ class UnsortedSegmentJoinOp : public OpKernel {
     const Tensor& num_segments_tensor = context->input(2);
     OP_REQUIRES(context, num_segments_tensor.NumElements() != 0,
                 errors::InvalidArgument("Number of segments cannot be empty."));
+    OP_REQUIRES(context,
+                TensorShapeUtils::IsScalar(num_segments_tensor.shape()),
+                errors::InvalidArgument("Number of segments must be a scalar"));
     auto num_segments = num_segments_tensor.scalar<NUM_SEGMENTS_TYPE>()();
 
-    OP_REQUIRES(context, num_segments > 0,
-                errors::InvalidArgument("Number of segments must be positive"));
+    OP_REQUIRES(
+        context, num_segments >= 0,
+        errors::InvalidArgument(
+            "Number of segments must be non-negative but got ", num_segments));
     OP_REQUIRES(context, segment_dims != 0,
                 errors::InvalidArgument("Segment_id cannot have rank 0"));
 

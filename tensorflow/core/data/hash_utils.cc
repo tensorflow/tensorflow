@@ -79,7 +79,7 @@ Status GetSink(const GraphDef& graph_def, const NodeDef** sink) {
   if (sink == nullptr) {
     return errors::Internal("Cannot find sink node for dataset graph.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ShouldIgnoreInput(const NodeDef& node, int i, bool* result) {
@@ -97,7 +97,7 @@ Status ShouldIgnoreInput(const NodeDef& node, int i, bool* result) {
           VLOG(2) << "Ignoring arg: " << input_arg_name
                   << " from node: " << node.name();
           *result = true;
-          return Status::OK();
+          return OkStatus();
         }
       }
     } else if (errors::IsNotFound(status)) {
@@ -108,7 +108,7 @@ Status ShouldIgnoreInput(const NodeDef& node, int i, bool* result) {
       return status;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseInputNodeName(absl::string_view input_name,
@@ -117,14 +117,14 @@ Status ParseInputNodeName(absl::string_view input_name,
   if (input_name[0] == '^') {
     *node_name = input_name.substr(1);
     *is_control_input = true;
-    return Status::OK();
+    return OkStatus();
   }
   std::pair<absl::string_view, absl::string_view> node_spec =
       absl::StrSplit(input_name, absl::MaxSplits(':', 1));
   *node_name = node_spec.first;
   *suffix = node_spec.second;
   *is_control_input = false;
-  return Status::OK();
+  return OkStatus();
 }
 
 // Given a graph_def and a root_node, this class computes a fingerprint that
@@ -231,7 +231,7 @@ class GraphHasher {
       }
       nodes_[node] = node_rep;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status HashRoot(uint64* hash) { return HashNode(root_, hash); }
@@ -245,7 +245,7 @@ class GraphHasher {
     auto it = node_cache_->find(node);
     if (it != node_cache_->end()) {
       *hash = it->second;
-      return Status::OK();
+      return OkStatus();
     }
 
     NodeRep* node_rep = gtl::FindOrNull(nodes_, node);
@@ -285,7 +285,7 @@ class GraphHasher {
       return errors::Internal(absl::StrCat("Computed the hash for node ",
                                            node->DebugString(), " twice!"));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckNodesEqual(const NodeDef* this_node, GraphHasher* that,
@@ -333,7 +333,7 @@ class GraphHasher {
             that_input_suffix);
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status HashNodeNonInput(const NodeDef* node, bool hash_functions,
@@ -341,7 +341,7 @@ class GraphHasher {
     auto iter = attr_cache_->find(std::make_pair(node, hash_functions));
     if (iter != attr_cache_->end()) {
       *hash = iter->second;
-      return Status::OK();
+      return OkStatus();
     }
     // Hash Attrs. We get the list of attrs from the op registry and then look
     // up their values in the NodeDef attr map. This avoids looping over
@@ -390,7 +390,7 @@ class GraphHasher {
           "Computed the hash for non-input node: ", node->DebugString(),
           " and hash function bool: ", hash_functions, "twice!"));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckNodesEqualNonInput(const NodeDef* this_node, GraphHasher* that,
@@ -445,7 +445,7 @@ class GraphHasher {
           that_node->name(), ": ", this_node->device(), " vs ",
           that_node->device());
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status HashAttr(const std::string& attr_name, const AttrValue& attr_value,
@@ -467,7 +467,7 @@ class GraphHasher {
       value_hash = DeterministicProtoHash64(attr_value);
     }
     *hash = Hash64Combine(Hash64(attr_name), value_hash);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckAttrsEqual(const std::string& attr_name,
@@ -483,7 +483,7 @@ class GraphHasher {
         TF_RETURN_IF_ERROR(
             CheckFunctionsEqual(this_attr.func(), that, that_attr.func()));
       }
-      return Status::OK();
+      return OkStatus();
     }
     if (this_attr.has_list() != that_attr.has_list()) {
       return errors::FailedPrecondition(
@@ -502,7 +502,7 @@ class GraphHasher {
                                                  that_attr.list().func(i)));
         }
       }
-      return Status::OK();
+      return OkStatus();
     }
     uint64 this_hash, that_hash;
     TF_RETURN_IF_ERROR(
@@ -514,7 +514,7 @@ class GraphHasher {
           "AttrValues are different: ", this_attr.DebugString(), " vs ",
           that_attr.DebugString());
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status HashFunction(const NameAttrList& func, uint64* hash) {
@@ -527,7 +527,7 @@ class GraphHasher {
     auto it = function_cache_->find(fdef);
     if (it != function_cache_->end()) {
       *hash = it->second;
-      return Status::OK();
+      return OkStatus();
     }
 
     // Convert to a GraphDef.
@@ -563,7 +563,7 @@ class GraphHasher {
       return errors::Internal(
           absl::StrCat("Computed the hash for function ", name, " twice!"));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckFunctionsEqual(const NameAttrList& this_func, GraphHasher* that,
@@ -632,7 +632,7 @@ class GraphHasher {
     }
     TF_RETURN_IF_ERROR(
         CheckControlInputsEqual(this_control_rets, that, that_control_rets));
-    return Status::OK();
+    return OkStatus();
   }
 
   Status HashControlInputs(const std::vector<const NodeDef*>& inputs,
@@ -644,7 +644,7 @@ class GraphHasher {
           HashNodeNonInput(input, /*hash_functions=*/false, &node_hash));
       *hash = Hash64CombineUnordered(*hash, node_hash);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckControlInputsEqual(
@@ -680,7 +680,7 @@ class GraphHasher {
           "], which don't match any of the other node's dependencies [",
           absl::StrJoin(that_hashes, ", ", formatter), "]");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -742,7 +742,7 @@ Status HashTensor(const Tensor& tensor, uint64* hash) {
     default:
       *hash = Hash64(tensor.tensor_data().data(), tensor.tensor_data().size());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HashNode(const GraphDef& graph, const NodeDef& node, uint64* hash) {

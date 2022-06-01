@@ -551,15 +551,15 @@ Status DotOpEmitter::Emit() {
                                        target_machine_features_)) {
     case DotImplementationStrategy::kNaiveLlvmIr:
       EmitNaiveLlvmIrGemm();
-      return Status::OK();
+      return ::tensorflow::OkStatus();
 
     case DotImplementationStrategy::kTiledLlvmIrGemv:
       EmitTiledLlvmIrGemv();
-      return Status::OK();
+      return ::tensorflow::OkStatus();
 
     case DotImplementationStrategy::kTiledLlvmIrGemm:
       EmitTiledLlvmIrGemm();
-      return Status::OK();
+      return ::tensorflow::OkStatus();
 
     case DotImplementationStrategy::kLinalgMatmul:
       return EmitLinalgMatmul();
@@ -747,7 +747,7 @@ Status DotOpEmitter::EmitScalarDot() {
     result = b_->CreateFMul(lhs_value, rhs_value);
   }
   target_array_.EmitWriteArrayElement(/*index=*/element_index, result, b_);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status DotOpEmitter::EmitCallToRuntime() {
@@ -867,7 +867,7 @@ Status DotOpEmitter::EmitCallToRuntime() {
        b_->getInt64(mat_mult_dims.m), b_->getInt64(mat_mult_dims.n),
        b_->getInt64(mat_mult_dims.k), b_->getInt32(transpose_lhs),
        b_->getInt32(transpose_rhs)});
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
@@ -1137,7 +1137,7 @@ Status ValidateDotDimensionNumbers(const DotDimensionNumbers& dim_numbers) {
       absl::c_equal(batch_dim_numbers, dim_numbers.lhs_batch_dimensions()));
   TF_RET_CHECK(
       absl::c_equal(batch_dim_numbers, dim_numbers.rhs_batch_dimensions()));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Slice out the inner array at batch index `batch_index` from `outer_array`.

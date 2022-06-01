@@ -43,7 +43,8 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
-FuncOp createLstmCompositeFunc(mlir::Builder* builder, bool ln, bool cifg) {
+func::FuncOp createLstmCompositeFunc(mlir::Builder* builder, bool ln,
+                                     bool cifg) {
   SmallVector<int64_t, 2> input_shape{1, 2};
   SmallVector<int64_t, 2> weight_shape{3, 12};
   SmallVector<int64_t, 1> bias_shape{2};
@@ -63,9 +64,9 @@ FuncOp createLstmCompositeFunc(mlir::Builder* builder, bool ln, bool cifg) {
                                          layer_norm_scale_type};
   auto func_type = builder->getFunctionType(input_types, output_type);
 
-  auto func =
-      FuncOp::create(mlir::NameLoc::get(builder->getStringAttr("fused_func")),
-                     "fused_func", func_type, {});
+  auto func = func::FuncOp::create(
+      mlir::NameLoc::get(builder->getStringAttr("fused_func")), "fused_func",
+      func_type, {});
   func.addEntryBlock();
 
   std::vector<std::string> attributes;
@@ -109,9 +110,9 @@ class LstmUtilsTest : public ::testing::Test {
     builder_.reset();
   }
 
-  FuncOp fused_lstm_func_;
-  FuncOp fused_lstm_func_cifg_;
-  FuncOp fused_ln_lstm_func_;
+  func::FuncOp fused_lstm_func_;
+  func::FuncOp fused_lstm_func_cifg_;
+  func::FuncOp fused_ln_lstm_func_;
   std::unique_ptr<mlir::MLIRContext> context_;
   std::unique_ptr<mlir::Builder> builder_;
 };

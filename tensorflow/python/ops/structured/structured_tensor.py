@@ -31,7 +31,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.ragged import dynamic_ragged_shape
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import row_partition as row_partition_lib
@@ -484,7 +483,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
       msg = '`StructuredTensor.with_updates` failed'
       if error_prefix:
         msg = '{} for field {}'.format(msg, error_prefix)
-      raise ValueError('{}: {}'.format(msg, e))
+      raise ValueError(msg) from e
 
   def _promote_helper(self, source_path, new_parent_path):
     """Creates a promoted field without adding it to the structure.
@@ -942,7 +941,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
         fields[key] = cls._from_pyval(target, None, path_so_far + (key,))
     else:
       field_specs = typespec._field_specs  # pylint: disable=protected-access
-      if ((not isinstance(typespec, StructuredTensorSpec)) or
+      if ((not isinstance(typespec, StructuredTensorSpec)) or  # pylint: disable=superfluous-parens
           (set(fields) - set(field_specs))):
         raise ValueError('Value at %r does not match typespec: %r vs %r' %
                          (path_so_far, pyval, typespec))
@@ -1086,7 +1085,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     <StructuredTensor(
       fields={
         "foo": tf.Tensor([12 33 99], shape=(3,), dtype=int32)},
-      shape=(3,))>
+      shape=(None,))>
 
     Args:
       outer_axis: `int`: The first dimension in the range of dimensions to
@@ -1300,8 +1299,9 @@ def _convert_to_structured_field_value(value):
   else:
     try:
       return ops.convert_to_tensor(value)
-    except (ValueError, TypeError):
-      raise TypeError('Unexpected type for value in `fields`: %r' % value)
+    except (ValueError, TypeError) as e:
+      raise TypeError('Unexpected type for value in `fields`: %r' %
+                      value) from e
 
 
 def _find_shape_dtype(fields, nrows, row_partitions):
@@ -1649,10 +1649,7 @@ def _merge_dims(value, outer_axis, inner_axis):
 
     # Build the new shape.
     value_shape = value.shape
-    shape = (
-        value_shape[:outer_axis] +
-        [value_shape[outer_axis:inner_axis].num_elements()] +
-        value_shape[inner_axis + 1:])
+    shape = (value_shape[:outer_axis] + [None] + value_shape[inner_axis + 1:])
 
     # Build the new row_partitions & nrows
     if outer_axis == 0:
@@ -1724,34 +1721,3 @@ def _merge_dims_generic(source, outer, inner):
     return source.merge_dims(outer, inner)
   else:
     return ragged_tensor.merge_dims(source, outer, inner)
-
-
-# pylint:disable=protected-access
-def _dynamic_ragged_shape_init(fields, shape, nrows, row_partitions):
-  """Produce a DynamicRaggedShape for StructuredTensor."""
-  assert isinstance(fields, dict), fields
-  assert isinstance(shape, tensor_shape.TensorShape), shape
-  assert nrows is None or isinstance(nrows, ops.Tensor), nrows
-  assert isinstance(row_partitions, tuple), row_partitions
-
-  rank = shape.rank
-  if rank is None:
-    raise TypeError("StructuredTensor's shape must have known rank.")
-
-  # TODO(martinz): figure out whether to validate.
-  dtype = _find_shape_dtype(fields, nrows, row_partitions)
-  if rank == 0:
-    return dynamic_ragged_shape.DynamicRaggedShape._from_inner_shape(
-        array_ops.zeros((0,), dtype=dtype))
-
-  if rank == 1:
-    alt_value = shape[0]
-    if isinstance(alt_value, tensor_shape.Dimension):
-      alt_value = alt_value.value
-    if alt_value is not None:
-      nrows = alt_value
-    return dynamic_ragged_shape.DynamicRaggedShape._from_inner_shape(
-        [nrows], dtype=dtype)
-
-  return dynamic_ragged_shape.DynamicRaggedShape.from_row_partitions(
-      row_partitions, dtype=dtype)
