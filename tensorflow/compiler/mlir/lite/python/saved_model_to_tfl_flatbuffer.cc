@@ -122,7 +122,7 @@ Status HandleInputOutputArraysWithModule(
                                      ") does not exist in the given graph");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,

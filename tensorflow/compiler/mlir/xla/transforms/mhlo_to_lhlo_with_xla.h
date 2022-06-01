@@ -180,7 +180,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   // Computation parameters don't need any specific handling when they are
   // visited, they are already processed when we enter a new computation.
   tensorflow::Status HandleParameter(const xla::HloInstruction* instr) final {
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Helper function that recursively visits the tuple structure in

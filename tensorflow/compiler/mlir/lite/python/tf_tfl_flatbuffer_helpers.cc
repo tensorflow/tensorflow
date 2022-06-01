@@ -186,10 +186,10 @@ Status RegisterCustomBuiltinOps(const std::vector<string> extra_tf_opdefs) {
     tensorflow::OpRegistry::Global()->Register(
         [opdef](tensorflow::OpRegistrationData* op_reg_data) -> Status {
           *op_reg_data = tensorflow::OpRegistrationData(opdef);
-          return Status::OK();
+          return OkStatus();
         });
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -309,7 +309,7 @@ Status PopulateQuantizationSpecs(
   if (toco_flags.enable_mlir_dynamic_range_quantizer()) {
     quant_specs->enable_mlir_dynamic_range_quantizer = true;
   }
-  return ::tensorflow::Status::OK();
+  return OkStatus();
 }
 
 // Dumps the op graph of the `module` to `filename` in DOT format.
@@ -325,7 +325,7 @@ Status DumpOpGraphToFile(mlir::ModuleOp module, const std::string& filename) {
     return errors::Unknown("Failed to dump Op Graph from MLIR module.");
   }
   output->keep();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvertMLIRToTFLiteFlatBuffer(

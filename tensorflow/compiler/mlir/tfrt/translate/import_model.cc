@@ -151,7 +151,7 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
 
   bef_buffer->shrink_to_fit();
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

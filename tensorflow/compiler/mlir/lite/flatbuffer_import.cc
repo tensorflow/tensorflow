@@ -770,7 +770,7 @@ Status AddOpIntermediatesForLstm(
       op_state.addAttribute(named_attr.getName(), named_attr.getValue());
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // TODO(krzysd) Handle function calls

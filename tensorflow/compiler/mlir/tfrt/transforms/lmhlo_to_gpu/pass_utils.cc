@@ -58,7 +58,7 @@ Status ConvertLmhloToTfrtGpuWithBinary(mlir::ModuleOp module,
         std::move(error_stream.str()));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvertLmhloToJitRt(mlir::ModuleOp module,
@@ -78,7 +78,7 @@ Status ConvertLmhloToJitRt(mlir::ModuleOp module,
         "Failed to lower LMHLO to Gpu runtime custom calls.");
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow
