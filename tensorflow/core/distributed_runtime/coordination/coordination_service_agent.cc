@@ -54,7 +54,7 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   ~CoordinationServiceAgentImpl() override {
     Status s = Shutdown();
     if (!s.ok()) {
-      LOG(ERROR) << "Agent shutdown failed with status: " << s;
+      LOG(ERROR) << "Coordination agent shutdown failed with status: " << s;
     }
     // Cancel all pending GetKeyValue() RPC calls.
     cancellation_manager_.StartCancel();
@@ -402,6 +402,7 @@ Status CoordinationServiceAgentImpl::ReportError(const Status& error) {
 }
 
 Status CoordinationServiceAgentImpl::Shutdown() {
+  LOG(INFO) << "Coordination agent has initiated Shutdown().";
   Status status = OkStatus();
   bool is_connected = false;
   {
@@ -442,9 +443,9 @@ Status CoordinationServiceAgentImpl::Shutdown() {
     mutex_lock l(state_mu_);
     if (state_ == State::ERROR) {
       status = MakeCoordinationError(errors::FailedPrecondition(absl::StrCat(
-          "Shutdown() was called while agent is in error state, implying that "
-          "distributed execution failed. Note: agent will still shutdown "
-          "anyway. Agent status: ",
+          "Shutdown() was called while coordination agent is in error state, "
+          "implying that distributed execution failed. Note: agent will still "
+          "shutdown anyway. Agent status: ",
           status_.ToString())));
     }
     state_ = State::SHUTDOWN;

@@ -906,7 +906,8 @@ void CoordinationServiceStandaloneImpl::SetTaskError(
     PassBarrier(barrier_id, error, &barriers_[barrier_id]);
   }
 
-  LOG(ERROR) << task_name << " has been set to ERROR: " << error;
+  LOG(ERROR) << task_name
+             << " has been set to ERROR in coordination service: " << error;
 }
 
 void CoordinationServiceStandaloneImpl::BarrierAsync(
@@ -1075,9 +1076,10 @@ void CoordinationServiceStandaloneImpl::PassBarrier(
   // Special hook for shutdown barrier to disconnect tasks at the barrier.
   if (barrier_id == shutdown_barrier_id_) {
     if (result.ok()) {
-      LOG(INFO) << "Shutdown barrier has passed.";
+      LOG(INFO) << "Shutdown barrier in coordination service has passed.";
     } else {
-      LOG(ERROR) << "Shutdown barrier failed: " << result
+      LOG(ERROR) << "Shutdown barrier in coordination service has failed: "
+                 << result
                  << ". This suggests that at least one worker did not complete "
                     "its job, or was too slow/hanging in its execution.";
     }
