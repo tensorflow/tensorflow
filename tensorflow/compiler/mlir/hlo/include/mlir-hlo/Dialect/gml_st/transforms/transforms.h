@@ -59,6 +59,15 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOp(
     RewriterBase &b, linalg::LinalgOp op,
     const linalg::LinalgTilingOptions &options);
 
+/// Perform tiling that creates gml_st.parallel and gml_st.for operations with
+/// gml_st.tile subsets. If the tiling is successful, returns the outer loop.
+FailureOr<Operation *> tileToSlices(RewriterBase &b, linalg::LinalgOp op,
+                                    ArrayRef<int64_t> tileSizes);
+
+/// Perform tiling that creates gml_st.parallel and gml_st.for operations with
+/// gml_st.point subsets. If the tiling is successful, returns the outer loop.
+FailureOr<Operation *> tileToPoints(RewriterBase &b, linalg::LinalgOp op);
+
 }  // namespace gml_st
 }  // namespace mlir
 

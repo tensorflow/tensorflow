@@ -30,6 +30,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMHLOToGMLPass();
 /// Experimental pass to fuse producers into `gml_st.materialize` ops.
 std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass();
 
+/// Experimental pass to tile operations.
+std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
+    ArrayRef<int64_t> tileSizes = {});
+
 /// Create a pass to convert `gml_st.loop` to `scf.for` and `scf.parallel`
 /// loops and memref.load/memref.store accesses.
 std::unique_ptr<OperationPass<func::FuncOp>> createGmlStToScfPass();

@@ -470,6 +470,7 @@ void buildLoopLikeOp(
   result.addOperands(upperBounds);
   result.addOperands(steps);
   result.addOperands(outputs);
+  result.addOperands(subsets);
   result.addAttribute(
       LoopOp::getOperandSegmentSizeAttr(),
       builder.getI32VectorAttr({static_cast<int32_t>(lowerBounds.size()),
@@ -517,7 +518,7 @@ void printLoopLikeOp(LoopTy op, OpAsmPrinter &p) {
           Value output_region_arg, output, subset;
           std::tie(output_region_arg, output, subset) = it;
           p << output_region_arg << " = " << output << " at " << subset << ": "
-            << output.getType() << "at" << subset.getType();
+            << output.getType() << " at " << subset.getType();
         });
     p << ")";
   }
