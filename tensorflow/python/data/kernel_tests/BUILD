@@ -148,7 +148,7 @@ py_library(
 
 tf_py_test(
     name = "concatenate_test",
-    size = "small",
+    size = "medium",
     srcs = ["concatenate_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -179,7 +179,7 @@ tf_py_test(
 
 tf_py_test(
     name = "dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["dataset_test.py"],
     deps = [
         ":test_base",
@@ -235,7 +235,7 @@ tf_py_test(
 
 tf_py_test(
     name = "fixed_length_record_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["fixed_length_record_dataset_test.py"],
     shard_count = 4,
     deps = [
@@ -331,7 +331,7 @@ tf_py_test(
 
 tf_py_test(
     name = "from_tensor_slices_test",
-    size = "small",
+    size = "medium",
     srcs = ["from_tensor_slices_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -662,7 +662,7 @@ tf_py_test(
 
 tf_py_test(
     name = "padded_batch_test",
-    size = "small",
+    size = "medium",
     srcs = ["padded_batch_test.py"],
     shard_count = 2,
     deps = [
@@ -812,7 +812,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "scan_test",
-    size = "small",
+    size = "medium",
     srcs = ["scan_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -890,7 +890,7 @@ tf_py_test(
 
 tf_py_test(
     name = "snapshot_test",
-    size = "small",
+    size = "medium",
     srcs = ["snapshot_test.py"],
     shard_count = 16,
     tags = [
