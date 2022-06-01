@@ -305,6 +305,9 @@ def Remapper : Pass<"tfg-remapper"> {
     Option<"enable_mkl_patterns_", "enable-mkl-patterns", "bool",
     /*default=*/"false",
     "Enable the MKL related patterns.">,
+    Option<"verify_pdll_patterns_only_", "verify-pdll-patterns-only", "bool",
+    /*default=*/"false",
+    "Only enable PDLL patterns.">,
   ];
   let constructor = "CreateRemapperPass()";
 }
