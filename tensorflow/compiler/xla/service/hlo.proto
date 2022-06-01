@@ -500,9 +500,6 @@ message HloModuleProto {
 
   // Profile information for the HLO module.
   repeated ProfileInfo profile_info = 13;
-
-  // DeviceAssignment object information.
-  DeviceAssignmentProto device_assignment = 15;
 }
 
 // Serialization of LogicalBuffer.
