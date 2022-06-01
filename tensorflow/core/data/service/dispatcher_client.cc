@@ -71,7 +71,7 @@ Status DataServiceDispatcherClient::WorkerUpdate(
   if (!status.ok()) {
     return grpc_util::WrapError("Failed to send worker update", status);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::GetDatasetDef(int64_t dataset_id,
@@ -86,7 +86,7 @@ Status DataServiceDispatcherClient::GetDatasetDef(int64_t dataset_id,
     return grpc_util::WrapError("Failed to get dataset def", status);
   }
   dataset_def = resp.dataset_def();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::GetSplit(int64_t iteration_id,
@@ -111,7 +111,7 @@ Status DataServiceDispatcherClient::GetSplit(int64_t iteration_id,
       return errors::Internal("Failed to parse split tensor proto");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::RegisterDataset(
@@ -129,7 +129,7 @@ Status DataServiceDispatcherClient::RegisterDataset(
     return grpc_util::WrapError("Failed to register dataset", status);
   }
   dataset_id = resp.dataset_id();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::GetOrCreateJob(
@@ -178,7 +178,7 @@ Status DataServiceDispatcherClient::GetOrCreateIteration(
         status);
   }
   iteration_client_id = resp.iteration_client_id();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::ReleaseIterationClient(
@@ -195,7 +195,7 @@ Status DataServiceDispatcherClient::ReleaseIterationClient(
                      iteration_client_id),
         status);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::MaybeRemoveTask(int64_t task_id,
@@ -214,7 +214,7 @@ Status DataServiceDispatcherClient::MaybeRemoveTask(int64_t task_id,
     return grpc_util::WrapError("Failed to call MaybeRemoveTask", status);
   }
   removed = resp.removed();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::ClientHeartbeat(
@@ -225,7 +225,7 @@ Status DataServiceDispatcherClient::ClientHeartbeat(
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to get tasks", s);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::GetWorkers(
@@ -242,7 +242,7 @@ Status DataServiceDispatcherClient::GetWorkers(
   for (auto& worker : resp.workers()) {
     workers.push_back(worker);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::GetDataServiceMetadata(
@@ -257,7 +257,7 @@ Status DataServiceDispatcherClient::GetDataServiceMetadata(
     return grpc_util::WrapError("Failed to get data service metadata", s);
   }
   metadata = resp.metadata();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::GetDataServiceConfig(
@@ -271,13 +271,13 @@ Status DataServiceDispatcherClient::GetDataServiceConfig(
     return grpc_util::WrapError("Failed to get data service config", s);
   }
   config = response.config();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::EnsureInitialized() {
   mutex_lock l(mu_);
   if (stub_) {
-    return Status::OK();
+    return OkStatus();
   }
   std::shared_ptr<grpc::ChannelCredentials> credentials;
   TF_RETURN_IF_ERROR(
@@ -300,7 +300,7 @@ Status DataServiceDispatcherClient::EnsureInitialized() {
                            address_),
               s);
         }
-        return Status::OK();
+        return OkStatus();
       },
       "check service version",
       /*deadline_micros=*/kint64max));
@@ -313,7 +313,7 @@ Status DataServiceDispatcherClient::EnsureInitialized() {
         ". Please ensure that the client and server side are running the "
         "same version of TensorFlow.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace data

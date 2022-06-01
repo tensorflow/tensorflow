@@ -52,7 +52,7 @@ Status RegisterDataset(int64_t id, uint64 fingerprint, DispatcherState& state) {
   register_dataset->set_dataset_id(id);
   register_dataset->set_fingerprint(fingerprint);
   TF_RETURN_IF_ERROR(state.Apply(update));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RegisterDataset(int64_t id, DispatcherState& state) {
@@ -63,7 +63,7 @@ Status RegisterWorker(std::string worker_address, DispatcherState& state) {
   Update update;
   update.mutable_register_worker()->set_worker_address(worker_address);
   TF_RETURN_IF_ERROR(state.Apply(update));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CreateJob(int64_t job_id, int64_t dataset_id,
@@ -89,7 +89,7 @@ Status CreateIteration(int64_t iteration_id, int64_t dataset_id,
   create_iteration->set_iteration_id(iteration_id);
   create_iteration->set_repetition(named_iteration_key.repetition);
   TF_RETURN_IF_ERROR(state.Apply(update));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CreateIteration(int64_t iteration_id, int64_t dataset_id,
@@ -107,7 +107,7 @@ Status AcquireIterationClientId(int64_t iteration_id,
   acquire_iteration_client->set_iteration_id(iteration_id);
   acquire_iteration_client->set_iteration_client_id(iteration_client_id);
   TF_RETURN_IF_ERROR(state.Apply(update));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ReleaseIterationClientId(int64_t iteration_client_id,
@@ -118,7 +118,7 @@ Status ReleaseIterationClientId(int64_t iteration_client_id,
   release_iteration_client->set_iteration_client_id(iteration_client_id);
   release_iteration_client->set_time_micros(release_time);
   TF_RETURN_IF_ERROR(state.Apply(update));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CreateTask(int64_t task_id, int64_t iteration_id,
@@ -129,7 +129,7 @@ Status CreateTask(int64_t task_id, int64_t iteration_id,
   create_task->set_iteration_id(iteration_id);
   create_task->set_worker_address(worker_address);
   TF_RETURN_IF_ERROR(state.Apply(update));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FinishTask(int64_t task_id, DispatcherState& state) {
@@ -137,7 +137,7 @@ Status FinishTask(int64_t task_id, DispatcherState& state) {
   FinishTaskUpdate* finish_task = update.mutable_finish_task();
   finish_task->set_task_id(task_id);
   TF_RETURN_IF_ERROR(state.Apply(update));
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 

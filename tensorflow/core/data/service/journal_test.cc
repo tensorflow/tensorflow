@@ -80,7 +80,7 @@ Status CheckJournalContent(StringPiece journal_dir,
   bool end_of_journal = false;
   TF_RETURN_IF_ERROR(reader.Read(result, end_of_journal));
   EXPECT_TRUE(end_of_journal);
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 

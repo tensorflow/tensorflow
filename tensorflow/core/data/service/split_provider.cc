@@ -53,13 +53,13 @@ Status DataServiceSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
             << "; with iteration_id=" << iteration_id_
             << ", repetition=" << repetition_;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceSplitProvider::Reset() {
   mutex_lock l(mu_);
   repetition_++;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceSplitProvider::Save(

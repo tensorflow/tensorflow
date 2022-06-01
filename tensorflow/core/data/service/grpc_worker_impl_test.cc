@@ -89,7 +89,7 @@ class GrpcWorkerImplTest : public ::testing::Test {
     std::shared_ptr<Channel> channel =
         ::grpc::CreateCustomChannel(GetWorkerAddress(), credentials, args);
     worker_client_stub_ = WorkerService::NewStub(channel);
-    return Status::OK();
+    return OkStatus();
   }
 
   std::string GetDispatcherAddress() const {

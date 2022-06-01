@@ -77,7 +77,7 @@ class GrpcDispatcherImplTest : public ::testing::Test {
     std::shared_ptr<Channel> channel =
         ::grpc::CreateCustomChannel(GetDispatcherAddress(), credentials, args);
     dispatcher_client_stub_ = DispatcherService::NewStub(channel);
-    return Status::OK();
+    return OkStatus();
   }
 
   std::string GetDispatcherAddress() const {
