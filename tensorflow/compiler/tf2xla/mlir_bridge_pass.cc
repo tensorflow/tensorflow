@@ -194,7 +194,7 @@ Status MlirBridgePass::Run(const ConfigProto& config_proto,
       VLOG(1) << " Skipping MLIR TF XLA Bridge,"
               << " no TPU devices or TPU ops found, and this non TPU graph"
               << " is not qualified to run MLIR TF XLA Bridge.";
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -209,7 +209,7 @@ Status MlirBridgePass::Run(const ConfigProto& config_proto,
     // if the pass is disabled.  This logic is here defenseively in case the
     // calling pass logic changes.
     VLOG(1) << "MlirBridgePass is disabled and will not run.";
-    return Status::OK();
+    return OkStatus();
   }
 
   bool fallback_enabled = false;
@@ -267,13 +267,13 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
   absl::call_once(flag, UpdateLogVerbosityIfDefined, "TF_DEBUG_LOG_VERBOSITY");
 
   // Skip function graphs as MlirBridgePass will be used instead.
-  if (options.is_function_graph) return Status::OK();
+  if (options.is_function_graph) return OkStatus();
 
   // Skip MLIR TPU Bridge if no TPU devices or TPU ops found.
   if (!HasTPUDevicesAndOps(module)) {
     VLOG(1) << "Skipping MLIR TPU Bridge V1 Compat, no TPU devices or TPU ops "
                "found";
-    return Status::OK();
+    return OkStatus();
   }
 
   MlirOptimizationPassState pass_state =
@@ -289,7 +289,7 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
     // calling pass logic changes.
     VLOG(1) << "Skipping MLIR TPU Bridge V1 Compat, session flag not enabled";
     mlir_bridge_gauge_v1->GetCell()->Set(false);
-    return Status::OK();
+    return OkStatus();
   }
 
   VLOG(1) << "Running MLIR TPU Bridge V1 Compat";
