@@ -285,7 +285,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
         To32Bit(filter.tensor<T, 4>()),
         To32Bit(transformed_filter.tensor<T, 4>()));
 
-    return Status::OK();
+    return OkStatus();
   };
 
   if (compute_data_format == FORMAT_NCHW) {

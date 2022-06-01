@@ -58,7 +58,7 @@ Status UnbatchDenseZerothDim(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename VALUE_TYPE, typename SPLIT_TYPE>
@@ -106,7 +106,7 @@ Status UnbatchRaggedZerothDim(
             batched_flat(j + start * num_inner_elems);
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Unbatch nested splits.
@@ -160,7 +160,7 @@ Status UnbatchRaggedZerothDim(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 

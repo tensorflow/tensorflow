@@ -75,7 +75,7 @@ Status RaggedComponentsFromVariant(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename VALUE_TYPE, typename SPLIT_TYPE>
@@ -206,7 +206,7 @@ Status NestedStackRaggedTensors(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
