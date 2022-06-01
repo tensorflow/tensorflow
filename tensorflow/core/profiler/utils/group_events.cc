@@ -412,18 +412,19 @@ void EventForest::ConnectIntraThread(XPlane* plane, XPlaneVisitor* visitor,
       // Update `context_groups` for `ConnectInterThread`.
       SetContextGroup(stats, cur_node.get(), context_groups);
       // Async events are ignored when processing the nesting relationship.
-      if (stats.is_async) continue;
-      while (!parent_nodes.empty()) {
-        EventNode* parent_node = parent_nodes.back();
-        if (parent_node->GetEventVisitor().GetTimespan().Includes(
-                cur_node->GetEventVisitor().GetTimespan())) {
-          parent_node->AddChild(cur_node.get());
-          break;
-        } else {
-          parent_nodes.pop_back();
+      if (!stats.is_async) {
+        while (!parent_nodes.empty()) {
+          EventNode* parent_node = parent_nodes.back();
+          if (parent_node->GetEventVisitor().GetTimespan().Includes(
+                  cur_node->GetEventVisitor().GetTimespan())) {
+            parent_node->AddChild(cur_node.get());
+            break;
+          } else {
+            parent_nodes.pop_back();
+          }
         }
+        parent_nodes.push_back(cur_node.get());
       }
-      parent_nodes.push_back(cur_node.get());
       // event_node_map_ keeps cur_node alive.
       event_node_map_[GetEventType(is_host_plane, *cur_node)].push_back(
           std::move(cur_node));
