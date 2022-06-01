@@ -210,24 +210,6 @@ Status UnavailableError(absl::string_view message);
 Status UnimplementedError(absl::string_view message);
 Status UnknownError(absl::string_view message);
 
-// These convenience functions return `true` if a given status matches the
-// `Code` error code of its associated function.
-bool IsAborted(const Status& status);
-bool IsAlreadyExists(const Status& status);
-bool IsCancelled(const Status& status);
-bool IsDataLoss(const Status& status);
-bool IsDeadlineExceeded(const Status& status);
-bool IsFailedPrecondition(const Status& status);
-bool IsInternal(const Status& status);
-bool IsInvalidArgument(const Status& status);
-bool IsNotFound(const Status& status);
-bool IsOutOfRange(const Status& status);
-bool IsPermissionDenied(const Status& status);
-bool IsResourceExhausted(const Status& status);
-bool IsUnauthenticated(const Status& status);
-bool IsUnavailable(const Status& status);
-bool IsUnimplemented(const Status& status);
-bool IsUnknown(const Status& status);
 
 // TODO(b/197552541) Move this namespace to errors.h.
 namespace errors {
