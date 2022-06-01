@@ -426,70 +426,31 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
             trans_x, trans_y, adj_x, adj_y, m, n, k, batch_size, broadcast_a,
             broadcast_b, dtype, dtype, device_id);
 
-        static const int64_t max_autotune_algorithm_count =
-            se::MatmulMaxAutotuneAlgorithmCount();
-        int max_algorithm_count =
-            use_autotune ? max_autotune_algorithm_count : 1;
+        std::optional<int> max_algorithm_count;
+        if (!use_autotune) max_algorithm_count = 1;
 
-        const se::blas::PlanAndAlgorithms* plan_and_algorithms =
-            se::BatchMatmulPlanMapSingleton::GetInstance()->Find(
-                matmul_parameters);
+        // The cublasLt views the matrix as column major. Considering A*B=C is
+        // equivalent to B.t*A.t=C.t (.t=transpose), we swap the A and B and
+        // view them in the column major dimensions.
+        se::blas::MatrixDescriptor lhs_matrix = {
+            *b_ptrs[0],
+            /*leading_dim_stride=*/static_cast<int64_t>(trans_y ? k : n),
+            /*batch_stride=*/static_cast<int64_t>(k * n), blas_transpose_b};
+        se::blas::MatrixDescriptor rhs_matrix = {
+            *a_ptrs[0],
+            /*leading_dim_stride=*/static_cast<int64_t>(trans_x ? m : k),
+            /*batch_stride=*/static_cast<int64_t>(m * k), blas_transpose_a};
+        se::blas::MatrixDescriptor output_matrix = {
+            *c_ptrs[0], /*leading_dim_stride=*/static_cast<int64_t>(n),
+            /*batch_stride=*/static_cast<int64_t>(m * n),
+            se::blas::Transpose::kNoTranspose};
+        auto plan_and_algorithms_or = se::GetPlanAndAlgorithms(
+            stream, matmul_parameters, batch_size, n, m, k, dtype, lhs_matrix,
+            rhs_matrix, output_matrix, *max_algorithm_count);
+        OP_REQUIRES_OK(context, plan_and_algorithms_or.status());
 
-        if (!plan_and_algorithms) {
-          auto status_or_computation_type = se::GetBlasComputationType(dtype);
-          OP_REQUIRES(
-              context, status_or_computation_type.ok(),
-              errors::Internal("Unsupported dtype for batched matmul."));
-          se::blas::ComputationType computation_type =
-              status_or_computation_type.ConsumeValueOrDie();
-
-          se::blas::BlasLtMatmulPlanParams plan_params;
-          se::blas::DataType blas_dtype = se::blas::ToDataType<Scalar>::value;
-          plan_params.ab_type = blas_dtype;
-          plan_params.c_type = blas_dtype;
-          plan_params.computation_type = computation_type;
-          plan_params.pointer_mode = se::blas::PointerMode::kHost;
-          plan_params.epilogue = se::blas::Epilogue::kDefault;
-          plan_params.transa = blas_transpose_b;
-          plan_params.transb = blas_transpose_a;
-          plan_params.m = n;
-          plan_params.n = m;
-          plan_params.k = k;
-          plan_params.lda = in_y.dim_size(2);
-          plan_params.ldb = in_x.dim_size(2);
-          plan_params.ldc = n;
-          plan_params.batch_count = batch_size;
-          plan_params.stride_a = b_stride;
-          plan_params.stride_b = a_stride;
-          plan_params.stride_c = c_stride;
-
-          VLOG(4) << "plan_params.transa " << (adj_y || trans_y)
-                  << "plan_params.transb " << (adj_x || trans_x)
-                  << "plan_params.m " << plan_params.m << "plan_params.n "
-                  << plan_params.n << "plan_params.k " << plan_params.k
-                  << "plan_params.lda " << plan_params.lda << "plan_params.ldb "
-                  << plan_params.ldb << "plan_params.ldc " << plan_params.ldc
-                  << "plan_params.batch_count " << plan_params.batch_count
-                  << "plan_params.stride_a " << plan_params.stride_a
-                  << "plan_params.stride_b " << plan_params.stride_b
-                  << "plan_params.stride_c " << plan_params.stride_c;
-          auto status_or_plan =
-              stream->parent()->CreateBlasLtMatmulPlan(plan_params);
-          OP_REQUIRES_OK(context, status_or_plan.status());
-          std::unique_ptr<se::blas::IBlasLtMatmulPlan> plan =
-              status_or_plan.ConsumeValueOrDie();
-
-          auto status_or_algorithms =
-              stream->parent()->GetBlasLtMatmulAlgorithms(
-                  plan.get(), max_scratch_size, max_algorithm_count);
-          OP_REQUIRES_OK(context, status_or_algorithms.status());
-          auto algorithms = status_or_algorithms.ConsumeValueOrDie();
-          plan_and_algorithms =
-              se::BatchMatmulPlanMapSingleton::GetInstance()->Insert(
-                  matmul_parameters, {std::move(plan), std::move(algorithms)});
-        }
-        const auto& plan = plan_and_algorithms->plan;
-        const auto& algorithms = plan_and_algorithms->algorithms;
+        const auto& plan = (*plan_and_algorithms_or)->plan;
+        const auto& algorithms = (*plan_and_algorithms_or)->algorithms;
 
         // The BlasLtMatmul routines (unlike BlasGemm, BlasGemmBatched etc.)
         // take alpha and beta with the same type as the matrices.
@@ -497,7 +458,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         Scalar beta(0.0);
 
         se::blas::AlgorithmConfig algorithm_config(se::blas::kNoAlgorithm);
-        if (max_algorithm_count == 1) {
+        if (!use_autotune) {
           algorithm_config.set_algorithm(0);
         } else if (!AutoTuneBatchMatmul::GetInstance()->Find(
                        matmul_parameters, &algorithm_config)) {

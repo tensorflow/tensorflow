@@ -179,43 +179,6 @@ se::port::StatusOr<se::blas::Epilogue> GetBlasLtEpilogOp(
 }
 
 using ::stream_executor::BatchMatmulParameters;
-using ::stream_executor::BatchMatmulPlanMapSingleton;
-
-// A class for storing and retrieving algorithms in cublasLT autotuning
-class BlasPlansAutotuneCache {
- public:
-  BlasPlansAutotuneCache() {}
-  bool Find(const se::BatchMatmulParameters& params,
-            se::blas::AlgorithmConfig* config) const {
-    absl::MutexLock lock(&mu_);
-    auto iter = blas_plans_algorithms_map_.find(params);
-    if (iter == blas_plans_algorithms_map_.end()) {
-      return false;
-    }
-    *config = iter->second;
-    return true;
-  }
-  void Insert(const se::BatchMatmulParameters& params,
-              const se::blas::AlgorithmConfig& config) {
-    absl::MutexLock lock(&mu_);
-    if (!blas_plans_algorithms_map_.contains(params)) {
-      blas_plans_algorithms_map_.insert({params, config});
-    }
-  }
-
- private:
-  mutable absl::Mutex mu_;
-  absl::flat_hash_map<se::BatchMatmulParameters, se::blas::AlgorithmConfig>
-      blas_plans_algorithms_map_ ABSL_GUARDED_BY(mu_);
-  TF_DISALLOW_COPY_AND_ASSIGN(BlasPlansAutotuneCache);
-};
-
-struct BlasPlansAutotuneCacheSingleton {
-  static BlasPlansAutotuneCache* GetInstance() {
-    static BlasPlansAutotuneCache* instance = new BlasPlansAutotuneCache();
-    return instance;
-  }
-};
 
 template <typename LaunchFunc>
 se::blas::AlgorithmConfig AutotuneMatmul(
@@ -227,8 +190,8 @@ se::blas::AlgorithmConfig AutotuneMatmul(
   // to the index within the algorithms vector, not the algorithm
   // itself.
   se::blas::AlgorithmConfig algorithm_config(se::blas::kNoAlgorithm);
-  if (!BlasPlansAutotuneCacheSingleton::GetInstance()->Find(
-          matmul_params, &algorithm_config)) {
+  if (!AutoTuneBatchMatmul::GetInstance()->Find(matmul_params,
+                                                &algorithm_config)) {
     VLOG(4) << "Autotuning BlasLtMatmul over " << algorithms.size()
             << " algorithms.";
     se::blas::ProfileResult best_result;
@@ -262,8 +225,7 @@ se::blas::AlgorithmConfig AutotuneMatmul(
     // We make sure that each matmul parameter set only gets one pass of
     // autotune. If no algorithms works, we add kNoAlgorithm to the autotune
     // map.
-    BlasPlansAutotuneCacheSingleton::GetInstance()->Insert(matmul_params,
-                                                           algorithm_config);
+    AutoTuneBatchMatmul::GetInstance()->Insert(matmul_params, algorithm_config);
   }
   return algorithm_config;
 }
