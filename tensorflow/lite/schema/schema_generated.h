@@ -16060,6 +16060,7 @@ inline flatbuffers::Offset<UnsortedSegmentProdOptions> CreateUnsortedSegmentProd
       _fbb,
       _num_segments);
 }
+
 inline Pool3DOptionsT *Pool3DOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = std::unique_ptr<Pool3DOptionsT>(new Pool3DOptionsT());
   UnPackTo(_o.get(), _resolver);
