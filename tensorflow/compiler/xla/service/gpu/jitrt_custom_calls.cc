@@ -1265,6 +1265,65 @@ static bool AllReduce(runtime::KernelContext* ctx, void** args, void** attrs) {
 // -------------------------------------------------------------------------- //
 
 namespace {
+struct ReduceScatter {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           CustomCall::RemainingArgs args, int64_t group_mode,
+                           int64_t op_id, int64_t reduction_kind,
+                           ArrayRef<int64_t> replica_group_offsets,
+                           ArrayRef<int64_t> replica_group_values) const;
+  static ReduceScatter Handler() { return ReduceScatter(); }
+};
+}  // namespace
+
+LogicalResult ReduceScatter::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
+    int64_t reduction_kind, ArrayRef<int64_t> replica_group_offsets,
+    ArrayRef<int64_t> replica_group_values) const {
+#if XLA_ENABLE_XCCL
+  VLOG(3) << "Running ReduceScatter";
+  se::Stream* stream = run_options->stream();
+  NcclExecuteParams params(*run_options, stream);
+
+  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
+                          replica_group_values);
+  if (failed(comm)) return comm;
+
+  auto device_buffers = GetDeviceBufferPairs(args);
+  if (failed(device_buffers)) return device_buffers;
+
+  auto executed = RunReduceScatter(static_cast<ReductionKind>(reduction_kind),
+                                   *device_buffers, *stream, **comm);
+  if (!executed.ok()) return failure();
+
+  return success();
+#else   // XLA_ENABLE_XCCL
+  // NCCL disabled.
+  return failure();
+#endif  // XLA_ENABLE_XCCL
+}
+
+static bool ReduceScatter(runtime::KernelContext* ctx, void** args,
+                          void** attrs) {
+  static auto* handler =
+      CustomCall::Bind("xla.gpu.reduce_scatter")
+          .UserData<const ServiceExecutableRunOptions*>()
+          .RemainingArgs()              // args
+          .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
+          .Attr<int64_t>("op_id")
+          .Attr<int64_t>("reduction_kind")  // ReductionKind
+          .Attr<ArrayRef<int64_t>>("replica_group_offsets")
+          .Attr<ArrayRef<int64_t>>("replica_group_values")
+          .To<RuntimeChecks()>(ReduceScatter::Handler())
+          .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+// -------------------------------------------------------------------------- //
+
+namespace {
 struct AllGather {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
@@ -1391,6 +1450,7 @@ SymbolMap JitRtCustomCallsSymbolMap(MangleAndInterner mangle) {
   bind("xla.gpu.memcpy.d2h", &MemcpyFn<MemcpyDirection::kDeviceToHost>);
   bind("xla.gpu.infeed", &xla::gpu::Infeed);
   bind("xla.gpu.outfeed", &xla::gpu::Outfeed);
+  bind("xla.gpu.reduce_scatter", &xla::gpu::ReduceScatter);
   bind("xla.gpu.replica_id", &xla::gpu::ReplicaId);
   bind("xla.gpu.custom_call", &xla::gpu::CustomCall);
 

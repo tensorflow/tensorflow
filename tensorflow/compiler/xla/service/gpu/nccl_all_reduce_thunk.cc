@@ -358,32 +358,37 @@ NcclReduceScatterThunk::NcclReduceScatterThunk(
 
 Status NcclReduceScatterThunk::RunNcclCollective(const ExecuteParams& params,
                                                  ncclComm_t comm) {
+  TF_ASSIGN_OR_RETURN(
+      std::vector<DeviceBufferPair> device_buffers,
+      ConvertToDeviceBuffers(params, buffers_,
+                             config_.config.operand_element_type));
+  return RunReduceScatter(config_.reduction_kind, device_buffers,
+                          *params.stream, comm);
+}
+
+Status RunReduceScatter(ReductionKind reduction_kind,
+                        std::vector<DeviceBufferPair>& buffers,
+                        se::Stream& stream, ncclComm_t comm) {
 #if XLA_ENABLE_XCCL
-  int device_ordinal = params.stream->parent()->device_ordinal();
+  int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing reduce-scatter from device ordinal: "
           << device_ordinal;
 
-  ncclRedOp_t reduce_op = ToNcclReduction(config_.reduction_kind);
+  ncclRedOp_t reduce_op = ToNcclReduction(reduction_kind);
 
-  se::gpu::GpuStreamHandle gpu_stream =
-      se::gpu::AsGpuStreamValue(params.stream);
+  se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
 
   int num_participants = 0;
   XLA_CUDA_RETURN_IF_ERROR(ncclCommCount(comm, &num_participants));
 
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
-  for (size_t i = 0; i < buffers_.size(); ++i) {
-    const Buffer& buffer = buffers_[i];
-    const void* send_buffer =
-        params.buffer_allocations->GetDeviceAddress(buffer.source_buffer)
-            .opaque();
-    void* recv_buffer =
-        params.buffer_allocations->GetDeviceAddress(buffer.destination_buffer)
-            .opaque();
+  for (size_t i = 0; i < buffers.size(); ++i) {
+    DeviceBufferPair& buffer = buffers[i];
+    const void* send_buffer = buffer.source_buffer.opaque();
+    void* recv_buffer = buffer.destination_buffer.opaque();
 
-    PrimitiveType element_type = config_.config.operand_element_type[i];
     TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
-                        ToNcclDataTypeAndCountMultiplier(element_type));
+                        ToNcclDataTypeAndCountMultiplier(buffer.element_type));
     ncclDataType_t dtype = dtype_and_multiplier.first;
     int element_count = buffer.element_count * dtype_and_multiplier.second;
 

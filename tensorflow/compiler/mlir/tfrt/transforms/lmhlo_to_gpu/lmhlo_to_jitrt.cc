@@ -85,6 +85,7 @@ using mlir::lmhlo::CaseOp;
 using mlir::lmhlo::CustomCallOp;
 using mlir::lmhlo::InfeedOp;
 using mlir::lmhlo::OutfeedOp;
+using mlir::lmhlo::ReduceScatterOp;
 using mlir::lmhlo::ReplicaIdOp;
 using mlir::lmhlo::TerminatorOp;
 using mlir::lmhlo::WhileOp;
@@ -972,12 +973,16 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
  private:
   static llvm::StringRef Name(AllGatherOp) { return "all_gather"; }
   static llvm::StringRef Name(AllReduceOp) { return "all_reduce"; }
+  static llvm::StringRef Name(ReduceScatterOp) { return "reduce_scatter"; }
 
   static bool CanImplement(AllGatherOp op) {
     return xla::gpu::NcclAllGatherThunk::CanImplement(op);
   }
   static bool CanImplement(AllReduceOp op) {
     return xla::gpu::NcclAllReduceThunk::CanImplement(op);
+  }
+  static bool CanImplement(ReduceScatterOp op) {
+    return xla::gpu::NcclReduceScatterThunk::CanImplement(op);
   }
 
   static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b, AllGatherOp op,
@@ -992,6 +997,20 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     if (!reduction_kind.has_value())
       return op.emitOpError()
              << "Failed to determine reduction computation for AllReduce";
+
+    call->setAttr(
+        b.getStringAttr("reduction_kind"),
+        b.getI64IntegerAttr(static_cast<int64_t>(reduction_kind.value())));
+    return success();
+  }
+  static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b,
+                                        ReduceScatterOp op, CallOp call) {
+    std::optional<xla::ReductionKind> reduction_kind =
+        xla::gpu::NcclAllReduceThunkBase::MatchAllReduceComputation(
+            op.computation());
+    if (!reduction_kind.has_value())
+      return op.emitOpError()
+             << "Failed to determine reduction computation for ReduceScatter";
 
     call->setAttr(
         b.getStringAttr("reduction_kind"),
@@ -1106,6 +1125,21 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
   }
 };
 
+class AllGatherOpLowering : public CollectiveOpLowering<AllGatherOp> {
+ public:
+  using CollectiveOpLowering::CollectiveOpLowering;
+};
+
+class AllReduceOpLowering : public CollectiveOpLowering<AllReduceOp> {
+ public:
+  using CollectiveOpLowering::CollectiveOpLowering;
+};
+
+class ReduceScatterOpLowering : public CollectiveOpLowering<ReduceScatterOp> {
+ public:
+  using CollectiveOpLowering::CollectiveOpLowering;
+};
+
 // -------------------------------------------------------------------------- //
 
 class ReplicaIdOpLowering : public OpRewritePattern<ReplicaIdOp> {
@@ -1145,16 +1179,6 @@ class ReplicaIdOpLowering : public OpRewritePattern<ReplicaIdOp> {
 
     return success();
   }
-};
-
-class AllGatherOpLowering : public CollectiveOpLowering<AllGatherOp> {
- public:
-  using CollectiveOpLowering::CollectiveOpLowering;
-};
-
-class AllReduceOpLowering : public CollectiveOpLowering<AllReduceOp> {
- public:
-  using CollectiveOpLowering::CollectiveOpLowering;
 };
 
 // -------------------------------------------------------------------------- //
@@ -1209,12 +1233,13 @@ void ConvertLmhloGpuToJitRtPass::runOnOperation() {
   // Convert lmhlo_gpu operations to JitRt gpu runtime custom calls.
   RewritePatternSet patterns(ctx);
   patterns.insert<GemmOpLowering, GemmBiasOpLowering>(ctx, uid);
-  patterns
-      .insert<AllGatherOpLowering, AllReduceOpLowering, CholeskyOpLowering,
-              ReplicaIdOpLowering, WhileOpLowering, CaseOpLowering,
-              CustomCallOpLowering, TerminatorOpLowering, ConvForwardOpLowering,
-              ConvForwardFusedOpLowering, ConvForwardFusedSideInputOpLowering,
-              ConvBackwardFilterOpLowering, ConvBackwardInputOpLowering>(ctx);
+  patterns.insert<AllGatherOpLowering, AllReduceOpLowering, CholeskyOpLowering,
+                  ReduceScatterOpLowering, ReplicaIdOpLowering, WhileOpLowering,
+                  CaseOpLowering, CustomCallOpLowering, TerminatorOpLowering,
+                  ConvForwardOpLowering, ConvForwardFusedOpLowering,
+                  ConvForwardFusedSideInputOpLowering,
+                  ConvBackwardFilterOpLowering, ConvBackwardInputOpLowering>(
+      ctx);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();
