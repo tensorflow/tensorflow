@@ -147,7 +147,7 @@ xla::Status FixTupleTableAsync(se::Stream* stream,
       [&](const xla::Shape& element_shape,
           const xla::ShapeIndex& index) -> Status {
         if (!element_shape.IsTuple()) {
-          return Status::OK();
+          return OkStatus();
         }
         std::vector<se::DeviceMemoryBase> elements;
         xla::ShapeIndex element_index = index;
@@ -214,7 +214,7 @@ xla::Status UpdateDynamicInputs(
         [&](const xla::Shape& compile_time_shape,
             const xla::ShapeIndex& index) -> Status {
           if (compile_time_shape.IsTuple() || compile_time_shape.is_static()) {
-            return Status::OK();
+            return OkStatus();
           }
 
           const xla::Shape& runtime_shape =
@@ -272,14 +272,14 @@ xla::Status UpdateDynamicInputs(
           stream->ThenMemcpyH2D<int8>(*padded_data, &typed_new_input_memory);
 
           // Retain the memory until the end of the transfer.
-          stream->ThenDoHostCallback([padded_data]() { return Status::OK(); });
+          stream->ThenDoHostCallback([padded_data]() { return OkStatus(); });
 
           // Modify the memory location in the input shape tree to point to the
           // new input.
           *mutable_input_mem =
               xla::MaybeOwningDeviceMemory(std::move(new_input));
           element_modified = true;
-          return Status::OK();
+          return OkStatus();
         }));
     if (element_modified) {
       // The input location has been modified, need to fix tuple table to
@@ -292,7 +292,7 @@ xla::Status UpdateDynamicInputs(
                                             &runtime_input, transfer_manager));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void TPUCancelExecution(Env* env, int device_ordinal) {

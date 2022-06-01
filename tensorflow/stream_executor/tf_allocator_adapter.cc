@@ -56,7 +56,7 @@ port::StatusOr<OwningDeviceMemory> TfAllocatorAdapter::Allocate(
 port::Status TfAllocatorAdapter::Deallocate(int device_ordinal,
                                             DeviceMemoryBase mem) {
   wrapped_->DeallocateRaw(mem.opaque());
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::StatusOr<Stream *> TfAllocatorAdapter::GetStream(int device_ordinal) {

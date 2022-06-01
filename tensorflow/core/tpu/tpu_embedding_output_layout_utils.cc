@@ -32,7 +32,7 @@ Status ComputeOutputTensorShapes(const TPUEmbeddingConfiguration& config,
     dim1->set_size(table.dimension());
     shapes->push_back(shape);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ComputeOutputTensorShapesFromFeature(
@@ -49,7 +49,7 @@ Status ComputeOutputTensorShapesFromFeature(
         config.table_descriptor(feature.table_id()).dimension());
     shapes->push_back(shape);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tpu

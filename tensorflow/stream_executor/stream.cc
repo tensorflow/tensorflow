@@ -300,7 +300,7 @@ Stream &Stream::Init() {
   if (parent_->AllocateStream(this)) {
     // Successful initialization!
     allocated_ = true;
-    status_ = port::Status::OK();
+    status_ = ::tensorflow::OkStatus();
   } else {
     LOG(ERROR) << "failed to allocate stream during initialization";
   }

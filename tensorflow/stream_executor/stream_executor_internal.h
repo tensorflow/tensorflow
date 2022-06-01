@@ -389,7 +389,9 @@ class StreamExecutorInterface {
   // Clears the compilation cache from volatile memory. Returns OK if no
   // compilation cache exists or if clearing the compilation cache is
   // unsupported. Caches in non-volatile storage are unaffected.
-  virtual port::Status FlushCompilationCache() { return port::Status::OK(); }
+  virtual port::Status FlushCompilationCache() {
+    return ::tensorflow::OkStatus();
+  }
 
   // Returns a stream allocated by this executor, or nullptr if not found.
   // Performs linear search over alive GPU streams.
