@@ -207,7 +207,7 @@ Status CollectiveRegistry::Register(const string& collective_name,
                               collective_name);
   }
   registry->emplace_back(collective_name, std::move(factory));
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/
@@ -222,7 +222,7 @@ Status CollectiveRegistry::LookupHelper(
       } else {
         *implementation = reg_info.factory();
       }
-      return Status::OK();
+      return OkStatus();
     }
   }
   return errors::Internal(
