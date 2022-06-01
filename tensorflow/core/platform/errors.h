@@ -140,15 +140,14 @@ void AppendToMessage(::tensorflow::Status* status, Args... args) {
 //   status.Update(errors::InvalidArgument("The ", foo, " isn't right."));
 //   if (errors::IsInvalidArgument(status)) { ... }
 //   switch (status.code()) { case error::INVALID_ARGUMENT: ... }
-//
-// Prefer using directly:
-// tensorflow::InvalidArgumentError(StrCat("The ", foo, " isn't right."));
 
 // Cancelled
 template <typename... Args>
 ::tensorflow::Status Cancelled(Args... args) {
-  return ::tensorflow::CancelledError(::tensorflow::strings::StrCat(
-      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+  return ::tensorflow::Status(
+      ::tensorflow::error::Code::CANCELLED,
+      ::tensorflow::strings::StrCat(
+          ::tensorflow::errors::internal::PrepareForStrCat(args)...));
 }
 template <typename... Args>
 ::tensorflow::Status CancelledWithPayloads(
@@ -160,8 +159,10 @@ template <typename... Args>
 // InvalidArgument
 template <typename... Args>
 ::tensorflow::Status InvalidArgument(Args... args) {
-  return ::tensorflow::InvalidArgumentError(::tensorflow::strings::StrCat(
-      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+  return ::tensorflow::Status(
+      ::tensorflow::error::Code::INVALID_ARGUMENT,
+      ::tensorflow::strings::StrCat(
+          ::tensorflow::errors::internal::PrepareForStrCat(args)...));
 }
 template <typename... Args>
 ::tensorflow::Status InvalidArgumentWithPayloads(
@@ -174,8 +175,10 @@ template <typename... Args>
 // NotFound
 template <typename... Args>
 ::tensorflow::Status NotFound(Args... args) {
-  return ::tensorflow::NotFoundError(::tensorflow::strings::StrCat(
-      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+  return ::tensorflow::Status(
+      ::tensorflow::error::Code::NOT_FOUND,
+      ::tensorflow::strings::StrCat(
+          ::tensorflow::errors::internal::PrepareForStrCat(args)...));
 }
 template <typename... Args>
 ::tensorflow::Status NotFoundWithPayloads(
@@ -187,8 +190,10 @@ template <typename... Args>
 // AlreadyExists
 template <typename... Args>
 ::tensorflow::Status AlreadyExists(Args... args) {
-  return ::tensorflow::AlreadyExistsError(::tensorflow::strings::StrCat(
-      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+  return ::tensorflow::Status(
+      ::tensorflow::error::Code::ALREADY_EXISTS,
+      ::tensorflow::strings::StrCat(
+          ::tensorflow::errors::internal::PrepareForStrCat(args)...));
 }
 template <typename... Args>
 ::tensorflow::Status AlreadyExistsWithPayloads(
@@ -200,8 +205,10 @@ template <typename... Args>
 // ResourceExhausted
 template <typename... Args>
 ::tensorflow::Status ResourceExhausted(Args... args) {
-  return ::tensorflow::ResourceExhaustedError(::tensorflow::strings::StrCat(
-      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+  return ::tensorflow::Status(
+      ::tensorflow::error::Code::RESOURCE_EXHAUSTED,
+      ::tensorflow::strings::StrCat(
+          ::tensorflow::errors::internal::PrepareForStrCat(args)...));
 }
 template <typename... Args>
 ::tensorflow::Status ResourceExhaustedWithPayloads(
@@ -214,8 +221,10 @@ template <typename... Args>
 // Unavailable
 template <typename... Args>
 ::tensorflow::Status Unavailable(Args... args) {
-  return ::tensorflow::UnavailableError(::tensorflow::strings::StrCat(
-      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+  return ::tensorflow::Status(
+      ::tensorflow::error::Code::UNAVAILABLE,
+      ::tensorflow::strings::StrCat(
+          ::tensorflow::errors::internal::PrepareForStrCat(args)...));
 }
 template <typename... Args>
 ::tensorflow::Status UnavailableWithPayloads(
@@ -227,8 +236,10 @@ template <typename... Args>
 // FailedPrecondition
 template <typename... Args>
 ::tensorflow::Status FailedPrecondition(Args... args) {
-  return ::tensorflow::FailedPreconditionError(::tensorflow::strings::StrCat(
-      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+  return ::tensorflow::Status(
+      ::tensorflow::error::Code::FAILED_PRECONDITION,
+      ::tensorflow::strings::StrCat(
+          ::tensorflow::errors::internal::PrepareForStrCat(args)...));
 }
 template <typename... Args>
 ::tensorflow::Status FailedPreconditionWithPayloads(
@@ -241,8 +252,10 @@ template <typename... Args>
 // OutOfRange
 template <typename... Args>
 ::tensorflow::Status OutOfRange(Args... args) {
-  return ::tensorflow::OutOfRangeError(::tensorflow::strings::StrCat(
-      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+  return ::tensorflow::Status(
+      ::tensorflow::error::Code::OUT_OF_RANGE,
+      ::tensorflow::strings::StrCat(
+          ::tensorflow::errors::internal::PrepareForStrCat(args)...));
 }
 template <typename... Args>
 ::tensorflow::Status OutOfRangeWithPayloads(
@@ -254,8 +267,10 @@ template <typename... Args>
 // Unimplemented
 template <typename... Args>
 ::tensorflow::Status Unimplemented(Args... args) {
-  return ::tensorflow::UnimplementedError(::tensorflow::strings::StrCat(
-      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+  return ::tensorflow::Status(
+      ::tensorflow::error::Code::UNIMPLEMENTED,
+      ::tensorflow::strings::StrCat(
+          ::tensorflow::errors::internal::PrepareForStrCat(args)...));
 }
 template <typename... Args>
 ::tensorflow::Status UnimplementedWithPayloads(
@@ -267,8 +282,10 @@ template <typename... Args>
 // Internal
 template <typename... Args>
 ::tensorflow::Status Internal(Args... args) {
-  return ::tensorflow::InternalError(::tensorflow::strings::StrCat(
-      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+  return ::tensorflow::Status(
+      ::tensorflow::error::Code::INTERNAL,
+      ::tensorflow::strings::StrCat(
+          ::tensorflow::errors::internal::PrepareForStrCat(args)...));
 }
 template <typename... Args>
 ::tensorflow::Status InternalWithPayloads(
@@ -280,8 +297,10 @@ template <typename... Args>
 // Aborted
 template <typename... Args>
 ::tensorflow::Status Aborted(Args... args) {
-  return ::tensorflow::AbortedError(::tensorflow::strings::StrCat(
-      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+  return ::tensorflow::Status(
+      ::tensorflow::error::Code::ABORTED,
+      ::tensorflow::strings::StrCat(
+          ::tensorflow::errors::internal::PrepareForStrCat(args)...));
 }
 template <typename... Args>
 ::tensorflow::Status AbortedWithPayloads(
@@ -293,8 +312,10 @@ template <typename... Args>
 // DeadlineExceeded
 template <typename... Args>
 ::tensorflow::Status DeadlineExceeded(Args... args) {
-  return ::tensorflow::DeadlineExceededError(::tensorflow::strings::StrCat(
-      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+  return ::tensorflow::Status(
+      ::tensorflow::error::Code::DEADLINE_EXCEEDED,
+      ::tensorflow::strings::StrCat(
+          ::tensorflow::errors::internal::PrepareForStrCat(args)...));
 }
 template <typename... Args>
 ::tensorflow::Status DeadlineExceededWithPayloads(
@@ -307,8 +328,10 @@ template <typename... Args>
 // DataLoss
 template <typename... Args>
 ::tensorflow::Status DataLoss(Args... args) {
-  return ::tensorflow::DataLossError(::tensorflow::strings::StrCat(
-      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+  return ::tensorflow::Status(
+      ::tensorflow::error::Code::DATA_LOSS,
+      ::tensorflow::strings::StrCat(
+          ::tensorflow::errors::internal::PrepareForStrCat(args)...));
 }
 template <typename... Args>
 ::tensorflow::Status DataLossWithPayloads(
@@ -320,8 +343,10 @@ template <typename... Args>
 // Unknown
 template <typename... Args>
 ::tensorflow::Status Unknown(Args... args) {
-  return ::tensorflow::UnknownError(::tensorflow::strings::StrCat(
-      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+  return ::tensorflow::Status(
+      ::tensorflow::error::Code::UNKNOWN,
+      ::tensorflow::strings::StrCat(
+          ::tensorflow::errors::internal::PrepareForStrCat(args)...));
 }
 template <typename... Args>
 ::tensorflow::Status UnknownPayloads(
@@ -332,8 +357,10 @@ template <typename... Args>
 // PermissionDenied
 template <typename... Args>
 ::tensorflow::Status PermissionDenied(Args... args) {
-  return ::tensorflow::PermissionDeniedError(::tensorflow::strings::StrCat(
-      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+  return ::tensorflow::Status(
+      ::tensorflow::error::Code::PERMISSION_DENIED,
+      ::tensorflow::strings::StrCat(
+          ::tensorflow::errors::internal::PrepareForStrCat(args)...));
 }
 template <typename... Args>
 ::tensorflow::Status PermissionDeniedWithPayloads(
@@ -346,8 +373,10 @@ template <typename... Args>
 // Unauthenticated
 template <typename... Args>
 ::tensorflow::Status Unauthenticated(Args... args) {
-  return ::tensorflow::UnauthenticatedError(::tensorflow::strings::StrCat(
-      ::tensorflow::errors::internal::PrepareForStrCat(args)...));
+  return ::tensorflow::Status(
+      ::tensorflow::error::Code::UNAUTHENTICATED,
+      ::tensorflow::strings::StrCat(
+          ::tensorflow::errors::internal::PrepareForStrCat(args)...));
 }
 template <typename... Args>
 ::tensorflow::Status UnauthenticatedWithPayloads(
