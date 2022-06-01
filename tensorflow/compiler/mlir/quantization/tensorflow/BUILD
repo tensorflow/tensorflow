@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 
@@ -244,6 +245,21 @@ cc_library(
     ],
     alwayslink = 1,
 )
+
+tf_proto_library(
+    name = "quantization_options_proto",
+    srcs = ["quantization_options.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+)
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "quantization_options_py_pb2",
+#     api_version = 2,
+#     deps = [":quantization_options_proto"],
+# )
+# copybara:uncomment_end
 
 tf_cc_binary(
     name = "tf-quant-opt",

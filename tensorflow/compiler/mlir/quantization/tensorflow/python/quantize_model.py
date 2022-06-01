@@ -14,9 +14,8 @@
 # ==============================================================================
 """Defines TF Quantization API from SavedModel to SavedModel."""
 
-import enum
 import tempfile
-from typing import List, Set
+from typing import Iterable, List, Mapping, Optional, Set, Tuple, Union
 import uuid
 import warnings
 
@@ -24,34 +23,24 @@ import warnings
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 
 from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model as quantize_model_wrapper
+from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import loader_impl as saved_model_loader
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model.load import load as saved_model_load
+from tensorflow.python.types import core
 
 # The signature key of the saved model init op.
 _INIT_OP_SIGNATURE_KEY = '__saved_model_init_op'
 
-
-class OptimizationMethod(enum.Enum):
-  """Model Optimization methods."""
-
-  # Static range quantization. Quantized tensor value ranges will be
-  # statically determined.
-  STATIC_RANGE_QUANT = 'STATIC_RANGE_QUANTIZATION'
-
-  # Dynamic range quantization. Quantized tensor value ranges will be
-  # determined in the graph executions.
-  DYNAMIC_RANGE_QUANT = 'DYNAMIC_RANGE_QUANTIZATION'
-
-  # Automatic quantization. Quantized algorithms will be selected automatically
-  # based on the model structure and the data set.
-  AUTOMATIC_QUANT = 'AUTOMATIC_QUANTIZATION'
+_Method = quant_opts_pb2.QuantizationMethod.Method
+_ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod
 
 
 def _legalize_tensor_name(tensor_name: str) -> str:
@@ -368,25 +357,33 @@ def _dynamic_range_quantize(saved_model_path: str,
   return saved_model_load(output_directory)
 
 
+# A type required for representative dataset. It should be an iterable
+# of either:
+# 1. signature_key -> {input_name -> input_tensor} mappings, or
+# 2. {input_name -> input_tensor} mappings.
+_TensorMapIterable = Iterable[Union[Tuple[str, Mapping[str, core.Tensor]],
+                                    Mapping[str, core.Tensor]]]
+
+
 def quantize(saved_model_path: str,
-             signature_keys=None,
-             tags=None,
-             output_directory=None,
-             optimization_method: OptimizationMethod = OptimizationMethod
-             .AUTOMATIC_QUANT,
-             representative_dataset=None):
+             signature_keys: Optional[List[str]] = None,
+             tags: Optional[Iterable[str]] = None,
+             output_directory: Optional[str] = None,
+             quantization_options: Optional[
+                 quant_opts_pb2.QuantizationOptions] = None,
+             representative_dataset: Optional[_TensorMapIterable] = None) ->...:
   """Quantizes the given SavedModel.
 
   Args:
     saved_model_path: Path to the saved model. When representative_dataset is
       not provided, this should be a model trained with QAT.
     signature_keys: List of keys identifying SignatureDef containing inputs and
-      outputs.
+      outputs. If None, ["serving_default"] is used.
     tags: Set of tags identifying the MetaGraphDef within the SavedModel to
-      analyze.
+      analyze. If None, {"serve"} is used.
     output_directory: The path to save the output SavedModel (must be an empty
       directory).
-    optimization_method: Optimization method to apply.
+    quantization_options: A set of options for quantization.
     representative_dataset: a generator that returns a dictionary in
       {input_name: input_tensor} format or a tuple with signature key and a
       dictionary in {input_name: input_tensor} format that feeds calibration
@@ -394,31 +391,41 @@ def quantize(saved_model_path: str,
       model.
 
   Returns:
-    A SavedModel object with TF quantization applied.
+    A SavedModel object with TF quantization applied, or None if no quantization
+    is performed.
 
   Raises:
-    ValueError: when representative_dataset is not provided for non QAT model
-      for enabling static range quantization.
+    ValueError: When 1) representative_dataset is not provided for non QAT model
+      for enabling static range quantization, or 2) invalid value is provided as
+      a quantization method.
+    NotImplementedError: When the specified quantization method is not yet
+      implemented.
   """
   if tags is None:
-    tags = set([tag_constants.SERVING])
+    tags = {tag_constants.SERVING}
   if signature_keys is None:
     signature_keys = [signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
 
-  if optimization_method == OptimizationMethod.STATIC_RANGE_QUANT:
-    return _static_range_quantize(
-        saved_model_path=saved_model_path,
-        signature_keys=signature_keys,
-        tags=tags,
-        output_directory=output_directory,
-        representative_dataset=representative_dataset)
-  elif optimization_method == OptimizationMethod.DYNAMIC_RANGE_QUANT:
-    return _dynamic_range_quantize(
-        saved_model_path=saved_model_path,
-        signature_keys=signature_keys,
-        tags=tags,
-        output_directory=output_directory)
+  if quantization_options is None:
+    quantization_options = quant_opts_pb2.QuantizationOptions()
+
+  method: quant_opts_pb2.QuantizationMethod = quantization_options.quantization_method
+  if method.HasField('method'):
+    raise ValueError(f'Invalid value for QuantizationMethod: {method.method}.')
+  elif method.HasField('experimental_method'):
+    if method.experimental_method == _ExperimentalMethod.STATIC_RANGE:
+      return _static_range_quantize(saved_model_path, signature_keys, tags,
+                                    output_directory, representative_dataset)
+    elif method.experimental_method == _ExperimentalMethod.DYNAMIC_RANGE:
+      return _dynamic_range_quantize(saved_model_path, signature_keys, tags,
+                                     output_directory)
+    else:
+      raise NotImplementedError(
+          'Experimental quantization method {method.experimental_method}'
+          ' is not implemented.')
   else:
-    raise NotImplementedError(
-        'Optimization method "%s" is not implemented yet' %
-        optimization_method.name)
+    logging.debug(
+        'Neither "method" nor "experimental_method" for QuantizationMethod '
+        'is specified. Static range quantization is used by default.')
+    return _static_range_quantize(saved_model_path, signature_keys, tags,
+                                  output_directory, representative_dataset)

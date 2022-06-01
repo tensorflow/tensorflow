@@ -19,6 +19,7 @@ from absl.testing import parameterized
 import numpy as np
 import tensorflow  # pylint: disable=unused-import
 
+from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import quantize_model
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
@@ -35,6 +36,10 @@ from tensorflow.python.saved_model import loader_impl as saved_model_loader
 from tensorflow.python.saved_model import save as saved_model_save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
+
+# Type aliases for quantization method protobuf enums.
+_Method = quant_opts_pb2.QuantizationMethod.Method
+_ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod
 
 
 def _contains_quantized_function_call(meta_graphdef):
@@ -56,6 +61,78 @@ def _contains_op(meta_graphdef, op_name):
       if node.op == op_name:
         return True
   return False
+
+
+class QuantizationMethodTest(test.TestCase):
+
+  class SimpleModel(module.Module):
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=[1, 4], dtype=dtypes.float32)
+    ])
+    def __call__(self, input_tensor):
+      filters = np.random.uniform(low=-1.0, high=1.0, size=(4, 3)).astype('f4')
+
+      out = math_ops.matmul(input_tensor, filters)
+      return {'output': out}
+
+  def _simple_model_data_gen(self):
+    for _ in range(255):
+      yield {
+          'input_tensor':
+              ops.convert_to_tensor(
+                  np.random.uniform(low=0, high=150, size=(1, 4)).astype('f4')),
+      }
+
+  def test_static_range_quantization_by_default(self):
+    model = self.SimpleModel()
+
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    # Use default QuantizationOptions.
+    converted_model = quantize_model.quantize(
+        input_saved_model_path,
+        representative_dataset=self._simple_model_data_gen)
+
+    self.assertIsNotNone(converted_model)
+    self.assertEqual(
+        list(converted_model.signatures._signatures.keys()),
+        ['serving_default'])
+
+    # Indirectly prove that it is performing a static-range quantization
+    # by checking that it complains about representative_dataset when it is
+    # not provided.
+    with self.assertRaisesRegex(ValueError, 'representative_dataset'):
+      quantize_model.quantize(input_saved_model_path)
+
+  def test_method_unspecified_raises_value_error(self):
+    model = self.SimpleModel()
+
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            method=_Method.METHOD_UNSPECIFIED))
+
+    with self.assertRaises(ValueError):
+      quantize_model.quantize(
+          input_saved_model_path, quantization_options=options)
+
+  def test_invalid_method_raises_value_error(self):
+    model = self.SimpleModel()
+
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    # Set an invalid value of -1 to QuantizationMethod.method.
+    options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(method=-1))
+
+    with self.assertRaises(ValueError):
+      quantize_model.quantize(
+          input_saved_model_path, quantization_options=options)
 
 
 class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
@@ -106,12 +183,15 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     tags = [tag_constants.SERVING]
     output_directory = self.create_tempdir().full_path
-    converted_model = quantize_model.quantize(
-        input_saved_model_path, [signature_key],
-        tags,
-        optimization_method=quantize_model.OptimizationMethod
-        .STATIC_RANGE_QUANT,
-        output_directory=output_directory)
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+
+    converted_model = quantize_model.quantize(input_saved_model_path,
+                                              [signature_key], tags,
+                                              output_directory,
+                                              quantization_options)
     self.assertIsNotNone(converted_model)
     self.assertEqual(
         list(converted_model.signatures._signatures.keys()), [signature_key])
@@ -175,13 +255,16 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     tags = {tag_constants.SERVING}
     output_directory = self.create_tempdir().full_path
 
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+
     converted_model = quantize_model.quantize(
         input_saved_model_path,
         signature_keys,
         tags,
-        optimization_method=quantize_model.OptimizationMethod
-        .STATIC_RANGE_QUANT,
-        output_directory=output_directory,
+        output_directory,
+        quantization_options,
         representative_dataset=gen_data)
 
     self.assertIsNotNone(converted_model)
@@ -249,12 +332,16 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
 
     tags = [tag_constants.SERVING]
     output_directory = self.create_tempdir().full_path
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+
     converted_model = quantize_model.quantize(
         input_saved_model_path, ['serving_default'],
         tags,
         output_directory,
-        optimization_method=quantize_model.OptimizationMethod
-        .STATIC_RANGE_QUANT,
+        quantization_options,
         representative_dataset=data_gen)
     self.assertIsNotNone(converted_model)
     self.assertEqual(
@@ -323,12 +410,16 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
 
     tags = [tag_constants.SERVING]
     output_directory = self.create_tempdir().full_path
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+
     converted_model = quantize_model.quantize(
         input_saved_model_path, ['serving_default'],
         tags,
         output_directory,
-        optimization_method=quantize_model.OptimizationMethod
-        .STATIC_RANGE_QUANT,
+        quantization_options,
         representative_dataset=data_gen)
     self.assertIsNotNone(converted_model)
     self.assertEqual(
@@ -380,12 +471,16 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
 
     tags = [tag_constants.SERVING]
     output_directory = self.create_tempdir().full_path
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+
     converted_model = quantize_model.quantize(
         input_saved_model_path, ['serving_default'],
         tags,
         output_directory,
-        optimization_method=quantize_model.OptimizationMethod
-        .STATIC_RANGE_QUANT,
+        quantization_options,
         representative_dataset=data_gen)
     self.assertIsNotNone(converted_model)
     self.assertEqual(
@@ -434,13 +529,17 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
 
     tags = [tag_constants.SERVING]
     output_directory = self.create_tempdir().full_path
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+
     with warnings.catch_warnings(record=True) as w:
       converted_model = quantize_model.quantize(
           input_saved_model_path, ['serving_default'],
           tags,
           output_directory,
-          optimization_method=quantize_model.OptimizationMethod
-          .STATIC_RANGE_QUANT,
+          quantization_options,
           representative_dataset=data_gen)
       self.assertGreaterEqual(len(w), 1)
       self.assertIn('does not have min/max values', str(w[0]))
@@ -451,54 +550,6 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
-
-
-class AutomaticQuantizationTest(test.TestCase, parameterized.TestCase):
-
-  def test_conv_ptq_model(self):
-
-    class ConvModel(module.Module):
-
-      @def_function.function(input_signature=[
-          tensor_spec.TensorSpec(shape=[1, 3, 4, 3], dtype=dtypes.float32)
-      ])
-      def conv(self, input_tensor):
-        filters = np.random.uniform(
-            low=-10, high=10, size=(2, 3, 3, 2)).astype('f4')
-        bias = np.random.uniform(low=0, high=10, size=(2)).astype('f4')
-        out = nn_ops.conv2d(
-            input_tensor,
-            filters,
-            strides=[1, 1, 2, 1],
-            dilations=[1, 1, 1, 1],
-            padding='SAME',
-            data_format='NHWC')
-        out = nn_ops.bias_add(out, bias, data_format='NHWC')
-        out = nn_ops.relu6(out)
-        return {'output': out}
-
-    model = ConvModel()
-    input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
-
-    def data_gen():
-      for _ in range(255):
-        yield {
-            'input_tensor':
-                ops.convert_to_tensor(
-                    np.random.uniform(low=0, high=150,
-                                      size=(1, 3, 4, 3)).astype('f4')),
-        }
-
-    tags = [tag_constants.SERVING]
-    output_directory = self.create_tempdir().full_path
-    with self.assertRaises(NotImplementedError):
-      quantize_model.quantize(
-          input_saved_model_path, ['serving_default'],
-          tags,
-          output_directory,
-          optimization_method=quantize_model.OptimizationMethod.AUTOMATIC_QUANT,
-          representative_dataset=data_gen)
 
 
 class DynamicRangeQuantizationTest(test.TestCase, parameterized.TestCase):
@@ -522,12 +573,15 @@ class DynamicRangeQuantizationTest(test.TestCase, parameterized.TestCase):
 
     tags = [tag_constants.SERVING]
     output_directory = self.create_tempdir().full_path
-    converted_model = quantize_model.quantize(
-        input_saved_model_path, ['serving_default'],
-        tags,
-        output_directory,
-        optimization_method=quantize_model.OptimizationMethod
-        .DYNAMIC_RANGE_QUANT)
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE))
+
+    converted_model = quantize_model.quantize(input_saved_model_path,
+                                              ['serving_default'], tags,
+                                              output_directory,
+                                              quantization_options)
     self.assertIsNotNone(converted_model)
     self.assertEqual(
         list(converted_model.signatures._signatures.keys()),
@@ -565,12 +619,15 @@ class DynamicRangeQuantizationTest(test.TestCase, parameterized.TestCase):
 
     tags = [tag_constants.SERVING]
     output_directory = self.create_tempdir().full_path
-    converted_model = quantize_model.quantize(
-        input_saved_model_path, ['serving_default'],
-        tags,
-        output_directory,
-        optimization_method=quantize_model.OptimizationMethod
-        .DYNAMIC_RANGE_QUANT)
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE))
+
+    converted_model = quantize_model.quantize(input_saved_model_path,
+                                              ['serving_default'], tags,
+                                              output_directory,
+                                              quantization_options)
 
     self.assertIsNotNone(converted_model)
     self.assertEqual(
