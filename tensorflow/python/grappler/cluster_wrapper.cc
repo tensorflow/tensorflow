@@ -65,7 +65,7 @@ tensorflow::Status _GetOpPerformanceDataAndRunTime(
     *op_performance_data = tensorflow::grappler::CostGraphToOpPerformanceData(
         run_metadata.cost_graph(), item.graph);
   }
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 PYBIND11_MAKE_OPAQUE(tensorflow::grappler::Cluster);
