@@ -83,7 +83,7 @@ class ValueMapManager {
     }
     base_operation.push_back(op->getResult(1));
     base_operation.push_back(op->getResult(0));
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   Value GetValueOrCreatePlaceholder(StringRef full_name) {
@@ -215,7 +215,7 @@ Status ImportNodes(ValueMapManager value_manager,
           op.getAttrOfType<StringAttr>(name_attr).getValue().str()));
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::StatusOr<NamedAttrList> ConvertArgDefAttributes(
@@ -523,7 +523,7 @@ Status ImportGenericFunction(
                      arg_types_with_ctl, ret_op.getOperandTypes())));
   }
   func_op->setAttrs(attrs);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace
