@@ -59,7 +59,7 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
                    "remote tensors handles: "
                 << s.ToString();
           }
-          done(Status::OK());
+          done(OkStatus());
           delete response;
         });
   }

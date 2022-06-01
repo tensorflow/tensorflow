@@ -277,7 +277,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
 void CoordinationServiceStandaloneImpl::TaskState::SetConnected(
     uint64_t task_incarnation) {
   state_ = State::CONNECTED;
-  status_ = Status::OK();
+  status_ = OkStatus();
   task_incarnation_ = task_incarnation;
   mutex_lock l(last_heartbeat_mu_);
   last_heartbeat_us_ = Env::Default()->NowMicros();
@@ -288,7 +288,7 @@ void CoordinationServiceStandaloneImpl::TaskState::Disconnect(
   disconnect_grace_period_us_ =
       Env::Default()->NowMicros() + grace_period_duration_us;
   state_ = State::DISCONNECTED;
-  status_ = Status::OK();
+  status_ = OkStatus();
 }
 
 void CoordinationServiceStandaloneImpl::TaskState::SetError(
@@ -308,7 +308,7 @@ Status CoordinationServiceStandaloneImpl::TaskState::RecordHeartbeat(
   }
   mutex_lock l(last_heartbeat_mu_);
   last_heartbeat_us_ = Env::Default()->NowMicros();
-  return Status::OK();
+  return OkStatus();
 }
 
 int64_t
@@ -391,7 +391,7 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
             }
           }
           // Heartbeat check.
-          Status status = Status::OK();
+          Status status = OkStatus();
           {
             mutex_lock l(state_mu_);
             for (const auto& [task_name, task_state] : cluster_state_) {
@@ -608,7 +608,7 @@ Status CoordinationServiceStandaloneImpl::DisconnectTask(
   }
 
   LOG(INFO) << task_name << " has disconnected from coordination service.";
-  return Status::OK();
+  return OkStatus();
 }
 
 const CoordinationServiceDeviceInfo&
@@ -637,13 +637,13 @@ Status CoordinationServiceStandaloneImpl::ReportTaskError(
     }
   }
   PropagateError(task, /*is_reported_by_task=*/true);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
     const CoordinatedTask& task, uint64_t incarnation) {
   const std::string& task_name = GetTaskName(task);
-  Status s = Status::OK();
+  Status s = OkStatus();
   {
     mutex_lock l(state_mu_);
     if (!cluster_state_.contains(task_name)) {
@@ -816,7 +816,7 @@ Status CoordinationServiceStandaloneImpl::InsertKeyValue(
     }
     get_cb_.erase(iter);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void CoordinationServiceStandaloneImpl::GetKeyValueAsync(
@@ -892,7 +892,7 @@ Status CoordinationServiceStandaloneImpl::DeleteKeyValue(
   if (iter != kv_store_.end()) {
     kv_store_.erase(iter);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void CoordinationServiceStandaloneImpl::SetTaskError(
@@ -1026,7 +1026,7 @@ void CoordinationServiceStandaloneImpl::BarrierAsync(
     --barrier->num_pending_tasks;
 
     if (barrier->num_pending_tasks == 0) {
-      PassBarrier(barrier_id, Status::OK(), barrier);
+      PassBarrier(barrier_id, OkStatus(), barrier);
       return;
     }
   }
@@ -1054,7 +1054,7 @@ Status CoordinationServiceStandaloneImpl::CancelBarrier(
       "Barrier (", barrier_id, ") is cancelled by task: ", GetTaskName(task))));
   PassBarrier(barrier_id, cancelled, barrier);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Mark barrier as passed.
