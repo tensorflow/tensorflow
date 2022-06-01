@@ -900,35 +900,20 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addPass(mlir::createConvertTensorToLinalgPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::createLinalgInitTensorToAllocTensorPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::bufferization::createBufferizationBufferizePass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::createLinalgBufferizePass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::createConvertLinalgToLoopsPass());
 
-  // Bufferize Linalg on tensors program.
   // Always run canonicalizer (which does dead code removal) before
   // bufferizing anything.
   pm.addPass(mlir::createCanonicalizerPass());
-  // Now bufferize all the compute operations (hlo + linalg) and func
-  // signature.
-  pm.addPass(mlir::CreateComputeOpAndFuncBufferizePass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::gml_st::CreateTiledLoopBufferizePass());
-  // Turn tensor constants into global memrefs.
-  // TODO(kramerb): Expose the patterns and add them to the bufferize passes.
-  // pm.addPass(mlir::createTensorConstantBufferizePass());
-  // Always run canonicalizer (which does dead code removal) before
-  // bufferizing anything.
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::CreateFinalBufferizePass(
-      /*alignment=*/xla::cpu_function_runtime::Align()));
+  pm.addPass(mlir::hlo::CreateOneShotBufferizePass());
+
+  // Handle framework specific requirements for buffers and then insert
+  // deallocations for temporary buffers.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createConvertLinalgToLoopsPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::bufferization::createBufferResultsToOutParamsPass());
   pm.addPass(mlir::mhlo::CreateOutlineWithXLAFrameworkPass());
   pm.addPass(mlir::createInlinerPass());
-
-  // Deallocate all temporary buffers.
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createBufferDeallocationPass());
 
