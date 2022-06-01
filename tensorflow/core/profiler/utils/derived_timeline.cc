@@ -42,6 +42,43 @@ limitations under the License.
 
 namespace tensorflow {
 namespace profiler {
+namespace {
+
+inline std::string HloModuleEventName(const GpuEventStats& stats) {
+  return stats.program_id ? HloModuleNameWithProgramId(stats.hlo_module_name,
+                                                       *stats.program_id)
+                          : std::string(stats.hlo_module_name);
+}
+
+// Returns a prefix that uniquely identifies the HLO module.
+inline std::string HloOpEventPrefix(const GpuEventStats& stats) {
+  return stats.program_id ? absl::StrCat(*stats.program_id, "/")
+                          : absl::StrCat(stats.hlo_module_name, "/");
+}
+
+std::vector<XEventMetadata*> GetOrCreateHloOpEventsMetadata(
+    XPlaneBuilder& plane_builder, const GpuEventStats& stats) {
+  DCHECK(stats.IsXlaOp());
+  DCHECK(!stats.hlo_module_name.empty());
+  std::vector<XEventMetadata*> hlo_op_events_metadata;
+  hlo_op_events_metadata.reserve(stats.hlo_op_names.size());
+  // Prepend an HLO module identifier so HLO operators with the same name but in
+  // different modules have different metadata.
+  std::string hlo_op_event_prefix = HloOpEventPrefix(stats);
+  for (absl::string_view hlo_op_name : stats.hlo_op_names) {
+    XEventMetadata* hlo_op_event_metadata =
+        plane_builder.GetOrCreateEventMetadata(
+            absl::StrCat(hlo_op_event_prefix, hlo_op_name));
+    // Display the HLO name without the module name in tools.
+    if (hlo_op_event_metadata->display_name().empty()) {
+      hlo_op_event_metadata->set_display_name(std::string(hlo_op_name));
+    }
+    hlo_op_events_metadata.push_back(hlo_op_event_metadata);
+  }
+  return hlo_op_events_metadata;
+}
+
+}  // namespace
 
 void ProcessTfOpEvent(absl::string_view tf_op_full_name,
                       const XEventMetadata& low_level_event_metadata,
@@ -60,7 +97,9 @@ void ProcessTfOpEvent(absl::string_view tf_op_full_name,
       plane_builder.GetOrCreateEventMetadata(tf_op_full_name);
   // Set the display name to op_type so that the events of the same op_type have
   // the same color in the trace viewer.
-  tf_op_event_metadata->set_display_name(TfOpEventName(tf_op));
+  if (tf_op_event_metadata->display_name().empty()) {
+    tf_op_event_metadata->set_display_name(TfOpEventName(tf_op));
+  }
   tf_op_line_builder.ExpandOrAddEvent(*tf_op_event_metadata, event_span,
                                       group_id, &low_level_event_metadata);
 }
@@ -234,20 +273,15 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
     Timespan event_span = event.GetTimespan();
 
     if (!stats.hlo_module_name.empty()) {
-      std::string name = stats.program_id
-                             ? HloModuleNameWithProgramId(stats.hlo_module_name,
-                                                          *stats.program_id)
-                             : std::string(stats.hlo_module_name);
       hlo_modules.ExpandOrAddEvent(
-          *plane_builder.GetOrCreateEventMetadata(std::move(name)), event_span,
-          stats.group_id);
+          *plane_builder.GetOrCreateEventMetadata(HloModuleEventName(stats)),
+          event_span, stats.group_id);
     }
 
     if (stats.IsXlaOp()) {
-      DCHECK(!stats.hlo_module_name.empty());
       hlo_ops.ExpandOrAddEvents(
-          plane_builder.GetOrCreateEventsMetadata(stats.hlo_op_names),
-          event_span, stats.group_id);
+          GetOrCreateHloOpEventsMetadata(plane_builder, stats), event_span,
+          stats.group_id);
       auto symbol = symbol_resolver(stats.program_id, stats.hlo_module_name,
                                     stats.hlo_op_names.back());
       if (!symbol.tf_op_name.empty()) {
