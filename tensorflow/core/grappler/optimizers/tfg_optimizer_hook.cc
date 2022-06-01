@@ -159,7 +159,7 @@ Status TFGGrapplerOptimizer::Optimize(
     module.dump();
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // end namespace tfg
