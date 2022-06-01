@@ -393,9 +393,11 @@ inline Value MapCompareOpToStdScalarOp(Location loc,
   const auto& rhs = args[1];
   Type element_type = getElementTypeOrSelf(arg_types.front());
   if (element_type.isa<IntegerType>()) {
+    bool is_unsigned =
+        element_type.isInteger(1) || element_type.isUnsignedInteger();
     Optional<arith::CmpIPredicate> predicate =
-        getCmpPredicate<arith::CmpIPredicate>(
-            comparison_direction, !element_type.isUnsignedInteger());
+        getCmpPredicate<arith::CmpIPredicate>(comparison_direction,
+                                              !is_unsigned);
     assert(predicate.hasValue() && "expected valid comparison direction");
     return b->create<ScalarIOp<CompareOpTy>>(loc, predicate.getValue(), lhs,
                                              rhs);

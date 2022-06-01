@@ -4666,6 +4666,16 @@ func.func @unsigned_compare(%lhs: tensor<2x2xui32>, %rhs: tensor<2x2xui32>) -> t
 
 // -----
 
+// CHECK-LABEL: pred_compare
+func.func @pred_compare(%lhs: tensor<2x2xi1>, %rhs: tensor<2x2xi1>) -> tensor<2x2xi1> {
+  // CHECK: linalg.generic
+  // CHECK: cmpi ugt
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<2x2xi1>, tensor<2x2xi1>) -> tensor<2x2xi1>
+  func.return %0 : tensor<2x2xi1>
+}
+
+// -----
+
 func.func @scatter_update_scalar(%arg0: tensor<3xi32>, %arg1: tensor<1x1xi32>,
                             %arg2: tensor<1xi32>) -> tensor<3xi32> {
   %0 = "mhlo.scatter"(%arg0, %arg1, %arg2) ({
