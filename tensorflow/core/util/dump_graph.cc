@@ -187,6 +187,26 @@ Status WriteTextProtoToUniqueFile(
   return file->Close();
 }
 
+string DumpToFile(const string& name, const string& dirname,
+                  const string& suffix, const string& type_name,
+                  std::function<Status(WritableFile*)> dumper) {
+  string filepath;
+  std::unique_ptr<WritableFile> file;
+  Status status = CreateWritableFile(Env::Default(), dirname, name, suffix,
+                                     &filepath, &file);
+  if (!status.ok()) {
+    return StrCat("(failed to create writable file: ", status.ToString(), ")");
+  }
+
+  status = dumper(file.get());
+  if (!status.ok()) {
+    return StrCat("(failed to dump ", type_name, " to '", filepath,
+                  "': ", status.ToString(), ")");
+  }
+  LOG(INFO) << "Dumped " << type_name << " to " << filepath;
+  return filepath;
+}
+
 }  // anonymous namespace
 
 void SetGraphDumper(
@@ -203,40 +223,16 @@ void SetGraphDumper(
 
 string DumpGraphDefToFile(const string& name, GraphDef const& graph_def,
                           const string& dirname) {
-  string filepath;
-  std::unique_ptr<WritableFile> file;
-  Status status = CreateWritableFile(Env::Default(), dirname, name, ".pbtxt",
-                                     &filepath, &file);
-  if (!status.ok()) {
-    return StrCat("(failed to create writable file: ", status.ToString(), ")");
-  }
-
-  status = WriteTextProtoToUniqueFile(graph_def, file.get());
-  if (!status.ok()) {
-    return StrCat("(failed to dump Graph to '", filepath,
-                  "': ", status.ToString(), ")");
-  }
-  LOG(INFO) << "Dumped Graph to " << filepath;
-  return filepath;
+  return DumpToFile(name, dirname, ".pbtxt", "Graph", [&](WritableFile* file) {
+    return WriteTextProtoToUniqueFile(graph_def, file);
+  });
 }
 
 string DumpCostGraphDefToFile(const string& name, CostGraphDef const& graph_def,
                               const string& dirname) {
-  string filepath;
-  std::unique_ptr<WritableFile> file;
-  Status status = CreateWritableFile(Env::Default(), dirname, name, ".pbtxt",
-                                     &filepath, &file);
-  if (!status.ok()) {
-    return StrCat("(failed to create writable file: ", status.ToString(), ")");
-  }
-
-  status = WriteTextProtoToUniqueFile(graph_def, file.get());
-  if (!status.ok()) {
-    return StrCat("(failed to dump Graph to '", filepath,
-                  "': ", status.ToString(), ")");
-  }
-  LOG(INFO) << "Dumped Graph to " << filepath;
-  return filepath;
+  return DumpToFile(name, dirname, ".pbtxt", "Graph", [&](WritableFile* file) {
+    return WriteTextProtoToUniqueFile(graph_def, file);
+  });
 }
 
 string DumpGraphToFile(const string& name, Graph const& graph,
@@ -250,21 +246,10 @@ string DumpGraphToFile(const string& name, Graph const& graph,
       config = dumper_config.config;
     }
     if (config.IsSet()) {
-      string filepath;
-      std::unique_ptr<WritableFile> file;
-      Status status = CreateWritableFile(Env::Default(), dirname, name,
-                                         config.suffix, &filepath, &file);
-      if (!status.ok()) {
-        return StrCat("(failed to create writable file: ", status.ToString(),
-                      ")");
-      }
-      status = config.dumper(graph, flib_def, file.get());
-      if (!status.ok()) {
-        return StrCat("(failed to dump Graph to '", filepath,
-                      "': ", status.ToString(), ")");
-      }
-      LOG(INFO) << "Dumped Graph to " << filepath;
-      return filepath;
+      return DumpToFile(name, dirname, config.suffix, "Graph",
+                        [&](WritableFile* file) {
+                          return config.dumper(graph, flib_def, file);
+                        });
     }
   }
 
@@ -278,21 +263,10 @@ string DumpGraphToFile(const string& name, Graph const& graph,
 
 string DumpFunctionDefToFile(const string& name, FunctionDef const& fdef,
                              const string& dirname) {
-  string filepath;
-  std::unique_ptr<WritableFile> file;
-  Status status = CreateWritableFile(Env::Default(), dirname, name, ".pbtxt",
-                                     &filepath, &file);
-  if (!status.ok()) {
-    return StrCat("(failed to create writable file: ", status.ToString(), ")");
-  }
-
-  status = WriteTextProtoToUniqueFile(fdef, file.get());
-  if (!status.ok()) {
-    return StrCat("(failed to dump FunctionDef to '", filepath,
-                  "': ", status.ToString(), ")");
-  }
-  LOG(INFO) << "Dumped FunctionDef to " << filepath;
-  return filepath;
+  return DumpToFile(name, dirname, ".pbtxt", "FunctionDef",
+                    [&](WritableFile* file) {
+                      return WriteTextProtoToUniqueFile(fdef, file);
+                    });
 }
 
 }  // namespace tensorflow
