@@ -1381,9 +1381,7 @@ StatusOr<bool> RewriteDynamicSort(
                                                       new_param_1.get()};
   HloComputation* sort_comp = sort->parent()->parent()->AddEmbeddedComputation(
       sort->called_computations()[0]->CloneWithReplacements(
-          /*replacements=*/absl::flat_hash_map<
-              const HloInstruction*, std::unique_ptr<HloInstruction>>(),
-          extra_parameters));
+          /*replacements=*/nullptr, extra_parameters));
   auto inbound_lhs =
       sort_comp->parameter_instruction(param_number_before_rewritten);
   auto inbound_rhs =

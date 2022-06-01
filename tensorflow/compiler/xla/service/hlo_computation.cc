@@ -1034,8 +1034,7 @@ Status HloComputation::AcceptWithOperandOrder(
 std::unique_ptr<HloComputation> HloComputation::Clone(
     const std::string& suffix, HloCloneContext* context) {
   return CloneWithReplacements(
-      /*replacements=*/absl::flat_hash_map<const HloInstruction*,
-                                           std::unique_ptr<HloInstruction>>(),
+      /*replacements=*/nullptr,
       /*extra_parameters=*/{}, context, suffix);
 }
 
@@ -1045,8 +1044,8 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacementPairs(
   absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       replacements;
   replacements.emplace(std::move(r1));
-  return CloneWithReplacements(std::move(replacements), /*extra_parameters=*/{},
-                               context, suffix);
+  return CloneWithReplacements(&replacements, /*extra_parameters=*/{}, context,
+                               suffix);
 }
 
 std::unique_ptr<HloComputation> HloComputation::CloneWithReplacementPairs(
@@ -1057,8 +1056,8 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacementPairs(
       replacements;
   replacements.emplace(std::move(r1));
   replacements.emplace(std::move(r2));
-  return CloneWithReplacements(std::move(replacements), /*extra_parameters=*/{},
-                               context, suffix);
+  return CloneWithReplacements(&replacements, /*extra_parameters=*/{}, context,
+                               suffix);
 }
 
 std::unique_ptr<HloComputation> HloComputation::CloneWithReplacementPairs(
@@ -1071,8 +1070,8 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacementPairs(
   replacements.emplace(std::move(r1));
   replacements.emplace(std::move(r2));
   replacements.emplace(std::move(r3));
-  return CloneWithReplacements(std::move(replacements), /*extra_parameters=*/{},
-                               context, suffix);
+  return CloneWithReplacements(&replacements, /*extra_parameters=*/{}, context,
+                               suffix);
 }
 
 namespace {
@@ -1156,8 +1155,8 @@ void SortClonedInstructionUsersAndControlLists(
 }  // namespace
 
 std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
-    absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
-        replacements,
+    const absl::flat_hash_map<const HloInstruction*,
+                              std::unique_ptr<HloInstruction>>* replacements,
     absl::Span<const HloInstruction* const> extra_parameters,
     HloCloneContext* context, const std::string& suffix,
     const HloInstruction* new_root) {
@@ -1176,8 +1175,9 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
   // Note: This can return null, indicating that instr should not be present in
   // the new computation.
   auto replace = [&](const HloInstruction* instr) {
-    auto it = replacements.find(instr);
-    return it != replacements.end() ? it->second.get() : instr;
+    if (!replacements) return instr;
+    auto it = replacements->find(instr);
+    return it != replacements->end() ? it->second.get() : instr;
   };
 
   VLOG(1) << "Cloning " << name() << " --> " << suffix << "\n";

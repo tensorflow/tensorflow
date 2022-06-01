@@ -459,6 +459,7 @@ class HloComputation {
   // Like Clone(), but if an instruction is present in replacement_map, we use
   // the map's value to replace that instruction in the cloned computation.
   //
+  // If replacements is nullptr, don't perform replacement.
   // If replacements maps a key to nullptr, we remove that instruction from the
   // new computation.  If an element of `replacements` references an instruction
   // that's not already in the computation, it's cloned and added to the new
@@ -470,9 +471,8 @@ class HloComputation {
   // All relevant instructions are cloned, *including* unique_ptr in the
   // `replacements` map.
   std::unique_ptr<HloComputation> CloneWithReplacements(
-      absl::flat_hash_map<const HloInstruction*,
-                          std::unique_ptr<HloInstruction>>
-          replacements,
+      const absl::flat_hash_map<const HloInstruction*,
+                                std::unique_ptr<HloInstruction>>* replacements,
       absl::Span<const HloInstruction* const> extra_parameters = {},
       HloCloneContext* context = nullptr, const std::string& suffix = "clone",
       const HloInstruction* new_root = nullptr);

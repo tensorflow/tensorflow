@@ -134,9 +134,10 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
   };
 
   // Create the new while condition, body, and init value.
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+      while_cond_replacements = make_while_computation_replacements(while_cond);
   std::unique_ptr<HloComputation> new_while_cond =
-      while_cond->CloneWithReplacements(
-          make_while_computation_replacements(while_cond));
+      while_cond->CloneWithReplacements(&while_cond_replacements);
 
   absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       while_body_replacements = make_while_computation_replacements(while_body);
@@ -149,7 +150,7 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
   while_body_replacements.emplace(
       while_body_root, HloInstruction::CreateTuple(new_while_body_root_elems));
   std::unique_ptr<HloComputation> new_while_body =
-      while_body->CloneWithReplacements(std::move(while_body_replacements));
+      while_body->CloneWithReplacements(&while_body_replacements);
 
   // Add a new while_init instruction that repackages the old while_init
   // instruction's elements.  We rely on the AlgebraicSimplifier and DCE to

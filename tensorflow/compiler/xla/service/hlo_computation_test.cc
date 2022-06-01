@@ -503,8 +503,8 @@ TEST_F(HloComputationTest, CloneWithReplacements) {
                        HloInstruction::CreateParameter(2, r0s32, "p.1"));
   auto param3 = HloInstruction::CreateParameter(3, r0u32, "p.2");
   std::vector<const HloInstruction*> extra_parameters{param3.get()};
-  auto clone = computation->CloneWithReplacements(std::move(replacements),
-                                                  extra_parameters);
+  auto clone =
+      computation->CloneWithReplacements(&replacements, extra_parameters);
   ASSERT_EQ(clone->num_parameters(), 4);
   EXPECT_TRUE(
       ShapeUtil::Equal(clone->parameter_instruction(0)->shape(), r0f32_));

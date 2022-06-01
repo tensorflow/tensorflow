@@ -5311,7 +5311,7 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
     replacements[function->root_instruction()] = nullptr;
     auto new_function = computation_->parent()->AddEmbeddedComputation(
         function->CloneWithReplacements(
-            std::move(replacements), /*extra_parameters=*/{},
+            &replacements, /*extra_parameters=*/{},
             /*context=*/nullptr,
             /*suffix=*/"clone",
             /*new_root=*/function->root_instruction()->operand(0)));
@@ -5660,7 +5660,7 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(HloInstruction* hlo) {
     replacements[reduce_function_root] = nullptr;
     auto new_function = computation_->parent()->AddEmbeddedComputation(
         reduce_window->to_apply()->CloneWithReplacements(
-            std::move(replacements), /*extra_parameters=*/{},
+            &replacements, /*extra_parameters=*/{},
             /*context=*/nullptr,
             /*suffix=*/"clone",
             /*new_root=*/reduce_function_root->operand(0)));
