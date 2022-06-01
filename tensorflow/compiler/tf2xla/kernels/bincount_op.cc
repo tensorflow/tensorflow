@@ -70,29 +70,106 @@ class DenseBincountOp : public XlaOpKernel {
     xla::XlaComputation body;
     {
       std::unique_ptr<xla::XlaBuilder> builder =
-      ctx->builder()->CreateSubBuilder("body");
+          ctx->builder()->CreateSubBuilder("body");
       auto param = Parameter(builder.get(), 0, loop_shape, "param");
       auto counter = xla::GetTupleElement(param, 0);
       auto data_stack = xla::GetTupleElement(param, 1);
       auto accum_stack = xla::GetTupleElement(param, 2);
-    if (rank == 1) {
-      auto data = xla::DynamicSlice(data_stack, {counter}, {1});
-      auto accum = xla::DynamicSlice(accum_stack, {data}, {1});
-      accum = accum + xla::One(builder.get(), xla::S32);
-      accum_stack = xla::DynamicUpdateSlice(
-          accum_stack, xla::Reshape(accum, {1}), {data});
-    }
-    else {
-      auto dim_xla = xla::ConstantR0<int32_t>(builder.get(), dim);
-      auto idx_1 = xla::Div(counter, dim_xla);
-      auto idx_2 = counter % dim_xla;
-      auto data = xla::DynamicSlice(data_stack, {idx_1, idx_2}, {1, 1});
-      auto data_scalar = xla::Reshape(data, {0,1}, {});
-      auto accum = xla::DynamicSlice(accum_stack, {idx_1, data_scalar}, {1, 1});
-      accum = accum + xla::One(builder.get(), xla::S32);
-      accum_stack = xla::DynamicUpdateSlice(
-          accum_stack, xla::Reshape(accum, {1, 1}), {idx_1, data_scalar});
-    } 
+      
+      if (rank == 1) {
+        auto data = xla::DynamicSlice(data_stack, {counter}, {1});
+        auto accum = xla::DynamicSlice(accum_stack, {data}, {1});
+        auto data_scalar = xla::Reshape(data, {0}, {});
+
+        auto condition_shape = xla::ShapeUtil::MakeTupleShape(
+          {counter_shape, counter_shape, output_shape});
+
+        xla::XlaComputation update;
+        { 
+          std::unique_ptr<xla::XlaBuilder> true_builder =
+              builder->CreateSubBuilder("update");
+          auto param = Parameter(true_builder.get(), 0, condition_shape, "param");
+          auto data_scalar = xla::GetTupleElement(param, 0);
+          auto accum = xla::GetTupleElement(param, 1);
+          auto accum_stack  = xla::GetTupleElement(param, 2);
+          accum = accum + xla::One(true_builder.get(), xla::S32);
+          accum_stack = xla::DynamicUpdateSlice(
+              accum_stack, xla::Reshape(accum, {1}), {data_scalar});
+          xla::Tuple(true_builder.get(), {accum, accum_stack});
+          auto update = true_builder->Build().ValueOrDie();
+        }
+
+        xla::XlaComputation no_update;
+        {
+          std::unique_ptr<xla::XlaBuilder> false_builder =
+              builder->CreateSubBuilder("no_update");
+          auto param = Parameter(false_builder.get(), 0, condition_shape, "param");
+          auto data = xla::GetTupleElement(param, 0);
+          auto accum = xla::GetTupleElement(param, 1);
+          auto accum_stack  = xla::GetTupleElement(param, 2);
+          xla::Tuple(false_builder.get(), {accum, accum_stack});
+         auto no_update = false_builder->Build().ValueOrDie();
+        }
+
+        std::unique_ptr<xla::XlaBuilder> cond_builder =
+            builder->CreateSubBuilder("cond");
+        auto output_size_xla = xla::ConstantR0<int32_t>(cond_builder.get(), output_size);
+        auto pred = xla::Lt(data_scalar, output_size_xla);
+        auto tuple = xla::Tuple(cond_builder.get(), {data_scalar, accum, accum_stack});
+        auto cond = xla::Conditional(pred, tuple, update, tuple, no_update);
+        accum = xla::GetTupleElement(cond, 0);
+        accum_stack = xla::GetTupleElement(cond, 1);
+      }
+      else {
+        auto condition_shape = xla::ShapeUtil::MakeTupleShape(
+          {counter_shape, counter_shape, output_shape, counter_shape});
+
+        auto dim_xla = xla::ConstantR0<int32_t>(builder.get(), dim);
+        auto idx_1 = xla::Div(counter, dim_xla);
+        auto idx_2 = counter % dim_xla;
+        auto data = xla::DynamicSlice(data_stack, {idx_1, idx_2}, {1, 1});
+        auto data_scalar = xla::Reshape(data, {0,1}, {});
+        auto accum = xla::DynamicSlice(accum_stack, {idx_1, data_scalar}, {1, 1});
+
+        xla::XlaComputation update;
+        {
+          std::unique_ptr<xla::XlaBuilder> true_builder =
+              builder->CreateSubBuilder("update_rank2");
+          auto param = Parameter(true_builder.get(), 0, condition_shape, "param");
+          
+          auto data_scalar = xla::GetTupleElement(param, 0);
+          auto idx_1 = xla::GetTupleElement(param, 1);
+          auto accum_stack  = xla::GetTupleElement(param, 2);
+          auto accum = xla::GetTupleElement(param, 3);
+          accum = accum + xla::One(true_builder.get(), xla::S32);
+          accum_stack = xla::DynamicUpdateSlice(
+              accum_stack, xla::Reshape(accum, {1, 1}), {idx_1, data_scalar});
+          xla::Tuple(true_builder.get(), {accum, accum_stack});
+          auto update = true_builder->Build().ValueOrDie();
+        }
+
+        xla::XlaComputation no_update;
+        {
+          std::unique_ptr<xla::XlaBuilder> false_builder =
+              builder->CreateSubBuilder("no_update_rank2");
+          auto param = Parameter(false_builder.get(), 0, condition_shape, "param");
+          auto data_scalar = xla::GetTupleElement(param, 0);
+          auto idx_1 = xla::GetTupleElement(param, 1);
+          auto accum_stack  = xla::GetTupleElement(param, 2);
+          auto accum = xla::GetTupleElement(param, 3);
+          xla::Tuple(false_builder.get(), {accum, accum_stack});
+         auto no_update = false_builder->Build().ValueOrDie();
+        }
+        std::unique_ptr<xla::XlaBuilder> cond_builder =
+              builder->CreateSubBuilder("cond_rank2");
+        auto output_size_xla = xla::ConstantR0<int32_t>(builder.get(), output_size);
+        
+        auto pred = xla::Lt(data_scalar, output_size_xla);
+        auto tuple = xla::Tuple(cond_builder.get(), {data_scalar, idx_1, accum_stack, accum});
+        auto cond = xla::Conditional(pred, tuple, update, tuple, no_update);
+        accum = xla::GetTupleElement(cond, 0);
+        accum_stack = xla::GetTupleElement(cond, 1);
+      }
       counter = counter + xla::One(builder.get(), xla::S32);
       xla::Tuple(builder.get(), {counter, data_stack, accum_stack});
       body = builder->Build().ConsumeValueOrDie();
