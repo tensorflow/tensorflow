@@ -421,16 +421,6 @@ class SnapshotTest(tf_record_test_base.TFRecordTestBase,
     dataset = dataset.snapshot(path=self._snapshot_dir, name="snapshot")
     self.assertDatasetProduces(dataset, [42])
 
-  @combinations.generate(
-      combinations.times(
-          test_base.eager_only_combinations(),
-          combinations.combine(pattern=["[1]", "[2", "3]", "?4", "5-6", "^7"])))
-  def testDirContainsPattern(self, pattern):
-    path = self._snapshot_dir + "/inner" + pattern
-    dataset = dataset_ops.Dataset.from_tensors(42)
-    dataset = dataset.snapshot(path=path, name="snapshot")
-    self.assertDatasetProduces(dataset, [42])
-
 
 class LegacySnapshotTest(tf_record_test_base.TFRecordTestBase,
                          parameterized.TestCase):
