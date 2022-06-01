@@ -106,7 +106,12 @@ class TrtPrecisionMode(object):
 
 # Use a large enough number as the default max_workspace_size for TRT engines,
 # so it can produce reasonable performance results with the default.
-DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30
+# For TRT >= 8.4, the recommendation is MAX_INT.
+if (_pywrap_py_utils.is_tensorrt_enabled() and
+    trt_utils.is_loaded_tensorrt_version_greater_equal(8, 4, 0)):
+  DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = np.iinfo(np.int32).max
+else:
+  DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30
 
 PROFILE_STRATEGY_RANGE = "Range"
 PROFILE_STRATEGY_OPTIMAL = "Optimal"
