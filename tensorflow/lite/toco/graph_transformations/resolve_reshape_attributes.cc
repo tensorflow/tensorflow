@@ -32,22 +32,22 @@ namespace toco {
   const auto reshape_it = model->operators.begin() + op_index;
   auto* reshape_op = reshape_it->get();
   if (reshape_op->type != OperatorType::kReshape) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   auto* op = static_cast<TensorFlowReshapeOperator*>(reshape_op);
 
-  if (!op->shape.empty()) return ::tensorflow::Status::OK();
+  if (!op->shape.empty()) return ::tensorflow::OkStatus();
 
   if (IsConstantParameterArray(*model, reshape_op->inputs[1])) {
     const auto& constant_input_array = model->GetArray(reshape_op->inputs[1]);
     op->shape = constant_input_array.GetBuffer<ArrayDataType::kInt32>().data;
   }
 
-  if (op->shape.empty()) return ::tensorflow::Status::OK();
+  if (op->shape.empty()) return ::tensorflow::OkStatus();
 
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

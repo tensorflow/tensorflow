@@ -57,13 +57,13 @@ bool ApplyAttrsToArray(GraphTransformation* transformation, Model* model,
   const auto fakequant_it = model->operators.begin() + op_index;
   auto* fakequant_base_op = fakequant_it->get();
   if (fakequant_base_op->type != OperatorType::kFakeQuant) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   auto* fq_op = static_cast<FakeQuantOperator*>(fakequant_base_op);
 
   if (!fq_op->minmax) {
     // Need to be resolved first by ResolveFakeQuantArgsFromVars.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // At this point, this FakeQuantOperator should have a MinMax
@@ -76,7 +76,7 @@ bool ApplyAttrsToArray(GraphTransformation* transformation, Model* model,
   changed |= ApplyAttrsToArray(this, model, *fq_op, fq_op->inputs[0]);
   changed |= ApplyAttrsToArray(this, model, *fq_op, fq_op->outputs[0]);
   *modified = changed;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco
