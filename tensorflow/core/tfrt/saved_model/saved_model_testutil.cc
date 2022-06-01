@@ -227,19 +227,19 @@ std::vector<tensorflow::Tensor> ProcessPredictRequestsAndMaybeProfile(
   std::vector<tensorflow::Tensor> outputs;
   for (size_t i = 0; i < requests.size(); ++i) {
     const tensorflow::serving::PredictRequest& request = requests.at(i);
-    auto& input_map = request.inputs();
+    const auto& input_map = request.inputs();
     std::vector<tensorflow::Tensor> inputs;
     const std::string& signature = request.model_spec().signature_name();
     auto func_metadata = saved_model->GetFunctionMetadata(signature);
     if (func_metadata.has_value()) {
-      LOG(INFO) << "Running request for model signature " << signature;
+      LOG(INFO) << "Running requests for model signature " << signature;
       for (const std::string& key : func_metadata->GetInputNames()) {
         inputs.push_back(CreateTensorFromTensorProto(input_map.at(key)));
       }
 
       for (int32_t step = 0; step < num_steps; ++step) {
         if (profile) {
-          tensorflow::profiler::TraceMe t([i, step]() mutable {
+          tensorflow::profiler::TraceMe t([i, step]() {
             return absl::StrCat("Request_", i, "_step_", step);
           });
           TF_CHECK_OK(saved_model->Run({}, signature, inputs, &outputs));
