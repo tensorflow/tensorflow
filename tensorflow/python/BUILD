@@ -3,7 +3,7 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 load("//tensorflow:tensorflow.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_windows", "if_xla_available", "py_test", "tf_enable_mlir_bridge")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_oss", "if_windows", "if_xla_available", "py_test", "tf_enable_mlir_bridge")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
@@ -3242,8 +3242,6 @@ pywrap_tensorflow_macro(
     # copybara:comment_end
     deps = [
         ":bfloat16_lib",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/python/grappler:cost_analyzer_lib",
         "//tensorflow/python/grappler:model_analyzer_lib",
         "//tensorflow/python/util:cpp_nest",
@@ -3323,6 +3321,9 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/platform:enable_tf2_utils",
     ]) + if_windows([
         "//tensorflow/c:kernels_experimental",
+    ]) + if_oss([
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
     ]),
 )
 
