@@ -31,6 +31,7 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
+from tensorflow.python.checkpoint import checkpoint as tracking_util
 from tensorflow.python.client import session as session_module
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
@@ -75,7 +76,6 @@ from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import moving_averages
-from tensorflow.python.training.tracking import util as tracking_util
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import keras_deps
 from tensorflow.python.util import nest
