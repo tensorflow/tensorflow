@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
@@ -93,6 +94,8 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
 
   bool scale32 = isScale32(output_qtype);
   int32_t scale_width = scale32 ? 32 : 16;
+  // Only use double round if we are doing 32 bit scaling
+  bool double_round = scale32;
 
   if (auto weight_per_tensor_qtype =
           weight_type.getElementType()
@@ -112,7 +115,7 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
         rewriter.getI32IntegerAttr(0), rewriter.getI32IntegerAttr(output_zp),
         rewriter.getI32ArrayAttr({multiplier}),
         rewriter.getI32ArrayAttr({shift}), rewriter.getBoolAttr(scale32),
-        rewriter.getBoolAttr(true), rewriter.getBoolAttr(false));
+        rewriter.getBoolAttr(double_round), rewriter.getBoolAttr(false));
 
     return rescale_op.getResult();
 
@@ -148,7 +151,7 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
         rewriter.getI32IntegerAttr(0), rewriter.getI32IntegerAttr(output_zp),
         rewriter.getI32ArrayAttr(multiplier_arr),
         rewriter.getI32ArrayAttr(shift_arr), rewriter.getBoolAttr(scale32),
-        rewriter.getBoolAttr(true), rewriter.getBoolAttr(true));
+        rewriter.getBoolAttr(double_round), rewriter.getBoolAttr(true));
 
     return rescale_op.getResult();
 
@@ -540,7 +543,7 @@ bool isScale32(mlir::quant::UniformQuantizedType output_element_type) {
 }
 
 LogicalResult ApplyPatternsWithShapeResolution(
-    FuncOp func, const FrozenRewritePatternSet& patterns) {
+    func::FuncOp func, const FrozenRewritePatternSet& patterns) {
   // We use top-down traversal so that shape inference can fully infer types
   // during pattern rewrite.
   GreedyRewriteConfig config;
@@ -564,12 +567,12 @@ LogicalResult ApplyPatternsWithShapeResolution(
   // Insert UnrealizedConversionCasts to guarantee ReturnOp agrees with
   // the FuncOp type.
   IRRewriter rewriter(func.getContext());
-  func.walk([&](ReturnOp op) {
-    FuncOp parent = dyn_cast<FuncOp>(op->getParentOp());
+  func.walk([&](func::ReturnOp op) {
+    func::FuncOp parent = dyn_cast<func::FuncOp>(op->getParentOp());
     if (parent != func) return;
 
     rewriter.setInsertionPoint(op);
-    FunctionType func_ty = func.getType();
+    FunctionType func_ty = func.getFunctionType();
     auto result_tys = func_ty.getResults();
 
     bool cast_added = false;
@@ -591,7 +594,7 @@ LogicalResult ApplyPatternsWithShapeResolution(
     }
 
     if (cast_added) {
-      rewriter.replaceOpWithNewOp<ReturnOp>(op, return_values);
+      rewriter.replaceOpWithNewOp<func::ReturnOp>(op, return_values);
     }
   });
 

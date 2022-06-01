@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -28,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
@@ -49,17 +51,24 @@ struct PrepareForExportPass
 
 // Materializes some splat before export because it may be more efficient in
 // HLOInstruction.
-void prepareConstantOp(Operation *op, mlir::SplatElementsAttr attr) {
-  // Only consider int or floats for now.
-  if (!attr.getType().getElementType().isIntOrFloat()) return;
+void prepareConstantOp(Operation *op, SplatElementsAttr attr) {
   // Arbitrarialy chosen "small" number. This could be chosen based on the
   // proto size too.
   if (attr.getNumElements() < 32) return;
   ShapedType return_type = op->getResultTypes().front().cast<ShapedType>();
   ImplicitLocOpBuilder b(op->getLoc(), op);
-  auto cst = b.create<::mlir::mhlo::ConstOp>(attr.getSplatValue<Attribute>());
-  auto broadcast = b.create<::mlir::mhlo::BroadcastInDimOp>(
-      return_type, cst, b.getI64TensorAttr({}));
+  ConstOp cst;
+  if (auto complexTy = return_type.getElementType().dyn_cast<ComplexType>()) {
+    auto tensorType = RankedTensorType::get({}, return_type.getElementType());
+    assert(complexTy.getElementType().isa<FloatType>() &&
+           "unexpected int complex in MHLO");
+    auto complexVal = attr.getSplatValue<std::complex<APFloat>>();
+    cst = b.create<ConstOp>(DenseElementsAttr::get(tensorType, complexVal));
+  } else {
+    cst = b.create<ConstOp>(attr.getSplatValue<Attribute>());
+  }
+  auto broadcast =
+      b.create<BroadcastInDimOp>(return_type, cst, b.getI64TensorAttr({}));
   op->replaceAllUsesWith(broadcast);
   op->erase();
 }
@@ -152,7 +161,7 @@ void PrepareForExportPass::runOnOperation() {
   });
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreatePrepareForExport() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareForExport() {
   return std::make_unique<PrepareForExportPass>();
 }
 

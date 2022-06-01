@@ -20,6 +20,7 @@ import tempfile
 from absl.testing import parameterized
 
 from google.protobuf import wrappers_pb2
+from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -29,7 +30,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import load
+from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import save
 from tensorflow.python.training.tracking import tracking
@@ -45,6 +48,12 @@ class Part(resource_variable_ops.ResourceVariable):
   @classmethod
   def _deserialize_from_proto(cls, **kwargs):
     return cls([0, 0])
+
+  def _export_to_saved_model_graph(self, object_map, tensor_map, **kwargs):
+    p = Part(array_ops.zeros(self.shape, self.dtype))
+    object_map[self] = p
+    tensor_map[self.handle] = p.handle
+    return [self.handle]
 
 
 @registration.register_serializable()
@@ -185,7 +194,8 @@ class SavedModelTest(test.TestCase, parameterized.TestCase):
       def __init__(self, v=None):
         self.v = v if v is not None else variables.Variable(1.)
 
-      def _deserialization_dependencies(self):
+      def _deserialization_dependencies(self, children):
+        del children  # Unused.
         return {"v": self.v}
 
       @classmethod
@@ -245,6 +255,90 @@ class SingleCycleTest(test.TestCase):
     self.assertAllEqual(expected_value_s, restore_s.value())
     util.Checkpoint(s2=restore_s).read(ckpt_path).expect_partial()
     self.assertAllEqual(expected_value_s2, restore_s.value())
+
+  def test_compatible_with_v1_savedmodel(self):
+    p1 = Part([1, 4])
+    p2 = Part([2, 5])
+    p3 = Part([3, 6])
+    s = Stack([p1, p2, p3])
+    save_path = os.path.join(self.get_temp_dir(), "savedmodel")
+
+    @def_function.function(input_signature=[])
+    def serve():
+      return {"value": s.value()}
+
+    exported_value = serve()["value"]
+
+    save.save(s, save_path, signatures=serve)
+    with ops.Graph().as_default(), session.Session() as sess:
+      metagraph = loader.load(sess, ["serve"], save_path)
+      value_output = metagraph.signature_def["serving_default"].outputs["value"]
+      self.assertAllEqual(exported_value, sess.run(value_output.name))
+
+  def test_non_strict_predicate(self):
+    class NonStrictPredicateClass(tracking.AutoTrackable):
+      pass
+    registration.register_checkpoint_saver(
+        name="NonStrictPredicate",
+        predicate=lambda x: isinstance(x, NonStrictPredicateClass),
+        save_fn=lambda **kwargs: [],
+        restore_fn=lambda **kwargs: None,
+        strict_predicate_restore=False)
+
+    root = NonStrictPredicateClass()
+    ckpt_path = os.path.join(self.get_temp_dir(), "ckpt")
+    util.Checkpoint(root).write(ckpt_path)
+
+    root2 = tracking.AutoTrackable()
+    # This should run without throwing an error.
+    util.Checkpoint(root2).read(ckpt_path)
+
+  def test_strict_predicate(self):
+    class StrictPredicateClass(tracking.AutoTrackable):
+      pass
+    registration.register_checkpoint_saver(
+        name="StrictPredicate",
+        predicate=lambda x: isinstance(x, StrictPredicateClass),
+        save_fn=lambda **kwargs: [],
+        restore_fn=lambda **kwargs: None,
+        strict_predicate_restore=True)
+
+    root = StrictPredicateClass()
+    ckpt_path = os.path.join(self.get_temp_dir(), "ckpt")
+    util.Checkpoint(root).write(ckpt_path)
+
+    root2 = tracking.AutoTrackable()
+    with self.assertRaisesRegex(ValueError, "saver cannot be used"):
+      util.Checkpoint(root2).read(ckpt_path)
+
+  def test_registered_saver_is_called_before_save_after_load(self):
+    if not context.executing_eagerly():
+      self.skipTest("This test must run under eager mode.")
+
+    class RestoreClass(tracking.AutoTrackable):
+      pass
+    def save_fn(trackables, file_prefix):
+      del trackables  # Unused.
+      # Check that directory is empty
+      files = gfile.ListDirectory(os.path.dirname(file_prefix.numpy()))
+      self.assertEmpty(files)
+
+    def restore_fn(trackables, merged_prefix):
+      del merged_prefix  # Unused.
+      root = next(trackables.values())
+      self.assertEqual(root.v.numpy(), 123)
+
+    registration.register_checkpoint_saver(
+        name="OptionalRestore",
+        predicate=lambda x: isinstance(x, RestoreClass),
+        save_fn=save_fn,
+        restore_fn=restore_fn)
+
+    root = RestoreClass()
+    root.v = variables.Variable(123.0)
+
+    ckpt_path = os.path.join(self.get_temp_dir(), "ckpt")
+    util.Checkpoint(root).write(ckpt_path)
 
 
 if __name__ == "__main__":

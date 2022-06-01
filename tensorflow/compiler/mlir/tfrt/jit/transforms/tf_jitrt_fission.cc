@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
@@ -81,17 +82,17 @@ struct FusedMatMulFission
 // -------------------------------------------------------------------------- //
 struct FissionPass : public FissionBase<FissionPass> {
   void runOnOperation() override {
-    mlir::FuncOp function = getOperation();
+    mlir::func::FuncOp function = getOperation();
     mlir::MLIRContext* ctx = function.getContext();
 
     mlir::RewritePatternSet patterns(ctx);
-    patterns.insert<FusedMatMulFission>(ctx);
+    patterns.add<FusedMatMulFission>(ctx);
 
     (void)mlir::applyPatternsAndFoldGreedily(function, std::move(patterns));
   }
 };
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateFissionPass() {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateFissionPass() {
   return std::make_unique<FissionPass>();
 }
 

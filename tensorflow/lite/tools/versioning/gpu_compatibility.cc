@@ -360,6 +360,11 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
           (op_sig.outputs.at(0).type == kTfLiteFloat16 ||
            op_sig.outputs.at(0).type == kTfLiteFloat32)) {
         return absl::OkStatus();
+      } else if ((op_sig.inputs.at(0).type == kTfLiteFloat32 ||
+                  op_sig.inputs.at(0).type == kTfLiteInt32) &&
+                 (op_sig.outputs.at(0).type == kTfLiteFloat32 ||
+                  op_sig.outputs.at(0).type == kTfLiteInt32)) {
+        return absl::OkStatus();
       } else {
         return absl::UnimplementedError(absl::StrCat(
             "Not supported Cast case. Input type: ",

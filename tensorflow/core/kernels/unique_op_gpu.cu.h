@@ -129,7 +129,7 @@ Status GatherOutputsAndInvertPermutation(const GPUDevice& d, int64_t uniq_size,
                                          const TIndex* segment_ends, T* output,
                                          TIndex* inv_sorted_unique_perm,
                                          TIndex* count) {
-  if (uniq_size == 0) return Status::OK();
+  if (uniq_size == 0) return OkStatus();
   GpuLaunchConfig config = GetGpuLaunchConfig(
       uniq_size, d, &GatherOutputsAndInvertPermutationKernel<T, TIndex>,
       /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
@@ -440,8 +440,9 @@ class UniqueOpGPU : public AsyncOpKernel {
       done();
     };
 
-    context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-        stream, async_finish_computation);
+    context->device()
+        ->tensorflow_accelerator_device_info()
+        ->event_mgr->ThenExecute(stream, async_finish_computation);
   }
 };
 

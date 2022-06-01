@@ -18,6 +18,8 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 
 namespace mlir {
@@ -164,7 +166,7 @@ struct HloCanonicalizeReductionPass
           Value dim_index = b.create<tensor::DimOp>(loc, op.getOperand(0), v);
           nelems = b.create<arith::MulIOp>(
               loc, nelems,
-              b.create<arith::IndexCastOp>(loc, dim_index, shape_scalar_type));
+              b.create<arith::IndexCastOp>(loc, shape_scalar_type, dim_index));
         }
         return nelems;
       };
@@ -204,7 +206,7 @@ struct HloCanonicalizeReductionPass
           b.create<tensor::FromElementsOp>(loc, new_operand_dims);
 
       SmallVector<Value, 4> new_operands;
-      for (Value operand : op.inputs()) {
+      for (Value operand : op.operands()) {
         new_operands.push_back(b.create<DynamicReshapeOp>(
             loc,
             RankedTensorType::get(
@@ -230,7 +232,7 @@ struct HloCanonicalizeReductionPass
         for (int64_t i : dims_to_keep) {
           Value dim_index = b.create<tensor::DimOp>(loc, op.getOperand(0), i);
           result_dims.push_back(
-              b.create<arith::IndexCastOp>(loc, dim_index, shape_scalar_type));
+              b.create<arith::IndexCastOp>(loc, shape_scalar_type, dim_index));
         }
         Value result_shape = b.create<tensor::FromElementsOp>(loc, result_dims);
         for (auto&& e : llvm::zip(op.getResults(), new_op.getResults())) {
@@ -248,7 +250,8 @@ struct HloCanonicalizeReductionPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createHloCanonicalizeReductionPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+createHloCanonicalizeReductionPass() {
   return std::make_unique<HloCanonicalizeReductionPass>();
 }
 

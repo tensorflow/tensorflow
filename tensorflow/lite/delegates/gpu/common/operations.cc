@@ -19,10 +19,10 @@ limitations under the License.
 #include <cstdint>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
@@ -84,6 +84,8 @@ std::string ToString(enum OperationType op) {
       return "batch_to_space";
     case OperationType::BATCHED_MATMUL:
       return "batched_matmul";
+    case OperationType::CAST:
+      return "cast";
     case OperationType::CONCAT:
       return "concat";
     case OperationType::CONSTANT:
@@ -214,12 +216,13 @@ std::string ToString(enum OperationType op) {
 }
 
 OperationType OperationTypeFromString(const std::string& name) {
-  static const auto operations =
-      new absl::flat_hash_map<std::string, OperationType>({
+  static const auto* operations =
+      new std::unordered_map<std::string, OperationType>({
           {"abs", OperationType::ABS},
           {"add", OperationType::ADD},
           {"batch_normalization", OperationType::BATCH_NORMALIZATION},
           {"batched_matmul", OperationType::BATCHED_MATMUL},
+          {"cast", OperationType::CAST},
           {"concat", OperationType::CONCAT},
           {"const", OperationType::CONSTANT},
           {"convolution_2d", OperationType::CONVOLUTION_2D},

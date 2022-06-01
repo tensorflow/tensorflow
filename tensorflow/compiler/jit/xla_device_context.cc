@@ -118,7 +118,7 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
                                              bool sync_dst_compute) const {
   if (cpu_tensor->NumElements() == 0) {
     VLOG(2) << "CopyCPUTensorToDevice empty tensor";
-    done(Status::OK());
+    done(OkStatus());
     return;
   }
 
@@ -179,7 +179,7 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
                                        host_to_device_stream_.get());
     }
 
-    return Status::OK();
+    return OkStatus();
   }();
   if (!status.ok()) {
     done(status);
@@ -201,7 +201,7 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
   } else {
     host_to_device_stream_->ThenDoHostCallback([ref, done]() {
       ref.Unref();
-      done(Status::OK());
+      done(OkStatus());
     });
   }
 }
@@ -212,7 +212,7 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
                                              StatusCallback done) {
   if (device_tensor->NumElements() == 0) {
     VLOG(2) << "CopyDeviceTensorToCPU empty tensor";
-    done(Status::OK());
+    done(OkStatus());
     return;
   }
   VLOG(2) << "CopyDeviceTensorToCPU "
@@ -301,7 +301,7 @@ Status XlaDeviceContext::ThenExecute(Device* device,
                                      std::function<void()> func) {
   VLOG(2) << "XlaDeviceContext::ThenExecute";
   stream->ThenDoHostCallback(std::move(func));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

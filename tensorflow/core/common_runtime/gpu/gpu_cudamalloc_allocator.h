@@ -36,6 +36,10 @@ class GPUcudaMallocAllocator : public Allocator {
   void DeallocateRaw(void* ptr) override;
   bool TracksAllocationSizes() const override;
 
+  AllocatorMemoryType GetMemoryType() const override {
+    return AllocatorMemoryType::kDevice;
+  }
+
  private:
   se::StreamExecutor* stream_exec_;  // Not owned.
 

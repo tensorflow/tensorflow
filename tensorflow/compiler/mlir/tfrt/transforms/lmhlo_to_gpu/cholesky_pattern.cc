@@ -28,9 +28,9 @@ namespace tensorflow {
 namespace {
 
 struct CholeskyRewritePattern
-    : tfrt::gpu::GpuAsyncOpConversionPattern<lmhlo_gpu::CholeskyOp> {
-  using tfrt::gpu::GpuAsyncOpConversionPattern<
-      lmhlo_gpu::CholeskyOp>::GpuAsyncOpConversionPattern;
+    : tfrt::gpu::StreamifyOpConversionPattern<lmhlo_gpu::CholeskyOp> {
+  using tfrt::gpu::StreamifyOpConversionPattern<
+      lmhlo_gpu::CholeskyOp>::StreamifyOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
       lmhlo_gpu::CholeskyOp op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
@@ -41,12 +41,11 @@ struct CholeskyRewritePattern
     Value context = rewriter.create<tfrt::gpu::StreamGetContextOp>(loc, stream);
     auto handle = rewriter.create<tfrt::gpu::SolverCreateOp>(loc, context);
 
-    cublasFillMode_t fill_mode =
-        op.is_lower() ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
+    auto fill_mode = op.is_lower() ? kBlasFillModeLower : kBlasFillModeUpper;
 
     mlir::Type element_type =
         op.input().getType().cast<mlir::MemRefType>().getElementType();
-    auto data_type = MlirTypeToCudaDataType(element_type);
+    auto data_type = MlirTypeToBlasDataType(element_type);
 
     const xla::Shape shape = xla::gpu::GetShape(op.input());
     int rank = shape.dimensions_size();

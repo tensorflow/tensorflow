@@ -328,7 +328,7 @@ void ReplicateToIslandPass::runOnOperation() {
 }
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateReplicateToIslandPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateReplicateToIslandPass() {
   return std::make_unique<ReplicateToIslandPass>();
 }
 

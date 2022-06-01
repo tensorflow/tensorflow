@@ -228,15 +228,10 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
             "positive definite.")
       is_positive_definite = True
 
-    # Initialization.
-    graph_parents = []
-    for operator in operators:
-      graph_parents.extend(operator.graph_parents)
-
     if name is None:
       # Using ds to mean direct sum.
       name = "_ds_".join(operator.name for operator in operators)
-    with ops.name_scope(name, values=graph_parents):
+    with ops.name_scope(name):
       super(LinearOperatorBlockDiag, self).__init__(
           dtype=dtype,
           is_non_singular=is_non_singular,
@@ -245,9 +240,6 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
           is_square=is_square,
           parameters=parameters,
           name=name)
-
-    # TODO(b/143910018) Remove graph_parents in V3.
-    self._set_graph_parents(graph_parents)
 
   @property
   def operators(self):
@@ -744,3 +736,7 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
   @property
   def _composite_tensor_fields(self):
     return ("operators",)
+
+  @property
+  def _experimental_parameter_ndims_to_matrix_ndims(self):
+    return {"operators": [0] * len(self.operators)}

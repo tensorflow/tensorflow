@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/tfrt/eager/virtual_device.h"
+#include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tpu/virtual_device.h"
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
@@ -63,7 +64,7 @@ tensorflow::Status RunRuntimeInitializer(const tfrt::ExecutionContext& exec_ctx,
 
   auto* func = bef_file->GetFunction(
       {fallback_init_func.data(), fallback_init_func.size()});
-  if (func == nullptr) return tensorflow::Status::OK();
+  if (func == nullptr) return ::tensorflow::OkStatus();
 
   auto ready_chain = GetReadyChain();
 
@@ -78,10 +79,10 @@ tensorflow::Status RunRuntimeInitializer(const tfrt::ExecutionContext& exec_ctx,
   host->Await(results);
 
   if (auto* error = results[0]->GetErrorIfPresent()) {
-    return tensorflow::errors::Internal(error->message);
+    return CreateTfErrorStatus(*error);
   }
 
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 void CreateDummyTfDevices(

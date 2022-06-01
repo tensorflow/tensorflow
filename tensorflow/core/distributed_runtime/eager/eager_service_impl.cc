@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -182,16 +183,21 @@ Status AddOpRetvalsToResponse(
     std::function<TensorProto*()> add_tensor_proto_fn,
     std::function<TensorShapeProto*()> add_shape_proto_fn,
     std::function<string*()> add_device_fn = nullptr) {
+  // retvals hold references to the allocated output tensor handles. If errors
+  // happen with adding some results to the response, aggregate the status in sg
+  // instead of directly returning the error, to make sure unref or ownership
+  // transfer completes for the rest of output tensor handles.
+  StatusGroup sg;
   if (op_id == kInvalidOpId) {
     // Copy the output tensors back along with the response, since the op id
     // is invalid which cannot be added to RemoteMgr.
     for (int i = 0; i < num_retvals; i++) {
-      TF_RETURN_IF_ERROR(TensorHandleProto(retvals[i], add_tensor_proto_fn()));
+      sg.Update(TensorHandleProto(retvals[i], add_tensor_proto_fn()));
       retvals[i]->Unref();
     }
   } else {
     for (int i = 0; i < num_retvals; i++) {
-      TF_RETURN_IF_ERROR(TensorHandleShape(retvals[i], add_shape_proto_fn()));
+      sg.Update(TensorHandleShape(retvals[i], add_shape_proto_fn()));
       if (add_device_fn) {
         Device* device = retvals[i]->device();
         *add_device_fn() = device ? device->name() : "";
@@ -205,7 +211,7 @@ Status AddOpRetvalsToResponse(
       }
     }
   }
-  return Status::OK();
+  return sg.as_summary_status();
 }
 }  // namespace
 
@@ -320,20 +326,9 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
       !config.experimental().coordination_config().service_type().empty();
   if (enable_coordination) {
     auto dist_mgr = std::make_unique<EagerContextDistributedManager>(ctx);
+    dist_mgr->SetCoordinationServiceAgent(
+        env_->session_mgr->GetCoordinationServiceAgent());
     ctx->SetDistributedManager(std::move(dist_mgr));
-    TF_RETURN_IF_ERROR(ctx->GetDistributedManager()->EnableCoordinationService(
-        config.experimental().coordination_config().service_type(), env_,
-        request->server_def(), worker_session->worker_cache()));
-    std::unique_ptr<CoordinationClientCache> client_cache;
-    TF_RETURN_IF_ERROR(
-        worker_session->worker_cache()->GetCoordinationClientCache(
-            &client_cache));
-    TF_RETURN_IF_ERROR(
-        ctx->GetDistributedManager()->GetCoordinationServiceAgent()->Initialize(
-            env_->env, request->server_def(), std::move(client_cache),
-            /*error_fn=*/[](Status s) {
-              LOG(ERROR) << "Coordination agent is set to error: " << s;
-            }));
   }
 #endif  // !IS_MOBILE_PLATFORM
 
@@ -484,16 +479,22 @@ void EagerServiceImpl::RunComponentFunction(
   s = GetEagerOperationAndNumRetvals(operation, eager_context, eager_executor,
                                      op, num_retvals);
   if (!s.ok()) {
+    delete num_retvals;
+    delete op;
     done(s);
     return;
   }
   if (!op->IsLocal()) {
+    delete num_retvals;
+    delete op;
     done(errors::Internal(
         "Received RunComponentFunction request with remote function device. "));
     return;
   }
   s = op->SetAttrBool("is_component_function", true);
   if (!s.ok()) {
+    delete num_retvals;
+    delete op;
     done(errors::Internal("Error setting is_component_function attribute: ",
                           s.error_message()));
     return;

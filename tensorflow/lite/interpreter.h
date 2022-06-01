@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/internal/signature_def.h"
+#include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/signature_runner.h"
@@ -458,13 +459,6 @@ class Interpreter {
   /// invocation. WARNING: Experimental interface, subject to change
   TfLiteStatus ReleaseNonPersistentMemory();
 
-  /// WARNING: This is an experimental API and subject to change.
-  /// Force all intermediate dynamic tensors to be released once they are not
-  /// used by the model. Please use this configuration with caution, since it
-  /// might reduce the peak memory usage of the model at the cost of a slower
-  /// inference speed. `AllocateTensors` needs to be called right after this
-  /// API.
-  void EnsureDynamicTensorsAreReleased();
 
   /// Update allocations for all tensors. This will redim dependent tensors
   /// using the input tensor dimensionality as given. This is relatively
@@ -685,6 +679,10 @@ class Interpreter {
       int tensor_index, const TfLiteCustomAllocation& allocation,
       int64_t flags = kTfLiteCustomAllocationFlagsNone);
 
+  /// Apply InterpreterOptions which tunes behavior of the interpreter.
+  /// WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus ApplyOptions(InterpreterOptions* options);
+
 #ifndef DOXYGEN_SKIP
   /// Return the number of subgraphs in the model.
   /// WARNING: This is an experimental API and subject to change.
@@ -757,7 +755,31 @@ class Interpreter {
   // Applies TFLite default delegates.
   TfLiteStatus ApplyLazyDelegateProviders();
 
-  // Overrides execution plan. This bounds checks indices sent in.
+  // Private non-experimental implementation of ModifyGraphWithDelegate.
+  // Unlike ModifyGraphWithDelegate, ModifyGraphWithDelegateImpl is defined in
+  // interpreter.cc rather than in interpreter_experimental.cc, so it can be
+  // used to implement other non-experimental methods.
+  TfLiteStatus ModifyGraphWithDelegateImpl(TfLiteDelegate* delegate);
+
+  // Same as ModifyGraphWithDelegateImpl except that it takes ownership of the
+  // delegate.
+  template <typename Delegate, typename Deleter>
+  inline TfLiteStatus ModifyGraphWithDelegateImpl(
+      std::unique_ptr<Delegate, Deleter>&& delegate) {
+    Deleter deleter = std::move(delegate.get_deleter());
+
+    // Note that we retain ownership of the delegate even if graph modification
+    // fails, as delegate use will be in an indeterminate state at that point.
+    owned_delegates_.emplace_back(
+        delegate.release(), [deleter](TfLiteDelegate* delegate_to_delete) {
+          deleter(
+              static_cast<typename std::unique_ptr<Delegate, Deleter>::pointer>(
+                  delegate_to_delete));
+        });
+    return ModifyGraphWithDelegateImpl(owned_delegates_.back().get());
+  }
+
+  // Overrides execution plan. ImplThis bounds checks indices sent in.
   // Note: Only used during initialization.
   TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan);
 
@@ -782,10 +804,6 @@ class Interpreter {
     signature_defs_ = std::move(signature_defs);
   }
 
-  // Enables preserving intermediates for debugging.  Should only be set by
-  // InterpreterBuilder before allocating any tensors.
-  TfLiteStatus PreserveAllTensorsExperimental();
-
   // Sets model metadata as a mapping of name (key) and buffer (value) strings.
   // Used by InterpreterBuilder, should be called after setting up subgraphs.
   TfLiteStatus SetMetadata(const std::map<std::string, std::string>& metadata);
@@ -796,6 +814,13 @@ class Interpreter {
   /// non-null.
   void AddSubgraphs(int subgraphs_to_add,
                     int* first_new_subgraph_index = nullptr);
+
+  /// Implementation of SetProfiler.
+  /// Unlike SetProfiler, this is defined in interpreter.cc rather than in
+  /// intepreter_experimental.cc, so it can be used by interpreter_builder.cc.
+  void SetProfilerImpl(std::unique_ptr<Profiler> profiler);
+
+  TfLiteStatus ApplyOptionsImpl(InterpreterOptions* options);
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
@@ -867,6 +892,9 @@ class Interpreter {
   // Model metadata stored as mapping of name (key) to buffer (value).
   // Data is mapped from the Metadata in TFLite flatbuffer model.
   std::map<std::string, std::string> metadata_;
+
+  // InterpreterOptions object which is being used.
+  std::unique_ptr<InterpreterOptions> options_;
 };
 
 }  // namespace tflite

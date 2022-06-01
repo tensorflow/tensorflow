@@ -28,7 +28,7 @@ struct StripNoinlineAttributePass
   // void runOnOperation() override;
   void runOnOperation() override {
     // Strip the "tf._noinline" attribute from top-level functions.
-    for (auto func_op : getOperation().getOps<FuncOp>())
+    for (auto func_op : getOperation().getOps<func::FuncOp>())
       func_op->removeAttr("tf._noinline");
   }
 };

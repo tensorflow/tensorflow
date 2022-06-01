@@ -46,9 +46,9 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -62,7 +62,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Translation.h"  // from @llvm-project
+#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
@@ -84,7 +84,6 @@ limitations under the License.
 using llvm::ArrayRef;
 using mlir::Builder;
 using mlir::DenseElementsAttr;
-using mlir::FuncOp;
 using mlir::Location;
 using mlir::MLIRContext;
 using mlir::OpBuilder;
@@ -94,6 +93,7 @@ using mlir::OwningOpRef;
 using mlir::RankedTensorType;
 using mlir::UnrankedTensorType;
 using mlir::Value;
+using mlir::func::FuncOp;
 using mlir::quant::QuantizedType;
 using tflite::OperatorT;
 using tflite::TensorT;
@@ -104,11 +104,6 @@ namespace errors = tensorflow::errors;
 namespace tfl = mlir::TFL;
 
 namespace {
-bool IsScalar(const TensorT& tensor) {
-  // TODO(b/138222071) We can't distinguish scalars and unranked tensors
-  // Work out a way to handle this and stub out the code until then
-  return tensor.shape.empty() && false;
-}
 
 bool IsQuantized(const TensorT& tensor) {
   return (tensor.quantization != nullptr) &&
@@ -211,11 +206,7 @@ StatusOr<QuantizedType> GetCalibratedQuantizedType(const TensorT& tensor,
   return mlir::quant::CalibratedQuantizedType::get(raw_elem_type, min, max);
 }
 
-// TODO(b/138222071) Remove shapeless_are_scalars once we can reliably
-// make that distinction and don't have to rely on context
-// (input to main and constants must have static shape)
 StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
-                                         bool shapeless_are_scalars = false,
                                          bool is_constant = false,
                                          bool is_intermediate = false) {
   mlir::Type elem_type = ConvertElementType(tensor.type, builder);
@@ -231,7 +222,7 @@ StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
     TF_ASSIGN_OR_RETURN(elem_type, GetCalibratedQuantizedType(tensor, builder));
   }
 
-  if (IsScalar(tensor) || (shapeless_are_scalars && tensor.shape.empty())) {
+  if (tensor.shape.empty() && (is_constant || tensor.has_rank)) {
     return RankedTensorType::get({}, elem_type);
   }
 
@@ -479,7 +470,6 @@ StatusOr<Operation*> BuildExternalConstOp(const tflite::TensorT& tensor,
                                           int32_t buffer_index,
                                           OpBuilder builder, Location loc) {
   TF_ASSIGN_OR_RETURN(auto type, GetTensorType(tensor, builder,
-                                               /*shapeless_are_scalars=*/true,
                                                /*is_constant=*/true));
   auto shaped_type = type.dyn_cast<mlir::RankedTensorType>();
   if (!shaped_type) {
@@ -586,7 +576,8 @@ static StatusOr<Operation*> BuildSparseConstOp(
     if (tensor.sparsity->dim_metadata[i]->format ==
         tflite::DimensionType_DENSE) {
       dim_metadata[i] = tfl::DimensionMetadataAttr::get(
-          builder.getStringAttr("DENSE"),
+          mlir::TFL::DimensionTypeAttr::get(builder.getContext(),
+                                            tfl::DimensionType::DENSE),
           builder.getI32IntegerAttr(
               tensor.sparsity->dim_metadata[i]->dense_size),
           builder.getI32ArrayAttr({}), builder.getI32ArrayAttr({}),
@@ -602,8 +593,10 @@ static StatusOr<Operation*> BuildSparseConstOp(
           ConvertSparseIndexVector(
               tensor.sparsity->dim_metadata[i]->array_indices, builder));
       dim_metadata[i] = tfl::DimensionMetadataAttr::get(
-          builder.getStringAttr("SPARSE_CSR"), builder.getI32IntegerAttr(0),
-          segments, indices, builder.getContext());
+          mlir::TFL::DimensionTypeAttr::get(builder.getContext(),
+                                            tfl::DimensionType::SPARSE_CSR),
+          builder.getI32IntegerAttr(0), segments, indices,
+          builder.getContext());
     } else {
       return errors::Unimplemented("Unsupported dimension metadata type");
     }
@@ -623,8 +616,8 @@ static StatusOr<Operation*> BuildSparseConstOp(
   std::vector<char> dense_buffer(
       value_type.getElementType().getIntOrFloatBitWidth() / CHAR_BIT);
   mlir::Attribute dummy_value =
-      mlir::DenseIntOrFPElementsAttr::getFromRawBuffer(value_type, dense_buffer,
-                                                       /*isSplatBuffer=*/true);
+      mlir::DenseIntOrFPElementsAttr::getFromRawBuffer(value_type,
+                                                       dense_buffer);
 
   if (IsQuantized(tensor)) {
     return builder
@@ -642,7 +635,6 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
                                   bool is_variable, OpBuilder builder,
                                   Location loc) {
   TF_ASSIGN_OR_RETURN(auto type, GetTensorType(tensor, builder,
-                                               /*shapeless_are_scalars=*/true,
                                                /*is_constant=*/true));
   auto shaped_type = type.dyn_cast<mlir::RankedTensorType>();
   if (!shaped_type) {
@@ -778,7 +770,7 @@ Status AddOpIntermediatesForLstm(
       op_state.addAttribute(named_attr.getName(), named_attr.getValue());
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // TODO(krzysd) Handle function calls
@@ -921,7 +913,7 @@ StatusOr<Operation*> ConvertOp(
                                                          func_names, builder));
   op_state.addAttributes(function_ref_attrs);
 
-  return builder.createOperation(op_state);
+  return builder.create(op_state);
 }
 
 // Returns indices of the given tensors in the subgraph. Returns error if a
@@ -1069,11 +1061,14 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
 }
 
 // Helper method that returns the index of the tensor with name 'tensor_name'
-// in the list of tensor names 'tensors'.
+// in the list of tensor names 'tensors'. It allows excluding some indices.
 int GetTensorIndex(const std::string& tensor_name,
-                   llvm::SmallVector<llvm::StringRef, 2> tensors) {
+                   llvm::SmallVector<llvm::StringRef, 2> tensors,
+                   const std::set<int>& exclude_indices = {}) {
   for (const auto& tensor_index_pair : llvm::enumerate(tensors)) {
-    if (tensor_index_pair.value() == tensor_name)
+    if (tensor_index_pair.value() == tensor_name &&
+        exclude_indices.find(tensor_index_pair.index()) ==
+            exclude_indices.end())
       return tensor_index_pair.index();
   }
   return -1;
@@ -1122,9 +1117,13 @@ void SetSignature(
         mlir::ArrayAttr::get(context, {mlir::StringAttr::get(
                                           context, input_pair.value()->name)}));
   }
+  // Multiple signature outputs can refer to the same tensor. Avoid setting
+  // signature output attribute at the same index by maintaining a set.
+  std::set<int> seen_indices;
   for (auto output_pair : llvm::enumerate(signature->outputs)) {
-    const int arg_index = GetTensorIndex(
-        tensors[output_pair.value()->tensor_index]->name, output_names);
+    const int arg_index =
+        GetTensorIndex(tensors[output_pair.value()->tensor_index]->name,
+                       output_names, seen_indices);
     if (arg_index == -1) {
       func->emitWarning("Invalid signature tensors specified.");
       return;
@@ -1133,6 +1132,7 @@ void SetSignature(
                        mlir::ArrayAttr::get(
                            context, {mlir::StringAttr::get(
                                         context, output_pair.value()->name)}));
+    seen_indices.insert(arg_index);
   }
   func->setAttr(
       kExportedNameAttr,
@@ -1144,12 +1144,10 @@ void SetSignature(
 // The buffers are directly taken
 // from the deserialized flatbuffer as we do not have the type information to
 // interpret them until this point. The base_loc parameter is the location of
-// the flatbuffer as a whole (usually a file). The is_entry_point flag
-// controls whether shapeless types are treated as scalars. If
-// ordered_output_arrays is not empty, then the imported mlir function will only
-// return nodes in ordered_output_arrays in the same order.
-// If signature is not null, then the inputs/outputs in signature will be
-// attached to the FuncOp.
+// the flatbuffer as a whole (usually a file). If ordered_output_arrays is not
+// empty, then the imported mlir function will only return nodes in
+// ordered_output_arrays in the same order. If signature is not null, then the
+// inputs/outputs in signature will be attached to the FuncOp.
 StatusOr<FuncOp> ConvertSubgraph(
     const tflite::SubGraphT& subgraph, llvm::StringRef name,
     const std::vector<std::unique_ptr<tflite::OperatorCodeT>>& op_codes,
@@ -1179,13 +1177,7 @@ StatusOr<FuncOp> ConvertSubgraph(
 
   for (int input : func_inputs) {
     auto& tensor = *subgraph.tensors.at(input);
-    // TODO(b/138222071) Graph inputs must have static shape per the exporter,
-    // but we cannot differentiate scalars from unranked tensors.
-    // Here we reverse the default assumption that shape = [] means unranked.
-    // when processing main()
-    auto type_or_err = GetTensorType(tensor, builder,
-                                     /*shapeless_are_scalars=*/is_entry_point,
-                                     /*is_constant=*/false);
+    auto type_or_err = GetTensorType(tensor, builder);
     if (!type_or_err.ok()) {
       emitError(func_loc, "error reading argument types")
           << type_or_err.status().ToString();
@@ -1212,16 +1204,9 @@ StatusOr<FuncOp> ConvertSubgraph(
     const bool is_func_input = std::find(func_inputs.begin(), func_inputs.end(),
                                          output) != func_inputs.end();
     bool is_constant = !is_op_output[output] && !is_func_input;
-    // There are 2 cases tensor is scalar when it doesn't have a shape in
-    // flatbuffer:
-    // 1. `is_constant` = true, means this tensor is created from a constant op.
-    // 2. `is_func_input` = true and `is_entry_point` = true, which means this
-    // tensor is function input and function input type is a scalar tensor.
-    const bool shapeless_is_scalar =
-        is_constant || (is_func_input && is_entry_point);
-    auto type_or_err = GetTensorType(*subgraph.tensors.at(output), builder,
-                                     shapeless_is_scalar,
-                                     /*is_constant=*/is_constant);
+
+    auto type_or_err =
+        GetTensorType(*subgraph.tensors.at(output), builder, is_constant);
     if (!type_or_err.ok()) {
       emitError(func_loc, "error reading return types")
           << type_or_err.status().ToString();
@@ -1332,10 +1317,9 @@ StatusOr<FuncOp> ConvertSubgraph(
     intermediate_types.reserve(5);
     for (auto intermediate : op->intermediates) {
       TF_ASSIGN_OR_RETURN(
-          auto type, GetTensorType(*subgraph.tensors[intermediate], builder,
-                                   /*shapeless_are_scalars=*/true,
-                                   /*is_constant=*/false,
-                                   /*is_intermediate=*/true));
+          auto type,
+          GetTensorType(*subgraph.tensors[intermediate], builder,
+                        /*is_constant=*/false, /*is_intermediate=*/true));
       intermediate_types.emplace_back(type);
     }
 
@@ -1385,7 +1369,7 @@ StatusOr<FuncOp> ConvertSubgraph(
     return_operands.push_back(vals_map[index]);
   }
 
-  op_builder.create<mlir::ReturnOp>(base_loc, return_operands);
+  op_builder.create<mlir::func::ReturnOp>(base_loc, return_operands);
 
   return PostProcessFuncOp(func);
 }
@@ -1407,15 +1391,16 @@ std::string SubgraphName(bool set_implicit_main_func, unsigned index,
 
 // Adds a CallOp in `region` to call the `func` and returns the results of
 // CallOp.
-void AddCallOpInWhileOpRegion(mlir::Region& region, mlir::FuncOp func) {
+void AddCallOpInWhileOpRegion(mlir::Region& region, mlir::func::FuncOp func) {
   OpBuilder op_builder{region};
   region.push_back(new mlir::Block());
   Location loc = region.getLoc();
-  auto inputs = func.getType().getInputs();
+  auto inputs = func.getFunctionType().getInputs();
   region.addArguments(inputs, mlir::SmallVector<Location>(inputs.size(), loc));
   op_builder.setInsertionPointToStart(&region.front());
-  auto call_op = op_builder.create<mlir::CallOp>(
-      loc, func.getType().getResults(), func.sym_name(), region.getArguments());
+  auto call_op = op_builder.create<mlir::func::CallOp>(
+      loc, func.getFunctionType().getResults(), func.getSymName(),
+      region.getArguments());
   op_builder.create<mlir::TFL::YieldOp>(loc, call_op.getResults());
 }
 
@@ -1424,11 +1409,11 @@ void AddCallOpInWhileOpRegion(mlir::Region& region, mlir::FuncOp func) {
 void AddRegionsForTflWhileOp(mlir::ModuleOp module) {
   mlir::SymbolTable symbol_table(module);
   module.walk([&](mlir::TFL::WhileOp while_op) {
-    auto cond = symbol_table.lookup<mlir::FuncOp>(
+    auto cond = symbol_table.lookup<mlir::func::FuncOp>(
         while_op->getAttr("cond").cast<mlir::FlatSymbolRefAttr>().getValue());
     AddCallOpInWhileOpRegion(while_op.cond(), cond);
     while_op->removeAttr("cond");
-    auto body = symbol_table.lookup<mlir::FuncOp>(
+    auto body = symbol_table.lookup<mlir::func::FuncOp>(
         while_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
     AddCallOpInWhileOpRegion(while_op.body(), body);
     while_op->removeAttr("body");
@@ -1442,7 +1427,7 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
     const std::vector<std::string>& ordered_input_arrays,
     const std::vector<std::string>& ordered_output_arrays,
     bool experimental_prune_unreachable_nodes_unconditionally) {
-  context->loadDialect<mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect,
+  context->loadDialect<mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
                        mlir::quant::QuantizationDialect,
                        mlir::TFL::TensorFlowLiteDialect,
                        mlir::TF::TensorFlowDialect>();

@@ -34,7 +34,10 @@ cc_library(
     hdrs = ["coordination_service.h"],
     deps = [
         ":coordination_client",
-        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -47,13 +50,19 @@ tf_cuda_library(
     deps = [
         ":coordination_client",
         ":coordination_service",
+        ":coordination_service_error_util",
+        "//tensorflow/compiler/xla/pjrt/distributed:protocol_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/common_runtime:device_mgr",
+        "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
     ],
     alwayslink = 1,
 )
@@ -79,7 +88,9 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/distributed_runtime:test_utils",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -89,10 +100,13 @@ tf_cuda_library(
     hdrs = ["coordination_service_agent.h"],
     deps = [
         ":coordination_client",
+        ":coordination_service_error_util",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -110,6 +124,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/time",
     ],
@@ -122,12 +137,38 @@ cc_library(
         "coordination_service_rpc_handler.h",
     ],
     deps = [
+        ":coordination_service_error_util",
         ":coordination_service_agent",
+        "@com_google_absl//absl/time",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         ":coordination_service",
     ] + tf_grpc_cc_dependencies(),
+)
+
+cc_library(
+    name = "coordination_service_error_util",
+    hdrs = ["coordination_service_error_util.h"],
+    deps = [
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/protobuf:coordination_service_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "coordination_service_error_util_test",
+    srcs = ["coordination_service_error_util_test.cc"],
+    deps = [
+        ":coordination_service_error_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/protobuf:coordination_service_proto_cc",
+    ],
 )
 
 filegroup(
@@ -137,7 +178,7 @@ filegroup(
         "coordination_service.h",
     ],
     visibility = [
-        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/function:__pkg__",
         "//tensorflow/python:__subpackages__",
     ],
 )

@@ -23,7 +23,7 @@ PYTHON=python3 tensorflow/lite/tools/pip_package/build_pip_package_with_cmake.sh
 ```
 
 **Note:** If you have multiple Python interpreters available, specify the exact
-Python version with `PYTHON` variable. (Currently, it supports Python 3.5 or
+Python version with `PYTHON` variable. (Currently, it supports Python 3.7 or
 higher)
 
 ## ARM cross compilation
@@ -32,26 +32,16 @@ For ARM cross compilation, it's recommended to use Docker since it makes easier
 to setup cross build environment. Also you needs a `target` option to figure out
 the target architecture.
 
-There is a helper script `tensorflow/tools/ci_build/ci_build.sh` available to
-invoke a build command using a pre-defined Docker container. On a Docker host
-machine, you can run a build command with the `container` name and the `target`
-name as followings.
+There is a helper tool in Makefile `tensorflow/lite/tools/pip_package/Makefile`
+available to invoke a build command using a pre-defined Docker container. On a
+Docker host machine, you can run a build command as followings.
 
 ```sh
-tensorflow/tools/ci_build/ci_build.sh <container> \
-  tensorflow/lite/tools/pip_package/build_pip_package_with_cmake.sh <target>
+make -C tensorflow/lite/tools/pip_package docker-build \
+  TENSORFLOW_TARGET=<target> PYTHON_VERSION=<python3 version>
 ```
 
-### Available Docker containers
-
-You need to select ARM cross build container for your target Python interpreter
-version. Here is the list of supported containers.
-
-Container   | Supported Python version
------------ | ------------------------
-PI-PYTHON37 | Python 3.7
-PI-PYTHON38 | Python 3.8
-PI-PYTHON39 | Python 3.9
+**Note:** Python version 3.7 or higher is supported.
 
 ### Available target names
 
@@ -74,15 +64,15 @@ Here are some example commands you can use.
 #### armhf target for Python 3.7
 
 ```sh
-tensorflow/tools/ci_build/ci_build.sh PI-PYTHON37 \
-  tensorflow/lite/tools/pip_package/build_pip_package_with_cmake.sh armhf
+make -C tensorflow/lite/tools/pip_package docker-build \
+  TENSORFLOW_TARGET=armhf PYTHON_VERSION=3.7
 ```
 
 #### aarch64 target for Python 3.8
 
 ```sh
-tensorflow/tools/ci_build/ci_build.sh PI-PYTHON38 \
-  tensorflow/lite/tools/pip_package/build_pip_package_with_cmake.sh aarch64
+make -C tensorflow/lite/tools/pip_package docker-build \
+  TENSORFLOW_TARGET=aarch64 PYTHON_VERSION=3.8
 ```
 
 #### How to use a custom toolchain?

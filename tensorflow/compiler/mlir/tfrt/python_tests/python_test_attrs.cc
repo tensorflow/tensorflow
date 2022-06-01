@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/python_tests/python_test_attrs.h"
 
+#include <algorithm>
+
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -64,7 +66,18 @@ void PythonTestAttrsDialect::initialize() {}
              << " argument type attribute is a ranked tensor type with a "
                 "different rank than the rank of the argument tensor";
     }
-    if (attr_type.getElementType() != arg_type.getElementType()) {
+    auto compatible = [&](Type a, Type b) {
+      if (a == b) {
+        return true;
+      }
+      if (!a.isa<IntegerType>() || !b.isa<IntegerType>()) {
+        return false;
+      }
+      auto width_a = a.dyn_cast<IntegerType>().getWidth();
+      auto width_b = b.dyn_cast<IntegerType>().getWidth();
+      return width_a == width_b || std::max(width_a, width_b) == 8;
+    };
+    if (!compatible(attr_type.getElementType(), arg_type.getElementType())) {
       return op->emitError()
              << GetStaticTypeAttrName()
              << " argument type attribute is a ranked tensor type with a "

@@ -67,6 +67,13 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
     const Tensor& values = ctx->input(1);
     const Tensor& dense_shape = ctx->input(2);
     const int rank = dense_shape.NumElements();
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsVector(dense_shape.shape()),
+        errors::InvalidArgument("dense_shape must be rank 1 but got rank",
+                                dense_shape.shape().dims()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(indices.shape()),
+                errors::InvalidArgument("indices must be rank 2 but got rank",
+                                        indices.shape().dims()));
     OP_REQUIRES(ctx, rank == 2 || rank == 3,
                 errors::InvalidArgument("SparseTensor must have rank 2 or 3; ",
                                         "but indices has rank: ", rank));
@@ -290,7 +297,7 @@ class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
       convert_to_csr();
     } else {
       // Launch the GPU kernel to count nnz entries, then call convert_to_csr.
-      c->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+      c->device()->tensorflow_accelerator_device_info()->event_mgr->ThenExecute(
           stream, convert_to_csr);
     }
   }

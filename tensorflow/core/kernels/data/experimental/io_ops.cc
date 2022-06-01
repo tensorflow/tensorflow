@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/str_replace.h"
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/hash_utils.h"
@@ -680,9 +681,16 @@ class LoadDatasetOp::Dataset : public DatasetBase {
       auto run_dir = snapshot_util::RunDirectory(dataset()->path_,
                                                  dataset()->metadata_.run_id());
 
+      // Escape the run_dir in case it contains match characters that would be
+      // misinterpreted by GetMatchingPaths.
+      std::string escaped_run_dir =
+          absl::StrReplaceAll(run_dir, {{"[", "\\["},
+                                        {"]", "\\]"},
+                                        {"?", "\\?"},
+                                        {"*", "\\*"}});
       std::vector<std::string> snapshot_shard_dirs;
       TF_RETURN_IF_ERROR(ctx->env()->GetMatchingPaths(
-          io::JoinPath(run_dir,
+          io::JoinPath(escaped_run_dir,
                        strings::Printf("%s%s", "*",
                                        snapshot_util::kShardDirectorySuffix)),
           &snapshot_shard_dirs));
@@ -755,7 +763,7 @@ void LoadDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
                           ctx->env(), path, &metadata, &metadata_file_exists));
 
   OP_REQUIRES(ctx, metadata_file_exists,
-              errors::NotFound("Could not find metadata file."));
+              errors::NotFound("Could not find metadata file [", path, "]"));
 
   *output =
       new Dataset(ctx, path, std::move(metadata), compression_,

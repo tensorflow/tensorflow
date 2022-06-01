@@ -360,6 +360,8 @@ bool TfLiteDriver::DataExpectation::Check(bool verbose,
       return TypedCheck<uint8_t, float>(verbose, tensor);
     case kTfLiteInt8:
       return TypedCheck<int8_t, float>(verbose, tensor);
+    case kTfLiteUInt16:
+      return TypedCheck<uint16_t, float>(verbose, tensor);
     case kTfLiteInt16:
       return TypedCheck<int16_t, float>(verbose, tensor);
     case kTfLiteBool:
@@ -636,6 +638,12 @@ void TfLiteDriver::SetInput(const string& name, const string& csv_values) {
       SetTensorData(values, tensor->data.raw);
       break;
     }
+    case kTfLiteUInt16: {
+      const auto& values = testing::Split<uint16_t>(csv_values, ",");
+      if (!CheckSizes<uint16_t>(tensor->bytes, values.size())) return;
+      SetTensorData(values, tensor->data.raw);
+      break;
+    }
     case kTfLiteBool: {
       const auto& values = testing::Split<bool>(csv_values, ",");
       if (!CheckSizes<bool>(tensor->bytes, values.size())) return;
@@ -723,6 +731,9 @@ void TfLiteDriver::SetExpectation(const string& name,
     case kTfLiteInt8:
       expected_output_[id]->SetData<int8_t>(csv_values);
       break;
+    case kTfLiteUInt16:
+      expected_output_[id]->SetData<uint16_t>(csv_values);
+      break;
     case kTfLiteInt16:
       expected_output_[id]->SetData<int16_t>(csv_values);
       break;
@@ -785,6 +796,8 @@ string TfLiteDriver::TensorValueToCsvString(const TfLiteTensor* tensor) {
       return Join(tensor->data.uint8, num_elements, ",");
     case kTfLiteInt8:
       return Join(tensor->data.int8, num_elements, ",");
+    case kTfLiteUInt16:
+      return Join(tensor->data.ui16, num_elements, ",");
     case kTfLiteInt16:
       return Join(tensor->data.i16, num_elements, ",");
     case kTfLiteBool:

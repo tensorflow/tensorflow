@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "DecodeGif"
   input_arg {
     name: "contents"

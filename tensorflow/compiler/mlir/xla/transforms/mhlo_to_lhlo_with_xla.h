@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_MHLO_TO_LHLO_WITH_XLA_H_
 
 #include "absl/types/optional.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -180,7 +180,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   // Computation parameters don't need any specific handling when they are
   // visited, they are already processed when we enter a new computation.
   tensorflow::Status HandleParameter(const xla::HloInstruction* instr) final {
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Helper function that recursively visits the tuple structure in

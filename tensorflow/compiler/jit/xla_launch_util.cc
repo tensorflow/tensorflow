@@ -114,21 +114,24 @@ Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
     if (handle.device() != dev->attributes().name()) {
       std::string definition_location =
           DefinitionLocationMsg(handle.definition_stack_trace());
-      return errors::InvalidArgument("Trying to access resource ",
-                                     handle.name(), definition_location,
-                                     " located in device ", handle.device(),
-                                     " from device ", dev->attributes().name());
+      return errors::InvalidArgument(
+          "Trying to access resource ", handle.name(), definition_location,
+          " located in device ", handle.device(), " from device ",
+          dev->attributes().name(),
+          "\n Cf. "
+          "https://www.tensorflow.org/xla/"
+          "known_issues#tfvariable_on_a_different_device");
     }
     TF_RETURN_IF_ERROR(rm->LookupOrCreate<Var>(
         handle.container(), handle.name(), &variable, [](Var** ptr) {
           // This var is uninitialized for now.
           *ptr = new Var(DT_INVALID);
-          return Status::OK();
+          return OkStatus();
         }));
     result->emplace_back(var_idx, handle.name(), variable,
                          handle.definition_stack_trace());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 std::vector<const Tensor*> InputsFromContext(OpKernelContext* ctx) {
@@ -182,7 +185,7 @@ Status LockVariables(absl::Span<VariableInfo*> variables) {
     prev = mu;
   }
   VLOG(4) << "Finished acquiring variable locks.";
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LockVariables(absl::Span<VariableInfo> variables) {
@@ -203,7 +206,7 @@ Status SnapshotResourceVariables(OpKernelContext* ctx,
     (*result)[variable_indices[i]] =
         var ? absl::make_optional(*var->tensor()) : absl::nullopt;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 XlaComputationLaunchContext::XlaComputationLaunchContext(
@@ -412,7 +415,7 @@ static Status SetOutputForConstant(
     ctx->set_output(output_num, const_tensor);
     output_tensor = ctx->mutable_output(output_num);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 static StatusOr<Var*> GetOrCreateResourceVar(
@@ -422,7 +425,7 @@ static StatusOr<Var*> GetOrCreateResourceVar(
   TF_RETURN_IF_ERROR(
       LookupOrCreateResource<Var>(ctx, handle, &variable, [&write](Var** ptr) {
         *ptr = new Var(write.type);
-        return Status::OK();
+        return OkStatus();
       }));
   return variable;
 }
@@ -601,7 +604,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     *var->tensor() = output_tensor;
     ++output_num;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::vector<XlaCompiler::Argument>>
@@ -627,7 +630,7 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
   });
   if (device_context == nullptr) {
     using_default_context = true;
-    auto* dev_info = device->tensorflow_gpu_device_info();
+    auto* dev_info = device->tensorflow_accelerator_device_info();
     if (dev_info) device_context = dev_info->default_context;
   }
 

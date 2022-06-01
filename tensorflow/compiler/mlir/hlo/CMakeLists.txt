@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-cmake_minimum_required(VERSION 3.13.4)
+cmake_minimum_required(VERSION 3.15.0)
 
 if(POLICY CMP0068)
   cmake_policy(SET CMP0068 NEW)
@@ -52,7 +52,7 @@ else()
   # Building standalone.
   project(mlir-hlo LANGUAGES CXX C)
   set(CMAKE_C_STANDARD 11)
-  set(CMAKE_CXX_STANDARD 14)
+  set(CMAKE_CXX_STANDARD 17)
   list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 endif()
 
@@ -155,6 +155,7 @@ add_custom_target(check-mlir-hlo)
 add_subdirectory(include/mlir-hlo)
 add_subdirectory(lib)
 add_subdirectory(tools)
+add_subdirectory(tosa)
 add_subdirectory(tests)
 
 if(MHLO_ENABLE_BINDINGS_PYTHON)

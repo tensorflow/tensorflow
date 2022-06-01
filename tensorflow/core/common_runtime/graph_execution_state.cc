@@ -125,7 +125,7 @@ GraphExecutionState::~GraphExecutionState() {
     TF_RETURN_IF_ERROR(ret->InitBaseGraph(std::move(base_graph)));
     *out_state = std::move(ret);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ Status GraphExecutionState::MakeForPrunedGraph(
@@ -175,7 +175,7 @@ GraphExecutionState::~GraphExecutionState() {
   TF_RETURN_IF_ERROR(ret->InitBaseGraph(std::move(base_graph)));
   TF_RETURN_IF_ERROR(ret->BuildGraph(subgraph_options, out_client_graph));
   *out_state = std::move(ret);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GraphExecutionState::Extend(
@@ -282,7 +282,7 @@ Status GraphExecutionState::Extend(
   // NOTE(mrry): Extend() is likely to be used for non-throughput-sensitive
   // interactive workloads, but in future we may want to transfer other
   // parts of the placement and/or cost model.
-  return Status::OK();
+  return OkStatus();
 }
 
 void GraphExecutionState::SaveStatefulNodes(Graph* graph) {
@@ -341,7 +341,7 @@ class TensorConnectionPruneRewrite : public subgraph::PruneRewrite {
 
     (*out_node)->set_assigned_device_name(
         feed_tensor.node->assigned_device_name());
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -355,12 +355,12 @@ Status LookupDevice(const DeviceSet& device_set, const string& tensor_name,
   *out_device_attrs = nullptr;
   if (tensor2device.empty()) {
     *out_device_attrs = &device_set.client_device()->attributes();
-    return Status::OK();
+    return OkStatus();
   }
   const auto it = tensor2device.find(tensor_name);
   if (it == tensor2device.end()) {
     *out_device_attrs = &device_set.client_device()->attributes();
-    return Status::OK();
+    return OkStatus();
   }
   DeviceNameUtils::ParsedName parsed_name;
   if (!DeviceNameUtils::ParseFullName(it->second, &parsed_name)) {
@@ -376,7 +376,7 @@ Status LookupDevice(const DeviceSet& device_set, const string& tensor_name,
                                    "' in CallableOptions does not exist");
   }
   *out_device_attrs = &device->attributes();
-  return Status::OK();
+  return OkStatus();
 }
 
 struct TensorAndDevice {
@@ -428,7 +428,7 @@ bool IsFeedAndFetchSupported(DataType dtype, const string& device_type) {
 Status ValidateFeedAndFetchDevices(
     const Graph& graph,
     const std::vector<TensorAndDevice>& tensors_and_devices) {
-  if (tensors_and_devices.empty()) return Status::OK();
+  if (tensors_and_devices.empty()) return OkStatus();
   std::vector<bool> found(tensors_and_devices.size(), false);
   for (const Node* node : graph.nodes()) {
     // Linearly looping through all nodes and then all feed+fetch tensors isn't
@@ -460,7 +460,7 @@ Status ValidateFeedAndFetchDevices(
           "in the Graph");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetFeedShapeAndTypeFromAttribute(const NodeDef& node,
@@ -495,7 +495,7 @@ Status GetFeedShapeAndTypeFromAttribute(const NodeDef& node,
     return errors::InvalidArgument("Could not determine shape for feed node: ",
                                    node.name(), " of type ", node.op());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -603,7 +603,7 @@ Status GraphExecutionState::PruneGraph(
   for (int i = 0; i < options.callable_options.tensor_connection_size(); ++i) {
     out_rewrite_metadata->feed_types.pop_back();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GraphExecutionState::InitBaseGraph(std::unique_ptr<Graph>&& new_graph) {
@@ -639,7 +639,7 @@ Status GraphExecutionState::InitBaseGraph(std::unique_ptr<Graph>&& new_graph) {
 
   SaveStatefulNodes(new_graph.get());
   graph_ = new_graph.release();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GraphExecutionState::OptimizeGraph(
@@ -842,7 +842,7 @@ Status GraphExecutionState::OptimizeGraph(
     for (Node* node : optimized_graph->get()->nodes()) {
       node->set_assigned_device_name(node->requested_device());
     }
-    return Status::OK();
+    return OkStatus();
   } else {
     return errors::InvalidArgument("Meta Optimizer disabled");
   }
@@ -967,7 +967,7 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   // TODO(vrv): We should check invariants of the graph here.
   metrics::UpdateGraphBuildTime(Env::Default()->NowMicros() - start_time_usecs);
   *out = std::move(dense_copy);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

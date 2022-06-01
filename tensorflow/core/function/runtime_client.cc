@@ -22,17 +22,24 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
-#include "tensorflow/core/ir/importexport/export.h"
+#include "tensorflow/core/ir/importexport/graphdef_export.h"
+#include "tensorflow/core/ir/importexport/graphdef_import.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
@@ -67,6 +74,12 @@ EagerContext& GlobalEagerContext() {
   return *global_ctx;
 }
 
+EagerContext& GlobalPythonEagerContext() {
+  EagerContext* ctx = reinterpret_cast<EagerContext*>(GetCEagerContext());
+  DCHECK(ctx) << "The Python eager context must be initialized first.";
+  return *ctx;
+}
+
 StatusOr<FunctionDef> Runtime::GetFunctionProto(StringPiece name) {
   EagerContext& ctx = this->eager_ctx_;
 
@@ -80,11 +93,62 @@ StatusOr<FunctionDef> Runtime::GetFunctionProto(StringPiece name) {
 }
 
 Status Runtime::CreateFunction(const FunctionDef& fdef) {
-  return this->eager_ctx_.FuncLibDef()->AddFunctionDef(fdef);
+  const auto& fname = fdef.signature().name();
+  if (this->eager_ctx_.FindFunctionByName(fname)) {
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(this->eager_ctx_.RemoveFunction(fname),
+                                    "removing function ", fname);
+  }
+  return this->eager_ctx_.AddFunctionDef(fdef);
 }
 
-Status Runtime::CreateFunction(mlir::tfg::GraphFuncOp fop) {
-  return mlir::tfg::ExportFunction(fop, *this->eager_ctx_.FuncLibDef());
+Status Runtime::CreateFunction(OpaqueTfgGraphFuncOp* fop) {
+  mlir::tfg::GraphFuncOp fop_proper =
+      *reinterpret_cast<mlir::tfg::GraphFuncOp*>(fop);
+  return mlir::tfg::ConvertToFunctionDef(fop_proper,
+                                         *this->eager_ctx_.FuncLibDef());
+}
+
+Status Runtime::TransformFunction(StringPiece name, StringPiece pipeline_name) {
+  // TODO(mdan): Use a longer-lived context.
+  mlir::MLIRContext ctx;
+  mlir::PassManager pm(&ctx);
+
+  std::string error;
+  llvm::raw_string_ostream error_stream(error);
+  // StringPiece doesn't seem to always be compatible with StringRef.
+  if (mlir::failed(mlir::parsePassPipeline(std::string(pipeline_name), pm,
+                                           error_stream))) {
+    return Status(error::INVALID_ARGUMENT,
+                  absl::StrCat("locating pass pipeline ", pipeline_name, ": ",
+                               error_stream.str()));
+  }
+
+  // For now, we roundtrip from proto. Once we have a permanent MLIR
+  // representation, we should be able to use it directly.
+  auto fn = GetFunctionProto(name);
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(fn.status(), "loading function ", name);
+
+  GraphDef graph;
+  *graph.mutable_library()->add_function() = *fn;
+  tensorflow::GraphDebugInfo debug_info;
+  auto mlir_fn = mlir::tfg::ImportGraphDef(&ctx, debug_info, graph);
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(mlir_fn.status(), "importing function ",
+                                  name);
+
+  mlir::StatusScopedDiagnosticHandler diagnostics_handler(&ctx);
+  if (failed(pm.run(mlir_fn->get()))) {
+    return diagnostics_handler.Combine(
+        Status(error::INVALID_ARGUMENT,
+               absl::StrCat("running pass pipeline ", pipeline_name, ": ")));
+  }
+
+  for (auto fn : mlir_fn->get().getBody()->getOps<mlir::tfg::GraphFuncOp>()) {
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        CreateFunction(reinterpret_cast<OpaqueTfgGraphFuncOp*>(&fn)),
+        absl::StrCat("updating function ", fn.getName().str()));
+  }
+
+  return Status::OK();
 }
 
 StatusOr<ReturnValues> Runtime::CallFunction(

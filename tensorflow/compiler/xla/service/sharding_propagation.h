@@ -25,6 +25,16 @@ limitations under the License.
 
 namespace xla {
 
+// Remove Sharding custom-call instruction by folding the sharding attribute
+// to its operand. If the operand already has a different sharding, insert a
+// copy node for reshard.
+// partially_specified will be populated with the converted copies if the custom
+// call is partially specified.
+StatusOr<bool> ProcessShardingInstruction(
+    HloModule* module, bool replace_sharding_with_copy,
+    absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>*
+        unspecified_dims);
+
 // Propagates sharding information around the graph. HLOs that have shardings
 // are kept as-is, those that do not have shardings are given shardings based on
 // a simple local greedy heuristic.
@@ -34,11 +44,13 @@ class ShardingPropagation : public HloModulePass {
       absl::flat_hash_map<const HloComputation*, HloInstruction*>;
   explicit ShardingPropagation(
       bool is_spmd = false, bool propagate_metadata = false,
-      bool allow_spmd_sharding_propagation_to_output = false)
+      bool allow_spmd_sharding_propagation_to_output = false,
+      bool cse_prevention_only = false)
       : is_spmd_(is_spmd),
         propagate_metadata_(propagate_metadata),
         allow_spmd_sharding_propagation_to_output_(
-            allow_spmd_sharding_propagation_to_output) {}
+            allow_spmd_sharding_propagation_to_output),
+        cse_prevention_only_(cse_prevention_only) {}
   absl::string_view name() const override { return "sharding-propagation"; }
   StatusOr<bool> Run(HloModule* module) override;
 
@@ -60,6 +72,10 @@ class ShardingPropagation : public HloModulePass {
   bool is_spmd_;
   bool propagate_metadata_;
   bool allow_spmd_sharding_propagation_to_output_;
+  // If true, the pass keeps the propagation results only on selected
+  // instructions to prevent CSE across unrelated subgraphs. (A common case is
+  // scalar broadcasts).
+  bool cse_prevention_only_;
 };
 
 }  // namespace xla

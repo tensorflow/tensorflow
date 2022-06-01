@@ -169,7 +169,7 @@ class ValidateFieldPyTypeTest(test_util.TensorFlowTestCase,
            error="Mapping had a key 'Tensor' with type 'type'"),
       dict(
           tp=typing.Mapping[tensor_shape.TensorShape, int],
-          error="Mapping had a key 'TensorShape' with type 'type'"),
+          error="Mapping had a key 'TensorShape' with type 'ABCMeta'"),
   ])
   def testInvalidPytype(self, tp, error):
     with self.assertRaisesRegex(TypeError, error):

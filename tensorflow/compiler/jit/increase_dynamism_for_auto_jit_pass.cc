@@ -184,7 +184,7 @@ Status ComputeSliceSize(const Scope& host_scope,
   if (absl::c_all_of(slice_inputs.size_as_vector,
                      [](int64_t i) { return i >= 0; })) {
     *size = slice_inputs.size;
-    return Status::OK();
+    return OkStatus();
   }
 
   Output input_shape =
@@ -227,7 +227,7 @@ Status ComputeSliceSize(const Scope& host_scope,
     *size = ops::Concat(host_scope.WithOpName("slice_size"), slice_size,
                         concat_axis);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Terminology: "static sized" slice is a slice with the
@@ -310,7 +310,7 @@ Status RewriteSlice(Graph* g, Node* slice, const SliceInputs& slice_inputs,
   TF_RETURN_IF_ERROR(ConvertTensorFlowSliceToStaticShapedSlice(
       g, slice, slice_inputs, cluster_name, &static_shaped_slice));
   ReplaceTensorFlowSliceWithStaticShapedSlice(g, slice, static_shaped_slice);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Return true if `n` is a slice we should rewrite to have a static shape
@@ -368,7 +368,7 @@ Status FindAndRewriteSlices(Graph* g, bool* changed) {
 
   *changed = !slices_to_rewrite.empty();
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -387,7 +387,7 @@ Status IncreaseDynamismForAutoJitPass::Run(
                     options.flib_def);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

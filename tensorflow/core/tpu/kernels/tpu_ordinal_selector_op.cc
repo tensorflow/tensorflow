@@ -36,7 +36,7 @@ class TPUOrdinalSelectorOp : public OpKernel {
     Tensor output(DT_INT32, TensorShape({}));
     output.flat<int>().setValues({tpu::kDeferredCoreSelectionReserved});
     ctx->set_output(0, output);
-    ctx->SetStatus(Status::OK());
+    ctx->SetStatus(OkStatus());
   }
 
   bool IsExpensive() override { return false; }

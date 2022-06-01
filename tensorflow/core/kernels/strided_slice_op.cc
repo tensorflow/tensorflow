@@ -431,6 +431,7 @@ class StridedSliceAssignOp : public OpKernel {
                           StridedSliceAssignOp<CPUDevice, type, true>)
 
 TF_CALL_ALL_TYPES(REGISTER_STRIDED_SLICE);
+TF_CALL_QUANTIZED_TYPES(REGISTER_STRIDED_SLICE);
 
 #undef REGISTER_STRIDED_SLICE
 
@@ -509,7 +510,8 @@ REGISTER_KERNEL_BUILDER(Name("StridedSliceAssign")
                             .HostMemory("ref")
                             .HostMemory("begin")
                             .HostMemory("end")
-                            .HostMemory("strides"),
+                            .HostMemory("strides")
+                            .HostMemory("value"),
                         StridedSliceAssignOp<CPUDevice, int32, false>);
 REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")
                             .Device(DEVICE_GPU)
@@ -517,7 +519,8 @@ REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")
                             .HostMemory("ref")
                             .HostMemory("begin")
                             .HostMemory("end")
-                            .HostMemory("strides"),
+                            .HostMemory("strides")
+                            .HostMemory("value"),
                         StridedSliceAssignOp<CPUDevice, int32, false>);
 REGISTER_KERNEL_BUILDER(Name("TensorStridedSliceUpdate")
                             .Device(DEVICE_GPU)
@@ -525,7 +528,9 @@ REGISTER_KERNEL_BUILDER(Name("TensorStridedSliceUpdate")
                             .HostMemory("input")
                             .HostMemory("begin")
                             .HostMemory("end")
-                            .HostMemory("strides"),
+                            .HostMemory("strides")
+                            .HostMemory("value")
+                            .HostMemory("output"),
                         StridedSliceAssignOp<CPUDevice, int32, true>);
 #undef REGISTER_GPU
 

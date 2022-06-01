@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/credentials_factory.h"
 
+#include <string>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 
@@ -50,7 +52,7 @@ Status CredentialsFactory::Get(absl::string_view protocol,
   auto it = credentials_factories().find(std::string(protocol));
   if (it != credentials_factories().end()) {
     *out = it->second;
-    return Status::OK();
+    return OkStatus();
   }
 
   std::vector<string> available_types;
@@ -70,7 +72,7 @@ Status CredentialsFactory::CreateServerCredentials(
   CredentialsFactory* factory;
   TF_RETURN_IF_ERROR(CredentialsFactory::Get(protocol, &factory));
   TF_RETURN_IF_ERROR(factory->CreateServerCredentials(out));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CredentialsFactory::CreateClientCredentials(
@@ -79,7 +81,7 @@ Status CredentialsFactory::CreateClientCredentials(
   CredentialsFactory* factory;
   TF_RETURN_IF_ERROR(CredentialsFactory::Get(protocol, &factory));
   TF_RETURN_IF_ERROR(factory->CreateClientCredentials(out));
-  return Status::OK();
+  return OkStatus();
 }
 
 bool CredentialsFactory::Exists(absl::string_view protocol) {
@@ -95,13 +97,13 @@ class InsecureCredentialsFactory : public CredentialsFactory {
   Status CreateServerCredentials(
       std::shared_ptr<::grpc::ServerCredentials>* out) override {
     *out = ::grpc::InsecureServerCredentials();
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CreateClientCredentials(
       std::shared_ptr<::grpc::ChannelCredentials>* out) override {
     *out = ::grpc::InsecureChannelCredentials();
-    return Status::OK();
+    return OkStatus();
   }
 };
 

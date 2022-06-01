@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -34,13 +34,13 @@ namespace TFL {
 namespace {
 
 template <int NInput, int NOutput>
-FuncOp createMaxUnpoolingFunc(
+func::FuncOp createMaxUnpoolingFunc(
     mlir::Builder* builder, const SmallVector<mlir::Type, NInput>& input_types,
     const SmallVector<mlir::Type, NOutput>& output_types) {
   auto func_type = builder->getFunctionType(input_types, output_types);
-  auto func =
-      FuncOp::create(mlir::NameLoc::get(builder->getStringAttr("fused_func")),
-                     "fused_func", func_type, {});
+  auto func = func::FuncOp::create(
+      mlir::NameLoc::get(builder->getStringAttr("fused_func")), "fused_func",
+      func_type, {});
 
   func.addEntryBlock();
   mlir::StringAttr attr_value = builder->getStringAttr("MaxUnpooling2D");
@@ -48,9 +48,9 @@ FuncOp createMaxUnpoolingFunc(
   return func;
 }
 
-FuncOp createMaxUnpoolingFunc(mlir::Builder* builder,
-                              const SmallVector<int64_t, 4>& input_shape,
-                              const SmallVector<int64_t, 4>& output_shape) {
+func::FuncOp createMaxUnpoolingFunc(
+    mlir::Builder* builder, const SmallVector<int64_t, 4>& input_shape,
+    const SmallVector<int64_t, 4>& output_shape) {
   auto input_type = RankedTensorType::get(input_shape, builder->getF32Type());
   auto indices_type = RankedTensorType::get(input_shape, builder->getI64Type());
   auto output_type = RankedTensorType::get(output_shape, builder->getF32Type());
@@ -107,7 +107,7 @@ class PerceptionUtilsTest : public ::testing::Test {
   void SetUp() override {
     context_ = std::make_unique<mlir::MLIRContext>();
     context_
-        ->loadDialect<mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect,
+        ->loadDialect<mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
                       mlir::TF::TensorFlowDialect, TensorFlowLiteDialect>();
     builder_ = std::unique_ptr<mlir::Builder>(new Builder(context_.get()));
 
@@ -125,7 +125,7 @@ class PerceptionUtilsTest : public ::testing::Test {
     builder_.reset();
   }
 
-  FuncOp fused_max_unpooling_func_;
+  func::FuncOp fused_max_unpooling_func_;
   mlir::TF::FuncAttr func_attr_;
   std::unique_ptr<mlir::MLIRContext> context_;
   std::unique_ptr<mlir::Builder> builder_;

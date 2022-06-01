@@ -129,7 +129,7 @@ class NnapiPlugin : public DelegatePluginInterface {
 
   std::string accelerator_, cache_dir_, model_token_;
   tflite::StatefulNnApiDelegate::Options options_;
-  int64_t support_library_handle_;
+  int64_t support_library_handle_ = 0;
 };
 
 }  // namespace delegates

@@ -111,7 +111,7 @@ class ConvolutionVisitor {
   // Returns false if the opcode should definitely not be propagated upon.
   bool IsOpcodeNonPropagatable(HloInstruction* consumer);
 
-  // This function checks if the HLO instrution supports propagation.
+  // This function checks if the HLO instruction supports propagation.
   bool SupportedOpForPropagation(HloInstruction* consumer,
                                  HloInstruction* producer);
 
@@ -1115,25 +1115,28 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
 
     VLOG(1) << "Checking if conv is supported for propagation "
             << consumer->ToString();
+    bool found_good_non_window_dilated_conv = true;
     if (IsConvSuitableForSpaceToBatch(consumer)) {
       // Activations must have been space-to-batched to enable propagation.
       if (!old_to_new_instrs_.contains(consumer->mutable_operand(0))) {
-        return false;
+        found_good_non_window_dilated_conv = false;
       }
       auto dim_map_val_op_0 = instr_to_dim_map_[consumer->mutable_operand(0)];
 
       if (!are_conv_dims_compatible(consumer->convolution_dimension_numbers(),
                                     dim_map_val_op_0, /*check_lhs*/ true)) {
-        return false;
+        found_good_non_window_dilated_conv = false;
       }
       // Make sure that the batch dimension is the same across the producer
       // and consumer.
       if (consumer->convolution_dimension_numbers().input_batch_dimension() !=
           dim_map_val_op_0[DimMapper(SpaceToBatchDimMap::kBatch)]) {
-        return false;
+        found_good_non_window_dilated_conv = false;
       }
 
-      return true;
+      if (found_good_non_window_dilated_conv) {
+        return true;
+      }
     }
 
     if (!ctrl_.enable_propagations_on_window_dilations) {
@@ -1650,7 +1653,7 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
               << window.dimensions().size();
       return false;
     }
-    // Disallow windowing on on the batch dim
+    // Disallow windowing on the batch dim
     auto result = instr_to_dim_map_[first_operand];
     const int64_t old_batch_dim = result[DimMapper(SpaceToBatchDimMap::kBatch)];
     const int64_t old_space_dim =

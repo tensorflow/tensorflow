@@ -306,7 +306,7 @@ def TFR_ConstantTensorOp : TFR_Op<"constant_tensor", [NoSideEffect]> {
 
   let hasCanonicalizer = 1;
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 def TFR_GetElementOp : TFR_Op<"get_element", [NoSideEffect]> {
@@ -417,7 +417,7 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
   }];
 
   let arguments = (ins
-    TypeAttr:$type,
+    TypeAttrOf<FunctionType>:$function_type,
     StrAttr:$sym_name
   );
 
@@ -438,16 +438,16 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
   let extraClassDeclaration = [{
     /// Returns the type of this function.
     /// FIXME: We should drive this via the ODS `type` param.
-    FunctionType getType() {
-      return getTypeAttr().getValue().cast<FunctionType>();
+    FunctionType getFunctionType() {
+      return getFunctionTypeAttr().getValue().cast<FunctionType>();
     }
     LogicalResult verifyType() { return success(); }
 
     /// Returns the argument types of this function.
-    ArrayRef<Type> getArgumentTypes() { return getType().getInputs(); }
+    ArrayRef<Type> getArgumentTypes() { return getFunctionType().getInputs(); }
 
     /// Returns the result types of this function.
-    ArrayRef<Type> getResultTypes() { return getType().getResults(); }
+    ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
 
     // Get the names of all defined attributes, including both derived and
     // non-derived ones.
@@ -456,7 +456,7 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
       for (auto& attr : (*this)->getAttrs()) {
         all_attrs.insert(attr.getName().strref());
       }
-      for (const auto& operand : llvm::enumerate(getType().getInputs())) {
+      for (const auto& operand : llvm::enumerate(getArgumentTypes())) {
         if (auto attr_name = getArgAttrOfType<StringAttr>(
             operand.index(), kAttrArgumentNameAttr)) {
           all_attrs.insert(attr_name.getValue());
@@ -466,9 +466,8 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
     }
   }];
 
-  let verifier = [{ return Verify(*this); }];
-  let parser = [{ return ParseFuncOp(parser, &result); }];
-  let printer = [{ PrintFuncOp(p, *this); }];
+  let hasVerifier = 1;
+  let hasCustomAssemblyFormat = 1;
 }
 
 def TFR_TFRReturnOp : TFR_Op<"return", [HasParent<"TFRFuncOp">, NoSideEffect,
@@ -519,7 +518,7 @@ def TFR_TFRQuantActRangeOp : TFR_Op<"quant_act_range", [NoSideEffect]> {
 
 def TFR_TFRQuantRescaleOp : TFR_Op<"quant_rescale", [NoSideEffect]> {
   let description = [{
-   The `quant_rescale` rescales the elements of the integer tensor by the the
+   The `quant_rescale` rescales the elements of the integer tensor by the
    floating-point rescale factor. This op needs to be legalized to the preferred
    operations of the backends.
 

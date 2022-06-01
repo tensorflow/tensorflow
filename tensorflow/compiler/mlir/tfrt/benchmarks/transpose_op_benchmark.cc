@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 
 static const char* mlir_2d_input = R"(
-func @compute(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {{
+func.func @compute(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {{
     %0 = "tf.Const"()
          {{value = dense<[1, 0]> : tensor<2xi64>,
           device = "/job:localhost/replica:0/task:0/device:CPU:0"}
@@ -30,12 +30,12 @@ func @compute(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {{
     %1 = "tf.Transpose"(%arg0, %0)
          {{device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<?x?xf32>, tensor<2xi64>) -> tensor<?x?xf32>
-    return %1 : tensor<?x?xf32>
+    func.return %1 : tensor<?x?xf32>
   }
 )";
 
 static const char* mlir_3d_input = R"(
-func @compute(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {{
+func.func @compute(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {{
     %0 = "tf.Const"()
          {{value = dense<[{0}, {1}, {2}]> : tensor<3xi64>,
           device = "/job:localhost/replica:0/task:0/device:CPU:0"}
@@ -43,7 +43,7 @@ func @compute(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {{
     %1 = "tf.Transpose"(%arg0, %0)
          {{device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<?x?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
-    return %1 : tensor<?x?x?xf32>
+    func.return %1 : tensor<?x?x?xf32>
   }
 )";
 
@@ -122,46 +122,126 @@ BM(Tfrt(Transpose_small_1x2x0, Transpose3D({1, 2, 0}), "compute",
         Inputs({32, 32, 16})));
 BM(Eigen(Transpose_small_1x2x0, Shuffle<3>({1, 2, 0}), Inputs({32, 32, 16})));
 
-// 2D Transpose: [1, 0]
-BM(Jitrt(Transpose_1x0, Transpose2D(), "compute", Inputs({4096, 4096})));
-BM(JitrtV(Transpose_1x0, Transpose2D(), "compute", Inputs({4096, 4096})));
-BM(Tfrt(Transpose_1x0, Transpose2D(), "compute", Inputs({4096, 4096})));
-BM(Eigen(Transpose_1x0, Shuffle<2>({1, 0}), Inputs({4096, 4096})));
+// Small 3D Transpose: [1, 0, 2]
+BM(Jitrt(Transpose_small_1x0x2, Transpose3D({1, 0, 2}), "compute",
+         Inputs({32, 32, 16})));
+BM(JitrtV(Transpose_small_1x0x2, Transpose3D({1, 0, 2}), "compute",
+          Inputs({32, 32, 16})));
+BM(Tfrt(Transpose_small_1x0x2, Transpose3D({1, 0, 2}), "compute",
+        Inputs({32, 32, 16})));
+BM(Eigen(Transpose_small_1x0x2, Shuffle<3>({1, 0, 2}), Inputs({32, 32, 16})));
 
-// 3D Transpose: [0, 2, 1]
-BM(Jitrt(Transpose_0x2x1, Transpose3D({0, 2, 1}), "compute",
-         Inputs({256, 256, 256})));
-BM(JitrtV(Transpose_0x2x1, Transpose3D({0, 2, 1}), "compute",
-          Inputs({256, 256, 256})));
-BM(Tfrt(Transpose_0x2x1, Transpose3D({0, 2, 1}), "compute",
-        Inputs({256, 256, 256})));
-BM(Eigen(Transpose_0x2x1, Shuffle<3>({0, 2, 1}), Inputs({256, 256, 256})));
+// Medium 2D Transpose: [1, 0]
+BM(Jitrt(Transpose_medium_1x0, Transpose2D(), "compute", Inputs({4096, 4096})));
+BM(JitrtV(Transpose_medium_1x0, Transpose2D(), "compute",
+          Inputs({4096, 4096})));
+BM(Tfrt(Transpose_medium_1x0, Transpose2D(), "compute", Inputs({4096, 4096})));
+BM(Eigen(Transpose_medium_1x0, Shuffle<2>({1, 0}), Inputs({4096, 4096})));
 
-// 3D Transpose: [2, 0, 1]
-BM(Jitrt(Transpose_2x0x1, Transpose3D({2, 0, 1}), "compute",
+// Medium 3D Transpose: [0, 2, 1]
+BM(Jitrt(Transpose_medium_0x2x1, Transpose3D({0, 2, 1}), "compute",
          Inputs({256, 256, 256})));
-BM(JitrtV(Transpose_2x0x1, Transpose3D({2, 0, 1}), "compute",
+BM(JitrtV(Transpose_medium_0x2x1, Transpose3D({0, 2, 1}), "compute",
           Inputs({256, 256, 256})));
-BM(Tfrt(Transpose_2x0x1, Transpose3D({2, 0, 1}), "compute",
+BM(Tfrt(Transpose_medium_0x2x1, Transpose3D({0, 2, 1}), "compute",
         Inputs({256, 256, 256})));
-BM(Eigen(Transpose_2x0x1, Shuffle<3>({2, 0, 1}), Inputs({256, 256, 256})));
+BM(Eigen(Transpose_medium_0x2x1, Shuffle<3>({0, 2, 1}),
+         Inputs({256, 256, 256})));
 
-// 3D Transpose: [2, 1, 0]
-BM(Jitrt(Transpose_2x1x0, Transpose3D({2, 1, 0}), "compute",
+// Medium 3D Transpose: [2, 0, 1]
+BM(Jitrt(Transpose_medium_2x0x1, Transpose3D({2, 0, 1}), "compute",
          Inputs({256, 256, 256})));
-BM(JitrtV(Transpose_2x1x0, Transpose3D({2, 1, 0}), "compute",
+BM(JitrtV(Transpose_medium_2x0x1, Transpose3D({2, 0, 1}), "compute",
           Inputs({256, 256, 256})));
-BM(Tfrt(Transpose_2x1x0, Transpose3D({2, 1, 0}), "compute",
+BM(Tfrt(Transpose_medium_2x0x1, Transpose3D({2, 0, 1}), "compute",
         Inputs({256, 256, 256})));
-BM(Eigen(Transpose_2x1x0, Shuffle<3>({2, 1, 0}), Inputs({256, 256, 256})));
+BM(Eigen(Transpose_medium_2x0x1, Shuffle<3>({2, 0, 1}),
+         Inputs({256, 256, 256})));
 
-// 3D Transpose: [1, 2, 0]
-BM(Jitrt(Transpose_1x2x0, Transpose3D({1, 2, 0}), "compute",
+// Medium 3D Transpose: [2, 1, 0]
+BM(Jitrt(Transpose_medium_2x1x0, Transpose3D({2, 1, 0}), "compute",
          Inputs({256, 256, 256})));
-BM(JitrtV(Transpose_1x2x0, Transpose3D({1, 2, 0}), "compute",
+BM(JitrtV(Transpose_medium_2x1x0, Transpose3D({2, 1, 0}), "compute",
           Inputs({256, 256, 256})));
-BM(Tfrt(Transpose_1x2x0, Transpose3D({1, 2, 0}), "compute",
+BM(Tfrt(Transpose_medium_2x1x0, Transpose3D({2, 1, 0}), "compute",
         Inputs({256, 256, 256})));
-BM(Eigen(Transpose_1x2x0, Shuffle<3>({1, 2, 0}), Inputs({256, 256, 256})));
+BM(Eigen(Transpose_medium_2x1x0, Shuffle<3>({2, 1, 0}),
+         Inputs({256, 256, 256})));
+
+// Medium 3D Transpose: [1, 2, 0]
+BM(Jitrt(Transpose_medium_1x2x0, Transpose3D({1, 2, 0}), "compute",
+         Inputs({256, 256, 256})));
+BM(JitrtV(Transpose_medium_1x2x0, Transpose3D({1, 2, 0}), "compute",
+          Inputs({256, 256, 256})));
+BM(Tfrt(Transpose_medium_1x2x0, Transpose3D({1, 2, 0}), "compute",
+        Inputs({256, 256, 256})));
+BM(Eigen(Transpose_medium_1x2x0, Shuffle<3>({1, 2, 0}),
+         Inputs({256, 256, 256})));
+
+// Medium 3D Transpose: [1, 0, 2]
+BM(Jitrt(Transpose_medium_1x0x2, Transpose3D({1, 0, 2}), "compute",
+         Inputs({256, 256, 256})));
+BM(JitrtV(Transpose_medium_1x0x2, Transpose3D({1, 0, 2}), "compute",
+          Inputs({256, 256, 256})));
+BM(Tfrt(Transpose_medium_1x0x2, Transpose3D({1, 0, 2}), "compute",
+        Inputs({256, 256, 256})));
+BM(Eigen(Transpose_medium_1x0x2, Shuffle<3>({1, 0, 2}),
+         Inputs({256, 256, 256})));
+
+// Large 2D Transpose: [1, 0]
+BM(Jitrt(Transpose_large_1x0, Transpose2D(), "compute", Inputs({8192, 8192})));
+BM(JitrtV(Transpose_large_1x0, Transpose2D(), "compute", Inputs({8192, 8192})));
+BM(Tfrt(Transpose_large_1x0, Transpose2D(), "compute", Inputs({8192, 8192})));
+BM(Eigen(Transpose_large_1x0, Shuffle<2>({1, 0}), Inputs({8192, 8192})));
+
+// Large 3D Transpose: [0, 2, 1]
+BM(Jitrt(Transpose_large_0x2x1, Transpose3D({0, 2, 1}), "compute",
+         Inputs({448, 448, 448})));
+BM(JitrtV(Transpose_large_0x2x1, Transpose3D({0, 2, 1}), "compute",
+          Inputs({448, 448, 448})));
+BM(Tfrt(Transpose_large_0x2x1, Transpose3D({0, 2, 1}), "compute",
+        Inputs({448, 448, 448})));
+BM(Eigen(Transpose_large_0x2x1, Shuffle<3>({0, 2, 1}),
+         Inputs({448, 448, 448})));
+
+// Large 3D Transpose: [2, 0, 1]
+BM(Jitrt(Transpose_large_2x0x1, Transpose3D({2, 0, 1}), "compute",
+         Inputs({448, 448, 448})));
+BM(JitrtV(Transpose_large_2x0x1, Transpose3D({2, 0, 1}), "compute",
+          Inputs({448, 448, 448})));
+BM(Tfrt(Transpose_large_2x0x1, Transpose3D({2, 0, 1}), "compute",
+        Inputs({448, 448, 448})));
+BM(Eigen(Transpose_large_2x0x1, Shuffle<3>({2, 0, 1}),
+         Inputs({448, 448, 448})));
+
+// Large 3D Transpose: [2, 1, 0]
+BM(Jitrt(Transpose_large_2x1x0, Transpose3D({2, 1, 0}), "compute",
+         Inputs({448, 448, 448})));
+BM(JitrtV(Transpose_large_2x1x0, Transpose3D({2, 1, 0}), "compute",
+          Inputs({448, 448, 448})));
+BM(Tfrt(Transpose_large_2x1x0, Transpose3D({2, 1, 0}), "compute",
+        Inputs({448, 448, 448})));
+BM(Eigen(Transpose_large_2x1x0, Shuffle<3>({2, 1, 0}),
+         Inputs({448, 448, 448})));
+
+// Large 3D Transpose: [1, 2, 0]
+BM(Jitrt(Transpose_large_1x2x0, Transpose3D({1, 2, 0}), "compute",
+         Inputs({448, 448, 448})));
+BM(JitrtV(Transpose_large_1x2x0, Transpose3D({1, 2, 0}), "compute",
+          Inputs({448, 448, 448})));
+BM(Tfrt(Transpose_large_1x2x0, Transpose3D({1, 2, 0}), "compute",
+        Inputs({448, 448, 448})));
+BM(Eigen(Transpose_large_1x2x0, Shuffle<3>({1, 2, 0}),
+         Inputs({448, 448, 448})));
+
+// Large 3D Transpose: [1, 0, 2]
+BM(Jitrt(Transpose_large_1x0x2, Transpose3D({1, 0, 2}), "compute",
+         Inputs({448, 448, 448})));
+BM(JitrtV(Transpose_large_1x0x2, Transpose3D({1, 0, 2}), "compute",
+          Inputs({448, 448, 448})));
+BM(Tfrt(Transpose_large_1x0x2, Transpose3D({1, 0, 2}), "compute",
+        Inputs({448, 448, 448})));
+BM(Eigen(Transpose_large_1x0x2, Shuffle<3>({1, 0, 2}),
+         Inputs({448, 448, 448})));
 
 }  // namespace tensorflow

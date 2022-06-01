@@ -57,7 +57,7 @@ class Cluster {
   // Returns OK iff there are no pending calls to the Run() method and all the
   // resources used by the cluster could be released. Returns an error
   // otherwise.
-  virtual Status Shutdown() { return Status::OK(); }
+  virtual Status Shutdown() { return OkStatus(); }
 
   // Whether soft placement is allowed. If allow_soft_placement is true,
   // an op will be placed on CPU if there's no GPU implementation for the OP

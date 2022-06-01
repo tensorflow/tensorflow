@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/metrics.h"
 
+#include <cstdint>
+#include <string>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
@@ -125,12 +128,12 @@ auto* tf_data_iterator_lifetime_counter = monitoring::Counter<0>::New(
     "The time (in microseconds) between a tf.data iterator receiving the first "
     "`GetNext()` request and responding to the last `GetNext()` request.");
 
-auto* tf_data_iterator_gap_usec_histogram = monitoring::Sampler<0>::New(
+auto* tf_data_iterator_gap_msec_histogram = monitoring::Sampler<0>::New(
     {"/tensorflow/data/iterator_gap",
-     "The time (in microseconds) between a tf.data iterator responding to a "
+     "The time (in milliseconds) between a tf.data iterator responding to a "
      "`GetNext()` request and receiving the next `GetNext()` request."},
-    // Buckets of 0.1ms, 0.2ms, 0.4ms, ..., 2s.
-    {monitoring::Buckets::Exponential(100, 2, 12)});
+    // Power of 1.5 with bucket count of 20 (from 1 msec to about 2.2 secs).
+    {monitoring::Buckets::Exponential(1, 1.5, 20)});
 
 auto* tf_data_optimization_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/optimization", "tf.data optimization", "name");
@@ -147,6 +150,18 @@ auto* tf_data_service_client_iterators_counter = monitoring::Counter<4>::New(
     "/tensorflow/data/service/client_iterators",
     "Number of tf.data service client iterators created.", "worker_uid",
     "deployment_mode", "processing_mode", "is_coordinated_read");
+
+auto* tf_data_service_multi_trainer_cache_queries_counter =
+    monitoring::Counter<1>::New(
+        "/tensorflow/data/service/multi_trainer_cache_queries",
+        "tf.data service multi-client cache queries counter. The result can be "
+        "hit or miss.",
+        "cache_hit");
+
+auto* tf_data_service_multi_trainer_cache_size_bytes =
+    monitoring::Gauge<int64_t, 0>::New(
+        "/tensorflow/data/service/multi_trainer_cache_size_bytes",
+        "tf.data service multi-client cache memory usage in bytes.");
 
 auto* tf_data_filename_counter = monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
@@ -243,6 +258,11 @@ auto* tpu_op_error_counter = monitoring::Counter<2>::New(
     "/tensorflow/tpu/op_error_count",
     "Count the tpu related errors by op and error_type.", "op", "error_type");
 
+auto* eager_client_error_counter = monitoring::Counter<2>::New(
+    "/tensorflow/core/eager_client_error_count",
+    "Count the errors in eager client as a central place.", "error_source",
+    "error_type");
+
 monitoring::Counter<2>* GetGraphOptimizationCounter() {
   static auto* graph_optimization_counter =
       monitoring::Counter<2>::New("/tensorflow/core/graph_optimization_usecs",
@@ -320,9 +340,9 @@ void RecordTFDataIteratorLifetime(uint64 duration_us) {
 }
 
 void RecordTFDataIteratorGap(uint64 duration_us) {
-  static auto* tf_data_iterator_gap_usec_histogram_cell =
-      tf_data_iterator_gap_usec_histogram->GetCell();
-  tf_data_iterator_gap_usec_histogram_cell->Add(duration_us);
+  static auto* tf_data_iterator_gap_msec_histogram_cell =
+      tf_data_iterator_gap_msec_histogram->GetCell();
+  tf_data_iterator_gap_msec_histogram_cell->Add(duration_us * 0.001);
 }
 
 void RecordTFDataOptimization(const string& name, int64_t num_changes) {
@@ -361,6 +381,17 @@ void RecordTFDataServiceClientIterators(
       ->GetCell(absl::StrCat(worker_uid), deployment_mode_str,
                 sharding_policy_str, coordinated_read_str)
       ->IncrementBy(1);
+}
+
+void RecordTFDataServiceMultiTrainerCacheQuery(bool cache_hit) {
+  std::string cache_hit_str = cache_hit ? "true" : "false";
+  tf_data_service_multi_trainer_cache_queries_counter->GetCell(cache_hit_str)
+      ->IncrementBy(1);
+}
+
+void RecordTFDataServiceMultiTrainerCacheSizeBytes(size_t bytes) {
+  tf_data_service_multi_trainer_cache_size_bytes->GetCell()->Set(
+      static_cast<int64_t>(bytes));
 }
 
 void RecordTFDataFilename(const string& name, const string& filename) {
@@ -508,8 +539,27 @@ void UpdateTfMlirGraphOptimizationPassStateCounter(
   metric->GetCell(pass_state, processing_state)->IncrementBy(1);
 }
 
+void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
+                                         const std::string& bridge_version,
+                                         bool fallback_enabled,
+                                         const std::string& result) {
+  static auto* metric = monitoring::Counter<4>::New(
+      "/tensorflow/core/tf_mlir_bridge_first_phase_count",
+      "Tracks processing state in first phase of mlir bridge", "device",
+      "version", "fallback", "result");
+  std::string fallback_status =
+      fallback_enabled ? "fallback_enabled" : "fallback_disabled";
+  metric->GetCell(device_type, bridge_version, fallback_status, result)
+      ->IncrementBy(1);
+}
+
 void UpdateTpuErrorCounter(const string& op, const string& error_type) {
   tpu_op_error_counter->GetCell(op, error_type)->IncrementBy(1);
+}
+
+void UpdateEagerClientErrorCounter(const string& error_source,
+                                   const string& error_type) {
+  eager_client_error_counter->GetCell(error_source, error_type)->IncrementBy(1);
 }
 
 }  // namespace metrics

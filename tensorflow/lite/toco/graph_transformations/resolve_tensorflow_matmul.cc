@@ -61,7 +61,7 @@ TransposeOperator* FindTransposeOpWithInput(const Model& model,
   *modified = false;
   auto matmul_it = model->operators.begin() + op_index;
   if (matmul_it->get()->type != OperatorType::kMatMul) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   const auto* matmul_op =
       static_cast<const TensorFlowMatMulOperator*>(matmul_it->get());
@@ -86,7 +86,7 @@ TransposeOperator* FindTransposeOpWithInput(const Model& model,
           "Not replacing %s by a FullyConnected operator, because it has "
           "the transpose_a attribute and LHS has no shape",
           LogName(*matmul_op));
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     }
 
     int dimensions_count = lhs_array.shape().dimensions_count();
@@ -227,7 +227,7 @@ TransposeOperator* FindTransposeOpWithInput(const Model& model,
   // erase the MatMul operator
   model->operators.erase(matmul_it);
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

@@ -91,6 +91,9 @@ class MetaOptimizer : public GraphOptimizer {
 
   // Run optimization pass over a single GrapplerItem. Meta optimizer might run
   // multiple such passes: 1) for the main graph 2) for the function library
+  Status OptimizeGraph(
+      const std::vector<std::unique_ptr<GraphOptimizer>>& optimizers,
+      Cluster* cluster, GrapplerItem&& item, GraphDef* optimized_graph);
   Status OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
                        GraphDef* optimized_graph);
 

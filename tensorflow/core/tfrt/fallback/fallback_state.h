@@ -51,6 +51,8 @@ class FallbackState {
 
   const DeviceMgr &device_manager() const { return device_manager_; }
 
+  const DeviceSet &device_set() const { return device_set_; }
+
   const ProcessFunctionLibraryRuntime &process_function_library_runtime()
       const {
     return pflr_;

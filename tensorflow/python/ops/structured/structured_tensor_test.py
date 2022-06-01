@@ -37,6 +37,7 @@ from tensorflow.python.ops.ragged import row_partition
 from tensorflow.python.ops.structured import structured_array_ops  # pylint: disable=unused-import
 
 from tensorflow.python.ops.structured import structured_tensor
+from tensorflow.python.ops.structured import structured_tensor_dynamic
 from tensorflow.python.ops.structured.structured_tensor import StructuredTensor
 from tensorflow.python.platform import googletest
 
@@ -1205,6 +1206,13 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     result = st.merge_dims(outer_axis, inner_axis)
     self.assertAllEqual(result, expected)
 
+  def testMergeDimsDetail_3D_0_1(self):
+    st = StructuredTensor.from_pyval(
+        [[[{"x": 1}, {"x": 2}], [{"x": 3}]], [[{"x": 4}]]])
+    result = st.merge_dims(0, 1)
+    expected_shape = tensor_shape.TensorShape([3, None])
+    self.assertTrue(expected_shape.is_compatible_with(result.shape))
+
   def testMergeDims_0_1(self):
     rt = ragged_tensor.RaggedTensor.from_value_rowids(
         array_ops.constant([[1, 2], [3, 4], [5, 6]]), [0, 0, 1])
@@ -1571,7 +1579,8 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
 
     # Invalid shape change.
     with self.assertRaisesRegex(
-        ValueError, r"\('c'.*incompatible with the shape that was specified"):
+        ValueError,
+        r"`StructuredTensor.with_updates` failed for field \('c',\)"):
       st_with_shape = StructuredTensor.from_pyval([[{
           "c": {
               "a": 5,
@@ -1659,19 +1668,19 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     spec = structured_tensor.StructuredTensorSpec([None], {})
     self.assertEqual(spec.shape.as_list(), [None])
 
-  def test_ragged_shape_init_vector(self):
+  def test_dynamic_ragged_shape_init_vector(self):
     x = constant_op.constant([1, 2, 3, 4])
     y = constant_op.constant([[1, 2], [3, 4], [5, 6], [7, 8]])
     fields = {"x": x, "y": y}
     nrows = constant_op.constant(4)
     shape = tensor_shape.TensorShape((4,))
     row_partitions = ()
-    rs = structured_tensor._ragged_shape_init(fields, shape, nrows,
-                                              row_partitions)
+    rs = structured_tensor_dynamic._dynamic_ragged_shape_init(
+        fields, shape, nrows, row_partitions)
     self.assertEqual(
         repr(rs._to_tensor_shape()), repr(tensor_shape.TensorShape((4,))))
 
-  def test_ragged_shape_init_scalar(self):
+  def test_dynamic_ragged_shape_init_scalar(self):
     x = constant_op.constant([1, 2, 3, 4])
     y = constant_op.constant([[1, 2], [3, 4], [5, 6], [7, 8]])
     fields = {"x": x, "y": y}
@@ -1679,19 +1688,19 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     shape = tensor_shape.TensorShape(())
     row_partitions = ()
 
-    rs = structured_tensor._ragged_shape_init(fields, shape, nrows,
-                                              row_partitions)
+    rs = structured_tensor_dynamic._dynamic_ragged_shape_init(
+        fields, shape, nrows, row_partitions)
     self.assertEqual(
         repr(rs._to_tensor_shape()), repr(tensor_shape.TensorShape(())))
 
-  def test_ragged_shape_init_ragged(self):
+  def test_dynamic_ragged_shape_init_ragged(self):
     x = ragged_factory_ops.constant_value([[1, 2, 3], [4]])
     fields = {"x": x}
     nrows = constant_op.constant(2, dtype=dtypes.int64)
     shape = tensor_shape.TensorShape([2, None])
     row_partitions = tuple(x._nested_row_partitions)
-    rs = structured_tensor._ragged_shape_init(fields, shape, nrows,
-                                              row_partitions)
+    rs = structured_tensor_dynamic._dynamic_ragged_shape_init(
+        fields, shape, nrows, row_partitions)
     self.assertEqual(
         repr(rs._to_tensor_shape()), repr(tensor_shape.TensorShape((2, None))))
 

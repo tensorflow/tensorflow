@@ -113,7 +113,7 @@ Status FindNodesToDecluster(const Graph& graph,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PartiallyDeclusterNode(Graph* graph, Node* n) {
@@ -156,7 +156,7 @@ Status PartiallyDeclusterNode(Graph* graph, Node* n) {
     graph->RemoveNode(n);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Clones nodes to outside their cluster to avoid device-to-host copies.  For
@@ -221,7 +221,7 @@ Status PartiallyDeclusterGraph(Graph* graph) {
       FindNodesToDecluster(*graph, &nodes_to_partially_decluster, post_order));
   CHECK(nodes_to_partially_decluster.empty());
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace reduce_device_to_host_copies
 
@@ -251,12 +251,12 @@ Status MustCompileNode(const Node* n, bool* must_compile) {
 
   if (IsMustCompileDevice(device_type)) {
     *must_compile = true;
-    return Status::OK();
+    return OkStatus();
   }
 
   // We must compile `n` if it does not have a TensorFlow kernel.
   *must_compile = !FindKernelDef(device_type, n->def(), nullptr, nullptr).ok();
-  return Status::OK();
+  return OkStatus();
 }
 
 // Declusters nodes to reduce the number of times we think we need to recompile
@@ -331,7 +331,7 @@ Status PartiallyDeclusterGraph(Graph* graph,
     // remove Input, OP, Shape and F from the cluster, if F is a many-to-one
     // function.
     //
-    // Note that we do do the right thing for graphs like:
+    // Note that we do the right thing for graphs like:
     //
     //   Input -> F0 -> F1 -> Reshape
     //
@@ -363,7 +363,7 @@ Status PartiallyDeclusterGraph(Graph* graph,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace reduce_recompilation
 
@@ -397,7 +397,7 @@ Status PartiallyDeclusterGraph(Graph* graph) {
             << " because it is a root shape consumer";
     RemoveFromXlaCluster(n);
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace decluster_root_shape_consumers
 }  // namespace
@@ -430,6 +430,6 @@ Status PartiallyDeclusterPass::Run(
   TF_RETURN_IF_ERROR(
       decluster_root_shape_consumers::PartiallyDeclusterGraph(graph));
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace tensorflow

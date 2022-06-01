@@ -51,6 +51,12 @@ std::string TpuDevice::DebugString() const {
                          coords_[0], coords_[1], coords_[2], core_on_chip_);
 }
 
+std::string TpuDevice::ToString() const {
+  return absl::StrFormat(
+      "TpuDevice(id=%i, process_index=%i, coords=(%s), core_on_chip=%i)", id(),
+      process_index(), absl::StrJoin(coords(), ","), core_on_chip());
+}
+
 xla::StatusOr<std::vector<std::shared_ptr<xla::PjRtDevice>>>
 TpuDevice::GetTpuDevices(const tpu_driver::SystemInfo& system_info) {
   std::vector<std::shared_ptr<PjRtDevice>> devices;
@@ -162,7 +168,7 @@ Status PyTpuClient::CheckDeviceId(int device_id,
     return InvalidArgument("%s got bad device_id: %d (num_devices=%d).",
                            caller_name, device_id, device_count());
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 static Status CheckDataType(xla::PrimitiveType dtype) {
@@ -172,7 +178,7 @@ static Status CheckDataType(xla::PrimitiveType dtype) {
         "64-bit data types are not yet supported on the TPU driver API. "
         "Convert inputs to float32/int32_t before using.");
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 /* static */
@@ -297,7 +303,7 @@ Status PyTpuBuffer::CopyToHostAsync() {
 
     if (host_value_) {
       // The host value has already been requested or is available.
-      return Status::OK();
+      return ::tensorflow::OkStatus();
     }
 
     host_value->value = std::make_shared<Literal>(on_host_shape_);
@@ -344,7 +350,7 @@ Status PyTpuBuffer::CopyToHostAsync() {
       }
     });
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<std::shared_ptr<Literal>> PyTpuBuffer::ToLiteral() {

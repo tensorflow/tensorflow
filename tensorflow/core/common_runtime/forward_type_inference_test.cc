@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/forward_type_inference.h"
 
 #include <functional>
+#include <string>
 
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/ops.h"
@@ -25,9 +26,11 @@ limitations under the License.
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -79,7 +82,7 @@ TEST(ForwardTypeInferenceTest, BasicStraightline) {
   for (const auto& node : graph->nodes()) {
     if ((node->name() == "ds") || ((node->name() == "id"))) {
       const auto& t = node->def().experimental_type();
-      EXPECT_EQ(t.type_id(), TFT_PRODUCT) << node->def().DebugString();
+      ASSERT_EQ(t.type_id(), TFT_PRODUCT) << node->def().DebugString();
       EXPECT_EQ(t.args(0).type_id(), TFT_DATASET) << node->def().DebugString();
     }
   }
@@ -168,45 +171,43 @@ REGISTER_OP("TestSourceOp").Output("o: variant");
 REGISTER_OP("TestTensorUnaryOp")
     .Input("i: variant")
     .Output("o: variant")
-    .SetForwardTypeFn(
-        [](const std::vector<std::reference_wrapper<const FullTypeDef>>&
-               input_types) {
-          FullTypeDef t;
-          t.set_type_id(TFT_PRODUCT);
-          t.add_args()->set_type_id(TFT_TENSOR);
-          return t;
-        });
+    .SetForwardTypeFn([](const TypeRefVector& input_types,
+                         const TypeRefMap& type_vars) {
+      FullTypeDef t;
+      t.set_type_id(TFT_PRODUCT);
+      t.add_args()->set_type_id(TFT_TENSOR);
+      return t;
+    });
 
 REGISTER_OP("TestArrayUnaryOp")
     .Input("i: variant")
     .Output("o: variant")
-    .SetForwardTypeFn(
-        [](const std::vector<std::reference_wrapper<const FullTypeDef>>&
-               input_types) {
-          FullTypeDef t;
-          t.set_type_id(TFT_PRODUCT);
-          t.add_args()->set_type_id(TFT_ARRAY);
-          return t;
-        });
+    .SetForwardTypeFn([](const TypeRefVector& input_types,
+                         const TypeRefMap& type_vars) {
+      FullTypeDef t;
+      t.set_type_id(TFT_PRODUCT);
+      t.add_args()->set_type_id(TFT_ARRAY);
+      return t;
+    });
 
 REGISTER_OP("TestMergeOp")
     .Input("i1: variant")
     .Input("i2: variant")
     .Output("o: variant")
-    .SetForwardTypeFn(
-        [](const std::vector<std::reference_wrapper<const FullTypeDef>>&
-               input_types) {
-          EXPECT_EQ(input_types.size(), 2);
-          FullTypeDef t;
-          t.set_type_id(TFT_PRODUCT);
-          if ((input_types[0].get().type_id() == TFT_TENSOR) &&
-              (input_types[1].get().type_id() == TFT_ARRAY)) {
-            t.add_args()->set_type_id(TFT_ARRAY);
-          } else {
-            t.add_args()->set_type_id(TFT_TENSOR);
-          }
-          return t;
-        });
+    .SetForwardTypeFn([](const TypeRefVector& input_types,
+                         const TypeRefMap& type_vars) {
+      EXPECT_EQ(input_types.size(), 2);
+      FullTypeDef t;
+      t.set_type_id(TFT_PRODUCT);
+      if ((input_types[0].get().type_id() == TFT_TENSOR) &&
+          (input_types[1].get().type_id() == TFT_ARRAY)) {
+        t.add_args()->set_type_id(TFT_ARRAY);
+      } else {
+        // Not setting to TFT_TENSOR to avoid type check errors.
+        t.add_args()->set_type_id(TFT_ANY);
+      }
+      return t;
+    });
 
 TEST(ForwardTypeInferenceTest, TernaryNodeWithIgnoredInputs) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
@@ -234,7 +235,7 @@ TEST(ForwardTypeInferenceTest, TernaryNodeWithIgnoredInputs) {
 
   // This node has an unbalanced path from s, and its type inference can produce
   // different results if the ancestors have incomplete type information.
-  // This test is designed that the more complete type inference still takes
+  // This test is designed so that the more complete type inference still takes
   // place, even though the node would be first visited with incomplete type
   // info under a naive BFS walk.
   Node* m;
@@ -309,7 +310,7 @@ TEST(ForwardTypeInferenceTest, BinaryNodeWithUnorderedInputs) {
     if (node->name() == "m") {
       const auto& t = node->def().experimental_type();
       ASSERT_EQ(t.type_id(), TFT_PRODUCT) << node->def().DebugString();
-      // We want complete type info (ARRAY), not incomplete one (TENSOR).
+      // We want complete type info (ARRAY), not incomplete one (ANY).
       EXPECT_EQ(t.args(0).type_id(), TFT_ARRAY) << node->def().DebugString();
     }
   }
@@ -427,6 +428,94 @@ TEST(WeakForwardTypeInferenceTest, AlwaysSucceeds) {
 
   TF_ASSERT_OK(pass.Run(opt_options));
 }
+
+TEST(ReverseTypeInferenceTest, BasicVDependency) {
+  // A "V" dependency is of the form B -> A, C -> A, where the type of B
+  // depends on the type of C, because they are both consumed by A. In this
+  // case, A has a reverse type inference function mapping input C to input B.
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  auto start = ops::Placeholder(root.WithOpName("start"), DT_INT64);
+  auto stop = ops::Placeholder(root.WithOpName("stop"), DT_INT64);
+  auto step = ops::Placeholder(root.WithOpName("step"), DT_INT64);
+
+  Node* ds;  // This node has a type constructor.
+  TensorShapeProto shape;
+  shape.mutable_dim();
+  shape.set_unknown_rank(false);
+  TF_ASSERT_OK(NodeBuilder("ds", "RangeDataset", &root.graph()->flib_def())
+                   .Input({NodeBuilder::NodeOut(start.node())})
+                   .Input({NodeBuilder::NodeOut(stop.node())})
+                   .Input({NodeBuilder::NodeOut(step.node())})
+                   .Attr("output_types", {DT_INT32})
+                   .Attr("output_shapes", {shape})
+                   .Finalize(root.graph(), &ds));
+
+  Node* it;  // This node has no type inference function (it has no inputs).
+  TF_ASSERT_OK(
+      NodeBuilder("it", "AnonymousIteratorV2", &root.graph()->flib_def())
+          .Attr("output_types", {DT_INT32})
+          .Attr("output_shapes", {shape})
+          .Finalize(root.graph(), &it));
+
+  // This node's reverse function propagates type information from "ds", into
+  // "it".
+  Node* it_ctor;
+  TF_ASSERT_OK(NodeBuilder("it_ctor", "MakeIterator", &root.graph()->flib_def())
+                   .Input({NodeBuilder::NodeOut(ds)})
+                   .Input({NodeBuilder::NodeOut(it)})
+                   .Finalize(root.graph(), &it_ctor));
+
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+  TF_ASSERT_OK(Rewrite(&graph));
+
+  for (const auto& node : graph->nodes()) {
+    if (node->name() == "it") {
+      const auto& t = node->def().experimental_type();
+      ASSERT_EQ(t.type_id(), TFT_PRODUCT) << node->def().DebugString();
+      EXPECT_EQ(t.args(0).type_id(), TFT_ITERATOR) << node->def().DebugString();
+    }
+  }
+}
+
+TEST(ReverseTypeInferenceTest, FromUnsetType) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  Node* s;
+  TF_ASSERT_OK(NodeBuilder("s", "TestSourceOp", &root.graph()->flib_def())
+                   .Finalize(root.graph(), &s));
+
+  Node* it;
+  TensorShapeProto shape;
+  shape.mutable_dim();
+  shape.set_unknown_rank(false);
+  TF_ASSERT_OK(
+      NodeBuilder("it", "AnonymousIteratorV2", &root.graph()->flib_def())
+          .Attr("output_types", {DT_INT32})
+          .Attr("output_shapes", {shape})
+          .Finalize(root.graph(), &it));
+
+  Node* it_ctor;
+  TF_ASSERT_OK(NodeBuilder("it_ctor", "MakeIterator", &root.graph()->flib_def())
+                   .Input({NodeBuilder::NodeOut(s)})
+                   .Input({NodeBuilder::NodeOut(it)})
+                   .Finalize(root.graph(), &it_ctor));
+
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+  TF_ASSERT_OK(Rewrite(&graph));
+
+  for (const auto& node : graph->nodes()) {
+    if (node->name() == "it") {
+      ASSERT_FALSE(node->def().has_experimental_type());
+    }
+  }
+}
+
+// TODO(mdan): Test that cycles with reverse inference do stop.
 
 }  // namespace
 }  // namespace tensorflow

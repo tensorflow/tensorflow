@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tools/run_hlo_module.pb.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
@@ -80,7 +79,8 @@ void WriteLiteralToTempFile(const LiteralSlice& literal,
 // miscomparison.
 void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
                   const LiteralSlice& mismatches,
-                  const ShapeIndex& /*shape_index*/) {
+                  const ShapeIndex& /*shape_index*/,
+                  const literal_comparison::ErrorBuckets& /*error_buckets*/) {
   LOG(INFO) << "expected: " << ShapeUtil::HumanString(expected.shape()) << " "
             << literal_comparison::ToStringTruncated(expected);
   LOG(INFO) << "actual:   " << ShapeUtil::HumanString(actual.shape()) << " "
@@ -129,7 +129,7 @@ Status RunAndCompare(
 
   if (options.flatten_control_flow) {
     HloControlFlowFlattening control_flow_flattening(
-        /*while_execution_count=*/1);
+        HloControlFlowFlattening::Options{/*while_execution_count=*/1});
     TF_RETURN_IF_ERROR(control_flow_flattening.Run(test_module.get()).status());
   }
 

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
@@ -28,6 +28,10 @@ namespace {
 class RemoveTfIfConstArgs
     : public mlir::PassWrapper<RemoveTfIfConstArgs,
                                mlir::OperationPass<mlir::ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RemoveTfIfConstArgs)
+
+ private:
   llvm::StringRef getArgument() const final {
     return "tfrt-remove-tf-if-const-args";
   }
@@ -38,12 +42,12 @@ class RemoveTfIfConstArgs
   void runOnOperation() override {
     auto module = getOperation();
     for (auto func_op :
-         llvm::make_early_inc_range(module.getOps<mlir::FuncOp>())) {
+         llvm::make_early_inc_range(module.getOps<mlir::func::FuncOp>())) {
       ProcessFunction(func_op);
     }
   }
 
-  void ProcessFunction(mlir::FuncOp op) {
+  void ProcessFunction(mlir::func::FuncOp op) {
     // Set the insertion point to the current function, as we will insert new
     // functions here.
     mlir::OpBuilder builder(op);
@@ -99,22 +103,22 @@ class RemoveTfIfConstArgs
   }
 
   llvm::StringRef CreateBranchFunction(
-      mlir::OpBuilder &builder, mlir::FuncOp branch,
+      mlir::OpBuilder &builder, mlir::func::FuncOp branch,
       absl::string_view branch_suffix,
       llvm::ArrayRef<mlir::TF::ConstOp> const_args,
       llvm::ArrayRef<unsigned> const_arg_indices) {
     // Get the new function type as const args are removed.
     llvm::BitVector const_arg_indices_bv(branch.getNumArguments());
     for (auto i : const_arg_indices) const_arg_indices_bv.set(i);
-    auto new_branch_type =
-        branch.getType().getWithoutArgsAndResults(const_arg_indices_bv, {});
+    auto new_branch_type = branch.getFunctionType().getWithoutArgsAndResults(
+        const_arg_indices_bv, {});
     std::string new_branch_name =
-        absl::StrCat(branch.sym_name().str(), branch_suffix);
+        absl::StrCat(branch.getSymName().str(), branch_suffix);
     // Create the wrapper function with the new arguments that calls the
     // original branch.
-    auto new_branch = builder.create<mlir::FuncOp>(
+    auto new_branch = builder.create<mlir::func::FuncOp>(
         branch.getLoc(), new_branch_name, new_branch_type);
-    new_branch.setVisibility(mlir::FuncOp::Visibility::Private);
+    new_branch.setVisibility(mlir::func::FuncOp::Visibility::Private);
 
     // In its function body, we will add the corresponding const ops and call
     // the original branch.
@@ -147,11 +151,11 @@ class RemoveTfIfConstArgs
     // Now create the call op to the original branch.
     auto call_op = builder.create<mlir::TF::StatefulPartitionedCallOp>(
         new_branch.getLoc(), new_branch_type.getResults(), call_args,
-        branch.sym_name(), "", "", "");
+        branch.getSymName(), "", "", "");
     // Note that the outputs are not changed.
-    builder.create<mlir::ReturnOp>(new_branch.getLoc(), call_op.output());
+    builder.create<mlir::func::ReturnOp>(new_branch.getLoc(), call_op.output());
 
-    return new_branch.sym_name();
+    return new_branch.getSymName();
   }
 
   int id_ = 0;

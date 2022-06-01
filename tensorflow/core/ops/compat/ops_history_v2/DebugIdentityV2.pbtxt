@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "DebugIdentityV2"
   input_arg {
     name: "input"

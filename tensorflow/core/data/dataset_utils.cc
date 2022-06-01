@@ -84,11 +84,11 @@ constexpr char kUseChooseFastestOpt[] = "use_choose_fastest";
 constexpr char kBatchParallelizationOpt[] = "batch_parallelization";
 constexpr char kEnableGradientDescentOpt[] = "enable_gradient_descent";
 constexpr char kInjectPrefetchOpt[] = "inject_prefetch";
-constexpr char kInjectPrefetchEligibleOpt[] = "inject_prefetch_eligible";
 constexpr char kAutotuneOpt[] = "autotune";
 constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
 constexpr char kMakeDeterministicOpt[] = "make_deterministic";
+constexpr char kFilterParallelizationOpt[] = "filter_parallelization";
 
 void DefaultOptimizationGraphRewrites(
     const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
@@ -154,6 +154,14 @@ void DefaultOptimizationGraphRewrites(
       optimization_disabled->insert(kMapParallelizationOpt);
     }
   }
+  if (optimization_options.optional_filter_parallelization_case() ==
+      OptimizationOptions::kFilterParallelization) {
+    if (optimization_options.filter_parallelization()) {
+      optimization_enabled->insert(kFilterParallelizationOpt);
+    } else {
+      optimization_disabled->insert(kFilterParallelizationOpt);
+    }
+  }
   if (optimization_options.optional_map_fusion_case() ==
       OptimizationOptions::kMapFusion) {
     if (optimization_options.map_fusion()) {
@@ -184,6 +192,14 @@ void DefaultOptimizationGraphRewrites(
       optimization_enabled->insert(kShuffleAndRepeatFusionOpt);
     } else {
       optimization_disabled->insert(kShuffleAndRepeatFusionOpt);
+    }
+  }
+  if (optimization_options.optional_inject_prefetch_case() ==
+      OptimizationOptions::kInjectPrefetch) {
+    if (optimization_options.inject_prefetch()) {
+      optimization_enabled->insert(kInjectPrefetchOpt);
+    } else {
+      optimization_disabled->insert(kInjectPrefetchOpt);
     }
   }
 }
@@ -449,7 +465,6 @@ absl::flat_hash_set<string> GetExperiments() {
 absl::flat_hash_set<string> GetExperiments(
     const string& job_name, std::function<uint64(const string&)> hash_func) {
   absl::flat_hash_set<string> experiments;
-
   if (job_name.empty()) {
     return experiments;
   }
@@ -812,9 +827,9 @@ absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
       kBatchParallelizationOpt,
       kDisablePrefetchLegacyAutotuneOpt,
       kEnableGradientDescentOpt,
+      kFilterParallelizationOpt,
       kMapParallelizationOpt,
-      kInjectPrefetchOpt,
-      kInjectPrefetchEligibleOpt};
+      kInjectPrefetchOpt};
 
   if (autotune_options.optional_enabled_case() == AutotuneOptions::kEnabled &&
       !autotune_options.enabled()) {
@@ -868,10 +883,7 @@ bool ShouldApplyOptimizations(
 }
 
 int64 GetAutotuneDefaultParallelism(IteratorContext* ctx) {
-  if (GetExperiments().contains("initial_parallelism_value")) {
-    return std::min(kAutotuneDefaultParallelism, ctx->runner_threadpool_size());
-  }
-  return ctx->runner_threadpool_size();
+  return std::min(kAutotuneDefaultParallelism, ctx->runner_threadpool_size());
 }
 
 // static
@@ -889,7 +901,8 @@ absl::flat_hash_map<string, int64_t> DatasetExperimentRegistry::Experiments() {
 
 namespace {
 
-REGISTER_DATASET_EXPERIMENT("initial_parallelism_value", 50);
+REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations", 0);
+REGISTER_DATASET_EXPERIMENT(kFilterParallelizationOpt, 50);
 REGISTER_DATASET_EXPERIMENT("inject_prefetch", 100);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism", 0);
 }  // namespace

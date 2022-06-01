@@ -193,9 +193,12 @@ class SerializeTRTResource : public OpKernel {
 
     // Lookup engine cache resource.
     TRTEngineCacheResource* resource = nullptr;
-    OP_REQUIRES_OK(
-        ctx, ctx->resource_manager()->Lookup(std::string(kTfTrtContainerName),
-                                             resource_name, &resource));
+    OP_REQUIRES(
+        ctx,
+        ctx->resource_manager()
+            ->Lookup(std::string(kTfTrtContainerName), resource_name, &resource)
+            .ok(),
+        errors::NotFound("TRTEngineCacheResource not yet created"));
     core::ScopedUnref unref_me(resource);
 
     // Terminate the calibration if any.
@@ -211,7 +214,7 @@ class SerializeTRTResource : public OpKernel {
       for (const auto& pair : resource->cache_) {
         // Ignore engines that failed to build.
         const std::unique_ptr<EngineContext>& engine = pair.second;
-        if (!engine || !engine->cuda_engine) continue;
+        if (!engine || !engine->GetCudaEngine()) continue;
 
         TRTEngineInstance engine_instance;
         // Add input shapes.
@@ -221,7 +224,7 @@ class SerializeTRTResource : public OpKernel {
         }
         // Add the serialized engine.
         TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(
-            engine->cuda_engine->serialize());
+            engine->GetCudaEngine()->serialize());
         engine_instance.set_serialized_engine(engine_data->data(),
                                               engine_data->size());
 

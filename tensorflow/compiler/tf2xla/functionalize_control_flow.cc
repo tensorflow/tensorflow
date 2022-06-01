@@ -117,8 +117,7 @@ Status AddFunctionDefToGraphLibrary(
   // `graph->flib_def().default_registry()` which is done in the following line
   // (we have to use `LookUp` instead of `Contains` or `Find` because the latter
   // both don't check the default registry).
-  if (graph->flib_def().LookUp(func_name, &op_reg_data).ok())
-    return Status::OK();
+  if (graph->flib_def().LookUp(func_name, &op_reg_data).ok()) return OkStatus();
 
   const FunctionDef* new_fdef = fld->Find(func_name);
   DCHECK(new_fdef != nullptr);
@@ -198,7 +197,7 @@ Status FunctionalizeControlFlowForNodeAssociatedFunctions(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FunctionalizeControlFlowForFunction(
@@ -211,7 +210,7 @@ Status FunctionalizeControlFlowForFunction(
   // Convert the function to a graph.
   FunctionLibraryRuntime::Handle handle;
   TF_RETURN_IF_ERROR(flr->Instantiate(func_name, AttrSlice(&attrs), &handle));
-  Status ret_status = Status::OK();
+  Status ret_status = OkStatus();
   auto cleanup_handle = gtl::MakeCleanup([&]() {
     auto s = flr->ReleaseHandle(handle);
     if (!s.ok()) {
@@ -305,7 +304,7 @@ Status FunctionalizeControlFlow(Graph* graph,
   VLOG(2) << "FunctionalizeControlFlow (final): "
           << DumpGraphToFile("functionalize_final", *graph, library);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FunctionalizeControlFlowForGraphDef(GraphDef* graph_def,
@@ -320,7 +319,7 @@ Status FunctionalizeControlFlowForGraphDef(GraphDef* graph_def,
                                               include_functions));
   graph.ToGraphDef(graph_def);
   std::swap(*graph_def->mutable_library(), function_lib);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FunctionalizeControlFlowForXlaPass::Run(
@@ -389,7 +388,7 @@ Status FunctionalizeControlFlowForXlaPass::Run(
     DumpGraphToFile("functionalize_control_flow_after", *graph,
                     options.flib_def);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

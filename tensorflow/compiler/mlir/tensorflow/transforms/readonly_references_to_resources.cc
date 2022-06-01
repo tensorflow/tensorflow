@@ -19,7 +19,7 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -111,7 +111,7 @@ StringRef GetNodeNameFromClassAttrOrSharedNameAttr(Operation *op) {
 
 void ConvertReadonlyReferenceVariablesToResourceVariablesPass::
     runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
 
   OpBuilder builder(func.getContext());
   SmallVector<VariableV2Op, 4> variable_v2s_to_replace;
@@ -184,7 +184,7 @@ void ConvertReadonlyReferenceVariablesToResourceVariablesPass::
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateConvertReadonlyReferenceVariablesToResourceVariablesPass() {
   return std::make_unique<
       ConvertReadonlyReferenceVariablesToResourceVariablesPass>();

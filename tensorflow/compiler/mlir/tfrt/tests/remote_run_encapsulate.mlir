@@ -1,7 +1,7 @@
 // RUN: tf-tfrt-opt -tfrt-dist-remote-run-encapsulate %s | FileCheck %s
 
 
-func private @init(%arg0 : !corert.tensorhandle) -> (!tfrt.chain, !corert.tensorhandle {tfrt.device = "/job:worker1/task:0/device:CPU:0"}) attributes {host = "/job:worker1/task:0"} {
+func.func private @init(%arg0 : !corert.tensorhandle) -> (!tfrt.chain, !corert.tensorhandle {tfrt.device = "/job:worker1/task:0/device:CPU:0"}) attributes {host = "/job:worker1/task:0"} {
   %ch0 = tfrt.new.chain
   %cpu = corert.get_op_handler %ch0 "cpu"
   %arg1 = corert.executeop(%cpu) "tfrt_test.create_dense_tensor"()
@@ -10,15 +10,15 @@ func private @init(%arg0 : !corert.tensorhandle) -> (!tfrt.chain, !corert.tensor
   tfrt.return %ch0, %result : !tfrt.chain, !corert.tensorhandle
 }
 
-func private @print(%chain : !tfrt.chain, %tensor_handle : !corert.tensorhandle) -> (!tfrt.chain) attributes {host = "/job:worker1/task:0"} {
+func.func private @print(%chain : !tfrt.chain, %tensor_handle : !corert.tensorhandle) -> (!tfrt.chain) attributes {host = "/job:worker1/task:0"} {
   %ch2 = "corert.print_tensorhandle"(%tensor_handle, %chain) : (!corert.tensorhandle, !tfrt.chain) -> !tfrt.chain
   tfrt.return %ch2 : !tfrt.chain
 }
 
 // CHECK-LABEL: func @remote_execute
-func @remote_execute(%arg0 : !corert.tensorhandle) -> (!tfrt.chain, !tfrt.chain, !corert.tensorhandle) {
+func.func @remote_execute(%arg0 : !corert.tensorhandle) -> (!tfrt.chain, !tfrt.chain, !corert.tensorhandle) {
   %c0 = tfrt.new.chain
-  // CHECK: %[[CONFIGS:.*]]:2 = "tfrt_dist.test_create_configurations"()
+  // CHECK: %[[CONFIGS:.*]]:2 = tfrt_dist.test_create_configurations : 2
   %configs:2 = tfrt_dist.test_create_configurations : 2
   // CHECK-NEXT: %[[CLIENT_CTX:.*]] = tfrt_dist.test_create_distributed_context %[[CONFIGS]]#0
   %client_context = tfrt_dist.test_create_distributed_context %configs#0 : (!tfrt_dist.dist_context_configuration) -> !tfrt_dist.dist_context

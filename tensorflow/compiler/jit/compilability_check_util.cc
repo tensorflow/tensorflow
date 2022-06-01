@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -65,8 +66,6 @@ namespace tensorflow {
 
 namespace {
 
-constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
-
 bool HasResourceInput(const Node& node) {
   return absl::c_count(node.input_types(), DT_RESOURCE) != 0;
 }
@@ -87,7 +86,7 @@ Status MakeCallNodeFromAttribute(const Node& node, const std::string& attr_name,
   TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), attr_name, &name_attr));
   node_def->set_op(name_attr->name());
   *(node_def->mutable_attr()) = name_attr->attr();
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::vector<NodeDef>> MakeCallNodesFromAttribute(
@@ -373,8 +372,6 @@ bool RecursiveCompilabilityChecker::OpIsSlow(const Node& node) const {
          node.type_string() == "Svd" || node.type_string() == "Qr" ||
          node.type_string() == "MatrixInverse" ||
          node.type_string() == "MatrixSolve" ||
-         node.type_string() == "ResizeNearestNeighbor" ||
-         node.type_string() == "ResizeBilinear" ||
          node.type_string() == "ResizeBilinearGrad";
 }
 
@@ -655,7 +652,7 @@ Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 tensorflow::MemoryTypeVector GetInputMemoryTypes(

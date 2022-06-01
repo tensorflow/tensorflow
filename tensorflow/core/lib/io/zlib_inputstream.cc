@@ -92,7 +92,7 @@ Status ZlibInputStream::Reset() {
   inflateEnd(z_stream_def_->stream.get());
   InitZlibBuffer();
   bytes_read_ = 0;
-  return Status::OK();
+  return OkStatus();
 }
 
 void ZlibInputStream::InitZlibBuffer() {
@@ -166,7 +166,7 @@ Status ZlibInputStream::ReadFromStream() {
     return errors::OutOfRange("EOF reached");
   }
   if (errors::IsOutOfRange(s)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   return s;
@@ -225,7 +225,7 @@ Status ZlibInputStream::ReadNBytes(int64_t bytes_to_read, tstring* result) {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #if defined(TF_CORD_SUPPORT)
@@ -235,7 +235,7 @@ Status ZlibInputStream::ReadNBytes(int64_t bytes_to_read, absl::Cord* result) {
   TF_RETURN_IF_ERROR(ReadNBytes(bytes_to_read, &buf));
   result->Clear();
   result->Append(buf.data());
-  return Status::OK();
+  return OkStatus();
 }
 #endif
 
@@ -258,7 +258,7 @@ Status ZlibInputStream::Inflate() {
   if (error == Z_STREAM_END && zlib_options_.window_bits == MAX_WBITS + 16) {
     inflateReset(z_stream_def_->stream.get());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace io

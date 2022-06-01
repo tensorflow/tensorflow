@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "mlir-hlo/Analysis/shape_component_analysis.h"
 
+#include <algorithm>
 #include <vector>
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExpr.h"
@@ -121,6 +123,8 @@ struct ShapeVisitor {
              "Expect value info at this point.");
       if (auto shapeof = value.getDefiningOp<shape::ShapeOfOp>()) {
         backwardShapeOf(shapeof);
+      } else if (auto bcast = value.getDefiningOp<shape::BroadcastOp>()) {
+        backwardBroadcast(bcast);
       } else if (auto num_elements =
                      value.getDefiningOp<shape::NumElementsOp>()) {
         backwardNumElements(num_elements);
@@ -194,6 +198,8 @@ struct ShapeVisitor {
              "Expect value info at this point.");
       if (auto shapeof = value.getDefiningOp<shape::ShapeOfOp>()) {
         forwardShapeOf(shapeof);
+      } else if (auto bcast = value.getDefiningOp<shape::BroadcastOp>()) {
+        forwardBroadcast(bcast);
       } else if (auto num_elements =
                      value.getDefiningOp<shape::NumElementsOp>()) {
         forwardNumElements(num_elements);
@@ -251,6 +257,68 @@ struct ShapeVisitor {
             assumingOp.getDoRegion().back().getTerminator())
             .getOperand(number)));
   }
+  void backwardBroadcast(shape::BroadcastOp op) {
+    forwards_worklist.push_back(ShapeOrValueInfo::getValueInfoOf(op));
+    for (Value s : op.getShapes())
+      backwards_worklist.push_back(ShapeOrValueInfo::getValueInfoOf(s));
+  }
+  void forwardBroadcast(shape::BroadcastOp op) {
+    auto *ctx = op.getContext();
+
+    // Get operands' info.
+    SmallVector<ArrayRef<SymbolicExpr>> args_info =
+        llvm::to_vector(llvm::map_range(op.getShapes(), [&](Value s) {
+          return lookup(ShapeOrValueInfo::getValueInfoOf(s));
+        }));
+
+    // Determine broadcasted rank.
+    size_t rank = 0;
+    for (auto &info : args_info) rank = std::max(rank, info.size());
+
+    // Evaluate broadcast per result dimension.
+    auto &dims = insert(ShapeOrValueInfo::getValueInfoOf(op));
+    for (size_t i = 0; i < rank; ++i) {
+      // Init with neural element.
+      SymbolicExpr bcasted_expr;
+      bcasted_expr.expr = getAffineConstantExpr(1, ctx);
+
+      // Consider all the operands.
+      for (auto &info : args_info) {
+        // Find corresponding symbolic expression for the ith result dimension,
+        // if the operand contributes.
+        size_t arg_rank = info.size();
+        if (i + arg_rank < rank) continue;
+        size_t j = i + arg_rank - rank;
+        SymbolicExpr expr = info[j];
+
+        // One dimensions are neutral.
+        if (expr.isConstant(1)) continue;
+
+        // If a dimension is known not to be 1, we can use this expression.
+        if (expr.isKnownNotOne()) {
+          bcasted_expr = expr;
+          break;
+        }
+
+        // If all other dimensions were neutral, try using this expression.
+        if (bcasted_expr.isConstant(1)) {
+          bcasted_expr = expr;
+          continue;
+        }
+
+        // If we have contradicting expressions, give up and create a new
+        // symbol.
+        if (bcasted_expr != expr) {
+          bcasted_expr.expr = getAffineSymbolExpr(0, ctx);
+          bcasted_expr.symbols = {{ShapeOrValueInfo::getValueInfoOf(op), i}};
+          break;
+        }
+      }
+
+      dims.push_back(bcasted_expr);
+    }
+    assert(dims.size() == rank && "expect one expression per dimension");
+  }
   void backwardDynamicBroadcastInDimShape(mhlo::DynamicBroadcastInDimOp op) {
     forwards_worklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op));
     backwards_worklist.push_back(
@@ -275,16 +343,17 @@ struct ShapeVisitor {
   void backwardReduceShape(Value op) {
     forwards_worklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op));
     auto reduceOp = op.getDefiningOp<mhlo::ReduceOp>();
-    if (reduceOp.inputs().size() == 1)
+    if (reduceOp.operands().size() == 1) {
       backwards_worklist.push_back(
-          ShapeOrValueInfo::getShapeInfoOf(reduceOp.inputs().back()));
+          ShapeOrValueInfo::getShapeInfoOf(reduceOp.operands().back()));
+    }
   }
   void forwardReduceShape(Value op) {
     auto reduceOp = op.getDefiningOp<mhlo::ReduceOp>();
-    if (reduceOp.inputs().size() != 1) return forwardUnknownShape(op);
+    if (reduceOp.operands().size() != 1) return forwardUnknownShape(op);
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
     for (const auto &dim : llvm::enumerate(lookup(
-             ShapeOrValueInfo::getShapeInfoOf(reduceOp.inputs().back())))) {
+             ShapeOrValueInfo::getShapeInfoOf(reduceOp.operands().back())))) {
       if (!llvm::is_contained(reduceOp.dimensions(), dim.index()))
         dims.push_back(dim.value());
     }
@@ -337,8 +406,8 @@ struct ShapeVisitor {
     //
     // TODO(ezhulenev): Add symbolic shape attribute verifier to the jitrt
     // dialect.
-    if (auto func =
-            dyn_cast_or_null<FuncOp>(argument.getOwner()->getParentOp())) {
+    if (auto func = dyn_cast_or_null<func::FuncOp>(
+            argument.getOwner()->getParentOp())) {
       if (auto shape = func.getArgAttrOfType<DenseIntElementsAttr>(
               argument.getArgNumber(), "jitrt.symbolic_shape")) {
         auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(argument));
@@ -728,6 +797,13 @@ bool SymbolicExpr::isKnownNotNegativeOne() const {
            isGoodSymbolOrGoodConstantExpr(bexpr.getRHS());
   }
 
+  return false;
+}
+
+bool SymbolicExpr::isKnownNotOne() const {
+  if (auto const_expr = expr.dyn_cast<AffineConstantExpr>()) {
+    return const_expr.getValue() != 1;
+  }
   return false;
 }
 

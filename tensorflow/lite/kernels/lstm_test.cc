@@ -361,7 +361,7 @@ class LstmOpTest
         lstm->SetInput(b * num_inputs, batch_start, batch_end);
       }
 
-      lstm->Invoke();
+      ASSERT_EQ(lstm->Invoke(), kTfLiteOk);
 
       std::vector<float> expected;
       ASSERT_EQ(num_batches, lstm_golden_output_[i].size());
@@ -1750,7 +1750,7 @@ TEST(IntegerLstmOpTest, NoCifg_NoPeephole_Projection_LayerNorm) {
   EXPECT_GT(input_sequence_size, 0);
   for (int i = 0; i < input_sequence_size; ++i) {
     lstm.SetInput(lstm_input[i]);
-    lstm.Invoke();
+    ASSERT_EQ(lstm.Invoke(), kTfLiteOk);
     EXPECT_THAT(lstm.GetOutput(), ElementsAreArray(expected_output[i]));
   }
 }
@@ -1923,7 +1923,7 @@ TEST(IntegerLstmOpTest, NoCifg_Peephole_Projection_LayerNorm) {
   EXPECT_GT(input_sequence_size, 0);
   for (int i = 0; i < input_sequence_size; ++i) {
     lstm.SetInput(lstm_input[i]);
-    lstm.Invoke();
+    ASSERT_EQ(lstm.Invoke(), kTfLiteOk);
     EXPECT_THAT(lstm.GetOutput(), ElementsAreArray(expected_output[i]));
   }
 }
@@ -2090,7 +2090,7 @@ TEST(IntegerLstmOpTest, Cifg_NoPeephole_Projection_LayerNorm_8x8_8) {
   EXPECT_GT(input_sequence_size, 0);
   for (int i = 0; i < input_sequence_size; ++i) {
     lstm.SetInput(lstm_input[i]);
-    lstm.Invoke();
+    ASSERT_EQ(lstm.Invoke(), kTfLiteOk);
     EXPECT_THAT(lstm.GetOutput(), ElementsAreArray(expected_output[i]));
   }
 }
@@ -2404,7 +2404,7 @@ class BaseSparseLstmTest : public ::testing::Test {
             b * sparse_layer_norm_lstm->num_inputs(), batch_start, batch_end);
       }
 
-      sparse_layer_norm_lstm->Invoke();
+      ASSERT_EQ(sparse_layer_norm_lstm->Invoke(), kTfLiteOk);
 
       const int num_outputs = sparse_layer_norm_lstm->num_outputs();
       std::vector<float> expected;

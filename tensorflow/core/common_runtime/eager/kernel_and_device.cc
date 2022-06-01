@@ -60,7 +60,7 @@ Status EagerKernelArgs::GetLocalArg(const FunctionArgIndex& index,
   Tensor* arg = tensor_args_.at(index.index).tensor;
   if (arg) {
     *val = *arg;
-    return Status::OK();
+    return OkStatus();
   } else {
     return errors::NotFound("Argument ", index.index, " has no local tensor.");
   }
@@ -133,7 +133,7 @@ Status KernelAndDeviceOp::Init(const bool log_device_placement,
                                        tensorflow::HOST_MEMORY);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status KernelAndDeviceFunc::InstantiateFunc(const bool log_device_placement,
@@ -231,6 +231,10 @@ Status KernelAndDeviceFunc::InstantiateFunc(const bool log_device_placement,
   options.config_proto.set_log_device_placement(log_device_placement);
 
   options.int_args_and_retvals_on_device = int_args_and_retvals_on_device_;
+
+  if (xla_compile_device_type_.has_value()) {
+    options.xla_compile_device_type = xla_compile_device_type_.value();
+  }
 
   TF_RETURN_IF_ERROR(
       pflr_->Instantiate(ndef.op(), AttrSlice(ndef), options, &handle_));
@@ -341,7 +345,7 @@ Status KernelAndDeviceOp::Run(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 std::shared_ptr<FunctionLibraryRuntime::Options>
@@ -395,6 +399,7 @@ KernelAndDeviceFunc::PrepareForRun(
   opts->step_container = step_container;
   opts->collective_executor =
       collective_executor_ ? collective_executor_->get() : nullptr;
+  opts->stack_trace = stack_trace;
 
   opts->stats_collector = nullptr;
   opts->runner = get_runner();

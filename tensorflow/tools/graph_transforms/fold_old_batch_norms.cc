@@ -34,7 +34,7 @@ Status ErrorIfNotVector(const Tensor& input, const string& input_name,
         input_name,
         " input to batch norm has bad shape: ", input.shape().DebugString());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetScaleAndOffsetValues(const NodeMatch& match,
@@ -99,7 +99,7 @@ Status GetScaleAndOffsetValues(const NodeMatch& match,
     (*offset_values)[i] =
         (-mean.flat<float>()(i) * (*scale_values)[i]) + beta.flat<float>()(i);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FuseScaleOffsetToConvWeights(const std::vector<float>& scale_values,
@@ -169,7 +169,7 @@ Status FuseScaleOffsetToConvWeights(const std::vector<float>& scale_values,
   AddNodeInput(conv_node.name(), &bias_add_node);
   AddNodeInput(bias_offset_node.name(), &bias_add_node);
   new_nodes->push_back(bias_add_node);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FuseBatchNormWithConv(const NodeMatch& match,
@@ -185,7 +185,7 @@ Status FuseBatchNormWithConv(const NodeMatch& match,
   TF_RETURN_IF_ERROR(
       FuseScaleOffsetToConvWeights(scale_values, offset_values, match.inputs[0],
                                    batch_norm_node.name(), new_nodes));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FuseBatchNormWithBatchToSpace(const NodeMatch& match,
@@ -214,7 +214,7 @@ Status FuseBatchNormWithBatchToSpace(const NodeMatch& match,
   new_nodes->push_back(batch_to_space_node_match.inputs[1].node);
   new_nodes->push_back(batch_to_space_node_match.inputs[2].node);
   new_nodes->push_back(new_batch_to_space_node);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FuseBatchNormWithConvConcat(const NodeMatch& match,
@@ -275,7 +275,7 @@ Status FuseBatchNormWithConvConcat(const NodeMatch& match,
   concat_node.set_input(0, concat0_output_name);
   concat_node.set_input(1, concat1_output_name);
   new_nodes->push_back(concat_node);
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -313,7 +313,7 @@ Status FoldOldBatchNorms(const GraphDef& input_graph_def,
                             std::vector<NodeDef>* new_nodes) {
           TF_RETURN_IF_ERROR(FuseBatchNormWithConv(match, new_nodes));
           did_graph_change = true;
-          return Status::OK();
+          return OkStatus();
         },
         {}, &replaced_graph_def));
     current_graph_def = replaced_graph_def;
@@ -350,7 +350,7 @@ Status FoldOldBatchNorms(const GraphDef& input_graph_def,
                             std::vector<NodeDef>* new_nodes) {
           TF_RETURN_IF_ERROR(FuseBatchNormWithBatchToSpace(match, new_nodes));
           did_graph_change = true;
-          return Status::OK();
+          return OkStatus();
         },
         {}, &replaced_graph_def));
     current_graph_def = replaced_graph_def;
@@ -393,14 +393,14 @@ Status FoldOldBatchNorms(const GraphDef& input_graph_def,
                             std::vector<NodeDef>* new_nodes) {
           TF_RETURN_IF_ERROR(FuseBatchNormWithConvConcat(match, new_nodes));
           did_graph_change = true;
-          return Status::OK();
+          return OkStatus();
         },
         {}, &replaced_graph_def));
     current_graph_def = replaced_graph_def;
   } while (did_graph_change);
 
   *output_graph_def = current_graph_def;
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("fold_old_batch_norms", FoldOldBatchNorms);

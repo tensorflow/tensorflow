@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"

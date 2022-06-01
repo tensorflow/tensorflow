@@ -15,10 +15,12 @@ limitations under the License.
 
 #include <utility>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 
 namespace tensorflow {
@@ -34,12 +36,14 @@ using mlir::dyn_cast;
 using mlir::isa;
 
 using mlir::AffineMap;
+using mlir::MLIRContext;
 using mlir::Operation;
 using mlir::OpOperand;
 using mlir::OpResult;
 using mlir::RewritePatternSet;
 
 namespace linalg = mlir::linalg;
+namespace tensor = mlir::tensor;
 
 // Returns true if `op` is a linalg generic operation that only does the
 // broadcast of the input.
@@ -84,21 +88,65 @@ static bool ControlElementwiseOpsFusion(const OpResult &producer_result,
   return true;
 }
 
+// Check if the reshape operation is only expansion into/collapsing of
+// unit-dimension.
+template <typename TensorReshapeOp>
+static bool IsUnitDimExpansionOnly(TensorReshapeOp reshape_op) {
+  constexpr bool is_expanding =
+      std::is_same<TensorReshapeOp, tensor::ExpandShapeOp>::value;
+  llvm::ArrayRef<int64_t> expanded_shape =
+      (is_expanding ? reshape_op.getResultType().getShape()
+                    : reshape_op.getSrcType().getShape());
+  for (auto &indices : reshape_op.getReassociationIndices()) {
+    unsigned num_unit_dims = 0;
+    for (int64_t position : indices)
+      if (expanded_shape[position] == 1) num_unit_dims++;
+    if (num_unit_dims != indices.size() - 1) return false;
+  }
+  return true;
+}
+
+// Control function to skip unit dim reshape when fusing reshapes by expansion.
+static bool SkipUnitDimReshape(const OpResult &producer, OpOperand &consumer) {
+  if (auto producer_collapse_op =
+          dyn_cast<tensor::CollapseShapeOp>(producer.getOwner())) {
+    return !IsUnitDimExpansionOnly(producer_collapse_op);
+  }
+  if (auto consumer_expand_op =
+          dyn_cast<tensor::ExpandShapeOp>(consumer.getOwner())) {
+    return !IsUnitDimExpansionOnly(consumer_expand_op);
+  }
+  return true;
+}
+
 struct FusionPass : public FusionBase<FusionPass> {
   void runOnOperation() override {
     Operation *op = getOperation();
 
+    MLIRContext *context = &getContext();
     RewritePatternSet patterns(op->getContext());
-    linalg::populateElementwiseOpsFusionPatterns(
-        patterns,
-        linalg::LinalgElementwiseFusionOptions()
-            .setControlElementwiseOpsFusionFn(ControlElementwiseOpsFusion));
+    linalg::populateElementwiseOpsFusionPatterns(patterns,
+                                                 ControlElementwiseOpsFusion);
 
+    linalg::populateFoldReshapeOpsByExpansionPatterns(patterns,
+                                                      SkipUnitDimReshape);
+
+    linalg::populateSparseTensorRewriting(patterns);
+
+    linalg::populateConstantFoldLinalgOperations(patterns,
+                                                 ControlElementwiseOpsFusion);
+
+    mlir::AffineApplyOp::getCanonicalizationPatterns(patterns, context);
+    linalg::GenericOp::getCanonicalizationPatterns(patterns, context);
+    tensor::ExpandShapeOp::getCanonicalizationPatterns(patterns, context);
+    tensor::CollapseShapeOp::getCanonicalizationPatterns(patterns, context);
+    context->getLoadedDialect<linalg::LinalgDialect>()
+        ->getCanonicalizationPatterns(patterns);
     (void)applyPatternsAndFoldGreedily(op->getRegions(), std::move(patterns));
   }
 };
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateFusionPass() {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateFusionPass() {
   return std::make_unique<FusionPass>();
 }
 

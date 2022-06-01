@@ -20,6 +20,8 @@ import traceback
 
 from tensorflow.python.platform import self_check
 
+# TODO(mdan): Cleanup antipattern: import for side effects.
+
 # Perform pre-load sanity checks in order to produce a more actionable error.
 self_check.preload_check()
 

@@ -54,12 +54,12 @@ class MultiplexOpRank1Test(tf.test.TestCase):
     with self.assertRaisesRegex(
         (errors_impl.InvalidArgumentError, TypeError),
         # Eager mode raises InvalidArgumentError with the following message
-        r'(cannot compute Examples>MultiplexDense as input #2\(zero-based\) '
+        r'(cannot compute Examples1>MultiplexDense as input #2\(zero-based\) '
         r'was expected to be a float tensor but is a int32 tensor '
-        r'\[Op:Examples>MultiplexDense\]'
+        r'\[Op:Examples1>MultiplexDense\]'
         r')|('
         # Graph mode raises TypeError with the following message
-        r"Input 'b_values' of 'Examples>MultiplexDense' Op has type int32 that "
+        r"Input 'b_values' of 'Examples1>MultiplexDense' Op has type int32 that "
         r"does not match type float32 of argument 'a_values'.)"):
       self.evaluate(multiplex_1_op.multiplex(cond, a, b))
 
@@ -73,7 +73,7 @@ class MultiplexOpRank1Test(tf.test.TestCase):
         # Eager mode raises InvalidArgumentError with the following message
         r'(a_values and b_values must have the same shape. '
         r'a_values shape: \[5\] b_values shape: \[2\](?s).* '
-        r'\[Op:Examples>MultiplexDense\]'
+        r'\[Op:Examples1>MultiplexDense\]'
         r')|('
         # Graph mode raises ValueError with the following message
         r'Dimension 0 in both shapes must be equal, but are 5 and 2\. '

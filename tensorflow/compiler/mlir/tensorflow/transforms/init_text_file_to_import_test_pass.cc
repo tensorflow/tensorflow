@@ -18,7 +18,8 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/ToolOutputFile.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -74,7 +75,7 @@ void InitTextFileToImportTestPass::runOnOperation() {
   // Replace filename constant ops to use the temporary file.
   MLIRContext* context = &getContext();
 
-  for (FuncOp func : module.getOps<FuncOp>()) {
+  for (func::FuncOp func : module.getOps<func::FuncOp>()) {
     llvm::SmallVector<arith::ConstantOp, 4> constant_ops(
         func.getOps<arith::ConstantOp>());
     for (auto op : constant_ops) {
@@ -97,7 +98,7 @@ void InitTextFileToImportTestPass::runOnOperation() {
 
   // Run the lowering pass.
   PassManager pm(context);
-  pm.addNestedPass<FuncOp>(CreateInitTextFileToImportPass(""));
+  pm.addNestedPass<func::FuncOp>(CreateInitTextFileToImportPass(""));
   if (failed(pm.run(module))) return signalPassFailure();
 }
 
@@ -138,7 +139,7 @@ void InitTextFileToImportSavedModelTestPass::runOnOperation() {
   // Run the lowering pass.
   MLIRContext* context = &getContext();
   PassManager pm(context);
-  pm.addNestedPass<FuncOp>(
+  pm.addNestedPass<func::FuncOp>(
       CreateInitTextFileToImportPass(std::string(tempdir)));
   if (failed(pm.run(module))) return signalPassFailure();
 }

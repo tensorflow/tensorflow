@@ -154,48 +154,48 @@ Status CopyDenseElementsDataToXlaFormat(mlir::DenseElementsAttr data,
   // TODO(hinsu): Support remaining XLA primitive types.
   if (element_type.isInteger(1)) {
     CopyDenseElementsBy<bool>(data, output);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (element_type.isInteger(8)) {
     CopyDenseElementsBy<uint8_t>(data, output);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (element_type.isInteger(16)) {
     CopyDenseElementsBy<uint16_t>(data, output);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (element_type.isInteger(32)) {
     CopyDenseElementsBy<uint32_t>(data, output);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (element_type.isInteger(64)) {
     CopyDenseElementsBy<uint64_t>(data, output);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (element_type.isBF16()) {
     CopyDenseElementsBy<bfloat16>(data, output);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (element_type.isF16()) {
     CopyDenseElementsBy<half>(data, output);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (element_type.isF32()) {
     CopyDenseElementsBy<float>(data, output);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (element_type.isF64()) {
     CopyDenseElementsBy<double>(data, output);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>()) {
     if (complex_type.getElementType().isF32()) {
       CopyDenseElementsBy<complex64>(data, output);
-      return Status::OK();
+      return ::tensorflow::OkStatus();
     }
     if (complex_type.getElementType().isF64()) {
       CopyDenseElementsBy<complex128>(data, output);
-      return Status::OK();
+      return ::tensorflow::OkStatus();
     }
   }
   return tensorflow::errors::Internal(
@@ -357,6 +357,8 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kSort;
   } else if (isa<mlir::mhlo::RngBitGeneratorOp>(op)) {
     return xla::HloOpcode::kRngBitGenerator;
+  } else if (isa<mlir::mhlo::XlaRngGetAndUpdateStateOp>(op)) {
+    return xla::HloOpcode::kRngGetAndUpdateState;
   } else if (isa<mlir::mhlo::FusionOp, mlir::lmhlo::FusionOp>(op)) {
     return xla::HloOpcode::kFusion;
   } else if (isa<mlir::mhlo::BitcastOp>(op)) {
@@ -463,8 +465,6 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kReverse;
   } else if (isa<mlir::mhlo::PadOp, mlir::lmhlo::PadOp>(op)) {
     return xla::HloOpcode::kPad;
-  } else if (isa<mlir::mhlo::TraceOp>(op)) {
-    return xla::HloOpcode::kTrace;
   } else if (isa<mlir::mhlo::TransposeOp, mlir::lmhlo::TransposeOp>(op)) {
     return xla::HloOpcode::kTranspose;
   } else if (isa<mlir::mhlo::TriangularSolveOp, mlir::lmhlo::TriangularSolveOp>(

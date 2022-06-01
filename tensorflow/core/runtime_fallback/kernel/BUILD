@@ -343,7 +343,7 @@ cc_library(
     srcs = ["kernel_fallback_execute_compat.cc"],
     hdrs = ["kernel_fallback_execute_compat.h"],
     visibility = [
-        "//tensorflow/compiler/mlir/tfrt/benchmarks:__pkg__",
+        "//tensorflow/compiler/mlir/tfrt:__pkg__",
         "//tensorflow/core/runtime_fallback:internal",
         "//tensorflow/core/tfrt/eager:__pkg__",
         "//tensorflow/core/tfrt/graph_executor:__pkg__",
@@ -351,6 +351,7 @@ cc_library(
     ],
     deps = [
         ":kernel_fallback_compat_request_state",
+        ":kernel_fallback_tensor",
         ":kernel_fallback_tensor_conversion_alwayslink",
         "@llvm-project//llvm:Support",
         "//tensorflow/core/profiler/lib:traceme",
@@ -392,6 +393,8 @@ cc_library(
         # TPU runtime needs to access fallback state to configure MLIR bridge
         # rollout state
         "//third_party/tf_runtime_google:__pkg__",
+        # Sync fallback kernels need access to the fallback state.
+        "//learning/brain/experimental/tfrt/native_lowering/kernels:__subpackages__",
     ],
     deps = [
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",

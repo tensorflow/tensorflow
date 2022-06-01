@@ -34,10 +34,6 @@ namespace cl {
 class CLArguments;
 }
 
-namespace metal {
-class MetalArguments;
-}
-
 class ArgumentsBinder {
  public:
   virtual absl::Status SetInt(const std::string& name, int value) = 0;
@@ -131,6 +127,14 @@ class Arguments : public ArgumentsBinder {
                        const std::map<std::string, std::string>& linkables,
                        std::string* code);
 
+  absl::Status ResolveConstExprPass(const GpuInfo& gpu_info,
+                                    std::string* code) const;
+
+  absl::Status ResolveConstExpr(const GpuInfo& gpu_info,
+                                const std::string& object_name,
+                                const std::string& const_expr,
+                                std::string* result) const;
+
   absl::Status ResolveSelectorsPass(
       const GpuInfo& gpu_info,
       const std::map<std::string, std::string>& linkables,
@@ -159,7 +163,6 @@ class Arguments : public ArgumentsBinder {
                                                std::string* code);
 
   friend class cl::CLArguments;
-  friend class metal::MetalArguments;
 
   static constexpr char kArgsPrefix[] = "args.";
 

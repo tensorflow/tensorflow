@@ -89,12 +89,12 @@ class TRTEngineOpTestBase : public OpsTestBase {
 
     string segment_string;
     if (static_engine) {
-      convert::ConversionParams params;
+      convert::TRTOptimizationPass::ConversionParams params;
       convert::EngineInfo info;
       info.segment_graph_def.CopyFrom(graph_def);
       info.precision_mode = TrtPrecisionMode::FP32;
       info.max_workspace_size_bytes = 1 << 20;
-      info.engine_name = "TRTEngineOP_0_0";
+      info.engine_name = "TRTEngineOP_000_000";
       params.use_implicit_batch = use_implicit_batch;
       params.trt_logger_name = "DefaultLogger";
 
@@ -111,8 +111,8 @@ class TRTEngineOpTestBase : public OpsTestBase {
 
       profile.InitProfiles({shape}, ProfileStrategy::kOptimal);
       std::vector<PartialTensorShape> shape_vec{shape, {}};
-      TF_CHECK_OK(convert::CreateStaticEngine(params, info, 1, shape_vec,
-                                              &profile, &segment_string));
+      TF_CHECK_OK(convert::CreateStaticEngine(
+          params, info, 1, shape_vec, &profile, &segment_string, nullptr));
     }
 
     // Create the op.
@@ -277,7 +277,7 @@ TEST_F(TRTEngineOpTestBase, AllowBuildAtRuntime) {
   EXPECT_EQ(1, cache->size());
   ASSERT_EQ(1, cache->count({input_shape}));
   EngineContext* ectx = cache->at({input_shape}).get();
-  EXPECT_EQ(ectx->cuda_engine, nullptr);
+  EXPECT_EQ(ectx->GetCudaEngine(), nullptr);
 }
 
 TEST_P(TRTEngineOpTestWithParam, ExplicitBatch) {
@@ -304,7 +304,7 @@ TEST_P(TRTEngineOpTestWithParam, ExplicitBatch) {
   EXPECT_EQ(1, cache->size());
   ASSERT_EQ(1, cache->count({input_shape}));
   EngineContext* ectx = cache->at({input_shape}).get();
-  EXPECT_NE(ectx->cuda_engine, nullptr);
+  EXPECT_NE(ectx->GetCudaEngine(), nullptr);
 }
 
 TEST_P(TRTEngineOpTestWithParam, DynamicShapes) {
@@ -334,7 +334,7 @@ TEST_P(TRTEngineOpTestWithParam, DynamicShapes) {
   EXPECT_EQ(1, cache->size());
   ASSERT_EQ(1, cache->count({input_shape}));
   EngineContext* ectx = cache->at({input_shape}).get();
-  EXPECT_NE(ectx->cuda_engine, nullptr);
+  EXPECT_NE(ectx->GetCudaEngine(), nullptr);
 
   // Execute the op with an incompatible shape.
   ResetInputs();

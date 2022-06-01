@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
@@ -33,12 +34,23 @@ namespace tensorflow {
 
 namespace full_type {
 
+OpTypeConstructor NoOp() {
+  return nullptr;
+}
+
+OpTypeConstructor NoOutputs() {
+  return [](OpDef* op_def) {
+    op_def->mutable_output_arg();
+    return OkStatus();
+  };
+}
+
 OpTypeConstructor Nullary(FullTypeId t) {
   return [t](OpDef* op_def) {
     FullTypeDef* tdef =
         op_def->mutable_output_arg(0)->mutable_experimental_full_type();
     tdef->set_type_id(t);
-    return Status::OK();
+    return OkStatus();
   };
 }
 
@@ -52,7 +64,7 @@ OpTypeConstructor Unary(FullTypeId t, const string& var_name) {
     arg->set_type_id(TFT_VAR);
     arg->set_s(var_name);
 
-    return Status::OK();
+    return OkStatus();
   };
 }
 
@@ -65,7 +77,7 @@ OpTypeConstructor UnaryGeneric(FullTypeId t) {
     FullTypeDef* arg = tdef->add_args();
     arg->set_type_id(TFT_ANY);
 
-    return Status::OK();
+    return OkStatus();
   };
 }
 
@@ -80,7 +92,7 @@ OpTypeConstructor UnaryTensorContainer(FullTypeId t, FullTypeId dtype) {
     FullTypeDef* targ = arg->add_args();
     targ->set_type_id(dtype);
 
-    return Status::OK();
+    return OkStatus();
   };
 }
 
@@ -96,7 +108,7 @@ OpTypeConstructor UnaryTensorContainer(FullTypeId t, const string& var_name) {
     varg->set_type_id(TFT_VAR);
     varg->set_s(var_name);
 
-    return Status::OK();
+    return OkStatus();
   };
 }
 
@@ -121,7 +133,7 @@ OpTypeConstructor VariadicTensorContainer(FullTypeId t,
     tvar->set_type_id(TFT_VAR);
     tvar->set_s(var_name);
 
-    return Status::OK();
+    return OkStatus();
   };
 }
 
@@ -159,7 +171,7 @@ Status SubstituteVar(AttrMap& attrs, FullTypeDef& t) {
                                attr->DebugString(), " for name ", var_name));
   }
   t.clear_s();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SubstituteForEach(AttrMap& attrs, FullTypeDef& t) {
@@ -217,7 +229,7 @@ Status SubstituteForEach(AttrMap& attrs, FullTypeDef& t) {
                                attr->DebugString(), "\nfor name ", var_name));
   }
   t = result;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SubstituteGeneric(AttrMap& attrs, FullTypeDef& t) {
@@ -236,7 +248,7 @@ Status SubstituteGeneric(AttrMap& attrs, FullTypeDef& t) {
       break;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 inline Status SubstituteFromAttrs(AttrMap& attrs, FullTypeDef& t) {
@@ -260,13 +272,14 @@ inline Status SubstituteFromAttrs(AttrMap& attrs, FullTypeDef& t) {
     default:
       return SubstituteGeneric(attrs, t);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
 
 Status SpecializeType(const AttrSlice& attrs, const OpDef& op_def,
                       FullTypeDef& target) {
+  target.Clear();
   target.set_type_id(TFT_PRODUCT);
 
   AttrMap map;
@@ -283,7 +296,7 @@ Status SpecializeType(const AttrSlice& attrs, const OpDef& op_def,
         t.DebugString(), "\nfrom\n", attrs.SummarizeNode());
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 const FullTypeDef& GetArgDefaultUnset(const FullTypeDef& t, int i) {
@@ -339,6 +352,20 @@ bool IsEqual(const FullTypeDef& lhs, const FullTypeDef& rhs) {
   return true;
 }
 
+uint64_t Hash(const FullTypeDef& arg) {
+  // Following style of IsEqual above and walking across FullTypeDef.
+  uint64_t val = Hash64Combine(arg.type_id(), 0);
+
+  const auto& arg_s = arg.s();
+  val = Hash64Combine(val, Hash64(arg_s));
+  for (int i = 0, e = arg.args_size(); i < e; ++i) {
+    const FullTypeDef& arg_arg = GetArgDefaultAny(arg, i);
+    val = Hash64Combine(val, Hash(arg_arg));
+  }
+
+  return val;
+}
+
 bool IsSubtype(const FullTypeDef& lhs, const FullTypeDef& rhs, bool covariant) {
   // Rule: ANY is a supertype of all types.
   if (rhs.type_id() == TFT_ANY) {
@@ -348,11 +375,23 @@ bool IsSubtype(const FullTypeDef& lhs, const FullTypeDef& rhs, bool covariant) {
   if (rhs.type_id() == TFT_UNSET) {
     return true;
   }
+  // Compatibility rule: TENSOR[LEGACY_VARIANT] is treated as ANY for the
+  // purpose of subtyping.
+  if ((rhs.type_id() == TFT_TENSOR) &&
+      (GetArgDefaultUnset(rhs, 0).type_id() == TFT_LEGACY_VARIANT)) {
+    return true;
+  }
+  // Rule: encodings are subtypes of the encoding type.
+  if (lhs.type_id() == TFT_ENCODED) {
+    return IsSubtype(GetArgDefaultAny(lhs, 1), rhs, true);
+  }
+
   // Default rule: type IDs must match.
   if (lhs.type_id() != rhs.type_id()) {
     return false;
   }
 
+  // Arguments must be subtypes of one another.
   for (int i = 0; i < std::max(lhs.args_size(), rhs.args_size()); i++) {
     const FullTypeDef& lhs_arg = GetArgDefaultAny(lhs, i);
     const FullTypeDef& rhs_arg = GetArgDefaultAny(rhs, i);
@@ -368,7 +407,7 @@ bool IsSubtype(const FullTypeDef& lhs, const FullTypeDef& rhs, bool covariant) {
     }
   }
 
-  // Invariant: type IDs are eaqual, and all args are subtype of one another.
+  // Invariant: type IDs are equal, and all args are subtype of one another.
   return true;
 }
 

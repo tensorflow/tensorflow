@@ -73,9 +73,9 @@ def tf_fuzz_target(
     # Now, redirect to cc_test
     native.cc_test(
         name = name,
-        deps = deps,  # TODO(mihaimaruseac): fuzzing lib?
-        data = data,  # TODO(mihaimaruseac): dict, corpus, parsers??
-        tags = tags,  # TODO(mihaimaruseac): fuzzing tags?
+        deps = deps,
+        data = data,
+        tags = tags,
         linkstatic = 1,
         **kwargs
     )

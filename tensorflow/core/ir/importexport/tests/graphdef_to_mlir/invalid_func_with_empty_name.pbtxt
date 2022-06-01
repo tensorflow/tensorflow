@@ -1,6 +1,6 @@
 # RUN: not tfg-translate -graphdef-to-mlir %s 2>&1 | FileCheck %s
 
-# CHECK: function without a name
+# CHECK: Function without a name
 
 library {
   function {

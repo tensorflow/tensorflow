@@ -447,7 +447,7 @@ def make_coordinator(num_workers, num_ps):
   cluster_def = multi_worker_test_base.create_in_process_cluster(
       num_workers=num_workers, num_ps=num_ps, rpc_layer='grpc')
   cluster_def['chief'] = [
-      'localhost:%d' % multi_worker_test_base.pick_unused_port()
+      'localhost:%d' % test_util.pick_unused_port()
   ]
   cluster_resolver = SimpleClusterResolver(
       ClusterSpec(cluster_def), rpc_layer='grpc')
@@ -484,6 +484,7 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread,
     self.assertEqual(self.coordinator.fetch(got), want)
 
   def testFetchingRemoteValueStructure(self):
+    self.skipTest('b/171040359: flaky test')
     x = constant_op.constant(1)
 
     @def_function.function

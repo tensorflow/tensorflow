@@ -125,6 +125,10 @@ class NcclReduceScatterThunk : public NcclAllReduceThunkBase {
                            ncclComm_t comm) override;
 };
 
+Status RunAllReduce(ReductionKind reduction_kind,
+                    std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
+                    ncclComm_t comm);
+
 }  // namespace gpu
 }  // namespace xla
 

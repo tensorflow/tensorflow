@@ -77,6 +77,26 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_use_spmd_partitioning(
   return *this;
 }
 
+ExecutableBuildOptions& ExecutableBuildOptions::set_use_auto_spmd_partitioning(
+    bool use_auto_spmd_partitioning) {
+  use_auto_spmd_partitioning_ = use_auto_spmd_partitioning;
+  return *this;
+}
+
+ExecutableBuildOptions&
+ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_shape(
+    std::vector<int64_t> mesh_shape) {
+  auto_spmd_partitioning_mesh_shape_ = mesh_shape;
+  return *this;
+}
+
+ExecutableBuildOptions&
+ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_ids(
+    std::vector<int64_t> mesh_ids) {
+  auto_spmd_partitioning_mesh_ids_ = mesh_ids;
+  return *this;
+}
+
 ExecutableBuildOptions& ExecutableBuildOptions::set_deduplicate_hlo(
     bool deduplicate_hlo) {
   deduplicate_hlo_ = deduplicate_hlo;
@@ -120,6 +140,14 @@ ExecutionOptions CreateExecutionOptions(
   execution_options.set_num_partitions(build_options.num_partitions());
   execution_options.set_use_spmd_partitioning(
       build_options.use_spmd_partitioning());
+  execution_options.set_use_auto_spmd_partitioning(
+      build_options.use_auto_spmd_partitioning());
+  for (auto t : build_options.auto_spmd_partitioning_mesh_shape()) {
+    execution_options.mutable_auto_spmd_partitioning_mesh_shape()->Add(t);
+  }
+  for (auto t : build_options.auto_spmd_partitioning_mesh_ids()) {
+    execution_options.mutable_auto_spmd_partitioning_mesh_ids()->Add(t);
+  }
   execution_options.set_deduplicate_hlo(build_options.deduplicate_hlo());
   execution_options.set_allow_spmd_sharding_propagation_to_output(
       build_options.allow_spmd_sharding_propagation_to_output());

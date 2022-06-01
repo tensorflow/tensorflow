@@ -51,7 +51,7 @@ REGISTER_OP("TPUPartitionedOutput")
       for (int i = num_splits - 1; i >= 0; --i) {
         c->set_output(i, newoutput0);
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

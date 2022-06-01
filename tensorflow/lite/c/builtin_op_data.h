@@ -519,6 +519,10 @@ typedef struct {
 } TfLiteGeluParams;
 
 typedef struct {
+  int num_segments;
+} TfLiteUnsortedSegmentProdParams;
+
+typedef struct {
   TfLitePadding padding;
   int stride_depth;
   int stride_width;

@@ -64,7 +64,7 @@ Status CombineReduceScatters(absl::Span<HloInstruction* const> to_combine) {
   // Create a single bigger ReduceScatter of the operands of the smaller
   // ReduceScatters.
   std::vector<HloInstruction*> operands;
-  std::vector<Shape> output_shapes;
+  std::vector<const Shape*> output_shapes;
   VLOG(1) << "Combining set";
   for (HloInstruction* hlo : to_combine) {
     VLOG(1) << "Set element: " << hlo->ToString();
@@ -76,7 +76,7 @@ Status CombineReduceScatters(absl::Span<HloInstruction* const> to_combine) {
     TF_RET_CHECK(*reduction_kind == *first_reduction_kind);
     TF_RET_CHECK(hlo->shape().IsArray());
     operands.push_back(hlo->operands()[0]);
-    output_shapes.push_back(hlo->shape());
+    output_shapes.push_back(&hlo->shape());
   }
 
   const auto* rs = Cast<HloReduceScatterInstruction>(to_combine.front());
@@ -85,7 +85,7 @@ Status CombineReduceScatters(absl::Span<HloInstruction* const> to_combine) {
   // AllReduce ops with more than one operand produce a tuple.
   TF_RET_CHECK(operands.size() >= 2);
   combined = computation.AddInstruction(HloInstruction::CreateReduceScatter(
-      ShapeUtil::MakeTupleShape(output_shapes), operands, reduction,
+      ShapeUtil::MakeTupleShapeWithPtrs(output_shapes), operands, reduction,
       to_combine.front()->replica_groups(),
       /*constrain_layout=*/false, to_combine.front()->channel_id(),
       rs->use_global_device_ids(), rs->scatter_dimension()));

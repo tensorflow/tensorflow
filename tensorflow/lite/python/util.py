@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,6 +32,7 @@ from tensorflow.lite.python import schema_util
 from tensorflow.lite.python import tflite_keras_util as _tflite_keras_util
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
+from tensorflow.lite.tools import flatbuffer_utils
 from tensorflow.python.eager import function
 from tensorflow.python.framework import convert_to_constants as _convert_to_constants
 from tensorflow.python.framework import dtypes
@@ -983,18 +983,17 @@ def modify_model_io_type(
   return _convert_model_from_object_to_bytearray(model_object)
 
 
-def get_sparsity_modes(model_buffer):
+def get_sparsity_modes(model_object):
   """Get sparsity modes used in a tflite model.
 
   The sparsity modes are listed in conversion_metadata.fbs file.
 
   Args:
-    model_buffer: A tflite model.
+    model_object: A tflite model in object form.
 
   Returns:
     The list of sparsity modes used in the model.
   """
-  model_object = _convert_model_from_bytearray_to_object(model_buffer)
   if not model_object or not model_object.metadata:
     return []
 
@@ -1016,21 +1015,17 @@ def get_sparsity_modes(model_buffer):
   return list(result)
 
 
-def populate_conversion_metadata(model_buffer, metadata):
+def populate_conversion_metadata(model_object, metadata):
   """Add or update conversion metadata to a tflite model.
 
   Args:
-    model_buffer: A tflite model.
+    model_object: A tflite model in object form.
     metadata: The conversion metadata.
 
   Returns:
-    A tflite model with embedded conversion metadata.
+    A tflite model object with embedded conversion metadata.
   """
   try:
-    model_object = _convert_model_from_bytearray_to_object(model_buffer)
-    if not model_object:
-      return model_buffer
-
     metadata_builder = flatbuffers.Builder(0)
     metadata_builder.Finish(metadata.Pack(metadata_builder))
     buffer_field = schema_fb.BufferT()
@@ -1043,7 +1038,7 @@ def populate_conversion_metadata(model_buffer, metadata):
       for meta in model_object.metadata:
         if meta.name.decode("utf-8") == CONVERSION_METADATA_FIELD_NAME:
           model_object.buffers[meta.buffer] = buffer_field
-          return _convert_model_from_object_to_bytearray(model_object)
+          return model_object
 
     if not model_object.buffers:
       model_object.buffers = []
@@ -1054,9 +1049,9 @@ def populate_conversion_metadata(model_buffer, metadata):
     metadata_field.buffer = len(model_object.buffers) - 1
     model_object.metadata.append(metadata_field)
 
-    return _convert_model_from_object_to_bytearray(model_object)
+    return model_object
   except Exception:  # pylint: disable=broad-except
-    return model_buffer
+    return model_object
 
 
 def get_conversion_metadata(model_buffer):
@@ -1068,7 +1063,7 @@ def get_conversion_metadata(model_buffer):
   Returns:
     The conversion metadata or None if it is not populated.
   """
-  model_object = _convert_model_from_bytearray_to_object(model_buffer)
+  model_object = flatbuffer_utils.convert_bytearray_to_object(model_buffer)
   if not model_object or not model_object.metadata:
     return None
 

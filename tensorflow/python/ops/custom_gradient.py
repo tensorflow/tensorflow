@@ -248,7 +248,8 @@ def custom_gradient(f=None):
   operations.
 
   Note that if the decorated function uses `Variable`s, the enclosing variable
-  scope must be using `ResourceVariable`s.
+  scope must be using 
+  [ResourceVariables](https://www.tensorflow.org/guide/migrate/tf1_vs_tf2#resourcevariables_instead_of_referencevariables).
 
   Args:
     f: function `f(*x)` that returns a tuple `(y, grad_fn)` where:
@@ -477,9 +478,9 @@ def _graph_mode_decorator(f, args, kwargs):
         "since function uses variables: {}".format(variables))
   if variables_in_signature and not variables:
     # User seems to intend to use variables but none were captured.
-    logging.warning(
-        "@custom_gradient grad_fn has 'variables' in signature, but "
-        "no ResourceVariables were used on the forward pass.")
+    logging.vlog(
+        1, "@custom_gradient grad_fn has 'variables' in signature, "
+        "but no ResourceVariables were used on the forward pass.")
 
   all_tensors = flat_result + args + variables
 

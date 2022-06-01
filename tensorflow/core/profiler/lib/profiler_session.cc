@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/profiler/convert/post_process_single_host_xplane.h"
 #include "tensorflow/core/profiler/lib/profiler_collection.h"
 #include "tensorflow/core/profiler/lib/profiler_factory.h"
@@ -59,10 +60,10 @@ tensorflow::Status ProfilerSession::Status() {
   return status_;
 }
 
+#if !defined(IS_MOBILE_PLATFORM)
 Status ProfilerSession::CollectDataInternal(profiler::XSpace* space) {
   mutex_lock l(mutex_);
   TF_RETURN_IF_ERROR(status_);
-#if !defined(IS_MOBILE_PLATFORM)
   LOG(INFO) << "Profiler session collecting data.";
   if (profilers_ != nullptr) {
     profilers_->Stop().IgnoreError();
@@ -71,12 +72,13 @@ Status ProfilerSession::CollectDataInternal(profiler::XSpace* space) {
   }
   // Allow another session to start.
   profiler_lock_.ReleaseIfActive();
-#endif
   return Status::OK();
 }
+#endif
 
 Status ProfilerSession::CollectData(profiler::XSpace* space) {
 #if !defined(IS_MOBILE_PLATFORM)
+  space->add_hostnames(port::Hostname());
   TF_RETURN_IF_ERROR(CollectDataInternal(space));
   PostProcessSingleHostXSpace(space, start_time_ns_);
 #endif

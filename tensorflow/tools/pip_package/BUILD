@@ -41,7 +41,7 @@ transitive_hdrs(
         "//tensorflow/c/experimental/grappler:grappler_hdrs",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:ops_hdrs",
-        # TODO(mihaimaruseac): Revisit these after cc_shared_library everywhere
+        # TODO(rostam): Revisit these after cc_shared_library everywhere
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:cc_ops",
         # WARNING: None of the C/C++ code under python/ has any API guarantees, and TF team
@@ -128,20 +128,22 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/ops/ragged:ragged_tensor_test_ops",
     "//tensorflow/python/debug:debug_pip",
     "//tensorflow/python/distribute:combinations",
+    "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
+    "//tensorflow/python/distribute/failure_handling:gce_util",
     "//tensorflow/python/distribute:multi_process_runner",
     "//tensorflow/python/eager:eager_pip",
     "//tensorflow/python/keras:combinations",
-    "//tensorflow/python/keras/distribute:distribute_test_lib_pip",
-    "//tensorflow/python/keras/distribute:strategy_combinations",
     "//tensorflow/python/keras/mixed_precision:test_util",
     "//tensorflow/python/keras/utils:dataset_creator",
     "//tensorflow/python/kernel_tests/linalg/testdata:self_adjoint_eig_op_test_files",
     "//tensorflow/python/kernel_tests/nn_ops:bias_op_base",
     "//tensorflow/python/kernel_tests/nn_ops:cudnn_deterministic_base",
+    "//tensorflow/python/kernel_tests/nn_ops:depthwise_conv_op_base",
     "//tensorflow/python/kernel_tests/nn_ops:xent_op_test_base",
     "//tensorflow/python/kernel_tests/random:util",
     "//tensorflow/python/kernel_tests/signal:test_util",
     "//tensorflow/python/kernel_tests/sparse_ops:sparse_xent_op_test_base",
+    "//tensorflow/python/ops/structured:structured_tensor_dynamic",
     "//tensorflow/python/profiler:trace",
     "//tensorflow/python/saved_model:saved_model",
     "//tensorflow/python/tools:tools_pip",
@@ -239,7 +241,6 @@ filegroup(
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
-        "//tensorflow:no_gcp_support": [],
         "//conditions:default": [
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
@@ -288,6 +289,7 @@ sh_binary(
                "//tensorflow:dynamic_loaded_kernels": DYNAMIC_LOADED_KERNELS,
                "//conditions:default": [],
            }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
+    visibility = ["//visibility:public"],
 )
 
 # A genrule for generating a marker file for the pip package on Windows

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/memory/memory.h"
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -41,6 +42,38 @@ limitations under the License.
 
 namespace xla {
 
+// Represents a parsed static while loop. We normalize the loop representation
+// so that it starts from the induction_var_init_value and increments by
+// step_size until it exceeds or goes below loop_bound.
+struct ParsedStaticWhileLoop {
+  // The number of iterations to be executed.
+  int64_t trip_count = -1;
+  // The tuple index of the induction variable in the while argument tuple.
+  int64_t induction_var_index = -1;
+  // The induction variable's initial value.
+  int64_t induction_var_init_value = -1;
+  // The induction variable is incremented by this number (could be negative)
+  // in each iteration.
+  int64_t step_size = -1;
+  int64_t loop_bound = -1;
+};
+
+// Indicates whether a parsed while loop is static or dynamic. If the loop is
+// static, it contains a value for StaticLoopInfo; otherwise the loop is
+// dynamic. We consider a loop dynamic if its induction variable's initial
+// value or the loop bound's value depends on the while's parent computation's
+// parameter.
+struct ParsedWhileLoop {
+  absl::optional<ParsedStaticWhileLoop> static_while_loop;
+  bool is_dynamic() const { return !static_while_loop.has_value(); }
+};
+constexpr ParsedWhileLoop kParsedDynamicWhileLoop = ParsedWhileLoop();
+
+// Tries to parse a while loop using a set of predefined patterns.
+// Returns the parsing result.
+absl::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
+    HloInstruction* while_op);
+
 // Responsible for evaluating HLO and obtain literal as the evaluation results.
 //
 // This class is not thread-safe.
@@ -49,6 +82,14 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // Only evaluate up to max_loop_iterations per while-loop execution if
   // specified.
   explicit HloEvaluator(int64_t max_loop_iterations = -1);
+
+  // Called by the evaluator to create an embedded evaluator to execute a
+  // sub-region of control flow. Subclasses should override this to return an
+  // instance of the subclass instead.
+  virtual std::unique_ptr<HloEvaluator> CreateEmbedded(
+      int64_t max_loop_iterations) {
+    return std::make_unique<HloEvaluator>(max_loop_iterations);
+  }
 
   // Evaluates an HLO module and an array of pointers to literals.  Returns the
   // evaluated result as a literal if successful.
@@ -254,7 +295,15 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleGather(HloInstruction* gather) override;
 
+  Status HandleScatter(HloInstruction* hlo) override;
+
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
+
+  Status HandleAsyncStart(HloInstruction* async_start) override;
+
+  Status HandleAsyncUpdate(HloInstruction* async_update) override;
+
+  Status HandleAsyncDone(HloInstruction* async_done) override;
 
   Status HandleCopy(HloInstruction* copy) override;
 
@@ -271,8 +320,6 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   Status HandleWhile(HloInstruction* while_hlo) override;
 
   Status HandleSelect(HloInstruction* select) override;
-
-  Status HandleTupleSelect(HloInstruction* tuple_select) override;
 
   Status HandleBroadcast(HloInstruction* broadcast) override;
 
@@ -300,19 +347,19 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // handled by the evaluator.
   Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override {
     return Unimplemented("BatchNormGrad HLO is unsupported by the evaluator.");
-  };
+  }
   Status HandleBatchNormInference(
       HloInstruction* batch_norm_inference) override {
     return Unimplemented(
         "BatchNormInference HLO is unsupported by the evaluator.");
-  };
+  }
   Status HandleBatchNormTraining(HloInstruction* batch_norm_training) override {
     return Unimplemented(
         "BatchNormTraining HLO is unsupported by the evaluator.");
-  };
+  }
   Status HandleOutfeed(HloInstruction* outfeed) override {
     return Unimplemented("Outfeed HLO is unsupported by the evaluator.");
-  };
+  }
 
   // Returns the already-evaluated literal result for the instruction.
   //

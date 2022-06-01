@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
@@ -40,22 +41,22 @@ class TFAssertOpConverter : public OpConversionPattern<TFAssertOp> {
     Block *split_block = rewriter.splitBlock(
         rewriter.getInsertionBlock(), std::next(rewriter.getInsertionPoint()));
 
-    auto func = op->getParentOfType<FuncOp>();
+    auto func = op->getParentOfType<func::FuncOp>();
     Block *error_reporting_block =
         rewriter.createBlock(&func.getRegion(), {}, {});
     rewriter.create<ReportErrorOp>(loc, adaptor.ctx(), adaptor.error_code(),
                                    adaptor.msg());
 
     SmallVector<Value, 2> null_memrefs;
-    for (auto type : func.getType().getResults()) {
+    for (auto type : func.getFunctionType().getResults()) {
       null_memrefs.push_back(rewriter.create<NullMemRefOp>(loc, type));
     }
-    rewriter.create<ReturnOp>(loc, null_memrefs);
+    rewriter.create<func::ReturnOp>(loc, null_memrefs);
 
     rewriter.restoreInsertionPoint(ip);
-    rewriter.replaceOpWithNewOp<CondBranchOp>(op, adaptor.arg(), split_block,
-                                              llvm::None, error_reporting_block,
-                                              llvm::None);
+    rewriter.replaceOpWithNewOp<cf::CondBranchOp>(
+        op, adaptor.arg(), split_block, llvm::None, error_reporting_block,
+        llvm::None);
     return success();
   }
 };
@@ -64,7 +65,7 @@ class TFAssertOpConverter : public OpConversionPattern<TFAssertOp> {
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 bool IsNotInsideTfEntryFunction(Operation *op) {
-  auto func = op->getParentOfType<FuncOp>();
+  auto func = op->getParentOfType<func::FuncOp>();
   return !func->hasAttrOfType<UnitAttr>(TFFrameworkDialect::kTFEntryAttrName);
 }
 // All contained `tf_framework.assert` operations are rewritten into calls to
@@ -83,15 +84,15 @@ class RewriteTFFrameworkAssertPass
     // Populate patterns.
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
-    patterns.insert<TFAssertOpConverter>(context);
+    patterns.add<TFAssertOpConverter>(context);
     PopulateEmbedTFFrameworkAssertPattern(&patterns);
 
     // Set target.
     ConversionTarget target(getContext());
-    target.addLegalDialect<tf_framework::TFFrameworkDialect,
-                           StandardOpsDialect>();
+    target.addLegalDialect<tf_framework::TFFrameworkDialect, func::FuncDialect,
+                           cf::ControlFlowDialect>();
     target.addIllegalOp<TFAssertOp>();
-    target.addDynamicallyLegalOp<AssertOp>(IsNotInsideTfEntryFunction);
+    target.addDynamicallyLegalOp<cf::AssertOp>(IsNotInsideTfEntryFunction);
 
     if (failed(applyPartialConversion(m, target, std::move(patterns)))) {
       signalPassFailure();

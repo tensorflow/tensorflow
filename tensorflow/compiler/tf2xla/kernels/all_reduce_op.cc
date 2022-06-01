@@ -88,9 +88,26 @@ class CollectiveReduceV2Op : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(CollectiveReduceV2Op);
 };
 
+class CollectiveAssignGroupV2Op : public XlaOpKernel {
+ public:
+  explicit CollectiveAssignGroupV2Op(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    OP_REQUIRES(
+        ctx, false,
+        errors::InvalidArgument("CollectiveAssignGroupV2 is unsupported in the "
+                                "legacy TF2XLA bridge"));
+  }
+};
+
 REGISTER_XLA_OP(Name("CollectiveReduceV2")
                     .CompileTimeConstantInput("group_key")
                     .CompileTimeConstantInput("group_size"),
                 CollectiveReduceV2Op);
+
+REGISTER_XLA_OP(Name("CollectiveAssignGroupV2")
+                    .CompileTimeConstantInput("group_assignment"),
+                CollectiveAssignGroupV2Op);
 
 }  // namespace tensorflow

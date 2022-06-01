@@ -73,7 +73,7 @@ Status DefaultPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
 
   const xla::ShapedBuffer& shaped_buffer = xla_tensor->shaped_buffer();
   *shape = shaped_buffer.on_device_shape();
-  return Status::OK();
+  return OkStatus();
 }
 
 // Caches a XlaDeviceAllocator per <backend, device ordinal> pair. A
@@ -179,7 +179,7 @@ const DeviceType& XlaDevice::Metadata::jit_device_type() const {
         "placed on the wrong device.");
   }
   *metadata = &(xla_device->xla_metadata_);
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ Status XlaDevice::GetMetadata(OpKernelContext* ctx,
@@ -295,7 +295,7 @@ Status XlaDevice::EnsureStreamOkLocked(xla::Backend* backend,
             << (*stream)->DebugStreamPointers();
     *stream_was_changed = true;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::vector<XlaDeviceContext*>> XlaDevice::GetDeviceContextLocked() {
@@ -375,21 +375,22 @@ StatusOr<std::vector<XlaDeviceContext*>> XlaDevice::GetDeviceContextLocked() {
     device_contexts_.emplace_back(device_context);
   }
 
-  // Create and set a new GpuDeviceInfo, if necessary.
+  // Create and set a new AcceleratorDeviceInfo, if necessary.
   //
   // TODO(b/78232898): This isn't thread-safe; there is a race between the call
-  // to set_tensorflow_gpu_device_info() with ops that call the getter
-  // tensorflow_gpu_device_info(). This isn't trivially fixed by adding locking
-  // to those methods; see the bug for details. Our only saving grace at the
-  // moment is that this race doesn't seem to occur in practice.
-  if (use_gpu_device_info_) {
-    auto gpu_device_info = absl::make_unique<GpuDeviceInfo>();
-    gpu_device_info->stream = stream_.get();
-    gpu_device_info->default_context = device_contexts_.at(0);
-    set_tensorflow_gpu_device_info(gpu_device_info.get());
-    gpu_device_info_ = std::move(gpu_device_info);
-    VLOG(1) << "XlaDevice " << this << " new GpuDeviceInfo "
-            << gpu_device_info_.get();
+  // to set_tensorflow_accelerator_device_info() with ops that call the getter
+  // tensorflow_accelerator_device_info(). This isn't trivially fixed by adding
+  // locking to those methods; see the bug for details. Our only saving grace at
+  // the moment is that this race doesn't seem to occur in practice.
+  if (use_accelerator_device_info_) {
+    auto accelerator_device_info =
+        absl::make_unique<DeviceBase::AcceleratorDeviceInfo>();
+    accelerator_device_info->stream = stream_.get();
+    accelerator_device_info->default_context = device_contexts_.at(0);
+    set_tensorflow_accelerator_device_info(accelerator_device_info.get());
+    accelerator_device_info_ = std::move(accelerator_device_info);
+    VLOG(1) << "XlaDevice " << this << " new AcceleratorDeviceInfo "
+            << accelerator_device_info_.get();
   }
 
   return device_contexts_;
@@ -405,9 +406,9 @@ StatusOr<XlaDeviceContext*> XlaDevice::GetDeviceContextDefault() {
   return GetDeviceContextWithIndex(0);
 }
 
-Status XlaDevice::UseGpuDeviceInfo() {
+Status XlaDevice::UseAcceleratorDeviceInfo() {
   mutex_lock lock(mu_);
-  use_gpu_device_info_ = true;
+  use_accelerator_device_info_ = true;
   return GetDeviceContextLocked().status();
 }
 
@@ -415,7 +416,7 @@ Status XlaDevice::TryGetDeviceContext(DeviceContext** out_context) {
   TF_ASSIGN_OR_RETURN(auto device_context, GetDeviceContextDefault());
   device_context->Ref();
   *out_context = device_context;
-  return Status::OK();
+  return OkStatus();
 }
 
 // Warn about XLA_CPU/XLA_GPU exactly once.
@@ -457,7 +458,7 @@ Status XlaDevice::Sync() {
     mutex_lock lock(mu_);
     stream = stream_;
   }
-  if (!stream) return Status::OK();
+  if (!stream) return OkStatus();
 
   Status status = stream->BlockHostUntilDone();
   TF_RETURN_IF_ERROR(status);
@@ -465,7 +466,7 @@ Status XlaDevice::Sync() {
     return errors::Internal("XlaDevice::Sync() failed.");
   }
   VLOG(1) << "XlaDevice::Sync completed";
-  return Status::OK();
+  return OkStatus();
 }
 
 // TODO(b/112409994): This is no longer necessary. Consolidate it with the
@@ -478,7 +479,7 @@ void XlaDevice::Sync(const DoneCallback& done) {
     stream = stream_;
   }
   if (!stream) {
-    done(Status::OK());
+    done(OkStatus());
     return;
   }
 
@@ -495,7 +496,7 @@ void XlaDevice::Sync(const DoneCallback& done) {
   stream->ThenEnqueueOnBackgroundThread([stream, done](se::StreamExecutor*) {
     profiler::TraceMe activity("XlaDevice::Sync::Callback",
                                profiler::TraceMeLevel::kInfo);
-    done(stream->ok() ? Status::OK()
+    done(stream->ok() ? OkStatus()
                       : errors::Internal("XlaDevice::Sync() failed."));
   });
 }
@@ -561,7 +562,7 @@ Status XlaDevice::HandleDeviceError() {
   if (local_device_error_callback != nullptr) {
     return local_device_error_callback();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaDevice::RefreshStatus() {
@@ -571,7 +572,7 @@ Status XlaDevice::RefreshStatus() {
     stream = stream_;
   }
   if (!stream) {
-    return Status::OK();
+    return OkStatus();
   }
   Status status = stream->RefreshStatus();
   if (!status.ok()) {

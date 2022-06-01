@@ -98,8 +98,9 @@ std::unique_ptr<Interpreter> CreateInterpreter(
   ::tflite::python::ImportNumpy();
 
   std::unique_ptr<Interpreter> interpreter;
-  InterpreterBuilder builder(*model, resolver);
-  if (preserve_all_tensors) builder.PreserveAllTensorsExperimental();
+  InterpreterOptions options;
+  options.SetPreserveAllTensors(preserve_all_tensors);
+  InterpreterBuilder builder(*model, resolver, &options);
   if (builder(&interpreter) != kTfLiteOk) {
     return nullptr;
   }

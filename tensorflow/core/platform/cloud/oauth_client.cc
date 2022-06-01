@@ -136,9 +136,10 @@ Status EncodeJwtClaim(StringPiece client_email, StringPiece scope,
                       string* encoded) {
   // Step 1: create the JSON with the claim.
   Json::Value root;
-  root["iss"] = Json::Value(client_email.begin(), client_email.end());
-  root["scope"] = Json::Value(scope.begin(), scope.end());
-  root["aud"] = Json::Value(audience.begin(), audience.end());
+  root["iss"] = Json::Value(client_email.data(),
+                            client_email.data() + client_email.size());
+  root["scope"] = Json::Value(scope.data(), scope.data() + scope.size());
+  root["aud"] = Json::Value(audience.data(), audience.data() + audience.size());
 
   const auto expiration_timestamp_sec =
       request_timestamp_sec + kRequestedTokenLifetimeSec;
@@ -159,7 +160,7 @@ Status EncodeJwtHeader(StringPiece key_id, string* encoded) {
   Json::Value root;
   root["alg"] = kCryptoAlgorithm;
   root["typ"] = kJwtType;
-  root["kid"] = Json::Value(key_id.begin(), key_id.end());
+  root["kid"] = Json::Value(key_id.data(), key_id.data() + key_id.size());
 
   // Step 2: represent the JSON as a string.
   const string header = root.toStyledString();
@@ -276,7 +277,7 @@ Status OAuthClient::ParseOAuthResponse(StringPiece response,
   }
   Json::Value root;
   Json::Reader reader;
-  if (!reader.parse(response.begin(), response.end(), root)) {
+  if (!reader.parse(response.data(), response.data() + response.size(), root)) {
     return errors::Internal("Couldn't parse JSON response from OAuth server.");
   }
 

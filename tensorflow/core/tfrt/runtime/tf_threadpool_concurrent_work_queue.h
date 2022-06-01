@@ -37,7 +37,14 @@ class TfThreadPoolWorkQueue : public WorkQueueInterface {
   TfThreadPoolWorkQueue(
       tensorflow::thread::ThreadPoolInterface* intra_op_threadpool,
       tensorflow::thread::ThreadPoolInterface* inter_op_threadpool)
-      : intra_op_threadpool_(intra_op_threadpool),
+      : TfThreadPoolWorkQueue(/*id=*/0, intra_op_threadpool,
+                              inter_op_threadpool) {}
+
+  TfThreadPoolWorkQueue(
+      int64_t id, tensorflow::thread::ThreadPoolInterface* intra_op_threadpool,
+      tensorflow::thread::ThreadPoolInterface* inter_op_threadpool)
+      : WorkQueueInterface(id),
+        intra_op_threadpool_(intra_op_threadpool),
         inter_op_threadpool_(inter_op_threadpool) {}
 
   StatusOr<std::unique_ptr<WorkQueueInterface>> InitializeRequest(
@@ -51,9 +58,6 @@ class TfThreadPoolWorkQueue : public WorkQueueInterface {
   std::string name() const override { return "TfThreadPoolWorkQueue"; }
 
   void AddTask(tfrt::TaskFunction work) override;
-
-  void AddTask(const tfrt::ExecutionContext& exec_ctx,
-               tfrt::TaskFunction work) override;
 
   llvm::Optional<tfrt::TaskFunction> AddBlockingTask(
       tfrt::TaskFunction work, bool allow_queuing) override;
@@ -69,6 +73,12 @@ class TfThreadPoolWorkQueue : public WorkQueueInterface {
   tensorflow::thread::ThreadPoolInterface* intra_op_threadpool_ = nullptr;
   tensorflow::thread::ThreadPoolInterface* inter_op_threadpool_ = nullptr;
 };
+
+// Create a default TfThreadPoolWorkQueue that is implemented by
+// tensorflow::thread::ThreadPool. `num_inter_op_threads` and
+// `num_intra_op_threads` must be larger than zero.
+std::unique_ptr<TfThreadPoolWorkQueue> CreateDefaultTfThreadPoolWorkQueue(
+    int num_inter_op_threads, int num_intra_op_threads);
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

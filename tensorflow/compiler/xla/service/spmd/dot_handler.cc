@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/platform/numbers.h"
 
 namespace xla {
 namespace spmd {
@@ -1418,9 +1417,9 @@ StatusOr<HloInstruction*> PartitionBaseCase(
 
     auto param = body_b.AddInstruction(HloInstruction::CreateParameter(
         /*parameter_number=*/0,
-        ShapeUtil::MakeTupleShape({lhs_hlo->shape(), rhs_hlo->shape(),
-                                   result_buffer->shape(),
-                                   extra_buffer->shape(), iteration->shape()}),
+        ShapeUtil::MakeTupleShapeWithPtrs(
+            {&lhs_hlo->shape(), &rhs_hlo->shape(), &result_buffer->shape(),
+             &extra_buffer->shape(), &iteration->shape()}),
         "param"));
     auto l = body_b.AddInstruction(
         HloInstruction::CreateGetTupleElement(lhs_hlo->shape(), param, 0));
@@ -1695,9 +1694,9 @@ StatusOr<HloInstruction*> PartitionBaseCase(
     SpmdBuilder cond_b("windowed_dot_general_cond", original_hlo);
     auto cond_param = cond_b.AddInstruction(HloInstruction::CreateParameter(
         /*parameter_number=*/0,
-        ShapeUtil::MakeTupleShape({lhs_hlo->shape(), rhs_hlo->shape(),
-                                   result_buffer->shape(),
-                                   extra_buffer->shape(), iteration->shape()}),
+        ShapeUtil::MakeTupleShapeWithPtrs(
+            {&lhs_hlo->shape(), &rhs_hlo->shape(), &result_buffer->shape(),
+             &extra_buffer->shape(), &iteration->shape()}),
         "param"));
     auto cond_i = cond_b.AddInstruction(HloInstruction::CreateGetTupleElement(
         iteration->shape(), cond_param, 4));
@@ -2352,7 +2351,20 @@ StatusOr<HloInstruction*> PartitionDotGroupOnNonContracting(
     top_level_sharding_to_reset.emplace_back(other.hlo(), other.sharding());
     partially_replicated_other->set_sharding(other_grouped->sharding);
   } else if (!other.sharding().IsReplicated()) {
-    other = other.Reshard(UngroupSharding(*other_grouped));
+    HloSharding target_sharding = UngroupSharding(*other_grouped);
+    GroupedSharding target_group_sharding =
+        hlo_sharding_util::GroupShardingOnDims(target_sharding,
+                                               other_grouped->group_dims);
+    const bool device_group_match = hlo_sharding_util::DeviceGroupsAreMatch(
+        target_group_sharding, *other_grouped, /*ignore_group_order=*/false);
+
+    // Do not reshard for partial replicate if device group are matched.
+    // There is a reshard to partial replicate right after this reshard. If
+    // the device ids within each partial replicate group is the same, no need
+    // to reshard here.
+    if (!other.sharding().ReplicateOnLastTileDim() || !device_group_match) {
+      other = other.Reshard(target_sharding);
+    }
     partially_replicated_other =
         other
             .Reshard(hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
@@ -3626,7 +3638,7 @@ Status SpmdPartitioningVisitor::HandleDotHelper(
                    num_partitions_, create_sharded_dot, conv_window, module_,
                    hlo, options_, &b_, &windowed_dot_general_loops_, this));
   SetPartitionedHlo(hlo, [&] { return partitioned_dot; });
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 namespace {
@@ -3710,7 +3722,7 @@ Status SinkInputNodesIntoWindowedDotGeneralLoopOnContractingDimensions(
   auto to_sink = std::move(input_nodes.first);
   auto new_operands = std::move(input_nodes.second);
   if (to_sink.empty()) {
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   auto computation = loop->parent();
   // Replace the old operand with a tuple of the found small operands.
@@ -3792,7 +3804,7 @@ Status SinkInputNodesIntoWindowedDotGeneralLoopOnContractingDimensions(
       TF_RETURN_IF_ERROR(body->RemoveInstruction(ou));
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Moves a cluster of memory-reducing nodes (with reduce nodes at the end)
@@ -3912,7 +3924,7 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
   // If nothing is found, to_move could contain only original_output, or
   // cleared by the above code.
   if (to_move.size() <= 1) {
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // We will replace the original loop output with reduce-shape outputs.
@@ -4243,7 +4255,7 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
     TF_RETURN_IF_ERROR(
         computation->RemoveInstructionAndUnusedOperands(reduce_outputs[i]));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace
@@ -4272,7 +4284,7 @@ Status SpmdPartitioningVisitor::DoCodeMotionForWindowedDotGeneralLoops(
               loop.while_loop, options));
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace spmd

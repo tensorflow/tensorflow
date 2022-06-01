@@ -23,6 +23,16 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
+// Opaque type similar to TfLiteDelegate / TfLiteOpaqueDelegate.
+// This is used for cases (e.g. when using "TF Lite with Google Play Services")
+// where the TF Lite runtime might be built using a newer (or older)
+// version of the TF Lite sources than the app, and hence might have a
+// different definition of the TfLiteDelegate type. TF Lite APIs use
+// TfLiteOpaqueDelegate rather than TfLiteDelegate when they want to
+// refer to a delegate defined with that potentially different version
+// of the TfLiteDelegate type.
+struct TfLiteOpaqueDelegateStruct;
+
 namespace tflite {
 
 /// Abstract interface that returns TfLiteRegistrations given op codes or custom
@@ -37,8 +47,10 @@ class OpResolver {
   virtual const TfLiteRegistration* FindOp(const char* op,
                                            int version) const = 0;
 
+  // Represents a sequence of delegates.
   using TfLiteDelegatePtrVector =
       std::vector<std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>>;
+
   // Returns optional delegates for resolving and handling ops in the flatbuffer
   // model. This may be used in addition to the standard TfLiteRegistration
   // lookup for graph resolution.
@@ -47,15 +59,54 @@ class OpResolver {
     return {};
   }
 
-  // Represent a function that creates a TfLite delegate instance.
+  // Represents a function that creates a TfLite delegate instance.
   using TfLiteDelegateCreator =
       std::function<std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>(
           int /*num_threads*/)>;
+
+  // Represents a sequence of delegate creator functions.
   using TfLiteDelegateCreators = std::vector<TfLiteDelegateCreator>;
+
   // Returns a vector of delegate creators to create optional delegates for
   // resolving and handling ops in the flatbuffer model. This may be used in
   // addition to the standard TfLiteRegistration lookup for graph resolution.
+  //
+  // Note that this method is not used (will not be called) if you are using
+  // TF Lite in Google Play Services; the GetOpaqueDelegateCreators method
+  // (see below) is used for that case.
   virtual TfLiteDelegateCreators GetDelegateCreators() const { return {}; }
+
+  // TODO(b/202712825): it would be nice if we could avoid the need for separate
+  // "opaque" types & methods for use only with TF Lite in Google Play Services.
+
+  // Represents an opaque delegate instance.
+  // WARNING: Experimental interface, subject to change.
+  using TfLiteOpaqueDelegatePtr =
+      std::unique_ptr<TfLiteOpaqueDelegateStruct,
+                      void (*)(TfLiteOpaqueDelegateStruct*)>;
+
+  // Represents a function that creates an opaque delegate instance.
+  // WARNING: Experimental interface, subject to change.
+  using TfLiteOpaqueDelegateCreator =
+      std::function<TfLiteOpaqueDelegatePtr(int /*num_threads*/)>;
+
+  // Represents a sequence of opaque delegate creator functions.
+  // WARNING: Experimental interface, subject to change.
+  using TfLiteOpaqueDelegateCreators = std::vector<TfLiteOpaqueDelegateCreator>;
+
+  // Returns a vector of opaque delegate creators to create optional opaque
+  // delegates for resolving and handling ops in the flatbuffer model. This may
+  // be used in addition to the standard TfLiteRegistration lookup for graph
+  // resolution.
+  //
+  // Note that this method will be called only if you are using TF Lite in
+  // Google Play Services; if you are using regular TF Lite, GetDelegateCreators
+  // (see above) is used instead.
+  //
+  // WARNING: Experimental interface, subject to change.
+  virtual TfLiteOpaqueDelegateCreators GetOpaqueDelegateCreators() const {
+    return {};
+  }
 
   virtual ~OpResolver() {}
 

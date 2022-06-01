@@ -179,6 +179,7 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:eager_executor",
         "//tensorflow/core/common_runtime/eager:kernel_and_device",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "//tensorflow/core/platform:error_payloads",
     ],
 )
 
@@ -195,6 +196,7 @@ tf_cc_test(
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:execute",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "//tensorflow/core/platform:error_payloads",
     ],
 )
 
@@ -242,7 +244,7 @@ filegroup(
         "remote_tensor_handle_data.h",
     ],
     visibility = [
-        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/function:__pkg__",
         "//tensorflow/python:__subpackages__",
     ],
 )

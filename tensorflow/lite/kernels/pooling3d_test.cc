@@ -154,7 +154,7 @@ TYPED_TEST(AveragePoolingOpTest, AveragePool) {
       /*output=*/
       {GetTensorType<TypeParam>(), {}, 15.9375 * kMin, 15.9375 * kMax});
   m.SetInput({0, 6, 2, 4, 4, 5, 1, 4, 3, 2, 10, 7, 2, 3, 5, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear({3.125, 4.25}, kTolerance)));
 }
@@ -177,7 +177,7 @@ TYPED_TEST(AveragePoolingOpTest, AveragePoolFilterH1) {
       /*output=*/
       {GetTensorType<TypeParam>(), {}, 15.9375 * kMin, 15.9375 * kMax});
   m.SetInput({0, 6, 2, 4, 4, 5, 1, 4, 3, 2, 10, 7, 2, 3, 5, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear({2.75, 5.75}, kTolerance)));
 }
@@ -203,7 +203,7 @@ TYPED_TEST(AveragePoolingOpTest, AveragePoolPaddingSameStride1) {
       /*stride_d=*/1, /*stride_h=*/1,
       /*stride_w=*/1);
   m.SetInput({0, 6, 2, 4, 2, 5, 4, 3, 3, 2, 10, 7, 3, 2, 2, 4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {2.875, 4.125, 4.5, 4.5, 3.0, 3.25, 3.25, 3.5,
                                   2.5, 4.0, 5.75, 5.5, 2.5, 2.0, 3.0, 4.0},
@@ -231,7 +231,7 @@ TYPED_TEST(AveragePoolingOpTest, AveragePoolPaddingValidStride1) {
       /*stride_d=*/1, /*stride_h=*/1,
       /*stride_w=*/1);
   m.SetInput({0, 6, 2, 4, 2, 5, 4, 3, 3, 2, 10, 7, 3, 2, 2, 4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {2.875, 4.125, 4.5}, kTolerance)));
 }
@@ -254,7 +254,7 @@ TYPED_TEST(MaxPoolingOpTest, MaxPool) {
       /*output=*/
       {GetTensorType<TypeParam>(), {}, 15.9375 * kMin, 15.9375 * kMax});
   m.SetInput({0, 6, 2, 4, 4, 5, 1, 4, 3, 2, 10, 7, 2, 3, 5, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear({6.0, 10.0}, kTolerance)));
 }
@@ -277,7 +277,7 @@ TYPED_TEST(MaxPoolingOpTest, MaxPoolFilterH1) {
       /*output=*/
       {GetTensorType<TypeParam>(), {}, 15.9375 * kMin, 15.9375 * kMax});
   m.SetInput({0, 6, 2, 4, 4, 5, 1, 4, 3, 2, 10, 7, 2, 3, 5, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear({6, 10}, kTolerance)));
 }
@@ -303,7 +303,7 @@ TYPED_TEST(MaxPoolingOpTest, MaxPoolPaddingSameStride1) {
       /*stride_d=*/1, /*stride_h=*/1,
       /*stride_w=*/1);
   m.SetInput({0, 6, 2, 4, 2, 5, 4, 3, 3, 2, 10, 7, 3, 2, 2, 4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetOutput(),
       ElementsAreArray(ArrayFloatNear(
@@ -331,7 +331,7 @@ TYPED_TEST(MaxPoolingOpTest, MaxPoolPaddingValidStride1) {
       /*stride_d=*/1, /*stride_h=*/1,
       /*stride_w=*/1);
   m.SetInput({0, 6, 2, 4, 2, 5, 4, 3, 3, 2, 10, 7, 3, 2, 2, 4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear({6.0, 10.0, 10.0}, kTolerance)));
 }

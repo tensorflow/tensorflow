@@ -74,6 +74,10 @@ void TransposeConvTester::Test(TfLiteDelegate* delegate) const {
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
+  if (weights_cache_ != nullptr) {
+    TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache_);
+  }
+
   const int input_data_size =
       BatchSize() * InputHeight() * InputWidth() * InputChannels();
   float* default_input_data = default_interpreter->typed_input_tensor<float>(0);

@@ -40,7 +40,7 @@ struct FusionInfoCache {
     num_unnested_reductions.erase(instr);
   }
 
-  // The rest of the members of this this class are for internal use within
+  // The rest of the members of this class are for internal use within
   // gpu_fusible. You shouldn't need to use them yourself.
   absl::flat_hash_map<const HloInstruction*, int64_t> shared_memory_usage;
   absl::flat_hash_map<const HloInstruction*, int64_t> num_unnested_reductions;
@@ -57,7 +57,6 @@ bool IsLoopFusible(const HloInstruction& instr);
 // such situations it is better not to fuse. Only input params with
 // maximum rank are considered. Params with smaller ranks will be broadcasted
 // and have not been observed to cause data locality issues.
-// TODO(b/111977086): Improve reduce emitters to remove this limitation.
 bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
                                          const HloInstruction& reduce);
 

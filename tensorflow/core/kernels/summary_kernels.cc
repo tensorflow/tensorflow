@@ -97,7 +97,7 @@ class CreateSummaryDbWriterOp : public OpKernel {
               TF_RETURN_IF_ERROR(SetupTensorboardSqliteDb(db));
               TF_RETURN_IF_ERROR(CreateSummaryDbWriter(
                   db, experiment_name, run_name, user_name, ctx->env(), s));
-              return Status::OK();
+              return OkStatus();
             }));
   }
 };

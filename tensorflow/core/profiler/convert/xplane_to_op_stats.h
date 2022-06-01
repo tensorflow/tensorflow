@@ -36,6 +36,9 @@ struct OpStatsOptions {
 OpStats ConvertXSpaceToOpStats(const XSpace& space,
                                const OpStatsOptions& options);
 
+// Populates the given RunEnvironment with data from XSpace.
+void SetRunEnvironment(const XSpace& space, RunEnvironment* env);
+
 // Propagate and dedup the diagnostics in XSpace and add to OpStats.
 void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
                                          OpStats* op_stats);

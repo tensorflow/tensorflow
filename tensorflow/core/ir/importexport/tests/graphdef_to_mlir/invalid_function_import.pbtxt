@@ -1,0 +1,49 @@
+# RUN: not tfg-translate -graphdef-to-mlir %s 2>&1 | FileCheck %s
+
+# Check that the error message includes the function name. The function is
+# invalid because the `control_output` listed in its signature does not appear
+# in the function's `control_ret` map.
+
+# CHECK: INVALID_ARGUMENT: Control output 'const' was not found in 'control_ret'
+# CHECK: While importing function: test
+
+library {
+  function {
+    signature {
+      name: "test"
+      input_arg {
+        name: "a"
+        type: DT_INT32
+      }
+      output_arg {
+        name: "b"
+        type: DT_INT32
+      }
+      control_output: "const"
+    }
+    node_def {
+      name: "const"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+          }
+        }
+      }
+    }
+    ret {
+      key: "b"
+      value: "const:output:0"
+    }
+  }
+}

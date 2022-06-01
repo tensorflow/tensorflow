@@ -126,7 +126,6 @@ static Status ValidateSavedTensors(const GraphDef& graph_def) {
       }
 
       // Also check that there is no recursivity in the library
-      // TODO(mihaimaruseac): Do more than self-recursivity
       TF_RETURN_IF_ERROR(ValidateFunctionNotRecursive(function));
     }
   }

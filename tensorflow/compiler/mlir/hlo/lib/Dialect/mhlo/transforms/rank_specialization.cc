@@ -26,9 +26,11 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/BlockAndValueMapping.h"
@@ -279,7 +281,7 @@ struct MergeRankSpecializationClusterOpsPattern
 struct RankSpecializationClusterPass
     : public RankSpecializationClusterPassBase<RankSpecializationClusterPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mhlo::MhloDialect, chlo::HloClientDialect>();
+    registry.insert<mhlo::MhloDialect, chlo::ChloDialect>();
   }
 
   void runOnOperation() override {
@@ -335,7 +337,7 @@ SmallVector<Value, 8> MaterializeRankedOperations(
     OperationState ranked_op_state(loc, nested_op.getName().getStringRef(),
                                    mapped_operands, ranked_result_types,
                                    nested_op.getAttrs());
-    Operation *ranked_op = b.createOperation(ranked_op_state);
+    Operation *ranked_op = b.create(ranked_op_state);
     for (auto it : llvm::zip(nested_op.getResults(), ranked_op->getResults()))
       bvm.map(std::get<0>(it), std::get<1>(it));
   }
@@ -608,10 +610,11 @@ Value RecusivelyMaterializeTargetRankSpecializationCases(
   // If only a unique target rank is left, we can lower to an assert instead
   // of the usual if operation.
   if (min_target_rank == max_target_rank) {
-    b.create<AssertOp>(loc, condition,
-                       "Input for dynamic binary or n-ary op lowering was of "
-                       "a rank greater than " +
-                           std::to_string(max_target_rank));
+    b.create<cf::AssertOp>(
+        loc, condition,
+        "Input for dynamic binary or n-ary op lowering was of "
+        "a rank greater than " +
+            std::to_string(max_target_rank));
     return MaterializeTargetRankSpecializationCase(b, loc, op, shapes,
                                                    min_target_rank);
   }
@@ -653,7 +656,7 @@ Value MaterializeGenericRankSpecializationCases(
     if (!max_rank) {
       max_rank = rank;
     } else {
-      max_rank = b.create<mlir::SelectOp>(
+      max_rank = b.create<mlir::arith::SelectOp>(
           loc,
           b.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sgt, max_rank,
                                   rank),
@@ -916,7 +919,7 @@ struct RankSpecializationToSCFPass
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mhlo::MhloDialect, chlo::HloClientDialect,
+    registry.insert<mhlo::MhloDialect, chlo::ChloDialect, func::FuncDialect,
                     shape::ShapeDialect, scf::SCFDialect>();
   }
 
@@ -936,25 +939,26 @@ struct RankSpecializationToSCFPass
 
 void PopulateRankSpecializationClusterPatterns(MLIRContext *context,
                                                RewritePatternSet *patterns) {
-  patterns->insert<MergeRankSpecializationClusterOpsPattern,
-                   RankSpecializationClusterPattern>(context);
+  patterns->add<MergeRankSpecializationClusterOpsPattern,
+                RankSpecializationClusterPattern>(context);
 }
 
 void PopulateRankSpecializationToSCFPatterns(MLIRContext *context,
                                              RewritePatternSet *patterns,
                                              int64_t max_target_rank) {
-  patterns->insert<LowerRankSpecializationClusterPattern>(context,
-                                                          max_target_rank);
+  patterns->add<LowerRankSpecializationClusterPattern>(context,
+                                                       max_target_rank);
   shape::BroadcastOp::getCanonicalizationPatterns(*patterns, context);
   shape::ShapeOfOp::getCanonicalizationPatterns(*patterns, context);
   shape::AnyOp::getCanonicalizationPatterns(*patterns, context);
 }
 
-std::unique_ptr<OperationPass<FuncOp>> createRankSpecializationClusterPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+createRankSpecializationClusterPass() {
   return std::make_unique<RankSpecializationClusterPass>();
 }
 
-std::unique_ptr<OperationPass<FuncOp>> createRankSpecializationToSCFPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createRankSpecializationToSCFPass(
     int64_t max_target_rank) {
   return std::make_unique<RankSpecializationToSCFPass>(max_target_rank);
 }

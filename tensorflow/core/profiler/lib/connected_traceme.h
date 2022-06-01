@@ -20,23 +20,12 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "tensorflow/core/profiler/lib/context_types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 
 namespace tensorflow {
 namespace profiler {
-
-enum class ContextType : int {
-  kGeneric = 0,
-  kLegacy,
-  kTfExecutor,
-  kTfrtExecutor,
-  kSharedBatchScheduler,
-  kPjRt,
-  kAdaptiveSharedBatchScheduler,
-  kTfrtTpuRuntime,
-  kTpuEmbeddingEngine,
-};
 
 /*
  * TraceMeProducer and TraceMeConsumer are used to correlate TraceMe events on

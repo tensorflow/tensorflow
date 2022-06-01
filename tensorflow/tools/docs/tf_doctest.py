@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -151,6 +150,8 @@ def setup_gpu(required_gpus):
 class TfTestCase(tf.test.TestCase):
 
   def set_up(self, test):
+    # Enable soft device placement to run distributed doctests.
+    tf.config.set_soft_device_placement(True)
     self.setUp()
 
   def tear_down(self, test):
@@ -172,7 +173,14 @@ def load_tests(unused_loader, tests, unused_ignore):
     print('**************************************************')
     return tests
 
-  for module in tf_modules:
+  test_shard_index = int(os.environ.get('TEST_SHARD_INDEX', '0'))
+  total_test_shards = int(os.environ.get('TEST_TOTAL_SHARDS', '1'))
+
+  tf_modules = sorted(tf_modules, key=lambda mod: mod.__name__)
+  for n, module in enumerate(tf_modules):
+    if (n % total_test_shards) != test_shard_index:
+      continue
+
     # If I break the loop comprehension, then the test times out in `small`
     # size.
     if any(

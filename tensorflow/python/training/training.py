@@ -90,6 +90,7 @@ from tensorflow.python.training.checkpoint_management import latest_checkpoint
 from tensorflow.python.training.checkpoint_management import update_checkpoint_state
 from tensorflow.python.training.saver import export_meta_graph
 from tensorflow.python.training.saver import import_meta_graph
+from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.session_run_hook import SessionRunHook
 from tensorflow.python.training.session_run_hook import SessionRunArgs
 from tensorflow.python.training.session_run_hook import SessionRunContext
@@ -457,7 +458,7 @@ every `Example`, TensorFlow expects a fixed list of keys, each with a fixed
 """
 
 SequenceExample.__doc__ = """\
-A `SequenceExample` is a format a sequences and some context.
+A `SequenceExample` represents a sequence of features and some context.
 
 It can be thought of as a proto-implementation of the following python type:
 

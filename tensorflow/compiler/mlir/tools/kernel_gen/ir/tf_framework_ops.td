@@ -39,6 +39,7 @@ def TFFramework_Dialect : Dialect {
     static constexpr size_t kAllocationAlignment = 16;
   }];
 
+  let useDefaultTypePrinterParser = 1;
   let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
@@ -63,9 +64,7 @@ def TFFramework_JITCallableType : DialectType<TFFramework_Dialect, CPred<
 
 // Base class for TF Framework dialect ops.
 class TFFramework_Op<string mnemonic, list<Trait> traits = []> :
-    Op<TFFramework_Dialect, mnemonic, traits> {
-  let verifier = "return Verify<$cppClass>(*this);";
-}
+    Op<TFFramework_Dialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
 // TFAllocOp
@@ -117,6 +116,8 @@ def TFFramework_TFAllocOp : TFFramework_Op<"alloc", [
   let assemblyFormat = [{
     `(` $ctx (`,` $dyn_sizes^ )? `)` attr-dict `:` type($result)
   }];
+
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

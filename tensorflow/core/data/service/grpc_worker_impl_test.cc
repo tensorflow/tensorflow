@@ -59,7 +59,6 @@ class GrpcWorkerImplTest : public ::testing::Test {
  protected:
   void SetUp() override {
     TF_ASSERT_OK(SetUpDispatcherServer());
-    TF_ASSERT_OK(SetUpDispatcherClientStub());
     TF_ASSERT_OK(SetUpWorkerServer());
     TF_ASSERT_OK(SetUpWorkerClientStub());
   }
@@ -69,19 +68,6 @@ class GrpcWorkerImplTest : public ::testing::Test {
     config.set_protocol(kProtocol);
     TF_RETURN_IF_ERROR(NewDispatchServer(config, dispatcher_server_));
     return dispatcher_server_->Start();
-  }
-
-  Status SetUpDispatcherClientStub() {
-    std::shared_ptr<ChannelCredentials> credentials;
-    TF_RETURN_IF_ERROR(
-        CredentialsFactory::CreateClientCredentials(kProtocol, &credentials));
-    ChannelArguments args;
-    args.SetMaxReceiveMessageSize(std::numeric_limits<int32>::max());
-    args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, true);
-    std::shared_ptr<Channel> channel =
-        ::grpc::CreateCustomChannel(GetDispatcherAddress(), credentials, args);
-    dispatcher_client_stub_ = DispatcherService::NewStub(channel);
-    return Status::OK();
   }
 
   Status SetUpWorkerServer() {
@@ -103,60 +89,7 @@ class GrpcWorkerImplTest : public ::testing::Test {
     std::shared_ptr<Channel> channel =
         ::grpc::CreateCustomChannel(GetWorkerAddress(), credentials, args);
     worker_client_stub_ = WorkerService::NewStub(channel);
-    return Status::OK();
-  }
-
-  StatusOr<GetOrRegisterDatasetResponse> RegisterDataset() {
-    GetOrRegisterDatasetRequest request;
-    GetOrRegisterDatasetResponse response;
-    *request.mutable_dataset() = RangeSquareDataset(/*range=*/10);
-    ClientContext context;
-    TF_RETURN_IF_ERROR(
-        FromGrpcStatus(dispatcher_client_stub_->GetOrRegisterDataset(
-            &context, request, &response)));
-    return response;
-  }
-
-  StatusOr<GetOrCreateJobResponse> CreateJob(const int64_t dataset_id) {
-    GetOrCreateJobRequest request;
-    GetOrCreateJobResponse response;
-    request.set_dataset_id(dataset_id);
-    request.mutable_processing_mode_def()->set_sharding_policy(
-        ProcessingModeDef::OFF);
-    ClientContext context;
-    TF_RETURN_IF_ERROR(FromGrpcStatus(
-        dispatcher_client_stub_->GetOrCreateJob(&context, request, &response)));
-    return response;
-  }
-
-  StatusOr<ClientHeartbeatResponse> ClientHeartbeat(
-      const int64_t job_client_id) {
-    ClientHeartbeatRequest request;
-    ClientHeartbeatResponse response;
-    request.set_job_client_id(job_client_id);
-    ClientContext client_ctx;
-    TF_RETURN_IF_ERROR(FromGrpcStatus(dispatcher_client_stub_->ClientHeartbeat(
-        &client_ctx, request, &response)));
-    return response;
-  }
-
-  StatusOr<GetElementResponse> GetElement(const int64_t task_id) {
-    GetElementRequest request;
-    GetElementResponse response;
-    request.set_task_id(task_id);
-    ClientContext client_ctx;
-    TF_RETURN_IF_ERROR(FromGrpcStatus(
-        worker_client_stub_->GetElement(&client_ctx, request, &response)));
-    return response;
-  }
-
-  StatusOr<GetWorkerTasksResponse> GetWorkerTasks() {
-    GetWorkerTasksRequest request;
-    GetWorkerTasksResponse response;
-    ClientContext client_ctx;
-    TF_RETURN_IF_ERROR(FromGrpcStatus(
-        worker_client_stub_->GetWorkerTasks(&client_ctx, request, &response)));
-    return response;
+    return OkStatus();
   }
 
   std::string GetDispatcherAddress() const {
@@ -168,40 +101,17 @@ class GrpcWorkerImplTest : public ::testing::Test {
   }
 
   std::unique_ptr<DispatchGrpcDataServer> dispatcher_server_;
-  std::unique_ptr<DispatcherService::Stub> dispatcher_client_stub_;
   std::unique_ptr<WorkerGrpcDataServer> worker_server_;
   std::unique_ptr<WorkerService::Stub> worker_client_stub_;
 };
 
-TEST_F(GrpcWorkerImplTest, GetElement) {
-  TF_ASSERT_OK_AND_ASSIGN(GetOrRegisterDatasetResponse dataset_response,
-                          RegisterDataset());
-  TF_ASSERT_OK_AND_ASSIGN(GetOrCreateJobResponse job_response,
-                          CreateJob(dataset_response.dataset_id()));
-  TF_ASSERT_OK_AND_ASSIGN(ClientHeartbeatResponse client_response,
-                          ClientHeartbeat(job_response.job_client_id()));
-  ASSERT_EQ(client_response.task_info().size(), 1);
-  TF_ASSERT_OK_AND_ASSIGN(GetElementResponse element_response,
-                          GetElement(client_response.task_info(0).task_id()));
-  ASSERT_TRUE(element_response.has_uncompressed());
-  ASSERT_EQ(element_response.uncompressed().components().size(), 1);
-  EXPECT_EQ(element_response.uncompressed().components(0).dtype(),
-            DataType::DT_INT64);
-}
-
 TEST_F(GrpcWorkerImplTest, GetWorkerTasks) {
-  TF_ASSERT_OK_AND_ASSIGN(GetOrRegisterDatasetResponse dataset_response,
-                          RegisterDataset());
-  TF_ASSERT_OK_AND_ASSIGN(GetOrCreateJobResponse job_response,
-                          CreateJob(dataset_response.dataset_id()));
-  TF_ASSERT_OK_AND_ASSIGN(ClientHeartbeatResponse client_response,
-                          ClientHeartbeat(job_response.job_client_id()));
-  ASSERT_EQ(client_response.task_info().size(), 1);
-  TF_ASSERT_OK_AND_ASSIGN(GetWorkerTasksResponse worker_tasks_response,
-                          GetWorkerTasks());
-  ASSERT_EQ(worker_tasks_response.tasks().size(), 1);
-  EXPECT_EQ(worker_tasks_response.tasks(0).task_id(),
-            client_response.task_info(0).task_id());
+  ClientContext ctx;
+  GetWorkerTasksRequest req;
+  GetWorkerTasksResponse resp;
+  TF_ASSERT_OK(
+      FromGrpcStatus(worker_client_stub_->GetWorkerTasks(&ctx, req, &resp)));
+  EXPECT_EQ(resp.tasks_size(), 0);
 }
 
 }  // namespace

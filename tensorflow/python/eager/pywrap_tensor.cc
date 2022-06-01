@@ -625,7 +625,7 @@ static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
 // Getter for `_rank`.
 static PyObject* EagerTensor_rank(EagerTensor* self) {
   int num_dims = TFE_TensorHandleNumDims(self->handle, &self->status);
-  if (MaybeRaiseExceptionFromTFStatus(&self->status, nullptr)) {
+  if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status, nullptr)) {
     // Cleanup self->status before returning.
     self->status.status = tensorflow::Status::OK();
     return nullptr;
@@ -641,7 +641,7 @@ static PyObject* EagerTensor_rank(EagerTensor* self) {
 static PyObject* EagerTensor_num_elements(EagerTensor* self) {
   auto handle = self->handle;
   int n = TFE_TensorHandleNumElements(handle, &self->status);
-  if (MaybeRaiseExceptionFromTFStatus(&self->status, nullptr)) {
+  if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status, nullptr)) {
     // Cleanup self->status before returning.
     self->status.status = tensorflow::Status::OK();
     return nullptr;
@@ -691,7 +691,8 @@ static PyObject* EagerTensor_copy_to_device(EagerTensor* self, PyObject* args,
   TFE_TensorHandle* handle = TFE_TensorHandleCopyToDevice(
       self->handle, GetContextHandle(self->context), device_name,
       &self->status);
-  if (MaybeRaiseExceptionFromTFStatus(&self->status, PyExc_RuntimeError)) {
+  if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status,
+                                                  PyExc_RuntimeError)) {
     // Cleanup self->status before returning.
     self->status.status = tensorflow::Status::OK();
     return nullptr;
@@ -707,7 +708,7 @@ static PyObject* EagerTensor_copy_to_device(EagerTensor* self, PyObject* args,
 // Note that if `self` is not on CPU, we raise an Exception.
 static PyObject* EagerTensor_numpy_internal(EagerTensor* self) {
   auto* py_array = TFE_TensorHandleToNumpy(self->handle, &self->status);
-  if (MaybeRaiseExceptionFromTFStatus(&self->status, nullptr)) {
+  if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status, nullptr)) {
     Py_XDECREF(py_array);
     // Cleanup self->status before returning.
     self->status.status = tensorflow::Status::OK();
@@ -746,7 +747,8 @@ static PyObject* EagerTensor_summarize_value(EagerTensor* self) {
 // Getter `device`.
 static PyObject* EagerTensor_device(EagerTensor* self) {
   const char* device = TFE_TensorHandleDeviceName(self->handle, &self->status);
-  if (MaybeRaiseExceptionFromTFStatus(&self->status, PyExc_ValueError)) {
+  if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status,
+                                                  PyExc_ValueError)) {
     // Cleanup self->status before returning.
     self->status.status = tensorflow::Status::OK();
     return nullptr;
@@ -762,7 +764,8 @@ static PyObject* EagerTensor_device(EagerTensor* self) {
 static PyObject* EagerTensor_backing_device(EagerTensor* self) {
   const char* device =
       TFE_TensorHandleBackingDeviceName(self->handle, &self->status);
-  if (MaybeRaiseExceptionFromTFStatus(&self->status, PyExc_ValueError)) {
+  if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status,
+                                                  PyExc_ValueError)) {
     // Cleanup self->status before returning.
     self->status.status = tensorflow::Status::OK();
     return nullptr;
@@ -843,7 +846,8 @@ static int EagerTensor_getbuffer(EagerTensor* self, Py_buffer* view,
   // implementation.
   auto py_array = tensorflow::make_safe(
       TFE_TensorHandleToNumpy(self->handle, &self->status));
-  if (MaybeRaiseExceptionFromTFStatus(&self->status, PyExc_BufferError)) {
+  if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status,
+                                                  PyExc_BufferError)) {
     // Cleanup self->status before returning.
     self->status.status = tensorflow::Status::OK();
     return -1;
@@ -1002,8 +1006,8 @@ int64_t PyEagerTensor_NumElements(PyObject* tensor) {
   int64_t result = TFE_TensorHandleNumElements(as_c_eager_tensor->handle,
                                                &as_c_eager_tensor->status);
 
-  if (MaybeRaiseExceptionFromTFStatus(&as_c_eager_tensor->status,
-                                      PyExc_ValueError)) {
+  if (tensorflow::MaybeRaiseExceptionFromTFStatus(&as_c_eager_tensor->status,
+                                                  PyExc_ValueError)) {
     // Cleanup status before returning.
     as_c_eager_tensor->status.status = tensorflow::Status::OK();
     return -1;
@@ -1175,7 +1179,8 @@ PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim) {
       EagerTensor* t = reinterpret_cast<EagerTensor*>(tensor_obj);
       TFE_TensorHandle* handle = t->handle;
       int num_dims = TFE_TensorHandleNumDims(handle, status.get());
-      if (MaybeRaiseExceptionFromTFStatus(status.get(), PyExc_ValueError)) {
+      if (tensorflow::MaybeRaiseExceptionFromTFStatus(status.get(),
+                                                      PyExc_ValueError)) {
         return nullptr;
       }
       if (slice_dim >= num_dims) {
@@ -1189,7 +1194,8 @@ PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim) {
         return nullptr;
       }
       int64_t dim = TFE_TensorHandleDim(handle, slice_dim, status.get());
-      if (MaybeRaiseExceptionFromTFStatus(status.get(), PyExc_ValueError)) {
+      if (tensorflow::MaybeRaiseExceptionFromTFStatus(status.get(),
+                                                      PyExc_ValueError)) {
         return nullptr;
       }
       data[i] = dim;

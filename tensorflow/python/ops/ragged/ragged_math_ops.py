@@ -946,7 +946,14 @@ def _matmul_3d_with_map_fn(a, b, **kwargs):
   Returns:
     A 3D RaggedTensor with `shape=[B, (I), (K)]`.
   """
-  if isinstance(b, ragged_tensor.RaggedTensor) and b.ragged_rank == 2:
+  # Determine the ragged rank of the result.  In the normal case, we have:
+  #   [B, I, J] * [B, J, K] -> [B, I, K]
+  # Or if we're using transpose_b, then we have:
+  #   [B, I, J] * [B, K, J] -> [B, I, K]
+  # In either case, output_ragged_rank=2 iff the K dimension is ragged.
+  if (isinstance(b, ragged_tensor.RaggedTensor) and
+      (b.ragged_rank == 2 or kwargs.get('transpose_b') or
+       kwargs.get('adjoint_b'))):
     output_ragged_rank = 2
   else:
     output_ragged_rank = 1
@@ -1049,7 +1056,8 @@ def softmax(logits: ragged_tensor.Ragged, axis=None, name=None):
     axis = -1
 
   with ops.name_scope(name, 'RaggedSoftmax', [logits]) as name:
-    logits_exp = math_ops.exp(logits)
+    max_input = reduce_max(logits, axis=axis, keepdims=True)
+    logits_exp = math_ops.exp(math_ops.subtract(logits, max_input))
     denominator = reduce_sum(logits_exp, axis=axis, keepdims=True)
     return math_ops.divide(logits_exp, denominator)
 

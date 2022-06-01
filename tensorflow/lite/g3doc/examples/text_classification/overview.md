@@ -5,7 +5,7 @@ Use a TensorFlow Lite model to category a paragraph into predefined groups.
 Note: (1) To integrate an existing model, try
 [TensorFlow Lite Task Library](https://www.tensorflow.org/lite/inference_with_metadata/task_library/nl_classifier).
 (2) To customize a model, try
-[TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/tutorials/model_maker_text_classification).
+[TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/models/modify/model_maker/text_classification).
 
 ## Get started
 
@@ -108,7 +108,7 @@ Performance benchmark numbers are generated with the tool
 ## Use your training dataset
 
 Follow this
-[tutorial](https://github.com/tensorflow/examples/tree/master/tensorflow_examples/lite/model_maker/demo/text_classification.ipynb)
+[tutorial](https://www.tensorflow.org/lite/models/modify/model_maker/text_classification)
 to apply the same technique used here to train a text classification model using
 your own datasets. With the right dataset, you can create a model for use cases
 such as document categorization or toxic comments detection.

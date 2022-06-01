@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "ScatterMin"
   input_arg {
     name: "ref"

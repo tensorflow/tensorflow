@@ -32,6 +32,12 @@ load(
 )
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 
+# Platform specific build config
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+)
+
 package(
     default_visibility = ["//visibility:public"],
     features = [
@@ -127,6 +133,7 @@ cc_library(
     deps = [
         ":trt_parameters",
         ":trt_resources",
+        "//tensorflow/cc/tools:freeze_saved_model",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
         "//tensorflow/core/grappler:grappler_item_builder",
@@ -134,6 +141,13 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/strings",
     ] + if_tensorrt([":tensorrt_lib"]),
+)
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "trt_convert_api.h",
+    ],
 )
 
 tf_cuda_cc_test(
@@ -155,11 +169,14 @@ tf_cuda_cc_test(
         ":trt_resources",
         ":utils",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:resource_variable_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
+        "//tensorflow/core:function_ops_op_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:math_ops_op_lib",
@@ -169,8 +186,11 @@ tf_cuda_cc_test(
         "//tensorflow/core:state_ops_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:array",
+        "//tensorflow/core/kernels:assign_op",
         "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/kernels:partitioned_function_ops",
         "//tensorflow/core/kernels:resource_variable_ops",
     ],
 )
@@ -197,7 +217,7 @@ cc_library(
         "utils/trt_testutils.h",
     ],
     copts = tf_copts(),
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:private"],
     deps = [
         ":trt_conversion",
         "@com_google_absl//absl/strings",
@@ -370,7 +390,6 @@ cc_library(
     name = "trt_op_libs",
     deps = [
         ":get_calibration_data_op_op_lib",
-        ":trt_convert_api",
         ":trt_engine_op_op_lib",
         ":trt_engine_utils",
     ],
@@ -573,9 +592,29 @@ tf_cuda_library(
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
+# This rule contains static variables for the converter registry. Do not depend
+# on it directly; use :op_converter_registry, and link against
+# libtensorflow_framework.so for the registry symbols. The library
+# libtensorflow_framework.so depends on this target so that users can
+# register custom op converters without the need to incorporate Tensorflow into
+# their build system.
+tf_cuda_library(
+    name = "op_converter_registry_impl",
+    srcs = ["convert/op_converter_registry.cc"],
+    hdrs = [
+        "convert/op_converter_registry.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        ":utils",
+        ":op_converter",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:lib",
+    ] + if_tensorrt([":tensorrt_lib"]),
+)
+
 tf_cuda_library(
     name = "op_converter_registry",
-    srcs = ["convert/op_converter_registry.cc"],
     hdrs = [
         "convert/op_converter_registry.h",
     ],
@@ -583,9 +622,8 @@ tf_cuda_library(
     deps = [
         ":utils",
         ":op_converter",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
-    ] + if_tensorrt([":tensorrt_lib"]),
+    ] + if_static([":op_converter_registry_impl"]),
 )
 
 tf_cuda_cc_test(
@@ -603,15 +641,45 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_cuda_library(
+    name = "algorithm_selector",
+    srcs = [
+        "convert/algorithm_selector.cc",
+    ],
+    hdrs = [
+        "convert/algorithm_selector.h",
+    ],
+    deps = [":common_utils"] + if_tensorrt([":tensorrt_lib"]),
+)
+
+tf_cuda_cc_test(
+    name = "algorithm_selector_test",
+    srcs = [
+        "convert/algorithm_selector_test.cc",
+    ],
+    deps = [
+        ":algorithm_selector",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ] + if_tensorrt([":tensorrt_lib"]),
+)
+
 # Library for the node-level conversion portion of TensorRT operation creation
 tf_cuda_library(
     name = "trt_conversion",
     srcs = [
         "convert/convert_graph.cc",
         "convert/convert_nodes.cc",
+        "convert/ops/binary_ops.cc",
         "convert/ops/data_format_vec_permute.cc",
+        "convert/ops/einsum.cc",
+        "convert/ops/fill_ops.cc",
+        "convert/ops/like_ops.cc",
         "convert/ops/quantization_ops.cc",
         "convert/ops/slice_ops.cc",
+        "convert/ops/tile.cc",
+        "convert/ops/unary_ops.cc",
+        "convert/timing_cache.cc",
         "convert/trt_optimization_pass.cc",
     ],
     hdrs = [
@@ -620,6 +688,7 @@ tf_cuda_library(
         "convert/ops/layer_utils.h",
         "convert/ops/quantization_ops.h",
         "convert/ops/slice_ops.h",
+        "convert/timing_cache.h",
         "convert/trt_optimization_pass.h",
     ],
     copts = tf_copts() + select({
@@ -627,6 +696,7 @@ tf_cuda_library(
         "//conditions:default": [],
     }),
     deps = [
+        ":algorithm_selector",
         ":common_utils",
         ":logger_registry",
         ":segment",
@@ -654,7 +724,6 @@ tf_cuda_library(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:graph",
-        "//tensorflow/core/kernels/linalg:einsum_op",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -760,6 +829,7 @@ tf_cuda_cc_test(
     deps = [
         ":trt_logging",
         ":trt_conversion",
+        ":trt_convert_api",
         ":trt_plugins",
         ":trt_engine_utils",
         ":trt_op_kernels",
@@ -897,11 +967,10 @@ tf_proto_library(
     protodeps = tf_additional_all_protos(),
 )
 
-cc_library(
+tf_cuda_library(
     name = "py_utils",
     srcs = ["utils/py_utils.cc"],
     hdrs = ["utils/py_utils.h"],
-    copts = tf_copts(),
     local_defines = select({
         "@local_config_tensorrt//:use_static_tensorrt": ["TF_USE_TENSORRT_STATIC=1"],
         "//conditions:default": [],
@@ -909,6 +978,7 @@ cc_library(
     deps = if_tensorrt([
         ":common_utils",
         ":tensorrt_lib",
+        ":op_converter_registry",
         "//tensorflow/stream_executor/platform:dso_loader",
     ]),
 )
@@ -917,7 +987,6 @@ pybind_extension(
     name = "_pywrap_py_utils",
     srcs = ["utils/py_utils_wrapper.cc"],
     link_in_framework = True,
-    module_name = "_pywrap_py_utils",
     static_deps = [
         "@bazel_tools//:__subpackages__",
         "@boringssl//:__subpackages__",
@@ -960,6 +1029,7 @@ pybind_extension(
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:status",
+        "//tensorflow/stream_executor",
         "@pybind11",
     ],
 )

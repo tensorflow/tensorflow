@@ -181,7 +181,7 @@ class GraphDefBuilderWrapper {
     if (*output == nullptr) {
       return errors::Internal("AddScalar: Failed to build Const op.");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Adds a Const node with vector value to the Graph.
@@ -200,7 +200,7 @@ class GraphDefBuilderWrapper {
     if (*output == nullptr) {
       return errors::Internal("AddVector: Failed to build Const op.");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status AddVector(const std::vector<string>& val, Node** output) {
@@ -213,7 +213,7 @@ class GraphDefBuilderWrapper {
     if (*output == nullptr) {
       return errors::Internal("AddVector: Failed to build Const op.");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Adds a `Const` node for the given tensor value to the graph.
@@ -226,7 +226,7 @@ class GraphDefBuilderWrapper {
     if (*output == nullptr) {
       return errors::Internal("AddTensor: Failed to build Const op.");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Adds a `Placeholder` node for the given tensor value to the graph.
@@ -240,7 +240,7 @@ class GraphDefBuilderWrapper {
       return errors::Internal(
           "AddPlaceholder: Failed to build Placeholder op.");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Adds a node for the given dataset to the `Graph`. The value of
@@ -328,7 +328,7 @@ class GraphDefBuilderWrapper {
         TF_RETURN_IF_ERROR(AddFunction(ctx, name_attr_list.name(), lib_def));
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   GraphDefBuilder* b_;
@@ -612,10 +612,10 @@ class SerializationContext {
     switch (params_.external_state_policy) {
       case ExternalStatePolicy::kWarn:
         LOG(WARNING) << s.ToString();
-        return Status::OK();
+        return OkStatus();
       case ExternalStatePolicy::kIgnore:
         VLOG(2) << "Ignoring error status: " << s.ToString();
-        return Status::OK();
+        return OkStatus();
       case ExternalStatePolicy::kFail:
         return s;
     }
@@ -755,7 +755,7 @@ class IteratorBase {
 
   // Performs initialization that needs to happen outside of a constructor to
   // properly propagate errors.
-  virtual Status Initialize(IteratorContext* ctx) { return Status::OK(); }
+  virtual Status Initialize(IteratorContext* ctx) { return OkStatus(); }
 
   // Performs initialization of the base iterator.
   Status InitializeBase(IteratorContext* ctx, const IteratorBase* parent);
@@ -766,7 +766,7 @@ class IteratorBase {
     TF_RETURN_IF_ERROR(SaveInternal(ctx, writer));
     VLOG(1) << "Saved " << prefix() << " in "
             << (EnvTime::NowMicros() - start_us) << "us";
-    return Status::OK();
+    return OkStatus();
   }
 
  protected:
@@ -780,7 +780,7 @@ class IteratorBase {
     TF_RETURN_IF_ERROR(RestoreInternal(ctx, reader));
     VLOG(1) << "Restored " << prefix() << " in "
             << (EnvTime::NowMicros() - start_us) << "us";
-    return Status::OK();
+    return OkStatus();
   }
 
   // This is needed so that sub-classes of IteratorBase can call
@@ -951,7 +951,7 @@ class DatasetBase : public core::RefCounted {
                                     /*parent=*/nullptr, output_prefix, &it));
     TF_RETURN_IF_ERROR(it->Restore(&restore_ctx, reader));
     *iterator = std::move(it);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status MakeIteratorFromCheckpoint(
@@ -1032,7 +1032,7 @@ class DatasetBase : public core::RefCounted {
   virtual StatusOr<DatasetBase*> Finalize(
       OpKernelContext* ctx,
       std::function<StatusOr<core::RefCountPtr<DatasetBase>>()>
-          make_finalized_dataset);
+          make_finalized_dataset) const;
 
   // Wrapper around a GraphDefBuilder which provides support for serializing
   // Datasets as GraphDefs.
@@ -1056,10 +1056,6 @@ class DatasetBase : public core::RefCounted {
   };
 
  protected:
-  friend Status AsGraphDef(
-      OpKernelContext* ctx, const DatasetBase* dataset,
-      SerializationContext&& serialization_ctx,
-      GraphDef* graph_def);  // For access to graph related members.
   friend class CapturedFunction;
 
   // Serializes the dataset into a `GraphDef`, which has two uses:
@@ -1099,9 +1095,9 @@ class DatasetBase : public core::RefCounted {
   const string node_name_;
   Metadata metadata_;
   Options options_;
-  mutex mu_;
+  mutable mutex mu_;
   mutable mutex cardinality_mu_;
-  core::RefCountPtr<DatasetBase> finalized_dataset_;
+  mutable core::RefCountPtr<DatasetBase> finalized_dataset_;
   //  The number of source datasets feeding into the dataset. A source dataset
   //  is a leaf in the subtree of dataset inputs.
   int64_t num_sources_ = -1;
@@ -1308,7 +1304,7 @@ Status ParseScalarArgument(OpKernelContext* ctx,
     return errors::InvalidArgument(argument_name, " must be a scalar");
   }
   *output = argument_t->scalar<T>()();
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T>
@@ -1325,7 +1321,7 @@ Status ParseVectorArgument(OpKernelContext* ctx,
   for (int i = 0; i < size; ++i) {
     output->push_back(argument_t->vec<T>()(i));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Encapsulates the work required to plug a DatasetBase into the core TensorFlow

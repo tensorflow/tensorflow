@@ -26,11 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/cuda_libdevice_path.h"
 #include "tensorflow/core/platform/regexp.h"
-#include "tensorflow/core/platform/subprocess.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
@@ -349,14 +345,33 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
   return std::move(kernel_base);
 }
 
+template <int n>
+static std::unique_ptr<se::KernelArgsArrayBase> MakeKernelArgs(
+    absl::Span<const se::DeviceMemoryBase> args) {
+  auto kernel_args = absl::make_unique<se::KernelArgsArray<n>>();
+  for (const se::DeviceMemoryBase& buf : args) {
+    kernel_args->add_device_memory_argument(buf);
+  }
+  return kernel_args;
+}
+
 Status ExecuteKernelOnStream(const se::KernelBase& kernel,
                              absl::Span<const se::DeviceMemoryBase> args,
                              const LaunchDimensions& dims, se::Stream* stream) {
   static constexpr int kKernelArgsLimit = 1024;
-  auto kernel_args = absl::make_unique<se::KernelArgsArray<kKernelArgsLimit>>();
-  for (const se::DeviceMemoryBase& buf : args) {
-    kernel_args->add_device_memory_argument(buf);
+  std::unique_ptr<se::KernelArgsArrayBase> kernel_args;
+  // The KernelArgsArray structure requires at a minimum 48 * args.size()
+  // bytes. It can be expensive to allocate, say, 48KiB, so we add
+  // specializations for smaller sizes. 64 arguments are likely to fit in a
+  // 4KiB page.
+  if (args.size() <= 64) {
+    kernel_args = MakeKernelArgs<64>(args);
+  } else if (args.size() <= 256) {
+    kernel_args = MakeKernelArgs<256>(args);
+  } else {
+    kernel_args = MakeKernelArgs<kKernelArgsLimit>(args);
   }
+
   LaunchDimensions::Dim3D thread_counts = dims.thread_counts_per_block();
   LaunchDimensions::Dim3D block_counts = dims.block_counts();
   return stream->parent()->Launch(

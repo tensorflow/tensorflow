@@ -120,7 +120,7 @@ Status ParseOneProfileOutputLine(
     InsertOrDie(parsed_results, parsed_line.opcode, parsed_line);
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 bool IsExtraMetricProfileOutputLine(const std::string& line) {

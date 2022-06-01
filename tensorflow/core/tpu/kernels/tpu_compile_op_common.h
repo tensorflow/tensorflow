@@ -100,6 +100,7 @@ class TpuCompileOpKernelCommon {
       const absl::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
       const XLA_TpuMeshState* mesh_state,
       const std::vector<TensorShape>& arg_shapes,
+      const TpuCompilationCacheKey* key,
       TpuProgramGroupInterface* tpu_program_group) = 0;
 
   // Performs shape inference on `computation`, filling shape_info with operator
@@ -114,6 +115,15 @@ class TpuCompileOpKernelCommon {
 
   // Compile TPU program locally and populate the host compilation cache.
   Status CompileLocallyAndFillHostCache(
+      FunctionLibraryRuntime* flib_runtime,
+      const SessionMetadata* session_metadata,
+      const TpuMeshStateInterface* mesh_state,
+      const std::vector<TensorShape>& dynamic_shapes,
+      const OpInputList& guaranteed_constants,
+      const tpu::TpuCompilationCacheKey& key,
+      TpuProgramGroupInterface* tpu_program_group);
+
+  Status CompileLocallyAndFillHostCacheInternal(
       FunctionLibraryRuntime* flib_runtime,
       const SessionMetadata* session_metadata,
       const TpuMeshStateInterface* mesh_state,

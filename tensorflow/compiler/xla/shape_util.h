@@ -19,6 +19,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SHAPE_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SHAPE_UTIL_H_
 
+#include <algorithm>
 #include <functional>
 #include <initializer_list>
 #include <string>
@@ -43,7 +44,14 @@ limitations under the License.
 
 namespace xla {
 
-class ShapeIndexView;
+// A view into a ShapeIndex below, with the cheap/easy ability to consume the
+// value at the front of the view.
+//
+// NB! ShapeIndexView does not own the memory backing the index array.
+// The memory backing the index array should be owned by an object
+// that lives longer than the ShapeIndexView instances pointing into
+// it.
+using ShapeIndexView = absl::Span<const int64_t>;
 
 // An index for specifying a particular nested subshape within a shape. Used in
 // ShapeUtil::GetSubshape and other interfaces. Shapes are recursive data
@@ -61,123 +69,21 @@ class ShapeIndexView;
 //   index {0, 0} : invalid index (element at {0} is an array not a tuple)
 //
 // For indexing into array shapes, the index is always trivially empty, ie {}.
-//
-// ShapeIndex is a trivial wrapper around std::vector with a minimum number of
-// methods implemented.
-class ShapeIndex {
- public:
-  ShapeIndex() = default;
-  ShapeIndex(std::initializer_list<int64_t> init) : indices_(init) {}
-  template <typename InputIt>
-  ShapeIndex(InputIt start, InputIt end) : indices_(start, end) {}
+struct ShapeIndex : public absl::InlinedVector<int64_t, 2> {
+  using InlinedVector::InlinedVector;
 
-  explicit ShapeIndex(ShapeIndexView v);
-
-  bool empty() const { return indices_.empty(); }
-  size_t size() const { return indices_.size(); }
-  void push_back(int64_t value) { indices_.push_back(value); }
-  void pop_back() { indices_.pop_back(); }
+  ShapeIndex() = default;  // Needed to make MSVC work for some reason.
+  explicit ShapeIndex(ShapeIndexView view)
+      : ShapeIndex(view.begin(), view.end()) {}
 
   // push_front is O(n), but shapes don't usually have a ton of dimensions.
-  void push_front(int64_t value) { indices_.insert(indices_.begin(), value); }
-  void pop_front() { indices_.erase(indices_.begin()); }
-
-  using container_type = absl::InlinedVector<int64_t, 2>;
-
-  container_type::const_iterator begin() const { return indices_.begin(); }
-  container_type::const_iterator end() const { return indices_.end(); }
-  container_type::iterator begin() { return indices_.begin(); }
-  container_type::iterator end() { return indices_.end(); }
-
-  const int64_t* data() const { return indices_.data(); }
-
-  int64_t back() const { return indices_.back(); }
-  int64_t& back() { return indices_.back(); }
-
-  int64_t front() const { return indices_.front(); }
-  int64_t& front() { return indices_.front(); }
-
-  const int64_t& operator[](size_t i) const { return indices_[i]; }
-  int64_t& operator[](size_t i) { return indices_[i]; }
-
-  bool operator==(const ShapeIndex& other) const {
-    return indices_ == other.indices_;
-  }
-  bool operator!=(const ShapeIndex& other) const { return !(*this == other); }
-  bool operator<(const ShapeIndex& other) const {
-    return indices_ < other.indices_;
-  }
+  void push_front(int64_t value) { insert(begin(), value); }
+  void pop_front() { erase(begin()); }
 
   std::string ToString() const;
-
-  template <typename H>
-  friend H AbslHashValue(H h, const ShapeIndex& index) {
-    return H::combine(std::move(h), index.indices_);
-  }
-
- private:
-  container_type indices_;
 };
-
-// A view into a ShapeIndex as above, with the cheap/easy ability to consume the
-// value at the front of the view.
-//
-// NB! ShapeIndexView does not own the memory backing the index array.
-// The memory backing the index array should be owned by an object
-// that lives longer than the ShapeIndexView instances pointing into
-// it.
-class ShapeIndexView {
- public:
-  ShapeIndexView(const ShapeIndex& shape_index, int64_t offset = 0)
-      : indices_(shape_index.data() + offset, shape_index.size() - offset) {
-    CHECK_LE(offset, shape_index.size());
-  }
-  ShapeIndexView(std::initializer_list<int64_t> indices) : indices_(indices) {}
-  ShapeIndexView(const ShapeIndexView& other) = default;
-
-  using iterator = const int64_t*;
-
-  iterator begin() const { return indices_.begin(); }
-  iterator end() const { return indices_.end(); }
-  int64_t size() const { return indices_.size(); }
-  bool empty() const { return indices_.empty(); }
-  int64_t front() const {
-    CHECK(!empty());
-    return indices_.front();
-  }
-  int64_t back() const {
-    CHECK(!empty());
-    return indices_.back();
-  }
-  ShapeIndexView ConsumeFront() const {
-    ShapeIndexView result = *this;
-    result.indices_.remove_prefix(1);
-    return result;
-  }
-  ShapeIndexView ConsumeBack() const {
-    ShapeIndexView result = *this;
-    result.indices_.remove_suffix(1);
-    return result;
-  }
-  ShapeIndex ToShapeIndex() const { return ShapeIndex(begin(), end()); }
-
-  bool operator==(const ShapeIndexView& other) const;
-  bool operator!=(const ShapeIndexView& other) const;
-
-  std::string ToString() const;
-
-  // Returns true if this shape index starts with 'prefix'.
-  bool StartsWith(ShapeIndexView prefix) const;
-
- private:
-  absl::Span<const int64_t> indices_;
-};
-
-inline ShapeIndex::ShapeIndex(ShapeIndexView v)
-    : ShapeIndex(v.begin(), v.end()) {}
 
 std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index);
-std::ostream& operator<<(std::ostream& out, const ShapeIndexView& shape_index);
 
 // Namespaced collection of (static) shape utilities.
 //
@@ -364,6 +270,7 @@ class ShapeUtil {
 
   // Creates a tuple shape from a slice of element shapes within the tuple.
   static Shape MakeTupleShape(absl::Span<const Shape> shapes);
+  static Shape MakeTupleShapeWithPtrs(absl::Span<const Shape* const> shapes);
 
   // Creates a tuple shape from a slice of element shapes within the tuple. If
   // only one shape is passed, returns that.
@@ -706,7 +613,12 @@ class ShapeUtil {
                                        absl::Span<const int64_t> count,
                                        absl::Span<const int64_t> incr,
                                        const FnType& visitor_function) {
-    return ForEachIndexInternal(shape, base, count, incr, visitor_function);
+    return ForEachIndexInternal(
+        shape, base, count, incr,
+        [&visitor_function](absl::Span<const int64_t> indexes,
+                            int /*thread_id*/) {
+          return visitor_function(indexes);
+        });
   }
 
   // Simple ergonomic wrapper around ShapeUtil::ForEachIndexWithStatus.
@@ -762,7 +674,7 @@ class ShapeUtil {
   // matter.
   //
   // visitor_function must be a callable of type
-  // void(Span<int64_t>) or compatible.
+  // void(Span<int64_t>, int thread_id) or compatible.
   template <typename FnType>
   static void ForEachIndexParallel(const Shape& shape,
                                    absl::Span<const int64_t> base,
@@ -772,13 +684,24 @@ class ShapeUtil {
     // The parallel version of ForEachIndexInternal can never fail.
     CHECK(ForEachIndexInternal(
               shape, base, count, incr,
-              [&visitor_function](
-                  absl::Span<const int64_t> indexes) -> StatusOr<bool> {
-                visitor_function(indexes);
+              [&visitor_function](absl::Span<const int64_t> indexes,
+                                  int thread_id) -> StatusOr<bool> {
+                visitor_function(indexes, thread_id);
                 return true;
               },
               /*parallel=*/true)
               .ok());
+  }
+  // Convenience wrapper which doesn't take `base`, `count` and `incr`
+  // explicitly, but iterates over every element in `shape` instead.
+  template <typename FnType>
+  static void ForEachIndexParallel(const Shape& shape,
+                                   const FnType& visitor_function) {
+    std::vector<int64_t> base(shape.dimensions_size());
+    std::vector<int64_t> incr(shape.dimensions_size(), 1);
+    return ForEachIndexParallel(shape, base,
+                                /*count=*/shape.dimensions(), incr,
+                                visitor_function);
   }
 
   // About 0-2-1 transpose:
@@ -860,15 +783,17 @@ class ShapeUtil {
 
     while (n < rank) {
       if (pool != absl::nullopt) {
-        pool->Schedule([indexes, &visitor_function, &mu, &status] {
-          StatusOr<bool> result = visitor_function(indexes);
+        pool->Schedule([indexes, &visitor_function, &mu, &status, &pool] {
+          const int thread_id = pool->CurrentThreadId();
+          StatusOr<bool> result = visitor_function(indexes, thread_id);
           if (!result.ok()) {
             absl::MutexLock lock(&mu);
             status = status.ok() ? result.status() : status;
           }
         });
       } else {
-        TF_ASSIGN_OR_RETURN(bool should_continue, visitor_function(indexes));
+        TF_ASSIGN_OR_RETURN(bool should_continue,
+                            visitor_function(indexes, /*thread_id=*/-1));
         if (!should_continue) {
           break;
         }

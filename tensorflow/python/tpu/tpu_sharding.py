@@ -83,7 +83,7 @@ class ShardingPolicy(object):
         self._number_of_shards = number_of_shards
       else:
         raise ValueError(
-            "Can't set sharding policy to use {number_of_shards} shards; "
+            f"Can't set sharding policy to use {number_of_shards} shards; "
             "value must be > 0")
 
   @property

@@ -119,6 +119,11 @@ class BufferBase : public TensorBuffer {
     }
   }
 
+  // Returns the type of the underlying memory.
+  AllocatorMemoryType GetMemoryType() const override {
+    return alloc_->GetMemoryType();
+  }
+
  protected:
   void RecordDeallocation() {
     LogMemory::RecordTensorDeallocation(alloc_->AllocationId(data()),
@@ -340,8 +345,9 @@ PROTO_TRAITS(quint16, int32, int);
 
 template <>
 struct ProtoHelper<int64_t> {
-  static const int64_t* Begin(const TensorProto& proto) {
-    return reinterpret_cast<const int64_t*>(proto.int64_val().begin());
+  static protobuf::RepeatedField<int64_t>::const_iterator Begin(
+      const TensorProto& proto) {
+    return proto.int64_val().begin();
   }
   static size_t NumElements(const TensorProto& proto) {
     return proto.int64_val().size();
@@ -354,8 +360,9 @@ struct ProtoHelper<int64_t> {
 
 template <>
 struct ProtoHelper<uint64> {
-  static const uint64* Begin(const TensorProto& proto) {
-    return reinterpret_cast<const uint64*>(proto.uint64_val().begin());
+  static protobuf::RepeatedField<uint64_t>::const_iterator Begin(
+      const TensorProto& proto) {
+    return proto.uint64_val().begin();
   }
   static size_t NumElements(const TensorProto& proto) {
     return proto.uint64_val().size();
@@ -750,7 +757,7 @@ Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
     buf_ = other.buf_;
     RefIfNonNull(buf_);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Notice that buf_ either points to a regular TensorBuffer or a SubBuffer.
@@ -842,7 +849,7 @@ Status Tensor::BuildTensor(DataType type, const TensorShape& shape,
       type, {}, return errors::InvalidArgument("Type not set"),
       return errors::InvalidArgument("Unexpected type: ", DataType_Name(type)));
   *out_tensor = Tensor(type, shape);
-  return Status::OK();
+  return OkStatus();
 }
 
 // NOTE(mrry): The default allocator for a Tensor (when none is specified) is

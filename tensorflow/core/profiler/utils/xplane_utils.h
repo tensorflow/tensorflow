@@ -15,8 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_UTILS_H_
 
+#include <cstdint>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
@@ -94,17 +96,17 @@ struct XEventsComparator {
 };
 
 // Returns a sorted vector of all XEvents in the given XPlane.
-template <class Compare>
-std::vector<XEvent*> GetSortedEvents(XPlane* plane, Compare comp,
-                                     bool include_derived_events = false) {
-  std::vector<XEvent*> events;
-  for (XLine& line : *plane->mutable_lines()) {
-    if (!include_derived_events && IsDerivedThreadId(line.id())) continue;
-    for (XEvent& event : *line.mutable_events()) {
-      events.push_back(&event);
-    }
-  }
-  absl::c_sort(events, XEventsComparator());
+// This template can be used with either XPlaneVisitor or XPlaneBuilder.
+template <typename Event, typename Plane>
+inline std::vector<Event> GetSortedEvents(Plane& plane,
+                                          bool include_derived_events = false) {
+  std::vector<Event> events;
+  plane.ForEachLine([&events, include_derived_events](auto line) {
+    if (!include_derived_events && IsDerivedThreadId(line.Id())) return;
+    line.ForEachEvent(
+        [&events](auto event) { events.emplace_back(std::move(event)); });
+  });
+  absl::c_sort(events);
   return events;
 }
 
@@ -124,10 +126,15 @@ void MergePlanes(const std::vector<const XPlane*>& src_planes,
 
 // Plane's start timestamp is defined as the minimum of all lines' start
 // timestamps. If zero line exists, return 0;
-uint64 GetStartTimestampNs(const XPlane& plane);
+int64_t GetStartTimestampNs(const XPlane& plane);
 
 // Returns true if there are no XEvents.
 bool IsEmpty(const XSpace& space);
+
+// Mutate the XPlane by adding predefined XFlow. e.g. GPU kernel launches =>
+// GPU kernel events.
+void AddFlowsToXplane(int32_t host_id, bool is_host_plane, bool connect_traceme,
+                      XPlane* plane);
 
 }  // namespace profiler
 }  // namespace tensorflow

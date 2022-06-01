@@ -974,11 +974,11 @@ struct StridedSliceParams {
   int8_t strides_count;
   int32_t strides[5];
 
-  int16_t begin_mask;
-  int16_t ellipsis_mask;
-  int16_t end_mask;
-  int16_t new_axis_mask;
-  int16_t shrink_axis_mask;
+  uint16_t begin_mask;
+  uint16_t ellipsis_mask;
+  uint16_t end_mask;
+  uint16_t new_axis_mask;
+  uint16_t shrink_axis_mask;
 };
 
 struct TanhParams {

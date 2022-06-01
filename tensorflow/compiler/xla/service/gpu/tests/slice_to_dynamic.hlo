@@ -17,7 +17,7 @@
 // CHECK:         %[[VAL_13:.*]] = icmp eq i32 0, %[[VAL_12]]
 // CHECK:         %[[VAL_14:.*]] = and i1 %[[VAL_11]], %[[VAL_13]]
 // CHECK:         br i1 %[[VAL_14]], label %[[VAL_15:.*]], label %[[VAL_16:.*]]
-// CHECK:       is_thred_0-after:                                 ; preds = %[[VAL_15]], %[[VAL_17:.*]]
+// CHECK:       is_thread_0-after:                                 ; preds = %[[VAL_15]], %[[VAL_17:.*]]
 // CHECK:         %[[VAL_18:.*]] = mul i32 1, %[[VAL_7]]
 // CHECK:         %[[VAL_19:.*]] = mul i32 %[[VAL_18]], %[[VAL_8]]
 // CHECK:         %[[VAL_20:.*]] = mul i32 %[[VAL_19]], %[[VAL_9]]
@@ -36,7 +36,7 @@
 // CHECK:         br i1 %[[VAL_31]], label %[[VAL_32:.*]], label %[[VAL_33:.*]]
 // CHECK:       custom_call.in_bounds-after:                      ; preds = %[[VAL_34:.*]], %[[VAL_16]]
 // CHECK:         ret void
-// CHECK:       is_thred_0-true:                                  ; preds = %[[VAL_17]]
+// CHECK:       is_thread_0-true:                                  ; preds = %[[VAL_17]]
 // CHECK:         %[[VAL_35:.*]] = getelementptr inbounds i8, i8* %[[VAL_6]], i32 32
 // CHECK:         %[[VAL_36:.*]] = bitcast i8* %[[VAL_35]] to i32*
 // CHECK:         store i32 %[[VAL_7]], i32* %[[VAL_36]], align 4

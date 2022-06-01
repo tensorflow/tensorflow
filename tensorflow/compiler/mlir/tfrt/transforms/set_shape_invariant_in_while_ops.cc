@@ -12,9 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/compiler/mlir/tfrt/transforms/set_shape_invariant_in_while_ops.h"
+
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
 
 namespace tensorflow {
 namespace tfrt_compiler {
@@ -22,21 +24,27 @@ namespace {
 
 class SetShapeInvariantInWhileOps
     : public mlir::PassWrapper<SetShapeInvariantInWhileOps,
-                               mlir::OperationPass<mlir::FuncOp>> {
+                               mlir::OperationPass<mlir::func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SetShapeInvariantInWhileOps)
+
   void runOnOperation() override {
-    mlir::FuncOp func_op = getOperation();
+    mlir::func::FuncOp func_op = getOperation();
 
     auto shape_invariant = mlir::UnitAttr::get(&getContext());
 
-    func_op.walk(
-        [&](mlir::TF::WhileOp op) { op.shape_invariantAttr(shape_invariant); });
+    func_op.walk([&](mlir::TF::WhileOp op) {
+      // Skip tf.While op on TPU.
+      if (!op->hasAttr("_tpu_replicate")) {
+        op.shape_invariantAttr(shape_invariant);
+      }
+    });
   }
 };
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateSetShapeInvariantInWhileOps() {
   return std::make_unique<SetShapeInvariantInWhileOps>();
 }

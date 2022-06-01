@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "InitializeTableFromTextFile"
   input_arg {
     name: "table_handle"

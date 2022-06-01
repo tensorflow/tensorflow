@@ -119,11 +119,35 @@ class NcclCollectiveThunk : public Thunk {
 
   // Logging support.
   std::string GetDeviceString(const ExecuteParams& params) const;
+
+ private:
+#if XLA_ENABLE_XCCL
+  bool first_call_to_execute_ = true;
+#endif  // XLA_ENABLE_XCCL
 };
 
 // Returns if the given data type is supported by NCCL.
 // Note: Keep this in sync with ToNcclDataType().
 bool IsTypeSupportedByNccl(PrimitiveType element_type);
+
+#if XLA_ENABLE_XCCL
+// TODO(hanbinyoon): Consider moving to nccl_utils.h when deprecating Thunks.
+StatusOr<NcclComm::Lock> LockNcclComm(
+    const NcclExecuteParams& params,
+    const std::vector<ReplicaGroup>& replica_groups,
+    CollectiveOpGroupMode group_mode, int64_t op_id);
+#endif  // XLA_ENABLE_XCCL
+
+struct DeviceBufferPair {
+  PrimitiveType element_type;
+  int64_t element_count;
+  se::DeviceMemoryBase source_buffer;
+  se::DeviceMemoryBase destination_buffer;
+};
+StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
+    const Thunk::ExecuteParams& params,
+    const std::vector<NcclCollectiveThunk::Buffer>& buffers,
+    const std::vector<PrimitiveType>& element_types);
 
 }  // namespace gpu
 }  // namespace xla

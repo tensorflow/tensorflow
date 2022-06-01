@@ -45,6 +45,7 @@ namespace data {
 /* static */ constexpr const char* const FlatMapDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const FlatMapDatasetOp::kOutputShapes;
 
+constexpr char kCycleLength[] = "cycle_length";
 constexpr char kElementIndex[] = "element_index";
 constexpr char kInputsSize[] = "inputs_size";
 constexpr char kInputs[] = "inputs";
@@ -212,7 +213,9 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
-      return model::MakeInterleaveManyNode(std::move(args));
+      return model::MakeInterleaveManyNode(
+          std::move(args),
+          {model::MakeNonTunableParameter(kCycleLength, /*value=*/1)});
     }
 
     Status SaveInternal(SerializationContext* ctx,

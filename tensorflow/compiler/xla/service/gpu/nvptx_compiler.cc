@@ -36,12 +36,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
 #include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
+#include "tensorflow/compiler/xla/service/gpu/triangular_solve_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -55,7 +57,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
@@ -145,8 +146,20 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
 
   HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2");
 
-  // Find the fastest algorithm for GEMMs.
-  post_pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
+  // Find the fastest algorithm for GEMMs. Skip on Ampere and later as the
+  // algorithm goes unused.
+  if (!stream_exec->GetDeviceDescription().cuda_compute_capability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    post_pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
+  }
+
+  if (!IsBefEnabled(hlo_module->config())) {
+    // Transform TriangularSolve ops into custom-calls, so we can add temp
+    // memory. XLIR allocates temp memory, and so the custom-call implementation
+    // for TriangularSolve is not needed.
+    post_pipeline.AddPass<TriangularSolveRewriter>();
+  }
+
   TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
 
   return Status::OK();
@@ -191,13 +204,13 @@ bool MaybeLoadPtxFromFile(const HloModuleConfig module_config,
     auto filename = tensorflow::io::Basename(full_filename);
     if (absl::StartsWith(filename, prefix)) {
       matched_filename = full_filename;
-      VLOG(0) << "RunBackend() - Will load PTX from file: " << full_filename;
+      VLOG(1) << "RunBackend() - Will load PTX from file: " << full_filename;
       break;
     }
   }
   if (!module_config.debug_options().xla_gpu_ptx_file().empty() &&
       matched_filename.empty()) {
-    VLOG(0) << "RunBackend() - For module with prefix '" << prefix
+    VLOG(1) << "RunBackend() - For module with prefix '" << prefix
             << "', we did not found a PTX file to load.";
   }
 
@@ -234,12 +247,12 @@ std::unique_ptr<llvm::Module> MaybeLoadLLVMFromFile(const HloModule* module,
       });
   if (!xla_gpu_llvm_ir_file.empty() &&
       matched_filename == std::end(xla_gpu_llvm_ir_file)) {
-    VLOG(0) << "RunBackend() - For module with prefix '" << prefix
+    VLOG(1) << "RunBackend() - For module with prefix '" << prefix
             << "', we did not found a LLVM file to load.";
   }
 
   if (matched_filename != std::end(xla_gpu_llvm_ir_file)) {
-    VLOG(0) << "RunBackend() - Will load LLVM from file: " << *matched_filename;
+    VLOG(1) << "RunBackend() - Will load LLVM from file: " << *matched_filename;
     llvm::LLVMContext& context = llvm_module->getContext();
     llvm::SMDiagnostic err;
     std::unique_ptr<llvm::Module> loaded_module =
@@ -411,7 +424,7 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
           // got).
           RecordPtxToCubinDuration(end_usecs - start_usecs);
           cache_value->cubin_data = std::move(maybe_cubin).ValueOrDie();
-          VLOG(2) << "Compiled PTX size:" << ptx.size()
+          VLOG(1) << "Compiled PTX size:" << ptx.size()
                   << " CUBIN size: " << cache_value->cubin_data.size();
         } else {
           if (maybe_cubin.status().code() ==

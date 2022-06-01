@@ -16,10 +16,18 @@ limitations under the License.
 #include "tensorflow/core/data/service/data_transfer.h"
 
 #include <functional>
+#include <memory>
+#include <string>
+#include <unordered_map>
 
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/data/dataset.pb.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace data {
@@ -47,6 +55,35 @@ DataTransferClientFactories& transfer_client_factories() {
 }
 }  // namespace
 
+GetElementResult GetElementResult::Copy() const {
+  GetElementResult copy;
+  copy.components = components;
+  copy.element_index = element_index;
+  copy.end_of_sequence = end_of_sequence;
+  copy.skip = skip;
+  return copy;
+}
+
+size_t GetElementResult::EstimatedMemoryUsageBytes() const {
+  size_t size_bytes = components.size() * sizeof(Tensor) +
+                      sizeof(element_index) + sizeof(end_of_sequence) +
+                      sizeof(skip);
+  for (const Tensor& tensor : components) {
+    size_bytes += tensor.TotalBytes();
+    if (tensor.dtype() != DT_VARIANT) {
+      continue;
+    }
+
+    // Estimates the memory usage of a compressed element.
+    const Variant& variant = tensor.scalar<Variant>()();
+    const CompressedElement* compressed = variant.get<CompressedElement>();
+    if (compressed) {
+      size_bytes += compressed->SpaceUsedLong();
+    }
+  }
+  return size_bytes;
+}
+
 void DataTransferServer::Register(
     std::string name,
     std::function<std::shared_ptr<DataTransferServer>(GetElementT)> factory) {
@@ -64,7 +101,7 @@ Status DataTransferServer::Build(std::string name, GetElementT get_element,
   auto it = transfer_server_factories().find(name);
   if (it != transfer_server_factories().end()) {
     *out = it->second(get_element);
-    return Status::OK();
+    return OkStatus();
   }
 
   std::vector<string> available_names;

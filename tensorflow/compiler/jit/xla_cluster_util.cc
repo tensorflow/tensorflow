@@ -41,7 +41,6 @@ limitations under the License.
 namespace tensorflow {
 
 const char* const kXlaClusterAttr = "_XlaCluster";
-const char* const kXlaOutsideCompilationAttr = "_XlaOutsideCompilation";
 const char* const kXlaCompileTimeConstantInputsAttr =
     "_XlaCompileTimeConstantInputs";
 
@@ -558,7 +557,7 @@ Status GetNodesRelatedToRefVariablesInDirection(
 
   VLOG(2) << "# iterations = " << iterations;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Sorts control inputs of a graphdef so that they are deterministically

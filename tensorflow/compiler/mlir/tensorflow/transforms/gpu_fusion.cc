@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -98,7 +99,7 @@ struct ReluToFusedBatchNorm : public OpRewritePattern<ReluOp> {
     if (side_input) state.operands.push_back(side_input);
     state.addTypes(batch_norm.getResultTypes());
     state.addAttributes(batch_norm->getAttrs());
-    Operation *op = rewriter.createOperation(state);
+    Operation *op = rewriter.create(state);
     rewriter.replaceOp(batch_norm, op->getResults());
 
     // Depending on the case, we may fuse the add, the relu, or both.
@@ -117,15 +118,15 @@ struct ReluToFusedBatchNorm : public OpRewritePattern<ReluOp> {
 };
 
 void GpuOpFusionPass::runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
   RewritePatternSet patterns(&getContext());
-  patterns.insert<ReluToFusedBatchNorm>(&getContext());
+  patterns.add<ReluToFusedBatchNorm>(&getContext());
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateGpuOpFusionPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateGpuOpFusionPass() {
   return std::make_unique<GpuOpFusionPass>();
 }
 

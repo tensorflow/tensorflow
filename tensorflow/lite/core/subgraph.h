@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstdlib>
 #include <map>
 #include <memory>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -33,6 +34,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/resource/initialization_status.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/graph_info.h"
+#include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/util.h"
 
@@ -112,7 +114,7 @@ class Subgraph {
                                        allocation, sparsity);
   }
   TfLiteStatus SetTensorParametersReadOnly(
-      int tensor_index, TfLiteType type, const char* name, const size_t rank,
+      int tensor_index, TfLiteType type, const char* name, const size_t ndims,
       const int* dims, TfLiteQuantization quantization, const char* buffer,
       size_t bytes, const Allocation* allocation = nullptr,
       TfLiteSparsity* sparsity = nullptr);
@@ -135,9 +137,9 @@ class Subgraph {
         is_variable, dims_signature.size(), dims_signature.data());
   }
   TfLiteStatus SetTensorParametersReadWrite(
-      int tensor_index, TfLiteType type, const char* name, const size_t rank,
+      int tensor_index, TfLiteType type, const char* name, const size_t ndims,
       const int* dims, TfLiteQuantization quantization,
-      bool is_variable = false, const size_t rank_dims_signature = 0,
+      bool is_variable = false, const size_t ndims_signature = 0,
       const int* dims_signature = nullptr);
 
   // Get a mutable tensor data structure.
@@ -368,13 +370,36 @@ class Subgraph {
   void DumpMemoryPlannerDebugInfo() const;
 
   // WARNING: This is an experimental API and subject to change.
-  // Force all intermediate dynamic tensors to be released once they are not
-  // used by the model. Please use this configuration with caution, since it
-  // might reduce the peak memory usage of the model at the cost of a slower
-  // inference speed. This API needs to be called before calling
-  // `AllocateTensors`.
-  void EnsureDynamicTensorsAreReleased() {
-    release_dynamic_tensors_if_unused_ = true;
+  // Set the given `InterpreterOptions` object.
+  void SetOptions(InterpreterOptions* options) { options_ = options; }
+
+  // WARNING: This is an experimental API and subject to change.
+  // True if all intermediates tensors should be preserved for debugging.
+  bool ShouldPreserveAllTensors() const {
+    return (options_ && options_->GetPreserveAllTensors());
+  }
+
+  // WARNING: This is an experimental API and subject to change.
+  // True if all intermediate dynamic tensors should be released once they are
+  // not used by the model.
+  bool ShouldReleaseDynamicTensors() const {
+    return (options_ && options_->GetEnsureDynamicTensorsAreReleased());
+  }
+
+  /// WARNING: This is an experimental API and subject to change.
+  /// Use dynamic tensor allocation and deallocation method for large tensors
+  /// instead of static memory planner. Dynamic tensors are allocated just
+  /// before when they're needed and released when they're not needed anymore.
+  /// It improves peak memory usage but there could be some latency impact. The
+  /// parameter `large_tensors_thresholds_in_bytes` is used to determine large
+  /// tensors. This API must be called before `AllocateTensors`.
+  void OptimizeMemoryForLargeTensors(int large_tensors_thresholds_in_bytes);
+
+  // WARNING: This is an experimental API and subject to change.
+  // True if dynamic tensor allocation / deallocation method is enabled by
+  // `OptimizeMemoryForLargeTensors` API.
+  bool ShouldOptimizeMemoryForLargeTensors() {
+    return (options_ && (options_->GetDynamicAllocationForLargeTensors() > 0));
   }
 
   // WARNING: This is an experimental API and subject to change.
@@ -415,11 +440,10 @@ class Subgraph {
       profiler_->EndEvent(event_handle, event_metadata1, event_metadata2);
     }
 
-    void AddEvent(const char* tag, EventType event_type, uint64_t start,
-                  uint64_t end, int64_t event_metadata1,
-                  int64_t event_metadata2) override {
+    void AddEvent(const char* tag, EventType event_type, uint64_t elapsed_time,
+                  int64_t event_metadata1, int64_t event_metadata2) override {
       if (!profiler_) return;
-      profiler_->AddEvent(tag, event_type, start, end, event_metadata1,
+      profiler_->AddEvent(tag, event_type, elapsed_time, event_metadata1,
                           subgraph_index_);
     }
 
@@ -447,15 +471,26 @@ class Subgraph {
   void SwitchToDelegateContext();
 
   // Give 'op_reg' a chance to initialize itself using the contents of
-  // 'buffer'.
+  // 'buffer'. If registration_external is valid, use the 'init' callback from
+  // that.
   void* OpInit(const TfLiteRegistration& op_reg, const char* buffer,
                size_t length) {
+    if (op_reg.registration_external && op_reg.registration_external->init) {
+      return op_reg.registration_external->init(
+          reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer, length);
+    }
     if (op_reg.init == nullptr) return nullptr;
     return op_reg.init(&context_, buffer, length);
   }
 
   // Let 'op_reg' release any memory it might have allocated via 'OpInit'.
+  // If registration_external is valid, use the 'free' callback from that.
   void OpFree(const TfLiteRegistration& op_reg, void* buffer) {
+    if (op_reg.registration_external && op_reg.registration_external->free &&
+        buffer) {
+      return op_reg.registration_external->free(
+          reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer);
+    }
     if (op_reg.free == nullptr) return;
     if (buffer) {
       op_reg.free(&context_, buffer);
@@ -467,6 +502,11 @@ class Subgraph {
 
   // Invoke the operator represented by 'node'.
   TfLiteStatus OpInvoke(const TfLiteRegistration& op_reg, TfLiteNode* node) {
+    if (op_reg.registration_external && op_reg.registration_external->invoke) {
+      return op_reg.registration_external->invoke(
+          reinterpret_cast<TfLiteOpaqueContext*>(&context_),
+          reinterpret_cast<TfLiteOpaqueNode*>(node));
+    }
     if (op_reg.invoke == nullptr) return kTfLiteError;
     return op_reg.invoke(&context_, node);
   }
@@ -669,9 +709,6 @@ class Subgraph {
   // Returns true if cancellation function returns true.
   bool IsCancelled();
 
-  // Enables preserving intermediates for debugging.
-  TfLiteStatus PreserveAllTensorsExperimental();
-
   // Returns true if 'node' could have side effect (e.g. stateful op).
   // Note that any node that might update other tensors beside op's output
   // are considered to have side effect.
@@ -694,9 +731,14 @@ class Subgraph {
   // last operation that uses the tensor as input.
   void InitializeTensorReleaseMap();
 
+  // May allocate dynamic tensor memory of node outputs. It's used when
+  // `EnsureDynamicTensorsAreReleased` or`UseDynamicAllocationForLargeTensors`
+  // API is used.
+  TfLiteStatus MayAllocateOpOutput(TfLiteNode* node);
+
   // Checks the options for releasing dynamic tensors and release dynamic
   // tensors if configured.
-  void MaybeReleaseDynamicInputs(const TfLiteNode& node, size_t node_index);
+  void MaybeReleaseDynamicTensors(const TfLiteNode& node, size_t node_index);
 
   // The state of the Interpreter.
   enum State {
@@ -847,19 +889,15 @@ class Subgraph {
   // Name of the subgraph (analogous to function name).
   std::string name_;
 
-  // Whether memory planner should be instantiated to retain intermediates for
-  // debugging.
-  bool preserve_all_tensors_ = false;
-
   // Model-metadata owned by the Interpreter.
   const std::map<std::string, std::string>* metadata_ = nullptr;
-
-  // Release dynamic tensor's memory once they are not used by the graph.
-  bool release_dynamic_tensors_if_unused_ = false;
 
   // Mapping between tensor index to the last index of the execution plan that
   // uses this tensor.
   std::map<int, int> tensor_to_last_op_index_;
+
+  // `InterpreterOptions` object which is being used and owned by Interpreter.
+  InterpreterOptions* options_;
 };
 
 }  // namespace tflite

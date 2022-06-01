@@ -325,6 +325,8 @@ const char* TensorTypeName(TfLiteType type) {
       return "kTfLiteString";
     case kTfLiteBool:
       return "kTfLiteBool";
+    case kTfLiteUInt16:
+      return "kTfLiteUInt16";
     case kTfLiteInt16:
       return "kTfLiteInt16";
     case kTfLiteComplex64:
@@ -375,11 +377,11 @@ std::string TruncateString(const char* str, int size_limit,
 
   if (truncate_at_end) {
     truncated.resize(size_limit);
-    // Change the the last 3 chars to  "..." to imply truncation.
+    // Change the last 3 chars to  "..." to imply truncation.
     truncated.replace(size_limit - 3, 3, "...");
   } else {
     truncated.erase(0, length - size_limit);
-    // Change the the first 3 chars to  "..." to imply truncation.
+    // Change the first 3 chars to  "..." to imply truncation.
     truncated.replace(0, 3, "...");
   }
   return truncated;

@@ -16,5 +16,5 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir/CAPI/Registration.h"
 
-MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(Chlo, chlo, mlir::chlo::HloClientDialect)
+MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(Chlo, chlo, mlir::chlo::ChloDialect)
 MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(Mhlo, mhlo, mlir::mhlo::MhloDialect)

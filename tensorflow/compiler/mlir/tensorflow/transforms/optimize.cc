@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <iostream>
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -136,7 +137,7 @@ struct TensorFlowOptimizePass
   LogicalResult initialize(MLIRContext *context) override {
     RewritePatternSet pattern_list(context);
     populateWithGenerated(pattern_list);
-    pattern_list.insert<SimplifyBroadcastReshape>(context);
+    pattern_list.add<SimplifyBroadcastReshape>(context);
     patterns = std::move(pattern_list);
     return success();
   }
@@ -154,7 +155,7 @@ struct TensorFlowOptimizePass
 
 void CreateTFStandardPipeline(OpPassManager &pm,
                               const StandardPipelineOptions &options) {
-  OpPassManager &func_pm = pm.nest<FuncOp>();
+  OpPassManager &func_pm = pm.nest<func::FuncOp>();
 
   // First operates on the executor dialect:
   // - remove dead islands.
@@ -174,11 +175,11 @@ void CreateTFStandardPipeline(OpPassManager &pm,
     pm.addPass(createInlinerPass());
   }
   pm.addPass(createSymbolDCEPass());
-  pm.addNestedPass<FuncOp>(CreateTFOptimizePass());
-  pm.addNestedPass<FuncOp>(createCSEPass());
+  pm.addNestedPass<func::FuncOp>(CreateTFOptimizePass());
+  pm.addNestedPass<func::FuncOp>(createCSEPass());
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTFOptimizePass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTFOptimizePass() {
   return std::make_unique<TensorFlowOptimizePass>();
 }
 

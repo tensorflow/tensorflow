@@ -75,7 +75,7 @@ Status TPUReshardVariablesOpKernel::DoWork(OpKernelContext* context) {
   TF_RETURN_IF_ERROR(LookupOrCreateResource<Var>(
       context, handle, &format_state_var, [new_format_key](Var** ptr) {
         *ptr = new Var(new_format_key->dtype());
-        return Status::OK();
+        return OkStatus();
       }));
   mutex_lock ml(*format_state_var->mu());
   const bool initialized = format_state_var->is_initialized;
@@ -93,7 +93,7 @@ Status TPUReshardVariablesOpKernel::DoWork(OpKernelContext* context) {
       (initialized && format_state_var->tensor()->vec<tstring>()(2) ==
                           new_format_key->vec<tstring>()(2))) {
     VLOG(1) << "Sharding unchanged, nothing to do.";
-    return Status::OK();
+    return OkStatus();
   }
 
   if (!state_is_default) {
@@ -115,7 +115,7 @@ Status TPUReshardVariablesOpKernel::DoWork(OpKernelContext* context) {
   // Change the state.
   *format_state_var->tensor() = *new_format_key;
   format_state_var->is_initialized = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TPUReshardVariablesOpKernel::DoTpuExecute(
@@ -147,7 +147,7 @@ Status TPUReshardVariablesOpKernel::DoTpuExecute(
   if (entry.tpu_program_group() == nullptr) {
     VLOG(2) << "Sharding/unsharding program does not exist, so this is default "
                "sharding.";
-    return Status::OK();
+    return OkStatus();
   }
 
   const tpu::TpuProgramGroupInterface* tpu_program_group =
@@ -187,9 +187,8 @@ Status TPUReshardVariablesOpKernel::DoTpuExecute(
   xla::ShapedBuffer shaped_buffer(std::move(host_shape), input_buffers.shape(),
                                   device_ordinal);
   shaped_buffer.set_buffers(input_buffers.Map<se::DeviceMemoryBase>(
-      [](xla::MaybeOwningDeviceMemory* buffer) {
-        CHECK(buffer);
-        return buffer->AsDeviceMemoryBase();
+      [](const xla::MaybeOwningDeviceMemory& buffer) {
+        return buffer.AsDeviceMemoryBase();
       }));
 
   // Write input root tuple.

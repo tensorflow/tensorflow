@@ -137,7 +137,7 @@ filegroup(
         "tfe_tensorhandle_internal.h",
     ],
     visibility = [
-        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/function:__pkg__",
         "//tensorflow/python:__subpackages__",
     ],
 )
@@ -152,13 +152,10 @@ cc_library(
     deps = [
         ":c_api",
         ":tfe_cancellation_manager_internal",
-        ":tfe_context_internal",
         ":tfe_executor_internal",
         ":tfe_monitoring_internal",
         ":tfe_op_attrs_internal",
-        ":tfe_op_internal",
         ":tfe_tensor_debug_info_internal",
-        ":tfe_tensorhandle_internal",
         "//tensorflow/c:c_api_internal",
     ],
 )
@@ -537,9 +534,7 @@ cc_library(
 cc_library(
     name = "tfe_executor_internal",
     hdrs = ["tfe_executor_internal.h"],
-    visibility = [
-        "//tensorflow:internal",
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core/common_runtime/eager:eager_executor",
     ],
@@ -548,9 +543,7 @@ cc_library(
 cc_library(
     name = "tfe_monitoring_internal",
     hdrs = ["tfe_monitoring_internal.h"],
-    visibility = [
-        "//tensorflow:internal",
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
@@ -560,9 +553,7 @@ cc_library(
 cc_library(
     name = "tfe_op_attrs_internal",
     hdrs = ["tfe_op_attrs_internal.h"],
-    visibility = [
-        "//tensorflow:internal",
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         ":abstract_op_attrs",
         "//tensorflow/c:conversion_macros",
@@ -586,9 +577,7 @@ cc_library(
 cc_library(
     name = "tfe_tensor_debug_info_internal",
     hdrs = ["tfe_tensor_debug_info_internal.h"],
-    visibility = [
-        "//tensorflow:internal",
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core:lib",
     ],
@@ -695,7 +684,7 @@ tf_cuda_library(
     testonly = 1,
     srcs = ["c_api_remote_test_util.cc"],
     hdrs = ["c_api_remote_test_util.h"],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:private"],
     deps = [
         ":c_api",
         ":c_api_internal",

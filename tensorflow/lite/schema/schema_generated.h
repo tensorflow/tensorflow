@@ -394,6 +394,12 @@ struct BucketizeOptionsT;
 struct GeluOptions;
 struct GeluOptionsT;
 
+struct DynamicUpdateSliceOptions;
+struct DynamicUpdateSliceOptionsT;
+
+struct UnsortedSegmentProdOptions;
+struct UnsortedSegmentProdOptionsT;
+
 struct Pool3DOptions;
 struct Pool3DOptionsT;
 
@@ -438,11 +444,12 @@ enum TensorType {
   TensorType_RESOURCE = 13,
   TensorType_VARIANT = 14,
   TensorType_UINT32 = 15,
+  TensorType_UINT16 = 16,
   TensorType_MIN = TensorType_FLOAT32,
-  TensorType_MAX = TensorType_UINT32
+  TensorType_MAX = TensorType_UINT16
 };
 
-inline const TensorType (&EnumValuesTensorType())[16] {
+inline const TensorType (&EnumValuesTensorType())[17] {
   static const TensorType values[] = {
     TensorType_FLOAT32,
     TensorType_FLOAT16,
@@ -459,13 +466,14 @@ inline const TensorType (&EnumValuesTensorType())[16] {
     TensorType_UINT64,
     TensorType_RESOURCE,
     TensorType_VARIANT,
-    TensorType_UINT32
+    TensorType_UINT32,
+    TensorType_UINT16
   };
   return values;
 }
 
 inline const char * const *EnumNamesTensorType() {
-  static const char * const names[17] = {
+  static const char * const names[18] = {
     "FLOAT32",
     "FLOAT16",
     "INT32",
@@ -482,13 +490,14 @@ inline const char * const *EnumNamesTensorType() {
     "RESOURCE",
     "VARIANT",
     "UINT32",
+    "UINT16",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameTensorType(TensorType e) {
-  if (flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_UINT32)) return "";
+  if (flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_UINT16)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesTensorType()[index];
 }
@@ -871,13 +880,16 @@ enum BuiltinOperator {
   BuiltinOperator_RANDOM_UNIFORM = 148,
   BuiltinOperator_MULTINOMIAL = 149,
   BuiltinOperator_GELU = 150,
-  BuiltinOperator_AVERAGE_POOL_3D = 151,
-  BuiltinOperator_MAX_POOL_3D = 152,
+  BuiltinOperator_DYNAMIC_UPDATE_SLICE = 151,
+  BuiltinOperator_RELU_0_TO_1 = 152,
+  BuiltinOperator_UNSORTED_SEGMENT_PROD = 153,
+  BuiltinOperator_AVERAGE_POOL_3D = 154,
+  BuiltinOperator_MAX_POOL_3D = 155,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
   BuiltinOperator_MAX = BuiltinOperator_MAX_POOL_3D
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[153] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[156] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1030,6 +1042,9 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[153] {
     BuiltinOperator_RANDOM_UNIFORM,
     BuiltinOperator_MULTINOMIAL,
     BuiltinOperator_GELU,
+    BuiltinOperator_DYNAMIC_UPDATE_SLICE,
+    BuiltinOperator_RELU_0_TO_1,
+    BuiltinOperator_UNSORTED_SEGMENT_PROD,
     BuiltinOperator_AVERAGE_POOL_3D,
     BuiltinOperator_MAX_POOL_3D
   };
@@ -1037,7 +1052,7 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[153] {
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[154] = {
+  static const char * const names[157] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1189,6 +1204,9 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "RANDOM_UNIFORM",
     "MULTINOMIAL",
     "GELU",
+    "DYNAMIC_UPDATE_SLICE",
+    "RELU_0_TO_1",
+    "UNSORTED_SEGMENT_PROD",
     "AVERAGE_POOL_3D",
     "MAX_POOL_3D",
     nullptr
@@ -1320,12 +1338,14 @@ enum BuiltinOptions {
   BuiltinOptions_RandomOptions = 114,
   BuiltinOptions_BucketizeOptions = 115,
   BuiltinOptions_GeluOptions = 116,
-  BuiltinOptions_Pool3DOptions = 117,
+  BuiltinOptions_DynamicUpdateSliceOptions = 117,
+  BuiltinOptions_UnsortedSegmentProdOptions = 118,
+  BuiltinOptions_Pool3DOptions = 119,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
   BuiltinOptions_MAX = BuiltinOptions_Pool3DOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[118] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[120] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1444,13 +1464,15 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[118] {
     BuiltinOptions_RandomOptions,
     BuiltinOptions_BucketizeOptions,
     BuiltinOptions_GeluOptions,
+    BuiltinOptions_DynamicUpdateSliceOptions,
+    BuiltinOptions_UnsortedSegmentProdOptions,
     BuiltinOptions_Pool3DOptions
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions() {
-  static const char * const names[119] = {
+  static const char * const names[121] = {
     "NONE",
     "Conv2DOptions",
     "DepthwiseConv2DOptions",
@@ -1568,6 +1590,8 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "RandomOptions",
     "BucketizeOptions",
     "GeluOptions",
+    "DynamicUpdateSliceOptions",
+    "UnsortedSegmentProdOptions",
     "Pool3DOptions",
     nullptr
   };
@@ -2046,6 +2070,14 @@ template<> struct BuiltinOptionsTraits<tflite::BucketizeOptions> {
 
 template<> struct BuiltinOptionsTraits<tflite::GeluOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_GeluOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::DynamicUpdateSliceOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_DynamicUpdateSliceOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::UnsortedSegmentProdOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_UnsortedSegmentProdOptions;
 };
 
 template<> struct BuiltinOptionsTraits<tflite::Pool3DOptions> {
@@ -3012,6 +3044,22 @@ struct BuiltinOptionsUnion {
     return type == BuiltinOptions_GeluOptions ?
       reinterpret_cast<const tflite::GeluOptionsT *>(value) : nullptr;
   }
+  tflite::DynamicUpdateSliceOptionsT *AsDynamicUpdateSliceOptions() {
+    return type == BuiltinOptions_DynamicUpdateSliceOptions ?
+      reinterpret_cast<tflite::DynamicUpdateSliceOptionsT *>(value) : nullptr;
+  }
+  const tflite::DynamicUpdateSliceOptionsT *AsDynamicUpdateSliceOptions() const {
+    return type == BuiltinOptions_DynamicUpdateSliceOptions ?
+      reinterpret_cast<const tflite::DynamicUpdateSliceOptionsT *>(value) : nullptr;
+  }
+  tflite::UnsortedSegmentProdOptionsT *AsUnsortedSegmentProdOptions() {
+    return type == BuiltinOptions_UnsortedSegmentProdOptions ?
+      reinterpret_cast<tflite::UnsortedSegmentProdOptionsT *>(value) : nullptr;
+  }
+  const tflite::UnsortedSegmentProdOptionsT *AsUnsortedSegmentProdOptions() const {
+    return type == BuiltinOptions_UnsortedSegmentProdOptions ?
+      reinterpret_cast<const tflite::UnsortedSegmentProdOptionsT *>(value) : nullptr;
+  }
   tflite::Pool3DOptionsT *AsPool3DOptions() {
     return type == BuiltinOptions_Pool3DOptions ?
       reinterpret_cast<tflite::Pool3DOptionsT *>(value) : nullptr;
@@ -3949,10 +3997,12 @@ struct TensorT : public flatbuffers::NativeTable {
   bool is_variable;
   std::unique_ptr<tflite::SparsityParametersT> sparsity;
   std::vector<int32_t> shape_signature;
+  bool has_rank;
   TensorT()
       : type(tflite::TensorType_FLOAT32),
         buffer(0),
-        is_variable(false) {
+        is_variable(false),
+        has_rank(false) {
   }
 };
 
@@ -3966,7 +4016,8 @@ struct Tensor FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_QUANTIZATION = 12,
     VT_IS_VARIABLE = 14,
     VT_SPARSITY = 16,
-    VT_SHAPE_SIGNATURE = 18
+    VT_SHAPE_SIGNATURE = 18,
+    VT_HAS_RANK = 20
   };
   const flatbuffers::Vector<int32_t> *shape() const {
     return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_SHAPE);
@@ -3992,6 +4043,9 @@ struct Tensor FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::Vector<int32_t> *shape_signature() const {
     return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_SHAPE_SIGNATURE);
   }
+  bool has_rank() const {
+    return GetField<uint8_t>(VT_HAS_RANK, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_SHAPE) &&
@@ -4007,6 +4061,7 @@ struct Tensor FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyTable(sparsity()) &&
            VerifyOffset(verifier, VT_SHAPE_SIGNATURE) &&
            verifier.VerifyVector(shape_signature()) &&
+           VerifyField<uint8_t>(verifier, VT_HAS_RANK) &&
            verifier.EndTable();
   }
   TensorT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -4041,6 +4096,9 @@ struct TensorBuilder {
   void add_shape_signature(flatbuffers::Offset<flatbuffers::Vector<int32_t>> shape_signature) {
     fbb_.AddOffset(Tensor::VT_SHAPE_SIGNATURE, shape_signature);
   }
+  void add_has_rank(bool has_rank) {
+    fbb_.AddElement<uint8_t>(Tensor::VT_HAS_RANK, static_cast<uint8_t>(has_rank), 0);
+  }
   explicit TensorBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -4062,7 +4120,8 @@ inline flatbuffers::Offset<Tensor> CreateTensor(
     flatbuffers::Offset<tflite::QuantizationParameters> quantization = 0,
     bool is_variable = false,
     flatbuffers::Offset<tflite::SparsityParameters> sparsity = 0,
-    flatbuffers::Offset<flatbuffers::Vector<int32_t>> shape_signature = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<int32_t>> shape_signature = 0,
+    bool has_rank = false) {
   TensorBuilder builder_(_fbb);
   builder_.add_shape_signature(shape_signature);
   builder_.add_sparsity(sparsity);
@@ -4070,6 +4129,7 @@ inline flatbuffers::Offset<Tensor> CreateTensor(
   builder_.add_name(name);
   builder_.add_buffer(buffer);
   builder_.add_shape(shape);
+  builder_.add_has_rank(has_rank);
   builder_.add_is_variable(is_variable);
   builder_.add_type(type);
   return builder_.Finish();
@@ -4084,7 +4144,8 @@ inline flatbuffers::Offset<Tensor> CreateTensorDirect(
     flatbuffers::Offset<tflite::QuantizationParameters> quantization = 0,
     bool is_variable = false,
     flatbuffers::Offset<tflite::SparsityParameters> sparsity = 0,
-    const std::vector<int32_t> *shape_signature = nullptr) {
+    const std::vector<int32_t> *shape_signature = nullptr,
+    bool has_rank = false) {
   auto shape__ = shape ? _fbb.CreateVector<int32_t>(*shape) : 0;
   auto name__ = name ? _fbb.CreateString(name) : 0;
   auto shape_signature__ = shape_signature ? _fbb.CreateVector<int32_t>(*shape_signature) : 0;
@@ -4097,7 +4158,8 @@ inline flatbuffers::Offset<Tensor> CreateTensorDirect(
       quantization,
       is_variable,
       sparsity,
-      shape_signature__);
+      shape_signature__,
+      has_rank);
 }
 
 flatbuffers::Offset<Tensor> CreateTensor(flatbuffers::FlatBufferBuilder &_fbb, const TensorT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -10619,6 +10681,100 @@ inline flatbuffers::Offset<GeluOptions> CreateGeluOptions(
 
 flatbuffers::Offset<GeluOptions> CreateGeluOptions(flatbuffers::FlatBufferBuilder &_fbb, const GeluOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct DynamicUpdateSliceOptionsT : public flatbuffers::NativeTable {
+  typedef DynamicUpdateSliceOptions TableType;
+  DynamicUpdateSliceOptionsT() {
+  }
+};
+
+struct DynamicUpdateSliceOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef DynamicUpdateSliceOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  DynamicUpdateSliceOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(DynamicUpdateSliceOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<DynamicUpdateSliceOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const DynamicUpdateSliceOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct DynamicUpdateSliceOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit DynamicUpdateSliceOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  DynamicUpdateSliceOptionsBuilder &operator=(const DynamicUpdateSliceOptionsBuilder &);
+  flatbuffers::Offset<DynamicUpdateSliceOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<DynamicUpdateSliceOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<DynamicUpdateSliceOptions> CreateDynamicUpdateSliceOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  DynamicUpdateSliceOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<DynamicUpdateSliceOptions> CreateDynamicUpdateSliceOptions(flatbuffers::FlatBufferBuilder &_fbb, const DynamicUpdateSliceOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct UnsortedSegmentProdOptionsT : public flatbuffers::NativeTable {
+  typedef UnsortedSegmentProdOptions TableType;
+  int32_t num_segments;
+  UnsortedSegmentProdOptionsT()
+      : num_segments(0) {
+  }
+};
+
+struct UnsortedSegmentProdOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef UnsortedSegmentProdOptionsT NativeTableType;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_NUM_SEGMENTS = 4
+  };
+  int32_t num_segments() const {
+    return GetField<int32_t>(VT_NUM_SEGMENTS, 0);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int32_t>(verifier, VT_NUM_SEGMENTS) &&
+           verifier.EndTable();
+  }
+  UnsortedSegmentProdOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(UnsortedSegmentProdOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<UnsortedSegmentProdOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const UnsortedSegmentProdOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct UnsortedSegmentProdOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_num_segments(int32_t num_segments) {
+    fbb_.AddElement<int32_t>(UnsortedSegmentProdOptions::VT_NUM_SEGMENTS, num_segments, 0);
+  }
+  explicit UnsortedSegmentProdOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  UnsortedSegmentProdOptionsBuilder &operator=(const UnsortedSegmentProdOptionsBuilder &);
+  flatbuffers::Offset<UnsortedSegmentProdOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<UnsortedSegmentProdOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<UnsortedSegmentProdOptions> CreateUnsortedSegmentProdOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t num_segments = 0) {
+  UnsortedSegmentProdOptionsBuilder builder_(_fbb);
+  builder_.add_num_segments(num_segments);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<UnsortedSegmentProdOptions> CreateUnsortedSegmentProdOptions(flatbuffers::FlatBufferBuilder &_fbb, const UnsortedSegmentProdOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct Pool3DOptionsT : public flatbuffers::NativeTable {
   typedef Pool3DOptions TableType;
   tflite::Padding padding = tflite::Padding_SAME;
@@ -11246,6 +11402,12 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const tflite::GeluOptions *builtin_options_as_GeluOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_GeluOptions ? static_cast<const tflite::GeluOptions *>(builtin_options()) : nullptr;
   }
+  const tflite::DynamicUpdateSliceOptions *builtin_options_as_DynamicUpdateSliceOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_DynamicUpdateSliceOptions ? static_cast<const tflite::DynamicUpdateSliceOptions *>(builtin_options()) : nullptr;
+  }
+  const tflite::UnsortedSegmentProdOptions *builtin_options_as_UnsortedSegmentProdOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_UnsortedSegmentProdOptions ? static_cast<const tflite::UnsortedSegmentProdOptions *>(builtin_options()) : nullptr;
+  }
   const tflite::Pool3DOptions *builtin_options_as_Pool3DOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_Pool3DOptions ? static_cast<const tflite::Pool3DOptions *>(builtin_options()) : nullptr;
   }
@@ -11747,6 +11909,14 @@ template<> inline const tflite::BucketizeOptions *Operator::builtin_options_as<t
 
 template<> inline const tflite::GeluOptions *Operator::builtin_options_as<tflite::GeluOptions>() const {
   return builtin_options_as_GeluOptions();
+}
+
+template<> inline const tflite::DynamicUpdateSliceOptions *Operator::builtin_options_as<tflite::DynamicUpdateSliceOptions>() const {
+  return builtin_options_as_DynamicUpdateSliceOptions();
+}
+
+template<> inline const tflite::UnsortedSegmentProdOptions *Operator::builtin_options_as<tflite::UnsortedSegmentProdOptions>() const {
+  return builtin_options_as_UnsortedSegmentProdOptions();
 }
 
 template<> inline const tflite::Pool3DOptions *Operator::builtin_options_as<tflite::Pool3DOptions>() const {
@@ -12715,6 +12885,7 @@ inline void Tensor::UnPackTo(TensorT *_o, const flatbuffers::resolver_function_t
   { auto _e = is_variable(); _o->is_variable = _e; }
   { auto _e = sparsity(); if (_e) _o->sparsity = std::unique_ptr<tflite::SparsityParametersT>(_e->UnPack(_resolver)); }
   { auto _e = shape_signature(); if (_e) { _o->shape_signature.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->shape_signature[_i] = _e->Get(_i); } } }
+  { auto _e = has_rank(); _o->has_rank = _e; }
 }
 
 inline flatbuffers::Offset<Tensor> Tensor::Pack(flatbuffers::FlatBufferBuilder &_fbb, const TensorT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -12733,6 +12904,7 @@ inline flatbuffers::Offset<Tensor> CreateTensor(flatbuffers::FlatBufferBuilder &
   auto _is_variable = _o->is_variable;
   auto _sparsity = _o->sparsity ? CreateSparsityParameters(_fbb, _o->sparsity.get(), _rehasher) : 0;
   auto _shape_signature = _o->shape_signature.size() ? _fbb.CreateVector(_o->shape_signature) : 0;
+  auto _has_rank = _o->has_rank;
   return tflite::CreateTensor(
       _fbb,
       _shape,
@@ -12742,7 +12914,8 @@ inline flatbuffers::Offset<Tensor> CreateTensor(flatbuffers::FlatBufferBuilder &
       _quantization,
       _is_variable,
       _sparsity,
-      _shape_signature);
+      _shape_signature,
+      _has_rank);
 }
 
 inline Conv2DOptionsT *Conv2DOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -15839,6 +16012,54 @@ inline flatbuffers::Offset<GeluOptions> CreateGeluOptions(flatbuffers::FlatBuffe
       _approximate);
 }
 
+inline DynamicUpdateSliceOptionsT *DynamicUpdateSliceOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new DynamicUpdateSliceOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void DynamicUpdateSliceOptions::UnPackTo(DynamicUpdateSliceOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<DynamicUpdateSliceOptions> DynamicUpdateSliceOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const DynamicUpdateSliceOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateDynamicUpdateSliceOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<DynamicUpdateSliceOptions> CreateDynamicUpdateSliceOptions(flatbuffers::FlatBufferBuilder &_fbb, const DynamicUpdateSliceOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const DynamicUpdateSliceOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateDynamicUpdateSliceOptions(
+      _fbb);
+}
+
+inline UnsortedSegmentProdOptionsT *UnsortedSegmentProdOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new UnsortedSegmentProdOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void UnsortedSegmentProdOptions::UnPackTo(UnsortedSegmentProdOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = num_segments(); _o->num_segments = _e; }
+}
+
+inline flatbuffers::Offset<UnsortedSegmentProdOptions> UnsortedSegmentProdOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const UnsortedSegmentProdOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateUnsortedSegmentProdOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<UnsortedSegmentProdOptions> CreateUnsortedSegmentProdOptions(flatbuffers::FlatBufferBuilder &_fbb, const UnsortedSegmentProdOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const UnsortedSegmentProdOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _num_segments = _o->num_segments;
+  return tflite::CreateUnsortedSegmentProdOptions(
+      _fbb,
+      _num_segments);
+}
 inline Pool3DOptionsT *Pool3DOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = std::unique_ptr<Pool3DOptionsT>(new Pool3DOptionsT());
   UnPackTo(_o.get(), _resolver);
@@ -16825,6 +17046,14 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const tflite::GeluOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_DynamicUpdateSliceOptions: {
+      auto ptr = reinterpret_cast<const tflite::DynamicUpdateSliceOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_UnsortedSegmentProdOptions: {
+      auto ptr = reinterpret_cast<const tflite::UnsortedSegmentProdOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     case BuiltinOptions_Pool3DOptions: {
       auto ptr = reinterpret_cast<const tflite::Pool3DOptions *>(obj);
       return verifier.VerifyTable(ptr);
@@ -17311,6 +17540,14 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const tflite::GeluOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_DynamicUpdateSliceOptions: {
+      auto ptr = reinterpret_cast<const tflite::DynamicUpdateSliceOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_UnsortedSegmentProdOptions: {
+      auto ptr = reinterpret_cast<const tflite::UnsortedSegmentProdOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     case BuiltinOptions_Pool3DOptions: {
       auto ptr = reinterpret_cast<const tflite::Pool3DOptions *>(obj);
       return ptr->UnPack(resolver);
@@ -17785,6 +18022,14 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const tflite::GeluOptionsT *>(value);
       return CreateGeluOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_DynamicUpdateSliceOptions: {
+      auto ptr = reinterpret_cast<const tflite::DynamicUpdateSliceOptionsT *>(value);
+      return CreateDynamicUpdateSliceOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_UnsortedSegmentProdOptions: {
+      auto ptr = reinterpret_cast<const tflite::UnsortedSegmentProdOptionsT *>(value);
+      return CreateUnsortedSegmentProdOptions(_fbb, ptr, _rehasher).Union();
+    }
     case BuiltinOptions_Pool3DOptions: {
       auto ptr = reinterpret_cast<const tflite::Pool3DOptionsT *>(value);
       return CreatePool3DOptions(_fbb, ptr, _rehasher).Union();
@@ -18257,6 +18502,14 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_GeluOptions: {
       value = new tflite::GeluOptionsT(*reinterpret_cast<tflite::GeluOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_DynamicUpdateSliceOptions: {
+      value = new tflite::DynamicUpdateSliceOptionsT(*reinterpret_cast<tflite::DynamicUpdateSliceOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_UnsortedSegmentProdOptions: {
+      value = new tflite::UnsortedSegmentProdOptionsT(*reinterpret_cast<tflite::UnsortedSegmentProdOptionsT *>(u.value));
       break;
     }
     case BuiltinOptions_Pool3DOptions: {
@@ -18847,6 +19100,16 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_GeluOptions: {
       auto ptr = reinterpret_cast<tflite::GeluOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_DynamicUpdateSliceOptions: {
+      auto ptr = reinterpret_cast<tflite::DynamicUpdateSliceOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_UnsortedSegmentProdOptions: {
+      auto ptr = reinterpret_cast<tflite::UnsortedSegmentProdOptionsT *>(value);
       delete ptr;
       break;
     }

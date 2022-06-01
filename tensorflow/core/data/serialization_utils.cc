@@ -400,7 +400,7 @@ Status VariantTensorDataWriter::WriteDatasetInternal(
     StringPiece n, StringPiece key, const DatasetBase* dataset) {
   GraphDef graph_def;
   SerializationContext ctx((SerializationContext::Params()));
-  TF_RETURN_IF_ERROR(AsGraphDef(nullptr, dataset, std::move(ctx), &graph_def));
+  TF_RETURN_IF_ERROR(AsGraphDef(dataset, std::move(ctx), &graph_def));
   string output_node;
   for (const auto& node : graph_def.node()) {
     if (node.op() == "_Retval") {
@@ -426,8 +426,7 @@ Status AsGraphDefForRewrite(OpKernelContext* ctx, const DatasetBase* input,
       SerializationContext::ExternalStatePolicy::kIgnore;
   params.is_graph_rewrite = true;
   SerializationContext serialization_ctx(params);
-  TF_RETURN_IF_ERROR(
-      AsGraphDef(ctx, input, std::move(serialization_ctx), result));
+  TF_RETURN_IF_ERROR(AsGraphDef(input, std::move(serialization_ctx), result));
 
   // Symbolic `_Retval` node indicates which node corresponds to the dataset.
   for (const auto& node : result->node()) {
@@ -438,7 +437,7 @@ Status AsGraphDefForRewrite(OpKernelContext* ctx, const DatasetBase* input,
   return Status::OK();
 }
 
-Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
+Status AsGraphDef(const DatasetBase* dataset,
                   SerializationContext&& serialization_ctx,
                   GraphDef* graph_def) {
   if (serialization_ctx.external_state_policy() ==

@@ -60,9 +60,7 @@ def TF__TfrtGetResourceOp : TF_Op<"_TfrtGetResource",
     Variadic<TF_Tensor>:$results
   );
 
-  let verifier = [{
-    return Verify(*this);
-  }];
+  let hasVerifier = 1;
 }
 
 #endif // TFRT_OPS

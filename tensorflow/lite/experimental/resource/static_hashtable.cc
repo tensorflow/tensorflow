@@ -27,8 +27,8 @@ TfLiteStatus StaticHashtable<KeyType, ValueType>::Lookup(
     TfLiteContext* context, const TfLiteTensor* keys, TfLiteTensor* values,
     const TfLiteTensor* default_value) {
   if (!is_initialized_) {
-    context->ReportError(context,
-                         "hashtable need to be initialized before using");
+    TF_LITE_KERNEL_LOG(context,
+                       "hashtable need to be initialized before using");
     return kTfLiteError;
   }
   const int size =

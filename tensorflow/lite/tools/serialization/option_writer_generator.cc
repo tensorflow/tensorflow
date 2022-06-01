@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <ctype.h>
+
 #include <iostream>
 #include <unordered_map>
 #include <unordered_set>
+
 #include "flatbuffers/minireflect.h"  // from @flatbuffers
 #include "tensorflow/lite/schema/reflection/schema_generated.h"
 
@@ -38,6 +40,7 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteConvParams",
                                       "TfLiteDepthwiseConvParams",
                                       "TfLiteDivParams",
+                                      "TfLiteDynamicUpdateSliceParams",
                                       "TfLiteEmbeddingLookupSparseParams",
                                       "TfLiteFakeQuantParams",
                                       "TfLiteFullyConnectedParams",
@@ -92,6 +95,7 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteHashtableSizeParams",
                                       "TfLiteConv3DTransposeParams",
                                       "TfLiteVarHandleParams",
+                                      "TfLiteUnsortedSegmentProdParams",
                                       nullptr};
 }  // namespace
 
@@ -197,6 +201,7 @@ class OpOptionData {
     op_to_option_["LOGISTIC"] = "";
     op_to_option_["RELU"] = "";
     op_to_option_["RELU_N1_TO_1"] = "";
+    op_to_option_["RELU_0_TO_1"] = "";
     op_to_option_["RELU6"] = "";
     op_to_option_["ROUND"] = "";
     op_to_option_["TANH"] = "";
@@ -212,6 +217,7 @@ class OpOptionData {
     op_to_option_["COMPLEX_ABS"] = "";
     op_to_option_["BROADCAST_ARGS"] = "";
     op_to_option_["GELU"] = "";
+    op_to_option_["DYNAMIC_UPDATE_SLICE"] = "";
 
     // TODO(aselle): These are undesirable hacks. Consider changing C structs
     option_to_struct_["Pool2DOptions"] = "TfLitePoolParams";

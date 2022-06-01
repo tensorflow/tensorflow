@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/master_session.h"
 
+#include <algorithm>
+#include <functional>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/process_util.h"
@@ -56,6 +60,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -1370,8 +1375,24 @@ Status MasterSession::CreateWorkerSessions(const ClusterDef& cluster_def) {
       workers[i].request.set_isolate_session_state(
           session_opts_.config.isolate_session_state());
     }
-    *workers[i].request.mutable_coordination_service_config() =
-        session_opts_.config.experimental().coordination_config();
+    CoordinationServiceConfig coordination_config;
+    // Enable coordination service in session options by default if
+    // unspecified in non-local targets.
+    if (session_opts_.target != "local" &&
+        !session_opts_.config.experimental().has_coordination_config()) {
+      coordination_config.set_service_type("standalone");
+    } else {
+      coordination_config =
+          session_opts_.config.experimental().coordination_config();
+    }
+    // Specify master task as coordination service leader.
+    coordination_config.set_service_leader(task_name);
+    *workers[i]
+         .request.mutable_server_def()
+         ->mutable_default_session_config()
+         ->mutable_experimental()
+         ->mutable_coordination_config() = coordination_config;
+
     if (session_opts_.config.experimental()
             .share_session_state_in_clusterspec_propagation()) {
       // In a dynamic cluster, the ClusterSpec info is usually propagated by
