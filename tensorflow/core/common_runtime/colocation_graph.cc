@@ -188,7 +188,7 @@ Status Member::SetAssignedDeviceName(const string& device_name) {
   // Set requested device to assigned_device to maintain the invariant that
   // requested is a specialization of assigned.
   requested_device_name_ = assigned_device_name_;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Member::SetResourceDeviceName(const Node& node) {
@@ -208,7 +208,7 @@ Status Member::SetResourceDeviceName(const Node& node) {
   // Set requested device to resource device to maintain the invariant that
   // requested is a specialization of resource.
   requested_device_name_ = resource_device_name_;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Member::SetRequestedDeviceName(const Node& node) {
@@ -228,7 +228,7 @@ Status Member::SetRequestedDeviceName(const Node& node) {
                                    node.requested_device(),
                                    "' in node: ", node.DebugString());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Member::FillPossibleDevices(PossibleDevices* possible_device) const {
@@ -242,7 +242,7 @@ Status Member::FillPossibleDevices(PossibleDevices* possible_device) const {
   possible_device->requested_device_name = requested_device_name_;
   possible_device->resource_device_name = resource_device_name_;
   possible_device->device_types = supported_device_types_;
-  return Status::OK();
+  return OkStatus();
 }
 
 bool Member::IsEdgeFromCompositeDeviceToPhysicalDevice(
@@ -295,7 +295,7 @@ Status Member::EnsureCompatibilityAcrossResourceEdge(
 
   if (DeviceNameUtils::AreCompatibleDevNames(src_root.requested_device_name_,
                                              requested_device_name_)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // If we are here, assigned and resource devices are compatible but requested
@@ -317,7 +317,7 @@ Status Member::EnsureCompatibilityAcrossResourceEdge(
                                        assigned_device_name_);
   DeviceNameUtils::EnsureSpecification(&requested_device_name_,
                                        resource_device_name_);
-  return Status::OK();
+  return OkStatus();
 }
 
 void Member::Merge(std::vector<Member>* tree, int x_root, int y_root,
@@ -416,7 +416,7 @@ Status Member::MergeDeviceNames(const Member& other,
   assigned_device_name_ = std::move(assigned_device_name_copy);
   resource_device_name_ = std::move(resource_device_name_copy);
   requested_device_name_ = std::move(requested_device_name_copy);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Updates this to contain the intersection of the device types in
@@ -489,7 +489,7 @@ bool Member::MergeSupportedDevices(
 
 Status Member::AssignDevice(const Node& node) {
   if (node.assigned_device_name_index() == assigned_device_name_index_) {
-    return Status::OK();
+    return OkStatus();
   }
 
   DeviceNameUtils::ParsedName parsed;
@@ -525,7 +525,7 @@ Status Member::AssignDevice(const Node& node) {
   assigned_device_name_index_ = node.assigned_device_name_index();
   // Clear cached possible_devices, if any.
   possible_devices_.clear();
-  return Status::OK();
+  return OkStatus();
 }
 
 void Member::MaybeExcludeXlaDevices() {
@@ -561,7 +561,7 @@ Status Member::LimitToPossibleDevices(const PossibleDevices& devices,
   TF_RETURN_IF_ERROR(DeviceNameUtils::MergeDevNames(
       &resource_device_name_, devices.resource_device_name));
   MergeSupportedDevices(devices.device_types);
-  return Status::OK();
+  return OkStatus();
 }
 
 string Member::DebugString() const {
@@ -701,7 +701,7 @@ Status ColocationGraph::ColocateAllNodes() {
         ColocateNodeToGroup(&colocation_group_root, node, node->name()));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ColocationGraph::ColocateResourceOrRefEdge(const Node* src,
@@ -717,7 +717,7 @@ Status ColocationGraph::ColocateResourceOrRefEdge(const Node* src,
     // If the src root is assigned to a composite device and the dst root is
     // assigned to a physical device, don't colocate the dst root with the src
     // root.
-    return Status::OK();
+    return OkStatus();
   }
   TF_RETURN_IF_ERROR(dst_root.EnsureCompatibilityAcrossResourceEdge(
       *src, src_root, *dst, log_device_placement_));
@@ -731,7 +731,7 @@ Status ColocationGraph::ColocateResourceOrRefEdge(const Node* src,
             status.error_message()),
         *dst);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ColocationGraph::ColocateResourceAndRefEdges(
@@ -781,7 +781,7 @@ Status ColocationGraph::ColocateResourceAndRefEdges(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -898,7 +898,7 @@ Status ColocationGraph::AddHostOnlyDataTypesConstraints() {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ColocationGraph::AddInspectionConstraints(
@@ -911,7 +911,7 @@ Status ColocationGraph::AddInspectionConstraints(
             << ":\n\t" << groups.DebugString();
     TF_RETURN_IF_ERROR(ApplyIOColocationGroups(groups, *node));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ColocationGraph::Initialize() {
@@ -928,7 +928,7 @@ Status ColocationGraph::Initialize() {
     members_[root_id].MaybeExcludeXlaDevices();
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // pair containing a node and whether this node has a resource input
@@ -983,7 +983,7 @@ Status GetGroupNodes(const IOColocationGroups& groups, const Node& node,
               << "]";
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns whether the device_type in `device_attributes` is supported.
@@ -1053,7 +1053,7 @@ Status ColocationGraph::ApplyIOColocationGroups(
     TF_RETURN_IF_ERROR(LimitToPossibleDevices(*group_node, possible_devices));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ColocationGraph::ColocateNodeToGroup(
@@ -1082,7 +1082,7 @@ Status ColocationGraph::ColocateNodeToGroup(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Merge the (possibly disjoint) sets containing nodes "x" and
@@ -1103,7 +1103,7 @@ Status ColocationGraph::ColocateNodes(const Node& x, const Node& y) {
 Status ColocationGraph::ColocateNodes(const Node& x, int x_root, const Node& y,
                                       int y_root) {
   if (x_root == y_root) {
-    return Status::OK();
+    return OkStatus();
   }
 
   Member* new_root_member;
@@ -1144,7 +1144,7 @@ Status ColocationGraph::ColocateNodes(const Node& x, int x_root, const Node& y,
   // All error checks are done, merge the colocation graphs.
   Member::Merge(&members_, x_root, y_root, &new_root_member, &old_root_member,
                 /*dry_run=*/false);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ColocationGraph::LimitToAssignedDevice(const Node& node) {
@@ -1223,7 +1223,7 @@ Status ColocationGraph::GetDevicesForNode(
   const int node_root = FindAndUpdateRoot(node->id());
   if (!members_[node_root].possible_devices().empty()) {
     *possible_devices = &members_[node_root].possible_devices();
-    return Status::OK();
+    return OkStatus();
   }
 
   Member& root_member = members_[node_root];
@@ -1350,7 +1350,7 @@ Status ColocationGraph::GetDevicesForNode(
   // Cache the result of the possible devices for this node group.
   root_member.set_possible_devices(std::move(devices));
   *possible_devices = &root_member.possible_devices();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ColocationGraph::InitializeMembers() {
@@ -1360,7 +1360,7 @@ Status ColocationGraph::InitializeMembers() {
       return AttachDef(status, *node);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 string ColocationGraph::DebugString() const {
@@ -1470,7 +1470,7 @@ Status ColocationGraph::InitializeMemberWithAssignedDevice(
 
   for (const auto& d : member->supported_device_types()) {
     if (IsSupportedDeviceType(assigned_device->attributes(), d.first)) {
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -1526,7 +1526,7 @@ Status ColocationGraph::InitializeMember(const Node& node, Member* member) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns a list of devices having type in supported_device_types.  The
