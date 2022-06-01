@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <random>
 #include <sstream>
+#include <string>
 #include <utility>
 
 #include "tensorflow/core/util/stats_calculator.h"
@@ -33,6 +34,15 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/logging.h"
+
+#if defined(__APPLE__)
+#include "TargetConditionals.h"
+#if (TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR) || \
+    (TARGET_OS_OSX && TARGET_CPU_ARM64)
+// Only enable coreml delegate when using a real iPhone device or Apple Silicon.
+#define REAL_IPHONE_DEVICE
+#endif
+#endif
 
 namespace tflite {
 namespace benchmark {
@@ -49,7 +59,7 @@ std::string MultiRunStatsRecorder::PerfOptionName(
 #endif
 
   if (params.Get<bool>("use_gpu")) {
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
     if (params.Get<bool>("gpu_precision_loss_allowed")) {
       return "gpu-fp16";
     } else {
@@ -63,6 +73,12 @@ std::string MultiRunStatsRecorder::PerfOptionName(
 #if defined(TFLITE_ENABLE_HEXAGON)
   if (params.Get<bool>("use_hexagon")) {
     return "dsp w/ hexagon";
+  }
+#endif
+
+#if defined(REAL_IPHONE_DEVICE)
+  if (params.Get<bool>("use_coreml")) {
+    return "coreml";
   }
 #endif
 
@@ -207,8 +223,8 @@ bool BenchmarkPerformanceOptions::ParsePerfOptions() {
 
 std::vector<std::string> BenchmarkPerformanceOptions::GetValidPerfOptions()
     const {
-  std::vector<std::string> valid_options = {"all", "cpu", "gpu", "nnapi",
-                                            "none"};
+  std::vector<std::string> valid_options = {"all",   "cpu",    "gpu",
+                                            "nnapi", "coreml", "none"};
 #if defined(TFLITE_ENABLE_HEXAGON)
   valid_options.emplace_back("dsp");
 #endif
@@ -233,6 +249,10 @@ void BenchmarkPerformanceOptions::ResetPerformanceOptions() {
 #endif
 #if defined(TFLITE_ENABLE_HEXAGON)
   single_option_run_params_->Set<bool>("use_hexagon", false);
+#endif
+#if defined(REAL_IPHONE_DEVICE)
+  single_option_run_params_->Set<bool>("use_coreml", false);
+  single_option_run_params_->Set<bool>("gpu_precision_loss_allowed", true);
 #endif
   single_option_run_params_->Set<bool>("use_xnnpack", false);
 }
@@ -315,6 +335,14 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
   if (benchmark_all || HasOption("dsp")) {
     BenchmarkParams params;
     params.AddParam("use_hexagon", BenchmarkParam::Create<bool>(true));
+    all_run_params_.emplace_back(std::move(params));
+  }
+#endif
+
+#if defined(REAL_IPHONE_DEVICE)
+  if (benchmark_all || HasOption("coreml")) {
+    BenchmarkParams params;
+    params.AddParam("use_coreml", BenchmarkParam::Create<bool>(true));
     all_run_params_.emplace_back(std::move(params));
   }
 #endif
