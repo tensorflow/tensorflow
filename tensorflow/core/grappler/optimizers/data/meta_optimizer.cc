@@ -63,7 +63,7 @@ Status ToConfigMap(
     const tensorflow::RewriterConfig_CustomGraphOptimizer* config,
     ConfigMap* result) {
   auto found = gtl::FindOrNull(config->parameter_map(), "optimizer_configs");
-  if (!found) return Status::OK();
+  if (!found) return OkStatus();
 
   auto& options = found->list().s();
   for (const auto& option_string : options) {
@@ -91,7 +91,7 @@ Status ToConfigMap(
         config_value);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -156,7 +156,7 @@ Status TFDataMetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   if (optimized_functions) {
     *output->mutable_library() = flib.ToProto();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TFDataMetaOptimizer::ApplyOptimization(const string& name,
@@ -166,7 +166,7 @@ Status TFDataMetaOptimizer::ApplyOptimization(const string& name,
 
   const auto* optimizer = gtl::FindOrNull(enabled_optimizers_, name);
   if (!optimizer) {
-    return Status::OK();
+    return OkStatus();
   }
 
   GraphDef result;
@@ -179,7 +179,7 @@ Status TFDataMetaOptimizer::ApplyOptimization(const string& name,
     // A status of errors::Aborted just means that the optimizer was a no-op and
     // did not populate result. Swallow the error status and leave the original
     // graph in item.
-    status = Status::OK();
+    status = OkStatus();
   }
 
   return status;
@@ -187,7 +187,7 @@ Status TFDataMetaOptimizer::ApplyOptimization(const string& name,
 
 Status TFDataMetaOptimizer::Init(
     const tensorflow::RewriterConfig_CustomGraphOptimizer* config) {
-  if (!config) return Status::OK();
+  if (!config) return OkStatus();
 
   // Initialize custom tf.data optimizers based on config.
   auto& optimizers = config->parameter_map().at("optimizers").list().s();
@@ -209,7 +209,7 @@ Status TFDataMetaOptimizer::Init(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(TFDataMetaOptimizer, "tf_data_meta_optimizer");
