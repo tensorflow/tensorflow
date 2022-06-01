@@ -277,9 +277,6 @@ bool CheckLoopOp(const XSpace& space) {
   return false;
 }
 
-EventNode::EventNode(XEventVisitor visitor, XEvent* raw_event)
-    : visitor_(std::move(visitor)), raw_event_(raw_event) {}
-
 absl::optional<XStatVisitor> EventNode::GetContextStat(
     int64_t stat_type) const {
   std::queue<const EventNode*> nodes;
@@ -323,7 +320,8 @@ XStat* EventNode::FindOrAddStatByType(int64_t stat_type) {
   const XPlaneVisitor& plane = visitor_.Plane();
   const XStatMetadata* stat_metadata = plane.GetStatMetadataByType(stat_type);
   DCHECK(stat_metadata != nullptr);
-  return FindOrAddMutableStat(*stat_metadata, raw_event_);
+  auto* raw_event = const_cast<XEvent*>(&visitor_.RawEvent());  // NOLINT
+  return FindOrAddMutableStat(*stat_metadata, raw_event);
 }
 
 void EventNode::SetGroupId(int64_t group_id) {
@@ -404,8 +402,7 @@ void EventForest::ConnectIntraThread(XPlane* plane, XPlaneVisitor* visitor,
     for (auto& event : *line.mutable_events()) {
       XEventVisitor event_visitor(visitor, &line, &event);
       GroupingEventStats stats(event_visitor);
-      auto cur_node =
-          std::make_unique<EventNode>(std::move(event_visitor), &event);
+      auto cur_node = std::make_unique<EventNode>(std::move(event_visitor));
       if (stats.root_level.has_value()) {
         cur_node->SetRootLevel(*stats.root_level);
       }
