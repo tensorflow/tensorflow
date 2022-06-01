@@ -232,7 +232,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
       hlo, PartitionedHlo(create_tuple, hlo->shape(), MakePartitioningState())
                .Reshard(hlo->sharding()));
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
@@ -262,7 +262,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
   amount %= full_size;
   if (amount == 0) {
     SetPartitionedHlo(hlo, input);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // First step: rotate `amount` on padded data. E.g., before
@@ -325,7 +325,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
   HloInstruction* rotated0 = rotate_with_padding(amount);
   if (right_padding == 0) {
     SetPartitionedHlo(hlo, [&] { return rotated0; });
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Second step: perform another rotate from input, with `right_padding` added
@@ -361,7 +361,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
     return b_.AddInstruction(HloInstruction::CreateTernary(
         rotated0->shape(), HloOpcode::kSelect, pred, rotated1, rotated0));
   });
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 std::unique_ptr<HloInstruction> CreateCustomCallSPMDInternal_RotateRight(
@@ -386,7 +386,7 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
     auto copy = b_.AddInstruction(
         HloInstruction::CreateUnary(input->shape(), HloOpcode::kCopy, input));
     SetPartitionedHlo(hlo, [&] { return copy; });
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (hlo->custom_call_target() == "SPMDShardToFullShape") {
     // This op switches from manual partitioning to auto partitioning.
@@ -397,7 +397,7 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
     CHECK(ShapeUtil::Compatible(
         copy->shape(), MakePartitionedShape(hlo->shape(), hlo->sharding())));
     SetPartitionedHlo(hlo, [&] { return copy; });
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   if (hlo->custom_call_target() == "TopK") {

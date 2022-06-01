@@ -3638,7 +3638,7 @@ Status SpmdPartitioningVisitor::HandleDotHelper(
                    num_partitions_, create_sharded_dot, conv_window, module_,
                    hlo, options_, &b_, &windowed_dot_general_loops_, this));
   SetPartitionedHlo(hlo, [&] { return partitioned_dot; });
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 namespace {
@@ -3722,7 +3722,7 @@ Status SinkInputNodesIntoWindowedDotGeneralLoopOnContractingDimensions(
   auto to_sink = std::move(input_nodes.first);
   auto new_operands = std::move(input_nodes.second);
   if (to_sink.empty()) {
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   auto computation = loop->parent();
   // Replace the old operand with a tuple of the found small operands.
@@ -3804,7 +3804,7 @@ Status SinkInputNodesIntoWindowedDotGeneralLoopOnContractingDimensions(
       TF_RETURN_IF_ERROR(body->RemoveInstruction(ou));
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Moves a cluster of memory-reducing nodes (with reduce nodes at the end)
@@ -3924,7 +3924,7 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
   // If nothing is found, to_move could contain only original_output, or
   // cleared by the above code.
   if (to_move.size() <= 1) {
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // We will replace the original loop output with reduce-shape outputs.
@@ -4255,7 +4255,7 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
     TF_RETURN_IF_ERROR(
         computation->RemoveInstructionAndUnusedOperands(reduce_outputs[i]));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace
@@ -4284,7 +4284,7 @@ Status SpmdPartitioningVisitor::DoCodeMotionForWindowedDotGeneralLoops(
               loop.while_loop, options));
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace spmd

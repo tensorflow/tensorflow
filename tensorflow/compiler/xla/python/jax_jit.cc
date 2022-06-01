@@ -314,7 +314,7 @@ xla::Status ParseArguments(py::handle args,
       }
     }
   }
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 namespace {
@@ -694,7 +694,7 @@ xla::Status ComputeSignature(bool jax_enable_x64,
                         xla::PyArgSignatureOfValue(arg, jax_enable_x64));
     arguments.signature.dynamic_arg_signatures.push_back(std::move(sig));
   }
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Copy buffers to device, skipping pruned arguments.
@@ -730,7 +730,7 @@ xla::Status CopyBuffersToDevice(
           std::move(on_device.owning_pybuffer));
     }
   }
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 void CompiledFunction::PopulateCacheEntry(
@@ -1438,7 +1438,7 @@ void BuildJaxjitSubmodule(py::module& m) {
       [](py::handle self) -> xla::Status {
         TF_ASSIGN_OR_RETURN(CompiledFunction * fun, AsCompiledFunction(self));
         fun->ClearCache();
-        return xla::Status::OK();
+        return ::tensorflow::OkStatus();
       },
       py::is_method(cfun));
   jitlib.def("_is_float0", &xla::IsFloat0);

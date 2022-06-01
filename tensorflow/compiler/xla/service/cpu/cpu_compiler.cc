@@ -235,7 +235,7 @@ ModuleComputationsTransitivelyContainCustomCall(const HloModule& module) {
       // The computation contains a custom-call instruction directly.
       if (DynCast<HloCustomCallInstruction>(instruction)) {
         custom_call_map[computation] = true;
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       }
       // The computation calls something that contains a custom-call
       // instruction (directly or indirectly). This lookup relies on the call
@@ -245,13 +245,13 @@ ModuleComputationsTransitivelyContainCustomCall(const HloModule& module) {
         bool callee_contains_custom_call = FindOrDie(custom_call_map, callee);
         if (callee_contains_custom_call) {
           custom_call_map[computation] = true;
-          return Status::OK();
+          return ::tensorflow::OkStatus();
         }
       }
     }
 
     custom_call_map[computation] = false;
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }));
 
   return custom_call_map;
@@ -353,7 +353,7 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
   Status DefaultAction(HloInstruction* hlo_instruction) override {
     hlo_to_profile_idx_->insert(
         {hlo_instruction, FindOrDie(assigned_indices_, hlo_instruction)});
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   Status HandleCall(HloInstruction* call) override {
@@ -361,7 +361,7 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
     CollectProfileCandidates candidates_for_call(hlo_to_profile_idx_,
                                                  assigned_indices_);
     TF_RETURN_IF_ERROR(call->to_apply()->Accept(&candidates_for_call));
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   // Recurse into "conditional" so we can profile inside of it.
   Status HandleConditional(HloInstruction* conditional) override {
@@ -377,13 +377,17 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
     TF_RETURN_IF_ERROR(
         conditional->false_computation()->Accept(&candidates_for_false));
 
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Skip constants, there is nothing to profile.
-  Status HandleConstant(HloInstruction*) override { return Status::OK(); }
+  Status HandleConstant(HloInstruction*) override {
+    return ::tensorflow::OkStatus();
+  }
   // Skip parameters, they are a simple load.
-  Status HandleParameter(HloInstruction*) override { return Status::OK(); }
+  Status HandleParameter(HloInstruction*) override {
+    return ::tensorflow::OkStatus();
+  }
   // It is important to recurse for "while" or else we risk overly coarse
   // profiling information.
   Status HandleWhile(HloInstruction* xla_while) override {
@@ -398,7 +402,7 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
                                                  assigned_indices_);
     TF_RETURN_IF_ERROR(xla_while->while_body()->Accept(&candidates_for_body));
 
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   absl::flat_hash_map<const HloInstruction*, int64_t>* hlo_to_profile_idx_;
@@ -736,7 +740,7 @@ Status VerifyLlvmModule(const llvm::Module& llvm_module) {
       << err_stream.str()
       << "\nThis probably indicates a bug in the HLO -> LLVM IR lowering. "
          "Rerun with --xla_dump_to to get the IR. ";
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status CreateHloProfilingArtifacts(
@@ -771,7 +775,7 @@ Status CreateHloProfilingArtifacts(
   *computation_to_profile_idx =
       (*hlo_profile_index_map)->computation_to_profile_idx();
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace
@@ -958,7 +962,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
         "Failed to compile through MLIR pipeline");
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<mlir::ModuleOp> createMLIRModule(HloModule* module,

@@ -212,7 +212,7 @@ Status CpuExecutable::ExecuteComputeFunction(
     return InternalError("CustomCall failed: %s", *error_message);
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(

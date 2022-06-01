@@ -49,7 +49,7 @@ Status CompileAndExecute(XlaBuilder* builder, XlaOp root, int device_id,
   TF_ASSIGN_OR_RETURN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers,
       executable->Execute({{}}, execute_options));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Accumulates the received data.
