@@ -17,8 +17,7 @@ func.func @main(tensor<4xcomplex<f64>>, tensor<4xcomplex<f64>>) -> tensor<4xcomp
 // CHECK-NEXT:      name: "arg0",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      },
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 4 ],
 // CHECK-NEXT:      type: COMPLEX128,
@@ -26,8 +25,7 @@ func.func @main(tensor<4xcomplex<f64>>, tensor<4xcomplex<f64>>) -> tensor<4xcomp
 // CHECK-NEXT:      name: "arg1",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      },
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 4 ],
 // CHECK-NEXT:      type: COMPLEX128,
@@ -35,8 +33,7 @@ func.func @main(tensor<4xcomplex<f64>>, tensor<4xcomplex<f64>>) -> tensor<4xcomp
 // CHECK-NEXT:      name: "add",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      },
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      }
 // CHECK-NEXT:    } ],
 // CHECK-NEXT:    inputs: [ 0, 1 ],
 // CHECK-NEXT:    outputs: [ 2 ],

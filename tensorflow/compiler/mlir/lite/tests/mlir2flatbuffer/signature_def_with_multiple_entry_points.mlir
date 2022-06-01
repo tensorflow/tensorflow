@@ -17,8 +17,7 @@
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      },
-// CHECK-NEXT:      shape_signature: [ -1 ],
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      shape_signature: [ -1 ]
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1 ],
 // CHECK-NEXT:      buffer: 2,
@@ -26,8 +25,7 @@
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      },
-// CHECK-NEXT:      shape_signature: [ -1 ],
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      shape_signature: [ -1 ]
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1 ],
 // CHECK-NEXT:      buffer: 3,
@@ -35,8 +33,7 @@
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      },
-// CHECK-NEXT:      shape_signature: [ -1 ],
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      shape_signature: [ -1 ]
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1 ],
 // CHECK-NEXT:      buffer: 4,
@@ -44,8 +41,7 @@
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      },
-// CHECK-NEXT:      shape_signature: [ -1 ],
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      shape_signature: [ -1 ]
 // CHECK-NEXT:    } ],
 // CHECK-NEXT:    inputs: [ 0, 1 ],
 // CHECK-NEXT:    outputs: [ 3 ],
@@ -73,8 +69,7 @@
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      },
-// CHECK-NEXT:      shape_signature: [ -1 ],
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      shape_signature: [ -1 ]
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1 ],
 // CHECK-NEXT:      buffer: 6,
@@ -82,8 +77,7 @@
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      },
-// CHECK-NEXT:      shape_signature: [ -1 ],
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      shape_signature: [ -1 ]
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1 ],
 // CHECK-NEXT:      buffer: 7,
@@ -91,8 +85,7 @@
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      },
-// CHECK-NEXT:      shape_signature: [ -1 ],
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      shape_signature: [ -1 ]
 // CHECK-NEXT:    } ],
 // CHECK-NEXT:    inputs: [ 0, 1 ],
 // CHECK-NEXT:    outputs: [ 2 ],

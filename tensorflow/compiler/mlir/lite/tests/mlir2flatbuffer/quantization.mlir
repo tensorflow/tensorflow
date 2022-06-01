@@ -31,8 +31,7 @@ func.func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32> {
 // CHECK-NEXT:      name: "arg0",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      },
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 2 ],
 // CHECK-NEXT:      type: INT32,
@@ -40,8 +39,7 @@ func.func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32> {
 // CHECK-NEXT:      name: "Const",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      },
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1, 224, 224, 3 ],
 // CHECK-NEXT:      type: UINT8,
@@ -50,8 +48,7 @@ func.func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32> {
 // CHECK-NEXT:      quantization: {
 // CHECK-NEXT:        scale: [ 0.007812 ],
 // CHECK-NEXT:        zero_point: [ 128 ]
-// CHECK-NEXT:      },
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 32, 3, 3, 3 ],
 // CHECK-NEXT:      type: UINT8,
@@ -60,8 +57,7 @@ func.func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32> {
 // CHECK-NEXT:      quantization: {
 // CHECK-NEXT:        scale: [ 0.021827 ],
 // CHECK-NEXT:        zero_point: [ 151 ]
-// CHECK-NEXT:      },
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 32 ],
 // CHECK-NEXT:      type: INT32,
@@ -70,8 +66,7 @@ func.func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32> {
 // CHECK-NEXT:      quantization: {
 // CHECK-NEXT:        scale: [ 0.000171 ],
 // CHECK-NEXT:        zero_point: [ 0 ]
-// CHECK-NEXT:      },
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1, 112, 112, 32 ],
 // CHECK-NEXT:      type: UINT8,
@@ -80,8 +75,7 @@ func.func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32> {
 // CHECK-NEXT:      quantization: {
 // CHECK-NEXT:        scale: [ 0.023528 ],
 // CHECK-NEXT:        zero_point: [ 0 ]
-// CHECK-NEXT:      },
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1, 401408 ],
 // CHECK-NEXT:      type: UINT8,
@@ -90,8 +84,7 @@ func.func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32> {
 // CHECK-NEXT:      quantization: {
 // CHECK-NEXT:        scale: [ 0.023528 ],
 // CHECK-NEXT:        zero_point: [ 0 ]
-// CHECK-NEXT:      },
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1, 401408 ],
 // CHECK-NEXT:      type: UINT8,
@@ -100,16 +93,14 @@ func.func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32> {
 // CHECK-NEXT:      quantization: {
 // CHECK-NEXT:        scale: [ 0.003906 ],
 // CHECK-NEXT:        zero_point: [ 0 ]
-// CHECK-NEXT:      },
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1, 401408 ],
 // CHECK-NEXT:      buffer: 9,
 // CHECK-NEXT:      name: "tfl.dequantize",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      },
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      }
 // CHECK-NEXT:    } ],
 // CHECK-NEXT:    inputs: [ 0 ],
 // CHECK-NEXT:    outputs: [ 8 ],

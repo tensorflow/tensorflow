@@ -11,8 +11,7 @@
 // CHECK-NEXT:      name: "arg0",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      },
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      }
 // CHECK-NEXT:    } ],
 // CHECK-NEXT:    inputs: [ 0 ],
 // CHECK-NEXT:    outputs: [ 0 ],

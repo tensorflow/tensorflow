@@ -14,8 +14,7 @@
 // CHECK-NEXT:      name: "arg0",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      },
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 4 ],
 // CHECK-NEXT:      type: UINT8,
@@ -24,16 +23,14 @@
 // CHECK-NEXT:      quantization: {
 // CHECK-NEXT:        scale: [ 0.1 ],
 // CHECK-NEXT:        zero_point: [ 0 ]
-// CHECK-NEXT:      },
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 4 ],
 // CHECK-NEXT:      buffer: 3,
 // CHECK-NEXT:      name: "NumericVerify/arg1:1",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      },
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      }
 // CHECK-NEXT:    } ],
 // CHECK-NEXT:    inputs: [ 0, 1 ],
 // CHECK-NEXT:    outputs: [ 0 ],

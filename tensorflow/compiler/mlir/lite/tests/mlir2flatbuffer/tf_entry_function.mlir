@@ -22,15 +22,13 @@ func.func @serving_default(%arg0: tensor<3x2xf32>) -> tensor<3x2xf32> attributes
 // CHECK:             buffer: 2,
 // CHECK:             name: "tfl.pseudo_const",
 // CHECK:             quantization: {
-// CHECK:             },
-// CHECK:             has_rank: true
+// CHECK:             }
 // CHECK:           }, {
 // CHECK:             shape: [ 3, 2 ],
 // CHECK:             buffer: 3,
 // CHECK:             name: "outputs",
 // CHECK:             quantization: {
-// CHECK:             },
-// CHECK:             has_rank: true
+// CHECK:             }
 // CHECK:           } ],
 // CHECK:           inputs: [ 0 ],
 // CHECK:           outputs: [ 2 ],

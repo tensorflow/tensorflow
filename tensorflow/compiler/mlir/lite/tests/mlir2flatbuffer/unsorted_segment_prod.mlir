@@ -17,8 +17,7 @@ func.func @main(tensor<8xi32>, tensor<8xi32>) -> tensor<8xi32> {
 // CHECK-NEXT:       name: "arg0",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 8 ],
 // CHECK-NEXT:       type: INT32,
@@ -26,8 +25,7 @@ func.func @main(tensor<8xi32>, tensor<8xi32>) -> tensor<8xi32> {
 // CHECK-NEXT:       name: "arg1",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 8 ],
 // CHECK-NEXT:       type: INT32,
@@ -35,8 +33,7 @@ func.func @main(tensor<8xi32>, tensor<8xi32>) -> tensor<8xi32> {
 // CHECK-NEXT:       name: "tfl.unsorted_segment_prod",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     } ],
 // CHECK-NEXT:     inputs: [ 0, 1 ],
 // CHECK-NEXT:     outputs: [ 2 ],

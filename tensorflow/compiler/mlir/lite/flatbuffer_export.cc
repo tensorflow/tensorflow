@@ -773,17 +773,11 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
     mlir::Type type, const std::string& name) {
   auto tensor_type = type.cast<TensorType>();
 
-  llvm::ArrayRef<int64_t> shape_ref;
-  std::vector<int32_t> shape;
-
-  if (tensor_type.hasRank()) {
-    if (tensor_type.hasStaticShape()) {
-      shape_ref = tensor_type.getShape();
-      shape = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
-    } else {
-      return llvm::None;
-    }
+  if (!tensor_type.hasStaticShape()) {
+    return llvm::None;
   }
+  llvm::ArrayRef<int64_t> shape_ref = tensor_type.getShape();
+  std::vector<int32_t> shape(shape_ref.begin(), shape_ref.end());
 
   auto element_type = tensor_type.getElementType();
   tflite::TensorType tflite_element_type =
@@ -805,8 +799,7 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
   return tflite::CreateTensor(
       builder_, builder_.CreateVector(shape), tflite_element_type,
       /*buffer=*/0, builder_.CreateString(name), q_params,
-      /*is_variable=*/false, /*sparsity=*/0, /*shape_signature=*/0,
-      /*has_rank=*/tensor_type.hasRank());
+      /*is_variable=*/false);
 }
 
 Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
@@ -907,21 +900,17 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
     }
   }
 
-  bool has_rank = type.hasRank();
-
   if (shape_signature.empty()) {
     return tflite::CreateTensor(
         builder_, builder_.CreateVector(shape), tflite_element_type,
         (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
-        /*is_variable=*/is_variable, s_params, /*shape_signature=*/0,
-        /*has_rank=*/has_rank);
+        /*is_variable=*/is_variable, s_params);
   } else {
     return tflite::CreateTensor(
         builder_, builder_.CreateVector(shape), tflite_element_type,
         (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
         /*is_variable=*/is_variable, s_params,
-        /*shape_signature=*/builder_.CreateVector(shape_signature),
-        /*has_rank=*/has_rank);
+        /*shape_signature=*/builder_.CreateVector(shape_signature));
   }
 }
 
