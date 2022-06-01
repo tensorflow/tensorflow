@@ -2554,39 +2554,32 @@ Status FusedQuantizedConvShape(InferenceContext* c, int num_dims) {
                fused_ops.end();
   fused_requantize = std::find(fused_ops.begin(), fused_ops.end(),
                                "Requantize") != fused_ops.end();
+  const int kMinInputBaseIdx = 2;
+  const int kMinFilterBaseIdx = 4;
+  int min_input_filter_offset = 0;
   if (fused_bias && !fused_sum) {
     TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));  // bias
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // min_input
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // max_input
-    TF_RETURN_IF_ERROR(
-        c->WithRankAtMost(c->input(5), 1, &channel));  // min_filter
-    TF_RETURN_IF_ERROR(
-        c->WithRankAtMost(c->input(6), 1, &channel));  // max_filter
+    min_input_filter_offset = 1;
   } else if (fused_sum && !fused_bias) {
     TF_RETURN_IF_ERROR(c->WithRank(c->input(2), num_dims, &unused));  // summand
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // min_input
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // max_input
-    TF_RETURN_IF_ERROR(
-        c->WithRankAtMost(c->input(5), 1, &channel));  // min_filter
-    TF_RETURN_IF_ERROR(
-        c->WithRankAtMost(c->input(6), 1, &channel));  // max_filter
+    min_input_filter_offset = 1;
   } else if (fused_bias && fused_sum) {
     TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));         // bias
     TF_RETURN_IF_ERROR(c->WithRank(c->input(3), num_dims, &unused));  // summand
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // min_input
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));  // max_input
-    TF_RETURN_IF_ERROR(
-        c->WithRankAtMost(c->input(6), 1, &channel));  // min_filter
-    TF_RETURN_IF_ERROR(
-        c->WithRankAtMost(c->input(7), 1, &channel));  // max_filter
-  } else {
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));  // min_input
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // max_input
-    TF_RETURN_IF_ERROR(
-        c->WithRankAtMost(c->input(4), 1, &channel));  // min_filter
-    TF_RETURN_IF_ERROR(
-        c->WithRankAtMost(c->input(5), 1, &channel));  // max_filter
+    min_input_filter_offset = 2;
   }
+  TF_RETURN_IF_ERROR(
+      c->WithRank(c->input(kMinInputBaseIdx + min_input_filter_offset), 0,
+                  &unused));  // min_input
+  TF_RETURN_IF_ERROR(
+      c->WithRank(c->input(kMinInputBaseIdx + min_input_filter_offset + 1), 0,
+                  &unused));  // max_input
+  TF_RETURN_IF_ERROR(
+      c->WithRankAtMost(c->input(kMinFilterBaseIdx + min_input_filter_offset),
+                        1, &channel));  // min_filter
+  TF_RETURN_IF_ERROR(c->WithRankAtMost(
+      c->input(kMinFilterBaseIdx + min_input_filter_offset + 1), 1,
+      &channel));  // max_filter
   if (fused_requantize) {
     c->set_output(1, c->Scalar());
     c->set_output(2, c->Scalar());

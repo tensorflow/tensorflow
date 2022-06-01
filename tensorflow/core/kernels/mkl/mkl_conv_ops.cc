@@ -37,7 +37,7 @@ namespace tensorflow {
 
 // TODO(intel-tf) Remove this once old API of quantized ops is abandoned
 namespace quantized_fusions {
-string none[] = {};
+string none[] = {""};
 string bias[] = {"BiasAdd"};
 string relu[] = {"Relu"};
 string requantize[] = {"Requantize"};
@@ -958,8 +958,10 @@ class MklConvOp : public OpKernel {
   }
 
  protected:
-  void set_input_add_idx(int input_add_idx) { input_add_idx_ = input_add_idx; }
-  int get_input_add_idx() { return input_add_idx_; }
+  void set_input_add_idx(int input_add_idx) {
+    input_index_add_ = input_add_idx;
+  }
+  int get_input_add_idx() { return input_index_add_; }
   void set_fuse_biasadd(bool fuse_biasadd) { fuse_biasadd_ = fuse_biasadd; }
   bool get_fuse_biasadd() { return fuse_biasadd_; }
   void set_fuse_activation(bool fuse_activation, dnnl::algorithm activation_alg,
@@ -1072,19 +1074,19 @@ class MklConvOp : public OpKernel {
     bool is_quantized_input = std::is_same<Tinput, quint8>::value ||
                               std::is_same<Tinput, qint8>::value;
     if (fuse_add_ && !is_quantized_input) {
-      const Tensor& add_tensor = MklGetInput(context, input_add_idx_);
+      const Tensor& add_tensor = MklGetInput(context, input_index_add_);
       MklDnnShape add_mkl_shape;
-      GetMklShape(context, input_add_idx_, &add_mkl_shape, native_format);
+      GetMklShape(context, input_index_add_, &add_mkl_shape, native_format);
       // Forward the summand tensor to the output only if it has no other
       // references, otherwise make a copy of it.
       if (native_format && context->forward_input_to_output_with_shape(
-                               input_add_idx_, kOutputIndex_Dst,
+                               input_index_add_, kOutputIndex_Dst,
                                output_tf_shape, output_tensor)) {
         return;
       }
       // Check if reorder is needed
       if (!native_format && add_mkl_shape == *output_mkl_shape &&
-          ForwardMklTensorInToOutWithMklShape(context, input_add_idx_,
+          ForwardMklTensorInToOutWithMklShape(context, input_index_add_,
                                               kOutputIndex_Dst, output_tensor,
                                               add_mkl_shape, false)) {
         return;
@@ -1157,9 +1159,9 @@ class MklConvOp : public OpKernel {
   dnnl::algorithm activation_alg_ = dnnl::algorithm::undef;
 
   int input_index_pad_ = 2;
+  int input_index_add_ = 3;
 
   const int kInputIndex_Src = 0, kInputIndex_Filter = 1, kInputIndex_Bias = 2;
-  int input_add_idx_ = 3;
   const int kOutputIndex_Dst = 0, kOutputIndex_Filter = 1;
   const int kDilationH = 0, kDilationW = 1;
 
@@ -1559,6 +1561,8 @@ class MklFusedDepthwiseConvOp
   virtual ~MklFusedDepthwiseConvOp() {}
 };
 
+enum class oneDNNFusedOps { kBias = 0, kSum = 1, kRelu = 2, kRequantize = 3 };
+
 template <typename Device, typename Tinput, typename Tbias, typename Toutput,
           typename Ttemp_output, bool is_depthwise, string legacy_fused_ops[],
           int num_fused_ops>
@@ -1628,10 +1632,13 @@ class MklQuantizedConvOp
                                           absl::StrJoin(fused_ops_, ","), "]"));
     }
 
-    bool fuse_bias = std::find(fused_ops_.begin(), fused_ops_.end(),
-                               "BiasAdd") != fused_ops_.end();
+    // Set the flag for every fused op.
+    for (const auto& op : fused_ops_) {
+      fused_op_flags_ ^= 1 << static_cast<int64_t>(StrToEnum(op));
+    }
+
     DataType bias_dt, summand_dt, out_dt;
-    if (fuse_bias) {
+    if (IsFused(oneDNNFusedOps::kBias)) {
       this->set_fuse_biasadd(true);
       OP_REQUIRES_OK(context,
                      context->GetAttr("is_bias_const", &is_bias_const_));
@@ -1640,18 +1647,12 @@ class MklQuantizedConvOp
       }
     }
 
-    fuse_relu_ = std::find(fused_ops_.begin(), fused_ops_.end(), "Relu") !=
-                 fused_ops_.end();
-    bool fuse_sum = std::find(fused_ops_.begin(), fused_ops_.end(), "Sum") !=
-                    fused_ops_.end();
-    if (fuse_sum) {
+    if (IsFused(oneDNNFusedOps::kSum)) {
       this->set_fuse_add(true);
     }
-    fuse_requantize_ = std::find(fused_ops_.begin(), fused_ops_.end(),
-                                 "Requantize") != fused_ops_.end();
-
+    const bool fuse_requantize = IsFused(oneDNNFusedOps::kRequantize);
     OP_REQUIRES_OK(context, context->GetAttr("out_type", &out_dt));
-    if (fuse_requantize_) {
+    if (fuse_requantize) {
       OP_REQUIRES(context, out_dt == DT_QINT8 || out_dt == DT_QUINT8,
                   errors::InvalidArgument("QuantizedConv: unsupported output "
                                           "type when Requantize is fused."));
@@ -1671,7 +1672,7 @@ class MklQuantizedConvOp
     // If Requantize is fused, we set output_scale as first post op since it is
     // logically applied before any post op. Then we maintain the order of post
     // ops according to the order of fused_ops.
-    int idx = fuse_requantize_ ? 1 : 0;
+    int idx = fuse_requantize ? 1 : 0;
     for (int i = 0; i < fused_ops_.size(); ++i) {
       if (fused_ops_[i] == "Requantize") {
         post_op_to_idx_["output_scale"] = 0;
@@ -1739,7 +1740,7 @@ class MklQuantizedConvOp
           max_summand_idx_ = min_summand_idx_ + 1;
         }
       }
-      if (fuse_requantize_) {
+      if (fuse_requantize) {
         min_freezed_output_idx_ = context->num_inputs() - 2;
         max_freezed_output_idx_ = min_freezed_output_idx_ + 1;
       }
@@ -1749,7 +1750,7 @@ class MklQuantizedConvOp
       max_input_idx_ = 3 + bias_idx_offset;
       min_filter_idx_ = 4 + bias_idx_offset;
       max_filter_idx_ = 5 + bias_idx_offset;
-      if (fuse_requantize_) {
+      if (fuse_requantize) {
         min_freezed_output_idx_ = 6 + bias_idx_offset;
         max_freezed_output_idx_ = 7 + bias_idx_offset;
       }
@@ -1920,7 +1921,7 @@ class MklQuantizedConvOp
       }
     }
 
-    if (fuse_relu_) {
+    if (IsFused(oneDNNFusedOps::kRelu)) {
       params.post_op_params[post_op_to_idx_["activation"]] = {
           "activation", dnnl::algorithm::eltwise_relu, {1.0, 0.0, 0.0}, ""};
     }
@@ -2110,7 +2111,12 @@ class MklQuantizedConvOp
   mutex bias_cache_mu_;
   std::vector<string> fused_ops_;
   std::map<string, int> post_op_to_idx_;
-  bool fuse_relu_, fuse_requantize_;
+  int64_t fused_op_flags_ = 0;
+  std::unordered_map<string, oneDNNFusedOps> str_to_enum_{
+      {"BiasAdd", oneDNNFusedOps::kBias},
+      {"Sum", oneDNNFusedOps::kSum},
+      {"Relu", oneDNNFusedOps::kRelu},
+      {"Requantize", oneDNNFusedOps::kRequantize}};
   std::shared_ptr<dnnl::memory> summand_;
   std::shared_ptr<dnnl::memory> dst_;
   int min_input_idx_ = -1;
@@ -2123,6 +2129,20 @@ class MklQuantizedConvOp
   int max_summand_idx_ = -1;
   int min_freezed_output_idx_ = -1;
   int max_freezed_output_idx_ = -1;
+
+  // Convenience function to check if op is in fused ops, e.g., IsFused(kBias).
+  inline bool IsFused(oneDNNFusedOps op) {
+    return fused_op_flags_ & (1 << static_cast<int64_t>(op));
+  }
+
+  inline oneDNNFusedOps StrToEnum(const string op) {
+    if (str_to_enum_.count(op) != 0) {
+      return str_to_enum_[op];
+    } else {
+      TF_CHECK_OK(
+          Status(error::Code::UNKNOWN, "Error: Unknown post op: " + op));
+    }
+  }
   // Allocate tensors for cached bias data and
   // cached bias memory descriptor (data format)
   void AllocateTensor(OpKernelContext* context, const ConvFwdPd& conv_prim_desc,
