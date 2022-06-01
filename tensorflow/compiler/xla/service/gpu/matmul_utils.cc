@@ -90,7 +90,7 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
         if (*it != shape.layout().minor_to_major()[i++])
           return InvalidArgument("dims not physically sequential");
       }
-      return Status::OK();
+      return ::tensorflow::OkStatus();
     };
 
     int64_t dim = shape.layout().minor_to_major()[i];

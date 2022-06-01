@@ -97,7 +97,7 @@ class Thunk {
   // time spent initializing doesn't count towards our execution profile.
   virtual Status Initialize(const GpuExecutable& /*executable*/,
                             se::StreamExecutor* /*executor*/) {
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Parameters passed to ExecuteOnStream.  Encapsulated in a struct so that

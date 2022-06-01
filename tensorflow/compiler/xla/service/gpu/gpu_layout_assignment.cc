@@ -211,7 +211,7 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
     // The side input layout must match the output layout.
     TF_RETURN_IF_ERROR(SetOperandLayout(*output_shape, instr, 3));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 namespace {
@@ -394,7 +394,7 @@ Status GpuLayoutAssignment::AddBackendConstraints(
           all_to_all));
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status GpuLayoutAssignment::SetDotOperandLayout(

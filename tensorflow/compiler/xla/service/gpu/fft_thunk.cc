@@ -239,7 +239,7 @@ Status FftThunk::ExecuteOnStream(const ExecuteParams& params) {
       LOG(FATAL) << "unsupported fft type";
   }
   if (launch_ok) {
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   return InternalError("Unable to launch fft for thunk %p with type %s", this,
                        FftTypeToString(fft_type_));

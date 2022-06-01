@@ -209,7 +209,7 @@ Status TriangularSolveThunk::ExecuteOnStream(const ExecuteParams& params) {
     return InternalError("Unable to launch triangular solve for thunk %p",
                          this);
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace gpu

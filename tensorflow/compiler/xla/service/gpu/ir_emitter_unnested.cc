@@ -605,7 +605,7 @@ Status IrEmitterUnnested::EmitConstant(mlir::Operation* op) {
   info.allocation_index =
       global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
   ir_emitter_context_->constants().push_back(std::move(info));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 static ConditionalThunkConfig GetConditionalThunkConfig(
@@ -649,7 +649,7 @@ Status IrEmitterUnnested::EmitConditional(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSlice(conditional.index()));
   AddThunkToThunkSequence(std::unique_ptr<Thunk>(
       new ConditionalThunk(GetThunkInfo(op), std::move(config), slice)));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 llvm::Value* IrEmitterUnnested::CreateLoad(llvm::Value* address,
@@ -825,7 +825,7 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
         dyn_index,
         source_array.EmitReadArrayElement(array_index, &b_, /*name=*/""), &b_,
         /*use_linear_index=*/false);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   const Shape& data_shape = GetShape(pad_to_static.output().front());
@@ -834,7 +834,7 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
                                          {unroll_factor})
                          .EmitLoop(ir_name, index_ty));
   thunk_sequence_.emplace_back(std::move(kernel_thunk));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Input = {dynamic array(with dynamic dimension meta data at the end)}
@@ -949,7 +949,7 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
         ir_arrays[0].EmitReadArrayElement(dyn_index, &b_, /*name=*/"",
                                           /*use_linear_index=*/false),
         &b_);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   TF_RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
@@ -957,7 +957,7 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
                                          {unroll_factor})
                          .EmitLoop(ir_name, index_ty));
   thunk_sequence_.emplace_back(std::move(kernel_thunk));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
@@ -990,7 +990,7 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
         std::unique_ptr<Thunk> thunk,
         CreateBefThunk(GetThunkInfo(op), op, std::move(operand_slices)));
     AddThunkToThunkSequence(std::move(thunk));
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   auto apply_layout = [](const Shape& shape, mlir::ArrayAttr layout_attrib) {
@@ -1070,7 +1070,7 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
                         ConvertConvActivationMode(op.activation_mode()));
     descriptor.backend_config.set_activation_mode(
         static_cast<int64_t>(activation_mode));
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   if (auto conv = dyn_cast<ConvForwardOp>(op)) {
@@ -1099,7 +1099,7 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
   AddThunkToThunkSequence(absl::make_unique<ConvolutionThunk>(
       GetThunkInfo(op), std::move(config), std::move(operand_slices),
       conv_result_slice, scratch_slice));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
@@ -1171,7 +1171,7 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
   }());
 
   AddThunkToThunkSequence(std::move(thunk));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 namespace {
@@ -1284,7 +1284,7 @@ Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
         std::unique_ptr<Thunk> thunk,
         CreateBefThunk(GetThunkInfo(op), op, std::move(buffers)));
     AddThunkToThunkSequence(std::move(thunk));
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   ThunkSequence thunks;
@@ -1312,7 +1312,7 @@ Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
         GetThunkInfo(op), std::move(thunks)));
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -1440,7 +1440,7 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
         std::move(results), custom_call.backend_config().str());
   }
   AddThunkToThunkSequence(std::move(thunk));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitFftThunk(mlir::Operation* op) {
@@ -1466,7 +1466,7 @@ Status IrEmitterUnnested::EmitFftThunk(mlir::Operation* op) {
         std::unique_ptr<Thunk> thunk,
         CreateBefThunk(GetThunkInfo(op), op, {arg_slice, dest_slice}));
     AddThunkToThunkSequence(std::move(thunk));
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   AddThunkToThunkSequence(
@@ -1475,7 +1475,7 @@ Status IrEmitterUnnested::EmitFftThunk(mlir::Operation* op) {
                                   /*output_buffer=*/dest_slice,
                                   /*input_shape=*/operand_shape,
                                   /*output_shape=*/output_shape));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -1561,7 +1561,7 @@ Status IrEmitterUnnested::EmitTriangularSolveCustomCall(mlir::Operation* op) {
     AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
         GetThunkInfo(op), std::move(thunks)));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -1620,7 +1620,7 @@ static Status ProcessFusionForConversion(mlir::Region* region,
   auto b = mlir::OpBuilder::atBlockEnd(&region->back());
   auto loc = returned_values[0].getLoc();
   b.create<mlir::mhlo::ReturnOp>(loc, returned_values);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // We can iterate the output buffer in logical order instead of physical order
@@ -1774,7 +1774,7 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
           .EmitLoop(GetIrNameFromLoc(fusion->getLoc()), index_type));
 
   b_.SetInsertPoint(b_.GetInsertBlock()->getTerminator());
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Returns whether any of the rooots of the fusion are unnested reductions.
@@ -1914,7 +1914,7 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
     }
     AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
         GetThunkInfo(op), std::move(thunks)));
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   if (!is_single_instruction &&
@@ -1996,14 +1996,14 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
               /*mem_size=*/
               ByteSizeOf(operand_shape)));
         }
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       }
     }
   }
 
   TF_ASSIGN_OR_RETURN(bool matched_021, CheckAndEmitHloWithTile021(fusion_op));
   if (matched_021) {
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   return EmitLoopFusion(op);
@@ -2029,7 +2029,7 @@ Status IrEmitterUnnested::EmitExtraOutputsForReduce(
         index, p.second, &b_, /*use_linear_index=*/
         reduction_info.GetNumPartialResults() == 1);
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status IrEmitterUnnested::AssertNonDeterminismIsOkay(
@@ -2041,7 +2041,7 @@ Status IrEmitterUnnested::AssertNonDeterminismIsOkay(
         "--xla_gpu_deterministic_ops.",
         op_name);
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
@@ -2305,7 +2305,7 @@ Status IrEmitterUnnested::EmitWhile(mlir::Operation* op) {
                         BuildWhileThunk(while_op, GetThunkInfo(op)));
     AddThunkToThunkSequence(std::move(thunk));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitRngGetAndUpdateState(mlir::Operation* op) {
@@ -2333,7 +2333,7 @@ Status IrEmitterUnnested::EmitRngGetAndUpdateState(mlir::Operation* op) {
                           output_address->getType()->getPointerAddressSpace()));
   Store(old_state, output_address);
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitScatter(mlir::Operation* op) {
@@ -2407,7 +2407,7 @@ Status IrEmitterUnnested::EmitScatter(mlir::Operation* op) {
         GetThunkInfo(op), std::move(thunks)));
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitScatter(
@@ -2878,7 +2878,7 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
 
   AddThunkToThunkSequence(
       absl::make_unique<SequentialThunk>(GetThunkInfo(op), std::move(thunks)));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 template <typename ThunkType, typename OpT>
@@ -2894,7 +2894,7 @@ Status IrEmitterUnnested::EmitReplicaOrPartitionId(mlir::Operation* op) {
     thunk = absl::make_unique<ThunkType>(GetThunkInfo(op), result_slice);
   }
   AddThunkToThunkSequence(std::move(thunk));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
@@ -2936,7 +2936,7 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
     }
     AddThunkToThunkSequence(std::move(thunk));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status MaybeAddAllReduceStartThunkToMap(
@@ -2949,7 +2949,7 @@ Status MaybeAddAllReduceStartThunkToMap(
                      .second)
         << "all-reduce-start with this unique ID already seen";
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 template <typename NcclThunkType, typename OpTy>
@@ -3013,7 +3013,7 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
     TF_RETURN_IF_ERROR(MaybeAddAllReduceStartThunkToMap(
         all_reduce_start_thunks_, op, thunk.get()));
     AddThunkToThunkSequence(std::move(thunk));
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Signal that all-reduce-start thunk not created with nullptr.
@@ -3057,7 +3057,7 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
     AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
         GetThunkInfo(op), std::move(thunks)));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitAllReduceDone(mlir::Operation* op) {
@@ -3075,7 +3075,7 @@ Status IrEmitterUnnested::EmitAllReduceDone(mlir::Operation* op) {
         GetThunkInfo(op), *it->second));
   }
   all_reduce_start_thunks_.erase(it);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<std::vector<ShapedSlice>> IrEmitterUnnested::GetShapedSlices(
@@ -3115,7 +3115,7 @@ Status IrEmitterUnnested::EmitInfeed(mlir::Operation* op) {
   }
   AddThunkToThunkSequence(std::move(thunk));
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitOutfeed(mlir::Operation* op) {
@@ -3133,7 +3133,7 @@ Status IrEmitterUnnested::EmitOutfeed(mlir::Operation* op) {
   }
   AddThunkToThunkSequence(std::move(thunk));
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunkImpl(
@@ -5161,7 +5161,7 @@ Status IrEmitterUnnested::EmitIRForReduction(
     }
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 namespace {
@@ -5410,7 +5410,7 @@ Status IrEmitterUnnested::EmitUnnestedReduction(mlir::lmhlo::FusionOp fusion) {
       GetThunkInfo(fusion), std::move(thunks));
   AddThunkToThunkSequence(std::move(sequential_thunk));
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Emits code for slices based on the below structure. An if statement with
@@ -5502,7 +5502,7 @@ Status IrEmitterUnnested::EmitElementForInputFusibleSlices(
 
     ksl.If(StrCat("slice", i), guarding_cond, emit_slice_elem_func);
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
@@ -5547,7 +5547,7 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
   if (mlir::isa<mlir::func::ConstantOp, mlir::arith::ConstantOp,
                 mlir::memref::ViewOp, mlir::memref::ReinterpretCastOp,
                 mlir::func::ReturnOp, mlir::lmhlo::TerminatorOp>(op)) {
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   if (mlir::isa<mlir::memref::GetGlobalOp>(op)) {
@@ -5596,7 +5596,7 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
     if (IsBefEnabled(hlo_module_config_)) {
       // XLIR allocates temp memory, and so the custom-call implementation for
       // TriangularSolve is not needed.
-      return Status::OK();
+      return ::tensorflow::OkStatus();
     }
     return InternalError(
         "TriangularSolve is implemented as a custom-call; we do not expect to "
@@ -5686,7 +5686,7 @@ Status IrEmitterUnnested::EmitLmhloRegion(mlir::Region* region) {
   for (mlir::Operation& op : llvm::make_early_inc_range(region->front())) {
     TF_RETURN_IF_ERROR(EmitOp(&op));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Thunk::ThunkInfo IrEmitterUnnested::GetThunkInfo(mlir::Operation* op) {

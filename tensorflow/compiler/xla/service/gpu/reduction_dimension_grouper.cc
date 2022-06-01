@@ -85,7 +85,7 @@ class ReduceDimensionGroupVisitor : public DfsHloRewriteVisitor {
       }
 
       if (!changed) {  // Since all inputs have same shape dimensions.
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       }
 
       Shape grouped_shape =

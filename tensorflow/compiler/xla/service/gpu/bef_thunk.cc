@@ -139,7 +139,7 @@ static Status RunLmhloGpuToTfrtConversionPipeline(mlir::ModuleOp module) {
   tensorflow::populateLmhloToTfrtGpuPasses(pass_manager);
   if (failed(pass_manager.run(module)))
     return tensorflow::errors::Internal("Failed to run pass pipeline.");
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Converts `module` to BEF.
@@ -413,7 +413,7 @@ static Status InsertKernelRequestContext(
   }
   request_context_builder->context_data().emplace<GpuModuleData>(
       *gpu_module_data);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status BefThunk::Initialize(const GpuExecutable& executable,
@@ -434,7 +434,7 @@ Status BefThunk::Initialize(const GpuExecutable& executable,
       gpu_module_data_ = module_data;
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -510,7 +510,7 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (auto* error = result->GetErrorIfPresent())
     return tensorflow::errors::Internal(tfrt::StrCat(*error));
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace gpu
