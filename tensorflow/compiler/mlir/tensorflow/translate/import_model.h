@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -35,7 +36,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-ABSL_CONST_INIT extern const char kImportModelDefaultGraphFuncName[];
+inline constexpr absl::string_view kImportModelDefaultGraphFuncName = "main";
 
 // Given a GraphDef, returns a MLIR module containing the graph, expressed with
 // tf_executor dialect.
