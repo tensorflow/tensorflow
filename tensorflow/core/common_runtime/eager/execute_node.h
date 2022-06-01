@@ -211,7 +211,7 @@ class AsyncExecuteNode : public EagerNode {
     }
     // If status is ok, EagerKernelExecute would have called SetTensor on
     // all the output handles.
-    return Status::OK();
+    return OkStatus();
   }
 
   void Abort(Status status) override {

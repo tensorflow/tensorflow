@@ -58,7 +58,7 @@ Status ExecuteNodeArgs::InitPackedHandle(const int index, EagerContext* ctx,
       return status;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ExecuteNodeArgs::Init(
@@ -118,20 +118,20 @@ Status ExecuteNodeArgs::Init(
     };
   }
 #endif  // !IS_MOBILE_PLATFORM
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ExecuteNodeArgs::GetLocalArg(const FunctionArgIndex& index,
                                     Tensor* val) const {
   Status s = EagerKernelArgs::GetLocalArg(index, val);
   if (s.ok()) {
-    return Status::OK();
+    return OkStatus();
   }
   if (packed_args_.contains(index.index)) {
     Tensor* arg = packed_args_.at(index.index).at(index.sub_index).tensor;
     if (arg) {
       *val = *arg;
-      return Status::OK();
+      return OkStatus();
     } else {
       return errors::NotFound("Argument (", index.index, ",", index.sub_index,
                               ") has no local tensor.");
