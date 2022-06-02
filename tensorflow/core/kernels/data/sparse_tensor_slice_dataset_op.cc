@@ -59,10 +59,10 @@ class Dataset : public DatasetBase {
   }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
-    return Status::OK();
+    return OkStatus();
   }
 
-  Status CheckExternalState() const override { return Status::OK(); }
+  Status CheckExternalState() const override { return OkStatus(); }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -83,7 +83,7 @@ class Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {indices_node, value_node, dense_shape_node},
                       {{"Tvalues", val_dtype}}, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -107,7 +107,7 @@ class Dataset : public DatasetBase {
       mutex_lock l(mu_);
       if (i_ == num_elements_) {
         *end_of_sequence = true;
-        return Status::OK();
+        return OkStatus();
       }
 
       out_tensors->clear();
@@ -158,7 +158,7 @@ class Dataset : public DatasetBase {
 
       ++i_;
       *end_of_sequence = false;
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
@@ -181,7 +181,7 @@ class Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(writer->WriteTensor(
             Iterator::full_name("next_values_"), next_values_));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -200,7 +200,7 @@ class Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(reader->ReadTensor(
             Iterator::full_name("next_values_"), &next_values_));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
    private:

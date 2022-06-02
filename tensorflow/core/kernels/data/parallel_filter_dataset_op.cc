@@ -93,7 +93,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -127,7 +127,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
                        {kPredicate, predicate_attr},
                        {kTarguments, other_arguments_types_attr}},
                       output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -233,7 +233,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
               writer->WriteScalar(element_prefix, kEndOfInput, ""));
         }
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -262,7 +262,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
         RecordBufferEnqueue(ctx, result.return_values);
         result.notification.Notify();
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
@@ -402,7 +402,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
       if (!result->end_of_input && result->status.ok()) {
         *out_tensors = std::move(result->return_values);
         *end_of_sequence = false;
-        return Status::OK();
+        return OkStatus();
       }
       if (errors::IsOutOfRange(result->status)) {
         // `predicate` may deliberately raise `errors::OutOfRange` to indicate
@@ -529,7 +529,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(writer->WriteTensor(
             prefix, absl::StrCat(kComponent, "[", j, "]"), values[j]));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status ReadComponentsLocked(IteratorContext* ctx,
@@ -551,7 +551,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
             ctx->flr(), prefix, absl::StrCat(kComponent, "[", j, "]"),
             &values->back()));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status WriteStatusLocked(IteratorStateWriter* writer,
@@ -563,7 +563,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(key, kErrorMessage, status.error_message()));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status ReadStatusLocked(IteratorStateReader* reader, const std::string& key,
@@ -578,9 +578,9 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
             reader->ReadScalar(key, kErrorMessage, &error_message));
         *status = Status(code, error_message);
       } else {
-        *status = Status::OK();
+        *status = OkStatus();
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     // Used for coordination between the main thread and the runner thread.

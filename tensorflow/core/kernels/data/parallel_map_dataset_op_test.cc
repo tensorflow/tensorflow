@@ -65,7 +65,7 @@ class ParallelMapDatasetParams : public DatasetParams {
           absl::StrCat(ParallelMapDatasetOp::kOtherArguments, "_", i));
     }
     input_names->emplace_back(ParallelMapDatasetOp::kNumParallelCalls);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -77,7 +77,7 @@ class ParallelMapDatasetParams : public DatasetParams {
                     {"deterministic", deterministic_},
                     {"preserve_cardinality", preserve_cardinality_},
                     {"metadata", ""}};
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override {
