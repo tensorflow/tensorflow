@@ -70,6 +70,10 @@ void RearrangeWeightsToOHWIOGroupI4O4(
   }
 }
 
+void RearrangeWeightsToImgConvF16OHWIOGroupI4O4(
+    const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights,
+    int out_group_size, absl::Span<half4> dst);
+
 template <DataType S, typename T>
 void RearrangeWeightsToODHWIOGroupI4O4(
     const tflite::gpu::Tensor<OHWDI, S>& weights, int out_group_size,

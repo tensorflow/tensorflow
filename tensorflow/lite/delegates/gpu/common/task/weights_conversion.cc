@@ -20,6 +20,7 @@ namespace gpu {
 uint GetTotalElementsCountForLayout(const WeightsDescription& weight_desc,
                                     const OHWDI& shape) {
   if (weight_desc.layout == WeightsLayout::kOSpatialIOGroupI4O4 ||
+      weight_desc.layout == WeightsLayout::kPowerVRConvF16OSpatialIOGroupI4O4 ||
       weight_desc.layout == WeightsLayout::kOSpatialIOGroupO4I4 ||
       weight_desc.layout == WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4 ||
       weight_desc.layout == WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4) {
@@ -142,6 +143,13 @@ void RearrangeWeights(
                                        absl::MakeSpan(f16_ptr, flt_count / 4));
     }
     return;
+  } else if (dst_weight_desc.layout ==
+             WeightsLayout::kPowerVRConvF16OSpatialIOGroupI4O4) {
+    assert(dst_weight_desc.type == DataType::FLOAT16);
+    half4* f16_ptr = reinterpret_cast<half4*>(dst.data());
+    RearrangeWeightsToImgConvF16OHWIOGroupI4O4(
+        weights, dst_weight_desc.output_group_size,
+        absl::MakeSpan(f16_ptr, flt_count / 4));
   }
 }
 
@@ -230,6 +238,70 @@ void RearrangeWeights(
                                         absl::MakeSpan(f16_ptr, flt_count / 4));
     }
     return;
+  }
+}
+
+void RearrangeWeightsToImgConvF16OHWIOGroupI4O4(
+    const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights,
+    int out_group_size, absl::Span<half4> dst) {
+  const int dst_slices = DivideRoundUp(weights.shape.o, 4);
+  const int src_slices = DivideRoundUp(weights.shape.i, 4);
+  const int dst_groups = DivideRoundUp(dst_slices, out_group_size);
+
+  int counter = 0;
+  for (int d = 0; d < dst_groups; ++d) {
+    for (int y = 0; y < weights.shape.h; ++y) {
+      for (int x = 0; x < weights.shape.w; ++x) {
+        for (int s = 0; s < src_slices; ++s) {
+          for (int d_group = 0; d_group < out_group_size; ++d_group) {
+            for (int j = 0; j < 4; ++j) {
+              half4 filter;
+              for (int i = 0; i < 4; ++i) {
+                const int s_ch = s * 4 + j;
+                const int d_ch = (d * out_group_size + d_group) * 4 + i;
+                if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
+                  const int f_index =
+                      weights.shape.LinearIndex({d_ch, y, x, s_ch});
+                  filter[i] = weights.data[f_index];
+                } else {
+                  filter[i] = 0.0f;
+                }
+              }
+              dst[counter++] = filter;
+            }
+            // [row, column] = [4, 2x2] (16 half)
+            // B0_f16.xy, B0_f16.zw,
+            // B1_f16.xy, B1_f16.zw
+            // B2_f16.xy, B2_f16.zw,
+            // B3_f16.xy, B3_f16.zw
+            //
+            // Transpose => [2x2, 4]
+            // B0_f16.xy, B1_f16.xy,
+            // B2_f16.xy, B3_f16.xy,
+            // B0_f16.zw, B1_f16.zw,
+            // B2_f16.zw, B3_f16.zw
+            half2 b0zw(dst[counter - 4].z, dst[counter - 4].w);
+            half2 b1xy(dst[counter - 3].x, dst[counter - 3].y);
+            half2 b1zw(dst[counter - 3].z, dst[counter - 3].w);
+            half2 b2xy(dst[counter - 2].x, dst[counter - 2].y);
+            half2 b2zw(dst[counter - 2].z, dst[counter - 2].w);
+            half2 b3xy(dst[counter - 1].x, dst[counter - 1].y);
+            dst[counter - 4].z = b1xy[0];
+            dst[counter - 4].w = b1xy[1];
+            dst[counter - 3].x = b2xy[0];
+            dst[counter - 3].y = b2xy[1];
+            dst[counter - 3].z = b3xy[0];
+            dst[counter - 3].w = b3xy[1];
+            dst[counter - 2].x = b0zw[0];
+            dst[counter - 2].y = b0zw[1];
+            dst[counter - 2].z = b1zw[0];
+            dst[counter - 2].w = b1zw[1];
+            dst[counter - 1].x = b2zw[0];
+            dst[counter - 1].y = b2zw[1];
+          }
+        }
+      }
+    }
   }
 }
 

@@ -33,6 +33,7 @@ enum class WeightsLayout {
   kOICustomSpatialO4I4,
   k2DX4I4YIsSpatialIAndXIsOOGroupO4,
   k2DX4O4YIsSpatialIAndXIsOOGroupI4,
+  kPowerVRConvF16OSpatialIOGroupI4O4,
 };
 
 struct WeightsDescription {

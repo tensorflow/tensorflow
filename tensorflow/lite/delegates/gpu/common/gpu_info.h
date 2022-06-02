@@ -257,6 +257,36 @@ struct MaliInfo {
   int GetApproximateComputeUnitsCount() const;
 };
 
+enum class PowerVRGpu {
+  kUnknown,
+  kRogue,
+  // New generation of IMG gpus after 2019:
+  kAXE,
+  kAXM,
+  kAXT,
+  kBXE,
+  kBXM,
+  kBXS,
+  kBXT,
+};
+
+struct PowerVRInfo {
+  struct DriverVersion {
+    int branch_main = 0;
+    int branch_minor = 0;
+    int id = 0;
+  };
+  PowerVRInfo() = default;
+  explicit PowerVRInfo(const std::string& gpu_description);
+  PowerVRGpu gpu_version;
+  DriverVersion driver_version;
+
+  bool IsRogue() const;
+  bool IsImgAxx() const;
+  bool IsImgBxx() const;
+  bool hasDotF16() const;
+};
+
 struct OpenGlInfo {
   std::string renderer_name;
   std::string vendor_name;
@@ -482,6 +512,7 @@ struct GpuInfo {
   AMDInfo amd_info;
   AppleInfo apple_info;
   MaliInfo mali_info;
+  PowerVRInfo powervr_info;
 
   // OpenGL specific, gpu_api should be kOpenGl
   OpenGlInfo opengl_info;
@@ -507,6 +538,7 @@ struct GpuInfo {
 // AdrenoInfo if vendor is kQualcomm
 // AppleInfo if vendor is kApple
 // MaliInfo if vendor is kMali
+// PowerVRInfo if vendor is kPowerVR
 void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
                                      GpuApi gpu_api, GpuInfo* gpu_info);
 
