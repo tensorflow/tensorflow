@@ -32,6 +32,7 @@ struct TOSATFLLegalizationPipelineOptions
     disabled_patterns = llvm::None;
     enabled_patterns = llvm::None;
   }
+  bool dequantize_tfl_softmax = false;
 };
 
 // Legalizes TFL (TensorFlow lite) dialect(s) to Tosa.

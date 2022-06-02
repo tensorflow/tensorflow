@@ -22,9 +22,16 @@ limitations under the License.
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 
 namespace mlir {
+
+namespace TFL {
+class TFLDialect;
+}
+
 namespace tosa {
+class TosaDialect;
 
 void populateLegalizeTFPatterns(MLIRContext* ctx, RewritePatternSet& patterns);
 void populateLegalizeTFLPatterns(MLIRContext* ctx, RewritePatternSet& patterns);
@@ -43,8 +50,11 @@ std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFLPass(
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFTFLPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createConvertTFLUint8Pass();
 std::unique_ptr<OperationPass<func::FuncOp>> createStripQuantTypesPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createDequantizeTFLSoftmaxPass();
 
 #define GEN_PASS_REGISTRATION
+#define GEN_PASS_CLASSES
+
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
 
 }  // namespace tosa

@@ -57,3 +57,9 @@ def TosaStripQuantTypesPass : Pass<"tosa-strip-quant-types", "mlir::func::FuncOp
   let constructor = "createStripQuantTypesPass()";
   let dependentDialects = ["TosaDialect"];
 }
+
+def TosaDequantizeTFLSoftmaxPass : Pass<"tosa-dequantize-tfl-softmax", "mlir::func::FuncOp"> {
+  let summary = "Dequantize TFLite Softmax ops. Performance work-around for https://github.com/google/iree/issues/8974";
+  let constructor = "createDequantizeTFLSoftmaxPass()";
+  let dependentDialects = ["mlir::TFL::TFLDialect", "quant::QuantizationDialect"];
+}

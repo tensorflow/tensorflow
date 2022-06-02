@@ -119,6 +119,7 @@ cc_library(
     name = "tf_passes",
     srcs = [
         "tf_passes.cc",
+        "transforms/dequantize_tfl_softmax.cc",
         "transforms/fuse_bias_tf.cc",
         "transforms/legalize_tf.cc",
         "transforms/tf_legalize_patterns.inc",
