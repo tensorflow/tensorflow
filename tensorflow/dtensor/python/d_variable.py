@@ -25,8 +25,8 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training.saving import saveable_object
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util.tf_export import tf_export
 
 
