@@ -165,10 +165,6 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
     {
-        "testcase_name": "_baseline",
-        "x": np.array([1, 1, 2, 3, 2, 4, 4, 5], dtype=np.int32),
-        "expected_values": [0, 2, 2, 1, 2, 1]
-    }, {
         "testcase_name": "_no_maxlength",
         "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
         "expected_values": [[0, 1, 1, 1, 0, 0],[0, 0, 0, 0, 2, 1]]
@@ -189,7 +185,65 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
         "minlength": 3,
         "expected_values": [[0, 1, 1, 1, 0, 0, 0, 1],
                             [1, 0, 0, 0, 2, 0, 0, 1]]
-    })
+    }, {
+        "testcase_name": "_no_maxlength_binary",
+        "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
+        "expected_values": [[0, 1, 1, 1, 0, 0],
+                            [0, 0, 0, 0, 1, 1]],
+        "binary_output": True,
+    }, {
+        "testcase_name": "_maxlength_binary",
+        "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
+        "maxlength": 7,
+        "expected_values": [[0, 1, 1, 1, 0, 0, 0],
+                            [1, 0, 0, 0, 1, 0, 0]],
+        "binary_output": True,
+    }, {
+        "testcase_name": "_minlength_binary",
+        "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
+        "minlength": 9,
+        "expected_values": [[0, 1, 1, 1, 0, 0, 0, 1, 0],
+                            [1, 0, 0, 0, 1, 0, 0, 1, 0]],
+        "binary_output": True,
+    }, {
+        "testcase_name": "_minlength_larger_values_binary",
+        "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
+        "minlength": 3,
+        "expected_values": [[0, 1, 1, 1, 0, 0, 0, 1],
+                            [1, 0, 0, 0, 1, 0, 0, 1]],
+        "binary_output": True,
+    }, {
+        "testcase_name": "_no_maxlength_weights",
+        "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
+        "expected_values": [[0. , 2. , 1. , 0.5, 0. , 0. ],
+                            [0. , 0. , 0. , 0. , 9. , 3. ]],
+        "weights": [[0.5, 1, 2], [3, 4, 5]]
+    }, {
+        "testcase_name": "_1d",
+        "x": np.array([3, 2, 1, 1], dtype=np.int32),
+        "expected_values": [0, 2, 1, 1]
+    }, {
+        "testcase_name": "_1d_binary",
+        "x": np.array([3, 2, 1, 1], dtype=np.int32),
+        "expected_values": [0, 1, 1, 1],
+        "binary_output": True
+    }, {
+        "testcase_name": "_1d_no_maxlenght_weights",
+        "x": np.array([3, 2, 1, 5, 4, 4], dtype=np.int32),
+        "weights": [0.5, 1, 2, 3, 4, 5],
+        "expected_values": [0. , 2. , 1. , 0.5, 9. , 3. ]
+    }, #{
+       # This is going to fail
+       # INVALID_ARGUMENT: Detected unsupported operations when trying to compile graph...  
+       # Bincount (No registered 'Bincount' OpKernel for XLA_CPU_JIT devices compatible 
+       # with node {{node bincount/Bincount}}){{node bincount/Bincount}}` 
+       #
+       # "testcase_name": "_all_axes",
+       # "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
+       # "expected_values": [0, 4, 4, 5],
+       # "axis": None
+    #}
+    )
   def test_compiled_dense(self,
                        x,
                        expected_values,
