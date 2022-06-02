@@ -105,7 +105,11 @@ from tensorflow.python.ops.variable_scope import *  # pylint: disable=redefined-
 from tensorflow.python.ops.variables import *
 from tensorflow.python.ops.parallel_for.control_flow_ops import vectorized_map
 
-from tensorflow.python.compiler.tensorrt import trt_convert as trt
+from tensorflow.python.util.lazy_loader import LazyLoader
+
+trt = LazyLoader(
+    "trt", globals(),
+    "tensorflow.python.compiler.tensorrt.trt_convert")
 
 # pylint: enable=wildcard-import
 # pylint: enable=g-bad-import-order

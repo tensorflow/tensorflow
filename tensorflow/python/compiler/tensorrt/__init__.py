@@ -14,6 +14,8 @@
 # =============================================================================
 """Exposes the python wrapper for TensorRT graph transforms."""
 
-# pylint: disable=unused-import,line-too-long
-from tensorflow.python.compiler.tensorrt import trt_convert as trt
-# pylint: enable=unused-import,line-too-long
+from tensorflow.python.util.lazy_loader import LazyLoader
+
+trt = LazyLoader(
+    "trt", globals(),
+    "tensorflow.python.compiler.tensorrt.trt_convert")
