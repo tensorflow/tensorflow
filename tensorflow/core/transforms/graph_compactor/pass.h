@@ -24,6 +24,7 @@ namespace mlir {
 namespace tfg {
 std::unique_ptr<Pass> CreateNameCompressPass();
 std::unique_ptr<Pass> CreateStripDefaultAttrsPass();
+std::unique_ptr<Pass> CreateAddDefaultAttrsPass();
 }  // namespace tfg
 }  // namespace mlir
 

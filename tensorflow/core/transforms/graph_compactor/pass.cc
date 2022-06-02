@@ -247,5 +247,85 @@ LogicalResult StripDefaultAttrsPass::removeDefaultValuedAttrs(Operation *op) {
 std::unique_ptr<Pass> CreateStripDefaultAttrsPass() {
   return std::make_unique<StripDefaultAttrsPass>();
 }
+
+namespace {
+class AddDefaultAttrsPass : public AddDefaultAttrsBase<AddDefaultAttrsPass> {
+ public:
+  LogicalResult initialize(MLIRContext *context) override {
+    // Initialize the pass by getting a registered instance of the TensorFlow
+    // operation registry. If no instance was registered, this pass will fail.
+    dialect_ = context->getOrLoadDialect<TFGraphDialect>();
+    registry_ = nullptr;
+    if (auto registry_interface =
+            dialect_->getRegisteredInterface<TensorFlowOpRegistryInterface>()) {
+      registry_ = registry_interface->GetRegistry();
+    }
+    return success(registry_);
+  }
+
+  void runOnOperation() override {
+    WalkResult result = getOperation()->walk([&](Operation *op) {
+      // Ignore intrinsic operations.
+      if (op->hasTrait<OpTrait::IntrinsicOperation>())
+        return WalkResult::advance();
+
+      // If removing default-valued attributes failed (attribute conversion
+      // error), bail out.
+      if (failed(addDefaultValuedAttrs(op))) return WalkResult::interrupt();
+
+      return WalkResult::advance();
+    });
+
+    // If the pass failed on any operation, signal failure.
+    if (result.wasInterrupted()) return signalPassFailure();
+  }
+
+ private:
+  // Remove attributes from the operation equal to their default values
+  // according to the TensorFlow op registry.
+  LogicalResult addDefaultValuedAttrs(Operation *op);
+
+  // The TFG dialect instance.
+  TFGraphDialect *dialect_;
+  // The TensorFlow op registry to query for default-valued attributes.
+  const tensorflow::OpRegistry *registry_;
+};
+}  // namespace
+
+LogicalResult AddDefaultAttrsPass::addDefaultValuedAttrs(Operation *op) {
+  const tensorflow::OpRegistrationData *op_reg_data =
+      registry_->LookUp(op->getName().stripDialect().str());
+  // Ignore unregistered ops.
+  if (!op_reg_data) return success();
+
+  // Ignore operations with no default-valued attributes.
+  if (llvm::all_of(op_reg_data->op_def.attr(),
+                   [](const auto &attr) { return !attr.has_default_value(); }))
+    return success();
+
+  // Add missing default-valued attributes
+  Builder b(&getContext());
+  NamedAttrList attrs = op->getAttrDictionary();
+  for (const auto &attr : op_reg_data->op_def.attr()) {
+    // Ignore attributes without default values.
+    if (!attr.has_default_value()) continue;
+    // Ignore default-valued attributes that are present.
+    if (attrs.get(attr.name())) continue;
+    // Convert the TensorFlow attribute value and set it.
+    tensorflow::StatusOr<Attribute> maybe_attr =
+        ConvertAttributeValue(attr.default_value(), b, dialect_);
+    if (!maybe_attr.ok())
+      return op->emitError(maybe_attr.status().error_message());
+    attrs.set(attr.name(), maybe_attr.ValueOrDie());
+  }
+  op->setAttrs(attrs.getDictionary(&getContext()));
+
+  return success();
+}
+
+std::unique_ptr<Pass> CreateAddDefaultAttrsPass() {
+  return std::make_unique<AddDefaultAttrsPass>();
+}
+
 }  // namespace tfg
 }  // namespace mlir

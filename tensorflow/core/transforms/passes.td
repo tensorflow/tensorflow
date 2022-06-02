@@ -521,6 +521,22 @@ def StripDefaultAttrs : Pass<"tfg-strip-default-attrs"> {
 
     Note that removing default-valued attributes may render some pass inoperable
     if they expect default-valued attributes to be present.
+
+    This pass is the opposite of `tfg-add-default-attrs`, which adds missing
+    default-valued attributes.
   }];
   let constructor = "CreateStripDefaultAttrsPass()";
+}
+
+def AddDefaultAttrs : Pass<"tfg-add-default-attrs"> {
+  let summary = "Add default-valued attributes to the graph";
+  let description = [{
+    This pass adds missing attributes with default values to the graph. This
+    pass requires the TensorFlow registry interface to inject an instance of the
+    operation registry.
+
+    This pass is the opposite of `tfg-strip-default-attrs`, which removes
+    default-valued attributes equal to their default values.
+  }];
+  let constructor = "CreateAddDefaultAttrsPass()";
 }
