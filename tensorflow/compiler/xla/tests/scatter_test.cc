@@ -406,6 +406,37 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
+XLA_TEST_F(ScatterTest, TensorFlowScatterNdS64) {
+  constexpr char hlo_text[] = R"(
+HloModule S64Scatter
+
+update {
+  lhs = s64[] parameter(0)
+  ROOT rhs = s64[] parameter(1)
+}
+
+ENTRY main {
+  operand = s64[3,3,2] parameter(0)
+  indices = s32[2,2] parameter(1)
+  updates = s64[2,2] parameter(2)
+  ROOT scatter = s64[3,3,2] scatter(operand, indices, updates),
+      to_apply=update,
+      update_window_dims={1},
+      inserted_window_dims={0,1},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=1
+}
+)";
+  Literal operand =
+      LiteralUtil::CreateR3<int64_t>({{{-1, 1LL << 62}, {-2, 2}, {-3, 3}},  //
+                                      {{-4, 4}, {-5, 5}, {-6, 6LL << 59}},  //
+                                      {{-7, 7}, {-8, 8LL << 49}, {-9, 9}}});
+  Literal scatter_indices = LiteralUtil::CreateR2<int32_t>({{0, 0}, {1, 0}});
+  Literal updates =
+      LiteralUtil::CreateR2<int64_t>({{-10, 10LL << 46}, {-(4LL << 38), 40}});
+  RunTest(hlo_text, &operand, &scatter_indices, &updates);
+}
+
 XLA_TEST_F(ScatterTest, TensorFlowScatterNd_NonDefaultIndexVectorDim) {
   const char* hlo_text = R"(
 HloModule TensorFlowScatterNdNonDefaultIndexVectorDim
