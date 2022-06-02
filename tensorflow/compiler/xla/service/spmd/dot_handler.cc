@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -1792,6 +1794,13 @@ StatusOr<HloInstruction*> PartitionBaseCase(
   // LHS and RHS have the same partitioned contracting dimensions.
   if (lhs_contracting_partitions == rhs_contracting_partitions &&
       lhs_contracting_partitions == num_partitions) {
+    if (!may_reshard_without_detecting_match &&
+        !output_sharding.IsReplicated() &&
+        output_sharding.NumTiles() != num_partitions) {
+      // The output is not fully sliced; the recursive handling has better
+      // pattern matching for reduce scatters in subgroups.
+      return nullptr;
+    }
     // Pad both sides with zero, since NaN at one side cannot be masked by zero
     // on the other side.
     if (ShapeSizeInBytes(lhs.base_shape()) <
@@ -2395,7 +2404,8 @@ GetDotGroupPartitionContractingOutputShardings(
     int64_t group_count, int64_t output_lhs_non_contracting_partitions,
     int64_t output_rhs_non_contracting_partitions,
     int64_t output_batch_partitions,
-    std::vector<int64_t>* output_slice_dims_out) {
+    std::vector<int64_t>* output_slice_dims_out,
+    bool* output_replicate_dim_grouped = nullptr) {
   HloSharding inner_output_sharding = HloSharding::Replicate();
   HloSharding outer_output_tmp_sharding = HloSharding::Replicate();
   std::vector<int64_t> output_slice_dims;
@@ -2417,6 +2427,17 @@ GetDotGroupPartitionContractingOutputShardings(
     if (auto found_dims = FindMatchingPartitionedDimsForGrouping(
             output_sharding, lhs_grouped.device_groups)) {
       output_slice_dims = std::move(*found_dims);
+      if (!output_slice_dims.empty()) {
+        // FindMatchingPartitionedDimsForGrouping already makes sure the groups
+        // are compatible with LHS/RHS. We avoid AlignGroupsWith/UngroupSharding
+        // because that could change the group order causing a reshard with
+        // collective-permute, which is unnecessary since these groups will be
+        // all-reduced upon anyway for contracting-dim sharding.
+        auto grouped = hlo_sharding_util::GroupShardingOnDims(
+            output_sharding, output_slice_dims);
+        inner_output_sharding = grouped.sharding;
+        outer_output_tmp_sharding = output_sharding;
+      }
     } else if (output_lhs_non_contracting_partitions == group_count ||
                output_rhs_non_contracting_partitions == group_count ||
                output_batch_partitions == group_count) {
@@ -2433,16 +2454,28 @@ GetDotGroupPartitionContractingOutputShardings(
           output_slice_dims.push_back(dim.output);
         }
       }
-    }
-    if (!output_slice_dims.empty()) {
-      auto grouped = AlignGroupsWith(hlo_sharding_util::GroupShardingOnDims(
-                                         output_sharding, output_slice_dims),
-                                     lhs_grouped);
-      inner_output_sharding = grouped.sharding;
-      outer_output_tmp_sharding = UngroupSharding(grouped);
+      if (!output_slice_dims.empty()) {
+        auto grouped = AlignGroupsWith(hlo_sharding_util::GroupShardingOnDims(
+                                           output_sharding, output_slice_dims),
+                                       lhs_grouped);
+        inner_output_sharding = grouped.sharding;
+        outer_output_tmp_sharding = UngroupSharding(grouped);
+      }
     }
   }
+  if (output_replicate_dim_grouped) {
+    *output_replicate_dim_grouped =
+        absl::c_linear_search(output_slice_dims, output_base_shape.rank());
+  }
   if (output_slice_dims_out) {
+    if (output_sharding.ReplicateOnLastTileDim()) {
+      // Remove the replication group dim.
+      output_slice_dims.erase(
+          std::remove_if(
+              output_slice_dims.begin(), output_slice_dims.end(),
+              [&](int64_t dim) { return dim == output_base_shape.rank(); }),
+          output_slice_dims.end());
+    }
     (*output_slice_dims_out) = std::move(output_slice_dims);
   }
   return std::make_pair(inner_output_sharding, outer_output_tmp_sharding);
@@ -2567,12 +2600,13 @@ StatusOr<HloInstruction*> PartitionDotGroupOnContracting(
   HloSharding inner_output_sharding = HloSharding::Replicate();
   HloSharding outer_output_tmp_sharding = HloSharding::Replicate();
   std::vector<int64_t> output_slice_dims;
+  bool output_replicate_dim_grouped;
   std::tie(inner_output_sharding, outer_output_tmp_sharding) =
       GetDotGroupPartitionContractingOutputShardings(
           dims_mapping, lhs_grouped, output_base_shape, output_sharding,
           group_count, output_lhs_non_contracting_partitions,
           output_rhs_non_contracting_partitions, output_batch_partitions,
-          &output_slice_dims);
+          &output_slice_dims, &output_replicate_dim_grouped);
   Shape inner_output_base_shape = output_base_shape;
   auto get_non_slice_dims = [&] {
     std::vector<int64_t> non_group_dims;
@@ -2596,26 +2630,42 @@ StatusOr<HloInstruction*> PartitionDotGroupOnContracting(
               const Window& conv_window) -> StatusOr<HloInstruction*> {
     TF_ASSIGN_OR_RETURN(auto inner_dot,
                         create_sharded_dot(l, r, b, conv_window));
-    auto ar = lhs.state().partitioner->AllReduceAlongShardingDims(
-        b, inner_dot, lhs_sharding, lhs.state().next_channel_id, lhs_dims,
-        lhs.state().collective_ops_creator,
-        MakeBinaryAdd(output_base_shape.element_type(), module));
-    if (output_slice_dims.empty()) {
-      return ar;
+    HloInstruction* result = inner_dot;
+    if (!output_slice_dims.empty()) {
+      // Create an AllReduce along slice dims first to allow a reduce-scatter.
+      result = lhs.state().partitioner->AllReduceAlongShardingDims(
+          b, result, outer_output_tmp_sharding, lhs.state().next_channel_id,
+          output_slice_dims, lhs.state().collective_ops_creator,
+          MakeBinaryAdd(output_base_shape.element_type(), module));
+      // Use resharding to slice the output. Use a temporary reshard cache since
+      // we are faking with replicated sharding.
+      PartitionedHlo::PartitioningState new_state = lhs.state();
+      new_state.b = b;
+      new_state.partition_id =
+          lhs.state().collective_ops_creator.create_partition_id(b);
+      PartitionedHlo::ReshardCache tmp_cache;
+      new_state.reshard_cache = &tmp_cache;
+      result->set_sharding(HloSharding::Replicate());
+      result =
+          PartitionedHlo(result, result->shape(), new_state)
+              .Reshard(hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+                  outer_output_tmp_sharding, get_non_slice_dims()))
+              .hlo();
+      // If the output has partial replication, and the last tile dim is used
+      // for grouping, we need to do a separate allreduce after reduce-scatter.
+      if (output_replicate_dim_grouped) {
+        result = lhs.state().partitioner->AllReduceAlongShardingDims(
+            b, result, outer_output_tmp_sharding, lhs.state().next_channel_id,
+            {output_base_shape.rank()}, lhs.state().collective_ops_creator,
+            MakeBinaryAdd(output_base_shape.element_type(), module));
+      }
+    } else {
+      result = lhs.state().partitioner->AllReduceAlongShardingDims(
+          b, result, lhs_sharding, lhs.state().next_channel_id, lhs_dims,
+          lhs.state().collective_ops_creator,
+          MakeBinaryAdd(output_base_shape.element_type(), module));
     }
-    // Use resharding to slice the output. Use a temporary reshard cache since
-    // we are faking with replicated sharding.
-    PartitionedHlo::PartitioningState new_state = lhs.state();
-    new_state.b = b;
-    new_state.partition_id =
-        lhs.state().collective_ops_creator.create_partition_id(b);
-    PartitionedHlo::ReshardCache tmp_cache;
-    new_state.reshard_cache = &tmp_cache;
-    ar->set_sharding(HloSharding::Replicate());
-    return PartitionedHlo(ar, ar->shape(), new_state)
-        .Reshard(hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-            output_sharding, get_non_slice_dims()))
-        .hlo();
+    return result;
   };
   // Disable doing the inner reshard when the "faster windowed einsum" flag is
   // enabled, because the windowed einsum implementation is currently slow with

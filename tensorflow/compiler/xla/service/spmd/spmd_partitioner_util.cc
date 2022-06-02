@@ -1723,9 +1723,18 @@ absl::optional<HloOpcode> ParseReductionComputation(
 absl::optional<std::vector<int64_t>> FindMatchingPartitionedDimsForGrouping(
     const HloSharding& sharding,
     const std::vector<std::vector<int64_t>>& device_groups) {
-  if (sharding.NumTiles() < device_groups.size() || device_groups.size() < 2 ||
-      device_groups[0].size() < 2) {
+  if (sharding.IsTileMaximal() || device_groups.size() < 2) {
     return absl::nullopt;
+  }
+  std::vector<int64_t> dims;
+  if (device_groups[0].size() < 2) {
+    // Trivial case: single member groups
+    for (int64_t i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
+      if (sharding.tile_assignment().dim(i) > 1) {
+        dims.push_back(i);
+      }
+    }
+    return dims;
   }
   int64_t rank = sharding.tile_assignment().num_dimensions();
   absl::flat_hash_map<int64_t, std::vector<int64_t>> device_to_index;
@@ -1734,7 +1743,6 @@ absl::optional<std::vector<int64_t>> FindMatchingPartitionedDimsForGrouping(
         device_to_index[device] =
             std::vector<int64_t>(index.begin(), index.begin() + rank);
       });
-  std::vector<int64_t> dims;
   int64_t group_count = 1;
   for (int64_t i = 0; i < rank; ++i) {
     if (device_to_index[device_groups[0][0]][i] ==

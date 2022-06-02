@@ -1724,7 +1724,9 @@ HloSharding UngroupSharding(const GroupedSharding& grouped_sharding) {
   Array<int64_t> grouped_tiling = grouped_sharding.sharding.tile_assignment();
   if (grouped_sharding.sharding.IsTileMaximal()) {
     tiling_dims = std::vector<int64_t>(grouped_sharding.data_rank, 1);
-    if (grouped_sharding.device_groups[0].size() != 1) {
+    if (grouped_sharding.device_groups[0].size() != 1 ||
+        absl::c_linear_search(grouped_sharding.group_dims,
+                              tiling_dims.size())) {
       // This is partial sharding.
       tiling_dims.push_back(grouped_sharding.device_groups[0].size());
       partial_sharding = true;

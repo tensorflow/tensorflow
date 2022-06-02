@@ -4038,6 +4038,31 @@ ENTRY entry {
                           op::Shape("f32[32,24,39296]")));
 }
 
+TEST_F(SpmdPartitioningTest,
+       EinsumContractingDimsPartitionedResultPartiallySliced) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[32,64] parameter(0), sharding={devices=[1,4]0,1,2,3}
+  %rhs = f32[64,128] parameter(1), sharding={devices=[4,1]0,1,2,3}
+  ROOT %dot = f32[32,128] dot(%lhs, %rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    sharding={devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  const auto root = module->entry_computation()->root_instruction();
+  const auto lhs = AllOf(op::Parameter(0), op::Shape("f32[32,16]"));
+  const auto rhs = AllOf(op::Parameter(1), op::Shape("f32[16,128]"));
+  EXPECT_THAT(root, AllOf(op::AllReduce(op::DynamicSlice(
+                              op::AllReduce(op::Dot(lhs, rhs)), _, _)),
+                          op::Shape("f32[16,128]")));
+}
+
 TEST_F(SpmdPartitioningTest, EinsumLHSNonContractingDimsPartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -7019,14 +7044,12 @@ ENTRY entry {
   const auto rhs = AllOf(op::Shape("f32[12,16]"), op::Parameter(1));
   auto masked_rhs = op::Select(_, rhs, op::Broadcast(op::Constant()));
   const auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(
-      root,
-      AllOf(op::Shape("f32[12,16]"),
-            op::DynamicSlice(
-                AllOf(op::Shape("f32[24,16]"),
-                      op::AllReduce(op::Dot(
-                          masked_lhs, op::CollectivePermute(masked_rhs)))),
-                _, _)));
+  EXPECT_THAT(root,
+              AllOf(op::Shape("f32[12,16]"),
+                    op::DynamicSlice(
+                        AllOf(op::Shape("f32[24,16]"),
+                              op::AllReduce(op::Dot(masked_lhs, masked_rhs))),
+                        _, _)));
 }
 
 TEST_F(SpmdPartitioningTest, Dot2DPartitionedBatchAndNonContracting) {
