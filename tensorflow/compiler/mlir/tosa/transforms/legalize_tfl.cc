@@ -44,7 +44,6 @@ limitations under the License.
 
 #define PASS_NAME "tosa-legalize-tfl"
 #define DEBUG_TYPE PASS_NAME
-
 #define HARDSWISH_EXPLICIT_RESCALING false
 
 namespace mlir {
