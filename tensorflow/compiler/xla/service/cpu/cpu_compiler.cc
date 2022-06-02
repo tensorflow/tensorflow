@@ -1090,6 +1090,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   mlir::MLIRContext mlir_context;
   LoadMLIRDialects(mlir_context);
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
+  // TODO(kramerb): Remove once it's the default in LLVM.
+  llvm_context->setOpaquePointers(true);
   auto llvm_module =
       absl::make_unique<llvm::Module>("__compute_module", *llvm_context);
 
@@ -1328,6 +1330,8 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
   mlir::MLIRContext mlir_context;
   LoadMLIRDialects(mlir_context);
   llvm::LLVMContext llvm_context;
+  // TODO(kramerb): Remove once it's the default in LLVM.
+  llvm_context.setOpaquePointers(true);
   std::unique_ptr<llvm::Module> llvm_module;
 
   std::vector<std::unique_ptr<AotCompilationResult>> results;

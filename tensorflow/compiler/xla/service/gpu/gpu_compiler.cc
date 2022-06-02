@@ -1339,6 +1339,8 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   TF_RET_CHECK(stream_exec != nullptr);
 
   llvm::LLVMContext llvm_context;
+  // TODO(kramerb): Remove once it's the default in LLVM.
+  llvm_context.setOpaquePointers(true);
 
   GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
 
@@ -1508,6 +1510,8 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
 
     llvm::LLVMContext llvm_context;
+    // TODO(kramerb): Remove once it's the default in LLVM.
+    llvm_context.setOpaquePointers(true);
 
     GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
 
