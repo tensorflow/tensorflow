@@ -146,7 +146,7 @@ objc_library(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:cumsum_test_util",
-        "//third_party/apple_frameworks:XCTest",
+        #"//third_party/apple_frameworks:XCTest",
     ],
 )
 
@@ -334,7 +334,7 @@ objc_library(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:one_hot_test_util",
-        "//third_party/apple_frameworks:XCTest",
+        #"//third_party/apple_frameworks:XCTest",
     ],
 )
 
@@ -574,7 +574,7 @@ objc_library(
     deps = [
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:select_v2_test_util",
-        "//third_party/apple_frameworks:XCTest",
+        #"//third_party/apple_frameworks:XCTest",
     ],
 )
 
