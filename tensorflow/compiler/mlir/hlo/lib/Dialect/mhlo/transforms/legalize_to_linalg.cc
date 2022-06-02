@@ -2930,16 +2930,20 @@ struct ScatterUpdateConversion : public OpConversionPattern<mhlo::ScatterOp> {
   LogicalResult matchAndRewrite(
       mhlo::ScatterOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
+    // Variadic Scatter support not yet implemented
+    if (op.operands().size() != 1 || op.updates().size() != 1) return failure();
+
     // Check if it is a tensor_scatter_nd_update-like op.
     auto& body_ops = op.getRegion().front().getOperations();
     if (body_ops.size() != 1) return failure();
     auto ret_arg = body_ops.front().getOperand(0).dyn_cast<BlockArgument>();
     if (!ret_arg || ret_arg.getArgNumber() != 1) return failure();
 
-    auto operand_ty = adaptor.operand().getType().dyn_cast<RankedTensorType>();
+    auto operandTy =
+        adaptor.operands()[0].getType().dyn_cast<RankedTensorType>();
     auto indices_ty =
         adaptor.scatter_indices().getType().dyn_cast<RankedTensorType>();
-    if (!operand_ty || !indices_ty) return failure();
+    if (!operandTy || !indices_ty) return failure();
 
     // Linalg operations put all the computation to the innermost loop. Since we
     // also iterate over scatter_indices() with some loops, we can only check
@@ -2957,18 +2961,18 @@ struct ScatterUpdateConversion : public OpConversionPattern<mhlo::ScatterOp> {
     }
 
     // One of indices dims is index depth vector.
-    int64_t nloops = operand_ty.getRank() + indices_ty.getRank() - 1;
+    int64_t nloops = operandTy.getRank() + indices_ty.getRank() - 1;
     SmallVector<AffineMap, 3> indexing_maps;
     {
       SmallVector<AffineExpr> exprs;
-      for (int64_t i = 0, e = operand_ty.getRank(); i < e; ++i)
+      for (int64_t i = 0, e = operandTy.getRank(); i < e; ++i)
         exprs.push_back(rewriter.getAffineDimExpr(i));
       indexing_maps.push_back(AffineMap::get(nloops, /*symbolCount=*/0, exprs,
                                              rewriter.getContext()));
     }
     {
       SmallVector<AffineExpr> exprs;
-      for (int64_t i = operand_ty.getRank(); i < nloops; ++i)
+      for (int64_t i = operandTy.getRank(); i < nloops; ++i)
         exprs.push_back(rewriter.getAffineDimExpr(i));
       // The index depth is 1.
       exprs.push_back(rewriter.getAffineConstantExpr(0));
@@ -2985,19 +2989,20 @@ struct ScatterUpdateConversion : public OpConversionPattern<mhlo::ScatterOp> {
     }
     indexing_maps.push_back(indexing_maps.front());
 
-    auto result_ty = this->typeConverter->convertType(op.getResult().getType())
-                         .cast<ShapedType>();
+    auto resultTy =
+        this->typeConverter->convertType(op.getResults()[0].getType())
+            .cast<ShapedType>();
     auto scatter_dims_to_operand_dims =
         op.scatter_dimension_numbers().getScatterDimsToOperandDims();
     assert(scatter_dims_to_operand_dims.size() == 1);
     // Do not need init_tensor because we'd like to initialize the output as
     // operand.
-    auto linalg_op = rewriter.create<linalg::GenericOp>(
-        op.getLoc(), /*resultTensors=*/ArrayRef<Type>{result_ty},
+    auto linalgOp = rewriter.create<linalg::GenericOp>(
+        op.getLoc(), /*resultTensors=*/ArrayRef<Type>{resultTy},
         /*inputs=*/
-        ValueRange{adaptor.operand(), adaptor.scatter_indices(),
-                   adaptor.updates()},
-        /*outputs=*/adaptor.operand(), indexing_maps,
+        ValueRange{adaptor.operands()[0], adaptor.scatter_indices(),
+                   adaptor.updates()[0]},
+        /*outputs=*/adaptor.operands()[0], indexing_maps,
         GetNParallelLoopsAttrs(nloops),
         [&](OpBuilder& b, Location loc, ValueRange args) {
           Value cmp_idx =
@@ -3013,7 +3018,7 @@ struct ScatterUpdateConversion : public OpConversionPattern<mhlo::ScatterOp> {
           b.create<linalg::YieldOp>(loc, res);
         },
         PruneAttributeList(op));
-    rewriter.replaceOp(op, linalg_op.getResults());
+    rewriter.replaceOp(op, linalgOp.getResults());
     return success();
   }
 };

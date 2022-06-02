@@ -1428,15 +1428,33 @@ LogicalResult ExportXlaOp(ScatterOp op, OpLoweringContext ctx) {
   }
   xla::ScatterDimensionNumbers dimension_numbers =
       Convert_scatter_dimension_numbers(op.scatter_dimension_numbers());
-  xla::XlaOp operand, scatter_indices, updates;
-  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+
+  llvm::SmallVector<xla::XlaOp> operands;
+  if (failed(GetTuple(op, op.operands(), ctx, operands))) return failure();
+
+  xla::XlaOp operand;
+  if (operands.size() == 1)
+    operand = operands[0];
+  else
+    operand = Tuple(ctx.builder, operands);
+
+  llvm::SmallVector<xla::XlaOp> many_updates;
+  if (failed(GetTuple(op, op.updates(), ctx, many_updates))) return failure();
+
+  xla::XlaOp updates;
+  if (many_updates.size() == 1)
+    updates = many_updates[0];
+  else
+    updates = Tuple(ctx.builder, many_updates);
+  xla::XlaOp scatter_indices;
+
   if (failed(GetXlaOp(op.scatter_indices(), value_map, &scatter_indices, op)))
     return failure();
-  if (failed(GetXlaOp(op.updates(), value_map, &updates, op))) return failure();
 
-  value_map[op] = xla::Scatter(operand, scatter_indices, updates,
-                               update_computation, dimension_numbers,
-                               op.indices_are_sorted(), op.unique_indices());
+  // Export of varadic scatter currently not supported
+  value_map[op.getResult(0)] = xla::Scatter(
+      operand, scatter_indices, updates, update_computation, dimension_numbers,
+      op.indices_are_sorted(), op.unique_indices());
   return success();
 }
 

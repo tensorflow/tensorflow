@@ -4522,12 +4522,13 @@ class ConvertTensorScatterOp : public OpRewritePattern<OpTy> {
         indices_rank - 1);
 
     Location loc = op.getLoc();
-    auto scatter = rewriter.create<ScatterOp>(loc, op.getType(), op.tensor(),
+    auto scatter = rewriter.create<ScatterOp>(loc, op.getType(),
+                                              ValueRange(Value(op.tensor())),
                                               op.indices(), updates, dims_attr);
     Derived::BuildScatterBody(tensor_ty.getElementType(),
                               &scatter.update_computation(), loc, rewriter);
 
-    rewriter.replaceOp(op, scatter.getResult());
+    rewriter.replaceOp(op, scatter.getResult(0));
     return success();
   }
 };
@@ -5744,13 +5745,13 @@ class GenericConvertUnsortedSegmentReductionOp : public OpRewritePattern<OpTy> {
         llvm::to_vector<4>(llvm::seq<int64_t>(segment_ids_rank, data_rank)),
         inserted_window_dims, scatter_dims_to_operand_dims, index_vector_dim);
 
-    auto scatter =
-        rewriter.create<ScatterOp>(op.getLoc(), op.getType(), broadcasted_init,
-                                   op.segment_ids(), op.data(), dims_attr);
+    auto scatter = rewriter.create<ScatterOp>(
+        op.getLoc(), op.getType(), ValueRange(Value(broadcasted_init)),
+        op.segment_ids(), op.data(), dims_attr);
     BuildReduceBody<ReductionOp>(data_type.getElementType(),
                                  &scatter.update_computation(), &rewriter);
 
-    rewriter.replaceOp(op, scatter.getResult());
+    rewriter.replaceOp(op, scatter.getResult(0));
     return success();
   }
 };
