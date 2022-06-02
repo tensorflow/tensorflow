@@ -3472,11 +3472,11 @@ name=None))
         seed that will be used to create the distribution. See
         `tf.random.set_seed` for behavior.
       stop_on_empty_dataset: If `True`, sampling stops if it encounters an empty
-        dataset. If `False`, it skips empty datasets. It is recommended to set
-        it to `True`. Otherwise, the distribution of samples starts off as the
-        user intends, but may change as input datasets become empty. This can be
-        difficult to detect since the dataset starts off looking correct.
-        Default to `False` for backward compatibility.
+        dataset. If `False`, it continues sampling and skips any empty datasets.
+        It is recommended to set it to `True`. Otherwise, the distribution of
+        samples starts off as the user intends, but may change as input datasets
+        become empty. This can be difficult to detect since the dataset starts
+        off looking correct. Default to `False` for backward compatibility.
 
     Returns:
       A dataset that interleaves elements from `datasets` at random, according
