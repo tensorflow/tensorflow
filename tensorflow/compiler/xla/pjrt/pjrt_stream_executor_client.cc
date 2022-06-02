@@ -508,7 +508,7 @@ Status AddDestinationBufferSynchronization(
   RecordUsage(std::move(device_buffer), local_device, local_device,
               definition_event, copy_stream,
               /*prefer_to_retain_reference=*/false);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace
@@ -1604,11 +1604,11 @@ PjRtFuture<Status> PjRtStreamExecutorBuffer::GetReadyFuture() {
           [definition_promise, stream_ptr, local_device_state]() mutable {
             local_device_state->ReturnStreamToPool(
                 std::unique_ptr<se::Stream>(stream_ptr));
-            definition_promise.Set(Status::OK());
+            definition_promise.Set(::tensorflow::OkStatus());
           });
     } else {
       // All events are already complete.
-      definition_promise.Set(Status::OK());
+      definition_promise.Set(::tensorflow::OkStatus());
     }
   }
 
@@ -1667,7 +1667,7 @@ Status CheckCompatibleShapes(bool strict_shape_checking,
           ShapeUtil::HumanStringWithLayout(buffer_shape));
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Makes a tuple from the arguments to an execution.
@@ -1821,7 +1821,7 @@ Status PjRtStreamExecutorExecutable::SetUpDonation(bool tuple_inputs) {
     parameters_that_must_be_donated_.emplace_back(
         std::move(parameters_to_donate));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 absl::string_view PjRtStreamExecutorExecutable::name() const {
@@ -2177,7 +2177,7 @@ StatusOr<PjRtExecutable::Result> PjRtStreamExecutorExecutable::ExecuteHelper(
     auto promise = PjRtFuture<Status>::CreatePromise();
     future = PjRtFuture<Status>(promise);
     compute_callbacks.push_back([promise = std::move(promise)]() mutable {
-      promise.Set(Status::OK());
+      promise.Set(::tensorflow::OkStatus());
     });
   }
   device_state->ThenExecuteCallback(

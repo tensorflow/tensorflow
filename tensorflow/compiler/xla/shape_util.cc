@@ -857,7 +857,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       TF_RETURN_IF_ERROR(
           ValidateShapeWithOptionalLayoutInternal(element_shape));
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Non-tuple shape.
@@ -879,7 +879,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
           primitive_util::LowercasePrimitiveTypeName(shape.element_type()),
           shape.ShortDebugString());
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   for (int64_t i = 0; i < shape.rank(); ++i) {
@@ -892,14 +892,14 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   }
 
   TF_RETURN_IF_ERROR(ValidateShapeSize(shape));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 /* static */ Status ShapeUtil::ValidateShapeSize(const Shape& shape) {
   VLOG(3) << "Validating shape size: " << ShapeUtil::HumanString(shape);
 
   if (!shape.IsArray()) {
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   int64_t shape_size = [&]() {
@@ -926,7 +926,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   }
 
   VLOG(3) << "Shape size is valid: " << shape_size;
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 /* static */ Status ShapeUtil::ValidateShapeWithOptionalLayout(
@@ -1060,7 +1060,7 @@ Status ForEachSubshapeHelper(const Shape& shape,
       index->pop_back();
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Helper for ForEachMutableSubshape which visits the subshapes of the given
@@ -1077,7 +1077,7 @@ Status ForEachMutableSubshapeHelper(
       index->pop_back();
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace
@@ -1089,7 +1089,7 @@ Status ForEachMutableSubshapeHelper(
       shape,
       [&func](const Shape& subshape, const ShapeIndex& index) {
         func(subshape, index);
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       },
       &index)
       .IgnoreError();
@@ -1102,7 +1102,7 @@ Status ForEachMutableSubshapeHelper(
       shape,
       [&func](Shape* subshape, const ShapeIndex& index) {
         func(subshape, index);
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       },
       &index)
       .IgnoreError();
@@ -1731,7 +1731,7 @@ Status ShapeUtil::ByteStrides(const Shape& shape, absl::Span<int64_t> strides) {
     strides.at(i) = stride;
     stride *= shape.dimensions(i);
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 /*static*/ int64_t ShapeUtil::ArraySize(const Shape& shape) {

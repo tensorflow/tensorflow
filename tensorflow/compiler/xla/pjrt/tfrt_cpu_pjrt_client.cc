@@ -1036,7 +1036,7 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
       }
     }
     // Unblock ToLiteral caller.
-    return PjRtFuture<Status>(Status::OK());
+    return PjRtFuture<Status>(::tensorflow::OkStatus());
   } else {
     auto ready_event = tfrt::MakeUnconstructedAsyncValueRef<Status>();
     // Wait for buffer definition events to finish before d2h dispatch.
@@ -1074,7 +1074,7 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
           }
 
           // Unblock ToLiteral event.
-          ready_event.emplace(Status::OK());
+          ready_event.emplace(::tensorflow::OkStatus());
         });
     return PjRtFuture<Status>(
         client_->GetHostContext(), std::move(ready_event),
@@ -1242,7 +1242,7 @@ PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
           definition_event.emplace(FailedPrecondition(
               "Buffer Definition Event: %s", error->message));
         } else {
-          definition_event.emplace(Status::OK());
+          definition_event.emplace(::tensorflow::OkStatus());
         }
       } else {
         event.AndThen([event = event.CopyRef(),
@@ -1251,7 +1251,7 @@ PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
             definition_event.emplace(FailedPrecondition(
                 "Buffer Definition Event: %s", error->message));
           } else {
-            definition_event.emplace(Status::OK());
+            definition_event.emplace(::tensorflow::OkStatus());
           }
         });
       }
@@ -1361,7 +1361,7 @@ Status TfrtCpuExecutable::SetUpDonation(bool tuple_inputs) {
   TF_ASSIGN_OR_RETURN(parameters_that_must_be_donated_,
                       ComputeParametersThatMustBeDonated(
                           *cpu_executable_->shared_module(), tuple_inputs));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // The following few helpers are adapted from XLA:CPU to create a buffer table
@@ -1442,7 +1442,7 @@ Status TfrtCpuExecutable::CheckBufferCompatibilities(
           i, input_buffer_sizes_in_bytes_[i], buffer->Buffers()[0]->size());
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<PjRtExecutable::Result> TfrtCpuExecutable::ExecuteHelper(

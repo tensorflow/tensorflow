@@ -443,7 +443,7 @@ Status BuildDistributedDevices(
         return nccl_id_store->GetNcclUniqueId(key);
       });
 #endif  // GOOGLE_CUDA
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace

@@ -77,7 +77,7 @@ Status TpuDeviceState::ThenMemcpyDeviceToDevice(
       transfer_stream->implementation());
   TF_RETURN_IF_ERROR(transfer_tpu_stream->EnqueueOnTpuDeviceSendRecvLocal(
       src_buffer, dst_buffer));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace

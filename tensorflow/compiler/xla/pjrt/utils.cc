@@ -142,7 +142,7 @@ Status ParseDeviceAssignmentCompileOptions(
     *device_assignment =
         std::make_shared<DeviceAssignment>(build_options->device_assignment());
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status DetermineArgumentLayoutsFromCompileOptions(
@@ -183,7 +183,7 @@ Status DetermineArgumentLayoutsFromCompileOptions(
                 choose_compact_layout_for_shape_function(sharded_subshape));
             *subshape->mutable_layout() = layout.layout();
           }
-          return Status::OK();
+          return ::tensorflow::OkStatus();
         });
   };
   TF_ASSIGN_OR_RETURN(auto sharded_shapes,
@@ -205,7 +205,7 @@ Status DetermineArgumentLayoutsFromCompileOptions(
   }
   TF_RETURN_IF_ERROR(assign_layouts(sharded_shapes.second, &result_layout));
   build_options->set_result_layout(result_layout);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
@@ -258,7 +258,7 @@ StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
           }
           parameters_to_donate.push_back(this_parameter);
         }
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       }));
   absl::c_sort(parameters_to_donate);
   return parameters_to_donate;

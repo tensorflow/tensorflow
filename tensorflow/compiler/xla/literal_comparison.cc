@@ -182,7 +182,7 @@ Status Equal(LiteralSlice expected, LiteralSlice actual,
     if (mismatched) {
       mismatched->Set<bool>(multi_index, !result);
     }
-    return result ? Status::OK()
+    return result ? ::tensorflow::OkStatus()
                   : MakeErrorStatus<NativeT>(expected_value, actual_value,
                                              multi_index);
   }
@@ -348,7 +348,7 @@ class NearComparator {
     CompareLiterals();
 
     if (num_mismatches_ == 0) {
-      return Status::OK();
+      return ::tensorflow::OkStatus();
     } else if (!VLOG_IS_ON(1) && miscompare_callback_ != nullptr) {
       miscompare_callback_(
           expected_, actual_, mismatches_, shape_index_,
@@ -759,7 +759,7 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
         break;
       case TOKEN:
         // Tokens have no on-device representation and are trivially equal.
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       default:
         LOG(FATAL) << "Unsupported primitive type: "
                    << PrimitiveType_Name(expected.shape().element_type());
@@ -912,7 +912,7 @@ Status EqualShapes(const Shape& expected, const Shape& actual) {
     }
   }
   // Non-array, non-tuple shapes are trivially equivalent.
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 namespace {

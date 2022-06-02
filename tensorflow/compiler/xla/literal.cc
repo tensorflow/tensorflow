@@ -428,7 +428,7 @@ Status MutableLiteralBase::CopySliceFromInternal(
                             stride_config.dimensions, stride_config.step,
                             copy_proc);
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status MutableLiteralBase::CopyElementFrom(
@@ -451,7 +451,7 @@ Status MutableLiteralBase::CopyElementFrom(
   if (dest_address != source_address) {
     memcpy(dest_address, source_address, primitive_size);
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 /* static */ StatusOr<Literal> MutableLiteralBase::CreateFromProto(
@@ -488,10 +488,10 @@ Status MutableLiteralBase::CopyElementFrom(
                 ShapeUtil::TupleElementCount(piece->subshape()),
                 proto_element->tuple_literals_size());
           }
-          return Status::OK();
+          return ::tensorflow::OkStatus();
         }
         if (piece->subshape().element_type() == TOKEN) {
-          return Status::OK();
+          return ::tensorflow::OkStatus();
         }
 
         CHECK(piece->subshape().IsArray());
@@ -503,7 +503,7 @@ Status MutableLiteralBase::CopyElementFrom(
           TF_RETURN_IF_ERROR(piece->CopyFromProto(*proto_element));
         }
 
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       }));
 
   return std::move(literal);
@@ -612,7 +612,7 @@ Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
       DeallocateBuffers();
     }
     array_value_state_ = src.array_value_state_;
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   } else {
     CHECK(src.array_value_state_ == ArrayValueState::kKnown);
     if (array_value_state_ == ArrayValueState::kUndetermined ||
@@ -664,7 +664,7 @@ Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
     memcpy(dynamic_size_buffer(), src.dynamic_size_buffer(),
            src.dynamic_size_buffer_bytes());
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 void MutableLiteralBase::SetDynamicSize(int64_t dim_index, int32_t size) {
@@ -712,7 +712,7 @@ Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
   return mutable_root_piece().ForEachMutableSubpieceWithStatus(
       [&](const ShapeIndex& index, Piece* piece) {
         if (!piece->subshape().IsArray()) {
-          return Status::OK();
+          return ::tensorflow::OkStatus();
         }
 
         // Determine if this index is in the part of this literal that we want
@@ -725,7 +725,7 @@ Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
           }
         }
         if (!in_subtree_to_copy) {
-          return Status::OK();
+          return ::tensorflow::OkStatus();
         }
         // Construct the index of the corresponding piece in the source literal.
         ShapeIndex src_piece_index = src_shape_index;
@@ -736,7 +736,7 @@ Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
         TF_RETURN_IF_ERROR(
             piece->CopyFrom(src_literal.piece(src_piece_index),
                             /*only_dynamic_bound=*/only_dynamic_bound));
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       });
 }
 
@@ -770,7 +770,7 @@ Status Literal::MoveFrom(Literal&& src_literal,
   src_literal.root_piece_ = Piece();
   src_literal.root_piece_.set_subshape(src_literal.shape_.get());
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status MutableLiteralBase::CopySliceFrom(const LiteralSlice& src_literal,
@@ -1262,7 +1262,7 @@ Status MutableLiteralBase::SetIntegralAsS64(
       return FailedPrecondition("Array element type is not integral: %s",
                                 PrimitiveType_Name(shape().element_type()));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status MutableLiteralBase::SetFromDouble(absl::Span<const int64_t> multi_index,
@@ -1285,7 +1285,7 @@ Status MutableLiteralBase::SetFromDouble(absl::Span<const int64_t> multi_index,
       return FailedPrecondition("Array element type is not floating: %s",
                                 PrimitiveType_Name(shape().element_type()));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 namespace {
@@ -2374,7 +2374,7 @@ Status CopyFromRepeatedField(absl::Span<NativeT> dest,
         dest.size(), src.size());
   }
   std::copy(src.begin(), src.end(), dest.begin());
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace
@@ -2477,7 +2477,7 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       return InvalidArgument("Is called on unsupported shape: %s",
                              ShapeUtil::HumanString(subshape()));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 bool LiteralBase::Piece::IsKnown() const {

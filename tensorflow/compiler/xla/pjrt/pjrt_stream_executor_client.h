@@ -448,7 +448,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
         case kUninitialized:
           return InvalidArgument("Buffer has not been initialized");
         case kValid:
-          return Status::OK();
+          return ::tensorflow::OkStatus();
         case kMoved:
           return InvalidArgument("Buffer has been moved.");
         case kConverted:
