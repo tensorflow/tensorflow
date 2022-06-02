@@ -689,7 +689,7 @@ PjRtStreamExecutorBuffer::ReleaseDeviceMemoryOwnership(
 StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorClient::BufferFromHostBuffer(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-    absl::optional<absl::Span<int64_t const>> byte_strides,
+    std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
     std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
   tensorflow::profiler::TraceMe traceme(
@@ -1022,9 +1022,8 @@ PjRtStreamExecutorClient::MakeCrossHostReceiveBuffers(
     buffers.push_back(std::move(buffer));
   }
 
-  TF_RETURN_IF_ERROR(
-      EnqueueCrossHostReceive(buffers, std::move(definition_event),
-                              std::move(notifier), absl::nullopt));
+  TF_RETURN_IF_ERROR(EnqueueCrossHostReceive(
+      buffers, std::move(definition_event), std::move(notifier), std::nullopt));
   return buffers;
 }
 
@@ -1852,7 +1851,7 @@ PjRtStreamExecutorExecutable::MakeExecutionInputsAndWaitForEvents(
       client_->client()->backend().transfer_manager();
   // Lift tuple_handle outside the conditional so that the event it returns is
   // not destroyed until after the loop below that waits on events.
-  absl::optional<TupleHandle> tuple_handle;
+  std::optional<TupleHandle> tuple_handle;
   if (parameter_is_tupled_arguments_ && !options.arguments_are_tupled) {
     TF_ASSIGN_OR_RETURN(
         tuple_handle,
@@ -2173,7 +2172,7 @@ StatusOr<PjRtExecutable::Result> PjRtStreamExecutorExecutable::ExecuteHelper(
     }
   }
 
-  absl::optional<PjRtFuture<Status>> future;
+  std::optional<PjRtFuture<Status>> future;
   if (fill_future) {
     auto promise = PjRtFuture<Status>::CreatePromise();
     future = PjRtFuture<Status>(promise);
@@ -2197,7 +2196,7 @@ StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 PjRtStreamExecutorExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
-    absl::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
+    std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
   if (device_assignment_ == nullptr) {
     return InvalidArgument("Execute expects a non-null device_assignment");
   }
@@ -2322,7 +2321,7 @@ StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtStreamExecutorExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
-    absl::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
+    std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
   if (device_assignment_ == nullptr) {
     return InvalidArgument("ExecuteShard expects a non-null device_assignment");
   }
@@ -2351,7 +2350,7 @@ StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtStreamExecutorExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
-    absl::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
+    std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
   if (device_assignment_ != nullptr) {
     return InvalidArgument("ExecutePortable gets a non-portable executable");
   }

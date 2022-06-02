@@ -149,7 +149,7 @@ Status DetermineArgumentLayoutsFromCompileOptions(
     const XlaComputation& computation,
     std::function<StatusOr<Shape>(Shape)>
         choose_compact_layout_for_shape_function,
-    absl::optional<std::vector<Shape>>& argument_layouts,
+    std::optional<std::vector<Shape>>& argument_layouts,
     ExecutableBuildOptions* build_options,
     std::vector<const Shape*>* argument_layout_pointers) {
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape,

@@ -133,7 +133,7 @@ StatusOr<DeviceAssignment> PjRtTpuClient::GetDefaultDeviceAssignment(
                                                               num_partitions);
 }
 
-StatusOr<absl::optional<std::string>> PjRtTpuClient::ExecutableFingerprint(
+StatusOr<std::optional<std::string>> PjRtTpuClient::ExecutableFingerprint(
     const PjRtExecutable& executable) const {
   if (executable.client() != this) {
     return InvalidArgument(
@@ -151,7 +151,7 @@ StatusOr<absl::optional<std::string>> PjRtTpuClient::ExecutableFingerprint(
               &executable)
               ->executables()[0]
               ->executable());
-  return absl::optional<std::string>(tpu_executable->fingerprint());
+  return std::optional<std::string>(tpu_executable->fingerprint());
 }
 
 StatusOr<std::string> PjRtTpuClient::SerializeExecutable(

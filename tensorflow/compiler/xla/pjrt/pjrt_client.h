@@ -220,7 +220,7 @@ class MultiSliceConfig {
 
 struct CompileOptions {
   // The layouts of the arguments that the computation should expect.
-  absl::optional<std::vector<Shape>> argument_layouts;
+  std::optional<std::vector<Shape>> argument_layouts;
 
   // If true, the supplied computation expects its arguments to be wrapped in a
   // tuple and passed as a single parameter.
@@ -350,7 +350,7 @@ class PjRtClient {
   // num_replicas_per_slice is going to be "num_replicas / num_slices".
   // TODO(zhangqiaorjc): Convert this to pure virtual and push down.
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
-      int num_replicas, absl::optional<int> num_replicas_per_slice,
+      int num_replicas, std::optional<int> num_replicas_per_slice,
       int num_partitions, const MultiSliceConfig* multi_slice_config) const {
     return Unimplemented("Multi slice device assignment is not supported.");
   }
@@ -366,8 +366,8 @@ class PjRtClient {
   virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) = 0;
 
-  // Generates a unique fingerprint for `executable`, may be absl::nullopt.
-  virtual StatusOr<absl::optional<std::string>> ExecutableFingerprint(
+  // Generates a unique fingerprint for `executable`, may be std::nullopt.
+  virtual StatusOr<std::optional<std::string>> ExecutableFingerprint(
       const PjRtExecutable& executable) const = 0;
 
   // Returns a platform-specific serialization of `executable`. The
@@ -524,7 +524,7 @@ class PjRtClient {
   // with dimensions in major-to-minor order.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-      absl::optional<absl::Span<int64_t const>> byte_strides,
+      std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       std::function<void()> on_done_with_host_buffer, PjRtDevice* device) = 0;
 
@@ -952,15 +952,14 @@ class PjRtExecutable {
   // The caller is *NOT* required to ensure that PjRtExecutable stays alive
   // until futures are ready.
   virtual StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
-  Execute(
-      absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
-      const ExecuteOptions& options,
-      absl::optional<std::vector<PjRtFuture<Status>>>& returned_futures) = 0;
+  Execute(absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
+          const ExecuteOptions& options,
+          std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) = 0;
   // Convenience wrapper for Execute that never returns futures.
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options) {
-    absl::optional<std::vector<PjRtFuture<Status>>> returned_futures;
+    std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
     return Execute(std::move(argument_handles), options, returned_futures);
   }
 
@@ -977,13 +976,12 @@ class PjRtExecutable {
   virtual StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      absl::optional<PjRtFuture<Status>>& returned_future,
-      bool fill_future) = 0;
+      std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) = 0;
   // Convenience wrapper for ExecuteSharded that always returns a future.
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      absl::optional<PjRtFuture<Status>>& returned_future) {
+      std::optional<PjRtFuture<Status>>& returned_future) {
     return ExecuteSharded(std::move(argument_handles), device, options,
                           returned_future, /*fill_future=*/true);
   }
@@ -991,7 +989,7 @@ class PjRtExecutable {
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options) {
-    absl::optional<PjRtFuture<Status>> returned_future;
+    std::optional<PjRtFuture<Status>> returned_future;
     return ExecuteSharded(std::move(argument_handles), device, options,
                           returned_future, /*fill_future=*/false);
   }
@@ -1009,13 +1007,12 @@ class PjRtExecutable {
   virtual StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      absl::optional<PjRtFuture<Status>>& returned_future,
-      bool fill_future) = 0;
+      std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) = 0;
   // Convenience wrapper for ExecutePortable that always returns a future.
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      absl::optional<PjRtFuture<Status>>& returned_future) {
+      std::optional<PjRtFuture<Status>>& returned_future) {
     return ExecutePortable(std::move(argument_handles), device, options,
                            returned_future, /*fill_future=*/true);
   }
@@ -1023,7 +1020,7 @@ class PjRtExecutable {
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options) {
-    absl::optional<PjRtFuture<Status>> returned_future;
+    std::optional<PjRtFuture<Status>> returned_future;
     return ExecutePortable(std::move(argument_handles), device, options,
                            returned_future, /*fill_future=*/false);
   }
@@ -1039,7 +1036,7 @@ class PjRtExecutable {
   // combining the result buffers with a future that becomes ready when the
   // execution completes.
   struct Result {
-    absl::optional<PjRtFuture<Status>> future;
+    std::optional<PjRtFuture<Status>> future;
     std::vector<std::unique_ptr<PjRtBuffer>> buffers;
   };
 };
