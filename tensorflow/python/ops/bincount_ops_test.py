@@ -232,18 +232,12 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
         "x": np.array([3, 2, 1, 5, 4, 4], dtype=np.int32),
         "weights": [0.5, 1, 2, 3, 4, 5],
         "expected_values": [0. , 2. , 1. , 0.5, 9. , 3. ]
-    }, #{
-       # This is going to fail
-       # INVALID_ARGUMENT: Detected unsupported operations when trying to compile graph...  
-       # Bincount (No registered 'Bincount' OpKernel for XLA_CPU_JIT devices compatible 
-       # with node {{node bincount/Bincount}}){{node bincount/Bincount}}` 
-       #
-       # "testcase_name": "_all_axes",
-       # "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
-       # "expected_values": [0, 4, 4, 5],
-       # "axis": None
-    #}
-    )
+    }, {
+       "testcase_name": "_all_axes",
+       "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
+       "expected_values": [0, 1, 1, 1, 2, 1],
+       "axis": 0 # With None (recursive call) -> Bincount (No registered 'Bincount'
+    })
   def test_compiled_dense(self,
                        x,
                        expected_values,
