@@ -4261,6 +4261,13 @@ OpFoldResult MapOp::fold(ArrayRef<Attribute> operands) {
   return nullptr;
 }
 
+LogicalResult MapOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  return deriveShapeFromOperand(&builder, getOperation(), operands.front(),
+                                &reifiedReturnShapes);
+}
+
 //===----------------------------------------------------------------------===//
 // RecvOp
 //===----------------------------------------------------------------------===//

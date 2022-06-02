@@ -1711,6 +1711,52 @@ class DotGeneralBatchMatMulOpConversion
   }
 };
 
+class MapOpConverter : public OpConversionPattern<mhlo::MapOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      mhlo::MapOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    if (!VerifyHloOpBufferOrTensorSemantics(op)) return failure();
+
+    auto resultType =
+        typeConverter->convertType(op.getType()).cast<ShapedType>();
+    assert(op.dimensions().size() == resultType.getRank() &&
+           "Expected a pointwise map");
+
+    Location loc = op.getLoc();
+    Value output =
+        GetInitTensorFor(rewriter, loc, resultType, op, adaptor.getOperands());
+    SmallVector<AffineMap> indexingMaps(
+        op.getNumOperands() + 1,
+        rewriter.getMultiDimIdentityMap(resultType.getRank()));
+
+    auto linalgOp = rewriter.create<linalg::GenericOp>(
+        loc, resultType, adaptor.getOperands(), output, indexingMaps,
+        GetNParallelLoopsAttrs(resultType.getRank()),
+        /*bodyBuild=*/nullptr, PruneAttributeList(op));
+
+    // Convert the signature of the body. We scalarize the operands and add a
+    // scalar operand representing the output tensor.
+    Region& region = linalgOp.region();
+    rewriter.inlineRegionBefore(op.computation(), region, region.end());
+    TypeConverter::SignatureConversion signatureConverter(op.getNumOperands() +
+                                                          1);
+
+    for (const auto& it : llvm::enumerate(op.getOperation()->getOperands())) {
+      signatureConverter.addInputs(
+          it.index(),
+          typeConverter->convertType(
+              it.value().getType().cast<ShapedType>().getElementType()));
+    }
+    signatureConverter.addInputs(resultType.getElementType());
+
+    rewriter.applySignatureConversion(&region, signatureConverter);
+    rewriter.replaceOp(op, linalgOp.getResults());
+    return success();
+  }
+};
+
 bool IsInBodyOfLinalgOps(Operation* op) {
   auto* parent_op = op->getParentRegion()->getParentOp();
   return parent_op->getDialect() ==
@@ -3105,6 +3151,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       HloBroadcastInDimConverter, IotaConverter<mhlo::IotaOp>,
       EinsumToLinalgConverter,
       IotaConverter<mhlo::DynamicIotaOp>,
+      MapOpConverter,
       PointwiseToLinalgConverter<mhlo::AbsOp>,
       PointwiseToLinalgConverter<mhlo::AddOp>,
       PointwiseToLinalgConverter<mhlo::AndOp>,

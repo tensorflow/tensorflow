@@ -1803,7 +1803,7 @@ def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]> {
   let hasVerifier = 1;
 }
 
-def HLO_MapOp: HLO_Op<"map",
+def HLO_MapOp: HLO_ShapedInterfaceOp<"map",
       [RecursiveSideEffects, SameOperandsAndResultShape,
        SingleBlockImplicitTerminator<"ReturnOp">]> {
   let summary = "Map operator";

@@ -2347,6 +2347,40 @@ func.func @clamp_dynamic(%lb : tensor<?xf32>, %x : tensor<?xf32>, %ub : tensor<?
 
 // -----
 
+func.func @map_compare(%arg0: tensor<?xcomplex<f32>>,
+                       %arg1: tensor<?xcomplex<f32>>) -> tensor<?xi1> {
+  %0 = "mhlo.map"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<complex<f32>>, %arg3: tensor<complex<f32>>):
+    %1 = mhlo.real(%arg2) : (tensor<complex<f32>>) -> tensor<f32>
+    %2 = mhlo.real(%arg3) : (tensor<complex<f32>>) -> tensor<f32>
+    %3 = "mhlo.compare"(%1, %2)
+       {comparison_direction = #mhlo<"comparison_direction EQ">}
+       : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "mhlo.return"(%3) : (tensor<i1>) -> ()
+  }) {dimensions = dense<0> : tensor<1xi64>}
+  : (tensor<?xcomplex<f32>>, tensor<?xcomplex<f32>>) -> tensor<?xi1>
+  func.return %0 : tensor<?xi1>
+}
+
+// CHECK-LABEL: @map_compare
+// CHECK-SAME: %[[ARG0:.*]]: tensor<?xcomplex<f32>>,
+// CHECK-SAME: %[[ARG1:.*]]: tensor<?xcomplex<f32>>)
+
+// CHECK: %[[INIT:.+]] = linalg.init_tensor
+// CHECK: %[[MAP:.+]] = linalg.generic
+// CHECK-SAME: iterator_types = ["parallel"]}
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]]
+// CHECK-SAME: outs(%[[INIT]] : tensor<?xi1>) {
+// CHECK:  ^bb0(%[[A:.+]]: complex<f32>, %[[B:.+]]: complex<f32>, %{{.+}}: i1):
+// CHECK: %[[RE1:.+]] = complex.re %[[A]] : complex<f32>
+// CHECK: %[[RE2:.+]] = complex.re %[[B]] : complex<f32>
+// CHECK: %[[CMP:.+]] = arith.cmpf oeq, %[[RE1]], %[[RE2]] : f32
+// CHECK: linalg.yield %[[CMP]] : i1
+// CHECK: }
+// CHECK: return %[[MAP]] : tensor<?xi1>
+
+// -----
+
 func.func @reduce_add(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<5xi32> {
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
   ^bb0(%arg3: tensor<i32>, %arg4 : tensor<i32>):
