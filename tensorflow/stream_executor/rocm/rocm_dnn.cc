@@ -508,7 +508,8 @@ dnn::ProfileResult GetProfileResultFromConvSolution(
     miopenConvSolution_t solution) {
   dnn::ProfileResult profile_result;
   profile_result.set_algorithm(
-      {solution.solution_id, false, solution.workspace_size});
+      {(dnn::AlgorithmDesc::Index)solution.solution_id, false, 
+        solution.workspace_size});
   profile_result.set_elapsed_time_in_ms(solution.time);
   profile_result.set_scratch_size(solution.workspace_size);
   return profile_result;
