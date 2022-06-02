@@ -900,6 +900,7 @@ cc_library(
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:ArithmeticUtils",
+        "@llvm-project//mlir:BufferizationDialect",
         "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

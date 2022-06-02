@@ -41,11 +41,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-const char* const kTPUReplicatedHost = "TPU_REPLICATED_HOST";
-const char* const kNumCoresPerReplicaAttr = "num_cores_per_replica";
-const char* const kTopologyAttr = "topology";
-const char* const kDeviceAssignmentAttr = "device_assignment";
-
 // Device coordinates are defined as (x, y, z, core), thus resulting in a rank 4
 // topology.
 constexpr int kTPUTopologyRank = 4;

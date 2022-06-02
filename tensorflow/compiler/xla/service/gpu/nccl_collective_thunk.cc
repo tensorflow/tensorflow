@@ -195,12 +195,12 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 }
 
 std::string NcclCollectiveThunk::GetDeviceString(
-    const ExecuteParams& params) const {
-  int device_ordinal = params.stream->parent()->device_ordinal();
+    const NcclExecuteParams& nccl_params) {
+  int device_ordinal = nccl_params.stream->parent()->device_ordinal();
   GlobalDeviceId global_device_id =
-      params.nccl_params.GetGlobalDeviceId().ValueOrDie();
+      nccl_params.GetGlobalDeviceId().ValueOrDie();
   DeviceAssignment::LogicalID logical_id =
-      params.nccl_params.device_assn->LogicalIdForDevice(global_device_id)
+      nccl_params.device_assn->LogicalIdForDevice(global_device_id)
           .ValueOrDie();
   return absl::StrFormat("(r%d, p%d) : GlobalID %d, ord %d",
                          logical_id.replica_id, logical_id.computation_id,

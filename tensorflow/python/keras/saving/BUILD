@@ -36,6 +36,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:saver",
         "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/checkpoint:graph_view",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:losses",
@@ -50,6 +51,5 @@ py_library(
         "//tensorflow/python/keras/utils:metrics_utils",
         "//tensorflow/python/keras/utils:mode_keys",
         "//tensorflow/python/saved_model",
-        "//tensorflow/python/training/tracking",
     ],
 )

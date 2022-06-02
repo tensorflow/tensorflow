@@ -71,7 +71,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
                                 split_providers) const override {
     split_providers->push_back(
         absl::make_unique<IndexSplitProvider>(tensors_[0].dim_size(0)));
-    return Status::OK();
+    return OkStatus();
   }
 
   const DataTypeVector& output_dtypes() const override { return dtypes_; }
@@ -93,10 +93,10 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
   }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
-    return Status::OK();
+    return OkStatus();
   }
 
-  Status CheckExternalState() const override { return Status::OK(); }
+  Status CheckExternalState() const override { return OkStatus(); }
 
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override {
@@ -106,7 +106,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
     for (int i = 0; i < tensors_.size(); ++i) {
       out_tensors->push_back(MaybeCopySubSlice(tensors_[i], index));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  protected:
@@ -142,7 +142,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
                                       {kIsFiles, is_files},
                                       {kReplicateOnSplit, replicate_on_split}},
                                      output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -159,7 +159,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
         TF_ASSIGN_OR_RETURN(split_provider_,
                             GetSingleSplitProvider(ctx, dataset()));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -168,7 +168,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
       Tensor split;
       TF_RETURN_IF_ERROR(split_provider_->GetNext(&split, end_of_sequence));
       if (*end_of_sequence) {
-        return Status::OK();
+        return OkStatus();
       }
       int64_t index = split.scalar<int64_t>()();
       out_tensors->reserve(dataset()->tensors_.size());
@@ -177,7 +177,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
             MaybeCopySubSlice(dataset()->tensors_[i], index));
       }
       *end_of_sequence = false;
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:

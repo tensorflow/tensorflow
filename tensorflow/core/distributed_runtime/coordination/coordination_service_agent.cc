@@ -54,7 +54,7 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   ~CoordinationServiceAgentImpl() override {
     Status s = Shutdown();
     if (!s.ok()) {
-      LOG(ERROR) << "Agent shutdown failed with status: " << s;
+      LOG(ERROR) << "Coordination agent shutdown failed with status: " << s;
     }
     // Cancel all pending GetKeyValue() RPC calls.
     cancellation_manager_.StartCancel();
@@ -134,7 +134,7 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   };
   mutable mutex state_mu_;
   State state_ TF_GUARDED_BY(state_mu_) = State::UNINITIALIZED;
-  Status status_ TF_GUARDED_BY(state_mu_) = Status::OK();
+  Status status_ TF_GUARDED_BY(state_mu_) = OkStatus();
   // Note: this set grows without bounds. For now, this is okay as most users
   // require < 100 barriers. If there is a use case that requires many barriers,
   // consider using a monotonic sequence number to track instead.
@@ -218,7 +218,7 @@ Status CoordinationServiceAgentImpl::Initialize(
   }
   error_fn_ = error_fn;
   state_ = State::DISCONNECTED;
-  return Status::OK();
+  return OkStatus();
 }
 
 bool CoordinationServiceAgentImpl::IsInitialized() {
@@ -319,7 +319,7 @@ Status CoordinationServiceAgentImpl::Connect() {
           }
         }
       }));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CoordinationServiceAgentImpl::WaitForAllTasks(
@@ -344,7 +344,7 @@ Status CoordinationServiceAgentImpl::WaitForAllTasks(
     return status;
   }
   cluster_devices_.MergeFrom(response.cluster_device_info());
-  return Status::OK();
+  return OkStatus();
 }
 
 const CoordinationServiceDeviceInfo&
@@ -398,11 +398,12 @@ Status CoordinationServiceAgentImpl::ReportError(const Status& error) {
     n.Notify();
   });
   n.WaitForNotification();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CoordinationServiceAgentImpl::Shutdown() {
-  Status status = Status::OK();
+  LOG(INFO) << "Coordination agent has initiated Shutdown().";
+  Status status = OkStatus();
   bool is_connected = false;
   {
     mutex_lock l(state_mu_);
@@ -442,9 +443,9 @@ Status CoordinationServiceAgentImpl::Shutdown() {
     mutex_lock l(state_mu_);
     if (state_ == State::ERROR) {
       status = MakeCoordinationError(errors::FailedPrecondition(absl::StrCat(
-          "Shutdown() was called while agent is in error state, implying that "
-          "distributed execution failed. Note: agent will still shutdown "
-          "anyway. Agent status: ",
+          "Shutdown() was called while coordination agent is in error state, "
+          "implying that distributed execution failed. Note: agent will still "
+          "shutdown anyway. Agent status: ",
           status_.ToString())));
     }
     state_ = State::SHUTDOWN;
@@ -631,7 +632,7 @@ Status CoordinationServiceAgentImpl::DeleteKeyValue(const std::string& key) {
     n.Notify();
   });
   n.WaitForNotification();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CoordinationServiceAgentImpl::UpdateKeyValue(const std::string& key,
@@ -747,7 +748,7 @@ Status CoordinationServiceAgentImpl::ValidateRunningAgent() {
   mutex_lock l(state_mu_);
   switch (state_) {
     case State::RUNNING:
-      return Status::OK();
+      return OkStatus();
 
     case State::UNINITIALIZED:
       return MakeCoordinationError(errors::FailedPrecondition(

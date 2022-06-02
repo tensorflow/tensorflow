@@ -138,9 +138,7 @@ static inline absl::string_view StringRefToView(llvm::StringRef ref) {
 namespace tensorflow {
 
 constexpr size_t kNumThreadToConvertSignatures = 10;
-
-const char kImportModelDefaultGraphFuncName[] = "main";
-const char kOutputShapesAttrName[] = "_output_shapes";
+constexpr absl::string_view kOutputShapesAttrName = "_output_shapes";
 
 using mlir::NamedAttrList;
 using mlir::TensorType;
@@ -2507,8 +2505,8 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
   // Record version info.
   PopulateTfVersions(module.get(), graph.versions());
 
-  const auto& graph_func_name = specs.graph_func_name.empty()
-                                    ? kImportModelDefaultGraphFuncName
+  const llvm::StringRef& graph_func_name =
+      specs.graph_func_name.empty() ? kImportModelDefaultGraphFuncName
                                     : specs.graph_func_name;
   TF_RETURN_IF_ERROR(importer.ImporterBase::Convert(graph_func_name, func_type,
                                                     arg_nodes, ret_nodes,

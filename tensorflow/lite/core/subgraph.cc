@@ -982,7 +982,7 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
       } else {
         ReportError(
             "Encountered unresolved custom op: %s.\nSee instructions: "
-            "https://www.tensorflow.org/lite/guide/ops_custom",
+            "https://www.tensorflow.org/lite/guide/ops_custom ",
             op_reg.custom_name ? op_reg.custom_name : "UnknownOp");
       }
       return kTfLiteUnresolvedOps;

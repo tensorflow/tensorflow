@@ -76,7 +76,7 @@ class PaddedBatchDatasetParams : public DatasetParams {
           strings::StrCat(PaddedBatchDatasetOp::kPaddingValues, "_", j));
     }
     input_names->push_back(PaddedBatchDatasetOp::kDropRemainder);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -85,7 +85,7 @@ class PaddedBatchDatasetParams : public DatasetParams {
                     {"output_shapes", output_shapes_},
                     {"N", num_padded_shapes_},
                     {"metadata", ""}};
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override {

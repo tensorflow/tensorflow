@@ -108,15 +108,15 @@ class CoordinationServiceAgentTest : public ::testing::Test {
  public:
   void SetUp() override {
     ON_CALL(*client_, RegisterTaskAsync(_, _, _, _))
-        .WillByDefault(InvokeArgument<3>(Status::OK()));
+        .WillByDefault(InvokeArgument<3>(OkStatus()));
     ON_CALL(*client_, ShutdownTaskAsync(_, _, _, _))
-        .WillByDefault(InvokeArgument<3>(Status::OK()));
+        .WillByDefault(InvokeArgument<3>(OkStatus()));
     ON_CALL(*client_, ReportErrorToServiceAsync(_, _, _))
-        .WillByDefault(InvokeArgument<2>(Status::OK()));
+        .WillByDefault(InvokeArgument<2>(OkStatus()));
     ON_CALL(*client_, ResetTaskAsync(_, _, _))
-        .WillByDefault(InvokeArgument<2>(Status::OK()));
+        .WillByDefault(InvokeArgument<2>(OkStatus()));
     ON_CALL(*client_, BarrierAsync(_, _, _))
-        .WillByDefault(InvokeArgument<2>(Status::OK()));
+        .WillByDefault(InvokeArgument<2>(OkStatus()));
   }
 
   // Should be called after mocking service responses, before testing the agent.
@@ -155,7 +155,7 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValue_Simple_Success) {
   kv->set_value(test_value);
   ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
       .WillByDefault(DoAll(SetArgPointee<2>(mocked_response),
-                           InvokeArgument<3>(Status::OK())));
+                           InvokeArgument<3>(OkStatus())));
   // Initialize coordination agent.
   InitializeAgent();
 
@@ -175,7 +175,7 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValue_WithTimeout_Success) {
   kv->set_value(test_value);
   ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
       .WillByDefault(DoAll(SetArgPointee<2>(mocked_response),
-                           InvokeArgument<3>(Status::OK())));
+                           InvokeArgument<3>(OkStatus())));
   // Initialize coordination agent.
   InitializeAgent();
 
@@ -228,7 +228,7 @@ TEST_F(CoordinationServiceAgentTest,
   auto kv = owned_response->mutable_kv();
   kv->set_key(test_key);
   kv->set_value(test_value);
-  owned_done(Status::OK());
+  owned_done(OkStatus());
   // No explicit test, but used to verify there is no stack-use-after-return
   // or other memory-related errors.
 }
@@ -260,7 +260,7 @@ TEST_F(CoordinationServiceAgentTest,
                   auto kv = owned_response->mutable_kv();
                   kv->set_key(test_key);
                   kv->set_value(test_value);
-                  owned_done(Status::OK());
+                  owned_done(OkStatus());
                 }));
           }));
   InitializeAgent();
@@ -306,7 +306,7 @@ TEST_F(CoordinationServiceAgentTest, TryGetKeyValue_Simple_Success) {
   kv->set_value(test_value);
   ON_CALL(*GetClient(), TryGetKeyValueAsync(_, _, _))
       .WillByDefault(DoAll(SetArgPointee<1>(mocked_response),
-                           InvokeArgument<2>(Status::OK())));
+                           InvokeArgument<2>(OkStatus())));
 
   // Initialize coordination agent.
   InitializeAgent();
@@ -326,7 +326,7 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValueDir_Simple_Success) {
   *mocked_response.mutable_kv() = {test_values.begin(), test_values.end()};
   ON_CALL(*GetClient(), GetKeyValueDirAsync(_, _, _))
       .WillByDefault(DoAll(SetArgPointee<1>(mocked_response),
-                           InvokeArgument<2>(Status::OK())));
+                           InvokeArgument<2>(OkStatus())));
   // Initialize coordination agent.
   InitializeAgent();
 
@@ -386,7 +386,7 @@ TEST_F(CoordinationServiceAgentTest, ResetCanBeRetried) {
   // Mock reset error failing for the first time.
   EXPECT_CALL(*GetClient(), ResetTaskAsync(_, _, _))
       .WillOnce(InvokeArgument<2>(errors::Internal("Reset error")))
-      .WillOnce(InvokeArgument<2>(Status::OK()));
+      .WillOnce(InvokeArgument<2>(OkStatus()));
   // Connect coordination agent and set it to error.
   InitializeAgent();
   TF_EXPECT_OK(agent_->Connect());

@@ -83,6 +83,7 @@ using mlir::lmhlo::AllGatherOp;
 using mlir::lmhlo::AllReduceOp;
 using mlir::lmhlo::CaseOp;
 using mlir::lmhlo::CustomCallOp;
+using mlir::lmhlo::FftOp;
 using mlir::lmhlo::InfeedOp;
 using mlir::lmhlo::OutfeedOp;
 using mlir::lmhlo::ReduceScatterOp;
@@ -912,6 +913,51 @@ class GetGlobalOpLowering : public OpRewritePattern<GetGlobalOp> {
 
 // -------------------------------------------------------------------------- //
 
+class FftOpLowering : public OpRewritePattern<FftOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(FftOp op,
+                                PatternRewriter& rewriter) const override {
+    MLIRContext* ctx = this->getContext();
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    ModuleOp module = op->getParentOfType<ModuleOp>();
+
+    // Custom call target.
+    NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
+                          b.getStringAttr("xla.gpu.fft"));
+
+    // Create a custom call function declaration.
+    auto custom_call_type =
+        FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
+    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
+    auto custom_call = FuncOp::create(op.getLoc(), "xla.gpu.fft",
+                                      custom_call_type, custom_call_attrs);
+    custom_call.setPrivate();
+
+    SymbolTable sym_table(module);
+    auto inserted = sym_table.insert(custom_call);
+    rewriter.notifyOperationInserted(custom_call);
+
+    // Convert Fft to a function call.
+    auto call = rewriter.create<CallOp>(op.getLoc(), inserted, TypeRange(),
+                                        op.getOperands());
+
+    // Copy backend specific attributes.
+    call->setAttr(b.getStringAttr("fft_length"), op.fft_lengthAttr());
+    call->setAttr(b.getStringAttr("fft_type"),
+                  b.getI32IntegerAttr(static_cast<int32_t>(op.fft_type())));
+
+    // Erase the original Fft operation.
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+};
+
+// -------------------------------------------------------------------------- //
+
 class CholeskyOpLowering : public OpRewritePattern<CholeskyOp> {
  public:
   explicit CholeskyOpLowering(MLIRContext* ctx)
@@ -1233,13 +1279,13 @@ void ConvertLmhloGpuToJitRtPass::runOnOperation() {
   // Convert lmhlo_gpu operations to JitRt gpu runtime custom calls.
   RewritePatternSet patterns(ctx);
   patterns.insert<GemmOpLowering, GemmBiasOpLowering>(ctx, uid);
-  patterns.insert<AllGatherOpLowering, AllReduceOpLowering, CholeskyOpLowering,
-                  ReduceScatterOpLowering, ReplicaIdOpLowering, WhileOpLowering,
-                  CaseOpLowering, CustomCallOpLowering, TerminatorOpLowering,
-                  ConvForwardOpLowering, ConvForwardFusedOpLowering,
-                  ConvForwardFusedSideInputOpLowering,
-                  ConvBackwardFilterOpLowering, ConvBackwardInputOpLowering>(
-      ctx);
+  patterns
+      .insert<AllGatherOpLowering, AllReduceOpLowering, FftOpLowering,
+              CholeskyOpLowering, ReduceScatterOpLowering, ReplicaIdOpLowering,
+              WhileOpLowering, CaseOpLowering, CustomCallOpLowering,
+              TerminatorOpLowering, ConvForwardOpLowering,
+              ConvForwardFusedOpLowering, ConvForwardFusedSideInputOpLowering,
+              ConvBackwardFilterOpLowering, ConvBackwardInputOpLowering>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();

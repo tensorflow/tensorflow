@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Arithmetic/Utils/Utils.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -114,8 +115,8 @@ Value GetInitTensor(OpBuilder& b, Location loc, ShapedType type,
 }
 
 Value GetInitSparseTensor(OpBuilder& b, Location loc, ShapedType type,
-                          ArrayRef<Value> sizes) {
-  return b.create<sparse_tensor::InitOp>(loc, type, sizes);
+                          ArrayRef<Value> dyn_sizes) {
+  return b.create<bufferization::AllocTensorOp>(loc, type, dyn_sizes);
 }
 
 Value GetInitTensorFor(OpBuilder& b, Location loc, ShapedType result_type,
@@ -124,9 +125,9 @@ Value GetInitTensorFor(OpBuilder& b, Location loc, ShapedType result_type,
       sparse_tensor::getSparseTensorEncoding(result_type) != nullptr;
   // Collect the sizes for a ranked tensor to be passed as parameter to a
   // new tensor initialization operation. This operation only needs the
-  // dynamic size in the dense case, but all sizes when the tensor is sparse.
+  // dynamic sizes.
   SmallVector<Value> sizes;
-  if (result_type.hasRank() && (is_sparse || !result_type.hasStaticShape())) {
+  if (result_type.hasRank() && !result_type.hasStaticShape()) {
     // Ask the op for its output shape.
     auto shape_source = cast<InferShapedTypeOpInterface>(op);
     SmallVector<Value, 1> reified_shapes;
@@ -134,11 +135,7 @@ Value GetInitTensorFor(OpBuilder& b, Location loc, ShapedType result_type,
     assert(reified_shapes.size() == 1 && "Expected one reified result");
     // Construct sizes for the required dimensions.
     for (auto& en : llvm::enumerate(result_type.getShape())) {
-      if (en.value() != ShapedType::kDynamicSize) {
-        if (is_sparse)
-          sizes.push_back(b.create<arith::ConstantIndexOp>(loc, en.value()));
-        continue;
-      }
+      if (en.value() != ShapedType::kDynamicSize) continue;
       sizes.push_back(b.create<tensor::ExtractOp>(
           loc, reified_shapes[0],
           ValueRange{b.create<arith::ConstantIndexOp>(loc, en.index())}));
@@ -751,6 +748,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
         },
         PruneAttributeList(op));
     if (failed) return failure();
+
     rewriter.replaceOp(op, linalg_op->getResults());
     return success();
   }
@@ -1709,6 +1707,52 @@ class DotGeneralBatchMatMulOpConversion
         /*outputBuffers=*/ValueRange{zero_tensor}, PruneAttributeList(op));
 
     rewriter.replaceOp(op, linalg_op->getResults());
+    return success();
+  }
+};
+
+class MapOpConverter : public OpConversionPattern<mhlo::MapOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      mhlo::MapOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    if (!VerifyHloOpBufferOrTensorSemantics(op)) return failure();
+
+    auto resultType =
+        typeConverter->convertType(op.getType()).cast<ShapedType>();
+    assert(op.dimensions().size() == resultType.getRank() &&
+           "Expected a pointwise map");
+
+    Location loc = op.getLoc();
+    Value output =
+        GetInitTensorFor(rewriter, loc, resultType, op, adaptor.getOperands());
+    SmallVector<AffineMap> indexingMaps(
+        op.getNumOperands() + 1,
+        rewriter.getMultiDimIdentityMap(resultType.getRank()));
+
+    auto linalgOp = rewriter.create<linalg::GenericOp>(
+        loc, resultType, adaptor.getOperands(), output, indexingMaps,
+        GetNParallelLoopsAttrs(resultType.getRank()),
+        /*bodyBuild=*/nullptr, PruneAttributeList(op));
+
+    // Convert the signature of the body. We scalarize the operands and add a
+    // scalar operand representing the output tensor.
+    Region& region = linalgOp.region();
+    rewriter.inlineRegionBefore(op.computation(), region, region.end());
+    TypeConverter::SignatureConversion signatureConverter(op.getNumOperands() +
+                                                          1);
+
+    for (const auto& it : llvm::enumerate(op.getOperation()->getOperands())) {
+      signatureConverter.addInputs(
+          it.index(),
+          typeConverter->convertType(
+              it.value().getType().cast<ShapedType>().getElementType()));
+    }
+    signatureConverter.addInputs(resultType.getElementType());
+
+    rewriter.applySignatureConversion(&region, signatureConverter);
+    rewriter.replaceOp(op, linalgOp.getResults());
     return success();
   }
 };
@@ -3067,8 +3111,8 @@ class DotGeneralOpConversion : public OpConversionPattern<mhlo::DotGeneralOp> {
 struct HloLegalizeToLinalgPass
     : public mhlo::HloLegalizeToLinalgPassBase<HloLegalizeToLinalgPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<linalg::LinalgDialect, scf::SCFDialect,
-                    complex::ComplexDialect, math::MathDialect,
+    registry.insert<bufferization::BufferizationDialect, linalg::LinalgDialect,
+                    scf::SCFDialect, complex::ComplexDialect, math::MathDialect,
                     memref::MemRefDialect, shape::ShapeDialect>();
   }
 
@@ -3076,11 +3120,11 @@ struct HloLegalizeToLinalgPass
     MLIRContext& ctx = getContext();
     RewritePatternSet patterns(&ctx);
     ConversionTarget target(ctx);
-    target.addLegalDialect<arith::ArithmeticDialect, complex::ComplexDialect,
-                           linalg::LinalgDialect, math::MathDialect,
-                           tensor::TensorDialect,
-                           sparse_tensor::SparseTensorDialect, scf::SCFDialect,
-                           shape::ShapeDialect>();
+    target.addLegalDialect<
+        bufferization::BufferizationDialect, arith::ArithmeticDialect,
+        complex::ComplexDialect, linalg::LinalgDialect, math::MathDialect,
+        tensor::TensorDialect, sparse_tensor::SparseTensorDialect,
+        scf::SCFDialect, shape::ShapeDialect>();
 
     target.addLegalOp<UnrealizedConversionCastOp>();
 
@@ -3107,6 +3151,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       HloBroadcastInDimConverter, IotaConverter<mhlo::IotaOp>,
       EinsumToLinalgConverter,
       IotaConverter<mhlo::DynamicIotaOp>,
+      MapOpConverter,
       PointwiseToLinalgConverter<mhlo::AbsOp>,
       PointwiseToLinalgConverter<mhlo::AddOp>,
       PointwiseToLinalgConverter<mhlo::AndOp>,

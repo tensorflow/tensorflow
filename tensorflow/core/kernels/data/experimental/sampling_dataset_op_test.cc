@@ -50,13 +50,13 @@ class SamplingDatasetParams : public DatasetParams {
     *input_names = {SamplingDatasetOp::kInputDataset, SamplingDatasetOp::kRate,
                     SamplingDatasetOp::kSeed, SamplingDatasetOp::kSeed2};
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {{SamplingDatasetOp::kOutputTypes, output_dtypes_},
                     {SamplingDatasetOp::kOutputShapes, output_shapes_}};
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override {

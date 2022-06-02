@@ -1,4 +1,4 @@
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
@@ -38,6 +38,7 @@ cc_library(
         ":PassIncGen",
         "//tensorflow/core/ir:Dialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -65,6 +66,40 @@ cc_library(
         "//tensorflow/core/ir/importexport:convert_tensor",
         "//tensorflow/core/ir/importexport:graphdef_export",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+gentbl_cc_library(
+    name = "PDLLUtilsIncGen",
+    tbl_outs = [
+        (
+            ["-x=cpp"],
+            "utils/pdll/PDLLUtils.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-pdll",
+    td_file = "utils/pdll/utils.pdll",
+    deps = [
+        "//tensorflow/core/ir:Dialect",
+    ],
+)
+
+td_library(
+    name = "PDLLUtilsFiles",
+    srcs = ["utils/pdll/utils.pdll"],
+    includes = ["include"],
+)
+
+cc_library(
+    name = "pdll_utils",
+    srcs = ["utils/pdll/utils.cc"],
+    hdrs = ["utils/pdll/utils.h"],
+    deps = [
+        ":PDLLUtilsIncGen",
+        ":utils",
+        "//tensorflow/core/ir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],

@@ -2606,8 +2606,6 @@ LogicalResult BitcastConvertOp::reifyReturnTypeShapes(
 /*
  * We intend to verify the following properties
  * P1. We cannot convert between complex and real types (cf xla)
- * P2. The operand's element bitwidth must be divisible by the result's element
- * bitwidth, or vice versa.
  * P3. The dimensions of the operand and the target
  * shape must match, except that the shape with the smaller element bitwidth has
  * an appropriately-sized additional innermost dimension, e.g.
@@ -2631,21 +2629,6 @@ LogicalResult BitcastConvertOp::verify() {
   auto operand_elt_bitwidth = potentiallyComplexBitwidth(operand_elt);
 
   // P2.
-  auto smaller_elt_bitwidth =
-      std::min(target_elt_bitwidth, operand_elt_bitwidth);
-  auto bigger_elt_bitwidth =
-      std::max(target_elt_bitwidth, operand_elt_bitwidth);
-  if (bigger_elt_bitwidth % smaller_elt_bitwidth != 0) {
-    // NOTE: cannot avoid this check by just checking that dim * bitwidth ==
-    // other bitwidth.
-    return emitOpError()
-           << "bitwidth of a bigger element type needs to be divisible by the "
-              "bitwidth of a smaller element type, but "
-           << "got: " << operand_tensor_type << " and " << target_tensor_type
-           << ".";
-  }
-
-  // P3.
   auto operand_type = operand_tensor_type.dyn_cast<RankedTensorType>();
   auto target_type = target_tensor_type.dyn_cast<RankedTensorType>();
   if (!operand_type || !target_type) return success();
@@ -2667,6 +2650,8 @@ LogicalResult BitcastConvertOp::verify() {
   }
 
   ArrayRef<int64_t> smaller_elt_prefix;
+  auto smallerEltBitwidth = std::min(target_elt_bitwidth, operand_elt_bitwidth);
+  auto biggerEltBitwidth = std::max(target_elt_bitwidth, operand_elt_bitwidth);
   if (operand_elt_bitwidth != target_elt_bitwidth) {
     if (smaller_elt_shape.empty()) {
       return emitOpError() << "does not allow the smaller element type to be "
@@ -2675,13 +2660,12 @@ LogicalResult BitcastConvertOp::verify() {
     }
     smaller_elt_prefix = smaller_elt_shape.drop_back();
     if (!isDynamicDimSize(smaller_elt_shape.back()) &&
-        smaller_elt_shape.back() * smaller_elt_bitwidth !=
-            bigger_elt_bitwidth) {
+        smaller_elt_shape.back() * smallerEltBitwidth != biggerEltBitwidth) {
       return emitOpError() << "requires compatible bitwidths. "
                            << "Got: " << operand_type << " and " << target_type
-                           << ", but " << smaller_elt_bitwidth << " * "
+                           << ", but " << smallerEltBitwidth << " * "
                            << smaller_elt_shape.back()
-                           << " != " << bigger_elt_bitwidth << ".";
+                           << " != " << biggerEltBitwidth << ".";
     }
   } else {
     smaller_elt_prefix = smaller_elt_shape;
@@ -4275,6 +4259,13 @@ OpFoldResult MapOp::fold(ArrayRef<Attribute> operands) {
     if (barg == ret_op.results()[0]) return getOperands()[barg.getArgNumber()];
   }
   return nullptr;
+}
+
+LogicalResult MapOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  return deriveShapeFromOperand(&builder, getOperation(), operands.front(),
+                                &reifiedReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//

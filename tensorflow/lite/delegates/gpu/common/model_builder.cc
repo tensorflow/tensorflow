@@ -275,11 +275,49 @@ class BatchedMatMulOperationParser : public TFLiteOperationParser {
   absl::Status Parse(const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration,
                      GraphFloat32* graph, ObjectReader* reader) final {
-    Node* node = graph->NewNode();
-    node->operation.type = ToString(OperationType::BATCHED_MATMUL);
-    RETURN_IF_ERROR(reader->AddInput(node, 0));
-    RETURN_IF_ERROR(reader->AddInput(node, 1));
-    RETURN_IF_ERROR(reader->AddOutputs(node));
+    if (reader->GetNumberOfRuntimeInputs() == 2) {
+      Node* node = graph->NewNode();
+      node->operation.type = ToString(OperationType::BATCHED_MATMUL);
+      RETURN_IF_ERROR(reader->AddInput(node, 0));
+      RETURN_IF_ERROR(reader->AddInput(node, 1));
+      RETURN_IF_ERROR(reader->AddOutputs(node));
+      return absl::OkStatus();
+    } else if (reader->GetNumberOfRuntimeInputs() == 1) {
+      // Second input is constant, replace with Convolution2D
+      const TfLiteTensor* second_input = reader->GetInputTensor(1);
+      if (!IsConstantTensor(second_input) || second_input->dims->size != 2) {
+        // first input must be runtime and second is 2d constant tensor
+        return absl::UnavailableError("Not supported batched mat mul case");
+      }
+      Node* node = graph->NewNode();
+      node->operation.type = ToString(OperationType::CONVOLUTION_2D);
+      RETURN_IF_ERROR(reader->AddInput(node, 0));
+      RETURN_IF_ERROR(reader->AddOutputs(node));
+
+      Tensor<HW, DataType::FLOAT32> weights;
+      RETURN_IF_ERROR(reader->ReadTensor(1, &weights));
+      Convolution2DAttributes attr;
+      attr.weights.data.resize(weights.shape.w * weights.shape.h);
+      for (int i = 0; i < weights.shape.w; ++i) {
+        for (int j = 0; j < weights.shape.h; ++j) {
+          attr.weights.data[i * weights.shape.h + j] =
+              weights.data[j * weights.shape.w + i];
+        }
+      }
+      attr.weights.id = weights.id;
+      attr.weights.shape.h = 1;
+      attr.weights.shape.w = 1;
+      attr.weights.shape.o = weights.shape.w;
+      attr.weights.shape.i = weights.shape.h;
+      attr.strides = HW(1, 1);
+      attr.dilations = HW(1, 1);
+      attr.padding.appended = HW(0, 0);
+      attr.padding.prepended = HW(0, 0);
+      node->operation.attributes = std::move(attr);
+      return absl::OkStatus();
+    } else {
+      return absl::UnavailableError("Not supported batched mat mul case");
+    }
     return absl::OkStatus();
   }
 };
@@ -3103,7 +3141,7 @@ absl::Status BuildFromFlatBuffer(const tflite::FlatBufferModel& flatbuffer,
                                               interpreter->outputs(), graph};
   if (allow_quant_ops) {
     delegate_data.quant_conversion_map =
-        absl::make_unique<absl::flat_hash_map<int, int>>();
+        std::make_unique<absl::flat_hash_map<int, int>>();
   }
 
   delegate.data_ = &delegate_data;

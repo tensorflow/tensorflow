@@ -364,11 +364,21 @@ region_cond5 {
   ROOT %compare.0 = pred[] compare(s32[] %get-tuple-element.0, s32[] %get-tuple-element.1), direction=LT
 }
 
-// TODO(b/234031568): restore test
 // CHECK-LABEL: func private @test_6
 // CHECK-SAME:   (%[[ARG_0:.*]]: tensor<i32>) -> tensor<i32>
 // CHECK-NEXT:    %[[CST_0:.*]] = mhlo.constant dense<0> : tensor<i32>
-// CHECK-NEXT:    %[[WHILE:.*]]:2 = mhlo.while
+// CHECK-NEXT:    %[[WHILE:.*]]:2 = mhlo.while(%[[ITER_ARG_1:.*]] = %[[CST_0]], %[[ITER_ARG_2:.*]] = %[[ARG_0]])  : tensor<i32>, tensor<i32>
+// CHECK-NEXT:      cond {
+// CHECK-NEXT:        %[[CMP:.*]] = "mhlo.compare"(%[[ITER_ARG_1]], %[[ITER_ARG_2]]) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+// CHECK-NEXT:        "mhlo.return"(%[[CMP]]) : (tensor<i1>) -> ()
+// CHECK-NEXT:    } do {
+// CHECK-NEXT:        %[[TUPLE:.*]] = "mhlo.tuple"(%[[ITER_ARG_1]], %[[ITER_ARG_2]]) : (tensor<i32>, tensor<i32>) -> tuple<tensor<i32>, tensor<i32>>
+// CHECK-NEXT:        %[[CUSTOMCALL:.*]] = "mhlo.custom_call"(%[[ITER_ARG_1]], %[[TUPLE]]) [[CONFIG:.*]] : (tensor<i32>, tuple<tensor<i32>, tensor<i32>>) -> tuple<tensor<i32>, tensor<i32>>
+// CHECK-NEXT:        %[[GTE1:.*]] = "mhlo.get_tuple_element"(%[[CUSTOMCALL]]) {index = 0 : i32} : (tuple<tensor<i32>, tensor<i32>>) -> tensor<i32>
+// CHECK-NEXT:        %[[GTE2:.*]] = "mhlo.get_tuple_element"(%[[CUSTOMCALL]]) {index = 1 : i32} : (tuple<tensor<i32>, tensor<i32>>) -> tensor<i32>
+// CHECK-NEXT:        "mhlo.return"(%[[GTE1]], %[[GTE2]]) : (tensor<i32>, tensor<i32>) -> ()
+// CHECK-NEXT:    }
+// CHECK-NEXT:    return %[[WHILE]]#0 : tensor<i32>
 
 %test_6 {
   %constant.0 = s32[] constant(0)

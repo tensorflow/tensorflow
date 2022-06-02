@@ -15,7 +15,8 @@
 """Tests for TPUStrategy."""
 
 import os
-
+from tensorflow.python.checkpoint import checkpoint as util
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
@@ -36,8 +37,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import flags
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu_strategy_util
-from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training.tracking import util
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string("tpu", "", "Name of TPU to connect to.")

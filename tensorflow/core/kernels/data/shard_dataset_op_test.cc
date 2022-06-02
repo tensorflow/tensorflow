@@ -46,7 +46,7 @@ class ShardDatasetParams : public DatasetParams {
     input_names->emplace_back(ShardDatasetOp::kInputDataset);
     input_names->emplace_back(ShardDatasetOp::kNumShards);
     input_names->emplace_back(ShardDatasetOp::kIndex);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -55,7 +55,7 @@ class ShardDatasetParams : public DatasetParams {
     attr_vector->emplace_back("output_types", output_dtypes_);
     attr_vector->emplace_back("output_shapes", output_shapes_);
     attr_vector->emplace_back("metadata", "");
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override { return ShardDatasetOp::kDatasetType; }

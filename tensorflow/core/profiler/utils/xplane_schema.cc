@@ -251,6 +251,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"Raw Value", kRawValue},
       {"Scaled Value", kScaledValue},
       {"Thread Id", kThreadId},
+      {"matrix_unit_utilization_percent", kMatrixUnitUtilizationPercent},
       // XLA metadata map related.
       {"Hlo Proto", kHloProto},
       // Device capability related.
