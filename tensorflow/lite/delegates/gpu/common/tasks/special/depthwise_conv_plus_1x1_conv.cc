@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/special/depthwise_conv_plus_1x1_conv.h"
 
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -114,7 +115,18 @@ void UploadWeights(const DepthwiseConvolution2DAttributes& dw_attr,
     }
   }
   op->args_.AddObject("constants",
-                      absl::make_unique<BufferDescriptor>(std::move(desc)));
+                      std::make_unique<BufferDescriptor>(std::move(desc)));
+}
+
+std::string MultiplyAccumulate(const GpuInfo& gpu_info,
+                               const std::string& accum, const std::string& a,
+                               const std::string& b) {
+  const bool use_fma = gpu_info.IsAMD() && gpu_info.IsApiOpenCl();
+  if (use_fma) {
+    return accum + " = fma(" + a + ", " + b + ", " + accum + ")";
+  } else {
+    return accum + " += " + a + " * " + b;
+  }
 }
 
 std::string GenerateCode(const OperationDef& op_def, const GpuInfo& gpu_info,
@@ -206,9 +218,13 @@ std::string GenerateCode(const OperationDef& op_def, const GpuInfo& gpu_info,
             check.empty() ? "" : " * INIT_FLT(" + check + ")";
         c += "  src" + s_postfix + " = args.src_tensor.Read(x_c, y_c, " +
              std::to_string(d) + ")" + s_postfix + multiplier + ";\n";
-        c += "  dw_res_" + std::to_string(d) + s_postfix + " += src" +
-             s_postfix + " * args.constants.Read(" +
-             std::to_string(weights_counter++) + ")" + s_postfix + ";\n";
+        c += "  " +
+             MultiplyAccumulate(
+                 gpu_info, "dw_res_" + std::to_string(d) + s_postfix,
+                 "src" + s_postfix,
+                 "args.constants.Read(" + std::to_string(weights_counter++) +
+                     ")" + s_postfix) +
+             ";\n";
       }
     }
   }
@@ -231,14 +247,18 @@ std::string GenerateCode(const OperationDef& op_def, const GpuInfo& gpu_info,
     for (int s = 0; s < intermediate_depth; ++s) {
       std::string src = "dw_res_" + std::to_string(s);
       std::string dst = "conv_res_" + std::to_string(d);
-      c += "  " + dst + " += " + src + ".x * args.constants.Read(" +
-           std::to_string(weights_counter++) + ");\n";
-      c += "  " + dst + " += " + src + ".y * args.constants.Read(" +
-           std::to_string(weights_counter++) + ");\n";
-      c += "  " + dst + " += " + src + ".z * args.constants.Read(" +
-           std::to_string(weights_counter++) + ");\n";
-      c += "  " + dst + " += " + src + ".w * args.constants.Read(" +
-           std::to_string(weights_counter++) + ");\n";
+      const std::string c0 =
+          "args.constants.Read(" + std::to_string(weights_counter++) + ")";
+      const std::string c1 =
+          "args.constants.Read(" + std::to_string(weights_counter++) + ")";
+      const std::string c2 =
+          "args.constants.Read(" + std::to_string(weights_counter++) + ")";
+      const std::string c3 =
+          "args.constants.Read(" + std::to_string(weights_counter++) + ")";
+      c += "  " + MultiplyAccumulate(gpu_info, dst, c0, src + ".x") + ";\n";
+      c += "  " + MultiplyAccumulate(gpu_info, dst, c1, src + ".y") + ";\n";
+      c += "  " + MultiplyAccumulate(gpu_info, dst, c2, src + ".z") + ";\n";
+      c += "  " + MultiplyAccumulate(gpu_info, dst, c3, src + ".w") + ";\n";
     }
     c += "  args.dst_tensor.Write(conv_res_" + std::to_string(d) + ", X, Y, " +
          std::to_string(d) + ");\n";
