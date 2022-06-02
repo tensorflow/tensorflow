@@ -305,7 +305,7 @@ class TmpDirFileSystem : public NullFileSystem {
     // been flushed.
     if (path == "/flushed") {
       if (flushed_) {
-        return Status::OK();
+        return OkStatus();
       } else {
         return errors::NotFound("FlushCaches() not called yet");
       }
@@ -334,7 +334,7 @@ class TmpDirFileSystem : public NullFileSystem {
     StringPiece scheme, host, path;
     io::ParseURI(dir, &scheme, &host, &path);
     for (const auto& existing_dir : created_directories_)
-      if (existing_dir == path) return Status::OK();
+      if (existing_dir == path) return OkStatus();
     return errors::NotFound(dir, " not found");
   }
 

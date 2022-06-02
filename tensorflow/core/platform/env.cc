@@ -76,7 +76,7 @@ Status FileSystemRegistryImpl::Register(const std::string& scheme,
     return errors::AlreadyExists("File factory for ", scheme,
                                  " already registered");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FileSystemRegistryImpl::Register(
@@ -86,7 +86,7 @@ Status FileSystemRegistryImpl::Register(
     return errors::AlreadyExists("File system for ", scheme,
                                  " already registered");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 FileSystem* FileSystemRegistryImpl::Lookup(const std::string& scheme) {
@@ -104,7 +104,7 @@ Status FileSystemRegistryImpl::GetRegisteredFileSystemSchemes(
   for (const auto& e : registry_) {
     schemes->push_back(e.first);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Env::Env() : file_system_registry_(new FileSystemRegistryImpl) {}
@@ -123,7 +123,7 @@ Status Env::GetFileSystemForFile(const std::string& fname,
                                  "' not implemented (file: '", fname, "')");
   }
   *result = file_system;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Env::GetRegisteredFileSystemSchemes(std::vector<std::string>* schemes) {
@@ -189,7 +189,7 @@ Status Env::FlushFileSystemCaches() {
         GetFileSystemForFile(io::CreateURI(scheme, "", ""), &fs));
     fs->FlushCaches();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Env::NewRandomAccessFile(const string& fname,
@@ -525,7 +525,7 @@ Status FileSystemCopyFile(FileSystem* src_fs, const string& src,
 
   uint64 offset = 0;
   std::unique_ptr<char[]> scratch(new char[kCopyFileBufferSize]);
-  Status s = Status::OK();
+  Status s = OkStatus();
   while (s.ok()) {
     StringPiece result;
     s = src_file->Read(offset, kCopyFileBufferSize, &result, scratch.get());
@@ -595,7 +595,7 @@ Status ReadBinaryProto(Env* env, const string& fname,
     TF_RETURN_IF_ERROR(stream->status());
     return errors::DataLoss("Can't parse ", fname, " as binary proto");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status WriteTextProto(Env* env, const string& fname,
@@ -616,13 +616,13 @@ Status ReadTextProto(Env* env, const string& fname, protobuf::Message* proto) {
     TF_RETURN_IF_ERROR(stream->status());
     return errors::DataLoss("Can't parse ", fname, " as text proto");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ReadTextOrBinaryProto(Env* env, const string& fname,
                              protobuf::Message* proto) {
   if (ReadTextProto(env, fname, proto).ok()) {
-    return Status::OK();
+    return OkStatus();
   }
   return ReadBinaryProto(env, fname, proto);
 }

@@ -363,7 +363,7 @@ std::string MakeString(const Status& status) {
 // individual Status objects in the StatusGroup are not already summarized.
 Status StatusGroup::as_summary_status() const {
   if (ok_) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Gather recent logs as a string
@@ -429,7 +429,7 @@ Status StatusGroup::as_summary_status() const {
 // individual Status objects in the StatusGroup are already summarized Status.
 Status StatusGroup::as_concatenated_status() const {
   if (ok_) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // If only one root status is found, return it directly.

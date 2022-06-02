@@ -131,7 +131,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
   // By design, we don't match anything on empty pattern
   results->clear();
   if (pattern.empty()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // The pattern can contain globbing characters at multiple levels, e.g.:
@@ -154,7 +154,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
     if (fs->FileExists(pattern).ok()) {
       results->emplace_back(pattern);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // To expand the globbing, we do a BFS from `dirs[matching_index-1]`.
@@ -262,7 +262,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
     std::swap(expand_queue, next_expand_queue);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace internal

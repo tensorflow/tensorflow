@@ -77,14 +77,14 @@ Status FileSystem::IsDirectory(const string& name, TransactionToken* token) {
   FileStatistics stat;
   TF_RETURN_IF_ERROR(Stat(name, &stat));
   if (stat.is_directory) {
-    return Status::OK();
+    return OkStatus();
   }
   return Status(tensorflow::error::FAILED_PRECONDITION, "Not a directory");
 }
 
 Status FileSystem::HasAtomicMove(const string& path, bool* has_atomic_move) {
   *has_atomic_move = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 void FileSystem::FlushCaches(TransactionToken* token) {}
@@ -222,7 +222,7 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname,
       return status;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FileSystem::CopyFile(const string& src, const string& target,
