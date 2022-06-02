@@ -6228,19 +6228,6 @@ LogicalResult SliceOp::inferReturnTypes(
         rank, ")");
   }
 
-  if (!attr_ty.getElementType().isSignlessInteger(64) ||
-      slice.limit_indices().getType() != attr_ty ||
-      slice.strides().getType() != attr_ty) {
-    // Unfortunately we can't rely on the AllTypesMatch trait for the SliceOp
-    // having been verified at this point. Emit an error message that matches
-    // the one that would be reported by AllTypesMatch for a more consistent
-    // user experience.
-    // TODO(b/171567182): Clean this up after AllTypesMatch has been refactored.
-    return emitOptionalError(location,
-                             "failed to verify that all of {start_indices, "
-                             "limit_indices, strides} have same type");
-  }
-
   SmallVector<int64_t, 4> start(slice.start_indices().getValues<int64_t>());
   SmallVector<int64_t, 4> limit(slice.limit_indices().getValues<int64_t>());
   SmallVector<int64_t, 4> stride_vals(slice.strides().getValues<int64_t>());
