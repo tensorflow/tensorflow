@@ -770,11 +770,10 @@ def copy_assets_to_destination_dir(asset_filename_map, destination_dir):
         compat.as_bytes(assets_destination_dir),
         compat.as_bytes(asset_basename))
 
-    # Only copy the asset file to the destination if it does not already
-    # exist. This is to ensure that an asset with the same name defined as
-    # part of multiple graphs is only copied the first time.
-    if not file_io.file_exists(asset_destination_filepath):
-      file_io.copy(asset_source_filepath, asset_destination_filepath)
+    # Copy asset file to the destination if source is a non-empty path.
+    if asset_source_filepath:
+      file_io.copy(
+          asset_source_filepath, asset_destination_filepath, overwrite=True)
 
   tf_logging.info("Assets written to: %s",
                   compat.as_text(assets_destination_dir))
