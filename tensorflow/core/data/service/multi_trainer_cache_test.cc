@@ -238,7 +238,7 @@ TEST(MultiTrainerCacheTest, AlternateTrainerExtendsCache) {
 
 TEST(MultiTrainerCacheTest, CacheHitMetrics) {
   CellReader<int64_t> cell_reader(
-      "/tensorflow/data/service/multi_trainer_cache_queries");
+      "/tensorflow/data/service/cross_trainer_cache_queries");
   EXPECT_EQ(cell_reader.Delta("true"), 0);
   EXPECT_EQ(cell_reader.Delta("false"), 0);
   EXPECT_EQ(cell_reader.Read("true"), 0);
@@ -266,7 +266,7 @@ TEST(MultiTrainerCacheTest, CacheHitMetrics) {
 
 TEST(MultiTrainerCacheTest, CacheSizeMetrics) {
   CellReader<int64_t> cell_reader(
-      "/tensorflow/data/service/multi_trainer_cache_size_bytes");
+      "/tensorflow/data/service/cross_trainer_cache_size_bytes");
 
   const size_t num_elements = 5;
   MultiTrainerCache<int64_t> cache(
