@@ -15,19 +15,26 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/graph_compactor/pass.h"
 
+#include <iterator>
 #include <memory>
 #include <string>
 #include <utility>
 
+#include "llvm/ADT/BitVector.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/importexport/convert_attributes.h"
 #include "tensorflow/core/ir/interfaces.h"
 #include "tensorflow/core/ir/ops.h"
+#include "tensorflow/core/ir/tf_op_registry.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/transforms/pass_detail.h"
 
 namespace mlir {
@@ -151,6 +158,94 @@ class NameCompressPass : public NameCompressBase<NameCompressPass> {
 
 std::unique_ptr<Pass> CreateNameCompressPass() {
   return std::make_unique<NameCompressPass>();
+}
+
+namespace {
+class StripDefaultAttrsPass
+    : public StripDefaultAttrsBase<StripDefaultAttrsPass> {
+ public:
+  LogicalResult initialize(MLIRContext *context) override {
+    // Initialize the pass by getting a registered instance of the TensorFlow
+    // operation registry. If no instance was registered, this pass will fail.
+    dialect_ = context->getOrLoadDialect<TFGraphDialect>();
+    registry_ = nullptr;
+    if (auto registry_interface =
+            dialect_->getRegisteredInterface<TensorFlowOpRegistryInterface>()) {
+      registry_ = registry_interface->GetRegistry();
+    }
+    return success(registry_);
+  }
+
+  void runOnOperation() override {
+    WalkResult result = getOperation()->walk([&](Operation *op) {
+      // Ignore intrinsic operations.
+      if (op->hasTrait<OpTrait::IntrinsicOperation>())
+        return WalkResult::advance();
+
+      // If removing default-valued attributes failed (attribute conversion
+      // error), bail out.
+      if (failed(removeDefaultValuedAttrs(op))) return WalkResult::interrupt();
+
+      return WalkResult::advance();
+    });
+
+    // If the pass failed on any operation, signal failure.
+    if (result.wasInterrupted()) return signalPassFailure();
+  }
+
+ private:
+  // Remove attributes from the operation equal to their default values
+  // according to the TensorFlow op registry.
+  LogicalResult removeDefaultValuedAttrs(Operation *op);
+
+  // The TFG dialect instance.
+  TFGraphDialect *dialect_;
+  // The TensorFlow op registry to query for default-valued attributes.
+  const tensorflow::OpRegistry *registry_;
+};
+}  // namespace
+
+LogicalResult StripDefaultAttrsPass::removeDefaultValuedAttrs(Operation *op) {
+  const tensorflow::OpRegistrationData *op_reg_data =
+      registry_->LookUp(op->getName().stripDialect().str());
+  // Ignore unregistered ops.
+  if (!op_reg_data) return success();
+
+  // Find the attributes to remove.
+  ArrayRef<NamedAttribute> attrs = op->getAttrs();
+  llvm::BitVector indices_to_remove(attrs.size());
+  Builder b(&getContext());
+  for (const tensorflow::OpDef::AttrDef &attr : op_reg_data->op_def.attr()) {
+    // Ignore attributes without default values.
+    if (!attr.has_default_value()) continue;
+    auto it = impl::findAttrSorted(attrs.begin(), attrs.end(), attr.name());
+    // Ignore default-valued attributes that are already missing.
+    if (!it.second) continue;
+    // Convert the TensorFlow attribute value and compare it to the MLIR
+    // attribute.
+    tensorflow::StatusOr<Attribute> maybe_attr =
+        ConvertAttributeValue(attr.default_value(), b, dialect_);
+    if (!maybe_attr.ok())
+      return op->emitError(maybe_attr.status().error_message());
+    if (maybe_attr.ValueOrDie() == it.first->getValue())
+      indices_to_remove.set(std::distance(attrs.begin(), it.first));
+  }
+  if (indices_to_remove.none()) return success();
+
+  // Construct and set the new attributes.
+  SmallVector<NamedAttribute> new_attrs;
+  new_attrs.reserve(attrs.size());
+  for (auto &it : llvm::enumerate(attrs)) {
+    if (indices_to_remove.test(it.index())) continue;
+    new_attrs.push_back(it.value());
+  }
+  op->setAttrs(DictionaryAttr::getWithSorted(&getContext(), new_attrs));
+
+  return success();
+}
+
+std::unique_ptr<Pass> CreateStripDefaultAttrsPass() {
+  return std::make_unique<StripDefaultAttrsPass>();
 }
 }  // namespace tfg
 }  // namespace mlir

@@ -23,6 +23,7 @@ limitations under the License.
 namespace mlir {
 namespace tfg {
 std::unique_ptr<Pass> CreateNameCompressPass();
+std::unique_ptr<Pass> CreateStripDefaultAttrsPass();
 }  // namespace tfg
 }  // namespace mlir
 

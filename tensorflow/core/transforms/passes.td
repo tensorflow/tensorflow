@@ -511,3 +511,16 @@ def NameCompress : Pass<"tfg-name-compress", "GraphFuncOp"> {
   }];
   let constructor = "CreateNameCompressPass()";
 }
+
+def StripDefaultAttrs : Pass<"tfg-strip-default-attrs"> {
+  let summary = "Removes default-valued attributes from the graph";
+  let description = [{
+    This pass reduces the size of graphs by removing operation attributes equal
+    to their default values. This pass requires the TensorFlow registry
+    interface to inject an instance of the operation registry.
+
+    Note that removing default-valued attributes may render some pass inoperable
+    if they expect default-valued attributes to be present.
+  }];
+  let constructor = "CreateStripDefaultAttrsPass()";
+}
