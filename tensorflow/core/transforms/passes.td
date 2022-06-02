@@ -497,3 +497,17 @@ def CSEPass : Pass<"tfg-cse", "GraphFuncOp"> {
   let summary = "Common sub-expression elimination, ignoring op names";
   let constructor = "CreateCSEPass()";
 }
+
+def NameCompress : Pass<"tfg-name-compress", "GraphFuncOp"> {
+  let summary = "Compress the graph by shortening names";
+  let description = [{
+    This pass will rename operations, function arguments, results, and control
+    results to have "compressed" names, reducing the size of the graph. Only
+    operations in funtions can be safely renamed, and names need only be unique
+    in the scope of the function.
+    
+    This pass also assigns unique names to arguments, results, control results,
+    and operations without names.
+  }];
+  let constructor = "CreateNameCompressPass()";
+}
