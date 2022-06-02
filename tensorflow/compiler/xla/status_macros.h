@@ -182,11 +182,11 @@ class StatusAdaptorForMacros {
 }  // namespace status_macros
 }  // namespace xla
 
-#define TF_RET_CHECK(condition)                                           \
-  while (ABSL_PREDICT_FALSE(!(condition)))                                \
-  return xla::status_macros::MakeErrorStream(__FILE__, __LINE__,          \
-                                             tensorflow::error::INTERNAL) \
-      .with_log_stack_trace()                                             \
+#define TF_RET_CHECK(condition)                                             \
+  while (ABSL_PREDICT_FALSE(!(condition)))                                  \
+  return xla::status_macros::MakeErrorStream(__FILE__, __LINE__,            \
+                                             ::tensorflow::error::INTERNAL) \
+      .with_log_stack_trace()                                               \
       .add_ret_check_failure(#condition)
 
 #endif  // TENSORFLOW_COMPILER_XLA_STATUS_MACROS_H_
