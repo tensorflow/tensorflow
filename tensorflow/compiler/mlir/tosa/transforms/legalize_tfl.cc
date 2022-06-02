@@ -40,10 +40,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
 
 #define PASS_NAME "tosa-legalize-tfl"
 #define DEBUG_TYPE PASS_NAME
-#include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
 
 #define HARDSWISH_EXPLICIT_RESCALING false
 
