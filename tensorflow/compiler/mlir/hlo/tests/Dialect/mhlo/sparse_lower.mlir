@@ -24,9 +24,7 @@
 
 // CHECK-LABEL: func @sparse_abs_eltwise(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<10x20xf32, #{{.*}}>) -> tensor<10x20xf32, #{{.*}}> {
-// CHECK-DAG:     %[[C10:.*]] = arith.constant 10 : index
-// CHECK-DAG:     %[[C20:.*]] = arith.constant 20 : index
-// CHECK:         %[[OUT:.*]] = sparse_tensor.init{{\[}}%[[C10]], %[[C20]]] : tensor<10x20xf32, #{{.*}}>
+// CHECK:         %[[OUT:.*]] = bufferization.alloc_tensor() : tensor<10x20xf32, #{{.*}}>
 // CHECK:         %[[VAL:.*]] = linalg.generic {{{.*}} ins(%[[ARG0]] : tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], {{.*}} }>>) outs(%[[OUT]] : tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ], {{.*}} }>>)
 // CHECK:         ^bb0(%[[A:.*]]: f32, %[[B:.*]]: f32):
 // CHECK:           %[[ABS:.*]] = math.abs %[[A]] : f32
@@ -44,9 +42,7 @@ func.func @sparse_abs_eltwise(%arg0: tensor<10x20xf32, #CSR>)
 // CHECK-LABEL: func @sparse_add_eltwise(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<10x20xf32, #{{.*}}>,
 // CHECK-SAME:    %[[ARG1:.*]]: tensor<10x20xf32, #{{.*}}>) -> tensor<10x20xf32, #{{.*}}> {
-// CHECK-DAG:     %[[C10:.*]] = arith.constant 10 : index
-// CHECK-DAG:     %[[C20:.*]] = arith.constant 20 : index
-// CHECK:         %[[OUT:.*]] = sparse_tensor.init{{\[}}%[[C10]], %[[C20]]] : tensor<10x20xf32, #{{.*}}>
+// CHECK:         %[[OUT:.*]] = bufferization.alloc_tensor() : tensor<10x20xf32, #{{.*}}>
 // CHECK:         %[[VAL:.*]] = linalg.generic {{{.*}}} ins(%[[ARG0]], %[[ARG1]] : tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], {{.*}} }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ], {{.*}} }>>) outs(%[[OUT]] : tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], {{.*}} }>>) {
 // CHECK:           ^bb0(%[[A:.*]]: f32, %[[B:.*]]: f32, %[[C:.*]]: f32):
 // CHECK:             %[[ADD:.*]] = arith.addf %[[A]], %[[B]] : f32
@@ -66,9 +62,7 @@ func.func @sparse_add_eltwise(%arg0: tensor<10x20xf32, #CSR>,
 // CHECK-LABEL: func @sparse_mul_eltwise(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<10x20xf32, #{{.*}}>,
 // CHECK-SAME:    %[[ARG1:.*]]: tensor<10x20xf32, #{{.*}}>) -> tensor<10x20xf32, #{{.*}}> {
-// CHECK-DAG:     %[[C10:.*]] = arith.constant 10 : index
-// CHECK-DAG:     %[[C20:.*]] = arith.constant 20 : index
-// CHECK:         %[[OUT:.*]] = sparse_tensor.init{{\[}}%[[C10]], %[[C20]]] : tensor<10x20xf32, #{{.*}}>
+// CHECK:         %[[OUT:.*]] = bufferization.alloc_tensor() : tensor<10x20xf32, #{{.*}}>
 // CHECK:         %[[VAL:.*]] = linalg.generic {{{.*}}} ins(%[[ARG0]], %[[ARG1]] : tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], {{.*}} }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ], {{.*}} }>>) outs(%[[OUT]] : tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], {{.*}} }>>) {
 // CHECK:           ^bb0(%[[A:.*]]: f32, %[[B:.*]]: f32, %[[C:.*]]: f32):
 // CHECK:             %[[ADD:.*]] = arith.mulf %[[A]], %[[B]] : f32
@@ -241,9 +235,7 @@ func.func @sparse_dot(%arg0: tensor<?xf32, #SV>,
 
 // CHECK-LABEL: func @sparse_transpose(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<100x200xf64, #{{.*}}>) -> tensor<200x100xf64, #{{.*}}> {
-// CHECK-DAG:     %[[C100:.*]] = arith.constant 100 : index
-// CHECK-DAG:     %[[C200:.*]] = arith.constant 200 : index
-// CHECK:         %[[T0:.*]] = sparse_tensor.init[%[[C200]], %[[C100]]] : tensor<200x100xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ], {{.*}} }>>
+// CHECK:         %[[T0:.*]] = bufferization.alloc_tensor() : tensor<200x100xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ], {{.*}} }>>
 // CHECK:         %[[T1:.*]] = linalg.generic {{.*}} ins(%[[ARG0]] : tensor<100x200xf64, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], {{.*}} }>>) outs(%[[T0]] : tensor<200x100xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ], {{.*}} }>>) {
 // CHECK:           linalg.yield
 // CHECK:         }
@@ -258,9 +250,7 @@ func.func @sparse_transpose(%arg0: tensor<100x200xf64, #CSR>)
 
 // CHECK-LABEL: func @sparse_conv_eltwise(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<2x3xf32, #{{.*}}>) -> tensor<2x3xi32, #{{.*}}> {
-// CHECK-DAG:     %[[C2:.*]] = arith.constant 2 : index
-// CHECK-DAG:     %[[C3:.*]] = arith.constant 3 : index
-// CHECK:         %[[OUT:.*]] = sparse_tensor.init{{\[}}%[[C2]], %[[C3]]] : tensor<2x3xi32, #{{.*}}>
+// CHECK:         %[[OUT:.*]] = bufferization.alloc_tensor() : tensor<2x3xi32, #{{.*}}>
 // CHECK:         %[[VAL:.*]] = linalg.generic {{{.*}} ins(%[[ARG0]] : tensor<2x3xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], {{.*}} }>>) outs(%[[OUT]] : tensor<2x3xi32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ], {{.*}} }>>)
 //
 // CHECK:           arith.fptosi
