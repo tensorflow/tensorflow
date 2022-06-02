@@ -163,14 +163,14 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       for (const auto& input : inputs_) {
         inputs->push_back(input);
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status CheckExternalState() const override {
       for (const auto& input : inputs_) {
         TF_RETURN_IF_ERROR(input->CheckExternalState());
       }
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
@@ -208,7 +208,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
               ctx, this, strings::StrCat(prefix(), "[", i, "]"),
               &input_impls_[i]));
         }
-        return Status::OK();
+        return OkStatus();
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -264,7 +264,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
             TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl));
           }
         }
-        return Status::OK();
+        return OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -287,7 +287,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
             TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl));
           }
         }
-        return Status::OK();
+        return OkStatus();
       }
 
      private:

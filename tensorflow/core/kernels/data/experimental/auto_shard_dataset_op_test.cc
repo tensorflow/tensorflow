@@ -55,7 +55,7 @@ class AutoShardDatasetParams : public DatasetParams {
     input_names->emplace_back(AutoShardDatasetOp::kInputDataset);
     input_names->emplace_back(AutoShardDatasetOp::kNumWorkers);
     input_names->emplace_back(AutoShardDatasetOp::kIndex);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -66,7 +66,7 @@ class AutoShardDatasetParams : public DatasetParams {
     attr_vector->emplace_back(AutoShardDatasetOp::kOutputTypes, output_dtypes_);
     attr_vector->emplace_back(AutoShardDatasetOp::kOutputShapes,
                               output_shapes_);
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override {
