@@ -31,6 +31,8 @@
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_all_to_all_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
@@ -1454,6 +1456,154 @@ static bool AllGather(runtime::KernelContext* ctx, void** args, void** attrs) {
 // -------------------------------------------------------------------------- //
 
 namespace {
+struct AllToAll {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           CustomCall::RemainingArgs args, int64_t group_mode,
+                           bool has_split_dimension, int64_t op_id,
+                           ArrayRef<int64_t> replica_group_offsets,
+                           ArrayRef<int64_t> replica_group_values) const;
+  static AllToAll Handler() { return AllToAll(); }
+};
+}  // namespace
+
+LogicalResult AllToAll::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    CustomCall::RemainingArgs args, int64_t group_mode,
+    bool has_split_dimension, int64_t op_id,
+    ArrayRef<int64_t> replica_group_offsets,
+    ArrayRef<int64_t> replica_group_values) const {
+#if XLA_ENABLE_XCCL
+  VLOG(3) << "Running AllToAll";
+  se::Stream* stream = run_options->stream();
+  NcclExecuteParams params(*run_options, stream);
+
+  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
+                          replica_group_values);
+  if (failed(comm)) return comm;
+
+  auto device_buffers = GetDeviceBufferPairs(args);
+  if (failed(device_buffers)) return device_buffers;
+
+  auto executed =
+      RunAllToAll(has_split_dimension, *device_buffers, *stream, **comm);
+  if (!executed.ok()) return failure();
+
+  return success();
+#else   // XLA_ENABLE_XCCL
+  // NCCL disabled.
+  return failure();
+#endif  // XLA_ENABLE_XCCL
+}
+
+static bool AllToAll(runtime::KernelContext* ctx, void** args, void** attrs) {
+  static auto* handler =
+      CustomCall::Bind("xla.gpu.all_to_all")
+          .UserData<const ServiceExecutableRunOptions*>()
+          .RemainingArgs()              // args
+          .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
+          .Attr<bool>("has_split_dimension")
+          .Attr<int64_t>("op_id")
+          .Attr<ArrayRef<int64_t>>("replica_group_offsets")
+          .Attr<ArrayRef<int64_t>>("replica_group_values")
+          .To<RuntimeChecks()>(AllToAll::Handler())
+          .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+// -------------------------------------------------------------------------- //
+
+namespace {
+struct CollectivePermute {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           CustomCall::RemainingArgs args, int64_t group_mode,
+                           int64_t op_id,
+                           ArrayRef<int64_t> replica_group_offsets,
+                           ArrayRef<int64_t> replica_group_values,
+                           ArrayRef<int64_t> source_peers,
+                           ArrayRef<int64_t> target_peers) const;
+  static CollectivePermute Handler() { return CollectivePermute(); }
+};
+}  // namespace
+
+LogicalResult CollectivePermute::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
+    ArrayRef<int64_t> replica_group_offsets,
+    ArrayRef<int64_t> replica_group_values, ArrayRef<int64_t> source_peers,
+    ArrayRef<int64_t> target_peers) const {
+#if XLA_ENABLE_XCCL
+  VLOG(3) << "Running CollectivePermute";
+  se::Stream* stream = run_options->stream();
+  NcclExecuteParams params(*run_options, stream);
+
+  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
+                          replica_group_values);
+  if (failed(comm)) return comm;
+
+  auto device_buffers = GetDeviceBufferPairs(args);
+  if (failed(device_buffers)) return device_buffers;
+  if (device_buffers->size() != 1) return failure();
+
+  StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
+  if (!global_device_id.ok()) return failure();
+
+  StatusOr<DeviceAssignment::LogicalID> current_logical_id =
+      params.device_assn->LogicalIdForDevice(global_device_id.value());
+  if (!current_logical_id.ok()) return failure();
+
+  const int64_t current_id = static_cast<CollectiveOpGroupMode>(group_mode) ==
+                                     CollectiveOpGroupMode::kCrossReplica
+                                 ? current_logical_id.value().replica_id
+                                 : current_logical_id.value().computation_id;
+  std::string device_string = NcclCollectiveThunk::GetDeviceString(params);
+
+  NcclCollectivePermuteConfig::IdToSourceTargetMap id_to_source_target;
+  for (int i = 0; i < source_peers.size(); ++i) {
+    id_to_source_target.insert({target_peers[i], {}}).first->second.source =
+        source_peers[i];
+    id_to_source_target.insert({source_peers[i], {}}).first->second.target =
+        target_peers[i];
+  }
+  const NcclCollectivePermuteConfig::SourceTargetMapEntry source_target =
+      NcclCollectivePermuteConfig::GetSourceTarget(id_to_source_target,
+                                                   current_id);
+
+  auto executed =
+      RunCollectivePermute(source_target, (*device_buffers)[0], *stream, **comm,
+                           device_string, current_id);
+  if (!executed.ok()) return failure();
+
+  return success();
+#else   // XLA_ENABLE_XCCL
+  // NCCL disabled.
+  return failure();
+#endif  // XLA_ENABLE_XCCL
+}
+
+static bool CollectivePermute(runtime::KernelContext* ctx, void** args,
+                              void** attrs) {
+  static auto* handler =
+      CustomCall::Bind("xla.gpu.collective_permute")
+          .UserData<const ServiceExecutableRunOptions*>()
+          .RemainingArgs()              // args
+          .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
+          .Attr<int64_t>("op_id")
+          .Attr<ArrayRef<int64_t>>("replica_group_offsets")
+          .Attr<ArrayRef<int64_t>>("replica_group_values")
+          .Attr<ArrayRef<int64_t>>("source_peers")
+          .Attr<ArrayRef<int64_t>>("target_peers")
+          .To<RuntimeChecks()>(CollectivePermute::Handler())
+          .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+// -------------------------------------------------------------------------- //
+
+namespace {
 struct ReplicaId {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
@@ -1495,6 +1645,49 @@ static bool ReplicaId(runtime::KernelContext* ctx, void** args, void** attrs) {
 
 // -------------------------------------------------------------------------- //
 
+namespace {
+struct PartitionId {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           jitrt::FlatMemrefView result) const;
+  static PartitionId Handler() { return PartitionId(); }
+};
+}  // namespace
+
+LogicalResult PartitionId::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    jitrt::FlatMemrefView result) const {
+  VLOG(3) << "Running PartitionId";
+  se::Stream* stream = run_options->stream();
+  NcclExecuteParams params(*run_options, stream);
+
+  StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
+  if (!global_device_id.ok()) return failure();
+
+  StatusOr<DeviceAssignment::LogicalID> logical_id =
+      params.device_assn->LogicalIdForDevice(global_device_id.value());
+  if (!logical_id.ok()) return failure();
+
+  se::DeviceMemoryBase result_data = GetDeviceAddress(result);
+  params.stream->ThenMemset32(&result_data, logical_id.value().computation_id,
+                              /*size=*/4);
+
+  return success();
+}
+
+static bool PartitionId(runtime::KernelContext* ctx, void** args,
+                        void** attrs) {
+  static auto* handler = CustomCall::Bind("xla.gpu.partition_id")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .Arg<jitrt::FlatMemrefView>()  // result
+                             .To<RuntimeChecks()>(PartitionId::Handler())
+                             .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+// -------------------------------------------------------------------------- //
+
 SymbolMap JitRtCustomCallsSymbolMap(MangleAndInterner mangle) {
   SymbolMap symbol_map;
 
@@ -1507,8 +1700,10 @@ SymbolMap JitRtCustomCallsSymbolMap(MangleAndInterner mangle) {
 
   bind("xla.gpu.all_gather", &xla::gpu::AllGather);
   bind("xla.gpu.all_reduce", &xla::gpu::AllReduce);
+  bind("xla.gpu.all_to_all", &xla::gpu::AllToAll);
   bind("xla.gpu.fft", &xla::gpu::Fft);
   bind("xla.gpu.cholesky", &xla::gpu::Cholesky);
+  bind("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
   bind("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
   bind("xla.gpu.gemm", &xla::gpu::Gemm);
   bind("xla.gpu.gemm.bias", &xla::gpu::GemmBias);
@@ -1525,6 +1720,7 @@ SymbolMap JitRtCustomCallsSymbolMap(MangleAndInterner mangle) {
   bind("xla.gpu.memcpy.d2h", &MemcpyFn<MemcpyDirection::kDeviceToHost>);
   bind("xla.gpu.infeed", &xla::gpu::Infeed);
   bind("xla.gpu.outfeed", &xla::gpu::Outfeed);
+  bind("xla.gpu.partition_id", &xla::gpu::PartitionId);
   bind("xla.gpu.reduce_scatter", &xla::gpu::ReduceScatter);
   bind("xla.gpu.replica_id", &xla::gpu::ReplicaId);
   bind("xla.gpu.custom_call", &xla::gpu::CustomCall);
