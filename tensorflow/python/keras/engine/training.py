@@ -22,6 +22,8 @@ import warnings
 import weakref
 
 from tensorflow.python.autograph.lang import directives
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.distribute import collective_all_reduce_strategy
@@ -70,10 +72,8 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.saved_model import constants as sm_constants
 from tensorflow.python.saved_model import loader_impl as sm_loader
-from tensorflow.python.training import checkpoint_management
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training import py_checkpoint_reader
-from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import keras_export
