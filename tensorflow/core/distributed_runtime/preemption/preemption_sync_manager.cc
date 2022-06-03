@@ -29,8 +29,13 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/preemption/preemption_notifier.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
+
+#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
+#include "learning/brain/runtime/preemption/borg_preemption_notifier.h"
+#endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE
 
 namespace tensorflow {
 namespace {
@@ -56,8 +61,12 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
     sync_protocol_thread_ = nullptr;
   }
   Status Initialize(CoordinationServiceAgent* agent) override;
+#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
+  Status InitWithBorgPreemptionNotifier(
+      CoordinationServiceAgent* agent) override;
+#endif
   Status Initialize(CoordinationServiceAgent* agent,
-                    std::unique_ptr<PreemptionNotifier>) override;
+                    std::unique_ptr<PreemptionNotifier> notifier) override;
   bool ReachedSyncPoint() override;
 
  private:
@@ -84,10 +93,17 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
 };  // namespace
 
 Status PreemptionSyncManagerImpl::Initialize(CoordinationServiceAgent* agent) {
-  // TODO(b/230630494): Add Borg implementation.
   TF_ASSIGN_OR_RETURN(Env * env, agent->GetEnv());
   return Initialize(agent, CreateSigtermNotifier(env));
 }
+
+#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
+Status PreemptionSyncManagerImpl::InitWithBorgPreemptionNotifier(
+    CoordinationServiceAgent* agent) {
+  TF_ASSIGN_OR_RETURN(Env * env, agent->GetEnv());
+  return Initialize(agent, CreateBorgPreemptionNotifier(env));
+}
+#endif
 
 Status PreemptionSyncManagerImpl::Initialize(
     CoordinationServiceAgent* agent,
