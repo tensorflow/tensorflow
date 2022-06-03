@@ -45,13 +45,10 @@ struct TosaDequantizeTFLSoftmaxPattern : public RewritePattern {
 
 LogicalResult TosaDequantizeTFLSoftmaxPattern::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
-  fprintf(stderr, "enter matchAndRewrite\n");
   TFL::SoftmaxOp tfl_softmax_op = cast<TFL::SoftmaxOp>(op);
   RankedTensorType input_type =
       tfl_softmax_op.input().getType().cast<RankedTensorType>();
   if (!input_type.getElementType().isa<mlir::quant::QuantizedType>()) {
-    fprintf(stderr, "not quantized, return failure from matchAndRewrite\n");
-
     return failure();
   }
   Location loc = tfl_softmax_op.getLoc();
@@ -65,13 +62,10 @@ LogicalResult TosaDequantizeTFLSoftmaxPattern::matchAndRewrite(
   rewriter.replaceOpWithNewOp<TFL::QuantizeOp>(tfl_softmax_op, qtype,
                                                dequantized_softmax_output,
                                                mlir::TypeAttr::get(qtype));
-  fprintf(stderr, "dequantized, return success from matchAndRewrite\n");
-
   return success();
 }
 
 void TosaDequantizeTFLSoftmax::runOnOperation() {
-  fprintf(stderr, "TosaDequantizeTFLSoftmax::runOnOperation\n");
   RewritePatternSet patterns(&getContext());
   patterns.add<TosaDequantizeTFLSoftmaxPattern>(&getContext());
   if (failed(
