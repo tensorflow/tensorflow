@@ -51,8 +51,6 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
       std::unique_ptr<xla::HloModule> hlo_module,
       xla::LoadModuleFromData(/*data=*/hlo_text, /*format=*/"hlo"));
   llvm::LLVMContext llvm_context;
-  // TODO(b/234717222): remove and update tests.
-  llvm_context.setOpaquePointers(false);
   // For now we pretend we're compiling for V100.  This can be generalized
   // later.
 
