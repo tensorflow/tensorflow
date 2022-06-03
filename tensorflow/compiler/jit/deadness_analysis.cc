@@ -314,7 +314,7 @@ class SymbolPredicate : public Predicate {
 class IntSymbolPredicate : public Predicate {
  public:
   explicit IntSymbolPredicate(int64_t id, TensorId tensor_id,
-                              absl::optional<int> must_have_value)
+                              std::optional<int> must_have_value)
       : Predicate(id),
         tensor_id_(std::move(tensor_id)),
         must_have_value_(must_have_value) {}
@@ -336,13 +336,11 @@ class IntSymbolPredicate : public Predicate {
   // represents the proposition "tensor_id() is live (and may evaluate to any
   // value)".
   TensorId tensor_id() const { return tensor_id_; }
-  const absl::optional<int>& must_have_value() const {
-    return must_have_value_;
-  }
+  const std::optional<int>& must_have_value() const { return must_have_value_; }
 
  private:
   TensorId tensor_id_;
-  absl::optional<int> must_have_value_;
+  std::optional<int> must_have_value_;
 };
 
 template <typename FunctionTy>
@@ -451,7 +449,7 @@ class PredicateFactory {
   }
 
   Status MakeSymbolPredicate(Node* node, int output_idx,
-                             absl::optional<int> must_have_value,
+                             std::optional<int> must_have_value,
                              Predicate** predicate) {
     TensorId tensor_id(node->name(), output_idx);
 
@@ -562,7 +560,7 @@ class PredicateFactory {
   using SignatureForAndRec =
       std::tuple<Predicate*, Predicate*, std::vector<string>>;
   using SignatureForSymbol = std::pair<SafeTensorId, bool>;
-  using SignatureForIntSymbol = std::pair<SafeTensorId, absl::optional<int32>>;
+  using SignatureForIntSymbol = std::pair<SafeTensorId, std::optional<int32>>;
 
   struct HashSignatureForAndOr {
     size_t operator()(const SignatureForAndOr& signature) const {
@@ -959,7 +957,7 @@ Status DeadnessAnalysisImpl::HandleSwitch(Node* n,
     for (int i = 0; i < n->num_outputs() - 1; i++) {
       TF_RETURN_IF_ERROR(predicate_factory_.MakeSymbolPredicate(
           pred_edge->src(), pred_edge->src_output(),
-          /*must_have_value=*/absl::optional<int32>(i), &branch_pred));
+          /*must_have_value=*/std::optional<int32>(i), &branch_pred));
       input_preds.push_back(branch_pred);
       SetPredicate(n, i, predicate_factory_.MakeAndPredicate(input_preds),
                    should_revisit);

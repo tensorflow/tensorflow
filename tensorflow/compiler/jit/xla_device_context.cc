@@ -57,11 +57,11 @@ void XlaDeviceAllocator::DeallocateRaw(void* ptr) {
   delete XlaTensor::FromOpaquePointer(ptr);
 }
 
-absl::optional<AllocatorStats> XlaDeviceAllocator::GetStats() {
-  absl::optional<stream_executor::AllocatorStats> se_stats =
+std::optional<AllocatorStats> XlaDeviceAllocator::GetStats() {
+  std::optional<stream_executor::AllocatorStats> se_stats =
       stream_executor_->GetAllocatorStats();
   if (!se_stats) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   tensorflow::AllocatorStats tf_stats;
@@ -135,7 +135,7 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
 
   XlaLayoutPreference layout_preference =
       shape_determination_fns_.layout_preference_fn(
-          device_tensor->shape(), device_tensor->dtype(), absl::nullopt);
+          device_tensor->shape(), device_tensor->dtype(), std::nullopt);
   Status status = [&]() -> Status {
     TF_ASSIGN_OR_RETURN(xla::Shape shape,
                         shape_determination_fns_.shape_representation_fn(

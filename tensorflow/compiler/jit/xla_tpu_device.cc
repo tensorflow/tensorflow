@@ -204,7 +204,7 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
         dst_xla_context->shape_determination_fns();
     XlaLayoutPreference layout_preference =
         shape_determination_fns.layout_preference_fn(
-            input->shape(), input->dtype(), absl::nullopt);
+            input->shape(), input->dtype(), std::nullopt);
     TF_ASSIGN_OR_RETURN(xla::Shape shape,
                         shape_determination_fns.shape_representation_fn(
                             input->shape(), input->dtype(),

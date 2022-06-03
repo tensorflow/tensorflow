@@ -410,7 +410,7 @@ Status XlaSingleOpToHlo(
 
   const ConfigProto* config = &(single_op_compile_argument.config_proto);
   auto bridge_rollout = GetMlirBridgeRolloutState(
-      config ? absl::optional<ConfigProto>(*config) : absl::nullopt);
+      config ? std::optional<ConfigProto>(*config) : std::nullopt);
   if (bridge_rollout ==
           ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED ||
       node_def.op() == "VarIsInitializedOp" ||
@@ -516,7 +516,7 @@ Status XlaCompilationCache::CompileStrict(
   TF_RET_CHECK(entry->executable.get() == nullptr);
   TF_RET_CHECK(entry->compilation_result.computation != nullptr);
 
-  absl::optional<XlaSerializedCacheEntry> serialized_entry;
+  std::optional<XlaSerializedCacheEntry> serialized_entry;
   if (!persistent_cache_directory_.empty()) {
     const xla::HloModuleProto& hlo_module =
         entry->compilation_result.computation->proto();
@@ -649,7 +649,7 @@ bool XlaCompilationCache::ShouldCompileCluster(CompileMode compile_mode,
                                                bool is_first_execution,
                                                int64_t current_request_count,
                                                const NameAttrList& function) {
-  absl::optional<int64_t> compile_threshold;
+  std::optional<int64_t> compile_threshold;
   if (compile_mode == CompileMode::kLazy) {
     compile_threshold = kDefaultCompilationThreshold;
   } else if (compile_mode == CompileMode::kAsync) {
@@ -919,17 +919,17 @@ Status XlaCompilationCache::SaveSerializedEntry(
   return WriteBinaryProto(env, file_path, entry);
 }
 
-StatusOr<absl::optional<XlaSerializedCacheEntry>>
+StatusOr<std::optional<XlaSerializedCacheEntry>>
 XlaCompilationCache::TryLoadSerializedEntry(const XlaSerializedCacheKey& key) {
   Env* env = Env::Default();
   const std::string file_path = GetFilePath(key, persistent_cache_directory_);
   if (!env->FileExists(file_path).ok()) {
-    return StatusOr<absl::optional<XlaSerializedCacheEntry>>(absl::nullopt);
+    return StatusOr<std::optional<XlaSerializedCacheEntry>>(std::nullopt);
   }
 
   XlaSerializedCacheEntry entry;
   TF_RETURN_IF_ERROR(ReadTextOrBinaryProto(env, file_path, &entry));
-  return StatusOr<absl::optional<XlaSerializedCacheEntry>>(entry);
+  return StatusOr<std::optional<XlaSerializedCacheEntry>>(entry);
 }
 
 }  // namespace tensorflow

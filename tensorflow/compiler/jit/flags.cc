@@ -390,7 +390,7 @@ const JitRtFlags& GetJitRtFlags() {
 }
 
 ConfigProto::Experimental::MlirBridgeRollout GetMlirBridgeRolloutState(
-    absl::optional<const ConfigProto> config_proto) {
+    std::optional<const ConfigProto> config_proto) {
   // TF1 graphs that do not override Sessions's ConfigProto and TF2 graphs
   // can enable/disable the graph via tf_mlir_enable_mlir_bridge.
   auto tf_mlir_enable_mlir_bridge =

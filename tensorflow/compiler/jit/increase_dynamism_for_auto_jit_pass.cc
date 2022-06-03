@@ -48,11 +48,11 @@ namespace {
 //
 //  - A T to indicate a successful operation.
 template <class T>
-using StatusOrOptional = StatusOr<absl::optional<T>>;
+using StatusOrOptional = StatusOr<std::optional<T>>;
 
 StatusOrOptional<Tensor> TryToGetTensorFromConstOp(Node* n) {
   if (n->type_string() != "Const") {
-    return {absl::nullopt};
+    return {std::nullopt};
   }
 
   const TensorProto* proto = nullptr;
@@ -108,14 +108,14 @@ StatusOrOptional<SliceInputs> GetSliceInputs(Node* slice) {
   slice_inputs.size =
       Output(slice_size_edge->src(), slice_size_edge->src_output());
 
-  TF_ASSIGN_OR_RETURN(absl::optional<Tensor> tf_slice_size,
+  TF_ASSIGN_OR_RETURN(std::optional<Tensor> tf_slice_size,
                       TryToGetTensorFromConstOp(slice_inputs.size.node()));
   if (!tf_slice_size.has_value()) {
-    return {absl::nullopt};
+    return {std::nullopt};
   }
 
   if (tf_slice_size->dims() != 1) {
-    return {absl::nullopt};
+    return {std::nullopt};
   }
 
   slice_inputs.size_as_vector = IntTensorAsVector(*tf_slice_size);
@@ -325,7 +325,7 @@ StatusOr<bool> ShouldRewriteSlice(Node* n) {
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(absl::optional<SliceInputs> slice_inputs,
+  TF_ASSIGN_OR_RETURN(std::optional<SliceInputs> slice_inputs,
                       GetSliceInputs(n));
   if (!slice_inputs.has_value()) {
     return false;
@@ -354,7 +354,7 @@ Status FindAndRewriteSlices(Graph* g, bool* changed) {
   }
 
   for (Node* n : slices_to_rewrite) {
-    TF_ASSIGN_OR_RETURN(absl::optional<SliceInputs> slice_inputs,
+    TF_ASSIGN_OR_RETURN(std::optional<SliceInputs> slice_inputs,
                         GetSliceInputs(n));
     TF_RET_CHECK(slice_inputs.has_value());
     TF_RETURN_IF_ERROR(

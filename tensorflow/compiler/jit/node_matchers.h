@@ -84,23 +84,23 @@ class NodeMatcherProperties {
  public:
   using NodeSeqMatcher = std::vector<::testing::Matcher<const Node*>>;
   using InputSeqMatcher = std::vector<::testing::Matcher<OutEdge>>;
-  using AttrKeyValuePair = std::pair<string, absl::optional<AttrValue>>;
+  using AttrKeyValuePair = std::pair<string, std::optional<AttrValue>>;
 
-  const absl::optional<string>& name() const { return name_; }
-  const absl::optional<string>& op() const { return op_; }
-  const absl::optional<string>& assigned_device() const {
+  const std::optional<string>& name() const { return name_; }
+  const std::optional<string>& op() const { return op_; }
+  const std::optional<string>& assigned_device() const {
     return assigned_device_;
   }
-  const absl::optional<Tensor>& constant_value() const {
+  const std::optional<Tensor>& constant_value() const {
     return constant_value_;
   }
-  const absl::optional<InputSeqMatcher>& inputs() const {
+  const std::optional<InputSeqMatcher>& inputs() const {
     return input_matchers_;
   }
-  const absl::optional<NodeSeqMatcher>& control_deps() const {
+  const std::optional<NodeSeqMatcher>& control_deps() const {
     return control_deps_;
   }
-  const absl::optional<AttrKeyValuePair>& attr() const { return attr_; }
+  const std::optional<AttrKeyValuePair>& attr() const { return attr_; }
 
   void set_name(string name) {
     DCHECK(IsEmpty());
@@ -144,13 +144,13 @@ class NodeMatcherProperties {
   }
 
  private:
-  absl::optional<string> name_;
-  absl::optional<string> op_;
-  absl::optional<string> assigned_device_;
-  absl::optional<Tensor> constant_value_;
-  absl::optional<InputSeqMatcher> input_matchers_;
-  absl::optional<NodeSeqMatcher> control_deps_;
-  absl::optional<AttrKeyValuePair> attr_;
+  std::optional<string> name_;
+  std::optional<string> op_;
+  std::optional<string> assigned_device_;
+  std::optional<Tensor> constant_value_;
+  std::optional<InputSeqMatcher> input_matchers_;
+  std::optional<NodeSeqMatcher> control_deps_;
+  std::optional<AttrKeyValuePair> attr_;
 };
 
 ::testing::Matcher<const Node*> NodeWith(

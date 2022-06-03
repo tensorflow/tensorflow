@@ -138,10 +138,10 @@ class MarkForCompilationPassImpl {
     // Constructs a trivial cluster representing a single TF node.
     Cluster(int tf_graph_node_id, int effective_cluster_size,
             bool has_functional_control_flow, DeviceSet devices,
-            absl::optional<DeviceId> resource_op_device,
-            absl::optional<int> resource_var_operation_node_id,
-            absl::optional<DeadnessPredicate> deadness_predicate,
-            bool is_xla_compile_attr_true, absl::optional<string> xla_scope)
+            std::optional<DeviceId> resource_op_device,
+            std::optional<int> resource_var_operation_node_id,
+            std::optional<DeadnessPredicate> deadness_predicate,
+            bool is_xla_compile_attr_true, std::optional<string> xla_scope)
         : cycles_graph_node_id_(tf_graph_node_id),
           effective_cluster_size_(effective_cluster_size),
           has_functional_control_flow_(has_functional_control_flow),
@@ -192,7 +192,7 @@ class MarkForCompilationPassImpl {
     // If the cluster has a resource operation then the device the resource
     // operation is placed on.  A cluster may have resource ops placed only on a
     // single device.
-    const absl::optional<DeviceId>& resource_op_device() const {
+    const std::optional<DeviceId>& resource_op_device() const {
       return resource_op_device_;
     }
 
@@ -200,7 +200,7 @@ class MarkForCompilationPassImpl {
     // Otherwise the user has (unsafely) disabled deadness analysis.  If this is
     // unset on a single Cluster instance then it is unset on all Cluster
     // instances.
-    const absl::optional<DeadnessPredicate>& deadness_predicate() const {
+    const std::optional<DeadnessPredicate>& deadness_predicate() const {
       return deadness_predicate_;
     }
 
@@ -210,7 +210,7 @@ class MarkForCompilationPassImpl {
 
     // If not nullopt then the all nodes in the cluster either do not have the
     // XlaScope attribute set or have it set to the value returned.
-    const absl::optional<string>& xla_scope() const { return xla_scope_; }
+    const std::optional<string>& xla_scope() const { return xla_scope_; }
 
     // Returns the TF graph node IDs for the resource variable operations in
     // this cluster.
@@ -241,10 +241,10 @@ class MarkForCompilationPassImpl {
     int effective_cluster_size_;
     bool has_functional_control_flow_;
     DeviceSet devices_;
-    absl::optional<DeviceId> resource_op_device_;
-    absl::optional<DeadnessPredicate> deadness_predicate_;
+    std::optional<DeviceId> resource_op_device_;
+    std::optional<DeadnessPredicate> deadness_predicate_;
     bool is_xla_compile_attr_true_;
-    absl::optional<string> xla_scope_;
+    std::optional<string> xla_scope_;
     std::vector<int> resource_var_operation_node_ids_;
 
     TF_DISALLOW_COPY_AND_ASSIGN(Cluster);
@@ -337,11 +337,11 @@ class MarkForCompilationPassImpl {
   Cluster* MakeNewCluster(int cycles_graph_node_id, int effective_cluster_size,
                           bool has_functional_control_flow,
                           const DeviceSet& device_set,
-                          absl::optional<DeviceId> resource_op_device,
-                          absl::optional<int> resource_var_operation_node_id,
-                          absl::optional<DeadnessPredicate> deadness_predicate,
+                          std::optional<DeviceId> resource_op_device,
+                          std::optional<int> resource_var_operation_node_id,
+                          std::optional<DeadnessPredicate> deadness_predicate,
                           bool is_xla_compile_attr_true,
-                          absl::optional<string> xla_scope) {
+                          std::optional<string> xla_scope) {
     cluster_storage_.push_back(absl::make_unique<Cluster>(
         cycles_graph_node_id, effective_cluster_size,
         has_functional_control_flow, device_set, resource_op_device,
@@ -350,7 +350,7 @@ class MarkForCompilationPassImpl {
     return cluster_storage_.back().get();
   }
 
-  absl::optional<string> GetXlaScope(Node* n);
+  std::optional<string> GetXlaScope(Node* n);
 
   // Returns the cluster for node `n`.  If two nodes, N1 and N2, are placed in
   // the same cluster by the clustering algorithm then this function will return
@@ -482,7 +482,7 @@ std::vector<int> MarkForCompilationPassImpl::FindAlternatePathForDebugging(
   int rpo_index = 0, current_rpo_node;
   do {
     current_rpo_node = rpo[rpo_index++];
-    absl::optional<int> some_pred, preferred_pred;
+    std::optional<int> some_pred, preferred_pred;
     for (int pred : cycles_graph_.Predecessors(current_rpo_node)) {
       if (!best_pred_for_node.contains(pred)) {
         continue;
@@ -1030,7 +1030,7 @@ MarkForCompilationPassImpl::ClusteringWillIntroduceInterDeviceDependency(
   return false;
 }
 
-absl::optional<string> MarkForCompilationPassImpl::GetXlaScope(Node* node) {
+std::optional<string> MarkForCompilationPassImpl::GetXlaScope(Node* node) {
   // Look for either _XlaScope or _XlaInternalScope on both nodes to guide
   // clustering.  If both nodes have a scope and the scopes do not match, do
   // not cluster along this edge.  If even one of the nodes lacks a scope
@@ -1062,7 +1062,7 @@ absl::optional<string> MarkForCompilationPassImpl::GetXlaScope(Node* node) {
     }
   }
 
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 // Returns true iff the attribute `attr_name` is attached to either the node or
@@ -1110,7 +1110,7 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
 
     bool has_functional_control_flow = node->IsWhileNode() || node->IsIfNode();
 
-    absl::optional<DeadnessPredicate> deadness_predicate;
+    std::optional<DeadnessPredicate> deadness_predicate;
     if (deadness_analysis_) {
       TF_ASSIGN_OR_RETURN(
           deadness_predicate,
@@ -1124,12 +1124,12 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
                         device_info_cache_.GetIdFor(device_name_str));
 
     bool is_resource_op = HasResourceInputOrOutput(*node);
-    absl::optional<DeviceId> resource_op_device;
+    std::optional<DeviceId> resource_op_device;
     if (is_resource_op) {
       resource_op_device = device;
     }
 
-    absl::optional<int> resource_var_operation_node_id;
+    std::optional<int> resource_var_operation_node_id;
     if (is_resource_op || MayCallFunction(*node, flib_def_)) {
       resource_var_operation_node_id = node->id();
     }
@@ -1547,7 +1547,7 @@ void MarkForCompilationPassImpl::DumpPostClusteringGraphs() {
   CopyGraph(*graph_, &new_graph);
 
   for (Node* n : new_graph.nodes()) {
-    if (absl::optional<absl::string_view> cluster_name =
+    if (std::optional<absl::string_view> cluster_name =
             GetXlaClusterForNode(*n)) {
       n->set_name(absl::StrCat(*cluster_name, "/", n->name()));
     } else if (n->type_string() == "VarHandleOp") {
@@ -1608,13 +1608,13 @@ void MarkForCompilationPassImpl::VLogClusteringSummary() {
 
   struct EdgeInfo {
     absl::string_view node_name;
-    absl::optional<absl::string_view> cluster_name;
+    std::optional<absl::string_view> cluster_name;
 
     absl::string_view GetClusterName() const {
       return cluster_name ? *cluster_name : "[none]";
     }
 
-    std::pair<absl::string_view, absl::optional<absl::string_view>> AsPair()
+    std::pair<absl::string_view, std::optional<absl::string_view>> AsPair()
         const {
       return {node_name, cluster_name};
     }
@@ -1633,11 +1633,11 @@ void MarkForCompilationPassImpl::VLogClusteringSummary() {
 
   for (const Edge* e : graph_->edges()) {
     const Node* from = e->src();
-    absl::optional<absl::string_view> from_cluster_name =
+    std::optional<absl::string_view> from_cluster_name =
         GetXlaClusterForNode(*from);
 
     const Node* to = e->dst();
-    absl::optional<absl::string_view> to_cluster_name =
+    std::optional<absl::string_view> to_cluster_name =
         GetXlaClusterForNode(*to);
 
     if (to_cluster_name == from_cluster_name) {
@@ -1692,7 +1692,7 @@ StatusOr<bool> MarkForCompilationPassImpl::AreDevicesCompatible(
   devices.UnionWith(cluster_b.devices());
 
   TF_ASSIGN_OR_RETURN(
-      absl::optional<jit::DeviceId> maybe_chosen_device,
+      std::optional<jit::DeviceId> maybe_chosen_device,
       MaybePickDeviceForXla(device_info_cache_, devices,
                             /*allow_mixing_unknown_and_cpu=*/false));
   if (!maybe_chosen_device.has_value()) {
@@ -1707,11 +1707,10 @@ StatusOr<bool> MarkForCompilationPassImpl::AreDevicesCompatible(
   // _XlaRun kernels are going to run on and therefore try to access the
   // resource variables from `chosen_device`, which will be an error if the
   // resource variables are placed on some other device.
-  auto resource_op_device_ok =
-      [&](absl::optional<DeviceId> resource_op_device) {
-        return !resource_op_device.has_value() ||
-               *resource_op_device == chosen_device;
-      };
+  auto resource_op_device_ok = [&](std::optional<DeviceId> resource_op_device) {
+    return !resource_op_device.has_value() ||
+           *resource_op_device == chosen_device;
+  };
 
   return resource_op_device_ok(cluster_a.resource_op_device()) &&
          resource_op_device_ok(cluster_b.resource_op_device());
