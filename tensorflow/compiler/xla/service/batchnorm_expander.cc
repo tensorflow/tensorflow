@@ -41,7 +41,7 @@ namespace xla {
 
 namespace {
 
-using absl::optional;
+using std::optional;
 
 // BatchNormExpanderVisitor traverses the HLO computation and rewrites BatchNorm
 // operations into smaller operations.

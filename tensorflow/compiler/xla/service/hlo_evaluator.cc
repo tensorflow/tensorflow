@@ -184,8 +184,8 @@ StatusOr<Literal> Compare<complex128>(const Shape& shape,
 // At least one of param_index and value has a value; both of them could have
 // a value.
 struct ParamIndexAndValue {
-  absl::optional<int64_t> param_index;
-  absl::optional<int64_t> value;
+  std::optional<int64_t> param_index;
+  std::optional<int64_t> value;
 
   bool IsValid() const { return param_index.has_value() || value.has_value(); }
 };
@@ -207,7 +207,7 @@ using WhileCondComparisonOrNoOp =
 
 // Finds the while loop condition comparison by matching the loop condition root
 // with known patterns.
-absl::optional<WhileCondComparisonOrNoOp> PatternMatchLoopCondComparison(
+std::optional<WhileCondComparisonOrNoOp> PatternMatchLoopCondComparison(
     HloInstruction* loop_cond_root) {
   // Base pattern #1: gte-0 comp gte-1
   if (Match(loop_cond_root,
@@ -229,14 +229,14 @@ absl::optional<WhileCondComparisonOrNoOp> PatternMatchLoopCondComparison(
                 .WithOperand(1,
                              match::GetTupleElement().WithOperand(
                                  0, match::Parameter().WithParameterNum(0))))) {
-    absl::optional<int64_t> lhs_value =
+    std::optional<int64_t> lhs_value =
         loop_cond_root->operand(0)->literal().GetFirstInteger();
     if (!lhs_value.has_value()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     return WhileCondComparison{
         loop_cond_root->comparison_direction(),
-        {/*param_index=*/absl::nullopt, /*value=*/*lhs_value},
+        {/*param_index=*/std::nullopt, /*value=*/*lhs_value},
         {/*param_index=*/loop_cond_root->operand(1)->tuple_index()}};
   }
   // Base pattern #3: gte comp constant
@@ -245,16 +245,16 @@ absl::optional<WhileCondComparisonOrNoOp> PatternMatchLoopCondComparison(
                 .WithOperand(0, match::GetTupleElement().WithOperand(
                                     0, match::Parameter().WithParameterNum(0)))
                 .WithOperand(1, match::Constant()))) {
-    absl::optional<int64_t> rhs_value =
+    std::optional<int64_t> rhs_value =
         loop_cond_root->operand(1)->literal().GetFirstInteger();
     if (!rhs_value.has_value()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     return WhileCondComparison{
         loop_cond_root->comparison_direction(),
         {/*param_index=*/loop_cond_root->operand(0)->tuple_index(),
-         /*value=*/absl::nullopt},
-        {/*param_index=*/absl::nullopt, /*value=*/*rhs_value},
+         /*value=*/std::nullopt},
+        {/*param_index=*/std::nullopt, /*value=*/*rhs_value},
     };
   }
   // Base pattern #4: gte is a boolean scalar and it was return immediately.
@@ -262,7 +262,7 @@ absl::optional<WhileCondComparisonOrNoOp> PatternMatchLoopCondComparison(
                                 0, match::Parameter().WithParameterNum(0)))) {
     if (loop_cond_root->shape().element_type() != PrimitiveType::PRED &&
         loop_cond_root->shape().rank() != 0) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     return ParamIndexAndValue{{/*param_index=*/loop_cond_root->tuple_index()}};
   }
@@ -294,12 +294,12 @@ absl::optional<WhileCondComparisonOrNoOp> PatternMatchLoopCondComparison(
             loop_cond_root->tuple_index());
     return PatternMatchLoopCondComparison(new_cond_root);
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 // Tries to parse the loop body to find how the induction variable is updated
 // using pattern matching.
-absl::optional<int64_t> PatternMatchInductionVarUpdate(
+std::optional<int64_t> PatternMatchInductionVarUpdate(
     HloInstruction* loop_body_root, int64_t tuple_index) {
   // Pattern #1: induc_var = induc_var + constant
   if (Match(loop_body_root,
@@ -310,12 +310,12 @@ absl::optional<int64_t> PatternMatchInductionVarUpdate(
                                         .WithTupleIndex(tuple_index)
                                         .WithOperand(0, match::Parameter()))
                     .WithOperand(1, match::Constant())))) {
-    absl::optional<int64_t> step_size = loop_body_root->operand(tuple_index)
-                                            ->operand(1)
-                                            ->literal()
-                                            .GetFirstInteger();
+    std::optional<int64_t> step_size = loop_body_root->operand(tuple_index)
+                                           ->operand(1)
+                                           ->literal()
+                                           .GetFirstInteger();
     if (!step_size.has_value()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     return *step_size;
   }
@@ -329,12 +329,12 @@ absl::optional<int64_t> PatternMatchInductionVarUpdate(
                   .WithOperand(1, match::GetTupleElement()
                                       .WithTupleIndex(tuple_index)
                                       .WithOperand(0, match::Parameter()))))) {
-    absl::optional<int64_t> step_size = loop_body_root->operand(tuple_index)
-                                            ->operand(0)
-                                            ->literal()
-                                            .GetFirstInteger();
+    std::optional<int64_t> step_size = loop_body_root->operand(tuple_index)
+                                           ->operand(0)
+                                           ->literal()
+                                           .GetFirstInteger();
     if (!step_size.has_value()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     return *step_size;
   }
@@ -348,12 +348,12 @@ absl::optional<int64_t> PatternMatchInductionVarUpdate(
                                         .WithTupleIndex(tuple_index)
                                         .WithOperand(0, match::Parameter()))
                     .WithOperand(1, match::Constant())))) {
-    absl::optional<int64_t> step_size = loop_body_root->operand(tuple_index)
-                                            ->operand(1)
-                                            ->literal()
-                                            .GetFirstInteger();
+    std::optional<int64_t> step_size = loop_body_root->operand(tuple_index)
+                                           ->operand(1)
+                                           ->literal()
+                                           .GetFirstInteger();
     if (!step_size.has_value()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     return -*step_size;
   }
@@ -368,10 +368,10 @@ absl::optional<int64_t> PatternMatchInductionVarUpdate(
                     .WithTupleIndex(tuple_index)))) {
     return 0;
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
-absl::optional<bool> PatternMatchLoopCondVarOverride(
+std::optional<bool> PatternMatchLoopCondVarOverride(
     HloInstruction* loop_body_root, int64_t tuple_index) {
   if (Match(loop_body_root, match::Tuple()) &&
       loop_body_root->operand_count() > tuple_index) {
@@ -384,12 +384,12 @@ absl::optional<bool> PatternMatchLoopCondVarOverride(
       return new_cond_var->GetFirstElement<bool>();
     }
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 // Repesents a value that might or might not be determined statically.
 struct DynamicOrStaticValue {
-  absl::optional<int64_t> static_value;
+  std::optional<int64_t> static_value;
   bool is_dynamic() const { return !static_value.has_value(); }
 };
 
@@ -416,11 +416,11 @@ Status MakeEvalErrorDueToParamOrInfeed() {
   return error;
 }
 
-absl::optional<EvalErrorDetail> ParseEvalErrorDetail(const Status& error) {
-  absl::optional<tensorflow::StringPiece> error_detail =
+std::optional<EvalErrorDetail> ParseEvalErrorDetail(const Status& error) {
+  std::optional<tensorflow::StringPiece> error_detail =
       error.GetPayload(kEvalErrorDetailUrl);
   if (!error_detail.has_value() && error_detail->empty()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return static_cast<EvalErrorDetail>(
       absl::little_endian::Load32(error_detail->data()));
@@ -430,10 +430,10 @@ absl::optional<EvalErrorDetail> ParseEvalErrorDetail(const Status& error) {
 // the given tuple_index. If the init value depends on parameters to the
 // while loop's parent computation or infeed, we consider the init value
 // dynamic.
-absl::optional<DynamicOrStaticValue> EvaluateWhileLoopParamInitValue(
+std::optional<DynamicOrStaticValue> EvaluateWhileLoopParamInitValue(
     HloInstruction* param_instruction, int64_t tuple_index) {
   if (param_instruction->opcode() != HloOpcode::kTuple) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   HloInstruction* element_instruction =
       param_instruction->mutable_operand(tuple_index);
@@ -448,35 +448,35 @@ absl::optional<DynamicOrStaticValue> EvaluateWhileLoopParamInitValue(
       return DynamicOrStaticValue{value->GetFirstInteger()};
     }
   } else {
-    absl::optional<EvalErrorDetail> eval_error_detail =
+    std::optional<EvalErrorDetail> eval_error_detail =
         ParseEvalErrorDetail(value.status());
     if (eval_error_detail.has_value() &&
         *eval_error_detail == EvalErrorDetail::kDynamicValueDependence) {
-      return DynamicOrStaticValue{absl::nullopt};
+      return DynamicOrStaticValue{std::nullopt};
     }
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 }  // namespace
 
-absl::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
+std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
     HloInstruction* while_op) {
   HloComputation* while_cond = while_op->while_condition();
   HloComputation* while_body = while_op->while_body();
   HloInstruction* while_operand = while_op->mutable_operand(0);
   // Try to parse the loop condition comparison.
-  absl::optional<WhileCondComparisonOrNoOp> loop_comparison_or_noop =
+  std::optional<WhileCondComparisonOrNoOp> loop_comparison_or_noop =
       PatternMatchLoopCondComparison(while_cond->root_instruction());
   if (!loop_comparison_or_noop.has_value()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   if (loop_comparison_or_noop->index() == 1) {
     ParamIndexAndValue& parameter_index_and_value =
         absl::get<ParamIndexAndValue>(*loop_comparison_or_noop);
     CHECK(parameter_index_and_value.param_index.has_value());
     int64_t loop_cond_var_index = *parameter_index_and_value.param_index;
-    absl::optional<DynamicOrStaticValue> noop_value =
+    std::optional<DynamicOrStaticValue> noop_value =
         EvaluateWhileLoopParamInitValue(while_operand, loop_cond_var_index);
 
     if (noop_value.has_value()) {
@@ -490,7 +490,7 @@ absl::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
                                   /*step_size=*/0,
                                   /*loop_bound=*/0}};
       }
-      absl::optional<bool> updated_loop_cond_var =
+      std::optional<bool> updated_loop_cond_var =
           PatternMatchLoopCondVarOverride(while_body->root_instruction(),
                                           loop_cond_var_index);
       if (updated_loop_cond_var.has_value()) {
@@ -512,7 +512,7 @@ absl::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
         }
       }
     }
-    return absl::nullopt;
+    return std::nullopt;
   }
   CHECK_EQ(loop_comparison_or_noop->index(), 0);
   WhileCondComparison loop_comparison =
@@ -531,14 +531,14 @@ absl::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
   // We can't handle the case when the while loop argument is not a Tuple
   // instruction.
   if (while_operand->opcode() != HloOpcode::kTuple) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   // If loop cond comparison LHS does not have a value defined inside the loop
   // cond computation, try to evaluate its init value inside the while loop's
   // parent computation.
   if (!loop_comparison.lhs.value.has_value()) {
-    absl::optional<DynamicOrStaticValue> lhs_init_value =
+    std::optional<DynamicOrStaticValue> lhs_init_value =
         EvaluateWhileLoopParamInitValue(while_operand,
                                         *loop_comparison.lhs.param_index);
     if (lhs_init_value.has_value()) {
@@ -548,7 +548,7 @@ absl::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
         loop_comparison.lhs.value = *(lhs_init_value->static_value);
       }
     } else {
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
 
@@ -556,7 +556,7 @@ absl::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
   // cond computation, try to evaluate its init value inside the while loop's
   // parent computation.
   if (!loop_comparison.rhs.value.has_value()) {
-    absl::optional<DynamicOrStaticValue> rhs_init_value =
+    std::optional<DynamicOrStaticValue> rhs_init_value =
         EvaluateWhileLoopParamInitValue(while_operand,
                                         *loop_comparison.rhs.param_index);
     if (rhs_init_value.has_value()) {
@@ -566,7 +566,7 @@ absl::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
         loop_comparison.rhs.value = *(rhs_init_value->static_value);
       }
     } else {
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
 
@@ -588,14 +588,14 @@ absl::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
   VLOG(3) << __func__ << " rhs bound: " << *loop_comparison.rhs.value;
 
   // Check whether LHS is the loop induction var.
-  absl::optional<int64_t> lhs_induction_var_update;
+  std::optional<int64_t> lhs_induction_var_update;
   if (loop_comparison.lhs.param_index.has_value()) {
     lhs_induction_var_update = PatternMatchInductionVarUpdate(
         while_body->root_instruction(), *loop_comparison.lhs.param_index);
   }
 
   // Check whether LHS is the loop induction var.
-  absl::optional<int64_t> rhs_induction_var_update;
+  std::optional<int64_t> rhs_induction_var_update;
   if (loop_comparison.rhs.param_index.has_value()) {
     rhs_induction_var_update = PatternMatchInductionVarUpdate(
         while_body->root_instruction(), *loop_comparison.rhs.param_index);
@@ -607,7 +607,7 @@ absl::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
     // the loop body.
     if (rhs_induction_var_update.has_value() &&
         *rhs_induction_var_update != 0) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     if (*lhs_induction_var_update > 0 &&
         (loop_comparison.comparson_direction == Comparison::Direction::kLt ||
@@ -651,7 +651,7 @@ absl::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
           /*step_size=*/-*lhs_induction_var_update,
           /*loop_bound=*/*(loop_comparison.rhs.value)}};
     }
-    return absl::nullopt;
+    return std::nullopt;
   }
   // Rhs is the induction variable.
   if (rhs_induction_var_update.has_value()) {
@@ -659,7 +659,7 @@ absl::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
     // the loop body.
     if (lhs_induction_var_update.has_value() &&
         *lhs_induction_var_update == 0) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     if (*rhs_induction_var_update > 0 &&
         (loop_comparison.comparson_direction == Comparison::Direction::kGt ||
@@ -702,9 +702,9 @@ absl::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
           /*step_size=*/-*rhs_induction_var_update,
           /*loop_bound=*/*(loop_comparison.lhs.value)}};
     }
-    return absl::nullopt;
+    return std::nullopt;
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 // Note that unsupported types by the typed visitor does not necessarily imply
@@ -957,10 +957,10 @@ StatusOr<Literal> HloEvaluator::EvaluateDotOp(
   std::unique_ptr<HloInstruction> rhs_instr =
       HloInstruction::CreateConstant(rhs.Clone());
 
-  TF_ASSIGN_OR_RETURN(Shape dot_shape,
-                      ShapeInference::InferDotOpShape(
-                          lhs.shape(), rhs.shape(), dim_numbers,
-                          /*preferred_element_type=*/absl::nullopt));
+  TF_ASSIGN_OR_RETURN(
+      Shape dot_shape,
+      ShapeInference::InferDotOpShape(lhs.shape(), rhs.shape(), dim_numbers,
+                                      /*preferred_element_type=*/std::nullopt));
 
   std::unique_ptr<HloInstruction> cloned_instruction =
       HloInstruction::CreateDot(dot_shape, lhs_instr.get(), rhs_instr.get(),
@@ -3262,7 +3262,7 @@ StatusOr<Literal> CreateScalarLiteral(int64_t value,
 // static.
 StatusOr<Literal> TryParseAndEvaluateWhileInductionVar(
     HloInstruction* while_hlo) {
-  absl::optional<ParsedWhileLoop> parsed_while_loop =
+  std::optional<ParsedWhileLoop> parsed_while_loop =
       PatternMatchParseWhileLoop(while_hlo);
   if (!parsed_while_loop.has_value() || parsed_while_loop->is_dynamic()) {
     return FailedPrecondition(
@@ -3302,7 +3302,7 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
   // Initialize the loop carried valued with the input to the While instruction.
   auto lcv = GetEvaluatedLiteralFor(while_hlo->operand(0)).Clone();
   if (!lcv.IsKnown()) {
-    absl::optional<ParsedWhileLoop> parsed_while_loop =
+    std::optional<ParsedWhileLoop> parsed_while_loop =
         PatternMatchParseWhileLoop(while_hlo);
     evaluated_[while_hlo] =
         Literal::CreateFromShapeWithUnknownLeafArrays(while_hlo->shape());

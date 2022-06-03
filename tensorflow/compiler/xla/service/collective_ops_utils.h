@@ -35,11 +35,11 @@ namespace xla {
 enum class ReductionKind { SUM, PRODUCT, MIN, MAX };
 
 // Attempts to match instruction to one of the possible cases for ReductionKind.
-absl::optional<ReductionKind> MatchReductionInstruction(
+std::optional<ReductionKind> MatchReductionInstruction(
     const HloInstruction* hlo);
 
 // Attempts to match computation to one of the possible cases in ReductionKind.
-absl::optional<ReductionKind> MatchReductionComputation(
+std::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
 
 // Figures out which IDs are participating in the collective subgroup.
@@ -47,7 +47,7 @@ absl::optional<ReductionKind> MatchReductionComputation(
 // are participating. Note that for CollectiveOpGroupMode::kFlattenedID,
 // groups cannot be empty, so `total_participant_count` is an optional.
 StatusOr<std::vector<int>> GetParticipatingIDs(
-    int current_id, absl::optional<int> total_participant_count,
+    int current_id, std::optional<int> total_participant_count,
     absl::Span<const ReplicaGroup> groups);
 
 // There are broadly 4 modes that collective communication ops use to describe
@@ -96,7 +96,7 @@ absl::string_view CollectiveOpGroupModeToString(
 // Returns the group formation mode implied by (a) whether the operation has
 // channel_id and (b) if it has use_global_device_ids and if yes, its value.
 StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
-    bool has_channel_id, absl::optional<bool> use_global_device_ids);
+    bool has_channel_id, std::optional<bool> use_global_device_ids);
 
 // Figures out subgroups of participating devices from given replica_groups and
 // group_mode.

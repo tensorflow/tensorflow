@@ -167,9 +167,9 @@ bool IsPositive(const HloInstruction* hlo,
   }
 }
 
-absl::optional<double> GetConstantValue(const HloInstruction* inst) {
+std::optional<double> GetConstantValue(const HloInstruction* inst) {
   if (!ShapeUtil::IsEffectiveScalar(inst->shape())) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   switch (inst->shape().element_type()) {
     case F16:
@@ -181,7 +181,7 @@ absl::optional<double> GetConstantValue(const HloInstruction* inst) {
     case F64:
       return inst->literal().GetFirstElement<double>();
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
@@ -225,7 +225,7 @@ bool IsNonNegative(const HloInstruction* hlo,
       return IsNonNegative(hlo->operand(0), options);
     }
     case HloOpcode::kConstant: {
-      if (absl::optional<double> value = GetConstantValue(hlo)) {
+      if (std::optional<double> value = GetConstantValue(hlo)) {
         return *value >= 0.0;
       }
       return false;
@@ -255,7 +255,7 @@ bool IsAllFpConstantPowerOf2(const HloInstruction* op) {
                      m::Shape().IsEffectiveScalar())))) {
     return false;
   }
-  auto val = [&]() -> absl::optional<double> {
+  auto val = [&]() -> std::optional<double> {
     switch (c->shape().element_type()) {
       case BF16:
         return static_cast<double>(c->literal().GetFirstElement<bfloat16>());
@@ -267,7 +267,7 @@ bool IsAllFpConstantPowerOf2(const HloInstruction* op) {
         return c->literal().GetFirstElement<double>();
       default:
         // Cowardly refuse to consider complex types.
-        return absl::nullopt;
+        return std::nullopt;
     }
   }();
   if (!val) {
@@ -864,8 +864,8 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
   if (rhs_scatter && lhs_scatter) {
     const auto& lhs_dnums = lhs->scatter_dimension_numbers();
     const auto& rhs_dnums = rhs->scatter_dimension_numbers();
-    absl::optional<int64_t> index_concat_dimension;
-    absl::optional<int64_t> update_concat_dimension;
+    std::optional<int64_t> index_concat_dimension;
+    std::optional<int64_t> update_concat_dimension;
     // Don't try to combine scatters of different ranks.
     if (lhs_scatter_index->shape().rank() !=
         rhs_scatter_index->shape().rank()) {
@@ -995,7 +995,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyTautologicalCompare(
   };
 
   auto get_compare_info =
-      [&](HloInstruction* cmp) -> absl::optional<LessThanCompareInfo> {
+      [&](HloInstruction* cmp) -> std::optional<LessThanCompareInfo> {
     HloInstruction *lhs, *rhs;
     auto scalar_shape_matcher =
         m::Shape().IsEffectiveScalar().WithElementType(PrimitiveType::S32);
@@ -1010,11 +1010,11 @@ StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyTautologicalCompare(
                        .WithComparisonDirection(ComparisonDirection::kGt))) {
       return {LessThanCompareInfo{rhs, *lhs->literal().GetFirstInteger()}};
     }
-    return absl::nullopt;
+    return std::nullopt;
   };
 
-  absl::optional<LessThanCompareInfo> lhs_info = get_compare_info(lhs);
-  absl::optional<LessThanCompareInfo> rhs_info = get_compare_info(rhs);
+  std::optional<LessThanCompareInfo> lhs_info = get_compare_info(lhs);
+  std::optional<LessThanCompareInfo> rhs_info = get_compare_info(rhs);
   if (lhs_info && rhs_info && lhs_info->var == rhs_info->var) {
     int64_t new_bound = std::min(lhs_info->constant, rhs_info->constant);
     TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
@@ -1093,10 +1093,10 @@ Status AlgebraicSimplifierVisitor::HandleBitcast(HloInstruction* bitcast) {
 // (minor-to-major) of the operands and the bitcasted result. Overall they
 // record how the different logical dimensions of the operand may be combined or
 // split in the resulting shape and in which orders they are combined/split. The
-// function returns  absl::nullopt if unsuccessful (e.g., such a logical
+// function returns  std::nullopt if unsuccessful (e.g., such a logical
 // dimension mapping cannot be constructed due to cases like bitcasting {4,4} to
 // {2,8}.
-absl::optional<std::vector<std::vector<int64_t>>>
+std::optional<std::vector<std::vector<int64_t>>>
 AlgebraicSimplifierVisitor::ComputeBitcastDimMap(const Shape& bitcast_shape,
                                                  const Shape& operand_shape) {
   std::vector<std::vector<int64_t>> operand_dim_map(
@@ -1110,7 +1110,7 @@ AlgebraicSimplifierVisitor::ComputeBitcastDimMap(const Shape& bitcast_shape,
     if (operand_pos >= operand_rank) {
       if (bitcast_shape.dimensions(bitcast_dim) != 1) {
         VLOG(3) << "Abort b/c bitcasted size is bigger than operand size.\n";
-        return absl::nullopt;
+        return std::nullopt;
       }
       continue;
     }
@@ -1127,7 +1127,7 @@ AlgebraicSimplifierVisitor::ComputeBitcastDimMap(const Shape& bitcast_shape,
           VLOG(2)
               << "Abort due to size inconsistency: bitcasted size > operand "
                  "size.\n";
-          return absl::nullopt;
+          return std::nullopt;
         }
         operand_dim = operand_shape.layout().minor_to_major(operand_pos);
         int64_t op_dim_size = operand_shape.dimensions()[operand_dim];
@@ -1139,7 +1139,7 @@ AlgebraicSimplifierVisitor::ComputeBitcastDimMap(const Shape& bitcast_shape,
           // > m2, so (m1,n1) is re-partitioned instead of split or combined.
           VLOG(3) << "Abort b/c re-partitioning a group of dimensions is not "
                      "supported. \n";
-          return absl::nullopt;
+          return std::nullopt;
         }
       }
       CHECK_GE(operand_dim, 0);
@@ -1163,7 +1163,7 @@ AlgebraicSimplifierVisitor::ComputeBitcastDimMap(const Shape& bitcast_shape,
   return operand_dim_map;
 }
 
-absl::optional<Shape> AlgebraicSimplifierVisitor::ReshapeLayoutDimensions(
+std::optional<Shape> AlgebraicSimplifierVisitor::ReshapeLayoutDimensions(
     const Shape& original_shape, const Shape& result_shape,
     const std::vector<std::vector<int64_t>>& original_map,
     const std::vector<std::vector<int64_t>>& result_map) {
@@ -1193,7 +1193,7 @@ absl::optional<Shape> AlgebraicSimplifierVisitor::ReshapeLayoutDimensions(
         // have to combine non-contiguous dimensions in op. Abort.
         if (bitcast_pos >= reshaped_dimensions->size()) {
           VLOG(3) << "bitcast pos is over incremented:" << bitcast_pos << "\n";
-          return absl::nullopt;
+          return std::nullopt;
         }
         (*reshaped_dimensions)[bitcast_pos] = bitcast_dim;
       }
@@ -1208,14 +1208,14 @@ absl::optional<Shape> AlgebraicSimplifierVisitor::ReshapeLayoutDimensions(
             original_map[op_dim_prev][0] != bitcast_dim) {
           VLOG(2) << "Abort b/c op dimensions that are combined into "
                      "bitcast_dim are not contiguous in the result. \n ";
-          return absl::nullopt;
+          return std::nullopt;
         }
         for (int i = 0; i < op_dims.size(); ++i) {
           if (op_dims[i] == op_dim_prev) {
             if (i == op_dims.size() - 1 || op_dims[i + 1] != op_dim) {
               VLOG(2) << "Abort b/c op dimensions that are combined into "
                          "bitcast_dim are reordered in the new bitcast. \n ";
-              return absl::nullopt;
+              return std::nullopt;
             }
           }
         }
@@ -1624,7 +1624,7 @@ Status AlgebraicSimplifierVisitor::HandleConstant(HloInstruction* constant) {
         constant, HloInstruction::CreateIota(constant->shape(), 0));
   }
 
-  if (absl::optional<int64_t> stride = constant->literal().IsR1StridedIota()) {
+  if (std::optional<int64_t> stride = constant->literal().IsR1StridedIota()) {
     // Replace the constant with iota * stride.
     HloInstruction* stride_hlo = MakeScalarLike(constant, *stride);
     HloInstruction* iota = constant->AddInstruction(
@@ -3411,7 +3411,7 @@ Status AlgebraicSimplifierVisitor::HandleOptimizationBarrier(
 
 namespace {
 
-absl::optional<std::vector<int64_t>> ReshapeLeavesDimensionsUnmodified(
+std::optional<std::vector<int64_t>> ReshapeLeavesDimensionsUnmodified(
     const HloInstruction* hlo, absl::Span<const int64_t> input_dim_indices) {
   CHECK_EQ(hlo->opcode(), HloOpcode::kReshape);
   return ShapeUtil::ReshapeLeavesDimensionsUnmodified(
@@ -4234,7 +4234,7 @@ Status AlgebraicSimplifierVisitor::HandleRemainder(HloInstruction* remainder) {
     // this.  But that's OK for our purposes here.)
     int64_t iota_upper_bound = iota->shape().dimensions(
         Cast<HloIotaInstruction>(iota)->iota_dimension());
-    absl::optional<int64_t> divisor_val = divisor->literal().GetIntegralAsS64(
+    std::optional<int64_t> divisor_val = divisor->literal().GetIntegralAsS64(
         std::vector<int64_t>(0, divisor->shape().dimensions_size()));
     if (divisor_val && *divisor_val >= iota_upper_bound) {
       return ReplaceInstruction(remainder, iota);
@@ -4262,11 +4262,11 @@ Status AlgebraicSimplifierVisitor::HandleRemainder(HloInstruction* remainder) {
     // smaller.
     int64_t iota_upper_bound = iota->shape().dimensions(
         Cast<HloIotaInstruction>(iota)->iota_dimension());
-    absl::optional<int64_t> divisor_val = divisor->literal().GetIntegralAsS64(
+    std::optional<int64_t> divisor_val = divisor->literal().GetIntegralAsS64(
         std::vector<int64_t>(0, divisor->shape().dimensions_size()));
     if (divisor_val) {
       // Check whether divisor_val + iota_upper_bound - 1 overflows.
-      absl::optional<int64_t> max_val =
+      std::optional<int64_t> max_val =
           OverflowSafeAdd(*divisor_val, iota_upper_bound);
       if (max_val.has_value() &&
           FitsInIntegralType(*max_val, iota->shape().element_type())) {
@@ -4901,7 +4901,7 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
     std::vector<int64_t> slice_strides(rank, 1);
 
     for (int64_t i = 0; i < rank; ++i) {
-      absl::optional<int64_t> offset =
+      std::optional<int64_t> offset =
           dynamic_slice->operand(i + 1)->literal().GetFirstInteger();
       if (!offset || *offset < 0) {
         return OkStatus();
@@ -5070,7 +5070,7 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
           break;
         }
         VLOG(2) << "slice: " << slice_dim_start->ToString();
-        absl::optional<int64_t> beg =
+        std::optional<int64_t> beg =
             slice_dim_start->literal().GetFirstInteger();
         if (!beg) {
           compatible = false;

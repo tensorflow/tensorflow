@@ -108,10 +108,10 @@ using GroupKey =
 
 // Returns a key that will be equal for instructions that might be combined, or
 // different if not.
-absl::optional<GroupKey> CombineKey(const HloInstruction* instruction,
-                                    const HloDomainMap& domain_map) {
+std::optional<GroupKey> CombineKey(const HloInstruction* instruction,
+                                   const HloDomainMap& domain_map) {
   if (instruction->opcode() != HloOpcode::kAllGather) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   const auto* ag = Cast<HloAllGatherInstruction>(instruction);

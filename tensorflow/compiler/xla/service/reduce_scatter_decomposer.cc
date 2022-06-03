@@ -46,7 +46,7 @@ StatusOr<bool> ReduceScatterDecomposer::Run(HloModule *module) {
         continue;
       }
 
-      absl::optional<int64_t> channel_id;
+      std::optional<int64_t> channel_id;
       if (rs->channel_id()) {
         channel_id = next_channel_id++;
       }

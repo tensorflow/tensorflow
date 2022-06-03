@@ -132,9 +132,9 @@ StatusOr<bool> AllReduceCombiner::Run(HloModule* module) {
 
     auto key_fn =
         [&domain_map](
-            const HloInstruction* instruction) -> absl::optional<AllReduceKey> {
+            const HloInstruction* instruction) -> std::optional<AllReduceKey> {
       if (instruction->opcode() != HloOpcode::kAllReduce) {
-        return absl::nullopt;
+        return std::nullopt;
       }
       return GetAllReduceKey(instruction, domain_map.get());
     };

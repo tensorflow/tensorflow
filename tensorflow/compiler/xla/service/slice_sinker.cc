@@ -138,7 +138,7 @@ bool ShouldTransform(const std::vector<HloInstruction*>& operations_on_slices) {
 // Returns a group of elementwise operations on slices that are similar to the
 // given operations_on_slices. See IsSimilarOperationOnSlices for what are
 // considered similar operation on slices.
-absl::optional<std::vector<HloInstruction*>> FindElementwiseOperationGroup(
+std::optional<std::vector<HloInstruction*>> FindElementwiseOperationGroup(
     const HloInstruction* operation_on_slices) {
   std::vector<HloInstruction*> operations;
   const HloInstruction* slice_source0 =
@@ -158,7 +158,7 @@ absl::optional<std::vector<HloInstruction*>> FindElementwiseOperationGroup(
   }
 
   return ShouldTransform(operations) ? absl::make_optional(operations)
-                                     : absl::nullopt;
+                                     : std::nullopt;
 }
 
 // Generates a new elementwise operation using the slice_sources as operands,
@@ -261,7 +261,7 @@ StatusOr<bool> SliceSinker::Run(HloModule* module) {
 
       // Try to find a group of elementwise operations that are similar to
       // the current instruction. This checks conditions (2)-(4).
-      absl::optional<std::vector<HloInstruction*>> similar_operations =
+      std::optional<std::vector<HloInstruction*>> similar_operations =
           FindElementwiseOperationGroup(instruction);
       if (!similar_operations.has_value()) {
         continue;

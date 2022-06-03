@@ -1926,8 +1926,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       // 2. Using the selected index, scatter value from `source` to result. We
       // do this by iterating through the window, and compare each index with
       // the selected index.
-      absl::optional<ReturnT> selected_val;
-      absl::optional<DimensionVector> selected_index;
+      std::optional<ReturnT> selected_val;
+      std::optional<DimensionVector> selected_index;
 
       IterateThroughWindow(
           window_shape, window, operand_literal.shape(), source_index,

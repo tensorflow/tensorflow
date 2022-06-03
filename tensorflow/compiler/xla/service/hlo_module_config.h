@@ -110,7 +110,7 @@ class HloModuleConfig {
 
   // Clears the entry computation layout.
   void clear_entry_computation_layout() {
-    entry_computation_layout_ = absl::nullopt;
+    entry_computation_layout_ = std::nullopt;
   }
 
   // Returns whether to enable HLO-level profiling.
@@ -348,7 +348,7 @@ class HloModuleConfig {
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
-  absl::optional<ComputationLayout> entry_computation_layout_;
+  std::optional<ComputationLayout> entry_computation_layout_;
 
   // Module/graph-level seed handle.
   uint64_t seed_ = 0;
@@ -390,7 +390,7 @@ class HloModuleConfig {
   DebugOptions debug_options_;
 
   // Compile-time known device assignment.
-  absl::optional<DeviceAssignment> static_device_assignment_;
+  std::optional<DeviceAssignment> static_device_assignment_;
 
   std::vector<ShardableValueUpdatePair> shardable_value_update_pairs_;
 

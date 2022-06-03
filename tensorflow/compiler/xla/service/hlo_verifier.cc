@@ -124,7 +124,7 @@ Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
         "Called computations specified for non-caller instruction  %s",
         hlo->ToString());
   }
-  absl::optional<int> arity = HloOpcodeArity(hlo->opcode());
+  std::optional<int> arity = HloOpcodeArity(hlo->opcode());
   if (arity) {
     TF_RETURN_IF_ERROR(CheckOperandCount(hlo, *arity));
   }
@@ -463,7 +463,7 @@ Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
   auto* all_to_all = Cast<HloAllToAllInstruction>(hlo);
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
                       GetCollectiveOpGroupMode(
-                          all_to_all->channel_id().has_value(), absl::nullopt));
+                          all_to_all->channel_id().has_value(), std::nullopt));
 
   TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo, group_mode));
 
@@ -687,7 +687,7 @@ Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
   TF_ASSIGN_OR_RETURN(
       CollectiveOpGroupMode group_mode,
       GetCollectiveOpGroupMode(hlo->channel_id().has_value(),
-                               /*use_global_device_ids=*/absl::nullopt));
+                               /*use_global_device_ids=*/std::nullopt));
   TF_RETURN_IF_ERROR(CheckInplaceCollectivePermute(hlo));
   TF_RETURN_IF_ERROR(CheckDuplicatedSourceOrTarget(hlo, group_mode));
   std::vector<const Shape*> operand_shapes;
@@ -702,7 +702,7 @@ Status ShapeVerifier::HandleCollectivePermuteStart(HloInstruction* hlo) {
   TF_ASSIGN_OR_RETURN(
       CollectiveOpGroupMode group_mode,
       GetCollectiveOpGroupMode(hlo->channel_id().has_value(),
-                               /*use_global_device_ids=*/absl::nullopt));
+                               /*use_global_device_ids=*/std::nullopt));
   TF_RETURN_IF_ERROR(CheckInplaceCollectivePermute(hlo));
   TF_RETURN_IF_ERROR(CheckDuplicatedSourceOrTarget(hlo, group_mode));
   std::vector<const Shape*> operand_shapes;

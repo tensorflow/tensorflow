@@ -63,12 +63,12 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using absl::nullopt;
-using absl::optional;
 using absl::StrAppend;
 using absl::StrCat;
 using absl::StrFormat;
 using absl::StrJoin;
+using std::nullopt;
+using std::optional;
 
 // Used to indicate how we should treat a given HLOInstruction in the graph.
 // should we treat it like normal, hide it, and so on?
@@ -341,18 +341,18 @@ class HloDotDumper {
   std::string Dump();
 
   // Returns a CSS id assigned to the instruction, if that exists.
-  absl::optional<std::string> CssIdForInstruction(const HloInstruction& instr) {
+  std::optional<std::string> CssIdForInstruction(const HloInstruction& instr) {
     if (instr.opcode() == HloOpcode::kFusion) {
       // For fusion we render it as a subcomputation.
       auto it = cluster_ids_.find(instr.called_computations()[0]);
       if (it == cluster_ids_.end()) {
-        return absl::nullopt;
+        return std::nullopt;
       }
       return StrCat("#a_clust", it->second, " path");
     }
     auto it = node_ids_.find(&instr);
     if (it == node_ids_.end()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     return StrCat("#node", it->second, " polygon");
   }
@@ -1760,7 +1760,7 @@ namespace {
 struct FusionVisualizerProgress {
   // Creates a frame with a new rendered graph.
   void AddState(absl::string_view dot, absl::string_view explanation,
-                absl::optional<std::string> to_highlight) {
+                std::optional<std::string> to_highlight) {
     if (dot_graphs.empty() || dot_graphs.back() != dot) {
       dot_graphs.push_back(std::string(dot));
     }
@@ -2093,7 +2093,7 @@ void RegisterFusionState(const HloComputation& computation,
       MakeNodeRadiusAroundFilter(&consumer, kRenderRadius, render_boundary));
   std::string dot_txt = dumper.Dump();
 
-  absl::optional<std::string> producer_to_highlight;
+  std::optional<std::string> producer_to_highlight;
   if (producer) {
     producer_to_highlight = dumper.CssIdForInstruction(*producer);
   }

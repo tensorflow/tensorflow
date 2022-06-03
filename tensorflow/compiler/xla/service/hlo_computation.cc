@@ -415,7 +415,7 @@ void ComputeComputationPostOrder(HloComputation* computation,
   }
 }
 
-absl::optional<int64_t> GetChannelId(const HloInstruction& inst) {
+std::optional<int64_t> GetChannelId(const HloInstruction& inst) {
   // Note that we only include Send and RecvDone, as we want to create a
   // dependency between those, but not SendDone and Recv.
   switch (inst.opcode()) {
@@ -428,7 +428,7 @@ absl::optional<int64_t> GetChannelId(const HloInstruction& inst) {
     case HloOpcode::kReduceScatter:
       return inst.channel_id();
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
@@ -461,10 +461,10 @@ void HloComputation::ComputeInstructionPostOrder(
     // Collectives with the same channel ID must be performed together, as these
     // represent MPMD-partitioned that will later be split into separate modules
     // and the order must be preserved.
-    absl::optional<int64_t> channel_id =
+    std::optional<int64_t> channel_id =
         ((&current != root) && (current.opcode() != HloOpcode::kSend))
             ? GetChannelId(current)
-            : absl::nullopt;
+            : std::nullopt;
     if (channel_id) {
       auto it = channel_dependencies.find(*channel_id);
       if (it != channel_dependencies.end()) {
@@ -495,7 +495,7 @@ HloComputation::ComputeChannelDependencies() const {
 
   ChannelDependencyGroup channel_dependencies;
   for (const auto& instruction : instructions_) {
-    absl::optional<int64_t> channel_id = GetChannelId(*instruction);
+    std::optional<int64_t> channel_id = GetChannelId(*instruction);
     if (channel_id)
       channel_dependencies[*channel_id].push_back(instruction.get());
   }

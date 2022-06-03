@@ -127,12 +127,12 @@ int ServiceOptions::intra_op_parallelism_threads() const {
 }
 
 ServiceOptions& ServiceOptions::set_allowed_devices(
-    const absl::optional<std::set<int>>& allowed_devices) {
+    const std::optional<std::set<int>>& allowed_devices) {
   allowed_devices_ = allowed_devices;
   return *this;
 }
 
-const absl::optional<std::set<int>>& ServiceOptions::allowed_devices() const {
+const std::optional<std::set<int>>& ServiceOptions::allowed_devices() const {
   return allowed_devices_;
 }
 
@@ -264,7 +264,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ExecutionOptions* execution_options,
     const AotCompilationOptions* aot_options) {
   int default_num_replicas = options_.number_of_replicas();
-  absl::optional<int> num_threads;
+  std::optional<int> num_threads;
   if (execute_backend_ != nullptr &&
       execute_backend_->eigen_intra_op_thread_pool() != nullptr) {
     num_threads = execute_backend_->eigen_intra_op_thread_pool()->NumThreads();
@@ -1112,7 +1112,7 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
 
   ProgramShape program_shape(arg->computation().host_program_shape());
   TF_DCHECK_OK(ShapeUtil::ValidateShape(program_shape.result()));
-  absl::optional<Layout> output_layout;
+  std::optional<Layout> output_layout;
   if (arg->has_output_layout()) {
     output_layout = Layout::CreateFromProto(arg->output_layout());
     TF_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(

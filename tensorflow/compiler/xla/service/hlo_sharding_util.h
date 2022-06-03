@@ -57,7 +57,7 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
 // Given a map<device, occurrence_count>, selects the device with higher
 // occurrence count (if any). If top_count in not nullptr, it will receive the
 // count of the dominant device returned.
-absl::optional<int64_t> SelectDominantDevice(
+std::optional<int64_t> SelectDominantDevice(
     const std::map<int64_t, int64_t>& device_map, int64_t* top_count);
 
 // Assigns all the instructions of a computation, to a given device.
@@ -67,7 +67,7 @@ Status AssignComputationDevice(HloComputation* computation, int64_t device);
 
 // Given an instruction container, returns the device which is most commonly
 // occurring among the instructions.
-absl::optional<int64_t> GetMostOccurringDevice(
+std::optional<int64_t> GetMostOccurringDevice(
     absl::Span<HloInstruction* const> instructions);
 
 // Given a set of computations, tries to extract the dominant device. A device
@@ -77,7 +77,7 @@ absl::optional<int64_t> GetMostOccurringDevice(
 // This API does not recurse into called computations.
 // If no device exists that satisfies the condition, the returned optional will
 // hold no value.
-StatusOr<absl::optional<int64_t>> GetDominantDevice(
+StatusOr<std::optional<int64_t>> GetDominantDevice(
     absl::Span<HloComputation* const> computations, double dominant_factor);
 
 // Returns the HloSharding with the tile dimensions and tile assignment
@@ -88,12 +88,12 @@ HloSharding TransposeSharding(const HloSharding& sharding,
 
 // Returns the HloSharding with the tile shape reshaped based on the source and
 // target shapes and the tile assignment adjusted to correspond to the new tile
-// shape or absl::nullopt if the resulting reshape would create an invalid
+// shape or std::nullopt if the resulting reshape would create an invalid
 // sharding (non continuous or non uniformly sized tiles). In case of a tile
 // maximal sharding returns the original sharding.
-absl::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
-                                            const Shape& target_shape,
-                                            const HloSharding& sharding);
+std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
+                                           const Shape& target_shape,
+                                           const HloSharding& sharding);
 
 // Returns the HloSharding with the tile dimensions and tile assignment
 // reversed based on the specified dimension numbers. In case of a tile
@@ -154,24 +154,24 @@ HloSharding ScatterEffectiveDataSharding(const HloSharding& data_sharding,
 
 // Returns an output sharding of gather by passing through the data operand's
 // sharding.
-absl::optional<HloSharding> GatherOutputShardingFromDataOperand(
+std::optional<HloSharding> GatherOutputShardingFromDataOperand(
     const HloSharding& data_operand_sharding, const HloInstruction& hlo,
     absl::Span<const int64_t> slice_sizes, const Shape& output_shape,
     const Shape& operand_shape);
 
 // Returns a data operand sharding of gather by passing through the output's
 // sharding.
-absl::optional<HloSharding> GatherDataOperandShardingFromOutput(
+std::optional<HloSharding> GatherDataOperandShardingFromOutput(
     const HloSharding& output_sharding, const HloInstruction& hlo);
 
 // Returns an output sharding of scatter by passing through the update operand's
 // sharding.
-absl::optional<HloSharding> ScatterOutputShardingFromUpdate(
+std::optional<HloSharding> ScatterOutputShardingFromUpdate(
     const HloSharding& update_sharding, const HloInstruction& hlo);
 
 // Returns an update operand sharding of scatter by passing through the output's
 // sharding.
-absl::optional<HloSharding> ScatterUpdateShardingFromOutput(
+std::optional<HloSharding> ScatterUpdateShardingFromOutput(
     const HloSharding& output_sharding, const HloInstruction& hlo);
 
 // Returns an identity value and an HloOpcode for reduce computation of scatter
@@ -215,16 +215,16 @@ HloSharding RemoveShapeDimensions(const HloSharding& sharding,
 // Similar to TransposeSharding(), but allows removing/adding non-partitioned
 // dimensions. In src_to_tgt and tgt_to_src, -1 represents a non-existing
 // dimension.
-absl::optional<HloSharding> TransposeShardingWithCollapsedDims(
+std::optional<HloSharding> TransposeShardingWithCollapsedDims(
     const HloSharding& source, absl::Span<int64_t const> src_to_tgt,
     absl::Span<int64_t const> tgt_to_src);
 
 // Returns the iota dimension if maybe_iota is an kIota instruction or
 // equivalent to kIota.
-absl::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota);
+std::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota);
 
 // Returns identified parallel dimensions for Gather.
-absl::optional<GatherParallelDims> GetGatherBatchParallelDims(
+std::optional<GatherParallelDims> GetGatherBatchParallelDims(
     const HloInstruction& hlo);
 
 // Returns the parallel dimensions of the output of a gather based on the

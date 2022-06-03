@@ -176,9 +176,9 @@ struct Item {
 struct ItemUse {
   Item* user;
   int64_t operand_number;
-  absl::optional<int64_t> index;
+  std::optional<int64_t> index;
 
-  ItemUse(Item* user, int64_t op_num, absl::optional<int64_t> index)
+  ItemUse(Item* user, int64_t op_num, std::optional<int64_t> index)
       : user(user), operand_number(op_num), index(index) {}
   bool operator==(const ItemUse& other) const {
     return user == other.user && operand_number == other.operand_number &&
@@ -472,9 +472,9 @@ UsesList GetUsers(const InstructionList& instruction_list,
       // A buffer may be used by the instruction via more than one alias. For
       // example, a buffer which appears in more than one element of a tuple.
       Item* user_item = instruction_list.GetItem(user);
-      absl::optional<int64_t> user_index =
+      std::optional<int64_t> user_index =
           logical_buffer->index().size() != 1
-              ? absl::nullopt
+              ? std::nullopt
               : absl::make_optional(logical_buffer->index().back());
       for (int64_t op_idx : user->OperandIndices(buffer_alias.instruction())) {
         if (!absl::c_linear_search(
@@ -1040,14 +1040,14 @@ Status MemoryUsageTracker::AddCompressInstructions(Item* original_item,
   }
   original_buffer.users = std::move(placed_users);
   original_buffer.unfinished_user_count = 0;
-  original_buffer.users.push_back(ItemUse{compressed_item, 0, absl::nullopt});
+  original_buffer.users.push_back(ItemUse{compressed_item, 0, std::nullopt});
   // We are reallocating the vector containing the buffers potentially,
   // invalidating the original_buffer reference, so copy the index that we need
   // across NewBuffer calls.
   ShapeIndex copied_index = original_buffer.index;
   Buffer& compressed_buffer =
       NewBuffer(compressed_item, compressed_item->instruction->shape(),
-                copied_index, {ItemUse{uncompressed_item, 0, absl::nullopt}},
+                copied_index, {ItemUse{uncompressed_item, 0, std::nullopt}},
                 /*live_out=*/false,
                 /*has_indirect_uses=*/false);
   compressed_item->buffers_used = original_item->buffers_output;
@@ -1204,7 +1204,7 @@ Status MemoryUsageTracker::AddRematerializedInstruction(
     for (BufferId buffer_id : indirect_user->buffers_used) {
       Buffer& buffer = buffers_.at(buffer_id);
       buffer.unfinished_user_count++;
-      buffer.users.push_back(ItemUse{indirect_user, 0, absl::nullopt});
+      buffer.users.push_back(ItemUse{indirect_user, 0, std::nullopt});
     }
   }
 

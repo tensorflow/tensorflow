@@ -29,12 +29,12 @@ Status DynamicParameterBinding::Bind(
   return OkStatus();
 }
 
-absl::optional<DynamicParameterBinding::DynamicParameter>
+std::optional<DynamicParameterBinding::DynamicParameter>
 DynamicParameterBinding::GetBinding(
     const DynamicDimension& dynamic_dimension) const {
   auto param_iter = bindings_.find(dynamic_dimension);
   if (param_iter == bindings_.end()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return param_iter->second;
 }

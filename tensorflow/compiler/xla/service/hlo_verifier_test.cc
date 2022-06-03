@@ -1228,9 +1228,8 @@ int64_t ReplicaCount(const std::vector<std::vector<int64_t>>& replica_groups) {
 
 StatusOr<std::unique_ptr<HloModule>> MakeCollectiveCommOpComputation(
     std::vector<std::vector<int64_t>> replica_groups,
-    absl::optional<int64_t> replica_count,
-    absl::optional<int64_t> num_partitions, absl::string_view other_attributes,
-    absl::string_view template_str) {
+    std::optional<int64_t> replica_count, std::optional<int64_t> num_partitions,
+    absl::string_view other_attributes, absl::string_view template_str) {
   HloModuleConfig config;
   config.set_replica_count(
       replica_count.value_or(ReplicaCount(replica_groups)));
@@ -1247,8 +1246,8 @@ StatusOr<std::unique_ptr<HloModule>> MakeCollectiveCommOpComputation(
 
 StatusOr<std::unique_ptr<HloModule>> MakeAllReduceComputation(
     std::vector<std::vector<int64_t>> replica_groups,
-    absl::optional<int64_t> replica_count = absl::nullopt,
-    absl::optional<int64_t> num_partitions = absl::nullopt,
+    std::optional<int64_t> replica_count = std::nullopt,
+    std::optional<int64_t> num_partitions = std::nullopt,
     absl::string_view other_attributes = "") {
   const char* kTemplate = R"(
   HloModule test
@@ -1440,8 +1439,8 @@ TEST_F(HloVerifierTest, AllReduceDoneWithoutStart) {
 
 StatusOr<std::unique_ptr<HloModule>> MakeAllToAllComputation(
     std::vector<std::vector<int64_t>> replica_groups,
-    absl::optional<int64_t> replica_count = absl::nullopt,
-    absl::optional<int64_t> num_partitions = absl::nullopt,
+    std::optional<int64_t> replica_count = std::nullopt,
+    std::optional<int64_t> num_partitions = std::nullopt,
     absl::string_view other_attributes = "") {
   const char* kTemplate = R"(
   HloModule test

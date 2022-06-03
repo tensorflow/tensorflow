@@ -364,7 +364,7 @@ Status AddCopiesForAliasedInputOutputs(HloModule* module) {
   HloInstruction* root = entry->root_instruction();
 
   ShapeTree<bool> output_indices_to_copy(root->shape());
-  std::vector<absl::optional<ShapeTree<HloInstruction*>>> copied_parameters(
+  std::vector<std::optional<ShapeTree<HloInstruction*>>> copied_parameters(
       entry->num_parameters());
   bool has_alias = false;
   for (auto* param : entry->parameter_instructions()) {
@@ -1944,7 +1944,7 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
               computation == module->entry_computation() &&
               module->input_output_alias_config().OutputHasAlias(index) &&
               buffers_at_index.size() == 1) {
-            absl::optional<HloInputOutputAliasConfig::Alias> alias =
+            std::optional<HloInputOutputAliasConfig::Alias> alias =
                 module->input_output_alias_config().GetAliasedParameter(index);
             CHECK(alias) << "Alias does not exist";
             const ShapeIndex& other_index = seen[buffers_at_index[0]];

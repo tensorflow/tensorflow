@@ -249,7 +249,7 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
   return true;
 }
 
-absl::optional<int64_t> SelectDominantDevice(
+std::optional<int64_t> SelectDominantDevice(
     const std::map<int64_t, int64_t>& device_map, int64_t* top_count) {
   int64_t device = 0;
   int64_t count = 0;
@@ -262,8 +262,7 @@ absl::optional<int64_t> SelectDominantDevice(
   if (top_count != nullptr) {
     *top_count = count;
   }
-  return count > 0 ? absl::optional<int64_t>(device)
-                   : absl::optional<int64_t>();
+  return count > 0 ? std::optional<int64_t>(device) : std::optional<int64_t>();
 }
 
 Status AssignComputationDevice(HloComputation* computation, int64_t device) {
@@ -278,7 +277,7 @@ Status AssignComputationDevice(HloComputation* computation, int64_t device) {
   return OkStatus();
 }
 
-absl::optional<int64_t> GetMostOccurringDevice(
+std::optional<int64_t> GetMostOccurringDevice(
     absl::Span<HloInstruction* const> instructions) {
   std::map<int64_t, int64_t> device_map;
   for (HloInstruction* instruction : instructions) {
@@ -292,7 +291,7 @@ absl::optional<int64_t> GetMostOccurringDevice(
   return SelectDominantDevice(device_map, nullptr);
 }
 
-StatusOr<absl::optional<int64_t>> GetDominantDevice(
+StatusOr<std::optional<int64_t>> GetDominantDevice(
     absl::Span<HloComputation* const> computations, double dominant_factor) {
   int64_t instruction_count = 0;
   std::map<int64_t, int64_t> device_map;
@@ -309,8 +308,8 @@ StatusOr<absl::optional<int64_t>> GetDominantDevice(
     }
   }
   int64_t count;
-  absl::optional<int64_t> device = SelectDominantDevice(device_map, &count);
-  absl::optional<int64_t> dominant_device;
+  std::optional<int64_t> device = SelectDominantDevice(device_map, &count);
+  std::optional<int64_t> dominant_device;
   if (device) {
     double factor =
         static_cast<double>(count) / static_cast<double>(instruction_count);
@@ -363,9 +362,9 @@ HloSharding TransposeSharding(const HloSharding& sharding,
   }
 }
 
-absl::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
-                                            const Shape& target_shape,
-                                            const HloSharding& sharding) {
+std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
+                                           const Shape& target_shape,
+                                           const HloSharding& sharding) {
   if (sharding.IsTileMaximal()) {
     return sharding;
   }
@@ -397,7 +396,7 @@ absl::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
   while (!source_dims_stack.empty() || !target_dims_stack.empty()) {
     if (target_dims_stack.empty()) {
       if (Product(sharding_tile_dims_stack) != 1) {
-        return absl::nullopt;
+        return std::nullopt;
       }
       break;
     }
@@ -434,7 +433,7 @@ absl::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
     } else if (s_size > t_size) {
       // Dimension split.
       if (s_size % t_size != 0 || s_size % s_partitions != 0) {
-        return absl::nullopt;
+        return std::nullopt;
       }
       if (t_size % s_partitions == 0) {
         target_tile_assignment_dimensions.push_back(s_partitions);
@@ -447,20 +446,20 @@ absl::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
         source_dims_stack.push_back(s_size / t_size);
         sharding_tile_dims_stack.push_back(s_partitions / t_size);
       } else {
-        return absl::nullopt;
+        return std::nullopt;
       }
     } else {
       // Dimension merge. Also merge the source dimension with the next, and
       // process it next time.
       if (s_size % s_partitions != 0) {
-        return absl::nullopt;
+        return std::nullopt;
       }
       CHECK(!source_dims_stack.empty());
       if (sharding_tile_dims_stack.back() != 1 && s_size != s_partitions) {
         // If the next dimension to combine is sharded, we require that the
         // current dimension's shard size to be 1. Otherwise, the new shard
         // would be non-contiguous.
-        return absl::nullopt;
+        return std::nullopt;
       }
       source_dims_stack.back() *= s_size;
       sharding_tile_dims_stack.back() *= s_partitions;
@@ -468,7 +467,7 @@ absl::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
     }
   }
   if (Product(target_tile_assignment_dimensions) == 1) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   Array<int64_t> new_tile_assignment = sharding.tile_assignment();
   for (int64_t i = sharding.TiledDataRank();
@@ -913,7 +912,7 @@ namespace {
 // dimensions (offset dimensions in the gather output (or scatter update) that
 // have the same size as the operand), returns the corresponding output (or
 // update) sharding by passing through the input sharding.
-absl::optional<HloSharding> PassthroughOperandToGatherOutputOrScatterUpdate(
+std::optional<HloSharding> PassthroughOperandToGatherOutputOrScatterUpdate(
     const Shape& operand_shape, const HloSharding& operand_sharding,
     const Shape& update_or_gather_shape,
     absl::Span<const int64_t> collapsed_or_inserted_dims,
@@ -930,19 +929,19 @@ absl::optional<HloSharding> PassthroughOperandToGatherOutputOrScatterUpdate(
     if (absl::c_linear_search(collapsed_or_inserted_dims, i) ||
         absl::c_linear_search(index_map, i)) {
       if (dim_partitions > 1) {
-        return absl::nullopt;
+        return std::nullopt;
       }
       collapsed++;
       continue;
     }
     if (slice_size[i] != operand_shape.dimensions(i) && dim_partitions > 1) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     int64_t offset_dim = offset_or_window_dims[i - collapsed];
     if (i - collapsed > 0 &&
         offset_dim < offset_or_window_dims[i - collapsed - 1]) {
       // Output offsets are transposed, we do not support this case.
-      return absl::nullopt;
+      return std::nullopt;
     }
     passthrough_tile[offset_dim] = dim_partitions;
   }
@@ -961,7 +960,7 @@ absl::optional<HloSharding> PassthroughOperandToGatherOutputOrScatterUpdate(
 }
 
 // Inverse of PassthroughOperandToGatherOutputOrScatterUpdate.
-absl::optional<HloSharding> PassthroughGatherOutputOrScatterUpdateToOperand(
+std::optional<HloSharding> PassthroughGatherOutputOrScatterUpdateToOperand(
     const Shape& operand_shape, const HloSharding& update_or_gather_sharding,
     absl::Span<const int64_t> collapsed_or_inserted_dims,
     absl::Span<const int64_t> index_map,
@@ -984,12 +983,12 @@ absl::optional<HloSharding> PassthroughGatherOutputOrScatterUpdateToOperand(
     int64_t dim_partitions =
         update_or_gather_sharding.tile_assignment().dim(offset_dim);
     if (slice_size[i] != operand_shape.dimensions(i) && dim_partitions > 1) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     if (i - collapsed > 0 &&
         offset_dim < offset_or_window_dims[i - collapsed - 1]) {
       // Output offsets are transposed, we do not support this case.
-      return absl::nullopt;
+      return std::nullopt;
     }
     relevant_update_or_gather_dims.push_back(offset_dim);
     passthrough_tile[i] = dim_partitions;
@@ -1017,7 +1016,7 @@ absl::optional<HloSharding> PassthroughGatherOutputOrScatterUpdateToOperand(
 
 // Collect data operand sharding for a gather with parallel dimensions from
 // the output.
-absl::optional<HloSharding> GatherParallelDataOperandSharding(
+std::optional<HloSharding> GatherParallelDataOperandSharding(
     const HloSharding& output_sharding, const HloInstruction& gather,
     const GatherParallelDims& parallel_dims) {
   if (output_sharding.IsTileMaximal()) {
@@ -1067,7 +1066,7 @@ absl::optional<HloSharding> GatherParallelDataOperandSharding(
 
 }  // namespace
 
-absl::optional<HloSharding> GatherOutputShardingFromDataOperand(
+std::optional<HloSharding> GatherOutputShardingFromDataOperand(
     const HloSharding& data_operand_sharding, const HloInstruction& hlo,
     absl::Span<const int64_t> slice_sizes, const Shape& output_shape,
     const Shape& operand_shape) {
@@ -1083,7 +1082,7 @@ absl::optional<HloSharding> GatherOutputShardingFromDataOperand(
       start_index_map, offset_dims, slice_sizes);
 }
 
-absl::optional<HloSharding> GatherDataOperandShardingFromOutput(
+std::optional<HloSharding> GatherDataOperandShardingFromOutput(
     const HloSharding& output_sharding, const HloInstruction& hlo) {
   const auto& dnums = hlo.gather_dimension_numbers();
   std::vector<int64_t> collapsed_slice_dims(
@@ -1093,7 +1092,7 @@ absl::optional<HloSharding> GatherDataOperandShardingFromOutput(
   std::vector<int64_t> offset_dims(dnums.offset_dims().begin(),
                                    dnums.offset_dims().end());
 
-  absl::optional<HloSharding> parallel_sharding;
+  std::optional<HloSharding> parallel_sharding;
   auto parallel_dims = GetGatherBatchParallelDims(hlo);
   if (parallel_dims) {
     // Prioritize parallel sharding first as this is how it is in
@@ -1101,7 +1100,7 @@ absl::optional<HloSharding> GatherDataOperandShardingFromOutput(
     parallel_sharding =
         GatherParallelDataOperandSharding(output_sharding, hlo, *parallel_dims);
   }
-  absl::optional<HloSharding> passthrough_sharding =
+  std::optional<HloSharding> passthrough_sharding =
       PassthroughGatherOutputOrScatterUpdateToOperand(
           hlo.operand(0)->shape(), output_sharding, collapsed_slice_dims,
           start_index_map, offset_dims, hlo.gather_slice_sizes());
@@ -1124,7 +1123,7 @@ absl::optional<HloSharding> GatherDataOperandShardingFromOutput(
   return parallel_sharding;
 }
 
-absl::optional<HloSharding> ScatterOutputShardingFromUpdate(
+std::optional<HloSharding> ScatterOutputShardingFromUpdate(
     const HloSharding& update_sharding, const HloInstruction& hlo) {
   const auto& dnums = hlo.scatter_dimension_numbers();
   std::vector<int64_t> inserted_window_dims(
@@ -1148,7 +1147,7 @@ absl::optional<HloSharding> ScatterOutputShardingFromUpdate(
       scatter_dims_to_operand_dims, update_window_dims, slice_size);
 }
 
-absl::optional<HloSharding> ScatterUpdateShardingFromOutput(
+std::optional<HloSharding> ScatterUpdateShardingFromOutput(
     const HloSharding& output_sharding, const HloInstruction& hlo) {
   const auto& dnums = hlo.scatter_dimension_numbers();
   std::vector<int64_t> inserted_window_dims(
@@ -1375,7 +1374,7 @@ HloSharding RemoveShapeDimensions(const HloSharding& sharding,
                                      sharding.metadata());
 }
 
-absl::optional<HloSharding> TransposeShardingWithCollapsedDims(
+std::optional<HloSharding> TransposeShardingWithCollapsedDims(
     const HloSharding& source, absl::Span<int64_t const> src_to_tgt,
     absl::Span<int64_t const> tgt_to_src) {
   if (source.IsTileMaximal()) {
@@ -1414,7 +1413,7 @@ absl::optional<HloSharding> TransposeShardingWithCollapsedDims(
   for (int64_t i = 0; i < src_non_subgroup_dims; ++i) {
     if (src_to_tgt[i] < 0) {
       if (source.tile_assignment().dim(i) > 1) {
-        return absl::nullopt;
+        return std::nullopt;
       }
       perm[src_non_subgroup_dims - skipped_src_dims] = i;
       skipped_src_dims--;
@@ -1447,13 +1446,13 @@ absl::optional<HloSharding> TransposeShardingWithCollapsedDims(
                                      source.metadata());
 }
 
-absl::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota) {
+std::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota) {
   if (auto* iota = DynCast<HloIotaInstruction>(maybe_iota)) {
     return iota->iota_dimension();
   }
 
   if (maybe_iota->shape().element_type() != S32) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   if (maybe_iota->IsConstant()) {
     std::vector<bool> is_iota_dim(maybe_iota->shape().rank(), true);
@@ -1470,7 +1469,7 @@ absl::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota) {
         return i;
       }
     }
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   if (maybe_iota->opcode() == HloOpcode::kBroadcast) {
@@ -1478,12 +1477,12 @@ absl::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota) {
     if (operand_dim) {
       return maybe_iota->dimensions(*operand_dim);
     }
-    return absl::nullopt;
+    return std::nullopt;
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
-absl::optional<GatherParallelDims> GetGatherBatchParallelDims(
+std::optional<GatherParallelDims> GetGatherBatchParallelDims(
     const HloInstruction& hlo) {
   const auto& dnums = hlo.gather_dimension_numbers();
   int64_t index_dim = dnums.index_vector_dim();
@@ -1511,7 +1510,7 @@ absl::optional<GatherParallelDims> GetGatherBatchParallelDims(
           op->shape().dimensions_size() > index_dim
               ? op->shape().dimensions(index_dim)
               : 1;
-      if (absl::optional<int64_t> maybe_iota_dim = GetDimensionForIota(op)) {
+      if (std::optional<int64_t> maybe_iota_dim = GetDimensionForIota(op)) {
         if (*maybe_iota_dim != index_dim) {
           for (int j = 0; j < num_indices_from_element; ++j) {
             index_parallel_in_dim[concatenated_dims + j] = *maybe_iota_dim;
@@ -1520,7 +1519,7 @@ absl::optional<GatherParallelDims> GetGatherBatchParallelDims(
       }
       concatenated_dims += num_indices_from_element;
     }
-  } else if (absl::optional<int64_t> maybe_iota_dim =
+  } else if (std::optional<int64_t> maybe_iota_dim =
                  GetDimensionForIota(indices)) {
     if (*maybe_iota_dim != index_dim) {
       // This is a case of a single iota with index_dim being out of bounds.
@@ -1544,7 +1543,7 @@ absl::optional<GatherParallelDims> GetGatherBatchParallelDims(
       continue;
     }
     if (absl::c_linear_search(indices_parallel_dims, index_parallel_dim)) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     // Considered parallel only if the slice is of size 1 over the operand.
     if (hlo.gather_slice_sizes()[dnums.start_index_map(i)] == 1) {
@@ -1559,7 +1558,7 @@ absl::optional<GatherParallelDims> GetGatherBatchParallelDims(
     return GatherParallelDims{indices_parallel_dims, operand_parallel_dims,
                               index_parallel_in_dim};
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 absl::InlinedVector<int64_t, 1> GatherParallelOutputDims(

@@ -509,16 +509,16 @@ StatusOr<HloSharding> HloSharding::GetTupleSharding(const Shape& shape) const {
   return Tuple(ShapeTree<HloSharding>(shape, *this));
 }
 
-absl::optional<int64_t> HloSharding::UniqueDevice() const {
+std::optional<int64_t> HloSharding::UniqueDevice() const {
   if (IsTuple()) {
     if (tuple_elements_.empty()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
-    absl::optional<int64_t> unique_device;
+    std::optional<int64_t> unique_device;
     for (auto& tuple_sharding : tuple_elements_) {
       auto device = tuple_sharding.UniqueDevice();
       if (!device || (unique_device && *device != *unique_device)) {
-        return absl::nullopt;
+        return std::nullopt;
       }
       unique_device = device;
     }
@@ -527,7 +527,7 @@ absl::optional<int64_t> HloSharding::UniqueDevice() const {
   if (!replicated_ && maximal_) {
     return static_cast<int64_t>(*tile_assignment_.begin());
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 int64_t HloSharding::GetUniqueDevice() const {
@@ -819,16 +819,16 @@ HloSharding HloSharding::GetSubSharding(const Shape& shape,
   }
 }
 
-absl::optional<HloSharding> HloSharding::ExtractSingleSharding() const {
+std::optional<HloSharding> HloSharding::ExtractSingleSharding() const {
   if (!IsTuple()) {
     return *this;
   }
   if (tuple_elements_.empty()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   for (int64_t i = 1; i < tuple_elements_.size(); ++i) {
     if (tuple_elements_[0] != tuple_elements_[i]) {
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
   return tuple_elements_.front();

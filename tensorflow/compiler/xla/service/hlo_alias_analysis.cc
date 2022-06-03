@@ -58,7 +58,7 @@ void ComputeInputOutputAliasedValues(const HloValue& value,
   // instruction.
   for (const HloPosition& pos : value.positions()) {
     if (pos.instruction == entry_computation.root_instruction()) {
-      absl::optional<HloInputOutputAliasConfig::Alias> aliased_input =
+      std::optional<HloInputOutputAliasConfig::Alias> aliased_input =
           io_alias_config.GetAliasedParameter(pos.index);
       if (aliased_input) {
         aliased_values.insert(

@@ -30,7 +30,7 @@ struct ReduceScatterSpec {
 };
 
 // Matches the given all-reduce operation to a reduce-scatter pattern.
-absl::optional<ReduceScatterSpec> MatchReduceScatter(
+std::optional<ReduceScatterSpec> MatchReduceScatter(
     const HloAllReduceInstruction* ar, int64_t num_partitions,
     int64_t num_replicas, bool allow_multiple_split_dims = false,
     bool allow_intervening_reshape = false, int64_t min_rank = 1);

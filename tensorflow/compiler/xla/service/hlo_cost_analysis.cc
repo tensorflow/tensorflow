@@ -1158,7 +1158,7 @@ float HloCostAnalysis::optimal_seconds(const HloInstruction& hlo) const {
 }
 
 int64_t HloCostAnalysis::GetBytesRead(
-    const HloInstruction& hlo, absl::optional<int64_t> memory_space) const {
+    const HloInstruction& hlo, std::optional<int64_t> memory_space) const {
   int64_t bytes_read = 0;
   for (int operand_number = 0; operand_number < hlo.operand_count();
        ++operand_number) {
@@ -1166,7 +1166,7 @@ int64_t HloCostAnalysis::GetBytesRead(
     ShapeUtil::ForEachSubshape(
         shape, [&](const Shape& sub_shape, const ShapeIndex& index) {
           if (ShapeUtil::IsLeafIndex(shape, index)) {
-            absl::optional<int64_t> index_memory_space;
+            std::optional<int64_t> index_memory_space;
             if (sub_shape.has_layout()) {
               index_memory_space = sub_shape.layout().memory_space();
             }
@@ -1180,11 +1180,11 @@ int64_t HloCostAnalysis::GetBytesRead(
 }
 
 int64_t HloCostAnalysis::GetBytesWritten(
-    const HloInstruction& hlo, absl::optional<int64_t> memory_space) const {
+    const HloInstruction& hlo, std::optional<int64_t> memory_space) const {
   int64_t bytes_written = 0;
   for (const ShapeUtil::IndexedShape& indexed_shape :
        ShapeUtil::GetLeafShapes(hlo.shape())) {
-    absl::optional<int64_t> index_memory_space;
+    std::optional<int64_t> index_memory_space;
     if (indexed_shape.shape.has_layout()) {
       index_memory_space = indexed_shape.shape.layout().memory_space();
     }
