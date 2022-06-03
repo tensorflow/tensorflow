@@ -130,7 +130,7 @@ void ClearDataFromCalibrator(absl::string_view id) {
 }
 
 float GetMinFromCalibrator(absl::string_view id) {
-  absl::optional<std::pair<float, float>> min_max =
+  std::optional<std::pair<float, float>> min_max =
       calibrator::CalibratorSingleton::GetMinMax(id);
   if (!min_max.has_value()) {
     PyErr_Format(PyExc_ValueError, "No calibrated data for '%s'",
@@ -142,7 +142,7 @@ float GetMinFromCalibrator(absl::string_view id) {
 }
 
 float GetMaxFromCalibrator(absl::string_view id) {
-  absl::optional<std::pair<float, float>> min_max =
+  std::optional<std::pair<float, float>> min_max =
       calibrator::CalibratorSingleton::GetMinMax(id);
   if (!min_max.has_value()) {
     PyErr_Format(PyExc_ValueError, "No calibrated data for '%s'",

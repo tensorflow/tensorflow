@@ -1626,7 +1626,7 @@ mlir::NamedAttribute HloFunctionImporter::ConvertReplicaGroups(
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(
-    absl::optional<int64_t> channel_id) {
+    std::optional<int64_t> channel_id) {
   xla::ChannelHandle channel_handle;
   if (channel_id) channel_handle.set_handle(*channel_id);
   return ConvertChannelHandle(channel_handle);

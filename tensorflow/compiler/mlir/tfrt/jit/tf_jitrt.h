@@ -36,7 +36,7 @@ namespace tensorflow {
 
 // Record JitRt kernel compilation time for a given session name.
 void RecordCompileTime(const std::string& model_name, const std::string& kernel,
-                       absl::optional<size_t> specialization,
+                       std::optional<size_t> specialization,
                        absl::Duration compile_time);
 
 // A set of helper classes to convert results returned from the compiled

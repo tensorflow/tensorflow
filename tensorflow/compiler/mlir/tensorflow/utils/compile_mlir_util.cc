@@ -99,7 +99,7 @@ Status MaybeRewriteLayoutWithShardedShape(
   if (!op_sharding.ParseFromString(sharding.getValue().str()))
     return errors::InvalidArgument("failed to parse sharding '",
                                    sharding.getValue().str(), "'");
-  absl::optional<xla::HloSharding> hlo_sharding;
+  std::optional<xla::HloSharding> hlo_sharding;
   TF_ASSIGN_OR_RETURN(hlo_sharding, xla::HloSharding::FromProto(op_sharding));
   TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
       hlo_sharding, /*use_fast_memory=*/false, shape_determination_fns, shape));
@@ -132,7 +132,7 @@ Status GetXlaInputShapes(
     TF_RETURN_IF_ERROR(ConvertToDataType(func_type.getInput(i), &arg_dtype));
 
     auto layout_preference = shape_determination_fns.layout_preference_fn(
-        arg_shapes[i].shape, arg_dtype, absl::nullopt);
+        arg_shapes[i].shape, arg_dtype, std::nullopt);
     TF_ASSIGN_OR_RETURN(xla_shape,
                         shape_determination_fns.shape_representation_fn(
                             arg_shapes[i].shape, arg_dtype,
@@ -164,7 +164,7 @@ Status GetOutputInfo(
   auto shape_representation_fn_no_fast_memory =
       [shape_determination_fns](const TensorShape& shape, DataType dtype) {
         auto layout_preference = shape_determination_fns.layout_preference_fn(
-            shape, dtype, absl::nullopt);
+            shape, dtype, std::nullopt);
         return shape_determination_fns.shape_representation_fn(
             shape, dtype, /*use_fast_memory=*/false, layout_preference);
       };
