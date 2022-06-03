@@ -343,7 +343,8 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
     lambda_f(); lambda_fc()
     not_compiled = timeit.timeit(lambda_f, number=10)
     compiled = timeit.timeit(lambda_fc, number=10)
-    print("XLA Compiled: %f Notcompiled: %f" % (compiled , not_compiled))
+    print("XLA JIT -> compiled: %f | not compiled: %f" % 
+        (compiled , not_compiled))
     self.assertLess(compiled, not_compiled)
 
   @parameterized.named_parameters(
