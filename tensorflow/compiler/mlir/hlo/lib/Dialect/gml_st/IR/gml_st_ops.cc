@@ -1311,6 +1311,93 @@ LogicalResult PointOp::verify() {
   }
   return success();
 }
+//
+//===----------------------------------------------------------------------===//
+// TileOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TileOp::inferReturnTypes(
+    MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  // Derive result shape.
+  TileOp::Adaptor adaptor(operands, attributes, regions);
+  SmallVector<int64_t> shape = llvm::to_vector(
+      llvm::map_range(adaptor.static_sizes(), [&](const auto &size) {
+        return size.template dyn_cast<mlir::IntegerAttr>()
+            .getValue()
+            .getSExtValue();
+      }));
+
+  auto resultTy = TileType::get(ctx, shape);
+  inferredReturnTypes.push_back(resultTy);
+  return success();
+}
+
+LogicalResult TileOp::verify() {
+  auto subsetTy = subset().getType().cast<TileType>();
+  auto rank = subsetTy.getShape().size();
+  if (failed(mlir::verifyListOfOperandsOrIntegers(getOperation(), "sizes", rank,
+                                                  static_sizes(), sizes(),
+                                                  ShapedType::isDynamic))) {
+    return failure();
+  }
+  if (failed(mlir::verifyListOfOperandsOrIntegers(
+          getOperation(), "offsets", rank, static_offsets(), offsets(),
+          ShapedType::isDynamicStrideOrOffset))) {
+    return failure();
+  }
+  if (failed(mlir::verifyListOfOperandsOrIntegers(
+          getOperation(), "strides", rank, static_strides(), strides(),
+          ShapedType::isDynamicStrideOrOffset))) {
+    return failure();
+  }
+  for (auto it : llvm::zip(subsetTy.getShape(), static_offsets(),
+                           static_sizes(), static_strides())) {
+    auto offset =
+        std::get<1>(it).dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
+    if (offset < 0 && offset != ShapedType::kDynamicStrideOrOffset) {
+      return emitOpError("expected offset = ")
+             << offset << " to be non-negative";
+    }
+    auto size =
+        std::get<2>(it).dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
+    if (size < 0 && size != ShapedType::kDynamicSize) {
+      return emitOpError("expected size = ") << size << " to be non-negative";
+    }
+    auto stride =
+        std::get<3>(it).dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
+    if (stride < 0 && stride != ShapedType::kDynamicStrideOrOffset) {
+      return emitOpError("expected stride = ")
+             << stride << " to be non-negative";
+    }
+    auto argSize = std::get<0>(it);
+    // If the argument tile has a dynamic dimension, no additional verification
+    // is possible.
+    if (argSize == ShapedType::kDynamicSize) continue;
+    if (offset >= 0) {
+      if (stride >= 0 && size > 0) {
+        int64_t largestIndex = offset + stride * (size - 1);
+        if (largestIndex >= argSize) {
+          return emitOpError("offset = ")
+                 << offset << " size = " << size << " stride = " << stride
+                 << " causes access out of bounds at " << largestIndex
+                 << " for argument dimension size = " << argSize;
+        }
+      } else if (offset >= argSize) {
+        return emitOpError("offset = ")
+               << offset
+               << " is out of bounds for argument dimension size = " << argSize;
+      }
+    } else if (stride > 0 && size > 0 && stride * (size - 1) >= argSize) {
+      return emitOpError("size = ")
+             << size << " stride = " << stride
+             << " causes access out of bounds for argument dimension size = "
+             << argSize;
+    }
+  }
+  return success();
+}
 
 //===----------------------------------------------------------------------===//
 // CollapseTileOp
