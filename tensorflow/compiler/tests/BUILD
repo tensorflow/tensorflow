@@ -2144,26 +2144,6 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
-    name = "bincount_op_test",
-    size = "small",
-    srcs = ["bincount_op_test.py"],
-    enable_mlir_bridge = False,
-    tags = [
-        "no_pip",
-        "optonly",
-    ],
-    deps = [
-        ":xla_test",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:bincount_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework",
-        "//tensorflow/python/compiler/xla:compiler_py",
-    ],
-)
-
-tf_xla_py_test(
     name = "where_op_test",
     size = "small",
     srcs = ["where_op_test.py"],
