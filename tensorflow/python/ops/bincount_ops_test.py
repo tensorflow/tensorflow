@@ -275,13 +275,13 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters(    
   {
       "testcase_name": "_no_maxlength_small",
-      "x": np.random.randint(100, size=(200, 200), dtype=np.int32)
+      "x": np.random.randint(200, size=(200, 200), dtype=np.int32)
   }, {
       "testcase_name": "_no_maxlength_medium",
-      "x": np.random.randint(200, size=(500, 500), dtype=np.int32)
+      "x": np.random.randint(500, size=(500, 500), dtype=np.int32)
   }, {
       "testcase_name": "_no_maxlength_large",
-      "x": np.random.randint(500, size=(1000, 1000), dtype=np.int32)
+      "x": np.random.randint(100, size=(1000, 1000), dtype=np.int32)
   })
   @test_util.disable_mlir_bridge('TODO: ?')
   def test_compiled_dense_perf(self,
@@ -308,7 +308,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
             axis=axis
         )
       return y
-      
+
     @def_function.function(jit_compile=False)
     def f(x,
           weights=weights,
@@ -341,8 +341,8 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
                         axis=axis)
     # warm-up
     lambda_f(); lambda_fc()
-    not_compiled = timeit.timeit(lambda_f, number=100)
-    compiled = timeit.timeit(lambda_fc, number=100)
+    not_compiled = timeit.timeit(lambda_f, number=10)
+    compiled = timeit.timeit(lambda_fc, number=10)
     print("XLA Compiled: %f Notcompiled: %f" % (compiled , not_compiled))
     self.assertLess(compiled, not_compiled)
 

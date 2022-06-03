@@ -62,7 +62,7 @@ class DenseBincountOp : public XlaOpKernel {
     auto size = input_shape.dimensions(0);
     auto dim = 1;
     auto rank = input_shape.rank();
-    auto counter_shape = xla::ShapeUtil::MakeShape(xla::S32, {});
+    auto counter_shape = xla::ShapeUtil::MakeShape(xla::S64, {});
     const xla::Shape data_shape = xla::ShapeUtil::MakeShape(input_xla_type, {input_shape.dimensions()});
 
     xla::Shape output_shape = xla::ShapeUtil::MakeShape(dtype, {output_size});
@@ -81,7 +81,7 @@ class DenseBincountOp : public XlaOpKernel {
           ctx->builder()->CreateSubBuilder("condition");
       auto param = xla::Parameter(builder.get(), 0, loop_shape, "param");
       auto counter = xla::GetTupleElement(param, 0);
-      xla::Gt(xla::ConstantR0<int32_t>(builder.get(), size*dim), counter);
+      xla::Gt(xla::ConstantR0<int64_t>(builder.get(), size*dim), counter);
       condition = builder->Build().ConsumeValueOrDie();
     }
    
@@ -117,6 +117,7 @@ class DenseBincountOp : public XlaOpKernel {
           auto accum = xla::GetTupleElement(param, 2);
           auto accum_stack  = xla::GetTupleElement(param, 3);
           auto weights = xla::GetTupleElement(param, 4);
+
           if (binary_output_){
             accum = xla::One(true_builder.get(), dtype);
           }
@@ -147,7 +148,8 @@ class DenseBincountOp : public XlaOpKernel {
           no_update = false_builder->Build().ValueOrDie();
         }
 
-        auto output_size_xla = xla::ConstantR0<int32_t>(builder.get(), output_size);
+        auto output_size_xla = xla::ConstantR0<int64_t>(builder.get(), output_size);
+        data_scalar = xla::ConvertElementType(data_scalar, xla::S64);
         auto pred = xla::Lt(data_scalar, output_size_xla);
         auto tuple = xla::Tuple(builder.get(), {data_scalar, counter, accum, accum_stack, weights});
         auto cond = xla::Conditional(pred, tuple, update, tuple, no_update);
@@ -156,15 +158,17 @@ class DenseBincountOp : public XlaOpKernel {
 
       }
       else {
+
         auto condition_shape = xla::ShapeUtil::MakeTupleShape(
           {counter_shape, counter_shape, counter_shape, output_shape, 
            accum_shape, weights_shape});
 
-        auto dim_xla = xla::ConstantR0<int32_t>(builder.get(), dim);
+        auto dim_xla = xla::ConstantR0<int64_t>(builder.get(), dim);
         auto idx_1 = xla::Div(counter, dim_xla);
         auto idx_2 = counter % dim_xla;
         auto data = xla::DynamicSlice(data_stack, {idx_1, idx_2}, {1, 1});
         auto data_scalar = xla::Reshape(data, {0,1}, {});
+        data_scalar = xla::ConvertElementType(data_scalar, xla::S64);
         auto accum = xla::DynamicSlice(accum_stack, {idx_1, data_scalar}, {1, 1});
         accum = xla::Reshape(accum, {0,1}, {});
         accum = xla::ConvertElementType(accum, dtype);
@@ -180,6 +184,7 @@ class DenseBincountOp : public XlaOpKernel {
           auto accum_stack  = xla::GetTupleElement(param, 3);
           auto accum = xla::GetTupleElement(param, 4);
           auto weights = xla::GetTupleElement(param, 5);
+
           if (binary_output_){
             accum = xla::One(true_builder.get(), dtype);
           }
@@ -207,21 +212,23 @@ class DenseBincountOp : public XlaOpKernel {
           xla::Tuple(false_builder.get(), {accum, accum_stack});
           no_update = false_builder->Build().ValueOrDie();
         }
-        auto limit = xla::ConstantR0<int32_t>(builder.get(), output_size);
-        
+        auto limit = xla::ConstantR0<int64_t>(builder.get(), output_size);
+        data_scalar = xla::ConvertElementType(data_scalar, xla::S64);
+
+
         auto pred = xla::Lt(data_scalar, limit);
         auto tuple = xla::Tuple(builder.get(), {data_scalar, idx_1, idx_2, accum_stack, accum, weights});
         auto cond = xla::Conditional(pred, tuple, update, tuple, no_update);
         accum = xla::GetTupleElement(cond, 0);
         accum_stack = xla::GetTupleElement(cond, 1);
       }
-      counter = counter + xla::One(builder.get(), xla::S32);
+      counter = counter + xla::One(builder.get(), xla::S64);
       xla::Tuple(builder.get(), {counter, data_stack, accum_stack, weights});
       body = builder->Build().ConsumeValueOrDie();
     }
 
     // Create a While node with computations for the condition and the body.
-    auto zero = xla::Zero(ctx->builder(), xla::S32);
+    auto zero = xla::Zero(ctx->builder(), xla::S64);
     auto zero_out = xla::Zero(ctx->builder(), dtype);
     auto zero_broadcast = xla::Broadcast(zero_out, {output_shape.dimensions()});
     auto init = xla::Tuple(ctx->builder(), {zero, input, zero_broadcast, weights});
