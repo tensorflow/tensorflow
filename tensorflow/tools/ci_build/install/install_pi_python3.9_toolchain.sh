@@ -22,6 +22,7 @@ ln -sf /usr/bin/python3.9 /usr/local/bin/python3.9
 apt-get install -y python3.9-distutils
 update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 1
 update-alternatives --set python3 /usr/bin/python3.9
+update-alternatives --set python /usr/bin/python3.9
 pip3 install --upgrade pip
 # python3.9 -m pip install --upgrade pip
 source /install/common.sh
@@ -29,3 +30,4 @@ install_ubuntu_16_python_pip_deps python3.9
 cp -r /root//.local/lib/python3.9/site-packages/* /usr/lib/python3/dist-packages/.
 ln -sf /root//.local/lib/python3.9/site-packages/numpy/core/include/numpy /usr/include/python3.9/numpy 
 rm -f /usr/bin/python3 && ln -s /usr/bin/python3.9 /usr/bin/python3
+rm -f /usr/bin/python && ln -s /usr/bin/python3.9 /usr/bin/python
