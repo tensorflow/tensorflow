@@ -708,8 +708,8 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
   auto scatter = Cast<HloScatterInstruction>(hlo);
   auto dnums = scatter->scatter_dimension_numbers();
   auto operand = GetPartitionedHlo(scatter->operand(0));
-  auto indices = GetPartitionedHlo(scatter->operand(1));
-  auto updates = GetPartitionedHlo(scatter->operand(2));
+  auto indices = GetPartitionedHlo(scatter->scatter_indices());
+  auto updates = GetPartitionedHlo(scatter->scatter_updates()[0]);
   std::vector<int64_t> slice_size(operand.base_shape().rank(), 1);
   int64_t num_update_window_dims = 0;
   for (int64_t i = 0; i < operand.base_shape().rank(); ++i) {
@@ -734,7 +734,7 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
                                        dnums.index_vector_dim());
   CHECK(new_updates_sharding.has_value());
   auto maybe_passthrough = hlo_sharding_util::ScatterUpdateShardingFromOutput(
-      operand.sharding(), *hlo);
+      operand.sharding(), *scatter);
   const bool should_shard_index_and_update =
       !indices.sharding().IsTileMaximal() &&
       (dnums.index_vector_dim() == indices.base_shape().rank() ||

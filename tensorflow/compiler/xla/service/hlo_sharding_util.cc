@@ -738,22 +738,23 @@ HloSharding GatherEffectiveOutputSharding(const HloInstruction& hlo) {
 }
 
 HloSharding ScatterIndexSharding(const HloSharding& data_sharding,
-                                 const HloInstruction* hlo) {
+                                 const HloScatterInstruction* scatter) {
   if (data_sharding.IsTileMaximal()) {
     return data_sharding;
   }
 
-  const ScatterDimensionNumbers& dnums = hlo->scatter_dimension_numbers();
+  const ScatterDimensionNumbers& dnums = scatter->scatter_dimension_numbers();
   std::vector<int64_t> index_tile_assignment_dims;
   std::vector<int64_t> relevant_data_dims;
-  for (int64_t i = 0; i < hlo->operand(2)->shape().rank(); ++i) {
+  for (int64_t i = 0; i < scatter->scatter_updates()[0]->shape().rank(); ++i) {
     if (!absl::c_binary_search(dnums.update_window_dims(), i)) {
       index_tile_assignment_dims.push_back(
           data_sharding.tile_assignment().dim(i));
       relevant_data_dims.push_back(i);
     }
   }
-  if (index_tile_assignment_dims.size() < hlo->operand(1)->shape().rank()) {
+  if (index_tile_assignment_dims.size() <
+      scatter->scatter_indices()->shape().rank()) {
     index_tile_assignment_dims.push_back(1);
   }
   HloSharding relevant_data_sharding =
@@ -778,15 +779,15 @@ HloSharding ScatterIndexSharding(const HloSharding& data_sharding,
 }
 
 HloSharding ScatterDataSharding(const HloSharding& index_sharding,
-                                const HloInstruction* hlo) {
+                                const HloScatterInstruction* scatter) {
   if (index_sharding.IsTileMaximal()) {
     return index_sharding;
   }
 
-  const ScatterDimensionNumbers& dnums = hlo->scatter_dimension_numbers();
+  const ScatterDimensionNumbers& dnums = scatter->scatter_dimension_numbers();
   std::vector<int64_t> data_tile_assignment_dims;
   std::vector<int64_t> relevant_index_dims;
-  const int64_t rank = hlo->operand(2)->shape().rank();
+  const int64_t rank = scatter->scatter_updates()[0]->shape().rank();
   data_tile_assignment_dims.reserve(rank);
   for (int64_t i = 0, index_dim = 0; i < rank; ++i) {
     if (absl::c_binary_search(dnums.update_window_dims(), i)) {
@@ -819,17 +820,17 @@ HloSharding ScatterDataSharding(const HloSharding& index_sharding,
                                      index_sharding.metadata());
 }
 
-HloSharding ScatterEffectiveIndexSharding(const HloSharding& index_sharding,
-                                          const HloInstruction& hlo) {
+HloSharding ScatterEffectiveIndexSharding(
+    const HloSharding& index_sharding, const HloScatterInstruction& scatter) {
   if (index_sharding.IsTileMaximal()) {
     return index_sharding;
   }
 
   // Only shard on first "number of scatter_window_dims" dimensions.
-  const ScatterDimensionNumbers& dnums = hlo.scatter_dimension_numbers();
+  const ScatterDimensionNumbers& dnums = scatter.scatter_dimension_numbers();
   int64_t num_elements = 1;
   int64_t index_dim = 0;
-  for (int64_t i = 0; i < hlo.shape().rank(); ++i) {
+  for (int64_t i = 0; i < scatter.shape().rank(); ++i) {
     if (absl::c_binary_search(dnums.inserted_window_dims(), i)) {
       num_elements *= index_sharding.tile_assignment().dim(index_dim);
       index_dim++;
@@ -849,7 +850,7 @@ HloSharding ScatterEffectiveIndexSharding(const HloSharding& index_sharding,
                                      index_sharding.metadata());
   }
 
-  const int64_t index_rank = hlo.operand(1)->shape().rank();
+  const int64_t index_rank = scatter.scatter_indices()->shape().rank();
   std::vector<int64_t> slice_starts(index_rank, 0LL), slice_limits(index_rank);
   for (int64_t i = 0; i < index_rank; ++i) {
     if (i < index_dim) {
@@ -864,16 +865,16 @@ HloSharding ScatterEffectiveIndexSharding(const HloSharding& index_sharding,
 }
 
 HloSharding ScatterEffectiveDataSharding(const HloSharding& data_sharding,
-                                         const HloInstruction& hlo) {
+                                         const HloScatterInstruction& scatter) {
   if (data_sharding.IsTileMaximal()) {
     return data_sharding;
   }
 
-  const ScatterDimensionNumbers& dnums = hlo.scatter_dimension_numbers();
-  const int64_t data_rank = hlo.operand(2)->shape().rank();
+  const ScatterDimensionNumbers& dnums = scatter.scatter_dimension_numbers();
+  const int64_t data_rank = scatter.scatter_updates()[0]->shape().rank();
   std::vector<int64_t> tile_assignment_dims(data_rank, 1LL);
   int64_t num_elements = 1;
-  for (int64_t i = 0; i < hlo.shape().rank(); ++i) {
+  for (int64_t i = 0; i < scatter.shape().rank(); ++i) {
     if (absl::c_binary_search(dnums.inserted_window_dims(), i)) {
       CHECK_LT(i, data_rank);
       tile_assignment_dims[i] = data_sharding.tile_assignment().dim(i);
@@ -1124,8 +1125,8 @@ std::optional<HloSharding> GatherDataOperandShardingFromOutput(
 }
 
 std::optional<HloSharding> ScatterOutputShardingFromUpdate(
-    const HloSharding& update_sharding, const HloInstruction& hlo) {
-  const auto& dnums = hlo.scatter_dimension_numbers();
+    const HloSharding& update_sharding, const HloScatterInstruction& scatter) {
+  const auto& dnums = scatter.scatter_dimension_numbers();
   std::vector<int64_t> inserted_window_dims(
       dnums.inserted_window_dims().begin(), dnums.inserted_window_dims().end());
   std::vector<int64_t> scatter_dims_to_operand_dims(
@@ -1133,23 +1134,23 @@ std::optional<HloSharding> ScatterOutputShardingFromUpdate(
       dnums.scatter_dims_to_operand_dims().end());
   std::vector<int64_t> update_window_dims(dnums.update_window_dims().begin(),
                                           dnums.update_window_dims().end());
-  std::vector<int64_t> slice_size(hlo.shape().rank(), 1);
+  std::vector<int64_t> slice_size(scatter.shape().rank(), 1);
   int64_t num_update_window_dims = 0;
-  for (int64_t i = 0; i < hlo.shape().rank(); ++i) {
+  for (int64_t i = 0; i < scatter.shape().rank(); ++i) {
     if (absl::c_linear_search(dnums.inserted_window_dims(), i)) {
       continue;
     }
-    slice_size[i] = hlo.operand(2)->shape().dimensions(
+    slice_size[i] = scatter.scatter_updates()[0]->shape().dimensions(
         dnums.update_window_dims(num_update_window_dims++));
   }
   return PassthroughGatherOutputOrScatterUpdateToOperand(
-      hlo.shape(), update_sharding, inserted_window_dims,
+      scatter.shape(), update_sharding, inserted_window_dims,
       scatter_dims_to_operand_dims, update_window_dims, slice_size);
 }
 
 std::optional<HloSharding> ScatterUpdateShardingFromOutput(
-    const HloSharding& output_sharding, const HloInstruction& hlo) {
-  const auto& dnums = hlo.scatter_dimension_numbers();
+    const HloSharding& output_sharding, const HloScatterInstruction& scatter) {
+  const auto& dnums = scatter.scatter_dimension_numbers();
   std::vector<int64_t> inserted_window_dims(
       dnums.inserted_window_dims().begin(), dnums.inserted_window_dims().end());
   std::vector<int64_t> scatter_dims_to_operand_dims(
@@ -1157,17 +1158,17 @@ std::optional<HloSharding> ScatterUpdateShardingFromOutput(
       dnums.scatter_dims_to_operand_dims().end());
   std::vector<int64_t> update_window_dims(dnums.update_window_dims().begin(),
                                           dnums.update_window_dims().end());
-  std::vector<int64_t> slice_size(hlo.shape().rank(), 1);
+  std::vector<int64_t> slice_size(scatter.shape().rank(), 1);
   int64_t num_update_window_dims = 0;
-  for (int64_t i = 0; i < hlo.shape().rank(); ++i) {
+  for (int64_t i = 0; i < scatter.shape().rank(); ++i) {
     if (absl::c_linear_search(dnums.inserted_window_dims(), i)) {
       continue;
     }
-    slice_size[i] = hlo.operand(2)->shape().dimensions(
+    slice_size[i] = scatter.scatter_updates()[0]->shape().dimensions(
         dnums.update_window_dims(num_update_window_dims++));
   }
   return PassthroughOperandToGatherOutputOrScatterUpdate(
-      hlo.shape(), output_sharding, hlo.operand(2)->shape(),
+      scatter.shape(), output_sharding, scatter.scatter_updates()[0]->shape(),
       inserted_window_dims, scatter_dims_to_operand_dims, update_window_dims,
       slice_size);
 }

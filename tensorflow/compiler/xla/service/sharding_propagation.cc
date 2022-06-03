@@ -823,7 +823,6 @@ bool RemoveShardingMetadata(HloModule* module) {
   return changed;
 }
 
-
 // If a while contains a channel instruction on device D, check that any other
 // instructions with a device assignment are on D. Further, annotate the root
 // instruction of the while body to ensure that HLO partitioning will keep the
@@ -1542,29 +1541,30 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
       return std::nullopt;
     }
     case HloOpcode::kScatter: {
-      if (&instruction == user.operand(0)) {
+      auto& scatter_user = *Cast<HloScatterInstruction>(&user);
+      if (&instruction == scatter_user.operand(0)) {
         return user.sharding();
       }
-      if (&instruction == user.operand(1)) {
-        auto update = user.operand(2);
+      if (&instruction == scatter_user.scatter_indices()) {
+        auto update = scatter_user.scatter_updates()[0];
         if (!IsSpatiallyPartitioned(update)) {
           return std::nullopt;
         }
         return hlo_sharding_util::ScatterIndexSharding(update->sharding(),
-                                                       &user);
+                                                       &scatter_user);
       }
-      CHECK_EQ(&instruction, user.operand(2));
-      auto indices = user.operand(1);
+      CHECK_EQ(&instruction, scatter_user.scatter_updates()[0]);
+      auto indices = scatter_user.scatter_indices();
       if (IsSpatiallyPartitioned(indices)) {
-        auto from_indices =
-            hlo_sharding_util::ScatterDataSharding(indices->sharding(), &user);
+        auto from_indices = hlo_sharding_util::ScatterDataSharding(
+            indices->sharding(), &scatter_user);
         if (!from_indices.IsTileMaximal()) {
           return from_indices;
         }
       }
       if (is_spmd) {
         return hlo_sharding_util::ScatterUpdateShardingFromOutput(
-            user.sharding(), user);
+            user.sharding(), scatter_user);
       }
       return std::nullopt;
     }
@@ -2147,14 +2147,15 @@ bool ShardingPropagation::InferShardingFromOperands(
             instruction->operand(0)->sharding(), instruction,
             may_combine_partial_sharding);
       }
-      if (!IsSpatiallyPartitioned(instruction->operand(1)) &&
-          !IsSpatiallyPartitioned(instruction->operand(2))) {
+      auto* scatter = Cast<HloScatterInstruction>(instruction);
+      if (!IsSpatiallyPartitioned(scatter->scatter_indices()) &&
+          !IsSpatiallyPartitioned(scatter->scatter_updates()[0])) {
         return false;
       }
-      if (is_spmd_ && IsSpatiallyPartitioned(instruction->operand(2))) {
+      if (is_spmd_ && IsSpatiallyPartitioned(scatter->scatter_updates()[0])) {
         auto maybe_from_update =
             hlo_sharding_util::ScatterOutputShardingFromUpdate(
-                instruction->operand(2)->sharding(), *instruction);
+                scatter->scatter_updates()[0]->sharding(), *scatter);
         if (maybe_from_update) {
           changed |= MaybeImproveInstructionSharding(
               std::move(*maybe_from_update), instruction,

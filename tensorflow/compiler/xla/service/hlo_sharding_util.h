@@ -131,26 +131,26 @@ HloSharding GatherEffectiveOutputSharding(const HloInstruction& hlo);
 // Returns the preferred index sharding for a scatter op based on the sharding
 // of the data.
 HloSharding ScatterIndexSharding(const HloSharding& data_sharding,
-                                 const HloInstruction* hlo);
+                                 const HloScatterInstruction* scatter);
 
 // Returns the preferred data sharding for a scatter op based on the sharding
 // of the index.
 HloSharding ScatterDataSharding(const HloSharding& index_sharding,
-                                const HloInstruction* hlo);
+                                const HloScatterInstruction* scatter);
 
 // Returns a new index sharding for a scatter op so that we only shard on first
 // "number of scatter_window_dims" dimensions. Assume "result" is returned by
 // this function. It is ensured that "ScatterDataSharding(result, hlo)" will
 // have the same number of elements as "result".
 HloSharding ScatterEffectiveIndexSharding(const HloSharding& index_sharding,
-                                          const HloInstruction& hlo);
+                                          const HloScatterInstruction& scatter);
 
 // Returns a new data sharding for a scatter op so that we only shard on
 // scatter_window_dims. Assume "result" is returned by this function. It is
 // ensured that "ScatterIndexSharding(result, hlo)" will have the same number of
 // elements as "result".
 HloSharding ScatterEffectiveDataSharding(const HloSharding& data_sharding,
-                                         const HloInstruction& hlo);
+                                         const HloScatterInstruction& scatter);
 
 // Returns an output sharding of gather by passing through the data operand's
 // sharding.
@@ -167,12 +167,12 @@ std::optional<HloSharding> GatherDataOperandShardingFromOutput(
 // Returns an output sharding of scatter by passing through the update operand's
 // sharding.
 std::optional<HloSharding> ScatterOutputShardingFromUpdate(
-    const HloSharding& update_sharding, const HloInstruction& hlo);
+    const HloSharding& update_sharding, const HloScatterInstruction& scatter);
 
 // Returns an update operand sharding of scatter by passing through the output's
 // sharding.
 std::optional<HloSharding> ScatterUpdateShardingFromOutput(
-    const HloSharding& output_sharding, const HloInstruction& hlo);
+    const HloSharding& output_sharding, const HloScatterInstruction& scatter);
 
 // Returns an identity value and an HloOpcode for reduce computation of scatter
 // instruction.
