@@ -101,7 +101,6 @@ class DenseBincountOp : public XlaOpKernel {
         auto data = xla::DynamicSlice(data_stack, {counter}, {1});
         auto accum = xla::DynamicSlice(accum_stack, {data}, {1});
         accum = xla::Reshape(accum, {0}, {});
-        accum = xla::ConvertElementType(accum, dtype);
         auto data_scalar = xla::Reshape(data, {0}, {});
 
         auto condition_shape = xla::ShapeUtil::MakeTupleShape(
@@ -171,7 +170,6 @@ class DenseBincountOp : public XlaOpKernel {
         data_scalar = xla::ConvertElementType(data_scalar, xla::S64);
         auto accum = xla::DynamicSlice(accum_stack, {idx_1, data_scalar}, {1, 1});
         accum = xla::Reshape(accum, {0,1}, {});
-        accum = xla::ConvertElementType(accum, dtype);
         xla::XlaComputation update;
         {
           std::unique_ptr<xla::XlaBuilder> true_builder =
