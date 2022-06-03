@@ -308,7 +308,8 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
             axis=axis
         )
       return y
-    
+      
+    @def_function.function(jit_compile=False)
     def f(x,
           weights=weights,
           minlength=minlength,
@@ -343,7 +344,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
     not_compiled = timeit.timeit(lambda_f, number=100)
     compiled = timeit.timeit(lambda_fc, number=100)
     print("XLA Compiled: %f Notcompiled: %f" % (compiled , not_compiled))
-    self.assertLess(not_compiled, compiled)
+    self.assertLess(compiled, not_compiled)
 
   @parameterized.named_parameters(
       {
