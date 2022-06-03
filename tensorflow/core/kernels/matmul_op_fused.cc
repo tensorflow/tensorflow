@@ -308,6 +308,8 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
 
     const auto& plan = plan_and_algorithms->plan;
     const auto& algorithms = plan_and_algorithms->algorithms;
+    OP_REQUIRES(context, algorithms.size() > 0,
+                errors::InvalidArgument("No matmul algorithm returned!"));
 
     T alpha(1.0);
     T beta(0.0);
@@ -322,15 +324,21 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
           .ok();
     };
 
-    se::blas::AlgorithmConfig algorithm_config =
-        AutotuneMatmul(algorithms, matmul_params, context, launch_func);
+    se::blas::IBlasLtMatmulAlgorithm* algorithm;
+    if (use_autotune) {
+      se::blas::AlgorithmConfig algorithm_config =
+          AutotuneMatmul(algorithms, matmul_params, context, launch_func);
 
-    se::blas::AlgorithmType algorithm_idx = algorithm_config.algorithm();
-    const auto& algorithm = algorithms[algorithm_idx];
+      se::blas::AlgorithmType algorithm_idx = algorithm_config.algorithm();
+      algorithm = algorithms[algorithm_idx].get();
+    } else {
+      algorithm = algorithms[0].get();
+    }
+
     BlasScratchAllocator scratch_allocator(context);
 
     bool cublaslt_launch_ok =
-        launch_func(&scratch_allocator, algorithm.get(), nullptr);
+        launch_func(&scratch_allocator, algorithm, nullptr);
     if (!cublaslt_launch_ok) {
       OP_REQUIRES_OK(context,
                      errors::Internal("BlasLt Matmul launch failed : a.shape=",
