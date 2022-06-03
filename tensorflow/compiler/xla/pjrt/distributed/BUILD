@@ -12,7 +12,7 @@ tf_proto_library(
     srcs = ["protocol.proto"],
     has_services = 1,
     cc_api_version = 2,
-    cc_grpc_version = 1,
+    create_grpc_library = True,
     use_grpc_namespace = True,
 )
 
@@ -40,7 +40,7 @@ cc_library(
     deps = [
         ":key_value_store",
         ":protocol",
-        ":protocol_proto_cc",
+        ":protocol_cc_grpc_proto",
         ":util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
@@ -87,7 +87,7 @@ cc_library(
     ],
     deps = [
         ":protocol",
-        ":protocol_proto_cc",
+        ":protocol_cc_grpc_proto",
         ":util",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
