@@ -55,8 +55,8 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
     shutdown_.Notify();
     sync_protocol_thread_ = nullptr;
   }
-  Status Initialize(Env* env, CoordinationServiceAgent* agent) override;
-  Status Initialize(Env* env, CoordinationServiceAgent* agent,
+  Status Initialize(CoordinationServiceAgent* agent) override;
+  Status Initialize(CoordinationServiceAgent* agent,
                     std::unique_ptr<PreemptionNotifier>) override;
   bool ReachedSyncPoint() override;
 
@@ -83,15 +83,16 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
   absl::Notification shutdown_;
 };  // namespace
 
-Status PreemptionSyncManagerImpl::Initialize(Env* env,
-                                             CoordinationServiceAgent* agent) {
+Status PreemptionSyncManagerImpl::Initialize(CoordinationServiceAgent* agent) {
   // TODO(b/230630494): Add Borg implementation.
-  return Initialize(env, agent, CreateSigtermNotifier(env));
+  TF_ASSIGN_OR_RETURN(Env * env, agent->GetEnv());
+  return Initialize(agent, CreateSigtermNotifier(env));
 }
 
 Status PreemptionSyncManagerImpl::Initialize(
-    Env* env, CoordinationServiceAgent* agent,
+    CoordinationServiceAgent* agent,
     std::unique_ptr<PreemptionNotifier> notifier) {
+  TF_ASSIGN_OR_RETURN(Env * env, agent->GetEnv());
   env_ = env;
   agent_ = agent;
   preemption_notifier_ = std::move(notifier);

@@ -35,8 +35,8 @@ class PreemptionSyncManager {
   virtual ~PreemptionSyncManager() = default;
 
   // TODO(b/230630494): Allow init with PjRT distributed client.
-  virtual Status Initialize(Env* env, CoordinationServiceAgent* agent) = 0;
-  virtual Status Initialize(Env* env, CoordinationServiceAgent* agent,
+  virtual Status Initialize(CoordinationServiceAgent* agent) = 0;
+  virtual Status Initialize(CoordinationServiceAgent* agent,
                             std::unique_ptr<PreemptionNotifier> notifier) = 0;
 
   // Check if the synchronized point has been reached. When a task has been
