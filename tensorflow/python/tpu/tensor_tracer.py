@@ -1800,7 +1800,7 @@ class TensorTracer(object):
               value = self.aggregate_global_cache(value)
           with ops.control_dependencies([summary_writer.init()]):
             summary_write_ops.append(summary.write(
-                _TT_SUMMARY_TAG + '/' + key + '.' + graph_summary_tag,
+                _TT_SUMMARY_TAG + '/' + key + '#' + graph_summary_tag + '#',
                 value, metadata=summary_metadata,
                 step=step_value))
       return control_flow_ops.group(summary_write_ops)
