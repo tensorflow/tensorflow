@@ -341,7 +341,7 @@ int32_t LiteralBase::GetDynamicSize(int64_t dim_index,
   return piece(shape_index).GetDynamicSize(dim_index);
 }
 
-absl::optional<int64_t> LiteralBase::GetFirstInteger() const {
+std::optional<int64_t> LiteralBase::GetFirstInteger() const {
   switch (shape().element_type()) {
     case U8:
       return GetFirstElement<uint8_t>();
@@ -352,7 +352,7 @@ absl::optional<int64_t> LiteralBase::GetFirstInteger() const {
     case U64: {
       int64_t v = GetFirstElement<uint64_t>();
       if (v < 0) {
-        return absl::nullopt;
+        return std::nullopt;
       }
       return v;
     }
@@ -365,7 +365,7 @@ absl::optional<int64_t> LiteralBase::GetFirstInteger() const {
     case S64:
       return GetFirstElement<int64_t>();
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
@@ -1170,7 +1170,7 @@ std::string LiteralBase::GetAsString(absl::Span<const int64_t> multi_index,
   }
 }
 
-absl::optional<int64_t> LiteralBase::GetIntegralAsS64(
+std::optional<int64_t> LiteralBase::GetIntegralAsS64(
     absl::Span<const int64_t> multi_index) const {
   CHECK(LayoutUtil::IsDenseArray(shape()));
   switch (shape().element_type()) {
@@ -1193,11 +1193,11 @@ absl::optional<int64_t> LiteralBase::GetIntegralAsS64(
     case U64:
       return Get<uint64_t>(multi_index);
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
-absl::optional<double> LiteralBase::GetAsDouble(
+std::optional<double> LiteralBase::GetAsDouble(
     absl::Span<const int64_t> multi_index) const {
   CHECK(LayoutUtil::IsDenseArray(shape()));
   switch (shape().element_type()) {
@@ -1210,11 +1210,11 @@ absl::optional<double> LiteralBase::GetAsDouble(
     case BF16:
       return static_cast<double>(Get<bfloat16>(multi_index));
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
-absl::optional<complex128> LiteralBase::GetAsComplex128(
+std::optional<complex128> LiteralBase::GetAsComplex128(
     absl::Span<const int64_t> multi_index) const {
   switch (shape().element_type()) {
     case BF16:
@@ -1232,7 +1232,7 @@ absl::optional<complex128> LiteralBase::GetAsComplex128(
     case S8:
       return {Get<int8_t>(multi_index)};
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
@@ -2161,17 +2161,17 @@ bool LiteralBase::IsR1Iota() const {
 }
 
 // Returns a stride if the literal is a strided iota, i.e., iota multiplied by a
-// stride. Only applicable for integer iotas. Returns absl::nullopt if the
+// stride. Only applicable for integer iotas. Returns std::nullopt if the
 // literal is not a strided iota.
-absl::optional<int64_t> LiteralBase::IsR1StridedIota() const {
+std::optional<int64_t> LiteralBase::IsR1StridedIota() const {
   if (!shape().IsArray() || shape().rank() != 1) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   const int64_t elements = ShapeUtil::ElementsIn(shape());
   const PrimitiveType type = shape().element_type();
   if (elements <= 1 || !primitive_util::IsIntegralType(type)) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   auto get_element_at = [&](const int64_t idx) -> int64_t {
@@ -2202,12 +2202,12 @@ absl::optional<int64_t> LiteralBase::IsR1StridedIota() const {
   // to be zero).
   int64_t stride = get_element_at(1);
   if (stride == 0) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   for (int64_t idx = 0; idx < elements; ++idx) {
     if (get_element_at(idx) != idx * stride) {
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
 

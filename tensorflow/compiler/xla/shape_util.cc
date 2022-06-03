@@ -1264,12 +1264,12 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
                                                   common_factors.end());
 }
 
-/* static */ absl::optional<std::vector<int64_t>>
+/* static */ std::optional<std::vector<int64_t>>
 ShapeUtil::ReshapeLeavesDimensionsUnmodified(
     const Shape& from_shape, const Shape& to_shape,
     absl::Span<const int64_t> input_dim_indices) {
   if (!std::is_sorted(input_dim_indices.begin(), input_dim_indices.end())) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   std::vector<int64_t> output_dim_indices;
@@ -1285,7 +1285,7 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
     }
     if (i >= unmodified_dims.size() ||
         unmodified_dims[i].first != input_dim_index) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     output_dim_indices.push_back(unmodified_dims[i].second);
   }
@@ -1484,7 +1484,7 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
          check_input_unit_indices(output_shape, input_shape);
 }
 
-/* static */ absl::optional<Shape> ShapeUtil::AlignLayouts(
+/* static */ std::optional<Shape> ShapeUtil::AlignLayouts(
     const Shape& input_shape, const Shape& output_shape) {
   CHECK(input_shape.IsArray());
   CHECK(output_shape.IsArray());
@@ -1496,7 +1496,7 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
         AlignLayouts(DropDegenerateDimensions(input_shape),
                      DropDegenerateDimensions(output_shape));
     if (!simple_output_shape) {
-      return absl::nullopt;
+      return std::nullopt;
     }
 
     std::vector<int64_t> layout =
@@ -1540,7 +1540,7 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
       --input_physical;
       if (input_physical < 0 ||
           input_shape.layout().minor_to_major(input_physical) != i) {
-        return absl::nullopt;
+        return std::nullopt;
       }
       input_to_factor[i] = pos;
     }
@@ -1668,10 +1668,10 @@ static Shape MergeDimensions(absl::Span<const size_t> segs,
                                                   dimensions);
 }
 
-/*static*/ absl::optional<std::vector<int64_t>> ShapeUtil::FindTranspose021(
+/*static*/ std::optional<std::vector<int64_t>> ShapeUtil::FindTranspose021(
     const Shape& a, const Shape& b) {
   if (!CompatibleIgnoringElementType(a, b)) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   std::vector<int64_t> permutation(a.dimensions().size());
@@ -1702,7 +1702,7 @@ static Shape MergeDimensions(absl::Span<const size_t> segs,
     return dims_021;
   }
 
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {
