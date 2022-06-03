@@ -407,17 +407,24 @@ TF_CALL_bfloat16(REGISTER_MKL_MAXPOOL3D_KERNELS);
 TF_CALL_float(REGISTER_MKL_MAXPOOL_KERNELS);
 TF_CALL_bfloat16(REGISTER_MKL_MAXPOOL_KERNELS);
 
-REGISTER_KERNEL_BUILDER(Name("_MklQuantizedMaxPool")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<quint8>("T")
-                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklMaxPoolingOp<CPUDevice, quint8, true>);
+#define REGISTER_MAXPOOL_KERNELS(T)                          \
+  REGISTER_KERNEL_BUILDER(Name("_MklQuantizedMaxPool")       \
+                              .Device(DEVICE_CPU)            \
+                              .TypeConstraint<T>("T") LABEL, \
+                          MklMaxPoolingOp<CPUDevice, T, true>);
 
-REGISTER_KERNEL_BUILDER(Name("_MklQuantizedMaxPool")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<qint8>("T")
-                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklMaxPoolingOp<CPUDevice, qint8, true>);
+// Legacy ops that go through rewrite use labels. We are gradually removing
+// that label requirement. It is kept here for backward compatibility.
+#define LABEL .Label(mkl_op_registry::kMklQuantizedOpLabel)
+REGISTER_MAXPOOL_KERNELS(quint8)
+REGISTER_MAXPOOL_KERNELS(qint8)
+#undef LABEL
+
+#define LABEL
+REGISTER_MAXPOOL_KERNELS(quint8)
+REGISTER_MAXPOOL_KERNELS(qint8)
+#undef LABEL
+
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL

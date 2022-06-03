@@ -425,16 +425,18 @@ struct MklPoolParameters {
   // Updates context->status if there is an invalid input.
   void Init(OpKernelContext* context, const std::vector<int32>& ksize,
             const std::vector<int32>& stride, Padding padding,
-            TensorFormat data_format, const TensorShape& tensor_in_shape);
+            std::vector<int64_t>& explicit_paddings, TensorFormat data_format,
+            const TensorShape& tensor_in_shape);
   void Init(OpKernelContext* context, const std::vector<int32>& ksize,
             const std::vector<int32>& stride, Padding padding,
-            TensorFormat data_format, const MklDnnShape* mkl_in_shape);
+            std::vector<int64_t>& explicit_paddings, TensorFormat data_format,
+            const MklDnnShape* mkl_in_shape);
 
  private:
   // Common initialization for TensorFlow and MKL formats
   void Init(OpKernelContext* context, const std::vector<int32>& ksize,
             const std::vector<int32>& stride, Padding padding,
-            TensorFormat data_format);
+            std::vector<int64_t>& explicit_paddings, TensorFormat data_format);
 };
 
 template <class T>
@@ -466,6 +468,10 @@ class MklPoolingOpBase : public OpKernel {
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 or 5 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &this->padding_));
+    if (this->padding_ == Padding::EXPLICIT) {
+      OP_REQUIRES_OK(
+          context, context->GetAttr("explicit_paddings", &explicit_paddings_));
+    }
     OP_REQUIRES(context, this->ksize_[0] == 1 && this->stride_[0] == 1,
                 errors::Unimplemented("Pooling is not yet supported on the "
                                       "batch dimension."));
@@ -516,10 +522,12 @@ class MklPoolingOpBase : public OpKernel {
                              const TensorShape& input_tensor_shape) {
     if (!original_input_mkl_shape.IsMklTensor()) {
       pool_params->Init(context, this->ksize_, this->stride_, this->padding_,
-                        this->data_format_tf_, input_tensor_shape);
+                        this->explicit_paddings_, this->data_format_tf_,
+                        input_tensor_shape);
     } else {
       pool_params->Init(context, this->ksize_, this->stride_, this->padding_,
-                        this->data_format_tf_, &original_input_mkl_shape);
+                        this->explicit_paddings_, this->data_format_tf_,
+                        &original_input_mkl_shape);
     }
   }
 
@@ -603,6 +611,7 @@ class MklPoolingOpBase : public OpKernel {
   std::vector<int32> ksize_;
   std::vector<int32> stride_;
   Padding padding_;
+  std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_tf_;
   MklTensorFormat tensor_format_mkldnn_;
   memory::format_tag data_format_mkldnn_;

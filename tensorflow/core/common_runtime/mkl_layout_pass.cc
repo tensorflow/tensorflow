@@ -3688,7 +3688,6 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
       n->type_string() == csinfo_.depthwise_conv2d_grad_input ||
       n->type_string() == csinfo_.conv3d_grad_filter ||
       n->type_string() == csinfo_.conv3d_grad_filter ||
-      n->type_string() == csinfo_.max_pool ||
       n->type_string() == csinfo_.max_pool_grad ||
       n->type_string() == csinfo_.max_pool3d ||
       n->type_string() == csinfo_.max_pool3d_grad) {

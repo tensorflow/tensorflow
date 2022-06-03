@@ -173,6 +173,7 @@ tf_cc_test_mkl(
     linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_pooling_ops",
+        ":mkl_kernel_util",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
@@ -278,7 +279,7 @@ tf_mkl_kernel_library(
         "mkl_pooling_ops_common.cc",
     ],
     hdrs = ["mkl_pooling_ops_common.h"],
-    deps = MKL_SHORT_DEPS,
+    deps = MKL_SHORT_DEPS + ["//tensorflow/core/kernels:pooling_ops_hdrs"],
 )
 
 tf_mkl_kernel_library(
@@ -511,4 +512,13 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
     ] + MKL_TEST_DEPS,
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_kernel_util",
+    srcs = ["mkl_kernel_util.h"],
+    deps = MKL_DEPS + [
+        ":mkl_quantize_op",
+        "//tensorflow/core:direct_session",
+    ],
 )
