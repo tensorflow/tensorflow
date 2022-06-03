@@ -327,6 +327,18 @@ cc_library(
         ":parallel_loop_emitter",
         ":target_util",
         ":thunk",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
         "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:lhlo",
@@ -372,19 +384,10 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:tuple_ops",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:human_readable_json",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-    ],
+    ] + if_gpu_is_configured([
+        ":triangular_solve_thunk",
+        ":cholesky_thunk",
+    ]),
 )
 
 cc_library(
@@ -657,20 +660,23 @@ cc_library(
         ":matmul_utils",
         ":nccl_collective_thunks",
         ":stream_executor_util",
+        "@llvm-project//llvm:OrcJIT",
+        "@llvm-project//mlir:Support",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:custom_call_status_internal",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service/gpu:gpu_conv_runner",
+        "//tensorflow/core/platform:human_readable_json",
         "//tensorflow/stream_executor/gpu:gpu_stream",
         "//tensorflow/stream_executor/gpu:gpu_types_header",
-        "@llvm-project//llvm:OrcJIT",
-        "@llvm-project//mlir:Support",
         "@tf_runtime//:dtype",
         "@tf_runtime//:support",
         "@tf_runtime//backends/jitrt",
         "@tf_runtime//backends/jitrt:custom_call",
-    ],
+    ] + if_gpu_is_configured([
+        ":triangular_solve_thunk",
+    ]),
 )
 
 cc_library(
@@ -690,9 +696,7 @@ cc_library(
         "sequential_thunk.cc",
         "thunk_schedule.cc",
         "while_thunk.cc",
-    ] + if_gpu_is_configured([
-        "triangular_solve_thunk.cc",
-    ]),
+    ],
     hdrs = [
         "bef_thunk.h",
         "conditional_thunk.h",
@@ -710,10 +714,7 @@ cc_library(
         "sequential_thunk.h",
         "thunk_schedule.h",
         "while_thunk.h",
-    ] + if_gpu_is_configured([
-        "cholesky_thunk.h",
-        "triangular_solve_thunk.h",
-    ]),
+    ],
     local_defines = select({
         ":is_xlir_enabled": ["XLA_ENABLE_XLIR=1"],
         "//conditions:default": [],
@@ -796,6 +797,7 @@ cc_library(
     ] + if_gpu_is_configured([
         ":cholesky_thunk",
         ":precompiled_kernels",
+        ":triangular_solve_thunk",
     ]) + if_cuda_is_configured([
         "//tensorflow/stream_executor/cuda:cuda_stream",
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
@@ -910,10 +912,39 @@ cc_library(
     ],
 )
 
+# TODO(ezhulenev): Extract `RunCholesky` into a separate library.
 cc_library(
     name = "cholesky_thunk",
     srcs = ["cholesky_thunk.cc"],
     hdrs = ["cholesky_thunk.h"],
+    deps = [
+        ":buffer_allocations",
+        ":cusolver_context",
+        ":precompiled_kernels",
+        ":thunk",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
+        "//tensorflow/stream_executor:device_memory",
+        "//tensorflow/stream_executor:stream_header",
+        "//tensorflow/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+# TODO(ezhulenev): Extract `RunTriangularSolve` into a separate library.
+cc_library(
+    name = "triangular_solve_thunk",
+    srcs = ["triangular_solve_thunk.cc"],
+    hdrs = ["triangular_solve_thunk.h"],
     deps = [
         ":buffer_allocations",
         ":cusolver_context",
