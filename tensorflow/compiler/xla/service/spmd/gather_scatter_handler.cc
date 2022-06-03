@@ -37,12 +37,12 @@ using hlo_sharding_util::GroupedSharding;
 
 // Returns whether partitioning in the operand only happens in dimensions with
 // gather/scatter slice size 1.
-absl::optional<std::vector<int64_t>>
+std::optional<std::vector<int64_t>>
 GatherScatterOperandPartitionedOnlyOnTrivialSliceDims(
     const PartitionedHlo& operand, absl::Span<const int64_t> index_map,
     absl::Span<const int64_t> slice_size) {
   if (operand.sharding().IsTileMaximal()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   std::vector<int64_t> slice_dims;
   int64_t trivial_slice_dims_partitions = 1;
@@ -56,12 +56,12 @@ GatherScatterOperandPartitionedOnlyOnTrivialSliceDims(
   if (trivial_slice_dims_partitions == operand.sharding().NumTiles()) {
     return slice_dims;
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 // Return an update sharding that is compatible with the indices sharding for
 // scatter partitioning.
-absl::optional<HloSharding> ComputeUpdateShardingFromIndices(
+std::optional<HloSharding> ComputeUpdateShardingFromIndices(
     const PartitionedHlo& updates, const PartitionedHlo& indices,
     absl::Span<const int64_t> update_scatter_dims, int64_t index_vector_dim) {
   std::vector<int64_t> update_dim_to_index_dim(updates.base_shape().rank(), -1);
@@ -71,7 +71,7 @@ absl::optional<HloSharding> ComputeUpdateShardingFromIndices(
     update_dim_to_index_dim[update_scatter_dims[i]] = indices_scatter_dim;
     index_dim_to_update_dim[indices_scatter_dim] = update_scatter_dims[i];
   }
-  const absl::optional<HloSharding> new_updates_sharding =
+  const std::optional<HloSharding> new_updates_sharding =
       hlo_sharding_util::TransposeShardingWithCollapsedDims(
           indices.sharding(), index_dim_to_update_dim, update_dim_to_index_dim);
   return new_updates_sharding;
@@ -221,7 +221,7 @@ StatusOr<HloInstruction*> PartitionIndexPassthroughPartition(
         AlignGroupsWith(hlo_sharding_util::GroupShardingOnDims(
                             indices.sharding(), index_group_dims),
                         output_grouped);
-    absl::optional<GroupedSharding> operand_grouped;
+    std::optional<GroupedSharding> operand_grouped;
     // Check if we can group partially replicated dims on the operand or
     // replicate.
     if (operand.sharding().ReplicateOnLastTileDim() &&
@@ -238,7 +238,7 @@ StatusOr<HloInstruction*> PartitionIndexPassthroughPartition(
     } else {
       operand = operand.Replicate();
     }
-    absl::optional<HloSharding> old_operand_sharding;
+    std::optional<HloSharding> old_operand_sharding;
     if (operand_grouped) {
       operand = operand.Reshard(UngroupSharding(*operand_grouped));
       old_operand_sharding = operand.hlo()->sharding();
@@ -327,7 +327,7 @@ StatusOr<HloInstruction*> ParititonPassthroughOperand(
         AlignGroupsWith(hlo_sharding_util::GroupShardingOnDims(
                             operand.sharding(), operand_grouping_dims),
                         output_grouped);
-    absl::optional<GroupedSharding> indices_grouped;
+    std::optional<GroupedSharding> indices_grouped;
     // See if we can group partially replicated dimensions from the indices
     // otherwise replicate it.
     if (indices.sharding().ReplicateOnLastTileDim() &&
@@ -344,7 +344,7 @@ StatusOr<HloInstruction*> ParititonPassthroughOperand(
     } else {
       indices = indices.Replicate();
     }
-    absl::optional<HloSharding> old_indices_sharding;
+    std::optional<HloSharding> old_indices_sharding;
     if (indices_grouped) {
       indices = indices.Reshard(UngroupSharding(*indices_grouped));
       old_indices_sharding = indices.hlo()->sharding();
@@ -397,7 +397,7 @@ StatusOr<HloInstruction*> ParititonTrivialIndexedOperandDimension(
   GatherDimensionNumbers dnums = gather->gather_dimension_numbers();
   std::vector<int64_t> start_index_map(dnums.start_index_map().begin(),
                                        dnums.start_index_map().end());
-  absl::optional<std::vector<int64_t>> trivial_slice_dims =
+  std::optional<std::vector<int64_t>> trivial_slice_dims =
       GatherScatterOperandPartitionedOnlyOnTrivialSliceDims(
           operand, start_index_map, gather->gather_slice_sizes());
   if (trivial_slice_dims &&
@@ -516,7 +516,7 @@ StatusOr<HloInstruction*> PartitionIndexParallelDimensions(
   // Handle the case where operand is tile maximal. In this case we check if
   // the index is not TileMaximal and in this case we use the index sharding
   // to drive the output sharding.
-  if (absl::optional<hlo_sharding_util::GatherParallelDims> parallel_dims =
+  if (std::optional<hlo_sharding_util::GatherParallelDims> parallel_dims =
           hlo_sharding_util::GetGatherBatchParallelDims(*gather)) {
     if (auto gather_sharding = GatherOperandsShardedAcrossParallelDims(
             *operand.hlo(), *indices.hlo(), *parallel_dims)) {
@@ -728,7 +728,7 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
       update_scatter_dims.push_back(i);
     }
   }
-  const absl::optional<HloSharding> new_updates_sharding =
+  const std::optional<HloSharding> new_updates_sharding =
       ComputeUpdateShardingFromIndices(updates, indices,
                                        absl::MakeConstSpan(update_scatter_dims),
                                        dnums.index_vector_dim());

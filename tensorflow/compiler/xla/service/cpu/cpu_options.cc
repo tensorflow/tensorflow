@@ -44,7 +44,7 @@ bool VectorizedReduceDisabled(const HloModuleConfig& config) {
   return extra_options_map.count(kXlaOptimizeForSizeCpuOption) > 0;
 }
 
-absl::optional<int64_t> LlvmIrGemvTilingFactor(const HloModuleConfig& config) {
+std::optional<int64_t> LlvmIrGemvTilingFactor(const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
   auto it = extra_options_map.find(kLlvmIrDotTilingFactor);
@@ -53,7 +53,7 @@ absl::optional<int64_t> LlvmIrGemvTilingFactor(const HloModuleConfig& config) {
       absl::SimpleAtoi(it->second, &tiling_factor)) {
     return tiling_factor;
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 bool ForceEnableExperimentalLlvmIrGemm(const HloModuleConfig& config) {
@@ -69,13 +69,13 @@ static absl::string_view RemoveSuffix(absl::string_view str,
   return str.substr(0, str.size() - suffix.size());
 }
 
-absl::optional<std::tuple<int64_t, int64_t, int64_t>> LlvmIrGemmTileSize(
+std::optional<std::tuple<int64_t, int64_t, int64_t>> LlvmIrGemmTileSize(
     const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
   auto it = extra_options_map.find(kLlvmIrGemmTileSize);
   if (it == extra_options_map.end()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   std::vector<std::string> tile_components = absl::StrSplit(it->second, ':');
