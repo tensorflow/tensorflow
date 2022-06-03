@@ -15,6 +15,8 @@
 """Tests for bincount ops."""
 
 from absl.testing import parameterized
+
+import timeit
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -238,6 +240,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
        "expected_values": [0, 1, 1, 1, 2, 1],
        "axis": 0 # With None (recursive call) -> Bincount (No registered 'Bincount'
     })
+  @test_util.disable_mlir_bridge('TODO: ?')
   def test_compiled_dense(self,
                        x,
                        expected_values,
@@ -269,7 +272,78 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           binary_output=binary_output,
           axis=axis)
     self.assertAllEqual(expected_values, y)
+  @parameterized.named_parameters(    
+  {
+      "testcase_name": "_no_maxlength_small",
+      "x": np.random.randint(100, size=(200, 200), dtype=np.int32)
+  }, {
+      "testcase_name": "_no_maxlength_medium",
+      "x": np.random.randint(200, size=(500, 500), dtype=np.int32)
+  }, {
+      "testcase_name": "_no_maxlength_large",
+      "x": np.random.randint(500, size=(1000, 1000), dtype=np.int32)
+  })
+  @test_util.disable_mlir_bridge('TODO: ?')
+  def test_compiled_dense_perf(self,
+                       x,
+                       minlength=None,
+                       maxlength=None,
+                       binary_output=False,
+                       weights=None,
+                       axis=-1):
 
+    @def_function.function(jit_compile=True)
+    def f_compiled(x,
+          weights=weights,
+          minlength=minlength,
+          maxlength=maxlength,
+          binary_output=binary_output,
+          axis=axis):
+      y = bincount_ops.bincount(
+            x,
+            weights=weights,
+            minlength=minlength,
+            maxlength=maxlength,
+            binary_output=binary_output,
+            axis=axis
+        )
+      return y
+    
+    def f(x,
+          weights=weights,
+          minlength=minlength,
+          maxlength=maxlength,
+          binary_output=binary_output,
+          axis=axis):
+      y = bincount_ops.bincount(
+            x,
+            weights=weights,
+            minlength=minlength,
+            maxlength=maxlength,
+            binary_output=binary_output,
+            axis=axis
+        )
+      return y
+
+    lambda_f = lambda: f(x,           
+                weights=weights,
+                minlength=minlength,
+                maxlength=maxlength,
+                binary_output=binary_output,
+                axis=axis)
+
+    lambda_fc = lambda: f_compiled(x,           
+                        weights=weights,
+                        minlength=minlength,
+                        maxlength=maxlength,
+                        binary_output=binary_output,
+                        axis=axis)
+    # warm-up
+    lambda_f(); lambda_fc()
+    not_compiled = timeit.timeit(lambda_f, number=100)
+    compiled = timeit.timeit(lambda_fc, number=100)
+    print("XLA Compiled: %f Notcompiled: %f" % (compiled , not_compiled))
+    self.assertLess(not_compiled, compiled)
 
   @parameterized.named_parameters(
       {

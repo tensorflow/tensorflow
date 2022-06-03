@@ -1435,17 +1435,6 @@ py_library(
     ],
 )
 
-tf_py_test(
-    name = "bincount_ops_test",
-    size = "small",
-    srcs = ["ops/bincount_ops_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":bincount_ops",
-        ":platform_test",
-    ],
-)
-
 py_library(
     name = "ctc_ops",
     srcs = ["ops/ctc_ops.py"],
@@ -2685,6 +2674,17 @@ py_library(
         ":platform",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "bincount_ops_test",
+    size = "small",
+    srcs = ["ops/bincount_ops_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":bincount_ops",
+        ":platform_test",
     ],
 )
 
