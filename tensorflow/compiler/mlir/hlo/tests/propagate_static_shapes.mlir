@@ -5,11 +5,12 @@
 module attributes {gpu.container_module} {
 
   gpu.module @gpu_module {
-    // CHECK: llvm.func @kernel(%arg0: f32, %arg1: !llvm.ptr<i8>)
+    // CHECK: llvm.func @kernel(%arg0: f32, %arg1: !llvm.ptr<i8>, %arg2: f32)
     llvm.func @kernel(
       %arg0: f32,
       %base: !llvm.ptr<f32>, %align: !llvm.ptr<f32>, %offset: i64,
-      %size.x: i64, %size.y: i64, %stride.x: i64, %stride.y: i64
+      %size.x: i64, %size.y: i64, %stride.x: i64, %stride.y: i64,
+      %argN: f32
     ) attributes {gpu.kernel} {
       // CHECK-DAG:  %[[base:.*]] = llvm.bitcast %arg1 : !llvm.ptr<i8> to !llvm.ptr<f32>
       // CHECK-DAG:  %[[idx:.*]] = llvm.mlir.constant(4 : i64) : i64
@@ -30,7 +31,7 @@ module attributes {gpu.container_module} {
     gpu.launch_func  @gpu_module::@kernel
       blocks in (%c1, %c1, %c1)
       threads in (%c1, %c1, %c1)
-      args(%arg0 : f32, %arg1 : memref<2x4xf32>)
+      args(%arg0 : f32, %arg1 : memref<2x4xf32>, %arg0 : f32)
     func.return
   }
 
