@@ -650,10 +650,10 @@ cc_library(
     name = "jitrt_custom_calls",
     srcs = ["jitrt_custom_calls.cc"],
     hdrs = ["jitrt_custom_calls.h"],
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     tags = ["manual"],
     visibility = ["//visibility:private"],
     deps = [
-        ":cholesky_thunk",
         ":fft_thunk",
         ":gpu_asm_opts_util",
         ":io_feed_manager",
@@ -675,6 +675,7 @@ cc_library(
         "@tf_runtime//backends/jitrt",
         "@tf_runtime//backends/jitrt:custom_call",
     ] + if_gpu_is_configured([
+        ":cholesky_thunk",
         ":triangular_solve_thunk",
     ]),
 )

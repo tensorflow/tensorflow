@@ -15,15 +15,16 @@
 #include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
 
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <memory>
+#include <numeric>
 #include <utility>
 
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
-#include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
@@ -38,11 +39,17 @@
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/core/platform/human_readable_json.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/stream_executor/gpu/gpu_types.h"
 #include "tfrt/jitrt/custom_call.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/triangular_solve_thunk.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
                                    xla::gpu::JitRtKernelsCache);
@@ -1156,6 +1163,7 @@ LogicalResult Cholesky::operator()(
     const DebugOptions* debug_options, jitrt::MemrefView operand,
     jitrt::MemrefView a, jitrt::MemrefView workspace, jitrt::MemrefView info,
     int64_t batch_size, int64_t n, int64_t uplo) const {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   se::DeviceMemoryBase operand_buffer = GetDeviceAddress(operand);
   se::DeviceMemoryBase a_buffer = GetDeviceAddress(a);
   se::DeviceMemoryBase workspace_buffer = GetDeviceAddress(workspace);
@@ -1176,6 +1184,9 @@ LogicalResult Cholesky::operator()(
   if (!executed.ok()) return failure();
 
   return success();
+#else  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  return failure();
+#endif
 }
 
 static bool Cholesky(runtime::KernelContext* ctx, void** args, void** attrs) {
@@ -1196,6 +1207,130 @@ static bool Cholesky(runtime::KernelContext* ctx, void** args, void** attrs) {
 }
 
 // -------------------------------------------------------------------------- //
+
+namespace {
+
+// TODO(ezhulenev): Today XLA represents TriangularSolve as a "classic" XLA
+// custom call operation, and we provide a thin adaptor from Xla custom call
+// to JitRt custom call. Once we are fully migrated to JitRt exectuion, XLA
+// compiler should directly emit properly typed TriangularSolve JitRt custom
+// call (no need to pass config via the serialized string).
+struct TriangularSolve {
+  // Adaptor from XlaCustomCall API to properly typed TriangularSolve handler.
+  static LogicalResult run(const ServiceExecutableRunOptions* run_options,
+                           const DebugOptions* debug_options,
+                           CustomCall::RemainingArgs args,
+                           StringRef backend_config);
+
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           const DebugOptions* debug_options,
+                           jitrt::StridedMemrefView a,
+                           jitrt::StridedMemrefView b,
+                           jitrt::StridedMemrefView result,
+                           jitrt::FlatMemrefView temp, bool left_side,
+                           bool lower, bool unit_diagonal,
+                           TriangularSolveOptions::Transpose transpose_a) const;
+  static TriangularSolve Handler() { return TriangularSolve(); }
+};
+
+}  // namespace
+
+LogicalResult TriangularSolve::run(
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options, CustomCall::RemainingArgs args,
+    StringRef backend_config) {
+  TriangularSolve handler = TriangularSolve::Handler();
+
+  // We expect 4 memref argumets.
+  if (args.size() != 4) return failure();
+
+  // Check if all arguments have the correct type.
+  auto a = args.get<jitrt::StridedMemrefView>(0);
+  auto b = args.get<jitrt::StridedMemrefView>(1);
+  auto result = args.get<jitrt::StridedMemrefView>(2);
+  auto temp = args.get<jitrt::FlatMemrefView>(3);
+  if (failed(a) || failed(b) || failed(result) || failed(temp))
+    return failure();
+
+  // Parse backend config string.
+  TriangularSolveOptions opts;
+  if (!tensorflow::HumanReadableJsonToProto(backend_config.str(), &opts).ok())
+    return failure();
+
+  return handler(run_options, debug_options, *a, *b, *result, *temp,
+                 opts.left_side(), opts.lower(), opts.unit_diagonal(),
+                 opts.transpose_a());
+}
+
+LogicalResult TriangularSolve::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options, jitrt::StridedMemrefView a,
+    jitrt::StridedMemrefView b, jitrt::StridedMemrefView result,
+    jitrt::FlatMemrefView temp, bool left_side, bool lower, bool unit_diagonal,
+    TriangularSolveOptions::Transpose transpose_a) const {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  se::Stream* stream = run_options->stream();
+
+  se::DeviceMemoryBase a_data = GetDeviceAddress(a);
+  se::DeviceMemoryBase b_data = GetDeviceAddress(b);
+  se::DeviceMemoryBase result_data = GetDeviceAddress(result);
+  se::DeviceMemoryBase temp_data = GetDeviceAddress(temp);
+
+  // Triangular solve is in-place on 'b', so copy 'b' to the output if they
+  // aren't the same buffer.
+  if (b.data != result.data)
+    stream->ThenMemcpy(&result_data, b_data, b_data.size());
+
+  Shape b_shape = ToShape(b);
+  int64_t m = b_shape.dimensions(b_shape.rank() - 2);
+  int64_t n = b_shape.dimensions(b_shape.rank() - 1);
+  int64_t batch_size = std::accumulate(
+      b_shape.dimensions().begin(), b_shape.dimensions().end() - 2, int64_t{1},
+      [](int64_t a, int64_t b) { return a * b; });
+
+  PrimitiveType elem_type = ToPrimitiveType(b.dtype);
+  int64_t elem_size = ShapeUtil::ByteSizeOfPrimitiveType(elem_type);
+  int64_t a_batch_stride = left_side ? m * m * elem_size : n * n * elem_size;
+  int64_t b_batch_stride = m * n * elem_size;
+
+  using Side = se::blas::Side;
+  using Diagonal = se::blas::Diagonal;
+  using Transpose = se::blas::Transpose;
+  using UpperLower = se::blas::UpperLower;
+
+  // Convert custom call attributes to se::blas enums.
+  UpperLower uplo = lower ? UpperLower::kLower : UpperLower::kUpper;
+  Side side = left_side ? Side::kLeft : Side::kRight;
+  Diagonal diagonal = unit_diagonal ? Diagonal::kUnit : Diagonal::kNonUnit;
+
+  auto transpose = [&]() -> mlir::FailureOr<Transpose> {
+    switch (transpose_a) {
+      case TriangularSolveOptions::NO_TRANSPOSE:
+        return se::blas::Transpose::kNoTranspose;
+      case TriangularSolveOptions::TRANSPOSE:
+        return se::blas::Transpose::kTranspose;
+      case TriangularSolveOptions::ADJOINT:
+        return se::blas::Transpose::kConjugateTranspose;
+      default:
+        return failure();
+    }
+  }();
+
+  if (failed(transpose)) return failure();
+
+  auto st = RunTriangulatSolve(
+      a_data, result_data, temp_data, PtxOptsFromDebugOptions(*debug_options),
+      uplo, side, diagonal, *transpose, elem_type, batch_size, m, n,
+      a_batch_stride, b_batch_stride, stream);
+  if (!st.ok()) return failure();
+
+  return success();
+#else  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  return failure();
+#endif
+}
+
+// -------------------------------------------------------------------------- //
 // Implements JitRt custom call that forward to the Xla Custom Call handler.
 //
 // Longer term all Xla custom calls probably should be directly implemented as
@@ -1206,6 +1341,7 @@ struct XlaCustomCall {
   using Stream = se::gpu::GpuStreamHandle;
 
   LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           const DebugOptions* debug_options,
                            CustomCall::RemainingArgs args,
                            StringRef call_target_name, int32_t api_version,
                            StringRef backend_config) const;
@@ -1215,8 +1351,15 @@ struct XlaCustomCall {
 
 LogicalResult XlaCustomCall::operator()(
     const ServiceExecutableRunOptions* run_options,
-    CustomCall::RemainingArgs args, StringRef call_target_name,
-    int32_t api_version, StringRef backend_config) const {
+    const DebugOptions* debug_options, CustomCall::RemainingArgs args,
+    StringRef call_target_name, int32_t api_version,
+    StringRef backend_config) const {
+  // Pattern match custom call to a few special cases, otherwise find the custom
+  // call handler regustered with the runtime.
+  if (call_target_name == kTriangularSolveCallTarget)
+    return TriangularSolve::run(run_options, debug_options, args,
+                                backend_config);
+
   // Find the Xla custom call handler.
   auto& platform_name = run_options->stream()->parent()->platform()->Name();
   void* call_target = CustomCallTargetRegistry::Global()->Lookup(
@@ -1270,6 +1413,7 @@ LogicalResult XlaCustomCall::operator()(
 static bool CustomCall(runtime::KernelContext* ctx, void** args, void** attrs) {
   static auto* handler = CustomCall::Bind("xla.gpu.memcpy")
                              .UserData<const ServiceExecutableRunOptions*>()
+                             .UserData<const DebugOptions*>()
                              .Arg<jitrt::CustomCall::RemainingArgs>()  // args
                              .Attr<StringRef>("call_target_name")
                              .Attr<int32_t>("api_version")
