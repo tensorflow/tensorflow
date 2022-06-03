@@ -50,9 +50,9 @@ namespace tensorflow {
 
 // Maps function name to
 // - new function name, if the function body was functionalized
-// - absl::nullopt, if not
-using FuncMap = std::map<string, absl::optional<string>>;
-using FuncMapIter = std::map<string, absl::optional<string>>::const_iterator;
+// - std::nullopt, if not
+using FuncMap = std::map<string, std::optional<string>>;
+using FuncMapIter = std::map<string, std::optional<string>>::const_iterator;
 
 // Returns whether function has been processed before.
 bool FunctionHasBeenProcessed(FuncMapIter func_iter, const FuncMap* func_map) {
@@ -90,7 +90,7 @@ void UpdateFunctionMap(FuncMap* func_map, const string& canonicalized_name,
   // If function was modified store its new name, otherwise add empty entry to
   // record that function has been processed and does not need to be rewritten.
   (*func_map)[canonicalized_name] =
-      function_modified ? absl::make_optional(new_func_name) : absl::nullopt;
+      function_modified ? absl::make_optional(new_func_name) : std::nullopt;
 }
 
 // Adds new function def to graph's function library if necessary.

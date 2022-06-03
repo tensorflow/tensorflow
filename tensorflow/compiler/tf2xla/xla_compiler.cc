@@ -92,7 +92,7 @@ StatusOr<
     std::pair<std::map<int, xla::OpSharding>, std::map<int, xla::OpSharding>>>
 ComputeArgAndRetvalShardings(const Graph& graph) {
   auto get_sharding_for_node =
-      [](const Node* n) -> StatusOr<absl::optional<xla::OpSharding>> {
+      [](const Node* n) -> StatusOr<std::optional<xla::OpSharding>> {
     TF_ASSIGN_OR_RETURN(
         auto sharding,
         ParseShardingFromDevice(*n, std::numeric_limits<int32>::max(),
@@ -190,9 +190,8 @@ Status BuildComputation(
   // Builds a no-op XLA computation. We need to set the sharding of outputs, but
   // cannot change the sharding of the existing output op. To do this, we build
   // a new identity op to which shardings can be applied.
-  auto identity_op = [builder](
-                         xla::XlaOp op,
-                         const absl::optional<xla::OpSharding>& sharding) {
+  auto identity_op = [builder](xla::XlaOp op,
+                               const std::optional<xla::OpSharding>& sharding) {
     xla::XlaScopedShardingAssignment assign_sharding(builder, sharding);
     return xla::Copy(op);
   };
@@ -227,8 +226,8 @@ Status BuildComputation(
         TF_ASSIGN_OR_RETURN(output.shape, retval.GetShape());
         xla::XlaOp value = retval.handle();
         auto it = retval_shardings.find(i);
-        absl::optional<xla::OpSharding> sharding =
-            it == retval_shardings.end() ? absl::optional<xla::OpSharding>()
+        std::optional<xla::OpSharding> sharding =
+            it == retval_shardings.end() ? std::optional<xla::OpSharding>()
                                          : it->second;
         if (it != retval_shardings.end()) {
           retval_index_and_sharding[elems.size()] = it->second;
@@ -329,7 +328,7 @@ Status BuildComputation(
       xla::XlaOp handle;
       TF_RETURN_IF_ERROR(resource->Pack(&handle, builder));
       auto sharding = it == arg_shardings.end()
-                          ? absl::optional<xla::OpSharding>()
+                          ? std::optional<xla::OpSharding>()
                           : it->second;
       // Set layout of the retval to device representation layout.
       if (shape_determination_fns.layout_preference_fn &&
@@ -753,7 +752,7 @@ Status XlaCompiler::CompileFunction(
   const ConfigProto* config = nullptr;
   TF_RETURN_IF_ERROR(FindFunctionBody(fn_name_attrs, &fbody, &config));
 
-  absl::optional<ConfigProto> config_proto;
+  std::optional<ConfigProto> config_proto;
   if (config) {
     config_proto = *config;
   }
@@ -851,7 +850,7 @@ Status XlaCompiler::CompileFunction(
 // Computes the XLA shape for argument 'arg'.
 Status XlaCompiler::XLAShapeForArgument(
     const XlaCompiler::Argument& arg, bool is_entry_computation,
-    const absl::optional<xla::HloSharding>& arg_sharding,
+    const std::optional<xla::HloSharding>& arg_sharding,
     xla::Shape* xla_shape) const {
   switch (arg.kind) {
     case XlaCompiler::Argument::kConstant:
@@ -1053,7 +1052,7 @@ Status XlaCompiler::BuildArguments(
   for (std::vector<int>::size_type i = 0; i < input_to_args->size(); ++i) {
     // Computes the shapes of non-constant arguments.
     auto arg_sharding = arg_shardings.find((*input_to_args)[i]);
-    absl::optional<xla::HloSharding> sharding;
+    std::optional<xla::HloSharding> sharding;
     if (arg_sharding != arg_shardings.end()) {
       TF_ASSIGN_OR_RETURN(auto hlo_sharding,
                           xla::HloSharding::FromProto(arg_sharding->second));
@@ -1099,7 +1098,7 @@ Status XlaCompiler::BuildArguments(
             args[input_to_args->at(i)].is_same_data_across_replicas);
       }
       xla::XlaScopedShardingAssignment assign_tuple_sharding(
-          builder, input_to_args->empty() ? absl::optional<xla::OpSharding>()
+          builder, input_to_args->empty() ? std::optional<xla::OpSharding>()
                                           : tuple_sharding);
       tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple",
                              is_same_across_replicas);
@@ -1110,7 +1109,7 @@ Status XlaCompiler::BuildArguments(
     for (std::vector<int>::size_type i = 0; i < input_to_args->size(); ++i) {
       auto it = arg_shardings.find(i);
       xla::XlaScopedShardingAssignment assign_sharding(
-          builder, it == arg_shardings.end() ? absl::optional<xla::OpSharding>()
+          builder, it == arg_shardings.end() ? std::optional<xla::OpSharding>()
                                              : it->second);
       auto& arg = args[input_to_args->at(i)];
 
@@ -1123,7 +1122,7 @@ Status XlaCompiler::BuildArguments(
     for (std::vector<int>::size_type i = 0; i < input_to_args->size(); ++i) {
       auto it = arg_shardings.find(i);
       xla::XlaScopedShardingAssignment assign_sharding(
-          builder, it == arg_shardings.end() ? absl::optional<xla::OpSharding>()
+          builder, it == arg_shardings.end() ? std::optional<xla::OpSharding>()
                                              : it->second);
       if (is_entry_computation) {
         // Add an entry to is_same_across_replicas for every leaf buffer.

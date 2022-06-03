@@ -64,7 +64,7 @@ XlaResource::XlaResource(
     xla::XlaOp initial_value, int64_t max_array_size,
     const std::set<string>& tensor_array_gradients,
     bool tensor_array_multiple_writes_aggregate,
-    const absl::optional<ManagedStackTrace>& definition_stack_trace)
+    const std::optional<ManagedStackTrace>& definition_stack_trace)
     : kind_(kind),
       arg_num_(arg_num),
       name_(std::move(name)),

@@ -499,7 +499,7 @@ StatusOr<Tensor> XlaOpKernelContext::ConstantInputTensor(
     int index, xla::ValueInferenceMode mode) {
   XlaExpression e = InputExpression(index);
   auto* client = compiler() ? compiler()->client() : nullptr;
-  StatusOr<absl::optional<Tensor>> constant_or_status =
+  StatusOr<std::optional<Tensor>> constant_or_status =
       e.ResolveConstant(client, dynamic_dimension_is_minus_one_, mode);
   if (!constant_or_status.ok()) {
     Status status = constant_or_status.status();
@@ -508,7 +508,7 @@ StatusOr<Tensor> XlaOpKernelContext::ConstantInputTensor(
                             " operator as a compile-time constant.");
     return status;
   }
-  absl::optional<Tensor> constant = constant_or_status.ValueOrDie();
+  std::optional<Tensor> constant = constant_or_status.ValueOrDie();
   if (!constant.has_value()) {
     return errors::InvalidArgument(
         "Input ", index, " to node `", context_->op_kernel().name(),
@@ -559,7 +559,7 @@ Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
       ctx->compiler()->options().shape_determination_fns;
   XlaLayoutPreference layout_preference =
       shape_determination_fns.layout_preference_fn(
-          variable->shape(), variable->type(), absl::nullopt);
+          variable->shape(), variable->type(), std::nullopt);
   TF_ASSIGN_OR_RETURN(xla::Shape representation_shape,
                       shape_determination_fns.shape_representation_fn(
                           variable->shape(), variable->type(),
@@ -706,7 +706,7 @@ Status AssignVariableTensor(const Tensor& tensor, DataType type,
   auto shape_determination_fns =
       ctx->compiler()->options().shape_determination_fns;
   XlaLayoutPreference layout_preference =
-      shape_determination_fns.layout_preference_fn(shape, type, absl::nullopt);
+      shape_determination_fns.layout_preference_fn(shape, type, std::nullopt);
   TF_ASSIGN_OR_RETURN(xla::Shape representation_shape,
                       shape_determination_fns.shape_representation_fn(
                           shape, type,
