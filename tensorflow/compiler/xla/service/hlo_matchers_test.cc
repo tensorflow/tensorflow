@@ -337,7 +337,7 @@ TEST_F(HloMatchersTest, ReplicaGroupsMatcher) {
   std::unique_ptr<HloInstruction> all_to_all =
       HloInstruction::CreateAllToAll(shape, {p0.get()}, replica_groups,
                                      /*constrain_layout=*/false,
-                                     /*channel_id=*/absl::nullopt);
+                                     /*channel_id=*/std::nullopt);
 
   EXPECT_THAT(Explain(p0.get(), op::ReplicaGroups({})),
               "%param = f32[5,7]{1,0} parameter(0) not a collective op");

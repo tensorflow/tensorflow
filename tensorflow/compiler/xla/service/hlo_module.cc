@@ -45,7 +45,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stacktrace.h"
 
 namespace xla {
 
@@ -61,7 +60,7 @@ Status HloModule::set_schedule(HloSchedule schedule) {
   TF_RET_CHECK(schedule.module() == this);
   TF_RETURN_IF_ERROR(schedule.Verify());
   schedule_ = std::move(schedule);
-  return Status::OK();
+  return OkStatus();
 }
 
 void HloModule::ReplaceEntryComputation(HloComputation* entry_computation) {
@@ -153,7 +152,7 @@ Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
   TF_RET_CHECK(it != computations_.end());
   TF_RET_CHECK(it->get() == to_remove);
   computations_.erase(it);
-  return Status::OK();
+  return OkStatus();
 }
 
 HloComputation* HloModule::AddEmbeddedComputation(
@@ -267,7 +266,6 @@ absl::Cord HloModule::ToCord(const HloPrintOptions& options) const {
     result.Append(", alias_passthrough_params=true");
   }
   if (config_.has_entry_computation_layout()) {
-    LOG(ERROR) << "HAS CONFIG " << this->name();
     result.Append(", entry_computation_layout={");
     result.Append(entry_computation_layout().ToString());
     result.Append("}");
@@ -375,7 +373,7 @@ Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions() const {
       instruction_ids.insert(instruction->unique_id());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */
@@ -452,9 +450,6 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
                                    /*preserve_entry_layouts=*/false);
   }
   TF_RET_CHECK(module->entry_computation_ != nullptr);
-  if (proto.has_schedule()) {
-    TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
-  }
   TF_ASSIGN_OR_RETURN(
       module->input_output_alias_config_,
       HloInputOutputAliasConfig::CreateFromProto(
@@ -895,7 +890,7 @@ Status HloModule::RemoveUnusedComputations() {
   for (auto computation : to_remove) {
     TF_RETURN_IF_ERROR(RemoveEmbeddedComputation(computation));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 HloComputation* HloModule::DeepCloneComputation(HloComputation* computation,

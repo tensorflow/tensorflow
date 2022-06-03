@@ -59,7 +59,7 @@ Status GetBroadcastSize(const int index, const int in_size, const int ksize,
   if (*bindex + ksize > in_size) {
     *bsize = std::min((in_size - *bindex), ksize);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 string SanitizeThreadSuffix(string suffix) {

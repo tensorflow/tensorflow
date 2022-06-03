@@ -204,7 +204,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
                   absl::StrCat("Test with output layout: ",
                                ShapeUtil::HumanStringWithLayout(layout)));
   } while (std::next_permutation(minor_to_major.begin(), minor_to_major.end()));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
@@ -232,7 +232,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
         TF_RETURN_IF_ERROR(choose(index + 1));
         arguments_with_layout.pop_back();
         layout_strings.pop_back();
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       }
 
       std::vector<int64_t> minor_to_major(literal.shape().rank());
@@ -250,7 +250,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
         layout_strings.pop_back();
       } while (
           std::next_permutation(minor_to_major.begin(), minor_to_major.end()));
-      return Status::OK();
+      return ::tensorflow::OkStatus();
     }
 
     // Every argument has an assigned layout.
@@ -264,7 +264,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
       absl::StrAppend(&error_message, str, " ");
     }
     verify_output(actual, error_message);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   return choose(0);
@@ -352,7 +352,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments,
                                                       shape_with_layout));
   EXPECT_TRUE(LiteralTestUtil::Equal(*expected_ptr, actual));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
@@ -411,7 +411,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments,
                                                       shape_with_layout));
   EXPECT_TRUE(LiteralTestUtil::Near(*expected_ptr, actual, error));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 void ClientLibraryTestBase::ComputeAndCompareR1U8(

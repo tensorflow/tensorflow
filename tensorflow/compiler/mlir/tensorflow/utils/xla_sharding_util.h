@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_XLA_SHARDING_UTIL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_XLA_SHARDING_UTIL_H_
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -29,8 +30,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-extern const char* const kInputShardingAttr;
-extern const char* const kOutputShardingAttr;
+inline constexpr absl::string_view kInputShardingAttr =
+    "input_sharding_configuration";
+inline constexpr absl::string_view kOutputShardingAttr =
+    "output_sharding_configuration";
 
 // Parses "input_sharding_configuration" attribute and returns a list where i-th
 // element is a list of mlir::Value's which represent inputs for the TPU

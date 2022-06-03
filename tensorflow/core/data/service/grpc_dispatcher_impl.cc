@@ -57,6 +57,7 @@ HANDLER(GetVersion);
 HANDLER(GetOrRegisterDataset);
 HANDLER(ReleaseIterationClient);
 HANDLER(MaybeRemoveTask);
+HANDLER(GetOrCreateJob);
 HANDLER(GetOrCreateIteration);
 HANDLER(ClientHeartbeat);
 HANDLER(GetWorkers);

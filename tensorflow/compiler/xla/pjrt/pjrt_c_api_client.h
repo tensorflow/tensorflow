@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/core/platform/casts.h"
 
 namespace xla {
 
@@ -77,7 +78,7 @@ class PjRtCApiDevice : public PjRtDevice {
   PjRtDevice* wrapped() const { return wrapped_; }
 
   static PjRtDevice* GetWrapped(PjRtDevice* c_api_device) {
-    return down_cast<PjRtCApiDevice*>(c_api_device)->wrapped();
+    return tensorflow::down_cast<PjRtCApiDevice*>(c_api_device)->wrapped();
   }
 
  private:
@@ -154,7 +155,7 @@ class PjRtCApiClient : public PjRtClient {
     return WrapExecutable(wrapped_->Compile(module, options));
   }
 
-  StatusOr<absl::optional<std::string>> ExecutableFingerprint(
+  StatusOr<std::optional<std::string>> ExecutableFingerprint(
       const PjRtExecutable& executable) const override;
 
   StatusOr<std::string> SerializeExecutable(
@@ -180,7 +181,7 @@ class PjRtCApiClient : public PjRtClient {
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-      absl::optional<absl::Span<int64_t const>> byte_strides,
+      std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       std::function<void()> on_done_with_host_buffer,
       PjRtDevice* device) override {
@@ -205,16 +206,20 @@ class PjRtCApiClient : public PjRtClient {
 
   StatusOr<std::uintptr_t> UnsafeBufferPointer(PjRtBuffer* buffer) override;
 
-  void MakeCrossHostReceiveBuffers(
-      absl::Span<const Shape> shapes, PjRtDevice* device,
-      PjRtCrossHostRecvNotifier&& notifier) override {
-    LOG(ERROR) << "PJRT C API does not support MakeCrossHostReceiveBuffers";
+  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
+                              PjRtDevice* device,
+                              PjRtCrossHostRecvNotifier notifier) override {
+    return Unimplemented(
+        "PJRT C API does not support MakeCrossHostReceiveBuffers");
   }
 
-  void MakeCrossHostReceiveBuffersForGather(
+  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  MakeCrossHostReceiveBuffersForGather(
       absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
-      PjRtDevice* device, PjRtCrossHostRecvNotifier&& notifier) override {
-    LOG(ERROR) << "PJRT C API does not support MakeCrossHostReceiveBuffers";
+      PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) override {
+    return Unimplemented(
+        "PJRT C API does not support MakeCrossHostReceiveBuffers");
   }
 
   StatusOr<ChannelHandle> CreateChannelHandle() override {
@@ -336,7 +341,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
   PjRtBuffer* wrapped() const { return wrapped_.get(); }
 
   static PjRtBuffer* GetWrapped(PjRtBuffer* c_api_buffer) {
-    return down_cast<PjRtCApiBuffer*>(c_api_buffer)->wrapped();
+    return tensorflow::down_cast<PjRtCApiBuffer*>(c_api_buffer)->wrapped();
   }
 
   static std::vector<PjRtBuffer*> GetWrappedVector(
@@ -389,19 +394,19 @@ class PjRtCApiExecutable : public PjRtExecutable {
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
-      absl::optional<std::vector<PjRtFuture<Status>>>& returned_futures)
+      std::optional<std::vector<PjRtFuture<Status>>>& returned_futures)
       override;
 
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      absl::optional<PjRtFuture<Status>>& returned_future,
+      std::optional<PjRtFuture<Status>>& returned_future,
       bool fill_future) override;
 
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      absl::optional<PjRtFuture<Status>>& returned_future,
+      std::optional<PjRtFuture<Status>>& returned_future,
       bool fill_future) override;
 
   void Delete() override { return wrapped_->Delete(); }
@@ -410,7 +415,8 @@ class PjRtCApiExecutable : public PjRtExecutable {
   PjRtExecutable* wrapped() const { return wrapped_.get(); }
 
   static PjRtExecutable* GetWrapped(const PjRtExecutable* c_api_executable) {
-    return down_cast<const PjRtCApiExecutable*>(c_api_executable)->wrapped();
+    return tensorflow::down_cast<const PjRtCApiExecutable*>(c_api_executable)
+        ->wrapped();
   }
 
  private:

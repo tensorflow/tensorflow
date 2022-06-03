@@ -113,7 +113,7 @@ class XlaContext : public ResourceBase {
   // cluster and returns the channel_id to be used for the next collective.
   StatusOr<int64_t> RecordCollectiveInfo(int group_key, int group_size);
 
-  const absl::optional<XlaCompilationResult::CollectiveInfo>&
+  const std::optional<XlaCompilationResult::CollectiveInfo>&
   GetCollectiveInfo() {
     return collective_info_;
   }
@@ -139,7 +139,7 @@ class XlaContext : public ResourceBase {
 
   // Information about encountered collective ops. We allow only a
   // single configuration per cluster.
-  absl::optional<XlaCompilationResult::CollectiveInfo> collective_info_;
+  std::optional<XlaCompilationResult::CollectiveInfo> collective_info_;
 
   // Cache of prebuilt computations indexed by their type.
   using ComputationMap = std::map<DataType, xla::XlaComputation>;

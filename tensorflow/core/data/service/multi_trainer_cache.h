@@ -164,7 +164,7 @@ class MultiTrainerCache {
 
   // If `status_` is non-OK, the cache is cancelled, and all method calls will
   // return this status.
-  Status status_ TF_GUARDED_BY(mu_) = Status::OK();
+  Status status_ TF_GUARDED_BY(mu_) = OkStatus();
 
   // `cache_` stores the cached elements.
   std::deque<std::shared_ptr<const ElementType>> cache_ TF_GUARDED_BY(mu_);
@@ -295,7 +295,7 @@ Status MultiTrainerCache<ElementType>::ExtendCache() TF_LOCKS_EXCLUDED(mu_) {
   FreeSpace(new_element_size_bytes);
   cache_.push_back(std::make_shared<ElementType>(std::move(element)));
   cache_size_bytes_ += new_element_size_bytes;
-  return Status::OK();
+  return OkStatus();
 }
 
 template <class ElementType>
@@ -340,13 +340,13 @@ bool MultiTrainerCache<ElementType>::IsCancelled() const
 template <class ElementType>
 void MultiTrainerCache<ElementType>::RecordMetrics(
     const CacheQueryResult& result) {
-  metrics::RecordTFDataServiceMultiTrainerCacheQuery(result.cache_hit);
+  metrics::RecordTFDataServiceCrossTrainerCacheQuery(result.cache_hit);
   size_t cache_size_bytes = 0;
   {
     mutex_lock l(mu_);
     cache_size_bytes = cache_size_bytes_;
   }
-  metrics::RecordTFDataServiceMultiTrainerCacheSizeBytes(cache_size_bytes);
+  metrics::RecordTFDataServiceCrossTrainerCacheSizeBytes(cache_size_bytes);
 }
 
 }  // namespace data

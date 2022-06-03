@@ -302,9 +302,9 @@ Status ReadSerializedEngine(
     return errors::Internal("Engine not found for", node.name());
   }
 
-  if (engine->cuda_engine) {
+  if (engine->GetCudaEngine()) {
     // Serialize the engine.
-    engine_data->reset(engine->cuda_engine->serialize());
+    engine_data->reset(engine->GetCudaEngine()->serialize());
   } else {
     LOG(WARNING) << "Engine cache contains nullptr";
   }

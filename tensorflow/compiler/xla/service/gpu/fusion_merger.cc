@@ -205,7 +205,7 @@ Status FusionInstructionMerger::FuseIntoAllUsers(HloInstruction* instruction) {
                              absl::StrAppend(out, user->name());
                            })
           << " }";
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status FusionInstructionMerger::Run() {
@@ -243,7 +243,7 @@ Status FusionInstructionMerger::Run() {
           << " inefficient_fusion_emitter: "
           << num_fail_inefficient_fusion_emitter_
           << " fusion_too_large: " << num_fail_fusion_too_large_ << " }";
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 FusionDecision FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {

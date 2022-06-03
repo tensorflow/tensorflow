@@ -83,6 +83,7 @@ struct MhloToScalarOp<mhlo::ExpOp> {
 template <>
 struct MhloToScalarOp<mhlo::Expm1Op> {
   using FOp = ::mlir::math::ExpM1Op;
+  using COp = ::mlir::complex::Expm1Op;
 };
 template <>
 struct MhloToScalarOp<mhlo::FloorOp> {
@@ -130,6 +131,7 @@ struct MhloToScalarOp<mhlo::PopulationCountOp> {
 template <>
 struct MhloToScalarOp<mhlo::RsqrtOp> {
   using FOp = ::mlir::math::RsqrtOp;
+  using COp = ::mlir::complex::RsqrtOp;
 };
 template <>
 struct MhloToScalarOp<mhlo::SubOp> {
@@ -166,6 +168,7 @@ struct MhloToScalarOp<mhlo::ShiftRightLogicalOp> {
 template <>
 struct MhloToScalarOp<mhlo::Atan2Op> {
   using FOp = ::mlir::math::Atan2Op;
+  using COp = ::mlir::complex::Atan2Op;
 };
 template <>
 struct MhloToScalarOp<mhlo::TanhOp> {
@@ -390,9 +393,11 @@ inline Value MapCompareOpToStdScalarOp(Location loc,
   const auto& rhs = args[1];
   Type element_type = getElementTypeOrSelf(arg_types.front());
   if (element_type.isa<IntegerType>()) {
+    bool is_unsigned =
+        element_type.isInteger(1) || element_type.isUnsignedInteger();
     Optional<arith::CmpIPredicate> predicate =
-        getCmpPredicate<arith::CmpIPredicate>(
-            comparison_direction, !element_type.isUnsignedInteger());
+        getCmpPredicate<arith::CmpIPredicate>(comparison_direction,
+                                              !is_unsigned);
     assert(predicate.hasValue() && "expected valid comparison direction");
     return b->create<ScalarIOp<CompareOpTy>>(loc, predicate.getValue(), lhs,
                                              rhs);

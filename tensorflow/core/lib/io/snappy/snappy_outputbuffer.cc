@@ -45,7 +45,7 @@ Status SnappyOutputBuffer::Append(const absl::Cord& cord) {
   for (absl::string_view fragment : cord.Chunks()) {
     TF_RETURN_IF_ERROR(Append(fragment));
   }
-  return Status::OK();
+  return OkStatus();
 }
 #endif
 
@@ -78,7 +78,7 @@ Status SnappyOutputBuffer::Write(StringPiece data) {
   // add it there and return.
   if (static_cast<int32>(bytes_to_write) <= AvailableInputSpace()) {
     AddToInputBuffer(data);
-    return Status::OK();
+    return OkStatus();
   }
 
   // If there isn't enough available space in the input_buffer_ we empty it
@@ -89,7 +89,7 @@ Status SnappyOutputBuffer::Write(StringPiece data) {
   // input_buffer_ should be empty at this point.
   if (static_cast<int32>(bytes_to_write) <= AvailableInputSpace()) {
     AddToInputBuffer(data);
-    return Status::OK();
+    return OkStatus();
   }
 
   // `data` is too large to fit in input buffer so we deflate it directly.
@@ -104,13 +104,13 @@ Status SnappyOutputBuffer::Write(StringPiece data) {
 
   next_in_ = input_buffer_.get();
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SnappyOutputBuffer::Flush() {
   TF_RETURN_IF_ERROR(DeflateBuffered());
   TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
-  return Status::OK();
+  return OkStatus();
 }
 
 int32 SnappyOutputBuffer::AvailableInputSpace() const {
@@ -164,14 +164,14 @@ Status SnappyOutputBuffer::AddToOutputBuffer(const char* data, size_t length) {
       TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SnappyOutputBuffer::DeflateBuffered() {
   TF_RETURN_IF_ERROR(Deflate());
   DCHECK_EQ(avail_in_, 0);
   next_in_ = input_buffer_.get();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SnappyOutputBuffer::FlushOutputBufferToFile() {
@@ -185,12 +185,12 @@ Status SnappyOutputBuffer::FlushOutputBufferToFile() {
     }
     return s;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SnappyOutputBuffer::Deflate() {
   if (avail_in_ == 0) {
-    return Status::OK();
+    return OkStatus();
   }
   string output;
   if (!port::Snappy_Compress(next_in_, avail_in_, &output)) {
@@ -211,7 +211,7 @@ Status SnappyOutputBuffer::Deflate() {
   next_in_ += avail_in_;
   avail_in_ = 0;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace io

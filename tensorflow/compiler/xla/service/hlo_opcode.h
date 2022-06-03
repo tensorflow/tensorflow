@@ -190,7 +190,7 @@ bool HloOpcodeIsVariadic(HloOpcode opcode);
 
 // Returns the arity of opcode. If the opcode is variadic,
 // returns nullopt.
-absl::optional<int> HloOpcodeArity(HloOpcode opcode);
+std::optional<int> HloOpcodeArity(HloOpcode opcode);
 
 // Returns true if the given opcode is one of kAsyncStart, kAsyncUpdate, or
 // kAsyncDone.

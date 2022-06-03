@@ -25,30 +25,7 @@ Thunk::ExecuteParams::ExecuteParams(
     : buffer_allocations(&buffer_allocations),
       stream(stream),
       async_comms_stream(async_comms_stream),
-      run_id(run_options.run_options().run_id()),
-      device_assn(run_options.run_options().device_assignment()) {
-  const GpuExecutableRunOptions* gpu_options =
-      run_options.run_options().gpu_executable_run_options();
-  gpu_global_device_ids = gpu_options && gpu_options->gpu_global_device_ids()
-                              ? &*gpu_options->gpu_global_device_ids()
-                              : nullptr;
-  nccl_unique_id_callback =
-      gpu_options && gpu_options->nccl_unique_id_callback()
-          ? &gpu_options->nccl_unique_id_callback()
-          : nullptr;
-}
-
-StatusOr<GlobalDeviceId> Thunk::ExecuteParams::GetGlobalDeviceId() const {
-  int64_t local_device_ordinal = stream->parent()->device_ordinal();
-  if (gpu_global_device_ids) {
-    TF_RET_CHECK(0 <= local_device_ordinal &&
-                 local_device_ordinal < gpu_global_device_ids->size());
-    return (*gpu_global_device_ids)[local_device_ordinal];
-  } else {
-    // No local -> global mapping was provided; assume the identity mapping.
-    return GlobalDeviceId(local_device_ordinal);
-  }
-}
+      nccl_params(run_options, stream) {}
 
 /*static*/ absl::string_view Thunk::KindToString(Thunk::Kind kind) {
   switch (kind) {

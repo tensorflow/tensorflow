@@ -173,7 +173,7 @@ class SaveV2 : public OpKernel {
                   &checkpoint_callback_manager,
                   [](checkpoint::CheckpointCallbackManager** out) {
                     *out = new checkpoint::CheckpointCallbackManager();
-                    return Status::OK();
+                    return OkStatus();
                   }));
       checkpoint_callback_manager->Save(prefix_string);
       checkpoint_callback_manager->Unref();
@@ -240,7 +240,7 @@ class RestoreV2 : public OpKernel {
                   &checkpoint_callback_manager,
                   [](checkpoint::CheckpointCallbackManager** out) {
                     *out = new checkpoint::CheckpointCallbackManager();
-                    return Status::OK();
+                    return OkStatus();
                   }));
       checkpoint_callback_manager->Restore(prefix_string);
       checkpoint_callback_manager->Unref();

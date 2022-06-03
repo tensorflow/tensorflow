@@ -181,6 +181,6 @@ Status TransformGraphFunction(const std::string& func_name,
   // Refresh `fbody`.
   TF_RETURN_IF_ERROR(
       FunctionDefToBodyHelper(new_func, AttrSlice(), func_lib_def, fbody));
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace tensorflow

@@ -102,6 +102,8 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateTileLoopsPass(
 
 namespace hlo {
 std::unique_ptr<OperationPass<ModuleOp>> CreateOneShotBufferizePass();
+
+std::unique_ptr<OperationPass<ModuleOp>> createGenericHostToLLVMPass();
 }  // namespace hlo
 }  // namespace mlir
 

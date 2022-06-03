@@ -23,7 +23,7 @@ limitations under the License.
 namespace tensorflow {
 
 // Checks that all schemes provided by a plugin are valid.
-// TODO(mihaimaruseac): More validation could be done here, based on supported
+// TODO(b/139060984): More validation could be done here, based on supported
 // charset, maximum length, etc. Punting it for later.
 static Status ValidateScheme(const char* scheme) {
   if (scheme == nullptr)

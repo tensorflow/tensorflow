@@ -42,7 +42,7 @@ Status StatefulRngSpmdPartitioningVisitor::HandleRngGetAndUpdateState(
   SetPartitionedHlo(
       hlo, spmd::PartitionedHlo(clone, hlo->shape(), MakePartitioningState())
                .Reshard(hlo->sharding()));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 std::unique_ptr<spmd::SpmdPartitioningVisitor>

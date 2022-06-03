@@ -183,7 +183,7 @@ struct GpuExecutable::BefExecutable {
       return InternalError("Failed to get '%s' function", func_name);
     }
 
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
  public:
@@ -404,7 +404,7 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
     return InternalError("Unknown platform: %d", platform_kind);
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 namespace {
@@ -507,7 +507,7 @@ Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
     profile->set_compute_time_ns(std::max(nanoseconds, 1.0));
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace
@@ -656,7 +656,7 @@ static Status CheckAlignment(const BufferAllocation& allocation,
         "was %p",
         arg_idx, expected_alignment, buffer.opaque());
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
@@ -725,12 +725,13 @@ static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
     const Thunk::ExecuteParams& params,
     tfrt::RequestContextBuilder request_context_builder) {
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
-                      params.GetGlobalDeviceId());
-  request_context_builder.context_data().emplace<XlaGpuParams>(XlaGpuParams{
-      params.run_id, params.device_assn, params.gpu_global_device_ids,
-      params.nccl_unique_id_callback, global_device_id,
-      GetOrCreateInfeedManager(params.stream->parent()),
-      GetOrCreateOutfeedManager(params.stream->parent())});
+                      params.nccl_params.GetGlobalDeviceId());
+  request_context_builder.context_data().emplace<XlaGpuParams>(
+      XlaGpuParams{params.nccl_params.run_id, params.nccl_params.device_assn,
+                   params.nccl_params.gpu_global_device_ids,
+                   params.nccl_params.nccl_unique_id_callback, global_device_id,
+                   GetOrCreateInfeedManager(params.stream->parent()),
+                   GetOrCreateOutfeedManager(params.stream->parent())});
 
   auto expected_req_ctx = std::move(request_context_builder).build();
   if (!expected_req_ctx) {
@@ -987,7 +988,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
             output_info.allocation_index);
       }
       if (maybe_owning_memory && maybe_owning_memory->HasOwnership()) {
-        absl::optional<tensorflow::se::OwningDeviceMemory> owning =
+        std::optional<tensorflow::se::OwningDeviceMemory> owning =
             maybe_owning_memory->Release();
         // If the caller passes the ownership of the device memory, reuse it
         // as the output buffer. It is up to the caller whether or not to
@@ -1185,7 +1186,7 @@ Status GpuExecutable::SetUpMlirAllocation(
                      .getValue()
                      .str()));
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 #if XLA_ENABLE_XLIR
@@ -1366,7 +1367,7 @@ GetOutputInfo(const HloModule& hlo_module, const BufferAssignment& assignment) {
         output[index].alias_config =
             hlo_module.input_output_alias_config().GetAliasedParameter(index);
 
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       }));
   return output;
 }

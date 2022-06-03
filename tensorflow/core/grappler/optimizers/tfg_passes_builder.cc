@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/tfg_passes_builder.h"
 
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/transforms/pass_registration.h"
@@ -30,11 +29,12 @@ void DefaultGrapplerPipeline(PassManager& manager) {
   // Turn certain shape attrs into types to give better knowledge for shape
   // inference.
   manager.addPass(CreateConsolidateAttributesPass());
+  // Toposort the graph will bring better performance in some optimizations like
+  // shape inference.
+  manager.addPass(CreateTopoSortPass());
   // Infer the shape of operation if possible. The TFG importer doesn't do shape
   // inference for almost all operations.
-  // TODO(chiahungduan): Temporarily disable it because it hangs on certain
-  // operations. We need to set a proper limit of iteration.
-  // manager.addPass(CreateShapeInferencePass());
+  manager.addPass(CreateShapeInferencePass());
   // Contruct the shape attrs back from types.
   // TODO(chiahungduan): This will be the required pass before exporting, remove
   // this instance when the exporter has handled it.
@@ -55,9 +55,7 @@ void DefaultModuleGrapplerPipeline(PassManager& manager,
     manager.addNestedPass<GraphFuncOp>(CreateControlFlowSinkPass());
   manager.addPass(CreateRegionToFunctionalPass(/*force_control_capture=*/true));
   manager.addPass(CreateLiftLegacyCallPass());
-  // Graph will be lifted as a function, don't mark it as private.
-  manager.addPass(createSymbolPrivatizePass(
-      {TFGraphDialect::getLiftedGraphFuncNameKey().str()}));
+  manager.addPass(createSymbolPrivatizePass());
   manager.addPass(createSymbolDCEPass());
   // TODO(chiahungduan): This will be the required pass before exporting, remove
   // this instance when the exporter has handled it.

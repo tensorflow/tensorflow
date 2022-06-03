@@ -98,14 +98,14 @@ Status updated_inferred_type(Node* target, const FullTypeDef& t,
                              bool& updated) {
   if (t.type_id() == TFT_UNSET) {
     VLOG(3) << "  " << target->name() << " no inferred type";
-    return Status::OK();
+    return OkStatus();
   }
 
   if (target->def().has_experimental_type()) {
     const auto existing = target->def().experimental_type();
     if (full_type::IsSubtype(existing, t)) {
       VLOG(3) << "  " << target->name() << " no new type info";
-      return Status::OK();
+      return OkStatus();
     } else if (!full_type::IsSubtype(t, existing)) {
       // The only allowable type mismatches are those which would further
       // specialize the existing type.
@@ -120,7 +120,7 @@ Status updated_inferred_type(Node* target, const FullTypeDef& t,
   *(target->mutable_def()->mutable_experimental_type()) = t;
   updated = true;
   VLOG(3) << "  " << target->name() << " updated";
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -163,7 +163,7 @@ Status ForwardTypeInferencePass::Run(
 
   auto infer_forward = [&forward](Node* n, bool& updated) {
     if (!forward.contains(n->id())) {
-      return Status::OK();
+      return OkStatus();
     }
     VLOG(4) << "  " << n->name() << " has forward function";
 
@@ -180,12 +180,12 @@ Status ForwardTypeInferencePass::Run(
         updated_inferred_type(n, *infer_ret, updated),
         "while updating its output type.");
 
-    return Status::OK();
+    return OkStatus();
   };
 
   auto infer_reverse = [&reverse](Node* n, bool& updated) {
     if (!reverse.contains(n->id())) {
-      return Status::OK();
+      return OkStatus();
     }
     VLOG(4) << "  " << n->name() << " has reverse function";
 
@@ -211,7 +211,7 @@ Status ForwardTypeInferencePass::Run(
         absl::StrCat("while updating its output type inferred from '",
                      n->name(), ","));
 
-    return Status::OK();
+    return OkStatus();
   };
 
   std::list<int> queue;
@@ -321,7 +321,7 @@ Status ForwardTypeInferencePass::Run(
     DumpGraphToFile("forward_type_inference_after", *g, flib_def);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status WeakForwardTypeInferencePass::Run(
@@ -334,7 +334,7 @@ Status WeakForwardTypeInferencePass::Run(
            "invalid graph that escaped type checking. Error message: "
         << pass_status.ToString();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Note: This needs to run last because Placer needs it.

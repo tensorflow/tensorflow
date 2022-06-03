@@ -124,7 +124,7 @@ inline Status InputBuffer::ReadVarint32(uint32* result) {
     const char* offset = core::GetVarint32Ptr(pos_, limit_, result);
     if (offset == nullptr) return errors::OutOfRange("Parsed past limit.");
     pos_ = const_cast<char*>(offset);
-    return Status::OK();
+    return OkStatus();
   } else {
     return ReadVarint32Fallback(result);
   }
@@ -138,7 +138,7 @@ inline Status InputBuffer::ReadVarint64(uint64* result) {
     const char* offset = core::GetVarint64Ptr(pos_, limit_, result);
     if (offset == nullptr) return errors::OutOfRange("Parsed past limit.");
     pos_ = const_cast<char*>(offset);
-    return Status::OK();
+    return OkStatus();
   } else {
     return ReadVarint64Fallback(result);
   }

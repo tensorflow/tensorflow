@@ -55,10 +55,10 @@ class LMDBDatasetOp::Dataset : public DatasetBase {
   string DebugString() const override { return "LMDBDatasetOp::Dataset"; }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
-    return Status::OK();
+    return OkStatus();
   }
 
-  Status CheckExternalState() const override { return Status::OK(); }
+  Status CheckExternalState() const override { return OkStatus(); }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -67,7 +67,7 @@ class LMDBDatasetOp::Dataset : public DatasetBase {
     Node* filenames = nullptr;
     TF_RETURN_IF_ERROR(b->AddVector(filenames_, &filenames));
     TF_RETURN_IF_ERROR(b->AddDataset(this, {filenames}, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -109,12 +109,12 @@ class LMDBDatasetOp::Dataset : public DatasetBase {
             ++current_file_index_;
           }
           *end_of_sequence = false;
-          return Status::OK();
+          return OkStatus();
         }
         if (current_file_index_ == dataset()->filenames_.size()) {
           *end_of_sequence = true;
           ResetStreamsLocked();
-          return Status::OK();
+          return OkStatus();
         }
 
         TF_RETURN_IF_ERROR(SetupStreamsLocked(ctx->env()));
@@ -182,7 +182,7 @@ class LMDBDatasetOp::Dataset : public DatasetBase {
       if (val == MDB_NOTFOUND) {
         ResetStreamsLocked();
       }
-      return Status::OK();
+      return OkStatus();
     }
     void ResetStreamsLocked() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (mdb_env_ != nullptr) {

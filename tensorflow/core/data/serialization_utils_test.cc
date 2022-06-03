@@ -76,7 +76,7 @@ class TestContext {
         absl::make_unique<OpKernelContext>(&(*result)->params_, 0);
     (*result)->iter_ctx_ =
         absl::make_unique<IteratorContext>((*result)->op_ctx_.get());
-    return Status::OK();
+    return OkStatus();
   }
 
   IteratorContext* iter_ctx() const { return iter_ctx_.get(); }

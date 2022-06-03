@@ -407,6 +407,8 @@ struct MetalInfo {
   uint64_t image3d_max_width;
   uint64_t image3d_max_height;
   uint64_t image3d_max_depth;
+
+  bool IsSIMDMatMulSupported() const;
 };
 
 struct GpuInfo {

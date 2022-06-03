@@ -221,7 +221,7 @@ class HloFunctionImporter {
   mlir::NamedAttribute ConvertPadding(llvm::ArrayRef<int64_t> padding);
 
   // Converts channel id to attribute
-  mlir::NamedAttribute ConvertChannelHandle(absl::optional<int64_t> channel_id);
+  mlir::NamedAttribute ConvertChannelHandle(std::optional<int64_t> channel_id);
 
   // Converts channel handle to attribute
   mlir::NamedAttribute ConvertChannelHandle(const xla::ChannelHandle& channel);

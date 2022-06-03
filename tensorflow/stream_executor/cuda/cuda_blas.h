@@ -20,12 +20,12 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_BLAS_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_BLAS_H_
 
+#include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cublasLt.h"
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/host_or_device_scalar.h"
 #include "tensorflow/stream_executor/platform/port.h"
@@ -72,7 +72,7 @@ class CUDABlas : public blas::BlasSupport {
   // cuBLAS is stateful, and only be associated with one stream (in order to
   // enqueue dispatch) at a given time. As a result, this generally must be
   // invoked before calling into cuBLAS.
-  bool SetStream(Stream *stream) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  bool SetStream(Stream *stream) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Returns the underlying CUDA stream.
   cudaStream_t CUDAStream(Stream *stream);
@@ -158,10 +158,10 @@ class CUDABlas : public blas::BlasSupport {
   GpuExecutor *parent_;
 
   // cuBLAS library handle on the device.
-  cublasHandle_t blas_ TF_GUARDED_BY(mu_);
+  cublasHandle_t blas_ ABSL_GUARDED_BY(mu_);
 
   // cuBLASLt library handle on the device.
-  cublasLtHandle_t blasLt_ TF_GUARDED_BY(mu_);
+  cublasLtHandle_t blas_lt_ ABSL_GUARDED_BY(mu_);
 
   SE_DISALLOW_COPY_AND_ASSIGN(CUDABlas);
 };

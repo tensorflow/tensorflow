@@ -38,7 +38,7 @@ REGISTER_OP("KernelLabelRequired")
       shape_inference::ShapeHandle out;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &out));
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("GraphDefVersion")

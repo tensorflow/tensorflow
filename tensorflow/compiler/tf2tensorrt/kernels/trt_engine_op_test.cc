@@ -277,7 +277,7 @@ TEST_F(TRTEngineOpTestBase, AllowBuildAtRuntime) {
   EXPECT_EQ(1, cache->size());
   ASSERT_EQ(1, cache->count({input_shape}));
   EngineContext* ectx = cache->at({input_shape}).get();
-  EXPECT_EQ(ectx->cuda_engine, nullptr);
+  EXPECT_EQ(ectx->GetCudaEngine(), nullptr);
 }
 
 TEST_P(TRTEngineOpTestWithParam, ExplicitBatch) {
@@ -304,7 +304,7 @@ TEST_P(TRTEngineOpTestWithParam, ExplicitBatch) {
   EXPECT_EQ(1, cache->size());
   ASSERT_EQ(1, cache->count({input_shape}));
   EngineContext* ectx = cache->at({input_shape}).get();
-  EXPECT_NE(ectx->cuda_engine, nullptr);
+  EXPECT_NE(ectx->GetCudaEngine(), nullptr);
 }
 
 TEST_P(TRTEngineOpTestWithParam, DynamicShapes) {
@@ -334,7 +334,7 @@ TEST_P(TRTEngineOpTestWithParam, DynamicShapes) {
   EXPECT_EQ(1, cache->size());
   ASSERT_EQ(1, cache->count({input_shape}));
   EngineContext* ectx = cache->at({input_shape}).get();
-  EXPECT_NE(ectx->cuda_engine, nullptr);
+  EXPECT_NE(ectx->GetCudaEngine(), nullptr);
 
   // Execute the op with an incompatible shape.
   ResetInputs();

@@ -523,7 +523,7 @@ class CSRSparseMatrix {
           "CSRSparseMatrix::Validate: size(col_indices) = ",
           col_indices.dim_size(0), " != size(values) = ", values.dim_size(0));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   struct Metadata {
@@ -641,7 +641,7 @@ Status ExtractVariantFromInput(OpKernelContext* ctx, int index,
   if (!(*value)->valid()) {
     return errors::InvalidArgument("Variant input ", index, " is not valid.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

@@ -74,7 +74,7 @@ Status MlirRoundtripPass::Run(const GraphOptimizationPassOptions& options) {
     // TODO(jpienaar): Roundtrip results in different failures, investigate.
     TF_RETURN_IF_ERROR(Import(options, *it.second, &context).status());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

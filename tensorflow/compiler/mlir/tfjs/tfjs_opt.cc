@@ -18,6 +18,7 @@ limitations under the License.
 #include "mlir/InitAllPasses.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tfjs/ir/tfjs_ops.h"
 #include "tensorflow/compiler/mlir/tfjs/transforms/passes.h"
@@ -27,6 +28,7 @@ int main(int argc, char **argv) {
 
   mlir::registerAllPasses();
   mlir::tfjs::registerTFJSPasses();
+  mlir::TFL::registerTensorFlowLitePasses();
 
   mlir::DialectRegistry registry;
   registry.insert<mlir::arith::ArithmeticDialect>();

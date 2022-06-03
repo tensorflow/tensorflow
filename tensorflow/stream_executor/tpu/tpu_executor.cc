@@ -220,7 +220,7 @@ bool TpuExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
   return false;
 }
 
-absl::optional<stream_executor::AllocatorStats>
+std::optional<stream_executor::AllocatorStats>
 TpuExecutor::GetAllocatorStats() {
   SE_AllocatorStats c_stats;
   if (tpu::ExecutorApiFn()->TpuExecutor_GetAllocatorStatsFn(executor_,

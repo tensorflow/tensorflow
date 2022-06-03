@@ -48,7 +48,7 @@ void SameWorkerRecvDone(const DeviceMgr* device_mgr,
       (recv_args.alloc_attrs.on_host() || parsed.dst.type == "CPU");
   if (src_host && dst_host) {
     *out = in;
-    done(Status::OK());
+    done(OkStatus());
     return;
   }
 

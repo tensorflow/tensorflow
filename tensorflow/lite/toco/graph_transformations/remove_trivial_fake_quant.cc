@@ -71,20 +71,20 @@ bool IsFakeQuantTrivial(GraphTransformation* transformation, const Model& model,
   const auto op_it = model->operators.begin() + op_index;
   auto* op = op_it->get();
   if (op->type != OperatorType::kFakeQuant) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   auto* fakequant_op = static_cast<FakeQuantOperator*>(op);
 
   if (!IsFakeQuantTrivial(this, *model, *fakequant_op)) {
     AddMessageF("%s is not trivial", LogName(*fakequant_op));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   AddMessageF("Removing trivial %s", LogName(*fakequant_op));
 
   CHECK_EQ(fakequant_op->inputs.size(), 1);
   *modified = RemoveTrivialPassthroughOp(this, model, op_index);
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

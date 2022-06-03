@@ -55,6 +55,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/SCF/Transforms.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
@@ -142,12 +143,12 @@ struct ComputeOpAndFuncBufferizePass
         bufferization::getPartialBufferizationOptions();
     // TODO(springerm): Add dialects to this filter as more and more dialects
     // will be migrated to BufferizableOpInterface-based bufferization.
-    options.allowDialectInFilter<bufferization::BufferizationDialect,
-                                 linalg::LinalgDialect, mhlo::MhloDialect,
-                                 shape::ShapeDialect, tensor::TensorDialect,
-                                 vector::VectorDialect>();
+    options.opFilter.allowDialect<bufferization::BufferizationDialect,
+                                  linalg::LinalgDialect, mhlo::MhloDialect,
+                                  shape::ShapeDialect, tensor::TensorDialect,
+                                  vector::VectorDialect>();
     // Ops inside TiledLoopOps have special handling.
-    options.denyOperationInFilter([](Operation* op) {
+    options.opFilter.denyOperation([](Operation* op) {
       return mlir::isa<gml_st::LoopOp>(op->getParentOp());
     });
 
@@ -227,6 +228,7 @@ struct OneShotBufferizePass
     gml_st::registerBufferizableOpInterfaceExternalModels(registry);
     linalg::registerBufferizableOpInterfaceExternalModels(registry);
     mhlo::registerBufferizableOpInterfaceExternalModels(registry);
+    scf::registerBufferizableOpInterfaceExternalModels(registry);
     shape::registerBufferizableOpInterfaceExternalModels(registry);
     tensor::registerBufferizableOpInterfaceExternalModels(registry);
     vector::registerBufferizableOpInterfaceExternalModels(registry);
@@ -287,7 +289,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     options.bufferAlignment = alignment_;
     // TODO(springerm): Add dialects to this filter as more and more dialects
     // will be migrated to BufferizableOpInterface-based bufferization.
-    options.allowDialectInFilter<
+    options.opFilter.allowDialect<
         arith::ArithmeticDialect, bufferization::BufferizationDialect,
         linalg::LinalgDialect, func::FuncDialect, shape::ShapeDialect,
         tensor::TensorDialect, vector::VectorDialect>();

@@ -95,7 +95,7 @@ Status PartitionFunctionGraph(
     subgraphs->emplace(device, std::move(subgraph));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
@@ -229,7 +229,7 @@ Status UpdateArgAndRetvalMetadata(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 string FunctionNameGenerator::GetName() {

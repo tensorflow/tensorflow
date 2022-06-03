@@ -107,7 +107,7 @@ def workspace():
     bazel_toolchains_repositories()
 
     # Apple rules for Bazel. https://github.com/bazelbuild/rules_apple.
-    # TODO(mihaimaruseac): We add this to fix Kokoro builds.
+    # Note: We add this to fix Kokoro builds.
     # The rules below call into `rules_proto` but the hash has changed and
     # Bazel refuses to continue. So, we add our own mirror.
     http_archive(

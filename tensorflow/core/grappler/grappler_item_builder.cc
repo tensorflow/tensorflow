@@ -84,7 +84,7 @@ Status PruneGraph(GrapplerItem* item) {
   Cluster* cluster = nullptr;  // ModelPruner doesn't check cluster.
   TF_RETURN_IF_ERROR(pruner.Optimize(cluster, *item, &pruned_graph));
   item->graph = std::move(pruned_graph);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Replace any unknown dimensions in a shape with
@@ -198,7 +198,7 @@ Status UpdatePlaceholderShape(
   if (!shape_proto.dim().empty())
     *(node->mutable_attr()->at("shape").mutable_shape()) = shape_proto;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -218,7 +218,7 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
     if (output_graph_def != &graph_def_arg) {
       *output_graph_def = graph_def_arg;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Create a session option for a single GPU device.

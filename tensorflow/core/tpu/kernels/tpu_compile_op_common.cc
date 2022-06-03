@@ -104,7 +104,7 @@ void CompileOpImplFactory::Register(CompileOpImplFactory* factory) {
     TF_RETURN_IF_ERROR(
         tpu::ShapeTensorToTensorShape(dynamic_shapes[i], &(*shapes)[i]));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
@@ -277,7 +277,7 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
           ctx->resource_manager(), "ref_holder", &ref_holder,
           [cache](CompilationRefHolder** h) {
             *h = cache->MakePerStepRefHolder();
-            return Status::OK();
+            return OkStatus();
           }));
   core::ScopedUnref ref_holder_unref(ref_holder);
 
@@ -346,7 +346,7 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
                 kCompilationCacheUnloaderResourceName, &unloader,
                 [cache](TpuCompilationCacheEntryUnloader** new_unloader) {
                   *new_unloader = new TpuCompilationCacheEntryUnloader(cache);
-                  return Status::OK();
+                  return OkStatus();
                 }));
     // Note that LookupOrCreate puts two refcounts on unloader.
     core::ScopedUnref unloader_unref(unloader);
@@ -478,7 +478,7 @@ Status TpuCompileOpKernelCommon::RegisterXLAFingerprints(
         rm->default_container(), tpu::kFingerprintLookupResourceName,
         &fingerprint_lookup, [&](tpu::TpuFingerprintLookup** new_lookup) {
           *new_lookup = tpu::TpuFingerprintLookup::Create();
-          return Status::OK();
+          return OkStatus();
         }));
     uint64 tf_fingerprint =
         tpu::CreateFingerprintWithNameAndShapes(fingerprint, arg_shapes);
@@ -488,7 +488,7 @@ Status TpuCompileOpKernelCommon::RegisterXLAFingerprints(
     fingerprint_lookup->RegisterIntermediateAndValuePair(
         tf_fingerprint, std::move(xla_fingerprint));
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace tpu
 }  // namespace tensorflow

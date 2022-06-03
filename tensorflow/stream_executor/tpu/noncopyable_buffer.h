@@ -54,7 +54,7 @@ class NoncopyableBuffer {
 
   // Allocates an owning buffer and initializes it with the specified data. Size
   // is specified in number of uint32's.
-  NoncopyableBuffer(size_t size_in_u32s, absl::optional<uint32_t> value,
+  NoncopyableBuffer(size_t size_in_u32s, std::optional<uint32_t> value,
                     BufferAllocator allocator = DefaultAllocator)
       : NoncopyableBuffer(size_in_u32s * sizeof(uint32_t), allocator) {
 #ifndef MEMORY_SANITIZER

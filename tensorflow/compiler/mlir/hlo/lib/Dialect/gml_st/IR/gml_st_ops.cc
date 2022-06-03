@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Interfaces/ViewLikeInterface.h"
 
 namespace mlir {
 namespace {
@@ -462,18 +463,21 @@ template <typename LoopTy>
 void buildLoopLikeOp(
     OpBuilder &builder, OperationState &result, ValueRange lowerBounds,
     ValueRange upperBounds, ValueRange steps, ValueRange outputs,
+    ValueRange subsets,
     function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
         bodyBuilderFn) {
   result.addOperands(lowerBounds);
   result.addOperands(upperBounds);
   result.addOperands(steps);
   result.addOperands(outputs);
+  result.addOperands(subsets);
   result.addAttribute(
       LoopOp::getOperandSegmentSizeAttr(),
       builder.getI32VectorAttr({static_cast<int32_t>(lowerBounds.size()),
                                 static_cast<int32_t>(upperBounds.size()),
                                 static_cast<int32_t>(steps.size()),
-                                static_cast<int32_t>(outputs.size())}));
+                                static_cast<int32_t>(outputs.size()),
+                                static_cast<int32_t>(subsets.size())}));
 
   // Add output types for `RankedTensorType` output arguments.
   for (Value output : outputs) {
@@ -508,11 +512,14 @@ void printLoopLikeOp(LoopTy op, OpAsmPrinter &p) {
 
   if (!op.outputs().empty()) {
     p << " outs (";
-    llvm::interleaveComma(llvm::zip(op.getRegionOutputArgs(), op.outputs()), p,
-                          [&](auto it) {
-                            p << std::get<0>(it) << " = " << std::get<1>(it)
-                              << ": " << std::get<1>(it).getType();
-                          });
+    llvm::interleaveComma(
+        llvm::zip(op.getRegionOutputArgs(), op.outputs(), op.subsets()), p,
+        [&](auto it) {
+          Value output_region_arg, output, subset;
+          std::tie(output_region_arg, output, subset) = it;
+          p << output_region_arg << " = " << output << " at " << subset << ": "
+            << output.getType() << " at " << subset.getType();
+        });
     p << ")";
   }
 
@@ -522,6 +529,30 @@ void printLoopLikeOp(LoopTy op, OpAsmPrinter &p) {
       op.getOperation()->getAttrs(),
       /*elidedAttrs=*/{LoopTy::getOperandSegmentSizeAttr()});
 }
+
+namespace {
+ParseResult parseOutputArgs(
+    OpAsmParser &parser,
+    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &output_region_args,
+    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &outputs,
+    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &subsets,
+    SmallVectorImpl<Type> &output_types, SmallVectorImpl<Type> &subset_types) {
+  auto parse_elt = [&]() -> ParseResult {
+    if (parser.parseOperand(output_region_args.emplace_back(),
+                            /*allowResultNumber=*/false) ||
+        parser.parseEqual() || parser.parseOperand(outputs.emplace_back()) ||
+        parser.parseKeyword("at") ||
+        parser.parseOperand(subsets.emplace_back()) || parser.parseColon() ||
+        parser.parseType(output_types.emplace_back()) ||
+        parser.parseKeyword("at") ||
+        parser.parseType(subset_types.emplace_back())) {
+      return failure();
+    }
+    return success();
+  };
+  return parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parse_elt);
+}
+}  // namespace
 
 template <typename LoopTy>
 ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
@@ -556,17 +587,18 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
     return failure();
 
   // Parse output tensors.
-  SmallVector<OpAsmParser::UnresolvedOperand, 4> outputs, output_region_args;
-  SmallVector<Type, 4> output_types;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> outputs, output_region_args,
+      subsets;
+  SmallVector<Type, 4> output_types, subset_types;
   if (succeeded(parser.parseOptionalKeyword("outs"))) {
-    SMLoc outputsOperandsLoc = parser.getCurrentLocation();
+    SMLoc loc = parser.getCurrentLocation();
 
-    if (parseAssignmentListWithTypes(parser, output_region_args, outputs,
-                                     output_types))
+    if (parseOutputArgs(parser, output_region_args, outputs, subsets,
+                        output_types, subset_types))
       return failure();
 
-    if (parser.resolveOperands(outputs, output_types, outputsOperandsLoc,
-                               result.operands))
+    if (parser.resolveOperands(outputs, output_types, loc, result.operands) ||
+        parser.resolveOperands(subsets, subset_types, loc, result.operands))
       return failure();
     for (Type outputType : output_types)
       if (outputType.isa<RankedTensorType>()) result.addTypes(outputType);
@@ -577,7 +609,8 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
       builder.getI32VectorAttr({static_cast<int32_t>(lower.size()),
                                 static_cast<int32_t>(upper.size()),
                                 static_cast<int32_t>(steps.size()),
-                                static_cast<int32_t>(outputs.size())}));
+                                static_cast<int32_t>(outputs.size()),
+                                static_cast<int32_t>(subsets.size())}));
 
   // Parse the body.
   Region *body = result.addRegion();
@@ -630,10 +663,11 @@ LogicalResult ParallelOp::verify() {
 void ParallelOp::build(
     OpBuilder &builder, OperationState &result, ValueRange lowerBounds,
     ValueRange upperBounds, ValueRange steps, ValueRange outputs,
+    ValueRange subsets,
     function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
         bodyBuilderFn) {
   buildLoopLikeOp<ParallelOp>(builder, result, lowerBounds, upperBounds, steps,
-                              outputs, bodyBuilderFn);
+                              outputs, subsets, bodyBuilderFn);
 }
 
 void ParallelOp::print(OpAsmPrinter &p) {
@@ -670,10 +704,11 @@ LogicalResult ForOp::verify() {
 void ForOp::build(
     OpBuilder &builder, OperationState &result, ValueRange lowerBounds,
     ValueRange upperBounds, ValueRange steps, ValueRange outputs,
+    ValueRange subsets,
     function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
         bodyBuilderFn) {
   buildLoopLikeOp<ForOp>(builder, result, lowerBounds, upperBounds, steps,
-                         outputs, bodyBuilderFn);
+                         outputs, subsets, bodyBuilderFn);
 }
 
 void ForOp::print(OpAsmPrinter &p) { printLoopLikeOp<ForOp>(*this, p); }
@@ -1207,6 +1242,159 @@ LogicalResult YieldOp::verify() {
       return emitOpError("expected yield operand ")
              << index << " with type = " << resultType
              << " to match output arg type = " << outType;
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// SpaceOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult SpaceOp::inferReturnTypes(
+    MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  SpaceOp::Adaptor adaptor(operands, attributes, regions);
+  SmallVector<int64_t> shape = llvm::to_vector(
+      llvm::map_range(adaptor.static_shapes(), [&](const Attribute &val) {
+        return val.cast<IntegerAttr>().getValue().getSExtValue();
+      }));
+  auto result_ty = TileType::get(ctx, shape);
+  inferredReturnTypes.push_back(result_ty);
+  return success();
+}
+
+LogicalResult SpaceOp::verify() {
+  auto resultTy = getType().cast<TileType>();
+  return mlir::verifyListOfOperandsOrIntegers(
+      getOperation(), "shapes", resultTy.getShape().size(), static_shapes(),
+      shapes(), ShapedType::isDynamic);
+}
+
+//===----------------------------------------------------------------------===//
+// PointOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult PointOp::verify() {
+  auto subsetTy = subset().getType();
+  if (subsetTy.isa<PointType>()) {
+    if (!static_indices().empty() || !indices().empty()) {
+      return emitOpError(
+          "expected empty indices and static_indices for a subset of type "
+          "PointType");
+    }
+  } else {
+    auto tileTy = subsetTy.cast<TileType>();
+    auto tileShape = tileTy.getShape();
+    if (failed(mlir::verifyListOfOperandsOrIntegers(
+            getOperation(), "indices", tileShape.size(), static_indices(),
+            indices(), ShapedType::isDynamicStrideOrOffset))) {
+      return failure();
+    }
+    // Check whether the known indices are in-bounds of known dimension sizes.
+    for (auto dimAndIndex : llvm::zip(tileShape, static_indices())) {
+      auto dimSize = std::get<0>(dimAndIndex);
+      auto index = std::get<1>(dimAndIndex)
+                       .dyn_cast<mlir::IntegerAttr>()
+                       .getValue()
+                       .getSExtValue();
+      if (index == ShapedType::kDynamicStrideOrOffset) continue;
+      if (index < 0) {
+        return emitOpError("expected index = ")
+               << index << " to be non-negative";
+      }
+      if (dimSize != ShapedType::kDynamicSize && index >= dimSize) {
+        return emitOpError("expected index = ")
+               << index << " to be between 0 and " << (dimSize - 1);
+      }
+    }
+  }
+  return success();
+}
+//
+//===----------------------------------------------------------------------===//
+// TileOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TileOp::inferReturnTypes(
+    MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  // Derive result shape.
+  TileOp::Adaptor adaptor(operands, attributes, regions);
+  SmallVector<int64_t> shape = llvm::to_vector(
+      llvm::map_range(adaptor.static_sizes(), [&](const auto &size) {
+        return size.template dyn_cast<mlir::IntegerAttr>()
+            .getValue()
+            .getSExtValue();
+      }));
+
+  auto resultTy = TileType::get(ctx, shape);
+  inferredReturnTypes.push_back(resultTy);
+  return success();
+}
+
+LogicalResult TileOp::verify() {
+  auto subsetTy = subset().getType().cast<TileType>();
+  auto rank = subsetTy.getShape().size();
+  if (failed(mlir::verifyListOfOperandsOrIntegers(getOperation(), "sizes", rank,
+                                                  static_sizes(), sizes(),
+                                                  ShapedType::isDynamic))) {
+    return failure();
+  }
+  if (failed(mlir::verifyListOfOperandsOrIntegers(
+          getOperation(), "offsets", rank, static_offsets(), offsets(),
+          ShapedType::isDynamicStrideOrOffset))) {
+    return failure();
+  }
+  if (failed(mlir::verifyListOfOperandsOrIntegers(
+          getOperation(), "strides", rank, static_strides(), strides(),
+          ShapedType::isDynamicStrideOrOffset))) {
+    return failure();
+  }
+  for (auto it : llvm::zip(subsetTy.getShape(), static_offsets(),
+                           static_sizes(), static_strides())) {
+    auto offset =
+        std::get<1>(it).dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
+    if (offset < 0 && offset != ShapedType::kDynamicStrideOrOffset) {
+      return emitOpError("expected offset = ")
+             << offset << " to be non-negative";
+    }
+    auto size =
+        std::get<2>(it).dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
+    if (size < 0 && size != ShapedType::kDynamicSize) {
+      return emitOpError("expected size = ") << size << " to be non-negative";
+    }
+    auto stride =
+        std::get<3>(it).dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
+    if (stride < 0 && stride != ShapedType::kDynamicStrideOrOffset) {
+      return emitOpError("expected stride = ")
+             << stride << " to be non-negative";
+    }
+    auto argSize = std::get<0>(it);
+    // If the argument tile has a dynamic dimension, no additional verification
+    // is possible.
+    if (argSize == ShapedType::kDynamicSize) continue;
+    if (offset >= 0) {
+      if (stride >= 0 && size > 0) {
+        int64_t largestIndex = offset + stride * (size - 1);
+        if (largestIndex >= argSize) {
+          return emitOpError("offset = ")
+                 << offset << " size = " << size << " stride = " << stride
+                 << " causes access out of bounds at " << largestIndex
+                 << " for argument dimension size = " << argSize;
+        }
+      } else if (offset >= argSize) {
+        return emitOpError("offset = ")
+               << offset
+               << " is out of bounds for argument dimension size = " << argSize;
+      }
+    } else if (stride > 0 && size > 0 && stride * (size - 1) >= argSize) {
+      return emitOpError("size = ")
+             << size << " stride = " << stride
+             << " causes access out of bounds for argument dimension size = "
+             << argSize;
+    }
   }
   return success();
 }

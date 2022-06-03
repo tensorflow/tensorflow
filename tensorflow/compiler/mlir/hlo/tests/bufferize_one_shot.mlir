@@ -367,3 +367,20 @@ func.func @init_tensor_multiple_users(%arg0: tensor<1x?xf32>)
 // CHECK: gml_st.loop
 // CHECK:   %[[BUF2]]
 // CHECK: return %[[BUF1]], %[[BUF2]]
+
+// -----
+
+// Test that scf ops are bufferized
+// CHECK-LABEL:   func @if(
+// CHECK-SAME:             %[[PRED:.*]]: i1,
+// CHECK-SAME:             %[[TRUE_TENSOR:.*]]: memref<?xf32>,
+// CHECK-SAME:             %[[FALSE_TENSOR:.*]]: memref<?xf32>) -> memref<?xf32> {
+// CHECK:             %[[IF_RES:.*]] = scf.if %[[PRED]] -> (memref<?xf32, #map>) {
+func.func @if(%pred: i1, %true_val: tensor<?xf32>, %false_val: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = scf.if %pred -> (tensor<?xf32>) {
+    scf.yield %true_val : tensor<?xf32>
+  } else {
+    scf.yield %false_val : tensor<?xf32>
+  }
+  return %0 : tensor<?xf32>
+}

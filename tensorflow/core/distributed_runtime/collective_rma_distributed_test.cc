@@ -60,7 +60,7 @@ static std::unique_ptr<Device> NewDevice(const string& type, const string& name,
    public:
     explicit FakeDevice(const DeviceAttributes& attr, Allocator* allocator)
         : Device(nullptr, attr), allocator_(allocator) {}
-    Status Sync() override { return Status::OK(); }
+    Status Sync() override { return OkStatus(); }
     Allocator* GetAllocator(AllocatorAttributes) override { return allocator_; }
 
    private:
@@ -104,7 +104,7 @@ class FakeWorker : public TestWorkerInterface {
     for (const auto& da : dev_attr) {
       *response->add_device_attributes() = da;
     }
-    done(Status::OK());
+    done(OkStatus());
   }
 
   void RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
@@ -202,7 +202,7 @@ class FakeCache : public TestWorkerCache {
     for (const auto& it : resp.device_attributes()) {
       if (it.name() == device) {
         *locality = it.locality();
-        done(Status::OK());
+        done(OkStatus());
         return;
       }
     }

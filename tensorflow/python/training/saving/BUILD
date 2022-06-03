@@ -25,7 +25,6 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":checkpoint_options",
-        ":saveable_hook",
         ":saveable_object",
         ":saveable_object_util",
         "//tensorflow/python:util",
@@ -39,16 +38,6 @@ py_library(
     name = "saveable_object",
     srcs = ["saveable_object.py"],
     srcs_version = "PY3",
-)
-
-py_library(
-    name = "saveable_hook",
-    srcs = ["saveable_hook.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python/training/tracking:base",
-    ],
 )
 
 py_library(

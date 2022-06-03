@@ -266,9 +266,9 @@ static StatusOr<bool> TryRevectorizeConv(
   const auto& dnums = conv->convolution_dimension_numbers();
 
   // Find the vectorized-features dim in the input/kernel/output.
-  absl::optional<int64_t> input_vect_dim;
-  absl::optional<int64_t> kernel_vect_dim;
-  absl::optional<int64_t> output_vect_dim;
+  std::optional<int64_t> input_vect_dim;
+  std::optional<int64_t> kernel_vect_dim;
+  std::optional<int64_t> output_vect_dim;
   std::tie(input_vect_dim, kernel_vect_dim, output_vect_dim) =
       FindVectorizedFeatureDims(dnums, input_shape, kernel_shape, output_shape);
 

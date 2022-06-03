@@ -2043,6 +2043,28 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "runtime_shape_check_test",
+    size = "small",
+    srcs = ["runtime_shape_check_test.py"],
+    disabled_backends = [
+        "cpu",
+        "cpu_ondemand",
+    ],
+    enable_mlir_bridge = False,
+    python_version = "PY3",
+    tags = [
+        "no_pip",
+        "notap",
+    ],
+    use_xla_device = False,
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "conv_node_name_test",
     size = "medium",
     srcs = ["conv_node_name_test.py"],

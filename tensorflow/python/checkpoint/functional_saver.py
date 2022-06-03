@@ -28,7 +28,6 @@ from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.saved_model import registration
-from tensorflow.python.training.saving import saveable_hook
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util import nest
@@ -186,35 +185,24 @@ class MultiDeviceSaver(object):
 
     Args:
       saveable_objects: A list of `SaveableObject`s.
-        Objects extending `SaveableObject` will be saved and restored, and
-        objects extending `SaveableHook` will be called into at save and
-        restore time.
+        Objects extending `SaveableObject` will be saved and restored.
       registered_savers: A dictionary mapping `registration.RegisteredSaver`
         namedtuples to a dictionary of named Trackables. The keys of the
         Trackable dictionary are string names that uniquely identify the
         Trackable in the checkpoint.
       call_with_mapped_captures: TODO
     """
-    self._before_save_callbacks = []
-    self._after_restore_callbacks = []
-
     saveable_objects = list(saveable_objects)
     saveables_by_device = {}
     for saveable in saveable_objects:
       is_saveable = isinstance(saveable, saveable_object.SaveableObject)
-      is_hook = isinstance(saveable, saveable_hook.SaveableHook)
 
-      if not is_saveable and not is_hook:
+      if not is_saveable:
         raise ValueError(
             f"Expected a dictionary of SaveableObjects, got {saveable}.")
 
-      if is_hook:
-        self._before_save_callbacks.append(saveable.before_save)
-        self._after_restore_callbacks.append(saveable.after_restore)
-
-      if is_saveable:
-        host_device = saveable_object_util.set_cpu0(saveable.device)
-        saveables_by_device.setdefault(host_device, []).append(saveable)
+      host_device = saveable_object_util.set_cpu0(saveable.device)
+      saveables_by_device.setdefault(host_device, []).append(saveable)
 
     self._single_device_savers = {
         device: _SingleDeviceSaver(saveables)
@@ -272,8 +260,6 @@ class MultiDeviceSaver(object):
       An `Operation`, or None when executing eagerly.
     """
     options = options or checkpoint_options.CheckpointOptions()
-    for callback in self._before_save_callbacks:
-      callback()
 
     # IMPLEMENTATION DETAILS: most clients should skip.
     #
@@ -415,8 +401,5 @@ class MultiDeviceSaver(object):
       restore_ops = tf_function_restore()
     else:
       restore_ops = restore_fn()
-
-    for callback in self._after_restore_callbacks:
-      callback()
 
     return restore_ops

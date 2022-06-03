@@ -169,7 +169,7 @@ class SharedBatchSchedulerTest
               (*output_tasks)[i] = std::make_unique<FakeTask>(task_sizes[i]);
             }
 
-            return Status::OK();
+            return OkStatus();
           };
     }
     return nullptr;
@@ -837,7 +837,7 @@ void CreateQueues() {
     });
     busy_waiter.join();
     notifier.join();
-    return Status::OK();
+    return OkStatus();
   };
 
   internal::Queue<FakeTask>::ProcessBatchCallback process_batch_callback =

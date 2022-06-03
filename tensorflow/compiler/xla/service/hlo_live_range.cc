@@ -251,7 +251,7 @@ int64_t HloLiveRange::ComputePeakMemoryMoment() const {
 
   int64_t memory_usage = 0;
   int64_t peak_usage = 0;
-  absl::optional<int64_t> peak_time;
+  std::optional<int64_t> peak_time;
   for (const auto& event : events) {
     int64_t time;
     bool is_end;

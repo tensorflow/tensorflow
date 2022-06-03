@@ -13,7 +13,7 @@ tf_py_test(
     srcs = ["auto_shard_test.py"],
     shard_count = 32,
     tags = [
-        "noasan",  # b/231336996
+        "notsan",  # Multi-process runner does not support tsan.
     ],
     deps = [
         ":multi_process_cluster",
@@ -148,6 +148,9 @@ tf_py_test(
     size = "medium",
     srcs = ["local_workers_test.py"],
     shard_count = 24,
+    tags = [
+        "notsan",  # Multi-process runner does not support tsan.
+    ],
     deps = [
         ":multi_process_cluster",
         ":test_base",
@@ -237,6 +240,7 @@ py_library(
     deps = [
         ":test_base",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/data/experimental/service:server_lib",
         "//tensorflow/python/distribute:multi_process_lib",
         "//tensorflow/python/platform:test",
@@ -248,6 +252,9 @@ tf_py_test(
     size = "medium",
     srcs = ["multi_process_cluster_test.py"],
     shard_count = 3,
+    tags = [
+        "notsan",  # Multi-process runner does not support tsan.
+    ],
     deps = [
         ":multi_process_cluster",
         ":test_base",

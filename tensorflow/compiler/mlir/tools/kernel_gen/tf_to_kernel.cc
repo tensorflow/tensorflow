@@ -136,7 +136,7 @@ Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
   // Write .a file.
   TF_RETURN_IF_ERROR(
       WriteStringToFile(Env::Default(), output_file.str(), binary));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

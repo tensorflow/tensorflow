@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -57,12 +56,12 @@ int BackendOptions::intra_op_parallelism_threads() const {
 }
 
 BackendOptions& BackendOptions::set_allowed_devices(
-    const absl::optional<std::set<int>>& allowed_devices) {
+    const std::optional<std::set<int>>& allowed_devices) {
   allowed_devices_ = allowed_devices;
   return *this;
 }
 
-const absl::optional<std::set<int>>& BackendOptions::allowed_devices() const {
+const std::optional<std::set<int>>& BackendOptions::allowed_devices() const {
   return allowed_devices_;
 }
 

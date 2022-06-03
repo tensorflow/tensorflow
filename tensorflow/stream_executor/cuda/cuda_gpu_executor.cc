@@ -740,11 +740,16 @@ Event::Status GpuExecutor::PollForEventStatus(Event* event) {
 }
 
 bool GpuExecutor::AllocateStream(Stream* stream) {
-  return AsGpuStream(stream)->Init();
+  absl::MutexLock l(&alive_gpu_streams_mu_);
+  bool out = AsGpuStream(stream)->Init();
+  alive_gpu_streams_[stream->implementation()->GpuStreamHack()] = stream;
+  return out;
 }
 
 void GpuExecutor::DeallocateStream(Stream* stream) {
   GpuStream* cuda_stream = AsGpuStream(stream);
+  absl::MutexLock l(&alive_gpu_streams_mu_);
+  alive_gpu_streams_.erase(cuda_stream->GpuStreamHack());
   if (!cuda_stream->IsIdle()) {
     LOG(ERROR) << "Deallocating stream with pending work";
   }

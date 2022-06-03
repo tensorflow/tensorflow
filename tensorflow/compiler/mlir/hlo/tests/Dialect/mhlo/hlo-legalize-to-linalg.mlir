@@ -42,6 +42,20 @@ func.func @complex_add(%lhs: tensor<2x2xcomplex<f32>>,
 
 // -----
 
+// CHECK-LABEL: func @complex_atan2
+func.func @complex_atan2(%lhs: tensor<2x2xcomplex<f32>>,
+    %rhs: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  %tensor_result = "mhlo.atan2"(%lhs, %rhs)
+      : (tensor<2x2xcomplex<f32>>, tensor<2x2xcomplex<f32>>)
+      -> tensor<2x2xcomplex<f32>>
+  // CHECK: linalg.generic
+  // CHECK: complex.atan2
+  func.return %tensor_result : tensor<2x2xcomplex<f32>>
+}
+
+
+// -----
+
 // CHECK-LABEL: func @float_mul
 func.func @float_mul(%lhs: tensor<2x2xf32>,
                 %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
@@ -135,6 +149,18 @@ func.func @float_rsqrt(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
 
 // -----
 
+// CHECK-LABEL: func @complex_rsqrt
+func.func @complex_rsqrt(%operand: tensor<2x2xcomplex<f32>>)
+    -> tensor<2x2xcomplex<f32>> {
+  %tensor_result = "mhlo.rsqrt"(%operand)
+      : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  // CHECK: linalg.generic
+  // CHECK: complex.rsqrt
+  func.return %tensor_result : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
 // CHECK-LABEL: func @float_cbrt
 func.func @float_cbrt(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %tensor_result = "mhlo.cbrt"(%operand)
@@ -224,6 +250,18 @@ func.func @float_expm1(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: expm1
   %0 = "mhlo.exponential_minus_one"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_expm1
+func.func @complex_expm1(%arg0: tensor<2x2xcomplex<f32>>)
+    -> tensor<2x2xcomplex<f32>> {
+  // CHECK: linalg.generic
+  // CHECK: complex.expm1
+  %0 = "mhlo.exponential_minus_one"(%arg0)
+    : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  func.return %0 : tensor<2x2xcomplex<f32>>
 }
 
 // -----
@@ -2131,6 +2169,25 @@ func.func @einsum_basic(%arg0: tensor<3x4x5xf32>, %arg1: tensor<3x5x6xf32>) -> t
 
 // -----
 
+func.func @dot_general_batch_matvec(%arg0: tensor<?x?x3xf32>,
+                                    %arg1: tensor<?x3xf32>) -> tensor<?x?xf32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_batching_dimensions = [0],
+      rhs_contracting_dimensions = [1]
+    >,
+    precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
+    someattr
+  } : (tensor<?x?x3xf32>, tensor<?x3xf32>) -> tensor<?x?xf32>
+  func.return %0 : tensor<?x?xf32>
+}
+// CHECK-LABEL: func @dot_general_batch_matvec(
+// CHECK: linalg.generic
+
+// -----
+
 // CHECK: #[[MAP0:.+]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
 // CHECK: func @einsum_pointwisemul
 func.func @einsum_pointwisemul(%arg0: tensor<3x4x5xf32>, %arg1: tensor<3x4x5xf32>) -> tensor<3x4x5xf32> {
@@ -2287,6 +2344,40 @@ func.func @clamp_dynamic(%lb : tensor<?xf32>, %x : tensor<?xf32>, %ub : tensor<?
       tensor<?xf32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
 }
+
+// -----
+
+func.func @map_compare(%arg0: tensor<?xcomplex<f32>>,
+                       %arg1: tensor<?xcomplex<f32>>) -> tensor<?xi1> {
+  %0 = "mhlo.map"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<complex<f32>>, %arg3: tensor<complex<f32>>):
+    %1 = mhlo.real(%arg2) : (tensor<complex<f32>>) -> tensor<f32>
+    %2 = mhlo.real(%arg3) : (tensor<complex<f32>>) -> tensor<f32>
+    %3 = "mhlo.compare"(%1, %2)
+       {comparison_direction = #mhlo<"comparison_direction EQ">}
+       : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "mhlo.return"(%3) : (tensor<i1>) -> ()
+  }) {dimensions = dense<0> : tensor<1xi64>}
+  : (tensor<?xcomplex<f32>>, tensor<?xcomplex<f32>>) -> tensor<?xi1>
+  func.return %0 : tensor<?xi1>
+}
+
+// CHECK-LABEL: @map_compare
+// CHECK-SAME: %[[ARG0:.*]]: tensor<?xcomplex<f32>>,
+// CHECK-SAME: %[[ARG1:.*]]: tensor<?xcomplex<f32>>)
+
+// CHECK: %[[INIT:.+]] = linalg.init_tensor
+// CHECK: %[[MAP:.+]] = linalg.generic
+// CHECK-SAME: iterator_types = ["parallel"]}
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]]
+// CHECK-SAME: outs(%[[INIT]] : tensor<?xi1>) {
+// CHECK:  ^bb0(%[[A:.+]]: complex<f32>, %[[B:.+]]: complex<f32>, %{{.+}}: i1):
+// CHECK: %[[RE1:.+]] = complex.re %[[A]] : complex<f32>
+// CHECK: %[[RE2:.+]] = complex.re %[[B]] : complex<f32>
+// CHECK: %[[CMP:.+]] = arith.cmpf oeq, %[[RE1]], %[[RE2]] : f32
+// CHECK: linalg.yield %[[CMP]] : i1
+// CHECK: }
+// CHECK: return %[[MAP]] : tensor<?xi1>
 
 // -----
 
@@ -2549,6 +2640,50 @@ func.func @reduce_multi_dimensions(%arg0: tensor<5x4x3xi32>,
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32):
 // CHECK-NEXT:   %[[RESULT:.*]] = arith.addi %[[LHS_IN]], %[[RHS_IN]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
+func.func @reduce_lexicographic_min_complex(%arg0: tensor<?x3x4xcomplex<f64>>,
+                                            %arg1: tensor<complex<f64>>)
+  -> tensor<complex<f64>> {
+  %0 = mhlo.reduce(%arg0 init: %arg1)
+   across dimensions = [0, 1, 2]
+   : (tensor<?x3x4xcomplex<f64>>, tensor<complex<f64>>) -> tensor<complex<f64>>
+   reducer(%arg3: tensor<complex<f64>>, %arg4: tensor<complex<f64>>)  {
+    %1 = mhlo.real(%arg3) : (tensor<complex<f64>>) -> tensor<f64>
+    %2 = mhlo.real(%arg4) : (tensor<complex<f64>>) -> tensor<f64>
+    %3 = "mhlo.compare"(%1, %2)
+      {comparison_direction = #mhlo<"comparison_direction EQ">}
+      : (tensor<f64>, tensor<f64>) -> tensor<i1>
+    %4 = mhlo.imag(%arg3) : (tensor<complex<f64>>) -> tensor<f64>
+    %5 = mhlo.imag(%arg4) : (tensor<complex<f64>>) -> tensor<f64>
+    %6 = "mhlo.compare"(%4, %5)
+      {comparison_direction = #mhlo<"comparison_direction LT">}
+      : (tensor<f64>, tensor<f64>) -> tensor<i1>
+    %7 = "mhlo.compare"(%1, %2)
+      {comparison_direction = #mhlo<"comparison_direction LT">}
+      : (tensor<f64>, tensor<f64>) -> tensor<i1>
+    %8 = "mhlo.select"(%3, %6, %7)
+      : (tensor<i1>, tensor<i1>, tensor<i1>) -> tensor<i1>
+    %9 = "mhlo.select"(%8, %arg3, %arg4)
+      : (tensor<i1>, tensor<complex<f64>>, tensor<complex<f64>>)
+      -> tensor<complex<f64>>
+    "mhlo.return"(%9) : (tensor<complex<f64>>) -> ()
+  }
+  return %0 : tensor<complex<f64>>
+}
+
+// CHECK-LABEL: @reduce_lexicographic_min_complex
+// CHECK: linalg.generic
+// CHECK: complex.re
+// CHECK: complex.re
+// CHECK: arith.cmpf
+// CHECK: complex.im
+// CHECK: complex.im
+// CHECK: arith.cmpf
+// CHECK: arith.cmpf
+// CHECK: arith.select
+// CHECK: arith.select
 
 // -----
 
@@ -2914,8 +3049,7 @@ func.func @linalg.conv_0d_nc(%arg0: tensor<3x2xf32>, %arg1: tensor<2x3xf32>) -> 
 // CHECK-DAG: %[[CST:.+]] = arith.constant 0.000000e+00
 // CHECK-DAG: %[[INIT:.+]] = linalg.init_tensor [3, 3]
 // CHECK-DAG: %[[FILL:.+]] = linalg.fill ins(%cst{{.*}}outs(%[[INIT]]
-// CHECK-DAG: %[[PAD:.+]] = tensor.pad %arg0 low[0, 0] high[0, 0]
-// CHECK: linalg.matmul ins(%[[PAD]], %arg1 : tensor<3x2xf32>, tensor<2x3xf32>) outs(%[[FILL]] : tensor<3x3xf32>)
+// CHECK: linalg.matmul ins(%arg0, %arg1 : tensor<3x2xf32>, tensor<2x3xf32>) outs(%[[FILL]] : tensor<3x3xf32>)
 
 // -----
 
@@ -2998,6 +3132,39 @@ func.func @conv_2d_nhwc_hwcf(%arg0: tensor<?x4x5x?xf32>, %arg1: tensor<3x2x?x?xf
 // CHECK-SAME:       strides = dense<1> : tensor<2xi64>}
 // CHECK-SAME:     ins(%[[ARG0]], %[[ARG1]] : tensor<?x4x5x?xf32>, tensor<3x2x?x?xf32>)
 // CHECK-SAME:    outs(%[[FILL]] : tensor<?x2x4x?xf32>) -> tensor<?x2x4x?xf32>
+
+// -----
+
+func.func @conv_transpose_2d(%arg0: tensor<2x9x10x3xf32>,
+                             %arg1: tensor<4x4x3x3xf32>)
+  -> tensor<2x15x25x3xf32> {
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {stride = [1, 1], pad = [[6, 6], [6, 6]],
+              lhs_dilate = [1, 2], rhs_dilate = [2, 2]}
+    {
+      batch_group_count = 1 : i64,
+      feature_group_count = 1 : i64,
+      precision_config = [#mhlo<"precision DEFAULT">,
+                          #mhlo<"precision DEFAULT">]
+    } : (tensor<2x9x10x3xf32>, tensor<4x4x3x3xf32>) -> tensor<2x15x25x3xf32>
+  return %0 : tensor<2x15x25x3xf32>
+}
+
+// CHECK-LABEL: func @conv_transpose_2d
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+// CHECK:         %[[INIT:.+]] = linalg.init_tensor [2, 15, 25, 3]
+// CHECK:         %[[ZERO:.+]] = arith.constant 0.000000e+00 : f32
+// CHECK:         %[[FILL:.+]] = linalg.fill ins(%[[ZERO]]{{.*}}outs(%[[INIT]]
+// CHECK:         %[[LHS_INIT:.+]] = linalg.init_tensor [2, 21, 31, 3]
+// CHECK:         %[[LHS_FILL:.+]] = linalg.fill ins(%[[ZERO]]{{.*}}outs(%[[LHS_INIT]]
+// CHECK:         %[[LHS_PAD:.+]] = tensor.insert_slice %[[ARG0]] into %[[LHS_FILL]][0, 6, 6, 0] [2, 9, 10, 3] [1, 1, 2, 1] : tensor<2x9x10x3xf32> into tensor<2x21x31x3xf32>
+// CHECK:         linalg.conv_2d_nhwc_hwcf
+// CHECK-SAME:      {dilations = dense<2> : tensor<2xi64>
+// CHECK-SAME:       strides = dense<1> : tensor<2xi64>}
+// CHECK-SAME:     ins(%[[LHS_PAD]], %[[ARG1]] : tensor<2x21x31x3xf32>, tensor<4x4x3x3xf32>)
+// CHECK-SAME:     outs(%[[FILL]] : tensor<2x15x25x3xf32>) -> tensor<2x15x25x3xf32>
 
 // -----
 
@@ -3087,7 +3254,7 @@ func.func @linalg.conv_2D_padding_test1(%arg0: tensor<1x33x1x1xf16>, %arg1: tens
 // CHECK-NEXT: %[[INIT:.*]] = linalg.init_tensor [400, 1024, 1024, 1] : tensor<400x1024x1024x1xf16>
 // CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT: %[[FILL:.*]] = linalg.fill ins(%[[ZERO]] : f16) outs(%[[INIT]] : tensor<400x1024x1024x1xf16>) -> tensor<400x1024x1024x1xf16>
-// CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
+// CHECK: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT: %[[PAD:.*]] = tensor.pad %[[INPUT]] low[0, 0, 16, 0] high[0, 0, 16, 0]  {
 // CHECK-NEXT: ^bb0(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index):
 // CHECK-NEXT:   tensor.yield %[[ZERO]] : f16
@@ -3107,7 +3274,7 @@ func.func @linalg.conv_2D_padding_test2(%arg0: tensor<1x33x1x1xf16>, %arg1: tens
 // CHECK-NEXT: %[[INIT:.*]] = linalg.init_tensor [400, 1040, 1024, 1] : tensor<400x1040x1024x1xf16>
 // CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT: %[[FILL:.*]] = linalg.fill ins(%[[ZERO]] : f16) outs(%[[INIT]] : tensor<400x1040x1024x1xf16>) -> tensor<400x1040x1024x1xf16>
-// CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
+// CHECK: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT: %[[PAD:.*]] = tensor.pad %[[INPUT]] low[0, 8, 16, 0] high[0, 8, 16, 0]  {
 // CHECK-NEXT: ^bb0(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index):
 // CHECK-NEXT:   tensor.yield %[[ZERO]] : f16
@@ -3584,6 +3751,65 @@ func.func @reduce_window_generic(%arg0: tensor<4x6xf32>, %arg1: tensor<f32>) -> 
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {base_dilations = dense<1> : tensor<2xi64>, padding = dense<[[0, 3], [1, 2]]> : tensor<2x2xi64>, window_dilations = dense<[1, 2]> : tensor<2xi64>, window_dimensions = dense<[1, 2]> : tensor<2xi64>, window_strides = dense<[2, 1]> : tensor<2xi64>} : (tensor<4x6xf32>, tensor<f32>) -> tensor<4x7xf32>
+  func.return %0 : tensor<4x7xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @reduce_window_generic_padding
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+
+// CHECK: %[[PADVAL:.+]] = tensor.extract %[[ARG1]][] : tensor<f32>
+// CHECK: %[[PAD:.+]] = tensor.pad %[[ARG0]] low[0, 1] high[3, 2]
+// CHECK: tensor.yield %[[PADVAL]] : f32
+
+func.func @reduce_window_generic_padding(%arg0: tensor<3x6xf32>, %arg1: tensor<f32>) -> tensor<3x7xf32> {
+  %0 = "mhlo.reduce_window"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {padding = dense<[[0, 3], [1, 2]]> : tensor<2x2xi64>, window_dilations = dense<[1, 2]> : tensor<2xi64>, window_dimensions = dense<[1, 2]> : tensor<2xi64>, window_strides = dense<[2, 1]> : tensor<2xi64>} : (tensor<3x6xf32>, tensor<f32>) -> tensor<3x7xf32>
+  func.return %0 : tensor<3x7xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @reduce_window_generic_base_dilation
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+
+// CHECK: %[[PADVAL:.+]] = tensor.extract %[[ARG1]][] : tensor<f32>
+// CHECK: %[[INIT:.+]] = linalg.init_tensor [5, 6] : tensor<5x6xf32>
+// CHECK: %[[FILL:.+]] = linalg.fill ins(%[[PADVAL]] : f32) outs(%[[INIT]] : tensor<5x6xf32>) -> tensor<5x6xf32>
+// CHECK: %[[PAD:.+]] = tensor.insert_slice %[[ARG0]] into %[[FILL]][0, 0] [3, 6] [2, 1] : tensor<3x6xf32> into tensor<5x6xf32>
+
+func.func @reduce_window_generic_base_dilation(%arg0: tensor<3x6xf32>, %arg1: tensor<f32>) -> tensor<3x4xf32> {
+  %0 = "mhlo.reduce_window"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {base_dilations = dense<[2, 1]> : tensor<2xi64>, window_dilations = dense<[1, 2]> : tensor<2xi64>, window_dimensions = dense<[1, 2]> : tensor<2xi64>, window_strides = dense<[2, 1]> : tensor<2xi64>} : (tensor<3x6xf32>, tensor<f32>) -> tensor<3x4xf32>
+  func.return %0 : tensor<3x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @reduce_window_generic_padding_base_dilation
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+
+// CHECK: %[[PADVAL:.+]] = tensor.extract %[[ARG1]][] : tensor<f32>
+// CHECK: %[[INIT:.+]] = linalg.init_tensor [8, 9] : tensor<8x9xf32>
+// CHECK: %[[FILL:.+]] = linalg.fill ins(%[[PADVAL]] : f32) outs(%[[INIT]] : tensor<8x9xf32>) -> tensor<8x9xf32>
+// CHECK: %[[PAD:.+]] = tensor.insert_slice %[[ARG0]] into %[[FILL]][0, 1] [3, 6] [2, 1] : tensor<3x6xf32> into tensor<8x9xf32>
+
+func.func @reduce_window_generic_padding_base_dilation(%arg0: tensor<3x6xf32>, %arg1: tensor<f32>) -> tensor<4x7xf32> {
+  %0 = "mhlo.reduce_window"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {base_dilations = dense<[2, 1]> : tensor<2xi64>, padding = dense<[[0, 3], [1, 2]]> : tensor<2x2xi64>, window_dilations = dense<[1, 2]> : tensor<2xi64>, window_dimensions = dense<[1, 2]> : tensor<2xi64>, window_strides = dense<[2, 1]> : tensor<2xi64>} : (tensor<3x6xf32>, tensor<f32>) -> tensor<4x7xf32>
   func.return %0 : tensor<4x7xf32>
 }
 
@@ -4469,6 +4695,16 @@ func.func @unsigned_compare(%lhs: tensor<2x2xui32>, %rhs: tensor<2x2xui32>) -> t
   // CHECK: linalg.generic
   // CHECK: cmpi ugt
   %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<2x2xui32>, tensor<2x2xui32>) -> tensor<2x2xi1>
+  func.return %0 : tensor<2x2xi1>
+}
+
+// -----
+
+// CHECK-LABEL: pred_compare
+func.func @pred_compare(%lhs: tensor<2x2xi1>, %rhs: tensor<2x2xi1>) -> tensor<2x2xi1> {
+  // CHECK: linalg.generic
+  // CHECK: cmpi ugt
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<2x2xi1>, tensor<2x2xi1>) -> tensor<2x2xi1>
   func.return %0 : tensor<2x2xi1>
 }
 

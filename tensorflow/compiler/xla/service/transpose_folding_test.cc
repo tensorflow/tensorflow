@@ -249,7 +249,7 @@ TEST_F(TransposeFoldingTest, FoldConvDimSwapTransposeRhs) {
   StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
       x->shape(), transpose_y->shape(), /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums,
-      /*preferred_element_type=*/absl::nullopt);
+      /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       conv_shape.ValueOrDie(), x, transpose_y,
@@ -307,7 +307,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeRhs) {
   StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
       x->shape(), transpose_y->shape(), /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums,
-      /*preferred_element_type=*/absl::nullopt);
+      /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       conv_shape.ValueOrDie(), x, transpose_y,
@@ -370,7 +370,7 @@ TEST_F(TransposeFoldingTest, FoldConvTransposeLhs) {
   StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
       transpose_x->shape(), y->shape(), /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums,
-      /*preferred_element_type=*/absl::nullopt);
+      /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       conv_shape.ValueOrDie(), transpose_x, y,
@@ -439,7 +439,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeLhs) {
   StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
       transpose_x->shape(), y->shape(), /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums,
-      /*preferred_element_type=*/absl::nullopt);
+      /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       conv_shape.ValueOrDie(), transpose_x, y,

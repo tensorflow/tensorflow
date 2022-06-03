@@ -136,7 +136,7 @@ Status CaseBuilder::CreatePivotNodes() {
                            .Device(case_op_->requested_device())
                            .Finalize(graph_, &pivots_[b]));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 string CaseBuilder::NewName(const string& infix) {
@@ -166,7 +166,7 @@ Status CaseBuilder::AddInput(Node* src, int src_output) {
   for (int b = 0; b < num_branches_; b++) {
     branch_call_builders_[b].Input(input, b);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CaseBuilder::AddInputs() {
@@ -184,7 +184,7 @@ Status CaseBuilder::AddInputs() {
       graph_->AddControlEdge(e->src(), control_predecessor_);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CaseBuilder::AddOutputs() {
@@ -247,7 +247,7 @@ Status CaseBuilder::AddOutputs() {
       graph_->AddEdge(merges[e->src_output()], 0, e->dst(), e->dst_input());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CaseBuilder::BuildLoweredCaseOutput() {
@@ -287,7 +287,7 @@ Status RewriteCaseNode(Node* n, Graph* g, bool keep_node_fetchable) {
   TF_RETURN_IF_ERROR(cb.AddOutputs());
   g->RemoveNode(n);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

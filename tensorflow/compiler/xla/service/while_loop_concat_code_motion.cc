@@ -169,11 +169,11 @@ class ConcatGroups {
  public:
   // Returns the group index and element index in group for an HLO, if it
   // belongs to a group.
-  absl::optional<std::pair<int64_t, int64_t>> GetGroupIndex(
+  std::optional<std::pair<int64_t, int64_t>> GetGroupIndex(
       const HloInstruction* hlo) const {
     auto it = element_to_group_.find(hlo);
     if (it == element_to_group_.end()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     return it->second;
   }
@@ -277,7 +277,7 @@ class ConcatGroups {
 //
 // If the operand is already transformed to the combined shape, specify its
 // group in combined_operand_group. (Only required for kReshape.)
-absl::optional<std::pair<int64_t, bool>> GetOperandConcatDim(
+std::optional<std::pair<int64_t, bool>> GetOperandConcatDim(
     const HloInstruction* hlo, int64_t operand_index, int64_t hlo_concat_dim,
     bool hlo_inserted_concat_dim,
     const ConcatGroup* combined_operand_group = nullptr) {
@@ -315,7 +315,7 @@ absl::optional<std::pair<int64_t, bool>> GetOperandConcatDim(
     }
   } else if (hlo->opcode() == HloOpcode::kReduce) {
     if (operand_index != 0) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     operand_concat_dim = hlo_concat_dim;
     operand_inserted_concat_dim = hlo_inserted_concat_dim;
@@ -364,10 +364,10 @@ absl::optional<std::pair<int64_t, bool>> GetOperandConcatDim(
         j++;
         continue;
       }
-      return absl::nullopt;
+      return std::nullopt;
     }
   } else {
-    return absl::nullopt;
+    return std::nullopt;
   }
   CHECK_GE(operand_concat_dim, 0);
   return std::pair<int64_t, bool>(operand_concat_dim,
@@ -690,7 +690,7 @@ Status AddCopiesToRoot(HloComputation* body,
                               param_group.inserted_concat_dim))
               .first);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RemoveCopiesFromRoot(HloComputation* body) {
@@ -702,7 +702,7 @@ Status RemoveCopiesFromRoot(HloComputation* body) {
       TF_RETURN_IF_ERROR(root->ReplaceOperandWith(i, copy->mutable_operand(0)));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RewriteLoopWithConcatGroups(HloInstruction* loop,
@@ -943,7 +943,7 @@ Status RewriteLoopWithConcatGroups(HloInstruction* loop,
     TF_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(slice->mutable_operand(0)));
     TF_RETURN_IF_ERROR(body->RemoveInstruction(slice));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<bool> RunOnLoop(HloInstruction* loop,

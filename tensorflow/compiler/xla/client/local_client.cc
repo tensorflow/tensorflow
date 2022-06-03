@@ -113,7 +113,7 @@ Status LocalExecutable::ValidateExecutionOptions(
         backend.platform()->Name());
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<std::pair<ServiceExecutableRunOptions, StreamPool::Ptr>>

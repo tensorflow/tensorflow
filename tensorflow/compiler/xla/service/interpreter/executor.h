@@ -53,7 +53,7 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   ~XlaInterpreterExecutor() override;
 
   port::Status Init(int device_ordinal, DeviceOptions device_options) override {
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   port::Status GetKernel(const MultiKernelLoaderSpec &spec,
@@ -128,11 +128,11 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
                     std::function<port::Status()> callback) override;
 
   port::Status AllocateEvent(Event *event) override {
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   port::Status DeallocateEvent(Event *event) override {
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   port::Status RecordEvent(Stream *stream, Event *event) override {
@@ -173,7 +173,7 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   CreateDeviceDescription(int device_ordinal);
 
   port::Status EnablePeerAccessTo(StreamExecutorInterface *other) override {
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   bool CanEnablePeerAccessTo(StreamExecutorInterface *other) override {

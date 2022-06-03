@@ -430,7 +430,7 @@ Status BaseGPUDevice::InitScratchBuffers() {
         &mem, Eigen::kGpuScratchSize + sizeof(unsigned int)));
     scratch_ = static_cast<char*>(scratch_buffer);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BaseGPUDevice::Init(const SessionOptions& options) {
@@ -551,7 +551,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
     LOG(INFO) << "Writing NodeDefs to file: " << node_file_writer_->filename();
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 string BaseGPUDevice::ComputeOpKernelDebugString(const OpKernel& op_kernel,
@@ -774,8 +774,8 @@ Status BaseGPUDevice::MaybeCopyTensorToGPU(
     StatusCallback done) {
   if (alloc_attrs.on_host()) {
     *to = from;
-    done(Status::OK());
-    return Status::OK();
+    done(OkStatus());
+    return OkStatus();
   } else {
     if (!DMAHelper::CanUseDMA(&from)) {
       Status err = errors::Internal("GPU copy from non-DMA ",
@@ -817,7 +817,7 @@ Status BaseGPUDevice::MaybeCopyTensorToGPU(
     device_context_->CopyCPUTensorToDevice(
         &from, this, copy, std::move(wrapped_done),
         !timestamped_allocator_ /*sync_dst_compute*/);
-    return Status::OK();
+    return OkStatus();
   }
 }
 
@@ -1009,7 +1009,7 @@ Status VerifyVirtualDeviceSettings(
   }
 #endif
 
-  return Status::OK();
+  return OkStatus();
 }
 
 int64_t MinSystemMemory(int64_t available_memory, int cc_major) {
@@ -1126,7 +1126,7 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
     }
   }
   *memory_limit = allocated_memory;
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -1162,7 +1162,7 @@ Status BaseGPUDevice::ReinitializeGpuDevice(OpKernelContext* context,
   } else {
     ReinitializeDevice(context, device, 0, allocator);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Allocator* BaseGPUDevice::GetScopedAllocator(AllocatorAttributes attr,
@@ -1181,24 +1181,24 @@ const int BaseGPUDeviceFactory::InterconnectMap::kStreamExecutorStrength = 1;
 
 Status BaseGPUDeviceFactory::CacheDeviceIds() {
   if (!cached_device_ids_.empty()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   TF_RETURN_IF_ERROR(ValidateGPUMachineManager());
   se::Platform* gpu_manager = GPUMachineManager();
   if (gpu_manager == nullptr) {
-    return Status::OK();
+    return OkStatus();
   }
 
   int device_count = gpu_manager->VisibleDeviceCount();
   if (device_count <= 0) {
-    return Status::OK();
+    return OkStatus();
   }
 
   std::vector<PlatformDeviceId> visible_gpu_order(device_count);
   std::iota(visible_gpu_order.begin(), visible_gpu_order.end(), 0);
   TF_RETURN_IF_ERROR(GetValidDeviceIds(visible_gpu_order, &cached_device_ids_));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BaseGPUDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
@@ -1209,7 +1209,7 @@ Status BaseGPUDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
     devices->push_back(device_name);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BaseGPUDeviceFactory::GetDeviceDetails(
@@ -1237,7 +1237,7 @@ Status BaseGPUDeviceFactory::GetDeviceDetails(
 #if GOOGLE_CUDA
   (*details)["compute_capability"] = desc->cuda_compute_capability().ToString();
 #endif  // GOOGLE_CUDA
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BaseGPUDeviceFactory::CreateDevices(
@@ -1246,11 +1246,11 @@ Status BaseGPUDeviceFactory::CreateDevices(
   TF_RETURN_IF_ERROR(ValidateGPUMachineManager());
   se::Platform* gpu_manager = GPUMachineManager();
   if (gpu_manager == nullptr) {
-    return Status::OK();
+    return OkStatus();
   }
   // If there are no GPUs visible, do nothing.
   if (gpu_manager->VisibleDeviceCount() <= 0) {
-    return Status::OK();
+    return OkStatus();
   }
 
   size_t num_gpus_to_use = INT_MAX;
@@ -1470,7 +1470,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
                                        bytes, it->second, num_tf_gpus,
                                        devices));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 static string GetShortDeviceDescription(PlatformDeviceId platform_device_id,
@@ -1553,7 +1553,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
   gpu_allocator->SetStreamAndPreallocateMemory(gpu_device->GetStream());
   devices->push_back(std::move(gpu_device));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -1597,7 +1597,7 @@ Status BaseGPUDeviceFactory::GetInterconnectMaps(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BaseGPUDeviceFactory::GetDeviceLocalities(
@@ -1679,7 +1679,7 @@ Status BaseGPUDeviceFactory::GetDeviceLocalities(
             << " pci: " << desc->pci_bus_id()
             << " DeviceLocality: " << dev_locality.DebugString();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 static int GetDefaultMinGPUMultiprocessorCount(
@@ -1816,7 +1816,7 @@ Status BaseGPUDeviceFactory::EnablePeerAccess(
                             " potential peer access pairs were reported by the "
                             "driver, but no peering could be enabled.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BaseGPUDeviceFactory::GetValidDeviceIds(
@@ -1871,7 +1871,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
                     "download and setup the required libraries for your "
                     "platform.\nSkipping registering "
                     "GPU devices...";
-    return Status::OK();
+    return OkStatus();
   }
 #endif
 
@@ -1974,7 +1974,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     VLOG(1) << "Adding visible gpu devices: " << absl::StrJoin(raw_ids, ", ");
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 uint64 BaseGPUDevice::SafeAllocFrontier(uint64 old_value) {

@@ -68,7 +68,7 @@ Status GetComputationCacheEntry(
                                 &proto_lookup));
   core::ScopedUnref lookup_unref(proto_lookup);
   TF_RETURN_IF_ERROR(proto_lookup->Lookup(key, core_index_in_replica, entry));
-  return Status::OK();
+  return OkStatus();
 }
 
 std::vector<bool> GetDynamicInputInfo(
@@ -367,7 +367,7 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
       context, memory_manager.get(), node_context.get(), stream, config_proto,
       executable, input_tuples, input_output_alias, output.ConsumeResult(),
       device_ordinal));
-  return Status::OK();
+  return OkStatus();
 }
 
 class XRTExecuteChainedOp : public AsyncOpKernel {

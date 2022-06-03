@@ -25,7 +25,7 @@ TEST(CoreUtilTest, ParseShardingFromDevice) {
   Graph graph(OpRegistry::Global());
 
   auto core_from_sharding =
-      [](absl::optional<xla::OpSharding> sharding) -> int64 {
+      [](std::optional<xla::OpSharding> sharding) -> int64 {
     if (sharding.has_value() &&
         sharding.value().type() == xla::OpSharding::MAXIMAL) {
       return sharding.value().tile_assignment_devices(0);
@@ -83,8 +83,7 @@ TEST_P(ShardingWithMetadataTest, GetShardingFromNode) {
 
   auto test_sharding_metadata =
       [&check_metadata](
-          const std::function<StatusOr<absl::optional<xla::OpSharding>>()>&
-              fn) {
+          const std::function<StatusOr<std::optional<xla::OpSharding>>()>& fn) {
         auto status_or_sharding = fn();
         TF_ASSERT_OK(status_or_sharding.status());
         ASSERT_TRUE(status_or_sharding.ValueOrDie().has_value());

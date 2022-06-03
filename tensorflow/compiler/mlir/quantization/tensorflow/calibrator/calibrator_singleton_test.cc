@@ -22,7 +22,7 @@ namespace {
 
 TEST(CalibratorSingletonTest, SimpleMinMax) {
   CalibratorSingleton::ReportMinMax("1", 1.0f, 2.0f);
-  absl::optional<std::pair<float, float>> min_max =
+  std::optional<std::pair<float, float>> min_max =
       CalibratorSingleton::GetMinMax("1");
   EXPECT_TRUE(min_max.has_value());
   EXPECT_THAT(1.0f, min_max.value().first);
@@ -44,7 +44,7 @@ TEST(CalibratorSingletonTest, SimpleMinMax) {
 
 TEST(CalibratorSingletonTest, DifferentSessions) {
   CalibratorSingleton::ReportMinMax("2", 1.0f, 2.0f);
-  absl::optional<std::pair<float, float>> min_max =
+  std::optional<std::pair<float, float>> min_max =
       CalibratorSingleton::GetMinMax("2");
   EXPECT_TRUE(min_max.has_value());
   EXPECT_THAT(1.0f, min_max.value().first);
@@ -70,7 +70,7 @@ TEST(CalibratorSingletonTest, DifferentSessions) {
 
 TEST(CalibratorSingletonTest, ClearAndGetEmptyResult) {
   CalibratorSingleton::ReportMinMax("4", 1.0f, 2.0f);
-  absl::optional<std::pair<float, float>> min_max =
+  std::optional<std::pair<float, float>> min_max =
       CalibratorSingleton::GetMinMax("4");
   EXPECT_TRUE(min_max.has_value());
   EXPECT_THAT(1.0f, min_max.value().first);
@@ -84,7 +84,7 @@ TEST(CalibratorSingletonTest, ClearAndGetEmptyResult) {
 
 TEST(CalibratorSingletonTest, ClearDataAndGetResults) {
   CalibratorSingleton::ReportMinMax("5", 1.0f, 2.0f);
-  absl::optional<std::pair<float, float>> min_max =
+  std::optional<std::pair<float, float>> min_max =
       CalibratorSingleton::GetMinMax("5");
   EXPECT_TRUE(min_max.has_value());
   EXPECT_THAT(min_max.value().first, 1.0f);

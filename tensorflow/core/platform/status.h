@@ -39,6 +39,11 @@ namespace tensorflow {
 class TF_MUST_USE_RESULT Status;
 #endif
 
+namespace errors {
+
+typedef ::tensorflow::error::Code Code;
+
+}  // namespace errors
 /// @ingroup core
 /// Denotes success or failure of a call in Tensorflow.
 class Status {
@@ -162,8 +167,12 @@ class Status {
       const std::function<void(absl::string_view, absl::string_view)>& visitor)
       const;
 
+  void SetStackTrace(std::vector<StackFrame>);
+  std::vector<StackFrame> GetStackTrace() const;
+
  private:
   static const std::string& empty_string();
+  std::vector<StackFrame> stack_trace_;
   struct State {
     tensorflow::error::Code code;
     std::string msg;
@@ -183,29 +192,8 @@ class Status {
 // usage of `OkStatus()` when constructing such an OK status.
 Status OkStatus();
 
-
-// Convenience Status constructors, not having to specify the underlying Code.
-Status AbortedError(absl::string_view message);
-Status AlreadyExistsError(absl::string_view message);
-Status CancelledError(absl::string_view message);
-Status DataLossError(absl::string_view message);
-Status DeadlineExceededError(absl::string_view message);
-Status FailedPreconditionError(absl::string_view message);
-Status InternalError(absl::string_view message);
-Status InvalidArgumentError(absl::string_view message);
-Status NotFoundError(absl::string_view message);
-Status OutOfRangeError(absl::string_view message);
-Status PermissionDeniedError(absl::string_view message);
-Status ResourceExhaustedError(absl::string_view message);
-Status UnauthenticatedError(absl::string_view message);
-Status UnavailableError(absl::string_view message);
-Status UnimplementedError(absl::string_view message);
-Status UnknownError(absl::string_view message);
-
 // TODO(b/197552541) Move this namespace to errors.h.
 namespace errors {
-
-typedef ::tensorflow::error::Code Code;
 
 void SetStackTrace(::tensorflow::Status& status,
                    std::vector<StackFrame> stack_trace);
@@ -328,7 +316,7 @@ inline tensorflow::string* TfCheckOpHelper(::tensorflow::Status v,
 #define TF_DCHECK_OK(val) TF_CHECK_OK(val)
 #else
 #define TF_DCHECK_OK(val) \
-  while (false && (::tensorflow::Status::OK() == (val))) LOG(FATAL)
+  while (false && (::tensorflow::OkStatus() == (val))) LOG(FATAL)
 #endif
 
 }  // namespace tensorflow

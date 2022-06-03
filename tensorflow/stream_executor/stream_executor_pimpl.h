@@ -23,10 +23,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/macros.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -559,6 +559,12 @@ class StreamExecutor {
     return implementation_.get();
   }
 
+  // Returns a stream allocated by this executor, or nullptr if not found.
+  // Performs linear search over alive GPU streams.
+  Stream* FindAllocatedStream(void* gpu_stream) {
+    return implementation()->FindAllocatedStream(gpu_stream);
+  }
+
  private:
   template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
             typename... BeginArgsT>
@@ -708,15 +714,15 @@ class StreamExecutor {
   // A mapping of pointer (to device memory) to string representation of the
   // stack (of the allocating thread) at the time at which the pointer was
   // allocated.
-  std::map<void*, AllocRecord> mem_allocs_ TF_GUARDED_BY(mu_);
+  std::map<void*, AllocRecord> mem_allocs_ ABSL_GUARDED_BY(mu_);
 
   // Memoized BLAS support object -- we only want to create this once when asked
   // for a BLAS interface.
-  std::unique_ptr<blas::BlasSupport> blas_ TF_GUARDED_BY(mu_);
+  std::unique_ptr<blas::BlasSupport> blas_ ABSL_GUARDED_BY(mu_);
 
   // Memoized DNN support object -- we only want to create this once when asked
   // for an DNN interface.
-  std::unique_ptr<dnn::DnnSupport> dnn_ TF_GUARDED_BY(mu_);
+  std::unique_ptr<dnn::DnnSupport> dnn_ ABSL_GUARDED_BY(mu_);
 
   // Memoized FFT support object -- we only want to create this once when asked
   // for a FFT interface.
@@ -724,12 +730,12 @@ class StreamExecutor {
 
   // Memoized RNG support object -- we only want to create this once when asked
   // for an RNG interface.
-  std::unique_ptr<rng::RngSupport> rng_ TF_GUARDED_BY(mu_);
+  std::unique_ptr<rng::RngSupport> rng_ ABSL_GUARDED_BY(mu_);
 
   // Slot to cache the owned DeviceDescription for the underlying device
   // once it has been queried from DeviceDescription().
   mutable std::unique_ptr<DeviceDescription> device_description_
-      TF_GUARDED_BY(mu_);
+      ABSL_GUARDED_BY(mu_);
 
   // The kind of the underlying platform that is being targeted, as passed
   // during construction.
@@ -767,7 +773,7 @@ class StreamExecutor {
   bool tracing_enabled_;
 
   // The set of TraceListeners registered for this StreamExecutor.
-  std::set<TraceListener*> listeners_ TF_GUARDED_BY(mu_);
+  std::set<TraceListener*> listeners_ ABSL_GUARDED_BY(mu_);
 
   // Allocated memory in bytes.
   int64_t mem_alloc_bytes_;

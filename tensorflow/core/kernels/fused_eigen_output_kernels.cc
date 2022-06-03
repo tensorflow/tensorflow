@@ -94,7 +94,7 @@ Status InitializeFusedComputation(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

@@ -4306,7 +4306,7 @@ TEST_P(ConvInputPaddingTest, DoTest) {
           lhs_pad->shape(), filter->shape(),
           /*feature_group_count=*/1,
           /*batch_group_count=*/1, window, dnums,
-          /*preferred_element_type=*/absl::nullopt)
+          /*preferred_element_type=*/std::nullopt)
           .ValueOrDie(),
       lhs_pad, filter, /*feature_group_count=*/1, /*batch_group_count=*/1,
       window, dnums, DefaultPrecisionConfig(2)));
@@ -4425,7 +4425,7 @@ TEST_P(ConvFilterPaddingTest, DoIt) {
           input->shape(), rhs_pad->shape(),
           /*feature_group_count=*/1,
           /*batch_group_count=*/1, window, dnums,
-          /*preferred_element_type=*/absl::nullopt)
+          /*preferred_element_type=*/std::nullopt)
           .ValueOrDie(),
       input, rhs_pad, /*feature_group_count=*/1, /*batch_group_count=*/1,
       window, dnums, precision_config));
@@ -4572,7 +4572,7 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
     Shape out_shape = ShapeInference::InferConvolveShape(
                           in_shape, f_shape, /*feature_group_count=*/1,
                           /*batch_group_count=*/1, window, dnums,
-                          /*preferred_element_type=*/absl::nullopt)
+                          /*preferred_element_type=*/std::nullopt)
                           .ValueOrDie();
     if (options.output_minor_to_major_layout) {
       out_shape = ShapeUtil::MakeShapeWithLayout(F32, out_shape.dimensions(),
@@ -5251,6 +5251,56 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfNonCanonicalBatchDotCantSimplify) {
   AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&simplifier, module.get()));
   EXPECT_FALSE(changed);
+}
+
+TEST_F(AlgebraicSimplifierTest, DynamicSliceOfTranspose) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      param = f32[12,10,8] parameter(0)
+      i0 = s32[] parameter(1)
+      i1 = s32[] parameter(2)
+      i2 = s32[] parameter(3)
+      transpose = f32[12,8,10] transpose(param), dimensions={0,2,1}
+      ROOT slice = f32[2,3,5] dynamic-slice(transpose, i0, i1, i2),
+        dynamic_slice_sizes={2,3,5}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Transpose(
+                        m::DynamicSlice(m::Parameter(0), m::Parameter(1),
+                                        m::Parameter(3), m::Parameter(2)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, SliceOfTranspose) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      param = f32[12,10,8] parameter(0)
+      transpose = f32[8,12,10] transpose(param), dimensions={2,0,1}
+      ROOT slice = f32[2,3,5] slice(transpose), slice={[4:6],[0:12:4],[3:8]}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Transpose(m::Slice())));
+  auto slice = root->operand(0);
+  EXPECT_THAT(slice->slice_starts(), ElementsAre(0, 3, 4));
+  EXPECT_THAT(slice->slice_limits(), ElementsAre(12, 8, 6));
+  EXPECT_THAT(slice->slice_strides(), ElementsAre(4, 1, 1));
 }
 
 TEST_F(AlgebraicSimplifierTest, SliceOfPadLow) {
@@ -7296,6 +7346,32 @@ TEST_F(AlgebraicSimplifierTest, ReduceOfBatchDotToContractingDimension) {
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Dot(m::Parameter(0), m::Parameter(1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, ReduceAddIsCommutative) {
+  const char* kModuleStr = R"(
+    HloModule m
+    fn1 {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+    fn2 {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p1, p0)
+    }
+    test {
+      p0 = f32[10,10,10] parameter(0)
+      zero = f32[] constant(0)
+      r1 = f32[10,10] reduce(p0, zero), dimensions={0}, to_apply=fn1
+      ROOT r2 = f32[10] reduce(r1, zero), dimensions={0}, to_apply=fn2
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Reduce(m::Parameter(0), m::ConstantScalar(0))));
 }
 
 TEST_F(AlgebraicSimplifierTest, RsqrtOfRPower) {

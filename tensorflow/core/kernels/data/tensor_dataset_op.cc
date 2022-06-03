@@ -59,7 +59,7 @@ class TensorDatasetOp::Dataset : public DatasetBase {
   Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
                                 split_providers) const override {
     split_providers->push_back(absl::make_unique<IndexSplitProvider>(1));
-    return Status::OK();
+    return OkStatus();
   }
 
   const DataTypeVector& output_dtypes() const override { return dtypes_; }
@@ -79,16 +79,16 @@ class TensorDatasetOp::Dataset : public DatasetBase {
   }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
-    return Status::OK();
+    return OkStatus();
   }
 
-  Status CheckExternalState() const override { return Status::OK(); }
+  Status CheckExternalState() const override { return OkStatus(); }
 
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     *out_tensors = tensors_;
-    return Status::OK();
+    return OkStatus();
   }
 
  protected:
@@ -112,7 +112,7 @@ class TensorDatasetOp::Dataset : public DatasetBase {
     b->BuildAttrValue(dtypes_, &dtypes);
     TF_RETURN_IF_ERROR(b->AddDataset(this, {}, {{0, components}},
                                      {{kToutput_types, dtypes}}, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -126,7 +126,7 @@ class TensorDatasetOp::Dataset : public DatasetBase {
         TF_ASSIGN_OR_RETURN(split_provider_,
                             GetSingleSplitProvider(ctx, dataset()));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -145,10 +145,10 @@ class TensorDatasetOp::Dataset : public DatasetBase {
         *out_tensors = dataset()->tensors_;
         produced_ = true;
         *end_of_sequence = false;
-        return Status::OK();
+        return OkStatus();
       } else {
         *end_of_sequence = true;
-        return Status::OK();
+        return OkStatus();
       }
     }
 
@@ -163,14 +163,14 @@ class TensorDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       if (produced_)
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kProduced), ""));
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       produced_ = reader->Contains(full_name(kProduced));
-      return Status::OK();
+      return OkStatus();
     }
 
    private:

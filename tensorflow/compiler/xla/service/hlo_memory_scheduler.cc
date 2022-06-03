@@ -495,7 +495,7 @@ StatusOr<HloInstructionSequence> DFSMemoryScheduler(
   HloInstructionSequence sequence;
   FunctionVisitor visitor([&sequence](HloInstruction* hlo) {
     sequence.push_back(hlo);
-    return Status::OK();
+    return OkStatus();
   });
   visitor.ReserveVisitStates(computation->instruction_count());
   TF_RETURN_IF_ERROR(computation->AcceptWithOperandOrder(
@@ -770,7 +770,7 @@ StatusOr<bool> HloTrivialScheduler::Run(HloModule* module) {
       FunctionVisitor visitor(
           [&computation_sequence](HloInstruction* instruction) {
             computation_sequence.push_back(instruction);
-            return Status::OK();
+            return OkStatus();
           });
       visitor.ReserveVisitStates(computation->instruction_count());
       TF_RETURN_IF_ERROR(computation->Accept(&visitor));

@@ -151,17 +151,17 @@ auto* tf_data_service_client_iterators_counter = monitoring::Counter<4>::New(
     "Number of tf.data service client iterators created.", "worker_uid",
     "deployment_mode", "processing_mode", "is_coordinated_read");
 
-auto* tf_data_service_multi_trainer_cache_queries_counter =
+auto* tf_data_service_cross_trainer_cache_queries_counter =
     monitoring::Counter<1>::New(
-        "/tensorflow/data/service/multi_trainer_cache_queries",
-        "tf.data service multi-client cache queries counter. The result can be "
-        "hit or miss.",
+        "/tensorflow/data/service/cross_trainer_cache_queries",
+        "tf.data service cross-trainer cache queries counter. The result can "
+        "be hit or miss.",
         "cache_hit");
 
-auto* tf_data_service_multi_trainer_cache_size_bytes =
+auto* tf_data_service_cross_trainer_cache_size_bytes =
     monitoring::Gauge<int64_t, 0>::New(
-        "/tensorflow/data/service/multi_trainer_cache_size_bytes",
-        "tf.data service multi-client cache memory usage in bytes.");
+        "/tensorflow/data/service/cross_trainer_cache_size_bytes",
+        "tf.data service cross-trainer cache memory usage in bytes.");
 
 auto* tf_data_filename_counter = monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
@@ -383,14 +383,14 @@ void RecordTFDataServiceClientIterators(
       ->IncrementBy(1);
 }
 
-void RecordTFDataServiceMultiTrainerCacheQuery(bool cache_hit) {
+void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit) {
   std::string cache_hit_str = cache_hit ? "true" : "false";
-  tf_data_service_multi_trainer_cache_queries_counter->GetCell(cache_hit_str)
+  tf_data_service_cross_trainer_cache_queries_counter->GetCell(cache_hit_str)
       ->IncrementBy(1);
 }
 
-void RecordTFDataServiceMultiTrainerCacheSizeBytes(size_t bytes) {
-  tf_data_service_multi_trainer_cache_size_bytes->GetCell()->Set(
+void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes) {
+  tf_data_service_cross_trainer_cache_size_bytes->GetCell()->Set(
       static_cast<int64_t>(bytes));
 }
 

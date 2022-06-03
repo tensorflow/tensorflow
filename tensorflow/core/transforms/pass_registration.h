@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/transforms/eliminate_passthrough_iter_args/pass.h"
 #include "tensorflow/core/transforms/func_to_graph/pass.h"
 #include "tensorflow/core/transforms/functional_to_region/pass.h"
+#include "tensorflow/core/transforms/graph_compactor/pass.h"
 #include "tensorflow/core/transforms/graph_to_func/pass.h"
 #include "tensorflow/core/transforms/legacy_call/pass.h"
 #include "tensorflow/core/transforms/region_to_functional/pass.h"

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -45,7 +46,7 @@ Status SetName(HloModule *module, HloInstruction *gemm) {
 
   module->SetAndUniquifyInstrName(
       gemm, is_batch_dot ? "cublas-batch-gemm" : "cublas-gemm");
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // The rewriting proceeds in a bottom-up way:
@@ -85,7 +86,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       TF_RETURN_IF_ERROR(
           ReplaceWithNewInstruction(instr, std::move(gemm_call)));
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   Status HandleMultiply(HloInstruction *instr) override {
@@ -100,7 +101,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       // Do not fuse alpha into S32 GEMM, as they only support fixed values for
       // alpha/beta.
       if (existing_gemm->shape().element_type() == S32) {
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       }
 
       if (config.beta() == 0.0 && existing_gemm->user_count() == 1) {
@@ -113,17 +114,47 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         TF_RETURN_IF_ERROR(ReplaceInstruction(instr, existing_gemm));
       }
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   Status HandleAdd(HloInstruction *instr) override {
     HloInstruction *bias, *existing_gemm;
+
+    // add(bitcast(gemm(a, b)), bias) ->
+    //   bitcast(add(gemm(a, b), bitcast(bias))) ->
+    //   bitcast(gemm(a, b, bitcast(bias))) (later down in this function).
+    //
+    // We see this idiom in models that contain batch-dots, where we cast
+    // between a rank-2 shape for non-batch dots and a higher-rank shape for
+    // batch-dots.
+    //
+    // The last stage of the transform may fail (because of any of the checks in
+    // FuseBiasedGemm), but if so that's okay -- we'll have done a useless
+    // transformation, but it doesn't hurt anything.
+    if (Match(instr, m::AddAnyOrder(
+                         m::Bitcast(m::Op(&existing_gemm)
+                                        .WithCustomCallTarget(kGemmCallTarget)
+                                        .WithOneUser())
+                             .WithOneUser(),
+                         m::Op(&bias)))) {
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * new_add,
+          MakeBinaryHlo(HloOpcode::kAdd, existing_gemm,
+                        MakeBitcastHlo(bias, existing_gemm->shape())));
+      TF_RETURN_IF_ERROR(
+          ReplaceInstruction(instr, MakeBitcastHlo(new_add, instr->shape())));
+
+      // Continue below transforming new_add.
+      instr = new_add;
+    }
+
     if (Match(instr,
               m::AddAnyOrder(
                   m::Op(&existing_gemm).WithCustomCallTarget(kGemmCallTarget),
                   m::Op(&bias)))) {
       return FuseBiasedGemm(instr, bias, existing_gemm);
     }
+
     return Status::OK();
   }
 
@@ -139,7 +170,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                 .WithElementType(BF16))) {
       return FuseBiasedGemm(instr, bias, existing_gemm);
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   Status FuseBiasedGemm(HloInstruction *instr, HloInstruction *bias,
@@ -147,7 +178,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // Do not fuse bias into S32 GEMM, as for this datatype cuBLAS only
     // supports fixed values for alpha/beta.
     if (existing_gemm->shape().element_type() == S32) {
-      return Status::OK();
+      return ::tensorflow::OkStatus();
     }
     auto config =
         existing_gemm->backend_config<GemmBackendConfig>().ValueOrDie();
@@ -165,7 +196,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       TF_RETURN_IF_ERROR(
           ReplaceWithNewInstruction(instr, std::move(gemm_call)));
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 };
 

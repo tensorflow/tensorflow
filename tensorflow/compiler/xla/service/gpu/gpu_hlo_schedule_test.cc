@@ -448,7 +448,7 @@ TEST_F(GpuHloScheduleTest, AsyncAllReduce) {
       builder.AddInstruction(HloInstruction::CreateAllReduceStart(
           all_reduce_start_shape, {add0}, reduction_computation,
           /*replica_groups=*/{}, /*constrain_layout=*/false,
-          /*channel_id=*/absl::nullopt, /*use_global_device_ids=*/true));
+          /*channel_id=*/std::nullopt, /*use_global_device_ids=*/true));
   // In addition, add control_dependency: add1->nonblocking_call.
   TF_CHECK_OK(add1->AddControlDependencyTo(all_reduce_start));
   // Blocking call, which only add4 depends on.

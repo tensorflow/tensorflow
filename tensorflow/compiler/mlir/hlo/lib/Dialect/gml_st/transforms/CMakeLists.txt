@@ -45,8 +45,9 @@ add_mlir_library(GmlStBufferizableOpInterface
 add_mlir_library(GmlStPasses
   bufferize_tiled_loop.cc
   fusion.cc
-  legalize_mhlo_to_gml.cc
   gml_st_to_scf.cc
+  legalize_mhlo_to_gml.cc
+  tiling.cc
 
   DEPENDS
   MLIRGmlStPassIncGen

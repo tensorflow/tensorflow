@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_COLLECTIVE_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_COLLECTIVE_THUNK_H_
 
+#include <string>
+
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -74,7 +76,7 @@ void NcclCollectiveConfig::SetCollectiveOpKindAndID(OpT op) {
 
 template <typename OpT>
 NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
-    OpT op, absl::optional<bool> use_global_device_ids) {
+    OpT op, std::optional<bool> use_global_device_ids) {
   NcclCollectiveConfig config;
   config.operand_count = op.operands().size();
   config.operand_element_type.reserve(config.operand_count);
@@ -110,15 +112,15 @@ class NcclCollectiveThunk : public Thunk {
   // error.
   static bool NcclIsEnabled();
 
+  // Logging support.
+  static std::string GetDeviceString(const NcclExecuteParams& params);
+
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  protected:
   virtual Status RunNcclCollective(const ExecuteParams& params,
                                    ncclComm_t comm) = 0;
   virtual const NcclCollectiveConfig& config() const = 0;
-
-  // Logging support.
-  std::string GetDeviceString(const ExecuteParams& params) const;
 
  private:
 #if XLA_ENABLE_XCCL
@@ -129,6 +131,25 @@ class NcclCollectiveThunk : public Thunk {
 // Returns if the given data type is supported by NCCL.
 // Note: Keep this in sync with ToNcclDataType().
 bool IsTypeSupportedByNccl(PrimitiveType element_type);
+
+#if XLA_ENABLE_XCCL
+// TODO(hanbinyoon): Consider moving to nccl_utils.h when deprecating Thunks.
+StatusOr<NcclComm::Lock> LockNcclComm(
+    const NcclExecuteParams& params,
+    const std::vector<ReplicaGroup>& replica_groups,
+    CollectiveOpGroupMode group_mode, int64_t op_id);
+#endif  // XLA_ENABLE_XCCL
+
+struct DeviceBufferPair {
+  PrimitiveType element_type;
+  int64_t element_count;
+  se::DeviceMemoryBase source_buffer;
+  se::DeviceMemoryBase destination_buffer;
+};
+StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
+    const Thunk::ExecuteParams& params,
+    const std::vector<NcclCollectiveThunk::Buffer>& buffers,
+    const std::vector<PrimitiveType>& element_types);
 
 }  // namespace gpu
 }  // namespace xla

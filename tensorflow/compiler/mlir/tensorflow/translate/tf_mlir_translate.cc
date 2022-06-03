@@ -224,7 +224,7 @@ SavedModelSignatureDefsToMlirImportLite(
     return status;
   }
 
-  absl::optional<absl::Span<const std::string>> optional_exported_names;
+  std::optional<absl::Span<const std::string>> optional_exported_names;
   if (!exported_names.empty()) optional_exported_names = exported_names;
 
   // TODO(b/186898924): debug info in the savedmodel should not be ignored and

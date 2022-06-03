@@ -40,7 +40,7 @@ StatusOr<std::shared_ptr<TrackedDeviceBuffer>> MakeArray(const Shape& shape,
                 client->backend().transfer_manager()->GetByteSizeRequirement(
                     subshape)));
         device_buffers.push_back(device_memory.Release());
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       }));
   return std::make_shared<TrackedDeviceBuffer>(
       client->backend().memory_allocator(), /*device_ordinal=*/0,

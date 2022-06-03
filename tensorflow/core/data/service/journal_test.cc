@@ -43,10 +43,9 @@ bool NewJournalDir(std::string& journal_dir) {
 Update MakeCreateIterationUpdate() {
   Update update;
   CreateIterationUpdate* create_iteration = update.mutable_create_iteration();
-  create_iteration->set_dataset_id(3);
+  create_iteration->set_job_id(3);
   create_iteration->set_iteration_id(8);
-  create_iteration->mutable_processing_mode_def()->set_sharding_policy(
-      ProcessingModeDef::OFF);
+  create_iteration->set_repetition(5);
   return update;
 }
 
@@ -81,7 +80,7 @@ Status CheckJournalContent(StringPiece journal_dir,
   bool end_of_journal = false;
   TF_RETURN_IF_ERROR(reader.Read(result, end_of_journal));
   EXPECT_TRUE(end_of_journal);
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 

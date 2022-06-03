@@ -130,7 +130,7 @@ namespace m = match;
 // Checks if the argument instruction is an AllReduce, followed by a certain
 // sequence of instructions and then a CRS. It must be possible to move
 // the AR past each instruction in the sequence.
-absl::optional<ArCrsCombiner::ArCrsPair> ArCrsCombiner::MatchesArCrsPattern(
+std::optional<ArCrsCombiner::ArCrsPair> ArCrsCombiner::MatchesArCrsPattern(
     HloInstruction* instruction) {
   auto can_ar_move_past_instruction = [](HloInstruction* instruction) -> bool {
     if (instruction->user_count() != 1) {
@@ -174,7 +174,7 @@ absl::optional<ArCrsCombiner::ArCrsPair> ArCrsCombiner::MatchesArCrsPattern(
       if (can_ar_move_past_instruction(next)) {
         next = next->users()[0];
       } else {
-        return absl::nullopt;
+        return std::nullopt;
       }
       ++distance;
     }
@@ -185,10 +185,10 @@ absl::optional<ArCrsCombiner::ArCrsPair> ArCrsCombiner::MatchesArCrsPattern(
       return pair;
     }
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
-absl::optional<HloInstruction*> ArCrsCombiner::WhileFromBodyParameter(
+std::optional<HloInstruction*> ArCrsCombiner::WhileFromBodyParameter(
     HloInstruction* instruction) {
   CHECK_EQ(HloOpcode::kParameter, instruction->opcode());
   HloComputation* computation = instruction->parent();
@@ -199,10 +199,10 @@ absl::optional<HloInstruction*> ArCrsCombiner::WhileFromBodyParameter(
       return caller_instruction;
     }
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
-absl::optional<HloInstruction*> ArCrsCombiner::ConditionalFromBodyParameter(
+std::optional<HloInstruction*> ArCrsCombiner::ConditionalFromBodyParameter(
     HloInstruction* instruction) {
   CHECK_EQ(HloOpcode::kParameter, instruction->opcode());
   HloComputation* computation = instruction->parent();
@@ -213,10 +213,10 @@ absl::optional<HloInstruction*> ArCrsCombiner::ConditionalFromBodyParameter(
       return caller_instruction;
     }
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
-absl::optional<std::vector<HloInstruction*>> ArCrsCombiner::GetAllTuples(
+std::optional<std::vector<HloInstruction*>> ArCrsCombiner::GetAllTuples(
     HloInstruction* instruction,
     absl::flat_hash_set<HloInstruction*>* visited) {
   if (visited->find(instruction) != visited->end()) {
@@ -239,7 +239,7 @@ absl::optional<std::vector<HloInstruction*>> ArCrsCombiner::GetAllTuples(
         auto body_tuples = GetAllTuples(
             while_instr->while_body()->root_instruction(), visited);
         if (!init_tuples || !body_tuples) {
-          return absl::nullopt;
+          return std::nullopt;
         }
         auto result = *init_tuples;
         result.insert(result.end(), body_tuples->begin(), body_tuples->end());
@@ -258,7 +258,7 @@ absl::optional<std::vector<HloInstruction*>> ArCrsCombiner::GetAllTuples(
             auto branch_tuples =
                 GetAllTuples(cond_instr->mutable_operand(i + 1), visited);
             if (!branch_tuples) {
-              return absl::nullopt;
+              return std::nullopt;
             }
             tuples.insert(tuples.end(), branch_tuples->begin(),
                           branch_tuples->end());
@@ -266,19 +266,19 @@ absl::optional<std::vector<HloInstruction*>> ArCrsCombiner::GetAllTuples(
         }
         return tuples;
       }
-      return absl::nullopt;
+      return std::nullopt;
     }
     case HloOpcode::kGetTupleElement: {
       std::vector<HloInstruction*> result_tuples;
       auto tuples = GetAllTuples(instruction->operands()[0], visited);
       if (!tuples) {
-        return absl::nullopt;
+        return std::nullopt;
       }
       for (auto tuple : *tuples) {
         auto tmp_tuples = GetAllTuples(
             tuple->mutable_operand(instruction->tuple_index()), visited);
         if (!tmp_tuples) {
-          return absl::nullopt;
+          return std::nullopt;
         }
         result_tuples.insert(result_tuples.end(), tmp_tuples->begin(),
                              tmp_tuples->end());
@@ -291,7 +291,7 @@ absl::optional<std::vector<HloInstruction*>> ArCrsCombiner::GetAllTuples(
       result_tuples.reserve(branch_computations.size());
       for (HloComputation* body : branch_computations) {
         if (body->root_instruction()->opcode() != HloOpcode::kTuple) {
-          return absl::nullopt;
+          return std::nullopt;
         }
         result_tuples.push_back(body->root_instruction());
       }
@@ -302,14 +302,14 @@ absl::optional<std::vector<HloInstruction*>> ArCrsCombiner::GetAllTuples(
       auto body_tuples =
           GetAllTuples(instruction->while_body()->root_instruction(), visited);
       if (!init_tuples || !body_tuples) {
-        return absl::nullopt;
+        return std::nullopt;
       }
       auto result = *init_tuples;
       result.insert(result.end(), body_tuples->begin(), body_tuples->end());
       return result;
     }
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
@@ -493,7 +493,7 @@ Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsMPMD() {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsSPMD(
@@ -531,7 +531,7 @@ Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsSPMD(
       next = next->users()[0];
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<bool> ArCrsCombiner::RewriteGraph() {

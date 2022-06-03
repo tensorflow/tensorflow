@@ -59,11 +59,11 @@ bool HloOpcodeIsVariadic(HloOpcode opcode) {
   }
 }
 
-absl::optional<int> HloOpcodeArity(HloOpcode opcode) {
+std::optional<int> HloOpcodeArity(HloOpcode opcode) {
   switch (opcode) {
-#define CASE_ARITY(enum_name, opcode_name, arity, ...)   \
-  case HloOpcode::enum_name:                             \
-    return arity == kHloOpcodeIsVariadic ? absl::nullopt \
+#define CASE_ARITY(enum_name, opcode_name, arity, ...)  \
+  case HloOpcode::enum_name:                            \
+    return arity == kHloOpcodeIsVariadic ? std::nullopt \
                                          : absl::make_optional(arity);
     HLO_OPCODE_LIST(CASE_ARITY)
 #undef CASE_ARITY

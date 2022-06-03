@@ -80,7 +80,7 @@ class Regularizations {
     TF_RETURN_IF_ERROR(context->GetAttr("l1", &symmetric_l1_));
     TF_RETURN_IF_ERROR(context->GetAttr("l2", &symmetric_l2_));
     shrinkage_ = symmetric_l1_ / symmetric_l2_;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Proximal SDCA shrinking for L1 regularization.

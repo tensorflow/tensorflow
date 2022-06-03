@@ -682,7 +682,7 @@ static Status ParseTilingSpecification(
   int offset = ndim;
   offset -= tiling_spec.size();
   absl::c_copy(tiling_spec, tiling.begin() + offset);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Helper function that builds a plan.

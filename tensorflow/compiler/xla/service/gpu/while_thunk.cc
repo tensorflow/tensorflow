@@ -39,7 +39,7 @@ Status WhileThunk::Initialize(const GpuExecutable& executable,
   TF_RETURN_IF_ERROR(
       condition_thunk_sequence_->Initialize(executable, executor));
   TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(executable, executor));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -73,7 +73,7 @@ Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     // Invoke thunk sequence for while 'body' computation.
     TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace gpu

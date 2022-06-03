@@ -136,7 +136,7 @@ class LiteralBase {
   NativeT GetFirstElement() const;
 
   // As above but returns any integer type casted to an int64_t.
-  absl::optional<int64_t> GetFirstInteger() const;
+  std::optional<int64_t> GetFirstInteger() const;
 
   // As Get(), but determines the correct type and converts the value
   // into text.
@@ -171,19 +171,19 @@ class LiteralBase {
 
   // As Get(), but determines the correct type and converts the value into
   // int64_t.  This literal must be an array.
-  absl::optional<int64_t> GetIntegralAsS64(
+  std::optional<int64_t> GetIntegralAsS64(
       absl::Span<const int64_t> multi_index) const;
 
   // As Get(), but determines the correct type, and converts the value into
   // double. This literal must be an array.
-  absl::optional<double> GetAsDouble(
+  std::optional<double> GetAsDouble(
       absl::Span<const int64_t> multi_index) const;
 
   // As Get(), but determines the correct type, and converts the value into
   // complex128. All floating point types can be converted into complex128.
   //
   // This literal must be an array.
-  absl::optional<complex128> GetAsComplex128(
+  std::optional<complex128> GetAsComplex128(
       absl::Span<const int64_t> multi_index) const;
 
   // Invokes the "per cell" callback for each element in the provided
@@ -251,7 +251,7 @@ class LiteralBase {
   bool IsR1Iota() const;
 
   // Returns the stride if the literal is a strided iota.
-  absl::optional<int64_t> IsR1StridedIota() const;
+  std::optional<int64_t> IsR1StridedIota() const;
 
   // Returns whether this literal is zero at the specified index. This literal
   // must be an array with a dense layout.
@@ -554,7 +554,7 @@ class LiteralBase {
       return ForEachHelper(
                  [&func](const ShapeIndex& index, const Piece& piece) {
                    func(index, piece);
-                   return Status::OK();
+                   return ::tensorflow::OkStatus();
                  },
                  *this, &index)
           .IgnoreError();
@@ -583,7 +583,7 @@ class LiteralBase {
       return ForEachMutableHelper(
                  [&func](const ShapeIndex& index, Piece* piece) {
                    func(index, piece);
-                   return Status::OK();
+                   return ::tensorflow::OkStatus();
                  },
                  const_cast<xla::LiteralBase::Piece*>(this), &index)
           .IgnoreError();
@@ -698,7 +698,7 @@ class LiteralBase {
           index->pop_back();
         }
       }
-      return Status::OK();
+      return ::tensorflow::OkStatus();
     }
     template <typename Fn>
     bool ForEachHelperBool(const Fn& func, const Piece& piece,
@@ -729,7 +729,7 @@ class LiteralBase {
           index->pop_back();
         }
       }
-      return Status::OK();
+      return ::tensorflow::OkStatus();
     }
 
     // Recursive helper for EqualElements.
@@ -1425,7 +1425,7 @@ Status MutableLiteralBase::PopulateInternal(const FnType& generator,
     // For scalars.
     literal_data.at(0) = generator({}, /*thread_id=*/-1);
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 template <typename NativeT, typename FnType>
 Status MutableLiteralBase::Populate(const FnType& generator) {

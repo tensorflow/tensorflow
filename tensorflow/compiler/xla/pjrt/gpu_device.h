@@ -69,8 +69,8 @@ struct GpuAllocatorConfig {
 StatusOr<std::unique_ptr<PjRtClient>> GetGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,
     std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id,
-    const absl::optional<std::set<int>>& allowed_devices = absl::nullopt,
-    absl::optional<std::string> platform_name = absl::nullopt);
+    const std::optional<std::set<int>>& allowed_devices = std::nullopt,
+    std::optional<std::string> platform_name = std::nullopt);
 
 }  // namespace xla
 

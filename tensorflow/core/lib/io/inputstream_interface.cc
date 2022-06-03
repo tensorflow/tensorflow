@@ -35,7 +35,7 @@ Status InputStreamInterface::SkipNBytes(int64_t bytes_to_skip) {
     TF_RETURN_IF_ERROR(ReadNBytes(bytes_to_read, &unused));
     bytes_to_skip -= bytes_to_read;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace io
