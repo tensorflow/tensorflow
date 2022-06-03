@@ -15,14 +15,32 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/strings/numbers.h"
+#if TENSORFLOW_USE_ROCM
+#include "rocm/include/hip/hip_runtime.h"
+#else
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#endif
 #include "tensorflow/compiler/xla/python/callback.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
 
+#if TENSORFLOW_USE_ROCM
+#define gpuStreamHandle hipStream_t
+#define gpuMemcpyAsync hipMemcpyAsync
+#define gpuStreamSynchronize hipStreamSynchronize
+#define gpuMemcpyDeviceToHost hipMemcpyDeviceToHost
+#define gpuMemcpyHostToDevice hipMemcpyHostToDevice
+#else
+#define gpuStreamHandle CUstream
+#define gpuMemcpyAsync cudaMemcpyAsync
+#define gpuStreamSynchronize cudaStreamSynchronize
+#define gpuMemcpyDeviceToHost cudaMemcpyDeviceToHost
+#define gpuMemcpyHostToDevice cudaMemcpyHostToDevice
+#endif
+
 namespace xla {
 
-void XlaPythonGpuCallback(CUstream stream, void** buffers, const char* opaque,
+void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers, const char* opaque,
                           size_t opaque_len, XlaCustomCallStatus* status) {
   // Ignore `descriptor` arg to callback
   buffers += 1;
@@ -42,8 +60,8 @@ void XlaPythonGpuCallback(CUstream stream, void** buffers, const char* opaque,
     CpuCallback::Arg arg = callback->args()[i];
     void* buf = new char[arg.size_in_bytes];
     host_input_buffers.push_back(buf);
-    cudaMemcpyAsync(host_input_buffers[i], buffers[i], arg.size_in_bytes,
-                    cudaMemcpyDeviceToHost, stream);
+    gpuMemcpyAsync(host_input_buffers[i], buffers[i], arg.size_in_bytes,
+                   gpuMemcpyDeviceToHost, stream);
   }
   // TODO(sharadmv): we allocate space for host buffers but the callback will
   // return NumPy arrays which wrap host buffers. We could reuse those instead.
@@ -53,18 +71,18 @@ void XlaPythonGpuCallback(CUstream stream, void** buffers, const char* opaque,
     void* buf = new char[result.size_in_bytes];
     host_output_buffers.push_back(buf);
   }
-  cudaStreamSynchronize(stream);
+  gpuStreamSynchronize(stream);
   void* host_output_buffer = host_output_buffers.data();
   callback->Call(host_output_buffer, host_input_buffers.data(), status);
   // Copy host output buffers back to device
   for (size_t i = 0; i < num_results; ++i) {
     CpuCallback::Result result = callback->results()[i];
-    cudaMemcpyAsync(buffers[arity + i], host_output_buffers[i],
-                    result.size_in_bytes, cudaMemcpyHostToDevice, stream);
+    gpuMemcpyAsync(buffers[arity + i], host_output_buffers[i],
+                   result.size_in_bytes, gpuMemcpyHostToDevice, stream);
   }
   // We need to synchronize here to ensure that host buffers are alive while
   // the async copy is happening.
-  cudaStreamSynchronize(stream);
+  gpuStreamSynchronize(stream);
   // Free host output buffers
   for (size_t i = 0; i < num_results; ++i) {
     delete[] static_cast<char*>(host_output_buffers[i]);
