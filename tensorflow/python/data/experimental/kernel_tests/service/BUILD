@@ -246,6 +246,7 @@ tf_py_test(
     size = "medium",
     srcs = ["multi_process_cluster_test.py"],
     shard_count = 3,
+    tags = ["no_tsan"],  # TODO(b/234841344): tsan timeout
     deps = [
         ":multi_process_cluster",
         ":test_base",
