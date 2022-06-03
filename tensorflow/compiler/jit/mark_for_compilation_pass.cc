@@ -1983,7 +1983,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "Cross",
       "Cumprod",
       "Cumsum",
-      "DenseBincount".
+      "DenseBincount",
       "DataFormatDimMap",
       "DataFormatVecPermute",
       "DepthToSpace",
