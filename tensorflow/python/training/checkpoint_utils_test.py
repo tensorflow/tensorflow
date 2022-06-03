@@ -14,13 +14,14 @@
 # ==============================================================================
 """Tests for checkpoints tools."""
 
-import pathlib
 import os
+import pathlib
 import time
 
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -35,7 +36,6 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver as saver_lib
-from tensorflow.python.training.tracking import util as trackable_utils
 
 
 def _create_checkpoints(sess, checkpoint_dir):
