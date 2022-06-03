@@ -12,6 +12,9 @@ tf_py_test(
     size = "medium",
     srcs = ["auto_shard_test.py"],
     shard_count = 32,
+    tags = [
+        "notsan",  # Multi-process runner does not support tsan.
+    ],
     deps = [
         ":multi_process_cluster",
         ":test_base",
@@ -145,6 +148,9 @@ tf_py_test(
     size = "medium",
     srcs = ["local_workers_test.py"],
     shard_count = 24,
+    tags = [
+        "notsan",  # Multi-process runner does not support tsan.
+    ],
     deps = [
         ":multi_process_cluster",
         ":test_base",
@@ -246,7 +252,9 @@ tf_py_test(
     size = "medium",
     srcs = ["multi_process_cluster_test.py"],
     shard_count = 3,
-    tags = ["no_tsan"],  # TODO(b/234841344): tsan timeout
+    tags = [
+        "notsan",  # Multi-process runner does not support tsan.
+    ],
     deps = [
         ":multi_process_cluster",
         ":test_base",
