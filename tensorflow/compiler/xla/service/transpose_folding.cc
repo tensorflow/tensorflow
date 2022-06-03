@@ -201,7 +201,7 @@ StatusOr<bool> TransposeFolding::Run(HloModule* module) {
       // Don't fold dots with a 1D operand.
       if ((instruction->operand(0)->shape().rank() < 2) ||
           (instruction->operand(1)->shape().rank() < 2)) {
-        return Status::OK();
+        return OkStatus();
       }
 
       OperandIndices operand_indices;
@@ -230,7 +230,7 @@ StatusOr<bool> TransposeFolding::Run(HloModule* module) {
         foldable_convolutions.emplace_back(instruction, operand_indices);
       }
     }
-    return Status::OK();
+    return OkStatus();
   });
 
   for (auto* comp : module->MakeNonfusionComputations()) {

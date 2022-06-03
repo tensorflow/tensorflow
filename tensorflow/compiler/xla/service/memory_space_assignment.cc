@@ -197,7 +197,7 @@ Status EnsureInstructionAndOperandsInserted(
     HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
     absl::flat_hash_set<HloInstruction*>* inserted_instructions) {
   if (inserted_instructions->contains(new_instruction)) {
-    return Status::OK();
+    return OkStatus();
   }
   return InsertInstructionAndEnsureOperandsInserted(
       new_instruction, new_sequence, inserted_instructions);
@@ -225,7 +225,7 @@ Status InsertInstructionAndEnsureOperandsInserted(
   VLOG(4) << "inserting: " << new_instruction->ToShortString();
   new_sequence->push_back(new_instruction);
   TF_RET_CHECK(inserted_instructions->insert(new_instruction).second);
-  return Status::OK();
+  return OkStatus();
 }
 
 std::string UsesToString(const std::vector<HloUse>& uses) {
@@ -1528,7 +1528,7 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
         VLOG(2) << "Repacking.";
         auto repack_status =
             options_.repacker->Repack(absl::MakeSpan(repack_allocation_blocks));
-        CHECK_EQ(repack_status.status(), Status::OK());
+        CHECK_EQ(repack_status.status(), OkStatus());
         VLOG(2) << "Repack complete. Modified = " << *repack_status;
         if (*repack_status) {
           ImportRepackedAllocations();
@@ -3437,7 +3437,7 @@ Status MemorySpaceAssignment::FindAllocationSequence(
                                         options_.size_fn,
                                         heap_simulator_options)
                          .status());
-  return Status::OK();
+  return OkStatus();
 }
 
 void MemorySpaceAssignment::Allocation::AddUse(HloUse use) {
@@ -3525,7 +3525,7 @@ float MemorySpaceAssignment::ComputeEstimatedElapsedTime(
 Status MemorySpaceAssignment::Allocation::Process() {
   if (is_scoped_allocation()) {
     // Nothing to do here for scoped allocations.
-    return Status::OK();
+    return OkStatus();
   }
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
@@ -3548,7 +3548,7 @@ Status MemorySpaceAssignment::Allocation::Process() {
     TF_RETURN_IF_ERROR(use.instruction->ReplaceOperandWith(
         use.operand_number, replacement_instruction));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<HloInstruction*> MemorySpaceAssignment::Allocation::ReplaceTupleWith(
@@ -3746,7 +3746,7 @@ Status MemorySpaceAssignment::CopyAllocation::Process() {
         use.operand_number, replacement_instruction));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MemorySpaceAssignment::MirroredAllocation::Process() {
@@ -3799,7 +3799,7 @@ Status MemorySpaceAssignment::ParentAllocation::PostProcess() {
                        defining_position_.index));
   while_body->set_root_instruction(new_while_body_root,
                                    /*accept_different_shape=*/true);
-  return Status::OK();
+  return OkStatus();
 }
 
 void MemorySpaceAssignment::Allocation::MarkIfNeeded(
@@ -3882,7 +3882,7 @@ Status MemorySpaceAssignment::Process() {
       TF_RETURN_IF_ERROR(allocation->PostProcess());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MemorySpaceAssignment::ExportAndColorBuffers() {
@@ -3950,7 +3950,7 @@ Status MemorySpaceAssignment::ExportAndColorBuffers() {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void MemorySpaceAssignment::RemoveAssignmentForInstruction(
@@ -4073,7 +4073,7 @@ Status MemorySpaceAssignment::SimplifyGraph() {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
@@ -4197,7 +4197,7 @@ Status MemorySpaceAssignment::FixSchedule() {
     schedule.set_sequence(computation, new_sequence);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
@@ -4242,7 +4242,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
       }
     }
     interval_tree.Add(start_time, end_time - 1, chunk);
-    return Status::OK();
+    return OkStatus();
   };
 
   // Go through all instructions in the module to ensure CopyStart/CopyDone
@@ -4348,7 +4348,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
                 << ")";
         TF_RETURN_IF_ERROR(add_allocation_and_verify(
             start_time, earliest_computation_start_time - 1, chunk, value));
-        return Status::OK();
+        return OkStatus();
       };
 
       if (last_use_instruction &&
@@ -4400,7 +4400,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
   }
   VLOG(1) << "Max memory usage ignoring fragmentation: " << max_memory_usage;
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace memory_space_assignment
 }  // namespace xla

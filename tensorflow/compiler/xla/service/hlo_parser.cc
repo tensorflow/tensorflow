@@ -646,7 +646,7 @@ Status HloParserImpl::Run(HloModule* module) {
           "Syntax error when trying to parse the text as a HloModule:\n%s",
           GetError());
     }
-    return Status::OK();
+    return OkStatus();
   }
   // This means that the text is a single HLO instruction.
   if (!ParseSingleInstruction(module)) {
@@ -655,7 +655,7 @@ Status HloParserImpl::Run(HloModule* module) {
         "HloInstruction:\n%s",
         GetError());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 std::pair<HloInstruction*, HloParserImpl::LocTy>*

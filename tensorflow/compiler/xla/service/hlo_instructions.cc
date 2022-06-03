@@ -1991,7 +1991,7 @@ std::unique_ptr<HloInstruction> HloFusionInstruction::CloneWithNewOperandsImpl(
 
 Status HloFusionInstruction::DeduplicateFusionOperands() {
   if (IsCustomFusion()) {
-    return Status::OK();
+    return OkStatus();
   }
   absl::flat_hash_map<const HloInstruction*, int> operand_indices;
   std::vector<int> operands_to_remove;
@@ -2006,12 +2006,12 @@ Status HloFusionInstruction::DeduplicateFusionOperands() {
     }
   }
   if (operands_to_remove.empty()) {
-    return Status::OK();
+    return OkStatus();
   }
   TF_RETURN_IF_ERROR(fused_instructions_computation()
                          ->RemoveUnusedParametersFromFusedComputation());
   RemoveOperandsAtAscendingIndices(operands_to_remove);
-  return Status::OK();
+  return OkStatus();
 }
 
 HloRngInstruction::HloRngInstruction(

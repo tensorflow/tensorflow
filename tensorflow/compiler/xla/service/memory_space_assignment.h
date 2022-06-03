@@ -566,7 +566,7 @@ class MemorySpaceAssignment {
 
     // An optional post-process step that will be called after all allocations
     // have been processed.
-    virtual Status PostProcess() { return Status::OK(); }
+    virtual Status PostProcess() { return OkStatus(); }
 
     // Marks (adds this allocation to needed_allocations) if this allocation is
     // needed. Allocation and CopyAllocations are always needed and

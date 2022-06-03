@@ -57,7 +57,7 @@ Status ExpectArray(const Shape& shape, absl::string_view op_type) {
     return InvalidArgument("Expected array argument for %s, but got %s.",
                            std::string(op_type), ShapeUtil::HumanString(shape));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status VerifyReducerShape(const ProgramShape& reducer_shape,
@@ -156,7 +156,7 @@ Status VerifyReducerShape(const ProgramShape& reducer_shape,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
@@ -645,7 +645,7 @@ Status ValidateDotDimensionNumbers(
                            dimension_numbers.DebugString());
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -1225,11 +1225,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       ExpectArray(scale_shape, "scale input of batch norm training"));
 
   TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape) ==
-               Status::OK());
+               OkStatus());
   TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(offset_shape) ==
-               Status::OK());
+               OkStatus());
   TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(scale_shape) ==
-               Status::OK());
+               OkStatus());
 
   if (feature_index >= operand_shape.rank()) {
     return InvalidArgument(
@@ -2468,7 +2468,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     absl::Span<const int64_t> rhs_dilation) {
   const auto verify_size = [&](const size_t x, const char* x_name) {
     if (x == 0 || x == window_dimensions.size()) {
-      return Status::OK();
+      return OkStatus();
     } else {
       return InvalidArgument(
           "%s", absl::StrCat(
@@ -3415,7 +3415,7 @@ static Status ValidateGatherDimensionNumbers(
         StrJoin(dim_numbers.collapsed_slice_dims(), ", "));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/ StatusOr<Shape> ShapeInference::InferGatherShape(
@@ -3649,7 +3649,7 @@ Status ValidateScatterDimensionNumbers(
         StrJoin(dim_numbers.scatter_dims_to_operand_dims(), ", "));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

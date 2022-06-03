@@ -1435,7 +1435,7 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void HloDataflowAnalysis::OptimizePhiValues() {
@@ -1564,7 +1564,7 @@ Status HloDataflowAnalysis::Verify() const {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 bool HloDataflowAnalysis::DoesNotUseOperandBuffer(

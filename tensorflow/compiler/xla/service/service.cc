@@ -86,7 +86,7 @@ Status RecordArguments(const absl::Span<const ShapedBuffer* const> arguments,
         transfer_manager->TransferLiteralFromDevice(stream, *argument));
     *module->add_arguments() = literal.ToProto();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Records the result of a computation in a HloSnapshot proto.
@@ -97,7 +97,7 @@ Status RecordResult(const ShapedBuffer& result, se::Stream* stream,
       Literal literal,
       transfer_manager->TransferLiteralFromDevice(stream, result));
   *module->mutable_result() = literal.ToProto();
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -192,7 +192,7 @@ Status Service::CreateChannelHandle(const CreateChannelHandleRequest* arg,
                                     CreateChannelHandleResponse* result) {
   TF_ASSIGN_OR_RETURN(*result->mutable_channel(),
                       channel_tracker_.NewChannel(arg->channel_type()));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Service::Unregister(const UnregisterRequest* arg,
@@ -217,7 +217,7 @@ Status Service::DeconstructTuple(const DeconstructTupleRequest* arg,
   for (auto& element : elements) {
     *result->add_element_handles() = element;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Service::ValidateResultShape(const Shape& client_shape,
@@ -230,7 +230,7 @@ Status Service::ValidateResultShape(const Shape& client_shape,
         ShapeUtil::HumanStringWithLayout(client_shape),
         ShapeUtil::HumanString(result_shape));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
@@ -721,7 +721,7 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
   // basically the same thing.
   ExecutionProfile profile;
   std::vector<GlobalDataHandle> outputs;
-  Status execution_status = Status::OK();
+  Status execution_status = OkStatus();
 
   if (executable_ptrs.size() == 1) {
     StatusOr<GlobalDataHandle> output_or_status = ExecuteAndRegisterResult(
@@ -776,7 +776,7 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
   }
 
   VLOG(1) << "successfully completed 'execute-graph-parallel' request";
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
@@ -800,7 +800,7 @@ Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
     *result->add_device_handles() = device_handle;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
@@ -870,7 +870,7 @@ Status Service::Compile(const CompileRequest* arg, CompileResponse* result) {
   *result->mutable_handle() = compilation_cache_.Insert(std::move(executable));
 
   VLOG(1) << "successfully completed 'compile' request";
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Service::Execute(const ExecuteRequest* arg, ExecuteResponse* result) {
@@ -940,7 +940,7 @@ Status Service::Execute(const ExecuteRequest* arg, ExecuteResponse* result) {
   }
 
   VLOG(1) << "successfully completed 'execute' request";
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Service::WaitForExecution(const WaitForExecutionRequest* arg,
@@ -955,7 +955,7 @@ Status Service::WaitForExecution(const WaitForExecutionRequest* arg,
 
   TF_RETURN_IF_ERROR(execution_tracker_.Unregister(arg->execution()));
   VLOG(1) << "successfully completed 'wait-for-execution' request";
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Service::TransferToClient(const TransferToClientRequest* arg,
@@ -987,7 +987,7 @@ Status Service::TransferToClient(const TransferToClientRequest* arg,
     *result->mutable_literal() =
         result_literal.Relayout(return_shape).ToProto();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Service::TransferToServer(const TransferToServerRequest* arg,
@@ -1030,7 +1030,7 @@ Status Service::TransferToServer(const TransferToServerRequest* arg,
                           StrCat("TransferToServer literal of shape ",
                                  ShapeUtil::HumanString(shape))));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Service::TransferToInfeed(const TransferToInfeedRequest* arg,
@@ -1089,7 +1089,7 @@ Status Service::TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
       execute_backend_->transfer_manager()->TransferLiteralFromOutfeed(
           executor, &literal));
   *result->mutable_literal() = literal.ToProto();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Service::ResetDevice(const ResetDeviceRequest* arg,
@@ -1156,14 +1156,14 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
   }
   *result->mutable_literal() = result_literal.ToProto();
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Service::GetShape(const GetShapeRequest* arg, GetShapeResponse* result) {
   TF_ASSIGN_OR_RETURN(const ShapedBuffer* buffer,
                       allocation_tracker_.ResolveForReplica(arg->data(), 0));
   *result->mutable_shape() = buffer->on_device_shape().ToProto();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Service::GetComputationGraphStats(
@@ -1195,7 +1195,7 @@ Status Service::GetComputationGraphStats(
   stats.set_flop_count(analysis.flop_count());
   stats.set_transcendental_count(analysis.transcendental_count());
   *result->mutable_stats() = stats;
-  return Status::OK();
+  return OkStatus();
 }
 
 DeviceHandle Service::SingleComputationDeviceHandle() const {

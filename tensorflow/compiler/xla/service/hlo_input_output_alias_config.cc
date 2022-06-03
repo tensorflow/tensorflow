@@ -48,7 +48,7 @@ Status HloInputOutputAliasConfig::SetUpAlias(
   VLOG(4) << "Set up alias between output index " << output_index.ToString()
           << " and parameter " << param_index << " at index "
           << param_index.ToString();
-  return Status::OK();
+  return OkStatus();
 }
 
 HloInputOutputAliasProto HloInputOutputAliasConfig::ToProto() const {
@@ -171,7 +171,7 @@ Status HloInputOutputAliasConfig::ForEachAliasWithStatus(
         if (aliased) {
           TF_RETURN_IF_ERROR(fn(output_index, *aliased));
         }
-        return Status::OK();
+        return OkStatus();
       });
 }
 
@@ -222,7 +222,7 @@ Status HloInputOutputAliasConfig::Verify(
                      alias.parameter_index) == false);
     *(param_has_seen[alias.parameter_number].mutable_element(
         alias.parameter_index)) = true;
-    return Status::OK();
+    return OkStatus();
   });
 }
 

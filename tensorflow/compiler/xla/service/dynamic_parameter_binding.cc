@@ -26,7 +26,7 @@ Status DynamicParameterBinding::Bind(
     const DynamicDimension& dynamic_dimension) {
   auto result = bindings_.emplace(dynamic_dimension, dynamic_parameter);
   TF_RET_CHECK(result.second);
-  return Status::OK();
+  return OkStatus();
 }
 
 absl::optional<DynamicParameterBinding::DynamicParameter>
@@ -105,7 +105,7 @@ Status DynamicParameterBinding::ForEachBinding(BindingFn fn) const {
   for (const auto& binding : bindings_) {
     TF_RETURN_IF_ERROR(fn(binding.second, binding.first));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DynamicParameterBinding::Verify(const HloModule& module) const {
@@ -129,7 +129,7 @@ Status DynamicParameterBinding::Verify(const HloModule& module) const {
                 ->shape(),
             dynamic_dimension.parameter_index)
             .rank());
-    return Status::OK();
+    return OkStatus();
   });
 }
 

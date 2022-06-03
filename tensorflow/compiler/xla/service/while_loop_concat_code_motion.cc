@@ -690,7 +690,7 @@ Status AddCopiesToRoot(HloComputation* body,
                               param_group.inserted_concat_dim))
               .first);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RemoveCopiesFromRoot(HloComputation* body) {
@@ -702,7 +702,7 @@ Status RemoveCopiesFromRoot(HloComputation* body) {
       TF_RETURN_IF_ERROR(root->ReplaceOperandWith(i, copy->mutable_operand(0)));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RewriteLoopWithConcatGroups(HloInstruction* loop,
@@ -943,7 +943,7 @@ Status RewriteLoopWithConcatGroups(HloInstruction* loop,
     TF_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(slice->mutable_operand(0)));
     TF_RETURN_IF_ERROR(body->RemoveInstruction(slice));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<bool> RunOnLoop(HloInstruction* loop,

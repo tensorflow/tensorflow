@@ -891,7 +891,7 @@ Status MemoryUsageTracker::BeginInstruction(Item* item) {
   if (VLOG_IS_ON(1)) {
     DCHECK(Check());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MemoryUsageTracker::EndInstruction() {
@@ -932,7 +932,7 @@ Status MemoryUsageTracker::EndInstruction() {
   if (VLOG_IS_ON(1)) {
     DCHECK(Check());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 int64_t MemoryUsageTracker::MemoryReducedIfCompressed(
@@ -1069,7 +1069,7 @@ Status MemoryUsageTracker::AddCompressInstructions(Item* original_item,
                  uncompressed_buffer.id);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MemoryUsageTracker::AddRematerializedInstruction(
@@ -1213,7 +1213,7 @@ Status MemoryUsageTracker::AddRematerializedInstruction(
 
   DCHECK(Check());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 std::string MemoryUsageTracker::ToString() const {
@@ -2101,7 +2101,7 @@ StatusOr<bool> HloRematerialization::Run(HloModule* module) {
               ComputePeakMemory(node.computation(), module->schedule().sequence(
                                                         node.computation())));
         }
-        return Status::OK();
+        return OkStatus();
       },
       /*visit_unreachable_nodes=*/false));
 

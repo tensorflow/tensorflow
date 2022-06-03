@@ -134,7 +134,7 @@ Status IndexedArrayAnalysis::TraverseAndPopulateCache(
     }
   } while (!stack.empty());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayFor(

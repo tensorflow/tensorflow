@@ -895,7 +895,7 @@ Status CheckAndUpdateDeviceAssignmentsInWhileBody(
                         *unique_device);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Refines a pair of auto/manual shardings based on auto sharding `to_merge`
@@ -1259,7 +1259,7 @@ StatusOr<bool> ProcessShardingInstruction(
             d->mutable_operand(0)->set_sharding(*sharding);
           }
         }
-        return Status::OK();
+        return OkStatus();
       }
     }
   }
@@ -2532,7 +2532,7 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
       VLOG(1) << "  aggressiveness: " << aggressiveness;
       ++iterations;
     }
-    return Status::OK();
+    return OkStatus();
   };
   for (int64_t aggressiveness = 0; aggressiveness < 4; ++aggressiveness) {
     TF_RETURN_IF_ERROR(run_to_fix_point(aggressiveness));

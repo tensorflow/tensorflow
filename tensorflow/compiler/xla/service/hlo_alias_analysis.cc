@@ -339,7 +339,7 @@ Status HloAliasAnalysis::Verify() const {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 std::string HloAliasAnalysis::ToString() const {

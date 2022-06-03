@@ -974,7 +974,7 @@ Status HloEvaluator::EvaluateInternal(
   // Don't need to evaluate this instruction again if it has already been
   // evaluated.
   if (IsAlreadyEvaluated(instruction, shape_index)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   if (!recursively_evaluate_nonconstant_operands) {
@@ -1015,7 +1015,7 @@ Status HloEvaluator::EvaluateInternal(
           evaluated_[instruction] =
               Literal::CreateFromShapeWithUnknownLeafArrays(
                   instruction->shape());
-          return Status::OK();
+          return OkStatus();
         }
       }
     }
@@ -1024,7 +1024,7 @@ Status HloEvaluator::EvaluateInternal(
   TF_RETURN_IF_ERROR(Preprocess(instruction));
   TF_RETURN_IF_ERROR(instruction->Visit(this));
   TF_RETURN_IF_ERROR(Postprocess(instruction));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleBitcast(HloInstruction* bitcast) {
@@ -1038,7 +1038,7 @@ Status HloEvaluator::HandleBitcast(HloInstruction* bitcast) {
   memcpy(result.untyped_data(), operand_literal.untyped_data(),
          result.size_bytes());
   evaluated_[bitcast] = std::move(result);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleGetDimensionSize(
@@ -1055,7 +1055,7 @@ Status HloEvaluator::HandleGetDimensionSize(
   if (dynamic_size != nullptr) {
     evaluated_[get_dimension_size] =
         GetEvaluatedLiteralFor(dynamic_size).Clone();
-    return Status::OK();
+    return OkStatus();
   }
 
   const Shape& shape = get_dimension_size->operand(0)->shape();
@@ -1063,7 +1063,7 @@ Status HloEvaluator::HandleGetDimensionSize(
   output.PopulateWithValue(
       static_cast<int32_t>(shape.dimensions(get_dimension_size->dimension())));
   evaluated_[get_dimension_size] = std::move(output);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleSetDimensionSize(
@@ -1078,7 +1078,7 @@ Status HloEvaluator::HandleSetDimensionSize(
   result.SetDynamicSize(set_dimension_size->dimension(),
                         size_literal.Get<int32_t>({}));
   evaluated_[set_dimension_size] = std::move(result);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
@@ -1090,7 +1090,7 @@ Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
     }
     evaluated_[parameter] =
         Literal::CreateFromShapeWithUnknownLeafArrays(parameter->shape());
-    return Status::OK();
+    return OkStatus();
   }
 
   // Nothing to do other than sanity checks. Parameters' values are stored in
@@ -1108,7 +1108,7 @@ Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
       << ShapeUtil::HumanStringWithLayout(input_literal->shape());
 #endif
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleInfeed(HloInstruction* infeed) {
@@ -1119,22 +1119,22 @@ Status HloEvaluator::HandleInfeed(HloInstruction* infeed) {
   }
   evaluated_[infeed] =
       Literal::CreateFromShapeWithUnknownLeafArrays(infeed->shape());
-  return Status::OK();
+  return OkStatus();
 }
 
-Status HloEvaluator::HandleConstant(HloInstruction*) { return Status::OK(); }
+Status HloEvaluator::HandleConstant(HloInstruction*) { return OkStatus(); }
 
 Status HloEvaluator::HandleReshape(HloInstruction* reshape) {
   TF_ASSIGN_OR_RETURN(evaluated_[reshape],
                       GetEvaluatedLiteralFor(reshape->operand(0))
                           .Reshape(reshape->shape().dimensions()));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleTranspose(HloInstruction* transpose) {
   evaluated_[transpose] = GetEvaluatedLiteralFor(transpose->operand(0))
                               .Transpose(transpose->dimensions());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
@@ -1175,7 +1175,7 @@ Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
   }
 
   evaluated_[concatenate] = std::move(result_literal);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
@@ -1244,7 +1244,7 @@ Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleReal(HloInstruction* real) {
@@ -1297,7 +1297,7 @@ Status HloEvaluator::HandleReal(HloInstruction* real) {
                  << PrimitiveType_Name(operand->shape().element_type());
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleImag(HloInstruction* imag) {
@@ -1356,7 +1356,7 @@ Status HloEvaluator::HandleImag(HloInstruction* imag) {
                  << PrimitiveType_Name(operand->shape().element_type());
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleComplex(HloInstruction* complex) {
@@ -1388,7 +1388,7 @@ Status HloEvaluator::HandleComplex(HloInstruction* complex) {
   }
 
   evaluated_[complex] = std::move(result);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleCompare(HloInstruction* compare) {
@@ -1485,7 +1485,7 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
                  << PrimitiveType_Name(lhs->shape().element_type());
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleTuple(HloInstruction* tuple) {
@@ -1525,7 +1525,7 @@ Status HloEvaluator::HandleTuple(HloInstruction* tuple) {
   } else {
     evaluated_[tuple] = LiteralUtil::MakeTuple(operand_literals);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -1671,7 +1671,7 @@ class FftTransform {
                       input_strides, input_shape.rank(), 0, 0, base_case);
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -2168,7 +2168,7 @@ class FftTransform {
       }
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -2187,7 +2187,7 @@ Status HloEvaluator::HandleFft(HloInstruction* fft) {
   TF_RETURN_IF_ERROR(transform.ComputeFft(fft, input_literal, &output_literal));
   evaluated_[fft] = std::move(output_literal);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns an ShapeUtil::IndexIterationSpace that iterates over the output batch
@@ -2323,7 +2323,7 @@ class OutputBatchIndexToInputIndex {
       TF_RET_CHECK(start_index.has_value());
       index_vector_[i] = *start_index;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Populates input_index_.
@@ -2498,7 +2498,7 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
   const Shape& operand_shape = operand.shape();
   if (ShapeUtil::IsZeroElementArray(operand_shape)) {
     evaluated_[gather] = std::move(result);
-    return Status::OK();
+    return OkStatus();
   }
 
   auto gather_inner_loop_body =
@@ -2552,7 +2552,7 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
       shape, start_indices_iteration_space, gather_outer_loop_body));
   evaluated_[gather] = std::move(result);
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -2712,7 +2712,7 @@ class UpdateScatterIndexToInputIndex {
       index_vector_[i] =
           *scatter_indices_.GetIntegralAsS64(index_vector_index_);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Populates input_index_.
@@ -2959,7 +2959,7 @@ Status HloEvaluator::HandleScatter(HloInstruction* hlo) {
       updates[0]->shape(), scatter_indices_iteration_space,
       scatter_outer_loop_body));
   evaluated_[scatter] = std::move(result);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleBroadcast(HloInstruction* broadcast) {
@@ -2987,19 +2987,19 @@ Status HloEvaluator::HandleBroadcast(HloInstruction* broadcast) {
       evaluated_[broadcast],
       operand.Broadcast(broadcast->shape(), broadcast->dimensions()));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleAfterAll(HloInstruction* after_all) {
   evaluated_[after_all] = LiteralUtil::CreateToken();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleAddDependency(HloInstruction* add_dependency) {
   // AddDedendency just forwards its zero-th operand.
   evaluated_[add_dependency] =
       GetEvaluatedLiteralFor(add_dependency->operand(0)).Clone();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleGetTupleElement(HloInstruction* get_tuple_element) {
@@ -3027,7 +3027,7 @@ Status HloEvaluator::HandleGetTupleElement(HloInstruction* get_tuple_element) {
 Status HloEvaluator::HandleCopy(HloInstruction* copy) {
   TF_RET_CHECK(ShapeUtil::Compatible(copy->shape(), copy->operand(0)->shape()));
   evaluated_[copy] = GetEvaluatedLiteralFor(copy->operand(0)).Clone();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleAsyncStart(HloInstruction* async_start) {
@@ -3057,7 +3057,7 @@ Status HloEvaluator::HandleAsyncStart(HloInstruction* async_start) {
   TF_RETURN_IF_ERROR(evaluated_[async_start].MoveFrom(
       std::move(result), /*dest_shape_index=*/{1}));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleAsyncUpdate(HloInstruction* async_update) {
@@ -3067,7 +3067,7 @@ Status HloEvaluator::HandleAsyncUpdate(HloInstruction* async_update) {
   TF_RETURN_IF_ERROR(evaluated_[async_update].CopyFrom(operand_tuple_literal,
                                                        /*dest_shape_index=*/{},
                                                        /*src_shape_index=*/{}));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleAsyncDone(HloInstruction* async_done) {
@@ -3077,7 +3077,7 @@ Status HloEvaluator::HandleAsyncDone(HloInstruction* async_done) {
   TF_RETURN_IF_ERROR(evaluated_[async_done].CopyFrom(operand_tuple_literal,
                                                      /*dest_shape_index=*/{},
                                                      /*src_shape_index=*/{1}));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleCopyStart(HloInstruction* copy_start) {
@@ -3097,7 +3097,7 @@ Status HloEvaluator::HandleCopyStart(HloInstruction* copy_start) {
   evaluated_[copy_start] = LiteralUtil::MakeTuple(
       {&GetEvaluatedLiteralFor(copy_start->operand(0)),
        &GetEvaluatedLiteralFor(copy_start->operand(0)), &context_literal});
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleCopyDone(HloInstruction* copy_done) {
@@ -3114,7 +3114,7 @@ Status HloEvaluator::HandleCopyDone(HloInstruction* copy_done) {
   TF_RETURN_IF_ERROR(evaluated_[copy_done].CopyFrom(operand_tuple_literal,
                                                     /*dest_shape_index=*/{},
                                                     /*src_shape_index=*/{0}));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleCall(HloInstruction* call) {
@@ -3136,7 +3136,7 @@ Status HloEvaluator::HandleCall(HloInstruction* call) {
                       embedded_evaluator->Evaluate(*computation, arg_literals));
 
   evaluated_[call] = std::move(result);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
@@ -3172,7 +3172,7 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
                                           *readded_computation, arg_literals));
 
   evaluated_[fusion] = std::move(result);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
@@ -3200,7 +3200,7 @@ Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
                           {&branch_computation_arg}));
 
   evaluated_[conditional] = std::move(result);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleSelect(HloInstruction* select) {
@@ -3215,7 +3215,7 @@ Status HloEvaluator::HandleSelect(HloInstruction* select) {
     } else {
       evaluated_[select] = on_false.Clone();
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   return DefaultAction(select);
@@ -3310,7 +3310,7 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
         visitor_shape_index_.size() != 1 ||
         parsed_while_loop->static_while_loop->induction_var_index !=
             visitor_shape_index_[0]) {
-      return Status::OK();
+      return OkStatus();
     }
     Shape induction_var_shape =
         ShapeUtil::GetSubshape(while_hlo->shape(), visitor_shape_index_);
@@ -3321,7 +3321,7 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
     TF_RETURN_IF_ERROR(evaluated_[while_hlo].CopyFrom(
         induction_var_val, /*dest_shape_index=*/visitor_shape_index_,
         /*src_shape_index=*/{}));
-    return Status::OK();
+    return OkStatus();
   }
   bool keep_going = true;
   int64_t iteration_count = 0;
@@ -3357,7 +3357,7 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
     }
   }
   evaluated_[while_hlo] = std::move(lcv);
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -3504,7 +3504,7 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
         }
         std::vector<int64_t> indices_to_sort(sort_dim_elements);
         std::iota(indices_to_sort.begin(), indices_to_sort.end(), 0);
-        Status compare_status = Status::OK();
+        Status compare_status = OkStatus();
         auto comparator = [sort, &compare_status,
                            embedded_evaluator = embedded_evaluator.get(),
                            &literals_to_sort](int64_t a, int64_t b) {
@@ -3578,7 +3578,7 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
 
     evaluated_[sort] = std::move(result_tuple);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 static bool IsScalarAdd(HloComputation* computation) {
@@ -3797,7 +3797,7 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
     TF_ASSIGN_OR_RETURN(evaluated_[reduce],
                         evaluated_[reduce].ConvertToShape(reduce->shape()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::HandleReduceWindow(HloInstruction* hlo) {
@@ -3835,7 +3835,7 @@ Status HloEvaluator::HandleCustomCall(HloInstruction* custom_call) {
       auto output, custom_call_handler_(custom_call, absl::MakeSpan(operands)));
 
   evaluated_[custom_call] = std::move(output);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloEvaluator::Preprocess(HloInstruction* hlo) {
@@ -3863,7 +3863,7 @@ Status HloEvaluator::Postprocess(HloInstruction* hlo) {
           hlo->shape().layout())) {
     evaluated_.at(hlo) = evaluated_.at(hlo).Relayout(hlo->shape());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {

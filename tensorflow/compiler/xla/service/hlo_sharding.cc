@@ -473,12 +473,12 @@ Status HloSharding::CheckLeafCount(const Shape& shape) const {
   int64_t leaf_count = ShapeUtil::GetLeafCount(shape);
   if (leaf_count == 0 && tuple_elements_.size() == 1) {
     // Allow (but don't require) empty tuples to have a single sharding
-    return Status::OK();
+    return OkStatus();
   }
   TF_RET_CHECK(leaf_count == tuple_elements_.size())
       << "Shape " << ShapeUtil::HumanString(shape) << " has " << leaf_count
       << " leaf nodes while this sharding has " << tuple_elements_.size();
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<ShapeTree<HloSharding>> HloSharding::AsShapeTree(
@@ -545,7 +545,7 @@ Status HloSharding::ValidateTuple(const Shape& shape,
   TF_RETURN_IF_ERROR(CheckLeafCount(shape));
   if (ShapeUtil::GetLeafCount(shape) == 0 && tuple_elements_.empty()) {
     // Empty tuples are allowed to not have sharding
-    return Status::OK();
+    return OkStatus();
   }
 
   // Now we've validated the number of tuple elements, it's safe to request a
@@ -562,12 +562,12 @@ Status HloSharding::ValidateTuple(const Shape& shape,
       return status;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloSharding::Validate(const Shape& shape, int64_t num_devices) const {
   if (shape.IsToken()) {
-    return Status::OK();
+    return OkStatus();
   }
   Status status = IsTuple() ? ValidateTuple(shape, num_devices)
                             : ValidateNonTuple(shape, num_devices);
@@ -586,12 +586,12 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
         StrCat("Validation shape is a tuple but sharding is not."));
   }
   if (replicated_) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // All tile assignments must be less than the number of available cores and
   // unique.
-  Status status = Status::OK();
+  Status status = OkStatus();
   absl::flat_hash_set<int64_t> seen_cores;
   tile_assignment_.Each([&](absl::Span<const int64_t> indices, int32_t core) {
     // Don't overwrite a bad status, so we report the first error.
@@ -611,7 +611,7 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
   }
 
   if (IsTileMaximal() || IsManual()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // The tile assignment tensor must have the same rank as the input, or input
@@ -632,7 +632,7 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
         "sharding was intended, use HloSharding::Replicated(). If a device "
         "placement was intended, use HloSharding::AssignDevice()");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/ StatusOr<HloSharding> HloSharding::FromProto(

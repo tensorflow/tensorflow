@@ -295,7 +295,7 @@ Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
                              &indices_to_copy)) {
     VLOG(2) << "No copies necessary for kWhile instruction "
             << xla_while->name();
-    return Status::OK();
+    return OkStatus();
   }
 
   VLOG(2) << "Adding copies for " << xla_while->name() << " at indices:";
@@ -338,7 +338,7 @@ Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
   }
 
   body->set_root_instruction(root_copy);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Add copies for the operands of in-place operations. RemoveUnnecessaryCopies
@@ -352,7 +352,7 @@ Status AddCopiesForInPlaceOperation(const HloAliasAnalysis& alias_analysis,
                       in_place_op->parent()->DeepCopyInstruction(operand));
   TF_RETURN_IF_ERROR(
       operand->ReplaceUseWith(in_place_op, operand_number, deep_copy));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Conservatively adds copies before root instruction of entry computation and
@@ -410,7 +410,7 @@ Status AddCopiesForAliasedInputOutputs(HloModule* module) {
   }
 
   if (!has_alias) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Add copies before root instruction.
@@ -426,7 +426,7 @@ Status AddCopiesForAliasedInputOutputs(HloModule* module) {
       [&](const ShapeIndex& output_index,
           const HloInputOutputAliasConfig::Alias& alias) -> Status {
         if (!copied_parameters[alias.parameter_number]) {
-          return Status::OK();
+          return OkStatus();
         }
         HloInstruction* from =
             copied_parameters[alias.parameter_number]->element(
@@ -436,12 +436,12 @@ Status AddCopiesForAliasedInputOutputs(HloModule* module) {
         TF_RET_CHECK(from != nullptr);
         TF_RET_CHECK(to != nullptr);
         TF_RETURN_IF_ERROR(from->AddControlDependencyTo(to));
-        return Status::OK();
+        return OkStatus();
       }));
 
   entry->set_root_instruction(root_copied);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Removes any control dependencies to or from the given instruction.
@@ -457,7 +457,7 @@ Status StripControlDependenciesFrom(HloInstruction* instruction) {
             instruction));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 class LiveRangeRegions {
@@ -1296,7 +1296,7 @@ class CopyRemover {
         p = p->next;
       } while (p != head);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Compute the set of instructions where values are alive and organize these
@@ -1790,7 +1790,7 @@ Status CopyInsertion::AddCopiesForConditional(
                                    conditional, &indices_to_copy)) {
     VLOG(2) << "No copies necessary for kWhile instruction "
             << conditional->name();
-    return Status::OK();
+    return OkStatus();
   }
 
   for (HloComputation* computation : conditional->branch_computations()) {
@@ -1804,7 +1804,7 @@ Status CopyInsertion::AddCopiesForConditional(
     }
     computation->set_root_instruction(deep_copy);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Add kCopy instructions to the given module to guarantee there is no
@@ -1841,7 +1841,7 @@ Status CopyInsertion::AddCopiesToResolveInterference(HloModule* module) {
   }
 
   TF_RETURN_IF_ERROR(AddCopiesForAliasedInputOutputs(module));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CopyInsertion::AddSpecialCaseCopies(HloModule* module) {
@@ -1997,7 +1997,7 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
       instruction->parent()->set_root_instruction(deep_copy);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 static int64_t GetNumExistingCopies(const HloModule* module) {
@@ -2073,7 +2073,7 @@ Status CopyInsertion::RemoveUnnecessaryCopies(HloOrdering* ordering,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<bool> CopyInsertion::Run(HloModule* module) {

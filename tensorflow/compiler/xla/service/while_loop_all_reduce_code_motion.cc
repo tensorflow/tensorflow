@@ -557,7 +557,7 @@ Status AddSinkedAllReducesAndReplaceWhile(
       CreateNewWhileResult(new_while_instruction, tuple_index_to_new_buffer);
   TF_RETURN_IF_ERROR(while_instruction->parent()->ReplaceInstruction(
       while_instruction, new_while_result));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

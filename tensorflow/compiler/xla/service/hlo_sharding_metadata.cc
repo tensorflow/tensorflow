@@ -136,7 +136,7 @@ Status FixupPassThroughDomainLinks(const DomainMetadata::Domain& domain,
       pass_through.operand->parent()->set_root_instruction(gte);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // For tuple shardings if every element have the same sharsing then we want to
@@ -165,7 +165,7 @@ Status ApplyDomainSingleSharding(const DomainMetadata::Domain& domain,
               << instruction->sharding();
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Return the ShapeTree<HloSharding> of the user argument. The user argument
@@ -376,7 +376,7 @@ Status ApplyDomainSharding(const DomainMetadata::Domain& domain,
     }
   }
   // Should we error out if unassigned > 0?
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::shared_ptr<const HloSharding>> ExtractOriginalCommonSharding(
@@ -465,7 +465,7 @@ Status ShardingMetadata::NormalizeShardingDomain(
       VLOG(1) << "Unable to find common sharding";
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Creates a kDomain instruction to be placed between instruction and operand.

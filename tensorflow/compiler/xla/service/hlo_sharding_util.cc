@@ -275,7 +275,7 @@ Status AssignComputationDevice(HloComputation* computation, int64_t device) {
       instruction->set_device_sharding(device);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 absl::optional<int64_t> GetMostOccurringDevice(

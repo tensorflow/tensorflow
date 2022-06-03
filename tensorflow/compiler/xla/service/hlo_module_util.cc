@@ -37,7 +37,7 @@ Status ValidateResultShape(const Shape& client_shape,
         ShapeUtil::HumanStringWithLayout(client_shape),
         ShapeUtil::HumanString(result_shape));
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 

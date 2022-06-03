@@ -95,7 +95,7 @@ Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
       computation_device->add_replica_device_ids((*this)(replica, computation));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ StatusOr<std::unique_ptr<DeviceAssignment>>

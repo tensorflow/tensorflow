@@ -49,7 +49,7 @@ namespace {
 // and the same reduction operation.
 Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
   if (to_combine.size() < 2) {
-    return Status::OK();
+    return OkStatus();
   }
   VLOG(1) << "Combined " << to_combine.size() << " CRS ops";
 
@@ -102,7 +102,7 @@ Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
     TF_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
         to_combine[i], std::move(replace_with)));
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 

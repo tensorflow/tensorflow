@@ -48,7 +48,7 @@ Status ExecutionInput::SetDynamicShape(Shape dynamic_shape) {
         dynamic_shape.DebugString());
   }
   dynamic_shape_ = absl::make_unique<Shape>(std::move(dynamic_shape));
-  return Status::OK();
+  return OkStatus();
 }
 
 void ExecutionInput::SetUnownedBuffer(const ShapeIndex& index,

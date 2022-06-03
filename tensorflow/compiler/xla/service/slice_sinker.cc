@@ -187,7 +187,7 @@ Status SinkSlices(const std::vector<HloInstruction*>& slice_sources,
              << " to replace: " << user->ToString();
     TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(user_slice));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

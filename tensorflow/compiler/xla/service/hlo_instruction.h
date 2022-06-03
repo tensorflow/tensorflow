@@ -1724,7 +1724,7 @@ class HloInstruction {
 
   Status set_backend_config(const tensorflow::protobuf::Message& proto) {
     backend_config_ = proto;
-    return Status::OK();
+    return OkStatus();
   }
 
   bool has_backend_config() const { return !backend_config_.empty(); }

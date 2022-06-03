@@ -604,7 +604,7 @@ class BufferAssigner {
           value->set_color(BufferValue::Color(0));
         }
       }
-      return Status::OK();
+      return OkStatus();
     };
   }
 

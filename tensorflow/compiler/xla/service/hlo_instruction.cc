@@ -2278,7 +2278,7 @@ Status HloInstruction::AddControlDependencyTo(HloInstruction* instruction) {
         !absl::c_linear_search(instruction->control_predecessors_, this));
     instruction->control_predecessors_.push_back(this);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloInstruction::RemoveControlDependencyTo(HloInstruction* instruction) {
@@ -2286,7 +2286,7 @@ Status HloInstruction::RemoveControlDependencyTo(HloInstruction* instruction) {
   TF_RETURN_IF_ERROR(EraseElementFromVector(&control_successors_, instruction));
   TF_RETURN_IF_ERROR(
       EraseElementFromVector(&instruction->control_predecessors_, this));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloInstruction::DropAllControlDeps() {
@@ -2300,7 +2300,7 @@ Status HloInstruction::DropAllControlDeps() {
   }
   control_successors_.clear();
   control_predecessors_.clear();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloInstruction::CopyAllControlDepsFrom(const HloInstruction* inst) {
@@ -2312,7 +2312,7 @@ Status HloInstruction::CopyAllControlDepsFrom(const HloInstruction* inst) {
     TF_RETURN_IF_ERROR(this->AddControlDependencyTo(ctrl_succ));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 bool HloInstruction::IdenticalInternal(
@@ -2622,7 +2622,7 @@ Status HloInstruction::ReplaceUseWithDifferentShape(
     TF_RETURN_IF_ERROR(
         Cast<HloFusionInstruction>(user)->DeduplicateFusionOperands());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloInstruction::ReplaceUseWith(HloInstruction* user, int operand_number,
@@ -2649,7 +2649,7 @@ Status HloInstruction::ReplaceUseWithDifferentShape(
       << " to be equal to " << ToString();
   user->operands_[operand_number] = new_producer;
   new_producer->AddUser(user);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloInstruction::ReplaceOperandWith(int64_t operand_num,
@@ -2668,7 +2668,7 @@ Status HloInstruction::ReplaceOperandWithDifferentShape(
   TF_RET_CHECK(operand_num < operand_count());
   HloInstruction* old_operand = mutable_operand(operand_num);
   if (old_operand == new_operand) {
-    return Status::OK();
+    return OkStatus();
   }
 
   operands_[operand_num] = new_operand;
@@ -2680,7 +2680,7 @@ Status HloInstruction::ReplaceOperandWithDifferentShape(
     old_operand->RemoveUser(this);
   }
   new_operand->AddUser(this);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloInstruction::ReplaceUsesWith(absl::Span<HloInstruction* const> users,
@@ -2701,7 +2701,7 @@ Status HloInstruction::ReplaceAllUsesWithDifferentShape(
     parent_->set_root_instruction(new_producer,
                                   /*accept_different_shape=*/true);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
@@ -2741,7 +2741,7 @@ Status HloInstruction::ReplaceAllUsesWithDifferentShape(
                                   /*accept_different_shape=*/true);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 bool HloInstruction::IsEffectiveBitcast() const {
@@ -3779,7 +3779,7 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
     std::reverse(dfs_stack.begin() + old_dfs_stack_size, dfs_stack.end());
   } while (!dfs_stack.empty());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename HloInstructionPtr>
@@ -3792,7 +3792,7 @@ Status HloInstruction::Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor,
   if (call_finish_visit) {
     TF_RETURN_IF_ERROR(visitor->FinishVisit(this));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Explicit instantiations.
@@ -3818,7 +3818,7 @@ Status HloInstruction::AcceptWithOperandOrder(
     VLOG(3) << "HloInstruction::AcceptWithOperandOrder AFTER FINISH VISIT";
   }
   VLOG(2) << "HloInstruction::AcceptWithOperandOrder EXIT";
-  return Status::OK();
+  return OkStatus();
 }
 
 const Shape& HloInstruction::shape() const { return shape_; }
@@ -4274,7 +4274,7 @@ Status HloInstruction::GetBackendConfigInternal(
   if (auto* proto_ptr = backend_config_.GetProtoPtr()) {
     if (proto_ptr->GetDescriptor() == proto->GetDescriptor()) {
       proto->CopyFrom(*proto_ptr);
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -4282,11 +4282,11 @@ Status HloInstruction::GetBackendConfigInternal(
   // Empty string does not parse as valid JSON, but it's a valid backend config,
   // corresponding to the empty proto.
   if (raw_string.empty()) {
-    return Status::OK();
+    return OkStatus();
   }
   TF_RETURN_IF_ERROR(tensorflow::HumanReadableJsonToProto(raw_string, proto));
   backend_config_.SetProto(*proto);
-  return Status::OK();
+  return OkStatus();
 }
 
 const std::string& HloInstruction::BackendConfigRep::GetRawString() const {
