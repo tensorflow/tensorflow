@@ -1101,10 +1101,6 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       opts.allow_small_function_optimizations = data->enable_sync_execution;
       opts.allow_control_flow_sync_execution =
           options.allow_control_flow_sync_execution;
-      AttrValue ints_on_device_attr;
-      ints_on_device_attr.set_b(options.int_args_and_retvals_on_device);
-      shard.mutable_attr()->insert(
-          {FunctionLibraryDefinition::kIntsOnDeviceAttr, ints_on_device_attr});
       auto attrs = AttrSlice(&shard.attr());
       VLOG(1) << "Start instantiating component function " << unique_name
               << " on device " << target;
