@@ -54,7 +54,7 @@ RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteracti
   libnuma-dev \
   pciutils \
   virtualenv \
-  python-pip \
+  python3-pip \
   libxml2 \
   libxml2-dev \
   wget && \
