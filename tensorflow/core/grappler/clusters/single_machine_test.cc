@@ -629,7 +629,7 @@ TEST_F(SingleMachineTest, PeakMemoryStatsNotEnabled) {
   Status s = cluster.GetPeakMemoryUsage(&device_peak_memory);
   TF_CHECK_OK(cluster.Shutdown());
   ASSERT_FALSE(s.ok());
-  EXPECT_EQ(s.code(), errors::Code::INVALID_ARGUMENT);
+  EXPECT_TRUE(errors::IsInvalidArgument(s));
 }
 #endif
 
