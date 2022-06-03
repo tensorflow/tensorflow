@@ -340,7 +340,7 @@ TEST(DispatcherState, JobData) {
   EXPECT_EQ(job->use_cross_trainer_cache, use_cross_trainer_cache);
 }
 
-TEST(DispatcherState, MultiTrainerCacheTask) {
+TEST(DispatcherState, CrossTrainerCacheTask) {
   DispatcherState state;
   int64_t dataset_id = state.NextAvailableDatasetId();
   std::string worker_address = "test_worker_address";

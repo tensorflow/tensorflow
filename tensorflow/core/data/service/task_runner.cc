@@ -20,9 +20,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/data/service/common.h"
+#include "tensorflow/core/data/service/cross_trainer_cache.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/logging_utils.h"
-#include "tensorflow/core/data/service/multi_trainer_cache.h"
 #include "tensorflow/core/data/service/thread_safe_buffer.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
@@ -159,7 +159,7 @@ CachingTaskRunner::CachingTaskRunner(std::unique_ptr<TaskIterator> iterator,
     : fcfs_task_runner_(std::move(iterator)),
       cache_(max_cache_size_bytes,
              absl::make_unique<GetElementResultSequence>(fcfs_task_runner_)) {
-  LOG(INFO) << "Initialized tf.data service multi-trainer cache with "
+  LOG(INFO) << "Initialized tf.data service cross-trainer cache with "
             << FormatBytes(max_cache_size_bytes) << " of memory.";
 }
 
@@ -190,10 +190,10 @@ size_t CachingTaskRunner::GetElementResultSequence::GetElementSizeBytes(
 }
 
 void CachingTaskRunner::Cancel() {
-  VLOG(2) << "Cancelling tf.data service multi-trainer cache task.";
+  VLOG(2) << "Cancelling tf.data service cross-trainer cache task.";
   if (!cache_.IsCancelled()) {
     cache_.Cancel(errors::Cancelled(
-        "tf.data service multi-trainer cache task is cancelled."));
+        "tf.data service cross-trainer cache task is cancelled."));
   }
   fcfs_task_runner_.Cancel();
 }

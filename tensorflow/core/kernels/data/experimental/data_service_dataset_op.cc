@@ -596,12 +596,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             "is \"LOCAL\".");
       }
       if (dataset()->cross_trainer_cache_options_.has_value()) {
-        TF_RETURN_IF_ERROR(ValidateMultiTrainerCache());
+        TF_RETURN_IF_ERROR(ValidateCrossTrainerCache());
       }
       return OkStatus();
     }
 
-    Status ValidateMultiTrainerCache() const {
+    Status ValidateCrossTrainerCache() const {
       if (!dataset()->cross_trainer_cache_options_.has_value()) {
         return OkStatus();
       }
