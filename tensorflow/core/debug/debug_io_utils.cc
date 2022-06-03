@@ -742,7 +742,7 @@ Status DebugGrpcChannel::Connect(const int64_t timeout_micros) {
         "Failed to connect to gRPC channel at ", server_stream_addr_,
         " within a timeout of ", timeout_micros / 1e6, " s.");
   }
-  stub_ = EventListener::NewStub(channel_);
+  stub_ = grpc::EventListener::NewStub(channel_);
   reader_writer_ = stub_->SendEvents(&ctx_);
 
   return Status::OK();
