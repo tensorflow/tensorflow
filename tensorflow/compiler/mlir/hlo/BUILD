@@ -1697,6 +1697,7 @@ cc_library(
     deps = [
         ":gpu_kernel_lowering_passes",
         ":gpu_transforms_pass_inc_gen",
+        ":hlo_to_gpu_pipeline",
         "@llvm-project//mlir:Pass",
     ],
 )
@@ -2201,6 +2202,34 @@ cc_library(
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFTransforms",
         "@llvm-project//mlir:SCFUtils",
+    ],
+)
+
+cc_library(
+    name = "hlo_to_gpu_pipeline",
+    srcs = [
+        "lib/Transforms/hlo_to_gpu_pipeline.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Transforms/gpu_passes.h",
+    ],
+    deps = [
+        ":bufferize_pass",
+        ":gpu_kernel_lowering_passes",
+        ":hlo",
+        ":legalize_to_linalg",
+        ":propagate_static_shapes_to_kernel",
+        ":tile_loops_pass",
+        "@llvm-project//mlir:AffineToStandard",
+        "@llvm-project//mlir:BufferizationTransforms",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:GPUTransforms",
+        "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFToGPUPass",
+        "@llvm-project//mlir:SCFToStandard",
+        "@llvm-project//mlir:ShapeToStandard",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
