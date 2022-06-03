@@ -117,7 +117,7 @@ xla::Status DistributedRuntimeServiceImpl::ValidateNodeId(int node_id) {
         "Invalid node ID %d, must be in the range [0, %d)", node_id,
         options_.num_nodes);
   }
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 xla::Status DistributedRuntimeServiceImpl::ValidateSessionId(
@@ -127,7 +127,7 @@ xla::Status DistributedRuntimeServiceImpl::ValidateSessionId(
         "Session ID of request %llu does not match active session ID %llu",
         session_id, session_id_);
   }
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 ::grpc::Status DistributedRuntimeServiceImpl::Connect(

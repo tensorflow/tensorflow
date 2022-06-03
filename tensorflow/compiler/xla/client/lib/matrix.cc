@@ -602,7 +602,7 @@ StatusOr<std::array<std::vector<int64_t>, 3>> ParseEinsumString(
 
   auto maybe_invalid_character = [](char d) {
     if (absl::ascii_isalpha(d)) {
-      return Status::OK();
+      return ::tensorflow::OkStatus();
     }
     if (d == '.') {
       return InvalidArgument("Unsupported \".\" in einsum config.");

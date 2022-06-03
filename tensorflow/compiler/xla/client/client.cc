@@ -111,7 +111,7 @@ Status Client::TransferToInfeed(const LiteralSlice& literal, int64_t replica_id,
     return s;
   }
   VLOG(3) << "TransferToInfeedResponse: {" << response.DebugString() << "}";
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<Literal> Client::TransferFromOutfeed(
@@ -159,7 +159,7 @@ Status Client::ResetDevice() {
     return s;
   }
   VLOG(3) << "ResetDeviceResponse: {" << response.DebugString() << "}";
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<Literal> Client::ExecuteAndTransfer(

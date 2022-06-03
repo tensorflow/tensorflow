@@ -456,7 +456,7 @@ Status XlaBuilder::SetDynamicBinding(int64_t dynamic_size_param_num,
                                                 dynamic_size_param_index},
       DynamicParameterBinding::DynamicDimension{
           target_param_num, target_param_index, target_dim_num}));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status XlaBuilder::SetInstructionFrontendAttribute(const XlaOp op,
@@ -465,7 +465,7 @@ Status XlaBuilder::SetInstructionFrontendAttribute(const XlaOp op,
   TF_ASSIGN_OR_RETURN(auto instr_proto, LookUpMutableInstruction(op));
   auto* frontend_attributes = instr_proto->mutable_frontend_attributes();
   (*frontend_attributes->mutable_map())[attribute] = std::move(value);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 XlaComputation XlaBuilder::BuildAndNoteError() {
@@ -485,7 +485,7 @@ Status XlaBuilder::GetCurrentStatus() const {
     first_error_backtrace_.Dump(tensorflow::DebugWriteToString, &backtrace);
     return AppendStatus(first_error_, backtrace);
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<XlaComputation> XlaBuilder::Build(bool remove_dynamic_dimensions) {
@@ -592,7 +592,7 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64_t root_id,
                                          alias.param_index, alias.kind));
   }
   *module->mutable_input_output_alias() = config.ToProto();
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<XlaOp> XlaBuilder::InDimBroadcast(
@@ -1415,7 +1415,7 @@ Status XlaBuilder::VerifyConvolution(
                                field_name, i, numbers[i]);
       }
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   };
   TF_RETURN_IF_ERROR(
       check_spatial_dimensions("input_spatial_dimensions",
@@ -2556,7 +2556,7 @@ Status XlaBuilder::CheckOpBuilder(XlaOp op) const {
         "it in builder '%s'",
         op.handle(), op.builder()->name(), name());
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 XlaOp XlaBuilder::Reduce(XlaOp operand, XlaOp init_value,
@@ -3877,7 +3877,7 @@ XlaBuilder::CreateDefaultConvDimensionNumbers(int num_spatial_dims) {
         dnum.output_batch_dimension(), dnum.output_feature_dimension(),
         dnum.output_spatial_dimensions(0), dnum.output_spatial_dimensions(1));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,

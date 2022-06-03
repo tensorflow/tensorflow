@@ -100,7 +100,7 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
             "Feature not yet implemented in ROCm"};
 #endif
   }
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 xla::Status CompileAndPrintLlvmIrFromFile(const std::string& file_name,
@@ -115,7 +115,7 @@ xla::Status CompileAndPrintLlvmIrFromFile(const std::string& file_name,
     TF_RETURN_IF_ERROR(CompileAndPrintLlvmIr(hlo_module_text, ptx, sm));
   }
 
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 }  // namespace
 

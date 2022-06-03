@@ -145,7 +145,7 @@ TEST_P(ClientServerTest, ConnectAndShutdownAreBarriers) {
       TF_RET_CHECK(shutdown_count == num_nodes);
     }
 
-    return xla::Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   std::vector<xla::Status> statuses(num_nodes);
@@ -213,7 +213,7 @@ TEST_P(ClientServerTest, ConnectAndEnumerateDevices) {
         std::string value,
         client->BlockingKeyValueGet("key2", absl::InfiniteDuration()));
     TF_RET_CHECK(value == "value2");
-    return xla::Status::OK();
+    return ::tensorflow::OkStatus();
   };
   auto thread1_fn = [&]() -> xla::Status {
     // Wait for thread0 client to be ready for connection, to ensure global ids
@@ -236,7 +236,7 @@ TEST_P(ClientServerTest, ConnectAndEnumerateDevices) {
         client->BlockingKeyValueGet("key1", absl::InfiniteDuration()));
     TF_RET_CHECK(value == "value1");
     TF_RETURN_IF_ERROR(client->KeyValueSet("key2", "value2"));
-    return xla::Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   std::vector<std::function<xla::Status()>> functions = {thread0_fn,
@@ -276,13 +276,13 @@ TEST_P(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
     TF_RETURN_IF_ERROR(client->Connect());
 
     if (node_id == 0) {
-      return xla::Status::OK();
+      return ::tensorflow::OkStatus();
     }
 
     // The call to Shutdown() should be interrupted if a worker stops issuing
     // heartbeats.
     TF_RETURN_IF_ERROR(client->Shutdown());
-    return xla::Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   std::vector<xla::Status> statuses(num_nodes);
@@ -337,10 +337,10 @@ TEST_P(ClientServerTest, ClientsReceiveMissedHeartbeatIfAnyClientGoesAway) {
     TF_RETURN_IF_ERROR(client->Connect());
 
     if (node_id == 0) {
-      return xla::Status::OK();
+      return ::tensorflow::OkStatus();
     }
     shutdown.WaitForNotification();
-    return xla::Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   std::vector<xla::Status> statuses(num_nodes);
@@ -396,7 +396,7 @@ TEST_P(ClientServerTest, ClientsTerminateIfServiceGoesAway) {
     shutdown.WaitForNotification();
 
     TF_RETURN_IF_ERROR(client->Shutdown());
-    return xla::Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   std::vector<xla::Status> statuses(num_nodes);
@@ -441,7 +441,7 @@ TEST_P(ClientServerTest, LateClientsAreOk) {
     absl::SleepFor(absl::Milliseconds(200) * node_id);
     TF_RETURN_IF_ERROR(client->Connect());
     TF_RETURN_IF_ERROR(client->Shutdown());
-    return xla::Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   std::vector<xla::Status> statuses(num_nodes);
@@ -478,7 +478,7 @@ TEST_P(ClientServerTest, ConnectEventuallyTimesOutIfAClientDoesNotShowUp) {
 
     TF_RETURN_IF_ERROR(client->Connect());
     TF_RETURN_IF_ERROR(client->Shutdown());
-    return xla::Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   // Note: one fewer thread than 'num_nodes'.

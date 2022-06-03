@@ -54,7 +54,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
         parameter_number_++, parameter->shape(), parameter->name());
     clone_context_.MapInstruction(parameter, new_parameter.get());
     builder_.AddInstruction(std::move(new_parameter));
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   Status DefaultAction(const HloInstruction* hlo) override {
@@ -66,7 +66,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
       parameter_number_++;
       clone_context_.MapInstruction(hlo, new_parameter.get());
       builder_.AddInstruction(std::move(new_parameter));
-      return Status::OK();
+      return ::tensorflow::OkStatus();
     }
     std::vector<HloInstruction*> new_operands;
     for (auto operand : hlo->operands()) {
@@ -75,7 +75,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
     auto instruction =
         hlo->CloneWithNewOperands(hlo->shape(), new_operands, &clone_context_);
     builder_.AddInstruction(std::move(instruction));
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   Status FinishVisit(const HloInstruction* /*root*/) override {
@@ -91,7 +91,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
         }
       }
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   HloModule* module() { return module_.get(); }
