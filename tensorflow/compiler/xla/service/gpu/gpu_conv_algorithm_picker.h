@@ -72,7 +72,7 @@ class GpuConvAlgorithmPicker : public HloModulePass {
       MaybeFusedConvRunner* const runner,
       absl::Span<const stream_executor::DeviceMemoryBase> operand_buffers,
       stream_executor::DeviceMemoryBase result_buffer,
-      absl::optional<ReferenceResult>* reference_result,
+      std::optional<ReferenceResult>* reference_result,
       absl::Span<const stream_executor::dnn::AlgorithmDesc> disabled_algos);
   StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheCuda(
       const HloCustomCallInstruction* instr,

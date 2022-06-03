@@ -33,8 +33,8 @@ struct NcclCollectivePermuteConfig {
   // node. For each node, remember who it receives data from (source) and who
   // it send data to (target). Either are optional.
   struct SourceTargetMapEntry {
-    absl::optional<int64_t> source;
-    absl::optional<int64_t> target;
+    std::optional<int64_t> source;
+    std::optional<int64_t> target;
   };
 
   using IdToSourceTargetMap =
@@ -77,7 +77,7 @@ class NcclCollectivePermuteThunk : public NcclCollectiveThunk {
                            int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo::CollectivePermuteOp op) {
-    return GetCollectiveOpGroupMode(op.channel_id().hasValue(), absl::nullopt)
+    return GetCollectiveOpGroupMode(op.channel_id().hasValue(), std::nullopt)
         .ValueOrDie();
   }
 

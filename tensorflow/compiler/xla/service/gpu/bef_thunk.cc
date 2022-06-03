@@ -93,7 +93,7 @@ class BefThunk : public Thunk {
   // The module data will be set in the execution context for kernel thunk to
   // use during execution. The resource contexts cache the loaded modules.
   absl::Mutex mutex_;
-  absl::optional<GpuModuleData> gpu_module_data_ ABSL_GUARDED_BY(mutex_);
+  std::optional<GpuModuleData> gpu_module_data_ ABSL_GUARDED_BY(mutex_);
   tfrt::gpu::GpuContextCache gpu_context_cache_ ABSL_GUARDED_BY(mutex_);
 };
 
@@ -405,7 +405,7 @@ static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
 }
 
 static Status InsertKernelRequestContext(
-    absl::optional<GpuModuleData> gpu_module_data,
+    std::optional<GpuModuleData> gpu_module_data,
     tfrt::RequestContextBuilder* request_context_builder) {
   if (!gpu_module_data.has_value()) {
     return tensorflow::errors::Internal(

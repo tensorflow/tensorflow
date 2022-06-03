@@ -138,11 +138,11 @@ namespace gpu {
 namespace {
 
 using absl::InlinedVector;
-using absl::nullopt;
-using absl::optional;
 using absl::StrCat;
 using llvm_ir::IrArray;
 using llvm_ir::IrName;
+using std::nullopt;
+using std::optional;
 
 const auto kDimX = TilingScheme::DimX;
 const auto kDimY = TilingScheme::DimY;
@@ -1104,8 +1104,8 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
 
 Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
   auto make_bef_thunk =
-      [&](auto op, absl::optional<BufferAllocation::Slice> bias =
-                       absl::nullopt) -> StatusOr<std::unique_ptr<Thunk>> {
+      [&](auto op, std::optional<BufferAllocation::Slice> bias =
+                       std::nullopt) -> StatusOr<std::unique_ptr<Thunk>> {
     TF_ASSIGN_OR_RETURN(auto lhs, GetAllocationSlice(op.lhs()));
     TF_ASSIGN_OR_RETURN(auto rhs, GetAllocationSlice(op.rhs()));
     TF_ASSIGN_OR_RETURN(auto output, GetAllocationSlice(op.output()));
@@ -1118,8 +1118,8 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
   };
 
   auto make_gemm_thunk =
-      [&](auto op, absl::optional<double> gemm_bias_beta =
-                       absl::nullopt) -> StatusOr<std::unique_ptr<Thunk>> {
+      [&](auto op, std::optional<double> gemm_bias_beta =
+                       std::nullopt) -> StatusOr<std::unique_ptr<Thunk>> {
     TF_ASSIGN_OR_RETURN(auto lhs, GetAllocationSlice(op.lhs()));
     TF_ASSIGN_OR_RETURN(auto rhs, GetAllocationSlice(op.rhs()));
     TF_ASSIGN_OR_RETURN(auto output, GetAllocationSlice(op.output()));
@@ -3150,7 +3150,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunkImpl(
   for (const auto& slice : slices) {
     buffers_needed.insert(slice.buffer_slice.allocation());
   }
-  absl::optional<const BufferAllocation*> temp_buffer;
+  std::optional<const BufferAllocation*> temp_buffer;
   for (const BufferAllocation& alloc : ir_emitter_context_->allocations()) {
     if (alloc.IsPreallocatedTempBuffer()) {
       if (!temp_buffer.has_value()) {
@@ -3985,8 +3985,8 @@ llvm::Value* IrEmitterUnnested::EmitBlockId(int32_t num_blocks,
 
 void IrEmitterUnnested::EmitPrintfWithThreadId(
     absl::string_view fmt, absl::Span<llvm::Value* const> arguments,
-    absl::optional<int64_t> thread_id_filter,
-    absl::optional<int64_t> block_id_filter) {
+    std::optional<int64_t> thread_id_filter,
+    std::optional<int64_t> block_id_filter) {
   llvm::Value* thread_id = EmitThreadId(
       /*threads_per_block=*/1024, b_.getInt32Ty());
   llvm::Value* block_id = EmitBlockId(0, b_.getInt32Ty());

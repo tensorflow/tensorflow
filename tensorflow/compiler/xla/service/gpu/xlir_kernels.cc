@@ -269,8 +269,8 @@ static tfrt::AsyncValueRef<tfrt::Chain> CclCollectivePermute(
   NcclCollectivePermuteConfig::SourceTargetMapEntry source_target =
       NcclCollectivePermuteConfig::GetSourceTarget(id_to_source_target,
                                                    current_id);
-  const absl::optional<int64_t>& source_peer = source_target.source;
-  const absl::optional<int64_t>& target_peer = source_target.target;
+  const std::optional<int64_t>& source_peer = source_target.source;
+  const std::optional<int64_t>& target_peer = source_target.target;
 
   auto type = static_cast<ncclDataType_t>(*data_type_attr);
   auto width = tfrt::gpu::wrapper::GetCclDataTypeSizeBytes(type);

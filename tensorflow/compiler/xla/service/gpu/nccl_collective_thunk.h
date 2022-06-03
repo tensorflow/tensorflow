@@ -76,7 +76,7 @@ void NcclCollectiveConfig::SetCollectiveOpKindAndID(OpT op) {
 
 template <typename OpT>
 NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
-    OpT op, absl::optional<bool> use_global_device_ids) {
+    OpT op, std::optional<bool> use_global_device_ids) {
   NcclCollectiveConfig config;
   config.operand_count = op.operands().size();
   config.operand_element_type.reserve(config.operand_count);

@@ -43,7 +43,7 @@ namespace gpu {
   NcclAllToAllConfig config;
   // FIXME(b/180174349): LMHLO AllToAll incorrectly has use_global_device_ids
   // attribute and it should be removed.
-  config.config = GetNcclCollectiveConfigForMlir(op, absl::nullopt);
+  config.config = GetNcclCollectiveConfigForMlir(op, std::nullopt);
   config.has_split_dimension = op.split_dimension().hasValue();
   return config;
 }

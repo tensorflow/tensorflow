@@ -29,12 +29,12 @@ std::string NcclCliqueKey::ToString() const {
 }
 
 GpuExecutableRunOptions& GpuExecutableRunOptions::set_gpu_global_device_ids(
-    absl::optional<std::vector<GlobalDeviceId>> gpu_global_device_ids) {
+    std::optional<std::vector<GlobalDeviceId>> gpu_global_device_ids) {
   gpu_global_device_ids_ = std::move(gpu_global_device_ids);
   return *this;
 }
 
-const absl::optional<std::vector<GlobalDeviceId>>&
+const std::optional<std::vector<GlobalDeviceId>>&
 GpuExecutableRunOptions::gpu_global_device_ids() const {
   return gpu_global_device_ids_;
 }

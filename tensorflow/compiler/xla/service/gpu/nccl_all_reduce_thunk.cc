@@ -146,7 +146,7 @@ bool CanImplement(OpT op) {
 
 template <typename OpT>
 NcclAllReduceConfig GetNcclAllReduceConfig(OpT op) {
-  absl::optional<ReductionKind> reduction_kind =
+  std::optional<ReductionKind> reduction_kind =
       NcclAllReduceThunkBase::MatchAllReduceComputation(op.computation());
   CHECK(reduction_kind.has_value());
 
@@ -170,13 +170,13 @@ CollectiveOpGroupMode GetGroupMode(OpT op) {
 
 }  // namespace impl
 
-absl::optional<ReductionKind> NcclAllReduceThunkBase::MatchAllReduceComputation(
+std::optional<ReductionKind> NcclAllReduceThunkBase::MatchAllReduceComputation(
     mlir::Region& computation) {
   mlir::Block& block = computation.front();
   StatusOr<mlir::Operation*> reduction_op = FindReductionOp(block);
-  if (!reduction_op.ok()) return absl::nullopt;
+  if (!reduction_op.ok()) return std::nullopt;
   StatusOr<HloOpcode> opcode = MhloToHloOpcode(*reduction_op);
-  if (!opcode.ok()) return absl::nullopt;
+  if (!opcode.ok()) return std::nullopt;
   // Match the operation to a reduction kind. We can represent and/or of pred as
   // min/max. This works because pred is stored as an 8-bit int of value 0 or 1.
   PrimitiveType type =
@@ -188,14 +188,14 @@ absl::optional<ReductionKind> NcclAllReduceThunkBase::MatchAllReduceComputation(
       case HloOpcode::kOr:
         return ReductionKind::MAX;
       default:
-        return absl::nullopt;
+        return std::nullopt;
     }
   } else if (primitive_util::IsComplexType(type)) {
     // Only addition is supported for complex types.
     if (*opcode == HloOpcode::kAdd) {
       return ReductionKind::SUM;
     } else {
-      return absl::nullopt;
+      return std::nullopt;
     }
   } else {
     switch (*opcode) {
@@ -208,7 +208,7 @@ absl::optional<ReductionKind> NcclAllReduceThunkBase::MatchAllReduceComputation(
       case HloOpcode::kMinimum:
         return ReductionKind::MIN;
       default:
-        return absl::nullopt;
+        return std::nullopt;
     }
   }
 }

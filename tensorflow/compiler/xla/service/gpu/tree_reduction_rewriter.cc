@@ -68,7 +68,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
  private:
   bool IsMinMaxReduction(HloInstruction *hlo) {
     HloComputation *called = hlo->called_computations()[0];
-    if (absl::optional<ReductionKind> reduction_kind =
+    if (std::optional<ReductionKind> reduction_kind =
             MatchReductionComputation(called)) {
       return reduction_kind == ReductionKind::MAX ||
              reduction_kind == ReductionKind::MIN;
