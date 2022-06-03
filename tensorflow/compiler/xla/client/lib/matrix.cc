@@ -267,7 +267,7 @@ XlaOp Symmetrize(XlaOp x, bool lower) {
 }
 
 namespace {
-absl::optional<std::array<std::vector<int64_t>, 3>> EinsumDiagonalLabels(
+std::optional<std::array<std::vector<int64_t>, 3>> EinsumDiagonalLabels(
     absl::Span<const int64_t> config) {
   std::vector<int64_t> unique_labels;
   std::vector<int64_t> reduce_dims;
@@ -283,7 +283,7 @@ absl::optional<std::array<std::vector<int64_t>, 3>> EinsumDiagonalLabels(
     }
   }
   if (unique_labels.size() == config.size()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return {{unique_labels, reduce_dims, broadcast_dims}};
 }
@@ -384,7 +384,7 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64_t> x_config,
                   xla::XlaOp y, absl::Span<const int64_t> y_config,
                   absl::Span<const int64_t> output_config,
                   xla::PrecisionConfig::Precision precision,
-                  absl::optional<PrimitiveType> preferred_element_type) {
+                  std::optional<PrimitiveType> preferred_element_type) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     auto x_diagonal_labels = EinsumDiagonalLabels(x_config);
@@ -484,10 +484,10 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64_t> x_config,
     absl::c_sort(rhs_outer_dims);
     absl::InlinedVector<int64_t, 8> output_transpose_dims;
 
-    auto output_dimension_number = [&](int64_t d) -> absl::optional<int64_t> {
+    auto output_dimension_number = [&](int64_t d) -> std::optional<int64_t> {
       auto pos = absl::c_find(output_config, d);
       if (pos == output_config.end()) {
-        return absl::nullopt;
+        return std::nullopt;
       }
       return pos - output_config.begin();
     };
@@ -571,13 +571,13 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64_t> x_config,
 }
 
 XlaOp BatchDot(XlaOp x, XlaOp y, PrecisionConfig::Precision precision,
-               absl::optional<PrimitiveType> preferred_element_type) {
+               std::optional<PrimitiveType> preferred_element_type) {
   return BatchDot(x, false, y, false, precision, preferred_element_type);
 }
 
 XlaOp BatchDot(XlaOp x, bool transpose_x, XlaOp y, bool transpose_y,
                PrecisionConfig::Precision precision,
-               absl::optional<PrimitiveType> preferred_element_type) {
+               std::optional<PrimitiveType> preferred_element_type) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     std::string string("...mk,...kn->...mn");
@@ -708,7 +708,7 @@ std::string NormalizeEinsumString(absl::string_view einsum_config) {
 
 XlaOp Einsum(XlaOp x, XlaOp y, absl::string_view einsum_config,
              PrecisionConfig::Precision precision,
-             absl::optional<PrimitiveType> preferred_element_type) {
+             std::optional<PrimitiveType> preferred_element_type) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     auto new_config = NormalizeEinsumString(einsum_config);

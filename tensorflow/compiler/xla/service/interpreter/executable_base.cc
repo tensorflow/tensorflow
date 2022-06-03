@@ -157,7 +157,7 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
     std::vector<ExecutionInput>* arguments, se::Stream* stream) {
   TF_RETURN_IF_ERROR(alias_config.ForEachAliasWithStatus(
       [&](const ShapeIndex& output_index,
-          absl::optional<HloInputOutputAliasConfig::Alias> alias) {
+          std::optional<HloInputOutputAliasConfig::Alias> alias) {
         if (alias && alias->must_alias()) {
           VLOG(1) << alias->ToString();
           const MaybeOwningDeviceMemory& original_input =
@@ -191,7 +191,7 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
                            result_index.ToString());
     }
 
-    absl::optional<HloInputOutputAliasConfig::Alias> alias =
+    std::optional<HloInputOutputAliasConfig::Alias> alias =
         alias_config.GetAliasedParameter(result_index);
     if (alias) {
       TF_RET_CHECK(alias->parameter_number < arguments->size());

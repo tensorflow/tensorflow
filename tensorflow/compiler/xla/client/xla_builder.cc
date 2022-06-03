@@ -672,8 +672,8 @@ XlaOp XlaBuilder::UnaryOp(HloOpcode unop, XlaOp operand) {
 
 XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
                            absl::Span<const int64_t> broadcast_dimensions,
-                           absl::optional<ComparisonDirection> direction,
-                           absl::optional<Comparison::Type> type) {
+                           std::optional<ComparisonDirection> direction,
+                           std::optional<Comparison::Type> type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
     TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
@@ -734,7 +734,7 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
         return InvalidArgument(
             "kCompare expects a ComparisonDirection, but none provided.");
       }
-      if (type == absl::nullopt) {
+      if (type == std::nullopt) {
         return Compare(shape, updated_lhs, updated_rhs, *direction);
       } else {
         return Compare(shape, updated_lhs, updated_rhs, *direction, *type);
@@ -790,7 +790,7 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs) {
       TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
       TF_ASSIGN_OR_RETURN(const Shape* ehs_shape, GetShapePtr(ehs));
 
-      absl::optional<Shape> non_scalar_shape;
+      std::optional<Shape> non_scalar_shape;
       for (const Shape* shape : {lhs_shape, rhs_shape, ehs_shape}) {
         if (shape->IsArray() && shape->rank() != 0) {
           if (non_scalar_shape.has_value()) {
@@ -1343,7 +1343,7 @@ StatusOr<XlaOp> XlaBuilder::GetTupleElementInternal(const Shape& shape,
 
 XlaOp XlaBuilder::Dot(XlaOp lhs, XlaOp rhs,
                       const PrecisionConfig* precision_config,
-                      absl::optional<PrimitiveType> preferred_element_type) {
+                      std::optional<PrimitiveType> preferred_element_type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
 
@@ -1359,7 +1359,7 @@ XlaOp XlaBuilder::Dot(XlaOp lhs, XlaOp rhs,
 XlaOp XlaBuilder::DotGeneral(
     XlaOp lhs, XlaOp rhs, const DotDimensionNumbers& dimension_numbers,
     const PrecisionConfig* precision_config,
-    absl::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
     TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
@@ -1433,7 +1433,7 @@ XlaOp XlaBuilder::Conv(XlaOp lhs, XlaOp rhs,
                        Padding padding, int64_t feature_group_count,
                        int64_t batch_group_count,
                        const PrecisionConfig* precision_config,
-                       absl::optional<PrimitiveType> preferred_element_type) {
+                       std::optional<PrimitiveType> preferred_element_type) {
   return ConvWithGeneralDimensions(
       lhs, rhs, window_strides, padding,
       CreateDefaultConvDimensionNumbers(window_strides.size()),
@@ -1446,7 +1446,7 @@ XlaOp XlaBuilder::ConvWithGeneralPadding(
     absl::Span<const std::pair<int64_t, int64_t>> padding,
     int64_t feature_group_count, int64_t batch_group_count,
     const PrecisionConfig* precision_config,
-    absl::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type) {
   return ConvGeneral(lhs, rhs, window_strides, padding,
                      CreateDefaultConvDimensionNumbers(window_strides.size()),
                      feature_group_count, batch_group_count, precision_config,
@@ -1458,7 +1458,7 @@ XlaOp XlaBuilder::ConvWithGeneralDimensions(
     Padding padding, const ConvolutionDimensionNumbers& dimension_numbers,
     int64_t feature_group_count, int64_t batch_group_count,
     const PrecisionConfig* precision_config,
-    absl::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
     TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
@@ -1497,7 +1497,7 @@ XlaOp XlaBuilder::ConvGeneral(
     const ConvolutionDimensionNumbers& dimension_numbers,
     int64_t feature_group_count, int64_t batch_group_count,
     const PrecisionConfig* precision_config,
-    absl::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type) {
   return ConvGeneralDilated(lhs, rhs, window_strides, padding, {}, {},
                             dimension_numbers, feature_group_count,
                             batch_group_count, precision_config,
@@ -1512,7 +1512,7 @@ XlaOp XlaBuilder::ConvGeneralDilated(
     const ConvolutionDimensionNumbers& dimension_numbers,
     int64_t feature_group_count, int64_t batch_group_count,
     const PrecisionConfig* precision_config,
-    absl::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
     TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
@@ -1551,7 +1551,7 @@ StatusOr<HloInstructionProto> XlaBuilder::DynamicConvInstruction(
     const ConvolutionDimensionNumbers& dimension_numbers,
     int64_t feature_group_count, int64_t batch_group_count,
     const PrecisionConfig* precision_config, PaddingType padding_type,
-    absl::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type) {
   TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
   TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
   std::vector<int64_t> window_dimensions(
@@ -1595,7 +1595,7 @@ XlaOp XlaBuilder::DynamicConvInputGrad(
     const ConvolutionDimensionNumbers& dimension_numbers,
     int64_t feature_group_count, int64_t batch_group_count,
     const PrecisionConfig* precision_config, PaddingType padding_type,
-    absl::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(
         HloInstructionProto instr,
@@ -1620,7 +1620,7 @@ XlaOp XlaBuilder::DynamicConvKernelGrad(
     const ConvolutionDimensionNumbers& dimension_numbers,
     int64_t feature_group_count, int64_t batch_group_count,
     const PrecisionConfig* precision_config, PaddingType padding_type,
-    absl::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(
         HloInstructionProto instr,
@@ -1647,7 +1647,7 @@ XlaOp XlaBuilder::DynamicConvForward(
     const ConvolutionDimensionNumbers& dimension_numbers,
     int64_t feature_group_count, int64_t batch_group_count,
     const PrecisionConfig* precision_config, PaddingType padding_type,
-    absl::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(
         HloInstructionProto instr,
@@ -1947,12 +1947,12 @@ XlaOp XlaBuilder::AfterAll(absl::Span<const XlaOp> tokens) {
 XlaOp XlaBuilder::CustomCall(
     const std::string& call_target_name, absl::Span<const XlaOp> operands,
     const Shape& shape, const std::string& opaque,
-    absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
+    std::optional<absl::Span<const Shape>> operand_shapes_with_layout,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
         output_operand_aliasing,
-    const Literal* literal, absl::optional<Window> window,
-    absl::optional<ConvolutionDimensionNumbers> dnums,
+    const Literal* literal, std::optional<Window> window,
+    std::optional<ConvolutionDimensionNumbers> dnums,
     CustomCallSchedule schedule, CustomCallApiVersion api_version) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     if (absl::StartsWith(call_target_name, "$")) {
@@ -1994,12 +1994,12 @@ XlaOp XlaBuilder::CustomCall(
 StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
     const std::string& call_target_name, absl::Span<const XlaOp> operands,
     const Shape& shape, const std::string& opaque,
-    absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
+    std::optional<absl::Span<const Shape>> operand_shapes_with_layout,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
         output_operand_aliasing,
-    const Literal* literal, absl::optional<Window> window,
-    absl::optional<ConvolutionDimensionNumbers> dnums,
+    const Literal* literal, std::optional<Window> window,
+    std::optional<ConvolutionDimensionNumbers> dnums,
     CustomCallSchedule schedule, CustomCallApiVersion api_version) {
   HloInstructionProto instr;
   // Bit of a hack: cudnn conv custom-calls are created through this API. Give
@@ -2052,7 +2052,7 @@ XlaOp XlaBuilder::CustomCall(
     const std::string& call_target_name, absl::Span<const XlaOp> operands,
     const XlaComputation& computation, const Shape& shape,
     const std::string& opaque,
-    absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
+    std::optional<absl::Span<const Shape>> operand_shapes_with_layout,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
         output_operand_aliasing,
@@ -2851,9 +2851,9 @@ XlaOp XlaBuilder::BatchNormGrad(XlaOp operand, XlaOp scale, XlaOp batch_mean,
 XlaOp XlaBuilder::AllGather(XlaOp operand, int64_t all_gather_dimension,
                             int64_t shard_count,
                             absl::Span<const ReplicaGroup> replica_groups,
-                            const absl::optional<ChannelHandle>& channel_id,
-                            const absl::optional<Layout>& layout,
-                            const absl::optional<bool> use_global_device_ids) {
+                            const std::optional<ChannelHandle>& channel_id,
+                            const std::optional<Layout>& layout,
+                            const std::optional<bool> use_global_device_ids) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
@@ -2912,14 +2912,14 @@ XlaOp XlaBuilder::CrossReplicaSum(
     }
     TF_ASSIGN_OR_RETURN(auto computation, b->Build());
     return AllReduce(operand, computation, replica_groups,
-                     /*channel_id=*/absl::nullopt);
+                     /*channel_id=*/std::nullopt);
   });
 }
 
 XlaOp XlaBuilder::AllReduce(XlaOp operand, const XlaComputation& computation,
                             absl::Span<const ReplicaGroup> replica_groups,
-                            const absl::optional<ChannelHandle>& channel_id,
-                            const absl::optional<Shape>& shape_with_layout) {
+                            const std::optional<ChannelHandle>& channel_id,
+                            const std::optional<Shape>& shape_with_layout) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
@@ -2995,9 +2995,9 @@ XlaOp XlaBuilder::AllReduce(XlaOp operand, const XlaComputation& computation,
 XlaOp XlaBuilder::ReduceScatter(
     XlaOp operand, const XlaComputation& computation, int64_t scatter_dimension,
     int64_t shard_count, absl::Span<const ReplicaGroup> replica_groups,
-    const absl::optional<ChannelHandle>& channel_id,
-    const absl::optional<Layout>& layout,
-    const absl::optional<bool> use_global_device_ids) {
+    const std::optional<ChannelHandle>& channel_id,
+    const std::optional<Layout>& layout,
+    const std::optional<bool> use_global_device_ids) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
@@ -3055,7 +3055,7 @@ XlaOp XlaBuilder::ReduceScatter(
 XlaOp XlaBuilder::AllToAll(XlaOp operand, int64_t split_dimension,
                            int64_t concat_dimension, int64_t split_count,
                            absl::Span<const ReplicaGroup> replica_groups,
-                           const absl::optional<Layout>& layout) {
+                           const std::optional<Layout>& layout) {
   // Array all_to_all may need to violate layout constraint to be legal so use
   // the tuple version.
   if (layout.has_value()) {
@@ -3122,7 +3122,7 @@ XlaOp XlaBuilder::AllToAllArray(XlaOp operand, int64_t split_dimension,
 
 XlaOp XlaBuilder::AllToAllTuple(absl::Span<const XlaOp> operands,
                                 absl::Span<const ReplicaGroup> replica_groups,
-                                const absl::optional<Layout>& layout) {
+                                const std::optional<Layout>& layout) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(auto operand_shapes, this->GetOperandShapes(operands));
@@ -3161,7 +3161,7 @@ XlaOp XlaBuilder::AllToAllTuple(absl::Span<const XlaOp> operands,
 XlaOp XlaBuilder::AllToAllTuple(XlaOp operand, int64_t split_dimension,
                                 int64_t concat_dimension, int64_t split_count,
                                 absl::Span<const ReplicaGroup> replica_groups,
-                                const absl::optional<Layout>& layout) {
+                                const std::optional<Layout>& layout) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
 
@@ -4227,14 +4227,14 @@ XlaOp Compare(const XlaOp lhs, const XlaOp rhs, ComparisonDirection direction) {
 
 XlaOp Dot(const XlaOp lhs, const XlaOp rhs,
           const PrecisionConfig* precision_config,
-          absl::optional<PrimitiveType> preferred_element_type) {
+          std::optional<PrimitiveType> preferred_element_type) {
   return lhs.builder()->Dot(lhs, rhs, precision_config, preferred_element_type);
 }
 
 XlaOp DotGeneral(const XlaOp lhs, const XlaOp rhs,
                  const DotDimensionNumbers& dimension_numbers,
                  const PrecisionConfig* precision_config,
-                 absl::optional<PrimitiveType> preferred_element_type) {
+                 std::optional<PrimitiveType> preferred_element_type) {
   return lhs.builder()->DotGeneral(lhs, rhs, dimension_numbers,
                                    precision_config, preferred_element_type);
 }
@@ -4243,7 +4243,7 @@ XlaOp Conv(const XlaOp lhs, const XlaOp rhs,
            absl::Span<const int64_t> window_strides, Padding padding,
            int64_t feature_group_count, int64_t batch_group_count,
            const PrecisionConfig* precision_config,
-           absl::optional<PrimitiveType> preferred_element_type) {
+           std::optional<PrimitiveType> preferred_element_type) {
   return lhs.builder()->Conv(lhs, rhs, window_strides, padding,
                              feature_group_count, batch_group_count,
                              precision_config, preferred_element_type);
@@ -4254,7 +4254,7 @@ XlaOp ConvWithGeneralPadding(
     absl::Span<const std::pair<int64_t, int64_t>> padding,
     int64_t feature_group_count, int64_t batch_group_count,
     const PrecisionConfig* precision_config,
-    absl::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type) {
   return lhs.builder()->ConvWithGeneralPadding(
       lhs, rhs, window_strides, padding, feature_group_count, batch_group_count,
       precision_config, preferred_element_type);
@@ -4265,7 +4265,7 @@ XlaOp ConvWithGeneralDimensions(
     Padding padding, const ConvolutionDimensionNumbers& dimension_numbers,
     int64_t feature_group_count, int64_t batch_group_count,
     const PrecisionConfig* precision_config,
-    absl::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type) {
   return lhs.builder()->ConvWithGeneralDimensions(
       lhs, rhs, window_strides, padding, dimension_numbers, feature_group_count,
       batch_group_count, precision_config, preferred_element_type);
@@ -4277,7 +4277,7 @@ XlaOp ConvGeneral(const XlaOp lhs, const XlaOp rhs,
                   const ConvolutionDimensionNumbers& dimension_numbers,
                   int64_t feature_group_count, int64_t batch_group_count,
                   const PrecisionConfig* precision_config,
-                  absl::optional<PrimitiveType> preferred_element_type) {
+                  std::optional<PrimitiveType> preferred_element_type) {
   return lhs.builder()->ConvGeneral(
       lhs, rhs, window_strides, padding, dimension_numbers, feature_group_count,
       batch_group_count, precision_config, preferred_element_type);
@@ -4291,7 +4291,7 @@ XlaOp ConvGeneralDilated(const XlaOp lhs, const XlaOp rhs,
                          const ConvolutionDimensionNumbers& dimension_numbers,
                          int64_t feature_group_count, int64_t batch_group_count,
                          const PrecisionConfig* precision_config,
-                         absl::optional<PrimitiveType> preferred_element_type) {
+                         std::optional<PrimitiveType> preferred_element_type) {
   return lhs.builder()->ConvGeneralDilated(
       lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation,
       dimension_numbers, feature_group_count, batch_group_count,
@@ -4307,7 +4307,7 @@ XlaOp DynamicConvInputGrad(
     const ConvolutionDimensionNumbers& dimension_numbers,
     int64_t feature_group_count, int64_t batch_group_count,
     const PrecisionConfig* precision_config, PaddingType padding_type,
-    absl::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type) {
   return lhs.builder()->DynamicConvInputGrad(
       input_sizes, lhs, rhs, window_strides, padding, lhs_dilation,
       rhs_dilation, dimension_numbers, feature_group_count, batch_group_count,
@@ -4323,7 +4323,7 @@ XlaOp DynamicConvKernelGrad(
     const ConvolutionDimensionNumbers& dimension_numbers,
     int64_t feature_group_count, int64_t batch_group_count,
     const PrecisionConfig* precision_config, PaddingType padding_type,
-    absl::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type) {
   return activations.builder()->DynamicConvKernelGrad(
       activations, gradients, window_strides, padding, lhs_dilation,
       rhs_dilation, dimension_numbers, feature_group_count, batch_group_count,
@@ -4339,7 +4339,7 @@ XlaOp DynamicConvForward(const XlaOp lhs, const XlaOp rhs,
                          int64_t feature_group_count, int64_t batch_group_count,
                          const PrecisionConfig* precision_config,
                          PaddingType padding_type,
-                         absl::optional<PrimitiveType> preferred_element_type) {
+                         std::optional<PrimitiveType> preferred_element_type) {
   return lhs.builder()->DynamicConvForward(
       lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation,
       dimension_numbers, feature_group_count, batch_group_count,
@@ -4403,9 +4403,9 @@ XlaOp CustomCall(
     const Literal* literal, CustomCallSchedule schedule,
     CustomCallApiVersion api_version) {
   return builder->CustomCall(call_target_name, operands, shape, opaque,
-                             /*operand_shapes_with_layout=*/absl::nullopt,
+                             /*operand_shapes_with_layout=*/std::nullopt,
                              has_side_effect, output_operand_aliasing, literal,
-                             /*window=*/absl::nullopt, /*dnums=*/absl::nullopt,
+                             /*window=*/std::nullopt, /*dnums=*/std::nullopt,
                              schedule, api_version);
 }
 
@@ -4419,7 +4419,7 @@ XlaOp CustomCallWithComputation(
     CustomCallApiVersion api_version) {
   return builder->CustomCall(
       call_target_name, operands, computation, shape, opaque,
-      /*operand_shapes_with_layout=*/absl::nullopt, has_side_effect,
+      /*operand_shapes_with_layout=*/std::nullopt, has_side_effect,
       output_operand_aliasing, literal, schedule, api_version);
 }
 
@@ -4435,7 +4435,7 @@ XlaOp CustomCallWithLayout(
   return builder->CustomCall(
       call_target_name, operands, shape, opaque, operand_shapes_with_layout,
       has_side_effect, output_operand_aliasing, literal,
-      /*window=*/absl::nullopt, /*dnums=*/absl::nullopt, schedule, api_version);
+      /*window=*/std::nullopt, /*dnums=*/std::nullopt, schedule, api_version);
 }
 
 XlaOp CustomCallWithConvDnums(
@@ -4447,7 +4447,7 @@ XlaOp CustomCallWithConvDnums(
         output_operand_aliasing,
     const Literal* literal, Window window, ConvolutionDimensionNumbers dnums,
     CustomCallSchedule schedule, CustomCallApiVersion api_version) {
-  absl::optional<absl::Span<const Shape>> maybe_operand_shapes;
+  std::optional<absl::Span<const Shape>> maybe_operand_shapes;
   if (!operand_shapes_with_layout.empty()) {
     maybe_operand_shapes = operand_shapes_with_layout;
   }
@@ -4630,9 +4630,9 @@ XlaOp ReduceWindowWithGeneralPadding(
 XlaOp AllGather(const XlaOp operand, int64_t all_gather_dimension,
                 int64_t shard_count,
                 absl::Span<const ReplicaGroup> replica_groups,
-                const absl::optional<ChannelHandle>& channel_id,
-                const absl::optional<Layout>& layout,
-                const absl::optional<bool> use_global_device_ids) {
+                const std::optional<ChannelHandle>& channel_id,
+                const std::optional<Layout>& layout,
+                const std::optional<bool> use_global_device_ids) {
   return operand.builder()->AllGather(operand, all_gather_dimension,
                                       shard_count, replica_groups, channel_id,
                                       layout, use_global_device_ids);
@@ -4645,8 +4645,8 @@ XlaOp CrossReplicaSum(const XlaOp operand,
 
 XlaOp AllReduce(const XlaOp operand, const XlaComputation& computation,
                 absl::Span<const ReplicaGroup> replica_groups,
-                const absl::optional<ChannelHandle>& channel_id,
-                const absl::optional<Shape>& shape_with_layout) {
+                const std::optional<ChannelHandle>& channel_id,
+                const std::optional<Shape>& shape_with_layout) {
   return operand.builder()->AllReduce(operand, computation, replica_groups,
                                       channel_id, shape_with_layout);
 }
@@ -4654,9 +4654,9 @@ XlaOp AllReduce(const XlaOp operand, const XlaComputation& computation,
 XlaOp ReduceScatter(const XlaOp operand, const XlaComputation& computation,
                     int64_t scatter_dimension, int64_t shard_count,
                     absl::Span<const ReplicaGroup> replica_groups,
-                    const absl::optional<ChannelHandle>& channel_id,
-                    const absl::optional<Layout>& layout,
-                    const absl::optional<bool> use_global_device_ids) {
+                    const std::optional<ChannelHandle>& channel_id,
+                    const std::optional<Layout>& layout,
+                    const std::optional<bool> use_global_device_ids) {
   return operand.builder()->ReduceScatter(
       operand, computation, scatter_dimension, shard_count, replica_groups,
       channel_id, layout, use_global_device_ids);
@@ -4665,14 +4665,14 @@ XlaOp ReduceScatter(const XlaOp operand, const XlaComputation& computation,
 XlaOp AllToAll(const XlaOp operand, int64_t split_dimension,
                int64_t concat_dimension, int64_t split_count,
                absl::Span<const ReplicaGroup> replica_groups,
-               const absl::optional<Layout>& layout) {
+               const std::optional<Layout>& layout) {
   return operand.builder()->AllToAll(operand, split_dimension, concat_dimension,
                                      split_count, replica_groups, layout);
 }
 
 XlaOp AllToAllTuple(absl::Span<const XlaOp> operands,
                     absl::Span<const ReplicaGroup> replica_groups,
-                    const absl::optional<Layout>& layout) {
+                    const std::optional<Layout>& layout) {
   CHECK(!operands.empty());
   return operands[0].builder()->AllToAllTuple(operands, replica_groups, layout);
 }
@@ -4680,7 +4680,7 @@ XlaOp AllToAllTuple(absl::Span<const XlaOp> operands,
 XlaOp AllToAllTuple(const XlaOp operand, int64_t split_dimension,
                     int64_t concat_dimension, int64_t split_count,
                     absl::Span<const ReplicaGroup> replica_groups,
-                    const absl::optional<Layout>& layout) {
+                    const std::optional<Layout>& layout) {
   return operand.builder()->AllToAllTuple(operand, split_dimension,
                                           concat_dimension, split_count,
                                           replica_groups, layout);

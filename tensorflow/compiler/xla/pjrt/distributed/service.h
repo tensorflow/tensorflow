@@ -135,7 +135,7 @@ class DistributedRuntimeServiceImpl final
   // State for EnumerateDevices.
   int num_topologies_present_ ABSL_GUARDED_BY(mu_) = 0;
   std::vector<LocalTopologyProto> local_topologies_ ABSL_GUARDED_BY(mu_);
-  absl::optional<GlobalTopologyProto> topology_ ABSL_GUARDED_BY(mu_);
+  std::optional<GlobalTopologyProto> topology_ ABSL_GUARDED_BY(mu_);
 
   // State for Shutdown(). Counter of how many nodes are blocked at the
   // Shutdown() barrier.

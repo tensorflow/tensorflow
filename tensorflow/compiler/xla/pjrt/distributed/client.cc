@@ -477,7 +477,7 @@ xla::Status DistributedRuntimeCoordinationServiceClient::Connect() {
            // Retries are only made for RPC errors. If a valid service error is
            // returned, fail immediately.
            s.GetPayload(tensorflow::CoordinationErrorPayloadKey()) ==
-               absl::nullopt);
+               std::nullopt);
   if (s.ok()) {
     LOG(INFO) << "Connected to distributed JAX controller";
   } else {
