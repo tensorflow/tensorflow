@@ -50,7 +50,7 @@ jobs:
         run: |
           tf_project_name='tensorflow_cpu_aws' && ${{ github.event_name == 'schedule' }} && tf_project_name='tf_nightly_cpu_aws'
           echo "PyPI project name:" $tf_project_name
-          CI_DOCKER_BUILD_EXTRA_PARAMS='--build-arg py_major_minor_version=${{ matrix.pyver }} --build-arg pypi_project_name=${tf_project_name}' \
+          CI_DOCKER_BUILD_EXTRA_PARAMS='--build-arg py_major_minor_version=${{ matrix.pyver }} --build-arg tf_project_name=${tf_project_name}' \
           ./tensorflow/tools/ci_build/ci_build.sh cpu.arm64 bash tensorflow/tools/ci_build/rel/ubuntu/cpu_arm64_pip.sh
       - name: Upload pip wheel to PyPI
         shell: bash
