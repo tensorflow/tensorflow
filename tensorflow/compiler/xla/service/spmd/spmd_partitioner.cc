@@ -1742,7 +1742,8 @@ Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
   HloSharding sharding = hlo->sharding().HasUniqueDevice()
                              ? hlo->sharding()
                              : HloSharding::Replicate();
-  if (hlo->opcode() == HloOpcode::kSend || hlo->opcode() == HloOpcode::kRecv) {
+  if (hlo->opcode() == HloOpcode::kSend || hlo->opcode() == HloOpcode::kRecv ||
+      hlo->opcode() == HloOpcode::kRecvDone) {
     sharding = sharding.GetSubSharding(hlo->shape(), {0});
   }
 
