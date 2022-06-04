@@ -67,7 +67,7 @@ class DenseBincountOp : public XlaOpKernel {
 
     xla::Shape output_shape = xla::ShapeUtil::MakeShape(dtype, {output_size});
     if (rank == 2) {
-      output_shape = xla::ShapeUtil::MakeShape(dtype, {rank, output_size});
+      output_shape = xla::ShapeUtil::MakeShape(dtype, {size, output_size});
       dim = input_shape.dimensions(1);
     }
 
