@@ -20,11 +20,11 @@ from typing import Any, Dict, Iterable, Optional, Union, Text
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.tpu import tpu_embedding_v2_utils
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.util import nest
 
 
-class TPUEmbeddingBase(tracking.AutoTrackable):
+class TPUEmbeddingBase(autotrackable.AutoTrackable):
   """The TPUEmbedding Base class.
 
   This class only contains the basic logic to check the feature config and table

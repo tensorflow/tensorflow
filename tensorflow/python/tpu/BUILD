@@ -612,7 +612,7 @@ pytype_strict_library(
         ":tpu_embedding_v2_utils",
         "//tensorflow/python:variables",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/util",
     ],
 )

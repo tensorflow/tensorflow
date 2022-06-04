@@ -23,7 +23,7 @@ import time
 from absl.testing import parameterized
 
 # pylint:disable=g-direct-tensorflow-import
-
+from tensorflow.python.checkpoint import checkpoint as tracking_util
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
@@ -43,7 +43,6 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.tracking import util as tracking_util
 
 
 mock = test.mock
