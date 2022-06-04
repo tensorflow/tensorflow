@@ -49,7 +49,6 @@ tf_cc_test(
     name = "preemption_sync_manager_test",
     size = "small",
     srcs = ["preemption_sync_manager_test.cc"],
-    tags = ["notsan"],  # TODO(b/234837027): Flaky data race
     deps = [
         ":preemption_notifier",
         ":preemption_sync_manager",

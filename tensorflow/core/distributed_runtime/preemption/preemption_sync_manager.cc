@@ -58,7 +58,6 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
     call_opts_->StartCancel();
     call_opts_->ClearCancelCallback();
     shutdown_.Notify();
-    sync_protocol_thread_ = nullptr;
   }
   Status Initialize(CoordinationServiceAgent* agent) override;
 #if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
@@ -85,11 +84,10 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
 
   Env* env_;                         // Not owned;
   CoordinationServiceAgent* agent_;  // Not owned.
+  absl::Notification shutdown_;
+  std::unique_ptr<Thread> sync_protocol_thread_;
   std::unique_ptr<PreemptionNotifier> preemption_notifier_;
   std::shared_ptr<CallOptions> call_opts_;
-  std::unique_ptr<Thread> sync_protocol_thread_;
-
-  absl::Notification shutdown_;
 };  // namespace
 
 Status PreemptionSyncManagerImpl::Initialize(CoordinationServiceAgent* agent) {
