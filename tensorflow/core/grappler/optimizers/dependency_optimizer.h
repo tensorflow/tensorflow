@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DEPENDENCY_OPTIMIZER_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DEPENDENCY_OPTIMIZER_H_
 
-#include <unordered_set>
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
@@ -73,9 +74,9 @@ class DependencyOptimizer : public GraphOptimizer {
   void GroupCrossDeviceControlEdges(bool host_granularity);
 
   bool fetch_nodes_known_;
-  std::unordered_set<string> nodes_to_preserve_;
+  absl::flat_hash_set<string> nodes_to_preserve_;
   std::unique_ptr<NodeMap> node_map_;
-  std::unordered_map<const NodeDef*, int> node_to_idx_;
+  absl::flat_hash_map<const NodeDef*, int> node_to_idx_;
   GraphDef* optimized_graph_;  // Not owned.
 };
 

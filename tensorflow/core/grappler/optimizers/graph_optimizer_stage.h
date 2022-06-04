@@ -295,9 +295,11 @@ class GraphOptimizerStagePipeline {
 
   std::vector<string> StageNames() {
     std::vector<string> names;
-    for (const auto& stage : stages_) {
-      names.push_back(stage->stage_name());
-    }
+    std::transform(
+        stages_.begin(), stages_.end(), std::back_inserter(names),
+        [](const std::unique_ptr<GraphOptimizerStage<Result>>& stage) {
+          return stage->stage_name();
+        });
     return names;
   }
 
