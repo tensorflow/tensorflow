@@ -21,7 +21,7 @@ limitations under the License.
 namespace mlir {
 namespace bufferization {
 class BufferizeTypeConverter;
-}
+}  // namespace bufferization
 class MLIRContext;
 class RewritePatternSet;
 namespace gml_st {
