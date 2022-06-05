@@ -18,7 +18,6 @@ limitations under the License.
 #include <unordered_set>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/strings/match.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -135,7 +134,7 @@ bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) const {
             << " to NoOp. Node has side effect.";
     return false;
   }
-  if (absl::EndsWith(node.op(), "Submodel")) {
+  if (node.op().rfind("Submodel", 0) == 0) {
     return false;
   }
   const OpDef* op_def = nullptr;
@@ -143,12 +142,11 @@ bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) const {
   if (!status.ok() || op_def->output_arg_size() == 0) {
     return false;
   }
-  static const absl::flat_hash_set<string>* do_not_rewrite_ops =
-      new absl::flat_hash_set<string>{
-          "Assert",     "CheckNumerics",         "_Retval",
-          "_Arg",       "_ParallelConcatUpdate", "TPUExecute",
-          "TPUCompile", "ControlTrigger"};
-  if (do_not_rewrite_ops->find(node.op()) != do_not_rewrite_ops->end()) {
+  const std::unordered_set<string> do_not_rewrite_ops{
+      "Assert",     "CheckNumerics",         "_Retval",
+      "_Arg",       "_ParallelConcatUpdate", "TPUExecute",
+      "TPUCompile", "ControlTrigger"};
+  if (do_not_rewrite_ops.find(node.op()) != do_not_rewrite_ops.end()) {
     return false;
   }
   if (!SafeToRemoveIdentity(node)) {
@@ -752,8 +750,7 @@ Status DependencyOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                      GraphDef* optimized_graph) {
   optimized_graph_ = optimized_graph;
   *optimized_graph_ = item.graph;
-  nodes_to_preserve_ = absl::flat_hash_set<string>(
-      item.NodesToPreserve().begin(), item.NodesToPreserve().end());
+  nodes_to_preserve_ = item.NodesToPreserve();
   fetch_nodes_known_ = !item.fetch.empty();
   CleanControlInputs();
 
