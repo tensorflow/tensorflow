@@ -504,10 +504,13 @@ static void GenericTfCallback(se::gpu::GpuStreamHandle stream_handle,
                                   s.error_message().size());
   }
 }
-
+#if GOOGLE_CUDA
 XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(kTfCallbackCustomCall,
                                          GenericTfCallback, "CUDA");
-
+#else
+XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(kTfCallbackCustomCall,
+                                         GenericTfCallback, "ROCM");
+#endif
 }  // namespace
 
 CallTfKernelOp::CallTfKernelOp(OpKernelConstruction* context)

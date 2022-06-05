@@ -267,6 +267,7 @@ tf_cuda_cc_test(
         "guitar",
         "multi_gpu",
         "no_oss",
+        "cuda_only",
     ],
     deps = [
         "//tensorflow/core:all_kernels",

@@ -1817,6 +1817,7 @@ tf_cc_test(
     tags = [
         "gpu",
         "no_rocm",
+        "cuda_only",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false
         # positives in msan.
     ],

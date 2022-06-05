@@ -123,8 +123,19 @@ port::StatusOr<Platform*> MultiPlatformManagerImpl::PlatformWithId(
 port::StatusOr<Platform*> MultiPlatformManagerImpl::PlatformWithName(
     absl::string_view target, bool initialize_platform) {
   absl::MutexLock lock(&mu_);
-
-  SE_ASSIGN_OR_RETURN(Platform * platform, LookupByNameLocked(target));
+  Platform * platform = 0;
+  if(target == "cuda" || target == "CUDA") {
+    port::StatusOr<Platform*> lookup = LookupByNameLocked("cuda");
+    if(lookup.ok())
+      platform = lookup.value();
+    else {
+      SE_ASSIGN_OR_RETURN(platform, LookupByNameLocked("rocm"));
+    }
+  } else {
+    if(target == "cuda_only")
+      target = "cuda";
+    SE_ASSIGN_OR_RETURN(platform, LookupByNameLocked(target));
+  }
   if (initialize_platform && !platform->Initialized()) {
     SE_RETURN_IF_ERROR(platform->Initialize({}));
   }
