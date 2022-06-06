@@ -2344,5 +2344,69 @@ TEST_F(RemapperFusePadWithFusedConv3D, FusedConv3D_BF16) {
 }
 #endif
 
+class RemapperLeakyReluTest : public GrapplerTest {
+ protected:
+  template <DataType DTYPE>
+  void RunTest() {
+    using ::tensorflow::ops::Placeholder;
+
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    auto max_shape = ops::Placeholder::Shape({64, 64});
+
+    // y = maximum(x, alpha * x)
+    auto input = Placeholder(s.WithOpName("input"), DTYPE, max_shape);
+    float epsilon = 0.3f;
+
+    typedef typename EnumToDataType<DTYPE>::Type CType;
+    auto leakyrelu_alpha = ops::Const<CType>(s.WithOpName("alpha"), epsilon);
+
+    auto mul = ops::Mul(s.WithOpName("Mul"), input, leakyrelu_alpha);
+    auto max = ops::Maximum(s.WithOpName("Maximum"), mul, input);
+
+    auto fetch = ops::Identity(s.WithOpName("fetch"), max);
+    auto max_t = GenerateTensorWithSetRandom<DTYPE>({64, 64});
+
+    GrapplerItem item;
+    item.fetch = {"fetch"};
+    item.feed = {{"input", max_t}};
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+    // Place all nodes on CPU.
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      item.graph.mutable_node(i)->set_device("/device:CPU:0");
+    }
+
+    Remapper optimizer(RewriterConfig::ON);
+    GraphDef output;
+    TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+    int found = 0;
+    for (const NodeDef& node : output.node()) {
+      if (node.name() == "Maximum") {
+        EXPECT_EQ(node.op(), "LeakyRelu");
+        ASSERT_EQ(node.input_size(), 1);
+        EXPECT_EQ(node.input(0), "input");
+        ++found;
+      }
+    }
+    EXPECT_EQ(found, 1);
+
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    ASSERT_EQ(tensors_expected.size(), 1);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    ASSERT_EQ(tensors.size(), 1);
+    float atol = 1e-6, rtol = 1e-6;
+    if (DTYPE == DT_BFLOAT16) {
+      atol = 1e-2;
+      rtol = 1e-2;
+    }
+    test::ExpectClose(tensors[0], tensors_expected[0], atol, rtol);
+  }
+};
+
+TEST_F(RemapperLeakyReluTest, F32) { RunTest<DT_FLOAT>(); }
+TEST_F(RemapperLeakyReluTest, BF16) { RunTest<DT_BFLOAT16>(); }
+
+
 }  // namespace grappler
 }  // namespace tensorflow

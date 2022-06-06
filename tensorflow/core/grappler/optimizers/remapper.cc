@@ -1224,6 +1224,80 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
   return (found_gelu_exact || found_gelu_approximate);
 }
 
+bool FindMulAndMaximum(RemapperContext* ctx, int node_index,
+                  std::map<string, int>* matched_nodes_map,
+                  std::set<int>* remove_node_indices) {
+  using utils::MatchingDirection;
+  using utils::NodeStatus;
+
+  // Convert Mul+Maximum to LeakyRelu
+  // maximum(x, alpha * x) = LeakyRelu(x)
+  utils::OpTypePattern mulmax_pattern{
+    "Maximum", "max_to_leakyrelu", NodeStatus::kReplace,
+    {
+      { "Mul", "mul", NodeStatus::kRemove,
+        {
+          { "*", "input", NodeStatus::kRemain},
+          { "Const|Cast", "alpha", NodeStatus::kRemain}
+        }
+      },
+      { "*", "input", NodeStatus::kRemain}
+    }
+  };
+
+  // Check for allowed datatypes
+  auto* max_node_def = ctx->graph_view.GetNode(node_index)->node();
+  if (!HasDataType(max_node_def, DT_HALF) &&
+      !HasDataType(max_node_def, DT_BFLOAT16) &&
+      !HasDataType(max_node_def, DT_FLOAT) &&
+      !HasDataType(max_node_def, DT_DOUBLE))
+    return false;
+
+  // Current implementation has support only
+  // for CPU when oneDNN is enabled.
+  // TODO(intel-tf): This will be removed when fully tested with GPU
+  if (!NodeIsOnCpu(max_node_def) && !IsMKLEnabled())
+    return false;
+
+  bool found_op_type_match = false;
+  utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
+      &(ctx->graph_view));
+  matched_nodes_map->clear();
+  remove_node_indices->clear();
+
+  found_op_type_match = graph_matcher.GetMatchedNodes(
+      mulmax_pattern, {}, ctx->graph_view.GetNode(node_index),
+      matched_nodes_map, remove_node_indices);
+
+  // Check if the value of alpha >= 0 as required for LeakyRelu
+  if (found_op_type_match) {
+    const auto* alpha_node_view =
+      ctx->graph_view.GetNode(matched_nodes_map->at("alpha"));
+    const auto* alpha_node_def = alpha_node_view->node();
+
+    float alpha_val;
+    if (alpha_node_def->op() == "Cast") {
+      const auto& regular_fanin_0 = alpha_node_view->GetRegularFanin(0);
+      const auto* regular_node_view = regular_fanin_0.node_view();
+      const auto* const_node = regular_node_view->node();
+      if (const_node != nullptr && const_node->op() == "Const") {
+        alpha_val = const_node->attr().at("value").tensor().float_val(0);
+      } else {
+        return false;
+      }
+    } else if (alpha_node_def->op() == "Const") {
+      alpha_val = alpha_node_def->attr().at("value").tensor().float_val(0);
+    } else {
+      return false;
+    }
+
+    if (alpha_val < 0) {
+      return false;
+    }
+  }
+  return found_op_type_match;
+}
+
 bool FindSigmoidAndMul(RemapperContext* ctx, int node_index,
                        std::map<string, int>* matched_nodes_map,
                        std::set<int>* remove_node_indices) {
@@ -2500,6 +2574,55 @@ Status AddMklLayerNorm(RemapperContext* ctx,
   return OkStatus();
 }
 
+Status ReplaceMulMaximumWithLeakyRelu(
+    RemapperContext* ctx, const std::map<string, int>& matched_nodes_map,
+    const std::set<int>& remove_node_indices,
+    std::vector<bool>* invalidated_nodes, std::vector<bool>* nodes_to_delete) {
+  const NodeDef* maximum =
+    ctx->graph_view.GetNode(matched_nodes_map.at("max_to_leakyrelu"))->node();
+  const NodeDef* input =
+    ctx->graph_view.GetNode(matched_nodes_map.at("input"))->node();
+  const auto* alpha_node_view =
+    ctx->graph_view.GetNode(matched_nodes_map.at("alpha"));
+  const auto* alpha_node_def = alpha_node_view->node();
+
+  NodeDef fused_op;
+  fused_op.set_name(maximum->name());
+  fused_op.set_op("LeakyRelu");
+  fused_op.set_device(maximum->device());
+  fused_op.add_input(input->name());
+
+  auto* attr = fused_op.mutable_attr();
+  (*attr)["T"] = maximum->attr().at("T");
+
+  // BF16 adds a cast before the const alpha, so accessing the const node
+  // using the cast node to retrieve the value of alpha.
+  if (alpha_node_def->op() == "Cast") {
+    const auto& regular_fanin_0 = alpha_node_view->GetRegularFanin(0);
+    const auto* regular_node_view = regular_fanin_0.node_view();
+    const auto* const_node = regular_node_view->node();
+    auto alpha_val = const_node->attr().at("value").tensor().float_val(0);
+    SetAttrValue(alpha_val, &(*attr)["alpha"]);
+  } else {
+    auto alpha_val = alpha_node_def->attr().at("value").tensor().float_val(0);
+    SetAttrValue(alpha_val, &(*attr)["alpha"]);
+  }
+
+  utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
+  Status status;
+  mutation->AddNode(std::move(fused_op), &status);
+  TF_RETURN_IF_ERROR(status);
+  TF_RETURN_IF_ERROR(mutation->Apply());
+
+  (*invalidated_nodes)[matched_nodes_map.at("max_to_leakyrelu")] = true;
+
+  for (const auto& node_index : remove_node_indices) {
+    (*nodes_to_delete)[node_index] = true;
+  }
+
+  return Status::OK();
+}
+
 Status ReplaceSigmoidMulWithSwish(
     RemapperContext* ctx, const std::map<string, int>& matched_nodes_map,
     const std::set<int>& remove_node_indices,
@@ -3315,6 +3438,17 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         TF_RETURN_IF_ERROR(
             AddFusedBatchMatMul(&ctx, matched_nodes_map, remove_node_indices,
                                 &invalidated_nodes, &nodes_to_delete));
+        continue;
+      }
+
+      // Remap Maximum(x, alpha * x) pattern, fuse them into the LeakyRelu(x).
+      std::map<string, int> mulmax_matched_nodes_map;
+      std::set<int> mulmax_remove_node_indices;
+      if (FindMulAndMaximum(&ctx, i, &mulmax_matched_nodes_map,
+                            &mulmax_remove_node_indices)) {
+        TF_RETURN_IF_ERROR(ReplaceMulMaximumWithLeakyRelu(
+            &ctx, mulmax_matched_nodes_map, mulmax_remove_node_indices,
+            &invalidated_nodes, &nodes_to_delete));
         continue;
       }
 
