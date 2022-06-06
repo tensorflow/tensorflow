@@ -216,6 +216,9 @@ class HloFunctionImporter {
   // Converts Array ref to an DenseIntElementsAttr.
   mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<int64_t> elements);
 
+  // Converts Array ref of bools to a DenseIntElementsAttr of I1 type.
+  mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<bool> elements);
+
   // Converts Array ref to padding attribute. Input is a flattened list of
   // padding low and padding high for each of the spatial dimensions.
   mlir::NamedAttribute ConvertPadding(llvm::ArrayRef<int64_t> padding);

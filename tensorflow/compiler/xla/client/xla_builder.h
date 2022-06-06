@@ -559,7 +559,8 @@ class XlaBuilder {
       const ConvolutionDimensionNumbers& dimension_numbers,
       int64_t feature_group_count = 1, int64_t batch_group_count = 1,
       const PrecisionConfig* precision_config = nullptr,
-      std::optional<PrimitiveType> preferred_element_type = std::nullopt);
+      std::optional<PrimitiveType> preferred_element_type = std::nullopt,
+      std::optional<std::vector<bool>> window_reversal = std::nullopt);
 
   XlaOp DynamicConvForward(
       XlaOp lhs, XlaOp rhs, absl::Span<const int64_t> window_strides,
@@ -1228,7 +1229,9 @@ class XlaBuilder {
       const ConvolutionDimensionNumbers& dimension_numbers,
       int64_t feature_group_count, int64_t batch_group_count,
       const PrecisionConfig* precision_config,
-      std::optional<PrimitiveType> preferred_element_type);
+      std::optional<PrimitiveType> preferred_element_type,
+      std::optional<std::vector<bool>> window_reversal);
+
   friend XlaOp Fft(XlaOp operand, FftType fft_type,
                    absl::Span<const int64_t> fft_length);
   friend XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
@@ -1988,7 +1991,8 @@ XlaOp ConvGeneralDilated(
     const ConvolutionDimensionNumbers& dimension_numbers,
     int64_t feature_group_count = 1, int64_t batch_group_count = 1,
     const PrecisionConfig* precision_config = nullptr,
-    std::optional<PrimitiveType> preferred_element_type = std::nullopt);
+    std::optional<PrimitiveType> preferred_element_type = std::nullopt,
+    std::optional<std::vector<bool>> window_reversal = std::nullopt);
 
 XlaOp DynamicConvForward(
     XlaOp lhs, XlaOp rhs, absl::Span<const int64_t> window_strides,

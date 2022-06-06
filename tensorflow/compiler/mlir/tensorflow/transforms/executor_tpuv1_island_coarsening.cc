@@ -457,6 +457,10 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
       FindTPUPartitionedCallReachableFunctions(getOperation());
   for (func::FuncOp func_op : getOperation().getOps<func::FuncOp>()) {
     if (functions_to_skip.contains(func_op)) {
+      OpBuilder builder(func_op);
+      // Mark this function as being skipped in island outlining.
+      func_op->setAttr(mlir::TF::kSkipIslandOutlining,
+                       builder.getBoolAttr(true));
       continue;
     }
 

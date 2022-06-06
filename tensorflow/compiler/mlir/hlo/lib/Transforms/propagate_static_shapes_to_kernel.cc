@@ -174,7 +174,6 @@ LogicalResult PropagateStaticShapesPattern::matchAndRewrite(
     if (!memref.hasRank()) break;  // Bail out if unranked.
     // memref is flattened to base, align, offset, strides and sizes.
     int64_t num_args = 3 + memref.getRank() * 2;
-    ArrayRef<BlockArgument> memref_args = arguments.take_front(num_args);
     auto is_ptr = [](BlockArgument arg) {
       return arg.getType().isa<LLVM::LLVMPointerType>();
     };
@@ -183,8 +182,9 @@ LogicalResult PropagateStaticShapesPattern::matchAndRewrite(
     };
     // Bail out if the next num_args are not the expected type.
     if (arguments.size() < num_args) break;
-    if (!llvm::all_of(arguments.take_front(2), is_ptr)) break;
-    if (!llvm::all_of(arguments.drop_front(2), is_int)) break;
+    ArrayRef<BlockArgument> memref_args = arguments.take_front(num_args);
+    if (!llvm::all_of(memref_args.take_front(2), is_ptr)) break;
+    if (!llvm::all_of(memref_args.drop_front(2), is_int)) break;
     // Replace memref_args with just memref_args[0] if memref has static shape.
     if (memref.hasStaticShape() && memref.getLayout().isIdentity()) {
       ReplaceStaticMemRefArguments(memref_args, memref, pointer_type_,

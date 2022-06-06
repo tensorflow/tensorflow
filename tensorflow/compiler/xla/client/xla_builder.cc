@@ -1504,6 +1504,9 @@ XlaOp XlaBuilder::ConvGeneral(
                             preferred_element_type);
 }
 
+// TODO(rmcilroy) Ideally window_reversal would be a absl::Span<const bool>
+// however this causes an error in pybind11's conversion code. See
+// https://github.com/pybind/pybind11_abseil/issues/4 for details.
 XlaOp XlaBuilder::ConvGeneralDilated(
     XlaOp lhs, XlaOp rhs, absl::Span<const int64_t> window_strides,
     absl::Span<const std::pair<int64_t, int64_t>> padding,
@@ -1512,7 +1515,8 @@ XlaOp XlaBuilder::ConvGeneralDilated(
     const ConvolutionDimensionNumbers& dimension_numbers,
     int64_t feature_group_count, int64_t batch_group_count,
     const PrecisionConfig* precision_config,
-    std::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type,
+    std::optional<std::vector<bool>> window_reversal) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
     TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
@@ -1530,7 +1534,7 @@ XlaOp XlaBuilder::ConvGeneralDilated(
     TF_ASSIGN_OR_RETURN(Window window,
                         ShapeInference::InferWindowFromDimensions(
                             window_dimensions, window_strides, padding,
-                            lhs_dilation, rhs_dilation));
+                            lhs_dilation, rhs_dilation, window_reversal));
     TF_ASSIGN_OR_RETURN(
         Shape shape,
         ShapeInference::InferConvolveShape(
@@ -4291,11 +4295,12 @@ XlaOp ConvGeneralDilated(const XlaOp lhs, const XlaOp rhs,
                          const ConvolutionDimensionNumbers& dimension_numbers,
                          int64_t feature_group_count, int64_t batch_group_count,
                          const PrecisionConfig* precision_config,
-                         std::optional<PrimitiveType> preferred_element_type) {
+                         std::optional<PrimitiveType> preferred_element_type,
+                         std::optional<std::vector<bool>> window_reversal) {
   return lhs.builder()->ConvGeneralDilated(
       lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation,
       dimension_numbers, feature_group_count, batch_group_count,
-      precision_config, preferred_element_type);
+      precision_config, preferred_element_type, window_reversal);
 }
 
 XlaOp DynamicConvInputGrad(

@@ -146,7 +146,7 @@ build --define=no_hdfs_support=true
 build --experimental_cc_shared_library
 
 # cc_shared_library ensures no library is linked statically more than once.
-build --experimental_link_static_libraries_once=true
+build --experimental_link_static_libraries_once=false
 
 # Default options should come above this line.
 

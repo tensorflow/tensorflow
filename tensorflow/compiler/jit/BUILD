@@ -545,10 +545,7 @@ cc_library(
     name = "get_compiler_ir",
     srcs = ["get_compiler_ir.cc"],
     hdrs = ["get_compiler_ir.h"],
-    visibility = [
-        ":internal",
-        "//tensorflow/core/common_runtime/eager:__pkg__",
-    ],
+    visibility = [":internal"],
     deps = [
         ":common",
         ":compilability_check_util",
@@ -577,10 +574,7 @@ cc_library(
 cc_library(
     name = "get_compiler_ir_hdrs",
     textual_hdrs = ["get_compiler_ir.h"],
-    visibility = [
-        ":internal",
-        "//tensorflow/core/common_runtime/eager:__pkg__",
-    ],
+    visibility = [":internal"],
     deps = [
         "//tensorflow/compiler/xla:statusor",
         "@com_google_absl//absl/memory",

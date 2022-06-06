@@ -673,9 +673,9 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:constant_op",
-        "//tensorflow/python/training/tracking:asset",
-        "//tensorflow/python/training/tracking:base",
-        "//tensorflow/python/training/tracking:resource",
+        "//tensorflow/python/trackable:asset",
+        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/trackable:resource",
     ],
 )
 
@@ -951,7 +951,7 @@ py_library(
         "//tensorflow/python:while_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python/distribute/parallel_device",
         "//tensorflow/python/profiler:trace",
-        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/trackable:base",
     ],
 )
 
@@ -1082,7 +1082,7 @@ py_library(
         "//tensorflow/python:template",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/saved_model:nested_structure_coder",
-        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/trackable:base",
     ],
 )
 

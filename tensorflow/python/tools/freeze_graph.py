@@ -231,7 +231,7 @@ def freeze_graph_with_def_protos(input_graph_def,
   # Write GraphDef to file if output path has been given.
   if output_graph:
     with gfile.GFile(output_graph, "wb") as f:
-      f.write(output_graph_def.SerializeToString())
+      f.write(output_graph_def.SerializeToString(deterministic=True))
 
   return output_graph_def
 

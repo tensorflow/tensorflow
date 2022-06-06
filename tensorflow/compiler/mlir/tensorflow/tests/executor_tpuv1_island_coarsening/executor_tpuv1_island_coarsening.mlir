@@ -11,11 +11,12 @@ func.func @skips_tpu_partitioned_call_reachable() {
   func.return
 }
 
-// Ensures that these islands are not coarsened (due to caller above).
-// CHECK-LABEL: func @tpu_partitioned_call_reachable
+// Ensures that these islands are not coarsened (due to caller above) and that
+// `_skip_island_outlining` is set to true.
+// CHECK-LABEL: func @tpu_partitioned_call_reachable() attributes {_skip_island_outlining = true}
 func.func @tpu_partitioned_call_reachable() {
-// CHECK-COUNT-4: island
-// CHECK-NOT: island
+// CHECK-COUNT-4: tf_executor.island
+// CHECK-NOT: tf_executor.island
   tf_executor.graph {
     %outputs, %control = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %outputs_0, %control_1 = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", value = dense<2> : tensor<i32>} : () -> tensor<i32>
@@ -26,11 +27,12 @@ func.func @tpu_partitioned_call_reachable() {
   func.return
 }
 
-// Ensures that these islands are not coarsened (due to indirect caller above).
-// CHECK-LABEL: func @tpu_partitioned_call_indirectly_reachable
+// Ensures that these islands are not coarsened (due to indirect caller above)
+// and that `_skip_island_outlining` is set to true.
+// CHECK-LABEL: func @tpu_partitioned_call_indirectly_reachable() attributes {_skip_island_outlining = true}
 func.func @tpu_partitioned_call_indirectly_reachable() {
-// CHECK-COUNT-3: island
-// CHECK-NOT: island
+// CHECK-COUNT-3: tf_executor.island
+// CHECK-NOT: tf_executor.island
   tf_executor.graph {
     %outputs, %control = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %outputs_0, %control_1 = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", value = dense<2> : tensor<i32>} : () -> tensor<i32>
@@ -54,7 +56,7 @@ func.func @control_input(%arg0 : tensor<i1>) -> tensor<f32> {
     }
 
 // CHECK: "tf.opA"
-// CHECK: island
+// CHECK: tf_executor.island
 // CHECK: "tf.opB"
 
     tf_executor.fetch %2#0 : tensor<f32>
@@ -66,7 +68,7 @@ func.func @control_input(%arg0 : tensor<i1>) -> tensor<f32> {
 // CHECK-LABEL: func @all_fused
 func.func @all_fused(%arg0: tensor<*xf32>) {
   tf_executor.graph {
-// CHECK: island
+// CHECK: tf_executor.island
 // CHECK-NEXT: = "tf.Const"
 // CHECK-NEXT: = "tf.Const"
 // CHECK-NEXT: = "tf.AddV2"
@@ -82,7 +84,7 @@ func.func @all_fused(%arg0: tensor<*xf32>) {
 // CHECK-LABEL: func @all_fused
 func.func @all_fused_non_replicated(%arg0: tensor<*xf32>) {
   tf_executor.graph {
-// CHECK: island
+// CHECK: tf_executor.island
 // CHECK-NEXT: = "tf.Const"
 // CHECK-NEXT: = "tf.Const"
 // CHECK-NEXT: = "tf.AddV2"
@@ -98,12 +100,12 @@ func.func @all_fused_non_replicated(%arg0: tensor<*xf32>) {
 // CHECK-LABEL: func @split_ops
 func.func @split_ops(%arg0: tensor<*xf32>) {
   tf_executor.graph {
-// CHECK: island
+// CHECK: tf_executor.island
 // CHECK-NEXT: = "tf.Const"
 // CHECK-NEXT: = "tf.Const"
 // CHECK-NEXT: = "tf.AddV2"
 // CHECK-SAME: _replication_info
-// CHECK: island wraps "tf.AddV2"
+// CHECK: tf_executor.island wraps "tf.AddV2"
     %outputs, %control = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %outputs_0, %control_1 = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", value = dense<2> : tensor<i32>} : () -> tensor<i32>
     %outputs_3, %control_4 = tf_executor.island wraps "tf.AddV2"(%outputs, %outputs_0) : (tensor<i32>, tensor<i32>) -> tensor<i32>
@@ -128,7 +130,7 @@ func.func @two_clusters_mixed(%arg0: tensor<*xf32>) {
 // CHECK-NEXT: = "tf.Const"{{.*}}"cluster2"
 // CHECK-NEXT: = "tf.AddV2"{{.*}}"cluster2"
 // CHECK-NEXT: = "tf.AddV2"{{.*}}"cluster2"
-// CHECK: island wraps "tf.AddV2"(%[[ISLAND1]], %[[ISLAND2]])
+// CHECK: tf_executor.island wraps "tf.AddV2"(%[[ISLAND1]], %[[ISLAND2]])
     %outputs, %control = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster1", value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %outputs_0, %control_1 = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster2", value = dense<2> : tensor<i32>} : () -> tensor<i32>
     %outputs_2, %control_2 = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster1", value = dense<3> : tensor<i32>} : () -> tensor<i32>
@@ -158,7 +160,7 @@ func.func @two_clusters_mixed_replication(%arg0: tensor<*xf32>) {
 // CHECK-NEXT: = "tf.Const"{{.*}}
 // CHECK-NEXT: = "tf.AddV2"{{.*}}
 // CHECK-NEXT: = "tf.AddV2"{{.*}}
-// CHECK: island wraps "tf.AddV2"(%[[ISLAND1]], %[[ISLAND2]])
+// CHECK: tf_executor.island wraps "tf.AddV2"(%[[ISLAND1]], %[[ISLAND2]])
     %outputs, %control = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster1", value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %outputs_0, %control_1 = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", value = dense<2> : tensor<i32>} : () -> tensor<i32>
     %outputs_2, %control_2 = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster1", value = dense<3> : tensor<i32>} : () -> tensor<i32>
@@ -177,7 +179,7 @@ func.func @two_clusters_mixed_replication(%arg0: tensor<*xf32>) {
 // CHECK-LABEL: func @fuse_in_replicated_input_op
 func.func @fuse_in_replicated_input_op(%arg0: tensor<i32>) {
   tf_executor.graph {
-// CHECK: island
+// CHECK: tf_executor.island
 // CHECK-NEXT: = "tf.TPUReplicatedInput"
 // CHECK-NEXT: = "tf.Const"
 // CHECK-NEXT: = "tf.AddV2"
@@ -193,7 +195,7 @@ func.func @fuse_in_replicated_input_op(%arg0: tensor<i32>) {
 // CHECK-LABEL: func @fuse_in_replicated_output_op
 func.func @fuse_in_replicated_output_op() {
   tf_executor.graph {
-// CHECK: island
+// CHECK: tf_executor.island
 // CHECK-NEXT: = "tf.Const"
 // CHECK-NEXT: = "tf.AddV2"
 // CHECK-NEXT: = "tf.TPUReplicatedOutput"
@@ -214,7 +216,7 @@ func.func @fuse_in_replicated_output_op() {
 func.func @fuse_in_partitioned_input_op(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>) {
   // expected-error @+1 {{or has unsupported ops}}
   tf_executor.graph {
-// DISABLED-CHECK: island
+// DISABLED-CHECK: tf_executor.island
 // DISABLED-CHECK-NEXT: = "tf.Const"
 // DISABLED-CHECK-NEXT: = "tf.TPUPartitionedInput"
 // DISABLED-CHECK-NEXT: = "tf.AddV2"
@@ -233,7 +235,7 @@ func.func @fuse_in_partitioned_input_op(%arg0: tensor<2x4xf32>, %arg1: tensor<2x
 func.func @fuse_in_partitioned_output_op() {
   // expected-error @+1 {{or has unsupported ops}}
   tf_executor.graph {
-// DISABLED-CHECK: island
+// DISABLED-CHECK: tf_executor.island
 // DISABLED-CHECK-NEXT: = "tf.Const"
 // DISABLED-CHECK-NEXT: = "tf.AddV2"
 // DISABLED-CHECK-NEXT: = "tf.TPUPartitionedOutput"
@@ -251,8 +253,8 @@ func.func @fuse_in_partitioned_output_op() {
 // CHECK-LABEL: func @fuse_in_special_tpu_operand_producer_of_first_island
 func.func @fuse_in_special_tpu_operand_producer_of_first_island() {
   tf_executor.graph {
-// CHECK: island wraps "tf.Const"
-// CHECK-NEXT: island
+// CHECK: tf_executor.island wraps "tf.Const"
+// CHECK-NEXT: tf_executor.island
 // CHECK-NEXT: = "tf.TPUReplicatedInput"
 // CHECK-NEXT: = "tf.AddV2"
     %outputs_0, %control_0 = tf_executor.island wraps "tf.Const"() {value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
@@ -270,7 +272,7 @@ func.func @fuse_in_special_tpu_operand_producer_of_first_island() {
 func.func @fuse_in_special_tpu_consumer_of_first_island() {
   // expected-error @+1 {{or has unsupported ops}}
   tf_executor.graph {
-// DISABLED-CHECK: island
+// DISABLED-CHECK: tf_executor.island
 // DISABLED-CHECK-NEXT: = "tf.Const"
 // DISABLED-CHECK-NEXT: = "tf.TPUPartitionedOutput"
     %outputs_0, %control_1 = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
@@ -287,7 +289,7 @@ func.func @fuse_in_special_tpu_consumer_of_first_island() {
 func.func @fuse_in_chain_special_ops_producers(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>) {
   // expected-error @+1 {{or has unsupported ops}}
   tf_executor.graph {
-// DISABLED-CHECK: island
+// DISABLED-CHECK: tf_executor.island
 // DISABLED-CHECK-NEXT: = "tf.Const"
 // DISABLED-CHECK-NEXT: = "tf.TPUPartitionedInput"
 // DISABLED-CHECK-NEXT: = "tf.TPUReplicatedInput"
@@ -308,7 +310,7 @@ func.func @fuse_in_chain_special_ops_producers(%arg0: tensor<2x4xf32>, %arg1: te
 func.func @fuse_in_chain_special_ops_consumers() {
   // expected-error @+1 {{or has unsupported ops}}
   tf_executor.graph {
-// DISABLED-CHECK: island
+// DISABLED-CHECK: tf_executor.island
 // DISABLED-CHECK-NEXT: = "tf.Const"
 // DISABLED-CHECK-NEXT: = "tf.AddV2"
 // DISABLED-CHECK-NEXT: = "tf.TPUReplicatedOutput"
@@ -329,7 +331,7 @@ func.func @fuse_in_chain_special_ops_consumers() {
 func.func @fuse_in_special_ops_out_of_order() {
   // expected-error @+1 {{or has unsupported ops}}
   tf_executor.graph {
-// DISABLED-CHECK: island
+// DISABLED-CHECK: tf_executor.island
 // DISABLED-CHECK-NEXT: = "tf.Const"
 // DISABLED-CHECK-NEXT: = "tf.SomeOp"
 // DISABLED-CHECK-NEXT: = "tf.TPUReplicatedOutput"
@@ -348,7 +350,7 @@ func.func @fuse_in_special_ops_out_of_order() {
 // CHECK-LABEL: func @keep_control_dependency
 func.func @keep_control_dependency(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<f32>) {
   tf_executor.graph {
-// CHECK: island
+// CHECK: tf_executor.island
 // CHECK-NEXT: = "tf.TPUReplicatedInput"
 // CHECK-NEXT: = "tf.Const"
 // CHECK-NEXT: = "tf.AddV2"
@@ -368,7 +370,7 @@ func.func @keep_control_dependency(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2
 
 // CHECK-LABEL: func @keep_data_dependency
 // CHECK: "tf.Const"
-// CHECK-NEXT: island
+// CHECK-NEXT: tf_executor.island
 // CHECK-NEXT: "tf.Const"
 // CHECK-NEXT: "tf.AddV2"
 // CHECK-NEXT: yield
@@ -386,7 +388,7 @@ func.func @keep_data_dependency() {
 // -----
 
 // CHECK-LABEL: func @tpu_compilation_status_same_cluster
-// CHECK: island
+// CHECK: tf_executor.island
 // CHECK-NEXT: "tf.Const"
 // CHECK-NEXT: "tf.TPUCompilationResult"
 // CHECK-NEXT: yield
@@ -401,9 +403,9 @@ func.func @tpu_compilation_status_same_cluster() {
 // -----
 
 // CHECK-LABEL: func @tpu_compilation_status_different_clusters
-// CHECK: island
+// CHECK: tf_executor.island
 // CHECK: "tf.Const"
-// CHECK: island
+// CHECK: tf_executor.island
 // CHECK: "tf.TPUCompilationResult"
 func.func @tpu_compilation_status_different_clusters() {
   tf_executor.graph {

@@ -576,7 +576,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "memory_cleanup_test",
-    size = "small",
+    size = "medium",
     srcs = ["memory_cleanup_test.py"],
     shard_count = 12,
     tags = [

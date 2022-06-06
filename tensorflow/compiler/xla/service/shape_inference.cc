@@ -2465,7 +2465,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     absl::Span<const int64_t> window_strides,
     absl::Span<const std::pair<int64_t, int64_t>> padding,
     absl::Span<const int64_t> lhs_dilation,
-    absl::Span<const int64_t> rhs_dilation) {
+    absl::Span<const int64_t> rhs_dilation,
+    std::optional<std::vector<bool>> window_reversal) {
   const auto verify_size = [&](const size_t x, const char* x_name) {
     if (x == 0 || x == window_dimensions.size()) {
       return OkStatus();
@@ -2482,6 +2483,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   TF_RETURN_IF_ERROR(verify_size(padding.size(), "padding entries"));
   TF_RETURN_IF_ERROR(verify_size(lhs_dilation.size(), "lhs dilation factors"));
   TF_RETURN_IF_ERROR(verify_size(rhs_dilation.size(), "rhs dilation factors"));
+  if (window_reversal.has_value()) {
+    TF_RETURN_IF_ERROR(verify_size(window_reversal->size(), "window reversal"));
+  }
 
   Window window;
   for (size_t i = 0; i < window_dimensions.size(); i++) {
@@ -2509,7 +2513,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     } else {
       dim->set_window_dilation(1);
     }
-    dim->set_window_reversal(false);
+    if (window_reversal.has_value() && !window_reversal->empty()) {
+      dim->set_window_reversal(window_reversal->at(i));
+    } else {
+      dim->set_window_reversal(false);
+    }
   }
   return window;
 }

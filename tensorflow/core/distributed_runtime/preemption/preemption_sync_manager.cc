@@ -29,8 +29,13 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/preemption/preemption_notifier.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
+
+#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
+#include "learning/brain/runtime/preemption/borg_preemption_notifier.h"
+#endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE
 
 namespace tensorflow {
 namespace {
@@ -53,11 +58,14 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
     call_opts_->StartCancel();
     call_opts_->ClearCancelCallback();
     shutdown_.Notify();
-    sync_protocol_thread_ = nullptr;
   }
   Status Initialize(CoordinationServiceAgent* agent) override;
+#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
+  Status InitWithBorgPreemptionNotifier(
+      CoordinationServiceAgent* agent) override;
+#endif
   Status Initialize(CoordinationServiceAgent* agent,
-                    std::unique_ptr<PreemptionNotifier>) override;
+                    std::unique_ptr<PreemptionNotifier> notifier) override;
   bool ReachedSyncPoint() override;
 
  private:
@@ -76,18 +84,24 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
 
   Env* env_;                         // Not owned;
   CoordinationServiceAgent* agent_;  // Not owned.
+  absl::Notification shutdown_;
+  std::unique_ptr<Thread> sync_protocol_thread_;
   std::unique_ptr<PreemptionNotifier> preemption_notifier_;
   std::shared_ptr<CallOptions> call_opts_;
-  std::unique_ptr<Thread> sync_protocol_thread_;
-
-  absl::Notification shutdown_;
 };  // namespace
 
 Status PreemptionSyncManagerImpl::Initialize(CoordinationServiceAgent* agent) {
-  // TODO(b/230630494): Add Borg implementation.
   TF_ASSIGN_OR_RETURN(Env * env, agent->GetEnv());
   return Initialize(agent, CreateSigtermNotifier(env));
 }
+
+#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
+Status PreemptionSyncManagerImpl::InitWithBorgPreemptionNotifier(
+    CoordinationServiceAgent* agent) {
+  TF_ASSIGN_OR_RETURN(Env * env, agent->GetEnv());
+  return Initialize(agent, CreateBorgPreemptionNotifier(env));
+}
+#endif
 
 Status PreemptionSyncManagerImpl::Initialize(
     CoordinationServiceAgent* agent,
