@@ -2724,14 +2724,46 @@ LogicalResult ConvertTFLTanhOp::matchAndRewrite(
   return success();
 }
 
+static LogicalResult LegalizeFloatingPointPrelu(Operation* op,
+                                                PatternRewriter& rewriter,
+                                                Value input, Value alpha,
+                                                ShapedType output_type) {
+  Value const_zero = getTosaConstTensorSingleF32(rewriter, op, 0.0);
+
+  auto mul = CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
+                                           input, alpha, 0);
+
+  auto ge = CreateOpAndInfer<tosa::GreaterEqualOp>(
+      rewriter, op->getLoc(), output_type.clone(rewriter.getIntegerType(1)),
+      input, const_zero);
+
+  CreateReplaceOpAndInfer<tosa::SelectOp>(rewriter, op, output_type, ge, input,
+                                          mul);
+
+  return success();
+}
+
 LogicalResult ConvertTFLPReluOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_prelu_op = cast<TFL::PReluOp>(op);
-  RankedTensorType output_type =
-      tfl_prelu_op.getResult().getType().dyn_cast<RankedTensorType>();
-  if (!output_type) return failure();
 
-  return failure();
+  ShapedType input_type = tfl_prelu_op.input().getType().dyn_cast<ShapedType>();
+  ShapedType output_type =
+      tfl_prelu_op.getResult().getType().dyn_cast<ShapedType>();
+  if (!input_type || !output_type)
+    return rewriter.notifyMatchFailure(op,
+                                       "input or output is not a ShapedType");
+
+  bool output_is_qtype =
+      output_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
+
+  // TODO(jennik): Handle the quantized case.
+  if (output_is_qtype)
+    return rewriter.notifyMatchFailure(
+        op, "only floating point currently supported");
+
+  return LegalizeFloatingPointPrelu(op, rewriter, tfl_prelu_op.input(),
+                                    tfl_prelu_op.alpha(), output_type);
 }
 
 LogicalResult ConvertTFLLeakyReluOp::matchAndRewrite(
@@ -2817,21 +2849,9 @@ LogicalResult ConvertTFLLeakyReluOp::matchAndRewrite(
     return success();
 
   } else {
-    Value const_zero = getTosaConstTensorSingleF32(rewriter, op, 0.0);
-
-    auto op1_mul = CreateOpAndInfer<tosa::MulOp>(
-        rewriter, op->getLoc(), output_type, tfl_leakyrelu_op.input(),
-        getTosaConstTensorSingleF32(rewriter, op, alpha), 0);
-
-    auto op2_ge = CreateOpAndInfer<tosa::GreaterEqualOp>(
-        rewriter, op->getLoc(), output_type.clone(rewriter.getIntegerType(1)),
-        tfl_leakyrelu_op.input(), const_zero);
-
-    CreateReplaceOpAndInfer<tosa::SelectOp>(rewriter, op, output_type, op2_ge,
-                                            tfl_leakyrelu_op.input(),
-                                            op1_mul.getResult());
-
-    return success();
+    return LegalizeFloatingPointPrelu(
+        op, rewriter, tfl_leakyrelu_op.input(),
+        getTosaConstTensorSingleF32(rewriter, op, alpha), output_type);
   }
 }
 
