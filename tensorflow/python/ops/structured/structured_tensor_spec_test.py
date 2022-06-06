@@ -15,12 +15,15 @@
 """Tests for StructuredTensorSpec."""
 
 from absl.testing import parameterized
+import numpy as np
 
+from tensorflow.core.framework import full_type_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework.type_utils import fulltypes_for_flat_tensors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -289,6 +292,135 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
     for (actual, expected) in zip(actual_unbatched, unbatched):
       self.assertAllEqual(actual, expected)
 
+  def _lambda_for_fields(self):
+    return lambda: {
+        'a':
+            np.ones([1, 2, 3, 1]),
+        'b':
+            np.ones([1, 2, 3, 1, 5]),
+        'c':
+            ragged_factory_ops.constant(
+                np.zeros([1, 2, 3, 1], dtype=np.uint8), dtype=dtypes.uint8),
+        'd':
+            ragged_factory_ops.constant(
+                np.zeros([1, 2, 3, 1, 3]).tolist(), ragged_rank=1),
+        'e':
+            ragged_factory_ops.constant(
+                np.zeros([1, 2, 3, 1, 2, 2]).tolist(), ragged_rank=2),
+        'f':
+            ragged_factory_ops.constant(
+                np.zeros([1, 2, 3, 1, 3]), dtype=dtypes.float32),
+        'g':
+            StructuredTensor.from_pyval([[
+                [  # pylint: disable=g-complex-comprehension
+                    [{
+                        'x': j,
+                        'y': k
+                    }] for k in range(3)
+                ] for j in range(2)
+            ]]),
+        'h':
+            StructuredTensor.from_pyval([[
+                [  # pylint: disable=g-complex-comprehension
+                    [[
+                        {
+                            'x': j,
+                            'y': k,
+                            'z': z
+                        } for z in range(j)
+                    ]] for k in range(3)
+                ] for j in range(2)
+            ]]),
+    }
+
+  def testFlatTensorSpecs(self):
+    # Note that the batchable tensor list encoding for a StructuredTensor
+    # contains a separate tensor for each leaf field.
+    # In this example, _flat_tensor_specs in class StructuredTensorSpec is
+    # called three times and it returns results with length 2, 3 and 11
+    # for "g", "h" and `struct` respectively.
+    fields = self._lambda_for_fields()
+    rank = 4
+    if callable(fields):
+      fields = fields()  # deferred construction: fields may include tensors.
+
+    struct = StructuredTensor.from_fields_and_rank(fields, rank)
+    spec = type_spec.type_spec_from_value(struct)
+    flat_specs = spec._flat_tensor_specs
+    self.assertEqual(
+        flat_specs,
+        [
+            # a , b
+            tensor_spec.TensorSpec(
+                shape=(1, 2, 3, 1), dtype=dtypes.float64, name=None),
+            tensor_spec.TensorSpec(
+                shape=(1, 2, 3, 1, 5), dtype=dtypes.float64, name=None),
+            # c, d, e, f
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.variant, name=None),
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.variant, name=None),
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.variant, name=None),
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.variant, name=None),
+            # g
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.variant, name=None),
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.variant, name=None),
+            # h
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.variant, name=None),
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.variant, name=None),
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.variant, name=None)
+        ])
+
+  def testFulTypesForFlatTensors(self):
+    # Note that the batchable tensor list encoding for a StructuredTensor
+    # contains a separate tensor for each leaf field.
+    # In this example, _flat_tensor_specs in class StructuredTensorSpec is
+    # called three times and it returns results with length 2, 3 and 11
+    # for "g", "h" and `struct` respectively.
+    fields = self._lambda_for_fields()
+    rank = 4
+    if callable(fields):
+      fields = fields()  # deferred construction: fields may include tensors.
+
+    struct = StructuredTensor.from_fields_and_rank(fields, rank)
+    spec = type_spec.type_spec_from_value(struct)
+    flat_specs = spec._flat_tensor_specs
+    fulltype = fulltypes_for_flat_tensors(spec)
+    expected_ft_list = [
+        # a, b
+        full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_UNSET),
+        full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_UNSET),
+        # c, d, e, f
+        full_type_pb2.FullTypeDef(
+            type_id=full_type_pb2.TFT_RAGGED,
+            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_UINT8)]),
+        full_type_pb2.FullTypeDef(
+            type_id=full_type_pb2.TFT_RAGGED,
+            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_FLOAT)]),
+        full_type_pb2.FullTypeDef(
+            type_id=full_type_pb2.TFT_RAGGED,
+            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_FLOAT)]),
+        full_type_pb2.FullTypeDef(
+            type_id=full_type_pb2.TFT_RAGGED,
+            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_FLOAT)]),
+        # g
+        full_type_pb2.FullTypeDef(
+            type_id=full_type_pb2.TFT_RAGGED,
+            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_INT32)]),
+        full_type_pb2.FullTypeDef(
+            type_id=full_type_pb2.TFT_RAGGED,
+            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_INT32)]),
+        # h
+        full_type_pb2.FullTypeDef(
+            type_id=full_type_pb2.TFT_RAGGED,
+            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_INT32)]),
+        full_type_pb2.FullTypeDef(
+            type_id=full_type_pb2.TFT_RAGGED,
+            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_INT32)]),
+        full_type_pb2.FullTypeDef(
+            type_id=full_type_pb2.TFT_RAGGED,
+            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_INT32)]),
+    ]
+    self.assertEqual(len(expected_ft_list), len(flat_specs))
+    self.assertEqual(fulltype, expected_ft_list)
 
 if __name__ == '__main__':
   googletest.main()

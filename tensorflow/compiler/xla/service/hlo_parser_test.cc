@@ -82,7 +82,7 @@ std::vector<TestData> CreateTestCases() {
 // ax + y
 {
 "AxpyParam",
-R"(HloModule axpy_module
+R"(HloModule axpy_module, entry_computation_layout={(f32[],f32[2,4]{1,0},f32[2,4]{1,0})->f32[2,4]{1,0}}
 
 ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
   %alpha = f32[] parameter(0)
@@ -98,7 +98,7 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
 // parameter replication
 {
 "ParamReplication",
-R"(HloModule param_replication_module
+R"(HloModule param_replication_module, entry_computation_layout={(f32[],(f32[2,4]{1,0}, (f32[2,4]{1,0})))->(f32[], (f32[2,4]{1,0}, (f32[2,4]{1,0})))}
 
 ENTRY %param_replication (a: f32[], b: (f32[2,4], (f32[2,4]))) -> (f32[], (f32[2,4], (f32[2,4]))) {
   %a = f32[] parameter(0), parameter_replication={true}
@@ -111,7 +111,7 @@ ENTRY %param_replication (a: f32[], b: (f32[2,4], (f32[2,4]))) -> (f32[], (f32[2
 // pred constant
 {
 "ConstantPred",
-R"(HloModule constant_pred_module
+R"(HloModule constant_pred_module, entry_computation_layout={()->pred[]}
 
 ENTRY %constant_pred () -> pred[] {
   ROOT %constant = pred[] constant(true), metadata={op_type="const" op_name="\"it\'s not a problem\n" source_file="path/to/test.cc" source_line=68}, backend_config="foo\" bar"
@@ -122,7 +122,7 @@ ENTRY %constant_pred () -> pred[] {
 // pred array constant
 {
 "ConstantPredArray",
-R"(HloModule module
+R"(HloModule module, entry_computation_layout={()->pred[2,3]{1,0}}
 
 ENTRY %constant_pred_array () -> pred[2,3] {
   ROOT %constant = pred[2,3]{1,0} constant({ { 0, 1, 0 }, { 1, 0, 1 } })
@@ -134,7 +134,7 @@ ENTRY %constant_pred_array () -> pred[2,3] {
 // s32 constant
 {
 "ConstantS32",
-R"(HloModule constant_s32_module
+R"(HloModule constant_s32_module, entry_computation_layout={()->s32[]}
 
 ENTRY %constant_s32 () -> s32[] {
   ROOT %constant = s32[] constant(-42)
@@ -146,7 +146,7 @@ ENTRY %constant_s32 () -> s32[] {
 // configuration
 {
 "ConstantF32",
-R"(HloModule ConstantF32_module
+R"(HloModule ConstantF32_module, entry_computation_layout={()->f32[]}
 
 ENTRY %ConstantF32.v4 () -> f32[] {
   ROOT %constant = f32[] constant(42), backend_config="this is a configuration"
@@ -157,7 +157,7 @@ ENTRY %ConstantF32.v4 () -> f32[] {
 // f32 constant, rank 1 empty array.
 {
 "ConstantF32R1Empty",
-R"(HloModule ConstantF32Empty_module
+R"(HloModule ConstantF32Empty_module, entry_computation_layout={()->f32[0]{0}}
 
 ENTRY %ConstantF32Empty.v4 () -> f32[0] {
   ROOT %constant = f32[0]{0} constant({})
@@ -168,7 +168,7 @@ ENTRY %ConstantF32Empty.v4 () -> f32[0] {
 // f32 constant, rank 4 empty array.
 {
 "ConstantF32R4Empty",
-R"(HloModule ConstantF32R4Empty_module
+R"(HloModule ConstantF32R4Empty_module, entry_computation_layout={()->f32[2,0,4,3]{3,2,1,0}}
 
 ENTRY %ConstantF32R4Empty.v4 () -> f32[2,0,4,3] {
   ROOT %constant = f32[2,0,4,3]{3,2,1,0} constant({ { /*i0=0*/ }, { /*i0=1*/ } })
@@ -179,7 +179,7 @@ ENTRY %ConstantF32R4Empty.v4 () -> f32[2,0,4,3] {
 // constant 4D
 {
 "Constant4D",
-R"(HloModule Small_3x2x1x1_module
+R"(HloModule Small_3x2x1x1_module, entry_computation_layout={()->f32[3,2,1,1]{3,2,1,0}}
 
 ENTRY %Small_3x2x1x1.v1 () -> f32[3,2,1,1] {
   ROOT %constant = f32[3,2,1,1]{3,2,1,0} constant({ { /*i0=0*/ { /*i1=0*/ {-1} }, { /*i1=1*/ {4.1} } }, { /*i0=1*/ { /*i1=0*/ {2} }, { /*i1=1*/ {4.1} } }, { /*i0=2*/ { /*i1=0*/ {5} }, { /*i1=1*/ {4.4} } } })
@@ -190,7 +190,7 @@ ENTRY %Small_3x2x1x1.v1 () -> f32[3,2,1,1] {
 // non-finite constants: nan, inf, -inf
 {
 "ConstantNonFinite",
-R"(HloModule IsFiniteR1F32s_module
+R"(HloModule IsFiniteR1F32s_module, entry_computation_layout={()->pred[6]{0}}
 
 ENTRY %IsFiniteR1F32s.v2 () -> pred[6] {
   %constant = f32[6]{0} constant({nan, 7, nan, -1, inf, -inf})
@@ -202,7 +202,7 @@ ENTRY %IsFiniteR1F32s.v2 () -> pred[6] {
 // constant f16
 {
 "ConstantF16",
-R"(HloModule ConstantF16_module
+R"(HloModule ConstantF16_module, entry_computation_layout={()->f16[]}
 
 ENTRY %ConstantF16.v4 () -> f16[] {
   ROOT %constant = f16[] constant(500)
@@ -213,7 +213,7 @@ ENTRY %ConstantF16.v4 () -> f16[] {
 // bf16
 {
 "BF16",
-R"(HloModule BF16
+R"(HloModule BF16, entry_computation_layout={()->bf16[]}
 
 ENTRY %BF16.v4 () -> bf16[] {
   ROOT %constant = bf16[] constant(500)
@@ -224,7 +224,7 @@ ENTRY %BF16.v4 () -> bf16[] {
 // constant + constant
 {
 "AddConstants",
-R"(HloModule add_constants_module
+R"(HloModule add_constants_module, entry_computation_layout={()->f32[]}
 
 ENTRY %add_constants () -> f32[] {
   %constant = f32[] constant(3.14)
@@ -236,7 +236,7 @@ ENTRY %add_constants () -> f32[] {
 // tuple constant
 {
 "TupleConstant",
-R"(HloModule TupleConstant_module
+R"(HloModule TupleConstant_module, entry_computation_layout={()->(f32[2,1]{1,0}, f32[2]{0})}
 
 ENTRY %TupleConstant.v1 () -> (f32[2,1], f32[2]) {
   ROOT %constant = (f32[2,1]{1,0}, f32[2]{0}) constant(( { {1}, {2} }, {2, 42} ))
@@ -247,7 +247,7 @@ ENTRY %TupleConstant.v1 () -> (f32[2,1], f32[2]) {
 // v1 > v2 ? v1 : v2
 {
 "SelectR1F32",
-R"(HloModule SelectR1F32WithCmpR1F32sFromParamsSmall_module
+R"(HloModule SelectR1F32WithCmpR1F32sFromParamsSmall_module, entry_computation_layout={(f32[4]{0},f32[4]{0})->f32[4]{0}}
 
 ENTRY %SelectR1F32WithCmpR1F32sFromParamsSmall.v4 (v1: f32[4], v2: f32[4]) -> f32[4] {
   %v1 = f32[4]{0} parameter(0), sharding={maximal device=1}
@@ -261,7 +261,7 @@ ENTRY %SelectR1F32WithCmpR1F32sFromParamsSmall.v4 (v1: f32[4], v2: f32[4]) -> f3
 // empty tuple
 {
 "EmptyTupleCreate",
-R"(HloModule EmptyTupleCreate_module
+R"(HloModule EmptyTupleCreate_module, entry_computation_layout={()->()}
 
 ENTRY %EmptyTupleCreate.v1 () -> () {
   ROOT %tuple = () tuple()
@@ -272,7 +272,7 @@ ENTRY %EmptyTupleCreate.v1 () -> () {
 // tuple
 {
 "TupleCreate",
-R"(HloModule TupleCreate_module
+R"(HloModule TupleCreate_module, entry_computation_layout={(f32[],f32[3]{0},f32[2,3]{1,0})->(f32[], f32[3]{0}, f32[2,3]{1,0})}
 
 ENTRY %TupleCreate.v4 (v1: f32[], v2: f32[3], v3: f32[2,3]) -> (f32[], f32[3], f32[2,3]) {
   %v1 = f32[] parameter(0)
@@ -286,7 +286,7 @@ ENTRY %TupleCreate.v4 (v1: f32[], v2: f32[3], v3: f32[2,3]) -> (f32[], f32[3], f
 // tuple
 {
 "LargeTupleRoundTrip",
-R"(HloModule LargeTupleRoundTrip_module
+R"(HloModule LargeTupleRoundTrip_module, entry_computation_layout={(f32[])->(f32[], f32[], f32[], f32[], f32[], /*index=5*/f32[])}
 
 ENTRY %TupleCreate.v4 (v: f32[]) -> (f32[], f32[], f32[], f32[], f32[], /*index=5*/f32[]) {
   %v = f32[] parameter(0)
@@ -297,7 +297,7 @@ ENTRY %TupleCreate.v4 (v: f32[]) -> (f32[], f32[], f32[], f32[], f32[], /*index=
 },
 {
 "ShardedTupleCreate",
-R"(HloModule ShardedTupleCreate_module
+R"(HloModule ShardedTupleCreate_module, entry_computation_layout={(f32[],f32[3]{0},f32[2,3]{1,0})->(f32[], f32[3]{0}, f32[2,3]{1,0})}
 
 ENTRY %ShardedTupleCreate.v4 (v1: f32[], v2: f32[3], v3: f32[2,3]) -> (f32[], f32[3], f32[2,3]) {
   %v1 = f32[] parameter(0), sharding={manual}
@@ -310,7 +310,7 @@ ENTRY %ShardedTupleCreate.v4 (v1: f32[], v2: f32[3], v3: f32[2,3]) -> (f32[], f3
 },
 {
 "DomainParsing",
-R"(HloModule DomainParsing_module
+R"(HloModule DomainParsing_module, entry_computation_layout={(f32[])->f32[]}
 
 ENTRY %DomainParsing (v1: f32[]) -> f32[] {
   %v1 = f32[] parameter(0)
@@ -323,7 +323,7 @@ ENTRY %DomainParsing (v1: f32[]) -> f32[] {
 // while (result < 5) { result = result + 1; }
 {
 "WhileWithScalarS32Result",
-R"(HloModule WhileWithScalarS32Result_module
+R"(HloModule WhileWithScalarS32Result_module, entry_computation_layout={()->s32[]}
 
 %body.v3 (prev.1: s32[]) -> s32[] {
   %constant = s32[] constant(1)
@@ -348,7 +348,7 @@ ENTRY %WhileWithScalarS32Result.v2 () -> s32[] {
 {
 "CopyStartAndCopyDone",
 
-R"(HloModule CopyStartAndCopyDone_module
+R"(HloModule CopyStartAndCopyDone_module, entry_computation_layout={(f32[],f32[2,3]{1,0:S(1)})->(f32[], f32[2,3]{1,0:S(2)})}
 
 ENTRY %CopyStartAndCopyDone (v1: f32[], v2: f32[2,3]) -> (f32[], f32[2,3]) {
   %v1 = f32[] parameter(0)
@@ -365,7 +365,7 @@ ENTRY %CopyStartAndCopyDone (v1: f32[], v2: f32[2,3]) -> (f32[], f32[2,3]) {
 // send and recv
 {
 "SendRecv",
-R"(HloModule TwoSendRecvBothWayRecvFist_module
+R"(HloModule TwoSendRecvBothWayRecvFist_module, entry_computation_layout={()->(f32[], token[])}
 
 ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> (f32[], token[]) {
   %token0 = token[] after-all()
@@ -380,7 +380,7 @@ ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> (f32[], token[]) {
 },
 {
 "SendRecvWithHostTransfer",
-R"(HloModule HostTransferSendRecv_module
+R"(HloModule HostTransferSendRecv_module, entry_computation_layout={()->(f32[], token[])}
 
 ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> (f32[], token[]) {
   %token0 = token[] after-all()
@@ -396,7 +396,7 @@ ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> (f32[], token[]) {
 // get-tuple-element
 {
 "GetTupleElement",
-R"(HloModule GetTupleElement_module
+R"(HloModule GetTupleElement_module, entry_computation_layout={()->s32[2,3]{1,0}}
 
 ENTRY %GetTupleElement.v4 () -> s32[2,3] {
   %constant = f32[3]{0} constant({1, 2, 3})
@@ -410,7 +410,7 @@ ENTRY %GetTupleElement.v4 () -> s32[2,3] {
 // call
 {
 "Call",
-R"(HloModule CallR0F32IdentityScalar_module
+R"(HloModule CallR0F32IdentityScalar_module, entry_computation_layout={()->f32[]}
 
 %Identity.v1 (x: f32[]) -> f32[] {
   ROOT %x = f32[] parameter(0)
@@ -426,7 +426,7 @@ ENTRY %CallR0F32IdentityScalar.v2 () -> f32[] {
 // CustomCall with backend_config.
 {
 "CustomCallWithOpaque",
-R"(HloModule custom_call
+R"(HloModule custom_call, entry_computation_layout={()->f32[1,2,3]{0,2,1}}
 
 ENTRY %CustomCall () -> f32[1,2,3] {
   %constant = f32[1]{0} constant({12345})
@@ -439,7 +439,7 @@ ENTRY %CustomCall () -> f32[1,2,3] {
 // CustomCall with literal.
 {
 "CustomCallWithLiteral",
-R"(HloModule custom_call
+R"(HloModule custom_call, entry_computation_layout={()->f32[1,2,3]{0,2,1}}
 
 ENTRY %CustomCall () -> f32[1,2,3] {
   %constant = f32[1]{0} constant({12345})
@@ -452,7 +452,7 @@ ENTRY %CustomCall () -> f32[1,2,3] {
 // CustomCall with literal tuple.
 {
 "CustomCallWithLiteralTuple",
-R"(HloModule custom_call
+R"(HloModule custom_call, entry_computation_layout={()->f32[1,2,3]{0,2,1}}
 
 ENTRY %CustomCall () -> f32[1,2,3] {
   %constant = f32[1]{0} constant({12345})
@@ -465,7 +465,7 @@ ENTRY %CustomCall () -> f32[1,2,3] {
 // CustomCall with literal R0.
 {
 "CustomCallWithLiteralR0",
-R"(HloModule custom_call
+R"(HloModule custom_call, entry_computation_layout={()->f32[1,2,3]{0,2,1}}
 
 ENTRY %CustomCall () -> f32[1,2,3] {
   %constant = f32[1]{0} constant({12345})
@@ -477,7 +477,7 @@ ENTRY %CustomCall () -> f32[1,2,3] {
 // reduce window
 {
 "ReduceWindow",
-R"(HloModule R4UnitWindow_module
+R"(HloModule R4UnitWindow_module, entry_computation_layout={(f32[13,12,8,15]{0,3,2,1})->f32[13,3,8,15]{0,3,2,1}}
 
 %add_F32.v3 (lhs: f32[], rhs: f32[]) -> f32[] {
   %lhs = f32[] parameter(0)
@@ -496,7 +496,7 @@ ENTRY %R4UnitWindow.v3 (operand: f32[13,12,8,15]) -> f32[13,3,8,15] {
 // reduce window on scalar
 {
 "ReduceWindowScalar",
-R"(HloModule reduce_window_scalar
+R"(HloModule reduce_window_scalar, entry_computation_layout={()->f32[]}
 
 %add_F32.v3 (lhs: f32[], rhs: f32[]) -> f32[] {
   %lhs = f32[] parameter(0)
@@ -515,7 +515,7 @@ ENTRY %R4UnitWindowScalar () -> f32[] {
 // reduce window on scalar
 {
 "ReduceWindowVariadic",
-R"(HloModule reduce_window_variadic
+R"(HloModule reduce_window_variadic, entry_computation_layout={()->(f32[], f32[])}
 
 %add_F32.v3 (lhs1: f32[], lhs2: f32[], rhs1: f32[], rhs2: f32[]) -> (f32[], f32[]) {
   %lhs1 = f32[] parameter(0)
@@ -538,7 +538,7 @@ ENTRY %R4UnitWindowScalar () -> (f32[], f32[]) {
 // convolution
 {
 "Convolution",
-R"(HloModule Convolve1D1Window_0_module
+R"(HloModule Convolve1D1Window_0_module, entry_computation_layout={(f32[1,2,1]{2,1,0},f32[1,1,1]{2,1,0})->f32[1,2,1]{2,0,1}}
 
 ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2,1] {
   %input = f32[1,2,1]{2,1,0} parameter(0)
@@ -552,7 +552,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
 // convolution dynamic
 {
 "ConvolutionDynamic",
-R"(HloModule Convolve1D1Window_0_module
+R"(HloModule Convolve1D1Window_0_module, entry_computation_layout={(f32[1,2,1]{2,1,0},f32[1,1,1]{2,1,0})->f32[1,2,1]{2,0,1}}
 
 ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2,1] {
   %input = f32[1,2,1]{2,1,0} parameter(0)
@@ -566,7 +566,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
 // convolution rank 2
 {
 "ConvolutionR2",
-R"(HloModule ConvolveR2_module
+R"(HloModule ConvolveR2_module, entry_computation_layout={(f32[1,2]{1,0},f32[2,2]{1,0})->f32[1,2]{0,1}}
 
 ENTRY %ConvolveR2.v3 (input: f32[1,2], filter: f32[2,2]) -> f32[1,2] {
   %input = f32[1,2]{1,0} parameter(0)
@@ -579,7 +579,7 @@ ENTRY %ConvolveR2.v3 (input: f32[1,2], filter: f32[2,2]) -> f32[1,2] {
 // convolution backward
 {
 "ConvolutionBackward",
-R"(HloModule ConvolveBackward_module
+R"(HloModule ConvolveBackward_module, entry_computation_layout={(f32[128,7,7,512]{0,3,2,1},f32[3,3,512,512]{3,2,1,0})->f32[128,14,14,512]{0,3,2,1}}
 
 ENTRY %ConvolveBackward (input: f32[128,7,7,512], filter: f32[3,3,512,512]) -> f32[128,14,14,512] {
   %input = f32[128,7,7,512]{0,3,2,1} parameter(0)
@@ -592,7 +592,7 @@ ENTRY %ConvolveBackward (input: f32[128,7,7,512], filter: f32[3,3,512,512]) -> f
 // reverse(constant)
 {
 "Reverse4D",
-R"(HloModule Reverse4DFloatArrayOnDim01_module
+R"(HloModule Reverse4DFloatArrayOnDim01_module, entry_computation_layout={()->f32[4,3,2,1]{0,1,2,3}}
 
 ENTRY %Reverse4DFloatArrayOnDim01.v2 () -> f32[4,3,2,1] {
   %constant = f32[4,3,2,1]{0,1,2,3} constant({ { /*i0=0*/ { /*i1=0*/ {1}, {2} }, { /*i1=1*/ {3}, {4} }, { /*i1=2*/ {5}, {6} } }, { /*i0=1*/ { /*i1=0*/ {7}, {8} }, { /*i1=1*/ {9}, {10} }, { /*i1=2*/ {11}, {12} } }, { /*i0=2*/ { /*i1=0*/ {13}, {14} }, { /*i1=1*/ {15}, {16} }, { /*i1=2*/ {17}, {18} } }, { /*i0=3*/ { /*i1=0*/ {19}, {20} }, { /*i1=1*/ {21}, {22} }, { /*i1=2*/ {23}, {24} } } })
@@ -604,7 +604,7 @@ ENTRY %Reverse4DFloatArrayOnDim01.v2 () -> f32[4,3,2,1] {
 // concat
 {
 "Concat",
-R"(HloModule Concat2x3With2x5_module
+R"(HloModule Concat2x3With2x5_module, entry_computation_layout={()->f32[2,8]{1,0}}
 
 ENTRY %Concat2x3With2x5.v3 () -> f32[2,8] {
   %constant = f32[2,3]{1,0} constant({ { 0, 1, 2 }, { 1000, 1001, 1002 } })
@@ -617,7 +617,7 @@ ENTRY %Concat2x3With2x5.v3 () -> f32[2,8] {
 // select and scatter
 {
 "SelectAndScatter",
-R"(HloModule R4F32OverlapSmall_module
+R"(HloModule R4F32OverlapSmall_module, entry_computation_layout={()->f32[4,5,1,1]{3,2,1,0}}
 
 %ge_F32.v3 (lhs: f32[], rhs: f32[]) -> pred[] {
   %lhs = f32[] parameter(0)
@@ -643,7 +643,7 @@ ENTRY %R4F32OverlapSmall.v4 () -> f32[4,5,1,1] {
 // select and scatter on scalar
 {
 "SelectAndScatterScalar",
-R"(HloModule select_and_scatter_scalar
+R"(HloModule select_and_scatter_scalar, entry_computation_layout={()->f32[]}
 
 %ge_F32.v3 (lhs: f32[], rhs: f32[]) -> pred[] {
   %lhs = f32[] parameter(0)
@@ -669,7 +669,7 @@ ENTRY %SelectAndScatterScalar () -> f32[] {
 // slice
 {
 "Slice",
-R"(HloModule slice_module
+R"(HloModule slice_module, entry_computation_layout={(f32[3,3,4,4]{3,2,1,0})->f32[3,3,2,4]{3,2,1,0}}
 
 ENTRY %slice.v2 (p0: f32[3,3,4,4]) -> f32[3,3,2,4] {
   %p0 = f32[3,3,4,4]{3,2,1,0} parameter(0)
@@ -681,7 +681,7 @@ ENTRY %slice.v2 (p0: f32[3,3,4,4]) -> f32[3,3,2,4] {
 // slice, no stride
 {
 "SliceNoStride",
-R"(HloModule Slice3x3x3_To_1x3x3_F32_module
+R"(HloModule Slice3x3x3_To_1x3x3_F32_module, entry_computation_layout={()->f32[1,3,3]{2,1,0}}
 
 ENTRY %Slice3x3x3_To_1x3x3_F32.v2 () -> f32[1,3,3] {
   %constant = f32[3,3,3]{2,1,0} constant({ { { 0, 1, 2 }, { 3, 4, 5 }, { 6, 7, 8 } }, { { 9, 10, 11 }, { 12, 13, 14 }, { 15, 16, 17 } }, { { 18, 19, 20 }, { 21, 22, 23 }, { 24, 25, 26 } } })
@@ -693,7 +693,7 @@ ENTRY %Slice3x3x3_To_1x3x3_F32.v2 () -> f32[1,3,3] {
 // slice R0
 {
 "SliceR0",
-R"(HloModule SliceR0_module
+R"(HloModule SliceR0_module, entry_computation_layout={()->s32[]}
 
 ENTRY %SliceR0.v2 () -> s32[] {
   %constant = s32[] constant(1)
@@ -705,7 +705,7 @@ ENTRY %SliceR0.v2 () -> s32[] {
 // transpose
 {
 "Transpose",
-R"(HloModule Transpose_module
+R"(HloModule Transpose_module, entry_computation_layout={()->s32[1,2,3]{2,1,0}}
 
 ENTRY %Transpose.v2 () -> s32[1,2,3] {
   %constant = s32[1,2,3]{2,1,0} constant({ { { 1, 2, 3 }, { 4, 5, 6 } } })
@@ -716,7 +716,7 @@ ENTRY %Transpose.v2 () -> s32[1,2,3] {
 },
 {
 "TransposeC128",
-R"(HloModule TransposeC128_module
+R"(HloModule TransposeC128_module, entry_computation_layout={(c128[1,2,3]{2,1,0})->c128[1,2,3]{2,1,0}}
 
 ENTRY %Transpose.v3 (input: c128[1,2,3]) -> c128[1,2,3] {
   %input = c128[1,2,3]{2,1,0} parameter(0)
@@ -728,7 +728,7 @@ ENTRY %Transpose.v3 (input: c128[1,2,3]) -> c128[1,2,3] {
 // Triangular solve
 {
 "TriangularSolve",
-R"(HloModule TriangularSolve_module
+R"(HloModule TriangularSolve_module, entry_computation_layout={(f32[4,4]{1,0},f32[3,4]{1,0})->f32[3,4]{1,0}}
 
 ENTRY %SimpleRightLowerNotranspose.4 (a.1: f32[4,4], b.2: f32[3,4]) -> f32[3,4] {
   %a.1 = f32[4,4]{1,0} parameter(0)
@@ -741,7 +741,7 @@ ENTRY %SimpleRightLowerNotranspose.4 (a.1: f32[4,4], b.2: f32[3,4]) -> f32[3,4] 
 // Dynamic slice
 {
 "DynamicSlice",
-R"(HloModule DynamicSlice_module
+R"(HloModule DynamicSlice_module, entry_computation_layout={(s32[2,2,258]{2,1,0},s32[1]{0})->s32[2,2,258]{2,1,0}}
 
 ENTRY %DynamicSlice.v5 (original_parameter: s32[2,2,258], start_index: s32[1]) -> s32[2,2,258] {
   %original_parameter = s32[2,2,258]{2,1,0} parameter(0)
@@ -756,7 +756,7 @@ ENTRY %DynamicSlice.v5 (original_parameter: s32[2,2,258], start_index: s32[1]) -
 // Dynamic slice with scalar indices
 {
 "DynamicSliceScalarIndices",
-R"(HloModule DynamicSlice_module
+R"(HloModule DynamicSlice_module, entry_computation_layout={(s32[2,2,258]{2,1,0},s32[])->s32[2,2,258]{2,1,0}}
 
 ENTRY %DynamicSlice.v5 (original_parameter: s32[2,2,258], start_index: s32[]) -> s32[2,2,258] {
   %original_parameter = s32[2,2,258]{2,1,0} parameter(0)
@@ -770,7 +770,7 @@ ENTRY %DynamicSlice.v5 (original_parameter: s32[2,2,258], start_index: s32[]) ->
 // Dynamic update slice
 {
 "DynamicUpdateSlice",
-R"(HloModule DynamicSlice_module
+R"(HloModule DynamicSlice_module, entry_computation_layout={(s32[1,1,25,1]{3,2,1,0},s32[1,1,2,1]{3,2,1,0},s32[4]{0})->s32[1,1,25,1]{3,2,1,0}}
 
 ENTRY %DynamicUpdateSlice.v4 (input: s32[1,1,25,1], update: s32[1,1,2,1], start_indices: s32[4]) -> s32[1,1,25,1] {
   %input = s32[1,1,25,1]{3,2,1,0} parameter(0)
@@ -784,7 +784,7 @@ ENTRY %DynamicUpdateSlice.v4 (input: s32[1,1,25,1], update: s32[1,1,2,1], start_
 // Dynamic update slice with scalar indices
 {
 "DynamicUpdateSliceScalarIndex",
-R"(HloModule DynamicUpdateSlice_module
+R"(HloModule DynamicUpdateSlice_module, entry_computation_layout={(s32[1,1,25,1]{3,2,1,0},s32[1,1,2,1]{3,2,1,0},s32[],s32[],s32[],s32[])->s32[1,1,25,1]{3,2,1,0}}
 
 ENTRY %DynamicUpdateSlice.v4 (input: s32[1,1,25,1], update: s32[1,1,2,1], start_index.0: s32[], start_index.1: s32[], start_index.2: s32[], start_index.3: s32[]) -> s32[1,1,25,1] {
   %input = s32[1,1,25,1]{3,2,1,0} parameter(0)
@@ -801,7 +801,7 @@ ENTRY %DynamicUpdateSlice.v4 (input: s32[1,1,25,1], update: s32[1,1,2,1], start_
 // batch norm training
 {
 "BatchNormTraining",
-R"(HloModule BasicTraining_module
+R"(HloModule BasicTraining_module, entry_computation_layout={()->(f32[2,2,1,2]{3,2,1,0}, f32[2]{0}, f32[2]{0})}
 
 ENTRY %BasicTraining.v4 () -> (f32[2,2,1,2], f32[2], f32[2]) {
   %constant = f32[2,2,1,2]{3,2,1,0} constant({ { /*i0=0*/ { /*i1=0*/ { 1, 2 } }, { /*i1=1*/ { 3, 4 } } }, { /*i0=1*/ { /*i1=0*/ { 5, 6 } }, { /*i1=1*/ { 7, 8 } } } })
@@ -815,7 +815,7 @@ ENTRY %BasicTraining.v4 () -> (f32[2,2,1,2], f32[2], f32[2]) {
 // batch norm inference
 {
 "BatchNormInference",
-R"(HloModule BatchNormInference_module
+R"(HloModule BatchNormInference_module, entry_computation_layout={(f32[2,2,2,2]{3,2,1,0},f32[2]{0},f32[2]{0},f32[2]{0},f32[2]{0})->f32[2,2,2,2]{3,2,1,0}}
 
 ENTRY %BatchNormInference.v6 (input: f32[2,2,2,2], offset: f32[2], scale: f32[2], mean: f32[2], variance: f32[2]) -> f32[2,2,2,2] {
   %input = f32[2,2,2,2]{3,2,1,0} parameter(0)
@@ -831,7 +831,7 @@ ENTRY %BatchNormInference.v6 (input: f32[2,2,2,2], offset: f32[2], scale: f32[2]
 // batch norm grad
 {
 "BatchNormGrad",
-R"(HloModule BatchNormGrad_module
+R"(HloModule BatchNormGrad_module, entry_computation_layout={(f32[2,2,2,2]{3,2,1,0},f32[2]{0},f32[2]{0},f32[2]{0},f32[2,2,2,2]{3,2,1,0})->(f32[2,2,2,2]{3,2,1,0}, f32[2]{0}, f32[2]{0})}
 
 ENTRY %BatchNormGrad.v4 (input: f32[2,2,2,2], scale: f32[2], mean: f32[2], variance: f32[2], grad_output: f32[2,2,2,2]) -> (f32[2,2,2,2], f32[2], f32[2]) {
   %input = f32[2,2,2,2]{3,2,1,0} parameter(0)
@@ -847,7 +847,7 @@ ENTRY %BatchNormGrad.v4 (input: f32[2,2,2,2], scale: f32[2], mean: f32[2], varia
 // fft
 {
 "Fft",
-R"(HloModule Fft_module
+R"(HloModule Fft_module, entry_computation_layout={(c64[8,32]{1,0})->c64[8,32]{1,0}}
 
 ENTRY %Fft (input: c64[8,32]) -> c64[8,32] {
   %input = c64[8,32]{1,0} parameter(0)
@@ -859,7 +859,7 @@ ENTRY %Fft (input: c64[8,32]) -> c64[8,32] {
 // ifft
 {
 "Ifft2d",
-R"(HloModule Ifft2d_module
+R"(HloModule Ifft2d_module, entry_computation_layout={(c64[5,8,32]{2,1,0})->c64[5,8,32]{2,1,0}}
 
 ENTRY %Ifft2d (input: c64[5,8,32]) -> c64[5,8,32] {
   %input = c64[5,8,32]{2,1,0} parameter(0)
@@ -871,7 +871,7 @@ ENTRY %Ifft2d (input: c64[5,8,32]) -> c64[5,8,32] {
 // rfft2d
 {
 "Rfft2d",
-R"(HloModule Rfft2d_module
+R"(HloModule Rfft2d_module, entry_computation_layout={(f32[5,64,32]{2,1,0})->c64[5,64,17]{2,1,0}}
 
 ENTRY %Rfft2d (input: f32[5,64,32]) -> c64[5,64,17] {
   %input = f32[5,64,32]{2,1,0} parameter(0)
@@ -883,7 +883,7 @@ ENTRY %Rfft2d (input: f32[5,64,32]) -> c64[5,64,17] {
 // irfft3d
 {
 "Irfft3d",
-R"(HloModule Irfft3d_module
+R"(HloModule Irfft3d_module, entry_computation_layout={(c64[5,64,128,33]{3,2,1,0})->f32[5,64,128,64]{3,2,1,0}}
 
 ENTRY %Irfft3d (input: c64[5,64,128,33]) -> f32[5,64,128,64] {
   %input = c64[5,64,128,33]{3,2,1,0} parameter(0)
@@ -895,7 +895,7 @@ ENTRY %Irfft3d (input: c64[5,64,128,33]) -> f32[5,64,128,64] {
 // pad
 {
 "Pad",
-R"(HloModule Pad1DS3Array_module
+R"(HloModule Pad1DS3Array_module, entry_computation_layout={()->f32[7]{0}}
 
 ENTRY %Pad1DS3Array.v3 () -> f32[7] {
   %constant = f32[3]{0} constant({1, 2, 3})
@@ -908,7 +908,7 @@ ENTRY %Pad1DS3Array.v3 () -> f32[7] {
 // pad has interior
 {
 "PadHasInterior",
-R"(HloModule PadHasInterior_module
+R"(HloModule PadHasInterior_module, entry_computation_layout={(f32[1,25,7,7]{3,2,1,0})->f32[1,25,17,11]{3,2,1,0}}
 
 ENTRY %PadHasInterior.v3 (input: f32[1,25,7,7]) -> f32[1,25,17,11] {
   %input = f32[1,25,7,7]{3,2,1,0} parameter(0)
@@ -921,7 +921,7 @@ ENTRY %PadHasInterior.v3 (input: f32[1,25,7,7]) -> f32[1,25,17,11] {
 // round to nearest even
 {
 "RoundNearestEven",
-R"(HloModule RoundNearestEven_module
+R"(HloModule RoundNearestEven_module, entry_computation_layout={(f32[2,2]{1,0})->f32[2,2]{1,0}}
 
 ENTRY %RoundNearestEven (input: f32[2,2]) -> f32[2,2] {
   %input = f32[2,2]{1,0} parameter(0)
@@ -933,7 +933,7 @@ ENTRY %RoundNearestEven (input: f32[2,2]) -> f32[2,2] {
 // Negative padding
 {
 "PadHasNegativePadding",
-R"(HloModule PadHasNegativePadding_module
+R"(HloModule PadHasNegativePadding_module, entry_computation_layout={(f32[1,25,7,7,10]{4,3,2,1,0})->f32[1,15,6,3,35]{4,3,2,1,0}}
 
 ENTRY %PadHasNegativePadding (input: f32[1,25,7,7,10]) -> f32[1,15,6,3,35] {
   %input = f32[1,25,7,7,10]{4,3,2,1,0} parameter(0)
@@ -946,7 +946,7 @@ ENTRY %PadHasNegativePadding (input: f32[1,25,7,7,10]) -> f32[1,15,6,3,35] {
 // fusion
 {
 "Fusion",
-R"(HloModule fusion_module
+R"(HloModule fusion_module, entry_computation_layout={()->f32[3,2,1,1]{3,2,1,0}}
 
 %fused_computation (constant.param_0: f32[3,2,1,1], constant.1.param_1: f32[2]) -> f32[3,2,1,1] {
   %constant.param_0 = f32[3,2,1,1]{3,2,1,0} parameter(0)
@@ -965,7 +965,7 @@ ENTRY %fusion.v3 () -> f32[3,2,1,1] {
 },
 {
 "Gather",
-R"(HloModule StringifyGather
+R"(HloModule StringifyGather, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0},s64[10,9,8,7,5]{4,3,2,1,0})->f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0}}
 
 ENTRY %Gather (input_tensor: f32[50,49,48,47,46], start_indices: s64[10,9,8,7,5]) -> f32[10,9,8,7,30,29,28,27,26] {
   %input_tensor = f32[50,49,48,47,46]{4,3,2,1,0} parameter(0)
@@ -977,7 +977,7 @@ ENTRY %Gather (input_tensor: f32[50,49,48,47,46], start_indices: s64[10,9,8,7,5]
 },
 {
 "SortedGather",
-R"(HloModule StringifyGather
+R"(HloModule StringifyGather, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0},s64[10,9,8,7,5]{4,3,2,1,0})->f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0}}
 
 ENTRY %Gather (input_tensor: f32[50,49,48,47,46], start_indices: s64[10,9,8,7,5]) -> f32[10,9,8,7,30,29,28,27,26] {
   %input_tensor = f32[50,49,48,47,46]{4,3,2,1,0} parameter(0)
@@ -989,7 +989,7 @@ ENTRY %Gather (input_tensor: f32[50,49,48,47,46], start_indices: s64[10,9,8,7,5]
 },
 {
 "Scatter",
-R"(HloModule StringifyScatter
+R"(HloModule StringifyScatter, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0},s64[10,9,8,7,5]{4,3,2,1,0},f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0})->f32[50,49,48,47,46]{4,3,2,1,0}}
 
 %add_F32.v3 (lhs: f32[], rhs: f32[]) -> f32[] {
   %lhs = f32[] parameter(0)
@@ -1008,7 +1008,7 @@ ENTRY %Scatter (input_tensor: f32[50,49,48,47,46], scatter_indices: s64[10,9,8,7
 },
 {
 "TupleScatter",
-R"(HloModule TupleScatter
+R"(HloModule TupleScatter, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0},bf16[50,49,48,47,46]{4,3,2,1,0},s64[10,9,8,7,5]{4,3,2,1,0},f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0},bf16[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0})->(f32[50,49,48,47,46]{4,3,2,1,0}, bf16[50,49,48,47,46]{4,3,2,1,0})}
 
 %add_F32_mul_BF16 (lhs_0: f32[], lhs_1: bf16[], rhs_0: f32[], rhs_1: bf16[]) -> (f32[], bf16[]) {
   %lhs_0 = f32[] parameter(0)
@@ -1033,7 +1033,7 @@ ENTRY %Scatter (input_0: f32[50,49,48,47,46], input_1: bf16[50,49,48,47,46], sca
 },
 {
 "SortedScatter",
-R"(HloModule StringifySortedScatter
+R"(HloModule StringifySortedScatter, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0},s64[10,9,8,7,5]{4,3,2,1,0},f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0})->f32[50,49,48,47,46]{4,3,2,1,0}}
 
 %add_F32.v3 (lhs: f32[], rhs: f32[]) -> f32[] {
   %lhs = f32[] parameter(0)
@@ -1052,7 +1052,7 @@ ENTRY %Scatter (input_tensor: f32[50,49,48,47,46], scatter_indices: s64[10,9,8,7
 },
 {
 "UniqueIndicesScatter",
-R"(HloModule StringifyUniqueIndicesScatter
+R"(HloModule StringifyUniqueIndicesScatter, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0},s64[10,9,8,7,5]{4,3,2,1,0},f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0})->f32[50,49,48,47,46]{4,3,2,1,0}}
 
 %add_F32.v3 (lhs: f32[], rhs: f32[]) -> f32[] {
   %lhs = f32[] parameter(0)
@@ -1071,7 +1071,7 @@ ENTRY %Scatter (input_tensor: f32[50,49,48,47,46], scatter_indices: s64[10,9,8,7
 },
 {
   "ConstantUnsignedNoUnderflow",
-  R"(HloModule ConstantUnsignedNoUnderflow_module
+  R"(HloModule ConstantUnsignedNoUnderflow_module, entry_computation_layout={()->u64[]}
 
 ENTRY %ConstantUnsignedNoUnderflow () -> u64[] {
   ROOT %constant = u64[] constant(1)
@@ -1082,7 +1082,7 @@ ENTRY %ConstantUnsignedNoUnderflow () -> u64[] {
 
 {
   "ConstantUnsignedNoOverflow",
-  R"(HloModule ConstantUnsignedNoOverflow_module
+  R"(HloModule ConstantUnsignedNoOverflow_module, entry_computation_layout={()->u64[]}
 
 ENTRY %ConstantUnsignedNoOverflow () -> u64[] {
   ROOT %constant = u64[] constant(9223372036854775807)
@@ -1093,7 +1093,7 @@ ENTRY %ConstantUnsignedNoOverflow () -> u64[] {
 // CustomCallWithLayoutConstraints
 {
 "CustomCallWithLayoutConstraints",
-R"(HloModule CustomCallWithLayoutConstraints
+R"(HloModule CustomCallWithLayoutConstraints, entry_computation_layout={(f32[42,2,3]{0,1,2},f32[123,4]{0,1})->f32[1,2,3]{0,2,1}}
 
 ENTRY %CustomCallWithLayoutConstraints (p0: f32[42,2,3], p1: f32[123,4]) -> f32[1,2,3] {
   %p0 = f32[42,2,3]{0,1,2} parameter(0)
@@ -1106,7 +1106,7 @@ ENTRY %CustomCallWithLayoutConstraints (p0: f32[42,2,3], p1: f32[123,4]) -> f32[
 // CustomCallWithLayoutConstraintsNoOperands
 {
 "CustomCallWithLayoutConstraintsNoOperands",
-R"(HloModule CustomCallWithLayoutConstraintsNoOperands
+R"(HloModule CustomCallWithLayoutConstraintsNoOperands, entry_computation_layout={()->f32[1,2,3]{0,2,1}}
 
 ENTRY %CustomCallWithLayoutConstraints () -> f32[1,2,3] {
   ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(), custom_call_target="baz", operand_layout_constraints={}
@@ -1117,7 +1117,7 @@ ENTRY %CustomCallWithLayoutConstraints () -> f32[1,2,3] {
 // CustomCallWithLayoutConstraintsTupleShapes
 {
 "CustomCallWithLayoutConstraintsTupleShapes",
-R"(HloModule CustomCallWithLayoutConstraintsTupleShapes
+R"(HloModule CustomCallWithLayoutConstraintsTupleShapes, entry_computation_layout={((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}),f32[123,4]{0,1})->(f32[1,2,3]{0,2,1}, f32[1,2,3]{1,2,0})}
 
 ENTRY %CustomCallWithLayoutConstraints (p0: (f32[2,2], f32[42,2,3]), p1: f32[123,4]) -> (f32[1,2,3], f32[1,2,3]) {
   %p0 = (f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) parameter(0)
@@ -1130,7 +1130,7 @@ ENTRY %CustomCallWithLayoutConstraints (p0: (f32[2,2], f32[42,2,3]), p1: f32[123
 // CustomCallWithHasSideEffect
 {
 "CustomCallWithHasSideEffect",
-R"(HloModule CustomCallWithHasSideEffect
+R"(HloModule CustomCallWithHasSideEffect, entry_computation_layout={((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}),f32[123,4]{0,1})->(f32[1,2,3]{0,2,1}, f32[1,2,3]{1,2,0})}
 
 ENTRY %CustomCallWithHasSideEffect (p0: (f32[2,2], f32[42,2,3]), p1: f32[123,4]) -> (f32[1,2,3], f32[1,2,3]) {
   %p0 = (f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) parameter(0)
@@ -1143,7 +1143,7 @@ ENTRY %CustomCallWithHasSideEffect (p0: (f32[2,2], f32[42,2,3]), p1: f32[123,4])
 // CustomCallWithAliasing
 {
 "CustomCallWithAliasing",
-R"(HloModule CustomCallWithAliasing
+R"(HloModule CustomCallWithAliasing, entry_computation_layout={((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}),f32[123,4]{0,1})->(f32[123,4]{0,1}, f32[2,2]{0,1}, f32[1,2,3]{0,1,2})}
 
 ENTRY %CustomCallWithAliasing (p0: (f32[2,2], f32[42,2,3]), p1: f32[123,4]) -> (f32[123,4], f32[2,2], f32[1,2,3]) {
   %p0 = (f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) parameter(0)
@@ -1156,7 +1156,7 @@ ENTRY %CustomCallWithAliasing (p0: (f32[2,2], f32[42,2,3]), p1: f32[123,4]) -> (
 // CustomCall with schedule.
 {
 "CustomCallWithSchedule",
-R"(HloModule custom_call
+R"(HloModule custom_call, entry_computation_layout={()->f32[1,2,3]{0,2,1}}
 
 ENTRY %CustomCall () -> f32[1,2,3] {
   %constant = f32[1]{0} constant({12345})
@@ -1169,7 +1169,7 @@ ENTRY %CustomCall () -> f32[1,2,3] {
 // CustomCall that returns a status.
 {
 "CustomCallWithStatusReturningVersion",
-R"(HloModule custom_call
+R"(HloModule custom_call, entry_computation_layout={()->f32[1,2,3]{0,2,1}}
 
 ENTRY %CustomCall () -> f32[1,2,3] {
   %constant = f32[1]{0} constant({12345})
@@ -1181,7 +1181,7 @@ ENTRY %CustomCall () -> f32[1,2,3] {
 // Parse c64 literal
 {
 "ParseC64Literal",
-R"(HloModule ParseC64Literal
+R"(HloModule ParseC64Literal, entry_computation_layout={()->c64[2]{0}}
 
 ENTRY %ParseC64Literal () -> c64[2] {
   ROOT %c = c64[2]{0} constant({(1, 2), (-inf, nan)})
@@ -1192,7 +1192,7 @@ ENTRY %ParseC64Literal () -> c64[2] {
 // Parse c128 literal
 {
 "ParseC128Literal",
-R"(HloModule ParseC128Literal
+R"(HloModule ParseC128Literal, entry_computation_layout={()->c128[2]{0}}
 
 ENTRY %ParseC128Literal () -> c128[2] {
   ROOT %c = c128[2]{0} constant({(1, 2), (-inf, nan)})
@@ -1203,7 +1203,7 @@ ENTRY %ParseC128Literal () -> c128[2] {
 // Indexed Conditional
 {
 "IndexedConditional",
-R"(HloModule indexed_conditional
+R"(HloModule indexed_conditional, entry_computation_layout={()->f32[]}
 
 %Negate (x: f32[]) -> f32[] {
   %x = f32[] parameter(0)
@@ -1233,7 +1233,7 @@ ENTRY %Parameters1.v4 () -> f32[] {
 // rng-get-and-update-state
 {
 "RngGetAndUpdateState",
-R"(HloModule rng_get_and_update_state
+R"(HloModule rng_get_and_update_state, entry_computation_layout={()->u64[2]{0}}
 
 ENTRY %RngGetAndUpdateState () -> u64[2] {
   ROOT %rng-get-and-update-state = u64[2]{0} rng-get-and-update-state(), delta=4096
@@ -1243,7 +1243,7 @@ ENTRY %RngGetAndUpdateState () -> u64[2] {
 },
 {
 "RngBitGenerator",
-R"(HloModule gng_bit_generator
+R"(HloModule gng_bit_generator, entry_computation_layout={(u64[2]{0})->(u64[2]{0}, u32[11,17]{1,0})}
 
 ENTRY %RngBitGenerator (p0: u64[2]) -> (u64[2], u32[11,17]) {
   %p0 = u64[2]{0} parameter(0)
@@ -1255,7 +1255,7 @@ ENTRY %RngBitGenerator (p0: u64[2]) -> (u64[2], u32[11,17]) {
 // Async ops with syntax sugar.
 {
 "AsyncOpsWithSyntaxSugar",
-R"(HloModule AsyncOpsWithSyntaxSugar
+R"(HloModule AsyncOpsWithSyntaxSugar, entry_computation_layout={(f32[10]{0})->f32[20]{0}}
 
 ENTRY %Entry (p0: f32[10]) -> f32[20] {
   %p0 = f32[10]{0} parameter(0)
@@ -1276,7 +1276,7 @@ std::vector<TestData> CreateShortTestCases() {
 // map
 {
 "Map",
-R"(HloModule MapBinaryAdder_module
+R"(HloModule MapBinaryAdder_module, entry_computation_layout={(f32[4]{0},f32[4]{0})->f32[4]{0}}
 
 add_F32.v3 {
   lhs = f32[] parameter(0)
@@ -1295,7 +1295,7 @@ ENTRY MapBinaryAdder.v3 {
 // reduce
 {
 "Reduce",
-R"(HloModule ReduceR3ToR2_module
+R"(HloModule ReduceR3ToR2_module, entry_computation_layout={(f32[8,16,256]{2,1,0})->f32[8,16]{1,0}}
 
 add_F32.v3 {
   lhs = f32[] parameter(0)
@@ -1314,7 +1314,7 @@ ENTRY ReduceR3ToR2.v3 {
 // tuple reduce
 {
 "TupleReduce",
-R"(HloModule TupleReduce
+R"(HloModule TupleReduce, entry_computation_layout={(f32[1024]{0},s32[1024]{0})->(f32[], s32[])}
 
 max_argmax {
   value = f32[] parameter(2)
@@ -1340,7 +1340,7 @@ ENTRY reduce_entry {
 // infeed/outfeed
 {
 "InfeedOutfeed",
-R"(HloModule outfeed_module
+R"(HloModule outfeed_module, entry_computation_layout={()->((u32[3]{0}, pred[]), token[])}
 
 ENTRY InfeedToOutfeed {
   token0 = token[] after-all()
@@ -1358,7 +1358,7 @@ ENTRY InfeedToOutfeed {
 // Rng
 {
 "Rng",
-R"(HloModule rng_module
+R"(HloModule rng_module, entry_computation_layout={()->f32[8]{0}}
 
 ENTRY Rng {
   constant = f32[] constant(0)
@@ -1371,7 +1371,7 @@ ENTRY Rng {
 // Reduce precision
 {
 "ReducePrecision",
-R"(HloModule reduce_precision
+R"(HloModule reduce_precision, entry_computation_layout={()->f32[1]{0}}
 
 ENTRY ReducePrecision {
   constant = f32[1]{0} constant({3.14159})
@@ -1383,7 +1383,7 @@ ENTRY ReducePrecision {
 // Sort (Key)
 {
 "SortKey",
-R"(HloModule sort
+R"(HloModule sort, entry_computation_layout={(f32[1024]{0})->f32[1024]{0}}
 
 compare {
   p.0.lhs = f32[] parameter(0)
@@ -1401,7 +1401,7 @@ ENTRY Sort {
 // Sort (Key, Value)
 {
 "SortKeyValue",
-R"(HloModule sort
+R"(HloModule sort, entry_computation_layout={(f32[1024]{0},s32[1024]{0})->(f32[1024]{0}, s32[1024]{0})}
 
 compare {
   p.1.lhs = s32[] parameter(2)
@@ -1422,7 +1422,7 @@ ENTRY Sort {
 // R2 Sort (Key)
 {
 "SortKeyR2",
-R"(HloModule sort
+R"(HloModule sort, entry_computation_layout={(f32[1024,16]{0,1})->f32[1024,16]{0,1}}
 
 compare {
   p.0.lhs = f32[] parameter(0)
@@ -1440,7 +1440,7 @@ ENTRY Sort {
 // R2 Sort (Key, Value)
 {
 "SortKeyValueR2",
-R"(HloModule sort
+R"(HloModule sort, entry_computation_layout={(f32[1024,16]{0,1},s32[1024,16]{0,1})->(f32[1024,16]{0,1}, s32[1024,16]{0,1})}
 
 compare {
   p.1.lhs = s32[] parameter(2)
@@ -1461,7 +1461,7 @@ ENTRY Sort {
 // Sort (Key, Value, Value, Value)
 {
 "SortManyValues",
-R"(HloModule sort
+R"(HloModule sort, entry_computation_layout={(f32[1024,16]{0,1},s32[1024,16]{0,1},u32[1024,16]{0,1},f32[1024,16]{0,1})->(f32[1024,16]{0,1}, s32[1024,16]{0,1}, u32[1024,16]{0,1}, f32[1024,16]{0,1})}
 
 compare {
   p.1.lhs = s32[] parameter(2)
@@ -1488,7 +1488,7 @@ ENTRY Sort {
 // Sort (Key) is_stable=true
 {
 "SortKeyStable",
-R"(HloModule sort
+R"(HloModule sort, entry_computation_layout={(f32[1024]{0})->f32[1024]{0}}
 
 compare {
   p.0.lhs = f32[] parameter(0)
@@ -1506,7 +1506,7 @@ ENTRY Sort {
 // Indexed Conditional
 {
 "IndexedConditional",
-R"(HloModule indexed_conditional
+R"(HloModule indexed_conditional, entry_computation_layout={()->f32[]}
 
 Negate {
   x = f32[] parameter(0)
@@ -1536,7 +1536,7 @@ ENTRY Parameters1.v4 {
 // Predicated Conditional
 {
 "PredicatedConditional",
-R"(HloModule pred_conditional
+R"(HloModule pred_conditional, entry_computation_layout={()->f32[]}
 
 Negate {
   x = f32[] parameter(0)
@@ -1560,7 +1560,7 @@ ENTRY Parameters1.v4 {
 // CustomCall
 {
 "CustomCall",
-R"(HloModule custom_call
+R"(HloModule custom_call, entry_computation_layout={()->f32[1,2,3]{0,2,1}}
 
 ENTRY CustomCall {
   constant = f32[1]{0} constant({12345})
@@ -1572,7 +1572,7 @@ ENTRY CustomCall {
 // CustomCall with single computation.
 {
 "CustumCallSingleComp",
-R"(HloModule custom_call_with_comp
+R"(HloModule custom_call_with_comp, entry_computation_layout={()->f32[1,2,3]{0,2,1}}
 
 max_F32 {
   lhs = f32[] parameter(0)
@@ -1590,7 +1590,7 @@ ENTRY CustomCall {
 // CustomCall with multiple computations.
 {
 "CustumCallMultipleComps",
-R"(HloModule custom_call_with_comps
+R"(HloModule custom_call_with_comps, entry_computation_layout={()->f32[1,2,3]{0,2,1}}
 
 max_F32 {
   lhs = f32[] parameter(0)
@@ -1608,7 +1608,7 @@ ENTRY CustomCall {
 // Variables with non-default names
 {
 "NonDefaultNames",
-R"(HloModule add_constants_module
+R"(HloModule add_constants_module, entry_computation_layout={()->f32[]}
 
 ENTRY add_constants {
   foo = f32[] constant(3.14)
@@ -1619,7 +1619,7 @@ ENTRY add_constants {
 },
 {
 "Dot",
-R"(HloModule dot
+R"(HloModule dot, entry_computation_layout={(f32[2,10]{1,0},f32[10,2]{1,0})->f32[2]{0}}
 
 ENTRY dot {
   a = f32[2,10]{1,0} parameter(0)
@@ -1631,7 +1631,7 @@ ENTRY dot {
 },
 {
 "gather",
-R"(HloModule gather
+R"(HloModule gather, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0},s64[10,9,8,7,5]{4,3,2,1,0})->f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0}}
 
 ENTRY Gather {
   input_tensor = f32[50,49,48,47,46]{4,3,2,1,0} parameter(0)
@@ -1644,7 +1644,7 @@ ENTRY Gather {
 // all-reduce
 {
 "AllReduce",
-R"(HloModule CRS
+R"(HloModule CRS, entry_computation_layout={(f32[8]{0})->f32[8]{0}}
 
 add {
   lhs = f32[] parameter(0)
@@ -1662,7 +1662,7 @@ ENTRY CRS {
 // all-reduce with subgroups
 {
 "AllReduceWithSubgroups",
-R"(HloModule CRS_Subgroups
+R"(HloModule CRS_Subgroups, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}
 
 add {
   lhs = f32[] parameter(0)
@@ -1681,7 +1681,7 @@ ENTRY AllReduceWithSubgroups {
 // all-reduce with constrained layout
 {
 "AllReduceWithLayout",
-R"(HloModule CRS
+R"(HloModule CRS, entry_computation_layout={(f32[8]{0})->f32[8]{0}}
 
 add {
   lhs = f32[] parameter(0)
@@ -1699,7 +1699,7 @@ ENTRY CRS {
 // all-reduce with channel-id
 {
 "AllReduceAllReduce",
-R"(HloModule CRS
+R"(HloModule CRS, entry_computation_layout={(f32[8]{0})->f32[8]{0}}
 
 add {
   lhs = f32[] parameter(0)
@@ -1718,7 +1718,7 @@ ENTRY CRS {
 // all-reduce start and done
 {
 "AllReduceStartAndDone",
-R"(HloModule CRS
+R"(HloModule CRS, entry_computation_layout={(f32[8]{0})->f32[8]{0}}
 
 add {
   lhs = f32[] parameter(0)
@@ -1737,7 +1737,7 @@ ENTRY CRS {
 // reduce-scatter
 {
 "ReduceScatter",
-R"(HloModule RS
+R"(HloModule RS, entry_computation_layout={(f32[8]{0})->f32[4]{0}}
 
 add {
   lhs = f32[] parameter(0)
@@ -1755,7 +1755,7 @@ ENTRY CRS {
 // all-gather
 {
 "AllGather",
-R"(HloModule AllGather
+R"(HloModule AllGather, entry_computation_layout={(f32[128,32]{0,1})->f32[128,128]{0,1}}
 
 ENTRY AllGather {
   input = f32[128,32]{0,1} parameter(0)
@@ -1767,7 +1767,7 @@ ENTRY AllGather {
 // all-gather with constrained layout
 {
 "AllGatherWithLayout",
-R"(HloModule AllGather
+R"(HloModule AllGather, entry_computation_layout={(f32[128,32]{0,1})->f32[128,128]{0,1}}
 
 ENTRY AllGather {
   input = f32[128,32]{0,1} parameter(0)
@@ -1779,7 +1779,7 @@ ENTRY AllGather {
 // all-gather with subgroups
 {
 "AllGatherWithSubgroups",
-R"(HloModule AllGatherWithSubgroups
+R"(HloModule AllGatherWithSubgroups, entry_computation_layout={(f32[128,32]{0,1})->f32[128,64]{0,1}}
 
 ENTRY AllGatherWithSubgroups {
   input = f32[128,32]{0,1} parameter(0)
@@ -1792,7 +1792,7 @@ ENTRY AllGatherWithSubgroups {
 // all-to-all
 {
 "AllToAll",
-R"(HloModule AllToAll
+R"(HloModule AllToAll, entry_computation_layout={(f32[128,32]{0,1})->(f32[128,32]{0,1})}
 
 ENTRY AllToAll {
   input = f32[128,32]{0,1} parameter(0)
@@ -1804,7 +1804,7 @@ ENTRY AllToAll {
 // all-to-all with subgroups
 {
 "AllToAllWithSubgroups",
-R"(HloModule AllToAllWithSubgroups
+R"(HloModule AllToAllWithSubgroups, entry_computation_layout={(f32[128,32]{0,1},f32[128,32]{0,1})->(f32[128,32]{0,1}, f32[128,32]{0,1})}
 
 ENTRY AllToAllWithSubgroups {
   p0 = f32[128,32]{0,1} parameter(0)
@@ -1818,7 +1818,7 @@ ENTRY AllToAllWithSubgroups {
 // collective-permute
 {
 "CollectivePermute",
-R"(HloModule CollectivePermute
+R"(HloModule CollectivePermute, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}
 
 ENTRY CollectivePermute {
   input = f32[128,32]{0,1} parameter(0)
@@ -1831,7 +1831,7 @@ ENTRY CollectivePermute {
 // collective-permute with in-place updates
 {
 "CollectivePermuteInPlaceUpdate",
-R"(HloModule CollectivePermuteInPlaceUpdate
+R"(HloModule CollectivePermuteInPlaceUpdate, entry_computation_layout={(f32[128,32]{0,1})->f32[128,128]{0,1}}
 
 ENTRY CollectivePermuteInPlaceUpdate {
   input = f32[128,32]{0,1} parameter(0)
@@ -1850,7 +1850,7 @@ ENTRY CollectivePermuteInPlaceUpdate {
 // collective-permute with in-place updates with multiple targets per source
 {
 "CollectivePermuteInPlaceUpdateMultipleReadWrite",
-R"(HloModule CollectivePermuteInPlaceUpdateMultipleReadWrite
+R"(HloModule CollectivePermuteInPlaceUpdateMultipleReadWrite, entry_computation_layout={(f32[8,8,128]{2,1,0})->f32[8,8,128]{2,1,0}}
 
 ENTRY CollectivePermuteInPlaceUpdate {
   constant.3 = s32[] constant(2)
@@ -1874,7 +1874,7 @@ ENTRY CollectivePermuteInPlaceUpdate {
 },
 {
 "CollectivePermuteInPlaceUpdateTupleMultipleReadWrite",
-R"(HloModule hlo_runner_test_0.1
+R"(HloModule hlo_runner_test_0.1, entry_computation_layout={()->(u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)})}
 
 ENTRY hlo_runner_test_0.1 {
   replica_id = u32[] replica-id()
@@ -1905,7 +1905,7 @@ ENTRY hlo_runner_test_0.1 {
 // collective-permute tuple with in-place updates
 {
 "CollectivePermuteTupleInPlaceUpdate",
-R"(HloModule CollectivePermuteTupleInPlaceUpdate
+R"(HloModule CollectivePermuteTupleInPlaceUpdate, entry_computation_layout={(f32[128,32]{0,1})->(f32[128,128]{0,1}, f32[128,128]{0,1})}
 
 ENTRY CollectivePermuteInPlaceUpdate {
   input = f32[128,32]{0,1} parameter(0)
@@ -1930,7 +1930,7 @@ ENTRY CollectivePermuteInPlaceUpdate {
 // collective-permute-start and -done with inplace update
 {
 "CollectivePermuteStartAndDone",
-R"(HloModule CollectivePermuteStartAndDone
+R"(HloModule CollectivePermuteStartAndDone, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}
 
 ENTRY CollectivePermuteStartAndDone {
   input = f32[128,32]{0,1} parameter(0)
@@ -1944,7 +1944,7 @@ ENTRY CollectivePermuteStartAndDone {
 // collective-permute-start and -done
 {
 "CollectivePermuteStartAndDoneInplaceUpdate",
-R"(HloModule CollectivePermuteStartAndDoneInplaceUpdate
+R"(HloModule CollectivePermuteStartAndDoneInplaceUpdate, entry_computation_layout={(f32[128,32]{0,1})->f32[128,128]{0,1}}
 
 ENTRY CollectivePermuteStartAndDoneInplaceUpdate {
   input = f32[128,32]{0,1} parameter(0)
@@ -1964,7 +1964,7 @@ ENTRY CollectivePermuteStartAndDoneInplaceUpdate {
 // replica-id
 {
 "ReplicaId",
-R"(HloModule replica-id
+R"(HloModule replica-id, entry_computation_layout={()->u32[]}
 
 ENTRY Replica-id {
   ROOT replica-id = u32[] replica-id()
@@ -1975,7 +1975,7 @@ ENTRY Replica-id {
 // partition-id
 {
 "PartitionId",
-R"(HloModule partition-id
+R"(HloModule partition-id, entry_computation_layout={()->u32[]}
 
 ENTRY PartitionId {
   ROOT id = u32[] partition-id()
@@ -1986,7 +1986,7 @@ ENTRY PartitionId {
 // Iota
 {
 "Iota",
-R"(HloModule iota
+R"(HloModule iota, entry_computation_layout={()->f32[100]{0}}
 
 ENTRY Iota {
   ROOT iota = f32[100]{0} iota(), iota_dimension=0
@@ -1997,7 +1997,7 @@ ENTRY Iota {
 // custom-call with window, dim_labels and feature_group_count
 {
 "CustomCallWithWindowAndDimLabelsAndFeatureGroupCount",
-R"(HloModule CustomCallWithWindowAndDimLabelsAndFeatureGroupCount
+R"(HloModule CustomCallWithWindowAndDimLabelsAndFeatureGroupCount, entry_computation_layout={()->f32[100]{0}}
 
 ENTRY Computation {
   ROOT r = f32[100]{0} custom-call(), window={size=2x2}, dim_labels=b01f_01io->b01f, feature_group_count=2, custom_call_target="target"
@@ -2008,7 +2008,7 @@ ENTRY Computation {
 // custom-call with unknown dim labels.
 {
 "CustomCallWithUnknownDimLabels",
-R"(HloModule CustomCallWithUnknownDimLabels
+R"(HloModule CustomCallWithUnknownDimLabels, entry_computation_layout={()->f32[100]{0}}
 
 ENTRY Computation {
   ROOT r = f32[100]{0} custom-call(), window={size=2x2}, dim_labels=?b01f_0?1io->b01?f, custom_call_target="target"
@@ -2019,7 +2019,7 @@ ENTRY Computation {
 // is_scheduled=true attribute
 {
 "ScheduledModule",
-R"(HloModule scheduled_module, is_scheduled=true
+R"(HloModule scheduled_module, is_scheduled=true, entry_computation_layout={(f32[1024]{0},s32[1024]{0})->(f32[1024]{0}, s32[1024]{0})}
 
 compare {
   p.1.lhs = s32[] parameter(2)
@@ -2040,7 +2040,7 @@ ENTRY Sort {
 // AfterAll with multiple operands
 {
 "AfterAllWithMultipleOperands",
-R"(HloModule AfterAllWithMultipleOperands
+R"(HloModule AfterAllWithMultipleOperands, entry_computation_layout={(f32[])->token[]}
 
 ENTRY AfterAllWithMultipleOperands {
   p0 = f32[] parameter(0)
@@ -2055,7 +2055,7 @@ ENTRY AfterAllWithMultipleOperands {
 // A dependency chain is created from 'neg' to 'exp' using tokens.
 {
 "AddDependency",
-R"(HloModule AddDependency
+R"(HloModule AddDependency, entry_computation_layout={(f32[])->f32[]}
 
 ENTRY AddDependency {
   p = f32[] parameter(0)
@@ -2072,7 +2072,7 @@ ENTRY AddDependency {
 // types.
 {
 "MinMaxValues",
-R"(HloModule MinMaxValues
+R"(HloModule MinMaxValues, entry_computation_layout={()->c128[2]{0}}
 
 ENTRY MinMaxValues {
   x.s8 = s8[2]{0} constant({-128, 127})
@@ -2095,7 +2095,7 @@ ENTRY MinMaxValues {
 // Bitcast-convert usage
 {
 "BitcastConvert",
-R"(HloModule BitcastConvert
+R"(HloModule BitcastConvert, entry_computation_layout={(f32[100]{0})->u32[100]{0}}
 
 ENTRY BitcastConvertUsage {
   p = f32[100]{0} parameter(0)
@@ -2106,7 +2106,7 @@ ENTRY BitcastConvertUsage {
 },
 {
 "OuterDimensionPartitions",
-R"(HloModule OuterDimensionPartitions
+R"(HloModule OuterDimensionPartitions, entry_computation_layout={(f32[100]{0})->f32[100]{0}}
 
 ENTRY Test {
   ROOT foo = f32[100]{0} parameter(0), outer_dimension_partitions={0,10,20}
@@ -2128,7 +2128,7 @@ R"(HloModule test
 ENTRY test {
     ROOT root = add(f32[10] parameter(0), multiply(f32[10] parameter(1), f32[10] parameter(2)))
 })",
-R"(HloModule test
+R"(HloModule test, entry_computation_layout={(f32[10]{0},f32[10]{0},f32[10]{0})->f32[10]{0}}
 
 ENTRY test {
   parameter.anon = f32[10]{0} parameter(0)
@@ -2146,7 +2146,7 @@ ENTRY test {
   add = add(f32[10] parameter(0), f32[10] parameter(1))
   ROOT add2 = add(add, add(add, add))
 })",
-R"(HloModule test
+R"(HloModule test, entry_computation_layout={(f32[10]{0},f32[10]{0})->f32[10]{0}}
 
 ENTRY test {
   parameter.anon = f32[10]{0} parameter(0)
@@ -2166,7 +2166,7 @@ ENTRY test {
     (f32[10], f16[10]) tuple(f32[10] parameter(0), f16[10] parameter(1))
   ), index=0
 })",
-R"(HloModule test
+R"(HloModule test, entry_computation_layout={(f32[10]{0},f16[10]{0})->f32[10]{0}}
 
 ENTRY test {
   parameter.anon = f32[10]{0} parameter(0)
@@ -2184,7 +2184,7 @@ ENTRY test {
   add = add(f32[10] parameter(0), f32[10] parameter(1))
   ROOT root = tuple(add, add(add, add), add)
 })",
-R"(HloModule test
+R"(HloModule test, entry_computation_layout={(f32[10]{0},f32[10]{0})->(f32[10]{0}, f32[10]{0}, f32[10]{0})}
 
 ENTRY test {
   parameter.anon = f32[10]{0} parameter(0)
@@ -2202,7 +2202,7 @@ R"(HloModule test
 ENTRY test {
   ROOT root = sqrt(f32[10,10] broadcast(f32[] parameter(0)))
 })",
-R"(HloModule test
+R"(HloModule test, entry_computation_layout={(f32[])->f32[10,10]{1,0}}
 
 ENTRY test {
   parameter.anon = f32[] parameter(0)
@@ -2335,14 +2335,14 @@ class HloParserTest : public ::testing::Test {
 TEST_F(HloParserTest, Empty) {
   const std::string original = "";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, Garbage) {
   const std::string original =
       "HloModule thi$ str1ng makes# N0 sen$e @all!*&^%$";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, WrongOpcode) {
@@ -2356,7 +2356,7 @@ ENTRY %blabla (x: f32[], y: f32[]) -> f32[] {
 
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, MetadataWithCholesky) {
@@ -2367,7 +2367,7 @@ ENTRY %blabla (a: f32[1,291,291]) -> f32[1,291,291] {
 }
 )";
   auto result = ParseAndReturnVerifiedModule(original);
-  EXPECT_EQ(Status::OK(), result.status());
+  EXPECT_EQ(OkStatus(), result.status());
   EXPECT_EQ("Cholesky", result.ValueOrDie()
                             ->entry_computation()
                             ->root_instruction()
@@ -2395,7 +2395,7 @@ ENTRY %blabla (x: g32[]) -> g32[] {
 
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, WrongOperandsSize) {
@@ -2408,7 +2408,7 @@ ENTRY %blabla (x: f32[]) -> pred[] {
 
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, OperandNotFound) {
@@ -2419,7 +2419,7 @@ ENTRY %blabla (x: f32[]) -> pred[] {
 }
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, MoreConstants) {
@@ -2461,7 +2461,7 @@ ENTRY %some_2 () -> f32[2] {
 
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
   ExpectHasSubstr(result.status().error_message(),
                   "expects nested array in rank 1, but sees larger");
 }
@@ -2475,7 +2475,7 @@ ENTRY %some_2x3 () -> f32[2,3] {
 
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
   ExpectHasSubstr(result.status().error_message(),
                   "expects nested array in rank 2, but sees 1");
 }
@@ -2489,7 +2489,7 @@ ENTRY %some_2x3x2 () -> f32[2,3,2] {
 
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
   ExpectHasSubstr(result.status().error_message(),
                   "expects 3 elements in the [0]th element");
 }
@@ -2504,7 +2504,7 @@ ENTRY %ConstantF16Overflow.v4 () -> f16[] {
 
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
   ExpectHasSubstr(result.status().error_message(),
                   "is out of range for literal's primitive type F16");
 }
@@ -2516,7 +2516,7 @@ TEST_F(HloParserTest, ConstantBf16NoOverflow) {
   ENTRY test {
     ROOT c = bf16[] constant(-65505)
   })";
-  EXPECT_EQ(Status::OK(), ParseAndReturnVerifiedModule(original).status());
+  EXPECT_EQ(OkStatus(), ParseAndReturnVerifiedModule(original).status());
 }
 
 TEST_F(HloParserTest, ConstantBf16Overflow) {
@@ -2538,7 +2538,7 @@ TEST_F(HloParserTest, ConstantUnsignedUnderflow) {
         ROOT %constant = u64[] constant(-1)
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_EQ(Status::OK(), result.status());
+  EXPECT_EQ(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, ConstantUnsignedOverflow) {
@@ -2548,7 +2548,7 @@ TEST_F(HloParserTest, ConstantUnsignedOverflow) {
         ROOT %constant = u32[] constant(4294967296)
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
   ExpectHasSubstr(result.status().error_message(),
                   "is out of range for literal's primitive type U32");
 }
@@ -2560,7 +2560,7 @@ TEST_F(HloParserTest, ConstantUnsignedInt64Overflow) {
         ROOT %constant = u64[] constant(9223372036854775808)
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_EQ(Status::OK(), result.status());
+  EXPECT_EQ(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, ConstantC64Overflow) {
@@ -2570,7 +2570,7 @@ TEST_F(HloParserTest, ConstantC64Overflow) {
         ROOT c = c64[] constant((1e100, 0))
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, ConstantC64Underflow) {
@@ -2580,7 +2580,7 @@ TEST_F(HloParserTest, ConstantC64Underflow) {
         ROOT c = c64[] constant((0, -1e100))
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, ConstantF64Overflow) {
@@ -2590,7 +2590,7 @@ TEST_F(HloParserTest, ConstantF64Overflow) {
         ROOT c = f64[] constant(1.8e308)
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, ConstantF64Underflow) {
@@ -2600,7 +2600,7 @@ TEST_F(HloParserTest, ConstantF64Underflow) {
         ROOT c = f64[] constant(-1.8e308)
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, ConstantWithExp) {
@@ -2619,7 +2619,8 @@ ENTRY %ConstantWithExp.v4 () -> f32[] {
 }
 
 TEST_F(HloParserTest, ShortConstant) {
-  const std::string original = R"(HloModule ShortConstant_module
+  const std::string original =
+      R"(HloModule ShortConstant_module, entry_computation_layout={()->f32[67,89]{1,0}}
 
 ENTRY %ShortConstant.v4 () -> f32[67,89] {
   ROOT %constant.1 = f32[67,89]{1,0} constant({...})
@@ -2632,7 +2633,8 @@ ENTRY %ShortConstant.v4 () -> f32[67,89] {
 }
 
 TEST_F(HloParserTest, NegativeNan) {
-  const std::string original = R"(HloModule NegativeNan_module
+  const std::string original =
+      R"(HloModule NegativeNan_module, entry_computation_layout={()->bf16[2]{0}}
 
 ENTRY %NegativeNan () -> bf16[2] {
   ROOT %constant = bf16[2]{0} constant({-nan, -nan})
@@ -2640,12 +2642,13 @@ ENTRY %NegativeNan () -> bf16[2] {
 
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_EQ(Status::OK(), result.status());
+  EXPECT_EQ(OkStatus(), result.status());
   EXPECT_EQ(result.ValueOrDie()->ToString(HloPrintOptions()), original);
 }
 
 TEST_F(HloParserTest, NanPayload) {
-  const std::string original = R"(HloModule NanPayload_module
+  const std::string original =
+      R"(HloModule NanPayload_module, entry_computation_layout={()->bf16[2]{0}}
 
 ENTRY %NanPayload () -> bf16[2] {
   ROOT %constant = bf16[2]{0} constant({-nan(0x7f), -nan(0x3f)})
@@ -2653,7 +2656,7 @@ ENTRY %NanPayload () -> bf16[2] {
 
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_EQ(Status::OK(), result.status());
+  EXPECT_EQ(OkStatus(), result.status());
   EXPECT_EQ(result.ValueOrDie()->ToString(HloPrintOptions()), original);
 }
 
@@ -3833,7 +3836,7 @@ TEST_F(HloParserTest, CheckIndexedConditionalDimension) {
   }
   )";
   auto result = ParseAndReturnUnverifiedModule(hlo_string);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
   EXPECT_THAT(result.status().error_message(),
               HasSubstr("The first operand must be a scalar"));
 }
@@ -3860,7 +3863,7 @@ TEST_F(HloParserTest, CheckIndexedConditionalElementType) {
   }
   )";
   auto result = ParseAndReturnUnverifiedModule(hlo_string);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
   EXPECT_THAT(result.status().error_message(),
               HasSubstr("The first operand must be a scalar of PRED or S32"));
 }
@@ -3888,7 +3891,7 @@ TEST_F(HloParserTest,
   }
   )";
   auto result = ParseAndReturnUnverifiedModule(hlo_string);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
   EXPECT_THAT(result.status().error_message(),
               HasSubstr("unexpected attribute \"branch_computations\""));
 }
@@ -4011,7 +4014,7 @@ ENTRY test {
 }
 )";
   auto result = ParseAndReturnVerifiedModule(hlo_string);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
   EXPECT_THAT(result.status().error_message(), HasSubstr("dimensions"));
 }
 

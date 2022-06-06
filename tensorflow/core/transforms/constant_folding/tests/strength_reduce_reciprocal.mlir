@@ -1,4 +1,4 @@
-// RUN: tfg-transforms-opt -constant-folding %s | FileCheck %s
+// RUN: tfg-transforms-opt -tfg-constant-folding %s | FileCheck %s
 
 module {
   tfg.graph #tf_type.version<producer = 1010, min_consumer = 0> {
@@ -10,10 +10,10 @@ module {
     // CHECK: , %[[CTRL:.*]] = Const name("cf")
     %Const_5, %ctl_6 = Const name("cf") {dtype = f32, value = dense<2.000000e+00> : tensor<1xf32>} : () -> (tensor<1xf32>)
     %Div, %ctl_7 = Div(%Placeholder_1, %Const_3) name("div_i") {T = i32} : (tensor<2x2xi32>, tensor<1xi32>) -> (tensor<*xi32>)
-    // CHECK: %[[CONST_DIVF:.*]], {{.*}} = Const [%[[CTRL]]] name("div_f/_recip")
+    // CHECK: %[[CONST_DIVF:.*]], {{.*}} = Const [%[[CTRL]]] name("div_f/cf/_recip/eval_0/const_folded")
     // CHECK: Mul(%[[PLACEHOLDER]], %[[CONST_DIVF]]) name("div_f")
     %Div_8, %ctl_9 = Div(%Placeholder, %Const_5) name("div_f") {T = f32} : (tensor<2x2xf32>, tensor<1xf32>) -> (tensor<*xf32>)
-    // CHECK: %[[CONST_REAL:.*]], {{.*}} = Const [%[[CTRL]]] name("realdiv/_recip")
+    // CHECK: %[[CONST_REAL:.*]], {{.*}} = Const [%[[CTRL]]] name("realdiv/cf/_recip/eval_0/const_folded")
     // CHECK: Mul(%[[PLACEHOLDER]], %[[CONST_REAL]]) name("realdiv")
     %RealDiv, %ctl_10 = RealDiv(%Placeholder, %Const_5) name("realdiv") {T = f32} : (tensor<2x2xf32>, tensor<1xf32>) -> (tensor<*xf32>)
   }

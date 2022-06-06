@@ -37,7 +37,7 @@ Status ValidateResultShape(const Shape& client_shape,
         ShapeUtil::HumanStringWithLayout(client_shape),
         ShapeUtil::HumanString(result_shape));
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -45,7 +45,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     const ProgramShape& program_shape,
     absl::Span<const Shape* const> argument_shapes,
     const ExecutionOptions* execution_options, int default_num_replicas,
-    absl::optional<int> num_threads, const AotCompilationOptions* aot_options) {
+    std::optional<int> num_threads, const AotCompilationOptions* aot_options) {
   auto config = absl::make_unique<HloModuleConfig>(program_shape);
   ComputationLayout* computation_layout =
       config->mutable_entry_computation_layout();
@@ -130,11 +130,15 @@ StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
   config->set_alias_passthrough_params(
       execution_options->alias_passthrough_params());
 
-  if (aot_options != nullptr &&
-      aot_options->fusion_config_collection() != FusionConfigCollection::kOff) {
-    config->set_fusion_config_collection(
-        aot_options->fusion_config_collection());
-    *config->mutable_fusion_config() = aot_options->fusion_config();
+  if (aot_options != nullptr) {
+    config->set_matrix_unit_operand_precision(
+        aot_options->matrix_unit_operand_precision());
+    if (aot_options->fusion_config_collection() !=
+        FusionConfigCollection::kOff) {
+      config->set_fusion_config_collection(
+          aot_options->fusion_config_collection());
+      *config->mutable_fusion_config() = aot_options->fusion_config();
+    }
   }
 
   return std::move(config);

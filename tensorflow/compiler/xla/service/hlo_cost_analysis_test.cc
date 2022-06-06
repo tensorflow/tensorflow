@@ -1108,5 +1108,56 @@ TEST_F(HloCostAnalysisTest, Scatter) {
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 2), sizeof(float) * 2 * 3);
   EXPECT_EQ(analysis.output_bytes_accessed(*root), sizeof(float) * 2 * 3);
 }
+
+TEST_F(HloCostAnalysisTest, MultioutputScatter) {
+  // Test the analysis on a scatter.
+  XlaBuilder builder("scatter");
+  Shape operand0_shape = ShapeUtil::MakeShape(F32, {3, 3});
+  Shape operand1_shape = ShapeUtil::MakeShape(S32, {3, 3});
+  Shape indices_shape = ShapeUtil::MakeShape(S32, {2});
+  Shape values0_shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape values1_shape = ShapeUtil::MakeShape(S32, {2, 3});
+
+  auto operand0 = Parameter(&builder, 0, operand0_shape, "operand0");
+  auto operand1 = Parameter(&builder, 1, operand1_shape, "operand1");
+  auto indices = Parameter(&builder, 2, indices_shape, "indices");
+  auto values0 = Parameter(&builder, 3, values0_shape, "values0");
+  auto values1 = Parameter(&builder, 4, values1_shape, "values1");
+  ScatterDimensionNumbers dim_numbers;
+  dim_numbers.set_index_vector_dim(1);
+  dim_numbers.add_update_window_dims(1);
+  dim_numbers.add_inserted_window_dims(0);
+  dim_numbers.add_scatter_dims_to_operand_dims(0);
+  auto add = [] {
+    XlaBuilder builder("add");
+    auto x0 = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x0");
+    auto x1 = Parameter(&builder, 1, ShapeUtil::MakeShape(S32, {}), "x1");
+    auto y0 = Parameter(&builder, 2, ShapeUtil::MakeShape(F32, {}), "y0");
+    auto y1 = Parameter(&builder, 3, ShapeUtil::MakeShape(S32, {}), "y1");
+    Tuple(&builder, {Add(x0, y0), Add(x1, y1)});
+    auto computation_status = builder.Build();
+    TF_CHECK_OK(computation_status.status());
+    return std::move(computation_status).ValueOrDie();
+  }();
+  Scatter({operand0, operand1}, indices, {values0, values1}, add, dim_numbers);
+
+  auto hlo_module = BuildHloGraph(&builder);
+
+  // Run HLO cost analysis.
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+
+  EXPECT_EQ(analysis.bytes_accessed(), 4 * (2 + 2 * 3 * (2 * 3)));
+
+  HloInstruction* root = hlo_module->entry_computation()->root_instruction();
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), sizeof(float) * 2 * 3);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 1), sizeof(int32_t) * 2 * 3);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 2), sizeof(int32_t) * 2);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 3), sizeof(float) * 2 * 3);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 4), sizeof(int32_t) * 2 * 3);
+  EXPECT_EQ(analysis.output_bytes_accessed(*root), 2 * sizeof(float) * 2 * 3);
+}
+
 }  // namespace
 }  // namespace xla

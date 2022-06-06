@@ -1915,22 +1915,27 @@ def TF_BroadcastToOp : TF_Op<"BroadcastTo", [NoSideEffect]> {
   let description = [{
 Broadcasting is the process of making arrays to have compatible shapes
 for arithmetic operations. Two shapes are compatible if for each
-dimension pair they are either equal or one of them is one. When trying
-to broadcast a Tensor to a shape, it starts with the trailing dimensions,
-and works its way forward.
+dimension pair they are either equal or one of them is one.
 
-For example,
+For example:
 
->>> x = tf.constant([1, 2, 3])
->>> y = tf.broadcast_to(x, [3, 3])
+>>> x = tf.constant([[1, 2, 3]])   # Shape (1, 3,)
+>>> y = tf.broadcast_to(x, [2, 3])
 >>> print(y)
 tf.Tensor(
     [[1 2 3]
-     [1 2 3]
-     [1 2 3]], shape=(3, 3), dtype=int32)
+     [1 2 3]], shape=(2, 3), dtype=int32)
 
 In the above example, the input Tensor with the shape of `[1, 3]`
-is broadcasted to output Tensor with shape of `[3, 3]`.
+is broadcasted to output Tensor with shape of `[2, 3]`.
+
+When broadcasting, if a tensor has fewer axes than necessary its shape is
+padded on the left with ones. So this gives the same result as the previous
+example:
+
+>>> x = tf.constant([1, 2, 3])   # Shape (3,)
+>>> y = tf.broadcast_to(x, [2, 3])
+
 
 When doing broadcasted operations such as multiplying a tensor
 by a scalar, broadcasting (usually) confers some time or space
@@ -2998,37 +3003,48 @@ def TF_DataFormatVecPermuteOp : TF_Op<"DataFormatVecPermute", [NoSideEffect, Sam
   let summary = "Permute input tensor from `src_format` to `dst_format`.";
 
   let description = [{
-Input tensor must be a vector of size 4, or a 4x2 tensor.
+Given source and destination format strings of length n=4 or 5, the input
+tensor must be a vector of size n or n-2, or a 2D tensor of shape
+(n, 2) or (n-2, 2).
 
-For example, with `src_format` of `NHWC`, `dst_format` of `NCHW`, and inputs:
+If the first dimension of the input tensor is n-2, it is assumed that
+non-spatial dimensions are omitted (i.e `N`, `C`).
+
+For example, with `src_format` of `NHWC`, `dst_format` of `NCHW`, and input:
 ```
 [1, 2, 3, 4]
 ```
-and
-```
-[[1, 2, 3, 4],
- [5, 6, 7, 8]]
-```
-, the outputs will be (respectively):
+, the output will be:
 ```
 [1, 4, 2, 3]
 ```
-and
+With `src_format` of `NDHWC`, `dst_format` of `NCDHW`, and input:
 ```
-[[1, 4, 2, 3],
- [5, 8, 6, 7]]
+[[1, 6], [2, 7], [3, 8], [4, 9], [5, 10]]
+```
+, the output will be:
+```
+[[1, 6], [5, 10], [2, 7], [3, 8], [4, 9]]
+```
+With `src_format` of `NHWC`, `dst_format` of `NCHW`, and input:
+```
+[1, 2]
+```
+, the output will be:
+```
+[1, 2]
 ```
   }];
 
   let arguments = (ins
-    Arg<TF_I32OrI64Tensor, [{Vector of size 4 or Tensor of shape (4, 2) in source data format.}]>:$x,
+    Arg<TF_I32OrI64Tensor, [{Tensor of rank 1 or 2 in source data format.}]>:$x,
 
     DefaultValuedAttr<StrAttr, "\"NHWC\"">:$src_format,
     DefaultValuedAttr<StrAttr, "\"NCHW\"">:$dst_format
   );
 
   let results = (outs
-    Res<TF_I32OrI64Tensor, [{Vector of size 4 or Tensor of shape (4, 2) in destination data format.}]>:$y
+    Res<TF_I32OrI64Tensor, [{Tensor of rank 1 or 2 in destination data format.}]>:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -11606,7 +11622,8 @@ Creates a dataset with a range of values. Corresponds to python's xrange.
 
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
     Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
-    DefaultValuedAttr<StrAttr, "\"\"">:$metadata
+    DefaultValuedAttr<StrAttr, "\"\"">:$metadata,
+    DefaultValuedAttr<BoolAttr, "false">:$replicate_on_split
   );
 
   let results = (outs
@@ -11769,7 +11786,7 @@ is the corresponding input gradient.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_RecvOp : TF_Op<"Recv", []> {
+def TF_RecvOp : TF_Op<"Recv", [TF_RecvSideEffect]> {
   let summary = "Receives the named tensor from send_device on recv_device.";
 
   let arguments = (ins
@@ -14756,7 +14773,7 @@ if outputs < 0, `scale * gradients` otherwise.}]>:$backprops
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_SendOp : TF_Op<"Send", []> {
+def TF_SendOp : TF_Op<"Send", [TF_SendSideEffect]> {
   let summary = "Sends the named tensor from send_device to recv_device.";
 
   let arguments = (ins
@@ -17590,7 +17607,8 @@ This operation holds the metadata common to operations of a `tpu.replicate()` co
     DefaultValuedAttr<StrArrayAttr, "{}">:$padding_map,
     DefaultValuedAttr<StrAttr, "\"STEP_MARK_AT_ENTRY\"">:$step_marker_location,
     DefaultValuedAttr<BoolAttr, "false">:$allow_soft_placement,
-    DefaultValuedAttr<BoolAttr, "false">:$use_spmd_for_xla_partitioning
+    DefaultValuedAttr<BoolAttr, "false">:$use_spmd_for_xla_partitioning,
+    DefaultValuedAttr<StrAttr, "\"\"">:$tpu_compile_options_proto
   );
 
   let results = (outs);
@@ -17680,18 +17698,22 @@ variables.
 }
 
 def TF_TPURoundRobinOp : TF_Op<"TPURoundRobin", []> {
-  let summary = "A load balancing op that round-robins among TPU cores.";
+  let summary = "Round-robin load balancing on TPU cores.";
 
   let description = [{
+A load balancing op that round-robins among TPU cores.
+
 This op round-robins between the integers in [0, NumTPUCoresVisiblePerHost]. It
 is useful for interfacing with TensorFlow ops that take as input a TPU core on
 which to execute computations, such as `TPUPartitionedCall`.
+
+device_ordinal: An integer in [0, NumTPUCoresVisiblePerHost].
   }];
 
   let arguments = (ins);
 
   let results = (outs
-    Res<TF_Int32Tensor, [{An integer in [0, NumTPUCoresVisiblePerHost].}]>:$device_ordinal
+    TF_Int32Tensor:$device_ordinal
   );
 }
 
@@ -18201,6 +18223,8 @@ def TF_TensorListGetItemOp : TF_Op<"TensorListGetItem", [NoSideEffect]> {
   );
 
   TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_TensorListLengthOp : TF_Op<"TensorListLength", [NoSideEffect]> {
@@ -18653,7 +18677,8 @@ Creates a dataset that emits each dim-0 slice of `components` once.
 
     Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<BoolAttr, "false">:$is_files,
-    DefaultValuedAttr<StrAttr, "\"\"">:$metadata
+    DefaultValuedAttr<StrAttr, "\"\"">:$metadata,
+    DefaultValuedAttr<BoolAttr, "false">:$replicate_on_split
   );
 
   let results = (outs
@@ -19905,6 +19930,28 @@ containing only non-negative values.}]>:$padding_interior
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
 }
 
+def TF_XlaRecvOp : TF_Op<"XlaRecv", [TF_RecvSideEffect]> {
+  let summary = [{
+Receives the named tensor from another XLA computation. Wraps the XLA Recv
+  }];
+
+  let description = [{
+operator documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#recv .
+  }];
+
+  let arguments = (ins
+    StrAttr:$tensor_name,
+    TF_ShapeAttr:$shape
+  );
+
+  let results = (outs
+    Res<TF_Tensor, [{The tensor to receive.}]>:$tensor
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_XlaRecvFromHostOp : TF_Op<"XlaRecvFromHost", [TF_RecvSideEffect]> {
   let summary = "An op to receive a tensor from the host.";
 
@@ -20143,6 +20190,27 @@ multiplicity.}]>:$w,
     Res<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{The column v[..., :, i] is the normalized eigenvector corresponding to the
 eigenvalue w[..., i].}]>:$v
   );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlaSendOp : TF_Op<"XlaSend", [TF_SendSideEffect]> {
+  let summary = [{
+Sends the named tensor to another XLA computation. Wraps the XLA Send operator
+  }];
+
+  let description = [{
+documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#send .
+  }];
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{The tensor to send.}]>:$tensor,
+
+    StrAttr:$tensor_name
+  );
+
+  let results = (outs);
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
@@ -20535,7 +20603,7 @@ the output of each fused_op must be of type T.
 Currently supported fused_op combinations are: ["BiasAdd"] and ["BiasAdd",A],
 where A is one of {"Elu","Relu","Relu6"}.
 
-* The first input to BiasAdd is the Conv2D result, and the additional BiasAdd
+* The first input to BiasAdd is the MatMul result, and the additional BiasAdd
 input is specified by `args`.
 * If there is an op A specified, the output of the BiasAdd is the input to op A,
 and op A produces the _FusedConv2D output. Otherwise, the BiasAdd produces the
@@ -20546,9 +20614,9 @@ expected to create these operators.
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Float32]>:$a,
-    TensorOf<[TF_Bfloat16, TF_Float32]>:$b,
-    Variadic<TensorOf<[TF_Bfloat16, TF_Float32]>>:$args,
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32]>:$a,
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32]>:$b,
+    Variadic<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32]>>:$args,
 
     DefaultValuedAttr<BoolAttr, "false">:$transpose_a,
     DefaultValuedAttr<BoolAttr, "false">:$transpose_b,
@@ -20558,14 +20626,14 @@ expected to create these operators.
   );
 
   let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Float32]>:$product
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32]>:$product
   );
 
   TF_DerivedOperandSizeAttr num_args = TF_DerivedOperandSizeAttr<2>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF__HostRecvOp : TF_Op<"_HostRecv", [TF_RecvSideEffect]> {
+def TF__HostRecvOp : TF_Op<"_HostRecv", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_RecvSideEffect]> {
   let summary = "Receives the named tensor from send_device on recv_device.";
 
   let description = [{
@@ -20588,7 +20656,7 @@ output on device memory.
   TF_DerivedResultTypeAttr tensor_type = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF__HostSendOp : TF_Op<"_HostSend", [TF_SendSideEffect]> {
+def TF__HostSendOp : TF_Op<"_HostSend", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_SendSideEffect]> {
   let summary = "Sends the named tensor from send_device to recv_device.";
 
   let description = [{
@@ -20627,7 +20695,7 @@ def TF__ListToArrayOp : TF_Op<"_ListToArray", [NoSideEffect]> {
   TF_DerivedResultTypeAttr T = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF__RecvOp : TF_Op<"_Recv", [TF_RecvSideEffect]> {
+def TF__RecvOp : TF_Op<"_Recv", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_RecvSideEffect]> {
   let summary = "Receives the named tensor from send_device on recv_device.";
 
   let arguments = (ins
@@ -20697,7 +20765,7 @@ of the embedding lookup operation.
   );
 }
 
-def TF__SendOp : TF_Op<"_Send", [TF_SendSideEffect]> {
+def TF__SendOp : TF_Op<"_Send", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_SendSideEffect]> {
   let summary = "Sends the named tensor from send_device to recv_device.";
 
   let arguments = (ins
@@ -20823,7 +20891,7 @@ expected to create these operators.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF__XlaHostComputeMlirOp : TF_Op<"_XlaHostComputeMlir", [TF_RecvSideEffect, TF_SendSideEffect]> {
+def TF__XlaHostComputeMlirOp : TF_Op<"_XlaHostComputeMlir", [TF_RecvSideEffect, TF_SendSideEffect, TF_XlaHostComputeSideEffect]> {
   let summary = [{
 A pseudo-op to represent host-side computation in an XLA program.
   }];

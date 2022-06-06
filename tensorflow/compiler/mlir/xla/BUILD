@@ -107,7 +107,6 @@ cc_library(
         "transforms/xla_passes.h",
     ],
     deps = [
-        ":legalize_tf",
         ":xla_framework",
         ":xla_passes_inc_gen",
         "//tensorflow/compiler/mlir/hlo",
@@ -543,6 +542,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",

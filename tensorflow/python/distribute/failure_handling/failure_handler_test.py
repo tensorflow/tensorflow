@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for WorkerPreemptionHandler."""
+"""Tests for PreemptionCheckpointHandler."""
 import os
 import random
 import re
@@ -23,8 +23,10 @@ import time
 from absl.testing import parameterized
 
 # pylint:disable=g-direct-tensorflow-import
-
+from tensorflow.python.checkpoint import checkpoint as tracking_util
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.distribute import collective_all_reduce_strategy
+from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
@@ -41,14 +43,13 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.tracking import util as tracking_util
 
 
 mock = test.mock
 
 
 CLUSTER_SIZE = 4
-EPOCHS_TO_RUN = 15
+EPOCHS_TO_RUN = 8
 STEPS_PER_EPOCH = 15
 
 
@@ -69,19 +70,23 @@ def _enable_coordination_service(cluster_spec):
         coordinated_jobs=coordinated_jobs)
 
 
-class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
-  """Integration test for WorkerPreemptionHandler."""
+def _make_checkpoint_manager(checkpoint, checkpoint_dir, cluster_resolver):
+  if multi_worker_util.is_chief(
+      cluster_spec=cluster_resolver.cluster_spec(),
+      task_type=cluster_resolver.task_type,
+      task_id=cluster_resolver.task_id):
+    return checkpoint_management.CheckpointManager(
+        checkpoint, directory=checkpoint_dir, max_to_keep=1)
+  else:
+    return checkpoint_management.CheckpointManager(
+        checkpoint,
+        directory=failure_handling._non_chief_checkpoint_dir(
+            checkpoint_dir, cluster_resolver.task_id),
+        max_to_keep=1)
 
-  def _mwms_write_checkpoint_dir(self, checkpoint_dir, cluster_spec, task_type,
-                                 task_id):
-    dirpath = os.path.dirname(checkpoint_dir)
-    base = os.path.basename(checkpoint_dir)
-    if not multi_worker_util.is_chief(
-        cluster_spec=cluster_spec, task_type=task_type, task_id=task_id):
-      base_dirpath = 'workertemp_' + str(task_id)
-      dirpath = os.path.join(dirpath, base_dirpath)
-      gfile.MakeDirs(dirpath)
-    return os.path.join(dirpath, base)
+
+class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
+  """Integration test for PreemptionCheckpointHandler."""
 
   def _maybe_trigger_a_preemption(self, training_started_event,
                                   trigger_it=False):
@@ -100,8 +105,11 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
   def worker_fn(self,
                 checkpoint_dir,
                 cluster_spec,
+                input_arg='checkpoint',
                 training_started_event=None,
                 raise_app_error_on_worker=None,
+                training_restarted=None,
+                training_finished=None,
                 termination_config=failure_handling.TerminationConfig()):
 
     _enable_coordination_service(cluster_spec)
@@ -125,14 +133,19 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
         model = Model()
         # Named it fh_ckpt because it'd be better that the user have their
         # regular checkpoint separate from the checkpoint for
-        # WorkerPreemptionHandler, since we will create CheckpointManager
+        # PreemptionCheckpointHandler, since we will create CheckpointManager
         # to manage the checkpoint and only one CheckpointManager should be
         # active in a particular directory at a time.
         fh_ckpt = tracking_util.Checkpoint(model=model)
-
-        worker_preemption_watcher = failure_handling.WorkerPreemptionHandler(
-            strategy.cluster_resolver, fh_ckpt, checkpoint_dir,
-            termination_config)
+        if input_arg == 'checkpoint':
+          checkpoint_or_manager = fh_ckpt
+        else:
+          checkpoint_or_manager = _make_checkpoint_manager(
+              fh_ckpt, checkpoint_dir, strategy.cluster_resolver)
+        preemption_handler = (
+            failure_handling.PreemptionCheckpointHandler(
+                strategy.cluster_resolver, checkpoint_or_manager,
+                checkpoint_dir, termination_config))
 
       def distributed_train_step(current_epoch, current_step):
 
@@ -150,16 +163,38 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
         if current_step == STEPS_PER_EPOCH - 1:
           logging.info('epoch %d finished', current_epoch)
 
-      logging.info('Restored training at %d',
-                   worker_preemption_watcher.total_runs)
+      logging.info('Start training at %d',
+                   preemption_handler.total_run_calls)
+
+      # If the training process has been restarted, verify that the expected
+      # number of checkpoints have been written.
+      # we also want to check training_finished, because there's a corner case
+      # where the signal is sent quite late and training finishes before the
+      # grace period ends.
+      if training_restarted and training_restarted.is_set(
+      ) and not training_finished.is_set():
+        logging.info('training restarted')
+        match_group = [
+            re.search(r'.*ckpt-(\d+).index', a_file)
+            for a_file in gfile.ListDirectory(checkpoint_dir)
+        ]
+        checkpoint_index = [
+            a_match.group(1) for a_match in match_group if a_match
+        ]
+        if getattr(termination_config, 'grace_period', 0):
+          # Two checkpoints were saved for the extended grace period.
+          self.assertEqual(int(checkpoint_index[0]), 2)
+        else:
+          self.assertEqual(int(checkpoint_index[0]), 1)
+
       for epoch in range(
-          worker_preemption_watcher.total_runs // STEPS_PER_EPOCH,
+          preemption_handler.total_run_calls // STEPS_PER_EPOCH,
           EPOCHS_TO_RUN):
 
         for step in range(
-            worker_preemption_watcher.total_runs % STEPS_PER_EPOCH,
+            preemption_handler.total_run_calls % STEPS_PER_EPOCH,
             STEPS_PER_EPOCH):
-          worker_preemption_watcher.run(distributed_train_step, epoch, step)
+          preemption_handler.run(distributed_train_step, epoch, step)
         # Add some randomness to when preemption actually happens. We should
         # trigger it for sure if the training is coming to an end and it hasn't
         # been triggered yet.
@@ -170,18 +205,24 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
 
         self._maybe_trigger_a_preemption(training_started_event, trigger_it)
 
+      training_finished.set()
+
       logging.info('Training finished.')
 
       self.assertEqual(
           model.v.numpy(),
           strategy.num_replicas_in_sync * EPOCHS_TO_RUN * STEPS_PER_EPOCH)
 
-  def test_preemption_checkpointing(self):
+  @combinations.generate(
+      combinations.combine(input_arg=['checkpoint', 'manager'],))
+  def test_preemption_checkpointing(self, input_arg):
     has_chief = False
     cluster_spec = multi_worker_test_base.create_cluster_spec(
         has_chief=has_chief,
         num_workers=CLUSTER_SIZE)
     training_started_event = multi_process_runner.manager().Event()
+    training_restarted = multi_process_runner.manager().Event()
+    training_finished = multi_process_runner.manager().Event()
 
     checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt')
 
@@ -193,7 +234,8 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
     mpr = multi_process_runner.MultiProcessRunner(
         self.worker_fn,
         cluster_spec,
-        args=(checkpoint_dir, cluster_spec, [training_started_event]),
+        args=(checkpoint_dir, cluster_spec, input_arg, [training_started_event],
+              None, training_restarted, training_finished),
         rpc_layer=rpc_layer,
         return_output=True,
         dependence_on_chief=has_chief)
@@ -211,23 +253,12 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
     time.sleep(5)
 
     logging.info('restarting workers')
+    training_restarted.set()
     for worker_id in range(CLUSTER_SIZE):
       mpr.start_single_process('worker', worker_id, cluster_spec)
     logging.info('workers restarted')
 
-    stdout = mpr.join(timeout=270).stdout
-    all_start_point = []
-    for msg in stdout:
-      matched_group = re.search(r'.*Restored training at (\d+)', msg)
-
-      if matched_group:
-        all_start_point.append(int(matched_group.group(1)))
-
-    # remove duplicate logs created due to presence of multiple workers
-    start_points = all_start_point[::CLUSTER_SIZE]
-
-    # assert that after restarting, we don't repeat previous training steps
-    self.assertNotEqual(start_points[-1], 0)
+    mpr.join(timeout=270)
 
   def test_error_propagation(self):
     error_worker = random.randint(0, CLUSTER_SIZE)
@@ -261,14 +292,17 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
     mpr.start()
     mpr.join(timeout=250)
 
-  def test_grace_period_continue_training(self):
+  @combinations.generate(
+      combinations.combine(input_arg=['checkpoint', 'manager'],))
+  def test_grace_period_continue_training(self, input_arg):
     grace_period = 5
     has_chief = False
     cluster_spec = multi_worker_test_base.create_cluster_spec(
         has_chief=has_chief,
         num_workers=CLUSTER_SIZE)
     training_started_event = multi_process_runner.manager().Event()
-
+    training_restarted = multi_process_runner.manager().Event()
+    training_finished = multi_process_runner.manager().Event()
     checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt')
 
     if _is_oss():
@@ -277,12 +311,12 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
       rpc_layer = 'grpc+loas'
 
     termination_config = failure_handling.TerminationConfig(
-        time_till_termination=grace_period)
+        grace_period=grace_period)
     mpr = multi_process_runner.MultiProcessRunner(
         self.worker_fn,
         cluster_spec,
-        args=(checkpoint_dir, cluster_spec, [training_started_event], None,
-              termination_config),
+        args=(checkpoint_dir, cluster_spec, input_arg, [training_started_event],
+              None, training_restarted, training_finished, termination_config),
         rpc_layer=rpc_layer,
         return_output=True,
         dependence_on_chief=has_chief)
@@ -313,32 +347,12 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
       raise RuntimeError('Waited exceeding grace period. ')
 
     logging.info('restarting workers')
+    training_restarted.set()
     for worker_id in range(CLUSTER_SIZE):
       mpr.start_single_process('worker', worker_id, cluster_spec)
     logging.info('workers restarted')
 
-    stdout = mpr.join(timeout=250).stdout
-    all_start_point = []
-    checkpoint_count = []
-    for msg in stdout:
-      # TODO(wxinyi): remove the string matching and assert checkpoint number.
-      matched_group = re.search(r'.*Restored training at (\d+)', msg)
-      checkpoint_group = re.search(r'.*RUN_TO_CHECKPOINT set to (\d+)', msg)
-
-      if matched_group:
-        all_start_point.append(int(matched_group.group(1)))
-
-      if checkpoint_group:
-        checkpoint_count.append(int(checkpoint_group.group(1)))
-
-    # remove duplicate logs created due to presence of multiple workers
-    start_points = all_start_point[::CLUSTER_SIZE]
-
-    # assert that after restarting, we don't repeat previous training steps
-    self.assertNotEqual(start_points[-1], 0)
-
-    # One for timing, another for final call.
-    self.assertLen(set(checkpoint_count), 2)
+    mpr.join(timeout=250)
 
 
 if __name__ == '__main__':

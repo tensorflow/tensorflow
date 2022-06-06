@@ -374,7 +374,7 @@ TEST_F(CallGraphTest, ComplexGraph) {
   std::vector<const HloComputation*> visited;
   TF_ASSERT_OK(call_graph->VisitNodes([&visited](const CallGraphNode& node) {
     visited.push_back(node.computation());
-    return Status::OK();
+    return OkStatus();
   }));
   EXPECT_EQ(visited.size(), 5);
   // All values in visited should be unique.
@@ -508,7 +508,7 @@ TEST_F(CallGraphTest, VisitSingletonComputation) {
   std::vector<HloComputation*> visited;
   TF_ASSERT_OK(call_graph->VisitNodes([&visited](const CallGraphNode& node) {
     visited.push_back(node.computation());
-    return Status::OK();
+    return OkStatus();
   }));
   EXPECT_THAT(visited, UnorderedElementsAre(computation));
 }
@@ -528,7 +528,7 @@ TEST_F(CallGraphTest, VisitUnreachableComputation) {
     TF_ASSERT_OK(call_graph->VisitNodes(
         [&visited](const CallGraphNode& node) {
           visited.push_back(node.computation());
-          return Status::OK();
+          return OkStatus();
         },
         /*visit_unreachable_nodes=*/false));
     EXPECT_EQ(visited.size(), 1);
@@ -541,7 +541,7 @@ TEST_F(CallGraphTest, VisitUnreachableComputation) {
     TF_ASSERT_OK(call_graph->VisitNodes(
         [&visited](const CallGraphNode& node) {
           visited.push_back(node.computation());
-          return Status::OK();
+          return OkStatus();
         },
         /*visit_unreachable_nodes=*/true));
     EXPECT_EQ(visited.size(), 2);

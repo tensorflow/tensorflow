@@ -29,16 +29,4 @@ port::StatusOr<DeviceMemory<uint8>> OneTimeScratchAllocator::AllocateBytes(
   return temporary_->device_memory();
 }
 
-port::StatusOr<DeviceMemory<uint8>> OwningScratchAllocator::AllocateBytes(
-    int64_t byte_size) {
-  if (!buffer_.is_null())
-    return port::InternalError(
-        "Can't allocate twice from a SingleBufferScratchAllocator.");
-
-  TF_ASSIGN_OR_RETURN(buffer_,
-                      allocator_->Allocate(device_ordinal_, byte_size,
-                                           /*retry_on_failure=*/false));
-  return *buffer_;
-}
-
 }  // namespace stream_executor

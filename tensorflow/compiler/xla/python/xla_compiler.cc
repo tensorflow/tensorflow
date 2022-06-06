@@ -190,7 +190,7 @@ Status PyRegisterCustomCallTarget(const std::string& fn_name,
   }
   CustomCallTargetRegistry::Global()->Register(
       fn_name, static_cast<void*>(capsule), platform);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 template <typename T, typename Container>
@@ -615,6 +615,12 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           },
           [](CompileOptions& options, int num_partitions) {
             options.executable_build_options.set_num_partitions(num_partitions);
+          })
+      .def_property(
+          "profile_version",
+          [](const CompileOptions& options) { return options.profile_version; },
+          [](CompileOptions& options, int64_t profile_version) {
+            options.profile_version = profile_version;
           })
       .def_property(
           "device_assignment",

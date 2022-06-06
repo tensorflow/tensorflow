@@ -67,7 +67,7 @@ Status OutfeedManager::TransferLiteralFromOutfeed(
     leaf.second->WaitUntilAvailable();
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace gpu

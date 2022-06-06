@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
-#include "tensorflow/core/platform/random.h"
 
 namespace xla {
 namespace {
@@ -31,7 +30,7 @@ TEST(CpuStreamDeviceTest, BlocksDeviceToHostStream) {  // b/214236179
   auto client = *GetCpuClient(true);
   auto* device = client->devices()[0];
   auto buffer = *client->BufferFromHostBuffer(
-      &data, PrimitiveType::F32, {4}, absl::nullopt,
+      &data, PrimitiveType::F32, {4}, std::nullopt,
       PjRtClient::HostBufferSemantics::kZeroCopy, {}, device);
   auto literal = *buffer->ToLiteralSync();
 }

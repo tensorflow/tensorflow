@@ -21,24 +21,29 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
 // Listens and propagates any task preemption notice.
 class PreemptionNotifier {
  public:
-  typedef std::function<void(absl::Time)> PreemptTimeCallback;
+  typedef std::function<void(StatusOr<absl::Time>)> PreemptTimeCallback;
 
   virtual ~PreemptionNotifier() = default;
 
-  // Returns a death time when preemption/termination will occur once the
-  // listener receives the preemption notification. If no death time is
-  // specified, absl::Now() is returned.
-  absl::Time WillBePreemptedAt();
+  // This is a blocking call that returns a death time when preemption /
+  // termination will occur once the listener receives the preemption
+  // notification. If no death time is specified, absl::Now() is returned.
+  // Returns error::Cancelled if UnregisterListeners() is called.
+  StatusOr<absl::Time> WillBePreemptedAt();
 
   // Registers a callback that takes the death time as input once the listener
   // receives the preemption notification.
   // If no death time is specified, absl::Now() is specified as input.
+  // Note: callback should be kept as simple and fast as possible (e.g. simply
+  // retrieve result). It should not wait for work done by another callback, and
+  // invoke ahy PreemptionNotifier method (e.g. Reset(), destructor).
   void WillBePreemptedAtAsync(PreemptTimeCallback callback);
 
   // Once a death time has been set, Reset() must be called to listen to a
@@ -46,8 +51,10 @@ class PreemptionNotifier {
   virtual void Reset() = 0;
 
  protected:
-  // Invokes all pending callbacks upon receipt of preemption notice.
-  void NotifyRegisteredListeners() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Invokes all pending callbacks upon receipt of preemption notice or internal
+  // errors (e.g. cancellation during shutdown).
+  void NotifyRegisteredListeners(StatusOr<absl::Time> death_time)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   Env* env_;  // Not owned.
   mutex mu_;

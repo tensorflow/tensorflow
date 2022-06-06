@@ -28,6 +28,7 @@ from tensorflow.core.framework import dataset_metadata_pb2
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import structured_function
@@ -614,9 +615,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       raise RuntimeError("`tf.data.Dataset.as_numpy_iterator()` is only "
                          "supported in eager mode.")
     for component_spec in nest.flatten(self.element_spec):
-      if not isinstance(
-          component_spec,
-          (tensor_spec.TensorSpec, ragged_tensor.RaggedTensorSpec)):
+      if not isinstance(component_spec,
+                        (tensor_spec.TensorSpec, ragged_tensor.RaggedTensorSpec,
+                         structure.NoneTensorSpec)):
         raise TypeError(
             f"`tf.data.Dataset.as_numpy_iterator()` is not supported for "
             f"datasets that produce values of type {component_spec.value_type}")
@@ -1451,8 +1452,12 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     """
 
     max_value = np.iinfo(dtypes.int64.as_numpy_dtype).max
-    return Dataset.zip((Dataset.range(start, max_value, name=name), self),
-                       name=name)
+    range_dataset = Dataset.range(start, max_value, name=name)
+    # Replicate the range component so that each split is enumerated
+    # independently. This avoids the need for prohibitively expensive
+    # cross-split coordination.
+    range_dataset = _apply_rewrite(range_dataset, "replicate_on_split")
+    return Dataset.zip((range_dataset, self), name=name)
 
   def shuffle(self,
               buffer_size,
@@ -3467,11 +3472,11 @@ name=None))
         seed that will be used to create the distribution. See
         `tf.random.set_seed` for behavior.
       stop_on_empty_dataset: If `True`, sampling stops if it encounters an empty
-        dataset. If `False`, it skips empty datasets. It is recommended to set
-        it to `True`. Otherwise, the distribution of samples starts off as the
-        user intends, but may change as input datasets become empty. This can be
-        difficult to detect since the dataset starts off looking correct.
-        Default to `False` for backward compatibility.
+        dataset. If `False`, it continues sampling and skips any empty datasets.
+        It is recommended to set it to `True`. Otherwise, the distribution of
+        samples starts off as the user intends, but may change as input datasets
+        become empty. This can be difficult to detect since the dataset starts
+        off looking correct. Default to `False` for backward compatibility.
 
     Returns:
       A dataset that interleaves elements from `datasets` at random, according
@@ -3621,6 +3626,10 @@ name=None))
       raise TypeError(f"Invalid `choice_dataset`. Elements of `choice_dataset` "
                       f"must be scalar `tf.int64` tensors but are "
                       f"{choice_dataset.element_spec}.")
+    # Replicate the `choice_dataset` component so that each split makes choices
+    # independently. This avoids the need for prohibitively expensive
+    # cross-split coordination.
+    choice_dataset = _apply_rewrite(choice_dataset, "replicate_on_split")
     # pylint: disable=protected-access
     return _DirectedInterleaveDataset(choice_dataset, datasets,
                                       stop_on_empty_dataset)
@@ -6421,6 +6430,24 @@ class _DirectedInterleaveDataset(DatasetV2):
   @property
   def element_spec(self):
     return self._element_spec
+
+
+def _apply_rewrite(dataset, rewrite):
+  # pylint: disable=protected-access
+  if not compat.forward_compatible(2022, 6, 6):
+    return dataset
+
+  try:
+    return _VariantDataset(
+        gen_dataset_ops.rewrite_dataset(dataset._variant_tensor, rewrite,
+                                        **dataset._flat_structure),
+        dataset.element_spec)
+  except AttributeError as e:
+    if "has no attribute 'rewrite_dataset'" in str(e):
+      # The TF server may be outdated. This try/except can be removed after 6/4
+      # when the forward compatibility window elapses.
+      return dataset
+    raise e
 
 
 def _collect_resource_inputs(op):

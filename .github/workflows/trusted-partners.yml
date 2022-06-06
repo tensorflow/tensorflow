@@ -13,26 +13,22 @@
 # limitations under the License.
 # ==============================================================================
 
-name: assign-partner-tags
+name: Trusted Partner PR
 on:
   pull_request_target:
-
-# TODO: Test permissions issue. Remove after test and give targetted permission
-permissions: write-all
 
 jobs:
   assign-partner-tags:
     runs-on: ubuntu-latest
+    permissions:
+      # Needed to attach tags into the PR
+      issues: write
+      contents: write
+      pull-requests: write
     if: |
       github.event.pull_request.draft == false &&
       github.event.sender.type == 'User'
     steps:
-      - name: Print Dummy Variables
-        env:
-          DUMMY_SECRET: ${{ secrets.DUMMY_SECRET }}
-        run: |
-          echo "Dummy Secret: ${DUMMY_SECRET}"
-          echo ${{ secrets.DUMMY_SECRET }}
       - name: Checkout repo
         uses: actions/checkout@v2
       - name: Trusted-Partners-PR
@@ -42,10 +38,6 @@ jobs:
           script: |
             const script = require('./.github/workflows/trusted_partners.js');
             const username = context.payload.pull_request.user.login;
-            // TODO - Remove after test
-            console.log(username);
-            if (username == "sampathweb")
-              console.log(await script.intel({github, context}));
             const domain = await script.get_email_domain({github, username});
             switch(domain) {
             case "intel.com":

@@ -21,8 +21,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
-#include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -36,6 +34,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -43,12 +42,13 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
+#include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/convert_attributes.h"
 #include "tensorflow/core/ir/importexport/convert_types.h"
 #include "tensorflow/core/ir/importexport/functiondef_import.h"
-#include "tensorflow/core/ir/importexport/import.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/platform/errors.h"
@@ -60,6 +60,8 @@ using tensorflow::DataType;
 using tensorflow::DataTypeVector;
 using tensorflow::FullTypeDef;
 using tensorflow::FunctionDef;
+using tensorflow::FunctionLibraryDefinition;
+using tensorflow::Graph;
 using tensorflow::GraphDebugInfo;
 using tensorflow::GraphDef;
 using tensorflow::NodeDef;
@@ -70,6 +72,7 @@ using tensorflow::Status;
 using tensorflow::StatusOr;
 using tensorflow::StringPiece;
 using tensorflow::TensorId;
+using tensorflow::VersionDef;
 using tensorflow::errors::InvalidArgument;
 using tensorflow::errors::NotFound;
 
@@ -233,6 +236,31 @@ class GraphDefImporter {
 };
 }  // namespace
 
+// Convert a VersionDef to an MLIR version attribute.
+static VersionAttr ConvertVersionAttr(MLIRContext *context,
+                                      const VersionDef &version) {
+  ArrayRef<int32_t> bad_consumers(version.bad_consumers().data(),
+                                  version.bad_consumers().size());
+  return VersionAttr::get(context, version.producer(), version.min_consumer(),
+                          bad_consumers);
+}
+
+// Returns true if the function is a generic function, i.e. it contains
+// placeholder attributes.
+//
+// TODO(jeffniu): Having to iterate over every function just to check for
+// placeholder attributes is slow. Since most functions are not generic, we can
+// speculate by converting all functions as non-generic until we see a
+// placeholder attribute, bail out, and fall back to the generic function
+// converter.
+static bool IsGenericFunction(const FunctionDef &fdef) {
+  for (const NodeDef &node : fdef.node_def())
+    for (const auto &named_attr : node.attr())
+      if (!named_attr.second.placeholder().empty()) return true;
+
+  return false;
+}
+
 StatusOr<OwningOpRef<ModuleOp>> GraphDefImporter::ConvertGraphDef(
     const GraphDef &graph) {
   // Create the module.
@@ -265,7 +293,6 @@ StatusOr<OwningOpRef<ModuleOp>> GraphDefImporter::ConvertGraphDef(
   // A function to convert a generic or non-generic function.
   const auto convert_func = [this, &gradient_map](GraphFuncOp func_op,
                                                   const FunctionDef &function) {
-    // TODO(jeffniu): `IsGenericFunction` is slow.
     if (IsGenericFunction(function)) {
       // Generic functions aren't on the hot path so just call the old
       // importer.
@@ -278,7 +305,7 @@ StatusOr<OwningOpRef<ModuleOp>> GraphDefImporter::ConvertGraphDef(
           ConvertFunctionDef(func_op, gradient_map, function),
           "While importing function: ", function.signature().name());
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   // TODO(jeffniu): Don't import functions in parallel if there are too few (how
@@ -378,7 +405,7 @@ Status GraphDefImporter::ConvertFunctionAttributes(
     attrs.append(op.resource_arg_unique_ids_valuesAttrName(),
                  b_.getI32TensorAttr(resource_arg_unique_ids_values));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status GraphDefImporter::ConvertArgumentAttributes(const OpDef::ArgDef &def,
@@ -402,7 +429,7 @@ Status GraphDefImporter::ConvertArgumentAttributes(const OpDef::ArgDef &def,
         ConvertAttribute(def.experimental_full_type(), b_, dialect_));
     attrs.append(dialect_->getTfgFullTypeAttrIdentifier(), full_type);
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Location GraphDefImporter::ConvertLocation(const NodeDef &node) {
@@ -611,7 +638,7 @@ Status GraphDefImporter::ConvertFunctionDef(
                     TypeAttr::get(b_.getFunctionType(arg_types, res_types)));
   func_op->setAttrs(func_attrs.getDictionary(ctx_));
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status GraphDefImporter::ConvertNodes(
@@ -664,7 +691,7 @@ Status GraphDefImporter::ConvertNodes(
   // delete it from the IR.
   s.Finalize();
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<unsigned> GraphDefImporter::ArgNumType(const NamedAttrList &attrs,
@@ -672,9 +699,15 @@ StatusOr<unsigned> GraphDefImporter::ArgNumType(const NamedAttrList &attrs,
                                                 SmallVectorImpl<Type> &types) {
   // Check whether a type list attribute is specified.
   if (!arg_def.type_list_attr().empty()) {
-    if (auto v = attrs.get(arg_def.type_list_attr()).dyn_cast<ArrayAttr>()) {
-      for (Type dtype : v.getAsValueRange<TypeAttr>()) {
-        types.push_back(UnrankedTensorType::get(dtype));
+    if (auto v =
+            attrs.get(arg_def.type_list_attr()).dyn_cast_or_null<ArrayAttr>()) {
+      for (Attribute attr : v) {
+        if (auto dtype = attr.dyn_cast<TypeAttr>()) {
+          types.push_back(UnrankedTensorType::get(dtype.getValue()));
+        } else {
+          return InvalidArgument("Expected '", arg_def.type_list_attr(),
+                                 "' to be a list of types");
+        }
       }
       return v.size();
     }
@@ -684,7 +717,8 @@ StatusOr<unsigned> GraphDefImporter::ArgNumType(const NamedAttrList &attrs,
   unsigned num = 1;
   // Check whether a number attribute is specified.
   if (!arg_def.number_attr().empty()) {
-    if (auto v = attrs.get(arg_def.number_attr()).dyn_cast<IntegerAttr>()) {
+    if (auto v =
+            attrs.get(arg_def.number_attr()).dyn_cast_or_null<IntegerAttr>()) {
       num = v.getValue().getZExtValue();
     } else {
       return NotFound("Type attr not found: ", arg_def.number_attr());
@@ -699,7 +733,7 @@ StatusOr<unsigned> GraphDefImporter::ArgNumType(const NamedAttrList &attrs,
     return InvalidArgument("Arg '", arg_def.name(),
                            "' has invalid type and no type attribute");
   } else {
-    if (auto v = attrs.get(arg_def.type_attr()).dyn_cast<TypeAttr>()) {
+    if (auto v = attrs.get(arg_def.type_attr()).dyn_cast_or_null<TypeAttr>()) {
       dtype = v.getValue();
     } else {
       return NotFound("Type attr not found: ", arg_def.type_attr());
@@ -743,7 +777,7 @@ Status GraphDefImporter::ConvertNodeDef(OpBuilder &builder, ConversionState &s,
     TF_ASSIGN_OR_RETURN(tf_type::FullTypeAttr full_type,
                         ConvertAttribute(full_type_def, b_, dialect_));
     state.addAttribute(dialect_->getFullTypeAttrIdentifier(), full_type);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   };
   if (node.has_experimental_type()) {
     TF_RETURN_IF_ERROR(add_full_type(node.experimental_type()));
@@ -852,7 +886,7 @@ Status GraphDefImporter::ConvertNodeDef(OpBuilder &builder, ConversionState &s,
   }
   info->backedges.clear();
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status GraphDefImporter::ConvertDataTypesToUnrankedTensorTypes(
@@ -862,7 +896,7 @@ Status GraphDefImporter::ConvertDataTypesToUnrankedTensorTypes(
     TF_RETURN_IF_ERROR(ConvertDataType(tf_dtype, b_, &dtype));
     results.push_back(UnrankedTensorType::get(dtype));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<OwningOpRef<ModuleOp>> ImportGraphDef(MLIRContext *context,
@@ -871,6 +905,17 @@ StatusOr<OwningOpRef<ModuleOp>> ImportGraphDef(MLIRContext *context,
   GraphDefImporter importer(context->getOrLoadDialect<TFGraphDialect>(),
                             *OpRegistry::Global(), debug_info);
   return importer.ConvertGraphDef(graph_def);
+}
+
+StatusOr<OwningOpRef<mlir::ModuleOp>> ImportGraphAndFunctionsToMlir(
+    MLIRContext *context, const Graph &graph, const GraphDebugInfo &debug_info,
+    const FunctionLibraryDefinition &flib_def) {
+  // TODO(b/231723721): This conversion path is slow because both the graph and
+  // the function library are converted to GraphDef.
+  GraphDef graph_def;
+  graph.ToGraphDef(&graph_def);
+  *graph_def.mutable_library() = flib_def.ToProto();
+  return ImportGraphDef(context, debug_info, graph_def);
 }
 
 }  // namespace tfg

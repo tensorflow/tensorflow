@@ -78,7 +78,7 @@ bool IsTrivialMinMax(GraphTransformation* transformation, const Model& model,
   if ((op->type != OperatorType::kMinimum &&
        op->type != OperatorType::kMaximum) ||
       op->inputs.size() != 2) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (IsTrivialMinMax(this, *model, op->type, op->inputs[0], op->inputs[1])) {
     AddMessageF(
@@ -86,9 +86,9 @@ bool IsTrivialMinMax(GraphTransformation* transformation, const Model& model,
         "at least as tight a clamp anyway.",
         LogName(*op));
     *modified = RemoveTrivialPassthroughOp(this, model, op_index);
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

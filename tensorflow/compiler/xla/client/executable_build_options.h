@@ -174,7 +174,7 @@ class ExecutableBuildOptions {
   int device_ordinal_ = -1;
   Shape result_layout_;
   bool result_layout_set_ = false;
-  absl::optional<DebugOptions> debug_options_;
+  std::optional<DebugOptions> debug_options_;
   se::DeviceMemoryAllocator* device_allocator_ = nullptr;
   int num_replicas_ = 1;
   int num_partitions_ = 1;
@@ -184,7 +184,7 @@ class ExecutableBuildOptions {
   std::vector<int64_t> auto_spmd_partitioning_mesh_ids_;
   bool deduplicate_hlo_ = false;
   bool broadcast_replicated_params_ = false;
-  absl::optional<DeviceAssignment> device_assignment_;
+  std::optional<DeviceAssignment> device_assignment_;
   bool alias_passthrough_params_ = false;
   bool run_backend_only_ = false;
   bool allow_spmd_sharding_propagation_to_output_ = false;

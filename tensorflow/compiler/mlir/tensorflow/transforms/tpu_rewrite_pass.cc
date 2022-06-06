@@ -280,6 +280,13 @@ LogicalResult SetMetadataProtoFromClusterFuncOp(
     tf_device::ClusterFuncOp op, int num_replicas, int num_cores_per_replica,
     llvm::Optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
     tensorflow::tpu::TPUCompileMetadataProto* metadata) {
+  if (auto options_attr =
+          op->getAttrOfType<StringAttr>("tpu_compile_options_proto")) {
+    if (!metadata->mutable_compile_options()->ParseFromArray(
+            options_attr.data(), options_attr.size())) {
+      return failure();
+    }
+  }
   metadata->set_num_replicas(num_replicas);
   metadata->set_num_cores_per_replica(num_cores_per_replica);
 
@@ -332,7 +339,6 @@ Operation* BuildCompileOp(
           cluster_func, num_replicas, num_cores_per_replica,
           std::move(xla_device_assignment), &metadata)))
     return nullptr;
-
 
   // Build a shape op for each input to cluster_func.
   // TODO(b/139377366): When shape inference is ready, we can use compile time

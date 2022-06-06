@@ -32,7 +32,7 @@ bool MaybeOwningDeviceMemory::HasOwnership() const {
   return absl::holds_alternative<tensorflow::se::OwningDeviceMemory>(mem_);
 }
 
-absl::optional<tensorflow::se::OwningDeviceMemory>
+std::optional<tensorflow::se::OwningDeviceMemory>
 MaybeOwningDeviceMemory::Release() {
   if (!HasOwnership()) {
     return {};

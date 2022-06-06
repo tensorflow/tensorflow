@@ -34,7 +34,7 @@ class PassingFunctionPass : public FunctionOptimizationPass {
              std::vector<std::string>* control_ret_node_names,
              bool* control_rets_updated) override {
     ran_ = true;
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -51,7 +51,7 @@ TEST(FunctionOptimizationPassRegistry, PassNoError) {
       device_set, config_proto, /*graph=*/nullptr, /*flib_def=*/nullptr,
       /*control_ret_node_names=*/nullptr, /*control_rets_updated=*/nullptr);
 
-  EXPECT_EQ(status, Status::OK());
+  EXPECT_EQ(status, OkStatus());
   EXPECT_TRUE(PassingFunctionPass::ran_);
 }
 

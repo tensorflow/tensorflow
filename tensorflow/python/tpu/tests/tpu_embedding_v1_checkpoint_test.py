@@ -16,7 +16,7 @@
 
 from absl.testing import parameterized
 import numpy as np
-
+from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -31,7 +31,6 @@ from tensorflow.python.tpu import tpu_embedding_v1
 from tensorflow.python.tpu import tpu_embedding_v2_utils
 from tensorflow.python.tpu.tests import tpu_embedding_base_test
 from tensorflow.python.training import checkpoint_utils
-from tensorflow.python.training.tracking import util
 
 
 class TPUEmbeddingCheckpointTest(tpu_embedding_base_test.TPUEmbeddingBaseTest):

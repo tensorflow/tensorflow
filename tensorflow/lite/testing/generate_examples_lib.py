@@ -272,6 +272,8 @@ class Options(object):
     self.skip_high_dimension_inputs = False
     # Whether to enable DynamicUpdateSlice op.
     self.enable_dynamic_update_slice = False
+    # Whether to disable unrolling batch matmul.
+    self.disable_batchmatmul_unfold = False
 
 
 def _prepare_dir(options):

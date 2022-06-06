@@ -144,7 +144,7 @@ class XlaDevice : public LocalDevice {
     // Set of devices to use. This controls which of the devices on the given
     // platform will have resources allocated. For GPUs this will be
     // filled from visible_gpu_devices list from session configuration.
-    absl::optional<std::set<int>> allowed_devices;
+    std::optional<std::set<int>> allowed_devices;
   };
 
   // Creates a new XLA Device.
@@ -281,7 +281,7 @@ class XlaDevice : public LocalDevice {
   // Set of devices to use. This controls which of the devices on the given
   // platform will have resources allocated. For GPUs this will be
   // filled from visible_gpu_devices list from session configuration.
-  absl::optional<std::set<int>> allowed_devices_;
+  std::optional<std::set<int>> allowed_devices_;
 
   const bool use_global_compute_stream_;
 

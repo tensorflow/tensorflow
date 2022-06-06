@@ -43,7 +43,7 @@ auto* compile_counter = monitoring::Counter<2>::New(
 }  // namespace
 
 void RecordCompileTime(const std::string& model_name, const std::string& kernel,
-                       absl::optional<size_t> specialization,
+                       std::optional<size_t> specialization,
                        absl::Duration compile_time) {
   auto* compile_time_cell = compile_time_us->GetCell(
       model_name, kernel,

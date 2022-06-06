@@ -40,6 +40,7 @@ flags.DEFINE_bool('hbm_oom_exit', True,
                   'Exit the script when the TPU HBM is OOM.')
 
 _GKE_ENV_VARIABLE = 'KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS'
+_DEFAULT_TPUCONFIG_VARIABLE = 'TPU_CONFIG'
 _ENDPOINTS_SEPARATOR = ','
 _DEFAULT_ENV_VARIABLE = 'TPU_NAME'
 _DISCOVERY_SERVICE_URL_ENV_VARIABLE = 'TPU_API_DISCOVERY_URL'
@@ -95,6 +96,13 @@ def _environment_var_to_network_endpoints(endpoints):
     }
 
 
+def _get_tpu_node_config():
+  tpu_config_env = os.environ.get(_DEFAULT_TPUCONFIG_VARIABLE)
+  if tpu_config_env:
+    return json.loads(tpu_config_env)
+  return None
+
+
 def _get_tpu_name(tpu):
   if tpu:
     return tpu
@@ -138,7 +146,13 @@ class Client(object):
     tpu = _get_tpu_name(tpu)
 
     if tpu is None:
-      raise ValueError('Please provide a TPU Name to connect to.')
+      tpu_node_config = _get_tpu_node_config()
+      if tpu_node_config:
+        tpu = tpu_node_config.get('tpu_node_name')
+        project = project or tpu_node_config.get('project')
+        zone = zone or tpu_node_config.get('zone')
+      else:
+        raise ValueError('Please provide a TPU Name to connect to.')
 
     self._tpu = _as_text(tpu)
 

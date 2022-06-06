@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/metric_utils.h"
 #include "tensorflow/core/data/unbounded_thread_pool.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
@@ -133,20 +134,14 @@ class IteratorResource : public ResourceBase {
     core::RefCountPtr<DatasetBase> dataset_;
   };
 
+  IteratorMetricsCollector metrics_collector_;
   UnboundedThreadPool unbounded_thread_pool_;
+
   mutex mu_;
-  // Records the number of currently active `GetNext()` calls.
-  uint64 num_get_next_calls_ TF_GUARDED_BY(mu_) = 0;
-  // Records the start time (in microseconds) of the first `GetNext()` call that
-  // followed the last period of inactivity.
-  uint64 get_next_start_time_us_ TF_GUARDED_BY(mu_) = 0;
-  // Records the end time (in microseconds) of the most recent `GetNext()` call.
-  uint64 get_next_end_time_us_ TF_GUARDED_BY(mu_) = 0;
   const std::unique_ptr<DeviceMgr> device_mgr_ TF_GUARDED_BY(mu_);
   std::shared_ptr<State> iterator_state_ TF_GUARDED_BY(mu_);
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
-  const bool collect_metrics_;
 };
 
 class IteratorHandleOp : public OpKernel {

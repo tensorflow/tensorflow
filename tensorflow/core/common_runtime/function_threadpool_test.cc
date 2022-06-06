@@ -69,7 +69,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
         Rendezvous::Factory{
             [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
               *r = new IntraProcessRendezvous(device_mgr);
-              return Status::OK();
+              return OkStatus();
             }}));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
   }
@@ -109,7 +109,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
       EXPECT_GE(call_count, 1);  // Test runner is used.
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Instantiate(FunctionLibraryRuntime* flr, const string& name,
@@ -190,7 +190,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
       EXPECT_GE(call_count, 1);  // Test runner is used.
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   FunctionLibraryRuntime* flr0_;

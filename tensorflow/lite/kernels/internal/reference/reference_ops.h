@@ -791,55 +791,34 @@ void RankOneSelect(const RuntimeShape& input_condition_shape,
   }
 }
 
-template <typename D, typename T>
-void BroadcastSelect4DSlow(const RuntimeShape& input_condition_shape,
-                           const D* input_condition_data,
-                           const RuntimeShape& input_x_shape,
-                           const T* input_x_data,
-                           const RuntimeShape& input_y_shape,
-                           const T* input_y_data,
-                           const RuntimeShape& output_shape, T* output_data) {
-  TFLITE_DCHECK_LE(input_condition_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(input_x_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(input_y_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), 4);
+template <typename D, typename T, int N = 5>
+void BroadcastSelectSlow(const RuntimeShape& input_condition_shape,
+                         const D* input_condition_data,
+                         const RuntimeShape& input_x_shape,
+                         const T* input_x_data,
+                         const RuntimeShape& input_y_shape,
+                         const T* input_y_data,
+                         const RuntimeShape& output_shape, T* output_data) {
+  TFLITE_DCHECK_LE(input_condition_shape.DimensionsCount(), N);
+  TFLITE_DCHECK_LE(input_x_shape.DimensionsCount(), N);
+  TFLITE_DCHECK_LE(input_y_shape.DimensionsCount(), N);
+  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), N);
 
-  const RuntimeShape extended_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-
-  NdArrayDesc<4> desc_condition;
-  NdArrayDesc<4> desc_x;
-  NdArrayDesc<4> desc_y;
+  NdArrayDesc<N> desc_condition;
+  NdArrayDesc<N> desc_x;
+  NdArrayDesc<N> desc_y;
+  NdArrayDesc<N> output_desc;
+  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, output_shape), &output_desc);
   NdArrayDescsForElementwiseBroadcast(input_condition_shape, input_x_shape,
                                       input_y_shape, &desc_condition, &desc_x,
                                       &desc_y);
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest
-  // stride, typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-  //
-  // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for
-  // the best cache behavior.
-  for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
-    for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
-      for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
-        for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
-          const int condition_index =
-              SubscriptToIndex(desc_condition, b, y, x, c);
-          const int x_index = SubscriptToIndex(desc_x, b, y, x, c);
-          const int y_index = SubscriptToIndex(desc_y, b, y, x, c);
-          output_data[Offset(extended_output_shape, b, y, x, c)] =
-              input_condition_data[condition_index] ? input_x_data[x_index]
-                                                    : input_y_data[y_index];
-        }
-      }
-    }
-  }
+  auto select_func = [&](int indexes[N]) {
+    output_data[SubscriptToIndex(output_desc, indexes)] =
+        input_condition_data[SubscriptToIndex(desc_condition, indexes)]
+            ? input_x_data[SubscriptToIndex(desc_x, indexes)]
+            : input_y_data[SubscriptToIndex(desc_y, indexes)];
+  };
+  NDOpsHelper<N>(output_desc, select_func);
 }
 
 template <typename D, typename T>
@@ -1080,6 +1059,28 @@ inline void SegmentSum(const RuntimeShape& input_shape, const T* input_data,
     int output_index = segment_ids_data[i];
     for (int j = 0; j < segment_flat_size; ++j) {
       output_data[output_index * segment_flat_size + j] +=
+          input_data[i * segment_flat_size + j];
+    }
+  }
+}
+
+template <typename T>
+inline void UnsortedSegmentProd(const RuntimeShape& input_shape,
+                                const T* input_data,
+                                const RuntimeShape& segment_ids_shape,
+                                const int32_t* segment_ids_data,
+                                const int32_t num_segments,
+                                const RuntimeShape& output_shape,
+                                T* output_data) {
+  for (int i = 0; i < output_shape.FlatSize(); ++i) {
+    output_data[i] = 1;
+  }
+  const int segment_flat_size =
+      MatchingFlatSizeSkipDim(input_shape, 0, output_shape);
+  for (int i = 0; i < input_shape.Dims(0); i++) {
+    int output_index = segment_ids_data[i];
+    for (int j = 0; j < segment_flat_size; ++j) {
+      output_data[output_index * segment_flat_size + j] *=
           input_data[i * segment_flat_size + j];
     }
   }

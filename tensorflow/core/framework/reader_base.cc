@@ -50,7 +50,7 @@ Status ReaderBase::ResetLocked() {
   work_finished_ = 0;
   num_records_produced_ = 0;
   work_.clear();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ReaderBase::SerializeState(tstring* state) {
@@ -261,7 +261,7 @@ Status ReaderBase::RestoreBaseState(const ReaderBaseState& state) {
         "Inconsistent work started vs. finished when restoring in ", name(),
         ": ", debug_string);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

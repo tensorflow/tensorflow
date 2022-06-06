@@ -56,7 +56,7 @@ Status FindIfThenAndElse(const GraphDef& graph, string* op_name,
       *then_fn = *result;
       TF_RETURN_IF_ERROR(GetNodeAttr(node, "else_branch", &result));
       *else_fn = *result;
-      return Status::OK();
+      return OkStatus();
     }
   }
   return errors::NotFound("No If node found in graph");
@@ -317,7 +317,7 @@ Status FindWhileCondAndBody(const GraphDef& graph, NameAttrList* cond,
       *cond = *result;
       TF_RETURN_IF_ERROR(GetNodeAttr(node, "body", &result));
       *body = *result;
-      return Status::OK();
+      return OkStatus();
     }
   }
   return errors::NotFound("No While node found in graph");

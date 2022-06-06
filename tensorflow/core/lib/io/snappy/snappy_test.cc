@@ -116,7 +116,7 @@ Status TestMultipleWritesWriteFile(size_t compress_input_buf_size,
     fname = corrupt_fname;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TestMultipleWrites(size_t compress_input_buf_size,
@@ -155,7 +155,7 @@ Status TestMultipleWrites(size_t compress_input_buf_size,
     TF_RETURN_IF_ERROR(in.Reset());
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TestMultipleWritesInputStream(
@@ -193,7 +193,7 @@ Status TestMultipleWritesInputStream(
     }
     TF_RETURN_IF_ERROR(snappy_input_stream.Reset());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void TestTellWriteFile(size_t compress_input_buf_size,

@@ -85,7 +85,6 @@ pybind_extension(
     hdrs = ["interpreter_wrapper.h"],
     compatible_with = get_compatible_with_portable(),
     link_in_framework = True,
-    module_name = "_pywrap_tensorflow_interpreter_wrapper",
     deps = [
         ":interpreter_wrapper_lib",
         "@pybind11",

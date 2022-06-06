@@ -1470,7 +1470,7 @@ outputs outside the XLA computation.
 // Declares symbol reference attribute `shape_inference_graph` to be optional
 // unlike the TensorFlow definition. This is required to support ops that use
 // empty string value for the attribute to signify missing.
-def TF_XlaHostComputeOp : TF_Op<"XlaHostCompute", [TF_SendSideEffect, TF_RecvSideEffect]> {
+def TF_XlaHostComputeOp : TF_Op<"XlaHostCompute", [TF_SendSideEffect, TF_RecvSideEffect, TF_XlaHostComputeSideEffect]> {
   let summary = [{
 A pseudo-op to represent host-side computation in an XLA program.
   }];

@@ -341,7 +341,7 @@ Status BasicBatchScheduler<TaskType>::Create(
 
   scheduler->reset(
       new BasicBatchScheduler<TaskType>(std::move(shared_scheduler_queue)));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename TaskType>

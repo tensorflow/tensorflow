@@ -251,6 +251,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"Raw Value", kRawValue},
       {"Scaled Value", kScaledValue},
       {"Thread Id", kThreadId},
+      {"matrix_unit_utilization_percent", kMatrixUnitUtilizationPercent},
       // XLA metadata map related.
       {"Hlo Proto", kHloProto},
       // Device capability related.
@@ -260,6 +261,8 @@ const StatTypeMap& GetStatTypeMap() {
       {"memory_size", kDevCapMemorySize},
       {"compute_cap_major", kDevCapComputeCapMajor},
       {"compute_cap_minor", kDevCapComputeCapMinor},
+      {"peak_teraflops_per_second", kDevCapPeakTeraflopsPerSecond},
+      {"peak_hbm_bw_gigabytes_per_second", kDevCapPeakHbmBwGigabytesPerSecond},
       {"device_vendor", kDevVendor},
       // Batching related.
       {"batch_size_after_padding", kBatchSizeAfterPadding},
@@ -356,7 +359,6 @@ bool IsInternalStat(absl::optional<int64_t> stat_type) {
     case StatType::kConsumerType:
     case StatType::kConsumerId:
     case StatType::kIsRoot:
-    case StatType::kIsAsync:
     case StatType::kFlops:
     case StatType::kBytesAccessed:
       return true;
@@ -364,6 +366,8 @@ bool IsInternalStat(absl::optional<int64_t> stat_type) {
       return false;
   }
 }
+
+/*static*/ std::atomic<uint64_t> XFlow::next_flow_id_(0);
 
 }  // namespace profiler
 }  // namespace tensorflow

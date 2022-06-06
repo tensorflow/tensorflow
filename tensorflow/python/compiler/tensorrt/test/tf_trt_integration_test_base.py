@@ -155,6 +155,15 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     if not is_tensorrt_enabled():
       self.skipTest("Test requires TensorRT")
 
+  def tearDown(self):
+    """Making sure to clean artifact."""
+    idx = 0
+    while gc.garbage:
+      gc.collect()  # Force GC to destroy the TRT engine cache.
+      idx += 1
+      if idx >= 10:  # After 10 iterations, break to avoid infinite collect.
+        break
+
   def _GetTensorSpec(self, shape, mask, dtype, name):
     # Set dimension i to None if mask[i] == False
     assert len(shape) == len(mask)
@@ -520,6 +529,13 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     converter = self._CreateConverter(run_params, saved_model_dir,
                                       conversion_params)
     converter.convert()
+
+    if run_params.is_v2:
+      try:
+        line_length = max(160, os.get_terminal_size().columns)
+      except OSError:
+        line_length = 160
+      converter.summary(line_length=line_length, detailed=True)
 
     if run_params.dynamic_shape and self._ShouldConverterBuild(run_params):
       logging.info("Using build mode")

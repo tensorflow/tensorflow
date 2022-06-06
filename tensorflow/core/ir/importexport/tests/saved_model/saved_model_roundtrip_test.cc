@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/core/ir/importexport/savedmodel_export.h"
 #include "tensorflow/core/ir/importexport/savedmodel_import.h"
 #include "tensorflow/core/ir/importexport/tests/roundtrip/roundtrip.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"

@@ -283,6 +283,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:tpu_computation_placer",
         "//tensorflow/core:lib",
+        "//tensorflow/core/tpu:tpu_initializer_helper",
         "//tensorflow/core/tpu:tpu_on_demand_compiler",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:stream",
@@ -295,7 +296,6 @@ cc_library(
         "//tensorflow/stream_executor/tpu:tpu_topology_external",
         "//tensorflow/stream_executor/tpu:tpu_transfer_manager",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
     ],
@@ -574,5 +574,15 @@ tf_cc_test(
         "//third_party/eigen3",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/numeric:int128",
+    ],
+)
+
+cc_library(
+    name = "pjrt_c_api_client",
+    srcs = ["pjrt_c_api_client.cc"],
+    hdrs = ["pjrt_c_api_client.h"],
+    deps = [
+        ":pjrt_client",
+        "//tensorflow/core/platform:casts",
     ],
 )

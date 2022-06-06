@@ -26,7 +26,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -330,30 +329,6 @@ StatusOr<mlir::Operation*> EmitAllReduce(
 
 namespace {
 
-// Selects a scalar tensor value from a 1D array in specified index.
-mlir::Value SelectScalarValueFromArray(int index, mlir::OpBuilder& builder,
-                                       mlir::Location location,
-                                       mlir::Value array) {
-  mlir::TF::SliceOp sliced_value = builder.create<mlir::TF::SliceOp>(
-      location,
-      mlir::RankedTensorType::get(
-          {1, 1}, array.getType().cast<mlir::TensorType>().getElementType()),
-      /*input=*/array,
-      /*begin=*/IntConst(builder, location, {0, index}),
-      /*size=*/IntConst(builder, location, {1, 1}));
-
-  // Reshape the sliced shape (1,1) tensor to shape 0 scalar.
-  auto scalar_size_type =
-      mlir::RankedTensorType::get({}, builder.getIntegerType(32));
-  mlir::Value scalar_shape = mlir::TF::collection_ops_util::GetR1Const(
-      scalar_size_type.getShape(), builder, location);
-  mlir::Value scalar_sliced_value = builder.create<mlir::TF::ReshapeOp>(
-      location, mlir::ArrayRef<mlir::Type>{scalar_size_type},
-      mlir::ArrayRef<mlir::Value>{sliced_value.output(), scalar_shape},
-      mlir::ArrayRef<mlir::NamedAttribute>{});
-  return scalar_sliced_value;
-}
-
 // Returns a offset multiplier to calculate device id / mesh coordinate.
 int GetMeshDimensionOffsetWithNeighbor(const Mesh& mesh,
                                        const std::string& mesh_dim) {
@@ -450,10 +425,13 @@ StatusOr<mlir::Value> CreateConstSrcTargetPair(const Mesh& mesh,
 
 }  // namespace
 
-StatusOr<mlir::Value> EmitHaloExchange(
-    int halo_size, const std::string& mesh_dim, const Layout& layout,
-    mlir::OpBuilder& builder, mlir::tf_device::ClusterOp cluster,
-    mlir::Location location, mlir::Value tensor) {
+StatusOr<mlir::Value> EmitHaloExchange(mlir::OpBuilder& builder, int halo_size,
+                                       const std::string& mesh_dim,
+                                       const Layout& layout,
+                                       mlir::Value mesh_coordinates,
+                                       mlir::tf_device::ClusterOp cluster,
+                                       mlir::Location location,
+                                       mlir::Value tensor) {
   const Mesh& mesh = layout.mesh();
 
   // Check mesh dimension requirements for halo exchange.
@@ -482,12 +460,9 @@ StatusOr<mlir::Value> EmitHaloExchange(
 
   TF_ASSIGN_OR_RETURN(const int mesh_dim_index, mesh.idx_for_dim(mesh_dim));
 
-  // Calculate the index in mesh dimension based on device id.
-  TF_ASSIGN_OR_RETURN(mlir::Value mesh_coordinates,
-                      GetMeshCoordinatesFromCluster(cluster));
-
-  mlir::Value scalar_mesh_coordinate = SelectScalarValueFromArray(
-      mesh_dim_index, builder, location, mesh_coordinates);
+  TF_ASSIGN_OR_RETURN(mlir::Value scalar_mesh_coordinate,
+                      SelectScalarValueFromArray(builder, mesh_dim_index,
+                                                 location, mesh_coordinates));
 
   llvm::SmallVector<int64_t, 4> halo_exchange_tensor_shape;
   for (const auto& size_and_index : llvm::enumerate(input_tensor_shape)) {
@@ -551,9 +526,11 @@ StatusOr<mlir::Value> EmitHaloExchange(
       location, is_on_right_edge, ghost_tensor_left, sliced_tensor_left);
 
   // Invoke collective permute to receive the tensor from neighboring processor.
+  // Halo slices from the left neighbor are received on each processor (they
+  // are shifted right).
   TF_ASSIGN_OR_RETURN(
       mlir::Value src_target_pair_left,
-      CreateConstSrcTargetPair(mesh, mesh_dim, /*shift_left=*/true, location,
+      CreateConstSrcTargetPair(mesh, mesh_dim, /*shift_left=*/false, location,
                                builder));
 
   mlir::Value left_concat_value = builder.create<mlir::TF::CollectivePermuteOp>(
@@ -579,9 +556,11 @@ StatusOr<mlir::Value> EmitHaloExchange(
       location, is_on_left_edge, ghost_tensor_right, sliced_tensor_right);
 
   // Invoke collective permute to receive the tensor from neighboring processor.
+  // Halo slices from the right neighbor are received on each processor (they
+  // are shifted left).
   TF_ASSIGN_OR_RETURN(
       mlir::Value src_target_pair_right,
-      CreateConstSrcTargetPair(mesh, mesh_dim, /*shift_left=*/false, location,
+      CreateConstSrcTargetPair(mesh, mesh_dim, /*shift_left=*/true, location,
                                builder));
   mlir::Value right_concat_value =
       builder.create<mlir::TF::CollectivePermuteOp>(

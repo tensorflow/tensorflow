@@ -15,7 +15,8 @@
 """Tests for TPUStrategy."""
 
 import os
-
+from tensorflow.python.checkpoint import checkpoint as util
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
@@ -24,18 +25,18 @@ from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.module import module
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import flags
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu_strategy_util
-from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training.tracking import util
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string("tpu", "", "Name of TPU to connect to.")
@@ -56,8 +57,9 @@ def get_tpu_strategy(enable_spmd=False):
   resolver = get_tpu_cluster_resolver()
   remote.connect_to_cluster(resolver)
   topology = tpu_strategy_util.initialize_tpu_system(resolver)
-  device_assignment = device_assignment_lib.DeviceAssignment(
-      topology, core_assignment=[[[0, 0, 0, 0], [0, 0, 0, 1]]])
+  num_replicas = resolver.get_tpu_system_metadata().num_cores // 2
+  device_assignment = device_assignment_lib.DeviceAssignment.build(
+      topology, num_replicas=num_replicas, computation_shape=[1, 1, 1, 2])
   return tpu_lib.TPUStrategyV2(
       resolver,
       experimental_device_assignment=device_assignment,
@@ -323,6 +325,28 @@ class TPUStrategyModelParallelismTest(
       result = strategy.run(step_fn, args=(x,))
       self.assertAllClose(
           math_ops.matmul(x, w1), self.evaluate(result), rtol=5e-3, atol=5e-3)
+
+  def test_spmd_with_summary(self):
+    original_device_placement = config.get_soft_device_placement()
+    config.set_soft_device_placement(True)
+
+    strategy = get_tpu_strategy(enable_spmd=True)
+    summary_dir = self.get_temp_dir()
+    writer = summary_ops.create_file_writer_v2(summary_dir)
+
+    with strategy.scope():
+      step = variables.Variable(0, dtype=dtypes.int64)
+
+    @def_function.function
+    def run():
+      with writer.as_default():
+        summary_ops.scalar("result", step * 2, step=step)
+        step.assign_add(1)
+
+    for _ in range(10):
+      strategy.run(run, args=())
+
+    config.set_soft_device_placement(original_device_placement)
 
 
 if __name__ == "__main__":

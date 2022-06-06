@@ -34,7 +34,7 @@ XLA_TEST_F(HloTestBase, IotaReshapeR1) {
     ROOT r = s32[4,3,2] reshape(i)
   }
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_text, absl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
 XLA_TEST_F(HloTestBase, IotaReshapeExtraDims) {
@@ -45,7 +45,7 @@ XLA_TEST_F(HloTestBase, IotaReshapeExtraDims) {
     ROOT r = s32[25,3,37,7,6] reshape(i)
   }
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_text, absl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
 template <typename T>

@@ -464,7 +464,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     get_next = self.getNext(dataset)
 
     # The client does not heartbeat in 10 seconds. It will be garbage-collected.
-    with self.assertRaisesRegex(errors.NotFoundError, "Unknown job client id"):
+    with self.assertRaisesRegex(errors.NotFoundError,
+                                "Unknown iteration client id"):
       self.evaluate(get_next())
       time.sleep(3)
       self.getIteratorOutput(get_next)
@@ -646,8 +647,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     ds2 = self.make_distributed_dataset(
         ds2, cluster, processing_mode="parallel_epochs", job_name="job_name")
     ds = dataset_ops.Dataset.zip((ds1, ds2))
-    with self.assertRaisesRegex(errors.FailedPreconditionError,
-                                "but there is already an existing job"):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "but found an existing job with diff"):
       self.getDatasetOutput(ds)
 
   @combinations.generate(test_base.default_test_combinations())

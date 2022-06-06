@@ -15,62 +15,91 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/toposort/pass.h"
 
+#include <vector>
+
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/iterator_range.h"
 #include "mlir/IR/RegionKindInterface.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/core/ir/ops.h"
+#include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/transforms/pass_detail.h"
 
 namespace mlir {
 namespace tfg {
 
-void SortTopologically(Block *block) {
+void SortTopologically(Block *block, TFGraphDialect *dialect) {
   if (block->empty() || llvm::hasSingleElement(*block)) return;
 
-  Block::iterator next_scheduled_op(&block->front());
-  Block::iterator end = block->end();
-  if (!block->getParentOp()->hasTrait<OpTrait::NoTerminator>()) --end;
+  Block::iterator first(&block->front());
+  Block::iterator last = block->end();
+  if (!block->getParentOp()->hasTrait<OpTrait::NoTerminator>()) --last;
 
-  // Track the ops that still need to be scheduled in a set.
-  SmallPtrSet<Operation *, 16> unscheduled_ops;
-  for (Operation &op : llvm::make_range(next_scheduled_op, end))
-    unscheduled_ops.insert(&op);
+  // Sort using a greedy worklist algorithm.
+  std::vector<Operation *> worklist;
+  for (Operation &op : llvm::reverse(llvm::make_range(first, last)))
+    worklist.push_back(&op);
 
-  while (!unscheduled_ops.empty()) {
-    bool scheduled_at_least_once = false;
-    // Loop over the ops that are not sorted yet, try to find the ones "ready",
-    // i.e. the ones for which there aren't any operand produced by an op in the
-    // set, and "schedule" it (move it before the last_scheduled_op).
-    if (end != block->end())
-      assert(!block->getParentOp()->hasTrait<OpTrait::NoTerminator>());
+  // Track the scheduled ops.
+  DenseSet<Operation *> scheduled;
+  scheduled.reserve(worklist.size());
 
-    for (Operation &op :
-         llvm::make_early_inc_range(llvm::make_range(next_scheduled_op, end))) {
-      WalkResult ready_to_schedule = op.walk([&](Operation *nested_op) {
-        if (llvm::all_of(nested_op->getOperands(), [&](Value operand) {
-              Operation *defining_op = operand.getDefiningOp();
-              if (!defining_op) return true;
-              Operation *producer_in_block =
-                  block->findAncestorOpInBlock(*defining_op);
-              if (producer_in_block && producer_in_block != &op &&
-                  unscheduled_ops.count(producer_in_block))
-                return false;
-              return true;
-            }))
-          return WalkResult::advance();
-        return WalkResult::interrupt();
+  // Given a top-level operation `top`, which is an operation in the block being
+  // sorted, and an operand at or nested below the top-level operation, return
+  // true if the operand is ready to be scheduled.
+  const auto is_ready = [block, &scheduled](Value value, Operation *top) {
+    // The given operand is ready if:
+    Operation *parent = value.getDefiningOp();
+    // - it is a block argument,
+    if (!parent) return true;
+    Operation *ancestor = block->findAncestorOpInBlock(*parent);
+    // - it is an implicit capture,
+    if (!ancestor) return true;
+    // - it is defined in a nested region, or
+    if (ancestor == top) return true;
+    // - its ancestor in the block is scheduled.
+    return scheduled.contains(ancestor);
+  };
+
+  // An operation can be recursively scheduled if its and all its nested
+  // operations' operands are ready.
+  const auto can_be_scheduled = [&is_ready, dialect](Operation *op) {
+    if (!op->getNumRegions()) {
+      return llvm::all_of(op->getOperands(), [&](Value operand) {
+        if (is_ready(operand, op)) return true;
+        // The only normally allowed cycles in TensorFlow graphs are backedges
+        // from NextIteration to Merge nodes. Virtually break these edges by
+        // marking them as ready.
+        if (!dialect) return false;
+        Operation *parent = operand.getDefiningOp();
+        return parent && dialect->IsMerge(op) &&
+               dialect->IsNextIteration(parent);
       });
-      if (ready_to_schedule.wasInterrupted()) {
-        continue;
-      }
-      unscheduled_ops.erase(&op);
-      op.moveBefore(block, next_scheduled_op);
-      scheduled_at_least_once = true;
-      if (&op == &*next_scheduled_op) ++next_scheduled_op;
     }
-    if (!scheduled_at_least_once) {
-      unscheduled_ops.erase(&*next_scheduled_op);
-      ++next_scheduled_op;
+    return !op->walk([&](Operation *child) {
+                return llvm::all_of(
+                           child->getOperands(),
+                           [&](Value operand) { return is_ready(operand, op); })
+                           ? WalkResult::advance()
+                           : WalkResult::interrupt();
+              }).wasInterrupted();
+  };
+
+  while (!worklist.empty()) {
+    Operation *op = worklist.back();
+    worklist.pop_back();
+
+    // Skip ops that are already scheduled.
+    if (scheduled.contains(op)) continue;
+
+    if (!can_be_scheduled(op)) continue;
+    scheduled.insert(op);
+    op->moveBefore(block, last);
+
+    for (Operation *user : op->getUsers()) {
+      // Push users to the front of the queue to optimistically schedule them
+      // and maintain a relatively stable node order.
+      worklist.push_back(block->findAncestorOpInBlock(*user));
     }
   }
 }
@@ -80,13 +109,14 @@ namespace {
 // A pass that topologically sort Graph regions.
 struct TopoSortPass : TopoSortBase<TopoSortPass> {
   void runOnOperation() override {
+    auto *dialect = getContext().getLoadedDialect<TFGraphDialect>();
+
     Operation *op = getOperation();
     auto region_op = dyn_cast<RegionKindInterface>(op);
     if (!region_op) return;
-    for (int region : llvm::seq<int>(0, op->getNumRegions())) {
+    for (int region : llvm::seq<int>(0, op->getNumRegions()))
       if (!region_op.hasSSADominance(region) && !op->getRegion(region).empty())
-        SortTopologically(&op->getRegion(region).front());
-    }
+        SortTopologically(&op->getRegion(region).front(), dialect);
   }
 };
 

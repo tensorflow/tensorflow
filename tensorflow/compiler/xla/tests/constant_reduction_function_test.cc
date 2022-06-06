@@ -29,7 +29,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using absl::nullopt;
+using std::nullopt;
 
 class ConstantReductionFunctionTest : public HloTestBase {};
 

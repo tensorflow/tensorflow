@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/tpu/tpu_initializer_helper.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/stream.h"
@@ -76,7 +77,7 @@ Status TpuDeviceState::ThenMemcpyDeviceToDevice(
       transfer_stream->implementation());
   TF_RETURN_IF_ERROR(transfer_tpu_stream->EnqueueOnTpuDeviceSendRecvLocal(
       src_buffer, dst_buffer));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace
@@ -132,7 +133,7 @@ StatusOr<DeviceAssignment> PjRtTpuClient::GetDefaultDeviceAssignment(
                                                               num_partitions);
 }
 
-StatusOr<absl::optional<std::string>> PjRtTpuClient::ExecutableFingerprint(
+StatusOr<std::optional<std::string>> PjRtTpuClient::ExecutableFingerprint(
     const PjRtExecutable& executable) const {
   if (executable.client() != this) {
     return InvalidArgument(
@@ -150,7 +151,7 @@ StatusOr<absl::optional<std::string>> PjRtTpuClient::ExecutableFingerprint(
               &executable)
               ->executables()[0]
               ->executable());
-  return absl::optional<std::string>(tpu_executable->fingerprint());
+  return std::optional<std::string>(tpu_executable->fingerprint());
 }
 
 StatusOr<std::string> PjRtTpuClient::SerializeExecutable(
@@ -246,6 +247,9 @@ GetTpuDevices(
 
 StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
     int max_inflight_computations, absl::Duration init_retry_timeout) {
+#if !defined(PLATFORM_GOOGLE) || defined(LIBTPU_ON_GCE)
+  TF_RETURN_IF_ERROR(tensorflow::tpu::FindAndLoadTpuLibrary());
+#endif
   tf_tpu::TpuPlatformInterface* platform =
       tf_tpu::TpuPlatformInterface::GetRegisteredPlatform(
           /*initialize_platform=*/true, /*num_tries=*/1);

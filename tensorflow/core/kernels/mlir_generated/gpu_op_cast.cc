@@ -30,7 +30,9 @@ namespace tensorflow {
   FN(arg0, DT_UINT64);        \
   FN(arg0, DT_HALF);          \
   FN(arg0, DT_FLOAT);         \
-  FN(arg0, DT_DOUBLE)
+  FN(arg0, DT_DOUBLE);        \
+  FN(arg0, DT_COMPLEX64);     \
+  FN(arg0, DT_COMPLEX128)
 
 #define GENERATE_AND_REGISTER_CAST_GPU(input_type, output_type)               \
   GENERATE_UNARY_GPU_KERNEL2(Cast, input_type, output_type)                   \

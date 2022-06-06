@@ -931,11 +931,11 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
       };
 
       auto get_constant_operand =
-          [](const HloInstruction* operand) -> absl::optional<int> {
+          [](const HloInstruction* operand) -> std::optional<int> {
         if (operand->IsConstant()) {
           return operand->literal().GetFirstInteger();
         }
-        return absl::nullopt;
+        return std::nullopt;
       };
       // A common special case is a slice or dynamic-slice and a
       // dynamic-update-slice that use the same indices. This pattern is safe.

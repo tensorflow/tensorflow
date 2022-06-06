@@ -223,7 +223,30 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node) {
   }
 
   TF_LITE_ENSURE_EQ(context, NumDimensions(filter), 2);
-  TF_LITE_ENSURE(context, filter->dims->data[1] != 0);
+
+  // When the second dimension size of the filter tensor is 0, we need to
+  // generate the output shape early to avoid dividing by 0.
+  if (filter->dims->data[1] == 0) {
+    TfLiteIntArray* output_size_array;
+    if (params->keep_num_dims) {
+      output_size_array = TfLiteIntArrayCopy(input->dims);
+      output_size_array->data[output_size_array->size - 1] =
+          filter->dims->data[0];
+    } else {
+      output_size_array = TfLiteIntArrayCreate(2);
+      // If `keep_num_dims` is false, we need to flatten the output tensor to
+      // have rank 2.
+      int batch_size = 1;
+      for (int i = 0; i < input->dims->size - 1; ++i)
+        batch_size *= input->dims->data[i];
+      output_size_array->data[0] = batch_size;
+      output_size_array->data[1] = filter->dims->data[0];
+    }
+    TF_LITE_ENSURE_OK(
+        context, context->ResizeTensor(context, output, output_size_array));
+    return kTfLiteOk;
+  }
+
   const int batch_size = input_size / filter->dims->data[1];
   const int num_units = filter->dims->data[0];
 
@@ -1102,6 +1125,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kOutputTensor, &output));
   // Do nothing if expected output is empty.
   if (NumElements(output) == 0) {
+    return kTfLiteOk;
+  }
+
+  if (filter->dims->data[1] == 0) {
+    memset(output->data.data, 0, output->bytes);
     return kTfLiteOk;
   }
 

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -45,12 +46,18 @@ class DynamicDimensionInferenceTest : public HloTestBase {
   }
 
   Status RunInference(
-      DynamicDimensionInference::CustomCallInferenceHandler handler = nullptr) {
-    TF_ASSIGN_OR_RETURN(DynamicDimensionInference inference,
-                        DynamicDimensionInference::Run(module_.get(), handler));
+      DynamicDimensionInference::CustomCallInferenceHandler handler = nullptr,
+      DynamicDimensionInference::ShapeCheckMode shape_check_mode =
+          DynamicDimensionInference::ShapeCheckMode::kIgnore,
+      const DynamicDimensionInference::AssertionGenerator& assertion_generator =
+          nullptr) {
+    TF_ASSIGN_OR_RETURN(
+        DynamicDimensionInference inference,
+        DynamicDimensionInference::Run(module_.get(), handler, shape_check_mode,
+                                       assertion_generator));
 
     inference_ = absl::make_unique<DynamicDimensionInference>(inference);
-    return Status::OK();
+    return OkStatus();
   }
 
   HloComputation* GetAdd() {
@@ -1241,7 +1248,7 @@ TEST_F(DynamicDimensionInferenceTest, InfersCustomOp) {
     CHECK(inference != nullptr);
     CHECK(Cast<HloCustomCallInstruction>(hlo) != nullptr);
     handler_called = true;
-    return Status::OK();
+    return OkStatus();
   };
   TF_ASSERT_OK(RunInference(handler));
 
@@ -1331,5 +1338,55 @@ HloModule test_module
   TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnUnverifiedModule(module_str));
   TF_ASSERT_OK(RunInference());
 }
+
+TEST_F(DynamicDimensionInferenceTest, RuntimeShapeCheck) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY computation {
+  a = f32[20,20] parameter(0)
+  a_size_1 = s32[] parameter(1)
+  a_size_2 = s32[] parameter(2)
+  b = f32[20,20] parameter(3)
+  b_size_1 = s32[] parameter(4)
+  b_size_2 = s32[] parameter(5)
+  ROOT f = add(a, b)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo));
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{1, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{2, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 1}));
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{4, {}},
+      DynamicParameterBinding::DynamicDimension{3, {}, 0}));
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{5, {}},
+      DynamicParameterBinding::DynamicDimension{3, {}, 1}));
+
+  TF_ASSERT_OK(RunInference(
+      /*handler=*/nullptr, DynamicDimensionInference::ShapeCheckMode::kRuntime,
+      /*assertion_generator=*/[&](HloInstruction* constraint) {
+        constraint->parent()->AddInstruction(HloInstruction::CreateCustomCall(
+            ShapeUtil::MakeTokenShape(), {constraint},
+            /*custom_call_target=*/"__xla__assert",
+            /*opaque=*/std::string{}, API_VERSION_STATUS_RETURNING));
+      }));
+
+  StatusOr<bool> filecheck_result = RunFileCheck(module_->ToString({}),
+                                                 R"(
+// CHECK: compare = pred[] compare(s32[] %a_size_1, s32[] %b_size_1), direction=EQ
+// CHECK: compare.1 = pred[] compare(s32[] %a_size_2, s32[] %b_size_2), direction=EQ
+// CHECK: and = pred[] and(pred[] %compare, pred[] %compare.1)
+// CHECK: custom-call(pred[] %and), custom_call_target="__xla__assert"
+                   )");
+  TF_ASSERT_OK(filecheck_result.status());
+  EXPECT_TRUE(*filecheck_result);
+}
+
 }  // namespace
 }  // namespace xla

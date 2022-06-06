@@ -944,6 +944,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     saved_model_loaded = load.load(
         output_saved_model_dir, tags=[tag_constants.SERVING])
     graph_func = saved_model_loaded.signatures[_SAVED_MODEL_SIGNATURE_KEY]
+
     # Checks the TrtEngineOp(s) have the correct attribute(s).
     def _CheckFn(node):
       self.assertEqual(node.attr["_allow_build_at_runtime"].b,

@@ -88,19 +88,19 @@ bool IsReshapeTrivial(const Model& model, const Operator& op,
   const auto reshape_it = model->operators.begin() + op_index;
   auto* reshape_op = reshape_it->get();
   if (reshape_op->type != OperatorType::kReshape) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   if (!IsReshapeTrivial(*model, *reshape_op, this)) {
     AddMessageF("%s is not trivial", LogName(*reshape_op));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   AddMessageF("Removing trivial %s", LogName(*reshape_op));
 
   CHECK_EQ(reshape_op->inputs.size(), 2);
   *modified = RemoveTrivialPassthroughOp(this, model, op_index);
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

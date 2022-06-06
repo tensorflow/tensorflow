@@ -61,6 +61,25 @@ def BufferPacking : Pass<"buffer-packing", "func::FuncOp"> {
   ];
 }
 
+def TileLoopsPass : Pass<"tile-loops", "func::FuncOp"> {
+  let summary = "Tiles parallel loops.";
+  let description = [{ The pass converts an `scf.parallel` loop into a nested,
+  "tiled", `scf.parallel` loop with 2 to 3 levels of nesting. The 3rd level of
+  nesting represents operation unrolling within a tile and is only applied on
+  simple memory access patterns (ones resulting from same shape, scalar, and/or
+  constant operands).}];
+  let constructor = "CreateTileLoopsPass()";
+  let options = [
+    ListOption<"tile_sizes_", "tile-sizes", "int64_t", "The size of the tile "
+               "in each dimension, expressed as the number of "
+               "`unroll_factors_` in that dimension.", "llvm::cl::ZeroOrMore">,
+    ListOption<"unroll_factors_", "unroll-factors", "int64_t", "The unroll "
+               "factor in each dimension, expressed as the number of elements "
+               "in that dimension.", "llvm::cl::ZeroOrMore">,
+  ];
+  let dependentDialects = ["AffineDialect"];
+}
+
 def MemoryCount : Pass<"memory-count", "func::FuncOp"> {
   let summary = "Test pass to count the allocated memory of a module.";
   let description = [{A test pass that prints the size of allocated memory of a
@@ -91,12 +110,16 @@ def ShapeSimplification
   let constructor = "CreateShapeSimplification()";
 }
 
+def OneShotBufferize : Pass<"hlo-one-shot-bufferize", "ModuleOp"> {
+  let summary = "One shot bufferization pass.";
+  let constructor = "hlo::CreateOneShotBufferizePass()";
+}
+
 def ComputeOpAndFuncBufferizePass : Pass<"computeop-and-func-bufferize", "ModuleOp"> {
   let summary = "Pass to transform compute operations (hlo and linalg) on "
                 "values to buffer based ones.";
   let constructor = "CreateComputeOpAndFuncBufferizePass()";
 }
-
 
 def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
   let summary = "Pass to transform late operations on values to buffer based "
@@ -106,6 +129,21 @@ def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
       Option<"alignment_", "alignment", "uint64_t",
              /*default=*/"64", "Memory alignment">,
   ];
+}
+
+def PropagateStaticShapesToKernelPass : Pass<"propagate-static-shapes", "ModuleOp"> {
+  let summary = "Pass to rewrite statically shaped kernel arguments to a pointer.";
+  let constructor = "CreatePropagateStaticShapesToKernelPass()";
+  let options = [
+      Option<"ptr_type_opt", "convert_pointer_args", "std::string",
+             /*default=*/"", "Pointer type to convert pointer arguments to">,
+  ];
+}
+
+def GenericHostToLLVMPass : Pass<"generic-host-to-llvm", "ModuleOp"> {
+  let summary = "Pass to lower common dialects resulting from HLO to LLVM.";
+  let constructor = "hlo::createGenericHostToLLVMPass()";
+  let options = [];
 }
 
 #endif // TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES

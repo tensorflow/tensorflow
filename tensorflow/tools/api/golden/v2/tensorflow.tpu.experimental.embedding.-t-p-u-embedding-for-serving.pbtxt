@@ -2,8 +2,8 @@ path: "tensorflow.tpu.experimental.embedding.TPUEmbeddingForServing"
 tf_class {
   is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_for_serving.TPUEmbeddingForServing\'>"
   is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_base.TPUEmbeddingBase\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.autotrackable.AutoTrackable\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "embedding_tables"

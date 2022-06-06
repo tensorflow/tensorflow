@@ -1485,6 +1485,7 @@ xla_test(
     name = "dynamic_ops_test",
     timeout = "moderate",
     srcs = ["dynamic_ops_test.cc"],
+    shard_count = 4,
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
@@ -2051,7 +2052,7 @@ xla_test(
             "multi_gpu",
             "no_oss",
             "notap",
-            "tfrt_befthunk",
+            "jitrt_executable",
         ],
         "cpu": [
             "notsan",
@@ -2136,6 +2137,31 @@ xla_test(
         ":test_macros_header",
         ":xla_internal_test_main",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
+    ],
+)
+
+xla_test(
+    name = "matmul_test",
+    srcs = ["matmul_test.cc"],
+    backends = [
+        "gpu",
+    ],
+    deps = [
+        ":client_library_test_base",
+        ":hlo_test_base",
+        ":literal_test_util",
+        ":test_macros_header",
+        ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",

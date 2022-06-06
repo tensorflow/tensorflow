@@ -4652,9 +4652,11 @@ TfLiteStatus NNAPIDelegateKernel::Prepare(TfLiteContext* context,
 
   bool should_use_burst_mode = delegate_options.use_burst_computation;
   // Override should_use_burst_mode to true if the selected NNAPI devices are of
-  // NNAPI feature level 5 or higher.
+  // NNAPI feature level 5 to 7. Starting from NNAPI feature level 8, reusable
+  // execution is preferred.
   if (!nnapi_devices_.empty() &&
-      target_feature_level_ >= kNNAPIRuntimeFeatureLevel5) {
+      target_feature_level_ >= kNNAPIRuntimeFeatureLevel5 &&
+      target_feature_level_ <= kNNAPIRuntimeFeatureLevel7) {
     should_use_burst_mode = true;
   }
   // Create burst object to be reused across a sequence of executions

@@ -694,7 +694,7 @@ def deprecate_moved_module(deprecated_name, new_module, deletion_version):
     Set this function as the module's `__getattr__`.
   """
   def getter(name):
-    if getter not in _PRINTED_WARNING:
+    if getter not in _PRINTED_WARNING and _PRINT_DEPRECATION_WARNINGS:
       _PRINTED_WARNING[getter] = True
       logging.warning(
           'Please fix your imports. Module %s has been moved to %s. The old '

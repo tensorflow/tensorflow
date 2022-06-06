@@ -54,7 +54,7 @@ class ReadOnceInputStream : public InputStreamInterface {
   // Resets the stream to the beginning.
   Status Reset() override {
     start_ = true;
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

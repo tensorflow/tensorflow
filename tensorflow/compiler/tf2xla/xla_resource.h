@@ -53,8 +53,8 @@ class XlaResource {
               int64_t max_array_size,
               const std::set<string>& tensor_array_gradients,
               bool tensor_array_multiple_writes_aggregate,
-              const absl::optional<ManagedStackTrace>& definition_stack_trace =
-                  absl::nullopt);
+              const std::optional<ManagedStackTrace>& definition_stack_trace =
+                  std::nullopt);
 
   XlaResource(const XlaResource&) = delete;
   XlaResource(XlaResource&&) = delete;
@@ -91,7 +91,7 @@ class XlaResource {
 
   // An xla shape that indicates how this resource variable is represented on
   // device.
-  const absl::optional<xla::Shape>& representation_shape() const {
+  const std::optional<xla::Shape>& representation_shape() const {
     return representation_shape_;
   }
 
@@ -178,7 +178,7 @@ class XlaResource {
 
   // An xla shape that indicates how this resource variable is represented on
   // device.
-  absl::optional<xla::Shape> representation_shape_;
+  std::optional<xla::Shape> representation_shape_;
 
   int64_t max_array_size_ = -1;
   bool tensor_array_multiple_writes_aggregate_ = false;
@@ -186,7 +186,7 @@ class XlaResource {
   std::map<string, std::unique_ptr<XlaResource>> tensor_array_gradients_;
   bool is_overwritten_ = false;
 
-  absl::optional<ManagedStackTrace> definition_stack_trace_;
+  std::optional<ManagedStackTrace> definition_stack_trace_;
 };
 
 }  // namespace tensorflow

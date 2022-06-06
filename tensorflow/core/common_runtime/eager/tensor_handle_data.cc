@@ -27,7 +27,7 @@ Status LocalTensorHandleData::Tensor(const tensorflow::Tensor** t) const {
 
   *t = &tensor_;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LocalTensorHandleData::TensorValue(tensorflow::TensorValue* t) {
@@ -36,7 +36,7 @@ Status LocalTensorHandleData::TensorValue(tensorflow::TensorValue* t) {
   tensorflow::Tensor& tensor = tensor_;
   *t = tensorflow::TensorValue(&tensor);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LocalTensorHandleData::Shape(TensorShape* shape) const {
@@ -44,7 +44,7 @@ Status LocalTensorHandleData::Shape(TensorShape* shape) const {
 
   *shape = tensor_.shape();
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LocalTensorHandleData::NumDims(int* num_dims) const {
@@ -52,7 +52,7 @@ Status LocalTensorHandleData::NumDims(int* num_dims) const {
 
   *num_dims = tensor_.dims();
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LocalTensorHandleData::Dim(int dim_index, int64_t* dim) const {
@@ -60,7 +60,7 @@ Status LocalTensorHandleData::Dim(int dim_index, int64_t* dim) const {
 
   *dim = tensor_.dim_size(dim_index);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LocalTensorHandleData::NumElements(int64_t* num_elements) const {
@@ -68,7 +68,7 @@ Status LocalTensorHandleData::NumElements(int64_t* num_elements) const {
 
   *num_elements = tensor_.NumElements();
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LocalTensorHandleData::Unprotect() {
@@ -78,7 +78,7 @@ Status LocalTensorHandleData::Unprotect() {
 
   forwarding_protection_tensor_ = tensorflow::Tensor();
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LocalTensorHandleData::SetTensor(tensorflow::Tensor&& t) {
@@ -91,7 +91,7 @@ Status LocalTensorHandleData::SetTensor(tensorflow::Tensor&& t) {
   auto& state = absl::get<BlockingControl>(ctrl_);
   state.SetReady();
 
-  return Status::OK();
+  return OkStatus();
 }
 
 string LocalTensorHandleData::DebugString() const {

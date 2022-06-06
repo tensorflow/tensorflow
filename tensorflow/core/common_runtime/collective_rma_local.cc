@@ -157,7 +157,7 @@ void CollectiveRemoteAccessLocal::MemCpyAsync(
     int64_t bytes = src->TotalBytes();
     DCHECK_EQ(dst->TotalBytes(), bytes);
     memcpy(DMAHelper::base(dst), DMAHelper::base(src), bytes);
-    done(Status::OK());
+    done(OkStatus());
   }
 }
 

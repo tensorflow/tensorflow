@@ -3975,46 +3975,44 @@ Status ConvertUnpack(OpConverterParams* params) {
   return ConvertSplitHelper(params, inputs.at(0), tf_axis, num, true);
 }
 
-// Supports cast fp16=>fp32 through IIdentityLayer.
 Status ConvertCast(OpConverterParams* params) {
-  const NodeDef& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
   auto unsupport_cast_error = [&](string msg) {
     return errors::Unimplemented("Cast op is not supported - ", msg);
   };
 
+  if (isExperimentalFeatureActivated("reject_all_fp_cast_ops")) {
+    LOG(WARNING) << "`TF_TRT_EXPERIMENTAL_FEATURES=reject_all_fp_cast_ops`is "
+                 << "meant as a workaround. If the Cast converter leads to any "
+                 << "performance or accuracy regression, please open an issue "
+                 << "on GitHub.";
+    return unsupport_cast_error(
+        "TF_TRT_EXPERIMENTAL_FEATURES=reject_all_fp_cast_ops has been defined");
+  }
+
+  std::set<DataType> allowed_types{DataType::DT_FLOAT, DataType::DT_HALF};
+
   DataType input_type;
   TF_RETURN_IF_ERROR(GetInputTfType(*params, &input_type, 0));
-  if (input_type != DataType::DT_HALF) {
+
+  if (allowed_types.find(input_type) == allowed_types.end()) {
     return unsupport_cast_error(
-        StrCat("input dtype != ", DataTypeString(DataType::DT_HALF),
-               ", received: ", DataTypeString(input_type)));
+        StrCat("Allowed input dtypes: [", DataTypeString(DataType::DT_FLOAT),
+               ", ", DataTypeString(DataType::DT_HALF),
+               "]. Received: ", DataTypeString(input_type)));
   }
 
   DataType output_type;
   TF_RETURN_IF_ERROR(GetNodeDefTfType(params->node_def, &output_type,
                                       kCastOutputTypeAttrName));
 
-  if (output_type != DataType::DT_FLOAT) {
+  if (allowed_types.find(output_type) == allowed_types.end()) {
     return unsupport_cast_error(
-        StrCat("output dtype != ", DataTypeString(DataType::DT_FLOAT),
-               ", received: ", DataTypeString(output_type)));
+        StrCat("Allowed output dtypes: [", DataTypeString(DataType::DT_FLOAT),
+               ", ", DataTypeString(DataType::DT_HALF),
+               "]. Received: ", DataTypeString(output_type)));
   }
 
-  if (params->validation_only) return Status::OK();
-
-  ITensorProxyPtr input = params->inputs.at(0).tensor();
-  nvinfer1::IIdentityLayer* layer =
-      params->converter->network()->addIdentity(*input->trt_tensor());
-  params->converter->SetLayerName(layer, node_def);
-  layer->setPrecision(nvinfer1::DataType::kFLOAT);
-
-  if (layer->getOutput(0)->getType() != nvinfer1::DataType::kFLOAT) {
-    return errors::Internal("IIdentityLayer doesn't work as expected");
-  }
-
-  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
-  return Status::OK();
+  return ConvertIdentity(params);
 }
 
 Status ConvertConcat(OpConverterParams* params) {

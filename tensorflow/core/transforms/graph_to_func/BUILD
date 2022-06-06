@@ -14,7 +14,6 @@ cc_library(
     srcs = ["graph_to_func.cc"],
     hdrs = ["graph_to_func.h"],
     deps = [
-        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",

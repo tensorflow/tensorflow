@@ -77,21 +77,6 @@ def KernelgenFinalBufferizePass : Pass<"kernelgen-final-bufferize", "ModuleOp"> 
   let constructor = "transforms::CreateKernelgenFinalBufferizePass()";
 }
 
-def ConvertToSignlessPass : Pass<"convert-to-signless", "ModuleOp"> {
-  let summary = "Pass to transform the IR to be on signless integers.";
-  let constructor = "transforms::CreateConvertToSignlessPass()";
-}
-
-def GpuKernelToNVVMPass : Pass<"gpu-kernel-to-nvvm", "gpu::GPUModuleOp"> {
-  let summary = "Pass to transform a gpu module to nvvm.";
-  let constructor = "transforms::CreateGpuKernelToNvvmPass()";
-}
-
-def GpuKernelToROCDLPass : Pass<"gpu-kernel-to-rocdl", "gpu::GPUModuleOp"> {
-  let summary = "Pass to transform a gpu module to rocdl.";
-  let constructor = "transforms::CreateGpuKernelToRocdlPass()";
-}
-
 def GpuKernelToBlobPass : Pass<"gpu-kernel-to-blob", "gpu::GPUModuleOp"> {
   let summary = "Pass to annotate GPU Module with its PTX";
   let options = [
@@ -130,15 +115,6 @@ def EmbedMemRefPrintsPass : Pass<"embed-memref-prints", "mlir::ModuleOp"> {
   let summary = "Pass to print content of memrefs";
   let constructor = "transforms::CreateEmbedMemRefPrintsPass()";
   let dependentDialects = ["LLVM::LLVMDialect"];
-}
-
-def MapParallelLoopsPass
-    : Pass<"map-parallel-loops-to-gpu", "mlir::func::FuncOp"> {
-  let summary = "Greedily maps loops to GPU hardware dimensions.";
-  let constructor = "transforms::CreateMapParallelLoopsPass()";
-  let description = [{
-    Greedily maps loops to GPU hardware dimensions.
-  }];
 }
 
 def FuseInnerParallelLoopsPass

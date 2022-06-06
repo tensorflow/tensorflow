@@ -624,7 +624,6 @@ pybind_extension(
     ],
     hdrs = ["string_util.h"],
     features = ["-use_header_modules"],
-    module_name = "_pywrap_string_util",
     deps = [
         ":string_util_lib",
         "//tensorflow/lite/python/interpreter_wrapper:numpy",

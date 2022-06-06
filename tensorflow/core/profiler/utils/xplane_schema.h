@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_SCHEMA_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_SCHEMA_H_
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 
@@ -243,6 +244,7 @@ enum StatType {
   kRawValue,
   kScaledValue,
   kThreadId,
+  kMatrixUnitUtilizationPercent,
   // XLA metadata map related.
   kHloProto,
   // Device capability related.
@@ -252,6 +254,8 @@ enum StatType {
   kDevCapMemorySize,
   kDevCapComputeCapMajor,
   kDevCapComputeCapMinor,
+  kDevCapPeakTeraflopsPerSecond,
+  kDevCapPeakHbmBwGigabytesPerSecond,
   kDevVendor,
   // Batching related.
   kBatchSizeAfterPadding,
@@ -345,9 +349,14 @@ class XFlow {
     return FlowDirection(encoded_.parts.direction);
   }
 
+  static uint64_t GetUniqueId() {  // unique in current process.
+    return next_flow_id_.fetch_add(1);
+  }
+
  private:
   explicit XFlow(uint64_t encoded) { encoded_.whole = encoded; }
   static constexpr uint64_t kFlowMask = (1ULL << 56) - 1;
+  static std::atomic<uint64_t> next_flow_id_;
 
   union {
     // Encoded representation.

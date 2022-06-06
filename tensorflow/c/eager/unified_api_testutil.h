@@ -67,7 +67,7 @@ Status TestTensorHandleWithDims(AbstractContext* ctx, const T* data,
       TestTensorHandleWithDims<T, datatype>(eager_ctx, data, dims, num_dims);
   *tensor =
       unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Return a scalar tensor handle with given value.
@@ -83,7 +83,7 @@ Status TestScalarTensorHandle(AbstractContext* ctx, const T value,
       TestScalarTensorHandle<T, datatype>(eager_ctx, value);
   *tensor =
       unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Places data from `t` into *result_tensor.

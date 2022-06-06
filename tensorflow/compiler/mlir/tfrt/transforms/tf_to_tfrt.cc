@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/RegionUtils.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -1944,6 +1945,8 @@ void AddTfDeviceAssignmentPasses(mlir::OpPassManager &pm,
                                  const TfrtPipelineOptions &options) {
   pm.addPass(mlir::TF::CreateConstantOpDeviceAssignmentPass());
   pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::TF::CreateTFDeviceAssignmentByFuncAttrPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateSimpleTFDeviceAssignmentPass(options.default_device));
 }
 
@@ -2061,6 +2064,13 @@ OutlineJitRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
   // Operations in the cluster can be in different order, however define the
   // identical Tensorflow programs, with current approach we'll not be able
   // to detect duplicates like this.
+
+  // Remove location attribute attached to Tensorflow operations to be able to
+  // deduplicate compiled clusters with the same set of operations.
+  //
+  // TODO(ezhulenev): Figure out how to propagate locations for error reporting,
+  // right now JitRt will ignore them anyway.
+  compiled_module.walk([](Operation *op) { op->removeAttr("_class"); });
 
   // Serialize prepared module to string.
   std::string serialized;

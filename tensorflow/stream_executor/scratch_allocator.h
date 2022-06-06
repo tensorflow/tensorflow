@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_SCRATCH_ALLOCATOR_H_
 
 #include <memory>
+#include <utility>
 
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -74,11 +76,12 @@ class OneTimeScratchAllocator : public ScratchAllocator {
   SE_DISALLOW_COPY_AND_ASSIGN(OneTimeScratchAllocator);
 };
 
-// Allocates a single memory allocation -- this memory is deallocated when the
-// scratch allocator is destroyed.
+// Can allocate several times -- this memory is deallocated when the scratch
+// allocator is destroyed.
 //
 // Thread-compatible, but not thread-safe (use in scenarios where only one
 // thread will request the scratch allocation).
+template <size_t N = 1>
 class OwningScratchAllocator : public ScratchAllocator {
  public:
   OwningScratchAllocator(int device_ordinal, DeviceMemoryAllocator* allocator)
@@ -86,12 +89,19 @@ class OwningScratchAllocator : public ScratchAllocator {
 
   int64_t GetMemoryLimitInBytes() override { return -1; }
 
-  port::StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override;
+  port::StatusOr<DeviceMemory<uint8>> AllocateBytes(
+      int64_t byte_size) override {
+    TF_ASSIGN_OR_RETURN(OwningDeviceMemory buffer,
+                        allocator_->Allocate(device_ordinal_, byte_size,
+                                             /*retry_on_failure=*/false));
+    buffers_.push_back(std::move(buffer));
+    return *buffers_.back();
+  }
 
  private:
   int device_ordinal_;
   DeviceMemoryAllocator* allocator_;
-  OwningDeviceMemory buffer_;
+  absl::InlinedVector<OwningDeviceMemory, N> buffers_;
 
   SE_DISALLOW_COPY_AND_ASSIGN(OwningScratchAllocator);
 };

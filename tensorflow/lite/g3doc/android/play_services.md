@@ -39,24 +39,12 @@ Services API for TensorFlow Lite:
 dependencies {
 ...
     // Tensorflow Lite dependencies for Google Play services
-    implementation 'com.google.android.gms:play-services-tflite-java:16.0.0-beta01'
+    implementation 'com.google.android.gms:play-services-tflite-java:16.0.0-beta02'
     // Optional: include Tensorflow Lite Support Library
-    implementation 'com.google.android.gms:play-services-tflite-support:16.0.0-beta01'
+    implementation 'com.google.android.gms:play-services-tflite-support:16.0.0-beta02'
 ...
 }
 ```
-
-Also, add the following maven dependency to your app project code:
-
-```
-maven {
-  name 'ossrh-snapshot'
-  url 'https://oss.sonatype.org/content/repositories/snapshots'
-}
-```
-
-Note: You should only include this dependency during the Beta launch period.
-
 
 ### 2. Add initialization of TensorFlow Lite
 
@@ -245,7 +233,7 @@ your app project code:
     with `org.tensorflow.lite.InterpreterApi`.
 
 If you want to use standalone TensorFlow Lite and the Play services API
-side-by-side, you must link to the nightly build version of TensorFlow Lite.
+side-by-side, you must use TensorFlow Lite 2.9 (or later).
 TensorFlow Lite 2.8 and earlier versions are not compatible with the Play
 services API version.
 
@@ -302,7 +290,7 @@ following limitations:
 *   Only the [NNAPI Delegate](https://www.tensorflow.org/lite/android/delegates/nnapi)
     is currently supported by Google Play services. Other TensorFlow Lite
     [Delegates](https://www.tensorflow.org/lite/performance/delegates),
-    including GPU, XNNPack, and Flex are not currently supported.
+    including GPU, and Flex are not currently supported.
 *   Access to TensorFlow Lite via
     [native APIs](https://www.tensorflow.org/lite/guide/inference#load_and_run_a_model_in_c)
     is not supported. Only the TensorFlow Lite Java APIs are available through
@@ -368,5 +356,5 @@ For more information about implementing machine learning in your mobile
 application with TensorFlow Lite, see the
 [TensorFlow Lite Developer Guide](https://www.tensorflow.org/lite/guide). You
 can find additional TensorFlow Lite models for image classification, object
-detection, and other applications on the TensorFlow Lite
-[Model library](https://www.tensorflow.org/lite/guide/hosted_models) page.
+detection, and other applications on the
+[TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite).

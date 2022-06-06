@@ -38,7 +38,7 @@ XlaComputation CreateScalarComparisonComputation(
     const std::string& name, const std::vector<PrimitiveType>& operand_types,
     XlaBuilder* builder, XlaCompareOp generator) {
   CHECK_NE(operand_types.size(), 0);
-  std::vector<absl::optional<XlaCompareOp>> generators(operand_types.size());
+  std::vector<std::optional<XlaCompareOp>> generators(operand_types.size());
   generators[0] = generator;
   return CreateScalarComparisonComputation(name, operand_types, generators,
                                            builder);
@@ -47,7 +47,7 @@ XlaComputation CreateScalarComparisonComputation(
 
 XlaComputation CreateScalarComparisonComputation(
     const std::string& name, const std::vector<PrimitiveType>& operand_types,
-    const std::vector<absl::optional<XlaCompareOp>>& generators,
+    const std::vector<std::optional<XlaCompareOp>>& generators,
     XlaBuilder* builder) {
   // Create a default computation where we compare only the first two
   // parameters of type 'operand_types[0]'.

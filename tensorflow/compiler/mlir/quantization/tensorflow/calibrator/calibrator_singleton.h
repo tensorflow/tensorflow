@@ -38,8 +38,7 @@ class CalibratorSingleton {
   static void ReportMinMax(absl::string_view id, float min, float max);
 
   // Returns the min and max values of the given id.
-  static absl::optional<std::pair<float, float>> GetMinMax(
-      absl::string_view id);
+  static std::optional<std::pair<float, float>> GetMinMax(absl::string_view id);
 
  private:
   static CalibratorSingleton& GetInstance();

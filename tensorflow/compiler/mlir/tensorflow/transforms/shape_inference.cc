@@ -779,6 +779,9 @@ class ShapeInference {
   // mutations have identical static shape.
   bool InferShapeForTensorListInitOps(Operation* op);
 
+  // Infers the shape of LookupTableFindV2Op based on shape of the input key.
+  bool InferShapeForLookupTableFindV2Op(LookupTableFindV2Op op);
+
   // Infers the shape of VarHandleOp based on the uses of the VarHandleOp to
   // update the subtypes of the resource type.
   bool InferShapeForVarHandleOp(VarHandleOp op);
@@ -1004,8 +1007,20 @@ bool ShapeInference::InferShapeForRestore(Operation* op) {
   if (op->getNumResults() != 1) return false;
   if (!CanBeRefined(op->getResult(0).getType())) return false;
 
+  llvm::SmallVector<mlir::Operation*> worklist;
+  llvm::append_range(worklist, op->getUsers());
+
   // Look for any `AssignVariableOp` that uses the result of this op.
-  for (auto use : op->getUsers()) {
+  while (!worklist.empty()) {
+    mlir::Operation* const use = worklist.pop_back_val();
+
+    // Follow the `CastOp`/`IdentityOp`'s users to handle the `RestoreV2` ->
+    // (optionally `IdentityOp`) -> `CastOp` `AssignVariableOp` case.
+    if (llvm::isa<TF::CastOp, TF::IdentityOp>(use)) {
+      llvm::append_range(worklist, use->getUsers());
+      continue;
+    }
+
     TF::AssignVariableOp assign_op = llvm::dyn_cast<TF::AssignVariableOp>(use);
     if (!assign_op) {
       continue;
@@ -1016,11 +1031,18 @@ bool ShapeInference::InferShapeForRestore(Operation* op) {
     if (subtypes.empty()) {
       continue;
     }
+    auto subtype = subtypes.front().dyn_cast<ShapedType>();
+    if (subtype == nullptr) {
+      continue;
+    }
+    // Preserve the dtype from the restore op even if `AssignVariableOp` uses a
+    // different dtype, which is possible when there's a `CastOp` between them.
+    subtype = subtype.clone(
+        op->getResult(0).getType().cast<ShapedType>().getElementType());
     // Update the result type of this op with the resource's type. We only use
     // the resource subtype of the first user since shapes from all the users
     // should be equal or compatible.
-    return UpdateTypeAndInsertIncompatibleUseCasts(subtypes.front(),
-                                                   op->getResult(0));
+    return UpdateTypeAndInsertIncompatibleUseCasts(subtype, op->getResult(0));
   }
   return false;
 }
@@ -1143,14 +1165,25 @@ bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
   if (!f || !llvm::hasSingleElement(GetCallers(f))) return false;
 
   DatasetInput input_elements = GetDatasetInput(op.input_dataset());
-  if (!input_elements) {
-    op.emitWarning("unexpected dataset input; skipping function refinement");
-    return false;
-  }
 
   const int num_states = op.output_shapes().size();
-  const int num_input_elements = input_elements.shapes.size();
   const int num_captured_arguments = op.getNumOperands() - 1 - num_states;
+
+  // If input_elements is undefined, we can still infer the shapes for the
+  // states and captured arguments.
+  int num_input_elements;
+  auto input_types = llvm::to_vector<1>(
+      cast<FunctionOpInterface>(f.getOperation()).getArgumentTypes());
+  if (input_elements) {
+    num_input_elements = input_elements.shapes.size();
+  } else {
+    num_input_elements =
+        input_types.size() - num_states - num_captured_arguments;
+  }
+
+  VLOG(0) << "Inferring shape for ReduceDataset with #states = " << num_states
+          << " , #input_elements = " << num_input_elements
+          << " , and #captured_arguments = " << num_captured_arguments;
   DCOMMENT_OP(op,
               "Inferring shape for ReduceDataset with #states = "
                   << num_states << " , #input_elements = " << num_input_elements
@@ -1162,10 +1195,6 @@ bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
         "number of arguments");
     return false;
   }
-
-  // Initialize with function input types.
-  auto input_types = llvm::to_vector<1>(
-      cast<FunctionOpInterface>(f.getOperation()).getArgumentTypes());
 
   // Track if changed to skip enqueueing.
   bool changed = false;
@@ -1180,12 +1209,17 @@ bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
   }
 
   // Second set the following num_input_elements arguments from
-  // repeat_dataset_op.
+  // repeat_dataset_op.  Skip propagating shape if input_elements is
+  // undefined.
   for (int i = 0; i < num_input_elements; ++i) {
-    Type t = GetType(input_elements.shapes[i], input_elements.types[i]);
-    t = TypeMeet(*it, t);
-    changed = changed || (t != *it);
-    *it++ = t;
+    if (input_elements) {
+      Type t = GetType(input_elements.shapes[i], input_elements.types[i]);
+      t = TypeMeet(*it, t);
+      changed = changed || (t != *it);
+      *it++ = t;
+    } else {
+      it++;
+    }
   }
 
   // Last set the remaining num_captured_arguments from op.
@@ -1228,6 +1262,18 @@ bool ShapeInference::InferShapeForTensorListInitOps(Operation* op) {
   auto variant_type = VariantType::get(element_type, op->getContext());
   auto tensor_type = RankedTensorType::get({}, variant_type);
   bool changed = RefineResultType(op, handle, tensor_type);
+  if (changed) DCOMMENT_OP(op, "Modified after shape inference:");
+  return changed;
+}
+
+bool ShapeInference::InferShapeForLookupTableFindV2Op(LookupTableFindV2Op op) {
+  DCOMMENT_OP(op, "Inferring shape for LookupTableFindV2");
+  // Result should have the same shape as keys. Update shape if more refined.
+  auto result_type = op.getResult().getType().cast<ShapedType>();
+  auto keys_type = op.keys().getType().cast<ShapedType>();
+  auto tensor_type =
+      RankedTensorType::get(keys_type.getShape(), result_type.getElementType());
+  bool changed = RefineResultType(op, op.getResult(), tensor_type);
   if (changed) DCOMMENT_OP(op, "Modified after shape inference:");
   return changed;
 }
@@ -2077,6 +2123,10 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
   // operations. If we are unable to refine element shape here, proceed to use
   // the InferenceContext below to get more precise shapes.
   if (IsTensorListInitOp(op) && InferShapeForTensorListInitOps(op)) return true;
+
+  if (auto lookup_table_find_v2_op = dyn_cast<LookupTableFindV2Op>(op)) {
+    return InferShapeForLookupTableFindV2Op(lookup_table_find_v2_op);
+  }
 
   if (auto var_handle_op = dyn_cast<VarHandleOp>(op)) {
     return InferShapeForVarHandleOp(var_handle_op);

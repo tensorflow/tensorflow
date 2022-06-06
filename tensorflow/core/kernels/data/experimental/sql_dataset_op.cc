@@ -105,10 +105,10 @@ class SqlDatasetOp : public DatasetOpKernel {
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
-      return Status::OK();
+      return OkStatus();
     }
 
-    Status CheckExternalState() const override { return Status::OK(); }
+    Status CheckExternalState() const override { return OkStatus(); }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -123,7 +123,7 @@ class SqlDatasetOp : public DatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddScalar(query_, &query_node));
       TF_RETURN_IF_ERROR(b->AddDataset(
           this, {driver_name_node, data_source_name_node, query_node}, output));
-      return Status::OK();
+      return OkStatus();
     }
 
    private:
@@ -147,7 +147,7 @@ class SqlDatasetOp : public DatasetOpKernel {
         if (!query_connection_initialized_) {
           TF_RETURN_IF_ERROR(InitializeQueryConnection());
         }
-        Status status = Status::OK();
+        Status status = OkStatus();
         if (!end_of_sequence_) {
           next_calls_++;
           status =
@@ -170,7 +170,7 @@ class SqlDatasetOp : public DatasetOpKernel {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("next_calls"), next_calls_));
         }
-        return Status::OK();
+        return OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -192,7 +192,7 @@ class SqlDatasetOp : public DatasetOpKernel {
           query_connection_initialized_ = false;
           end_of_sequence_ = false;
         }
-        return Status::OK();
+        return OkStatus();
       }
 
      private:
@@ -209,7 +209,7 @@ class SqlDatasetOp : public DatasetOpKernel {
           LOG(WARNING) << "Failed to connect to database: " << s;
           return s;
         }
-        return Status::OK();
+        return OkStatus();
       }
 
       mutex mu_;

@@ -79,7 +79,7 @@ class GraphAnalyzerTest : public ::testing::Test, protected TestGraphs {
 TEST_F(GraphAnalyzerTest, BuildMap) {
   gran_ = absl::make_unique<GraphAnalyzer>(graph_3n_self_control_, 1);
   Status st = BuildMap();
-  EXPECT_THAT(st, Eq(Status::OK()));
+  EXPECT_THAT(st, Eq(OkStatus()));
 
   auto& map = GetNodes();
   EXPECT_THAT(map.find("node1"), Ne(map.end()));
@@ -99,7 +99,7 @@ TEST_F(GraphAnalyzerTest, BuildMapError) {
 TEST_F(GraphAnalyzerTest, FindSubgraphs0) {
   gran_ = absl::make_unique<GraphAnalyzer>(graph_3n_self_control_, 0);
   Status st = BuildMap();
-  ASSERT_THAT(st, Eq(Status::OK()));
+  ASSERT_THAT(st, Eq(OkStatus()));
 
   FindSubgraphs();
   auto& subgraphs = GetResult();
@@ -112,7 +112,7 @@ TEST_F(GraphAnalyzerTest, FindSubgraphs0) {
 TEST_F(GraphAnalyzerTest, FindSubgraphs1) {
   gran_ = absl::make_unique<GraphAnalyzer>(graph_3n_self_control_, 1);
   Status st = BuildMap();
-  ASSERT_THAT(st, Eq(Status::OK()));
+  ASSERT_THAT(st, Eq(OkStatus()));
 
   FindSubgraphs();
   auto& subgraphs = GetResult();
@@ -133,7 +133,7 @@ TEST_F(GraphAnalyzerTest, FindSubgraphs1) {
 TEST_F(GraphAnalyzerTest, FindSubgraphsTooLarge) {
   gran_ = absl::make_unique<GraphAnalyzer>(graph_3n_self_control_, 4);
   Status st = BuildMap();
-  ASSERT_THAT(st, Eq(Status::OK()));
+  ASSERT_THAT(st, Eq(OkStatus()));
 
   FindSubgraphs();
   EXPECT_THAT(DumpRawSubgraphs(), ElementsAre());
@@ -148,7 +148,7 @@ TEST_F(GraphAnalyzerTest, FindSubgraphsTooLarge) {
 TEST_F(GraphAnalyzerTest, MultiInputSuccessBackwardsBaseIn) {
   gran_ = absl::make_unique<GraphAnalyzer>(graph_multi_input_, 4);
   Status st = BuildMap();
-  ASSERT_THAT(st, Eq(Status::OK()));
+  ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
       absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("add2")}));
@@ -170,7 +170,7 @@ TEST_F(GraphAnalyzerTest, MultiInputSuccessBackwardsBaseIn) {
 TEST_F(GraphAnalyzerTest, MultiInputSuccessBackwardsBaseOut) {
   gran_ = absl::make_unique<GraphAnalyzer>(graph_multi_input_, 4);
   Status st = BuildMap();
-  ASSERT_THAT(st, Eq(Status::OK()));
+  ASSERT_THAT(st, Eq(OkStatus()));
 
   auto parent = absl::make_unique<Subgraph>(Subgraph::Identity());
   auto root =
@@ -193,7 +193,7 @@ TEST_F(GraphAnalyzerTest, MultiInputSuccessBackwardsBaseOut) {
 TEST_F(GraphAnalyzerTest, MultiInputSuccessBackwardsIncomplete) {
   gran_ = absl::make_unique<GraphAnalyzer>(graph_multi_input_, 5);
   Status st = BuildMap();
-  ASSERT_THAT(st, Eq(Status::OK()));
+  ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
       absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("add2")}));
@@ -215,7 +215,7 @@ TEST_F(GraphAnalyzerTest, MultiInputSuccessBackwardsIncomplete) {
 TEST_F(GraphAnalyzerTest, MultiInputTooLargeBackwards) {
   gran_ = absl::make_unique<GraphAnalyzer>(graph_multi_input_, 3);
   Status st = BuildMap();
-  ASSERT_THAT(st, Eq(Status::OK()));
+  ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
       absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("add2")}));
@@ -233,7 +233,7 @@ TEST_F(GraphAnalyzerTest, MultiInputTooLargeBackwards) {
 TEST_F(GraphAnalyzerTest, MultiInputNothingAddedBackwards) {
   gran_ = absl::make_unique<GraphAnalyzer>(graph_multi_input_, 4);
   Status st = BuildMap();
-  ASSERT_THAT(st, Eq(Status::OK()));
+  ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root = absl::make_unique<Subgraph>(
       Subgraph::Identity({GetNode("add2"), GetNode("const2_1"),
@@ -252,7 +252,7 @@ TEST_F(GraphAnalyzerTest, MultiInputNothingAddedBackwards) {
 TEST_F(GraphAnalyzerTest, MultiInputSuccessForwardsBaseOut) {
   gran_ = absl::make_unique<GraphAnalyzer>(graph_multi_input_, 4);
   Status st = BuildMap();
-  ASSERT_THAT(st, Eq(Status::OK()));
+  ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
       absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("const2_1")}));
@@ -273,7 +273,7 @@ TEST_F(GraphAnalyzerTest, MultiInputSuccessForwardsBaseOut) {
 TEST_F(GraphAnalyzerTest, MultiInputSuccessBackwardsFull) {
   gran_ = absl::make_unique<GraphAnalyzer>(graph_multi_input_, 4);
   Status st = BuildMap();
-  ASSERT_THAT(st, Eq(Status::OK()));
+  ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
       absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("add2")}));
@@ -295,7 +295,7 @@ TEST_F(GraphAnalyzerTest, MultiInputSuccessBackwardsFull) {
 TEST_F(GraphAnalyzerTest, MultiInputSuccessForwardsFull) {
   gran_ = absl::make_unique<GraphAnalyzer>(graph_multi_input_, 4);
   Status st = BuildMap();
-  ASSERT_THAT(st, Eq(Status::OK()));
+  ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
       absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("const2_1")}));
@@ -314,7 +314,7 @@ TEST_F(GraphAnalyzerTest, MultiInputSuccessForwardsFull) {
 TEST_F(GraphAnalyzerTest, DropInvalidSubgraphsMulti) {
   gran_ = absl::make_unique<GraphAnalyzer>(graph_multi_input_, 3);
   Status st = BuildMap();
-  ASSERT_THAT(st, Eq(Status::OK()));
+  ASSERT_THAT(st, Eq(OkStatus()));
 
   // A good one, multi-input is all-in.
   GetResult().insert(absl::make_unique<Subgraph>(Subgraph::Identity({
@@ -360,7 +360,7 @@ TEST_F(GraphAnalyzerTest, DropInvalidSubgraphsMulti) {
 TEST_F(GraphAnalyzerTest, AllOrNoneInputSuccessBackwards) {
   gran_ = absl::make_unique<GraphAnalyzer>(graph_all_or_none_, 4);
   Status st = BuildMap();
-  ASSERT_THAT(st, Eq(Status::OK()));
+  ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
       absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("pass2")}));
@@ -382,7 +382,7 @@ TEST_F(GraphAnalyzerTest, AllOrNoneInputSuccessBackwards) {
 TEST_F(GraphAnalyzerTest, AllOrNoneInputSuccessBackwardsNoControl) {
   gran_ = absl::make_unique<GraphAnalyzer>(graph_all_or_none_, 5);
   Status st = BuildMap();
-  ASSERT_THAT(st, Eq(Status::OK()));
+  ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
       absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("pass1")}));
@@ -403,7 +403,7 @@ TEST_F(GraphAnalyzerTest, AllOrNoneInputSuccessBackwardsNoControl) {
 TEST_F(GraphAnalyzerTest, AllOrNoneInputSeparateControl) {
   gran_ = absl::make_unique<GraphAnalyzer>(graph_all_or_none_, 5);
   Status st = BuildMap();
-  ASSERT_THAT(st, Eq(Status::OK()));
+  ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
       absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("pass1")}));
@@ -425,7 +425,7 @@ TEST_F(GraphAnalyzerTest, AllOrNoneInputSeparateControl) {
 TEST_F(GraphAnalyzerTest, AllOrNoneInputTooLargeBackwards) {
   gran_ = absl::make_unique<GraphAnalyzer>(graph_all_or_none_, 3);
   Status st = BuildMap();
-  ASSERT_THAT(st, Eq(Status::OK()));
+  ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
       absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("pass2")}));
@@ -442,7 +442,7 @@ TEST_F(GraphAnalyzerTest, AllOrNoneInputTooLargeBackwards) {
 TEST_F(GraphAnalyzerTest, AllOrNoneInputNothingAddedBackwards) {
   gran_ = absl::make_unique<GraphAnalyzer>(graph_all_or_none_, 4);
   Status st = BuildMap();
-  ASSERT_THAT(st, Eq(Status::OK()));
+  ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root = absl::make_unique<Subgraph>(
       Subgraph::Identity({GetNode("pass2"), GetNode("const2_1"),
@@ -460,7 +460,7 @@ TEST_F(GraphAnalyzerTest, AllOrNoneInputNothingAddedBackwards) {
 TEST_F(GraphAnalyzerTest, AllOrNoneInputSuccessForwardsBaseOut) {
   gran_ = absl::make_unique<GraphAnalyzer>(graph_all_or_none_, 4);
   Status st = BuildMap();
-  ASSERT_THAT(st, Eq(Status::OK()));
+  ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
       absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("const2_1")}));
@@ -480,7 +480,7 @@ TEST_F(GraphAnalyzerTest, AllOrNoneInputSuccessForwardsBaseOut) {
 TEST_F(GraphAnalyzerTest, AllOrNoneInputSuccessBackwardsFull) {
   gran_ = absl::make_unique<GraphAnalyzer>(graph_all_or_none_, 4);
   Status st = BuildMap();
-  ASSERT_THAT(st, Eq(Status::OK()));
+  ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
       absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("pass2")}));
@@ -504,7 +504,7 @@ TEST_F(GraphAnalyzerTest, AllOrNoneInputSuccessBackwardsFull) {
 TEST_F(GraphAnalyzerTest, AllOrNoneInputSuccessForwardsFull) {
   gran_ = absl::make_unique<GraphAnalyzer>(graph_all_or_none_, 4);
   Status st = BuildMap();
-  ASSERT_THAT(st, Eq(Status::OK()));
+  ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
       absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("const2_1")}));
@@ -524,7 +524,7 @@ TEST_F(GraphAnalyzerTest, AllOrNoneInputSuccessForwardsFull) {
 TEST_F(GraphAnalyzerTest, DropInvalidSubgraphsAllOrNone) {
   gran_ = absl::make_unique<GraphAnalyzer>(graph_all_or_none_, 3);
   Status st = BuildMap();
-  ASSERT_THAT(st, Eq(Status::OK()));
+  ASSERT_THAT(st, Eq(OkStatus()));
 
   // A good one, all-or-none is all-in.
   GetResult().insert(absl::make_unique<Subgraph>(Subgraph::Identity({

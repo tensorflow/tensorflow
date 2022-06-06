@@ -1456,26 +1456,16 @@ func.func @convert_i32_f32(%arg0: tensor<2xi32>) -> tensor<2xf32> {
 // CHECK-LABEL:   func @convert_slice(
 // CHECK-SAME:                        %[[VAL_0:.*]]: tensor<1x4672xf32>) -> tensor<1x519xf32> {
 // CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<[0, 4153]> : tensor<2xi64>} : () -> tensor<2xi64>
-// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<[1, 519]> : tensor<2xi64>} : () -> tensor<2xi64>
-// CHECK:           %[[VAL_3:.*]] = "tf.Slice"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) : (tensor<1x4672xf32>, tensor<2xi64>, tensor<2xi64>) -> tensor<1x519xf32>
-// CHECK:           return %[[VAL_3]] : tensor<1x519xf32>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<[1, 4672]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK-DAG:       %[[VAL_3:.*]] = "tf.Const"() {value = dense<1> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK:           %[[VAL_4:.*]] = "tf.StridedSlice"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]], %[[VAL_3]])
+// CHECK-SAME:          {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64}
+// CHECK-SAME:          (tensor<1x4672xf32>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>) -> tensor<1x519xf32>
+// CHECK:           return %[[VAL_4]] : tensor<1x519xf32>
 // CHECK:         }
 func.func @convert_slice(%arg0: tensor<1x4672xf32>) -> tensor<1x519xf32> {
   %0 = "mhlo.slice"(%arg0) {limit_indices = dense<[1, 4672]> : tensor<2xi64>, start_indices = dense<[0, 4153]> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<1x4672xf32>) -> tensor<1x519xf32>
   func.return %0 : tensor<1x519xf32>
-}
-
-
-// CHECK-LABEL:   func @convert_slice_non_one_stride(
-// CHECK-SAME:                        %[[VAL_0:.*]]: tensor<2xbf16>) -> tensor<1xbf16> {
-// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<0> : tensor<1xi64>} : () -> tensor<1xi64>
-// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi64>} : () -> tensor<1xi64>
-// CHECK:           %[[VAL_3:.*]] = "tf.Slice"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) : (tensor<2xbf16>, tensor<1xi64>, tensor<1xi64>) -> tensor<1xbf16>
-// CHECK:           return %[[VAL_3]] : tensor<1xbf16>
-// CHECK:         }
-func.func @convert_slice_non_one_stride(%arg0: tensor<2xbf16>) -> tensor<1xbf16> {
-  %0 = "mhlo.slice"(%arg0) {limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<2> : tensor<1xi64>} : (tensor<2xbf16>) -> tensor<1xbf16>
-  func.return %0 : tensor<1xbf16>
 }
 
 // CHECK-LABEL:   func @reshape(
@@ -1717,13 +1707,13 @@ func.func @convert_conv2d_negative_explicit_padding(%arg0: tensor<128x7x9x64xf32
 
 // CHECK-LABEL:   func @convert_depthwise_conv2d(
 // CHECK-SAME:                                   %[[VAL_0:.*]]: tensor<1x8x8x207xf32>,
-// CHECK-SAME:                                   %[[VAL_1:.*]]: tensor<3x3x1x3312xf32>) -> tensor<1x8x8x16xf32> {
+// CHECK-SAME:                                   %[[VAL_1:.*]]: tensor<3x3x1x3312xf32>) -> tensor<1x8x8x3312xf32> {
 // CHECK:           %[[CST:.*]] = arith.constant dense<[3, 3, 207, 16]> : tensor<4xi64>
 // CHECK:           %[[VAL_2:.*]] = "tf.Reshape"(%[[VAL_1]], %[[CST]]) : (tensor<3x3x1x3312xf32>, tensor<4xi64>) -> tensor<3x3x207x16xf32>
-// CHECK:           %[[VAL_3:.*]] = "tf.DepthwiseConv2dNative"(%[[VAL_0]], %[[VAL_2]]) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
-// CHECK:           return %[[VAL_3]] : tensor<1x8x8x16xf32>
+// CHECK:           %[[VAL_3:.*]] = "tf.DepthwiseConv2dNative"(%[[VAL_0]], %[[VAL_2]]) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x3312xf32>
+// CHECK:           return %[[VAL_3]] : tensor<1x8x8x3312xf32>
 // CHECK:         }
-func.func @convert_depthwise_conv2d(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x1x3312xf32>) -> tensor<1x8x8x16xf32> {
+func.func @convert_depthwise_conv2d(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x1x3312xf32>) -> tensor<1x8x8x3312xf32> {
   %0 = "mhlo.convolution"(%arg0, %arg1) {batch_group_count = 1 : i64,
     dimension_numbers = #mhlo.conv<raw
       input_batch_dimension = 0,
@@ -1736,8 +1726,8 @@ func.func @convert_depthwise_conv2d(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<
       output_feature_dimension = 3,
       output_spatial_dimensions = [1, 2]
     >, feature_group_count = 207 : i64, lhs_dilation = dense<1> : tensor<2xi64>, padding = dense<1> : tensor<2x2xi64>, precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">], rhs_dilation = dense<1> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>} :
-       (tensor<1x8x8x207xf32>, tensor<3x3x1x3312xf32>) -> tensor<1x8x8x16xf32>
-  func.return %0 : tensor<1x8x8x16xf32>
+       (tensor<1x8x8x207xf32>, tensor<3x3x1x3312xf32>) -> tensor<1x8x8x3312xf32>
+  func.return %0 : tensor<1x8x8x3312xf32>
 }
 
 // CHECK-LABEL:   func @convert_conv2d_to_resize(
@@ -3210,6 +3200,23 @@ func.func @lowered_cumsum(%arg0: tensor<4x12xf32>) -> tensor<4x12xf32> {
   func.return %1 : tensor<4x12xf32>
 }
 
+// CHECK-LABEL:   func @lowered_cumsum_trivial_attrs(
+// CHECK-SAME:      %[[VAL_0:.*]]: tensor<4x12xf32>) -> tensor<4x12xf32> {
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<0> : tensor<i64>} : () -> tensor<i64>
+// CHECK:           %[[VAL_3:.*]] = "tf.Cumsum"(%[[VAL_0]], %[[VAL_2]]) {exclusive = false, reverse = false} : (tensor<4x12xf32>, tensor<i64>) -> tensor<4x12xf32>
+// CHECK:           return %[[VAL_3]] : tensor<4x12xf32>
+// CHECK:         }
+func.func @lowered_cumsum_trivial_attrs(%arg0: tensor<4x12xf32>) -> tensor<4x12xf32> {
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %1 = "mhlo.reduce_window"(%arg0, %0) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    %2 = mhlo.add %arg1, %arg2 : tensor<f32>
+    "mhlo.return"(%2) : (tensor<f32>) -> ()
+  }) {padding = dense<[[3, 0], [0, 0]]> : tensor<2x2xi64>, window_dimensions = dense<[4, 1]> : tensor<2xi64>} : (tensor<4x12xf32>, tensor<f32>) -> tensor<4x12xf32>
+  func.return %1 : tensor<4x12xf32>
+}
+
 // CHECK-LABEL:   func @lowered_cumprod(
 // CHECK-SAME:      %[[VAL_0:.*]]: tensor<4x12xf32>) -> tensor<4x12xf32> {
 // CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
@@ -3224,5 +3231,17 @@ func.func @lowered_cumprod(%arg0: tensor<4x12xf32>) -> tensor<4x12xf32> {
     %2 = mhlo.multiply %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%2) : (tensor<f32>) -> ()
   }) {base_dilations = dense<1> : tensor<2xi64>, padding = dense<[[0, 0], [11, 0]]> : tensor<2x2xi64>, window_dilations = dense<1> : tensor<2xi64>, window_dimensions = dense<[1, 12]> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>} : (tensor<4x12xf32>, tensor<f32>) -> tensor<4x12xf32>
+  func.return %1 : tensor<4x12xf32>
+}
+
+// CHECK-LABEL: reduce_window_trivial_window_dims
+func.func @reduce_window_trivial_window_dims(%arg0: tensor<4x12xf32>) -> tensor<4x12xf32> {
+  %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
+  // expected-error @+1 {{no reduced dimension is found.}}
+  %1 = "mhlo.reduce_window"(%arg0, %0) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    %2 = mhlo.add %arg1, %arg2 : tensor<f32>
+    "mhlo.return"(%2) : (tensor<f32>) -> ()
+  }) {padding = dense<0> : tensor<2x2xi64>, window_dimensions = dense<1> : tensor<2xi64>} : (tensor<4x12xf32>, tensor<f32>) -> tensor<4x12xf32>
   func.return %1 : tensor<4x12xf32>
 }

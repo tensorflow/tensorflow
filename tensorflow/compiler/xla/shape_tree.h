@@ -234,7 +234,7 @@ class ShapeTree {
     for (const Node& node : nodes_) {
       TF_RETURN_IF_ERROR(func(node.first, node.second));
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   Status ForEachMutableElementWithStatus(
@@ -242,7 +242,7 @@ class ShapeTree {
     for (Node& node : nodes_) {
       TF_RETURN_IF_ERROR(func(node.first, &node.second));
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Maps each element to generate a new tree with the same shape.
@@ -355,9 +355,14 @@ class ShapeTree {
 // similar to std::map.
 template <typename T>
 template <typename Iterator, typename ValueType>
-class ShapeTree<T>::LeafIterator
-    : public std::iterator<std::bidirectional_iterator_tag, ValueType> {
+class ShapeTree<T>::LeafIterator {
  public:
+  using iterator_category = std::bidirectional_iterator_tag;
+  using value_type = ValueType;
+  using difference_type = ptrdiff_t;
+  using pointer = value_type*;
+  using reference = value_type&;
+
   LeafIterator(const ShapeTree& tree, Iterator it) : tree_(tree), it_(it) {
     while ((it_ != tree_.nodes_.end()) && !IsLeaf()) ++it_;
   }

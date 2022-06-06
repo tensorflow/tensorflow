@@ -31,7 +31,7 @@ ConditionalAccumulatorBase::ConditionalAccumulatorBase(
 
 Status ConditionalAccumulatorBase::MatchesNodeDef(const NodeDef& node_def) {
   // TODO(xinghao@): implement the checks for the node definition
-  return Status::OK();
+  return OkStatus();
 }
 
 /**
@@ -47,7 +47,7 @@ Status ConditionalAccumulatorBase::SetGlobalStep(int64_t new_global_step) {
                  << " >= " << new_global_step << " = new_global_step.";
   }
   current_global_step_ = new_global_step;
-  return Status::OK();
+  return OkStatus();
 }
 
 /**

@@ -2014,7 +2014,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
         name, "RaggedFromVariant",
         [variant, dtype, input_ragged_rank, output_ragged_rank]):
       result = gen_ragged_conversion_ops.ragged_tensor_from_variant(
-          variant, input_ragged_rank, output_ragged_rank, dtype,
+          variant, input_ragged_rank, max(output_ragged_rank, 0), dtype,
           row_splits_dtype, name)
       return cls.from_nested_row_splits(
           result.output_dense_values,
@@ -2473,7 +2473,7 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
 
   @property
   def _component_specs(self):
-    if self._ragged_rank == 0:
+    if self._ragged_rank <= 0:
       if self._flat_values_spec is not None:
         return [self._flat_values_spec]
       else:
@@ -2542,38 +2542,48 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
     # from variant to include all of the row-partitioning tensors.
     if self._flat_values_spec is not None:
       raise ValueError("Customized value_type is not supported.")
-    ragged_rank = value.ragged_rank if isinstance(value, RaggedTensor) else 0
-    if ragged_rank != self._ragged_rank:
-      raise ValueError(f"Ragged rank of value {ragged_rank} does not match "
-                       f"ragged rank of type {self._ragged_rank}.")
-    if ragged_rank == 0:
+    if isinstance(value, RaggedTensor):
+      if value.ragged_rank != self._ragged_rank:
+        raise ValueError(
+            f"Ragged rank of value {value.ragged_rank} does not match "
+            f"ragged rank of type {self._ragged_rank}.")
+      # pylint: disable=protected-access
+      return [value._to_variant(batched_input=False)]
+    else:
+      if self._ragged_rank > 0:
+        raise ValueError(
+            f"Expected a RaggedTensor if ragged rank={self._ragged_rank}"
+            f" but got {type(value).__name__}."
+        )
       return [
           gen_ragged_conversion_ops.ragged_tensor_to_variant(
               (), value, batched_input=False)
       ]
-    # pylint: disable=protected-access
-    return [value._to_variant(batched_input=False)]
 
   def _to_batched_tensor_list(self, value):
     if self._flat_values_spec is not None:
       raise ValueError("Customized value_type is not supported.")
-    ragged_rank = value.ragged_rank if isinstance(value, RaggedTensor) else 0
-    if ragged_rank != self._ragged_rank:
-      raise ValueError(f"Ragged rank of value {ragged_rank} does not match "
-                       f"ragged rank of type {self._ragged_rank}.")
-    if ragged_rank == 0:
-      # TODO(b/141789000) Update this to handle ragged_rank=0.
-      raise ValueError(
-          "_to_batched_tensor_list doesn't support ragged_rank=0 yet")
-    # pylint: disable=protected-access
-    return [value._to_variant(batched_input=True)]
+    if isinstance(value, RaggedTensor):
+      if value.ragged_rank != self._ragged_rank:
+        raise ValueError(
+            f"Ragged rank of value {value.ragged_rank} does not match "
+            f"ragged rank of type {self._ragged_rank}.")
+      # pylint: disable=protected-access
+      return [value._to_variant(batched_input=True)]
+    else:
+      if self._ragged_rank > 0:
+        raise ValueError(
+            f"Expected a RaggedTensor if ragged rank={self._ragged_rank}"
+            f" but got {type(value).__name__}."
+        )
+      return [
+          gen_ragged_conversion_ops.ragged_tensor_to_variant(
+              rt_nested_splits=(), rt_dense_values=value, batched_input=True)
+      ]
 
   def _from_compatible_tensor_list(self, tensor_list):
     if self._flat_values_spec is not None:
       raise ValueError("Customized value_type is not supported.")
-    if self._ragged_rank < 0:
-      raise ValueError(f"Argument `ragged_rank` must be non-negative. "
-                       f"Received {self._ragged_rank}.")
     result = RaggedTensor._from_variant(  # pylint: disable=protected-access
         tensor_list[0],
         dtype=self._dtype,

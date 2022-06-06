@@ -1,6 +1,7 @@
 path: "tensorflow.__internal__.tracking.ObjectGraphView"
 tf_class {
-  is_instance: "<class \'tensorflow.python.training.tracking.graph_view.ObjectGraphView\'>"
+  is_instance: "<class \'tensorflow.python.checkpoint.graph_view.ObjectGraphView\'>"
+  is_instance: "<class \'tensorflow.python.checkpoint.trackable_view.TrackableView\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "attached_dependencies"
@@ -10,20 +11,20 @@ tf_class {
     name: "root"
     mtype: "<type \'property\'>"
   }
-  member {
-    name: "saveables_cache"
-    mtype: "<type \'property\'>"
-  }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'root\', \'saveables_cache\', \'attached_dependencies\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'root\', \'attached_dependencies\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "breadth_first_traversal"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "children"
+    argspec: "args=[\'self\', \'obj\', \'save_type\'], varargs=None, keywords=kwargs, defaults=[\'SaveType.CHECKPOINT\'], "
   }
   member_method {
     name: "frozen_saveable_objects"
-    argspec: "args=[\'self\', \'object_map\', \'to_graph\', \'call_with_mapped_captures\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "frozen_saveables_and_savers"
     argspec: "args=[\'self\', \'object_map\', \'to_graph\', \'call_with_mapped_captures\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
@@ -31,23 +32,7 @@ tf_class {
     argspec: "args=[\'self\', \'obj\', \'save_type\'], varargs=None, keywords=kwargs, defaults=[\'SaveType.CHECKPOINT\'], "
   }
   member_method {
-    name: "list_objects"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "objects_ids_and_slot_variables"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "objects_ids_and_slot_variables_and_paths"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "serialize_object_graph"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "serialize_object_graph_with_registered_savers"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'saveables_cache\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
 }

@@ -589,7 +589,7 @@ Status ValidateInput(const OpInputList& indices_list_in,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Extracts data about the features and populates feature data.
@@ -731,7 +731,7 @@ Status CreateOutputTensors(
   shape_vec(0) = batch_size;
   shape_vec(1) = max_cross_count;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 template <bool HASHED_OUTPUT, typename InternalType>

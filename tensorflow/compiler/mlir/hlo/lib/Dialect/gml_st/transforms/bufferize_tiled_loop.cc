@@ -377,7 +377,7 @@ struct TiledLoopBufferizePass
         mlir::bufferization::getPartialBufferizationOptions();
     // TODO(springerm): Add dialects to this filter as more and more dialects
     // will be migrated to BufferizableOpInterface-based bufferization.
-    options.allowDialectInFilter<shape::ShapeDialect>();
+    options.opFilter.allowDialect<shape::ShapeDialect>();
     if (failed(mlir::bufferization::bufferizeOp(getOperation(), options))) {
       signalPassFailure();
       return;

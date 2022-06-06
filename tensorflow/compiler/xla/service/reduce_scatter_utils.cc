@@ -248,7 +248,7 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
 
 }  // namespace
 
-absl::optional<ReduceScatterSpec> MatchReduceScatter(
+std::optional<ReduceScatterSpec> MatchReduceScatter(
     const HloAllReduceInstruction* ar, int64_t num_partitions,
     int64_t num_replicas, bool allow_multiple_split_dims,
     bool allow_intervening_reshape, int64_t min_rank) {
@@ -256,17 +256,17 @@ absl::optional<ReduceScatterSpec> MatchReduceScatter(
       (ar->IsCrossModuleAllReduce() &&
        !ar->GetModule()->config().use_spmd_partitioning())) {
     VLOG(2) << "Unsupported all-reduce: " << ar->ToString();
-    return absl::nullopt;
+    return std::nullopt;
   }
   if (ar->shape().rank() - absl::c_count(ar->shape().dimensions(), 1) <
       min_rank) {
     VLOG(2) << " Should be at least rank-" << min_rank
             << " excluding trivial dimensions " << ar->ToString();
-    return absl::nullopt;
+    return std::nullopt;
   }
   if (ar->user_count() != 1) {
     VLOG(2) << "All-reduce user_count > 1 " << ar->ToString();
-    return absl::nullopt;
+    return std::nullopt;
   }
   if (ar->replica_groups().size() > 1) {
     const int64_t size = ar->replica_groups()[0].replica_ids_size();
@@ -278,7 +278,7 @@ absl::optional<ReduceScatterSpec> MatchReduceScatter(
     if (!has_uniform_size) {
       VLOG(2) << "Unsupported non-uniform replica group size "
               << ar->ToString();
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
 
@@ -291,13 +291,13 @@ absl::optional<ReduceScatterSpec> MatchReduceScatter(
     if (reshape->user_count() != 1) {
       VLOG(2) << "Reshape following all-reduce has user count > 1"
               << reshape->ToString();
-      return absl::nullopt;
+      return std::nullopt;
     }
     user = reshape->users().front();
   }
   if (user->opcode() != HloOpcode::kDynamicSlice) {
     VLOG(2) << "All-reduce user is not dynamic slice " << user->ToString();
-    return absl::nullopt;
+    return std::nullopt;
   }
   ReduceScatterSpec spec;
   int64_t group_size;
@@ -372,7 +372,7 @@ absl::optional<ReduceScatterSpec> MatchReduceScatter(
       VLOG(2) << "Unsupported size > 1 replica groups for cross-partition, "
                  "non-global ID "
               << ar->ToString();
-      return absl::nullopt;
+      return std::nullopt;
     }
     spec.sharded_partitions = num_partitions;
     group_size = num_partitions;
@@ -382,7 +382,7 @@ absl::optional<ReduceScatterSpec> MatchReduceScatter(
   }
   if (group_size < 2) {
     VLOG(2) << "Group_size < 2, nothing to do " << ar->ToString();
-    return absl::nullopt;
+    return std::nullopt;
   }
   spec.group_size = group_size;
   spec.split_dim = -1;
@@ -421,7 +421,7 @@ absl::optional<ReduceScatterSpec> MatchReduceScatter(
         if (!allow_multiple_split_dims || spec.split_dim != (dim - 1)) {
           VLOG(2) << "Only support split on consecutive dims "
                   << user->ToString();
-          return absl::nullopt;
+          return std::nullopt;
         }
         continue;
       }
@@ -438,7 +438,7 @@ absl::optional<ReduceScatterSpec> MatchReduceScatter(
   if (Product(group_sizes) != group_size) {
     VLOG(2) << "Group size mismatch " << user->ToString() << " vs "
             << ar->ToString();
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   if (split_dims.size() > 1) {
@@ -452,14 +452,14 @@ absl::optional<ReduceScatterSpec> MatchReduceScatter(
     if (!IsPerIdOffsets(absl::MakeSpan(offsets), shard_size, map_id,
                         group_sizes, ar)) {
       VLOG(2) << "IsPerIdOffsets() failed " << ar->ToString();
-      return absl::nullopt;
+      return std::nullopt;
     }
   } else {
     if (!IsPerIdOffset(user->operand(spec.split_dim + 1),
                        user->dynamic_slice_sizes()[spec.split_dim], map_id,
                        group_size, ar)) {
       VLOG(2) << "IsPerIdOffsets() failed " << ar->ToString();
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
 
@@ -482,7 +482,7 @@ absl::optional<ReduceScatterSpec> MatchReduceScatter(
         });
     if (!all_split_dims_unmodified) {
       VLOG(2) << "Split dimensions are modified by reshape";
-      return absl::nullopt;
+      return std::nullopt;
     }
 
     // rewrite the split dim and original_split_dims to be in terms of the

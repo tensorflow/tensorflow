@@ -18,6 +18,7 @@ limitations under the License.
 // included by any other header it has the define set on first processing.
 // https://docs.microsoft.com/en-us/cpp/c-runtime-library/math-constants
 #define _USE_MATH_DEFINES
+#include <algorithm>
 #include <cmath>
 #include <numeric>
 #include <vector>
@@ -642,6 +643,27 @@ Value MaterializeLgamma(ConversionPatternRewriter &rewriter, Location loc,
       lgamma);
 }
 
+// Uses `rewriter` to materialize the IR for generating a constant tensor of
+// log(1/2) values with the same shape and type as `operand`, and associates the
+// generated IR to code location `loc`.
+//
+// Since we currently only support generating integer constants, we actually
+// generate the code for -log(2) (which equals log(1/2)).
+// TODO(b/190374484): Remove when mhlo::ConstantLikeOp supports complex types.
+Value MaterializeLogOneHalf(ConversionPatternRewriter &rewriter, Location loc,
+                            Value operand) {
+  auto result_ty = operand.getType().cast<ShapedType>();
+
+  Value two = rewriter.create<mhlo::ConstOp>(
+      loc, hlo::GetScalarOfType(getElementTypeOrSelf(operand.getType()), 2));
+  Value shape = rewriter.create<shape::ShapeOfOp>(loc, operand);
+  Value two_with_operand_shape = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
+      loc, result_ty, two, shape, rewriter.getI64TensorAttr({}));
+
+  Value log_two = rewriter.create<mhlo::LogOp>(loc, two_with_operand_shape);
+  return rewriter.create<mhlo::NegOp>(loc, log_two);
+}
+
 // Express `cosh` as
 //   cosh(x) = (e^x + e^-x) / 2
 //           = e^(x + log(1/2)) + e^(-x + log(1/2))
@@ -657,8 +679,8 @@ Value MaterializeCoshApproximation(ConversionPatternRewriter &rewriter,
   CoshOp::Adaptor transformed(operands);
   Value x = transformed.operand();
 
-  Value log_one_half =
-      rewriter.create<mhlo::LogOp>(loc, getConstantLike(rewriter, loc, 0.5, x));
+  // TODO(b/190374484): Use mhlo::ConstantLikeOp when it supports complex types.
+  Value log_one_half = MaterializeLogOneHalf(rewriter, loc, x);
   Value exp_add = rewriter.create<mhlo::ExpOp>(
       loc, rewriter.create<mhlo::AddOp>(loc, x, log_one_half));
   Value exp_sub = rewriter.create<mhlo::ExpOp>(
@@ -1130,17 +1152,9 @@ Value MaterializeSinhApproximationForLargeX(ConversionPatternRewriter &rewriter,
                                             Location loc, ValueRange operands) {
   SinhOp::Adaptor transformed(operands);
   Value x = transformed.operand();
-  auto result_ty = x.getType().cast<ShapedType>();
 
   // TODO(b/190374484): Use mhlo::ConstantLikeOp when it supports complex types.
-  Value two = rewriter.create<mhlo::ConstOp>(
-      loc, hlo::GetScalarOfType(getElementTypeOrSelf(x.getType()), 2));
-  Value shape = rewriter.create<shape::ShapeOfOp>(loc, x);
-  Value two_with_x_shape = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
-      loc, result_ty, two, shape, rewriter.getI64TensorAttr({}));
-
-  Value log_two = rewriter.create<mhlo::LogOp>(loc, two_with_x_shape);
-  Value log_one_half = rewriter.create<mhlo::NegOp>(loc, log_two);
+  Value log_one_half = MaterializeLogOneHalf(rewriter, loc, x);
   Value exp_add = rewriter.create<mhlo::ExpOp>(
       loc, rewriter.create<mhlo::AddOp>(loc, x, log_one_half));
   Value exp_sub = rewriter.create<mhlo::ExpOp>(
@@ -1217,6 +1231,91 @@ struct ConvertTanOp : public OpConversionPattern<TanOp> {
     rewriter.replaceOp(
         op, MaterializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
                                   rewriter.getF32Type(), &MaterializeTan));
+    return success();
+  }
+};
+
+// Converts chlo.top_k to MHLO iota, sort, and slice ops.
+//
+// chlo.top_k sorts along last dimension of the input tensor and then returns
+// the top K components' values and indices. This is translated into a few
+// ops in MHLO: first generating an integer sequence for the indices,
+// then sort both the original input tensor and the indices togheter, and
+// at last slice out the top K components.
+//
+// For example, for the following IR:
+//
+// %0:2 = "chlo.top_k"(%input, k=8): tensor<16x16xf32> ->
+//                                   (tensor<16x8xf32>, tensor<16x8xi32>)
+//
+// We will get:
+//
+// %1 = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<16x16xi32>
+// %2 = "mhlo.sort"(%input, %1) ({
+// ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>,
+//      %arg3: tensor<i32>, %arg4: tensor<i32>):
+//   %7 = "mhlo.compare"(%arg1, %arg2) {comparison_direction = "GT"}: ...
+//   "mhlo.return"(%7) : (tensor<i1>) -> ()
+// }) {dimension = 1 : i64, is_stable = true} : ...
+// %3 = "mhlo.get_tuple_element"(%2) {index = 0 : i32} : ...
+// %4 = "mhlo.get_tuple_element"(%2) {index = 1 : i32} : ...
+// %5 = "mhlo.slice"(%3) {limit_indices = dense<[16, 8]> : tensor<2xi64>,
+//                           start_indices dense<0> : tensor<2xi64>,
+//                           strides = dense<1> : tensor<2xi64>} :
+//                              (tensor<16x16xf32>) -> tensor<16x8xf32>
+// %6 = "mhlo.slice"(%4) ...
+struct ConvertTopKOp : public OpConversionPattern<TopKOp> {
+  using OpConversionPattern<TopKOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      TopKOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    // The last dimension of the operand's shape should be known so we can have
+    // clamped end_indices for slices. This is verified by the op.
+    auto operand_type = op.operand().getType().cast<RankedTensorType>();
+    int64_t operand_rank = operand_type.getRank();
+    int64_t last_dim_index = operand_rank - 1;
+    int64_t last_dim_size = operand_type.getDimSize(last_dim_index);
+    assert(last_dim_size != ShapedType::kDynamicSize);
+
+    // Create an Iota op for indices.
+    auto i32_type = rewriter.getIntegerType(32);
+    Type iota_type = RankedTensorType::get(operand_type.getShape(), i32_type);
+    Value iota_op = rewriter.create<mhlo::IotaOp>(
+        op.getLoc(), iota_type, rewriter.getI64IntegerAttr(last_dim_index));
+
+    // Create the sort op. It takes two inputs, one for the original input, the
+    // other for the indices. Use TOTALORDER comparison type instead of the
+    // default comparison if the element type is of type float.
+    Type element_type = operand_type.getElementType();
+    auto sort_op = CreateSortOp(&rewriter, op.getLoc(), {op.operand(), iota_op},
+                                {element_type, i32_type}, last_dim_index,
+                                /*is_stable=*/true,
+                                /*direction=*/mhlo::ComparisonDirection::GT);
+
+    // Get the sorted input and index tuple element.
+    auto tuple_first_element = sort_op.getResult(0);
+    auto tuple_second_element = sort_op.getResult(1);
+
+    SmallVector<int64_t, 4> begin_indices(operand_rank, 0);
+    auto end_indices = llvm::to_vector<4>(operand_type.getShape());
+    end_indices.back() = std::min(static_cast<int64_t>(op.k()), last_dim_size);
+    SmallVector<int64_t, 4> strides(operand_rank, 1);
+
+    // Get the slice for the top K elements.
+    auto indices_ty =
+        RankedTensorType::get(operand_rank, rewriter.getI64Type());
+    Value values = rewriter.create<mhlo::SliceOp>(
+        op.getLoc(), tuple_first_element,
+        DenseIntElementsAttr::get(indices_ty, begin_indices),
+        DenseIntElementsAttr::get(indices_ty, end_indices),
+        DenseIntElementsAttr::get(indices_ty, strides));
+    Value indices = rewriter.create<mhlo::SliceOp>(
+        op.getLoc(), tuple_second_element,
+        DenseIntElementsAttr::get(indices_ty, begin_indices),
+        DenseIntElementsAttr::get(indices_ty, end_indices),
+        DenseIntElementsAttr::get(indices_ty, strides));
+
+    rewriter.replaceOp(op, {values, indices});
     return success();
   }
 };
@@ -1514,6 +1613,7 @@ void PopulateDecomposeChloPatterns(MLIRContext *context,
                    ConvertPolygammaOp,
                    ConvertSinhOp,
                    ConvertTanOp,
+                   ConvertTopKOp,
                    ConvertZetaOp>(context);
   // clang-format on
 }

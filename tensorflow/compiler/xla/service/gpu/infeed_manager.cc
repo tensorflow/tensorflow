@@ -83,7 +83,7 @@ Status InfeedManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
   }
 
   EnqueueDestination(std::move(buffer_tree));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 InfeedManager* GetOrCreateInfeedManager(se::StreamExecutor* executor) {

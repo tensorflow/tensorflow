@@ -59,9 +59,9 @@ const char* ToPythonStructFormat(DType dtype_kind) {
     case DType::F64:
       return "d";
     case DType::Complex64:
-      throw std::runtime_error("Unimplemented.");
+      return "Zf";
     case DType::Complex128:
-      throw std::runtime_error("Unimplemented.");
+      return "Zd";
     case DType::F16:
       throw std::runtime_error("Unimplemented.");
     case DType::BF16:
@@ -83,6 +83,8 @@ DType FromPythonStructFormat(char dtype) {
       return DType::UI16;
     case 'I':
       return DType::UI32;
+    case 'L':
+      return DType::UI64;
     case 'Q':
       return DType::UI64;
     case '?':
@@ -93,12 +95,18 @@ DType FromPythonStructFormat(char dtype) {
       return DType::I16;
     case 'i':
       return DType::I32;
+    case 'l':
+      return DType::I64;
     case 'q':
       return DType::I64;
     case 'f':
       return DType::F32;
     case 'd':
       return DType::F64;
+    case 'F':
+      return DType::Complex64;
+    case 'D':
+      return DType::Complex128;
     default:
       throw std::runtime_error("Unsupported python dtype.");
   }

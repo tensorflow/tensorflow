@@ -67,9 +67,14 @@ class CoordinationClient {
                                    InsertKeyValueResponse* response,
                                    StatusCallback done) = 0;
 
-  virtual void GetKeyValueAsync(const GetKeyValueRequest* request,
+  virtual void GetKeyValueAsync(CallOptions* call_opts,
+                                const GetKeyValueRequest* request,
                                 GetKeyValueResponse* response,
                                 StatusCallback done) = 0;
+
+  virtual void TryGetKeyValueAsync(const TryGetKeyValueRequest* request,
+                                   TryGetKeyValueResponse* response,
+                                   StatusCallback done) = 0;
 
   virtual void GetKeyValueDirAsync(const GetKeyValueDirRequest* request,
                                    GetKeyValueDirResponse* response,

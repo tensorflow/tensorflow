@@ -71,7 +71,7 @@ void CoordinationServiceRpcHandler::HeartbeatAsync(
     return;
   }
   response->set_leader_incarnation(leader_incarnation);
-  done(Status::OK());
+  done(OkStatus());
 }
 
 void CoordinationServiceRpcHandler::WaitForAllTasksAsync(
@@ -139,7 +139,7 @@ void CoordinationServiceRpcHandler::ReportErrorToTaskAsync(
                                ": ", request->error_message()));
   error = MakeCoordinationError(error, error_payload);
   agent_->SetError(error);
-  done(Status::OK());
+  done(OkStatus());
 }
 
 void CoordinationServiceRpcHandler::ReportErrorToServiceAsync(
@@ -195,6 +195,26 @@ void CoordinationServiceRpcHandler::GetKeyValueAsync(
       });
 }
 
+void CoordinationServiceRpcHandler::TryGetKeyValueAsync(
+    const TryGetKeyValueRequest* request, TryGetKeyValueResponse* response,
+    StatusCallback done) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
+    done(MakeCoordinationError(
+        errors::Internal("Coordination service is not enabled.")));
+    return;
+  }
+  auto result = service->TryGetKeyValue(request->key());
+  if (!result.ok()) {
+    done(MakeCoordinationError(result.status()));
+    return;
+  }
+  response->mutable_kv()->set_key(request->key());
+  response->mutable_kv()->set_value(result.ValueOrDie());
+  done(Status::OK());
+}
+
 void CoordinationServiceRpcHandler::GetKeyValueDirAsync(
     const GetKeyValueDirRequest* request, GetKeyValueDirResponse* response,
     StatusCallback done) {
@@ -205,8 +225,11 @@ void CoordinationServiceRpcHandler::GetKeyValueDirAsync(
         errors::Internal("Coordination service is not enabled.")));
     return;
   }
-  // TODO(b/230630494): Implement service method.
-  done(errors::Unimplemented("GetKeyValueDirAsync() is not implemented yet."));
+  std::vector<KeyValueEntry> results =
+      service->GetKeyValueDir(request->directory_key());
+  *response->mutable_kv() = {std::make_move_iterator(results.begin()),
+                             std::make_move_iterator(results.end())};
+  done(OkStatus());
 }
 
 void CoordinationServiceRpcHandler::DeleteKeyValueAsync(

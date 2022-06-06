@@ -532,7 +532,7 @@ Status SegmentReduceGPUImplNoInnerDim(
         device, nsegments, empty_segment_value, is_mean, is_sqrtn,
         output_raw_ptr, segment_offsets, output_vec));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Treducevec, typename Tvec, typename Tindex,
@@ -636,7 +636,7 @@ Status SegmentReduceGPU(OpKernelContext* ctx, Tindex nouter, Tindex ninner,
                         const Tindex* indices,           // [nouter] (optional)
                         const T* weights,  // [nouter or any] (optional)
                         T* output) {       // [nsegments, ninner]
-  if (ninner == 0 || nsegments == 0) return Status::OK();
+  if (ninner == 0 || nsegments == 0) return OkStatus();
   return DispatchToVectorized<
       T, SegmentReduceGPUVectorized<Treduce>::template Impl>(
       MinAlignmentOf(input, output, ninner), ctx, nouter, ninner, nsegments,

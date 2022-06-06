@@ -1194,8 +1194,10 @@ cc_library(
         "//tensorflow/core/tpu:tpu_configuration",
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
-        "//tensorflow/core/tpu/kernels:tpu_fingerprint_lookup",
-        "//tensorflow/core/tpu/kernels:tpu_op_consts",
+        ":tpu_fingerprint_lookup",
+        ":tpu_op_consts",
+        "//tensorflow/stream_executor/tpu:c_api_decl",
+        "//tensorflow/stream_executor/tpu:tpu_platform_interface",
     ] + if_static(["//tensorflow/core/common_runtime:rendezvous_mgr"]),
     alwayslink = 1,
 )

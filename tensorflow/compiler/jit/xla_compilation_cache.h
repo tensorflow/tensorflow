@@ -256,9 +256,9 @@ class XlaCompilationCache : public ResourceBase {
   Status SaveSerializedEntry(const XlaSerializedCacheEntry& entry);
 
   // Tries to load a cache entry given a `key` by searching the file directory
-  // supplied during the construction of this class. Returns absl::nullopt if no
+  // supplied during the construction of this class. Returns std::nullopt if no
   // cache entry is found.
-  StatusOr<absl::optional<XlaSerializedCacheEntry>> TryLoadSerializedEntry(
+  StatusOr<std::optional<XlaSerializedCacheEntry>> TryLoadSerializedEntry(
       const XlaSerializedCacheKey& key);
 
   mutex compile_cache_mu_;
@@ -329,12 +329,12 @@ StatusOr<std::unique_ptr<Graph>> CreateGraph(
     absl::Span<const DataType> result_types);
 
 // Use XlaCompiler to compile a single op into HLO.
-Status XlaSingleOpToHlo(XlaCompiler* compiler,
-                        const XlaCompiler::Options& options,
-                        const std::vector<XlaCompiler::Argument>& args,
-                        OpKernelContext* ctx,
-                        const XlaCompiler::CompileOptions& compile_options,
-                        XlaCompiler::CompilationResult* compilation_result);
+Status XlaSingleOpToHlo(
+    XlaCompiler* compiler, const XlaCompiler::Options& options,
+    const std::vector<XlaCompiler::Argument>& args,
+    const XlaCompiler::SingleOpCompileArgument& single_op_compile_argument,
+    const XlaCompiler::CompileOptions& compile_options,
+    XlaCompiler::CompilationResult* compilation_result);
 
 }  // namespace tensorflow
 

@@ -5004,7 +5004,7 @@ TEST_F(PatternMatchParseWhileLoopTest, LoopBoundDefinedInsideOfCond) {
                           ParseAndReturnVerifiedModule(kHloModule));
   HloInstruction* while_op =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  absl::optional<ParsedWhileLoop> parsed_while_loop =
+  std::optional<ParsedWhileLoop> parsed_while_loop =
       PatternMatchParseWhileLoop(while_op);
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_FALSE(parsed_while_loop->is_dynamic());
@@ -5053,7 +5053,7 @@ TEST_F(PatternMatchParseWhileLoopTest, LoopBoundDefinedOutsideOfCond) {
                           ParseAndReturnVerifiedModule(kHloModule));
   HloInstruction* while_op =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  absl::optional<ParsedWhileLoop> parsed_while_loop =
+  std::optional<ParsedWhileLoop> parsed_while_loop =
       PatternMatchParseWhileLoop(while_op);
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_FALSE(parsed_while_loop->is_dynamic());
@@ -5104,7 +5104,7 @@ TEST_F(PatternMatchParseWhileLoopTest, LoopBoundComputedOutsideOfCond) {
                           ParseAndReturnVerifiedModule(kHloModule));
   HloInstruction* while_op =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  absl::optional<ParsedWhileLoop> parsed_while_loop =
+  std::optional<ParsedWhileLoop> parsed_while_loop =
       PatternMatchParseWhileLoop(while_op);
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_FALSE(parsed_while_loop->is_dynamic());
@@ -5155,7 +5155,7 @@ TEST_F(PatternMatchParseWhileLoopTest, StepSizeNotOne) {
                           ParseAndReturnVerifiedModule(kHloModule));
   HloInstruction* while_op =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  absl::optional<ParsedWhileLoop> parsed_while_loop =
+  std::optional<ParsedWhileLoop> parsed_while_loop =
       PatternMatchParseWhileLoop(while_op);
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_FALSE(parsed_while_loop->is_dynamic());
@@ -5212,7 +5212,7 @@ TEST_F(PatternMatchParseWhileLoopTest, RecursiveCond) {
                           ParseAndReturnVerifiedModule(kHloModule));
   HloInstruction* while_op =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  absl::optional<ParsedWhileLoop> parsed_while_loop =
+  std::optional<ParsedWhileLoop> parsed_while_loop =
       PatternMatchParseWhileLoop(while_op);
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_FALSE(parsed_while_loop->is_dynamic());
@@ -5277,7 +5277,7 @@ TEST_F(PatternMatchParseWhileLoopTest, RecursiveCondGetTupleElement) {
                           ParseAndReturnVerifiedModule(kHloModule));
   HloInstruction* while_op =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  absl::optional<ParsedWhileLoop> parsed_while_loop =
+  std::optional<ParsedWhileLoop> parsed_while_loop =
       PatternMatchParseWhileLoop(while_op);
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_FALSE(parsed_while_loop->is_dynamic());
@@ -5364,7 +5364,7 @@ TEST_F(PatternMatchParseWhileLoopTest, LoopBoundDependsOnAnotherLoop) {
                           ParseAndReturnVerifiedModule(kHloModule));
   HloInstruction* while_op =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  absl::optional<ParsedWhileLoop> parsed_while_loop =
+  std::optional<ParsedWhileLoop> parsed_while_loop =
       PatternMatchParseWhileLoop(while_op);
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_FALSE(parsed_while_loop->is_dynamic());
@@ -5413,7 +5413,7 @@ TEST_F(PatternMatchParseWhileLoopTest, DynamicLoop) {
                           ParseAndReturnVerifiedModule(kHloModule));
   HloInstruction* while_op =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  absl::optional<ParsedWhileLoop> parsed_while_loop =
+  std::optional<ParsedWhileLoop> parsed_while_loop =
       PatternMatchParseWhileLoop(while_op);
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_TRUE(parsed_while_loop->is_dynamic());
@@ -5452,7 +5452,7 @@ TEST_F(PatternMatchParseWhileLoopTest, BooleanCond) {
                           ParseAndReturnVerifiedModule(kHloModule));
   HloInstruction* while_op =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  absl::optional<ParsedWhileLoop> parsed_while_loop =
+  std::optional<ParsedWhileLoop> parsed_while_loop =
       PatternMatchParseWhileLoop(while_op);
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_FALSE(parsed_while_loop->is_dynamic());

@@ -290,7 +290,7 @@ Status XlaCompilationCache::BuildExecutable(
       client_->Compile(*result.computation, argument_layouts, build_options));
   TF_RET_CHECK(executables.size() == 1);
   *executable = std::move(executables[0]);
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::unique_ptr<xla::AotCompilationResult>>
@@ -389,19 +389,18 @@ StatusOr<std::unique_ptr<Graph>> CreateGraph(
   return graph;
 }
 
-Status XlaSingleOpToHlo(XlaCompiler* compiler,
-                        const XlaCompiler::Options& options,
-                        const std::vector<XlaCompiler::Argument>& args,
-                        OpKernelContext* ctx,
-                        const XlaCompiler::CompileOptions& compile_options,
-                        XlaCompiler::CompilationResult* compilation_result) {
-  std::vector<DataType> result_dtypes(ctx->num_outputs());
-  for (int i = 0, end = result_dtypes.size(); i < end; ++i) {
-    result_dtypes[i] = ctx->expected_output_dtype(i);
-  }
-
-  const NodeDef& node_def = ctx->op_kernel().def();
-  TF_ASSIGN_OR_RETURN(auto graph, CreateGraph(node_def, args, result_dtypes));
+Status XlaSingleOpToHlo(
+    XlaCompiler* compiler, const XlaCompiler::Options& options,
+    const std::vector<XlaCompiler::Argument>& args,
+    const XlaCompiler::SingleOpCompileArgument& single_op_compile_argument,
+    const XlaCompiler::CompileOptions& compile_options,
+    XlaCompiler::CompilationResult* compilation_result) {
+  const std::vector<DataType>& result_dtypes =
+      single_op_compile_argument.output_dtypes;
+  const NodeDef& node_def = single_op_compile_argument.node_def;
+  TF_ASSIGN_OR_RETURN(
+      auto graph,
+      CreateGraph(node_def, args, single_op_compile_argument.output_dtypes));
 
   auto compile_with_old_bridge = [&]() {
     *compilation_result = {};
@@ -409,9 +408,9 @@ Status XlaSingleOpToHlo(XlaCompiler* compiler,
                                   std::move(graph), args, compilation_result);
   };
 
-  const ConfigProto* config = ctx->function_library()->config_proto();
+  const ConfigProto* config = &(single_op_compile_argument.config_proto);
   auto bridge_rollout = GetMlirBridgeRolloutState(
-      config ? absl::optional<ConfigProto>(*config) : absl::nullopt);
+      config ? std::optional<ConfigProto>(*config) : std::nullopt);
   if (bridge_rollout ==
           ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED ||
       node_def.op() == "VarIsInitializedOp" ||
@@ -493,8 +492,19 @@ Status XlaCompilationCache::CompileStrict(
   entry->compile_state = CompileState::kCompiled;
   entry->compilation_status = [&] {
     if (scope == CompileScope::kOp) {
-      return XlaSingleOpToHlo(&compiler, options, args, ctx, compile_options,
-                              &entry->compilation_result);
+      XlaCompiler::SingleOpCompileArgument single_op_arg;
+      std::vector<DataType> output_dtypes(ctx->num_outputs());
+      for (int i = 0; i < output_dtypes.size(); ++i) {
+        output_dtypes[i] = ctx->expected_output_dtype(i);
+      }
+      single_op_arg.output_dtypes = std::move(output_dtypes);
+      single_op_arg.node_def = ctx->op_kernel().def();
+      auto* config_proto = ctx->function_library()->config_proto();
+      if (config_proto != nullptr) {
+        single_op_arg.config_proto = *config_proto;
+      }
+      return XlaSingleOpToHlo(&compiler, options, args, single_op_arg,
+                              compile_options, &entry->compilation_result);
 
     } else {
       CHECK(scope == CompileScope::kFunction);  // Crash OK
@@ -506,7 +516,7 @@ Status XlaCompilationCache::CompileStrict(
   TF_RET_CHECK(entry->executable.get() == nullptr);
   TF_RET_CHECK(entry->compilation_result.computation != nullptr);
 
-  absl::optional<XlaSerializedCacheEntry> serialized_entry;
+  std::optional<XlaSerializedCacheEntry> serialized_entry;
   if (!persistent_cache_directory_.empty()) {
     const xla::HloModuleProto& hlo_module =
         entry->compilation_result.computation->proto();
@@ -579,7 +589,7 @@ Status XlaCompilationCache::CompileStrict(
       serialized_entry.has_value());
   TF_RETURN_IF_ERROR(BroadcastXlaActivity(std::move(jit_compilation_activity)));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaCompilationCache::CompileAsynchronous(
@@ -631,7 +641,7 @@ Status XlaCompilationCache::CompileAsynchronous(
       entry->executable = std::move(local_entry.executable);
     }
   });
-  return Status::OK();
+  return OkStatus();
 }
 
 bool XlaCompilationCache::ShouldCompileCluster(CompileMode compile_mode,
@@ -639,7 +649,7 @@ bool XlaCompilationCache::ShouldCompileCluster(CompileMode compile_mode,
                                                bool is_first_execution,
                                                int64_t current_request_count,
                                                const NameAttrList& function) {
-  absl::optional<int64_t> compile_threshold;
+  std::optional<int64_t> compile_threshold;
   if (compile_mode == CompileMode::kLazy) {
     compile_threshold = kDefaultCompilationThreshold;
   } else if (compile_mode == CompileMode::kAsync) {
@@ -789,14 +799,14 @@ Status XlaCompilationCache::CompileImpl(
     if (!ShouldCompileCluster(compile_mode, is_megamorphic, is_first_execution,
                               current_request_count, function)) {
       VLOG(2) << "Not compiling for signature: " << human_signature;
-      return Status::OK();
+      return OkStatus();
     } else if (compile_mode == CompileMode::kAsync) {
       VLOG(2) << "Queueing asynchronous compilation for signature: "
               << human_signature;
       TF_RETURN_IF_ERROR(CompileAsynchronous(signature, entry, compile_options,
                                              options, args, function, ctx,
                                              scope));
-      return Status::OK();
+      return OkStatus();
     } else {
       VLOG(2) << "Instantly compiling for signature: " << human_signature;
       TF_RETURN_IF_ERROR(CompileStrict(signature, entry, compile_options,
@@ -805,7 +815,7 @@ Status XlaCompilationCache::CompileImpl(
   } else if (state == CompileState::kCompiling) {
     VLOG(2) << "Ongoing asynchronous compilation for signature: "
             << human_signature;
-    return Status::OK();
+    return OkStatus();
   } else if (state == CompileState::kCompiled) {
     VLOG(2) << "Already Compiled for signature: " << human_signature;
   }
@@ -813,7 +823,7 @@ Status XlaCompilationCache::CompileImpl(
   TF_RETURN_IF_ERROR(entry->compilation_status);
   *out_compilation_result = &entry->compilation_result;
   *out_executable = entry->executable.get();
-  return Status::OK();
+  return OkStatus();
 }
 
 XlaSerializedCacheKey XlaCompilationCache::BuildSerializedCacheKey(
@@ -856,7 +866,7 @@ Status XlaCompilationCache::VerifyLoadedCacheEntry(
   if (entry.executable().empty()) {
     return errors::InvalidArgument("No binary found in serialized entry.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<XlaSerializedCacheEntry> XlaCompilationCache::SerializeEntry(
@@ -909,17 +919,17 @@ Status XlaCompilationCache::SaveSerializedEntry(
   return WriteBinaryProto(env, file_path, entry);
 }
 
-StatusOr<absl::optional<XlaSerializedCacheEntry>>
+StatusOr<std::optional<XlaSerializedCacheEntry>>
 XlaCompilationCache::TryLoadSerializedEntry(const XlaSerializedCacheKey& key) {
   Env* env = Env::Default();
   const std::string file_path = GetFilePath(key, persistent_cache_directory_);
   if (!env->FileExists(file_path).ok()) {
-    return StatusOr<absl::optional<XlaSerializedCacheEntry>>(absl::nullopt);
+    return StatusOr<std::optional<XlaSerializedCacheEntry>>(std::nullopt);
   }
 
   XlaSerializedCacheEntry entry;
   TF_RETURN_IF_ERROR(ReadTextOrBinaryProto(env, file_path, &entry));
-  return StatusOr<absl::optional<XlaSerializedCacheEntry>>(entry);
+  return StatusOr<std::optional<XlaSerializedCacheEntry>>(entry);
 }
 
 }  // namespace tensorflow

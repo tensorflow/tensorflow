@@ -132,7 +132,7 @@ class GpuCompiler : public LLVMCompiler {
   virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() {
     return
         [](const HloInstruction*, const HloInstruction*,
-           const ShapeIndex&) -> absl::optional<bool> { return absl::nullopt; };
+           const ShapeIndex&) -> std::optional<bool> { return std::nullopt; };
   }
 
   // TODO(timshen): Replace `debug_module` with some portable debug information

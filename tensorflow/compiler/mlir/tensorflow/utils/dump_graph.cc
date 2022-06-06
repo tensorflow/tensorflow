@@ -27,7 +27,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/core/ir/importexport/import.h"
+#include "tensorflow/core/ir/importexport/graphdef_import.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
@@ -92,7 +92,7 @@ Status DumpTextualIRToFile(const MlirDumpConfig& config, const Graph& graph,
 
   TF_RETURN_IF_ERROR(convert());
   module->print(os, config.op_printing_flags);
-  return Status::OK();
+  return OkStatus();
 }
 
 void UseMlirForGraphDump(const MlirDumpConfig& config) {

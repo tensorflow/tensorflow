@@ -469,7 +469,6 @@ TEST_F(LayoutAssignmentTest, ReshapeOperandHasMultipleUsers) {
       ShapeLayout(ShapeUtil::MakeTupleShape(
           {transpose_shape_with_layout, broadcast2_shape_with_layout}));
   AssignLayouts(m.get(), &computation_layout);
-
   EXPECT_THAT(broadcast->shape().layout().minor_to_major(), ElementsAre(0, 1));
   EXPECT_THAT(transpose->shape().layout().minor_to_major(), ElementsAre(1, 0));
   EXPECT_THAT(tanh->shape().layout().minor_to_major(), ElementsAre(0, 1));
@@ -646,12 +645,12 @@ TEST_F(LayoutAssignmentTest, TransposeWithinFusionDoesNotCrash) {
                          /*device_allocator=*/nullptr)
           .ConsumeValueOrDie();
 
-  EXPECT_EQ(Status::OK(), backend()
-                              .compiler()
-                              ->RunBackend(std::move(compiled_module),
-                                           backend().default_stream_executor(),
-                                           /*device_allocator=*/nullptr)
-                              .status());
+  EXPECT_EQ(OkStatus(), backend()
+                            .compiler()
+                            ->RunBackend(std::move(compiled_module),
+                                         backend().default_stream_executor(),
+                                         /*device_allocator=*/nullptr)
+                            .status());
 }
 
 // A GTE inside of a fusion node inherits the layout of its operand (which
@@ -1595,7 +1594,6 @@ ENTRY main {
       ShapeUtil::MakeShapeWithLayout(F32, {64, 243, 243, 384}, {3, 0, 2, 1}));
   *computation_layout.mutable_result_layout() = ShapeLayout(
       ShapeUtil::MakeShapeWithLayout(F32, {64, 243, 243, 384}, {3, 0, 2, 1}));
-  std::cerr << "Entry layout:" << computation_layout.ToString() << "\n";
   ChannelLayoutConstraints channel_constraints;
   LayoutAssignment layout_assignment(
       &computation_layout,

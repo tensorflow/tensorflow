@@ -120,7 +120,7 @@ Status GenerateResourceSharedNameIfEmpty(
     }
   }
 
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 bool IsCompiledNode(const Node* n) {
@@ -139,7 +139,7 @@ Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,
       "Failed to functionalize Control Flow V1 ops. Consider using Control "
       "Flow V2 ops instead. See https://www.tensorflow.org/api_docs/python/tf/"
       "compat/v1/enable_control_flow_v2.");
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

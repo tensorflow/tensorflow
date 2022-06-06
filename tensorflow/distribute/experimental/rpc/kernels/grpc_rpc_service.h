@@ -20,22 +20,4 @@ limitations under the License.
 #include "tensorflow/distribute/experimental/rpc/proto/tf_rpc_service.pb.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
-#ifndef PLATFORM_GOOGLE
-#ifndef PLATFORM_CHROMIUMOS
-namespace tensorflow {
-namespace rpc {
-namespace grpc {
-
-// Google internal gRPC generates services under namespace "grpc", but
-// opensource version does not add any additional namespaces.
-
-// Creating aliases here to make sure we can access services under namespace
-// "tensorflow::grpc" both in google internal and open-source.
-using ::tensorflow::rpc::RpcService;
-
-}  // namespace grpc
-}  // namespace rpc
-}  // namespace tensorflow
-#endif  // PLATFORM_CHROMIUMOS
-#endif  // PLATFORM_GOOGLE
 #endif  // TENSORFLOW_DISTRIBUTE_EXPERIMENTAL_RPC_KERNELS_GRPC_RPC_SERVICE_H_

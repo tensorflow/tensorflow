@@ -261,7 +261,7 @@ Status CurlHttpRequest::SetPutFromFile(const string& body_filepath,
                                            reinterpret_cast<void*>(put_body_)));
   // Using the default CURLOPT_READFUNCTION, which is doing an fread() on the
   // FILE * userdata set with CURLOPT_READDATA.
-  return Status::OK();
+  return OkStatus();
 }
 
 void CurlHttpRequest::SetPutEmptyBody() {
@@ -478,7 +478,7 @@ Status CurlHttpRequest::Send() {
     case 201:  // Created
     case 204:  // No Content
     case 206:  // Partial Content
-      result = Status::OK();
+      result = OkStatus();
       break;
 
     case 416:  // Requested Range Not Satisfiable
@@ -489,7 +489,7 @@ Status CurlHttpRequest::Send() {
       if (IsDirectResponse()) {
         direct_response_.bytes_transferred_ = 0;
       }
-      result = Status::OK();
+      result = OkStatus();
       break;
 
     // INVALID_ARGUMENT indicates a problem with how the request is constructed.
@@ -634,7 +634,7 @@ int CurlHttpRequest::ProgressCallback(void* this_object, curl_off_t dltotal,
 Status CurlHttpRequest::CURLcodeToStatus(CURLcode code,
                                          const char* error_buffer) {
   if (code == CURLE_OK) {
-    return Status::OK();
+    return OkStatus();
   }
   string error_message = strings::StrCat(
       "Error executing an HTTP request: libcurl code ", code, " meaning '",
@@ -652,7 +652,7 @@ Status CurlHttpRequest::CURLcodeToStatus(CURLcode code,
     // a response body (e.g. GCS sends one with an error message) but we
     // pretend as though they don't, so actually ignore this error.
     if (get_response_result == CURLE_OK && response_code == 416) {
-      return Status::OK();
+      return OkStatus();
     }
     return errors::FailedPrecondition(
         strings::StrCat(error_message, overflow_message));

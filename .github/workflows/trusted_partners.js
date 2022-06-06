@@ -42,7 +42,7 @@ const get_email_domain = async ({github, username}) => {
 /** For trusted parters like intel, we want to auto-run tests and mark the PR as ready to pull
     This allows us to reduce the delay to external partners
     Add Labels - kokoro:force-run, ready to pull
-    The PR is also assigned to Mihai so it doesn't have to wait for assignment
+    The PR is also assigned to specific teams to fast track review
     Additional reviewers can be added manually based on PR contents
   @param {!object}
     github enables querying for PR and also create issue using rest endpoint
@@ -51,7 +51,14 @@ const get_email_domain = async ({github, username}) => {
 */
 const intel_action = async ({github, context}) => {
   const labels = ['kokoro:force-run', 'ready to pull'];
-  const assignees = ['mihaimaruseac'];
+
+  // Assign to individual teams. Defaults to devinfra members
+  const onednn_assignees = ['penpornk'];
+  let assignees = ['nitins17', 'learning-to-play'];
+  const title = context.payload.pull_request && context.payload.pull_request.title;
+  if (title && title.toLowerCase().includes("onednn"))
+    assignees = onednn_assignees;
+
   const resp_label = await github.rest.issues.addLabels({
     issue_number: context.issue.number,
     owner: context.repo.owner,

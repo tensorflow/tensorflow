@@ -278,6 +278,9 @@ struct OpenGlInfo {
   int max_compute_work_group_size_z;
 
   bool SupportsExplicitFp16() const;
+
+  bool IsApiOpenGl31OrAbove() const;
+  bool IsApiOpenGl32OrAbove() const;
 };
 
 struct VulkanInfo {
@@ -404,6 +407,8 @@ struct MetalInfo {
   uint64_t image3d_max_width;
   uint64_t image3d_max_height;
   uint64_t image3d_max_depth;
+
+  bool IsSIMDMatMulSupported() const;
 };
 
 struct GpuInfo {
@@ -436,6 +441,9 @@ struct GpuInfo {
 
   bool SupportsFloatImage2D(DataType data_type, int channels) const;
   bool SupportsExtension(const std::string& extension) const;
+
+  bool SupportsZeroClampForImageBuffer() const;
+  bool SupportsZeroClampForImages() const;
 
   int GetComputeUnitsCount() const;
 

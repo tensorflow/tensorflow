@@ -650,7 +650,7 @@ TEST_F(RunHandlerTest, UseRunHandlerPoolEnableSubPool) {
   Initialize({3, 2, -1, 0});
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
-  EXPECT_EQ(::tensorflow::Status::OK(), session->Create(def_));
+  EXPECT_EQ(OkStatus(), session->Create(def_));
   std::vector<std::pair<string, Tensor>> inputs;
 
   // Request two targets: one fetch output and one non-fetched output.
@@ -664,7 +664,7 @@ TEST_F(RunHandlerTest, UseRunHandlerPoolEnableSubPool) {
 
   Status s = session->Run(run_options, inputs, output_names, target_nodes,
                           &outputs, nullptr);
-  EXPECT_EQ(::tensorflow::Status::OK(), s);
+  EXPECT_EQ(OkStatus(), s);
 
   ASSERT_EQ(1, outputs.size());
   // The first output should be initialized and have the correct
@@ -678,7 +678,7 @@ TEST_F(RunHandlerTest, TestConcurrencyUseRunHandlerPool) {
   Initialize({1, 2, 3, 4});
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
-  EXPECT_EQ(::tensorflow::Status::OK(), session->Create(def_));
+  EXPECT_EQ(OkStatus(), session->Create(def_));
 
   RunOptions run_options;
   run_options.mutable_experimental()->set_use_run_handler_pool(true);
@@ -695,7 +695,7 @@ TEST_F(RunHandlerTest, TestConcurrencyUseRunHandlerPool) {
       // Run the graph
       Status s = session->Run(run_options, inputs, output_names, {}, &outputs,
                               nullptr);
-      EXPECT_EQ(::tensorflow::Status::OK(), s);
+      EXPECT_EQ(OkStatus(), s);
       ASSERT_EQ(1, outputs.size());
       auto mat = outputs[0].matrix<float>();
       EXPECT_FLOAT_EQ(3.0, mat(0, 0));
@@ -714,7 +714,7 @@ TEST_F(RunHandlerTest, UseRunHandlerPoolEnableSubPoolWithPriority) {
   Initialize({3, 2, -1, 0});
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
-  EXPECT_EQ(::tensorflow::Status::OK(), session->Create(def_));
+  EXPECT_EQ(OkStatus(), session->Create(def_));
   std::vector<std::pair<string, Tensor>> inputs;
 
   // Request two targets: one fetch output and one non-fetched output.
@@ -731,7 +731,7 @@ TEST_F(RunHandlerTest, UseRunHandlerPoolEnableSubPoolWithPriority) {
 
   Status s = session->Run(run_options, inputs, output_names, target_nodes,
                           &outputs, nullptr);
-  EXPECT_EQ(::tensorflow::Status::OK(), s);
+  EXPECT_EQ(OkStatus(), s);
 
   ASSERT_EQ(1, outputs.size());
   // The first output should be initialized and have the correct
@@ -745,7 +745,7 @@ TEST_F(RunHandlerTest, TestConcurrencyUseRunHandlerPoolWithPriority) {
   Initialize({1, 2, 3, 4});
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
-  EXPECT_EQ(::tensorflow::Status::OK(), session->Create(def_));
+  EXPECT_EQ(OkStatus(), session->Create(def_));
 
   // Fill in the input and ask for the output
   thread::ThreadPool* tp = new thread::ThreadPool(Env::Default(), "test", 4);
@@ -764,7 +764,7 @@ TEST_F(RunHandlerTest, TestConcurrencyUseRunHandlerPoolWithPriority) {
       // Run the graph
       Status s = session->Run(run_options, inputs, output_names, {}, &outputs,
                               nullptr);
-      EXPECT_EQ(::tensorflow::Status::OK(), s);
+      EXPECT_EQ(OkStatus(), s);
       ASSERT_EQ(1, outputs.size());
       auto mat = outputs[0].matrix<float>();
       EXPECT_FLOAT_EQ(3.0, mat(0, 0));

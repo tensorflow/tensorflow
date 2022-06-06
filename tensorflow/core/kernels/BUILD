@@ -444,6 +444,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/base:core_headers",
     ],
 )
@@ -3558,8 +3559,10 @@ tf_kernel_library(
         "//conditions:default": [],
     }) + mkl_deps() + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
+    ]) + if_cuda_or_rocm([
+        ":gpu_utils",
         "//tensorflow/stream_executor:matmul_util",
-    ]) + if_cuda_or_rocm([":gpu_utils"]),
+    ]),
 )
 
 tf_kernel_library(
@@ -4142,6 +4145,9 @@ tf_kernel_library(
         "@local_config_cuda//cuda:cudnn_header",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
+    ]) + if_cuda_or_rocm([
+        ":gpu_utils",
+        ":gpu_prim_hdrs",
     ]),
 )
 

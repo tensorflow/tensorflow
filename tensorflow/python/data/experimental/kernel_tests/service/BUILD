@@ -13,7 +13,7 @@ tf_py_test(
     srcs = ["auto_shard_test.py"],
     shard_count = 32,
     tags = [
-        "noasan",  # b/231336996
+        "notsan",  # Multi-process runner does not support tsan.
     ],
     deps = [
         ":multi_process_cluster",
@@ -112,6 +112,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python/compat",
         "//tensorflow/python/data",
         "//tensorflow/python/data/experimental/ops:data_service_ops",
         "//tensorflow/python/data/experimental/ops:testing",
@@ -147,6 +148,9 @@ tf_py_test(
     size = "medium",
     srcs = ["local_workers_test.py"],
     shard_count = 24,
+    tags = [
+        "notsan",  # Multi-process runner does not support tsan.
+    ],
     deps = [
         ":multi_process_cluster",
         ":test_base",
@@ -180,6 +184,38 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "cross_trainer_cache_test",
+    size = "medium",
+    srcs = ["cross_trainer_cache_test.py"],
+    shard_count = 4,
+    deps = [
+        ":test_base",
+        "//tensorflow/python/data/experimental/ops:data_service_ops",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/platform:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "cross_trainer_cache_ft_test",
+    size = "medium",
+    srcs = ["cross_trainer_cache_ft_test.py"],
+    shard_count = 4,
+    deps = [
+        ":test_base",
+        "//tensorflow/python/data/experimental/ops:data_service_ops",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/platform:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
     name = "multi_device_test",
     size = "small",
     srcs = ["multi_device_test.py"],
@@ -204,6 +240,7 @@ py_library(
     deps = [
         ":test_base",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/data/experimental/service:server_lib",
         "//tensorflow/python/distribute:multi_process_lib",
         "//tensorflow/python/platform:test",
@@ -215,6 +252,9 @@ tf_py_test(
     size = "medium",
     srcs = ["multi_process_cluster_test.py"],
     shard_count = 3,
+    tags = [
+        "notsan",  # Multi-process runner does not support tsan.
+    ],
     deps = [
         ":multi_process_cluster",
         ":test_base",

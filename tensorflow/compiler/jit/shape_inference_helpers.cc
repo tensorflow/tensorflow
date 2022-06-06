@@ -41,7 +41,7 @@ Status BackEdgeHelper::Remove(Graph* graph) {
   for (const BackEdge& be : back_edges_) {
     graph_->RemoveEdge(be.edge);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 const std::vector<BackEdgeHelper::BackEdge>& BackEdgeHelper::RemovedEdges()
@@ -60,7 +60,7 @@ Status BackEdgeHelper::Replace() {
   for (const BackEdge& be : back_edges_) {
     graph_->AddEdge(be.src, be.src_output, be.dst, be.dst_input);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

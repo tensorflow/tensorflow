@@ -38,7 +38,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
+#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -99,7 +102,8 @@ Status ConvertXSpaceToProfileResponse(const XSpace& xspace,
   options.maybe_drop_incomplete_steps = true;
   OpStats op_stats = ConvertXSpaceToOpStats(xspace, options);
   if (tools.contains(kOverviewPage)) {
-    OverviewPage overview_page_db = ConvertOpStatsToOverviewPage(op_stats);
+    OverviewPage overview_page_db =
+        ConvertOpStatsToOverviewPage(op_stats, xspace);
     AddToolData(ToolName(kOverviewPage), overview_page_db, response);
     if (tools.contains(kInputPipeline)) {
       AddToolData(ToolName(kInputPipeline), overview_page_db.input_analysis(),

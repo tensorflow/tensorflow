@@ -63,7 +63,7 @@ class CpuGpuFusionTest : public HloTestBase {
   template <typename T, int Arity>
   void TestElementwise2D(
       HloOpcode opcode,
-      absl::optional<ComparisonDirection> direction = absl::nullopt) {
+      std::optional<ComparisonDirection> direction = std::nullopt) {
     // Create a variable for comparisons since they require the direction.
     bool is_compare = std::is_same<T, bool>::value;
     Array2D<float> operand_data[Arity];

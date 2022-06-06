@@ -565,7 +565,7 @@ struct ElementwiseAttributes {
   TensorOrScalar param;
   // For elementwise operation with 2 inputs op(A, B), runtime_tensor_is_second
   // true when runtime tensor is B(on second position). this is important for
-  // ops that non commutative, for example substract.
+  // ops that non commutative, for example subtract.
   bool runtime_tensor_is_second = false;
 };
 
@@ -620,6 +620,15 @@ struct GatherAttributes {
 struct OneHotAttributes {
   float on_value = 1;
   float off_value = 0;
+};
+
+struct SelectV2Attributes {
+  bool broadcast_true = false;
+  bool broadcast_false = false;
+};
+
+struct CumsumAttributes {
+  Axis axis = Axis::UNKNOWN;
 };
 
 }  // namespace gpu

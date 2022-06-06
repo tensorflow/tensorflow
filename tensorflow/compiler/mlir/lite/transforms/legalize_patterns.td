@@ -220,6 +220,11 @@ def LegalizeSqrt : Pat<(TF_SqrtOp $arg), (TFL_SqrtOp $arg)>;
 def LegalizeSquare : Pat<(TF_SquareOp $arg), (TFL_SquareOp $arg)>;
 def LegalizeSegmentSum : Pat<(TF_SegmentSumOp $data, $segment_ids),
                              (TFL_SegmentSumOp $data, (CreateTFCastToInt32Op $segment_ids))>;
+def LegalizeUnsortedSegmentProd :
+  Pat<(TF_UnsortedSegmentProdOp $data, $segment_ids,
+        (Arith_ConstantOp ElementsAttr:$num_segments)),
+      (TFL_UnsortedSegmentProdOp $data, (CreateTFCastToInt32Op $segment_ids),
+        ExtractSingleElementAsInt32:$num_segments)>;
 def LegalizeSelect : Pat<(TF_SelectOp $cond, $x, $y),
                          (TFL_SelectOp $cond, $x, $y)>;
 def LegalizeSelectV2SameStaticShape : Pat<(TF_SelectV2Op:$src_op $cond, $x, $y),

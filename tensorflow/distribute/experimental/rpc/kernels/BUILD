@@ -15,6 +15,7 @@ cc_library(
     srcs = ["grpc_rpc_service.h"],
     hdrs = ["grpc_rpc_service.h"],
     deps = [
+        "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_cc_grpc_proto",
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_proto_cc",
         "//tensorflow/stream_executor/platform",
         "@com_github_grpc_grpc//:grpc++",
@@ -45,6 +46,7 @@ tf_kernel_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_client_cq_tag",
         "//tensorflow/core/distributed_runtime/rpc:grpc_state",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_cc_grpc_proto",
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_proto_cc",
         "//tensorflow/stream_executor/platform",
         "@com_github_grpc_grpc//:grpc++",

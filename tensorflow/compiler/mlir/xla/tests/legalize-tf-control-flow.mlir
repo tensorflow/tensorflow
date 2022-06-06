@@ -6,10 +6,10 @@ func.func @if(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
   // CHECK: [[VAL0:%.+]] = "mhlo.compare"([[ARG0]], [[ARG1]]) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
   %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
   // CHECK: [[VAL2:%.+]] = "mhlo.if"([[VAL0]]) ({
-  // CHECK:   [[VAL3:%.+]] = call @cond_true([[ARG0]], [[ARG1]])
+  // CHECK:   [[VAL3:%.+]] = func.call @cond_true([[ARG0]], [[ARG1]])
   // CHECK:   "mhlo.return"([[VAL3]]) : (tensor<f32>) -> ()
   // CHECK: },  {
-  // CHECK:   [[VAL4:%.+]] = call @cond_false([[ARG0]], [[ARG1]])
+  // CHECK:   [[VAL4:%.+]] = func.call @cond_false([[ARG0]], [[ARG1]])
   // CHECK:   "mhlo.return"([[VAL4]]) : (tensor<f32>) -> ()
   // CHECK: })
   %1 = "tf.If"(%0, %arg0, %arg1) {else_branch = @cond_false, is_stateless = true, then_branch = @cond_true} : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
@@ -58,13 +58,13 @@ func.func @ifRegion(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
 func.func @case(%index: tensor<i32>, %arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
   %0:2 = "tf.Case"(%index, %arg0, %arg1) {branches = [@exponential, @log, @floor], is_stateless = true} : (tensor<i32>, tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
   // CHECK: %[[CASE:.*]]:2 = "mhlo.case"(%[[BRANCH_INDEX]]) ({
-  // CHECK:     %[[CALL_EXP:.*]]:2 = call @exponential(%[[ARG0]], %[[ARG1]]) : (tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
+  // CHECK:     %[[CALL_EXP:.*]]:2 = func.call @exponential(%[[ARG0]], %[[ARG1]]) : (tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
   // CHECK:     "mhlo.return"(%[[CALL_EXP]]#0, %[[CALL_EXP]]#1) : (tensor<f32>, tensor<f32>) -> ()
   // CHECK:   },  {
-  // CHECK:     %[[CALL_LOG:.*]]:2 = call @log(%[[ARG0]], %[[ARG1]]) : (tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
+  // CHECK:     %[[CALL_LOG:.*]]:2 = func.call @log(%[[ARG0]], %[[ARG1]]) : (tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
   // CHECK:     "mhlo.return"(%[[CALL_LOG]]#0, %[[CALL_LOG]]#1) : (tensor<f32>, tensor<f32>) -> ()
   // CHECK:   },  {
-  // CHECK:     %[[CALL_FLOOR:.*]]:2 = call @floor(%[[ARG0]], %[[ARG1]]) : (tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
+  // CHECK:     %[[CALL_FLOOR:.*]]:2 = func.call @floor(%[[ARG0]], %[[ARG1]]) : (tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
   // CHECK:     "mhlo.return"(%[[CALL_FLOOR]]#0, %[[CALL_FLOOR]]#1) : (tensor<f32>, tensor<f32>) -> ()
   // CHECK:   }) : (tensor<i32>) -> (tensor<f32>, tensor<f32>)
   func.return %0#0, %0#1 : tensor<f32>, tensor<f32>
@@ -121,10 +121,10 @@ func.func @caseRegion(%index: tensor<i32>, %arg0: tensor<f32>, %arg1: tensor<f32
 // CHECK-SAME: %[[VAL0:.*]]: tensor<i32>, %[[VAL1:.*]]: tensor<i32>
 func.func @while(%in0: tensor<i32>, %in1: tensor<i32>) -> tensor<i32> {
   // CHECK: [[VAL2:%.+]]:3 = mhlo.while([[ITER_ARG0:.*]] = %[[VAL0]], [[ITER_ARG1:.*]] =  %[[VAL1]], [[ITER_ARG2:.*]] =  %[[VAL0]])
-  // CHECK:   [[VAL3:%.+]] = call @while_cond([[ITER_ARG0]], [[ITER_ARG1]], [[ITER_ARG2]])
+  // CHECK:   [[VAL3:%.+]] = func.call @while_cond([[ITER_ARG0]], [[ITER_ARG1]], [[ITER_ARG2]])
   // CHECK:   "mhlo.return"([[VAL3]])
   // CHECK: } do {
-  // CHECK:   [[VAL3:%.+]]:3 = call @while_body([[ITER_ARG0]], [[ITER_ARG1]], [[ITER_ARG2]])
+  // CHECK:   [[VAL3:%.+]]:3 = func.call @while_body([[ITER_ARG0]], [[ITER_ARG1]], [[ITER_ARG2]])
   // CHECK:   "mhlo.return"([[VAL3]]#0, [[VAL3]]#1, [[VAL3]]#2)
   // CHECK: return [[VAL2]]#2
   %2:3 = "tf.While"(%in0, %in1, %in0) {body = @while_body, cond = @while_cond, is_stateless = true, parallel_iterations = 10 : i64} : (tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>)

@@ -58,7 +58,7 @@ Status EventsWriter::InitIfNeeded() {
       }
     } else {
       // No-op: File is present and writer is initialized.
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -92,7 +92,7 @@ Status EventsWriter::InitIfNeeded() {
     WriteEvent(event);
     TF_RETURN_WITH_CONTEXT_IF_ERROR(Flush(), "Flushing first event.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 string EventsWriter::FileName() {
@@ -122,7 +122,7 @@ void EventsWriter::WriteEvent(const Event& event) {
 }
 
 Status EventsWriter::Flush() {
-  if (num_outstanding_events_ == 0) return Status::OK();
+  if (num_outstanding_events_ == 0) return OkStatus();
   CHECK(recordio_file_ != nullptr) << "Unexpected NULL file";
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(recordio_writer_->Flush(), "Failed to flush ",
@@ -133,7 +133,7 @@ Status EventsWriter::Flush() {
                                   filename_);
   VLOG(1) << "Wrote " << num_outstanding_events_ << " events to disk.";
   num_outstanding_events_ = 0;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status EventsWriter::Close() {
@@ -152,7 +152,7 @@ Status EventsWriter::Close() {
 
 Status EventsWriter::FileStillExists() {
   if (env_->FileExists(filename_).ok()) {
-    return Status::OK();
+    return OkStatus();
   }
   // This can happen even with non-null recordio_writer_ if some other
   // process has removed the file.

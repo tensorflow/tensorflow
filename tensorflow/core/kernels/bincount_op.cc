@@ -77,7 +77,7 @@ struct BincountFunctor<CPUDevice, Tidx, T, true> {
     Eigen::array<int, 1> reduce_dim({0});
     output.device(context->eigen_cpu_device()) =
         partial_bins.any(reduce_dim).cast<T>();
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -160,7 +160,7 @@ struct BincountFunctor<CPUDevice, Tidx, T, false> {
       Eigen::array<int, 1> reduce_dim({0});
       output.device(context->eigen_cpu_device()) = partial_bins.sum(reduce_dim);
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -195,7 +195,7 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
             }
           }
         });
-    return Status::OK();
+    return OkStatus();
   }
 };
 

@@ -15,6 +15,7 @@ Pod::Spec.new do |s|
   `TensorFlowLiteObjC` pod.
                        DESC
 
+  s.cocoapods_version = '>= ${TFL_MIN_COCOAPODS_VERSION}'
   s.ios.deployment_target = '9.0'
 
   s.module_name = 'TensorFlowLiteC'
@@ -22,29 +23,29 @@ Pod::Spec.new do |s|
 
   # TODO: Remove this after adding support for arm64 simulator.
   s.pod_target_xcconfig = {
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64'
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => '${TFL_EXCLUDED_SIM_ARCHS}'
   }
 
   # TODO: Remove this after adding support for arm64 simulator.
   s.user_target_xcconfig = {
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64'
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => '${TFL_EXCLUDED_SIM_ARCHS}'
   }
 
   s.default_subspec = 'Core'
 
   s.subspec 'Core' do |core|
-    core.vendored_frameworks = 'Frameworks/TensorFlowLiteC.framework'
+    core.vendored_frameworks = 'Frameworks/TensorFlowLiteC.${TFL_VENDORED_BUNDLE_TYPE}'
   end
 
   s.subspec 'CoreML' do |coreml|
     coreml.weak_framework = 'CoreML'
     coreml.dependency 'TensorFlowLiteC/Core'
-    coreml.vendored_frameworks = 'Frameworks/TensorFlowLiteCCoreML.framework'
+    coreml.vendored_frameworks = 'Frameworks/TensorFlowLiteCCoreML.${TFL_VENDORED_BUNDLE_TYPE}'
   end
 
   s.subspec 'Metal' do |metal|
     metal.weak_framework = 'Metal'
     metal.dependency 'TensorFlowLiteC/Core'
-    metal.vendored_frameworks = 'Frameworks/TensorFlowLiteCMetal.framework'
+    metal.vendored_frameworks = 'Frameworks/TensorFlowLiteCMetal.${TFL_VENDORED_BUNDLE_TYPE}'
   end
 end

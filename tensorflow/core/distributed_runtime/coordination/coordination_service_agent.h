@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_AGENT_H_
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 class CoordinationServiceConfig;
@@ -58,6 +60,9 @@ class CoordinationServiceAgent {
  public:
   using StatusOrValueCallback =
       std::function<void(const StatusOr<std::string>&)>;
+  // Collection of key-value pairs in the same directory.
+  using StatusOrValueDirCallback =
+      std::function<void(const StatusOr<std::vector<KeyValueEntry>>&)>;
   using ChangedKeyValuesCallback =
       std::function<void(const std::map<std::string, std::string>&)>;
 
@@ -149,14 +154,36 @@ class CoordinationServiceAgent {
   virtual Status Reset() = 0;
 
   // Get config key-value from the service.
+  // If the key-value is not inserted yet, this is a blocking call that waits
+  // until the corresponding key is inserted.
   // Agent does not need to be connected to utilize the distributed key-value
   // store.
   //   - errors::DeadlineExceeded: timed out waiting for key.
   virtual StatusOr<std::string> GetKeyValue(const std::string& key) = 0;
   virtual StatusOr<std::string> GetKeyValue(const std::string& key,
                                             absl::Duration timeout) = 0;
-  virtual void GetKeyValueAsync(const std::string& key,
-                                StatusOrValueCallback done) = 0;
+  // Note: Cancel the underlying RPC call with `call_opts->StartCancel()` and
+  // `call_opts->ClearCancelCallback()`.
+  virtual std::shared_ptr<CallOptions> GetKeyValueAsync(
+      const std::string& key, StatusOrValueCallback done) = 0;
+
+  // Get config key-value from the service.
+  // If the key-value does not exist, this call returns NotFound error.
+  // Agent does not need to be connected to utilize the distributed key-value
+  // store.
+  //   - errors::NotFound: the requested key does not exist.
+  virtual StatusOr<std::string> TryGetKeyValue(const std::string& key) = 0;
+
+  // Get all values under a directory (key).
+  // A value is considered to be in the directory if its key is prefixed with
+  // the directory.
+  // This is not a blocking call.
+  // Agent does not need to be connected to utilize the distributed key-value
+  // store.
+  virtual StatusOr<std::vector<KeyValueEntry>> GetKeyValueDir(
+      const std::string& key) = 0;
+  virtual void GetKeyValueDirAsync(const std::string& key,
+                                   StatusOrValueDirCallback done) = 0;
 
   // Insert config key-value to the service.
   //   - errors::AlreadyExists: key is already set.
@@ -179,9 +206,7 @@ class CoordinationServiceAgent {
   // Blocks until all (or a subset of) tasks are at the barrier or the barrier
   // fails.
   //
-  // `barrier_id` should be unique across barriers. Once the barrier has passed
-  // or failed, subsequent calls will not block, and immediately respond with
-  // the previous response.
+  // `barrier_id` should be unique across barriers.
   //
   // The first WaitAtBarrier() call received by the service for a particular
   // barrier_id is special in that it determines the barrier deadline based on
@@ -208,7 +233,8 @@ class CoordinationServiceAgent {
   //       for the same barrier, (2) one of the participating tasks is not in
   //       the cluster, or (3) task making the request is not included in the
   //       list of participating tasks.
-  //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state.
+  //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state. Or the
+  //       same barrier_id was already used previously.
   virtual Status WaitAtBarrier(const std::string& barrier_id,
                                absl::Duration timeout,
                                const std::vector<CoordinatedTask>& tasks) = 0;
@@ -223,8 +249,12 @@ class CoordinationServiceAgent {
   // CANCELLED error status.
   // Possible service errors:
   //   - FailedPrecondition: Barrier has already been passed.
-  //   - NotFound: No barrier with the specified id is found.
   virtual Status CancelBarrier(const std::string& barrier_id) = 0;
+  virtual void CancelBarrierAsync(const std::string& barrier_id,
+                                  StatusCallback done) = 0;
+
+  // Get unowned Env* that the agent was initialized with.
+  virtual StatusOr<Env*> GetEnv() = 0;
 
  protected:
   // Set the service agent to error status and invoke the error callback.

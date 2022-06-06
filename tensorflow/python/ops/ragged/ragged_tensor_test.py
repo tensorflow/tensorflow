@@ -18,6 +18,7 @@ import functools
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.core.framework import full_type_pb2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -29,6 +30,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import type_spec
+from tensorflow.python.framework.type_utils import fulltypes_for_flat_tensors
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -1477,6 +1480,61 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           output_ragged_rank=1,
           input_ragged_rank=1)
 
+  def testUnbatchToTensor(self):
+    batched = ragged_factory_ops.constant([[0], [1], [2], [3]])
+    unbatched = [constant_op.constant(x) for x in [[0], [1], [2], [3]]]
+    batched_spec = type_spec.type_spec_from_value(batched)
+
+    # Note that the unbatched_spec is derived from the batched spec, so it can
+    # add back a ragged instead of a dense tensor.
+    unbatched_spec = batched_spec._unbatch()
+    batched_tensor_list = batched_spec._to_batched_tensor_list(batched)
+    unbatched_tensor_lists = zip(
+        *[array_ops.unstack(tensor) for tensor in batched_tensor_list])
+    actual_unbatched = [
+        batched_spec._unbatch()._from_tensor_list(tensor_list)
+        for tensor_list in unbatched_tensor_lists]
+    self.assertLen(actual_unbatched, len(unbatched))
+    for x in actual_unbatched:
+      self.assertTrue(unbatched_spec.is_compatible_with(x))
+
+    for (actual, expected) in zip(actual_unbatched, unbatched):
+      self.assertAllEqual(actual, expected)
+
+  def testDatasetUnbatchTwice(self):
+    batched = ragged_factory_ops.constant([[[0], [1], [5]], [[2], [3]]])
+    ds = dataset_ops.Dataset.from_tensors(batched)
+    ds2 = ds.unbatch()
+    ds3 = ds2.unbatch()
+    if context.executing_eagerly():
+      value = next(iter(ds3))
+      self.assertAllEqual([0], value)
+
+  def testDatasetUnbatchToScalar(self):
+    batched = ragged_factory_ops.constant([[0], [1], [2], [3]])
+    ds = dataset_ops.Dataset.from_tensors(batched)
+    ds2 = ds.unbatch()
+    ds3 = ds2.unbatch()
+    if context.executing_eagerly():
+      value = next(iter(ds3))
+      self.assertAllEqual(0, value)
+
+  def testBatchToTensor(self):
+    batched = ragged_factory_ops.constant([[0], [1], [2], [3]])
+    unbatched = [constant_op.constant(x) for x in [[0], [1], [2], [3]]]
+    batched_spec = type_spec.type_spec_from_value(batched)
+
+    # Note that the unbatched_spec is derived from the batched spec, so it can
+    # add back a ragged instead of a dense tensor.
+    unbatched_spec = batched_spec._unbatch()
+    unbatched_tensor_lists = [unbatched_spec._to_tensor_list(x)
+                              for x in unbatched]
+    batched_tensor_list = [array_ops.stack(tensors)
+                           for tensors in zip(*unbatched_tensor_lists)]
+    actual_batched = unbatched_spec._batch(4)._from_tensor_list(
+        batched_tensor_list)
+    self.assertAllEqual(actual_batched, batched)
+
   def _testGradient(self, func, x, expected_grad, grad_y=None):
     x = ragged_factory_ops.constant(x)
     if grad_y is not None:
@@ -2124,6 +2182,21 @@ class RaggedTensorSpecTest(test_util.TensorFlowTestCase,
   def testFlatTensorSpecs(self, rt_spec):
     self.assertEqual(rt_spec._flat_tensor_specs,
                      [tensor_spec.TensorSpec(None, dtypes.variant)])
+
+  @parameterized.parameters([
+      (dtypes.float32, full_type_pb2.TFT_FLOAT),
+      (dtypes.string, full_type_pb2.TFT_STRING),
+  ])
+  def testFullTypesForFlatTensors(self, dt, ft):
+    rt_spec = RaggedTensorSpec(ragged_rank=2, dtype=dt)
+    full_type_list = fulltypes_for_flat_tensors(rt_spec)
+    expect = [
+        full_type_pb2.FullTypeDef(
+            type_id=full_type_pb2.TFT_RAGGED,
+            args=[full_type_pb2.FullTypeDef(type_id=ft)])
+    ]
+    self.assertEqual(len(rt_spec._flat_tensor_specs), len(full_type_list))
+    self.assertEqual(expect, full_type_list)
 
   @parameterized.named_parameters([
       {

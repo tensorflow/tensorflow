@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/bufferizable_op_interface_impl.h"
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -40,6 +41,9 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
+#include "mlir/Dialect/Bufferization/Transforms/FuncBufferizableOpInterfaceImpl.h"
+#include "mlir/Dialect/Bufferization/Transforms/OneShotAnalysis.h"
+#include "mlir/Dialect/Bufferization/Transforms/OneShotModuleBufferize.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -51,6 +55,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/SCF/Transforms.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
@@ -120,12 +125,11 @@ class CustomBufferizeTypeConverter
 
 struct ComputeOpAndFuncBufferizePass
     : public ComputeOpAndFuncBufferizePassBase<ComputeOpAndFuncBufferizePass> {
-  // TODO(b/173201243): Move to tablegen.
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<linalg::LinalgDialect, bufferization::BufferizationDialect,
-                    lmhlo::LmhloDialect, linalg::LinalgDialect,
-                    memref::MemRefDialect, mhlo::MhloDialect,
-                    shape::ShapeDialect, vector::VectorDialect>();
+    registry
+        .insert<bufferization::BufferizationDialect, lmhlo::LmhloDialect,
+                linalg::LinalgDialect, memref::MemRefDialect, mhlo::MhloDialect,
+                shape::ShapeDialect, vector::VectorDialect>();
     linalg::registerBufferizableOpInterfaceExternalModels(registry);
     mhlo::registerBufferizableOpInterfaceExternalModels(registry);
     shape::registerBufferizableOpInterfaceExternalModels(registry);
@@ -139,11 +143,12 @@ struct ComputeOpAndFuncBufferizePass
         bufferization::getPartialBufferizationOptions();
     // TODO(springerm): Add dialects to this filter as more and more dialects
     // will be migrated to BufferizableOpInterface-based bufferization.
-    options.allowDialectInFilter<linalg::LinalgDialect, mhlo::MhloDialect,
-                                 shape::ShapeDialect, tensor::TensorDialect,
-                                 vector::VectorDialect>();
+    options.opFilter.allowDialect<bufferization::BufferizationDialect,
+                                  linalg::LinalgDialect, mhlo::MhloDialect,
+                                  shape::ShapeDialect, tensor::TensorDialect,
+                                  vector::VectorDialect>();
     // Ops inside TiledLoopOps have special handling.
-    options.denyOperationInFilter([](Operation* op) {
+    options.opFilter.denyOperation([](Operation* op) {
       return mlir::isa<gml_st::LoopOp>(op->getParentOp());
     });
 
@@ -209,18 +214,55 @@ struct ComputeOpAndFuncBufferizePass
   }
 };
 
+struct OneShotBufferizePass
+    : public OneShotBufferizeBase<OneShotBufferizePass> {
+  // TODO(b/173201243): Move to tablegen.
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry
+        .insert<bufferization::BufferizationDialect, lmhlo::LmhloDialect,
+                linalg::LinalgDialect, memref::MemRefDialect, mhlo::MhloDialect,
+                scf::SCFDialect, shape::ShapeDialect, vector::VectorDialect>();
+    arith::registerBufferizableOpInterfaceExternalModels(registry);
+    bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(
+        registry);
+    gml_st::registerBufferizableOpInterfaceExternalModels(registry);
+    linalg::registerBufferizableOpInterfaceExternalModels(registry);
+    mhlo::registerBufferizableOpInterfaceExternalModels(registry);
+    scf::registerBufferizableOpInterfaceExternalModels(registry);
+    shape::registerBufferizableOpInterfaceExternalModels(registry);
+    tensor::registerBufferizableOpInterfaceExternalModels(registry);
+    vector::registerBufferizableOpInterfaceExternalModels(registry);
+  }
+
+  void runOnOperation() override {
+    bufferization::OneShotBufferizationOptions opts;
+    opts.allowReturnAllocs = true;
+    opts.dropEquivalentFuncResults = false;
+    opts.bufferizeFunctionBoundaries = true;
+    opts.functionBoundaryTypeConversion =
+        bufferization::BufferizationOptions::LayoutMapOption::IdentityLayoutMap;
+    opts.createDeallocs = false;
+    opts.bufferAlignment = 64;
+
+    ModuleOp module = getOperation();
+    if (failed(bufferization::runOneShotModuleBufferize(module, opts))) {
+      signalPassFailure();
+    }
+  }
+};
+
 struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
  private:
   BufferizeDialectsCallback dialects_callback;
   BufferizePatternsCallback patterns_callback;
 
  public:
-  // TODO(b/173201243): Move to tablegen.
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<AffineDialect, linalg::LinalgDialect, memref::MemRefDialect,
-                    scf::SCFDialect, shape::ShapeDialect, tensor::TensorDialect,
-                    lmhlo::LmhloDialect, arith::ArithmeticDialect,
-                    vector::VectorDialect>();
+    registry
+        .insert<AffineDialect, bufferization::BufferizationDialect,
+                linalg::LinalgDialect, memref::MemRefDialect, scf::SCFDialect,
+                shape::ShapeDialect, tensor::TensorDialect, lmhlo::LmhloDialect,
+                arith::ArithmeticDialect, vector::VectorDialect>();
     arith::registerBufferizableOpInterfaceExternalModels(registry);
     linalg::registerBufferizableOpInterfaceExternalModels(registry);
     shape::registerBufferizableOpInterfaceExternalModels(registry);
@@ -247,9 +289,10 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     options.bufferAlignment = alignment_;
     // TODO(springerm): Add dialects to this filter as more and more dialects
     // will be migrated to BufferizableOpInterface-based bufferization.
-    options.allowDialectInFilter<
-        arith::ArithmeticDialect, linalg::LinalgDialect, func::FuncDialect,
-        shape::ShapeDialect, tensor::TensorDialect, vector::VectorDialect>();
+    options.opFilter.allowDialect<
+        arith::ArithmeticDialect, bufferization::BufferizationDialect,
+        linalg::LinalgDialect, func::FuncDialect, shape::ShapeDialect,
+        tensor::TensorDialect, vector::VectorDialect>();
     if (failed(bufferization::bufferizeOp(getOperation(), options))) {
       signalPassFailure();
       return;
@@ -301,6 +344,12 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
 };
 
 }  // namespace
+
+namespace hlo {
+std::unique_ptr<OperationPass<ModuleOp>> CreateOneShotBufferizePass() {
+  return std::make_unique<OneShotBufferizePass>();
+}
+}  // namespace hlo
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateComputeOpAndFuncBufferizePass() {
   return std::make_unique<ComputeOpAndFuncBufferizePass>();

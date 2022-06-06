@@ -20,7 +20,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
-#include "llvm/Support/Debug.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -30,14 +29,11 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/convert_attributes.h"
-#include "tensorflow/core/ir/importexport/convert_tensor.h"
 #include "tensorflow/core/ir/importexport/convert_types.h"
-#include "tensorflow/core/ir/importexport/import.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
+#include "tensorflow/core/platform/statusor.h"
 
 using tensorflow::AttrValue;
 using tensorflow::FunctionDef;
@@ -45,6 +41,7 @@ using tensorflow::NodeDef;
 using tensorflow::OpDef;
 using tensorflow::OpDef_AttrDef;
 using tensorflow::Status;
+using tensorflow::StatusOr;
 using tensorflow::errors::InvalidArgument;
 using tensorflow::protobuf::RepeatedPtrField;
 
@@ -86,7 +83,7 @@ class ValueMapManager {
     }
     base_operation.push_back(op->getResult(1));
     base_operation.push_back(op->getResult(0));
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   Value GetValueOrCreatePlaceholder(StringRef full_name) {
@@ -171,9 +168,12 @@ Status ImportNodes(ValueMapManager value_manager,
     if (node.op().empty()) return InvalidArgument("empty op type");
     OperationState state(unknown_loc, absl::StrCat("tfg.", node.op()));
     // Fetch the inputs, creating placeholder if an input hasn't been visited.
-    for (const std::string& input : node.input())
+    for (const std::string& input : node.input()) {
+      if (input.empty())
+        return InvalidArgument("Node '", node.name(), "' has an empty input");
       state.operands.push_back(
           value_manager.GetValueOrCreatePlaceholder(input));
+    }
     // Retrieve the entry in the nodes_map for this node and infer the result
     // count from what was inferred during the first traversal above.
     state.types.push_back(placeholder_ty);
@@ -215,7 +215,7 @@ Status ImportNodes(ValueMapManager value_manager,
           op.getAttrOfType<StringAttr>(name_attr).getValue().str()));
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::StatusOr<NamedAttrList> ConvertArgDefAttributes(
@@ -279,7 +279,7 @@ Status ImportGenericFunction(
   if (signature.is_stateful())
     attrs.append("is_stateful", builder.getUnitAttr());
   if (signature.control_output_size()) {
-    llvm::SmallVector<Attribute> control_outputs;
+    SmallVector<Attribute> control_outputs;
     for (const std::string& output : signature.control_output())
       control_outputs.push_back(builder.getStringAttr(output));
     attrs.append("control_output", builder.getArrayAttr(control_outputs));
@@ -338,6 +338,8 @@ Status ImportGenericFunction(
   // Import the function attributes with a `tf.` prefix to match the current
   // infrastructure expectations.
   for (const auto& namedAttr : func.attr()) {
+    if (namedAttr.first.empty())
+      return InvalidArgument("Invalid function attribute name");
     const std::string& name = "tf." + namedAttr.first;
     const AttrValue& tf_attr = namedAttr.second;
     TF_ASSIGN_OR_RETURN(Attribute attr,
@@ -352,10 +354,10 @@ Status ImportGenericFunction(
   // We populate the `arg_names` vector with the name of each input at each
   // position, and `arg_types` with the matching type.
   int arg_num = 0;
-  llvm::SmallVector<StringRef> arg_names;
-  llvm::SmallVector<Type> arg_types;
-  llvm::SmallVector<Attribute> args_attrs;
-  llvm::SmallVector<Attribute> res_attrs;
+  SmallVector<StringRef> arg_names;
+  SmallVector<Type> arg_types;
+  SmallVector<Attribute> args_attrs;
+  SmallVector<Attribute> res_attrs;
   for (const auto& enumerated_input : llvm::enumerate(signature.input_arg())) {
     const OpDef::ArgDef& input = enumerated_input.value();
     TF_ASSIGN_OR_RETURN(NamedAttrList input_attrs,
@@ -464,21 +466,31 @@ Status ImportGenericFunction(
                               Value());
   for (const auto& ret_val : func.ret()) {
     auto position = output_name_to_position.find(ret_val.first);
-    if (position == output_name_to_position.end())
+    if (position == output_name_to_position.end()) {
       return InvalidArgument(
           "Can't import function, returned value references unknown output "
           "argument ",
           ret_val.first);
+    }
+    if (ret_val.second.empty()) {
+      return InvalidArgument("Function '", func.signature().name(),
+                             "' has empty result name");
+    }
     ret_vals[position->second] =
         value_manager.GetValueOrCreatePlaceholder(ret_val.second);
   }
   for (const auto& ret_val : func.control_ret()) {
     auto position = control_output_to_position.find(ret_val.first);
-    if (position == control_output_to_position.end())
+    if (position == control_output_to_position.end()) {
       return InvalidArgument(
           "Can't import function, returned value references unknown output "
           "argument ",
           ret_val.first);
+    }
+    if (ret_val.second.empty()) {
+      return InvalidArgument("Function '", func.signature().name(),
+                             "' has empty control result name");
+    }
     Value result = value_manager.GetValueOrCreatePlaceholder(
         (Twine("^") + ret_val.second).str());
     if (!result.getType().isa<ControlType>())
@@ -511,7 +523,7 @@ Status ImportGenericFunction(
                      arg_types_with_ctl, ret_op.getOperandTypes())));
   }
   func_op->setAttrs(attrs);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace

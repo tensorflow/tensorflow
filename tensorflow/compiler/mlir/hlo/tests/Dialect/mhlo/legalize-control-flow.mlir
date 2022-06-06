@@ -254,7 +254,7 @@ func.func @sort(%arg0 : tensor<2xi32>, %arg1 : tensor<2xi32>) -> (tensor<2xi32>,
       %cmp_result = tensor.from_elements %52 : tensor<i1>
       "mhlo.return"(%cmp_result) : (tensor<i1>) -> ()
     }) {dimension = 0 : i64, is_stable = true} : (tensor<2xi32>, tensor<2xi32>) -> (tensor<2xi32>, tensor<2xi32>)
-  return %result#0, %result#1 : tensor<2xi32>, tensor<2xi32>
+  func.return %result#0, %result#1 : tensor<2xi32>, tensor<2xi32>
 }
 
 // CHECK-LABEL:   func @sort(
@@ -275,13 +275,13 @@ func.func @sort(%arg0 : tensor<2xi32>, %arg1 : tensor<2xi32>) -> (tensor<2xi32>,
 // CHECK:             %[[VAL_14:.*]]:2 = scf.for %[[VAL_15:.*]] = %[[C0_2]] to %[[VAL_13]] step %[[C1_1]] iter_args(%[[VAL_16:.*]] = %[[VAL_8]], %[[VAL_17:.*]] = %[[VAL_9]]) -> (tensor<2xi32>, tensor<2xi32>) {
 // CHECK:               %[[VAL_18:.*]] = arith.addi %[[VAL_15]], %[[C1_1]] : index
 // Extract each value twice because we are comparing both directions and haven't run CSE yet
-// CHECK:               %[[VAL_19:.*]] = tensor.extract %[[VAL_8]]{{\[}}%[[VAL_15]]] : tensor<2xi32>
+// CHECK:               %[[VAL_19:.*]] = tensor.extract %[[VAL_16]]{{\[}}%[[VAL_15]]] : tensor<2xi32>
 // CHECK:               %[[VAL_20:.*]] = tensor.from_elements %[[VAL_19]] : tensor<i32>
-// CHECK:               %[[VAL_21:.*]] = tensor.extract %[[VAL_8]]{{\[}}%[[VAL_18]]] : tensor<2xi32>
+// CHECK:               %[[VAL_21:.*]] = tensor.extract %[[VAL_16]]{{\[}}%[[VAL_18]]] : tensor<2xi32>
 // CHECK:               %[[VAL_22:.*]] = tensor.from_elements %[[VAL_21]] : tensor<i32>
-// CHECK:               %[[VAL_23:.*]] = tensor.extract %[[VAL_9]]{{\[}}%[[VAL_15]]] : tensor<2xi32>
+// CHECK:               %[[VAL_23:.*]] = tensor.extract %[[VAL_17]]{{\[}}%[[VAL_15]]] : tensor<2xi32>
 // CHECK:               %[[VAL_24:.*]] = tensor.from_elements %[[VAL_23]] : tensor<i32>
-// CHECK:               %[[VAL_25:.*]] = tensor.extract %[[VAL_9]]{{\[}}%[[VAL_18]]] : tensor<2xi32>
+// CHECK:               %[[VAL_25:.*]] = tensor.extract %[[VAL_17]]{{\[}}%[[VAL_18]]] : tensor<2xi32>
 // CHECK:               %[[VAL_26:.*]] = tensor.from_elements %[[VAL_25]] : tensor<i32>
 // CHECK:               %[[VAL_27:.*]] = tensor.extract %[[VAL_22]][] : tensor<i32>
 // CHECK:               %[[VAL_28:.*]] = tensor.extract %[[VAL_20]][] : tensor<i32>
@@ -302,12 +302,12 @@ func.func @sort(%arg0 : tensor<2xi32>, %arg1 : tensor<2xi32>) -> (tensor<2xi32>,
 // CHECK:                 %[[VAL_41:.*]] = arith.addi %[[VAL_15]], %[[C1_1]] : index
 // Swap first pair of values
 // CHECK:                 %[[VAL_42:.*]] = tensor.extract %[[VAL_22]][] : tensor<i32>
-// CHECK:                 %[[VAL_43:.*]] = tensor.insert %[[VAL_42]] into %[[VAL_8]]{{\[}}%[[VAL_15]]] : tensor<2xi32>
+// CHECK:                 %[[VAL_43:.*]] = tensor.insert %[[VAL_42]] into %[[VAL_16]]{{\[}}%[[VAL_15]]] : tensor<2xi32>
 // CHECK:                 %[[VAL_44:.*]] = tensor.extract %[[VAL_20]][] : tensor<i32>
 // CHECK:                 %[[VAL_45:.*]] = tensor.insert %[[VAL_44]] into %[[VAL_43]]{{\[}}%[[VAL_41]]] : tensor<2xi32>
 // Swap second pair of values
 // CHECK:                 %[[VAL_46:.*]] = tensor.extract %[[VAL_26]][] : tensor<i32>
-// CHECK:                 %[[VAL_47:.*]] = tensor.insert %[[VAL_46]] into %[[VAL_9]]{{\[}}%[[VAL_15]]] : tensor<2xi32>
+// CHECK:                 %[[VAL_47:.*]] = tensor.insert %[[VAL_46]] into %[[VAL_17]]{{\[}}%[[VAL_15]]] : tensor<2xi32>
 // CHECK:                 %[[VAL_48:.*]] = tensor.extract %[[VAL_24]][] : tensor<i32>
 // CHECK:                 %[[VAL_49:.*]] = tensor.insert %[[VAL_48]] into %[[VAL_47]]{{\[}}%[[VAL_41]]] : tensor<2xi32>
 // CHECK:                 scf.yield %[[VAL_45]], %[[VAL_49]] : tensor<2xi32>, tensor<2xi32>
@@ -332,7 +332,7 @@ func.func @dyn_sort(%arg0 : tensor<?xi32>, %arg1 : tensor<?xi32>) -> (tensor<?xi
       %cmp_result = tensor.from_elements %52 : tensor<i1>
       "mhlo.return"(%cmp_result) : (tensor<i1>) -> ()
     }) {dimension = 0 : i64, is_stable = true} : (tensor<?xi32>, tensor<?xi32>) -> (tensor<?xi32>, tensor<?xi32>)
-  return %result#0, %result#1 : tensor<?xi32>, tensor<?xi32>
+  func.return %result#0, %result#1 : tensor<?xi32>, tensor<?xi32>
 }
 // CHECK-LABEL:   func @dyn_sort(
 // CHECK-SAME:               %[[ARG0:.*]]: tensor<?xi32>,
@@ -353,13 +353,13 @@ func.func @dyn_sort(%arg0 : tensor<?xi32>, %arg1 : tensor<?xi32>) -> (tensor<?xi
 // CHECK:             %[[VAL_14:.*]]:2 = scf.for %[[VAL_15:.*]] = %[[C0_2]] to %[[VAL_13]] step %[[C1_1]] iter_args(%[[VAL_16:.*]] = %[[VAL_8]], %[[VAL_17:.*]] = %[[VAL_9]]) -> (tensor<?xi32>, tensor<?xi32>) {
 // CHECK:               %[[VAL_18:.*]] = arith.addi %[[VAL_15]], %[[C1_1]] : index
 // Extract each value twice because we are comparing both directions and haven't run CSE yet
-// CHECK:               %[[VAL_19:.*]] = tensor.extract %[[VAL_8]]{{\[}}%[[VAL_15]]] : tensor<?xi32>
+// CHECK:               %[[VAL_19:.*]] = tensor.extract %[[VAL_16]]{{\[}}%[[VAL_15]]] : tensor<?xi32>
 // CHECK:               %[[VAL_20:.*]] = tensor.from_elements %[[VAL_19]] : tensor<i32>
-// CHECK:               %[[VAL_21:.*]] = tensor.extract %[[VAL_8]]{{\[}}%[[VAL_18]]] : tensor<?xi32>
+// CHECK:               %[[VAL_21:.*]] = tensor.extract %[[VAL_16]]{{\[}}%[[VAL_18]]] : tensor<?xi32>
 // CHECK:               %[[VAL_22:.*]] = tensor.from_elements %[[VAL_21]] : tensor<i32>
-// CHECK:               %[[VAL_23:.*]] = tensor.extract %[[VAL_9]]{{\[}}%[[VAL_15]]] : tensor<?xi32>
+// CHECK:               %[[VAL_23:.*]] = tensor.extract %[[VAL_17]]{{\[}}%[[VAL_15]]] : tensor<?xi32>
 // CHECK:               %[[VAL_24:.*]] = tensor.from_elements %[[VAL_23]] : tensor<i32>
-// CHECK:               %[[VAL_25:.*]] = tensor.extract %[[VAL_9]]{{\[}}%[[VAL_18]]] : tensor<?xi32>
+// CHECK:               %[[VAL_25:.*]] = tensor.extract %[[VAL_17]]{{\[}}%[[VAL_18]]] : tensor<?xi32>
 // CHECK:               %[[VAL_26:.*]] = tensor.from_elements %[[VAL_25]] : tensor<i32>
 // CHECK:               %[[VAL_27:.*]] = tensor.extract %[[VAL_22]][] : tensor<i32>
 // CHECK:               %[[VAL_28:.*]] = tensor.extract %[[VAL_20]][] : tensor<i32>
@@ -380,12 +380,12 @@ func.func @dyn_sort(%arg0 : tensor<?xi32>, %arg1 : tensor<?xi32>) -> (tensor<?xi
 // CHECK:                 %[[VAL_41:.*]] = arith.addi %[[VAL_15]], %[[C1_1]] : index
 // Swap first pair of values
 // CHECK:                 %[[VAL_42:.*]] = tensor.extract %[[VAL_22]][] : tensor<i32>
-// CHECK:                 %[[VAL_43:.*]] = tensor.insert %[[VAL_42]] into %[[VAL_8]]{{\[}}%[[VAL_15]]] : tensor<?xi32>
+// CHECK:                 %[[VAL_43:.*]] = tensor.insert %[[VAL_42]] into %[[VAL_16]]{{\[}}%[[VAL_15]]] : tensor<?xi32>
 // CHECK:                 %[[VAL_44:.*]] = tensor.extract %[[VAL_20]][] : tensor<i32>
 // CHECK:                 %[[VAL_45:.*]] = tensor.insert %[[VAL_44]] into %[[VAL_43]]{{\[}}%[[VAL_41]]] : tensor<?xi32>
 // Swap second pair of values
 // CHECK:                 %[[VAL_46:.*]] = tensor.extract %[[VAL_26]][] : tensor<i32>
-// CHECK:                 %[[VAL_47:.*]] = tensor.insert %[[VAL_46]] into %[[VAL_9]]{{\[}}%[[VAL_15]]] : tensor<?xi32>
+// CHECK:                 %[[VAL_47:.*]] = tensor.insert %[[VAL_46]] into %[[VAL_17]]{{\[}}%[[VAL_15]]] : tensor<?xi32>
 // CHECK:                 %[[VAL_48:.*]] = tensor.extract %[[VAL_24]][] : tensor<i32>
 // CHECK:                 %[[VAL_49:.*]] = tensor.insert %[[VAL_48]] into %[[VAL_47]]{{\[}}%[[VAL_41]]] : tensor<?xi32>
 // CHECK:                 scf.yield %[[VAL_45]], %[[VAL_49]] : tensor<?xi32>, tensor<?xi32>

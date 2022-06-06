@@ -135,8 +135,8 @@ LogicalResult DeviceTarget::DecomposeMultiplyAccumulateScale(
   auto max = rop->getAttrOfType<FloatAttr>("max");
   output_ranges->push_back(quant::CalculateQuantizedRange(
       o_spec.getScale(), o_spec.getZeroPoint(),
-      (min ? absl::optional<double>(min.getValueAsDouble()) : absl::nullopt),
-      (max ? absl::optional<double>(max.getValueAsDouble()) : absl::nullopt),
+      (min ? std::optional<double>(min.getValueAsDouble()) : std::nullopt),
+      (max ? std::optional<double>(max.getValueAsDouble()) : std::nullopt),
       o_spec.getStorageTypeMin(), o_spec.getStorageTypeMax()));
 
   return success();
@@ -170,8 +170,8 @@ LogicalResult DeviceTarget::DecomposeSameScale(
   auto max = rop->getAttrOfType<FloatAttr>("max");
   output_ranges->push_back(quant::CalculateQuantizedRange(
       o_spec.getScale(), o_spec.getZeroPoint(),
-      (min ? absl::optional<double>(min.getValueAsDouble()) : absl::nullopt),
-      (max ? absl::optional<double>(max.getValueAsDouble()) : absl::nullopt),
+      (min ? std::optional<double>(min.getValueAsDouble()) : std::nullopt),
+      (max ? std::optional<double>(max.getValueAsDouble()) : std::nullopt),
       o_spec.getStorageTypeMin(), o_spec.getStorageTypeMax()));
 
   return success();

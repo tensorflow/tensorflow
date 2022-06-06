@@ -23,13 +23,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.pb.h"
-#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
@@ -41,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
@@ -52,6 +49,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+constexpr absl::Duration kDevicePropagationTimeout = absl::Hours(1);
 constexpr int kDefaultHeartbeatTimeoutMs = 10 * 1000;  // 10 seconds
 constexpr int kServiceToClientTimeoutMs = 10 * 1000;   // 10 seconds
 constexpr size_t kOngoingBarriersSoftLimit = 20;
@@ -130,9 +128,11 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   Status ReportTaskError(const CoordinatedTask& task, Status error) override;
   Status InsertKeyValue(const std::string& key,
                         const std::string& value) override;
-  StatusOr<std::string> GetKeyValue(const std::string& key) override;
   void GetKeyValueAsync(const std::string& key,
                         StatusOrValueCallback done) override;
+  StatusOr<std::string> TryGetKeyValue(const std::string& key) override;
+  std::vector<KeyValueEntry> GetKeyValueDir(
+      absl::string_view directory_key) override;
   Status DeleteKeyValue(const std::string& key) override;
   void BarrierAsync(const std::string& barrier_id, absl::Duration timeout,
                     const CoordinatedTask& task,
@@ -191,16 +191,13 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     //   DISCONNECTED -------> CONNECTED --------> ERROR (timeout)
     //                              |   ReportError
     //                              +--------------> ERROR
-    //                              |    Register
-    //                              ---------------> RESTARTED
     //
-    // When task state becomes ERROR or RESTARTED, propagate this status to
-    // other CONNECTED tasks in the cluster.
+    // When task state becomes ERROR, propagate this status to other CONNECTED
+    // tasks in the cluster.
     enum class State {
       DISCONNECTED,
       CONNECTED,
       ERROR,
-      RESTARTED,
     };
 
     State GetState() { return state_; }
@@ -214,6 +211,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     // the service recording the state change and the agent stopping heartbeats.
     uint64_t GetDisconnectedGracePeriodMicros();
     void SetError(Status status);
+    bool GetDeviceInfoCollected() { return device_info_collected_; }
+    void MarkDeviceInfoCollected() { device_info_collected_ = true; }
     absl::flat_hash_set<std::string> GetOngoingBarriers();
     void JoinBarrier(absl::string_view barrier_id);
     void ExitBarrier(absl::string_view barrier_id);
@@ -230,6 +229,9 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     // disconnected task. This grace period accounts for the lag time between
     // the service recording the state change and the agent stopping heartbeats.
     uint64_t disconnect_grace_period_us_ = 0;
+    // Checks if task has called WaitForAllTasks() previously, which gathers the
+    // local device info.
+    bool device_info_collected_ = false;
     // For now, we assume there won't be many simultaneous barriers so we simply
     // use a set.
     absl::flat_hash_set<std::string> ongoing_barriers_for_task_;
@@ -275,7 +277,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
 void CoordinationServiceStandaloneImpl::TaskState::SetConnected(
     uint64_t task_incarnation) {
   state_ = State::CONNECTED;
-  status_ = Status::OK();
+  status_ = OkStatus();
   task_incarnation_ = task_incarnation;
   mutex_lock l(last_heartbeat_mu_);
   last_heartbeat_us_ = Env::Default()->NowMicros();
@@ -286,7 +288,7 @@ void CoordinationServiceStandaloneImpl::TaskState::Disconnect(
   disconnect_grace_period_us_ =
       Env::Default()->NowMicros() + grace_period_duration_us;
   state_ = State::DISCONNECTED;
-  status_ = Status::OK();
+  status_ = OkStatus();
 }
 
 void CoordinationServiceStandaloneImpl::TaskState::SetError(
@@ -306,7 +308,7 @@ Status CoordinationServiceStandaloneImpl::TaskState::RecordHeartbeat(
   }
   mutex_lock l(last_heartbeat_mu_);
   last_heartbeat_us_ = Env::Default()->NowMicros();
-  return Status::OK();
+  return OkStatus();
 }
 
 int64_t
@@ -389,28 +391,25 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
             }
           }
           // Heartbeat check.
-          Status status = Status::OK();
+          Status status = OkStatus();
           {
             mutex_lock l(state_mu_);
-            for (const auto& task_state : cluster_state_) {
+            for (const auto& [task_name, task_state] : cluster_state_) {
               // Skip tasks that are not registered or in error state
-              if (task_state.second->GetState() !=
-                  TaskState::State::CONNECTED) {
+              if (task_state->GetState() != TaskState::State::CONNECTED) {
                 continue;
               }
-              const bool is_stale =
-                  task_state.second->TimeSinceLastHeartbeatMs() >
-                  heartbeat_timeout_ms_;
-              VLOG(1) << "Checking staleness for " << task_state.first
+              const bool is_stale = task_state->TimeSinceLastHeartbeatMs() >
+                                    heartbeat_timeout_ms_;
+              VLOG(1) << "Checking staleness for " << task_name
                       << " stale?=" << is_stale;
               if (is_stale) {
-                absl::string_view stale_task_name = task_state.first;
-                stale_task_names.push_back(stale_task_name);
+                stale_task_names.push_back(task_name);
                 status = MakeCoordinationError(errors::Unavailable(
-                    "Task ", stale_task_name,
+                    "Task ", task_name,
                     " heartbeat timeout. This indicates that the remote task "
                     "has failed, got preempted, or crashed unexpectedly."));
-                SetTaskError(stale_task_name, status);
+                SetTaskError(task_name, status);
               }
             }
           }
@@ -446,10 +445,7 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
               }
             }
             // Pass these barriers with the time out error.
-            for (const std::pair<const std::string, BarrierState*>& barrier_kv :
-                 expired_barriers) {
-              absl::string_view barrier_id = barrier_kv.first;
-              BarrierState* barrier = barrier_kv.second;
+            for (const auto& [barrier_id, barrier] : expired_barriers) {
               const Status error =
                   MakeCoordinationError(errors::DeadlineExceeded(absl::StrCat(
                       "Barrier timed out. Barrier_id: ", barrier_id)));
@@ -476,19 +472,25 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
 void CoordinationServiceStandaloneImpl::Stop(bool shut_staleness_thread) {
   {
     mutex_lock l(kv_mu_);
+    for (const auto& [key, get_kv_callbacks] : get_cb_) {
+      for (const auto& get_kv_callback : get_kv_callbacks) {
+        get_kv_callback(errors::Cancelled(
+            absl::StrCat("Coordination service is shutting down. Cancelling "
+                         "GetKeyValue() for key: ",
+                         key)));
+      }
+    }
     get_cb_.clear();
   }
   {
     mutex_lock l(state_mu_);
     cluster_state_.clear();
-    for (auto& barrier_state : barriers_) {
-      absl::string_view barrier_id = barrier_state.first;
-      auto* barrier = &barrier_state.second;
-      if (!barrier->passed) {
+    for (auto& [barrier_id, barrier] : barriers_) {
+      if (!barrier.passed) {
         Status error = MakeCoordinationError(errors::Aborted(absl::StrCat(
             "Barrier failed because service is shutting down. Barrier_id: ",
             barrier_id)));
-        PassBarrier(barrier_id, error, barrier);
+        PassBarrier(barrier_id, error, &barrier);
       }
     }
     barriers_.clear();
@@ -515,22 +517,23 @@ Status CoordinationServiceStandaloneImpl::RegisterTask(
       // be propagated to other tasks.
       return MakeCoordinationError(errors::InvalidArgument(
           "Unexpected task registered with task_name=", task_name));
-    } else if (cluster_state_[task_name]->GetState() ==
-               TaskState::State::CONNECTED) {
-      Status s = MakeCoordinationError(
-          errors::Aborted("Duplicate task registration with task_name=",
-                          task_name),
-          task);
-      status = s;
-      SetTaskError(task_name, status);
-    } else {
-      // Hit this path when the task is registering itself for the first time,
-      // or it's already in ERROR state and now register again. In both cases,
-      // the service allows it to be registered.
+    }
+    if (cluster_state_[task_name]->GetState() ==
+        TaskState::State::DISCONNECTED) {
+      // This task is currently disconnected (registering for the first time or
+      // has called ResetTask() previously).
       cluster_state_[task_name]->SetConnected(incarnation);
       LOG(INFO) << task_name
                 << " has connected to coordination service. Incarnation: "
                 << incarnation;
+    } else {
+      // This task is connected or already in error, which implies it has
+      // registered previously.
+      status = MakeCoordinationError(
+          errors::Aborted("Duplicate task registration with task_name=",
+                          task_name),
+          task);
+      SetTaskError(task_name, status);
     }
   }
   if (!status.ok()) {
@@ -544,9 +547,16 @@ void CoordinationServiceStandaloneImpl::WaitForAllTasks(
     StatusCallback done) {
   {
     mutex_lock l(state_mu_);
-    cluster_devices_.MergeFrom(devices);
+    const auto& task_state = cluster_state_.find(GetTaskName(task));
+    // Add task device info to global device state for the first time that task
+    // has called WaitForAllTasks().
+    if (task_state != cluster_state_.end() &&
+        !task_state->second->GetDeviceInfoCollected()) {
+      cluster_devices_.MergeFrom(devices);
+      task_state->second->MarkDeviceInfoCollected();
+    }
   }
-  BarrierAsync(device_propagation_barrier_id_, absl::InfiniteDuration(), task,
+  BarrierAsync(device_propagation_barrier_id_, kDevicePropagationTimeout, task,
                {}, std::move(done));
 }
 
@@ -598,7 +608,7 @@ Status CoordinationServiceStandaloneImpl::DisconnectTask(
   }
 
   LOG(INFO) << task_name << " has disconnected from coordination service.";
-  return Status::OK();
+  return OkStatus();
 }
 
 const CoordinationServiceDeviceInfo&
@@ -627,13 +637,13 @@ Status CoordinationServiceStandaloneImpl::ReportTaskError(
     }
   }
   PropagateError(task, /*is_reported_by_task=*/true);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
     const CoordinatedTask& task, uint64_t incarnation) {
   const std::string& task_name = GetTaskName(task);
-  Status s = Status::OK();
+  Status s = OkStatus();
   {
     mutex_lock l(state_mu_);
     if (!cluster_state_.contains(task_name)) {
@@ -717,7 +727,7 @@ void CoordinationServiceStandaloneImpl::PropagateError(
   payload->set_is_reported_error(is_reported_by_task);
   CallOptions call_opts;
   call_opts.SetTimeout(kServiceToClientTimeoutMs);
-  std::vector<std::shared_ptr<Notification>> notifications;
+  std::vector<std::shared_ptr<absl::Notification>> notifications;
 
   std::vector<absl::string_view> task_names;
   {
@@ -746,7 +756,7 @@ void CoordinationServiceStandaloneImpl::PropagateError(
     }
     CoordinationClient* client = client_cache_->GetClient(std::string(task));
     auto response = std::make_shared<ReportErrorToTaskResponse>();
-    auto n = std::make_shared<Notification>();
+    auto n = std::make_shared<absl::Notification>();
     client->ReportErrorToTaskAsync(
         &call_opts, &request, response.get(), [response, n, task](Status s) {
           if (!s.ok()) {
@@ -806,19 +816,7 @@ Status CoordinationServiceStandaloneImpl::InsertKeyValue(
     }
     get_cb_.erase(iter);
   }
-  return Status::OK();
-}
-
-StatusOr<std::string> CoordinationServiceStandaloneImpl::GetKeyValue(
-    const std::string& key) {
-  absl::Notification n;
-  StatusOr<std::string> result;
-  GetKeyValueAsync(key, [&](const StatusOr<std::string>& status_or_value) {
-    result = status_or_value;
-    n.Notify();
-  });
-  n.WaitForNotification();
-  return result;
+  return OkStatus();
 }
 
 void CoordinationServiceStandaloneImpl::GetKeyValueAsync(
@@ -836,6 +834,44 @@ void CoordinationServiceStandaloneImpl::GetKeyValueAsync(
         get_cb_.emplace(norm_key, std::vector<StatusOrValueCallback>()).first;
   }
   cb_iter->second.emplace_back(std::move(done));
+}
+
+StatusOr<std::string> CoordinationServiceStandaloneImpl::TryGetKeyValue(
+    const std::string& key) {
+  const std::string& norm_key = NormalizeKey(key);
+  mutex_lock l(kv_mu_);
+  const auto& iter = kv_store_.find(norm_key);
+  if (iter == kv_store_.end()) {
+    return errors::NotFound("Config key ", key, " not found.");
+  }
+  return iter->second;
+}
+
+std::vector<KeyValueEntry> CoordinationServiceStandaloneImpl::GetKeyValueDir(
+    absl::string_view directory_key) {
+  std::vector<KeyValueEntry> kvs_in_directory;
+  const std::string norm_key = NormalizeKey(directory_key);
+  const std::string dir = absl::StrCat(norm_key, "/");
+
+  mutex_lock l(kv_mu_);
+  // Find first key in ordered map that has the directory prefix.
+  auto begin = kv_store_.lower_bound(dir);
+  std::map<std::string, std::string>::iterator it;
+  // Iterate through key range that match directory prefix.
+  for (it = begin; it != kv_store_.end(); ++it) {
+    // Stop once the next key does not have the directory prefix. Since keys are
+    // ordered, none of the other keys would have a matching prefix.
+    if (std::mismatch(dir.begin(), dir.end(), it->first.begin()).first !=
+        dir.end()) {
+      break;
+    }
+    KeyValueEntry kv;
+    kv.set_key(it->first);
+    kv.set_value(it->second);
+    kvs_in_directory.push_back(kv);
+  }
+
+  return kvs_in_directory;
 }
 
 Status CoordinationServiceStandaloneImpl::DeleteKeyValue(
@@ -856,7 +892,7 @@ Status CoordinationServiceStandaloneImpl::DeleteKeyValue(
   if (iter != kv_store_.end()) {
     kv_store_.erase(iter);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void CoordinationServiceStandaloneImpl::SetTaskError(
@@ -870,7 +906,8 @@ void CoordinationServiceStandaloneImpl::SetTaskError(
     PassBarrier(barrier_id, error, &barriers_[barrier_id]);
   }
 
-  LOG(ERROR) << task_name << " has been set to ERROR: " << error;
+  LOG(ERROR) << task_name
+             << " has been set to ERROR in coordination service: " << error;
 }
 
 void CoordinationServiceStandaloneImpl::BarrierAsync(
@@ -990,7 +1027,7 @@ void CoordinationServiceStandaloneImpl::BarrierAsync(
     --barrier->num_pending_tasks;
 
     if (barrier->num_pending_tasks == 0) {
-      PassBarrier(barrier_id, Status::OK(), barrier);
+      PassBarrier(barrier_id, OkStatus(), barrier);
       return;
     }
   }
@@ -999,13 +1036,13 @@ void CoordinationServiceStandaloneImpl::BarrierAsync(
 Status CoordinationServiceStandaloneImpl::CancelBarrier(
     const std::string& barrier_id, const CoordinatedTask& task) {
   mutex_lock l(state_mu_);
-  auto it = barriers_.find(barrier_id);
-  // Barrier not found.
-  if (it == barriers_.end()) {
-    return MakeCoordinationError(errors::NotFound(
-        absl::StrCat("Barrier not found. Barrier Id: ", barrier_id)));
-  }
+  auto [it, inserted] = barriers_.try_emplace(barrier_id);
   auto* barrier = &it->second;
+  if (inserted) {
+    LOG(WARNING) << "Barrier (" << barrier_id
+                 << ") is cancelled before being created by task: "
+                 << GetTaskName(task);
+  }
   // Barrier has already been passed.
   if (barrier->passed) {
     return MakeCoordinationError(errors::FailedPrecondition(absl::StrCat(
@@ -1018,7 +1055,7 @@ Status CoordinationServiceStandaloneImpl::CancelBarrier(
       "Barrier (", barrier_id, ") is cancelled by task: ", GetTaskName(task))));
   PassBarrier(barrier_id, cancelled, barrier);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Mark barrier as passed.
@@ -1039,9 +1076,10 @@ void CoordinationServiceStandaloneImpl::PassBarrier(
   // Special hook for shutdown barrier to disconnect tasks at the barrier.
   if (barrier_id == shutdown_barrier_id_) {
     if (result.ok()) {
-      LOG(INFO) << "Shutdown barrier has passed.";
+      LOG(INFO) << "Shutdown barrier in coordination service has passed.";
     } else {
-      LOG(ERROR) << "Shutdown barrier failed: " << result
+      LOG(ERROR) << "Shutdown barrier in coordination service has failed: "
+                 << result
                  << ". This suggests that at least one worker did not complete "
                     "its job, or was too slow/hanging in its execution.";
     }
@@ -1049,10 +1087,7 @@ void CoordinationServiceStandaloneImpl::PassBarrier(
         absl::StrCat("Shutdown barrier has been passed with status: '",
                      barrier->result.ToString(),
                      "', but this task is not at the barrier yet.")));
-    for (const std::pair<const CoordinatedTask, bool>& task_at_barrier :
-         barrier->tasks_at_barrier) {
-      const CoordinatedTask& task = task_at_barrier.first;
-      bool at_barrier = task_at_barrier.second;
+    for (const auto& [task, at_barrier] : barrier->tasks_at_barrier) {
       if (at_barrier) {
         // Disconnect tasks that reached the barrier.
         Status disconnect_status = DisconnectTask(task);

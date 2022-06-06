@@ -75,6 +75,14 @@ class SquareLinearOperatorBlockDiagTest(
     self._rtol[dtypes.complex64] = 1e-4
 
   @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    return [
+        "operator_matmul_with_same_type",
+        "operator_solve_with_same_type",
+    ]
+
+  @staticmethod
   def operator_shapes_infos():
     shape_info = linear_operator_test_util.OperatorShapesInfo
     return [

@@ -9,6 +9,7 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl_ml",
 )
+load("@com_github_grpc_grpc//bazel:generate_cc.bzl", "generate_cc")
 
 def well_known_proto_libs():
     """Set of standard protobuf protos, like Any and Timestamp.
@@ -279,6 +280,74 @@ def cc_proto_library(
         **kwargs
     )
 
+# Re-defined protocol buffer rule to allow setting service namespace.
+def cc_grpc_library(
+        name,
+        srcs,
+        deps,
+        well_known_protos = False,
+        generate_mocks = False,
+        service_namespace = "grpc",
+        **kwargs):
+    """Generates C++ grpc classes for services defined in a proto file.
+
+    This rule is compatible with proto_library and
+    cc_proto_library native rules such that it expects proto_library target
+    as srcs argument and generates only grpc library classes, expecting
+    protobuf messages classes library (cc_proto_library target) to be passed in
+    deps argument.
+    Assumes the generated classes will be used in cc_api_version = 2.
+    Args:
+        name (str): Name of rule.
+        srcs (list): A single .proto file which contains services definitions,
+          or if grpc_only parameter is True, a single proto_library which
+          contains services descriptors.
+        deps (list): A list of C++ proto_library (or cc_proto_library) which
+          provides the compiled code of any message that the services depend on.
+        well_known_protos (bool): Should this library additionally depend on
+          well known protos. Deprecated, the well known protos should be
+          specified as explicit dependencies of the proto_library target
+          (passed in srcs parameter) instead. False by default.
+        generate_mocks (bool): when True, Google Mock code for client stub is
+          generated. False by default.
+        service_namespace (str): Service namespace.
+        **kwargs: rest of arguments, e.g., compatible_with and visibility
+    """
+    if len(srcs) > 1:
+        fail("Only one srcs value supported", "srcs")
+
+    extra_deps = []
+    proto_targets = []
+
+    if not srcs:
+        fail("srcs cannot be empty", "srcs")
+    proto_targets += srcs
+
+    extra_deps += select({
+        clean_dep("//tensorflow:linux_s390x"): ["//external:grpc_lib_unsecure"],
+        "//conditions:default": ["//external:grpc_lib"],
+    })
+
+    codegen_grpc_target = "_" + name + "_grpc_codegen"
+    generate_cc(
+        name = codegen_grpc_target,
+        srcs = proto_targets,
+        plugin = "//external:grpc_cpp_plugin",
+        well_known_protos = well_known_protos,
+        generate_mocks = generate_mocks,
+        flags = ["services_namespace=" + service_namespace],
+        **kwargs
+    )
+
+    native.cc_library(
+        name = name,
+        srcs = [":" + codegen_grpc_target],
+        hdrs = [":" + codegen_grpc_target],
+        deps = deps +
+               extra_deps,
+        **kwargs
+    )
+
 # Re-defined protocol buffer rule to bring in the change introduced in commit
 # https://github.com/google/protobuf/commit/294b5758c373cbab4b72f35f4cb62dc1d8332b68
 # which was not part of a stable protobuf release in 04/2018.
@@ -520,10 +589,14 @@ def tf_proto_library(
         js_codegen,
         create_service,
         create_java_proto,
-        create_grpc_library,
         cc_stubby_versions,
         create_go_proto,
     )
+
+    if name.endswith("_proto"):
+        name_sans_proto = name[:-6]
+    else:
+        name_sans_proto = name
 
     native.proto_library(
         name = name,
@@ -546,6 +619,16 @@ def tf_proto_library(
         protodeps = protodeps,
         visibility = visibility,
     )
+
+    if create_grpc_library:
+        cc_grpc_library(
+            name = name_sans_proto + "_cc_grpc_proto",
+            srcs = [name],
+            generate_mocks = True,
+            deps = [name + "_cc"],
+            visibility = visibility,
+            testonly = testonly,
+        )
 
     tf_proto_library_py(
         name = name,
@@ -791,3 +874,6 @@ def tf_tpu_dependencies():
 
 def tf_dtensor_tpu_dependencies():
     return if_libtpu(["//tensorflow/dtensor/cc:dtensor_tpu_kernels"])
+
+def tf_cuda_libdevice_path_deps():
+    return tf_platform_deps("cuda_libdevice_path")

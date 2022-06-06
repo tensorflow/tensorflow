@@ -399,7 +399,7 @@ Status TensorShapeOld::IsValidShape(const TensorShapeProto& proto) {
                                      " entries)");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 TensorShapeOld::TensorShapeOld(const TensorShapeProto& proto) {

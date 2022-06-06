@@ -68,10 +68,11 @@ tf_py_test(
 
 tf_py_test(
     name = "cache_test",
-    size = "small",
+    size = "medium",
     srcs = ["cache_test.py"],
     tags = [
-        "notap",  # b/231165995
+        "noasan",  # TODO(b/231479582): re-enable after flakiness resolved.
+        "notap",  # TODO(b/231479582): re-enable after flakiness resolved.
         "notsan",  # TODO(b/206452257): re-enable after flakiness resolved.
     ],
     deps = [
@@ -147,7 +148,7 @@ py_library(
 
 tf_py_test(
     name = "concatenate_test",
-    size = "small",
+    size = "medium",
     srcs = ["concatenate_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -178,7 +179,7 @@ tf_py_test(
 
 tf_py_test(
     name = "dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["dataset_test.py"],
     deps = [
         ":test_base",
@@ -234,7 +235,7 @@ tf_py_test(
 
 tf_py_test(
     name = "fixed_length_record_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["fixed_length_record_dataset_test.py"],
     shard_count = 4,
     deps = [
@@ -330,7 +331,7 @@ tf_py_test(
 
 tf_py_test(
     name = "from_tensor_slices_test",
-    size = "small",
+    size = "medium",
     srcs = ["from_tensor_slices_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -539,7 +540,7 @@ tf_py_test(
 
 tf_py_test(
     name = "map_test",
-    size = "small",
+    size = "medium",
     srcs = ["map_test.py"],
     shard_count = 19,
     deps = [
@@ -575,7 +576,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "memory_cleanup_test",
-    size = "small",
+    size = "medium",
     srcs = ["memory_cleanup_test.py"],
     shard_count = 12,
     tags = [
@@ -661,7 +662,7 @@ tf_py_test(
 
 tf_py_test(
     name = "padded_batch_test",
-    size = "small",
+    size = "medium",
     srcs = ["padded_batch_test.py"],
     shard_count = 2,
     deps = [
@@ -706,6 +707,9 @@ tf_py_test(
     name = "prefetch_test",
     size = "small",
     srcs = ["prefetch_test.py"],
+    tags = [
+        "noasan",  # TODO(b/231979296)
+    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -734,7 +738,7 @@ tf_py_test(
 
 tf_py_test(
     name = "range_test",
-    size = "small",
+    size = "medium",
     srcs = ["range_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -808,7 +812,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "scan_test",
-    size = "small",
+    size = "medium",
     srcs = ["scan_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -886,7 +890,7 @@ tf_py_test(
 
 tf_py_test(
     name = "snapshot_test",
-    size = "small",
+    size = "medium",
     srcs = ["snapshot_test.py"],
     shard_count = 16,
     tags = [
@@ -1037,7 +1041,7 @@ py_library(
 
 tf_py_test(
     name = "unbatch_test",
-    size = "small",
+    size = "medium",
     srcs = ["unbatch_test.py"],
     deps = [
         ":checkpoint_test_base",
