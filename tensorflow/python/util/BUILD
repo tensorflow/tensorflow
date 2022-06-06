@@ -712,3 +712,18 @@ tf_py_test(
         "//tensorflow/python:platform",
     ],
 )
+
+tf_py_test(
+    name = "variable_utils_test",
+    srcs = ["variable_utils_test.py"],
+    deps = [
+        ":util",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:test",
+    ],
+)
