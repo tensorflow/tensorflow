@@ -314,14 +314,14 @@ __device__ T ReduceBlockAlongCols(ReduceOp reduce_op, const T& value,
 // size (as long as it spans at least the maximum value in indices). This also
 // applies to the weights vector.
 template <typename Treducevec, typename Tvec, typename Tindex,
-          typename Tsegmentids, typename ReduceOp, typename Tinit,
-          typename Tweight>
+          typename Tindices, typename Tsegmentids, typename ReduceOp,
+          typename Tinit, typename Tweight>
 __global__ void SegmentReduceVectorKernel(
     Tindex nouter, Tindex ninner_vec, Tsegmentids nsegments, ReduceOp reduce_op,
     Tinit initial_value, Tinit empty_segment_value, bool is_mean, bool is_sqrtn,
     const Tvec* __restrict__ input_vec,          // [nouter or any, ninner_vec]
     const Tindex* __restrict__ segment_offsets,  // [nsegments + 1]
-    const Tindex* __restrict__ indices,          // [nouter] (optional)
+    const Tindices* __restrict__ indices,        // [nouter] (optional)
     const Tweight* __restrict__ weights,         // [nouter or any] (optional)
     Tvec* __restrict__ output_vec) {             // [nsegments, ninner_vec]
   const int num_blocks_x = (ninner_vec - 1) / blockDim.x + 1;
@@ -385,15 +385,15 @@ __global__ void SegmentReduceVectorKernel(
 // input[indices[i]], instead of input[i].
 // Note: Treducevec is to allow reducing in higher precision than Tvec.
 template <typename Treducevec, typename Tvec, typename Tindex,
-          typename Tsegmentids, typename ReduceOp, typename Tinit,
-          typename Tweight>
+          typename Tindices, typename Tsegmentids, typename ReduceOp,
+          typename Tinit, typename Tweight>
 Status LaunchSegmentReduceVectorKernel(
     const GPUDevice& d, Tindex nouter, Tindex ninner_vec, Tsegmentids nsegments,
     ReduceOp reduce_op, Tinit initial_value, Tinit empty_segment_value,
     bool is_mean, bool is_sqrtn,
     const Tvec* input_vec,          // [nouter or any, ninner_vec]
     const Tindex* segment_offsets,  // [nsegments + 1]
-    const Tindex* indices,          // [nouter] (optional)
+    const Tindices* indices,        // [nouter] (optional)
     const Tweight* weights,         // [nouter or any] (optional)
     Tvec* output_vec) {             // [nsegments, ninner_vec]
   static constexpr const int kMaxGridX = (1u << 31) - 1;
@@ -419,8 +419,8 @@ Status LaunchSegmentReduceVectorKernel(
             std::min(nsegments, static_cast<Tsegmentids>(kMaxGridY)));
   unsigned shared_memory_bytes = block.x * block.y * sizeof(Treducevec);
   return GpuLaunchKernel(
-      SegmentReduceVectorKernel<Treducevec, Tvec, Tindex, Tsegmentids, ReduceOp,
-                                Tinit, Tweight>,
+      SegmentReduceVectorKernel<Treducevec, Tvec, Tindex, Tindices, Tsegmentids,
+                                ReduceOp, Tinit, Tweight>,
       grid, block, shared_memory_bytes, d.stream(), nouter, ninner_vec,
       nsegments, reduce_op, initial_value, empty_segment_value, is_mean,
       is_sqrtn, input_vec, segment_offsets, indices, weights, output_vec);
@@ -483,13 +483,15 @@ struct CastFunctor {
   }
 };
 
-template <typename Treducevec, typename Tvec, typename Tindex, typename Tweight>
+template <typename Treducevec, typename Tvec, typename Tindices,
+          typename Tweight>
 struct LookupAndScaleAndCastInputsFunctor {
   LookupAndScaleAndCastInputsFunctor(const Tvec* input_vec,
-                                     const Tindex* indices,
+                                     const Tindices* indices,
                                      const Tweight* weights)
       : input_vec_(input_vec), indices_(indices), weights_(weights) {}
 
+  template <typename Tindex>
   __device__ Treducevec operator()(Tindex idx) const {
     if (indices_) idx = indices_[idx];
     Treducevec result = static_cast<Treducevec>(input_vec_[idx]);
@@ -499,40 +501,43 @@ struct LookupAndScaleAndCastInputsFunctor {
 
  private:
   const Tvec* __restrict__ input_vec_;
-  const Tindex* __restrict__ indices_;
+  const Tindices* __restrict__ indices_;
   const Tweight* __restrict__ weights_;
 };
 
-template <typename Treducevec, typename Tvec, typename Tindex, typename Tweight>
+template <typename Treducevec, typename Tvec, typename Tindex,
+          typename Tindices, typename Tweight>
 struct CastIterator {
   using FunctorTy =
-      LookupAndScaleAndCastInputsFunctor<Treducevec, Tvec, Tindex, Tweight>;
+      LookupAndScaleAndCastInputsFunctor<Treducevec, Tvec, Tindices, Tweight>;
   using InputIteratorTy = gpuprim::CountingInputIterator<Tindex>;
   using IteratorTy =
       gpuprim::TransformInputIterator<Treducevec, FunctorTy, InputIteratorTy>;
 };
 
-template <typename Treducevec, typename Tvec, typename Tindex, typename Tweight>
-typename CastIterator<Treducevec, Tvec, Tindex, Tweight>::IteratorTy
+template <typename Treducevec, typename Tindex, typename Tvec,
+          typename Tindices, typename Tweight>
+typename CastIterator<Treducevec, Tvec, Tindex, Tindices, Tweight>::IteratorTy
 MakeLookupAndScaleAndCastInputsIterator(const Tvec* input_vec,
-                                        const Tindex* indices,
+                                        const Tindices* indices,
                                         const Tweight* weights) {
-  using CastIteratorTy = CastIterator<Treducevec, Tvec, Tindex, Tweight>;
+  using CastIteratorTy =
+      CastIterator<Treducevec, Tvec, Tindex, Tindices, Tweight>;
   typename CastIteratorTy::FunctorTy functor(input_vec, indices, weights);
   return typename CastIteratorTy::IteratorTy(
       typename CastIteratorTy::InputIteratorTy(Tindex(0)), functor);
 }
 
 template <typename Treducevec, typename Tvec, typename Tindex,
-          typename Tsegmentids, typename ReduceOp, typename Tinit,
-          typename Tweight>
+          typename Tindices, typename Tsegmentids, typename ReduceOp,
+          typename Tinit, typename Tweight>
 Status SegmentReduceGPUImplNoInnerDim(
     OpKernelContext* ctx, Tindex nouter, Tsegmentids nsegments,
     ReduceOp reduce_op, Tinit initial_value, Tinit empty_segment_value,
     bool is_mean, bool is_sqrtn,
     const Tvec* input_vec,          // [nouter or any]
     const Tindex* segment_offsets,  // [nsegments + 1]
-    const Tindex* indices,          // [nouter] (optional)
+    const Tindices* indices,        // [nouter] (optional)
     const Tweight* weights,         // [nouter or any] (optional)
     Tvec* output_vec) {             // [nsegments]
   // Here we use gpuprim::DeviceSegmentedReduce (which is optimized for this
@@ -554,7 +559,7 @@ Status SegmentReduceGPUImplNoInnerDim(
     output_raw_ptr =
         reinterpret_cast<Treducevec*>(output_raw.flat<int8>().data());
   }
-  auto input_iter = MakeLookupAndScaleAndCastInputsIterator<Treducevec>(
+  auto input_iter = MakeLookupAndScaleAndCastInputsIterator<Treducevec, Tindex>(
       input_vec, indices, weights);
   TF_RETURN_IF_ERROR(GpuSegmentedReduce(ctx, nsegments, reduce_op,
                                         Treducevec(initial_value), input_iter,
@@ -573,15 +578,15 @@ Status SegmentReduceGPUImplNoInnerDim(
 }
 
 template <typename Treducevec, typename Tvec, typename Tindex,
-          typename Tsegmentids, typename ReduceOp, typename Tinit,
-          typename Tweight>
+          typename Tindices, typename Tsegmentids, typename ReduceOp,
+          typename Tinit, typename Tweight>
 Status SegmentReduceGPUImpl(
     OpKernelContext* ctx, Tindex nouter, Tindex ninner_vec,
     Tsegmentids nsegments, ReduceOp reduce_op, Tinit initial_value,
     Tinit empty_segment_value, bool is_mean, bool is_sqrtn,
     const Tvec* input_vec,           // [nouter or any, ninner_vec]
     const Tsegmentids* segment_ids,  // [nouter]
-    const Tindex* indices,           // [nouter] (optional)
+    const Tindices* indices,         // [nouter] (optional)
     const Tweight* weights,          // [nouter or any] (optional)
     Tvec* output_vec) {              // [nsegments, ninner_vec]
   const GPUDevice& device = ctx->eigen_gpu_device();
@@ -629,13 +634,13 @@ template <typename Treduce>
 struct SegmentReduceGPUVectorized {
   template <int vec_size>
   struct Impl {
-    template <typename T, typename Tindex, typename Tsegmentids,
-              typename ReduceOp, typename Tweight>
+    template <typename T, typename Tindex, typename Tindices,
+              typename Tsegmentids, typename ReduceOp, typename Tweight>
     Status operator()(OpKernelContext* ctx, Tindex nouter, Tindex ninner,
                       Tsegmentids nsegments, ReduceOp reduce_op,
                       T initial_value, T empty_segment_value, bool is_mean,
                       bool is_sqrtn, const T* input,
-                      const Tsegmentids* segment_ids, const Tindex* indices,
+                      const Tsegmentids* segment_ids, const Tindices* indices,
                       const Tweight* weights, T* output) {
       DCHECK_EQ(ninner % vec_size, 0);
       DCHECK_EQ(reinterpret_cast<std::uintptr_t>(input) % vec_size, 0);
@@ -663,15 +668,15 @@ struct SegmentReduceGPUVectorized {
 // input[indices[i]], instead of input[i].
 // The implementation is deterministic.
 // Note: Treduce is to allow reducing in higher precision than T.
-template <typename Treduce, typename T, typename Tindex, typename Tsegmentids,
-          typename ReduceOp, typename Tweight>
+template <typename Treduce, typename T, typename Tindex, typename Tindices,
+          typename Tsegmentids, typename ReduceOp, typename Tweight>
 Status SegmentReduceGPU(OpKernelContext* ctx, Tindex nouter, Tindex ninner,
                         Tsegmentids nsegments, ReduceOp reduce_op,
                         T initial_value, T empty_segment_value, bool is_mean,
                         bool is_sqrtn,
                         const T* input,  // [nouter or any, ninner]
                         const Tsegmentids* segment_ids,  // [nouter]
-                        const Tindex* indices,           // [nouter] (optional)
+                        const Tindices* indices,         // [nouter] (optional)
                         const Tweight* weights,  // [nouter or any] (optional)
                         T* output) {             // [nsegments, ninner]
   if (ninner == 0 || nsegments == 0) return OkStatus();
