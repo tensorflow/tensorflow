@@ -1116,9 +1116,18 @@ AlgebraicSimplifierVisitor::ComputeBitcastDimMap(const Shape& bitcast_shape,
     }
     CHECK_LT(bitcast_dim, bitcast_shape.dimensions_size());
     int64_t bitcast_dim_size = bitcast_shape.dimensions()[bitcast_dim];
+    auto prev_bitcast_size = cur_bitcast_size;
     cur_bitcast_size *= bitcast_dim_size;
     VLOG(2) << "bitcast pos = " << bitcast_pos << "\n";
     VLOG(2) << "bitcast size = " << cur_bitcast_size << "\n";
+    if (cur_operand_size < cur_bitcast_size &&
+        prev_bitcast_size < cur_operand_size) {
+      // Here we are bitcasting (m1,n1) to (m2,n2), with m1 > m2 and m2 * n2
+      // < m1, so (m1,n1) is re-partitioned instead of split or combined.
+      VLOG(3) << "Abort b/c re-partitioning a group of dimensions is not "
+                 "supported. \n";
+      return std::nullopt;
+    }
     while (operand_pos < operand_rank) {
       if (operand_pos < 0 || cur_operand_size < cur_bitcast_size) {
         VLOG(2) << "operand size < bitcase size\n";
@@ -1273,6 +1282,7 @@ bool AlgebraicSimplifierVisitor::SwapCopyBitcastCopy(
   // Compute a pair of maps between op dimensions and bitcast dimensions.
   auto dim_map = ComputeBitcastDimMap(bitcast->shape(), copy->shape());
   if (!dim_map.has_value()) {
+    VLOG(3) << "Failed to compute bitcast map.";
     return false;
   }
   std::vector<std::vector<int64_t>> operand_map = dim_map.value();

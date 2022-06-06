@@ -8408,5 +8408,42 @@ TEST_F(AlgebraicSimplifierTest, CopyBitcastCopy2) {
   AlgebraicSimplifier simplifier(options);
   ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
 }
+
+TEST_F(AlgebraicSimplifierTest, CopyReshapeCopy3) {
+  const char* kModuleStr = R"(
+   HloModule m
+
+  ENTRY main {
+  p = f32[2,3]{0,1} parameter(0)
+  copy = f32[2,3]{1,0} copy(p)
+  reshape = f32[3,2]{1,0} bitcast(copy)
+  ROOT copy.1 = f32[3,2]{0,1} copy(reshape)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
+  VLOG(3) << "Module " << m->ToString();
+}
+
+TEST_F(AlgebraicSimplifierTest, CopyReshapeCopy4) {
+  const char* kModuleStr = R"(
+   HloModule m
+
+  ENTRY main {
+    p = f32[6,2,3]{0,1,2} parameter(0)
+    copy.0 = f32[6,2,3]{0,2,1} copy(p)
+    reshape = f32[2,3,6]{1,0,2} bitcast(copy.0)
+    ROOT copy.1 = f32[2,3,6]{0,1,2} copy(reshape)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
+  VLOG(3) << "Module " << m->ToString();
+}
+
 }  // namespace
 }  // namespace xla
