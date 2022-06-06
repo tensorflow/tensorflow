@@ -144,7 +144,8 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("dimension_numbers"), py::arg("feature_group_count") = 1,
           py::arg("batch_group_count") = 1,
           py::arg("precision_config") = nullptr,
-          py::arg("preferred_element_type") = absl::nullopt);
+          py::arg("preferred_element_type") = std::nullopt,
+          py::arg("window_reversal") = std::nullopt);
   ops.def("ConvertElementType", &ConvertElementType, py::arg("operand"),
           py::arg("new_element_type"));
   ops.def("CreateToken", &CreateToken, py::arg("builder"));
