@@ -849,9 +849,9 @@ def central_crop(image, central_fraction):
 
   Remove the outer parts of an image but retain the central region of the image
   along each dimension. If we specify `central_fraction = 0.5`, this function
-  returns the region marked with "X" in the below diagram. Larger the value of 
-  `central_fraction`, larger the dimension of the region to be cropped and 
-  retained.
+  returns the region marked with "X" in the below diagram. The larger the value
+  of `central_fraction`, the larger the dimension of the region to be cropped
+  and retained.
 
        --------
       |        |
@@ -1194,7 +1194,7 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
   Raises:
     ValueError: `image` is not a 3-D or 4-D `Tensor`.
     ValueError: `offset_width < 0` or `offset_height < 0`.
-    ValueError: `target_width <= 0` or `target_width <= 0`.
+    ValueError: `target_width <= 0` or `target_height <= 0`.
     ValueError: `width < offset_width + target_width` or
       `height < offset_height + target_height`.
   """
