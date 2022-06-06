@@ -1229,6 +1229,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kConvolution: {
       llvm::SmallVector<int64_t, 4> strides, lhs_dilations, rhs_dilations;
+      llvm::SmallVector<bool, 4> reversals;
       llvm::SmallVector<int64_t, 8> paddings;
       for (const auto& dim : instruction->window().dimensions()) {
         strides.push_back(dim.stride());
@@ -1236,6 +1237,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         rhs_dilations.push_back(dim.window_dilation());
         paddings.push_back(dim.padding_low());
         paddings.push_back(dim.padding_high());
+        reversals.push_back(dim.window_reversal());
       }
 
       attributes.push_back(
@@ -1245,6 +1247,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           builder_->getNamedAttr("lhs_dilation", Convert(lhs_dilations)));
       attributes.push_back(
           builder_->getNamedAttr("rhs_dilation", Convert(rhs_dilations)));
+      attributes.push_back(
+          builder_->getNamedAttr("window_reversal", Convert(reversals)));
       attributes.push_back(builder_->getNamedAttr(
           "dimension_numbers",
           ConvertConvDimensionNumbers(
@@ -1577,6 +1581,12 @@ mlir::DenseIntElementsAttr HloFunctionImporter::Convert(
   return DenseIntElementsAttr::get(
       RankedTensorType::get(elements.size(), builder_->getIntegerType(64)),
       elements);
+}
+
+mlir::DenseIntElementsAttr HloFunctionImporter::Convert(
+    llvm::ArrayRef<bool> elements) {
+  return DenseIntElementsAttr::get(
+      RankedTensorType::get(elements.size(), builder_->getI1Type()), elements);
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertPadding(
