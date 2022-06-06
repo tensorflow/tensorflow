@@ -1,0 +1,4361 @@
+# proto-file: third_party/tensorflow/compiler/tf2xla/support.proto
+# proto-message: OpSupports
+support {
+  graph_op_name: "Abort"
+}
+support {
+  graph_op_name: "Abs"
+}
+support {
+  graph_op_name: "AccumulateNV2"
+}
+support {
+  graph_op_name: "AccumulatorApplyGradient"
+}
+support {
+  graph_op_name: "AccumulatorNumAccumulated"
+}
+support {
+  graph_op_name: "AccumulatorSetGlobalStep"
+}
+support {
+  graph_op_name: "AccumulatorTakeGradient"
+}
+support {
+  graph_op_name: "Acos"
+}
+support {
+  graph_op_name: "Acosh"
+}
+support {
+  graph_op_name: "Add"
+}
+support {
+  graph_op_name: "AddManySparseToTensorsMap"
+}
+support {
+  graph_op_name: "AddN"
+}
+support {
+  graph_op_name: "AddSparseToTensorsMap"
+}
+support {
+  graph_op_name: "AddV2"
+}
+support {
+  graph_op_name: "AdjustContrast"
+}
+support {
+  graph_op_name: "AdjustContrastv2"
+}
+support {
+  graph_op_name: "AdjustHue"
+}
+support {
+  graph_op_name: "AdjustSaturation"
+}
+support {
+  graph_op_name: "All"
+}
+support {
+  graph_op_name: "AllCandidateSampler"
+}
+support {
+  graph_op_name: "AllToAll"
+}
+support {
+  graph_op_name: "Angle"
+}
+support {
+  graph_op_name: "AnonymousHashTable"
+}
+support {
+  graph_op_name: "AnonymousIterator"
+}
+support {
+  graph_op_name: "AnonymousIteratorV2"
+}
+support {
+  graph_op_name: "AnonymousIteratorV3"
+}
+support {
+  graph_op_name: "AnonymousMemoryCache"
+}
+support {
+  graph_op_name: "AnonymousMultiDeviceIterator"
+}
+support {
+  graph_op_name: "AnonymousMultiDeviceIteratorV3"
+}
+support {
+  graph_op_name: "AnonymousMutableDenseHashTable"
+}
+support {
+  graph_op_name: "AnonymousMutableHashTable"
+}
+support {
+  graph_op_name: "AnonymousMutableHashTableOfTensors"
+}
+support {
+  graph_op_name: "AnonymousRandomSeedGenerator"
+}
+support {
+  graph_op_name: "AnonymousSeedGenerator"
+}
+support {
+  graph_op_name: "Any"
+}
+support {
+  graph_op_name: "ApplyAdaMax"
+}
+support {
+  graph_op_name: "ApplyAdadelta"
+}
+support {
+  graph_op_name: "ApplyAdagrad"
+}
+support {
+  graph_op_name: "ApplyAdagradDA"
+}
+support {
+  graph_op_name: "ApplyAdagradV2"
+}
+support {
+  graph_op_name: "ApplyAdam"
+}
+support {
+  graph_op_name: "ApplyAddSign"
+}
+support {
+  graph_op_name: "ApplyCenteredRMSProp"
+}
+support {
+  graph_op_name: "ApplyFtrl"
+}
+support {
+  graph_op_name: "ApplyFtrlV2"
+}
+support {
+  graph_op_name: "ApplyGradientDescent"
+}
+support {
+  graph_op_name: "ApplyMomentum"
+}
+support {
+  graph_op_name: "ApplyPowerSign"
+}
+support {
+  graph_op_name: "ApplyProximalAdagrad"
+}
+support {
+  graph_op_name: "ApplyProximalGradientDescent"
+}
+support {
+  graph_op_name: "ApplyRMSProp"
+}
+support {
+  graph_op_name: "ApproxTopK"
+}
+support {
+  graph_op_name: "ApproximateEqual"
+}
+support {
+  graph_op_name: "ArgMax"
+}
+support {
+  graph_op_name: "ArgMin"
+}
+support {
+  graph_op_name: "AsString"
+}
+support {
+  graph_op_name: "Asin"
+}
+support {
+  graph_op_name: "Asinh"
+}
+support {
+  graph_op_name: "Assert"
+}
+support {
+  graph_op_name: "AssertCardinalityDataset"
+}
+support {
+  graph_op_name: "AssertNextDataset"
+}
+support {
+  graph_op_name: "AssertPrevDataset"
+}
+support {
+  graph_op_name: "Assign"
+}
+support {
+  graph_op_name: "AssignAdd"
+}
+support {
+  graph_op_name: "AssignAddVariableOp"
+}
+support {
+  graph_op_name: "AssignSub"
+}
+support {
+  graph_op_name: "AssignSubVariableOp"
+}
+support {
+  graph_op_name: "AssignVariableOp"
+}
+support {
+  graph_op_name: "AssignVariableXlaConcatND"
+}
+support {
+  graph_op_name: "Atan"
+}
+support {
+  graph_op_name: "Atan2"
+}
+support {
+  graph_op_name: "Atanh"
+}
+support {
+  graph_op_name: "AudioSpectrogram"
+}
+support {
+  graph_op_name: "AudioSummary"
+}
+support {
+  graph_op_name: "AudioSummaryV2"
+}
+support {
+  graph_op_name: "AutoShardDataset"
+}
+support {
+  graph_op_name: "AvgPool"
+}
+support {
+  graph_op_name: "AvgPool3D"
+}
+support {
+  graph_op_name: "AvgPool3DGrad"
+}
+support {
+  graph_op_name: "AvgPoolGrad"
+}
+support {
+  graph_op_name: "BandedTriangularSolve"
+}
+support {
+  graph_op_name: "Barrier"
+}
+support {
+  graph_op_name: "BarrierClose"
+}
+support {
+  graph_op_name: "BarrierIncompleteSize"
+}
+support {
+  graph_op_name: "BarrierInsertMany"
+}
+support {
+  graph_op_name: "BarrierReadySize"
+}
+support {
+  graph_op_name: "BarrierTakeMany"
+}
+support {
+  graph_op_name: "Batch"
+}
+support {
+  graph_op_name: "BatchCholesky"
+}
+support {
+  graph_op_name: "BatchCholeskyGrad"
+}
+support {
+  graph_op_name: "BatchDataset"
+}
+support {
+  graph_op_name: "BatchDatasetV2"
+}
+support {
+  graph_op_name: "BatchFFT"
+}
+support {
+  graph_op_name: "BatchFFT2D"
+}
+support {
+  graph_op_name: "BatchFFT3D"
+}
+support {
+  graph_op_name: "BatchFunction"
+}
+support {
+  graph_op_name: "BatchIFFT"
+}
+support {
+  graph_op_name: "BatchIFFT2D"
+}
+support {
+  graph_op_name: "BatchIFFT3D"
+}
+support {
+  graph_op_name: "BatchMatMul"
+}
+support {
+  graph_op_name: "BatchMatMulV2"
+}
+support {
+  graph_op_name: "BatchMatMulV3"
+}
+support {
+  graph_op_name: "BatchMatrixBandPart"
+}
+support {
+  graph_op_name: "BatchMatrixDeterminant"
+}
+support {
+  graph_op_name: "BatchMatrixDiag"
+}
+support {
+  graph_op_name: "BatchMatrixDiagPart"
+}
+support {
+  graph_op_name: "BatchMatrixInverse"
+}
+support {
+  graph_op_name: "BatchMatrixSetDiag"
+}
+support {
+  graph_op_name: "BatchMatrixSolve"
+}
+support {
+  graph_op_name: "BatchMatrixSolveLs"
+}
+support {
+  graph_op_name: "BatchMatrixTriangularSolve"
+}
+support {
+  graph_op_name: "BatchNormWithGlobalNormalization"
+}
+support {
+  graph_op_name: "BatchNormWithGlobalNormalizationGrad"
+}
+support {
+  graph_op_name: "BatchSelfAdjointEig"
+}
+support {
+  graph_op_name: "BatchSelfAdjointEigV2"
+}
+support {
+  graph_op_name: "BatchSvd"
+}
+support {
+  graph_op_name: "BatchToSpace"
+}
+support {
+  graph_op_name: "BatchToSpaceND"
+}
+support {
+  graph_op_name: "BesselI0"
+}
+support {
+  graph_op_name: "BesselI0e"
+}
+support {
+  graph_op_name: "BesselI1"
+}
+support {
+  graph_op_name: "BesselI1e"
+}
+support {
+  graph_op_name: "BesselJ0"
+}
+support {
+  graph_op_name: "BesselJ1"
+}
+support {
+  graph_op_name: "BesselK0"
+}
+support {
+  graph_op_name: "BesselK0e"
+}
+support {
+  graph_op_name: "BesselK1"
+}
+support {
+  graph_op_name: "BesselK1e"
+}
+support {
+  graph_op_name: "BesselY0"
+}
+support {
+  graph_op_name: "BesselY1"
+}
+support {
+  graph_op_name: "Betainc"
+}
+support {
+  graph_op_name: "BiasAdd"
+}
+support {
+  graph_op_name: "BiasAddGrad"
+}
+support {
+  graph_op_name: "BiasAddV1"
+}
+support {
+  graph_op_name: "Bincount"
+}
+support {
+  graph_op_name: "Bitcast"
+}
+support {
+  graph_op_name: "BitwiseAnd"
+}
+support {
+  graph_op_name: "BitwiseOr"
+}
+support {
+  graph_op_name: "BitwiseXor"
+}
+support {
+  graph_op_name: "BlockLSTM"
+}
+support {
+  graph_op_name: "BlockLSTMGrad"
+}
+support {
+  graph_op_name: "BlockLSTMGradV2"
+}
+support {
+  graph_op_name: "BlockLSTMV2"
+}
+support {
+  graph_op_name: "BoostedTreesAggregateStats"
+}
+support {
+  graph_op_name: "BoostedTreesBucketize"
+}
+support {
+  graph_op_name: "BoostedTreesCalculateBestFeatureSplit"
+}
+support {
+  graph_op_name: "BoostedTreesCalculateBestFeatureSplitV2"
+}
+support {
+  graph_op_name: "BoostedTreesCalculateBestGainsPerFeature"
+}
+support {
+  graph_op_name: "BoostedTreesCenterBias"
+}
+support {
+  graph_op_name: "BoostedTreesCreateEnsemble"
+}
+support {
+  graph_op_name: "BoostedTreesCreateQuantileStreamResource"
+}
+support {
+  graph_op_name: "BoostedTreesDeserializeEnsemble"
+}
+support {
+  graph_op_name: "BoostedTreesEnsembleResourceHandleOp"
+}
+support {
+  graph_op_name: "BoostedTreesExampleDebugOutputs"
+}
+support {
+  graph_op_name: "BoostedTreesFlushQuantileSummaries"
+}
+support {
+  graph_op_name: "BoostedTreesGetEnsembleStates"
+}
+support {
+  graph_op_name: "BoostedTreesMakeQuantileSummaries"
+}
+support {
+  graph_op_name: "BoostedTreesMakeStatsSummary"
+}
+support {
+  graph_op_name: "BoostedTreesPredict"
+}
+support {
+  graph_op_name: "BoostedTreesQuantileStreamResourceAddSummaries"
+}
+support {
+  graph_op_name: "BoostedTreesQuantileStreamResourceDeserialize"
+}
+support {
+  graph_op_name: "BoostedTreesQuantileStreamResourceFlush"
+}
+support {
+  graph_op_name: "BoostedTreesQuantileStreamResourceGetBucketBoundaries"
+}
+support {
+  graph_op_name: "BoostedTreesQuantileStreamResourceHandleOp"
+}
+support {
+  graph_op_name: "BoostedTreesSerializeEnsemble"
+}
+support {
+  graph_op_name: "BoostedTreesSparseAggregateStats"
+}
+support {
+  graph_op_name: "BoostedTreesSparseCalculateBestFeatureSplit"
+}
+support {
+  graph_op_name: "BoostedTreesTrainingPredict"
+}
+support {
+  graph_op_name: "BoostedTreesUpdateEnsemble"
+}
+support {
+  graph_op_name: "BoostedTreesUpdateEnsembleV2"
+}
+support {
+  graph_op_name: "BroadcastArgs"
+}
+support {
+  graph_op_name: "BroadcastGradientArgs"
+}
+support {
+  graph_op_name: "BroadcastTo"
+}
+support {
+  graph_op_name: "Bucketize"
+}
+support {
+  graph_op_name: "BytesProducedStatsDataset"
+}
+support {
+  graph_op_name: "CSRSparseMatrixComponents"
+}
+support {
+  graph_op_name: "CSRSparseMatrixToDense"
+}
+support {
+  graph_op_name: "CSRSparseMatrixToSparseTensor"
+}
+support {
+  graph_op_name: "CSVDataset"
+}
+support {
+  graph_op_name: "CSVDatasetV2"
+}
+support {
+  graph_op_name: "CTCBeamSearchDecoder"
+}
+support {
+  graph_op_name: "CTCGreedyDecoder"
+}
+support {
+  graph_op_name: "CTCLoss"
+}
+support {
+  graph_op_name: "CTCLossV2"
+}
+support {
+  graph_op_name: "CacheDataset"
+}
+support {
+  graph_op_name: "CacheDatasetV2"
+}
+support {
+  graph_op_name: "Case"
+}
+support {
+  graph_op_name: "Cast"
+}
+support {
+  graph_op_name: "Ceil"
+}
+support {
+  graph_op_name: "CheckNumerics"
+}
+support {
+  graph_op_name: "CheckNumericsV2"
+}
+support {
+  graph_op_name: "Cholesky"
+}
+support {
+  graph_op_name: "CholeskyGrad"
+}
+support {
+  graph_op_name: "ChooseFastestBranchDataset"
+}
+support {
+  graph_op_name: "ChooseFastestDataset"
+}
+support {
+  graph_op_name: "ClipByValue"
+}
+support {
+  graph_op_name: "CloseSummaryWriter"
+}
+support {
+  graph_op_name: "CollectiveAllToAllV3"
+}
+support {
+  graph_op_name: "CollectiveAssignGroupV2"
+}
+support {
+  graph_op_name: "CollectiveBcastRecv"
+}
+support {
+  graph_op_name: "CollectiveBcastRecvV2"
+}
+support {
+  graph_op_name: "CollectiveBcastSend"
+}
+support {
+  graph_op_name: "CollectiveBcastSendV2"
+}
+support {
+  graph_op_name: "CollectiveGather"
+}
+support {
+  graph_op_name: "CollectiveGatherV2"
+}
+support {
+  graph_op_name: "CollectiveInitializeCommunicator"
+}
+support {
+  graph_op_name: "CollectivePermute"
+}
+support {
+  graph_op_name: "CollectiveReduce"
+}
+support {
+  graph_op_name: "CollectiveReduceV2"
+}
+support {
+  graph_op_name: "CollectiveReduceV3"
+}
+support {
+  graph_op_name: "CombinedNonMaxSuppression"
+}
+support {
+  graph_op_name: "Complex"
+}
+support {
+  graph_op_name: "ComplexAbs"
+}
+support {
+  graph_op_name: "CompositeTensorVariantFromComponents"
+}
+support {
+  graph_op_name: "CompositeTensorVariantToComponents"
+}
+support {
+  graph_op_name: "CompressElement"
+}
+support {
+  graph_op_name: "ComputeAccidentalHits"
+}
+support {
+  graph_op_name: "ComputeBatchSize"
+}
+support {
+  graph_op_name: "Concat"
+}
+support {
+  graph_op_name: "ConcatOffset"
+}
+support {
+  graph_op_name: "ConcatV2"
+}
+support {
+  graph_op_name: "ConcatenateDataset"
+}
+support {
+  graph_op_name: "ConditionalAccumulator"
+}
+support {
+  graph_op_name: "ConfigureAndInitializeGlobalTPU"
+}
+support {
+  graph_op_name: "ConfigureDistributedTPU"
+}
+support {
+  graph_op_name: "ConfigureTPUEmbedding"
+}
+support {
+  graph_op_name: "Conj"
+}
+support {
+  graph_op_name: "ConjugateTranspose"
+}
+support {
+  graph_op_name: "Const"
+}
+support {
+  graph_op_name: "ConsumeMutexLock"
+}
+support {
+  graph_op_name: "ControlTrigger"
+}
+support {
+  graph_op_name: "Conv2D"
+}
+support {
+  graph_op_name: "Conv2DBackpropFilter"
+}
+support {
+  graph_op_name: "Conv2DBackpropInput"
+}
+support {
+  graph_op_name: "Conv3D"
+}
+support {
+  graph_op_name: "Conv3DBackpropFilter"
+}
+support {
+  graph_op_name: "Conv3DBackpropFilterV2"
+}
+support {
+  graph_op_name: "Conv3DBackpropInput"
+}
+support {
+  graph_op_name: "Conv3DBackpropInputV2"
+}
+support {
+  graph_op_name: "Copy"
+}
+support {
+  graph_op_name: "CopyHost"
+}
+support {
+  graph_op_name: "CopyToMesh"
+}
+support {
+  graph_op_name: "Cos"
+}
+support {
+  graph_op_name: "Cosh"
+}
+support {
+  graph_op_name: "CountUpTo"
+}
+support {
+  graph_op_name: "CreateSummaryDbWriter"
+}
+support {
+  graph_op_name: "CreateSummaryFileWriter"
+}
+support {
+  graph_op_name: "CropAndResize"
+}
+support {
+  graph_op_name: "CropAndResizeGradBoxes"
+}
+support {
+  graph_op_name: "CropAndResizeGradImage"
+}
+support {
+  graph_op_name: "Cross"
+}
+support {
+  graph_op_name: "CrossReplicaSum"
+}
+support {
+  graph_op_name: "CudnnRNN"
+}
+support {
+  graph_op_name: "CudnnRNNBackprop"
+}
+support {
+  graph_op_name: "CudnnRNNBackpropV2"
+}
+support {
+  graph_op_name: "CudnnRNNBackpropV3"
+}
+support {
+  graph_op_name: "CudnnRNNCanonicalToParams"
+}
+support {
+  graph_op_name: "CudnnRNNCanonicalToParamsV2"
+}
+support {
+  graph_op_name: "CudnnRNNParamsSize"
+}
+support {
+  graph_op_name: "CudnnRNNParamsToCanonical"
+}
+support {
+  graph_op_name: "CudnnRNNParamsToCanonicalV2"
+}
+support {
+  graph_op_name: "CudnnRNNV2"
+}
+support {
+  graph_op_name: "CudnnRNNV3"
+}
+support {
+  graph_op_name: "Cumprod"
+}
+support {
+  graph_op_name: "Cumsum"
+}
+support {
+  graph_op_name: "CumulativeLogsumexp"
+}
+support {
+  graph_op_name: "DTensorRestoreV2"
+}
+support {
+  graph_op_name: "DTensorShardedPrefix"
+}
+support {
+  graph_op_name: "DataFormatDimMap"
+}
+support {
+  graph_op_name: "DataFormatVecPermute"
+}
+support {
+  graph_op_name: "DataServiceDataset"
+}
+support {
+  graph_op_name: "DataServiceDatasetV2"
+}
+support {
+  graph_op_name: "DataServiceDatasetV3"
+}
+support {
+  graph_op_name: "DatasetCardinality"
+}
+support {
+  graph_op_name: "DatasetFromGraph"
+}
+support {
+  graph_op_name: "DatasetToGraph"
+}
+support {
+  graph_op_name: "DatasetToGraphV2"
+}
+support {
+  graph_op_name: "DatasetToSingleElement"
+}
+support {
+  graph_op_name: "DatasetToTFRecord"
+}
+support {
+  graph_op_name: "Dawsn"
+}
+support {
+  graph_op_name: "DebugGradientIdentity"
+}
+support {
+  graph_op_name: "DebugGradientRefIdentity"
+}
+support {
+  graph_op_name: "DebugIdentity"
+}
+support {
+  graph_op_name: "DebugIdentityV2"
+}
+support {
+  graph_op_name: "DebugNanCount"
+}
+support {
+  graph_op_name: "DebugNumericSummary"
+}
+support {
+  graph_op_name: "DebugNumericSummaryV2"
+}
+support {
+  graph_op_name: "DecodeAndCropJpeg"
+}
+support {
+  graph_op_name: "DecodeBase64"
+}
+support {
+  graph_op_name: "DecodeBmp"
+}
+support {
+  graph_op_name: "DecodeCSV"
+}
+support {
+  graph_op_name: "DecodeCompressed"
+}
+support {
+  graph_op_name: "DecodeGif"
+}
+support {
+  graph_op_name: "DecodeImage"
+}
+support {
+  graph_op_name: "DecodeJSONExample"
+}
+support {
+  graph_op_name: "DecodeJpeg"
+}
+support {
+  graph_op_name: "DecodePaddedRaw"
+}
+support {
+  graph_op_name: "DecodePng"
+}
+support {
+  graph_op_name: "DecodeProtoV2"
+}
+support {
+  graph_op_name: "DecodeRaw"
+}
+support {
+  graph_op_name: "DecodeWav"
+}
+support {
+  graph_op_name: "DeepCopy"
+}
+support {
+  graph_op_name: "DeleteIterator"
+}
+support {
+  graph_op_name: "DeleteMemoryCache"
+}
+support {
+  graph_op_name: "DeleteMultiDeviceIterator"
+}
+support {
+  graph_op_name: "DeleteRandomSeedGenerator"
+}
+support {
+  graph_op_name: "DeleteSeedGenerator"
+}
+support {
+  graph_op_name: "DeleteSessionTensor"
+}
+support {
+  graph_op_name: "DenseBincount"
+}
+support {
+  graph_op_name: "DenseCountSparseOutput"
+}
+support {
+  graph_op_name: "DenseToCSRSparseMatrix"
+}
+support {
+  graph_op_name: "DenseToDenseSetOperation"
+}
+support {
+  graph_op_name: "DenseToSparseBatchDataset"
+}
+support {
+  graph_op_name: "DenseToSparseSetOperation"
+}
+support {
+  graph_op_name: "DepthToSpace"
+}
+support {
+  graph_op_name: "DepthwiseConv2dNative"
+}
+support {
+  graph_op_name: "DepthwiseConv2dNativeBackpropFilter"
+}
+support {
+  graph_op_name: "DepthwiseConv2dNativeBackpropInput"
+}
+support {
+  graph_op_name: "Dequantize"
+}
+support {
+  graph_op_name: "DeserializeIterator"
+}
+support {
+  graph_op_name: "DeserializeManySparse"
+}
+support {
+  graph_op_name: "DeserializeSparse"
+}
+support {
+  graph_op_name: "DestroyResourceOp"
+}
+support {
+  graph_op_name: "DestroyTemporaryVariable"
+}
+support {
+  graph_op_name: "DeviceIndex"
+}
+support {
+  graph_op_name: "Diag"
+}
+support {
+  graph_op_name: "DiagPart"
+}
+support {
+  graph_op_name: "Digamma"
+}
+support {
+  graph_op_name: "Dilation2D"
+}
+support {
+  graph_op_name: "Dilation2DBackpropFilter"
+}
+support {
+  graph_op_name: "Dilation2DBackpropInput"
+}
+support {
+  graph_op_name: "DirectedInterleaveDataset"
+}
+support {
+  graph_op_name: "DisableCopyOnRead"
+}
+support {
+  graph_op_name: "Div"
+}
+support {
+  graph_op_name: "DivNoNan"
+}
+support {
+  graph_op_name: "DrawBoundingBoxes"
+}
+support {
+  graph_op_name: "DrawBoundingBoxesV2"
+}
+support {
+  graph_op_name: "DummyIterationCounter"
+}
+support {
+  graph_op_name: "DummyMemoryCache"
+}
+support {
+  graph_op_name: "DummySeedGenerator"
+}
+support {
+  graph_op_name: "DynamicEnqueueTPUEmbeddingArbitraryTensorBatch"
+}
+support {
+  graph_op_name: "DynamicPartition"
+}
+support {
+  graph_op_name: "DynamicStitch"
+}
+support {
+  graph_op_name: "EagerPyFunc"
+}
+support {
+  graph_op_name: "EditDistance"
+}
+support {
+  graph_op_name: "Eig"
+}
+support {
+  graph_op_name: "Einsum"
+}
+support {
+  graph_op_name: "Elu"
+}
+support {
+  graph_op_name: "EluGrad"
+}
+support {
+  graph_op_name: "Empty"
+}
+support {
+  graph_op_name: "EmptyTensorList"
+}
+support {
+  graph_op_name: "EmptyTensorMap"
+}
+support {
+  graph_op_name: "EncodeBase64"
+}
+support {
+  graph_op_name: "EncodeJpeg"
+}
+support {
+  graph_op_name: "EncodeJpegVariableQuality"
+}
+support {
+  graph_op_name: "EncodePng"
+}
+support {
+  graph_op_name: "EncodeProto"
+}
+support {
+  graph_op_name: "EncodeWav"
+}
+support {
+  graph_op_name: "EnqueueTPUEmbeddingArbitraryTensorBatch"
+}
+support {
+  graph_op_name: "EnqueueTPUEmbeddingBatch"
+}
+support {
+  graph_op_name: "EnqueueTPUEmbeddingIntegerBatch"
+}
+support {
+  graph_op_name: "EnqueueTPUEmbeddingRaggedTensorBatch"
+}
+support {
+  graph_op_name: "EnqueueTPUEmbeddingSparseBatch"
+}
+support {
+  graph_op_name: "EnqueueTPUEmbeddingSparseTensorBatch"
+}
+support {
+  graph_op_name: "EnsureShape"
+}
+support {
+  graph_op_name: "Enter"
+}
+support {
+  graph_op_name: "Equal"
+}
+support {
+  graph_op_name: "Erf"
+}
+support {
+  graph_op_name: "Erfc"
+}
+support {
+  graph_op_name: "Erfinv"
+}
+support {
+  graph_op_name: "EuclideanNorm"
+}
+support {
+  graph_op_name: "Exit"
+}
+support {
+  graph_op_name: "Exp"
+}
+support {
+  graph_op_name: "ExpandDims"
+}
+support {
+  graph_op_name: "ExperimentalAssertNextDataset"
+}
+support {
+  graph_op_name: "ExperimentalAutoShardDataset"
+}
+support {
+  graph_op_name: "ExperimentalBytesProducedStatsDataset"
+}
+support {
+  graph_op_name: "ExperimentalCSVDataset"
+}
+support {
+  graph_op_name: "ExperimentalChooseFastestDataset"
+}
+support {
+  graph_op_name: "ExperimentalDatasetCardinality"
+}
+support {
+  graph_op_name: "ExperimentalDatasetToTFRecord"
+}
+support {
+  graph_op_name: "ExperimentalDenseToSparseBatchDataset"
+}
+support {
+  graph_op_name: "ExperimentalDirectedInterleaveDataset"
+}
+support {
+  graph_op_name: "ExperimentalGroupByReducerDataset"
+}
+support {
+  graph_op_name: "ExperimentalGroupByWindowDataset"
+}
+support {
+  graph_op_name: "ExperimentalIgnoreErrorsDataset"
+}
+support {
+  graph_op_name: "ExperimentalIteratorGetDevice"
+}
+support {
+  graph_op_name: "ExperimentalLMDBDataset"
+}
+support {
+  graph_op_name: "ExperimentalLatencyStatsDataset"
+}
+support {
+  graph_op_name: "ExperimentalMapAndBatchDataset"
+}
+support {
+  graph_op_name: "ExperimentalMapDataset"
+}
+support {
+  graph_op_name: "ExperimentalMatchingFilesDataset"
+}
+support {
+  graph_op_name: "ExperimentalMaxIntraOpParallelismDataset"
+}
+support {
+  graph_op_name: "ExperimentalNonSerializableDataset"
+}
+support {
+  graph_op_name: "ExperimentalParallelInterleaveDataset"
+}
+support {
+  graph_op_name: "ExperimentalParseExampleDataset"
+}
+support {
+  graph_op_name: "ExperimentalPrivateThreadPoolDataset"
+}
+support {
+  graph_op_name: "ExperimentalRandomDataset"
+}
+support {
+  graph_op_name: "ExperimentalRebatchDataset"
+}
+support {
+  graph_op_name: "ExperimentalScanDataset"
+}
+support {
+  graph_op_name: "ExperimentalSetStatsAggregatorDataset"
+}
+support {
+  graph_op_name: "ExperimentalSleepDataset"
+}
+support {
+  graph_op_name: "ExperimentalSlidingWindowDataset"
+}
+support {
+  graph_op_name: "ExperimentalSqlDataset"
+}
+support {
+  graph_op_name: "ExperimentalStatsAggregatorHandle"
+}
+support {
+  graph_op_name: "ExperimentalStatsAggregatorSummary"
+}
+support {
+  graph_op_name: "ExperimentalTakeWhileDataset"
+}
+support {
+  graph_op_name: "ExperimentalThreadPoolDataset"
+}
+support {
+  graph_op_name: "ExperimentalThreadPoolHandle"
+}
+support {
+  graph_op_name: "ExperimentalUnbatchDataset"
+}
+support {
+  graph_op_name: "ExperimentalUniqueDataset"
+}
+support {
+  graph_op_name: "Expint"
+}
+support {
+  graph_op_name: "Expm1"
+}
+support {
+  graph_op_name: "ExtractGlimpse"
+}
+support {
+  graph_op_name: "ExtractGlimpseV2"
+}
+support {
+  graph_op_name: "ExtractImagePatches"
+}
+support {
+  graph_op_name: "ExtractJpegShape"
+}
+support {
+  graph_op_name: "ExtractVolumePatches"
+}
+support {
+  graph_op_name: "FFT"
+}
+support {
+  graph_op_name: "FFT2D"
+}
+support {
+  graph_op_name: "FFT3D"
+}
+support {
+  graph_op_name: "FIFOQueue"
+}
+support {
+  graph_op_name: "FIFOQueueV2"
+}
+support {
+  graph_op_name: "Fact"
+}
+support {
+  graph_op_name: "FakeParam"
+}
+support {
+  graph_op_name: "FakeQuantWithMinMaxArgs"
+}
+support {
+  graph_op_name: "FakeQuantWithMinMaxArgsGradient"
+}
+support {
+  graph_op_name: "FakeQuantWithMinMaxVars"
+}
+support {
+  graph_op_name: "FakeQuantWithMinMaxVarsGradient"
+}
+support {
+  graph_op_name: "FakeQuantWithMinMaxVarsPerChannel"
+}
+support {
+  graph_op_name: "FakeQuantWithMinMaxVarsPerChannelGradient"
+}
+support {
+  graph_op_name: "FakeQueue"
+}
+support {
+  graph_op_name: "FileSystemSetConfiguration"
+}
+support {
+  graph_op_name: "Fill"
+}
+support {
+  graph_op_name: "FilterByLastComponentDataset"
+}
+support {
+  graph_op_name: "FilterDataset"
+}
+support {
+  graph_op_name: "FinalizeDataset"
+}
+support {
+  graph_op_name: "Fingerprint"
+}
+support {
+  graph_op_name: "FixedLengthRecordDataset"
+}
+support {
+  graph_op_name: "FixedLengthRecordDatasetV2"
+}
+support {
+  graph_op_name: "FixedLengthRecordReader"
+}
+support {
+  graph_op_name: "FixedLengthRecordReaderV2"
+}
+support {
+  graph_op_name: "FixedUnigramCandidateSampler"
+}
+support {
+  graph_op_name: "FlatMapDataset"
+}
+support {
+  graph_op_name: "Floor"
+}
+support {
+  graph_op_name: "FloorDiv"
+}
+support {
+  graph_op_name: "FloorMod"
+}
+support {
+  graph_op_name: "FlushSummaryWriter"
+}
+support {
+  graph_op_name: "For"
+}
+support {
+  graph_op_name: "FractionalAvgPool"
+}
+support {
+  graph_op_name: "FractionalAvgPoolGrad"
+}
+support {
+  graph_op_name: "FractionalMaxPool"
+}
+support {
+  graph_op_name: "FractionalMaxPoolGrad"
+}
+support {
+  graph_op_name: "FresnelCos"
+}
+support {
+  graph_op_name: "FresnelSin"
+}
+support {
+  graph_op_name: "FusedBatchNorm"
+}
+support {
+  graph_op_name: "FusedBatchNormGrad"
+}
+support {
+  graph_op_name: "FusedBatchNormGradV2"
+}
+support {
+  graph_op_name: "FusedBatchNormGradV3"
+}
+support {
+  graph_op_name: "FusedBatchNormV2"
+}
+support {
+  graph_op_name: "FusedBatchNormV3"
+}
+support {
+  graph_op_name: "FusedPadConv2D"
+}
+support {
+  graph_op_name: "FusedResizeAndPadConv2D"
+}
+support {
+  graph_op_name: "GRUBlockCell"
+}
+support {
+  graph_op_name: "GRUBlockCellGrad"
+}
+support {
+  graph_op_name: "Gather"
+}
+support {
+  graph_op_name: "GatherNd"
+}
+support {
+  graph_op_name: "GatherV2"
+}
+support {
+  graph_op_name: "GenerateBoundingBoxProposals"
+}
+support {
+  graph_op_name: "GenerateVocabRemapping"
+}
+support {
+  graph_op_name: "GeneratorDataset"
+}
+support {
+  graph_op_name: "GetElementAtIndex"
+}
+support {
+  graph_op_name: "GetOptions"
+}
+support {
+  graph_op_name: "GetSessionHandle"
+}
+support {
+  graph_op_name: "GetSessionHandleV2"
+}
+support {
+  graph_op_name: "GetSessionTensor"
+}
+support {
+  graph_op_name: "Greater"
+}
+support {
+  graph_op_name: "GreaterEqual"
+}
+support {
+  graph_op_name: "GroupByReducerDataset"
+}
+support {
+  graph_op_name: "GroupByWindowDataset"
+}
+support {
+  graph_op_name: "GuaranteeConst"
+}
+support {
+  graph_op_name: "HSVToRGB"
+}
+support {
+  graph_op_name: "HashTable"
+}
+support {
+  graph_op_name: "HashTableV2"
+}
+support {
+  graph_op_name: "HistogramFixedWidth"
+}
+support {
+  graph_op_name: "HistogramSummary"
+}
+support {
+  graph_op_name: "HostConst"
+}
+support {
+  graph_op_name: "IFFT"
+}
+support {
+  graph_op_name: "IFFT2D"
+}
+support {
+  graph_op_name: "IFFT3D"
+}
+support {
+  graph_op_name: "IRFFT"
+}
+support {
+  graph_op_name: "IRFFT2D"
+}
+support {
+  graph_op_name: "IRFFT3D"
+}
+support {
+  graph_op_name: "Identity"
+}
+support {
+  graph_op_name: "IdentityN"
+}
+support {
+  graph_op_name: "IdentityReader"
+}
+support {
+  graph_op_name: "IdentityReaderV2"
+}
+support {
+  graph_op_name: "If"
+}
+support {
+  graph_op_name: "Igamma"
+}
+support {
+  graph_op_name: "IgammaGradA"
+}
+support {
+  graph_op_name: "Igammac"
+}
+support {
+  graph_op_name: "IgnoreErrorsDataset"
+}
+support {
+  graph_op_name: "Imag"
+}
+support {
+  graph_op_name: "ImageProjectiveTransformV2"
+}
+support {
+  graph_op_name: "ImageProjectiveTransformV3"
+}
+support {
+  graph_op_name: "ImageSummary"
+}
+support {
+  graph_op_name: "ImmutableConst"
+}
+support {
+  graph_op_name: "ImportEvent"
+}
+support {
+  graph_op_name: "InTopK"
+}
+support {
+  graph_op_name: "InTopKV2"
+}
+support {
+  graph_op_name: "InfeedDequeue"
+}
+support {
+  graph_op_name: "InfeedDequeueTuple"
+}
+support {
+  graph_op_name: "InfeedEnqueue"
+}
+support {
+  graph_op_name: "InfeedEnqueuePrelinearizedBuffer"
+}
+support {
+  graph_op_name: "InfeedEnqueueTuple"
+}
+support {
+  graph_op_name: "InitializeTable"
+}
+support {
+  graph_op_name: "InitializeTableFromDataset"
+}
+support {
+  graph_op_name: "InitializeTableFromTextFile"
+}
+support {
+  graph_op_name: "InitializeTableFromTextFileV2"
+}
+support {
+  graph_op_name: "InitializeTableV2"
+}
+support {
+  graph_op_name: "InplaceAdd"
+}
+support {
+  graph_op_name: "InplaceSub"
+}
+support {
+  graph_op_name: "InplaceUpdate"
+}
+support {
+  graph_op_name: "InterleaveDataset"
+}
+support {
+  graph_op_name: "Inv"
+}
+support {
+  graph_op_name: "InvGrad"
+}
+support {
+  graph_op_name: "Invert"
+}
+support {
+  graph_op_name: "InvertPermutation"
+}
+support {
+  graph_op_name: "IsBoostedTreesEnsembleInitialized"
+}
+support {
+  graph_op_name: "IsBoostedTreesQuantileStreamResourceInitialized"
+}
+support {
+  graph_op_name: "IsFinite"
+}
+support {
+  graph_op_name: "IsInf"
+}
+support {
+  graph_op_name: "IsNan"
+}
+support {
+  graph_op_name: "IsTPUEmbeddingInitialized"
+}
+support {
+  graph_op_name: "IsVariableInitialized"
+}
+support {
+  graph_op_name: "IsotonicRegression"
+}
+support {
+  graph_op_name: "Iterator"
+}
+support {
+  graph_op_name: "IteratorFromStringHandle"
+}
+support {
+  graph_op_name: "IteratorFromStringHandleV2"
+}
+support {
+  graph_op_name: "IteratorGetDevice"
+}
+support {
+  graph_op_name: "IteratorGetNext"
+}
+support {
+  graph_op_name: "IteratorGetNextAsOptional"
+}
+support {
+  graph_op_name: "IteratorGetNextSync"
+}
+support {
+  graph_op_name: "IteratorToStringHandle"
+}
+support {
+  graph_op_name: "IteratorV2"
+}
+support {
+  graph_op_name: "KMC2ChainInitialization"
+}
+support {
+  graph_op_name: "KmeansPlusPlusInitialization"
+}
+support {
+  graph_op_name: "KthOrderStatistic"
+}
+support {
+  graph_op_name: "L2Loss"
+}
+support {
+  graph_op_name: "LMDBDataset"
+}
+support {
+  graph_op_name: "LMDBReader"
+}
+support {
+  graph_op_name: "LRN"
+}
+support {
+  graph_op_name: "LRNGrad"
+}
+support {
+  graph_op_name: "LSTMBlockCell"
+}
+support {
+  graph_op_name: "LSTMBlockCellGrad"
+}
+support {
+  graph_op_name: "LatencyStatsDataset"
+}
+support {
+  graph_op_name: "LeakyRelu"
+}
+support {
+  graph_op_name: "LeakyReluGrad"
+}
+support {
+  graph_op_name: "LearnedUnigramCandidateSampler"
+}
+support {
+  graph_op_name: "LeftShift"
+}
+support {
+  graph_op_name: "LegacyParallelInterleaveDatasetV2"
+}
+support {
+  graph_op_name: "Less"
+}
+support {
+  graph_op_name: "LessEqual"
+}
+support {
+  graph_op_name: "Lgamma"
+}
+support {
+  graph_op_name: "LinSpace"
+}
+support {
+  graph_op_name: "ListDiff"
+}
+support {
+  graph_op_name: "LoadAllTPUEmbeddingParameters"
+}
+support {
+  graph_op_name: "LoadAndRemapMatrix"
+}
+support {
+  graph_op_name: "LoadDataset"
+}
+support {
+  graph_op_name: "LoadTPUEmbeddingADAMParameters"
+}
+support {
+  graph_op_name: "LoadTPUEmbeddingAdadeltaParameters"
+}
+support {
+  graph_op_name: "LoadTPUEmbeddingAdagradMomentumParameters"
+}
+support {
+  graph_op_name: "LoadTPUEmbeddingAdagradParameters"
+}
+support {
+  graph_op_name: "LoadTPUEmbeddingCenteredRMSPropParameters"
+}
+support {
+  graph_op_name: "LoadTPUEmbeddingFTRLParameters"
+}
+support {
+  graph_op_name: "LoadTPUEmbeddingFrequencyEstimatorParameters"
+}
+support {
+  graph_op_name: "LoadTPUEmbeddingMDLAdagradLightParameters"
+}
+support {
+  graph_op_name: "LoadTPUEmbeddingMomentumParameters"
+}
+support {
+  graph_op_name: "LoadTPUEmbeddingProximalAdagradParameters"
+}
+support {
+  graph_op_name: "LoadTPUEmbeddingProximalYogiParameters"
+}
+support {
+  graph_op_name: "LoadTPUEmbeddingRMSPropParameters"
+}
+support {
+  graph_op_name: "LoadTPUEmbeddingStochasticGradientDescentParameters"
+}
+support {
+  graph_op_name: "Log"
+}
+support {
+  graph_op_name: "Log1p"
+}
+support {
+  graph_op_name: "LogMatrixDeterminant"
+}
+support {
+  graph_op_name: "LogSoftmax"
+}
+support {
+  graph_op_name: "LogUniformCandidateSampler"
+}
+support {
+  graph_op_name: "LogicalAnd"
+}
+support {
+  graph_op_name: "LogicalNot"
+}
+support {
+  graph_op_name: "LogicalOr"
+}
+support {
+  graph_op_name: "LookupTableExport"
+}
+support {
+  graph_op_name: "LookupTableExportV2"
+}
+support {
+  graph_op_name: "LookupTableFind"
+}
+support {
+  graph_op_name: "LookupTableFindV2"
+}
+support {
+  graph_op_name: "LookupTableImport"
+}
+support {
+  graph_op_name: "LookupTableImportV2"
+}
+support {
+  graph_op_name: "LookupTableInsert"
+}
+support {
+  graph_op_name: "LookupTableInsertV2"
+}
+support {
+  graph_op_name: "LookupTableRemoveV2"
+}
+support {
+  graph_op_name: "LookupTableSize"
+}
+support {
+  graph_op_name: "LookupTableSizeV2"
+}
+support {
+  graph_op_name: "LoopCond"
+}
+support {
+  graph_op_name: "LowerBound"
+}
+support {
+  graph_op_name: "Lu"
+}
+support {
+  graph_op_name: "MakeIterator"
+}
+support {
+  graph_op_name: "MakeUnique"  # non-absl ok
+}
+support {
+  graph_op_name: "MapAndBatchDataset"
+}
+support {
+  graph_op_name: "MapClear"
+}
+support {
+  graph_op_name: "MapDataset"
+}
+support {
+  graph_op_name: "MapDefun"
+}
+support {
+  graph_op_name: "MapIncompleteSize"
+}
+support {
+  graph_op_name: "MapPeek"
+}
+support {
+  graph_op_name: "MapSize"
+}
+support {
+  graph_op_name: "MapStage"
+}
+support {
+  graph_op_name: "MapUnstage"
+}
+support {
+  graph_op_name: "MapUnstageNoKey"
+}
+support {
+  graph_op_name: "MatMul"
+}
+support {
+  graph_op_name: "MatchingFiles"
+}
+support {
+  graph_op_name: "MatchingFilesDataset"
+}
+support {
+  graph_op_name: "MatrixBandPart"
+}
+support {
+  graph_op_name: "MatrixDeterminant"
+}
+support {
+  graph_op_name: "MatrixDiag"
+}
+support {
+  graph_op_name: "MatrixDiagPart"
+}
+support {
+  graph_op_name: "MatrixDiagPartV2"
+}
+support {
+  graph_op_name: "MatrixDiagPartV3"
+}
+support {
+  graph_op_name: "MatrixDiagV2"
+}
+support {
+  graph_op_name: "MatrixDiagV3"
+}
+support {
+  graph_op_name: "MatrixExponential"
+}
+support {
+  graph_op_name: "MatrixInverse"
+}
+support {
+  graph_op_name: "MatrixLogarithm"
+}
+support {
+  graph_op_name: "MatrixSetDiag"
+}
+support {
+  graph_op_name: "MatrixSetDiagV2"
+}
+support {
+  graph_op_name: "MatrixSetDiagV3"
+}
+support {
+  graph_op_name: "MatrixSolve"
+}
+support {
+  graph_op_name: "MatrixSolveLs"
+}
+support {
+  graph_op_name: "MatrixSquareRoot"
+}
+support {
+  graph_op_name: "MatrixTriangularSolve"
+}
+support {
+  graph_op_name: "Max"
+}
+support {
+  graph_op_name: "MaxIntraOpParallelismDataset"
+}
+support {
+  graph_op_name: "MaxPool"
+}
+support {
+  graph_op_name: "MaxPool3D"
+}
+support {
+  graph_op_name: "MaxPool3DGrad"
+}
+support {
+  graph_op_name: "MaxPool3DGradGrad"
+}
+support {
+  graph_op_name: "MaxPoolGrad"
+}
+support {
+  graph_op_name: "MaxPoolGradGrad"
+}
+support {
+  graph_op_name: "MaxPoolGradGradV2"
+}
+support {
+  graph_op_name: "MaxPoolGradGradWithArgmax"
+}
+support {
+  graph_op_name: "MaxPoolGradV2"
+}
+support {
+  graph_op_name: "MaxPoolGradWithArgmax"
+}
+support {
+  graph_op_name: "MaxPoolV2"
+}
+support {
+  graph_op_name: "MaxPoolWithArgmax"
+}
+support {
+  graph_op_name: "Maximum"
+}
+support {
+  graph_op_name: "Mean"
+}
+support {
+  graph_op_name: "Merge"
+}
+support {
+  graph_op_name: "MergeSummary"
+}
+support {
+  graph_op_name: "MergeV2Checkpoints"
+}
+support {
+  graph_op_name: "Mfcc"
+}
+support {
+  graph_op_name: "Min"
+}
+support {
+  graph_op_name: "Minimum"
+}
+support {
+  graph_op_name: "MirrorPad"
+}
+support {
+  graph_op_name: "MirrorPadGrad"
+}
+support {
+  graph_op_name: "MlirPassthroughOp"
+}
+support {
+  graph_op_name: "Mod"
+}
+support {
+  graph_op_name: "ModelDataset"
+}
+support {
+  graph_op_name: "Mul"
+}
+support {
+  graph_op_name: "MulNoNan"
+}
+support {
+  graph_op_name: "MultiDeviceIterator"
+}
+support {
+  graph_op_name: "MultiDeviceIteratorFromStringHandle"
+}
+support {
+  graph_op_name: "MultiDeviceIteratorGetNextFromShard"
+}
+support {
+  graph_op_name: "MultiDeviceIteratorInit"
+}
+support {
+  graph_op_name: "MultiDeviceIteratorToStringHandle"
+}
+support {
+  graph_op_name: "Multinomial"
+}
+support {
+  graph_op_name: "MutableDenseHashTable"
+}
+support {
+  graph_op_name: "MutableDenseHashTableV2"
+}
+support {
+  graph_op_name: "MutableHashTable"
+}
+support {
+  graph_op_name: "MutableHashTableOfTensors"
+}
+support {
+  graph_op_name: "MutableHashTableOfTensorsV2"
+}
+support {
+  graph_op_name: "MutableHashTableV2"
+}
+support {
+  graph_op_name: "MutexLock"
+}
+support {
+  graph_op_name: "MutexV2"
+}
+support {
+  graph_op_name: "NcclAllReduce"
+}
+support {
+  graph_op_name: "NcclBroadcast"
+}
+support {
+  graph_op_name: "NcclReduce"
+}
+support {
+  graph_op_name: "Ndtri"
+}
+support {
+  graph_op_name: "NearestNeighbors"
+}
+support {
+  graph_op_name: "Neg"
+}
+support {
+  graph_op_name: "NegTrain"
+}
+support {
+  graph_op_name: "NextAfter"
+}
+support {
+  graph_op_name: "NextIteration"
+}
+support {
+  graph_op_name: "NoOp"
+}
+support {
+  graph_op_name: "NonDeterministicInts"
+}
+support {
+  graph_op_name: "NonMaxSuppression"
+}
+support {
+  graph_op_name: "NonMaxSuppressionV2"
+}
+support {
+  graph_op_name: "NonMaxSuppressionV3"
+}
+support {
+  graph_op_name: "NonMaxSuppressionV4"
+}
+support {
+  graph_op_name: "NonMaxSuppressionV5"
+}
+support {
+  graph_op_name: "NonMaxSuppressionWithOverlaps"
+}
+support {
+  graph_op_name: "NonSerializableDataset"
+}
+support {
+  graph_op_name: "NotEqual"
+}
+support {
+  graph_op_name: "NthElement"
+}
+support {
+  graph_op_name: "OneHot"
+}
+support {
+  graph_op_name: "OneShotIterator"
+}
+support {
+  graph_op_name: "OnesLike"
+}
+support {
+  graph_op_name: "OptimizeDataset"
+}
+support {
+  graph_op_name: "OptimizeDatasetV2"
+}
+support {
+  graph_op_name: "OptionalFromValue"
+}
+support {
+  graph_op_name: "OptionalGetValue"
+}
+support {
+  graph_op_name: "OptionalHasValue"
+}
+support {
+  graph_op_name: "OptionalNone"
+}
+support {
+  graph_op_name: "OptionsDataset"
+}
+support {
+  graph_op_name: "OrderedMapClear"
+}
+support {
+  graph_op_name: "OrderedMapIncompleteSize"
+}
+support {
+  graph_op_name: "OrderedMapPeek"
+}
+support {
+  graph_op_name: "OrderedMapSize"
+}
+support {
+  graph_op_name: "OrderedMapStage"
+}
+support {
+  graph_op_name: "OrderedMapUnstage"
+}
+support {
+  graph_op_name: "OrderedMapUnstageNoKey"
+}
+support {
+  graph_op_name: "OutfeedDequeue"
+}
+support {
+  graph_op_name: "OutfeedDequeueTuple"
+}
+support {
+  graph_op_name: "OutfeedDequeueTupleV2"
+}
+support {
+  graph_op_name: "OutfeedDequeueV2"
+}
+support {
+  graph_op_name: "OutfeedEnqueue"
+}
+support {
+  graph_op_name: "OutfeedEnqueueTuple"
+}
+support {
+  graph_op_name: "Pack"
+}
+support {
+  graph_op_name: "Pad"
+}
+support {
+  graph_op_name: "PadV2"
+}
+support {
+  graph_op_name: "PaddedBatchDataset"
+}
+support {
+  graph_op_name: "PaddedBatchDatasetV2"
+}
+support {
+  graph_op_name: "PaddingFIFOQueue"
+}
+support {
+  graph_op_name: "PaddingFIFOQueueV2"
+}
+support {
+  graph_op_name: "ParallelBatchDataset"
+}
+support {
+  graph_op_name: "ParallelConcat"
+}
+support {
+  graph_op_name: "ParallelDynamicStitch"
+}
+support {
+  graph_op_name: "ParallelFilterDataset"
+}
+support {
+  graph_op_name: "ParallelInterleaveDataset"
+}
+support {
+  graph_op_name: "ParallelInterleaveDatasetV2"
+}
+support {
+  graph_op_name: "ParallelInterleaveDatasetV3"
+}
+support {
+  graph_op_name: "ParallelInterleaveDatasetV4"
+}
+support {
+  graph_op_name: "ParallelMapDataset"
+}
+support {
+  graph_op_name: "ParallelMapDatasetV2"
+}
+support {
+  graph_op_name: "ParameterizedTruncatedNormal"
+}
+support {
+  graph_op_name: "ParseExample"
+}
+support {
+  graph_op_name: "ParseExampleDataset"
+}
+support {
+  graph_op_name: "ParseExampleDatasetV2"
+}
+support {
+  graph_op_name: "ParseExampleV2"
+}
+support {
+  graph_op_name: "ParseSequenceExample"
+}
+support {
+  graph_op_name: "ParseSequenceExampleV2"
+}
+support {
+  graph_op_name: "ParseSingleExample"
+}
+support {
+  graph_op_name: "ParseSingleSequenceExample"
+}
+support {
+  graph_op_name: "ParseTensor"
+}
+support {
+  graph_op_name: "PartitionedCall"
+}
+support {
+  graph_op_name: "Placeholder"
+}
+support {
+  graph_op_name: "PlaceholderV2"
+}
+support {
+  graph_op_name: "PlaceholderWithDefault"
+}
+support {
+  graph_op_name: "Polygamma"
+}
+support {
+  graph_op_name: "PopulationCount"
+}
+support {
+  graph_op_name: "Pow"
+}
+support {
+  graph_op_name: "PrefetchDataset"
+}
+support {
+  graph_op_name: "Prelinearize"
+}
+support {
+  graph_op_name: "PrelinearizeTuple"
+}
+support {
+  graph_op_name: "PreventGradient"
+}
+support {
+  graph_op_name: "Print"
+}
+support {
+  graph_op_name: "PrintV2"
+}
+support {
+  graph_op_name: "PriorityQueue"
+}
+support {
+  graph_op_name: "PriorityQueueV2"
+}
+support {
+  graph_op_name: "PrivateThreadPoolDataset"
+}
+support {
+  graph_op_name: "Prod"
+}
+support {
+  graph_op_name: "PyFunc"
+}
+support {
+  graph_op_name: "PyFuncStateless"
+}
+support {
+  graph_op_name: "Qr"
+}
+support {
+  graph_op_name: "QuantizeAndDequantize"
+}
+support {
+  graph_op_name: "QuantizeAndDequantizeV2"
+}
+support {
+  graph_op_name: "QuantizeAndDequantizeV3"
+}
+support {
+  graph_op_name: "QuantizeAndDequantizeV4"
+}
+support {
+  graph_op_name: "QuantizeAndDequantizeV4Grad"
+}
+support {
+  graph_op_name: "QuantizeDownAndShrinkRange"
+}
+support {
+  graph_op_name: "QuantizeV2"
+}
+support {
+  graph_op_name: "QuantizedAdd"
+}
+support {
+  graph_op_name: "QuantizedAvgPool"
+}
+support {
+  graph_op_name: "QuantizedBatchNormWithGlobalNormalization"
+}
+support {
+  graph_op_name: "QuantizedBiasAdd"
+}
+support {
+  graph_op_name: "QuantizedConcat"
+}
+support {
+  graph_op_name: "QuantizedConv2D"
+}
+support {
+  graph_op_name: "QuantizedConv2DAndRelu"
+}
+support {
+  graph_op_name: "QuantizedConv2DAndReluAndRequantize"
+}
+support {
+  graph_op_name: "QuantizedConv2DAndRequantize"
+}
+support {
+  graph_op_name: "QuantizedConv2DPerChannel"
+}
+support {
+  graph_op_name: "QuantizedConv2DWithBias"
+}
+support {
+  graph_op_name: "QuantizedConv2DWithBiasAndRelu"
+}
+support {
+  graph_op_name: "QuantizedConv2DWithBiasAndReluAndRequantize"
+}
+support {
+  graph_op_name: "QuantizedConv2DWithBiasAndRequantize"
+}
+support {
+  graph_op_name: "QuantizedConv2DWithBiasSignedSumAndReluAndRequantize"
+}
+support {
+  graph_op_name: "QuantizedConv2DWithBiasSumAndRelu"
+}
+support {
+  graph_op_name: "QuantizedConv2DWithBiasSumAndReluAndRequantize"
+}
+support {
+  graph_op_name: "QuantizedDepthwiseConv2D"
+}
+support {
+  graph_op_name: "QuantizedDepthwiseConv2DWithBias"
+}
+support {
+  graph_op_name: "QuantizedDepthwiseConv2DWithBiasAndRelu"
+}
+support {
+  graph_op_name: "QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize"
+}
+support {
+  graph_op_name: "QuantizedInstanceNorm"
+}
+support {
+  graph_op_name: "QuantizedMatMul"
+}
+support {
+  graph_op_name: "QuantizedMatMulWithBias"
+}
+support {
+  graph_op_name: "QuantizedMatMulWithBiasAndDequantize"
+}
+support {
+  graph_op_name: "QuantizedMatMulWithBiasAndRelu"
+}
+support {
+  graph_op_name: "QuantizedMatMulWithBiasAndReluAndRequantize"
+}
+support {
+  graph_op_name: "QuantizedMatMulWithBiasAndRequantize"
+}
+support {
+  graph_op_name: "QuantizedMaxPool"
+}
+support {
+  graph_op_name: "QuantizedMul"
+}
+support {
+  graph_op_name: "QuantizedRelu"
+}
+support {
+  graph_op_name: "QuantizedRelu6"
+}
+support {
+  graph_op_name: "QuantizedReluX"
+}
+support {
+  graph_op_name: "QuantizedReshape"
+}
+support {
+  graph_op_name: "QuantizedResizeBilinear"
+}
+support {
+  graph_op_name: "QueueClose"
+}
+support {
+  graph_op_name: "QueueCloseV2"
+}
+support {
+  graph_op_name: "QueueDequeue"
+}
+support {
+  graph_op_name: "QueueDequeueMany"
+}
+support {
+  graph_op_name: "QueueDequeueManyV2"
+}
+support {
+  graph_op_name: "QueueDequeueUpTo"
+}
+support {
+  graph_op_name: "QueueDequeueUpToV2"
+}
+support {
+  graph_op_name: "QueueDequeueV2"
+}
+support {
+  graph_op_name: "QueueEnqueue"
+}
+support {
+  graph_op_name: "QueueEnqueueMany"
+}
+support {
+  graph_op_name: "QueueEnqueueManyV2"
+}
+support {
+  graph_op_name: "QueueEnqueueV2"
+}
+support {
+  graph_op_name: "QueueIsClosed"
+}
+support {
+  graph_op_name: "QueueIsClosedV2"
+}
+support {
+  graph_op_name: "QueueSize"
+}
+support {
+  graph_op_name: "QueueSizeV2"
+}
+support {
+  graph_op_name: "RFFT"
+}
+support {
+  graph_op_name: "RFFT2D"
+}
+support {
+  graph_op_name: "RFFT3D"
+}
+support {
+  graph_op_name: "RGBToHSV"
+}
+support {
+  graph_op_name: "RaggedBincount"
+}
+support {
+  graph_op_name: "RaggedCountSparseOutput"
+}
+support {
+  graph_op_name: "RaggedCross"
+}
+support {
+  graph_op_name: "RaggedGather"
+}
+support {
+  graph_op_name: "RaggedRange"
+}
+support {
+  graph_op_name: "RaggedTensorFromVariant"
+}
+support {
+  graph_op_name: "RaggedTensorToSparse"
+}
+support {
+  graph_op_name: "RaggedTensorToTensor"
+}
+support {
+  graph_op_name: "RaggedTensorToVariant"
+}
+support {
+  graph_op_name: "RaggedTensorToVariantGradient"
+}
+support {
+  graph_op_name: "RandomCrop"
+}
+support {
+  graph_op_name: "RandomDataset"
+}
+support {
+  graph_op_name: "RandomGamma"
+}
+support {
+  graph_op_name: "RandomGammaGrad"
+}
+support {
+  graph_op_name: "RandomIndexShuffle"
+}
+support {
+  graph_op_name: "RandomPoisson"
+}
+support {
+  graph_op_name: "RandomPoissonV2"
+}
+support {
+  graph_op_name: "RandomShuffle"
+}
+support {
+  graph_op_name: "RandomShuffleQueue"
+}
+support {
+  graph_op_name: "RandomShuffleQueueV2"
+}
+support {
+  graph_op_name: "RandomStandardNormal"
+}
+support {
+  graph_op_name: "RandomUniform"
+}
+support {
+  graph_op_name: "RandomUniformInt"
+}
+support {
+  graph_op_name: "Range"
+}
+support {
+  graph_op_name: "RangeDataset"
+}
+support {
+  graph_op_name: "Rank"
+}
+support {
+  graph_op_name: "ReadFile"
+}
+support {
+  graph_op_name: "ReadVariableOp"
+}
+support {
+  graph_op_name: "ReadVariableXlaSplitND"
+}
+support {
+  graph_op_name: "ReaderNumRecordsProduced"
+}
+support {
+  graph_op_name: "ReaderNumRecordsProducedV2"
+}
+support {
+  graph_op_name: "ReaderNumWorkUnitsCompleted"
+}
+support {
+  graph_op_name: "ReaderNumWorkUnitsCompletedV2"
+}
+support {
+  graph_op_name: "ReaderRead"
+}
+support {
+  graph_op_name: "ReaderReadUpTo"
+}
+support {
+  graph_op_name: "ReaderReadUpToV2"
+}
+support {
+  graph_op_name: "ReaderReadV2"
+}
+support {
+  graph_op_name: "ReaderReset"
+}
+support {
+  graph_op_name: "ReaderResetV2"
+}
+support {
+  graph_op_name: "ReaderRestoreState"
+}
+support {
+  graph_op_name: "ReaderRestoreStateV2"
+}
+support {
+  graph_op_name: "ReaderSerializeState"
+}
+support {
+  graph_op_name: "ReaderSerializeStateV2"
+}
+support {
+  graph_op_name: "Real"
+}
+support {
+  graph_op_name: "RealDiv"
+}
+support {
+  graph_op_name: "RebatchDataset"
+}
+support {
+  graph_op_name: "RebatchDatasetV2"
+}
+support {
+  graph_op_name: "Reciprocal"
+}
+support {
+  graph_op_name: "ReciprocalGrad"
+}
+support {
+  graph_op_name: "RecordInput"
+}
+support {
+  graph_op_name: "Recv"
+}
+support {
+  graph_op_name: "RecvTPUEmbeddingActivations"
+}
+support {
+  graph_op_name: "ReduceDataset"
+}
+support {
+  graph_op_name: "ReduceJoin"
+}
+support {
+  graph_op_name: "RefEnter"
+}
+support {
+  graph_op_name: "RefExit"
+}
+support {
+  graph_op_name: "RefIdentity"
+}
+support {
+  graph_op_name: "RefMerge"
+}
+support {
+  graph_op_name: "RefNextIteration"
+}
+support {
+  graph_op_name: "RefSelect"
+}
+support {
+  graph_op_name: "RefSwitch"
+}
+support {
+  graph_op_name: "RegexFullMatch"
+}
+support {
+  graph_op_name: "RegexReplace"
+}
+support {
+  graph_op_name: "RegisterDataset"
+}
+support {
+  graph_op_name: "Relayout"
+}
+support {
+  graph_op_name: "Relu"
+}
+support {
+  graph_op_name: "Relu6"
+}
+support {
+  graph_op_name: "Relu6Grad"
+}
+support {
+  graph_op_name: "ReluGrad"
+}
+support {
+  graph_op_name: "RemoteCall"
+}
+support {
+  graph_op_name: "RepeatDataset"
+}
+support {
+  graph_op_name: "RequantizationRange"
+}
+support {
+  graph_op_name: "RequantizationRangePerChannel"
+}
+support {
+  graph_op_name: "Requantize"
+}
+support {
+  graph_op_name: "RequantizePerChannel"
+}
+support {
+  graph_op_name: "Reshape"
+}
+support {
+  graph_op_name: "ResizeArea"
+}
+support {
+  graph_op_name: "ResizeBicubic"
+}
+support {
+  graph_op_name: "ResizeBicubicGrad"
+}
+support {
+  graph_op_name: "ResizeBilinear"
+}
+support {
+  graph_op_name: "ResizeBilinearGrad"
+}
+support {
+  graph_op_name: "ResizeNearestNeighbor"
+}
+support {
+  graph_op_name: "ResizeNearestNeighborGrad"
+}
+support {
+  graph_op_name: "ResourceAccumulatorApplyGradient"
+}
+support {
+  graph_op_name: "ResourceAccumulatorNumAccumulated"
+}
+support {
+  graph_op_name: "ResourceAccumulatorSetGlobalStep"
+}
+support {
+  graph_op_name: "ResourceAccumulatorTakeGradient"
+}
+support {
+  graph_op_name: "ResourceApplyAdaMax"
+}
+support {
+  graph_op_name: "ResourceApplyAdadelta"
+}
+support {
+  graph_op_name: "ResourceApplyAdagrad"
+}
+support {
+  graph_op_name: "ResourceApplyAdagradDA"
+}
+support {
+  graph_op_name: "ResourceApplyAdagradV2"
+}
+support {
+  graph_op_name: "ResourceApplyAdam"
+}
+support {
+  graph_op_name: "ResourceApplyAdamWithAmsgrad"
+}
+support {
+  graph_op_name: "ResourceApplyAddSign"
+}
+support {
+  graph_op_name: "ResourceApplyCenteredRMSProp"
+}
+support {
+  graph_op_name: "ResourceApplyFtrl"
+}
+support {
+  graph_op_name: "ResourceApplyFtrlV2"
+}
+support {
+  graph_op_name: "ResourceApplyGradientDescent"
+}
+support {
+  graph_op_name: "ResourceApplyKerasMomentum"
+}
+support {
+  graph_op_name: "ResourceApplyMomentum"
+}
+support {
+  graph_op_name: "ResourceApplyPowerSign"
+}
+support {
+  graph_op_name: "ResourceApplyProximalAdagrad"
+}
+support {
+  graph_op_name: "ResourceApplyProximalGradientDescent"
+}
+support {
+  graph_op_name: "ResourceApplyRMSProp"
+}
+support {
+  graph_op_name: "ResourceConditionalAccumulator"
+}
+support {
+  graph_op_name: "ResourceCountUpTo"
+}
+support {
+  graph_op_name: "ResourceGather"
+}
+support {
+  graph_op_name: "ResourceGatherNd"
+}
+support {
+  graph_op_name: "ResourceScatterAdd"
+}
+support {
+  graph_op_name: "ResourceScatterDiv"
+}
+support {
+  graph_op_name: "ResourceScatterMax"
+}
+support {
+  graph_op_name: "ResourceScatterMin"
+}
+support {
+  graph_op_name: "ResourceScatterMul"
+}
+support {
+  graph_op_name: "ResourceScatterNdAdd"
+}
+support {
+  graph_op_name: "ResourceScatterNdMax"
+}
+support {
+  graph_op_name: "ResourceScatterNdMin"
+}
+support {
+  graph_op_name: "ResourceScatterNdSub"
+}
+support {
+  graph_op_name: "ResourceScatterNdUpdate"
+}
+support {
+  graph_op_name: "ResourceScatterSub"
+}
+support {
+  graph_op_name: "ResourceScatterUpdate"
+}
+support {
+  graph_op_name: "ResourceSparseApplyAdadelta"
+}
+support {
+  graph_op_name: "ResourceSparseApplyAdagrad"
+}
+support {
+  graph_op_name: "ResourceSparseApplyAdagradDA"
+}
+support {
+  graph_op_name: "ResourceSparseApplyAdagradV2"
+}
+support {
+  graph_op_name: "ResourceSparseApplyCenteredRMSProp"
+}
+support {
+  graph_op_name: "ResourceSparseApplyFtrl"
+}
+support {
+  graph_op_name: "ResourceSparseApplyFtrlV2"
+}
+support {
+  graph_op_name: "ResourceSparseApplyKerasMomentum"
+}
+support {
+  graph_op_name: "ResourceSparseApplyMomentum"
+}
+support {
+  graph_op_name: "ResourceSparseApplyProximalAdagrad"
+}
+support {
+  graph_op_name: "ResourceSparseApplyProximalGradientDescent"
+}
+support {
+  graph_op_name: "ResourceSparseApplyRMSProp"
+}
+support {
+  graph_op_name: "ResourceStridedSliceAssign"
+}
+support {
+  graph_op_name: "Restore"
+}
+support {
+  graph_op_name: "RestoreSlice"
+}
+support {
+  graph_op_name: "RestoreV2"
+}
+support {
+  graph_op_name: "RetrieveAllTPUEmbeddingParameters"
+}
+support {
+  graph_op_name: "RetrieveTPUEmbeddingADAMParameters"
+}
+support {
+  graph_op_name: "RetrieveTPUEmbeddingAdadeltaParameters"
+}
+support {
+  graph_op_name: "RetrieveTPUEmbeddingAdagradMomentumParameters"
+}
+support {
+  graph_op_name: "RetrieveTPUEmbeddingAdagradParameters"
+}
+support {
+  graph_op_name: "RetrieveTPUEmbeddingCenteredRMSPropParameters"
+}
+support {
+  graph_op_name: "RetrieveTPUEmbeddingFTRLParameters"
+}
+support {
+  graph_op_name: "RetrieveTPUEmbeddingFrequencyEstimatorParameters"
+}
+support {
+  graph_op_name: "RetrieveTPUEmbeddingMDLAdagradLightParameters"
+}
+support {
+  graph_op_name: "RetrieveTPUEmbeddingMomentumParameters"
+}
+support {
+  graph_op_name: "RetrieveTPUEmbeddingProximalAdagradParameters"
+}
+support {
+  graph_op_name: "RetrieveTPUEmbeddingProximalYogiParameters"
+}
+support {
+  graph_op_name: "RetrieveTPUEmbeddingRMSPropParameters"
+}
+support {
+  graph_op_name: "RetrieveTPUEmbeddingStochasticGradientDescentParameters"
+}
+support {
+  graph_op_name: "Reverse"
+}
+support {
+  graph_op_name: "ReverseSequence"
+}
+support {
+  graph_op_name: "ReverseV2"
+}
+support {
+  graph_op_name: "RewriteDataset"
+}
+support {
+  graph_op_name: "RightShift"
+}
+support {
+  graph_op_name: "Rint"
+}
+support {
+  graph_op_name: "RiscAbs"
+}
+support {
+  graph_op_name: "RiscAdd"
+}
+support {
+  graph_op_name: "RiscBinaryArithmetic"
+}
+support {
+  graph_op_name: "RiscBinaryComparison"
+}
+support {
+  graph_op_name: "RiscBitcast"
+}
+support {
+  graph_op_name: "RiscBroadcast"
+}
+support {
+  graph_op_name: "RiscCast"
+}
+support {
+  graph_op_name: "RiscCeil"
+}
+support {
+  graph_op_name: "RiscCholesky"
+}
+support {
+  graph_op_name: "RiscConcat"
+}
+support {
+  graph_op_name: "RiscCondition"
+}
+support {
+  graph_op_name: "RiscConv"
+}
+support {
+  graph_op_name: "RiscCos"
+}
+support {
+  graph_op_name: "RiscDiv"
+}
+support {
+  graph_op_name: "RiscDot"
+}
+support {
+  graph_op_name: "RiscExp"
+}
+support {
+  graph_op_name: "RiscFft"
+}
+support {
+  graph_op_name: "RiscFloor"
+}
+support {
+  graph_op_name: "RiscGather"
+}
+support {
+  graph_op_name: "RiscImag"
+}
+support {
+  graph_op_name: "RiscIsFinite"
+}
+support {
+  graph_op_name: "RiscLog"
+}
+support {
+  graph_op_name: "RiscLogicalAnd"
+}
+support {
+  graph_op_name: "RiscLogicalNot"
+}
+support {
+  graph_op_name: "RiscLogicalOr"
+}
+support {
+  graph_op_name: "RiscMax"
+}
+support {
+  graph_op_name: "RiscMin"
+}
+support {
+  graph_op_name: "RiscMul"
+}
+support {
+  graph_op_name: "RiscNeg"
+}
+support {
+  graph_op_name: "RiscPad"
+}
+support {
+  graph_op_name: "RiscPool"
+}
+support {
+  graph_op_name: "RiscPow"
+}
+support {
+  graph_op_name: "RiscRandomUniform"
+}
+support {
+  graph_op_name: "RiscReal"
+}
+support {
+  graph_op_name: "RiscReduce"
+}
+support {
+  graph_op_name: "RiscRem"
+}
+support {
+  graph_op_name: "RiscReshape"
+}
+support {
+  graph_op_name: "RiscReverse"
+}
+support {
+  graph_op_name: "RiscScatter"
+}
+support {
+  graph_op_name: "RiscShape"
+}
+support {
+  graph_op_name: "RiscSign"
+}
+support {
+  graph_op_name: "RiscSlice"
+}
+support {
+  graph_op_name: "RiscSort"
+}
+support {
+  graph_op_name: "RiscSqueeze"
+}
+support {
+  graph_op_name: "RiscSub"
+}
+support {
+  graph_op_name: "RiscTranspose"
+}
+support {
+  graph_op_name: "RiscTriangularSolve"
+}
+support {
+  graph_op_name: "RiscUnary"
+}
+support {
+  graph_op_name: "RiscWhile"
+}
+support {
+  graph_op_name: "RngReadAndSkip"
+}
+support {
+  graph_op_name: "RngSkip"
+}
+support {
+  graph_op_name: "Roll"
+}
+support {
+  graph_op_name: "Round"
+}
+support {
+  graph_op_name: "Rsqrt"
+}
+support {
+  graph_op_name: "RsqrtGrad"
+}
+support {
+  graph_op_name: "SampleDistortedBoundingBox"
+}
+support {
+  graph_op_name: "SampleDistortedBoundingBoxV2"
+}
+support {
+  graph_op_name: "SamplingDataset"
+}
+support {
+  graph_op_name: "Save"
+}
+support {
+  graph_op_name: "SaveDataset"
+}
+support {
+  graph_op_name: "SaveDatasetV2"
+}
+support {
+  graph_op_name: "SaveSlices"
+}
+support {
+  graph_op_name: "SaveV2"
+}
+support {
+  graph_op_name: "ScalarSummary"
+}
+support {
+  graph_op_name: "ScaleAndTranslate"
+}
+support {
+  graph_op_name: "ScaleAndTranslateGrad"
+}
+support {
+  graph_op_name: "ScanDataset"
+}
+support {
+  graph_op_name: "ScatterAdd"
+}
+support {
+  graph_op_name: "ScatterDiv"
+}
+support {
+  graph_op_name: "ScatterMax"
+}
+support {
+  graph_op_name: "ScatterMin"
+}
+support {
+  graph_op_name: "ScatterMul"
+}
+support {
+  graph_op_name: "ScatterNd"
+}
+support {
+  graph_op_name: "ScatterNdAdd"
+}
+support {
+  graph_op_name: "ScatterNdMax"
+}
+support {
+  graph_op_name: "ScatterNdMin"
+}
+support {
+  graph_op_name: "ScatterNdNonAliasingAdd"
+}
+support {
+  graph_op_name: "ScatterNdSub"
+}
+support {
+  graph_op_name: "ScatterNdUpdate"
+}
+support {
+  graph_op_name: "ScatterSub"
+}
+support {
+  graph_op_name: "ScatterUpdate"
+}
+support {
+  graph_op_name: "SdcaFprint"
+}
+support {
+  graph_op_name: "SdcaOptimizer"
+}
+support {
+  graph_op_name: "SdcaOptimizerV2"
+}
+support {
+  graph_op_name: "SdcaShrinkL1"
+}
+support {
+  graph_op_name: "SegmentMax"
+}
+support {
+  graph_op_name: "SegmentMean"
+}
+support {
+  graph_op_name: "SegmentMin"
+}
+support {
+  graph_op_name: "SegmentProd"
+}
+support {
+  graph_op_name: "SegmentSum"
+}
+support {
+  graph_op_name: "Select"
+}
+support {
+  graph_op_name: "SelectV2"
+}
+support {
+  graph_op_name: "SelfAdjointEig"
+}
+support {
+  graph_op_name: "SelfAdjointEigV2"
+}
+support {
+  graph_op_name: "Selu"
+}
+support {
+  graph_op_name: "SeluGrad"
+}
+support {
+  graph_op_name: "Send"
+}
+support {
+  graph_op_name: "SendTPUEmbeddingGradients"
+}
+support {
+  graph_op_name: "SerializeIterator"
+}
+support {
+  graph_op_name: "SerializeManySparse"
+}
+support {
+  graph_op_name: "SerializeSparse"
+}
+support {
+  graph_op_name: "SerializeTensor"
+}
+support {
+  graph_op_name: "SetSize"
+}
+support {
+  graph_op_name: "SetStatsAggregatorDataset"
+}
+support {
+  graph_op_name: "Shape"
+}
+support {
+  graph_op_name: "ShapeN"
+}
+support {
+  graph_op_name: "ShardDataset"
+}
+support {
+  graph_op_name: "ShardedFilename"
+}
+support {
+  graph_op_name: "ShardedFilespec"
+}
+support {
+  graph_op_name: "ShuffleAndRepeatDataset"
+}
+support {
+  graph_op_name: "ShuffleAndRepeatDatasetV2"
+}
+support {
+  graph_op_name: "ShuffleDataset"
+}
+support {
+  graph_op_name: "ShuffleDatasetV2"
+}
+support {
+  graph_op_name: "ShuffleDatasetV3"
+}
+support {
+  graph_op_name: "ShutdownDistributedTPU"
+}
+support {
+  graph_op_name: "ShutdownTPUSystem"
+}
+support {
+  graph_op_name: "Sigmoid"
+}
+support {
+  graph_op_name: "SigmoidGrad"
+}
+support {
+  graph_op_name: "Sign"
+}
+support {
+  graph_op_name: "Sin"
+}
+support {
+  graph_op_name: "Sinh"
+}
+support {
+  graph_op_name: "Size"
+}
+support {
+  graph_op_name: "SkipDataset"
+}
+support {
+  graph_op_name: "Skipgram"
+}
+support {
+  graph_op_name: "SleepDataset"
+}
+support {
+  graph_op_name: "Slice"
+}
+support {
+  graph_op_name: "SlidingWindowDataset"
+}
+support {
+  graph_op_name: "Snapshot"
+}
+support {
+  graph_op_name: "SnapshotDataset"
+}
+support {
+  graph_op_name: "SnapshotDatasetReader"
+}
+support {
+  graph_op_name: "SnapshotDatasetV2"
+}
+support {
+  graph_op_name: "SnapshotNestedDatasetReader"
+}
+support {
+  graph_op_name: "SobolSample"
+}
+support {
+  graph_op_name: "Softmax"
+}
+support {
+  graph_op_name: "SoftmaxCrossEntropyWithLogits"
+}
+support {
+  graph_op_name: "Softplus"
+}
+support {
+  graph_op_name: "SoftplusGrad"
+}
+support {
+  graph_op_name: "Softsign"
+}
+support {
+  graph_op_name: "SoftsignGrad"
+}
+support {
+  graph_op_name: "SpaceToBatch"
+}
+support {
+  graph_op_name: "SpaceToBatchND"
+}
+support {
+  graph_op_name: "SpaceToDepth"
+}
+support {
+  graph_op_name: "SparseAccumulatorApplyGradient"
+}
+support {
+  graph_op_name: "SparseAccumulatorTakeGradient"
+}
+support {
+  graph_op_name: "SparseAdd"
+}
+support {
+  graph_op_name: "SparseAddGrad"
+}
+support {
+  graph_op_name: "SparseApplyAdadelta"
+}
+support {
+  graph_op_name: "SparseApplyAdagrad"
+}
+support {
+  graph_op_name: "SparseApplyAdagradDA"
+}
+support {
+  graph_op_name: "SparseApplyAdagradV2"
+}
+support {
+  graph_op_name: "SparseApplyCenteredRMSProp"
+}
+support {
+  graph_op_name: "SparseApplyFtrl"
+}
+support {
+  graph_op_name: "SparseApplyFtrlV2"
+}
+support {
+  graph_op_name: "SparseApplyMomentum"
+}
+support {
+  graph_op_name: "SparseApplyProximalAdagrad"
+}
+support {
+  graph_op_name: "SparseApplyProximalGradientDescent"
+}
+support {
+  graph_op_name: "SparseApplyRMSProp"
+}
+support {
+  graph_op_name: "SparseBincount"
+}
+support {
+  graph_op_name: "SparseConcat"
+}
+support {
+  graph_op_name: "SparseConditionalAccumulator"
+}
+support {
+  graph_op_name: "SparseCountSparseOutput"
+}
+support {
+  graph_op_name: "SparseCross"
+}
+support {
+  graph_op_name: "SparseCrossHashed"
+}
+support {
+  graph_op_name: "SparseCrossV2"
+}
+support {
+  graph_op_name: "SparseDenseCwiseAdd"
+}
+support {
+  graph_op_name: "SparseDenseCwiseDiv"
+}
+support {
+  graph_op_name: "SparseDenseCwiseMul"
+}
+support {
+  graph_op_name: "SparseFillEmptyRows"
+}
+support {
+  graph_op_name: "SparseFillEmptyRowsGrad"
+}
+support {
+  graph_op_name: "SparseMatMul"
+}
+support {
+  graph_op_name: "SparseMatrixAdd"
+}
+support {
+  graph_op_name: "SparseMatrixMatMul"
+}
+support {
+  graph_op_name: "SparseMatrixMul"
+}
+support {
+  graph_op_name: "SparseMatrixNNZ"
+}
+support {
+  graph_op_name: "SparseMatrixOrderingAMD"
+}
+support {
+  graph_op_name: "SparseMatrixSoftmax"
+}
+support {
+  graph_op_name: "SparseMatrixSoftmaxGrad"
+}
+support {
+  graph_op_name: "SparseMatrixSparseCholesky"
+}
+support {
+  graph_op_name: "SparseMatrixSparseMatMul"
+}
+support {
+  graph_op_name: "SparseMatrixTranspose"
+}
+support {
+  graph_op_name: "SparseMatrixZeros"
+}
+support {
+  graph_op_name: "SparseReduceMax"
+}
+support {
+  graph_op_name: "SparseReduceMaxSparse"
+}
+support {
+  graph_op_name: "SparseReduceSum"
+}
+support {
+  graph_op_name: "SparseReduceSumSparse"
+}
+support {
+  graph_op_name: "SparseReorder"
+}
+support {
+  graph_op_name: "SparseReshape"
+}
+support {
+  graph_op_name: "SparseSegmentMean"
+}
+support {
+  graph_op_name: "SparseSegmentMeanGrad"
+}
+support {
+  graph_op_name: "SparseSegmentMeanWithNumSegments"
+}
+support {
+  graph_op_name: "SparseSegmentSqrtN"
+}
+support {
+  graph_op_name: "SparseSegmentSqrtNGrad"
+}
+support {
+  graph_op_name: "SparseSegmentSqrtNWithNumSegments"
+}
+support {
+  graph_op_name: "SparseSegmentSum"
+}
+support {
+  graph_op_name: "SparseSegmentSumGrad"
+}
+support {
+  graph_op_name: "SparseSegmentSumWithNumSegments"
+}
+support {
+  graph_op_name: "SparseSlice"
+}
+support {
+  graph_op_name: "SparseSliceGrad"
+}
+support {
+  graph_op_name: "SparseSoftmax"
+}
+support {
+  graph_op_name: "SparseSoftmaxCrossEntropyWithLogits"
+}
+support {
+  graph_op_name: "SparseSparseMaximum"
+}
+support {
+  graph_op_name: "SparseSparseMinimum"
+}
+support {
+  graph_op_name: "SparseSplit"
+}
+support {
+  graph_op_name: "SparseTensorDenseAdd"
+}
+support {
+  graph_op_name: "SparseTensorDenseMatMul"
+}
+support {
+  graph_op_name: "SparseTensorSliceDataset"
+}
+support {
+  graph_op_name: "SparseTensorToCSRSparseMatrix"
+}
+support {
+  graph_op_name: "SparseToDense"
+}
+support {
+  graph_op_name: "SparseToSparseSetOperation"
+}
+support {
+  graph_op_name: "Spence"
+}
+support {
+  graph_op_name: "Split"
+}
+support {
+  graph_op_name: "SplitV"
+}
+support {
+  graph_op_name: "SqlDataset"
+}
+support {
+  graph_op_name: "Sqrt"
+}
+support {
+  graph_op_name: "SqrtGrad"
+}
+support {
+  graph_op_name: "Square"
+}
+support {
+  graph_op_name: "SquaredDifference"
+}
+support {
+  graph_op_name: "Squeeze"
+}
+support {
+  graph_op_name: "Stack"
+}
+support {
+  graph_op_name: "StackClose"
+}
+support {
+  graph_op_name: "StackCloseV2"
+}
+support {
+  graph_op_name: "StackPop"
+}
+support {
+  graph_op_name: "StackPopV2"
+}
+support {
+  graph_op_name: "StackPush"
+}
+support {
+  graph_op_name: "StackPushV2"
+}
+support {
+  graph_op_name: "StackV2"
+}
+support {
+  graph_op_name: "Stage"
+}
+support {
+  graph_op_name: "StageClear"
+}
+support {
+  graph_op_name: "StagePeek"
+}
+support {
+  graph_op_name: "StageSize"
+}
+support {
+  graph_op_name: "StatefulPartitionedCall"
+}
+support {
+  graph_op_name: "StatefulRandomBinomial"
+}
+support {
+  graph_op_name: "StatefulStandardNormal"
+}
+support {
+  graph_op_name: "StatefulStandardNormalV2"
+}
+support {
+  graph_op_name: "StatefulTruncatedNormal"
+}
+support {
+  graph_op_name: "StatefulUniform"
+}
+support {
+  graph_op_name: "StatefulUniformFullInt"
+}
+support {
+  graph_op_name: "StatefulUniformInt"
+}
+support {
+  graph_op_name: "StatelessCase"
+}
+support {
+  graph_op_name: "StatelessIf"
+}
+support {
+  graph_op_name: "StatelessMultinomial"
+}
+support {
+  graph_op_name: "StatelessParameterizedTruncatedNormal"
+}
+support {
+  graph_op_name: "StatelessRandomBinomial"
+}
+support {
+  graph_op_name: "StatelessRandomGammaV2"
+}
+support {
+  graph_op_name: "StatelessRandomGetAlg"
+}
+support {
+  graph_op_name: "StatelessRandomGetKeyCounter"
+}
+support {
+  graph_op_name: "StatelessRandomGetKeyCounterAlg"
+}
+support {
+  graph_op_name: "StatelessRandomNormal"
+}
+support {
+  graph_op_name: "StatelessRandomNormalV2"
+}
+support {
+  graph_op_name: "StatelessRandomPoisson"
+}
+support {
+  graph_op_name: "StatelessRandomUniform"
+}
+support {
+  graph_op_name: "StatelessRandomUniformFullInt"
+}
+support {
+  graph_op_name: "StatelessRandomUniformFullIntV2"
+}
+support {
+  graph_op_name: "StatelessRandomUniformInt"
+}
+support {
+  graph_op_name: "StatelessRandomUniformIntV2"
+}
+support {
+  graph_op_name: "StatelessRandomUniformV2"
+}
+support {
+  graph_op_name: "StatelessSampleDistortedBoundingBox"
+}
+support {
+  graph_op_name: "StatelessShuffle"
+}
+support {
+  graph_op_name: "StatelessTruncatedNormal"
+}
+support {
+  graph_op_name: "StatelessTruncatedNormalV2"
+}
+support {
+  graph_op_name: "StatelessWhile"
+}
+support {
+  graph_op_name: "StaticRegexFullMatch"
+}
+support {
+  graph_op_name: "StaticRegexReplace"
+}
+support {
+  graph_op_name: "StatsAggregatorHandle"
+}
+support {
+  graph_op_name: "StatsAggregatorHandleV2"
+}
+support {
+  graph_op_name: "StatsAggregatorSetSummaryWriter"
+}
+support {
+  graph_op_name: "StatsAggregatorSummary"
+}
+support {
+  graph_op_name: "StopGradient"
+}
+support {
+  graph_op_name: "StridedSlice"
+}
+support {
+  graph_op_name: "StridedSliceAssign"
+}
+support {
+  graph_op_name: "StridedSliceGrad"
+}
+support {
+  graph_op_name: "StringFormat"
+}
+support {
+  graph_op_name: "StringJoin"
+}
+support {
+  graph_op_name: "StringLength"
+}
+support {
+  graph_op_name: "StringLower"
+}
+support {
+  graph_op_name: "StringNGrams"
+}
+support {
+  graph_op_name: "StringSplit"
+}
+support {
+  graph_op_name: "StringSplitV2"
+}
+support {
+  graph_op_name: "StringStrip"
+}
+support {
+  graph_op_name: "StringToHashBucket"
+}
+support {
+  graph_op_name: "StringToHashBucketFast"
+}
+support {
+  graph_op_name: "StringToHashBucketStrong"
+}
+support {
+  graph_op_name: "StringToNumber"
+}
+support {
+  graph_op_name: "StringUpper"
+}
+support {
+  graph_op_name: "Sub"
+}
+support {
+  graph_op_name: "Substr"
+}
+support {
+  graph_op_name: "Sum"
+}
+support {
+  graph_op_name: "SummaryWriter"
+}
+support {
+  graph_op_name: "Svd"
+}
+support {
+  graph_op_name: "Switch"
+}
+support {
+  graph_op_name: "SymbolicGradient"
+}
+support {
+  graph_op_name: "TFRecordDataset"
+}
+support {
+  graph_op_name: "TFRecordReader"
+}
+support {
+  graph_op_name: "TFRecordReaderV2"
+}
+support {
+  graph_op_name: "TPUCompilationResult"
+}
+support {
+  graph_op_name: "TPUCompile"
+}
+support {
+  graph_op_name: "TPUCompileSucceededAssert"
+}
+support {
+  graph_op_name: "TPUEmbeddingActivations"
+}
+support {
+  graph_op_name: "TPUExecute"
+}
+support {
+  graph_op_name: "TPUExecuteAndUpdateVariables"
+}
+support {
+  graph_op_name: "TPUOrdinalSelector"
+}
+support {
+  graph_op_name: "TPUPartitionedCall"
+}
+support {
+  graph_op_name: "TPUPartitionedInput"
+}
+support {
+  graph_op_name: "TPUPartitionedOutput"
+}
+support {
+  graph_op_name: "TPUReplicateMetadata"
+}
+support {
+  graph_op_name: "TPUReplicatedInput"
+}
+support {
+  graph_op_name: "TPUReplicatedOutput"
+}
+support {
+  graph_op_name: "TPUReshardVariables"
+}
+support {
+  graph_op_name: "TPURoundRobin"
+}
+support {
+  graph_op_name: "TakeDataset"
+}
+support {
+  graph_op_name: "TakeManySparseFromTensorsMap"
+}
+support {
+  graph_op_name: "TakeWhileDataset"
+}
+support {
+  graph_op_name: "Tan"
+}
+support {
+  graph_op_name: "Tanh"
+}
+support {
+  graph_op_name: "TanhGrad"
+}
+support {
+  graph_op_name: "TemporaryVariable"
+}
+support {
+  graph_op_name: "TensorArray"
+}
+support {
+  graph_op_name: "TensorArrayClose"
+}
+support {
+  graph_op_name: "TensorArrayCloseV2"
+}
+support {
+  graph_op_name: "TensorArrayCloseV3"
+}
+support {
+  graph_op_name: "TensorArrayConcat"
+}
+support {
+  graph_op_name: "TensorArrayConcatV2"
+}
+support {
+  graph_op_name: "TensorArrayConcatV3"
+}
+support {
+  graph_op_name: "TensorArrayGather"
+}
+support {
+  graph_op_name: "TensorArrayGatherV2"
+}
+support {
+  graph_op_name: "TensorArrayGatherV3"
+}
+support {
+  graph_op_name: "TensorArrayGrad"
+}
+support {
+  graph_op_name: "TensorArrayGradV2"
+}
+support {
+  graph_op_name: "TensorArrayGradV3"
+}
+support {
+  graph_op_name: "TensorArrayGradWithShape"
+}
+support {
+  graph_op_name: "TensorArrayPack"
+}
+support {
+  graph_op_name: "TensorArrayRead"
+}
+support {
+  graph_op_name: "TensorArrayReadV2"
+}
+support {
+  graph_op_name: "TensorArrayReadV3"
+}
+support {
+  graph_op_name: "TensorArrayScatter"
+}
+support {
+  graph_op_name: "TensorArrayScatterV2"
+}
+support {
+  graph_op_name: "TensorArrayScatterV3"
+}
+support {
+  graph_op_name: "TensorArraySize"
+}
+support {
+  graph_op_name: "TensorArraySizeV2"
+}
+support {
+  graph_op_name: "TensorArraySizeV3"
+}
+support {
+  graph_op_name: "TensorArraySplit"
+}
+support {
+  graph_op_name: "TensorArraySplitV2"
+}
+support {
+  graph_op_name: "TensorArraySplitV3"
+}
+support {
+  graph_op_name: "TensorArrayUnpack"
+}
+support {
+  graph_op_name: "TensorArrayV2"
+}
+support {
+  graph_op_name: "TensorArrayV3"
+}
+support {
+  graph_op_name: "TensorArrayWrite"
+}
+support {
+  graph_op_name: "TensorArrayWriteV2"
+}
+support {
+  graph_op_name: "TensorArrayWriteV3"
+}
+support {
+  graph_op_name: "TensorDataset"
+}
+support {
+  graph_op_name: "TensorGetItem"
+}
+support {
+  graph_op_name: "TensorListConcat"
+}
+support {
+  graph_op_name: "TensorListConcatLists"
+}
+support {
+  graph_op_name: "TensorListConcatV2"
+}
+support {
+  graph_op_name: "TensorListElementShape"
+}
+support {
+  graph_op_name: "TensorListFromTensor"
+}
+support {
+  graph_op_name: "TensorListGather"
+}
+support {
+  graph_op_name: "TensorListGetItem"
+}
+support {
+  graph_op_name: "TensorListLength"
+}
+support {
+  graph_op_name: "TensorListPopBack"
+}
+support {
+  graph_op_name: "TensorListPushBack"
+}
+support {
+  graph_op_name: "TensorListPushBackBatch"
+}
+support {
+  graph_op_name: "TensorListReserve"
+}
+support {
+  graph_op_name: "TensorListResize"
+}
+support {
+  graph_op_name: "TensorListScatter"
+}
+support {
+  graph_op_name: "TensorListScatterIntoExistingList"
+}
+support {
+  graph_op_name: "TensorListScatterV2"
+}
+support {
+  graph_op_name: "TensorListSetItem"
+}
+support {
+  graph_op_name: "TensorListSplit"
+}
+support {
+  graph_op_name: "TensorListStack"
+}
+support {
+  graph_op_name: "TensorMapErase"
+}
+support {
+  graph_op_name: "TensorMapHasKey"
+}
+support {
+  graph_op_name: "TensorMapInsert"
+}
+support {
+  graph_op_name: "TensorMapLookup"
+}
+support {
+  graph_op_name: "TensorMapSize"
+}
+support {
+  graph_op_name: "TensorMapStackKeys"
+}
+support {
+  graph_op_name: "TensorScatterAdd"
+}
+support {
+  graph_op_name: "TensorScatterMax"
+}
+support {
+  graph_op_name: "TensorScatterMin"
+}
+support {
+  graph_op_name: "TensorScatterSub"
+}
+support {
+  graph_op_name: "TensorScatterUpdate"
+}
+support {
+  graph_op_name: "TensorSetItem"
+}
+support {
+  graph_op_name: "TensorSliceDataset"
+}
+support {
+  graph_op_name: "TensorStridedSliceUpdate"
+}
+support {
+  graph_op_name: "TensorSummary"
+}
+support {
+  graph_op_name: "TensorSummaryV2"
+}
+support {
+  graph_op_name: "TextLineDataset"
+}
+support {
+  graph_op_name: "TextLineReader"
+}
+support {
+  graph_op_name: "TextLineReaderV2"
+}
+support {
+  graph_op_name: "ThreadPoolDataset"
+}
+support {
+  graph_op_name: "ThreadPoolHandle"
+}
+support {
+  graph_op_name: "ThreadUnsafeUnigramCandidateSampler"
+}
+support {
+  graph_op_name: "Tile"
+}
+support {
+  graph_op_name: "TileGrad"
+}
+support {
+  graph_op_name: "Timestamp"
+}
+support {
+  graph_op_name: "ToBool"
+}
+support {
+  graph_op_name: "TopK"
+}
+support {
+  graph_op_name: "TopKUnique"
+}
+support {
+  graph_op_name: "TopKV2"
+}
+support {
+  graph_op_name: "TopKWithUnique"
+}
+support {
+  graph_op_name: "TpuHandleToProtoKey"
+}
+support {
+  graph_op_name: "Transpose"
+}
+support {
+  graph_op_name: "TridiagonalMatMul"
+}
+support {
+  graph_op_name: "TridiagonalSolve"
+}
+support {
+  graph_op_name: "TruncateDiv"
+}
+support {
+  graph_op_name: "TruncateMod"
+}
+support {
+  graph_op_name: "TruncatedNormal"
+}
+support {
+  graph_op_name: "Unbatch"
+}
+support {
+  graph_op_name: "UnbatchDataset"
+}
+support {
+  graph_op_name: "UnbatchGrad"
+}
+support {
+  graph_op_name: "UncompressElement"
+}
+support {
+  graph_op_name: "UnicodeDecode"
+}
+support {
+  graph_op_name: "UnicodeDecodeWithOffsets"
+}
+support {
+  graph_op_name: "UnicodeEncode"
+}
+support {
+  graph_op_name: "UnicodeScript"
+}
+support {
+  graph_op_name: "UnicodeTranscode"
+}
+support {
+  graph_op_name: "UniformCandidateSampler"
+}
+support {
+  graph_op_name: "Unique"
+}
+support {
+  graph_op_name: "UniqueDataset"
+}
+support {
+  graph_op_name: "UniqueV2"
+}
+support {
+  graph_op_name: "UniqueWithCounts"
+}
+support {
+  graph_op_name: "UniqueWithCountsV2"
+}
+support {
+  graph_op_name: "Unpack"
+}
+support {
+  graph_op_name: "UnravelIndex"
+}
+support {
+  graph_op_name: "UnsortedSegmentJoin"
+}
+support {
+  graph_op_name: "UnsortedSegmentMax"
+}
+support {
+  graph_op_name: "UnsortedSegmentMin"
+}
+support {
+  graph_op_name: "UnsortedSegmentProd"
+}
+support {
+  graph_op_name: "UnsortedSegmentSum"
+}
+support {
+  graph_op_name: "Unstage"
+}
+support {
+  graph_op_name: "UnwrapDatasetVariant"
+}
+support {
+  graph_op_name: "UpperBound"
+}
+support {
+  graph_op_name: "VarHandleOp"
+}
+support {
+  graph_op_name: "VarIsInitializedOp"
+}
+support {
+  graph_op_name: "Variable"
+}
+support {
+  graph_op_name: "VariableShape"
+}
+support {
+  graph_op_name: "VariableV2"
+}
+support {
+  graph_op_name: "Where"
+}
+support {
+  graph_op_name: "While"
+}
+support {
+  graph_op_name: "WholeFileReader"
+}
+support {
+  graph_op_name: "WholeFileReaderV2"
+}
+support {
+  graph_op_name: "WindowDataset"
+}
+support {
+  graph_op_name: "WindowOp"
+}
+support {
+  graph_op_name: "WorkerHeartbeat"
+}
+support {
+  graph_op_name: "WrapDatasetVariant"
+}
+support {
+  graph_op_name: "WriteAudioSummary"
+}
+support {
+  graph_op_name: "WriteFile"
+}
+support {
+  graph_op_name: "WriteGraphSummary"
+}
+support {
+  graph_op_name: "WriteHistogramSummary"
+}
+support {
+  graph_op_name: "WriteImageSummary"
+}
+support {
+  graph_op_name: "WriteRawProtoSummary"
+}
+support {
+  graph_op_name: "WriteScalarSummary"
+}
+support {
+  graph_op_name: "WriteSummary"
+}
+support {
+  graph_op_name: "Xdivy"
+}
+support {
+  graph_op_name: "XlaConcatND"
+}
+support {
+  graph_op_name: "XlaHostCompute"
+}
+support {
+  graph_op_name: "XlaRecvFromHost"
+}
+support {
+  graph_op_name: "XlaSendToHost"
+}
+support {
+  graph_op_name: "XlaSplitND"
+}
+support {
+  graph_op_name: "Xlog1py"
+}
+support {
+  graph_op_name: "Xlogy"
+}
+support {
+  graph_op_name: "ZerosLike"
+}
+support {
+  graph_op_name: "Zeta"
+}
+support {
+  graph_op_name: "ZipDataset"
+}
