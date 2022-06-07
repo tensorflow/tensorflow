@@ -933,8 +933,8 @@ class HloDynamicBroadcastInDimConverter
     SmallVector<AffineExpr> dim_exprs(operand_type.getRank(), nullptr);
 
     // Use static type info.
-    auto bcast_dims =
-        llvm::to_vector(llvm::map_range(op.broadcast_dimensions(), [](APInt d) {
+    auto bcast_dims = llvm::to_vector(
+        llvm::map_range(op.broadcast_dimensions(), [](const APInt& d) {
           return static_cast<int64_t>(d.getLimitedValue());
         }));
     for (const auto& it : llvm::enumerate(operand_type.getShape())) {
