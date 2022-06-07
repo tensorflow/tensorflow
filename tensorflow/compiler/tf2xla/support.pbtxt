@@ -5,6 +5,7 @@ support {
 }
 support {
   graph_op_name: "Abs"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "AccumulateNV2"
@@ -194,21 +195,25 @@ support {
 }
 support {
   graph_op_name: "AssignAddVariableOp"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "AssignSub"
 }
 support {
   graph_op_name: "AssignSubVariableOp"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "AssignVariableOp"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "AssignVariableXlaConcatND"
 }
 support {
   graph_op_name: "Atan"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "Atan2"
@@ -233,6 +238,7 @@ support {
 }
 support {
   graph_op_name: "AvgPool3D"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "AvgPool3DGrad"
@@ -398,6 +404,7 @@ support {
 }
 support {
   graph_op_name: "BiasAddGrad"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "BiasAddV1"
@@ -566,9 +573,11 @@ support {
 }
 support {
   graph_op_name: "Ceil"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "CheckNumerics"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "CheckNumericsV2"
@@ -728,6 +737,7 @@ support {
 }
 support {
   graph_op_name: "Cos"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "Cosh"
@@ -980,6 +990,7 @@ support {
 }
 support {
   graph_op_name: "DiagPart"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "Digamma"
@@ -1118,6 +1129,7 @@ support {
 }
 support {
   graph_op_name: "Exp"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "ExpandDims"
@@ -1238,6 +1250,7 @@ support {
 }
 support {
   graph_op_name: "Expm1"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "ExtractGlimpse"
@@ -1277,6 +1290,7 @@ support {
 }
 support {
   graph_op_name: "FakeQuantWithMinMaxArgs"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "FakeQuantWithMinMaxArgsGradient"
@@ -1334,6 +1348,7 @@ support {
 }
 support {
   graph_op_name: "Floor"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "FloorDiv"
@@ -1397,6 +1412,7 @@ support {
 }
 support {
   graph_op_name: "Gather"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "GatherNd"
@@ -1508,6 +1524,7 @@ support {
 }
 support {
   graph_op_name: "Imag"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "ImageProjectiveTransformV2"
@@ -1592,12 +1609,15 @@ support {
 }
 support {
   graph_op_name: "IsFinite"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "IsInf"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "IsNan"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "IsTPUEmbeddingInitialized"
@@ -1691,6 +1711,7 @@ support {
 }
 support {
   graph_op_name: "Lgamma"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "LinSpace"
@@ -1751,12 +1772,14 @@ support {
 }
 support {
   graph_op_name: "Log1p"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "LogMatrixDeterminant"
 }
 support {
   graph_op_name: "LogSoftmax"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "LogUniformCandidateSampler"
@@ -1859,12 +1882,14 @@ support {
 }
 support {
   graph_op_name: "MatrixBandPart"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "MatrixDeterminant"
 }
 support {
   graph_op_name: "MatrixDiag"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "MatrixDiagPart"
@@ -1925,6 +1950,7 @@ support {
 }
 support {
   graph_op_name: "MaxPool3DGrad"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "MaxPool3DGradGrad"
@@ -2282,6 +2308,7 @@ support {
 }
 support {
   graph_op_name: "PreventGradient"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "Print"
@@ -2549,6 +2576,7 @@ support {
 }
 support {
   graph_op_name: "RandomShuffle"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "RandomShuffleQueue"
@@ -2579,6 +2607,7 @@ support {
 }
 support {
   graph_op_name: "ReadVariableOp"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "ReadVariableXlaSplitND"
@@ -2627,6 +2656,7 @@ support {
 }
 support {
   graph_op_name: "Real"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "RealDiv"
@@ -2639,6 +2669,7 @@ support {
 }
 support {
   graph_op_name: "Reciprocal"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "ReciprocalGrad"
@@ -2693,15 +2724,18 @@ support {
 }
 support {
   graph_op_name: "Relu"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "Relu6"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "Relu6Grad"
 }
 support {
   graph_op_name: "ReluGrad"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "RemoteCall"
@@ -2759,21 +2793,27 @@ support {
 }
 support {
   graph_op_name: "ResourceApplyAdaMax"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyAdadelta"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyAdagrad"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyAdagradDA"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyAdagradV2"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyAdam"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyAdamWithAmsgrad"
@@ -2786,30 +2826,38 @@ support {
 }
 support {
   graph_op_name: "ResourceApplyFtrl"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyFtrlV2"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyGradientDescent"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyKerasMomentum"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyMomentum"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyPowerSign"
 }
 support {
   graph_op_name: "ResourceApplyProximalAdagrad"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyProximalGradientDescent"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyRMSProp"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "ResourceConditionalAccumulator"
@@ -3128,6 +3176,7 @@ support {
 }
 support {
   graph_op_name: "Rsqrt"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "RsqrtGrad"
@@ -3239,6 +3288,7 @@ support {
 }
 support {
   graph_op_name: "Select"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "SelectV2"
@@ -3317,12 +3367,14 @@ support {
 }
 support {
   graph_op_name: "Sigmoid"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "SigmoidGrad"
 }
 support {
   graph_op_name: "Sign"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "Sin"
@@ -3368,6 +3420,7 @@ support {
 }
 support {
   graph_op_name: "Softmax"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "SoftmaxCrossEntropyWithLogits"
@@ -3608,6 +3661,7 @@ support {
 }
 support {
   graph_op_name: "Sqrt"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "SqrtGrad"
@@ -3908,6 +3962,7 @@ support {
 }
 support {
   graph_op_name: "Tanh"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "TanhGrad"
@@ -4268,6 +4323,7 @@ support {
 }
 support {
   graph_op_name: "VarIsInitializedOp"
+  supports_old_bridge: true
 }
 support {
   graph_op_name: "Variable"
