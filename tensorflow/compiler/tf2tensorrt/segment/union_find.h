@@ -190,14 +190,14 @@ template <typename T, typename P>
 Status UnionFind<T, P>::Merge(UnionFind* other) {
   UnionFind<T>* a = FindRoot();
   UnionFind<T>* b = other->FindRoot();
-  if (a == b) return Status::OK();
+  if (a == b) return OkStatus();
 
   P merged_property(a->property_);
   TF_RETURN_IF_ERROR(merged_property.Merge(b->property_));
   b->parent_ = a;
   a->size_ += b->size_;
   a->property_ = std::move(merged_property);
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T, typename P>
