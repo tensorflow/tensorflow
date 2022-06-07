@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
@@ -60,12 +61,12 @@ namespace xla {
 
 namespace {
 
-using absl::nullopt;
-using absl::optional;
 using absl::StrAppend;
 using absl::StrCat;
 using absl::StrFormat;
 using absl::StrJoin;
+using std::nullopt;
+using std::optional;
 
 // Creates and returns a schedule created using the order of the instructions in
 // the HloComputation::instructions() vectors in the module.
@@ -266,6 +267,7 @@ class HloParserImpl : public HloParser {
     kEnum,
     kRandomAlgorithm,
     kAliasing,
+    kComputationLayout,
     kInstructionAliasing,
     kCustomCallSchedule,
     kCustomCallApiVersion,
@@ -320,8 +322,8 @@ class HloParserImpl : public HloParser {
   // async instructions to allow parsing for wrapped-op-specific attributes.
   HloInstruction* CreateInstruction(
       HloComputation::Builder* builder, absl::string_view name,
-      absl::optional<Shape> shape, HloOpcode opcode,
-      absl::optional<HloOpcode> async_wrapped_opcode,
+      std::optional<Shape> shape, HloOpcode opcode,
+      std::optional<HloOpcode> async_wrapped_opcode,
       absl::flat_hash_map<std::string, AttrConfig>& attrs,
       bool allow_attributes,
       std::vector<HloInstruction*>* preset_operands = nullptr);
@@ -487,7 +489,7 @@ class HloParserImpl : public HloParser {
                                absl::string_view attr_description);
   bool ParseTiles(std::vector<Tile>* tiles);
   bool ParseOpcode(HloOpcode* opcode,
-                   absl::optional<HloOpcode>* async_wrapped_opcode);
+                   std::optional<HloOpcode>* async_wrapped_opcode);
   bool ParseFftType(FftType* result);
   bool ParsePaddingType(PaddingType* result);
   bool ParseComparisonDirection(ComparisonDirection* result);
@@ -508,6 +510,9 @@ class HloParserImpl : public HloParser {
   // Parses the aliasing information from string `s`, returns `false` if it
   // fails.
   bool ParseAliasing(AliasingData* data);
+
+  // Parses the entry computation layout.
+  bool ParseComputationLayout(ComputationLayout* computation_layout);
 
   // Parses the per-instruction aliasing information from string `s`, returns
   // `false` if it fails.
@@ -641,7 +646,7 @@ Status HloParserImpl::Run(HloModule* module) {
           "Syntax error when trying to parse the text as a HloModule:\n%s",
           GetError());
     }
-    return Status::OK();
+    return OkStatus();
   }
   // This means that the text is a single HLO instruction.
   if (!ParseSingleInstruction(module)) {
@@ -650,7 +655,7 @@ Status HloParserImpl::Run(HloModule* module) {
         "HloInstruction:\n%s",
         GetError());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 std::pair<HloInstruction*, HloParserImpl::LocTy>*
@@ -772,6 +777,48 @@ bool HloParserImpl::ParseAliasing(AliasingData* data) {
   return true;
 }
 
+bool HloParserImpl::ParseComputationLayout(
+    ComputationLayout* computation_layout) {
+  if (!ParseToken(TokKind::kLbrace,
+                  "Expects '{' at the start of aliasing description")) {
+    return false;
+  }
+  if (!ParseToken(TokKind::kLparen, "Expects ( before parameter shape list")) {
+    return false;
+  }
+  while (lexer_.GetKind() != TokKind::kRparen) {
+    Shape param;
+    if (!ParseShape(&param)) {
+      return false;
+    }
+    computation_layout->add_parameter_layout(ShapeLayout(param));
+    if (lexer_.GetKind() == TokKind::kRparen) {
+      break;
+    }
+    if (!ParseToken(TokKind::kComma, "Expects , between parameter shapes")) {
+      return false;
+    }
+  }
+
+  if (!ParseToken(TokKind::kRparen,
+                  "Expects ) at end of parameter shape list")) {
+    return false;
+  }
+  if (!ParseToken(TokKind::kArrow, "Expects -> before result shape")) {
+    return false;
+  }
+  Shape result;
+  if (!ParseShape(&result)) {
+    return false;
+  }
+  *computation_layout->mutable_result_layout() = ShapeLayout(result);
+  if (!ParseToken(TokKind::kRbrace,
+                  "Expects '}' at the end of computation layouts")) {
+    return false;
+  }
+  return true;
+}
+
 bool HloParserImpl::ParseInstructionOutputOperandAliasing(
     std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>*
         aliasing_output_operand_pairs) {
@@ -872,16 +919,20 @@ bool HloParserImpl::ParseHloModule(HloModule* module) {
     return false;
   }
 
-  absl::optional<bool> is_scheduled;
-  absl::optional<AliasingData> aliasing_data;
-  absl::optional<bool> alias_passthrough_params;
+  std::optional<bool> is_scheduled;
+  std::optional<AliasingData> aliasing_data;
+  std::optional<bool> alias_passthrough_params;
   absl::flat_hash_map<std::string, AttrConfig> attrs;
+  std::optional<ComputationLayout> entry_computation_layout;
 
   attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
   attrs["input_output_alias"] = {/*required=*/false, AttrTy::kAliasing,
                                  &aliasing_data};
   attrs["alias_passthrough_params"] = {/*required=*/false, AttrTy::kBool,
                                        &alias_passthrough_params};
+  attrs["entry_computation_layout"] = {/*required=*/false,
+                                       AttrTy::kComputationLayout,
+                                       &entry_computation_layout};
   if (!ParseAttributes(attrs)) {
     return false;
   }
@@ -893,9 +944,17 @@ bool HloParserImpl::ParseHloModule(HloModule* module) {
   if (is_scheduled.has_value() && *is_scheduled) {
     TF_CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
   }
+  HloModuleConfig config = module->config();
+  bool default_config = true;
   if (alias_passthrough_params.has_value() && *alias_passthrough_params) {
-    HloModuleConfig config = module->config();
     config.set_alias_passthrough_params(true);
+    default_config = false;
+  }
+  if (entry_computation_layout.has_value()) {
+    *config.mutable_entry_computation_layout() = *entry_computation_layout;
+    default_config = false;
+  }
+  if (!default_config) {
     module->set_config(config);
   }
   if (aliasing_data) {
@@ -1066,7 +1125,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                         bool allow_attributes) {
   Shape shape;
   HloOpcode opcode;
-  absl::optional<HloOpcode> async_wrapped_opcode;
+  std::optional<HloOpcode> async_wrapped_opcode;
   std::vector<HloInstruction*> operands;
 
   const bool parse_shape = CanBeShape();
@@ -1105,7 +1164,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                          AttrTy::kBracedInt64List,
                                          &outer_dimension_partitions};
 
-  absl::optional<Shape> maybe_shape;
+  std::optional<Shape> maybe_shape;
   if (parse_shape) {
     maybe_shape = shape;
   }
@@ -1177,8 +1236,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
 
 HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     HloComputation::Builder* builder, absl::string_view name,
-    absl::optional<Shape> shape, HloOpcode opcode,
-    absl::optional<HloOpcode> async_wrapped_opcode,
+    std::optional<Shape> shape, HloOpcode opcode,
+    std::optional<HloOpcode> async_wrapped_opcode,
     absl::flat_hash_map<std::string, AttrConfig>& attrs, bool allow_attributes,
     std::vector<HloInstruction*>* preset_operands) {
   std::vector<HloInstruction*> operands;
@@ -1540,7 +1599,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kAsyncStart:
     case HloOpcode::kAsyncUpdate:
     case HloOpcode::kAsyncDone: {
-      absl::optional<HloComputation*> async_computation;
+      std::optional<HloComputation*> async_computation;
       if (!preset_operands && !ParseOperands(&operands, builder)) {
         return nullptr;
       }
@@ -1591,7 +1650,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         HloInstruction* root =
             CreateInstruction(&async_wrapped_builder, "async_op",
                               async_wrapped_root_shape, *async_wrapped_opcode,
-                              /*async_wrapped_opcode=*/absl::nullopt, attrs,
+                              /*async_wrapped_opcode=*/std::nullopt, attrs,
                               allow_attributes, &async_wrapped_operands);
         if (!root) {
           return nullptr;
@@ -1943,7 +2002,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
             return ShapeInference::InferConvolveShape(
                 operands[0]->shape(), operands[1]->shape(),
                 *feature_group_count, *batch_group_count, *window, *dnums,
-                /*preferred_element_type=*/absl::nullopt);
+                /*preferred_element_type=*/std::nullopt);
           })) {
         return nullptr;
       }
@@ -2716,7 +2775,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       if (!maybe_infer_shape([&] {
             return ShapeInference::InferDotOpShape(
                 operands[0]->shape(), operands[1]->shape(), dnum,
-                /*preferred_element_type=*/absl::nullopt);
+                /*preferred_element_type=*/std::nullopt);
           })) {
         return nullptr;
       }
@@ -4278,6 +4337,15 @@ bool HloParserImpl::ParseAttributeHelper(
             ->emplace(aliasing_data);
         return true;
       }
+      case AttrTy::kComputationLayout: {
+        ComputationLayout computation_layout(ShapeLayout(Shape{}));
+        if (!ParseComputationLayout(&computation_layout)) {
+          return false;
+        }
+        static_cast<optional<ComputationLayout>*>(attr_out_ptr)
+            ->emplace(computation_layout);
+        return true;
+      }
       case AttrTy::kInstructionAliasing: {
         std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
             aliasing_output_operand_pairs;
@@ -4409,13 +4477,13 @@ bool HloParserImpl::ParseAttributesAsProtoMessage(
     const std::string& field_name = fd->name();
     switch (fd->type()) {
       case tensorflow::protobuf::FieldDescriptor::TYPE_BOOL: {
-        bool_params.emplace_back(absl::nullopt);
+        bool_params.emplace_back(std::nullopt);
         attrs[field_name] = {/*is_required*/ false, AttrTy::kBool,
                              &bool_params.back()};
         break;
       }
       case tensorflow::protobuf::FieldDescriptor::TYPE_ENUM: {
-        string_params.emplace_back(absl::nullopt);
+        string_params.emplace_back(std::nullopt);
         attrs[field_name] = {/*is_required*/ false, AttrTy::kEnum,
                              &string_params.back()};
         break;
@@ -5348,7 +5416,7 @@ bool HloParserImpl::ParseListShardingType(
 }
 
 bool HloParserImpl::ParseOpcode(
-    HloOpcode* opcode, absl::optional<HloOpcode>* async_wrapped_opcode) {
+    HloOpcode* opcode, std::optional<HloOpcode>* async_wrapped_opcode) {
   VLOG(3) << "ParseOpcode";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects opcode");

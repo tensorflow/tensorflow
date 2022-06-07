@@ -92,7 +92,7 @@ Status DumpTextualIRToFile(const MlirDumpConfig& config, const Graph& graph,
 
   TF_RETURN_IF_ERROR(convert());
   module->print(os, config.op_printing_flags);
-  return Status::OK();
+  return OkStatus();
 }
 
 void UseMlirForGraphDump(const MlirDumpConfig& config) {

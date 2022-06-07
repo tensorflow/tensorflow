@@ -66,7 +66,7 @@ class ParallelFilterDatasetParams : public DatasetParams {
           absl::StrCat(ParallelFilterDatasetOp::kOtherArguments, "_", i));
     }
     input_names->emplace_back(ParallelFilterDatasetOp::kNumParallelCalls);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -74,7 +74,7 @@ class ParallelFilterDatasetParams : public DatasetParams {
         {"predicate", pred_func_},         {"Targuments", type_arguments_},
         {"output_shapes", output_shapes_}, {"output_types", output_dtypes_},
         {"deterministic", deterministic_}, {"metadata", ""}};
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override {

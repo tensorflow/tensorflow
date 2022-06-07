@@ -49,6 +49,13 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_values": [1, 1, 1, 1, 2],
           "expected_shape": [2, 7]
       }, {
+          "testcase_name": "_maxlength_zero",
+          "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
+          "maxlength": 0,
+          "expected_indices": np.empty([0, 2], dtype=np.int64),
+          "expected_values": [],
+          "expected_shape": [2, 0]
+      }, {
           "testcase_name": "_minlength",
           "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
           "minlength": 9,
@@ -143,6 +150,22 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_values": [1, 1, 1, 2, 1],
           "expected_shape": [6],
           "axis": None
+      }, {
+          "testcase_name":
+              "_large_inputs",
+          "x":
+              np.array([[
+                  1941591354222760687, 1748591354222760687, 1241591354229760689
+              ], [
+                  1941591354222760687, 1241591354229760689, 1241591354229760687
+              ]],
+                       dtype=np.int64),
+          "expected_indices": [[1241591354229760687], [1241591354229760689],
+                               [1748591354222760687], [1941591354222760687]],
+          "expected_values": [1, 2, 1, 2],
+          "expected_shape": [1941591354222760687 + 1],
+          "axis":
+              None
       })
   def test_dense_input(self,
                        x,
@@ -357,8 +380,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_indices": [[0, 1], [0, 3], [2, 4], [2, 5]],
           "expected_values": [1, 1, 2, 1],
           "expected_shape": [3, 6],
-      },
-      {
+      }, {
           "testcase_name":
               "_maxlength",
           "x":
@@ -369,8 +391,19 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_shape": [3, 7],
           "maxlength":
               7,
-      },
-      {
+      }, {
+          "testcase_name":
+              "_maxlength_zero",
+          "x":
+              np.array([[3, 0, 1, 0], [7, 0, 0, 0], [5, 0, 4, 4]],
+                       dtype=np.int32),
+          "expected_indices":
+              np.empty([0, 2], dtype=np.int64),
+          "expected_values": [],
+          "expected_shape": [3, 0],
+          "maxlength":
+              0,
+      }, {
           "testcase_name":
               "_minlength",
           "x":
@@ -381,8 +414,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_shape": [3, 9],
           "minlength":
               9,
-      },
-      {
+      }, {
           "testcase_name":
               "_minlength_larger_values",
           "x":
@@ -393,8 +425,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_shape": [3, 8],
           "minlength":
               3,
-      },
-      {
+      }, {
           "testcase_name":
               "_no_maxlength_binary",
           "x":
@@ -405,8 +436,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_shape": [3, 6],
           "binary_output":
               True,
-      },
-      {
+      }, {
           "testcase_name":
               "_maxlength_binary",
           "x":
@@ -419,8 +449,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
               7,
           "binary_output":
               True,
-      },
-      {
+      }, {
           "testcase_name":
               "_minlength_binary",
           "x":
@@ -433,8 +462,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
               9,
           "binary_output":
               True,
-      },
-      {
+      }, {
           "testcase_name":
               "_minlength_larger_values_binary",
           "x":
@@ -447,8 +475,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
               3,
           "binary_output":
               True,
-      },
-      {
+      }, {
           "testcase_name":
               "_no_maxlength_weights",
           "x":
@@ -459,8 +486,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_shape": [3, 6],
           "weights":
               np.array([[6, 0, 2, 0], [0, 0, 0, 0], [10, 0, 3.5, 3.5]]),
-      },
-      {
+      }, {
           "testcase_name":
               "_maxlength_weights",
           "x":
@@ -473,8 +499,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
               7,
           "weights":
               np.array([[6, 0, 2, 0], [0, 0, 14, 0], [10, 0, 3.5, 3.5]]),
-      },
-      {
+      }, {
           "testcase_name":
               "_minlength_weights",
           "x":
@@ -487,8 +512,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
               9,
           "weights":
               np.array([[6, 0, 2, 0], [14, 0, 0, 0], [10, 0, 3, 3.5]]),
-      },
-      {
+      }, {
           "testcase_name":
               "_minlength_larger_values_weights",
           "x":
@@ -501,15 +525,13 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
               3,
           "weights":
               np.array([[6, 0, 2, 0], [14, 0, 0, 0], [10, 0, 3, 3.5]]),
-      },
-      {
+      }, {
           "testcase_name": "_1d",
           "x": np.array([3, 0, 1, 1], dtype=np.int32),
           "expected_indices": [[1], [3]],
           "expected_values": [2, 1],
           "expected_shape": [4],
-      },
-      {
+      }, {
           "testcase_name":
               "_all_axes",
           "x":
@@ -520,8 +542,20 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_shape": [6],
           "axis":
               None,
-      },
-  )
+      }, {
+          "testcase_name":
+              "_large_inputs",
+          "x":
+              np.array([[1941591354222760687, 0, 1241591354229760689],
+                        [0, 1241591354229760689, 1241591354229760687]],
+                       dtype=np.int64),
+          "expected_indices": [[1241591354229760687], [1241591354229760689],
+                               [1941591354222760687]],
+          "expected_values": [1, 2, 1],
+          "expected_shape": [1941591354222760687 + 1],
+          "axis":
+              None
+      })
   def test_sparse_input(self,
                         x,
                         expected_indices,
@@ -552,16 +586,21 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_indices": [[2, 0], [2, 1], [2, 3], [4, 0], [4, 4], [4, 5]],
           "expected_values": [1, 1, 1, 1, 2, 1],
           "expected_shape": [5, 6],
-      },
-      {
+      }, {
           "testcase_name": "_maxlength",
           "x": [[], [], [3, 0, 1], [7], [5, 0, 4, 4]],
           "maxlength": 7,
           "expected_indices": [[2, 0], [2, 1], [2, 3], [4, 0], [4, 4], [4, 5]],
           "expected_values": [1, 1, 1, 1, 2, 1],
           "expected_shape": [5, 7],
-      },
-      {
+      }, {
+          "testcase_name": "_maxlength_zero",
+          "x": [[], [], [3, 0, 1], [7], [5, 0, 4, 4]],
+          "maxlength": 0,
+          "expected_indices": np.empty([0, 2], dtype=np.int64),
+          "expected_values": [],
+          "expected_shape": [5, 0],
+      }, {
           "testcase_name": "_minlength",
           "x": [[], [], [3, 0, 1], [7], [5, 0, 4, 4]],
           "minlength": 9,
@@ -569,8 +608,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
                                [4, 5]],
           "expected_values": [1, 1, 1, 1, 1, 2, 1],
           "expected_shape": [5, 9],
-      },
-      {
+      }, {
           "testcase_name": "_minlength_larger_values",
           "x": [[], [], [3, 0, 1], [7], [5, 0, 4, 4]],
           "minlength": 3,
@@ -578,16 +616,14 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
                                [4, 5]],
           "expected_values": [1, 1, 1, 1, 1, 2, 1],
           "expected_shape": [5, 8],
-      },
-      {
+      }, {
           "testcase_name": "_no_maxlength_binary",
           "x": [[], [], [3, 0, 1], [], [5, 0, 4, 4]],
           "expected_indices": [[2, 0], [2, 1], [2, 3], [4, 0], [4, 4], [4, 5]],
           "expected_values": [1, 1, 1, 1, 1, 1],
           "expected_shape": [5, 6],
           "binary_output": True,
-      },
-      {
+      }, {
           "testcase_name": "_maxlength_binary",
           "x": [[], [], [3, 0, 1], [7], [5, 0, 4, 4]],
           "maxlength": 7,
@@ -595,8 +631,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_values": [1, 1, 1, 1, 1, 1],
           "expected_shape": [5, 7],
           "binary_output": True,
-      },
-      {
+      }, {
           "testcase_name": "_minlength_binary",
           "x": [[], [], [3, 0, 1], [7], [5, 0, 4, 4]],
           "minlength": 9,
@@ -605,8 +640,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_values": [1, 1, 1, 1, 1, 1, 1],
           "expected_shape": [5, 9],
           "binary_output": True,
-      },
-      {
+      }, {
           "testcase_name": "_minlength_larger_values_binary",
           "x": [[], [], [3, 0, 1], [7], [5, 0, 4, 4]],
           "minlength": 3,
@@ -615,16 +649,14 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
                                [4, 5]],
           "expected_values": [1, 1, 1, 1, 1, 1, 1],
           "expected_shape": [5, 8],
-      },
-      {
+      }, {
           "testcase_name": "_no_maxlength_weights",
           "x": [[], [], [3, 0, 1], [], [5, 0, 4, 4]],
           "expected_indices": [[2, 0], [2, 1], [2, 3], [4, 0], [4, 4], [4, 5]],
           "expected_values": [0.5, 2, 6, 0.25, 8, 10],
           "expected_shape": [5, 6],
           "weights": [[], [], [6, 0.5, 2], [], [10, 0.25, 5, 3]],
-      },
-      {
+      }, {
           "testcase_name": "_maxlength_weights",
           "x": [[], [], [3, 0, 1], [7], [5, 0, 4, 4]],
           "maxlength": 7,
@@ -632,8 +664,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_values": [0.5, 2, 6, 0.25, 8, 10],
           "expected_shape": [5, 7],
           "weights": [[], [], [6, 0.5, 2], [14], [10, 0.25, 5, 3]],
-      },
-      {
+      }, {
           "testcase_name": "_minlength_weights",
           "x": [[], [], [3, 0, 1], [7], [5, 0, 4, 4]],
           "minlength": 9,
@@ -642,8 +673,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_values": [0.5, 2, 6, 14, 0.25, 8, 10],
           "expected_shape": [5, 9],
           "weights": [[], [], [6, 0.5, 2], [14], [10, 0.25, 5, 3]],
-      },
-      {
+      }, {
           "testcase_name": "_minlength_larger_values_weights",
           "x": [[], [], [3, 0, 1], [7], [5, 0, 4, 4]],
           "minlength": 3,
@@ -652,23 +682,30 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
           "expected_values": [0.5, 2, 6, 14, 0.25, 8, 10],
           "expected_shape": [5, 8],
           "weights": [[], [], [6, 0.5, 2], [14], [10, 0.25, 5, 3]],
-      },
-      {
+      }, {
           "testcase_name": "_1d",
           "x": [3, 0, 1, 1],
           "expected_indices": [[0], [1], [3]],
           "expected_values": [1, 2, 1],
           "expected_shape": [4],
-      },
-      {
+      }, {
           "testcase_name": "_all_axes",
           "x": [[], [], [3, 0, 1], [], [5, 0, 4, 4]],
           "expected_indices": [[0], [1], [3], [4], [5]],
           "expected_values": [2, 1, 1, 2, 1],
           "expected_shape": [6],
           "axis": None,
-      },
-  )
+      }, {
+          "testcase_name": "_large_inputs",
+          "x": [[1941591354222760687, 1748591354222760687],
+                [1941591354222760687, 1241591354229760689, 1241591354229760687]
+               ],
+          "expected_indices": [[1241591354229760687], [1241591354229760689],
+                               [1748591354222760687], [1941591354222760687]],
+          "expected_values": [1, 1, 1, 2],
+          "expected_shape": [1941591354222760687 + 1],
+          "axis": None
+      })
   def test_ragged_input(self,
                         x,
                         expected_indices,
@@ -1084,6 +1121,19 @@ class RawOpsTest(test.TestCase, parameterized.TestCase):
               weights=weights,
               binary_output=False))
 
+  def testSparseCountSparseOutputNegativeValue(self):
+    indices = [[0, 0], [0, 1], [1, 0], [1, 2]]
+    values = [1, 1, -1, 10]
+    dense_shape = [2, 3]
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Input values must all be non-negative"):
+      self.evaluate(
+          gen_count_ops.SparseCountSparseOutput(
+              indices=indices,
+              values=values,
+              dense_shape=dense_shape,
+              binary_output=False))
+
   def testRaggedCountSparseOutput(self):
     splits = [0, 4, 7]
     values = [1, 1, 2, 1, 2, 10, 5]
@@ -1148,6 +1198,15 @@ class RawOpsTest(test.TestCase, parameterized.TestCase):
               values=values,
               weights=weights,
               binary_output=False))
+
+  def testRaggedCountSparseOutputNegativeValue(self):
+    splits = [0, 4, 7]
+    values = [1, 1, 2, 1, -2, 10, 5]
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Input values must all be non-negative"):
+      self.evaluate(
+          gen_count_ops.RaggedCountSparseOutput(
+              splits=splits, values=values, binary_output=False))
 
 
 if __name__ == "__main__":

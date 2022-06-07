@@ -95,7 +95,7 @@ StatusOr<HloInstruction*> MakeConvolveHlo(
     int64_t batch_group_count, const Window& window,
     const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
-    absl::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type) {
   HloComputation* computation = lhs->parent();
   CHECK_EQ(computation, rhs->parent());
   TF_ASSIGN_OR_RETURN(
@@ -259,6 +259,11 @@ HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type) {
   return hlo;
 }
 
+HloInstruction* MakeBitcastHlo(HloInstruction* hlo, const Shape& shape) {
+  return hlo->parent()->AddInstruction(
+      HloInstruction::CreateBitcast(shape, hlo));
+}
+
 HloInstruction* MakeBitcastConvertToHlo(HloInstruction* hlo,
                                         PrimitiveType type) {
   if (hlo->shape().element_type() == type) {
@@ -286,7 +291,7 @@ StatusOr<HloInstruction*> MakeDotHlo(
     HloInstruction* lhs, HloInstruction* rhs,
     const DotDimensionNumbers& dim_numbers,
     const PrecisionConfig& precision_config,
-    absl::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type) {
   HloComputation* computation = lhs->parent();
   CHECK_EQ(computation, rhs->parent());
   TF_ASSIGN_OR_RETURN(

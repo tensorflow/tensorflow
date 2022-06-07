@@ -4606,22 +4606,27 @@ func BroadcastGradientArgs(scope *Scope, s0 tf.Output, s1 tf.Output) (r0 tf.Outp
 //
 // Broadcasting is the process of making arrays to have compatible shapes
 // for arithmetic operations. Two shapes are compatible if for each
-// dimension pair they are either equal or one of them is one. When trying
-// to broadcast a Tensor to a shape, it starts with the trailing dimensions,
-// and works its way forward.
+// dimension pair they are either equal or one of them is one.
 //
-// For example,
+// For example:
 //
-// >>> x = tf.constant([1, 2, 3])
-// >>> y = tf.broadcast_to(x, [3, 3])
+// >>> x = tf.constant([[1, 2, 3]])   # Shape (1, 3,)
+// >>> y = tf.broadcast_to(x, [2, 3])
 // >>> print(y)
 // tf.Tensor(
 //     [[1 2 3]
-//      [1 2 3]
-//      [1 2 3]], shape=(3, 3), dtype=int32)
+//      [1 2 3]], shape=(2, 3), dtype=int32)
 //
 // In the above example, the input Tensor with the shape of `[1, 3]`
-// is broadcasted to output Tensor with shape of `[3, 3]`.
+// is broadcasted to output Tensor with shape of `[2, 3]`.
+//
+// When broadcasting, if a tensor has fewer axes than necessary its shape is
+// padded on the left with ones. So this gives the same result as the previous
+// example:
+//
+// >>> x = tf.constant([1, 2, 3])   # Shape (3,)
+// >>> y = tf.broadcast_to(x, [2, 3])
+//
 //
 // When doing broadcasted operations such as multiplying a tensor
 // by a scalar, broadcasting (usually) confers some time or space
@@ -9079,6 +9084,14 @@ func DataServiceDatasetTargetWorkers(value string) DataServiceDatasetAttr {
 	}
 }
 
+// DataServiceDatasetCrossTrainerCacheOptions sets the optional cross_trainer_cache_options attribute to value.
+// If not specified, defaults to ""
+func DataServiceDatasetCrossTrainerCacheOptions(value string) DataServiceDatasetAttr {
+	return func(m optionalAttr) {
+		m["cross_trainer_cache_options"] = value
+	}
+}
+
 // Creates a dataset that reads data from the tf.data service.
 func DataServiceDataset(scope *Scope, dataset_id tf.Output, processing_mode tf.Output, address tf.Output, protocol tf.Output, job_name tf.Output, max_outstanding_requests tf.Output, iteration_counter tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...DataServiceDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
@@ -9123,6 +9136,14 @@ func DataServiceDatasetV2DataTransferProtocol(value string) DataServiceDatasetV2
 func DataServiceDatasetV2TargetWorkers(value string) DataServiceDatasetV2Attr {
 	return func(m optionalAttr) {
 		m["target_workers"] = value
+	}
+}
+
+// DataServiceDatasetV2CrossTrainerCacheOptions sets the optional cross_trainer_cache_options attribute to value.
+// If not specified, defaults to ""
+func DataServiceDatasetV2CrossTrainerCacheOptions(value string) DataServiceDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["cross_trainer_cache_options"] = value
 	}
 }
 

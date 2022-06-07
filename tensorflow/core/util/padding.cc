@@ -30,7 +30,7 @@ Status GetPaddingFromString(StringPiece str_value, Padding* value) {
   } else {
     return errors::NotFound(str_value, " is not an allowed padding type");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CheckValidPadding(Padding padding_type,
@@ -64,7 +64,7 @@ Status CheckValidPadding(Padding padding_type,
         "explicit_paddings attribute must be empty if the padding attribute is "
         "not EXPLICIT");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 string GetPaddingAttrString() { return "padding: {'SAME', 'VALID'}"; }

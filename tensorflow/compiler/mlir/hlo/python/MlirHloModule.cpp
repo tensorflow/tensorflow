@@ -10,7 +10,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-c/Bindings/Python/Interop.h"
 #include "mlir-c/Registration.h"
 #include "mlir-hlo-c/Attributes.h"
 #include "mlir-hlo-c/Dialects.h"

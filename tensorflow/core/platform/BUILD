@@ -301,6 +301,7 @@ cc_library(
         ":str_util",
         ":strcat",
         ":types",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -709,7 +710,6 @@ cc_library(
         ":stacktrace",
         ":str_util",
         ":strcat",
-        ":stringpiece",
         ":stringprintf",
         ":types",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",

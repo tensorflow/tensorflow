@@ -61,7 +61,7 @@ Status AttemptRecordPassEndMetadata(HloModule& module,
   TF_RETURN_IF_ERROR(
       module.metadata()->set_current_pass_module_changed(module_changed));
   TF_RETURN_IF_ERROR(module.metadata()->RecordPassEnd());
-  return Status::OK();
+  return OkStatus();
 }
 
 void RecordPassEndMetadata(HloModule& module, const std::string& pass_name,
@@ -85,7 +85,7 @@ Status AttemptRecordPassEndMetadata(HloModuleGroup& module_group,
     TF_RETURN_IF_ERROR(
         AttemptRecordPassEndMetadata(*module, pass_name, module_changed));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void RecordPassEndMetadata(HloModuleGroup& module_group,
@@ -140,7 +140,7 @@ Status HloPassPipeline::RunInvariantCheckers(
     TF_RET_CHECK(!changed_status.ValueOrDie())
         << "invariant checkers must not change the graph";
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename HloT>

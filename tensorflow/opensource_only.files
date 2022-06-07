@@ -38,6 +38,7 @@ tensorflow/lite/core/shims/c/c_api.h:
 tensorflow/lite/core/shims/c/c_api_experimental.h:
 tensorflow/lite/core/shims/c/common.h:
 tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h:
+tensorflow/lite/core/shims/c/experimental/acceleration/configuration/gpu_plugin.h:
 tensorflow/lite/core/shims/c/experimental/acceleration/configuration/nnapi_plugin.h:
 tensorflow/lite/core/shims/c/experimental/acceleration/configuration/xnnpack_plugin.h:
 tensorflow/lite/core/shims/c/shims_test_util.cc:
@@ -115,6 +116,7 @@ tensorflow/tools/pip_package/build_pip_package.sh:
 tensorflow/tools/pip_package/check_load_py_test:.py
 tensorflow/tools/pip_package/pip_smoke_test:.py
 tensorflow/tools/pip_package/setup:.py
+tensorflow/tools/pip_package/setup_partner_builds:.py
 tensorflow/tools/pip_package/simple_console:.py
 tensorflow/tools/pip_package/simple_console_for_windows:.py
 tensorflow/tools/pip_package/xla_build/CMakeLists.txt:

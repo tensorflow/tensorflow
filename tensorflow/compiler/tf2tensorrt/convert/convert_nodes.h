@@ -166,8 +166,8 @@ Status ConvertSegmentToGraphDef(
 //       We may perform additional optimizations to the graph before converting
 //       the graph.
 Status ConvertGraphDefToEngine(
-    const GraphDef& gdef, TrtPrecisionMode precision_mode, int max_batch_size,
-    size_t max_workspace_size_bytes,
+    const GraphDef& gdef, OpKernelContext* ctx, TrtPrecisionMode precision_mode,
+    int max_batch_size, size_t max_workspace_size_bytes,
     const std::vector<PartialTensorShape>& input_shapes,
     nvinfer1::ILogger* logger, nvinfer1::IGpuAllocator* allocator,
     TRTInt8Calibrator* calibrator,
@@ -259,7 +259,8 @@ class Converter {
   static StatusOr<std::unique_ptr<Converter>> Create(
       TrtPrecisionMode precision_mode, bool use_calibration,
       nvinfer1::ILogger* trt_logger, const bool use_implicit_batch,
-      absl::string_view engine_name, bool use_explicit_precision = false);
+      absl::string_view engine_name, bool use_explicit_precision = false,
+      OpKernelContext* ctx = nullptr);
 
   //////////////////////////////////////////////////////////////////////////////
   // Methods used by the TRT engine builder to build a TRT network from a TF
@@ -295,6 +296,9 @@ class Converter {
 
   // What precision are we targeting?
   TrtPrecisionMode precision_mode() const { return precision_mode_; }
+
+  // Variable converters need the context to read variable values.
+  OpKernelContext* context() { return ctx_; }
 
   // Calibration will be or was previously performed on this network?
   bool use_calibration() const { return use_calibration_; }
@@ -417,7 +421,8 @@ class Converter {
  private:
   Converter(TrtPrecisionMode precision_mode, bool use_calibration,
             nvinfer1::ILogger* trt_logger, const bool use_implicit_batch,
-            absl::string_view engine_name, bool use_explicit_precision);
+            absl::string_view engine_name, bool use_explicit_precision,
+            OpKernelContext* ctx);
 
   Status Init(nvinfer1::ILogger* trt_logger);
 
@@ -446,6 +451,9 @@ class Converter {
 
   // Store the weights added during construction of trt_network_.
   TrtWeightStore weight_store_;
+
+  // Store the context.
+  OpKernelContext* ctx_;
 
   // During conversion, this table is populated with quantization ranges per
   // tensor. MaybeApplyQuantizationRanges() will use this table to set the TRT
@@ -483,6 +491,10 @@ class Converter {
   friend class ConverterTest;
   friend class OpConverterTest;
 };
+
+// Converts a TensorFlow tensor to TRT shaped weights.
+Status TfTensorToTrtWeights(const Tensor& tensor, TrtWeightStore* weight_store,
+                            TRT_ShapedWeights* weights);
 
 // Converts 'input' of 'node_def' into 'tensor' with shape specified by 'dims'
 // (which doesn't contain the batch dimension).
@@ -545,6 +557,9 @@ StatusOr<ITensorProxyPtr> ConvertMatMulImpl(OpConverterParams* params,
                                             TRT_TensorOrWeights input_a,
                                             TRT_TensorOrWeights input_b,
                                             bool transpose_a, bool transpose_b);
+
+std::string convert_range_error_msg(float start, float limit, float delta);
+std::string convert_range_expected_msg(const NodeDef& node_def);
 
 }  // namespace convert
 }  // namespace tensorrt

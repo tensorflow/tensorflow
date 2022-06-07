@@ -865,7 +865,7 @@ class ModelTiming {
   explicit ModelTiming(std::shared_ptr<Model> model);
 
   // Returns the timing data for `node`.
-  const NodeTiming* GetTiming(Node* node) const;
+  const NodeTiming* GetTiming(const Node* node) const;
 
   // Returns the root nodes of all stages.
   std::vector<std::shared_ptr<Node>> GetStageRoots() const;

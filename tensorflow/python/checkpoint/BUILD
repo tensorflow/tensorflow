@@ -20,6 +20,18 @@ package(
 )
 
 py_library(
+    name = "checkpoint_lib",
+    deps = [
+        ":checkpoint",
+        ":checkpoint_management",
+        ":checkpoint_options",
+        ":functional_saver",
+        ":graph_view",
+        ":util",
+    ],
+)
+
+py_library(
     name = "checkpoint",
     srcs = [
         "__init__.py",
@@ -30,6 +42,7 @@ py_library(
         ":checkpoint_options",
         ":functional_saver",
         ":graph_view",
+        ":util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:checkpoint_management",
@@ -145,6 +158,42 @@ py_library(
     srcs = ["graph_view.py"],
     srcs_version = "PY3",
     deps = [
+        ":trackable_view",
+        ":util",
+        "//tensorflow/python:util",
+        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/trackable:converter",
+    ],
+)
+
+py_library(
+    name = "trackable_view",
+    srcs = ["trackable_view.py"],
+    srcs_version = "PY3",
+    tags = ["no_pip"],
+    deps = [
+        ":util",
+        "//tensorflow/python:util",
+        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/trackable:converter",
+    ],
+)
+
+tf_py_test(
+    name = "trackable_view_test",
+    srcs = ["trackable_view_test.py"],
+    deps = [
+        ":trackable_view",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/trackable:base",
+    ],
+)
+
+py_library(
+    name = "util",
+    srcs = ["util.py"],
+    srcs_version = "PY3",
+    deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -154,6 +203,7 @@ py_library(
         "//tensorflow/python/training:optimizer",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
+        "//tensorflow/python/training/tracking",
     ],
 )
 
@@ -189,7 +239,6 @@ py_library(
         ":checkpoint_options",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/saved_model/registration",
-        "//tensorflow/python/training/saving:saveable_hook",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
     ],
@@ -206,7 +255,6 @@ cuda_py_test(
         ":functional_saver",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/training/saving:saveable_hook",
     ],
 )
 

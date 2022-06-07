@@ -202,8 +202,8 @@ xla::StatusOr<xla::DeviceAssignment> GpuClient::GetDefaultDeviceAssignment(
 
 // Builds an xla::LocalClient for the GPU platform.
 StatusOr<LocalClient*> GetGpuXlaClient(
-    const absl::optional<std::string>& platform_name,
-    const absl::optional<std::set<int>>& allowed_devices) {
+    const std::optional<std::string>& platform_name,
+    const std::optional<std::set<int>>& allowed_devices) {
   TF_ASSIGN_OR_RETURN(
       se::Platform * platform,
       PlatformUtil::GetPlatform(platform_name ? *platform_name : "gpu"));
@@ -443,7 +443,7 @@ Status BuildDistributedDevices(
         return nccl_id_store->GetNcclUniqueId(key);
       });
 #endif  // GOOGLE_CUDA
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace
@@ -470,8 +470,8 @@ std::string GpuDevice::ToString() const {
 StatusOr<std::unique_ptr<PjRtClient>> GetGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,
     std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id,
-    const absl::optional<std::set<int>>& allowed_devices,
-    absl::optional<std::string> platform_name) {
+    const std::optional<std::set<int>>& allowed_devices,
+    std::optional<std::string> platform_name) {
   TF_ASSIGN_OR_RETURN(LocalClient * xla_client,
                       GetGpuXlaClient(platform_name, allowed_devices));
   TF_ASSIGN_OR_RETURN(

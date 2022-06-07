@@ -111,30 +111,30 @@ std::vector<int> ComputeNewPerm(std::vector<int> input_dims,
       transpose_it->get(), OperatorType::kTranspose);
 
   if (transpose_op == nullptr) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   if (!OperatorReady(*model, transpose_op) || transpose_op->perm.empty()) {
     // Wait for values to propagate.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Find the operator that produces the transpose op.
   auto reshape_it = FindOpWithOutput(*model, transpose_op->inputs[0]);
   if (reshape_it == model->operators.end()) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   TensorFlowReshapeOperator* reshape_op =
       ConvertOperator<TensorFlowReshapeOperator*>(reshape_it->get(),
                                                   OperatorType::kReshape);
   if (reshape_op == nullptr) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Ignore if the reshape is uninitialized.
   if (!OperatorReady(*model, reshape_op) || reshape_op->shape.empty()) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Need to copy to keep static if permutated.
@@ -145,7 +145,7 @@ std::vector<int> ComputeNewPerm(std::vector<int> input_dims,
   // Intermediate should not be consumed by any other operators.
   if (CountOpsWithInput(*model, intermediate_name) != 1) {
     AddMessageF("Input %s used elsewhere", intermediate_name);
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Check that the intermediate is not an output array.
@@ -154,7 +154,7 @@ std::vector<int> ComputeNewPerm(std::vector<int> input_dims,
         "Cannot reorder reshape-transpose as it would invalidate %s which is "
         "an output array.",
         intermediate_name);
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Get the arrays.
@@ -176,7 +176,7 @@ std::vector<int> ComputeNewPerm(std::vector<int> input_dims,
   // dimensions then it can be moved between the transpose.
   if (!ReshapeIsEquivalentToTranspose(*model, reshape_op,
                                       true /*allow_extra_unary_dims*/)) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   if (!IsDiscardableArray(*model, output_name)) {
@@ -247,7 +247,7 @@ std::vector<int> ComputeNewPerm(std::vector<int> input_dims,
   transpose_it->swap(*reshape_it);
 
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

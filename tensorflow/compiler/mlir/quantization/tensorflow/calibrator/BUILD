@@ -23,6 +23,7 @@ cc_library(
     srcs = ["calibrator_singleton.cc"],
     hdrs = ["calibrator_singleton.h"],
     deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",

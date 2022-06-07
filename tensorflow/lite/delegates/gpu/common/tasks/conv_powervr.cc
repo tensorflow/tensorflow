@@ -431,7 +431,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
     const std::vector<std::string> coords{x, y, z};
     for (int i = 0; i < axes.size(); ++i) {
       const auto& axis = axes[i];
-      if (src_def.HasAxis(axis) && !src_def.SupportsZeroClamp(axis) &&
+      if (src_def.HasAxis(axis) && !src_def.SupportsZeroClamp(axis, gpu_info) &&
           !is_1[i]) {
         if (!check.empty()) {
           check += " && ";
@@ -701,7 +701,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
       const std::string zck = "zck" + std::to_string(z);
       c += "  int zck" + std::to_string(z) + " = kz * args.dilation_z + zc" +
            std::to_string(z) + ";\n";
-      if (!src_def.SupportsZeroClamp(Axis::DEPTH)) {
+      if (!src_def.SupportsZeroClamp(Axis::DEPTH, gpu_info)) {
         c += "  bool in_z" + std::to_string(z) + " = " + zck + " >= 0 && " +
              zck + " < args.src_tensor.Depth();\n";
         if (!src_def.CanReadOutOfBorder(Axis::DEPTH)) {
@@ -717,7 +717,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
       const std::string yck = "yck" + std::to_string(y);
       c += "  int " + yck + " = ky * args.dilation_y + yc" + std::to_string(y) +
            ";\n";
-      if (!src_def.SupportsZeroClamp(Axis::HEIGHT)) {
+      if (!src_def.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
         c += "  bool in_y" + std::to_string(y) + " = " + yck + " >= 0 && " +
              yck + " < args.src_tensor.Height();\n";
         if (!src_def.CanReadOutOfBorder(Axis::HEIGHT)) {
@@ -733,7 +733,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
       const std::string xck = "xck" + std::to_string(x);
       c += "  int xck" + std::to_string(x) + " = kx * args.dilation_x + xc" +
            std::to_string(x) + ";\n";
-      if (!src_def.SupportsZeroClamp(Axis::WIDTH)) {
+      if (!src_def.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
         c += "  bool in_x" + std::to_string(x) + " = " + xck + " >= 0 && " +
              xck + " < args.src_tensor.Width();\n";
         if (!src_def.CanReadOutOfBorder(Axis::WIDTH)) {
@@ -744,7 +744,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
     }
   }
   const bool need_multiple_slice_strides =
-      src_def.ReturnsZeroForNegOneRead() && !trivial_kernel_size;
+      src_def.ReturnsZeroForNegOneRead(gpu_info) && !trivial_kernel_size;
   for (int z = 0; z < block_size.z; ++z) {
     const std::string zind = std::to_string(z);
     for (int y = 0; y < block_size.y; ++y) {
@@ -819,7 +819,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
             }
             address += ", s";
           }
-          if (src_def.ReturnsZeroForNegOneRead()) {
+          if (src_def.ReturnsZeroForNegOneRead(gpu_info)) {
             c += "    src" + id + " = args.src_tensor.Read<" + cl_type + ">(" +
                  address + ");\n";
             const std::string ds = trivial_kernel_size ? "ds" : "ds" + id;
@@ -849,6 +849,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
   const bool weights_type_as_accum_type =
       !(op_def.precision == CalculationsPrecision::F32_F16 &&
         conv_params.weights_data_type == DataType::FLOAT16);
+  bool use_fma = gpu_info.IsAMD() && gpu_info.IsApiOpenCl();
   auto conv_core = [&](int shared_offset) {
     const std::string channels[] = {"x", "y", "z", "w"};
     for (int s = 0; s < block_size.w; ++s) {
@@ -912,8 +913,13 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
                     w_val = "f" + weight_id;
                   }
                   if (GetWeightsDescription().IsI4O4()) {
-                    c += "    " + R + " += " + w_val + " * " + S + "." +
-                         channels[ch] + ";\n";
+                    if (use_fma) {
+                      c += "    " + R + " = fma(" + w_val + ", " + S + "." +
+                           channels[ch] + ", " + R + ");\n";
+                    } else {
+                      c += "    " + R + " += " + w_val + " * " + S + "." +
+                           channels[ch] + ";\n";
+                    }
                   } else {
                     c += "    " + R + "." + channels[ch] + " += dot(" + w_val +
                          ", " + S + ");\n";
@@ -1253,21 +1259,9 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
       conv_params.block_size.x = 2;
     }
   } else if (gpu_info.IsAMD()) {
-    if (gpu_info.IsApiOpenCl()) {
-      if (different_weights_for_height) {
-        work_group_size_ = int3(32, 1, 1);
-        work_group_launch_order_ = int3(2, 0, 1);
-        conv_params.fixed_work_group_size = true;
-      } else {
-        work_group_size_ = int3(8, 4, 1);
-        work_group_launch_order_ = int3(2, 0, 1);
-        conv_params.fixed_work_group_size = true;
-      }
-    } else {
-      work_group_size_ = int3(8, 4, 1);
-      work_group_launch_order_ = int3(0, 1, 2);
-      conv_params.fixed_work_group_size = false;
-    }
+    work_group_size_ = int3(8, 4, 1);
+    work_group_launch_order_ = int3(0, 1, 2);
+    conv_params.fixed_work_group_size = false;
 
     if (gpu_info.IsApiOpenCl()) {
       conv_params.weights_upload_type = WeightsUploadType::CONSTANT_MEM;

@@ -55,8 +55,9 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
-using ::tensorflow::AttrValue;
 using ::tensorflow::StatusOr;
 
 constexpr StringRef kFlexOpNamePrefix = "Flex";
@@ -226,21 +227,13 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
 };
 
 class LiftTfliteFlexOpsPass
-    : public mlir::PassWrapper<LiftTfliteFlexOpsPass,
-                               OperationPass<func::FuncOp>> {
+    : public LiftTfliteFlexOpsPassBase<LiftTfliteFlexOpsPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TF::TensorFlowDialect>();
   }
 
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LiftTfliteFlexOpsPass)
-
-  llvm::StringRef getArgument() const final {
-    return "tfl-lift-tflite-flex-ops";
-  }
-  llvm::StringRef getDescription() const final {
-    return "Lifts TFLite Custom ops into TF dialect operations";
-  }
 
   void runOnOperation() override {
     MLIRContext* context = &getContext();
@@ -260,8 +253,5 @@ class LiftTfliteFlexOpsPass
 std::unique_ptr<OperationPass<func::FuncOp>> CreateLiftTfliteFlexOpsPass() {
   return std::make_unique<LiftTfliteFlexOpsPass>();
 }
-
-static PassRegistration<LiftTfliteFlexOpsPass> pass;
-
 }  // namespace TFL
 }  // namespace mlir

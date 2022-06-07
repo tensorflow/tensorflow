@@ -49,14 +49,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 
-#if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
-namespace stream_executor {
-namespace gpu {
-using GpuStreamHandle = void*;
-}  // namespace gpu
-}  // namespace stream_executor
-#endif
-
 namespace tensorflow {
 
 namespace {
@@ -77,22 +69,12 @@ static StatusOr<TfCallbackData> CallbackDataFromProto(const char* opaque,
                                                       size_t opaque_len) {
   TfCallbackData callback_data;
   absl::string_view data{opaque, opaque_len};
-  auto s = HumanReadableJsonToProto(std::string(data), &callback_data);
-  if (!s.ok()) {
-    return se::port::InternalError(
-        absl::StrCat("Failed parsing callback proto: ", s.ToString()));
-  }
+  callback_data.ParseFromString(std::string{data});  // NOLINT: OSS req
   return callback_data;
 }
 
 static StatusOr<std::string> SerializeCallbackData(const TfCallbackData& data) {
-  std::string out;
-  auto status = ProtoToHumanReadableJson(data, &out,
-                                         /*ignore_accuracy_loss=*/true);
-  if (!status.ok()) {
-    return se::port::InternalError("Failed converting proto to JSON");
-  }
-  return out;
+  return data.SerializeAsString();
 }
 
 Status CallTfKernelOp::CompileToCustomCallCallingTfKernel(
@@ -236,7 +218,7 @@ Status CallTfKernelOp::CompileToCustomCallCallingTfKernel(
                    output_shape.IsTuple() ? xla::GetTupleElement(out, i) : out);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -276,18 +258,17 @@ class WriteIntoXlaBufferAllocator : public Allocator {
   std::string description_;
 };
 
-static int GetNumConstants(const TfCallbackData& callback_data) {
+int GetNumConstants(const TfCallbackData& callback_data) {
   return absl::c_count_if(callback_data.inputs(),
                           [&](const auto& input) { return input.has_value(); });
 }
 
-static int GetOutputBufferId(int output_num,
-                             const TfCallbackData& callback_data) {
+int GetOutputBufferId(int output_num, const TfCallbackData& callback_data) {
   return (callback_data.inputs_size() - GetNumConstants(callback_data)) +
          output_num;
 }
 
-static int64_t BufferSize(const TfCallbackData::BufferDescription& descr) {
+int64_t BufferSize(const TfCallbackData::BufferDescription& descr) {
   TensorShape shape;
   CHECK(TensorShape::BuildTensorShape(descr.shape(), &shape).ok());  // Crash OK
   return shape.num_elements() * DataTypeSize(descr.type());
@@ -339,7 +320,7 @@ class TfCallbackDevice : public DeviceBase {
         // TODO(cheshire): Pass meaningful scratch
         // buffer.
         /*scratch=*/nullptr);
-    return Status::OK();
+    return OkStatus();
 #else
     LOG(FATAL) << "CUDA-enabled build is required";  // Crash OK
 #endif
@@ -362,25 +343,12 @@ class TfCallbackDevice : public DeviceBase {
   std::string name_ = "tf_callback_device";
 };
 
-static StatusOr<std::unique_ptr<se::Stream>> StreamForRawHandle(
-    se::StreamExecutor* executor, se::gpu::GpuStreamHandle handle) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  auto gpu_stream =
-      std::make_unique<se::gpu::GpuStream>(static_cast<se::gpu::GpuExecutor*>(
-          executor->GetInternalExecutor()->GetUnderlyingExecutor()));
-  *gpu_stream->GpuStreamMemberHack() = handle;
-  return std::make_unique<se::Stream>(executor, std::move(gpu_stream));
-#else
-  return se::port::InternalError("GPUs not configured");
-#endif
-}
-
 // Populate the output with actual dimensions of the allocated shapes.
 //
 // Populates the vector on the host and then copies it over to the GPU.
-static Status PopulateMetadataBufferIfNeeded(
-    OpKernelContext& ctx, const TfCallbackData& callback_data, void** buffers,
-    se::Stream* stream) {
+Status PopulateMetadataBufferIfNeeded(OpKernelContext& ctx,
+                                      const TfCallbackData& callback_data,
+                                      void** buffers, se::Stream* stream) {
   for (int i = 0; i < ctx.num_outputs(); i++) {
     if (callback_data.outputs(i).is_dynamically_padded()) {
       Tensor* allocated = ctx.mutable_output(i);
@@ -404,24 +372,24 @@ static Status PopulateMetadataBufferIfNeeded(
                          num_dimensions * sizeof(int32_t));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
-static Status CallTfKernel(se::gpu::GpuStreamHandle stream_handle,
-                           void** buffers, const char* opaque, int opaque_len) {
-  // TODO(cheshire): Pass device ordinal explicitly, but it seems it's not doing
-  // anything when the stream is passed explicitly.
-  const int device_ordinal = 0;
+Status CallTfKernel(void* stream_handle, void** buffers, const char* opaque,
+                    int opaque_len) {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       se::MultiPlatformManager::PlatformWithName("CUDA"));
+  se::StreamExecutorConfig config;
+  config.gpu_stream = stream_handle;
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
-                      platform->ExecutorForDevice(device_ordinal));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
-                      StreamForRawHandle(executor, stream_handle));
+                      platform->GetExecutor(config));
+  se::Stream* stream = executor->FindAllocatedStream(stream_handle);
+  if (!stream) {
+    return xla::InternalError("Stream not found for %p", stream_handle);
+  }
   TF_ASSIGN_OR_RETURN(TfCallbackData callback_data,
                       CallbackDataFromProto(opaque, opaque_len));
-
-  TfCallbackDevice device(stream.get(), buffers, callback_data);
+  TfCallbackDevice device(stream, buffers, callback_data);
 
   std::vector<AllocatorAttributes> allocator_attributes;
   for (int output_idx = 0; output_idx < callback_data.outputs_size();
@@ -498,17 +466,16 @@ static Status CallTfKernel(se::gpu::GpuStreamHandle stream_handle,
       [](const auto& out) { return out.is_dynamically_padded(); });
 
   if (has_dynamic_outputs) {
-    TF_RETURN_IF_ERROR(PopulateMetadataBufferIfNeeded(ctx, callback_data,
-                                                      buffers, stream.get()));
+    TF_RETURN_IF_ERROR(
+        PopulateMetadataBufferIfNeeded(ctx, callback_data, buffers, stream));
   }
 
   TF_RETURN_IF_ERROR(ctx.status());
-  return Status::OK();
+  return OkStatus();
 }
 
-static void GenericTfCallback(se::gpu::GpuStreamHandle stream_handle,
-                              void** buffers, const char* opaque,
-                              int opaque_len, XlaCustomCallStatus* status) {
+void GenericTfCallback(void* stream_handle, void** buffers, const char* opaque,
+                       int opaque_len, XlaCustomCallStatus* status) {
   Status s = CallTfKernel(stream_handle, buffers, opaque, opaque_len);
   if (!s.ok()) {
     XlaCustomCallStatusSetFailure(status, s.error_message().c_str(),

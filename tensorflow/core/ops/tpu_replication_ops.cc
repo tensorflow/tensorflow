@@ -77,7 +77,7 @@ REGISTER_OP("TPUReplicatedInput")
           c->set_output_handle_shapes_and_types(0, *shapes_and_types);
         }
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("TPUReplicatedOutput")
@@ -89,7 +89,7 @@ REGISTER_OP("TPUReplicatedOutput")
       for (int i = 0; i < c->num_outputs(); ++i) {
         c->set_output(i, c->input(0));
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("TPUCompilationResult")

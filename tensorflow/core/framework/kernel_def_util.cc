@@ -100,7 +100,7 @@ Status KernelAttrsMatch(const KernelDef& kernel_def, AttrSlice attrs,
         }                                                          \
       }                                                            \
       if (!found) {                                                \
-        return Status::OK();                                       \
+        return OkStatus();                                         \
       }                                                            \
     }                                                              \
   } while (false)
@@ -117,7 +117,7 @@ Status KernelAttrsMatch(const KernelDef& kernel_def, AttrSlice attrs,
 
     if (attr_value->type() != DT_INVALID) {
       if (!InTypeList(attr_value->type(), constraint.allowed_values())) {
-        return Status::OK();
+        return OkStatus();
       }
     } else {
       if (!AttrValueHasType(*attr_value, "list(type)").ok()) {
@@ -133,13 +133,13 @@ Status KernelAttrsMatch(const KernelDef& kernel_def, AttrSlice attrs,
       for (int t : attr_value->list().type()) {
         if (!InTypeList(static_cast<DataType>(t),
                         constraint.allowed_values())) {
-          return Status::OK();
+          return OkStatus();
         }
       }
     }
   }
   *match = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

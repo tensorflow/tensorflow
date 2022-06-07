@@ -60,7 +60,7 @@ class SessionMgrTest : public ::testing::Test {
   SessionMgr::WorkerCacheFactory factory_ =
       [](const ServerDef& server_def, WorkerCacheInterface** worker_cache) {
         *worker_cache = nullptr;  // Set to null to make debugging easier.
-        return Status::OK();
+        return OkStatus();
       };
   SessionMgr mgr_;
 };
@@ -193,13 +193,11 @@ TEST_F(SessionMgrTest, CreateSessionWithMasterName) {
                                   cluster_device_attributes, true, master_name,
                                   new_incarnation));
 
-  EXPECT_NE(mgr_.WorkerSessionForSession(sess_handle1, &session),
-            tensorflow::Status::OK())
+  EXPECT_NE(mgr_.WorkerSessionForSession(sess_handle1, &session), OkStatus())
       << "Session for " << sess_handle1
       << " should have been garbage collected.";
 
-  EXPECT_NE(mgr_.WorkerSessionForSession(sess_handle2, &session),
-            tensorflow::Status::OK())
+  EXPECT_NE(mgr_.WorkerSessionForSession(sess_handle2, &session), OkStatus())
       << "Session for " << sess_handle2
       << " should have been garbage collected.";
 

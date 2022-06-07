@@ -1078,9 +1078,9 @@ def TFL_BatchMatMulOp : TFL_Op<"batch_matmul", [
            And<[CPred<"getElementTypeOrSelf($_op.getOperand(0)).isInteger(8)">,
                 CPred<"getElementTypeOrSelf($_op.getOperand(1)).isInteger(8)">,
                 CPred<"getElementTypeOrSelf($_op.getResult(0)).isInteger(32)">]>]>>,
-   TFL_RuntimePredOpTrait<"lhs and rhs of this op must have rank between [2, 4]",
-     And<[TFL_OperandHasRankAtMostPred<0, 4>,
-          TFL_OperandHasRankAtMostPred<1, 4>]>>,
+   TFL_RuntimePredOpTrait<"lhs and rhs of this op must have rank between [2, 5]",
+     And<[TFL_OperandHasRankAtMostPred<0, 5>,
+          TFL_OperandHasRankAtMostPred<1, 5>]>>,
    DynamicRangeQuantizedOpInterface]> {
 
   let summary = "Batch Matrix Multiply Operator";

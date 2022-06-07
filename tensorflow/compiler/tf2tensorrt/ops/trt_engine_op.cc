@@ -57,7 +57,7 @@ REGISTER_OP("TRTEngineOp")
         c->set_output(i, output_shape_handle);
       }
 
-      return Status::OK();
+      return OkStatus();
     })
     // Deprecated attributes.
     .Attr("segment_funcdef_name: string = ''")

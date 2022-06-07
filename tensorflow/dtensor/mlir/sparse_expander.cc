@@ -64,7 +64,7 @@ Status RunSparseExpansion(mlir::Operation* op, mlir::Operation** output) {
   } else {  // If there is no SparseTensor inputs then just return the op.
     *output = op;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace dtensor

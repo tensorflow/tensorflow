@@ -99,7 +99,7 @@ Status TpuPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
     return status.status();
   }
   *shape = tpu_shape.AsCpp<xla::Shape>();
-  return Status::OK();
+  return OkStatus();
 }
 
 // Check if TPU has been initialized. TPU initialization is not necessary
@@ -110,7 +110,7 @@ Status CheckIfTPUInitialized() {
     return errors::FailedPrecondition(
         "The TPU system has not been initialized.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Implementation of TPU->TPU device copies that copies over the dedicated TPU
@@ -139,13 +139,13 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
       Status s = CheckIfTPUInitialized();
       if (!s.ok()) {
         done(s);
-        return Status::OK();
+        return OkStatus();
       }
     }
     if (input->shape().num_elements() == 0) {
       // Zero-element tensors have no backing buffers.
-      done(Status::OK());
-      return Status::OK();
+      done(OkStatus());
+      return OkStatus();
     }
 
     se::Stream* const src_compute_stream = src_xla_context->stream();
@@ -166,8 +166,8 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
             dst_compute_stream_impl)) {
       // Surprisingly, this path does get triggered in practice.
       *output = *input;
-      done(Status::OK());
-      return Status::OK();
+      done(OkStatus());
+      return OkStatus();
     }
 
     // To avoid stream exhaustion, we pick a substream from a pool if enabled.
@@ -204,7 +204,7 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
         dst_xla_context->shape_determination_fns();
     XlaLayoutPreference layout_preference =
         shape_determination_fns.layout_preference_fn(
-            input->shape(), input->dtype(), absl::nullopt);
+            input->shape(), input->dtype(), std::nullopt);
     TF_ASSIGN_OR_RETURN(xla::Shape shape,
                         shape_determination_fns.shape_representation_fn(
                             input->shape(), input->dtype(),
@@ -295,10 +295,10 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
                 dst_device_to_device_stream);
           }
           input_reference.Unref();
-          done(Status::OK());
+          done(OkStatus());
         });
 
-    return Status::OK();
+    return OkStatus();
   };
   Status status = impl();
   if (!status.ok()) {
@@ -318,7 +318,7 @@ Status TpuNodeDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
       tpu::TpuPlatformInterface::GetRegisteredPlatform();
   if (platform == nullptr) {
     // If we don't have a platform registered, then we have no devices.
-    return Status::OK();
+    return OkStatus();
   }
 
   int device_count = platform->VisibleDeviceCount();
@@ -328,7 +328,7 @@ Status TpuNodeDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
     devices->push_back(device_name);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TpuNodeDeviceFactory::CreateDevices(
@@ -338,7 +338,7 @@ Status TpuNodeDeviceFactory::CreateDevices(
       tpu::TpuPlatformInterface::GetRegisteredPlatform();
   if (platform == nullptr) {
     // If we don't have a platform registered, then we should not create any.
-    return Status::OK();
+    return OkStatus();
   }
 
   if (platform != nullptr && platform->ShouldRegisterTpuDeviceToDeviceCopy()) {
@@ -405,7 +405,7 @@ Status TpuNodeDeviceFactory::CreateDevices(
     devices->push_back(std::move(device));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 class TpuSystemDeviceFactory : public DeviceFactory {
@@ -421,12 +421,12 @@ Status TpuSystemDeviceFactory::ListPhysicalDevices(
   TF_RETURN_IF_ERROR(tpu::TpuPlatform::TpusPerHost(&device_count));
   if (device_count == 0) {
     VLOG(1) << "Host has no TPUs, not creating a TPU_SYSTEM device";
-    return Status::OK();
+    return OkStatus();
   }
 
   devices->push_back("/physical_device:TPU_SYSTEM:0");
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TpuSystemDeviceFactory::CreateDevices(
@@ -436,7 +436,7 @@ Status TpuSystemDeviceFactory::CreateDevices(
   TF_RETURN_IF_ERROR(tpu::TpuPlatform::TpusPerHost(&device_count));
   if (device_count == 0) {
     VLOG(1) << "Host has no TPUs, not creating a TPU_SYSTEM device";
-    return Status::OK();
+    return OkStatus();
   }
 
   int64_t memory_limit;
@@ -451,7 +451,7 @@ Status TpuSystemDeviceFactory::CreateDevices(
   VLOG(1) << "Created TPU_SYSTEM device. This host has " << device_count
           << " TPUs";
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

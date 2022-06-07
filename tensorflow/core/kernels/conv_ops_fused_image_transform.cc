@@ -344,7 +344,7 @@ class FusedResizeAndPadConvFunctor {
     std::function<Status(Im2ColBufferResource<T1, kMaxChunkSize>**)> creator =
         [](Im2ColBufferResource<T1, kMaxChunkSize>** resource) {
           *resource = new Im2ColBufferResource<T1, kMaxChunkSize>();
-          return Status::OK();
+          return OkStatus();
         };
     OP_REQUIRES_OK(context, context->resource_manager()->LookupOrCreate(
                                 "Conv2d", "im2col_buffer",
@@ -382,7 +382,7 @@ class FusedResizeAndPadConvFunctor {
         resize_creator =
             [](Im2ColBufferResource<T1, kResizeCacheSize>** resource) {
               *resource = new Im2ColBufferResource<T1, kResizeCacheSize>();
-              return Status::OK();
+              return OkStatus();
             };
     OP_REQUIRES_OK(context, context->resource_manager()->LookupOrCreate(
                                 "Conv2d", "resize_cache",

@@ -305,7 +305,7 @@ bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
               *shape_tree.mutable_element(index) =
                   DetermineHloInstructionIsReplicated(
                       inst, index, cross_partition_spmd_, hlo_replication_);
-              return Status::OK();
+              return OkStatus();
             });
         changed |= assign_or_combine_shapetree(std::move(shape_tree), inst);
       }
@@ -328,11 +328,11 @@ void HloReplicationAnalysis::ComputeHloReplication() {
       ShapeUtil::ForEachSubshape(
           param->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
             if (!ShapeUtil::IsLeafIndex(param->shape(), index)) {
-              return Status::OK();
+              return OkStatus();
             }
             *shape_tree.mutable_element(index) =
                 sharding_tree.element(index).IsReplicated();
-            return Status::OK();
+            return OkStatus();
           });
     } else if (!cross_partition_spmd_) {
       const auto& replication = param->parameter_replicated_at_leaf_buffers();
@@ -340,13 +340,13 @@ void HloReplicationAnalysis::ComputeHloReplication() {
       ShapeUtil::ForEachSubshape(
           param->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
             if (!ShapeUtil::IsLeafIndex(param->shape(), index)) {
-              return Status::OK();
+              return OkStatus();
             }
             if (replication && replication->at(leaf_index)) {
               *shape_tree.mutable_element(index) = true;
             }
             ++leaf_index;
-            return Status::OK();
+            return OkStatus();
           });
     }
     hlo_replication_[param] = std::move(shape_tree);

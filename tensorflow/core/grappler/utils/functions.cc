@@ -178,7 +178,7 @@ Status InstantiationTypeParameters(
         ++index;
       }
     }
-    return Status::OK();
+    return OkStatus();
   };
 
   for (const auto& input : func.signature().input_arg())
@@ -186,7 +186,7 @@ Status InstantiationTypeParameters(
   for (const auto& output : func.signature().output_arg())
     TF_RETURN_IF_ERROR(resolve_type_attr(output));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status InstantiationBodyParameters(
@@ -215,7 +215,7 @@ Status InstantiationBodyParameters(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MakeGrapplerFunctionItem(const FunctionDef& func,
@@ -300,7 +300,7 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
       /*func_attr=*/AttrSlice(&func.attr()), std::move(arg_attr),
       std::move(inputs), std::move(outputs), std::move(control_outputs),
       graph_def_version, signature.is_stateful(), std::move(function_body));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MakeGrapplerFunctionItem(const FunctionDef& func,
@@ -349,7 +349,7 @@ Status ReplaceInputWithConst(const NodeDef& input_const, int input_index,
   item->input_args_.erase(item->input_args_.begin() + input_index);
   item->arg_attr_.erase(item->arg_attr_.begin() + input_index);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RemoveFunctionOutputs(const absl::flat_hash_set<int>& remove_outputs,
@@ -404,7 +404,7 @@ Status RemoveFunctionOutputs(const absl::flat_hash_set<int>& remove_outputs,
   auto& o = item->output_args_;
   o.erase(std::remove_if(o.begin(), o.end(), is_remove_output_arg), o.end());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -464,14 +464,14 @@ Status MakeFunctionDefHelper::Initialize(
     function_body_outputs_.emplace(node.name(), std::move(outputs_range_map));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MakeFunctionDefHelper::AsFunctionDefInput(const string& graph_def_input,
                                                  string* func_def_input) const {
   if (IsControlInput(graph_def_input)) {
     *func_def_input = graph_def_input;
-    return Status::OK();
+    return OkStatus();
   }
 
   const SafeTensorId tensor = ParseTensorName(graph_def_input);
@@ -482,7 +482,7 @@ Status MakeFunctionDefHelper::AsFunctionDefInput(const string& graph_def_input,
   if (is_input != input_nodes_.end()) {
     DCHECK_EQ(tensor.index(), 0);
     *func_def_input = tensor.node();
-    return Status::OK();
+    return OkStatus();
   }
 
   // Or it must be output from one of the function body nodes
@@ -497,7 +497,7 @@ Status MakeFunctionDefHelper::AsFunctionDefInput(const string& graph_def_input,
           tensor.index() < output_range.second) {
         *func_def_input = absl::StrCat(tensor.node(), ":", output_name, ":",
                                        tensor.index() - output_range.first);
-        return Status::OK();
+        return OkStatus();
       }
     }
   }
@@ -515,7 +515,7 @@ Status MakeFunctionDefHelper::AsFunctionDefNode(
     function_body_node->set_input(i, func_def_input);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -607,7 +607,7 @@ Status MakeFunctionDef(const GrapplerFunctionItem& item,
     TF_RETURN_IF_ERROR(helper.AsFunctionDefNode(func_def_node));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace grappler

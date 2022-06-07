@@ -119,7 +119,8 @@ absl::StatusOr<GraphDef> QuantizeQATModel(absl::string_view saved_model_path,
   // pattern for FakeQuantOp.
   // pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass());
-  pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass());
+  pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
+      mlir::quant::QuantizationMethod::kQuantizationAwareTraining));
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       mlir::quant::QuantizationMethod::kQuantizationAwareTraining));
   pm.addPass(mlir::createSymbolDCEPass());
@@ -185,6 +186,12 @@ absl::StatusOr<GraphDef> QuantizePTQModelPreCalibration(
   mlir::PassManager pm(&context);
 
   pm.addPass(mlir::createCanonicalizerPass());
+  // Freeze variables as constants.
+  pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
+  pm.addPass(mlir::createInlinerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass());
+
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
   // TODO(b/230426953): Add TFShapeInferencePass to infer shapes for unranked
   // types. pm.addPass(mlir::TF::CreateTFShapeInferencePass());
@@ -255,7 +262,8 @@ absl::StatusOr<GraphDef> QuantizePTQModelPostCalibration(
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertCustomAggregationOpToQuantStatsPass());
-  pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass());
+  pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
+      mlir::quant::QuantizationMethod::kPostTrainingQuantization));
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       mlir::quant::QuantizationMethod::kPostTrainingQuantization));
   pm.addPass(mlir::createSymbolDCEPass());
@@ -268,6 +276,73 @@ absl::StatusOr<GraphDef> QuantizePTQModelPostCalibration(
   if (failed(pm.run(*module_ref))) {
     return absl::InternalError(
         "failed to apply the quantization at the post-calibation stage: " +
+        diagnostic_handler.ConsumeStatus().error_message());
+  }
+
+  // Export as GraphDef.
+  tensorflow::GraphExportConfig confs;
+  stream_executor::port::StatusOr<std::unique_ptr<GraphDef>> graph =
+      tensorflow::ConvertMlirToGraphdef(*module_ref, confs);
+  if (!graph.ok()) {
+    return absl::InternalError("failed to convert MLIR to graphdef: " +
+                               graph.status().error_message());
+  }
+
+  return *graph.ConsumeValueOrDie();
+}
+
+absl::StatusOr<GraphDef> QuantizePTQDynamicRange(
+    absl::string_view saved_model_path, absl::string_view exported_names_str,
+    absl::string_view tags) {
+  const std::unordered_set<std::string> tag_set =
+      absl::StrSplit(tags, ',', absl::SkipEmpty());
+  std::vector<std::string> exported_names_vec =
+      absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
+
+  // Convert the SavedModelBundle to an MLIR module.
+  mlir::DialectRegistry registry;
+  registry.insert<mlir::func::FuncDialect, mlir::scf::SCFDialect,
+                  mlir::tf_saved_model::TensorFlowSavedModelDialect,
+                  mlir::TF::TensorFlowDialect, mlir::shape::ShapeDialect,
+                  mlir::quant::QuantizationDialect>();
+  mlir::MLIRContext context(registry);
+
+  tensorflow::MLIRImportOptions import_options;
+  import_options.upgrade_legacy = true;
+  auto bundle = std::make_unique<tensorflow::SavedModelBundle>();
+
+  // TODO(b/213406917): Add support for the object graph based saved model input
+  tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
+      tensorflow::SavedModelSignatureDefsToMlirImport(
+          saved_model_path, tag_set,
+          absl::Span<std::string>(exported_names_vec), &context, import_options,
+          true, &bundle);
+
+  if (!module.status().ok()) {
+    return absl::InternalError("failed to import SavedModel: " +
+                               module.status().error_message());
+  }
+
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref = module.ConsumeValueOrDie();
+
+  mlir::PassManager pm(&context);
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
+  pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsDRQPass());
+  pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
+      mlir::quant::QuantizationMethod::kDynamicRangeQuantization));
+  pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
+      mlir::quant::QuantizationMethod::kDynamicRangeQuantization));
+  pm.addPass(mlir::createSymbolDCEPass());
+  pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::CreateFunctionalToExecutorDialectConversionPass());
+  pm.addPass(mlir::CreateBreakUpIslandsPass());
+
+  mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
+  if (failed(pm.run(*module_ref))) {
+    return absl::InternalError(
+        "failed to apply the quantization: " +
         diagnostic_handler.ConsumeStatus().error_message());
   }
 

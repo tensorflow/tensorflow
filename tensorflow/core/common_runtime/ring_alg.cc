@@ -115,7 +115,7 @@ Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
   if (col_params->instance.impl_details.max_subdivs_per_device == -1) {
     col_params->instance.impl_details.subdiv_offsets = {0};
     VLOG(2) << "Limiting to 1 subdivision as max_subdivs_per_device == -1";
-    return Status::OK();
+    return OkStatus();
   }
 
   if (col_params->instance.shape.num_elements() == 0) {
@@ -173,7 +173,7 @@ Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
             << tensor_size << " chunk_size " << chunk_size;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -252,7 +252,7 @@ Status RingAlg::InitializeCollectiveParams(CollectiveParams* col_params) {
   }
 
   VLOG(2) << collective_util::SubdivPermDebugString(*col_params);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RingAlg::InitializeCollectiveContext(

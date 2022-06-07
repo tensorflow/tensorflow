@@ -282,8 +282,10 @@ LogicalResult SetMetadataProtoFromClusterFuncOp(
     tensorflow::tpu::TPUCompileMetadataProto* metadata) {
   if (auto options_attr =
           op->getAttrOfType<StringAttr>("tpu_compile_options_proto")) {
-    metadata->mutable_compile_options()->ParseFromArray(options_attr.data(),
-                                                        options_attr.size());
+    if (!metadata->mutable_compile_options()->ParseFromArray(
+            options_attr.data(), options_attr.size())) {
+      return failure();
+    }
   }
   metadata->set_num_replicas(num_replicas);
   metadata->set_num_cores_per_replica(num_cores_per_replica);

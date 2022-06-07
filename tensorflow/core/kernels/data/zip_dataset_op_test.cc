@@ -49,7 +49,7 @@ class ZipDatasetParams : public DatasetParams {
       input_names->emplace_back(
           absl::StrCat(ZipDatasetOp::kDatasetType, "_", i));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -58,7 +58,7 @@ class ZipDatasetParams : public DatasetParams {
     attr_vector->emplace_back("output_shapes", output_shapes_);
     attr_vector->emplace_back("N", num_input_datasets_);
     attr_vector->emplace_back("metadata", "");
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override { return ZipDatasetOp::kDatasetType; }

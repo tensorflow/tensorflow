@@ -71,5 +71,24 @@ GpuEventStats::GpuEventStats(const XEventVisitor* event) {
   });
 }
 
+LaunchEventStats::LaunchEventStats(const XEventVisitor* event) {
+  event->ForEachStat([&](const XStatVisitor& stat) {
+    if (!stat.Type().has_value()) return;
+    switch (stat.Type().value()) {
+      case StatType::kDeviceId:
+        device_id = stat.IntOrUintValue();
+        break;
+      case StatType::kCorrelationId:
+        correlation_id = stat.IntValue();
+        break;
+      case StatType::kGroupId:
+        group_id = stat.IntValue();
+        break;
+      default:
+        break;
+    }
+  });
+}
+
 }  // namespace profiler
 }  // namespace tensorflow

@@ -28,12 +28,12 @@ namespace xla {
 // trying to brute force a loop trip count. trip counts larger than
 // max_brute_force_iters may be returned if we can pattern-match the loop
 // condition.
-absl::optional<int64_t> ComputeWhileLoopTripCount(
+std::optional<int64_t> ComputeWhileLoopTripCount(
     HloInstruction *while_op, int64_t max_brute_force_iters = 128);
 
 // Returns an upper bound on the trip count of the loop if it's statically
 // known, nullopt otherwise.
-absl::optional<int64_t> ComputeWhileLoopTripCountUpperBound(
+std::optional<int64_t> ComputeWhileLoopTripCountUpperBound(
     HloInstruction *while_op);
 
 // The below function identifies a subset of all possible auxiliary
@@ -43,7 +43,7 @@ std::vector<const HloInstruction *> GetAuxiliaryLoopInductionVars(
     const HloInstruction *while_op);
 // Returns the tuple index of the loop induction variable if there is such an
 // induction variable detected. Otherwise returns nullopt.
-absl::optional<int64_t> GetLoopInductionVarTupleIdx(
+std::optional<int64_t> GetLoopInductionVarTupleIdx(
     const HloInstruction *while_op);
 }  // namespace xla
 

@@ -141,7 +141,7 @@ class HloShapeAndLayoutMatcher
 class HloShardingMatcher
     : public ::testing::MatcherInterface<const HloInstruction*> {
  public:
-  explicit HloShardingMatcher(const absl::optional<HloSharding>& sharding)
+  explicit HloShardingMatcher(const std::optional<HloSharding>& sharding)
       : sharding_(sharding) {}
 
   bool MatchAndExplain(const HloInstruction* instruction,
@@ -149,7 +149,7 @@ class HloShardingMatcher
   void DescribeTo(std::ostream* os) const override;
 
  private:
-  absl::optional<HloSharding> sharding_;
+  std::optional<HloSharding> sharding_;
 };
 
 // Matches a Dot HLO instruction with specific LHS and RHS contracting
@@ -463,7 +463,7 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Sharding(
 // Verifies that no HloSharding is set for an HLO instruction.
 inline ::testing::Matcher<const ::xla::HloInstruction*> NoSharding() {
   return ::testing::MakeMatcher(
-      new ::xla::testing::HloShardingMatcher(absl::nullopt));
+      new ::xla::testing::HloShardingMatcher(std::nullopt));
 }
 
 inline ::testing::Matcher<const ::xla::HloInstruction*> Dot() {

@@ -37,6 +37,7 @@ TEST(CppGeneratorTest, typical_usage) {
       "SparseSoftmaxCrossEntropyWithLogits",  // 2 outputs
       "AccumulatorApplyGradient",             // 0 outputs
       "VarHandleOp",                          // type, shape, list(string) attrs
+      "RestoreV2",  // Variadic output-only, list(type) attr
   };
 
   cpp::CppConfig cpp_config(category, name_space);

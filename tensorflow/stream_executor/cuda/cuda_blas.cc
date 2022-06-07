@@ -156,7 +156,7 @@ class ScopedCublasPointerMode {
   }
 
  private:
-  cublasHandle_t handle_;  // Handle to the cuBLAS instance of interest.
+  cublasHandle_t handle_;         // Handle to the cuBLAS instance of interest.
   cublasPointerMode_t old_mode_;  // Prior cuBLAS pointer mode, to be restored.
   bool ok_;                       // Whether the change was successful.
 };
@@ -237,7 +237,7 @@ bool CUDABlas::Init() {
   }
 
 #if CUDA_VERSION >= 11000
-  ret = cublasLtCreate(&blasLt_);
+  ret = cublasLtCreate(&blas_lt_);
   if (ret != CUBLAS_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to create cublasLt handle: " << ToString(ret);
     if (ret == CUBLAS_STATUS_NOT_INITIALIZED) {
@@ -255,7 +255,7 @@ CUDABlas::CUDABlas(gpu::GpuExecutor *parent)
       blas_(nullptr)
 #if CUDA_VERSION >= 11000
       ,
-      blasLt_(nullptr)
+      blas_lt_(nullptr)
 #endif
 {
 }
@@ -266,9 +266,9 @@ CUDABlas::~CUDABlas() {
     cublasDestroy(blas_);
   }
 #if CUDA_VERSION >= 11000
-  if (blasLt_ != nullptr) {
+  if (blas_lt_ != nullptr) {
     gpu::ScopedActivateExecutorContext sac{parent_};
-    cublasLtDestroy(blasLt_);
+    cublasLtDestroy(blas_lt_);
   }
 #endif
 }
@@ -585,10 +585,10 @@ port::Status CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
 
 // cublas_func may be overloaded, so we need to figure out which one we really
 // need to call based on the args. One way to do it is to wrap it in lambda.
-#define AS_LAMBDA(func)                                                  \
-  [](auto &&... args) -> decltype(                                       \
-                          func(std::forward<decltype(args)>(args)...)) { \
-    return func(std::forward<decltype(args)>(args)...);                  \
+#define AS_LAMBDA(func)                                            \
+  [](auto &&...args) -> decltype(func(                             \
+                         std::forward<decltype(args)>(args)...)) { \
+    return func(std::forward<decltype(args)>(args)...);            \
   }
 
 bool CUDABlas::DoBlasAsum(Stream *stream, uint64_t elem_count,
@@ -3515,7 +3515,7 @@ CUDABlas::GetBlasLtMatmulAlgorithmsInternal(const blas::IBlasLtMatmulPlan *plan,
   {
     absl::MutexLock lock(&mu_);
 
-    CHECK(blasLt_ != nullptr);
+    CHECK(blas_lt_ != nullptr);
 
     gpu::ScopedActivateExecutorContext sac{parent_};
 
@@ -3530,7 +3530,7 @@ CUDABlas::GetBlasLtMatmulAlgorithmsInternal(const blas::IBlasLtMatmulPlan *plan,
     const auto &d_desc =
         for_remainder_batch ? cuda_plan.d_remainder_desc() : cuda_plan.d_desc();
     cublasStatus_t status = cublasLtMatmulAlgoGetHeuristic(
-        blasLt_, cuda_plan.op_desc(), a_desc, b_desc, c_desc, d_desc,
+        blas_lt_, cuda_plan.op_desc(), a_desc, b_desc, c_desc, d_desc,
         preference.get(), max_algorithm_count, results.data(),
         &found_algorithm_count);
     if (status != CUBLAS_STATUS_SUCCESS) {
@@ -3660,7 +3660,7 @@ bool CUDABlas::DoBlasLtMatmulInternal(
     }
   }
 
-  CHECK(blasLt_ != nullptr);
+  CHECK(blas_lt_ != nullptr);
 
   gpu::ScopedActivateExecutorContext sac{parent_};
 
@@ -3679,7 +3679,7 @@ bool CUDABlas::DoBlasLtMatmulInternal(
        batch + capped_batch_count <= cuda_plan.params().batch_count;
        batch += capped_batch_count) {
     cublasStatus_t ret = cublasLtMatmul(
-        blasLt_, cuda_plan.op_desc(), alpha_ptr, a_ptr, cuda_plan.a_desc(),
+        blas_lt_, cuda_plan.op_desc(), alpha_ptr, a_ptr, cuda_plan.a_desc(),
         b_ptr, cuda_plan.b_desc(), beta_ptr, c_ptr, cuda_plan.c_desc(), d_ptr,
         cuda_plan.d_desc(), cuda_algo.algo(), workspace,
         cuda_algo.workspace_size(), cuda_stream);
@@ -3714,7 +3714,7 @@ bool CUDABlas::DoBlasLtMatmulInternal(
       }
     }
     cublasStatus_t ret = cublasLtMatmul(
-        blasLt_, cuda_plan.op_desc(), alpha_ptr, a_ptr,
+        blas_lt_, cuda_plan.op_desc(), alpha_ptr, a_ptr,
         cuda_plan.a_remainder_desc(), b_ptr, cuda_plan.b_remainder_desc(),
         beta_ptr, c_ptr, cuda_plan.c_remainder_desc(), d_ptr,
         cuda_plan.d_remainder_desc(), remainder_algo.algo(), workspace,

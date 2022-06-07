@@ -66,6 +66,7 @@ tf_proto_library(
     name = "xla_data_proto",
     srcs = ["xla_data.proto"],
     cc_api_version = 2,
+    create_grpc_library = True,
     visibility = ["//visibility:public"],
 )
 
@@ -73,6 +74,7 @@ tf_proto_library(
     name = "xla_proto",
     srcs = ["xla.proto"],
     cc_api_version = 2,
+    create_grpc_library = True,
     protodeps = [
         ":xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
@@ -183,6 +185,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":status",
+        ":xla_cc_grpc_proto",
         ":xla_data_proto_cc",
         ":xla_proto_cc",
     ],

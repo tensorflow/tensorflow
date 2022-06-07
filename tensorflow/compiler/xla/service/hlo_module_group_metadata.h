@@ -166,7 +166,7 @@ class HloModuleGroupMetadata {
   // Retrieves the device an instruction is assigned to. Either from the
   // sharding information, or from the ordinal of the module the instruction
   // is in.
-  absl::optional<int64_t> GetInstructionDevice(
+  std::optional<int64_t> GetInstructionDevice(
       const HloInstruction& instruction) const;
 
   // Returns the number of modules for devices (excluding the host module).

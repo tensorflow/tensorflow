@@ -100,7 +100,7 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
       structured_tensor.StructuredTensorSpec(shape, field_specs)
 
   def testValueType(self):
-    spec1 = StructuredTensorSpec([1, 2, 3], dict(a=T_1_2))
+    spec1 = StructuredTensorSpec([1, 2], dict(a=T_1_2))
     self.assertEqual(spec1.value_type, StructuredTensor)
 
   @parameterized.parameters([

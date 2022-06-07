@@ -510,6 +510,19 @@ TEST(SpecializeType, ForEachOverridesTargetOfNestedForEach) {
   EXPECT_EQ(t_actual.args(1).args(0).args(0).args_size(), 0);
 }
 
+TEST(SpecializeType, ForEachRejectsMalformedInput) {
+  OpDef op;
+  FullTypeDef* t = op.add_output_arg()->mutable_experimental_full_type();
+  t->set_type_id(TFT_FOR_EACH);
+  t->add_args()->set_type_id(TFT_PRODUCT);
+
+  NodeDef ndef;
+  AttrSlice attrs(ndef);
+
+  FullTypeDef ft;
+  EXPECT_FALSE(SpecializeType(attrs, op, ft).ok());
+}
+
 TEST(SpecializeType, RemovesLegacyVariant) {
   OpDef op;
   FullTypeDef* t = op.add_output_arg()->mutable_experimental_full_type();

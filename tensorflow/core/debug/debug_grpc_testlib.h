@@ -29,7 +29,7 @@ namespace tensorflow {
 
 namespace test {
 
-class TestEventListenerImpl final : public EventListener::Service {
+class TestEventListenerImpl final : public grpc::EventListener::Service {
  public:
   TestEventListenerImpl() : stop_requested_(false), stopped_(false) {}
 

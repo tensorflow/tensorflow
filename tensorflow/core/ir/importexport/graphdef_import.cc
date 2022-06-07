@@ -305,7 +305,7 @@ StatusOr<OwningOpRef<ModuleOp>> GraphDefImporter::ConvertGraphDef(
           ConvertFunctionDef(func_op, gradient_map, function),
           "While importing function: ", function.signature().name());
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   // TODO(jeffniu): Don't import functions in parallel if there are too few (how
@@ -405,7 +405,7 @@ Status GraphDefImporter::ConvertFunctionAttributes(
     attrs.append(op.resource_arg_unique_ids_valuesAttrName(),
                  b_.getI32TensorAttr(resource_arg_unique_ids_values));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status GraphDefImporter::ConvertArgumentAttributes(const OpDef::ArgDef &def,
@@ -429,7 +429,7 @@ Status GraphDefImporter::ConvertArgumentAttributes(const OpDef::ArgDef &def,
         ConvertAttribute(def.experimental_full_type(), b_, dialect_));
     attrs.append(dialect_->getTfgFullTypeAttrIdentifier(), full_type);
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Location GraphDefImporter::ConvertLocation(const NodeDef &node) {
@@ -638,7 +638,7 @@ Status GraphDefImporter::ConvertFunctionDef(
                     TypeAttr::get(b_.getFunctionType(arg_types, res_types)));
   func_op->setAttrs(func_attrs.getDictionary(ctx_));
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status GraphDefImporter::ConvertNodes(
@@ -691,7 +691,7 @@ Status GraphDefImporter::ConvertNodes(
   // delete it from the IR.
   s.Finalize();
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<unsigned> GraphDefImporter::ArgNumType(const NamedAttrList &attrs,
@@ -699,9 +699,15 @@ StatusOr<unsigned> GraphDefImporter::ArgNumType(const NamedAttrList &attrs,
                                                 SmallVectorImpl<Type> &types) {
   // Check whether a type list attribute is specified.
   if (!arg_def.type_list_attr().empty()) {
-    if (auto v = attrs.get(arg_def.type_list_attr()).dyn_cast<ArrayAttr>()) {
-      for (Type dtype : v.getAsValueRange<TypeAttr>()) {
-        types.push_back(UnrankedTensorType::get(dtype));
+    if (auto v =
+            attrs.get(arg_def.type_list_attr()).dyn_cast_or_null<ArrayAttr>()) {
+      for (Attribute attr : v) {
+        if (auto dtype = attr.dyn_cast<TypeAttr>()) {
+          types.push_back(UnrankedTensorType::get(dtype.getValue()));
+        } else {
+          return InvalidArgument("Expected '", arg_def.type_list_attr(),
+                                 "' to be a list of types");
+        }
       }
       return v.size();
     }
@@ -711,7 +717,8 @@ StatusOr<unsigned> GraphDefImporter::ArgNumType(const NamedAttrList &attrs,
   unsigned num = 1;
   // Check whether a number attribute is specified.
   if (!arg_def.number_attr().empty()) {
-    if (auto v = attrs.get(arg_def.number_attr()).dyn_cast<IntegerAttr>()) {
+    if (auto v =
+            attrs.get(arg_def.number_attr()).dyn_cast_or_null<IntegerAttr>()) {
       num = v.getValue().getZExtValue();
     } else {
       return NotFound("Type attr not found: ", arg_def.number_attr());
@@ -726,7 +733,7 @@ StatusOr<unsigned> GraphDefImporter::ArgNumType(const NamedAttrList &attrs,
     return InvalidArgument("Arg '", arg_def.name(),
                            "' has invalid type and no type attribute");
   } else {
-    if (auto v = attrs.get(arg_def.type_attr()).dyn_cast<TypeAttr>()) {
+    if (auto v = attrs.get(arg_def.type_attr()).dyn_cast_or_null<TypeAttr>()) {
       dtype = v.getValue();
     } else {
       return NotFound("Type attr not found: ", arg_def.type_attr());
@@ -770,7 +777,7 @@ Status GraphDefImporter::ConvertNodeDef(OpBuilder &builder, ConversionState &s,
     TF_ASSIGN_OR_RETURN(tf_type::FullTypeAttr full_type,
                         ConvertAttribute(full_type_def, b_, dialect_));
     state.addAttribute(dialect_->getFullTypeAttrIdentifier(), full_type);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   };
   if (node.has_experimental_type()) {
     TF_RETURN_IF_ERROR(add_full_type(node.experimental_type()));
@@ -879,7 +886,7 @@ Status GraphDefImporter::ConvertNodeDef(OpBuilder &builder, ConversionState &s,
   }
   info->backedges.clear();
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status GraphDefImporter::ConvertDataTypesToUnrankedTensorTypes(
@@ -889,7 +896,7 @@ Status GraphDefImporter::ConvertDataTypesToUnrankedTensorTypes(
     TF_RETURN_IF_ERROR(ConvertDataType(tf_dtype, b_, &dtype));
     results.push_back(UnrankedTensorType::get(dtype));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<OwningOpRef<ModuleOp>> ImportGraphDef(MLIRContext *context,

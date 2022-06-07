@@ -22,6 +22,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.protobuf import saved_model_pb2
+from tensorflow.python.checkpoint import checkpoint as tracking_util
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribution_strategy_context
@@ -49,9 +50,8 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import save as tf_save
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.training.server_lib import ClusterSpec
-from tensorflow.python.training.tracking import tracking
-from tensorflow.python.training.tracking import util as tracking_util
 
 
 class ParameterServerStrategyV2Test(test.TestCase):
@@ -600,7 +600,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
       return variables.Variable(
           name=name, initial_value=initial_value, shape=shape, dtype=dtype)
 
-    class Model(tracking.AutoTrackable):
+    class Model(autotrackable.AutoTrackable):
 
       def build(self):
         self.w = self._add_variable_with_custom_getter(

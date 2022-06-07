@@ -45,7 +45,7 @@ Status GrpcWorkerImpl::Start(const std::string& worker_address,
   worker_address_ = worker_address;
   TF_RETURN_IF_ERROR(impl_->Start(worker_address, transfer_address));
   LocalWorkers::Add(worker_address, impl_);
-  return Status::OK();
+  return OkStatus();
 }
 
 void GrpcWorkerImpl::Stop() {

@@ -320,6 +320,16 @@ def if_registration_v2(if_true, if_false = []):
 def if_portable(if_true, if_false = []):
     return if_true
 
+# We are never indexing generated code in the OSS build, but still
+# return a select() for consistency.
+def if_indexing_source_code(
+        if_true,  # @unused
+        if_false):
+    """Return a select() on whether or not we are building for source code indexing."""
+    return select({
+        "//conditions:default": if_false,
+    })
+
 # Linux systems may required -lrt linker flag for e.g. clock_gettime
 # see https://github.com/tensorflow/tensorflow/issues/15129
 def lrt_if_needed():
@@ -723,6 +733,7 @@ def tf_cc_shared_object(
             data_extra = tf_binary_additional_data_deps()
 
         cc_binary(
+            exec_properties = if_google({"cpp_link.mem": "16g"}, {}),
             name = name_os_full,
             srcs = srcs + framework_so,
             deps = deps,
@@ -2858,6 +2869,7 @@ def pybind_extension(
         srcs,
         module_name = None,
         hdrs = [],
+        dynamic_deps = [],
         static_deps = [],
         deps = [],
         additional_exported_symbols = [],
@@ -2950,6 +2962,7 @@ def pybind_extension(
         cc_shared_library(
             name = so_file,
             roots = [cc_library_name],
+            dynamic_deps = dynamic_deps,
             static_deps = static_deps,
             additional_linker_inputs = [exported_symbols_file, version_script_file],
             compatible_with = compatible_with,
@@ -3141,6 +3154,7 @@ def tf_python_pybind_extension(
         module_name = None,
         hdrs = [],
         deps = [],
+        dynamic_deps = [],
         static_deps = [],
         compatible_with = None,
         copts = [],
@@ -3161,6 +3175,7 @@ def tf_python_pybind_extension(
         srcs,
         module_name = module_name,
         hdrs = hdrs,
+        dynamic_deps = dynamic_deps,
         static_deps = static_deps,
         deps = deps + tf_binary_pybind_deps() + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
         compatible_with = compatible_with,

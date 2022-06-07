@@ -60,7 +60,7 @@ REGISTER_OP("InfeedDequeueTuple")
         TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shapes[i], &out));
         c->set_output(i, out);
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("Prelinearize")

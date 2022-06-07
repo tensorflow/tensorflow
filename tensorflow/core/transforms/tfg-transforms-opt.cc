@@ -25,6 +25,8 @@ int main(int argc, char **argv) {
   mlir::registerCanonicalizerPass();
   mlir::registerPrintOpStatsPass();
   mlir::registerViewOpGraphPass();
+  mlir::registerSymbolDCEPass();
+  mlir::registerSymbolPrivatizePass();
   mlir::tfg::registerTFGraphPasses();
   registry.insert<mlir::tfg::TFGraphDialect, mlir::tf_type::TFTypeDialect>();
   // Inject the op registry.

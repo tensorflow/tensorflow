@@ -70,7 +70,7 @@ TEST(RetryingUtilsTest, CallWithRetries_NotFoundIsNotRetried) {
 }
 
 TEST(RetryingUtilsTest, CallWithRetries_ImmediateSuccess) {
-  std::vector<Status> results({Status::OK()});
+  std::vector<Status> results({OkStatus()});
   std::function<void(int64_t)> sleep = [](int64_t delay) {
     ADD_FAILURE() << "Unexpected call to sleep.";
   };
@@ -86,7 +86,7 @@ TEST(RetryingUtilsTest, CallWithRetries_ImmediateSuccess) {
 TEST(RetryingUtilsTest, CallWithRetries_EventualSuccess) {
   std::vector<Status> results({errors::Unavailable("Failed."),
                                errors::Unavailable("Failed again."),
-                               Status::OK()});
+                               OkStatus()});
   std::function<Status()> f = [&results]() {
     auto result = results[0];
     results.erase(results.begin());
@@ -97,7 +97,7 @@ TEST(RetryingUtilsTest, CallWithRetries_EventualSuccess) {
 }
 
 TEST(RetryingUtilsTest, DeleteWithRetries_ImmediateSuccess) {
-  std::vector<Status> delete_results({Status::OK()});
+  std::vector<Status> delete_results({OkStatus()});
   const auto delete_func = [&delete_results]() {
     auto result = delete_results[0];
     delete_results.erase(delete_results.begin());
@@ -108,7 +108,7 @@ TEST(RetryingUtilsTest, DeleteWithRetries_ImmediateSuccess) {
 }
 
 TEST(RetryingUtilsTest, DeleteWithRetries_EventualSuccess) {
-  std::vector<Status> delete_results({errors::Unavailable(""), Status::OK()});
+  std::vector<Status> delete_results({errors::Unavailable(""), OkStatus()});
   const auto delete_func = [&delete_results]() {
     auto result = delete_results[0];
     delete_results.erase(delete_results.begin());

@@ -273,7 +273,7 @@ class SignatureRunner(object):
       + `index`: The tensor index in the interpreter.
       + `shape`: The shape of the tensor.
       + `shape_signature`: Same as `shape` for models with known/fixed shapes.
-        If any dimension sizes are unkown, they are indicated with `-1`.
+        If any dimension sizes are unknown, they are indicated with `-1`.
       + `dtype`: The numpy data type (such as `np.int32` or `np.uint8`).
       + `quantization`: Deprecated, use `quantization_parameters`. This field
         only works for per-tensor quantization, whereas
@@ -660,7 +660,7 @@ class Interpreter(object):
       + `index`: The tensor index in the interpreter.
       + `shape`: The shape of the tensor.
       + `shape_signature`: Same as `shape` for models with known/fixed shapes.
-        If any dimension sizes are unkown, they are indicated with `-1`.
+        If any dimension sizes are unknown, they are indicated with `-1`.
       + `dtype`: The numpy data type (such as `np.int32` or `np.uint8`).
       + `quantization`: Deprecated, use `quantization_parameters`. This field
         only works for per-tensor quantization, whereas

@@ -26,7 +26,7 @@ namespace xla {
 
 // Match the instruction to a reduction kind. We can represent and/or of pred as
 // min/max. This works because pred is stored as an 8-bit int of value 0 or 1.
-absl::optional<ReductionKind> MatchReductionInstruction(
+std::optional<ReductionKind> MatchReductionInstruction(
     const HloInstruction* hlo) {
   PrimitiveType type = hlo->shape().element_type();
   switch (hlo->opcode()) {
@@ -39,17 +39,17 @@ absl::optional<ReductionKind> MatchReductionInstruction(
     case HloOpcode::kMaximum:
       return ReductionKind::MAX;
     case HloOpcode::kAnd:
-      return type == PRED ? absl::optional<ReductionKind>(ReductionKind::MIN)
-                          : absl::nullopt;
+      return type == PRED ? std::optional<ReductionKind>(ReductionKind::MIN)
+                          : std::nullopt;
     case HloOpcode::kOr:
-      return type == PRED ? absl::optional<ReductionKind>(ReductionKind::MAX)
-                          : absl::nullopt;
+      return type == PRED ? std::optional<ReductionKind>(ReductionKind::MAX)
+                          : std::nullopt;
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
-absl::optional<ReductionKind> MatchReductionComputation(
+std::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation) {
   namespace m = match;
   const HloInstruction* root = computation->root_instruction();
@@ -58,13 +58,13 @@ absl::optional<ReductionKind> MatchReductionComputation(
                                .WithBinaryOperandsAnyOrder(m::Parameter(0),
                                                            m::Parameter(1))
                                .WithShape(m::Shape().IsEffectiveScalar()))) {
-    kind = absl::nullopt;
+    kind = std::nullopt;
   }
   return kind;
 }
 
 StatusOr<std::vector<int>> GetParticipatingIDs(
-    int current_id, absl::optional<int> total_participant_count,
+    int current_id, std::optional<int> total_participant_count,
     absl::Span<const ReplicaGroup> groups) {
   // Empty replica_groups() means that all replicas participate.
   if (groups.empty()) {
@@ -75,7 +75,7 @@ StatusOr<std::vector<int>> GetParticipatingIDs(
   }
 
   // Figure out the other replicas that go together with this one.
-  absl::optional<ReplicaGroup> group;
+  std::optional<ReplicaGroup> group;
   for (const ReplicaGroup& g : groups) {
     if (absl::c_linear_search(g.replica_ids(), current_id)) {
       TF_RET_CHECK(!group.has_value())
@@ -92,7 +92,7 @@ StatusOr<std::vector<int>> GetParticipatingIDs(
 // Returns the group formation mode implied by (a) whether the operation has
 // channel_id and (b) if it has use_global_device_ids and if yes, its value.
 StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
-    bool has_channel_id, absl::optional<bool> use_global_device_ids) {
+    bool has_channel_id, std::optional<bool> use_global_device_ids) {
   if (!has_channel_id) {
     if (!use_global_device_ids.has_value() || !*use_global_device_ids) {
       return CollectiveOpGroupMode::kCrossReplica;
@@ -310,7 +310,7 @@ StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
       TF_ASSIGN_OR_RETURN(
           std::vector<int> participating_flattened_ids,
           GetParticipatingIDs(current_flattened_id,
-                              /*total_participant_count=*/absl::nullopt,
+                              /*total_participant_count=*/std::nullopt,
                               replica_groups));
 
       participants.reserve(participating_flattened_ids.size());

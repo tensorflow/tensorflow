@@ -32,6 +32,7 @@ def make_einsum_tests(options):
               ((None, None, 8, 64), (4, None, 8, 64), "BQNH,BTNH->BQNT"),
               ((1, None, 8, None), (1, None, 8, 64), "BQNT,BTNH->BQNH"),
               ((None, None, 8, 64), (8, 8, 64), "ABNH,NDH->ABD"),
+              ((None, None, 128), (128, 8, 64), "ABD,DNH->ABNH"),
               ((3, 4, 5), (3, 5, 6), "ijk,ikm->ijm"),
               ((3, 4, 5), (5, 6), "ijk,km->ijm"),
               ((2, 5, 7), (5, 2), "LBH,BL->BH"),

@@ -30,7 +30,7 @@ namespace xla {
 namespace {
 // Folds the given two sets of non-empty replica groups into a single set if
 // possible.
-absl::optional<std::vector<ReplicaGroup>> FoldReplicaGroups(
+std::optional<std::vector<ReplicaGroup>> FoldReplicaGroups(
     absl::Span<const ReplicaGroup> replica_groups0,
     absl::Span<const ReplicaGroup> replica_groups1) {
   // For a valid all-reduce with non-empty replica groups, the groups should
@@ -80,7 +80,7 @@ absl::optional<std::vector<ReplicaGroup>> FoldReplicaGroups(
         // In such a case, when processing id = 1 from rg0, replica #0 will
         // already be present, so the groups cannot be merged.
         if (contributors[contrib]) {
-          return absl::nullopt;
+          return std::nullopt;
         }
         contributors[contrib] = true;
       }
@@ -117,7 +117,7 @@ absl::optional<std::vector<ReplicaGroup>> FoldReplicaGroups(
     for (int64_t replica = 0; replica < num_replicas; ++replica) {
       if (contributors[replica]) {
         if (contributing_replicas_set_id[replica] != set_id) {
-          return absl::nullopt;
+          return std::nullopt;
         }
         group.add_replica_ids(replica);
       }
@@ -162,9 +162,9 @@ StatusOr<bool> AllReduceFolder::Run(HloModule *module) {
 
       // Check if the 2 all-reduce instructions are compatible with the
       // exception of the replica groups.
-      absl::optional<AllReduceKey> key0 = GetAllReduceKey(
+      std::optional<AllReduceKey> key0 = GetAllReduceKey(
           ar0, /*domain_map=*/nullptr, /*ignore_replica_groups=*/true);
-      absl::optional<AllReduceKey> key1 = GetAllReduceKey(
+      std::optional<AllReduceKey> key1 = GetAllReduceKey(
           ar1, /*domain_map=*/nullptr, /*ignore_replica_groups=*/true);
       if (!key0 || !key1 || *key0 != *key1 || ar0->replica_groups().empty() ||
           ar1->replica_groups().empty()) {
@@ -184,12 +184,12 @@ StatusOr<bool> AllReduceFolder::Run(HloModule *module) {
       // After we have these sets, we check if these sets are compatible for
       // forming a new all-reduce.
 
-      absl::optional<std::vector<ReplicaGroup>> new_replica_groups =
+      std::optional<std::vector<ReplicaGroup>> new_replica_groups =
           FoldReplicaGroups(ar0->replica_groups(), ar1->replica_groups());
       if (!new_replica_groups) {
         continue;
       }
-      absl::optional<int64_t> channel_id;
+      std::optional<int64_t> channel_id;
       if (ar0->channel_id()) {
         channel_id = next_channel_id++;
       }

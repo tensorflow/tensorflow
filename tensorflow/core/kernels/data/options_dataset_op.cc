@@ -75,7 +75,6 @@ class OptionsDatasetOp::Dataset : public DatasetBase {
 
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override {
-    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     return input_->Get(ctx, index, out_tensors);
   }
 
@@ -85,7 +84,7 @@ class OptionsDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -103,7 +102,7 @@ class OptionsDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {input_graph_node},
         {std::make_pair(kSerializedOptions, serialized_options_attr)}, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

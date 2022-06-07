@@ -500,7 +500,7 @@ TEST_F(HeapSimulatorTest, FusionOutputsOnlyShareOnce) {
   // Test that only one output of a fusion node will be shared with its operand.
   auto can_share_buffer =
       [](const HloInstruction* instr, const HloInstruction* operand,
-         const ShapeIndex& user_index) -> absl::optional<bool> {
+         const ShapeIndex& user_index) -> std::optional<bool> {
     return instr->opcode() == HloOpcode::kFusion &&
            operand->shape().IsArray() &&
            ShapeUtil::Equal(operand->shape(),
@@ -574,7 +574,7 @@ TEST_F(HeapSimulatorTest, FusionOutputsOnlyShareOnceOutputShortLived) {
   // This variant of the test has a fusion node that dies immediately.
   auto can_share_buffer =
       [](const HloInstruction* instr, const HloInstruction* operand,
-         const ShapeIndex& user_index) -> absl::optional<bool> {
+         const ShapeIndex& user_index) -> std::optional<bool> {
     if (instr->opcode() == HloOpcode::kFusion) {
       return true;
     }

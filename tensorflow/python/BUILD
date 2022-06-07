@@ -3,7 +3,7 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 load("//tensorflow:tensorflow.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_windows", "if_xla_available", "py_test", "tf_enable_mlir_bridge")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_oss", "if_windows", "if_xla_available", "py_test", "tf_enable_mlir_bridge")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
@@ -67,6 +67,7 @@ visibility = [
     "//third_party/py/tensorflow_numerics:__subpackages__",
     "//third_party/py/tensorflow_privacy:__subpackages__",
     "//third_party/reverb:__subpackages__",
+    "//research/graph/fairness/inproc_fair_reg:__subpackages__",
 ]
 
 package(
@@ -295,6 +296,7 @@ py_library(
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:sharded_variable",
+        "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
     ],
 )
 
@@ -2962,7 +2964,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/math_ops_test.py"],
     python_version = "PY3",
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_windows_gpu",
+    ],
     deps = [
         ":array_ops",
         ":gradients",
@@ -3238,8 +3242,6 @@ pywrap_tensorflow_macro(
     # copybara:comment_end
     deps = [
         ":bfloat16_lib",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/python/grappler:cost_analyzer_lib",
         "//tensorflow/python/grappler:model_analyzer_lib",
         "//tensorflow/python/util:cpp_nest",
@@ -3278,6 +3280,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/data/service:dispatcher_client",
         "//tensorflow/core/data/service:grpc_util",
         "//tensorflow/core/data/service:server_lib",
+        "//tensorflow/core/data/service:py_utils",
         "//tensorflow/core/function:runtime_client_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:grappler_item_builder",
@@ -3319,6 +3322,9 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/platform:enable_tf2_utils",
     ]) + if_windows([
         "//tensorflow/c:kernels_experimental",
+    ]) + if_oss([
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
     ]),
 )
 
@@ -4515,6 +4521,21 @@ alias(
 alias(
     name = "session_run_hook",
     actual = "//tensorflow/python/training:session_run_hook",
+)
+
+alias(
+    name = "checkpoint",
+    actual = "//tensorflow/python/checkpoint:checkpoint",
+)
+
+alias(
+    name = "checkpoint_lib",
+    actual = "//tensorflow/python/checkpoint:checkpoint_lib",
+)
+
+alias(
+    name = "trackable",
+    actual = "//tensorflow/python/trackable:trackable",
 )
 
 alias(

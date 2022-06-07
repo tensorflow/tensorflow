@@ -94,13 +94,13 @@ class HloInputOutputAliasConfig {
   // Returns the output index that the given parameter and parameter index is
   // aliased with. A nullopt is returned if there is no output that is aliased
   // with the parameter number and index.
-  absl::optional<ShapeIndex> GetAliasedOutput(
+  std::optional<ShapeIndex> GetAliasedOutput(
       int64_t param_number, const ShapeIndex& param_index) const;
 
   // Returns the number of parameter and index of the parameter buffer that the
   // given output buffer index is aliased with. A nullopt is returned if there
   // is no parameter is aliased with the specific output.
-  absl::optional<Alias> GetAliasedParameter(
+  std::optional<Alias> GetAliasedParameter(
       const ShapeIndex& output_index) const;
 
   // Returns if the parameter at the given parameter number and parameter
@@ -138,7 +138,7 @@ class HloInputOutputAliasConfig {
   // is an Alias data structure which defines the input parameter coordinates.
   // If the value is nullopt, it means there is no parameter aliasing for this
   // output.
-  ShapeTree<absl::optional<Alias>> alias_;
+  ShapeTree<std::optional<Alias>> alias_;
 };
 
 std::ostream& operator<<(std::ostream& out,

@@ -214,7 +214,7 @@ Status RemoteCopyNode::RunLocalRecv(EagerOperation* op,
           "Expect to receive a Tensor but got a TensorShape.");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {
@@ -356,7 +356,7 @@ Status SerializePackedHandle(const uint64 op_id, TensorHandle* packed_handle,
       return errors::InvalidArgument("Nested packed handles are not supported");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void RemoteCopyNode::StartSendPackedHandle(StatusCallback done) {
@@ -477,7 +477,7 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
 
 Status RemoteCopyNode::Prepare() {
   TF_RETURN_IF_ERROR(captured_state_->dst()->CopyInferenceShape(src_));
-  return Status::OK();
+  return OkStatus();
 }
 
 void RemoteCopyNode::RunAsync(StatusCallback done) {

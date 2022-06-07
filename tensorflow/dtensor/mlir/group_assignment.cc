@@ -252,7 +252,7 @@ Status GroupAssignment::GlobalToSlices() {
   }
 
   VLOG(2) << "Divided group assignment: " << ToString();
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace dtensor

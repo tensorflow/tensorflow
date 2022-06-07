@@ -779,6 +779,9 @@ class ShapeInference {
   // mutations have identical static shape.
   bool InferShapeForTensorListInitOps(Operation* op);
 
+  // Infers the shape of LookupTableFindV2Op based on shape of the input key.
+  bool InferShapeForLookupTableFindV2Op(LookupTableFindV2Op op);
+
   // Infers the shape of VarHandleOp based on the uses of the VarHandleOp to
   // update the subtypes of the resource type.
   bool InferShapeForVarHandleOp(VarHandleOp op);
@@ -1259,6 +1262,18 @@ bool ShapeInference::InferShapeForTensorListInitOps(Operation* op) {
   auto variant_type = VariantType::get(element_type, op->getContext());
   auto tensor_type = RankedTensorType::get({}, variant_type);
   bool changed = RefineResultType(op, handle, tensor_type);
+  if (changed) DCOMMENT_OP(op, "Modified after shape inference:");
+  return changed;
+}
+
+bool ShapeInference::InferShapeForLookupTableFindV2Op(LookupTableFindV2Op op) {
+  DCOMMENT_OP(op, "Inferring shape for LookupTableFindV2");
+  // Result should have the same shape as keys. Update shape if more refined.
+  auto result_type = op.getResult().getType().cast<ShapedType>();
+  auto keys_type = op.keys().getType().cast<ShapedType>();
+  auto tensor_type =
+      RankedTensorType::get(keys_type.getShape(), result_type.getElementType());
+  bool changed = RefineResultType(op, op.getResult(), tensor_type);
   if (changed) DCOMMENT_OP(op, "Modified after shape inference:");
   return changed;
 }
@@ -2108,6 +2123,10 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
   // operations. If we are unable to refine element shape here, proceed to use
   // the InferenceContext below to get more precise shapes.
   if (IsTensorListInitOp(op) && InferShapeForTensorListInitOps(op)) return true;
+
+  if (auto lookup_table_find_v2_op = dyn_cast<LookupTableFindV2Op>(op)) {
+    return InferShapeForLookupTableFindV2Op(lookup_table_find_v2_op);
+  }
 
   if (auto var_handle_op = dyn_cast<VarHandleOp>(op)) {
     return InferShapeForVarHandleOp(var_handle_op);

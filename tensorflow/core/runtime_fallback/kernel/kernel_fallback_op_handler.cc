@@ -291,7 +291,7 @@ Expected<CoreRuntimeOp> KernelFallbackOpHandler::MakeOp(string_view op_name) {
               if (auto error =
                       tfd::FillAttrValueMap(attrs, host, attr_value_map))
                 return tensorflow::errors::InvalidArgument(tfrt::StrCat(error));
-              return Status::OK();
+              return OkStatus();
             },
             fallback_op_entry.fallback_request_state->device_manager(),
             fallback_op_entry.fallback_request_state

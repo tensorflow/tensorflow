@@ -190,7 +190,7 @@ class MaxPoolOp : public PoolingOp {
     // For VECT_C max-pool ops, transpose to plain NCHW, do the max-pool, and
     // transpose back.  This isn't necessarily the most efficient algorithm, but
     // it's ok for starters.
-    absl::optional<int64_t> vect_width;
+    std::optional<int64_t> vect_width;
     if (data_format_ == FORMAT_NCHW_VECT_C) {
       vect_width = input_shape->dimensions().back();
       input = xla::Collapse(xla::Transpose(input, {0, 1, 4, 2, 3}), {1, 2});

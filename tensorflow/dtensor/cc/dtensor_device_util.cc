@@ -68,7 +68,7 @@ Status ParseAttrMap(const Node& node, absl::string_view indices_attr,
                     std::map<int, Layout>* indices_layout_map) {
   std::vector<std::string> layouts;
   if (!TryGetNodeAttr(node.attrs(), layout_attr, &layouts)) {
-    return Status::OK();
+    return OkStatus();
   }
   const TensorProto* indices;
   if (!TryGetNodeAttr(node.attrs(), indices_attr, &indices)) {
@@ -87,7 +87,7 @@ Status ParseAttrMap(const Node& node, absl::string_view indices_attr,
         arg_index,
         tensorflow::dtensor::Layout::FromString(arg_layout).ValueOrDie());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseResourceArgumentLayouts(
@@ -491,6 +491,16 @@ Status PrepareGraphForMlir(
     // Delegate TensorWithLayout to encode attributes if applicable.
     input->EncodeAttributes(builder);
 
+    // Here we set each arg node's `index` attribute to the position of
+    // the dtensor inputs. This is important for later use when we create
+    // a mapping from the graph argument node to the corresponding argument
+    // index of the list of dtensor inputs. Thus, even if the argument node
+    // orderings change within the graph, we can always correctly
+    // find the dtensor input corresponding to that arg node.
+    //
+    // This assumes that the dtensor inputs stay unchanged in ordering,
+    // and if there is an ordering change of dtensor inputs, then special
+    // care must be taken.
     TF_RETURN_IF_ERROR(
         builder.Attr("shape", partial_shape)
             .Attr("T", dtype)
@@ -609,7 +619,7 @@ Status PrepareGraphForMlir(
     }
     output_layouts->push_back(layout);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns set of functions to run to execute DTensor computation.
@@ -711,7 +721,7 @@ StatusOr<ExecutionFunctions> IdentifyAllFunctionsToExecute(
 // nodes.
 Status MaybeInsertIdentityNodes(const FunctionDef* function_def, Graph* graph) {
   if (function_def == nullptr || function_def->control_ret().empty()) {
-    return Status::OK();
+    return OkStatus();
   }
   tensorflow::Status status;
   for (Node* n : graph->nodes()) {
@@ -740,7 +750,7 @@ Status MaybeInsertIdentityNodes(const FunctionDef* function_def, Graph* graph) {
     // Add an edge between Identity and _Retval.
     graph->AddEdge(ret_identity_node, 0, n, 0);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void AddDTensorFunctionAttr(FunctionDef& function_def) {
@@ -900,7 +910,7 @@ Status InsertFunctionForTPUEmbeddingCheckpoint(
     graph->AddEdge(node, 0, func_node, i);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace dtensor

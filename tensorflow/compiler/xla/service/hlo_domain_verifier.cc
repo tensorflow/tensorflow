@@ -59,7 +59,7 @@ Status HloDomainVerifier::RunContext::PopulateDomainKinds() {
     verifier_->kinds_.insert(verifier_->kinds_.end(), kinds.begin(),
                              kinds.end());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloDomainVerifier::RunContext::Run() {
@@ -77,7 +77,7 @@ Status HloDomainVerifier::RunContext::Run() {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<bool> HloDomainVerifier::Run(HloModule* module) {

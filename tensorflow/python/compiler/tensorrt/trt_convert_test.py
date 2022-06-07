@@ -26,8 +26,10 @@ import numpy as np
 from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
 from tensorflow.compiler.tf2tensorrt.utils.trt_engine_instance_pb2 import TRTEngineInstance  # pylint: disable=g-importing-member
 from tensorflow.core.framework import graph_pb2
+from tensorflow.python.framework import config
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.compiler.tensorrt import trt_convert
+from tensorflow.python.compiler.tensorrt.test import test_utils
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -1066,6 +1068,136 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       mock_save.save.assert_called_once_with(
           mock.ANY, mock.ANY, mock.ANY, options=options)
 
+  @parameterized.named_parameters([
+      ("NoDeviceAssignment", None),
+      ("GPU1", "GPU:1"),
+  ])
+  @test_util.run_v2_only
+  def testTrtGraphConverter_DevicePlacement(self, device_id):
+    """Test case for trt_convert.TrtGraphConverter()."""
+
+    gpus = config.list_physical_devices("GPU")
+    if len(gpus) < 2:
+      self.skipTest("Expected at least 2 GPUs but found {} GPUs".format(
+          len(gpus)))
+
+    np_input1 = ops.convert_to_tensor(np.ones([4, 1, 1]).astype(np.float32))
+    np_input2 = ops.convert_to_tensor(np.ones([4, 1, 1]).astype(np.float32))
+
+    # Create a model and save it.
+    input_saved_model_dir = self.mkdtemp()
+    root = self._GetModelForV2()
+    save.save(root, input_saved_model_dir,
+              {_SAVED_MODEL_SIGNATURE_KEY: root.run})
+
+    converter = self._CreateConverterV2(
+        input_saved_model_dir, precision_mode=trt_convert.TrtPrecisionMode.FP32)
+
+    converted_model = None
+    # Specify device on which converted model should be placed
+    with ops.device(device_id):
+      converted_model = converter.convert()
+
+    # Verify that TRT engine op has the correct device.
+    self._CheckTrtOps(converter._converted_func)
+
+    actual_device_id = self._GetUniqueTRTEngineOp(
+        converter._converted_graph_def).device
+
+    expected_device_id = None
+    if device_id is not None:
+      expected_device_id = device_id
+    else:
+      expected_device_id = "GPU:0"
+
+    self.assertTrue(expected_device_id.lower() in actual_device_id.lower())
+
+    del converter
+    gc.collect()  # Force GC to destroy the TRT engine cache.
+
+  @test_util.run_v2_only
+  def testTrtGraphConverter_DevicePlacementOnCPU(self):
+    """Test case for trt_convert.TrtGraphConverter()."""
+
+    np_input1 = ops.convert_to_tensor(np.ones([4, 1, 1]).astype(np.float32))
+    np_input2 = ops.convert_to_tensor(np.ones([4, 1, 1]).astype(np.float32))
+
+    # Create a model and save it.
+    input_saved_model_dir = self.mkdtemp()
+    root = self._GetModelForV2()
+    save.save(root, input_saved_model_dir,
+              {_SAVED_MODEL_SIGNATURE_KEY: root.run})
+
+    # Run TRT conversion.
+    converter = self._CreateConverterV2(
+        input_saved_model_dir, precision_mode=trt_convert.TrtPrecisionMode.FP32)
+
+    converted_model = None
+    # Specify device on which converted model should be placed
+    with self.assertRaisesRegex(ValueError, r"Specified device is not a GPU"):
+      with ops.device("CPU"):
+        converted_model = converter.convert()
+
+    del converter
+    gc.collect()  # Force GC to destroy the TRT engine cache.
+
+  @test_util.run_v2_only
+  def testVariableV2(self):
+    """Test conversion of VariableV2 nodes."""
+
+    model_dir = test.test_src_dir_path(
+        "python/compiler/tensorrt/test/testdata/tf_variablev2_saved_model")
+    trt_model_dir = os.path.join(self.mkdtemp(), "tftrt_variablev2_saved_model")
+
+    # Load and convert the TF model.
+    conv_params = trt_convert.TrtConversionParams(
+        precision_mode="FP16",
+        minimum_segment_size=3,
+        max_workspace_size_bytes=10 << 20,
+        maximum_cached_engines=1)
+    with test_utils.experimental_feature_scope("disable_graph_freezing"):
+      converter = trt_convert.TrtGraphConverterV2(
+          input_saved_model_dir=model_dir,
+          conversion_params=conv_params,
+          use_dynamic_shape=True,
+          dynamic_shape_profile_strategy="Optimal")
+    converter.convert()
+
+    # Build and save the converted model.
+    input_shapes = [[(4, 1, 1), (4, 1, 1)]]
+
+    def _InputFn():
+      for shapes in input_shapes:
+        # return a list of input tensors
+        yield [np.ones(shape=shape).astype(np.float32) for shape in shapes]
+
+    converter.build(_InputFn)
+    converter.save(trt_model_dir)
+
+    # Load the converted model.
+    saved_model_loaded = load.load(trt_model_dir, tags=[tag_constants.SERVING])
+    graph_func = saved_model_loaded.signatures[
+        signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
+
+    # Check that there is one segment and that the 2 variables are in it.
+    graph_def = graph_func.graph.as_graph_def()
+    engines = []
+    for lib_function in graph_def.library.function:
+      if re.search(r"TRTEngineOp_\d+_\d+_native_segment",
+                   lib_function.signature.name):
+        node_ops = [node.op for node in lib_function.node_def]
+        engines.append(node_ops)
+    self.assertLen(engines, 1)
+    self.assertEqual(engines[0].count("VariableV2"), 2)
+
+    # Run the function and check the output.
+    np_input1 = ops.convert_to_tensor(np.ones([4, 1, 1]).astype(np.float32))
+    np_input2 = ops.convert_to_tensor(2. *
+                                      np.ones([4, 1, 1]).astype(np.float32))
+    output = graph_func(input1=np_input1, input2=np_input2)["output"]
+    self.assertEqual(output.shape, (4, 1, 1))
+    self.assertAllClose(
+        np.asarray([42., 42., 42., 42.]).reshape([4, 1, 1]), output)
 
 if __name__ == "__main__" and is_tensorrt_enabled():
   test.main()

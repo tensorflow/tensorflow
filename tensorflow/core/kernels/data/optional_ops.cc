@@ -50,7 +50,7 @@ static Status OptionalDeviceCopy(
   } else {
     *to = from;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 #define REGISTER_OPTIONAL_COPY(DIRECTION)               \
@@ -144,7 +144,7 @@ Status WriteOptionalWithValueToOutput(OpKernelContext* ctx, int output_index,
   TF_RETURN_IF_ERROR(ctx->allocate_output(output_index, TensorShape({}),
                                           &variant_t, cpu_alloc));
   variant_t->scalar<Variant>()() = v;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status WriteOptionalNoneToOutput(OpKernelContext* ctx, int output_index) {
@@ -155,7 +155,7 @@ Status WriteOptionalNoneToOutput(OpKernelContext* ctx, int output_index) {
   TF_RETURN_IF_ERROR(ctx->allocate_output(output_index, TensorShape({}),
                                           &variant_t, cpu_alloc));
   variant_t->scalar<Variant>()() = v;
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {

@@ -67,7 +67,7 @@ TEST_F(CpuNoAliasTest, Concat) {
       absl::make_unique<DependencyHloOrdering>(hlo_module.get()),
       backend().compiler()->BufferSizeBytesFunction(),
       [](LogicalBuffer::Color) { return /*alignment=*/1; });
-  ASSERT_EQ(status_or_buffer_assn.status(), Status::OK());
+  ASSERT_EQ(status_or_buffer_assn.status(), ::tensorflow::OkStatus());
 
   llvm::LLVMContext context;
   llvm_ir::AliasAnalysis aa(*hlo_module, *status_or_buffer_assn.ValueOrDie(),

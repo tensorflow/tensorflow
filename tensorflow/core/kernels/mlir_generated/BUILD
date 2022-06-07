@@ -1090,6 +1090,7 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
+    unroll_factors = "16B",
 )
 
 gpu_kernel_library(

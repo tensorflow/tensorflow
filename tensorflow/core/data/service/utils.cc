@@ -32,7 +32,7 @@ Status WriteDatasetDef(const std::string& path, const DatasetDef& dataset_def) {
   TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(path, &file));
   io::RecordWriter writer(file.get());
   TF_RETURN_IF_ERROR(writer.WriteRecord(dataset_def.SerializeAsString()));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ReadDatasetDef(const std::string& path, DatasetDef& dataset_def) {
@@ -49,7 +49,7 @@ Status ReadDatasetDef(const std::string& path, DatasetDef& dataset_def) {
   if (!dataset_def.ParseFromString(record)) {
     return errors::DataLoss("Failed to parse dataset definition");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace data

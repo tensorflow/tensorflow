@@ -100,7 +100,7 @@ Status PrepareCopy(Device* device, const DeviceContext* ctx, const Tensor& src,
     return errors::Internal("GPU copy from non-DMA ",
                             DataTypeString(src.dtype()), " tensor");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void* GetBase(const Tensor* src) {
@@ -179,7 +179,7 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
           }
           alloc->DeallocateRaw(buf);
         }
-        done(Status::OK());
+        done(OkStatus());
       });
 }
 
@@ -241,7 +241,7 @@ void GPUUtil::DeviceToDeviceCopy(
         if (!send_device_to_device_stream->ok()) {
           LOG(FATAL) << "GPU->GPU Memcpy failed";
         }
-        done(Status::OK());
+        done(OkStatus());
       });
   send_dev_context->MaintainLifetimeOnStream(input,
                                              send_device_to_device_stream);
@@ -303,7 +303,7 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
           LOG(FATAL) << "GPU->CPU Memcpy failed";
         }
         input_ref.Unref();
-        done(Status::OK());
+        done(OkStatus());
       });
 }
 
@@ -385,7 +385,7 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
         if (!recv_host_to_device_stream->ok()) {
           LOG(FATAL) << "CPU->GPU Memcpy failed";
         }
-        done(Status::OK());
+        done(OkStatus());
       });
 }
 
@@ -408,7 +408,7 @@ Status GPUUtil::SyncAll(Device* gpu_device) {
       !dev_info->stream->ok()) {
     return errors::Internal("GPU sync failed");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 string GPUUtil::MemoryDebugString(const Device* device, Tensor* tensor) {
@@ -489,7 +489,7 @@ void GPUUtil::CopyGPUTensorToSameGPU(Device* gpu_device,
     send_stream->ThenMemcpy(&gpu_dst_ptr, gpu_src_ptr, total_bytes);
   }
 
-  done(Status::OK());
+  done(OkStatus());
 }
 
 }  // namespace tensorflow

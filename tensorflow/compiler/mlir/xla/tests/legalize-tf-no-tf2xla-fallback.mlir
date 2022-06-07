@@ -4233,7 +4233,7 @@ func.func @conv3d_simple(%arg0: tensor<256x32x32x32x6xf32>, %arg1: tensor<3x3x3x
 // -----
 
 // CHECK-LABEL: depthwiseconv_simple
-func.func @depthwiseconv_simple(%arg0: tensor<2x4x5x3xf32>, %arg1: tensor<2x2x3x3xf32>) -> tensor<2x3x4x9xf32> {
+func.func @depthwiseconv_simple(%arg0: tensor<?x4x5x3xf32>, %arg1: tensor<2x2x3x3xf32>) -> tensor<?x3x4x9xf32> {
   // CHECK: %[[RESHAPED_FILTER:.*]] = "mhlo.reshape"(%arg1) : (tensor<2x2x3x3xf32>) -> tensor<2x2x1x9xf32>
   // CHECK: mhlo.convolution(%arg0, %[[RESHAPED_FILTER]])
   // CHECK-SAME: feature_group_count = 3
@@ -4244,8 +4244,8 @@ func.func @depthwiseconv_simple(%arg0: tensor<2x4x5x3xf32>, %arg1: tensor<2x2x3x
     explicit_paddings = [],
     padding = "VALID",
     strides = [1, 1, 1, 1]
-  } : (tensor<2x4x5x3xf32>, tensor<2x2x3x3xf32>) -> tensor<2x3x4x9xf32>
-  func.return %0 : tensor<2x3x4x9xf32>
+  } : (tensor<?x4x5x3xf32>, tensor<2x2x3x3xf32>) -> tensor<?x3x4x9xf32>
+  func.return %0 : tensor<?x3x4x9xf32>
 }
 
 // -----
@@ -4346,7 +4346,7 @@ func.func @conv3d_backprop_input(%filter: tensor<3x3x3x1x6xf32>, %out_backprop: 
 func.func @conv2d_backprop_filter(
     %input: tensor<100x28x28x1xf32>,
     %out_backprop: tensor<100x26x26x32xf32>
-  ) -> tensor<100x28x28x1xf32> {
+  ) -> tensor<3x3x1x32xf32> {
   // CHECK: %[[RESULT:.*]] = mhlo.convolution(%arg0, %arg1)
   // CHECK-SAME: dim_numbers = [f, 0, 1, b]x[i, 0, 1, o]->[0, 1, b, f]
   // CHECK-SAME{LITERAL}: window = {stride = [1, 1], pad = [[0, 0], [0, 0]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
@@ -4361,8 +4361,8 @@ func.func @conv2d_backprop_filter(
     padding = "VALID",
     strides = [1, 1, 1, 1],
     use_cudnn_on_gpu = true
-  } : (tensor<100x28x28x1xf32>, tensor<4xi32>, tensor<100x26x26x32xf32>) -> tensor<100x28x28x1xf32>
-  func.return %result : tensor<100x28x28x1xf32>
+  } : (tensor<100x28x28x1xf32>, tensor<4xi32>, tensor<100x26x26x32xf32>) -> tensor<3x3x1x32xf32>
+  func.return %result : tensor<3x3x1x32xf32>
 }
 
 // -----
@@ -4391,7 +4391,7 @@ func.func @conv2d_backprop_filter_grouped(
 
 
 // CHECK-LABEL: @conv3d_backprop_filter
-func.func @conv3d_backprop_filter(%input: tensor<2x8x8x8x1xf32>, %out_backprop: tensor<2x8x8x8x6xf32>) -> tensor<2x8x8x8x1xf32> {
+func.func @conv3d_backprop_filter(%input: tensor<2x8x8x8x1xf32>, %out_backprop: tensor<2x8x8x8x6xf32>) -> tensor<3x3x3x1x6xf32> {
   // CHECK: %[[RESULT:.*]] = mhlo.convolution(%arg0, %arg1)
   // CHECK-SAME: dim_numbers = [f, 0, 1, 2, b]x[i, 0, 1, 2, o]->[0, 1, 2, b, f]
   // CHECK-SAME{LITERAL}: window = {stride = [1, 1, 1], pad = [[1, 1], [1, 1], [1, 1]], lhs_dilate = [1, 1, 1], rhs_dilate = [1, 1, 1]}
@@ -4399,8 +4399,8 @@ func.func @conv3d_backprop_filter(%input: tensor<2x8x8x8x1xf32>, %out_backprop: 
   // CHECK-SAME: feature_group_count = 1 : i64
   // CHECK: return %[[RESULT]]
   %filter_sizes = "tf.Const"() {value = dense<[3, 3, 3, 1, 6]> : tensor<5xi32>} : () -> tensor<5xi32>
-  %result = "tf.Conv3DBackpropFilterV2"(%input, %filter_sizes, %out_backprop) {data_format = "NDHWC", dilations = [1, 1, 1, 1, 1],  padding = "SAME", strides = [1, 1, 1, 1, 1]} : (tensor<2x8x8x8x1xf32>, tensor<5xi32>, tensor<2x8x8x8x6xf32>) -> tensor<2x8x8x8x1xf32>
-  func.return %result : tensor<2x8x8x8x1xf32>
+  %result = "tf.Conv3DBackpropFilterV2"(%input, %filter_sizes, %out_backprop) {data_format = "NDHWC", dilations = [1, 1, 1, 1, 1],  padding = "SAME", strides = [1, 1, 1, 1, 1]} : (tensor<2x8x8x8x1xf32>, tensor<5xi32>, tensor<2x8x8x8x6xf32>) -> tensor<3x3x3x1x6xf32>
+  func.return %result : tensor<3x3x3x1x6xf32>
 }
 
 // -----
@@ -5380,8 +5380,8 @@ func.func @avgpool_3d_same_padding(%arg0: tensor<2x4x12x21x7xf32>) -> tensor<2x4
 // CHECK-DAG:       %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
 // CHECK-DAG:       %[[DIVISOR:.*]] = mhlo.constant dense<4.000000e+00> : tensor<f32>
 // CHECK:           %[[OUT_GRAD_DIVIDED:.*]] = chlo.broadcast_divide %[[OUT_GRAD]], %[[DIVISOR]]
-// CHECK_SAME:        broadcast_dimensions = dense<>
-// CHECK_SAME:        -> tensor<10x12x16x64xf32>
+// CHECK-SAME:        broadcast_dimensions = dense<>
+// CHECK-SAME:        -> tensor<10x12x16x64xf32>
 // CHECK:           %[[REDUCE_WINDOW_INPUT:.*]] = "mhlo.pad"(%[[OUT_GRAD_DIVIDED]], %[[ZERO]])
 // CHECK-SAME:        edge_padding_high = dense<[0, 1, 1, 0]>
 // CHECK-SAME:        edge_padding_low = dense<[0, 1, 1, 0]>
@@ -5717,14 +5717,15 @@ func.func @xla_dynamic_update_slice2(%arg0: tensor<4xf32>, %arg1: tensor<2xf32>,
 // -----
 
 // CHECK-LABEL: func @alltoall_basic
-func.func @alltoall_basic(%input: tensor<10xf32>) -> tensor<10xf32> {
+// See https://www.tensorflow.org/api_docs/python/tf/raw_ops/AllToAll
+func.func @alltoall_basic(%input: tensor<1x2xf32>) -> tensor<2x1xf32> {
   %group_assignment = "tf.Const" () {
-    value = dense<[[0, 2, 4, 6], [1, 3, 5, 7], [3, 5, 6, 8]]> : tensor<3x4xi32>
-  } : () -> tensor<3x4xi32>
-  %result = "tf.AllToAll"(%input, %group_assignment) {T = f32, concat_dimension = 1 : i64, split_count = 2 : i64, split_dimension = 0 : i64} :  (tensor<10xf32>, tensor<3x4xi32>)  -> tensor<10xf32>
+    value = dense<[[0, 1]]> : tensor<1x2xi32>
+  } : () -> tensor<1x2xi32>
+  %result = "tf.AllToAll"(%input, %group_assignment) {T = f32, concat_dimension = 0 : i64, split_count = 2 : i64, split_dimension = 1 : i64} :  (tensor<1x2xf32>, tensor<1x2xi32>)  -> tensor<2x1xf32>
   // CHECK: mhlo.all_to_all
-  // CHECK-SAME: replica_groups = dense<{{\[}}[0, 2, 4, 6], [1, 3, 5, 7], [3, 5, 6, 8]]> : tensor<3x4xi64>
-  func.return %result : tensor<10xf32>
+  // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+  func.return %result : tensor<2x1xf32>
 }
 
 //===----------------------------------------------------------------------===//

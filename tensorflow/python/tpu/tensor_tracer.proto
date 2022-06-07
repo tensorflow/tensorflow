@@ -36,6 +36,9 @@ message TensorTracerReport {
   // List of names of output tensors of the function being traced.
   repeated string outputs = 7;
 
+  // Information about the number of tensors traced and skipped.
+  TracingStats tracing_stats = 8;
+
   message TensorTracerConfig {
     // Tensor tracer version, e.g. hostcall, outside compilation.
     string version = 1;
@@ -62,6 +65,17 @@ message TensorTracerReport {
 
     // The names of the signatures corresponding to the cache indices.
     repeated string signatures = 9;
+  }
+
+  message TracingStats {
+    // The total number of tensors in the function.
+    int32 total_tensors = 1;
+    // The number of traced tensors in the function.
+    int32 traced_tensors = 2;
+    // Counts of traced tensors by op type.
+    map<string, int32> traced_tensor_types = 3;
+    // The number of tensors added by Tensor Tracer.
+    int32 added_tensors = 4;
   }
 
   message TracedTensorDef {

@@ -41,7 +41,7 @@ Status UnchangedRank(shape_inference::InferenceContext* c) {
   } else {
     c->set_output(0, c->input(0));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_OP("XlaBroadcastHelper")
@@ -293,7 +293,7 @@ static Status XlaDotShapeFunction(shape_inference::InferenceContext* c) {
   }
 
   c->set_output(0, c->MakeShape(output_dims));
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_OP("XlaDot")
@@ -397,7 +397,7 @@ REGISTER_OP("XlaDynamicSlice")
         return UnchangedRank(c);
       }
       c->set_output(0, size_indices_value);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA DynamicSlice operator, documented at
@@ -555,7 +555,7 @@ REGISTER_OP("XlaPad")
       }
 
       c->set_output(0, c->MakeShape(output_dims));
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA Pad operator, documented at
@@ -586,7 +586,7 @@ REGISTER_OP("XlaRecv")
       shape_inference::ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape_attr, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Receives the named tensor from another XLA computation. Wraps the XLA Recv
@@ -629,7 +629,7 @@ REGISTER_OP("XlaReduce")
       } else {
         c->set_output(0, c->input(0));
       }
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA Reduce operator, documented at
@@ -683,7 +683,7 @@ REGISTER_OP("XlaVariadicReduce")
           c->set_output(i, c->input(i));
         }
       }
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Wraps the variadic XLA Reduce operator.
@@ -767,7 +767,7 @@ REGISTER_OP("XlaVariadicReduceV2")
       for (int i = 0; i < nr_inputs; ++i) {
         c->set_output(i, output_shape);
       }
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Wraps the variadic XLA Reduce operator.
@@ -827,7 +827,7 @@ REGISTER_OP("XlaRngBitGenerator")
       shape_inference::ShapeHandle output;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &output));
       c->set_output(1, output);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Stateless PRNG bit generator.
@@ -911,7 +911,7 @@ REGISTER_OP("XlaKeyValueSort")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
       c->set_output(1, c->input(1));
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA Sort operator, documented at
@@ -937,7 +937,7 @@ REGISTER_OP("XlaVariadicSort")
       std::vector<shape_inference::ShapeHandle> input_shapes;
       TF_RETURN_IF_ERROR(c->input("inputs", &input_shapes));
       TF_RETURN_IF_ERROR(c->set_output("outputs", input_shapes));
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA Sort operator, documented at
@@ -1065,7 +1065,7 @@ REGISTER_OP("XlaSpmdFullToShardShape")
         dims.push_back(c->MakeDim(dim));
       }
       c->set_output(0, c->MakeShape(dims));
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 An op used by XLA SPMD partitioner to switch from automatic partitioning to
@@ -1091,7 +1091,7 @@ REGISTER_OP("XlaSpmdShardToFullShape")
       shape_inference::ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape_attr, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 An op used by XLA SPMD partitioner to switch from manual partitioning to
@@ -1118,7 +1118,7 @@ REGISTER_OP("XlaReplicaId")
     .Output("id: int32")
     .SetShapeFn([](shape_inference::InferenceContext* context) {
       context->set_output(0, context->MakeShape({}));
-      return Status::OK();
+      return OkStatus();
     })
     .Doc("Replica ID.");
 
@@ -1211,7 +1211,7 @@ Status OptimizationBarrierShape(shape_inference::InferenceContext* c) {
   for (int i = 0; i < c->num_inputs(); ++i) {
     c->set_output(i, c->input(i));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_OP("XlaOptimizationBarrier")
@@ -1241,7 +1241,7 @@ REGISTER_OP("XlaCustomCall")
       shape_inference::ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape_attr, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA CustomCall operator

@@ -21,23 +21,25 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/numbers.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
-#include "tensorflow/compiler/xla/pjrt/transpose.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/python/callback.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/python/pprof_profile_builder.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
-#include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
-#include "tensorflow/compiler/xla/service/custom_call_status.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/core/platform/statusor.h"
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/xla/python/py_client_gpu.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
 
@@ -171,7 +173,7 @@ Status PyClient::Defragment() {
 
       // TODO(skyewm): delete executables?
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<std::vector<std::vector<ClientAndPtr<PjRtDevice>>>>
@@ -270,45 +272,46 @@ PyClient::MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
                                       PjRtDevice* device) {
   CHECK(device != nullptr);
   absl::Mutex mu;
+  StatusOr<std::vector<PjRtCrossHostRecvDescriptors>> recv_descriptors_or;
   bool done = false;
-  StatusOr<std::vector<std::pair<pybind11::bytes, pybind11::object>>>
-      recv_buffers_or;
 
-  auto shared_this = shared_from_this();
-  pjrt_client_->MakeCrossHostReceiveBuffers(
-      shapes, device,
-      [&done, &recv_buffers_or, &shared_this,
-       &mu](StatusOr<std::pair<std::vector<PjRtCrossHostRecvBuffer>,
-                               PjRtCrossHostSendCancelNotifier>>&& buffers_or) {
-        absl::MutexLock l(&mu);
-        done = true;
-        if (buffers_or.ok()) {
-          py::gil_scoped_acquire gil;
-          auto& buffers = buffers_or.ValueOrDie().first;
-          std::vector<std::pair<pybind11::bytes, pybind11::object>>
-              recv_buffers;
-          for (auto& buf : buffers) {
-            std::string desc = buf.serialized_descriptors[0];
-            pybind11::bytes py_desc = pybind11::bytes(desc);
-            auto traceback = Traceback::Get();
-            auto py_buf =
-                PyBuffer::Make(shared_this, std::move(buf.buffer), traceback);
-            recv_buffers.push_back(std::make_pair(py_desc, py_buf));
-          }
-          recv_buffers_or = recv_buffers;
-        } else {
-          recv_buffers_or = buffers_or.status();
-        }
-      });
+  TF_ASSIGN_OR_RETURN(
+      auto buffers, pjrt_client_->MakeCrossHostReceiveBuffers(
+                        shapes, device,
+                        [&done, &recv_descriptors_or,
+                         &mu](StatusOr<PjRtCrossHostRecvState> recv_state_or) {
+                          absl::MutexLock l(&mu);
+                          if (recv_state_or.ok()) {
+                            py::gil_scoped_acquire gil;
+                            recv_descriptors_or =
+                                std::move(recv_state_or->descriptors);
+                          } else {
+                            recv_descriptors_or = recv_state_or.status();
+                          }
+                          done = true;
+                        }));
 
   {
     py::gil_scoped_release gil_release;
     absl::MutexLock l(&mu);
-    mu.Await(absl::Condition(
-        +[](bool* done) { return *done; }, &done));
+    mu.Await(absl::Condition(&done));
   }
 
-  return recv_buffers_or;
+  TF_RETURN_IF_ERROR(recv_descriptors_or.status());
+  CHECK_EQ(buffers.size(), recv_descriptors_or->size());
+  std::vector<std::pair<pybind11::bytes, pybind11::object>> result;
+  result.reserve(buffers.size());
+  for (int i = 0; i < buffers.size(); ++i) {
+    auto& descriptors = recv_descriptors_or->at(i);
+    CHECK_EQ(descriptors.serialized_descriptors.size(), 1);
+    const std::string& desc = descriptors.serialized_descriptors[0];
+    pybind11::bytes py_desc = pybind11::bytes(desc);
+    auto traceback = Traceback::Get();
+    auto py_buf =
+        PyBuffer::Make(shared_from_this(), std::move(buffers[i]), traceback);
+    result.push_back(std::make_pair(std::move(py_desc), std::move(py_buf)));
+  }
+  return result;
 }
 
 StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
@@ -468,141 +471,14 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
   return py::bytes(builder.profile().SerializeAsString());
 }
 
-namespace {
-
-class CpuCallback {
- public:
-  struct Arg {
-    PrimitiveType type;                    // XLA type
-    py::dtype dtype;                       // NumPy type, for array types.
-    absl::InlinedVector<int64_t, 4> dims;  // Dimensions, for array types.
-    std::vector<ssize_t> strides;          // Byte strides, for array types.
-  };
-  struct Result {
-    PrimitiveType type;  // XLA type
-    // Expected output shape, for array types
-    absl::InlinedVector<int64_t, 4> expected_dims;
-    // Expected output byte strides, for array types. If the strides do not
-    // match the output will be transposed into the expected layout.
-    std::vector<int64_t> expected_strides;
-    // The desired order of output dimensions in major-to-minor order.
-    absl::InlinedVector<int64_t, 4> reversed_layout;
-    // Size of the array in bytes.
-    size_t size_in_bytes;
-  };
-
-  explicit CpuCallback(py::function callable, std::vector<Arg> args,
-                       std::vector<Result> results)
-      : callable_(std::move(callable)),
-        args_(std::move(args)),
-        results_(std::move(results)),
-        transpose_cache_(/*capacity=*/16) {}
-
-  void Call(void* result, void** arg_ptrs, XlaCustomCallStatus* status);
-
- private:
-  py::function callable_;
-  std::vector<Arg> const args_;
-  std::vector<Result> const results_;
-  TransposePlanCache transpose_cache_;
-};
-
-void CpuCallback::Call(void* result, void** arg_ptrs,
-                       XlaCustomCallStatus* status) {
-  absl::Span<void* const> inputs(arg_ptrs, args_.size());
-  absl::Span<void* const> outputs(reinterpret_cast<void**>(result),
-                                  results_.size());
-
-  py::gil_scoped_acquire gil;
-  py::tuple args(inputs.size());
-  for (size_t i = 0; i < inputs.size(); ++i) {
-    if (args_[i].type == TOKEN) {
-      args[i] = py::none();
-    } else {
-      args[i] = py::array(args_[i].dtype, args_[i].dims, args_[i].strides,
-                          const_cast<void*>(inputs[i]));
-      args[i].attr("flags").attr("writeable") = Py_False;
-    }
-  }
-  py::object result_tuple;
-  try {
-    result_tuple = callable_(*py::reinterpret_borrow<py::args>(args));
-  } catch (py::error_already_set& e) {
-    PyErr_Clear();
-    std::string error_message = e.what();
-    XlaCustomCallStatusSetFailure(status, error_message.c_str(),
-                                  error_message.length());
-    return;
-  }
-  if (!PyTuple_Check(result_tuple.ptr())) {
-    throw xla::XlaRuntimeError(
-        absl::StrFormat("CPU callback expected a tuple result, got %s",
-                        static_cast<std::string>(py::repr(result_tuple))));
-  }
-  if (PyTuple_Size(result_tuple.ptr()) != results_.size()) {
-    throw xla::XlaRuntimeError(
-        absl::StrFormat("CPU callback expected a tuple with %d results, got %d",
-                        results_.size(), PyTuple_Size(result_tuple.ptr())));
-  }
-  for (size_t i = 0; i < results_.size(); ++i) {
-    py::object output = py::reinterpret_borrow<py::object>(
-        PyTuple_GetItem(result_tuple.ptr(), i));
-    if (results_[i].type == TOKEN) {
-      if (!output.is_none()) {
-        throw xla::XlaRuntimeError(absl::StrFormat(
-            "Token output from Python callback should be None, got %s",
-            static_cast<std::string>(py::repr(output))));
-      }
-      continue;
-    }
-    py::array array = py::cast<py::array>(std::move(output));
-    static_assert(sizeof(ssize_t) == sizeof(int64_t),
-                  "Expected ssize_t to be of equal size to int64_t");
-    absl::Span<int64_t const> dims(
-        reinterpret_cast<const int64_t*>(array.shape()), array.ndim());
-    if (dims != results_[i].expected_dims) {
-      throw xla::XlaRuntimeError(absl::StrFormat(
-          "Mismatched result shape for %d-th return value from CPU callback; "
-          "expected array with dimensions %s, got %s",
-          i, absl::StrJoin(results_[i].expected_dims, ","),
-          absl::StrJoin(dims, ",")));
-    }
-    absl::Span<int64_t const> strides(
-        reinterpret_cast<const int64_t*>(array.strides()), array.ndim());
-    if (strides == results_[i].expected_strides) {
-      std::memcpy(outputs[i], array.data(), results_[i].size_in_bytes);
-    } else {
-      StatusOr<std::shared_ptr<TransposePlan>> plan =
-          transpose_cache_.GetOrCreate(
-              primitive_util::ByteWidth(results_[i].type), dims,
-              results_[i].reversed_layout,
-              /*input_layout=*/TransposePlan::Striding{strides});
-      if (!plan.ok()) {
-        throw xla::XlaRuntimeError(plan.status().ToString());
-      }
-      plan.ValueOrDie()->Execute(array.data(), outputs[i]);
-    }
-  }
-}
-
-extern "C" void XlaPythonCpuCallback(void* output, void** inputs,
-                                     XlaCustomCallStatus* status) {
-  CpuCallback* callback =
-      absl::bit_cast<CpuCallback*>(*static_cast<uintptr_t*>(inputs[0]));
-  callback->Call(output, inputs + 1, status);
-}
-
-XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_cpu_callback",
-                                             &XlaPythonCpuCallback);
-
-}  // namespace
-
 StatusOr<std::pair<uint64_t, pybind11::object>>
 PyClient::GetEmitPythonCallbackDescriptor(
     pybind11::function callable, absl::Span<Shape const> operand_shapes,
     absl::Span<Shape const> result_shapes) {
-  if (pjrt_client_->platform_id() != CpuId()) {
-    return Unimplemented("EmitPythonCallback is only implemented on CPU");
+  PjRtPlatformId platform_id = pjrt_client_->platform_id();
+  if (platform_id != GpuId() && platform_id != CpuId()) {
+    return Unimplemented(
+        "EmitPythonCallback is only implemented on CPU and GPU");
   }
 
   std::vector<CpuCallback::Arg> callback_args(operand_shapes.size());
@@ -619,6 +495,7 @@ PyClient::GetEmitPythonCallbackDescriptor(
       absl::c_copy(shape.dimensions(), callback_args[i].dims.begin());
       callback_args[i].strides = ByteStridesForShape(layout);
       callback_args[i].type = shape.element_type();
+      callback_args[i].size_in_bytes = ShapeUtil::ByteSizeOf(layout);
       TF_ASSIGN_OR_RETURN(callback_args[i].dtype,
                           PrimitiveTypeToDtype(shape.element_type()));
     } else if (shape.IsToken()) {
@@ -723,14 +600,19 @@ StatusOr<XlaOp> PyClient::EmitPythonCallbackFromDescriptor(
   }
   custom_call_args[0] = ConstantR0<std::uint64_t>(&builder, descriptor);
   Shape result_shape = ShapeUtil::MakeTupleShape(result_shapes_with_layout);
-  XlaOp result = CustomCallWithLayout(
-      &builder, "xla_python_cpu_callback", custom_call_args, result_shape,
-      custom_call_arg_layouts,
-      /*opaque=*/"", has_side_effect,
-      /*output_operand_aliasing=*/{},
-      /*literal=*/nullptr,
-      /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
-      /*api_version=*/API_VERSION_STATUS_RETURNING);
+  std::string callback_str = std::to_string(descriptor);
+  std::string callback_name = "xla_python_cpu_callback";
+  if (pjrt_client_->platform_id() == GpuId()) {
+    callback_name = "xla_python_gpu_callback";
+  }
+  XlaOp result =
+      CustomCallWithLayout(&builder, callback_name, custom_call_args,
+                           result_shape, custom_call_arg_layouts,
+                           /*opaque=*/callback_str.data(), has_side_effect,
+                           /*output_operand_aliasing=*/{},
+                           /*literal=*/nullptr,
+                           /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
+                           /*api_version=*/API_VERSION_STATUS_RETURNING);
   return result;
 }
 
@@ -756,5 +638,16 @@ StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
                           operand_shapes, has_side_effect));
   return std::make_pair(callback_op, keepalive);
 }
+
+XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_cpu_callback",
+                                             &XlaPythonCpuCallback);
+
+#if TENSORFLOW_USE_ROCM
+XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_gpu_callback",
+                                         &XlaPythonGpuCallback, "ROCM");
+#elif defined(GOOGLE_CUDA)
+XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_gpu_callback",
+                                         &XlaPythonGpuCallback, "CUDA");
+#endif  // TENSORFLOW_USE_ROCM
 
 }  // namespace xla

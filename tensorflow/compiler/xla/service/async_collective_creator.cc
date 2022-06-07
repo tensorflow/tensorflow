@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace xla {
 
@@ -31,8 +32,8 @@ StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
     HloInstruction* done;
   };
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
-    // Find all all-reduce ops first as we can't modify the instructions while
-    // iterating through them.
+    // Find all supported collective ops first as we can't modify the
+    // instructions while iterating through them.
     std::vector<HloInstruction*> supported_collectives;
     for (HloInstruction* instruction : computation->instructions()) {
       if ((instruction->opcode() == HloOpcode::kAllReduce &&
@@ -40,7 +41,9 @@ StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
           (instruction->opcode() == HloOpcode::kAllGather &&
            convert_all_gather_(instruction)) ||
           (instruction->opcode() == HloOpcode::kCollectivePermute &&
-           convert_collective_permute_(instruction))) {
+           convert_collective_permute_(instruction)) ||
+          (instruction->opcode() == HloOpcode::kAllToAll &&
+           convert_all_to_all_(instruction))) {
         supported_collectives.push_back(instruction);
       }
     }
@@ -143,6 +146,19 @@ StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
         }
         TF_RETURN_IF_ERROR(
             computation->ReplaceInstruction(cp, collective_permute_done));
+        changed = true;
+        continue;
+      }
+      if (HloAllToAllInstruction* ata =
+              DynCast<HloAllToAllInstruction>(instruction)) {
+        Shape sync_shape = ShapeUtil::MakeScalarShape(U32);
+        TF_ASSIGN_OR_RETURN(HloInstruction * async_done,
+                            computation->CreateAsyncInstructions(
+                                ata, {sync_shape, sync_shape}));
+        if (should_update_schedule) {
+          HloInstruction* async_start = async_done->mutable_operand(0);
+          replaced_pairs[ata] = ReplacedAsync{async_start, async_done};
+        }
         changed = true;
         continue;
       }

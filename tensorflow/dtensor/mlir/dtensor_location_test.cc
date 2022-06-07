@@ -20,7 +20,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/platform/test.h"
 
-
 namespace {
 
 void CheckFileLineColLocation(mlir::Location loc, unsigned line,

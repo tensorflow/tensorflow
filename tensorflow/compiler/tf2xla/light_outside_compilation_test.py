@@ -49,7 +49,7 @@ class LightOutsideCompilationTest(test_util.TensorFlowTestCase):
       self.assertFilecheck(
           compiled_f.experimental_get_compiler_ir(z)('hlo'), r"""
           CHECK: f32[2,2]{1,0} custom-call(f32[2,2]{1,0} [[v:.*]]), custom_call_target="GenericTfCallbackGPU", api_version=API_VERSION_STATUS_RETURNING
-          CHECK: \"name\":\"TestStaticTf\"
+          CHECK: TestStaticTf
           """)
 
       self.assertAllClose(compiled_f(z), z)
@@ -83,7 +83,7 @@ class LightOutsideCompilationTest(test_util.TensorFlowTestCase):
       self.assertFilecheck(
           hlo, r"""
           CHECK: f32[<=20,<=20,<=20,<=20,<=20]{4,3,2,1,0} custom-call(), custom_call_target="GenericTfCallbackGPU"
-          CHECK: \"name\":\"DynamicMultidim\"
+          CHECK: DynamicMultidim
           """)
       self.assertAllClose(out, array_ops.ones(shape))
 
@@ -103,7 +103,7 @@ class LightOutsideCompilationTest(test_util.TensorFlowTestCase):
       self.assertFilecheck(
           hlo, r"""
           CHECK: f32[<=5]{0} custom-call(f32[10]{0} [[v:.*]]), custom_call_target="GenericTfCallbackGPU"
-          CHECK: \"name\":\"TestDynamicTf\"
+          CHECK: TestDynamicTf
           """)
       self.assertAllClose(out, z[:2])
       self.assertEqual(len(out), 2)
@@ -139,7 +139,7 @@ class LightOutsideCompilationTest(test_util.TensorFlowTestCase):
       self.assertFilecheck(
           hlo, r"""
           CHECK: custom_call_target="GenericTfCallbackGPU", api_version=API_VERSION_STATUS_RETURNING
-          CHECK: \"name\":\"TestStaticMultipleOutputTf\"
+          CHECK: TestStaticMultipleOutputTf
           """)
       self.assertAllClose(compiled_f(z)[0], z)
       self.assertAllClose(compiled_f(z)[1], z)
@@ -160,7 +160,7 @@ class LightOutsideCompilationTest(test_util.TensorFlowTestCase):
       self.assertFilecheck(
           hlo, r"""
           CHECK: custom-call(f32[10]{0} [[v:.*]]), custom_call_target="GenericTfCallbackGPU"
-          CHECK: \"name\":\"TestTfMustBeConstant\"
+          CHECK: TestTfMustBeConstant
           """)
 
       expected_output = [j + 5 for j in z]

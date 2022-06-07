@@ -19,27 +19,4 @@ limitations under the License.
 #include "tensorflow/core/protobuf/eager_service.grpc.pb.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
-#ifndef PLATFORM_GOOGLE
-
-namespace tensorflow {
-namespace eager {
-namespace grpc {
-
-// Google internal gRPC generates services under namespace "grpc", but
-// opensource version does not add any additional namespaces.
-// We currently use proto_library BUILD rule with cc_grpc_version and
-// has_services arguments. This rule is deprecated but we can't cleanly migrate
-// to cc_grpc_library rule yet. The internal version takes service_namespace
-// argument, which would have solved the namespace issue, but the external one
-// does not.
-//
-// Creating aliases here to make sure we can access services under namespace
-// "tensorflow::grpc" both in google internal and open-source.
-using ::tensorflow::eager::EagerService;
-
-}  // namespace grpc
-}  // namespace eager
-}  // namespace tensorflow
-#endif  // PLATFORM_GOOGLE
-
 #endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_EAGER_GRPC_EAGER_SERVICE_H_

@@ -135,7 +135,7 @@ func.func @arith_select(%c : tensor<i1>, %lhs: tensor<1xf32>, %rhs: tensor<1xf32
 #map = affine_map<(d0) -> (d0)>
 func.func @init_tensor_multiple_users(%lhs: tensor<10xf32>,
     %rhs: tensor<10xf32>) -> (tensor<10xf32>, tensor<10xf32>) {
-  %init = linalg.init_tensor [10] : tensor<10xf32>
+  %init = bufferization.alloc_tensor() : tensor<10xf32>
   %add = linalg.generic {
     indexing_maps = [#map, #map, #map],
     iterator_types = ["parallel"]}
@@ -289,7 +289,7 @@ func.func @init_tensor_multiple_users(%arg0: tensor<1x?xf32>)
   %c8 = arith.constant 8 : index
   %c1 = arith.constant 1 : index
   %0 = tensor.dim %arg0, %c1 : tensor<1x?xf32>
-  %init = linalg.init_tensor [1, %0] : tensor<1x?xf32>
+  %init = bufferization.alloc_tensor(%0) : tensor<1x?xf32>
   %2 = affine.apply #map0()[%0]
   %3 = gml_st.loop (%i, %j) = (%c0, %c0) to (%c1, %2) step (%c1, %c8)
       ins (%arg3 = %arg0: tensor<1x?xf32>)
@@ -367,3 +367,20 @@ func.func @init_tensor_multiple_users(%arg0: tensor<1x?xf32>)
 // CHECK: gml_st.loop
 // CHECK:   %[[BUF2]]
 // CHECK: return %[[BUF1]], %[[BUF2]]
+
+// -----
+
+// Test that scf ops are bufferized
+// CHECK-LABEL:   func @if(
+// CHECK-SAME:             %[[PRED:.*]]: i1,
+// CHECK-SAME:             %[[TRUE_TENSOR:.*]]: memref<?xf32>,
+// CHECK-SAME:             %[[FALSE_TENSOR:.*]]: memref<?xf32>) -> memref<?xf32> {
+// CHECK:             %[[IF_RES:.*]] = scf.if %[[PRED]] -> (memref<?xf32, #map>) {
+func.func @if(%pred: i1, %true_val: tensor<?xf32>, %false_val: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = scf.if %pred -> (tensor<?xf32>) {
+    scf.yield %true_val : tensor<?xf32>
+  } else {
+    scf.yield %false_val : tensor<?xf32>
+  }
+  return %0 : tensor<?xf32>
+}

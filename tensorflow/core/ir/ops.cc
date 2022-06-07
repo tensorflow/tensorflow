@@ -114,12 +114,21 @@ void TFGraphDialect::initialize() {
   // Create the fallback OpAsmOpInterface instance.
   fallbackOpAsmInterface_ = new TFGraphOpAsmInterface;
 
+  // Register the memory effects interface adaptor.
+  addInterfaces<StatefulMemoryEffectInterface>();
+
+  // Initialized the cached operation names.
+#define GET_OP_NAME_DEFS
+#include "tensorflow/core/ir/tf_op_names.inc"
+
   // Caching some often used context-owned informations for fast-access.
   name_key_ = StringAttr::get(getContext(), getNameAttrKey());
   device_key_ = StringAttr::get(getContext(), getDeviceAttrKey());
   assigned_device_key_ =
       StringAttr::get(getContext(), getAssignedDeviceAttrKey());
   fulltype_key_ = StringAttr::get(getContext(), getFullTypeAttrKey());
+  lifted_graph_func_name_ =
+      StringAttr::get(getContext(), getLiftedGraphFuncNameKey());
   tfg_name_key_ = StringAttr::get(getContext(), getTfgNameAttrKey());
   tfg_description_key_ =
       StringAttr::get(getContext(), getTfgDescriptionAttrKey());
@@ -136,13 +145,25 @@ void *TFGraphDialect::getRegisteredInterfaceForOp(TypeID interface,
                                                   OperationName opName) {
   if (interface == TypeID::get<OpAsmOpInterface>()) {
     return fallbackOpAsmInterface_;
-  } else if (interface == TypeID::get<TensorFlowRegistryInterface>()) {
+  }
+
+  // Intrinsic operations explicitly implement intefaces.
+  if (opName.hasTrait<OpTrait::IntrinsicOperation>()) {
+    return nullptr;
+  }
+
+  if (interface == TypeID::get<TensorFlowRegistryInterface>()) {
     if (auto *instance =
             getRegisteredInterface<TensorFlowRegistryInterfaceBase>()) {
       // Important: cast to (Concept *) to shift the pointer off the vtable.
       return static_cast<TensorFlowRegistryInterfaceBase::Concept *>(
           const_cast<TensorFlowRegistryInterfaceBase *>(instance));
     }
+  } else if (interface == TypeID::get<MemoryEffectOpInterface>()) {
+    auto *instance = getRegisteredInterface<StatefulMemoryEffectInterface>();
+    assert(instance && "expected the memory interface to be registered");
+    return static_cast<StatefulMemoryEffectInterface::Concept *>(
+        const_cast<StatefulMemoryEffectInterface *>(instance));
   }
 
   return nullptr;
@@ -305,7 +326,8 @@ static ParseResult ParseCustomTfOp(OpAsmParser &parser,
   // The control input are elided from the type list, add them here.
   arg_types.resize(op_infos.size(), control_type);
   if (!arg_types.empty())
-    parser.resolveOperands(op_infos, arg_types, loc, result.operands);
+    if (parser.resolveOperands(op_infos, arg_types, loc, result.operands))
+      return failure();
   if (result.name.getStringRef() != "tfg.return")
     result.types.push_back(control_type);
   return success();
@@ -485,16 +507,12 @@ LogicalResult GraphFuncOp::verify() {
   if (func_op.getNumArguments() % 2)
     return func_op.emitOpError() << "expects an even number of arguments";
   ArrayAttr args_attrs = func_op.getAllArgAttrs();
-  if (!args_attrs)
-    return func_op.emitOpError() << "missing argument attributes array";
-  if (args_attrs.size() != func_op.getNumArguments())
+  if (args_attrs && args_attrs.size() != func_op.getNumArguments())
     return func_op.emitOpError()
            << "expects argument attributes for each argument ("
            << args_attrs.size() << " vs " << func_op.getNumArguments() << ")";
   ArrayAttr res_attrs = func_op.getAllResultAttrs();
-  if (!res_attrs)
-    return func_op.emitOpError() << "missing results attributes array";
-  if (res_attrs.size() != func_op.getNumResults())
+  if (res_attrs && res_attrs.size() != func_op.getNumResults())
     return func_op.emitOpError()
            << "expects results attributes for each result (" << res_attrs.size()
            << " vs " << func_op.getNumResults() << ")";
@@ -1421,13 +1439,19 @@ FunctionTable::FunctionTable(ModuleOp module) {
   }
 }
 
-bool FunctionTable::MaybeCall(Operation *op) {
-  if (functions.count(op->getName().stripDialect())) return true;
-  for (NamedAttribute named_attr : op->getAttrs()) {
-    // Treat any operation that references a FuncAttr as a call.
-    if (named_attr.getValue().isa<FuncAttr>()) return true;
-  }
-  return false;
+bool FunctionTable::MayBeCall(Operation *op) const {
+  if (IsLegacyCall(op)) return true;
+  // The operation might be a call if it references a symbol.
+  bool references_symbol = false;
+  op->getAttrDictionary().walkSubAttrs(
+      [&](Attribute attr) { references_symbol |= attr.isa<SymbolRefAttr>(); });
+  return references_symbol;
+}
+
+bool FunctionTable::IsLegacyCall(Operation *op) const {
+  // If the operation name refers to a function in the module, then it is
+  // guaranteed to be a legacy call. Otherwise, it is not.
+  return functions.count(op->getName().stripDialect());
 }
 
 }  // namespace tfg

@@ -266,7 +266,7 @@ Status HloControlFlowFlattening::FlattenWhileLoop(
                                               /*accept_different_shape=*/true);
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status HloControlFlowFlattening::RemoveInfeed(
@@ -286,7 +286,7 @@ Status HloControlFlowFlattening::RemoveInfeed(
   TF_RETURN_IF_ERROR(
       computation->ReplaceWithNewInstruction(infeed_hlo, std::move(new_tuple)));
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status HloControlFlowFlattening::RemoveRecvDone(
@@ -313,7 +313,7 @@ Status HloControlFlowFlattening::RemoveRecvDone(
   additional_removed->insert(recv);
   TF_RETURN_IF_ERROR(computation->RemoveInstruction(recv));
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status HloControlFlowFlattening::RemoveOutfeed(
@@ -329,7 +329,7 @@ Status HloControlFlowFlattening::RemoveOutfeed(
       ->set_custom_call_has_side_effect(true);
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(outfeed_hlo, custom_call));
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status HloControlFlowFlattening::RemoveSendDone(
@@ -352,7 +352,7 @@ Status HloControlFlowFlattening::RemoveSendDone(
   additional_removed->insert(send);
   TF_RETURN_IF_ERROR(computation->RemoveInstruction(send));
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status HloControlFlowFlattening::RemoveCollective(HloInstruction* hlo) const {
@@ -367,7 +367,7 @@ Status HloControlFlowFlattening::RemoveCollective(HloInstruction* hlo) const {
       hlo->ToString(HloPrintOptions().Canonical());
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, custom_call));
   custom_call->set_metadata_replaced_op(replaced_collective_op_str);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status HloControlFlowFlattening::RemovePartitionOrReplicaId(
@@ -375,7 +375,7 @@ Status HloControlFlowFlattening::RemovePartitionOrReplicaId(
   HloComputation* computation = hlo->parent();
   HloInstruction* zero = CreateConstant(hlo->shape(), computation);
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, zero));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<bool> HloControlFlowFlattening::Run(HloModule* module) {

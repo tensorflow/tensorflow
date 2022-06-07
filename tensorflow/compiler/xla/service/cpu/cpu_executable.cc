@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -43,21 +44,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 #include "tensorflow/stream_executor/host/host_stream.h"
 
 namespace xla {
 namespace cpu {
-
-static std::string ModuleUniqueName(absl::string_view module_name,
-                                    const HloModule* module) {
-  std::string unique_id;
-  if (module != nullptr) {
-    unique_id = absl::StrCat("module.", module->unique_id(), ".");
-  }
-  return absl::StrCat(unique_id, module_name);
-}
 
 CpuExecutable::CpuExecutable(
     std::unique_ptr<SimpleOrcJIT> jit,
@@ -74,9 +65,10 @@ CpuExecutable::CpuExecutable(
   if (assignment_) {
     buffer_assignment_.reset(new BufferAssignmentProto(assignment_->ToProto()));
   }
-  XlaDebugInfoManager::Get()->RegisterModule(
-      ModuleUniqueName(module_name_, shared_module().get()), shared_module(),
-      buffer_assignment_);
+  if (has_module()) {
+    XlaDebugInfoManager::Get()->RegisterModule(
+        module().unique_id(), shared_module(), buffer_assignment_);
+  }
 
   // Resolve symbols in the constructor rather than at execution time to avoid
   // races because FindSymbol is not thread safe.
@@ -94,9 +86,9 @@ CpuExecutable::CpuExecutable(
 }
 
 CpuExecutable::~CpuExecutable() {
-  XlaDebugInfoManager::Get()->UnregisterModule(
-      ModuleUniqueName(module_name_, shared_module().get()), shared_module(),
-      buffer_assignment_);
+  if (has_module()) {
+    XlaDebugInfoManager::Get()->UnregisterModule(module().unique_id());
+  }
 }
 
 static StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
@@ -164,10 +156,6 @@ Status CpuExecutable::ExecuteComputeFunction(
     HloExecutionProfile* hlo_execution_profile) {
   uint64_t start_micros = tensorflow::Env::Default()->NowMicros();
 
-  XlaDebugInfoManager::Get()->OnModuleStart(module_name_);
-  auto cleanup = absl::MakeCleanup(
-      [&]() { XlaDebugInfoManager::Get()->OnModuleStop(module_name_); });
-
   size_t profile_counters_size =
       hlo_execution_profile ? hlo_execution_profile->profile_counters().size()
                             : 0;
@@ -218,13 +206,13 @@ Status CpuExecutable::ExecuteComputeFunction(
     }
   }
 
-  absl::optional<absl::string_view> error_message =
+  std::optional<absl::string_view> error_message =
       CustomCallStatusGetMessage(&status);
   if (error_message) {
     return InternalError("CustomCall failed: %s", *error_message);
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
@@ -261,7 +249,7 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
     const BufferAllocation::Index buffer_index = slice.index();
 
     // TODO(cheshire): duplication with other backends.
-    absl::optional<HloInputOutputAliasConfig::Alias> alias =
+    std::optional<HloInputOutputAliasConfig::Alias> alias =
         input_output_alias.GetAliasedParameter(index);
     if (alias) {
       CHECK_LT(alias->parameter_number, arguments.size());
@@ -274,7 +262,7 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
             "compile time but not donated at runtime: %s",
             alias->ToString());
       }
-      if (absl::optional<se::OwningDeviceMemory> owning =
+      if (std::optional<se::OwningDeviceMemory> owning =
               maybe_owning_memory->Release()) {
         // If the caller passes the ownership of the device memory, reuse it
         // as the output buffer. It is up to the caller whether or not to
@@ -314,7 +302,7 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
 
     if (result_buffer.is_null()) {
       MaybeOwningDeviceMemory& buffer = buffers[buffer_index];
-      if (absl::optional<se::OwningDeviceMemory> owned_buffer =
+      if (std::optional<se::OwningDeviceMemory> owned_buffer =
               buffer.Release()) {
         result_buffer = owned_buffer->Release();
         buffer = result_buffer;

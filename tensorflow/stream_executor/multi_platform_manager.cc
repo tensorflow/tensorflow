@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 
+#include <string>
+
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 
@@ -31,59 +33,60 @@ namespace {
 class MultiPlatformManagerImpl {
  public:
   port::Status RegisterPlatform(std::unique_ptr<Platform> platform)
-      TF_LOCKS_EXCLUDED(mu_);
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   port::StatusOr<Platform*> PlatformWithName(absl::string_view target)
-      TF_LOCKS_EXCLUDED(mu_);
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   port::StatusOr<Platform*> PlatformWithId(const Platform::Id& id)
-      TF_LOCKS_EXCLUDED(mu_);
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   port::StatusOr<Platform*> PlatformWithName(absl::string_view target,
                                              bool initialize_platform)
-      TF_LOCKS_EXCLUDED(mu_);
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   port::StatusOr<Platform*> PlatformWithId(const Platform::Id& id,
                                            bool initialize_platform)
-      TF_LOCKS_EXCLUDED(mu_);
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   port::StatusOr<Platform*> InitializePlatformWithName(
       absl::string_view target,
-      const std::map<std::string, std::string>& options) TF_LOCKS_EXCLUDED(mu_);
+      const std::map<std::string, std::string>& options)
+      ABSL_LOCKS_EXCLUDED(mu_);
   port::StatusOr<Platform*> InitializePlatformWithId(
       const Platform::Id& id, const std::map<std::string, std::string>& options)
-      TF_LOCKS_EXCLUDED(mu_);
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   port::StatusOr<std::vector<Platform*>> PlatformsWithFilter(
       const std::function<bool(const Platform*)>& filter,
-      bool initialize_platform) TF_LOCKS_EXCLUDED(mu_);
+      bool initialize_platform) ABSL_LOCKS_EXCLUDED(mu_);
 
   using Listener = MultiPlatformManager::Listener;
   port::Status RegisterListener(std::unique_ptr<Listener> listener)
-      TF_LOCKS_EXCLUDED(mu_);
+      ABSL_LOCKS_EXCLUDED(mu_);
 
  private:
   // Looks up the platform object with the given name.  Assumes the Platforms
   // mutex is held.
   port::StatusOr<Platform*> LookupByNameLocked(absl::string_view target)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Looks up the platform object with the given id.  Assumes the Platforms
   // mutex is held.
   port::StatusOr<Platform*> LookupByIdLocked(const Platform::Id& id)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Returns the names of the initialied platforms satisfying the given filter.
   // By default, it will return all initialized platform names.
   std::vector<std::string> InitializedPlatformNamesWithFilter(
       const std::function<bool(const Platform*)>& filter = [](const Platform*) {
         return true;
-      }) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      }) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   absl::Mutex mu_;
-  std::vector<std::unique_ptr<Listener>> listeners_ TF_GUARDED_BY(mu_);
-  absl::flat_hash_map<Platform::Id, Platform*> id_map_ TF_GUARDED_BY(mu_);
-  absl::flat_hash_map<std::string, Platform*> name_map_ TF_GUARDED_BY(mu_);
+  std::vector<std::unique_ptr<Listener>> listeners_ ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<Platform::Id, Platform*> id_map_ ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<std::string, Platform*> name_map_ ABSL_GUARDED_BY(mu_);
 };
 
 port::Status MultiPlatformManagerImpl::RegisterPlatform(
@@ -107,7 +110,7 @@ port::Status MultiPlatformManagerImpl::RegisterPlatform(
   for (const auto& listener : listeners_) {
     listener->PlatformRegistered(platform_ptr);
   }
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::StatusOr<Platform*> MultiPlatformManagerImpl::PlatformWithName(
@@ -183,7 +186,7 @@ port::Status MultiPlatformManagerImpl::RegisterListener(
   CHECK(id_map_.empty());
   CHECK(name_map_.empty());
   listeners_.push_back(std::move(listener));
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::StatusOr<std::vector<Platform*>>

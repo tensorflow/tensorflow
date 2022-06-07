@@ -56,7 +56,7 @@ void XlaAssignVariableOp::Compute(OpKernelContext* context) {
                                 *ptr = new Var(dtype_);
                                 *(*ptr)->tensor() = value;
                                 (*ptr)->is_initialized = true;
-                                return Status::OK();
+                                return OkStatus();
                               }));
   mutex_lock ml(*variable->mu());
   OP_REQUIRES(

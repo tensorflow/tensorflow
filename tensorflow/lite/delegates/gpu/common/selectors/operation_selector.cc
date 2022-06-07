@@ -640,7 +640,7 @@ absl::Status GPUOperationFromNodePart0(
       return absl::OkStatus();
     }
     case OperationType::RESAMPLER: {
-      *gpu_op = SelectResampler(op_def);
+      *gpu_op = SelectResampler(op_def, gpu_info);
       return absl::OkStatus();
     }
     case OperationType::RESHAPE: {

@@ -142,6 +142,8 @@ def create_distributed_mesh(mesh_dims: List[Tuple[str, int]],
   Returns:
     A mesh created from specified or default arguments.
   """
+  dim_names, shape = zip(*mesh_dims)
+
   if device_type.upper() in ['CPU', 'GPU']:
     # For CPU and GPU meshes, user-specified args take precedence over env vars.
     # This is particularly useful on single clients when users want to create
@@ -151,6 +153,9 @@ def create_distributed_mesh(mesh_dims: List[Tuple[str, int]],
       num_global_devices = api.num_global_devices(device_type)
     if num_global_devices <= 0:
       raise ValueError(f'num_global_devices ({num_global_devices}) must be > 0')
+    if num_global_devices != np.prod(shape):
+      raise ValueError(f'num_global_devices ({num_global_devices}) must be '
+                       f'equal to total size of the mesh of shape {shape}')
 
     if num_clients is None:
       num_clients = api.num_clients()
@@ -183,8 +188,6 @@ def create_distributed_mesh(mesh_dims: List[Tuple[str, int]],
     local_devices = api.local_devices(device_type,
                                       client_id)[:num_local_devices]
 
-    dim_names = [d[0] for d in mesh_dims]
-    shape = [d[1] for d in mesh_dims]
     global_device_ids = np.arange(num_global_devices).reshape(shape)
     flattened = np.ravel(global_device_ids).tolist()
     start_idx = num_local_devices * client_id
@@ -218,8 +221,6 @@ def create_distributed_mesh(mesh_dims: List[Tuple[str, int]],
           f'Do not specify client_id for {device_type.upper()} meshes. '
           'It will be filled in automatically from environmental variables.'
           'See api.py for the list of environmental variables for DTensor.')
-    dim_names = [mesh_dim[0] for mesh_dim in mesh_dims]
-    shape = [mesh_dim[1] for mesh_dim in mesh_dims]
     mesh = tpu_util.create_tpu_mesh(dim_names, shape, mesh_name)
     _print_context(
         api.num_global_devices(device_type), api.num_clients(), api.client_id(),
@@ -253,8 +254,6 @@ def dtensor_initialize_multi_client(
         `localhost:10000,localhost:10001,localhost:10002,localhost:10003`
       - 2 clients on host1, 2 clients on host2
         `host1:10000,host1:10001,host2:10000,host2:10003`
-  - DTENSOR_TPU_CORE_COUNT, DTENSOR_GPU_CORE_COUNT, DTENSOR_CPU_CORE_COUNT:
-    integers, the number of global devices of the type.
 
   Args:
     enable_coordination_service: If true, enable distributed coordination

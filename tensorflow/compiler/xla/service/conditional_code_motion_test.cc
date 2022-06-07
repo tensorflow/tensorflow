@@ -352,8 +352,8 @@ ENTRY main {
   ASSERT_EQ(on_true->instruction_count(), 9);
   const HloComputation* on_false = conditional->branch_computation(1);
   ASSERT_EQ(on_false->instruction_count(), 11);
-  absl::optional<int> on_false_sub_idx;
-  absl::optional<int> on_false_add_idx;
+  std::optional<int> on_false_sub_idx;
+  std::optional<int> on_false_add_idx;
   for (int i = 0; i < on_false->root_instruction()->operand_count(); ++i) {
     const HloInstruction* root_operand =
         on_false->root_instruction()->operand(i);
@@ -418,8 +418,8 @@ ENTRY main {
   const HloInstruction* conditional =
       FindInstruction(module.get(), "conditional");
   const HloComputation* on_false = conditional->branch_computation(1);
-  absl::optional<int> on_false_gte_idx;
-  absl::optional<int> on_false_const_idx;
+  std::optional<int> on_false_gte_idx;
+  std::optional<int> on_false_const_idx;
   for (int i = 0; i < on_false->root_instruction()->operand_count(); ++i) {
     const HloInstruction* root_operand =
         on_false->root_instruction()->operand(i);
@@ -494,8 +494,8 @@ ENTRY main {
                         op::GetTupleElement(op::Parameter(0), 0)));
   const HloComputation* on_false = conditional->branch_computation(1);
   EXPECT_EQ(on_false->instruction_count(), 4);
-  absl::optional<int> on_false_const_idx;
-  absl::optional<int> on_false_gte_idx;
+  std::optional<int> on_false_const_idx;
+  std::optional<int> on_false_gte_idx;
   for (int i = 0; i < on_false->root_instruction()->operand_count(); ++i) {
     const HloInstruction* root_operand =
         on_false->root_instruction()->operand(i);

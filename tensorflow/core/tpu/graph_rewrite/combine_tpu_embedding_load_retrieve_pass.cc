@@ -98,7 +98,7 @@ Status GetTPUEmbeddingConfiguration(
   if (!have_config) {
     return errors::InvalidArgument("No TPU embedding config provided");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Validates that all of the table names are distinct and non-empty.
@@ -121,7 +121,7 @@ Status ValidateEmbeddingTableNames(
                           table_name_map[name], table_id, name.c_str()));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Gets single-table load-TPUEmbedding-parameter nodes in the graph.
@@ -259,7 +259,7 @@ Status GetLoadOrRetrieveNodesByTable(
           tpu_embedding_config.table_descriptor(table_id).name(), table_id));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Pair of a node and an input or output number used to record edge endpoints.
@@ -343,7 +343,7 @@ Status CombinePerTableParametersForLoad(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Removes edges between individual load/retrieve nodes that are added by
@@ -737,7 +737,7 @@ Status CombineTPUEmbeddingLoadRetrievePass::Run(
   VLOG(2) << "Generated " << num_combined_nodes_added
           << " combined load or retrieve nodes.";
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

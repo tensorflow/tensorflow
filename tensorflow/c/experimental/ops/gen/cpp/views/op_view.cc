@@ -85,8 +85,7 @@ string OpView::Summary() const { return op_.summary(); }
 
 // Context
 bool OpView::IsListOp() const {
-  return NumInputs() == 1 && OnlyInput().IsList() && NumOutputs() == 1 &&
-         OnlyOutput().IsList();
+  return NumOutputs() == 1 && OnlyOutput().IsList();
 }
 
 }  // namespace cpp

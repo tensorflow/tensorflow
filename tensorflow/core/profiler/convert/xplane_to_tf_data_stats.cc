@@ -84,18 +84,19 @@ absl::optional<int64_t> FindDeviceInputPipeline(const XEventVisitor& event) {
 // (1) set iterator metadata
 // (2) find root iterator events
 // (3) find device input pipeline ids
-void ProcessEventForest(const EventForest& event_forest,
-                        absl::flat_hash_set<int64_t>* device_input_pipeline_ids,
-                        absl::flat_hash_map<int64_t, std::vector<EventNode*>>*
-                            root_iterator_event_map,
-                        TfDataStats* tf_data_stats) {
+void ProcessEventForest(
+    const EventForest& event_forest,
+    absl::flat_hash_set<int64_t>* device_input_pipeline_ids,
+    absl::flat_hash_map<int64_t, std::vector<const EventNode*>>*
+        root_iterator_event_map,
+    TfDataStats* tf_data_stats) {
   const EventNodeMap& event_node_map = event_forest.GetEventNodeMap();
-  auto iterator_event_list =
+  auto* iterator_event_list =
       gtl::FindOrNull(event_node_map, HostEventType::kIterator);
   if (!iterator_event_list) return;
-  for (const auto& iterator_event : *iterator_event_list) {
+  for (const EventNode& iterator_event : *iterator_event_list) {
     const XEventVisitor& iterator_event_visitor =
-        iterator_event->GetEventVisitor();
+        iterator_event.GetEventVisitor();
     auto iterator_id_stat = iterator_event_visitor.GetStat(StatType::kStepId);
     if (!iterator_id_stat.has_value()) continue;
     int64_t iterator_id = iterator_id_stat->IntValue();
@@ -108,16 +109,16 @@ void ProcessEventForest(const EventForest& event_forest,
     }
     if (IsRootIteratorEvent(iterator_event_visitor)) {
       // Record root iterator events.
-      (*root_iterator_event_map)[iterator_id].push_back(iterator_event.get());
+      (*root_iterator_event_map)[iterator_id].push_back(&iterator_event);
     }
   }
-  auto device_input_pipeline_second_iterator_events = gtl::FindOrNull(
+  auto* device_input_pipeline_second_iterator_events = gtl::FindOrNull(
       event_node_map, HostEventType::kDeviceInputPipelineSecondIterator);
   if (!device_input_pipeline_second_iterator_events) return;
-  for (const auto& iterator_event :
+  for (const EventNode& iterator_event :
        *device_input_pipeline_second_iterator_events) {
     const XEventVisitor& iterator_event_visitor =
-        iterator_event->GetEventVisitor();
+        iterator_event.GetEventVisitor();
     auto iterator_id_stat = iterator_event_visitor.GetStat(StatType::kStepId);
     if (!iterator_id_stat.has_value()) continue;
     int64_t iterator_id = iterator_id_stat->IntValue();
@@ -204,7 +205,7 @@ void SetBottleneckIteratorId(InputPipelineStat* input_pipeline_stat) {
 
 void ProcessInputPipelines(
     const absl::flat_hash_set<int64_t>& device_input_pipeline_ids,
-    absl::flat_hash_map<int64_t, std::vector<EventNode*>>*
+    absl::flat_hash_map<int64_t, std::vector<const EventNode*>>*
         root_iterator_event_map,
     TfDataStats* tf_data_stats) {
   auto* input_pipelines = tf_data_stats->mutable_input_pipelines();
@@ -493,7 +494,8 @@ void CombinedTfDataStatsBuilder::Add(absl::string_view host_name,
   event_forest.ConnectEvents();
   event_forest.ConnectTfDataEvents();
   absl::flat_hash_set<int64_t> device_input_pipeline_ids;
-  absl::flat_hash_map<int64_t, std::vector<EventNode*>> root_iterator_event_map;
+  absl::flat_hash_map<int64_t, std::vector<const EventNode*>>
+      root_iterator_event_map;
   ProcessEventForest(event_forest, &device_input_pipeline_ids,
                      &root_iterator_event_map, &tf_data_stats);
   ProcessInputPipelines(device_input_pipeline_ids, &root_iterator_event_map,

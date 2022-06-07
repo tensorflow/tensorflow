@@ -349,9 +349,7 @@ class VariableOpsTest(xla_test.XLATestCase):
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
       self.assertEqual(self.evaluate(read), [[3]])
 
-  @test_util.disable_mlir_bridge("TODO: MLIR bridge does not yet"
-                                 "support ResourceScatterAddScalar")
-  def testScatterAddScalar(self):
+  def testScatterAddScalarUpdate(self):
     with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1, 1])

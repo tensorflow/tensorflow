@@ -9,10 +9,10 @@ import "tensorflow/core/protobuf/service_config.proto";
 // State of the dispatcher server, exported to improve debuggability.
 // Next tag: 4
 message DispatcherStateExport {
-  message Job {
+  message Iteration {
     int64 dataset_id = 1;
-    int64 job_id = 2;
-    JobKeyDef job_key = 3;
+    int64 iteration_id = 2;
+    IterationKeyDef iteration_key = 3;
     ProcessingModeDef processing_mode = 4;
     int64 num_consumers = 6;
     int64 num_clients = 8;
@@ -22,13 +22,16 @@ message DispatcherStateExport {
 
   experimental.DispatcherConfig dispatcher_config = 1;
   repeated string worker_addresses = 2;
-  repeated Job jobs = 3;
+  repeated Iteration iterations = 3;
 }
 
 // State of the worker server, exported to improve debuggability.
-// Next tag: 2
+// Next tag: 5
 message WorkerStateExport {
   experimental.WorkerConfig worker_config = 1;
+  repeated TaskDef tasks = 2;
+  repeated int64 finished_task_ids = 3;
+  repeated int64 deleted_task_ids = 4;
 }
 
 // State of the tf.data service server, exported to improve debuggability.

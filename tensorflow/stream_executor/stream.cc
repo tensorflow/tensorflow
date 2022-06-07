@@ -261,23 +261,8 @@ Stream::Stream(StreamExecutor *parent)
   VLOG_CALL(PARAM(parent));
 }
 
-Stream::Stream(StreamExecutor *parent,
-               std::unique_ptr<internal::StreamInterface> implementation)
-    : parent_(parent),
-      implementation_(std::move(implementation)),
-      allocated_(true),
-      status_(port::Status::OK()),
-      temporary_memory_manager_(this),
-      managed_externally_(true) {
-  VLOG_CALL(PARAM(parent), PARAM(implementation.get()));
-}
-
 Stream::~Stream() {
   VLOG_CALL();
-
-  if (managed_externally_) {
-    return;
-  }
 
   // Ensure the stream is completed.
   auto status = BlockHostUntilDone();
@@ -315,7 +300,7 @@ Stream &Stream::Init() {
   if (parent_->AllocateStream(this)) {
     // Successful initialization!
     allocated_ = true;
-    status_ = port::Status::OK();
+    status_ = ::tensorflow::OkStatus();
   } else {
     LOG(ERROR) << "failed to allocate stream during initialization";
   }

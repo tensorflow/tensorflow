@@ -66,7 +66,7 @@ StatusOr<HloInstruction*> MakeConvolveHlo(
     int64_t batch_group_count, const Window& window,
     const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
-    absl::optional<PrimitiveType> preferred_element_type);
+    std::optional<PrimitiveType> preferred_element_type);
 
 // Creates a transpose HLO instruction and adds it to the computation containing
 // `operand`.
@@ -122,6 +122,9 @@ StatusOr<HloInstruction*> MakeConcatHlo(
 // the given primitive type.
 HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type);
 
+// Creates a Bitcast HLO instruction to the given shape+layout.
+HloInstruction* MakeBitcastHlo(HloInstruction* hlo, const Shape& shape);
+
 // Creates a BitcastConvert HLO instruction.
 HloInstruction* MakeBitcastConvertToHlo(HloInstruction* hlo,
                                         PrimitiveType type);
@@ -138,7 +141,7 @@ StatusOr<HloInstruction*> MakeDotHlo(
     HloInstruction* lhs, HloInstruction* rhs,
     const DotDimensionNumbers& dim_numbers,
     const PrecisionConfig& precision_config,
-    absl::optional<PrimitiveType> preferred_element_type);
+    std::optional<PrimitiveType> preferred_element_type);
 
 // Creates a Map HLO instruction and adds it to the computation containing the
 // operands. All operands must be in the same computation.

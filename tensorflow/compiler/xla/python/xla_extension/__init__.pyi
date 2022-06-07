@@ -495,10 +495,13 @@ class DistributedRuntimeService:
 class DistributedRuntimeClient:
   def connect(self) -> _Status: ...
   def shutdown(self) -> _Status: ...
-
+  def blocking_key_value_get(self, key: str, timeout_in_ms: int) -> _Status: ...
+  def key_value_set(self, key: str, value: str) -> _Status: ...
+  def wait_at_barrier(self, barrier_id: str, timeout_in_ms: int) -> _Status: ...
 def get_distributed_runtime_service(
     address: str,
     num_nodes: int,
+    use_coordination_service: bool = ...,
     heartbeat_interval: Optional[int] = ...,
     max_missing_heartbeats: Optional[int] = ...,
     enumerate_devices_timeout: Optional[int] = ...,
@@ -506,6 +509,7 @@ def get_distributed_runtime_service(
 def get_distributed_runtime_client(
     address: str,
     node_id: int,
+    use_coordination_service: bool = ...,
     rpc_timeout: Optional[int] = ...,
     init_timeout: Optional[int] = ...,
     shutdown_timeout: Optional[int] = ...,

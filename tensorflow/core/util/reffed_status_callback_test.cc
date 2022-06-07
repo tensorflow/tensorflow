@@ -44,7 +44,7 @@ TEST(TestReffedStatusCallback, CallsBackOK) {
 
 TEST(TestReffedStatusCallback, CallsBackFail) {
   bool called = false;
-  Status status = Status::OK();
+  Status status = OkStatus();
   auto done = [&called, &status](const Status& s) {
     called = true;
     status = s;
@@ -65,7 +65,7 @@ TEST(TestReffedStatusCallback, CallsBackFail) {
 
 TEST(TestReffedStatusCallback, RefMulti) {
   int called = false;
-  Status status = Status::OK();
+  Status status = OkStatus();
   auto done = [&called, &status](const Status& s) {
     called = true;
     status = s;

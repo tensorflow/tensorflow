@@ -45,7 +45,7 @@ CompileOnlyClient::CompileAheadOfTime(
     TF_RET_CHECK(instance.computation != nullptr);
     service_instance.computation = instance.computation->proto();
     service_instance.argument_layouts = instance.argument_layouts;
-    service_instance.result_layout = instance.result_layout;
+    service_instance.result_layout = *instance.result_layout;
   }
   return compiler_service_->CompileAheadOfTime(service_instances, options,
                                                metadata);

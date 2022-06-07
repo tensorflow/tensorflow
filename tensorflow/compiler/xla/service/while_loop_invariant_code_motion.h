@@ -54,7 +54,7 @@ class WhileLoopInvariantCodeMotion : public HloModulePass {
   explicit WhileLoopInvariantCodeMotion(
       bool hoist_constants = false, bool hoist_reshapes = false,
       bool hoist_other = true,
-      absl::optional<float> hoist_size_inflation_ratio = absl::nullopt,
+      std::optional<float> hoist_size_inflation_ratio = std::nullopt,
       ShapeSizeFunction shape_size_function = ShapeUtil::ByteSizeOfElements)
       : hoist_constants_(hoist_constants),
         hoist_reshapes_(hoist_reshapes),
@@ -76,7 +76,7 @@ class WhileLoopInvariantCodeMotion : public HloModulePass {
   bool hoist_constants_;
   bool hoist_reshapes_;
   bool hoist_other_;
-  absl::optional<float> hoist_size_inflation_ratio_;
+  std::optional<float> hoist_size_inflation_ratio_;
   ShapeSizeFunction shape_size_function_;
 };
 }  // namespace xla

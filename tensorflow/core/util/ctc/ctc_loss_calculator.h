@@ -279,7 +279,7 @@ Status CTCLossCalculator<T>::CalculateLoss(
   } else {
     ComputeLossAndGradients(0, batch_size);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <class T>
@@ -363,7 +363,7 @@ Status CTCLossCalculator<T>::PopulateLPrimes(
     GetLPrimeIndices(l, &l_primes->at(b));
     *max_u_prime = std::max(*max_u_prime, l_primes->at(b).size());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Calculates the alpha(t, u) as described in (GravesTh) Section 7.3.

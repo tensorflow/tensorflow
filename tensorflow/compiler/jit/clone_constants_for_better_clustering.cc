@@ -154,7 +154,7 @@ Status CloneConstantsForBetterClusteringPassImpl::CloneSmallHostConstantInputs(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CloneConstantsForBetterClusteringPassImpl::Run() {
@@ -202,7 +202,7 @@ Status CloneConstantsForBetterClusteringPassImpl::Run() {
     // operation only modifies Const/clone_2 in place.
 
     if (IsInPlaceOp(n->type_string())) {
-      return Status::OK();
+      return OkStatus();
     }
     nodes.push_back(n);
   }
@@ -212,13 +212,13 @@ Status CloneConstantsForBetterClusteringPassImpl::Run() {
   for (Node* n : nodes) {
     TF_RETURN_IF_ERROR(CloneSmallHostConstantInputs(name_set, n));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CloneConstantsForBetterClusteringPass::Run(
     const GraphOptimizationPassOptions& options) {
   if (GetGlobalJitLevelForGraph(options) == OptimizerOptions::OFF) {
-    return Status::OK();
+    return OkStatus();
   }
 
   Graph* g = options.graph->get();
@@ -233,7 +233,7 @@ Status CloneConstantsForBetterClusteringPass::Run(
     DumpGraphToFile("after_clone_constants_for_better_clustering", *g);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

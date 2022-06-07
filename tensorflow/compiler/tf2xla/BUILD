@@ -78,6 +78,13 @@ tf_cc_binary(
 )
 
 tf_proto_library(
+    name = "tf2xla_support_proto",
+    srcs = ["support.proto"],
+    cc_api_version = 2,
+    visibility = ["//visibility:public"],
+)
+
+tf_proto_library(
     name = "tf2xla_proto",
     srcs = ["tf2xla.proto"],
     cc_api_version = 2,
@@ -690,7 +697,6 @@ tf_cc_test(
 
 cc_library(
     name = "tf2xla_defs",
-    srcs = ["tf2xla_defs.cc"],
     hdrs = ["tf2xla_defs.h"],
     visibility = [":friends"],
     deps = [

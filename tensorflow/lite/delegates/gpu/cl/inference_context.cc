@@ -334,6 +334,13 @@ absl::Status InferenceContext::InitFromGpuModel(
   return absl::OkStatus();
 }
 
+absl::Status InferenceContext::AddToCommanBuffer(cl_command_buffer_khr cb) {
+  for (auto& node : nodes_) {
+    RETURN_IF_ERROR(node.cl_operation.AddToCommanBuffer(cb));
+  }
+  return absl::OkStatus();
+}
+
 absl::Status InferenceContext::RestoreDeserialized(
     const absl::Span<const uint8_t> serialized_model, Environment* env,
     CreateGpuModelInfo* create_info) {
@@ -504,6 +511,10 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
       &offset_assignment, &use_offset_assignment, &is_sub_buffers_supported));
   const size_t base_align_bytes =
       std::max<size_t>(gpu_info.opencl_info.base_addr_align_in_bits >> 3, 1);
+
+  if (buffer_usage_records.empty()) {
+    return absl::OkStatus();
+  }
 
   if (use_offset_assignment) {
     if (!shared_buffers_parent_ptr_) {

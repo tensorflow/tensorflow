@@ -57,7 +57,7 @@ def _initialize_third_party():
     FP16()
     absl()
     benchmark()
-    clog()
+    clog()  # Note: needed only by XNNPACK, at some point it should be removed
     cpuinfo()
     dlpack()
     eigen3()
@@ -125,7 +125,7 @@ def _tf_toolchains():
 def _tf_repositories():
     """All external dependencies for TF builds."""
 
-    # To update any of the dependencies bellow:
+    # To update any of the dependencies below:
     # a) update URL and strip_prefix to the new git commit hash
     # b) get the sha256 hash of the commit by running:
     #    curl -L <url> | sha256sum
@@ -134,9 +134,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "1be2e5d8380e7a2983f7325d462cba044f8a1016bd3e403ede093c3086595040",
-        strip_prefix = "XNNPACK-d5dc9e245f0d474235f2b0a48e3e8525de02a5db",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/d5dc9e245f0d474235f2b0a48e3e8525de02a5db.zip"),
+        sha256 = "47ada52e5f3efc475f97e61954e8c62d378457fe0cffa210061952891e10b33c",
+        strip_prefix = "XNNPACK-da533e0114f2bf730f17853ae10556d84a3d1e89",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/da533e0114f2bf730f17853ae10556d84a3d1e89.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -459,10 +459,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "nsync",
         patch_file = ["//third_party:nsync.patch"],
-        sha256 = "47a6eb2a295be5121a1904a6a775722338a20dc02ee3eec4169ed2c3f203617a",
-        strip_prefix = "nsync-1.24.0",
+        sha256 = "2be9dbfcce417c7abcc2aa6fee351cd4d292518d692577e74a2c6c05b049e442",
+        strip_prefix = "nsync-1.25.0",
         system_build_file = "//third_party/systemlibs:nsync.BUILD",
-        urls = tf_mirror_urls("https://github.com/google/nsync/archive/1.24.0.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/google/nsync/archive/1.25.0.tar.gz"),
     )
 
     tf_http_archive(

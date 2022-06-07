@@ -37,6 +37,7 @@ from tensorflow.python.ops.ragged import row_partition
 from tensorflow.python.ops.structured import structured_array_ops  # pylint: disable=unused-import
 
 from tensorflow.python.ops.structured import structured_tensor
+from tensorflow.python.ops.structured import structured_tensor_dynamic
 from tensorflow.python.ops.structured.structured_tensor import StructuredTensor
 from tensorflow.python.platform import googletest
 
@@ -921,14 +922,14 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
       dict(
           testcase_name="NoFieldsRaggedRank1",
           st=lambda: StructuredTensor.from_fields(
-              {}, (1, None),
+              {}, (2, None),
               row_partitions=[
                   row_partition.RowPartition.from_row_lengths([3, 2])]),
           expected=[[{}, {}, {}], [{}, {}]]),
       dict(
           testcase_name="NoFieldsRaggedRank2",
           st=lambda: StructuredTensor.from_fields(
-              {}, (1, None, None),
+              {}, (2, None, None),
               row_partitions=[
                   row_partition.RowPartition.from_row_lengths([2, 1]),
                   row_partition.RowPartition.from_row_lengths([2, 3, 1])]),
@@ -970,13 +971,13 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
            pyval={"a": 1},
            type_spec=structured_tensor.StructuredTensorSpec(
                shape=[1],
-               field_specs={"b": tensor_spec.TensorSpec([], dtypes.int32)}),
+               field_specs={"b": tensor_spec.TensorSpec([1], dtypes.int32)}),
            msg=r"Value at \(\) does not match typespec"),
       dict(testcase_name="TypeSpecMismatch_ListDictKey",
            pyval=[{"a": 1}],
            type_spec=structured_tensor.StructuredTensorSpec(
                shape=[1],
-               field_specs={"b": tensor_spec.TensorSpec([], dtypes.int32)}),
+               field_specs={"b": tensor_spec.TensorSpec([1], dtypes.int32)}),
            msg=r"Value at \(\) does not match typespec"),
       dict(testcase_name="TypeSpecMismatch_RankMismatch",
            pyval=[{"a": 1}],
@@ -1021,7 +1022,7 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
            pyval=[[1]],
            type_spec=structured_tensor.StructuredTensorSpec(
                shape=[1, 1],
-               field_specs={"a": tensor_spec.TensorSpec([], dtypes.int32)}),
+               field_specs={"a": tensor_spec.TensorSpec([1, 1], dtypes.int32)}),
            msg=r"Value at \(\) does not match typespec"),
       dict(testcase_name="InconsistentDictionaryDepth",
            pyval=[{}, [{}]],
@@ -1204,6 +1205,13 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     st = StructuredTensor.from_pyval(st)
     result = st.merge_dims(outer_axis, inner_axis)
     self.assertAllEqual(result, expected)
+
+  def testMergeDimsDetail_3D_0_1(self):
+    st = StructuredTensor.from_pyval(
+        [[[{"x": 1}, {"x": 2}], [{"x": 3}]], [[{"x": 4}]]])
+    result = st.merge_dims(0, 1)
+    expected_shape = tensor_shape.TensorShape([3, None])
+    self.assertTrue(expected_shape.is_compatible_with(result.shape))
 
   def testMergeDims_0_1(self):
     rt = ragged_tensor.RaggedTensor.from_value_rowids(
@@ -1667,8 +1675,8 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     nrows = constant_op.constant(4)
     shape = tensor_shape.TensorShape((4,))
     row_partitions = ()
-    rs = structured_tensor._dynamic_ragged_shape_init(fields, shape, nrows,
-                                                      row_partitions)
+    rs = structured_tensor_dynamic._dynamic_ragged_shape_init(
+        fields, shape, nrows, row_partitions)
     self.assertEqual(
         repr(rs._to_tensor_shape()), repr(tensor_shape.TensorShape((4,))))
 
@@ -1680,8 +1688,8 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     shape = tensor_shape.TensorShape(())
     row_partitions = ()
 
-    rs = structured_tensor._dynamic_ragged_shape_init(fields, shape, nrows,
-                                                      row_partitions)
+    rs = structured_tensor_dynamic._dynamic_ragged_shape_init(
+        fields, shape, nrows, row_partitions)
     self.assertEqual(
         repr(rs._to_tensor_shape()), repr(tensor_shape.TensorShape(())))
 
@@ -1691,8 +1699,8 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     nrows = constant_op.constant(2, dtype=dtypes.int64)
     shape = tensor_shape.TensorShape([2, None])
     row_partitions = tuple(x._nested_row_partitions)
-    rs = structured_tensor._dynamic_ragged_shape_init(fields, shape, nrows,
-                                                      row_partitions)
+    rs = structured_tensor_dynamic._dynamic_ragged_shape_init(
+        fields, shape, nrows, row_partitions)
     self.assertEqual(
         repr(rs._to_tensor_shape()), repr(tensor_shape.TensorShape((2, None))))
 

@@ -19,6 +19,7 @@ from concurrent import futures
 import numpy as np
 import tensorflow  # pylint: disable=unused-import
 
+from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import quantize_model
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
@@ -28,7 +29,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save as saved_model_save
 from tensorflow.python.saved_model import tag_constants
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 
 
 class MultiThreadedTest(test.TestCase):
@@ -40,7 +41,7 @@ class MultiThreadedTest(test.TestCase):
 
   def _convert_with_calibration(self):
 
-    class ModelWithAdd(tracking.AutoTrackable):
+    class ModelWithAdd(autotrackable.AutoTrackable):
       """Basic model with addition."""
 
       @def_function.function(input_signature=[
@@ -68,10 +69,14 @@ class MultiThreadedTest(test.TestCase):
     saved_model_save.save(
         root, temp_path, signatures=root.add.get_concrete_function())
 
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=quant_opts_pb2.QuantizationMethod
+            .ExperimentalMethod.STATIC_RANGE))
+
     model = quantize_model.quantize(
         temp_path, ['serving_default'], [tag_constants.SERVING],
-        optimization_method=quantize_model.OptimizationMethod
-        .STATIC_RANGE_QUANT,
+        quantization_options=quantization_options,
         representative_dataset=data_gen)
     return model
 

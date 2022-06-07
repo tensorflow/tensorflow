@@ -247,14 +247,14 @@ tflite_cc_shared_object(
 The newly added target can be built as follows:
 
 ```sh
-bazel build -c opt --cxxopt=--std=c++14 \
+bazel build -c opt --cxxopt=--std=c++17 \
   //tmp:tensorflowlite_c
 ```
 
 and for Android (replace `android_arm` with `android_arm64` for 64-bit):
 
 ```sh
-bazel build -c opt --cxxopt=--std=c++14 --config=android_arm \
+bazel build -c opt --cxxopt=--std=c++17 --config=android_arm \
   //tmp:tensorflowlite_c
 ```
 
@@ -311,14 +311,14 @@ tflite_cc_shared_object(
 The newly added target can be built as follows:
 
 ```sh
-bazel build -c opt  --cxxopt=--std=c++14 \
+bazel build -c opt  --cxxopt=--std=c++17 \
   //tmp:tensorflowlite
 ```
 
 and for Android (replace `android_arm` with `android_arm64` for 64-bit):
 
 ```sh
-bazel build -c opt --cxxopt=--std=c++14 --config=android_arm \
+bazel build -c opt --cxxopt=--std=c++17 --config=android_arm \
   //tmp:tensorflowlite
 ```
 
@@ -349,7 +349,7 @@ tflite_flex_shared_library(
 The newly added target can be built as follows:
 
 ```sh
-bazel build -c opt --cxxopt='--std=c++14' \
+bazel build -c opt --cxxopt='--std=c++17' \
       --config=monolithic \
       --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
       //tmp:tensorflowlite_flex
@@ -358,7 +358,7 @@ bazel build -c opt --cxxopt='--std=c++14' \
 and for Android (replace `android_arm` with `android_arm64` for 64-bit):
 
 ```sh
-bazel build -c opt --cxxopt='--std=c++14' \
+bazel build -c opt --cxxopt='--std=c++17' \
       --config=android_arm \
       --config=monolithic \
       --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \

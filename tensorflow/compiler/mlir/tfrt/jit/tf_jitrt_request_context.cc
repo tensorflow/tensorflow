@@ -29,7 +29,7 @@ Status SetUpTfJitRtRequestContext(tfrt::RequestContextBuilder* builder) {
 
   builder->context_data().emplace<TfJitRtRequestState>(jit_executable_cache);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

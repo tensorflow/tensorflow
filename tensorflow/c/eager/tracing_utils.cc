@@ -31,7 +31,7 @@ Status MaybeSetOpName(AbstractOperation* op, const char* op_name) {
         dyn_cast<gradients::TapeOperation>(op)->GetBackingOperation(),
         op_name));
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace tracing
 }  // namespace tensorflow

@@ -54,7 +54,7 @@ StatusScopedDiagnosticHandler::~StatusScopedDiagnosticHandler() {
 bool StatusScopedDiagnosticHandler::ok() const { return diag_str_.empty(); }
 
 Status StatusScopedDiagnosticHandler::ConsumeStatus() {
-  if (ok()) return Status::OK();
+  if (ok()) return ::tensorflow::OkStatus();
 
   // TODO(jpienaar) This should be combining status with one previously built
   // up.

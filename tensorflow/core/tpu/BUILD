@@ -198,6 +198,15 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_api",
+    srcs = ["pjrt_api.cc"],
+    hdrs = ["pjrt_api.h"],
+    deps = [
+        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
+    ],
+)
+
+cc_library(
     name = "tpu_api_dlsym_initializer",
     srcs = if_windows(
         ["tpu_api_dlsym_initializer_windows.cc"],

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -261,15 +262,13 @@ class ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
             return failure();
           }
         } else if (!llvm::isa<DQ>(input.getDefiningOp()) &&
-                   !llvm::isa<SameScalesOpInterface>(input.getDefiningOp())) {
+                   !llvm::isa<SameScalesOpInterface, FixedOutputRangeInterface>(
+                       input.getDefiningOp())) {
           // Continue if StatisticsOp is already converted to Q-DQ pair, or
-          // stats op is not immediately available to the input because it's
-          // connected to ops with same scale requirements.
+          // stats op is not immediately available to the input because either
+          // it's connected to ops with same scale requirements or it has
+          // fixed output range.
           // TODO(b/172517537): make this work with non-PTQ case.
-          op.emitError() << "Input " << index
-                         << " should be from DequantizeCast, Statistics, "
-                         << ", or ops with same scale requirement.";
-          input.getDefiningOp()->emitError();
           return failure();
         }
       }
@@ -521,7 +520,7 @@ std::unique_ptr<quant::OpQuantSpec> GetLstmOpQuantSpec(LstmOp op) {
     return nullptr;
   }
 
-  auto spec = absl::make_unique<quant::OpQuantSpec>();
+  auto spec = std::make_unique<quant::OpQuantSpec>();
 
   for (const auto& enumerated_inputs : lstm_property.inputs) {
     int index = enumerated_inputs.first;

@@ -4,7 +4,7 @@ Post-training quantization is a conversion technique that can reduce model size
 while also improving CPU and hardware accelerator latency, with little
 degradation in model accuracy. You can quantize an already-trained float
 TensorFlow model when you convert it to TensorFlow Lite format using the
-[TensorFlow Lite Converter](../convert/).
+[TensorFlow Lite Converter](../models/convert/).
 
 Note: The procedures on this page require TensorFlow 1.15 or higher.
 
@@ -66,7 +66,7 @@ samples) of the training or validation data. Refer to the
 `representative_dataset()` function below.
 
 From TensorFlow 2.7 version, you can specify the representative dataset through
-a [signature](/lite/guide/signatures) as the following example:
+a [signature](../guide/signatures.ipynb) as the following example:
 
 <pre>
 def representative_dataset():

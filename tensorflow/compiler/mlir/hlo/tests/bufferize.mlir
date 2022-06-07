@@ -281,7 +281,7 @@ func.func @arith_select(%c : tensor<i1>, %lhs: tensor<1xf32>, %rhs: tensor<1xf32
 #map = affine_map<(d0) -> (d0)>
 func.func @init_tensor_multiple_users(%lhs: tensor<10xf32>,
     %rhs: tensor<10xf32>) -> (tensor<10xf32>, tensor<10xf32>) {
-  %init = linalg.init_tensor [10] : tensor<10xf32>
+  %init = bufferization.alloc_tensor() : tensor<10xf32>
   %add = linalg.generic {
     indexing_maps = [#map, #map, #map],
     iterator_types = ["parallel"]}

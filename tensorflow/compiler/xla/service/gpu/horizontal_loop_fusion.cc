@@ -431,7 +431,7 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
   comp->set_root_instruction(tuple, /*accept_different_shape=*/true);
   TF_RETURN_IF_ERROR(comp->RemoveInstruction(dummy_root));
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status HorizontalLoopFusionImpl::Fuse(
@@ -474,7 +474,7 @@ Status HorizontalLoopFusionImpl::Fuse(
         computation_->ReplaceInstruction(fused_instr, bitcast_or_tuple));
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<bool> HorizontalLoopFusionImpl::Run() {

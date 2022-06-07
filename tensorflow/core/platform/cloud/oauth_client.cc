@@ -59,7 +59,7 @@ Status ReadJsonValue(const Json::Value& json, const string& name,
     return errors::FailedPrecondition(
         strings::StrCat("Couldn't read a JSON value '", name, "'."));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ReadJsonString(const Json::Value& json, const string& name,
@@ -71,7 +71,7 @@ Status ReadJsonString(const Json::Value& json, const string& name,
         strings::StrCat("JSON value '", name, "' is not string."));
   }
   *value = json_value.asString();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ReadJsonInt(const Json::Value& json, const string& name,
@@ -83,7 +83,7 @@ Status ReadJsonInt(const Json::Value& json, const string& name,
         strings::StrCat("JSON value '", name, "' is not integer."));
   }
   *value = json_value.asInt64();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CreateSignature(RSA* private_key, StringPiece to_sign,
@@ -232,7 +232,7 @@ Status OAuthClient::GetTokenFromServiceAccountJson(
       StringPiece(response_buffer.data(), response_buffer.size());
   TF_RETURN_IF_ERROR(ParseOAuthResponse(response, request_timestamp_sec, token,
                                         expiration_timestamp_sec));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OAuthClient::GetTokenFromRefreshTokenJson(
@@ -264,7 +264,7 @@ Status OAuthClient::GetTokenFromRefreshTokenJson(
       StringPiece(response_buffer.data(), response_buffer.size());
   TF_RETURN_IF_ERROR(ParseOAuthResponse(response, request_timestamp_sec, token,
                                         expiration_timestamp_sec));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OAuthClient::ParseOAuthResponse(StringPiece response,
@@ -292,7 +292,7 @@ Status OAuthClient::ParseOAuthResponse(StringPiece response,
   *expiration_timestamp_sec = request_timestamp_sec + expires_in;
   TF_RETURN_IF_ERROR(ReadJsonString(root, "access_token", token));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

@@ -31,7 +31,7 @@ ComputeEngineZoneProvider::ComputeEngineZoneProvider(
 Status ComputeEngineZoneProvider::GetZone(string* zone) {
   if (!cached_zone.empty()) {
     *zone = cached_zone;
-    return Status::OK();
+    return OkStatus();
   }
   std::vector<char> response_buffer;
   TF_RETURN_IF_ERROR(google_metadata_client_->GetMetadata(kGceMetadataZonePath,
@@ -47,7 +47,7 @@ Status ComputeEngineZoneProvider::GetZone(string* zone) {
                << string(location);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 ComputeEngineZoneProvider::~ComputeEngineZoneProvider() {}
 

@@ -112,6 +112,22 @@ func.func @cholesky(%arg0: tensor<1x2x2xf32>) -> tensor<1x2x2xindex> {
 
 // -----
 
+// CHECK-LABEL: func @alltoall
+func.func @alltoall(%data: tensor<4x16xf32>) -> tensor<16x4xindex> {
+  %0 = "mhlo.all_to_all"(%data) {
+    split_dimension = 1 : i64,
+    concat_dimension = 0 : i64,
+    split_count = 4 : i64,
+    replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
+  } : (tensor<4x16xf32>) -> tensor<16x4xf32>
+  %1 = "mhlo_test.get_return_type_components"(%0)
+      : (tensor<16x4xf32>) -> tensor<16x4xindex>
+// CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [16, 4], element_type0 = f32} : (tensor<16x4xf32>) -> tensor<16x4xindex>
+  func.return %1 : tensor<16x4xindex>
+}
+
+// -----
+
 #CSR = #sparse_tensor.encoding<{
   dimLevelType = ["dense", "compressed"]
 }>

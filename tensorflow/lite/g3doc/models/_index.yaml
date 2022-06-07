@@ -29,14 +29,14 @@ landing_page:
     items:
     - classname: tfo-landing-page-card
       description: >
-        <a href="/lite/convert/index"><h3 class="no-link">Have a TensorFlow model?</h3></a>
-        Skip to the <a href="/lite/convert/index">Convert</a> section for information about
+        <a href="/lite/models/convert/index"><h3 class="no-link">Have a TensorFlow model?</h3></a>
+        Skip to the <a href="/lite/models/convert/index">Convert</a> section for information about
         getting your model to run with TensorFlow Lite.
-      path: /lite/convert/index
+      path: /lite/models/convert/index
 
     - classname: tfo-landing-page-card
       description: >
-        <a href="/lite/convert/index"><h3 class="no-link">Need a model for TensorFlow Lite?</h3></a>
+        <a href="#get_models"><h3 class="no-link">Need a model for TensorFlow Lite?</h3></a>
         For guidance on getting models for your use case,
         <a href="#get_models">keep reading</a>.
 
@@ -54,13 +54,13 @@ landing_page:
             </p>
             <ol>
             <li>Start developing machine learning features with already
-            <a href="./trained">trained models.</a></li>
+            <a href="/lite/models/trained">trained models.</a></li>
             <li>Modify existing TensorFlow Lite models using tools such as
-            <a href="../guide/model_maker">Model Maker</a>.</li>
+            <a href="/lite/models/modify/model_maker">Model Maker</a>.</li>
             <li>Build a
-            <a href="https://www.tensorflow.org/tutorials/customization/custom_training_walkthrough">
+            <a href="/tutorials/customization/custom_training_walkthrough">
             custom model</a> with TensorFlow tools and then
-            <a href="../convert">convert</a> it to TensorFlow Lite.</li>
+            <a href="/lite/models/convert">convert</a> it to TensorFlow Lite.</li>
             </ol>
             <br>
             <h2 class="tfo-landing-page-heading no-link">Using models for quick tasks: ML Kit</h2>
@@ -122,11 +122,11 @@ landing_page:
       path: /lite/models/trained
     - classname: tfo-landing-page-card
       description: >
-        <a href="/lite/guide/model_maker"><h3 class="no-link">Modify models</h3></a>
+        <a href="/lite/models/modify/model_maker"><h3 class="no-link">Modify models</h3></a>
         Use TensorFlow Lite Model Maker to modify models using your training data.
-      path: /lite/guide/model_maker
+      path: /lite/models/modify/model_maker
     - classname: tfo-landing-page-card
       description: >
-        <a href="/lite/convert/index"><h3 class="no-link">Build models</h3></a>
+        <a href="/lite/models/convert/index"><h3 class="no-link">Build models</h3></a>
         Learn how to build custom TensorFlow models to use with TensorFlow Lite.
       path: /lite/performance/best_practices

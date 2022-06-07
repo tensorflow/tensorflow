@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -25,8 +26,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-extern const char kCrashReproducerStdErr[];
-extern const char kCrashReproducerCrashAnalysis[];
+inline constexpr absl::string_view kCrashReproducerStdErr = "-";
+inline constexpr absl::string_view kCrashReproducerCrashAnalysis =
+    "crash_analysis";
 
 // Creates a file to use for dumping and returns success if a file could be
 // created. The opened file is placed in 'os' and the path of the file used is

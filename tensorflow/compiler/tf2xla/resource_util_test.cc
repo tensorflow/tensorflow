@@ -37,7 +37,7 @@ ResourceUsageAnalysis::NodeInfo node_info_from_string(absl::string_view s) {
 
   ResourceUsageAnalysis::NodeInfo node_info;
   if (tokens[0].empty()) {
-    node_info.function_name_ = absl::nullopt;
+    node_info.function_name_ = std::nullopt;
   } else {
     node_info.function_name_ = std::move(tokens[0]);
   }

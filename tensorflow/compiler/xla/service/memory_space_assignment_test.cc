@@ -55,7 +55,7 @@ class MemorySpaceAssignmentTest : public HloTestBase,
 
   std::unique_ptr<PresetAssignments> AssignMemorySpaceUsingCostAnalysis(
       HloModule* module,
-      absl::optional<Options> memory_space_assignment_options = absl::nullopt) {
+      std::optional<Options> memory_space_assignment_options = std::nullopt) {
     HloCostAnalysis::Options cost_options{ShapeSize};
     cost_options.set_flops_per_second(kFlopsPerSecond);
     cost_options.set_bytes_per_second(kBytesPerSecond);
@@ -92,7 +92,8 @@ class MemorySpaceAssignmentTest : public HloTestBase,
   std::unique_ptr<PresetAssignments> AssignMemorySpace(
       HloModule* module, int64_t max_outstanding_async_copies = -1,
       int64_t max_prefetch_interval = 10, int64_t min_prefetch_interval = 2,
-      absl::optional<Options> options = absl::nullopt) {
+      std::optional<Options> options = std::nullopt) {
+    MemorySpaceAssignmentUtils::HoistParameters(*module);
     MemorySpaceAssignmentUtils::HoistConstantOperations(*module);
     InstructionCountPrefetchIntervalPicker prefetch_interval_picker(
         min_prefetch_interval, max_prefetch_interval);
@@ -103,10 +104,10 @@ class MemorySpaceAssignmentTest : public HloTestBase,
 
   std::unique_ptr<PresetAssignments> AssignMemorySpace(
       HloModule* module, int64_t max_outstanding_async_copies,
-      absl::optional<MemorySpaceAssignment::BufferIntervalCompare>
+      std::optional<MemorySpaceAssignment::BufferIntervalCompare>
           buffer_interval_compare,
       PrefetchIntervalPicker* prefetch_interval_picker,
-      absl::optional<Options> memory_space_assignment_options = absl::nullopt) {
+      std::optional<Options> memory_space_assignment_options = std::nullopt) {
     auto size_fn = [](const BufferValue& buffer) {
       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
     };
@@ -2374,6 +2375,54 @@ TEST_P(MemorySpaceAssignmentTest, NestedConditionalBufferReuseVerificationBug) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
+}
+
+TEST_P(MemorySpaceAssignmentTest,
+       ConditionalComputationBufferOverlapBeforeParam) {
+  absl::string_view hlo_string = R"(
+  HloModule CondAllocation, is_scheduled=true
+
+  true_computation {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    ROOT neg2 = f32[3]{0} negate(gte)
+  }
+
+  false_computation {
+    c = f32[3]{0} constant({0.0, 1.0, 2.0})
+    neg0 = f32[3]{0} negate(c)
+    neg1 = f32[3]{0} negate(neg0)
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    ROOT add = f32[3]{0} add(gte, neg1)
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = pred[] parameter(1)
+    copy = f32[3]{0} copy(p0)
+    tuple = (f32[3]{0}) tuple(copy)
+    ROOT conditional = f32[3]{0} conditional(p1, tuple, tuple), true_computation=true_computation, false_computation=false_computation
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto preset_assignments = AssignMemorySpace(module.get());
+
+  auto get_offset = [&](absl::string_view hlo_name) {
+    for (const auto& chunk : preset_assignments->chunks()) {
+      if (chunk.first.instruction->name() == hlo_name) {
+        return chunk.second.offset;
+      }
+    }
+    return static_cast<int64_t>(-1);
+  };
+
+  int64_t copy_offset = get_offset("copy");
+  int64_t neg0_offset = get_offset("neg0");
+  EXPECT_NE(copy_offset, -1);
+  EXPECT_NE(neg0_offset, -1);
+  EXPECT_NE(copy_offset, neg0_offset);
 }
 
 TEST_P(MemorySpaceAssignmentTest,

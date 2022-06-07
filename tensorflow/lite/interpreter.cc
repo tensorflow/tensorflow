@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
+#include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/util.h"
@@ -217,7 +218,7 @@ TfLiteStatus Interpreter::ResizeInputTensorStrict(
 }
 
 TfLiteStatus Interpreter::Invoke() {
-  ScopedRuntimeInstrumentationProfile scoped_runtime_event(installed_profiler_,
+  ScopedRuntimeInstrumentationProfile scoped_runtime_event(root_profiler_.get(),
                                                            "invoke");
 
   // Denormal floating point numbers could cause significant slowdown on
@@ -424,15 +425,24 @@ bool Interpreter::IsFullyDelegated() const {
 }
 
 void Interpreter::SetProfilerImpl(std::unique_ptr<Profiler> profiler) {
-  owned_profiler_ = std::move(profiler);
-  installed_profiler_ = owned_profiler_.get();
+  if (profiler == nullptr) {
+    root_profiler_ = nullptr;
+    return;
+  }
+  if (root_profiler_ == nullptr) {
+    root_profiler_ = std::make_unique<profiling::RootProfiler>();
+  } else {
+    // Removes all previously registered profilers.
+    root_profiler_->RemoveChildProfilers();
+  }
+  root_profiler_->AddProfiler(std::move(profiler));
   SetSubgraphProfiler();
 }
 
 void Interpreter::SetSubgraphProfiler() {
   for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
        ++subgraph_index) {
-    subgraphs_[subgraph_index]->SetProfiler(installed_profiler_,
+    subgraphs_[subgraph_index]->SetProfiler(root_profiler_.get(),
                                             subgraph_index);
   }
 }
@@ -441,19 +451,11 @@ TfLiteStatus Interpreter::ApplyOptionsImpl(InterpreterOptions* options) {
   if (options == nullptr) {
     return kTfLiteOk;
   }
+  options_ = std::make_unique<InterpreterOptions>(*options);
 
-  // Handle `experimental_preserve_all_tensors_`.
-  if (options->GetPreserveAllTensors()) {
-    for (auto& subgraph : subgraphs_) {
-      subgraph->PreserveAllTensorsExperimental();
-    }
-  }
-
-  // Handle `experimental_ensure_dynamic_tensors_are_released_`.
-  if (options->GetEnsureDynamicTensorsAreReleased()) {
-    for (auto& subgraph : subgraphs_) {
-      subgraph->EnsureDynamicTensorsAreReleased();
-    }
+  // Set InterpreterOptions object to SubGraph.
+  for (auto& subgraph : subgraphs_) {
+    subgraph->SetOptions(options_.get());
   }
 
   // Handle `experimental_dynamic_allocation_for_large_tensors_`.
@@ -461,7 +463,6 @@ TfLiteStatus Interpreter::ApplyOptionsImpl(InterpreterOptions* options) {
     for (auto& subgraph : subgraphs_) {
       subgraph->OptimizeMemoryForLargeTensors(
           options->GetDynamicAllocationForLargeTensors());
-      subgraph->EnsureDynamicTensorsAreReleased();
     }
   }
   return kTfLiteOk;

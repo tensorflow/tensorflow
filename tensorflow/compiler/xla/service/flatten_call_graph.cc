@@ -109,7 +109,7 @@ Status FlattenNode(const CallGraphNode& node) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

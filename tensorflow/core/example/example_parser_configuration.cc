@@ -35,7 +35,7 @@ Status FindNodeIndexByName(const tensorflow::GraphDef& graph,
     const auto& node = graph.node(i);
     if (node.name() == node_name) {
       *node_idx = i;
-      return Status::OK();
+      return OkStatus();
     }
   }
   return errors::InvalidArgument(node_name, " not found in GraphDef");
@@ -157,7 +157,7 @@ Status ExtractExampleParserConfiguration(
     (*fixed_len_features)[i].values_output_tensor_name =
         strings::StrCat(node_output_prefix, output_idx);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ExampleParserConfigurationProtoToFeatureVectors(
@@ -195,7 +195,7 @@ Status ExampleParserConfigurationProtoToFeatureVectors(
       var_len_features->push_back(v);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

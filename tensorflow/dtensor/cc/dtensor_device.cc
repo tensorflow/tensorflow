@@ -175,7 +175,7 @@ class DTensorDevice {
     }
     Mesh::tpu_core_ids()[mesh_name].assign(tpu_core_ids.begin(),
                                            tpu_core_ids.end());
-    return Status::OK();
+    return OkStatus();
   }
 
   void ClearTPUCoreIDs() { Mesh::tpu_core_ids().clear(); }
@@ -1260,7 +1260,13 @@ StatusOr<std::unique_ptr<Graph>> SelectGraphToExecute(
 
   // Reset index attributes for arg and retval nodes.
   for (Node* n : new_graph->nodes()) {
-    // Reset arg node index attributes.
+    // Reset arg node index attributes to its position within all the arg
+    // nodes. This should just be increasing from 0 to n where n
+    // is the total number of arguments. Note that this definition to
+    // the `index` attribute is different from the definition we set in
+    // PrepareGraphForMLIR.
+    // This attribute is needed for each arg node when converting a Graph to
+    // a FunctionDef.
     if (n->IsArg()) {
       auto pos = std::find(arg_nodes.begin(), arg_nodes.end(), n);
       TF_RET_CHECK(pos != arg_nodes.end());
@@ -1338,7 +1344,7 @@ Status AddExecutionFunctionDefsToFunctionDefLibrary(
     TF_RETURN_IF_ERROR(tensorflow::unwrap(context)->AddFunctionDef(to_run));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void DTensorDevice::LowerToSPMDFunction(
@@ -1425,9 +1431,6 @@ void DTensorDevice::LowerToSPMDFunction(
         graph.get(), &global_output_shapes, &output_layouts);
     RETURN_C_STATUS_IF_NOT_OK(s, status);
   }
-
-  TranslatedFunction function;
-  function.output_layouts.reserve(num_outputs);
 
   absl::flat_hash_set<Node*> control_ret_nodes;
   // Run DTensor MLIR passes that convert input graph to SPMD version.
@@ -1642,6 +1645,29 @@ void DTensorDevice::ExecuteRegularOperation(
         /*attributes=*/attributes, /*status=*/status);
   }
 
+  // Extract the global parallel inputs and flatten SparseTensors
+  // into the three component tensors.
+  std::vector<parallel_device::ParallelTensor*> global_parallel_inputs;
+  std::vector<parallel_device::ParallelTensor*> global_parallel_sparse_inputs;
+  absl::flat_hash_set<int> global_sparse_input_indices;
+  for (auto input : inputs) {
+    if (input->tensor_type() == TensorType::kSparse) {
+      SparseTensorWithLayout* sparse_input =
+          dynamic_cast<SparseTensorWithLayout*>(input);
+      global_parallel_sparse_inputs.push_back(sparse_input->indices());
+      global_parallel_sparse_inputs.push_back(sparse_input->dense_shapes());
+      global_parallel_sparse_inputs.push_back(sparse_input->values());
+    } else {
+      global_parallel_inputs.push_back(input->tensor());
+    }
+  }
+  // Insert SparseTensor components to the end, this is because
+  // in the MLIR handling of SparseTensors, we place SparseTensor components
+  // to the end of the main func arguments for a fixed ordering.
+  global_parallel_inputs.insert(global_parallel_inputs.end(),
+                                global_parallel_sparse_inputs.begin(),
+                                global_parallel_sparse_inputs.end());
+
   // Execute all functions in parallel.
   for (const TranslatedFunction& function :
        execution_functions->function_list) {
@@ -1662,42 +1688,29 @@ void DTensorDevice::ExecuteRegularOperation(
     const MeshWithParallelDevice* parallel_device_mesh =
         function_name_and_mesh_mapping[translated_function_name];
 
+    // Gather the local inputs for this function.
     std::vector<parallel_device::ParallelTensor*> parallel_inputs;
     parallel_inputs.reserve(inputs.size() + 1);
     auto input_mapping = function.input_index_map;
+
+    // We sort here because by this time, the function graph we are executing
+    // is a reduced version of the main function, that includes the
+    // StatefulPartitionedCall that we are executing for this mesh.
+    // Thus, the ordering is the same as the main function ordering, which
+    // is sorted increasingly.
     std::sort(input_mapping.begin(), input_mapping.end());
 
-    absl::flat_hash_set<int> skip_input;
-    int offset_from_sparsetensors = 0;
-    std::vector<parallel_device::ParallelTensor*> sparse_parallel_inputs;
-
     for (const int global_index : input_mapping) {
-      if (skip_input.find(global_index) != skip_input.end()) continue;
-      auto input_index = global_index - execution_functions->num_device_ids -
-                         offset_from_sparsetensors;
+      auto input_index = global_index - execution_functions->num_device_ids;
 
       if (global_index < execution_functions->num_device_ids) {
         parallel_inputs.push_back(
             parallel_device_mesh->DeviceIDs(context, status));
         if (TF_GetCode(status) != TF_OK) return;
-      } else if (inputs[input_index]->tensor_type() == TensorType::kSparse) {
-        // Save the SparseTensor component inputs so we can add it in later.
-        SparseTensorWithLayout* sparse_input =
-            dynamic_cast<SparseTensorWithLayout*>(inputs[input_index]);
-        sparse_parallel_inputs.insert(
-            sparse_parallel_inputs.end(),
-            {sparse_input->indices(), sparse_input->dense_shapes(),
-             sparse_input->values()});
-        skip_input.insert({global_index + 1, global_index + 2});
-        offset_from_sparsetensors += 2;
       } else {
-        parallel_inputs.push_back(inputs[input_index]->tensor());
+        parallel_inputs.push_back(global_parallel_inputs[input_index]);
       }
     }
-    // Add in the SparseTensors to the end.
-    parallel_inputs.insert(parallel_inputs.end(),
-                           sparse_parallel_inputs.begin(),
-                           sparse_parallel_inputs.end());
 
     VLOG(4) << "Launching computation for mesh : " << mesh.ToString();
     parallel_device_mesh->parallel_device().StartExecute(

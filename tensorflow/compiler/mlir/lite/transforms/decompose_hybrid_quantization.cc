@@ -24,42 +24,31 @@ limitations under the License.
 // dense operations. Decomposition allows TFLite to be compiled to these
 // dialects, such as TOSA.
 
+#include <utility>
+
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 
 namespace mlir {
 namespace TFL {
 
 namespace {
 
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
+
 class DecomposeHybridQuantizationPass
-    : public PassWrapper<DecomposeHybridQuantizationPass,
-                         OperationPass<func::FuncOp>> {
+    : public DecomposeHybridQuantizationPassBase<
+          DecomposeHybridQuantizationPass> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DecomposeHybridQuantizationPass)
-
-  DecomposeHybridQuantizationPass() = default;
-  DecomposeHybridQuantizationPass(const DecomposeHybridQuantizationPass &) {}
-
-  StringRef getArgument() const override {
-    return "tfl-decompose-hybrid-quantization";
-  }
-
-  StringRef getDescription() const override {
-    return "Decomposes (with explicit quantize/dequantize ops) selected math "
-           "operations which exist in the model with hybrid quantization "
-           "(some arguments/results left in floating point).";
-  }
-
+  explicit DecomposeHybridQuantizationPass() {}
   void runOnOperation() override;
-
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<TFL::TensorFlowLiteDialect>();
-  }
 };
 
 template <typename SrcOp>
@@ -161,8 +150,6 @@ std::unique_ptr<OperationPass<func::FuncOp>>
 CreateDecomposeHybridQuantizationPass() {
   return std::make_unique<DecomposeHybridQuantizationPass>();
 }
-
-static PassRegistration<DecomposeHybridQuantizationPass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

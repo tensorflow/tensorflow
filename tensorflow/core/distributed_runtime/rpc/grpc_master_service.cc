@@ -206,7 +206,7 @@ class GrpcMasterService : public AsyncServiceInterface {
           if (call->request.store_errors_in_response_body() && !status.ok()) {
             call->response.set_status_code(status.code());
             call->response.set_status_error_message(status.error_message());
-            call->SendResponse(ToGrpcStatus(Status::OK()));
+            call->SendResponse(ToGrpcStatus(OkStatus()));
           } else {
             call->SendResponse(ToGrpcStatus(status));
           }
