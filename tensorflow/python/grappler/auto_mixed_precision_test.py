@@ -462,7 +462,7 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
       # Bump up the tolerance for the ROCm platform
       # The default tolerance (1e-3) results in a tiny fraction (<1%) of
       # miscompares on ROCm platform, and hence the tolerance bump
-      tol = 2e-3
+      tol = 5e-3
     else:
       tol = 1e-3
     self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)

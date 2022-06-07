@@ -67,7 +67,11 @@ def verify_build_defines(params):
 
 def find_cc(repository_ctx):
     rocm_path = get_host_environ(repository_ctx, "ROCM_PATH")
-    return rocm_path+"/llvm/bin/clang"
+    if rocm_path == None:
+      rocm_path = "/opt/rocm"
+    rocm_gcc = get_host_environ(repository_ctx, "TF_ROCM_GCC")
+    if rocm_gcc == "0":
+      return rocm_path+"/llvm/bin/clang"
 
     """Find the C++ compiler."""
 

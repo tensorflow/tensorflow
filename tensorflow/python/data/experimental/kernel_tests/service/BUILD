@@ -185,6 +185,7 @@ tf_py_test(
     name = "cross_trainer_cache_test",
     size = "medium",
     srcs = ["cross_trainer_cache_test.py"],
+    tags = ["no_rocm"],
     shard_count = 4,
     deps = [
         ":test_base",
