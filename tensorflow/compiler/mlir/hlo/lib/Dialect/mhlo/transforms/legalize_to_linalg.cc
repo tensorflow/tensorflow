@@ -1929,6 +1929,63 @@ class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
   }
 };
 
+// Decomposes a pad with negative edge padding into a pad without negative edge
+// padding and a tensor.extract_slice.
+struct PadOpNegativePaddingConversion
+    : public OpConversionPattern<mhlo::PadOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::PadOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    SmallVector<int64_t, 4> pad_low;
+    SmallVector<int64_t, 4> pad_high;
+    SmallVector<OpFoldResult, 4> slice_starts;
+
+    bool hasNegativePadding = false;
+    for (int64_t low : op.edge_padding_low().getValues<int64_t>()) {
+      if (low >= 0) {
+        pad_low.push_back(low);
+        slice_starts.push_back(rewriter.getIndexAttr(0));
+      } else {
+        pad_low.push_back(0);
+        slice_starts.push_back(rewriter.getIndexAttr(-low));
+        hasNegativePadding = true;
+      }
+    }
+
+    for (int64_t high : op.edge_padding_high().getValues<int64_t>()) {
+      if (high >= 0) {
+        pad_high.push_back(high);
+      } else {
+        pad_high.push_back(-high);
+        hasNegativePadding = true;
+      }
+    }
+
+    // If there's no negative edge padding we're done.
+    if (!hasNegativePadding) return failure();
+
+    // Create a new pad op with the positive values.
+    Value pad = rewriter.create<mhlo::PadOp>(
+        op.getLoc(), adaptor.operand(), adaptor.padding_value(),
+        rewriter.getI64TensorAttr(pad_low), rewriter.getI64TensorAttr(pad_high),
+        op.interior_padding());
+
+    // Then slice according to the negative edge padding. Static shapes only for
+    // now.
+    if (!op.getType().hasStaticShape()) return failure();
+    SmallVector<OpFoldResult, 4> sizes(llvm::map_range(
+        op.getType().getShape(),
+        [&](int64_t dim) { return rewriter.getIndexAttr(dim); }));
+    SmallVector<OpFoldResult, 4> strides(slice_starts.size(),
+                                         rewriter.getIndexAttr(1));
+    rewriter.replaceOpWithNewOp<tensor::ExtractSliceOp>(op, pad, slice_starts,
+                                                        sizes, strides);
+    return success();
+  }
+};
+
 /// Converts mhlo.pad operation to tensor.pad or tensor.insert_slice.
 struct PadOpConversion : public OpConversionPattern<mhlo::PadOp> {
   using OpConversionPattern<mhlo::PadOp>::OpConversionPattern;
@@ -1938,6 +1995,13 @@ struct PadOpConversion : public OpConversionPattern<mhlo::PadOp> {
       ConversionPatternRewriter& rewriter) const override {
     auto loc = op.getLoc();
     auto result_type = typeConverter->convertType(op.getResult().getType());
+
+    // Negative edge padding is decomposed separately.
+    auto isNegative = [](const APInt& intVal) { return intVal.isNegative(); };
+    if (llvm::any_of(op.edge_padding_low().getValues<APInt>(), isNegative) ||
+        llvm::any_of(op.edge_padding_high().getValues<APInt>(), isNegative))
+      return failure();
+
     Value padding_val =
         rewriter.createOrFold<tensor::ExtractOp>(loc, adaptor.padding_value());
 
@@ -3211,14 +3275,15 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       TransposeConverter<mhlo::TransposeOp>,
       NormalConvOpConversion,
       DepthwiseConvOpConversion,
+      GatherConversion,
+      PadOpConversion,
+      PadOpNegativePaddingConversion,
       ReduceConversion,
       ReduceWindowOpOnTensorsGenericConversion,
       ReduceWindowOpConversion,
       RngUniformConversion,
       ScatterUpdateConversion,
-      GatherConversion,
-      TorchIndexSelectOpConversion,
-      PadOpConversion>(type_converter, context);
+      TorchIndexSelectOpConversion>(type_converter, context);
     patterns->add<
       DotOpConversion<DotOperationType::kMatrixMatrix, linalg::MatmulOp>,
       DotOpConversion<DotOperationType::kMatrixVector, linalg::MatvecOp>,
