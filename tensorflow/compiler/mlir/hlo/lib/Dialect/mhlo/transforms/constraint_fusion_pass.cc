@@ -108,7 +108,7 @@ void CanonicalizeBroadcastabilityCstrs(
   // Sort inner constraint arguments and eliminate duplicates.
   for (auto &it : broadcastability_cstrs) {
     llvm::sort(it.operands);
-    auto new_end =
+    auto *new_end =
         llvm::unique(it.operands, [](auto a, auto b) { return a == b; });
     it.operands.erase(new_end, it.operands.end());
   }
@@ -120,7 +120,7 @@ void CanonicalizeBroadcastabilityCstrs(
   // constraints.
   for (int i = 0; i < broadcastability_cstrs.size(); i++) {
     CstrBroadcastableIntent &strong_cstr = broadcastability_cstrs[i];
-    auto new_end = std::remove_if(
+    auto *new_end = std::remove_if(
         broadcastability_cstrs.begin() + i + 1, broadcastability_cstrs.end(),
         [strong_cstr](CstrBroadcastableIntent weaker_cstr) {
           assert(weaker_cstr.operands.size() <= strong_cstr.operands.size() &&
@@ -137,7 +137,7 @@ void EliminateDuplicateBlockArguments(SmallVector<BlockArgument> &bargs) {
   llvm::sort(bargs, [](auto a, auto b) {
     return a.getArgNumber() < b.getArgNumber();
   });
-  auto new_end = llvm::unique(bargs, [](auto a, auto b) { return a == b; });
+  auto *new_end = llvm::unique(bargs, [](auto a, auto b) { return a == b; });
   bargs.erase(new_end, bargs.end());
 }
 
@@ -202,7 +202,7 @@ void MaterializeBlockGlobalConstraintFusion(
 
   // Delete ops that are known to have become redundant by inlining of assuming
   // regions.
-  for (auto it : to_be_erased) it->erase();
+  for (auto *it : to_be_erased) it->erase();
 
   // Materialize fused constraints at the beginning of the function.
   builder.setInsertionPointToStart(the_block);
