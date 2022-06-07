@@ -1102,8 +1102,6 @@ class CollectiveAllReduce(CrossDeviceOps):
       if not launcher.can_order_nccl():
         self._limited_nccl = True
 
-    self._pool = multiprocessing.pool.ThreadPool(len(self._devices))
-
     super(CollectiveAllReduce, self).__init__()
     self._canonicalize_devices = canonicalize_devices
 
@@ -1203,7 +1201,9 @@ class CollectiveAllReduce(CrossDeviceOps):
                                   device_id, options)
 
       with self._lock:
-        outputs_by_device = self._pool.map(thread_fn, list(range(num_devices)))
+        pool = multiprocessing.pool.ThreadPool(len(self._devices))
+        outputs_by_device = pool.map(thread_fn, list(range(num_devices)))
+        pool.close()
     else:
       outputs_by_device = []
       with self._lock:
