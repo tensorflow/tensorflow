@@ -95,7 +95,7 @@ Status AssertGraphDefIsUnclustered(const GraphDef& graphdef) {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ReadTextProtoFromString(Env* env, const string& data,
@@ -103,7 +103,7 @@ Status ReadTextProtoFromString(Env* env, const string& data,
   if (!::tensorflow::protobuf::TextFormat::ParseFromString(data, proto)) {
     return errors::DataLoss("Can't parse input data as text proto");
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -121,7 +121,7 @@ Status AutoClusteringTest::RunAutoClusteringTestImpl(
     LOG(INFO) << "Not running "
               << ::testing::UnitTest::GetInstance()->current_test_info()->name()
               << " since test was not built with --config=cuda";
-    return Status::OK();
+    return OkStatus();
   }
 
   TF_RETURN_IF_ERROR(AssertGraphDefIsUnclustered(graphdef));
@@ -158,7 +158,7 @@ Status AutoClusteringTest::RunAutoClusteringTestImpl(
 
   EXPECT_EQ(golden_file_contents, clustering_summary);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AutoClusteringTest::RunAutoClusteringTestWithPbtxt(
@@ -221,7 +221,7 @@ Status BenchmarkMarkForCompilation(absl::string_view graph_def_path,
                                   std::move(graph_def_copy), &result));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 #endif  // PLATFORM_GOOGLE
 
