@@ -395,13 +395,18 @@ OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats) {
 OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
                                           const XSpace& xspace) {
   OverviewPage overview_page = ConvertOpStatsToOverviewPage(op_stats);
-  const XPlane* runtimePlane = FindPlaneWithName(xspace, kTpuRuntimePlaneName);
+  const XPlane* runtimePlane = FindPlaneWithName(xspace, kHostThreadsPlaneName);
   if (runtimePlane != nullptr) {
     auto visitor = CreateTfXPlaneVisitor(runtimePlane);
     auto stat = visitor.GetStat(StatType::kMatrixUnitUtilizationPercent);
     if (stat.has_value()) {
       overview_page.mutable_analysis()->set_mxu_utilization_percent(
           stat->DoubleValue());
+      // TODO(b/233377725):  This will be set correctly when xspace is converted
+      // to op_stats for TPU.
+      overview_page.mutable_input_analysis()->set_hardware_type(
+          HardwareType_Name(tensorflow::profiler::TPU));
+      overview_page.mutable_run_environment()->set_device_type("TPU");
     }
   }
   return overview_page;
