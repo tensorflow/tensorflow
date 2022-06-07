@@ -332,6 +332,11 @@ TEST_F(HloLiveRangeTest, While) {
   Analyze(schedule);
 
   CheckSchedule();
+
+  // Check that there are no gaps in the live-ranges of buffer-sharing values.
+  EXPECT_EQ(LiveRangeAt(iter).end, LiveRangeAt(cond_iter).start);
+  EXPECT_EQ(LiveRangeAt(cond_iter).end, LiveRangeAt(body_iter).start);
+  EXPECT_EQ(LiveRangeAt(body_iter).end, LiveRangeAt(body_iter_next).start);
 }
 }  // namespace
 }  // namespace xla
