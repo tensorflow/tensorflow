@@ -933,7 +933,7 @@ StatusOr<std::vector<int>> GetTensorIndices(
     const tflite::SubGraphT& subgraph,
     const std::vector<std::string>& tensor_names) {
   absl::flat_hash_map<std::string, int> name_to_index;
-  for (auto index_and_tensor : llvm::enumerate(subgraph.tensors)) {
+  for (const auto& index_and_tensor : llvm::enumerate(subgraph.tensors)) {
     name_to_index[index_and_tensor.value()->name] = index_and_tensor.index();
   }
 
@@ -1116,7 +1116,7 @@ void SetSignature(
   llvm::SmallVector<llvm::StringRef, 2> output_names =
       GetStringsFromAttrWithSeparator(dict_attr, /*attr_key=*/"outputs");
 
-  for (auto input_pair : llvm::enumerate(signature->inputs)) {
+  for (const auto& input_pair : llvm::enumerate(signature->inputs)) {
     const int arg_index = GetTensorIndex(
         tensors[input_pair.value()->tensor_index]->name, input_names);
     if (arg_index == -1) {
@@ -1131,7 +1131,7 @@ void SetSignature(
   // Multiple signature outputs can refer to the same tensor. Avoid setting
   // signature output attribute at the same index by maintaining a set.
   std::set<int> seen_indices;
-  for (auto output_pair : llvm::enumerate(signature->outputs)) {
+  for (const auto& output_pair : llvm::enumerate(signature->outputs)) {
     const int arg_index =
         GetTensorIndex(tensors[output_pair.value()->tensor_index]->name,
                        output_names, seen_indices);
@@ -1363,7 +1363,7 @@ StatusOr<FuncOp> ConvertSubgraph(
     // tensor does not have min/max values, the original op result is used
     // directly; 2. the result tensor has some min/max values, a stats op is
     // created, then the result of the stats op is used.
-    for (auto pair : llvm::enumerate(mlir_op->getResults())) {
+    for (const auto& pair : llvm::enumerate(mlir_op->getResults())) {
       int output_tensor_index = op->outputs[pair.index()];
       auto& tensor = *subgraph.tensors[output_tensor_index];
       if (auto stats_op =
@@ -1498,7 +1498,7 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
   }
 
   const bool set_implicit_main_func = subgraph_to_signature_map.size() <= 1;
-  for (auto e : llvm::enumerate(model->subgraphs)) {
+  for (const auto& e : llvm::enumerate(model->subgraphs)) {
     auto& subgraph = e.value();
     std::string name =
         SubgraphName(set_implicit_main_func, e.index(), *subgraph);

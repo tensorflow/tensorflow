@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 
+#include <string>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
