@@ -27,18 +27,16 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
   // CHECK-DAG: %[[CED_RES_TILE:.*]] = gml_st.collapse_tile %[[RES_TILE]], [0, 2] : !gml_st.tile<3x4x5> -> !gml_st.tile<3x5>
 
   // Check first dim of the arg tile.
-  // CHECK-DAG: %[[ARG_D0_:.*]] = tensor.dim %[[ARG]], %[[C0]] : tensor<?x?xf32>
   // CHECK-DAG: %[[INIT_D0:.*]] = tensor.dim %[[INIT]], %[[C0]] : tensor<?x?x?xf32>
-  // CHECK-DAG: %[[IS_EXPANDING_D0:.*]] = arith.cmpi ne, %[[ARG_D0_]], %[[INIT_D0]] : index
+  // CHECK-DAG: %[[IS_EXPANDING_D0:.*]] = arith.cmpi ne, %[[ARG_D0]], %[[INIT_D0]] : index
   // CHECK-DAG: %[[CED_RES_OFFSET_D0:.*]] = gml_st.offset %[[CED_RES_TILE]][%[[C0]]] : !gml_st.tile<3x5>
   // CHECK-DAG: %[[CED_RES_SIZE_D0:.*]] = gml_st.size %[[CED_RES_TILE]][%[[C0]]] : !gml_st.tile<3x5>
   // CHECK-DAG: %[[ARG_OFFSET_D0:.*]] = arith.select %[[IS_EXPANDING_D0]], %[[C0]], %[[CED_RES_OFFSET_D0]] : index
   // CHECK-DAG: %[[ARG_SIZE_D0:.*]] = arith.select %[[IS_EXPANDING_D0]], %[[C1]], %[[CED_RES_SIZE_D0]] : index
 
   // Check second dim of the arg tile.
-  // CHECK-DAG: %[[ARG_D1_:.*]] = tensor.dim %[[ARG]], %[[C1]] : tensor<?x?xf32>
   // CHECK-DAG: %[[INIT_D2:.*]] = tensor.dim %[[INIT]], %[[C2]] : tensor<?x?x?xf32>
-  // CHECK-DAG: %[[IS_EXPANDING_D1:.*]] = arith.cmpi ne, %[[ARG_D1_]], %[[INIT_D2]] : index
+  // CHECK-DAG: %[[IS_EXPANDING_D1:.*]] = arith.cmpi ne, %[[ARG_D1]], %[[INIT_D2]] : index
   // CHECK-DAG: %[[CED_RES_OFFSET_D1:.*]] = gml_st.offset %[[CED_RES_TILE]][%[[C1]]] : !gml_st.tile<3x5>
   // CHECK-DAG: %[[CED_RES_SIZE_D1:.*]] = gml_st.size %[[CED_RES_TILE]][%[[C1]]] : !gml_st.tile<3x5>
   // CHECK-DAG: %[[ARG_OFFSET_D1:.*]] = arith.select %[[IS_EXPANDING_D1]], %[[C0]], %[[CED_RES_OFFSET_D1]] : index

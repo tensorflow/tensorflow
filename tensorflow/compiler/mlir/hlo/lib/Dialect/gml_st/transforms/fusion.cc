@@ -29,9 +29,10 @@ namespace mlir {
 namespace gml_st {
 namespace {
 
-Value materializeSpaceFromTensor(Value val, PatternRewriter& rewriter) {
-  auto loc = val.getLoc();
-  auto ty = val.getType().cast<RankedTensorType>();
+Value materializeSpaceFromTensor(Value operand, const SmallVector<Value>& dims,
+                                 PatternRewriter& rewriter) {
+  auto loc = operand.getLoc();
+  auto ty = operand.getType().cast<RankedTensorType>();
 
   // Collect dimension info and materialize `dim` ops for dynamic dimensions.
   SmallVector<int64_t> staticDims;
@@ -41,9 +42,8 @@ Value materializeSpaceFromTensor(Value val, PatternRewriter& rewriter) {
     if (d != ShapedType::kDynamicSize) {
       staticDims.push_back(d);
     } else {
-      auto dynDim = rewriter.create<tensor::DimOp>(loc, val, it.index());
       staticDims.push_back(ShapedType::kDynamicSize);
-      dynamicDims.push_back(dynDim);
+      dynamicDims.push_back(dims[it.index()]);
     }
   }
 
@@ -71,8 +71,22 @@ Value whatWillBeTheTilingIface(gml_st::DynamicBroadcastInDimOp op, Value tile,
   auto tileTy = tile.getType().cast<TileType>();
   auto resultTy = op.getType().cast<RankedTensorType>();
 
+  // Materiaize operand dimensions.
+  SmallVector<Value> operandDims;
+  operandDims.reserve(operandTy.getRank());
+  for (const auto& it : llvm::enumerate(operandTy.getShape())) {
+    int64_t d = it.value();
+    Value dim =
+        d == ShapedType::kDynamicSize
+            ? rewriter.create<tensor::DimOp>(loc, operand, it.index())
+                  .getResult()
+            : rewriter.create<arith::ConstantIndexOp>(loc, d).getResult();
+    operandDims.push_back(dim);
+  }
+
   // Materialize operand and result space.
-  Value operandSpace = materializeSpaceFromTensor(operand, rewriter);
+  Value operandSpace =
+      materializeSpaceFromTensor(operand, operandDims, rewriter);
 
   // Materialize offsets and sizes for operand tile.
   auto collapsedTile =
@@ -85,9 +99,7 @@ Value whatWillBeTheTilingIface(gml_st::DynamicBroadcastInDimOp op, Value tile,
 
     // If corresponding operand and result dimensions are different, the
     // dimension is expanding.
-    // TODO(frgossen): Share these dim ops with those created for the operand
-    // space above.
-    auto argDim = rewriter.create<tensor::DimOp>(loc, op.operand(), argIdx);
+    auto argDim = operandDims[it.index()];
     auto resultDim = rewriter.create<tensor::DimOp>(loc, op.init(), resultIdx);
     auto isExpanding = rewriter.create<arith::CmpIOp>(
         loc, arith::CmpIPredicate::ne, argDim, resultDim);
