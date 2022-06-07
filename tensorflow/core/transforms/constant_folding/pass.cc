@@ -885,26 +885,31 @@ class MaterializeBroadcastGradientArgsOp : public FolderPatternBase {
     if (op->getResult(0).use_empty() || op->getResult(1).use_empty())
       return failure();
 
-    auto get_shape = [&](Operation *op, ArrayRef<int64_t> &shape) -> bool {
-      ShapedType shaped_type;
+    auto get_shape = [this](Operation *op,
+                            SmallVector<int64_t> &shape) -> bool {
       if (dialect_->IsShape(op)) {
         auto type = op->getOperand(0).getType().cast<ShapedType>();
         if (!type.hasRank()) return false;
-        shape = type.getShape();
+
+        llvm::append_range(shape, type.getShape());
       } else {
         auto attr = op->getAttrOfType<ElementsAttr>("value");
         if (!attr) return false;
-        if (!attr.getElementType().isInteger(32) &&
-            !attr.getElementType().isInteger(64)) {
+
+        Type element_type = attr.getElementType();
+        if (element_type.isInteger(32)) {
+          llvm::append_range(shape, attr.getValues<int32_t>());
+        } else if (element_type.isInteger(64)) {
+          llvm::append_range(shape, attr.getValues<int64_t>());
+        } else {
           return false;
         }
-        shape = attr.getType().cast<ShapedType>().getShape();
       }
       return true;
     };
 
-    ArrayRef<int64_t> s0_shape;
-    ArrayRef<int64_t> s1_shape;
+    SmallVector<int64_t> s0_shape;
+    SmallVector<int64_t> s1_shape;
     if (!get_shape(s0, s0_shape) || !get_shape(s1, s1_shape)) return failure();
 
     const int common_dims = std::min(s0_shape.size(), s1_shape.size());
@@ -918,6 +923,7 @@ class MaterializeBroadcastGradientArgsOp : public FolderPatternBase {
       // Return failure if two dims are symbolically unequal.
       return failure();
     }
+
     for (int i = common_dims; i < s0_shape.size(); ++i)
       if (s0_shape[i] < 0) return failure();
     for (int i = common_dims; i < s1_shape.size(); ++i)
@@ -944,9 +950,10 @@ class MaterializeBroadcastGradientArgsOp : public FolderPatternBase {
           llvm::makeArrayRef<int64_t>(reduce_dims[j].data(),
                                       reduction_indices));
       FailureOr<TFOp> const_op = CreateConstantTensorOp(
-          rewriter, op->getLoc(), TFOp(op).name(), *(op->result_type_begin()),
+          rewriter, op->getLoc(), TFOp(op).name(), op->getResultTypes()[j],
           TFOp(op).controlRet(), const_attr);
       if (failed(const_op)) return failure();
+
       (*const_op).setName(Twine(TFOp(op).name(), "/bcastargs_") +
                           std::to_string(j));
       if (!TFOp(op).device().empty())
@@ -2278,6 +2285,32 @@ class ReduceDivToReciprocalMul : public FolderPatternBase {
   }
 };
 
+namespace {
+class ConstantPushDownBase : public FolderPatternBase {
+ public:
+  using FolderPatternBase::FolderPatternBase;
+
+  bool IsOperandsSafeToMove(Operation *op_child, Operation *const_child) const {
+    // Don't rewrite the tree if it might create cycles.
+    // TODO(chiahungduan): Remove the control dependency which may create
+    // cycles.
+    if (llvm::any_of(
+            TFOp(const_child).getControlOperands(),
+            [op_child](Value v) { return v.getDefiningOp() == op_child; })) {
+      return false;
+    }
+
+    // Move operands may change the result shapes, only do it when there's one
+    // user for each of non control return values.
+    if (llvm::any_of(op_child->getResults().drop_back(),
+                     [](Value v) { return !v.hasOneUse(); })) {
+      return false;
+    }
+    return true;
+  }
+};
+}  // namespace
+
 // Consider the transformation
 //
 //                      +                +       = parent
@@ -2298,10 +2331,10 @@ class ReduceDivToReciprocalMul : public FolderPatternBase {
 // by rotating the tree locally, e.g.
 //    Sub(C, Add(X, Y)) -> Sub(Sub(C, Y), X)
 //    Mul(C, Div(X, Y)) -> Mul(X, Div(C, Y)).
-class ConstantPushDown : public FolderPatternBase {
+class ConstantPushDown : public ConstantPushDownBase {
  public:
   explicit ConstantPushDown(OpPropertyHelper &helper)
-      : FolderPatternBase(MatchAnyOpTypeTag(), helper) {}
+      : ConstantPushDownBase(MatchAnyOpTypeTag(), helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     // Get parent op type.
@@ -2328,6 +2361,8 @@ class ConstantPushDown : public FolderPatternBase {
     if (!dialect_->IsConstant(const_op)) std::swap(child_op, const_op);
     if (!dialect_->IsConstant(const_op)) return failure();
     if (helper_.ShouldPreserveOp(child_op)) return failure();
+
+    if (!IsOperandsSafeToMove(child_op, const_op)) return failure();
 
     // Get child op type.
     const bool is_child_add = dialect_->IsAdd(child_op);
@@ -2370,7 +2405,7 @@ class ConstantPushDown : public FolderPatternBase {
       auto c_shape = op->getOperand((left_child_is_const ? 0 : 1))
                          .getType()
                          .cast<ShapedType>();
-      auto x_shape = op->getOperand((left_leaf_is_const ? 0 : 1))
+      auto x_shape = child_op->getOperand((left_leaf_is_const ? 0 : 1))
                          .getType()
                          .cast<ShapedType>();
 
@@ -2561,6 +2596,7 @@ class PartialAssocOpConstFolding : public FolderPatternBase {
 
     auto [non_control_operands, control_operands] = TFOp(op).splitOperands();
     int non_control_inputs_size = non_control_operands.size();
+    if (non_control_inputs_size <= 2) return failure();
 
     if (llvm::any_of(non_control_operands, [](Value v) {
           Operation *v_op = v.getDefiningOp();
@@ -2734,8 +2770,6 @@ class MulConvPushDown : public FolderPatternBase {
     //                 X  C1                       C1  C2
     //
     // where C1 and C2 are constants and X is non-constant.
-    //
-    // TODO(rmlarsen): Use PrepareConstantPushDown() to simplify this code.
     if (!dialect_->IsAnyMul(op)) return failure();
 
     Operation *mul_left_child = op->getOperand(0).getDefiningOp();
@@ -3039,25 +3073,29 @@ class PartialConcatConstFolding : public FolderPatternBase {
 //                  M   V            M  CV       = leaves
 //
 // Cases 1 through 3 have additional sub-cases due to the symmetry of Add.
-class ConstantPushDownBiasAdd : public FolderPatternBase {
+class ConstantPushDownBiasAdd : public ConstantPushDownBase {
  public:
   explicit ConstantPushDownBiasAdd(OpPropertyHelper &helper)
-      : FolderPatternBase(MatchAnyOpTypeTag(), helper) {}
+      : ConstantPushDownBase(MatchAnyOpTypeTag(), helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     if (!dialect_->IsBiasAdd(op)) return failure();
 
     Operation *add_child = op->getOperand(0).getDefiningOp();
-    Value const_child = op->getOperand(1);
     if (!add_child) return failure();
+
+    Operation *const_child = op->getOperand(1).getDefiningOp();
+    if (!const_child || !dialect_->IsConstant(const_child)) return failure();
+
     if (helper_.ShouldPreserveOp(add_child)) return failure();
 
     // Special case for BiasAdd: Since the left argument to BiasAdd must be rank
     // >= 2 and the leaves must be vectors, we cannot swap them.
     if (dialect_->IsConstant(add_child)) return failure();
-
     if (!dialect_->IsBiasAdd(add_child) && !dialect_->IsAdd(add_child))
       return failure();
+
+    if (!IsOperandsSafeToMove(add_child, const_child)) return failure();
 
     auto hasRank = [&](Value value) {
       return value.getType().cast<ShapedType>().hasRank();
@@ -3083,7 +3121,7 @@ class ConstantPushDownBiasAdd : public FolderPatternBase {
         add_child->getOperand(vector_idx).getType().cast<ShapedType>();
     Type vector_d_type = vector_type.getElementType();
 
-    auto const_type = const_child.getType().cast<ShapedType>();
+    auto const_type = const_child->getResultTypes()[0].cast<ShapedType>();
     const int const_rank = const_type.getRank();
     Type const_d_type = const_type.getElementType();
 
@@ -3102,7 +3140,7 @@ class ConstantPushDownBiasAdd : public FolderPatternBase {
     op->setOperand(1, leaf_to_swap);
     rewriter.finalizeRootUpdate(op);
     rewriter.startRootUpdate(add_child);
-    add_child->setOperand(input_to_swap, const_child);
+    add_child->setOperand(input_to_swap, const_child->getResult(0));
     rewriter.finalizeRootUpdate(add_child);
 
     return success();
@@ -3140,10 +3178,10 @@ class ConstantPushDownBiasAdd : public FolderPatternBase {
 //                  M   V            M  CV       = leaves
 //
 // Cases 1 through 3 have additional sub-cases due to the symmetry of Add.
-class ConstantPushDownAdd : public FolderPatternBase {
+class ConstantPushDownAdd : public ConstantPushDownBase {
  public:
   explicit ConstantPushDownAdd(OpPropertyHelper &helper)
-      : FolderPatternBase(MatchAnyOpTypeTag(), helper) {}
+      : ConstantPushDownBase(MatchAnyOpTypeTag(), helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     if (!dialect_->IsAdd(op)) return failure();
@@ -3154,6 +3192,8 @@ class ConstantPushDownAdd : public FolderPatternBase {
 
     if (!dialect_->IsConstant(const_child)) std::swap(add_child, const_child);
     if (!dialect_->IsConstant(const_child)) return failure();
+
+    if (!IsOperandsSafeToMove(add_child, const_child)) return failure();
 
     bool child_is_bias_add = dialect_->IsBiasAdd(add_child);
     if (!child_is_bias_add && !dialect_->IsAdd(add_child)) return failure();

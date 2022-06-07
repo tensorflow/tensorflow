@@ -28,6 +28,14 @@ module {
     %Identity_15, %ctl_16 = Identity(%BroadcastGradientArgs_13#0) name("p1") {T = i32} : (tensor<*xi32>) -> (tensor<*xi32>)
     // CHECK: Identity{{.*}} name("p2")
     %Identity_17, %ctl_18 = Identity(%BroadcastGradientArgs_13#1) name("p2") {T = i32} : (tensor<*xi32>) -> (tensor<*xi32>)
+    %Const, %ctl_22 = Const name("c2") {dtype = f32, value = dense<2> : tensor<2xi32>} : () -> (tensor<2xi32>)
+    %BroadcastGradientArgs_14:2, %ctl_23 = BroadcastGradientArgs(%Shape, %Const) name("i2") {T = i32} : (tensor<*xi32>, tensor<2xi32>) -> (tensor<*xi32>, tensor<*xi32>)
+    // CHECK: Const{{.*}} name("p12")
+    // CHECK-SAME: value = dense<> : tensor<0xi32>
+    %Identity_16, %ctl_24 = Identity(%BroadcastGradientArgs_14#0) name("p12") {T = i32} : (tensor<*xi32>) -> (tensor<*xi32>)
+    // CHECK: Const{{.*}} name("p22")
+    // CHECK-SAME: value = dense<> : tensor<0xi32>
+    %Identity_18, %ctl_25 = Identity(%BroadcastGradientArgs_14#1) name("p22") {T = i32} : (tensor<*xi32>) -> (tensor<*xi32>)
     return
   }
 }
