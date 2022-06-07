@@ -947,6 +947,38 @@ class ExecuteContext {
   virtual ~ExecuteContext() = default;
 };
 
+struct PjRtTransferMetadata {
+  Shape device_shape;
+};
+
+struct SendCallback {
+  int64_t channel_id;
+  // The callback for retrieving the send value. It will be invoked once for
+  // each invocation of the corresponding Send op in the HLO program (So it can
+  // be invoked multiple times if it is in a loop). Currently there is no
+  // guarantee that the callback here will be invoked in the same order as their
+  // corresponding HLO Send ops.
+  //
+  // TODO(chky): Currently the callback invocation order may not be consistent
+  // with the HLO send op invocation order, due to limitations in some PjRt
+  // implementation. Consider making it strictly the same order as HLO program.
+  std::function<void(const PjRtTransferMetadata& metadata, PjRtChunk chunk,
+                     size_t total_size_in_bytes, bool done)>
+      callback;
+};
+
+struct RecvCallback {
+  int64_t channel_id;
+  // The callback for feeding the recv value. It will be invoked once for each
+  // invocation of the corresponding Recv op in the HLO program (So it can be
+  // invoked multiple times if it is in a loop). Currently there is no
+  // guarantee that the callback here will be invoked in the same order as their
+  // corresponding HLO Recv ops.
+  std::function<void(const PjRtTransferMetadata& metadata,
+                     CopyToDeviceStream& stream)>
+      callback;
+};
+
 struct ExecuteOptions {
   // If true, the client must pass a single PjRtBuffer which contains all of
   // the arguments as a single XLA tuple, otherwise each argument must be
@@ -972,6 +1004,14 @@ struct ExecuteOptions {
   // config should match what was used during compilation to generate this
   // executable.
   const MultiSliceConfig* multi_slice_config = nullptr;
+
+  // The send/recv callbacks for PjRt execution. The first level span is for
+  // multi-device parallel execution, the second level vector contains the
+  // callbacks for all send/recv ops in the executable. These callbacks can be
+  // stateful and the user code is responsible for managing the states here.
+  // These callbacks must outlive the execution.
+  absl::Span<const std::vector<SendCallback>> send_callbacks;
+  absl::Span<const std::vector<RecvCallback>> recv_callbacks;
 };
 
 // Static device memory usage for a compiled program.
