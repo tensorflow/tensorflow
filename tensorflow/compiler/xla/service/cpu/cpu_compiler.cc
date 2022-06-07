@@ -159,6 +159,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/optimization_barrier_expander.h"
 #include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/reduce_scatter_decomposer.h"
+#include "tensorflow/compiler/xla/service/reshape_decomposer.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/result_caster.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
@@ -603,6 +604,8 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
       .AddInvariantCheckerDebug<HloVerifier>(
           /*layout_sensitive=*/true,
           /*allow_mixed_precision=*/false);
+
+  pipeline.AddPass<ReshapeDecomposer>();
 
   // Add a fusion pass now that layout assignment is done.
   pipeline.AddPass<CpuInstructionFusion>();

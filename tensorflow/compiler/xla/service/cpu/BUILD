@@ -234,6 +234,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:bitcast_dtypes_expander",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:dump",
+        "//tensorflow/compiler/xla/service:reshape_decomposer",
         "@com_google_absl//absl/base:core_headers",
         "//tensorflow/compiler/xla/service:map_inliner",
         "//tensorflow/compiler/xla/service:result_caster",
