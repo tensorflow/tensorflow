@@ -160,8 +160,7 @@ TEST(TypeToShapeTest, ConvertWithShapeRepresentationFn) {
   status_or_shape =
       TypeToShape(RankedTensorType::get({-1, 2, 3}, b.getF32Type()),
                   test_shape_representation_fn);
-  EXPECT_EQ(status_or_shape.status().code(),
-            tensorflow::errors::Code::INVALID_ARGUMENT);
+  EXPECT_TRUE(tensorflow::errors::IsInvalidArgument(status_or_shape.status()));
 
   // Scalar Int32 Tensor, using fast memory.
   status_or_shape =
