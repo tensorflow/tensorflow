@@ -1102,6 +1102,35 @@ add {
 // CHECK-SAME:    index_vector_dim = 1
 // CHECK-SAME:  unique_indices = false
 
+%wide_update_computation {
+  %lhs = f32[] parameter(0)
+  %lupd = f32[] parameter(1)
+  %rhs = f32[] parameter(2)
+  %rupd = f32[] parameter(3)
+  ROOT %tuple = (f32[], f32[]) tuple(f32[] %lhs, f32[] %rhs)
+}
+
+%test_variadic_scatter {
+  %input_tensor = f32[200,100,300] parameter(0)
+  %scatter_indices = s64[10,2] parameter(1)
+  %updates = f32[10,300] parameter(2)
+  ROOT %scatter = (f32[200,100,300], f32[200,100,300]) scatter(%input_tensor, %input_tensor, s64[10,2] %scatter_indices, %updates, %updates), update_window_dims={1}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=1, to_apply=%wide_update_computation
+}
+
+// CHECK-LABEL:  func.func private @test_variadic_scatter
+// CHECK-SAME:   [[ARG_0:%.*]]: tensor<200x100x300xf32>, [[ARG_1:%.*]]: tensor<10x2xi64>, [[ARG_2:%.*]]: tensor<10x300xf32>) -> tuple<tensor<200x100x300xf32>, tensor<200x100x300xf32>>
+// CHECK:  "mhlo.scatter"([[ARG_0]], [[ARG_0]], [[ARG_1]], [[ARG_2]], [[ARG_2]]) ({
+// CHECK:    ^bb0([[LHS:%.*]]: tensor<f32>, [[UPD:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>, [[UPP:%.*]]: tensor<f32>):
+// CHECK:      "mhlo.return"([[LHS]], [[RHS]]) : (tensor<f32>, tensor<f32>) -> ()
+// CHECK:    })
+// CHECK-SAME:  indices_are_sorted = false
+// CHECK-SAME:  scatter_dimension_numbers =
+// CHECK-SAME:    update_window_dims = [1]
+// CHECK-SAME:    inserted_window_dims = [0, 1]
+// CHECK-SAME:    scatter_dims_to_operand_dims = [0, 1]
+// CHECK-SAME:    index_vector_dim = 1
+// CHECK-SAME:  unique_indices = false
+
 %update_computation_returning_tuple {
   %lhs = f32[] parameter(0)
   %rhs = f32[] parameter(1)

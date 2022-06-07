@@ -792,12 +792,19 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(builder_->getNamedAttr(
           "unique_indices", builder_->getBoolAttr(scatter->unique_indices())));
 
+      llvm::SmallVector<Type> flattened_types;
+      FlattenTupleType(result_type, flattened_types);
+
       auto scatter_op = func_builder->create<mlir::mhlo::ScatterOp>(
-          loc, result_type, operands, attributes);
+          loc, flattened_types, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*scatter->to_apply(),
                                         &scatter_op.update_computation(),
                                         /*flatten_region_arg_tuple=*/true));
-      return scatter_op.getOperation();
+      TF_ASSIGN_OR_RETURN(auto result_type,
+                          ConvertShapeToType<RankedTensorType>(
+                              instruction->shape(), *builder_));
+      return CreateTupleFromOpResults(func_builder, loc,
+                                      scatter_op.getOperation(), result_type);
     }
     case HloOpcode::kSelectAndScatter: {
       auto select_scatter = Cast<HloSelectAndScatterInstruction>(instruction);
