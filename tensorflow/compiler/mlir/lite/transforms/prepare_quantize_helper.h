@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -519,7 +520,7 @@ std::unique_ptr<quant::OpQuantSpec> GetLstmOpQuantSpec(LstmOp op) {
     return nullptr;
   }
 
-  auto spec = absl::make_unique<quant::OpQuantSpec>();
+  auto spec = std::make_unique<quant::OpQuantSpec>();
 
   for (const auto& enumerated_inputs : lstm_property.inputs) {
     int index = enumerated_inputs.first;

@@ -31,6 +31,7 @@ limitations under the License.
 
 #include <climits>
 #include <cstdint>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
