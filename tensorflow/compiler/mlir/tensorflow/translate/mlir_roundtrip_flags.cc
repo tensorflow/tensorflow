@@ -265,7 +265,7 @@ static StatusOr<std::vector<std::string>> ParseDTypesHelper(
     }
     if (inside_subtype) continue;
     if (c == ',') {
-      dtypes.push_back(std::string(data_types_str.substr(cur_pos, i)));
+      dtypes.push_back(std::string(data_types_str.substr(cur_pos, i - cur_pos)));
       cur_pos = i + 1;
     }
   }
@@ -276,7 +276,7 @@ static StatusOr<std::vector<std::string>> ParseDTypesHelper(
   }
   if (!data_types_str.empty()) {
     dtypes.push_back(
-        std::string(data_types_str.substr(cur_pos, data_types_str.size())));
+        std::string(data_types_str.substr(cur_pos, data_types_str.size() - cur_pos)));
   }
   return dtypes;
 }
