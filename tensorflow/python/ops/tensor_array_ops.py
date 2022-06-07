@@ -962,10 +962,11 @@ class TensorArray:
   "flow" control flow dependencies.
 
   Note that although the array can be read multiple times and positions can be
-  overwritten, behavior may be undefined when storing multiple references to the same
-  array and clear_after_read is False. In particular, avoid using methods like
-  concat() to convert an intermediate TensorArray to a Tensor, then further modifying the
-  TensorArray, particularly if you need to backprop through it later.
+  overwritten, behavior may be undefined when storing multiple references to
+  the same array and clear_after_read is False. In particular, avoid using
+  methods like concat() to convert an intermediate TensorArray to a Tensor,
+  then further modifying the TensorArray, particularly if you need to backprop
+  through it later.
 
   Example 1: Plain reading and writing.
 
