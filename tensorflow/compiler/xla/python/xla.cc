@@ -392,12 +392,16 @@ PYBIND11_MODULE(xla_extension, m) {
              std::unique_ptr<DistributedRuntimeService>>
       distributed_runtime_service(m, "DistributedRuntimeService");
   distributed_runtime_service.def("shutdown",
-                                  &DistributedRuntimeService::Shutdown);
+                                  &DistributedRuntimeService::Shutdown,
+                                  py::call_guard<py::gil_scoped_release>());
   py::class_<DistributedRuntimeClient,
              std::shared_ptr<DistributedRuntimeClient>>
       distributed_runtime_client(m, "DistributedRuntimeClient");
-  distributed_runtime_client.def("connect", &DistributedRuntimeClient::Connect)
-      .def("shutdown", &DistributedRuntimeClient::Shutdown)
+  distributed_runtime_client
+      .def("connect", &DistributedRuntimeClient::Connect,
+           py::call_guard<py::gil_scoped_release>())
+      .def("shutdown", &DistributedRuntimeClient::Shutdown,
+           py::call_guard<py::gil_scoped_release>())
       .def(
           "blocking_key_value_get",
           [](DistributedRuntimeClient& client, std::string key,
