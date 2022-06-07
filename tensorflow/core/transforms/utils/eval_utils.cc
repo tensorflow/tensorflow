@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/ir/importexport/convert_tensor.h"
 #include "tensorflow/core/ir/importexport/graphdef_export.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/public/version.h"
 
@@ -82,14 +83,17 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
   assert(resource_mgr && "ResourceMgr can't be null");
 
   if (llvm::any_of(operands, [](Attribute operand) { return !operand; })) {
-    return op->emitError() << "cannot be evaluated with null operands";
+    VLOG(3) << "cannot be evaluated with null operands";
+    return failure();
   }
 
   tensorflow::NodeDef node_def;
   if (!ConvertToNodeDef(&*op, &node_def, op.getDialect(), [&](Value value) {
          return GetValueName(value, op.getDialect());
-       }).ok())
-    return op->emitError() << "failed to convert operation to NodeDef";
+       }).ok()) {
+    VLOG(3) << "failed to convert operation to NodeDef";
+    return failure();
+  }
 
   absl::InlinedVector<tensorflow::Tensor, 4> input_tensors(operands.size());
   absl::InlinedVector<tensorflow::TensorValue, 4> input_tensor_values(
@@ -101,19 +105,19 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
   // them together so that the bundled values are related. Note that the
   // accessor index associates with the order of arguments in llvm::zip.
   for (auto it : llvm::zip(operands, input_tensors, input_tensor_values)) {
-    tensorflow::Tensor *input_tensor = &std::get<1>(it);
-    if (!ConvertToTensor(std::get<0>(it), input_tensor).ok()) {
-      return op->emitError()
-             << "failed to convert " << std::get<0>(it) << " to tensor";
-    }
-    std::get<2>(it).tensor = input_tensor;
+    auto &[operand, input_tensor, input_tensor_value] = it;
+    if (!ConvertToTensor(operand, &input_tensor).ok()) return failure();
+    input_tensor_value.tensor = &input_tensor;
   }
 
   tensorflow::Status status;
   std::unique_ptr<tensorflow::OpKernel> op_kernel = tensorflow::CreateOpKernel(
       "CPU", cpu_device, cpu_device->GetAllocator({}), node_def,
       TF_GRAPH_DEF_VERSION, &status);
-  if (!status.ok()) return op->emitError() << status.error_message();
+  if (!status.ok()) {
+    VLOG(3) << status.error_message();
+    return failure();
+  }
 
   tensorflow::OpKernelContext::Params params;
   params.device = cpu_device;
@@ -130,15 +134,27 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
   // Evaluate the operation.
   tensorflow::OpKernelContext op_context(&params);
   op_kernel->Compute(&op_context);
+  if (!op_context.status().ok()) {
+    VLOG(3) << op_context.status().error_message();
+    return failure();
+  }
 
   // Converts the outputs to MLIR attributes.
   Builder builder(op->getContext());
   for (int i = 0; i < op_kernel->num_outputs(); ++i) {
+    // The output is invalidated, returns a `dead` value here.
+    if (op_context.mutable_output(i) == nullptr) {
+      results.push_back(nullptr);
+      continue;
+    }
+
     tensorflow::StatusOr<ElementsAttr> attr_or =
         ConvertTensor(*(op_context.mutable_output(i)), builder,
                       cast<TFGraphDialect>(op->getDialect()));
-    if (!attr_or.status().ok())
-      return op->emitError() << attr_or.status().error_message();
+    if (!attr_or.status().ok()) {
+      VLOG(3) << attr_or.status().error_message();
+      return failure();
+    }
     results.push_back(attr_or.ValueOrDie());
   }
 
