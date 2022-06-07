@@ -187,7 +187,7 @@ class TrtConverterTest
     bundle->session.reset(session);
     TF_RETURN_IF_ERROR(session->Run(/* inputs */ {}, /*outputs*/ {},
                                     /*targets*/ {"my_var/init"}, nullptr));
-    return Status::OK();
+    return OkStatus();
   }
 
   // Confirms that we have a TRT node with the correct attributes.

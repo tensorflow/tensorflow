@@ -24,11 +24,11 @@ limitations under the License.
 namespace tensorflow {
 
 TEST(Status, OK) {
-  EXPECT_EQ(Status::OK().code(), error::OK);
-  EXPECT_EQ(Status::OK().error_message(), "");
-  TF_EXPECT_OK(Status::OK());
-  TF_ASSERT_OK(Status::OK());
-  EXPECT_EQ(Status::OK(), Status());
+  EXPECT_EQ(OkStatus().code(), error::OK);
+  EXPECT_EQ(OkStatus().error_message(), "");
+  TF_EXPECT_OK(OkStatus());
+  TF_ASSERT_OK(OkStatus());
+  EXPECT_EQ(OkStatus(), Status());
   Status s;
   EXPECT_TRUE(s.ok());
 }
@@ -73,7 +73,7 @@ TEST(Status, MoveAssign) {
 
 TEST(Status, Update) {
   Status s;
-  s.Update(Status::OK());
+  s.Update(OkStatus());
   ASSERT_TRUE(s.ok());
   Status a(errors::InvalidArgument("Invalid"));
   s.Update(a);
@@ -81,12 +81,12 @@ TEST(Status, Update) {
   Status b(errors::Internal("Internal"));
   s.Update(b);
   ASSERT_EQ(s.ToString(), a.ToString());
-  s.Update(Status::OK());
+  s.Update(OkStatus());
   ASSERT_EQ(s.ToString(), a.ToString());
   ASSERT_FALSE(s.ok());
 }
 
-TEST(Status, EqualsOK) { ASSERT_EQ(Status::OK(), Status()); }
+TEST(Status, EqualsOK) { ASSERT_EQ(OkStatus(), Status()); }
 
 TEST(Status, EqualsSame) {
   Status a(errors::InvalidArgument("Invalid"));
@@ -114,10 +114,10 @@ TEST(Status, EqualsDifferentMessage) {
 
 TEST(StatusGroup, OKStatusGroup) {
   StatusGroup c;
-  c.Update(Status::OK());
-  c.Update(Status::OK());
-  ASSERT_EQ(c.as_summary_status(), Status::OK());
-  ASSERT_EQ(c.as_concatenated_status(), Status::OK());
+  c.Update(OkStatus());
+  c.Update(OkStatus());
+  ASSERT_EQ(c.as_summary_status(), OkStatus());
+  ASSERT_EQ(c.as_concatenated_status(), OkStatus());
 }
 
 TEST(StatusGroup, AggregateWithSingleErrorStatus) {
@@ -205,7 +205,7 @@ TEST(Status, ErasePayloadRemovesIt) {
 static void BM_TF_CHECK_OK(::testing::benchmark::State& state) {
   tensorflow::Status s = (state.max_iterations < 0)
                              ? errors::InvalidArgument("Invalid")
-                             : Status::OK();
+                             : OkStatus();
   for (auto i : state) {
     TF_CHECK_OK(s);
   }

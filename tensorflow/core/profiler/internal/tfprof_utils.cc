@@ -286,7 +286,7 @@ tensorflow::Status ParseCmdLine(const string& line, string* cmd,
       return ReturnError(pieces, i);
     }
   }
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 void PrintHelp() {

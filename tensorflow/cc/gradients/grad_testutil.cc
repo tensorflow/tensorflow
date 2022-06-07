@@ -28,7 +28,7 @@ Status CallGradFunction(const Scope& scope, const Operation& op,
       op.node()->type_string(), &grad_fn));
   TF_RETURN_IF_ERROR(grad_fn(scope, op, grad_inputs, grad_outputs));
   TF_RETURN_IF_ERROR(scope.status());
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace test
