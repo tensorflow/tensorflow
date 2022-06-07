@@ -52,7 +52,7 @@ struct ElementWiseTilingInterface
 
 void registerTilingInterfaceExternalModels(DialectRegistry& registry) {
   registry.insert<mhlo::MhloDialect>();
-  registry.addExtension(+[](MLIRContext* ctx, mhlo::MhloDialect* dialect) {
+  registry.addExtension(+[](MLIRContext* ctx, mhlo::MhloDialect* /*dialect*/) {
     mhlo::AddOp::attachInterface<ElementWiseTilingInterface<mhlo::AddOp>>(*ctx);
     mhlo::SubOp::attachInterface<ElementWiseTilingInterface<mhlo::SubOp>>(*ctx);
   });
