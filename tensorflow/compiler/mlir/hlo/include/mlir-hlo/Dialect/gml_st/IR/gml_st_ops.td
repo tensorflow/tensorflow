@@ -35,10 +35,30 @@ def GMLST_MaterializeOp : GMLST_Op<"materialize",
 
 def GMLST_DimOp : GMLST_Op<"dim", []> {
   let summary = [{Returns the size of a tile in a given dimension}];
-  let arguments = (ins AnySubset:$tile, Index:$dim);
+  let arguments = (ins GMLST_TileType:$tile, Index:$dim);
   let results = (outs Index:$result);
   let assemblyFormat = [{
-    $tile `[` $dim `]` attr-dict `:` type($tile)
+    $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
+  }];
+  let hasVerifier = 0;
+}
+
+def GMLST_OffsetOp : GMLST_Op<"offset", []> {
+  let summary = [{Returns the offset of a tile in a given dimension}];
+  let arguments = (ins GMLST_TileType:$tile, Index:$dim);
+  let results = (outs Index:$result);
+  let assemblyFormat = [{
+    $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
+  }];
+  let hasVerifier = 0;
+}
+
+def GMLST_SizeOp : GMLST_Op<"size", []> {
+  let summary = [{Returns the size of a tile in a given dimension}];
+  let arguments = (ins GMLST_TileType:$tile, Index:$dim);
+  let results = (outs Index:$result);
+  let assemblyFormat = [{
+    $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
   }];
   let hasVerifier = 0;
 }
