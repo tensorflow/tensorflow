@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 
 #include <string>
+#include <utility>
 
 #include "absl/base/casts.h"
 #include "absl/strings/substitute.h"
@@ -49,6 +50,38 @@ std::string CompiledMemoryStats::DebugString() const {
       "temp_size_in_bytes=$4)",
       generated_code_size_in_bytes, argument_size_in_bytes,
       output_size_in_bytes, alias_size_in_bytes, temp_size_in_bytes);
+}
+
+Status CopyToDeviceStream::AddChunk(PjRtChunk chunk) {
+  absl::MutexLock lock(&mu_);
+  if (current_bytes_ >= total_bytes_) {
+    return xla::Status(tensorflow::error::Code::FAILED_PRECONDITION,
+                       "Stream is already complete");
+  }
+  current_bytes_ += chunk.size();
+  if (current_bytes_ > total_bytes_) {
+    return xla::Status(tensorflow::error::Code::FAILED_PRECONDITION,
+                       absl::StrCat("Stream byte size mismatch: ",
+                                    current_bytes_, " > ", total_bytes_));
+  }
+
+  buffered_chunks_.push_back(std::move(chunk));
+  return ::tensorflow::OkStatus();
+}
+
+std::optional<PjRtChunk> CopyToDeviceStream::ConsumeNextChunk() {
+  absl::MutexLock lock(&mu_);
+  if (buffered_chunks_.empty() && current_bytes_ >= total_bytes_) {
+    return std::nullopt;
+  }
+  mu_.Await(absl::Condition(
+      +[](std::deque<PjRtChunk>* buffered_chunks) {
+        return !buffered_chunks->empty();
+      },
+      &buffered_chunks_));
+  PjRtChunk chunk = std::move(buffered_chunks_.front());
+  buffered_chunks_.pop_front();
+  return chunk;
 }
 
 }  // namespace xla
