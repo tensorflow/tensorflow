@@ -8,9 +8,13 @@ module {
     // CHECK-DAG: , %[[CTRL0:.*]] = Identity(%[[SWITCH]]#0) name("switch/ControlDependencyCtrl_0")
     // CHECK-DAG: , %[[CTRL_SWITCH_1:.*]] = Const [%[[CTRL1]]] name("switch/_const_true")
     // CHECK-DAG: , %[[CTRL_SWITCH_0:.*]] = Const [%[[CTRL0]]] name("switch/_const_false")
-    // CHECK-DAG: Const [%[[CTRL_SWITCH_0]]] name("id_false/eval_0/const_folded")
+    // CHECK-DAG: Const [%[[CTRL_SWITCH_0]]] name("id_false")
     %LogicalNot, %ctl_1 = LogicalNot(%Switch#0) name("id_false") : (tensor<*xi1>) -> (tensor<*xi1>)
-    // CHECK-DAG: Const [%[[CTRL_SWITCH_1]]] name("id_true/eval_0/const_folded")
+    // CHECK-DAG: Const [%[[CTRL_SWITCH_1]]] name("id_true")
     %LogicalNot_2, %ctl_3 = LogicalNot(%Switch#1) name("id_true") : (tensor<*xi1>) -> (tensor<*xi1>)
+    // CHECK-DAG: Const [%[[CTRL_SWITCH_0]]] name("id_false_1")
+    %LogicalNot_3, %ctl_4 = LogicalNot(%Switch#0) name("id_false_1") : (tensor<*xi1>) -> (tensor<*xi1>)
+    // CHECK-DAG: Const [%[[CTRL_SWITCH_1]]] name("id_true_1")
+    %LogicalNot_4, %ctl_5 = LogicalNot(%Switch#1) name("id_true_1") : (tensor<*xi1>) -> (tensor<*xi1>)
   }
 }

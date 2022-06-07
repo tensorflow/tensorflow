@@ -13,7 +13,7 @@ module  {
     %Identity_5, %ctl_6 = Identity(%IdentityN#1) name("id1") {T = f32} : (tensor<*xf32>) -> (tensor<*xf32>)
     // CHECK: Add(%[[CONST]], %[[IDENTITY]]#1) {{.*}} name("add0")
     %Add, %ctl_7 = Add(%IdentityN#0, %IdentityN#1) name("add0") {T = f32} : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>)
-    // CHECK: Const [%[[CTRL1]], %[[CTRL2]], %[[CTRL]]] name("add1/eval_0/const_folded")
+    // CHECK: Const [%[[CTRL1]], %[[CTRL2]], %[[CTRL]]] name("add1")
     %Add_8, %ctl_9 = Add(%IdentityN#0, %IdentityN#2) name("add1") {T = f32} : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>)
   }
 }

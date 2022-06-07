@@ -13,5 +13,7 @@ module {
     // CHECK: %[[CONST_6:.*]], {{.*}} = Const [%[[CTRL]]] name("stack_no_axis/_const_axis")
     // CHECK: ExpandDims(%[[RANDOM]], %[[CONST_6]]) name("stack_no_axis") {T = f32, Tdim = i32}
     %Pack_4, %ctl_5 = Pack(%RandomStandardNormal) name("stack_no_axis") {N = 1 : i64, T = f32, axis = 0 : i64} : (tensor<*xf32>) -> (tensor<*xf32>)
+    // CHECK: Pack{{.*}} name("pack_with_multiple_args")
+    %Pack_5, %ctl_6 = Pack(%RandomStandardNormal, %RandomStandardNormal) name("pack_with_multiple_args") {N = 2 : i64, T = f32, axis = 0 : i64} : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>)
   }
 }

@@ -121,9 +121,11 @@ static FailureOr<TFOp> CreateConstantTensorOp(
       "dtype", TypeAttr::get(
                    tensor_value.getType().cast<ShapedType>().getElementType()));
   state.attributes.set("value", tensor_value);
-  state.attributes.set(
-      TFGraphDialect::getNameAttrKey(),
-      builder.getStringAttr(Twine(name_prefix, "/const_folded")));
+  if (!name_prefix.empty()) {
+    state.attributes.set(
+        TFGraphDialect::getNameAttrKey(),
+        builder.getStringAttr(Twine(name_prefix, "/const_folded")));
+  }
 
   state.addOperands(control_operands);
   return TFOp(builder.create(state));
@@ -144,9 +146,12 @@ static FailureOr<TFOp> ReplaceOpWithConstantTensor(
       continue;
     attr_list.append(attr);
   }
-  return CreateConstantTensorOp(builder, op->getLoc(), op.name(),
-                                value.getType(), operands_controls, value,
-                                attr_list);
+  FailureOr<TFOp> const_op = CreateConstantTensorOp(
+      builder, op->getLoc(), /*name_prefix=*/"", value.getType(),
+      operands_controls, value, attr_list);
+  (*const_op).setName(op.nameAttr());
+  if (!op.device().empty()) (*const_op).setRequestedDevice(op.deviceAttr());
+  return *const_op;
 }
 
 static FailureOr<TFOp> ReplaceOpWithIdentity(OpBuilder &builder, TFOp owner,
@@ -156,8 +161,6 @@ static FailureOr<TFOp> ReplaceOpWithIdentity(OpBuilder &builder, TFOp owner,
                   ControlType::get(builder.getContext())});
   state.addAttribute(
       "T", TypeAttr::get(GetDataTypeFromOp(builder, owner.getOperation())));
-  state.addAttribute(TFGraphDialect::getNameAttrKey(),
-                     builder.getStringAttr(Twine(owner.name(), "/Identity")));
 
   Value kept_value = owner->getOperand(idx);
   state.addOperands(kept_value);
@@ -167,7 +170,12 @@ static FailureOr<TFOp> ReplaceOpWithIdentity(OpBuilder &builder, TFOp owner,
     if (control_ret != kept_value_control_ret) state.addOperands(control_ret);
   }
   state.addOperands(control_operands);
-  return TFOp(builder.create(state));
+
+  Operation *identity_op = builder.create(state);
+  TFOp(identity_op).setName(owner.nameAttr());
+  if (!owner.device().empty())
+    TFOp(identity_op).setRequestedDevice(owner.deviceAttr());
+  return TFOp(identity_op);
 }
 
 static FailureOr<TFOp> ReplaceOperationWithConstant(OpBuilder &builder,
@@ -208,7 +216,11 @@ static FailureOr<TFOp> ReplaceOperationWithSnapshot(OpBuilder &builder, TFOp op,
   state.addOperands(control_operands);
   state.addTypes(op->getResultTypes());
 
-  return TFOp(builder.create(state));
+  Operation *snapshot_op = builder.create(state);
+  TFOp(snapshot_op).setName(op.nameAttr());
+  if (!op.device().empty())
+    TFOp(snapshot_op).setRequestedDevice(op.deviceAttr());
+  return TFOp(snapshot_op);
 }
 
 static FailureOr<TFOp> ReplaceOperationWithBroadcastTo(OpBuilder &builder,
@@ -226,8 +238,10 @@ static FailureOr<TFOp> ReplaceOperationWithBroadcastTo(OpBuilder &builder,
     control_operands.push_back(LookupControlDependency(v));
   }
   FailureOr<TFOp> const_op = CreateConstantTensorOp(
-      builder, op->getLoc(), op.name(), const_attr.getType(), control_operands,
-      const_attr);
+      builder, op->getLoc(),
+      (Twine(op.name(), "/broadcastto_shape_") + std::to_string(idx_to_replace))
+          .str(),
+      const_attr.getType(), control_operands, const_attr);
   if (failed(const_op)) return failure();
   if (!op.device().empty()) const_op->setRequestedDevice(op.device());
 
@@ -244,10 +258,11 @@ static FailureOr<TFOp> ReplaceOperationWithBroadcastTo(OpBuilder &builder,
   for (Value v : op.getNonControlOperands())
     if (v != op->getOperand(idx_to_replace)) state.addOperands(v);
   state.addTypes(op->getResultTypes());
+
   Operation *broadcast_to_op = builder.create(state);
-  TFOp(broadcast_to_op)
-      .setName(Twine(op.name(), "/broadcastto_shape_") +
-               std::to_string(idx_to_replace));
+  TFOp(broadcast_to_op).setName(op.nameAttr());
+  if (!op.device().empty())
+    TFOp(broadcast_to_op).setRequestedDevice(op.deviceAttr());
   return TFOp(broadcast_to_op);
 }
 
@@ -559,12 +574,30 @@ class EvaluateConstant : public FolderPatternBase {
  public:
   explicit EvaluateConstant(OpPropertyHelper &helper)
       : FolderPatternBase(MatchAnyOpTypeTag(), helper),
+        has_folded_(BoolAttr::get(helper.getDialect()->getContext(), true)),
+        folded_attr_name_(
+            StringAttr::get(helper.getDialect()->getContext(), "has_folded")),
         cpu_device_(std::make_unique<util::SimpleDevice>()),
         resource_mgr_(std::make_unique<tensorflow::ResourceMgr>()) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     if (!helper_.IsFoldable(op)) return failure();
+
+    // TODO(chiahungduan): Switch folding needs to delete dead values.
+    if (dialect_->IsSwitch(op)) return failure();
+
+    // The op has been folded but it has multiple results which we can just
+    // replace it with a constant op and it also has control edges which prevent
+    // it from removing. Use the attr to avoid evaluating them again.
+    if (op->hasAttr(folded_attr_name_)) return failure();
+
+    // If the op has no users, don't invoke the eager runtime.
+    if (op->getNumResults() > 2 &&
+        llvm::all_of(op->getResults().drop_back(),
+                     [](Value v) { return v.use_empty(); })) {
+      return failure();
+    }
 
     SmallVector<ElementsAttr> const_operands;
     for (Value operand : TFOp(op).getNonControlOperands()) {
@@ -585,33 +618,58 @@ class EvaluateConstant : public FolderPatternBase {
 
     StringAttr name_attr = static_cast<TFGraphDialect *>(op->getDialect())
                                ->getNameAttrIdentifier();
-    auto [non_control_operands, control_operands] = TFOp(op).splitOperands();
-    SmallVector<Value> new_control_operands;
-    llvm::append_range(new_control_operands,
-                       OperandControlRetRange(non_control_operands));
-    llvm::append_range(new_control_operands, control_operands);
+    SmallVector<Value> control_operands(
+        OperandControlRetRange(op->getOperands()));
 
     StringAttr device_attr = TFOp(op).deviceAttr();
-    SmallVector<Value> const_values;
+    SmallVector<TFOp> const_ops;
     for (auto &it : llvm::enumerate(result)) {
       Attribute attr = it.value();
       FailureOr<TFOp> const_op = CreateConstantTensorOp(
           rewriter, op->getLoc(),
           (Twine(TFOp(op).name(), "/eval_") + Twine(it.index())).str(),
-          attr.getType().cast<ShapedType>(), new_control_operands, attr,
+          attr.getType().cast<ShapedType>(), control_operands, attr,
           NamedAttribute(name_attr, TFOp(op).nameAttr()));
       if (failed(const_op)) return failure();
       if (device_attr) (*const_op).setRequestedDevice(device_attr);
-      const_values.emplace_back(*((*const_op)->result_begin()));
+      const_ops.emplace_back(*const_op);
     }
 
-    const_values.push_back(LookupControlDependency(const_values[0]));
-    rewriter.replaceOp(op, const_values);
+    // If this is single output, just replace the op.
+    if (const_ops.size() == 1) {
+      // Use the same node name for the replacement. Note that even this is not
+      // in nodes_to_preserve, certain cases may still expect the op has the
+      // same name after folding.
+      const_ops[0].setName(TFOp(op).nameAttr());
+      rewriter.replaceOp(op, const_ops[0]->getResults());
+    } else {
+      for (auto &it : llvm::enumerate(const_ops)) {
+        for (OpOperand &user :
+             llvm::make_early_inc_range(op->getResult(it.index()).getUses())) {
+          rewriter.startRootUpdate(user.getOwner());
+          user.set(it.value()->getResult(0));
+          rewriter.finalizeRootUpdate(user.getOwner());
+        }
+      }
+
+      // Now all the non-control operands are replaced with constant ops, remove
+      // the op if it doesn't have control operand either.
+      if (TFOp(op).controlRet().use_empty()) {
+        rewriter.eraseOp(op);
+      } else {
+        // We can't remove it directly. To avoid folding it again, add an attr
+        // to identity these ops. This will be removed in the end of constant
+        // folding pass.
+        op->setAttr(folded_attr_name_, has_folded_);
+      }
+    }
 
     return success();
   }
 
  private:
+  BoolAttr has_folded_;
+  StringAttr folded_attr_name_;
   std::unique_ptr<util::SimpleDevice> cpu_device_;
   std::unique_ptr<tensorflow::ResourceMgr> resource_mgr_;
 };
@@ -642,9 +700,10 @@ class MaterializeShapeOp : public FolderPatternBase {
     // only be run in the cases where Shape would have been run in the original
     // graph.
     FailureOr<TFOp> const_op = CreateConstantTensorOp(
-        rewriter, op->getLoc(), TFOp(op).name(), const_attr.getType(),
+        rewriter, op->getLoc(), /*name_prefix=*/"", const_attr.getType(),
         LookupControlDependency(input), const_attr, op->getAttrs());
     if (failed(const_op)) return failure();
+    (*const_op).setName(TFOp(op).nameAttr());
 
     rewriter.replaceOp(op, (*const_op)->getResults());
 
@@ -667,6 +726,8 @@ class MaterializeSizeOp : public FolderPatternBase {
     if (!input_shape.hasStaticShape()) return failure();
 
     ShapedType result_type = (*op->result_type_begin()).cast<ShapedType>();
+    if (!result_type.getElementType().isIntOrIndexOrFloat()) return failure();
+
     ElementsAttr const_attr = CreateElementsAttrOfTypeValues(
         result_type.getElementType(), {},
         ArrayRef<int64_t>(input_shape.getNumElements()));
@@ -675,9 +736,10 @@ class MaterializeSizeOp : public FolderPatternBase {
     // only be run in the cases where Size would have been run in the original
     // graph.
     FailureOr<TFOp> const_op = CreateConstantTensorOp(
-        rewriter, op->getLoc(), TFOp(op).name(), const_attr.getType(),
+        rewriter, op->getLoc(), /*name_prefix=*/"", const_attr.getType(),
         LookupControlDependency(input), const_attr, op->getAttrs());
     if (failed(const_op)) return failure();
+    (*const_op).setName(TFOp(op).nameAttr());
 
     rewriter.replaceOp(op, (*const_op)->getResults());
 
@@ -700,6 +762,8 @@ class MaterializeRankOp : public FolderPatternBase {
     if (!input_shape.hasRank()) return failure();
 
     ShapedType result_type = (*op->result_type_begin()).cast<ShapedType>();
+    if (!result_type.getElementType().isIntOrIndexOrFloat()) return failure();
+
     ElementsAttr const_attr = CreateElementsAttrOfTypeValues(
         result_type.getElementType(), {}, ArrayRef<int>(input_shape.getRank()));
 
@@ -707,9 +771,10 @@ class MaterializeRankOp : public FolderPatternBase {
     // only be run in the cases where Rank would have been run in the original
     // graph.
     FailureOr<TFOp> const_op = CreateConstantTensorOp(
-        rewriter, op->getLoc(), TFOp(op).name(), const_attr.getType(),
+        rewriter, op->getLoc(), /*name_prefix=*/"", const_attr.getType(),
         LookupControlDependency(input), const_attr, op->getAttrs());
     if (failed(const_op)) return failure();
+    (*const_op).setName(TFOp(op).nameAttr());
 
     rewriter.replaceOp(op, (*const_op)->getResults());
 
@@ -746,9 +811,10 @@ class MaterializeTensorArraySizeV3Op : public FolderPatternBase {
     control_operands.push_back(TFOp(handle_op).controlRet());
     control_operands.push_back(LookupControlDependency(op->getOperand(1)));
     FailureOr<TFOp> const_op = CreateConstantTensorOp(
-        rewriter, op->getLoc(), TFOp(op).name(), size_attr.getType(),
+        rewriter, op->getLoc(), /*name_prefix=*/"", size_attr.getType(),
         control_operands, size_attr, op->getAttrs());
     if (failed(const_op)) return failure();
+    (*const_op).setName(TFOp(op).nameAttr());
 
     rewriter.replaceOp(op, (*const_op)->getResults());
 
@@ -780,7 +846,7 @@ class MaterializeShapeNOp : public FolderPatternBase {
           TFOp(op).controlRet(), const_attr);
       if (failed(const_op)) return failure();
 
-      (*const_op).setName(Twine(TFOp(op).name(), "/_matshapes_") +
+      (*const_op).setName(Twine(TFOp(op).name(), "/matshapes_") +
                           std::to_string(it.index()));
       if (!TFOp(op).device().empty())
         (*const_op).setRequestedDevice(TFOp(op).deviceAttr());
@@ -788,7 +854,8 @@ class MaterializeShapeNOp : public FolderPatternBase {
       // TODO(chiahungduan): Do we need to handle `direct_edges_exist` in
       // ConstantFolding::MaterializeShapes for ShapeN?
 
-      for (OpOperand &user : op->getResult(it.index()).getUses()) {
+      for (OpOperand &user :
+           llvm::make_early_inc_range(op->getResult(it.index()).getUses())) {
         rewriter.startRootUpdate(user.getOwner());
         user.set((*const_op)->getResult(0));
         rewriter.finalizeRootUpdate(user.getOwner());
@@ -816,10 +883,10 @@ class MaterializeBroadcastGradientArgsOp : public FolderPatternBase {
     if (!dialect_->IsShape(s1) && !dialect_->IsConstant(s1)) return failure();
 
     // This operation has been optimized.
-    if (op->getResult(0).use_empty() && op->getResult(1).use_empty())
+    if (op->getResult(0).use_empty() || op->getResult(1).use_empty())
       return failure();
 
-    auto getShape = [&](Operation *op, ArrayRef<int64_t> shape) -> bool {
+    auto get_shape = [&](Operation *op, ArrayRef<int64_t> &shape) -> bool {
       ShapedType shaped_type;
       if (dialect_->IsShape(op)) {
         auto type = op->getOperand(0).getType().cast<ShapedType>();
@@ -839,7 +906,7 @@ class MaterializeBroadcastGradientArgsOp : public FolderPatternBase {
 
     ArrayRef<int64_t> s0_shape;
     ArrayRef<int64_t> s1_shape;
-    if (!getShape(s0, s0_shape) || !getShape(s1, s1_shape)) return failure();
+    if (!get_shape(s0, s0_shape) || !get_shape(s1, s1_shape)) return failure();
 
     const int common_dims = std::min(s0_shape.size(), s1_shape.size());
     for (int i = 0; i < common_dims; ++i) {
@@ -866,8 +933,9 @@ class MaterializeBroadcastGradientArgsOp : public FolderPatternBase {
     reduce_dims[0] = bcast.grad_x_reduce_idx();
     reduce_dims[1] = bcast.grad_y_reduce_idx();
 
-    auto type_attr = op->getAttr("T").dyn_cast_or_null<TypeAttr>();
+    auto type_attr = op->getAttrOfType<TypeAttr>("T");
     if (!type_attr) return failure();
+    if (!type_attr.getValue().isIntOrIndexOrFloat()) return failure();
 
     SmallVector<Value, 2> const_values;
     for (int j = 0; j < 2; ++j) {
@@ -875,22 +943,26 @@ class MaterializeBroadcastGradientArgsOp : public FolderPatternBase {
       ElementsAttr const_attr = CreateElementsAttrOfTypeValues(
           type_attr.getValue(), {reduction_indices},
           llvm::makeArrayRef<int64_t>(reduce_dims[j].data(),
-                                      reduce_dims[j].size()));
+                                      reduction_indices));
       FailureOr<TFOp> const_op = CreateConstantTensorOp(
           rewriter, op->getLoc(), TFOp(op).name(), *(op->result_type_begin()),
           TFOp(op).controlRet(), const_attr);
       if (failed(const_op)) return failure();
       (*const_op).setName(Twine(TFOp(op).name(), "/bcastargs_") +
                           std::to_string(j));
+      if (!TFOp(op).device().empty())
+        (*const_op).setRequestedDevice(TFOp(op).deviceAttr());
       const_values.push_back((*const_op)->getResult(0));
     }
 
-    for (OpOperand &user : op->getResult(0).getUses()) {
+    for (OpOperand &user :
+         llvm::make_early_inc_range(op->getResult(0).getUses())) {
       rewriter.startRootUpdate(user.getOwner());
       user.set(const_values[0]);
       rewriter.finalizeRootUpdate(user.getOwner());
     }
-    for (OpOperand &user : op->getResult(1).getUses()) {
+    for (OpOperand &user :
+         llvm::make_early_inc_range(op->getResult(1).getUses())) {
       rewriter.startRootUpdate(user.getOwner());
       user.set(const_values[1]);
       rewriter.finalizeRootUpdate(user.getOwner());
@@ -918,12 +990,13 @@ class MaterializeReductionIndices : public FolderPatternBase {
     auto indices_shape = indices->getResult(0).getType().cast<ShapedType>();
     if (!indices_shape.hasRank()) return failure();
     if (!indices_shape.getElementType().isInteger(32) &&
-        indices_shape.getElementType().isInteger(64))
+        indices_shape.getElementType().isInteger(64)) {
       return failure();
+    }
 
     auto input_shape = op->getOperand(0).getType().cast<ShapedType>();
     // Unexpected graph, don't try to change it.
-    if (input_shape.getRank() < 1) return failure();
+    if (!input_shape.hasRank() || input_shape.getRank() < 1) return failure();
 
     auto output_shape = op->getResult(0).getType().cast<ShapedType>();
     const int output_rank =
@@ -961,8 +1034,8 @@ class MaterializeReductionIndices : public FolderPatternBase {
         llvm::makeArrayRef(elements));
 
     FailureOr<TFOp> const_op = CreateConstantTensorOp(
-        rewriter, indices->getLoc(), TFOp(indices).name(), const_attr.getType(),
-        TFOp(indices).controlRet(), const_attr);
+        rewriter, indices->getLoc(), Twine(TFOp(op).name(), "/indices").str(),
+        const_attr.getType(), TFOp(indices).controlRet(), const_attr);
     if (failed(const_op)) return failure();
 
     if (TFOp(op).deviceAttr())
@@ -991,6 +1064,7 @@ class MaterializeFillNode : public FolderPatternBase {
 
     auto output_type = op->getResult(0).getType().cast<ShapedType>();
     if (!output_type.hasStaticShape()) return failure();
+    if (!output_type.isIntOrIndexOrFloat()) return failure();
 
     Operation *dim = op->getOperand(0).getDefiningOp();
     Operation *value = op->getOperand(1).getDefiningOp();
@@ -1040,6 +1114,8 @@ class MaterializeConstantValuedNode : public FolderPatternBase {
     int value =
         dialect_->IsZerosLike(op) ? 0 : (dialect_->IsOnesLike(op) ? 1 : -1);
     if (value < 0) return failure();
+
+    if (!output_type.getElementType().isIntOrIndexOrFloat()) return failure();
 
     ElementsAttr const_attr;
     if (output_type.getElementType().isIntOrIndex()) {
@@ -1104,7 +1180,12 @@ class MergeNodeFoldingBase : public FolderPatternBase {
     //  dependency, initialized to the index of the folded input
     //  * the fanout of the merge nodes is rewired to be driven by either C1 or
     //  C2.
-    if (op->use_empty()) return failure();
+
+    // The node may have been optimized.
+    if (llvm::all_of(op->getResults().drop_back(),
+                     [](Value v) { return v.use_empty(); })) {
+      return failure();
+    }
 
     int idx = 0;
     for (Value operand : TFOp(op).getNonControlOperands()) {
@@ -1118,7 +1199,9 @@ class MergeNodeFoldingBase : public FolderPatternBase {
           *(operand_op->result_type_begin()), TFOp(op).controlRet(),
           operand_op->getAttrOfType<ElementsAttr>("value"), op->getAttrs());
       if (failed(const_out)) return failure();
-      (*const_out).setName(Twine(TFOp(op).name(), "/_const"));
+      (*const_out).setName(Twine(TFOp(op).name(), "/const"));
+      if (!TFOp(op).device().empty())
+        (*const_out).setRequestedDevice(TFOp(op).device());
 
       FailureOr<TFOp> const_index = CreateConstantTensorOp(
           rewriter, op->getLoc(), TFOp(op).name(), rewriter.getIntegerType(32),
@@ -1126,21 +1209,24 @@ class MergeNodeFoldingBase : public FolderPatternBase {
           DenseElementsAttr::get(zero_dim_i32_tensor_type_, idx++));
       if (failed(const_index)) return failure();
 
-      (*const_index).setName(Twine(TFOp(op).name(), "/_index"));
+      (*const_index).setName(Twine(TFOp(op).name(), "/index"));
       if (!TFOp(op).device().empty())
         (*const_index).setRequestedDevice(TFOp(op).device());
 
-      for (OpOperand &user : op->getResults()[0].getUses()) {
+      for (OpOperand &user :
+           llvm::make_early_inc_range(op->getResults()[0].getUses())) {
         rewriter.startRootUpdate(user.getOwner());
         user.set((*const_out)->getResult(0));
         rewriter.finalizeRootUpdate(user.getOwner());
       }
-      for (OpOperand &user : op->getResults()[1].getUses()) {
+      for (OpOperand &user :
+           llvm::make_early_inc_range(op->getResults()[1].getUses())) {
         rewriter.startRootUpdate(user.getOwner());
-        user.set((*const_index)->getResult(1));
+        user.set((*const_index)->getResult(0));
         rewriter.finalizeRootUpdate(user.getOwner());
       }
 
+      // Already found an avaiable input.
       return success();
     }
     return failure();
@@ -1583,6 +1669,13 @@ class SimplifyPackOp : public FolderPatternBase {
       : FolderPatternBase("tfg.Pack", helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
+    auto [non_control_operands, control_operands] = TFOp(op).splitOperands();
+    if (non_control_operands.size() != 1) return failure();
+
+    // It's unsafe to add a control dependency on the feed node, because it
+    // might have been never executed otherwiwise.
+    if (non_control_operands[0].isa<BlockArgument>()) return failure();
+
     IntegerAttr axis = op->getAttrOfType<IntegerAttr>("axis");
     ElementsAttr const_attr = CreateElementsAttrOfTypeValues(
         rewriter.getIntegerType(32), /*shape=*/{},
@@ -1605,7 +1698,7 @@ class SimplifyPackOp : public FolderPatternBase {
     state.addAttribute("Tdim", TypeAttr::get(rewriter.getI32Type()));
 
     state.addOperands({op->getOperand(0), (*const_op)->getResult(0)});
-    state.addOperands(TFOp(op).getControlOperands());
+    state.addOperands(control_operands);
     Operation *expand_dims_op = rewriter.create(state);
     rewriter.replaceOp(op, expand_dims_op->getResults());
     return success();
@@ -1634,7 +1727,7 @@ class MoveConstantsPastEnterOpBase : public FolderPatternBase {
         TFOp(op).controlRet(), input->getAttr("value"), input->getAttrs());
     if (failed(cloned_const_op)) return failure();
 
-    (*cloned_const_op).setName(Twine(TFOp(input).name(), "/_enter"));
+    (*cloned_const_op).setName(Twine(TFOp(op).name(), "/_enter"));
     if (!TFOp(op).device().empty())
       (*cloned_const_op).setRequestedDevice(TFOp(op).deviceAttr());
 
@@ -1673,21 +1766,23 @@ class SimplifySwitchOp : public FolderPatternBase {
                                 PatternRewriter &rewriter) const override {
     if (op->getOperand(0) != op->getOperand(1)) return failure();
 
-    // TODO(chiahungduan): This check looks weird in grappler's constant
-    // folding. Revisit this and see if we can remove it.
-    auto hasRegularUsers = [&](Operation *op) {
-      for (Value v : op->getResults().drop_back())
-        if (!v.use_empty()) return true;
-      return false;
-    };
-
     // If the optimization was already applied, the switch would have exactly
     // one Identity node consuming each of its outputs, each without any
     // non-control outputs.
-    if (llvm::all_of(op->getResult(0).getUsers(), [&](Operation *user) {
-          return (dialect_->IsIdentity(user) ||
-                  dialect_->IsIdentityNSingleInput(user)) &&
-                 !hasRegularUsers(user);
+    auto is_switch_control_anchor = [&](Operation *control_op) {
+      if (!dialect_->IsIdentity(control_op) &&
+          !dialect_->IsIdentityNSingleInput(control_op)) {
+        return false;
+      }
+
+      for (Value v : control_op->getResults().drop_back())
+        if (!v.use_empty()) return false;
+      return true;
+    };
+
+    if (llvm::any_of(op->getResults().drop_back(), [&](Value res) {
+          return res.hasOneUse() &&
+                 is_switch_control_anchor(*res.getUsers().begin());
         })) {
       return failure();
     }
@@ -1699,21 +1794,17 @@ class SimplifySwitchOp : public FolderPatternBase {
     // We start by looking for an identity node connected to the output of the
     // switch node, and use it to anchor the control dependency.
     auto get_control_identity_of_switch = [&](TFOp switch_op, int res_index) {
-      for (Operation *user : switch_op->getResult(res_index).getUsers()) {
-        if (dialect_->IsIdentity(user) ||
-            dialect_->IsIdentityNSingleInput(user))
-          return user;
-      }
-
-      OperationState identity_op_state(op->getLoc(), "tfg.Identity");
-      identity_op_state.addAttribute("T", op->getAttr("T"));
-      identity_op_state.addOperands(op->getResult(res_index));
-      identity_op_state.addTypes({op->getResult(res_index).getType(),
+      OperationState identity_op_state(switch_op->getLoc(), "tfg.Identity");
+      identity_op_state.addAttribute("T", switch_op->getAttr("T"));
+      identity_op_state.addOperands(switch_op->getResult(res_index));
+      identity_op_state.addTypes({switch_op->getResult(res_index).getType(),
                                   ControlType::get(rewriter.getContext())});
       Operation *identity_op = rewriter.create(identity_op_state);
       TFOp(identity_op)
           .setName(Twine(switch_op.name(), "/ControlDependencyCtrl_") +
                    Twine(res_index));
+      if (!switch_op.device().empty())
+        TFOp(identity_op).setRequestedDevice(switch_op.deviceAttr());
       StringRef device = switch_op.device();
       if (!device.empty()) TFOp(identity_op).setRequestedDevice(device);
       return identity_op;
@@ -1723,33 +1814,37 @@ class SimplifySwitchOp : public FolderPatternBase {
     Operation *false_control_identity = get_control_identity_of_switch(op, 0);
 
     FailureOr<TFOp> true_op = CreateConstantTensorOp(
-        rewriter, op->getLoc(), TFOp(op).name(), *(op->result_type_begin()),
+        rewriter, op->getLoc(), TFOp(op).name(), op->getResultTypes()[1],
         TFOp(true_control_identity).controlRet(),
         DenseElementsAttr::get(zero_dim_i1_tensor_type_, true));
     if (failed(true_op)) return failure();
+
     (*true_op).setName(Twine(TFOp(op).name(), "/_const_true"));
     if (!TFOp(op).device().empty())
       (*true_op).setRequestedDevice(TFOp(op).device());
 
     FailureOr<TFOp> false_op = CreateConstantTensorOp(
-        rewriter, op->getLoc(), TFOp(op).name(), *(op->result_type_begin()),
+        rewriter, op->getLoc(), TFOp(op).name(), op->getResultTypes()[0],
         TFOp(false_control_identity).controlRet(),
         DenseElementsAttr::get(zero_dim_i1_tensor_type_, false));
     if (failed(false_op)) return failure();
+
     (*false_op).setName(Twine(TFOp(op).name(), "/_const_false"));
     if (!TFOp(op).device().empty())
       (*false_op).setRequestedDevice(TFOp(op).device().data());
 
     // Note that we can't use replaceAllUsesWith here because we don't want to
     // replace the user of control identity.
-    for (OpOperand &user : op->getResult(1).getUses()) {
+    for (OpOperand &user :
+         llvm::make_early_inc_range(op->getResult(1).getUses())) {
       if (user.getOwner() == true_control_identity) continue;
 
       rewriter.startRootUpdate(user.getOwner());
       user.set((*true_op)->getResult(0));
       rewriter.finalizeRootUpdate(user.getOwner());
     }
-    for (OpOperand &user : op->getResult(0).getUses()) {
+    for (OpOperand &user :
+         llvm::make_early_inc_range(op->getResult(0).getUses())) {
       if (user.getOwner() == false_control_identity) continue;
 
       rewriter.startRootUpdate(user.getOwner());
@@ -1780,17 +1875,19 @@ class SimplifyReductionOp : public FolderPatternBase {
     if (indices_type.hasStaticShape() && indices_type.getNumElements() == 0) {
       Operation *identity_op = ReplaceReductionWithIdentity(rewriter, op);
       if (!identity_op) return failure();
+
       rewriter.replaceOp(op, identity_op->getResults());
       return success();
     }
 
     // Check `IsReductionCandidateForSimplification`
     auto input_type = op->getOperand(0).getType().cast<ShapedType>();
-
-    ShapedType op_type = (*op->result_type_begin()).cast<ShapedType>();
+    auto op_type = (*op->result_type_begin()).cast<ShapedType>();
+    if (!input_type.hasStaticShape() || !op_type.hasStaticShape())
+      return failure();
 
     bool is_single_element_op =
-        (input_type.hasStaticShape() && input_type.getNumElements() == 1) &&
+        (input_type.getNumElements() == 1) &&
         (op_type.hasStaticShape() && op_type.getNumElements() == 1);
 
     bool keep_dims = false;
@@ -1829,10 +1926,12 @@ class SimplifyReductionOp : public FolderPatternBase {
       Operation *reshape_op =
           ReplaceReductionWithReshape(rewriter, op, reduction_indices);
       if (!reshape_op) return failure();
+
       rewriter.replaceOp(op, reshape_op->getResults());
     } else if (simplifiable_to_identity) {
       Operation *identity_op = ReplaceReductionWithIdentity(rewriter, op);
       if (!identity_op) return failure();
+
       rewriter.replaceOp(op, identity_op->getResults());
     } else {
       return failure();
@@ -1872,6 +1971,9 @@ class SimplifyReductionOp : public FolderPatternBase {
     state.addTypes(op->getResultTypes());
 
     Operation *reshape_op = builder.create(state);
+    TFOp(reshape_op).setName(TFOp(op).nameAttr());
+    if (!TFOp(op).device().empty())
+      TFOp(reshape_op).setRequestedDevice(TFOp(op).deviceAttr());
     return reshape_op;
   }
 
@@ -1889,10 +1991,13 @@ class SimplifyReductionOp : public FolderPatternBase {
     util::EraseRegularNodeAttributes(state.attributes);
     state.addAttribute("T", TypeAttr::get(t_attr_type));
     state.addTypes(op->getResultTypes());
-
     state.addOperands(
         {op->getOperand(0), LookupControlDependency(op->getOperand(1))});
+
     Operation *identity_op = builder.create(state);
+    TFOp(identity_op).setName(TFOp(op).nameAttr());
+    if (!TFOp(op).device().empty())
+      TFOp(identity_op).setRequestedDevice(TFOp(op).deviceAttr());
     return identity_op;
   }
 };
@@ -1933,8 +2038,11 @@ class SimplifyReshapeOp : public FolderPatternBase {
     util::EraseRegularNodeAttributes(state.attributes);
     state.addAttribute("T", op->getAttrOfType<TypeAttr>("T"));
 
-    Operation *identity = rewriter.create(state);
-    rewriter.replaceOp(op, identity->getResults());
+    Operation *identity_op = rewriter.create(state);
+    TFOp(identity_op).setName(TFOp(op).nameAttr());
+    if (!TFOp(op).device().empty())
+      TFOp(identity_op).setRequestedDevice(TFOp(op).deviceAttr());
+    rewriter.replaceOp(op, identity_op->getResults());
 
     return success();
   }
@@ -2455,6 +2563,14 @@ class PartialAssocOpConstFolding : public FolderPatternBase {
     auto [non_control_operands, control_operands] = TFOp(op).splitOperands();
     int non_control_inputs_size = non_control_operands.size();
 
+    if (llvm::any_of(non_control_operands, [](Value v) {
+          Operation *v_op = v.getDefiningOp();
+          return v_op &&
+                 TFOp(v_op).name().rfind("_partial_split_") != StringRef::npos;
+        })) {
+      return failure();
+    }
+
     for (Value operand : non_control_operands) {
       Operation *may_const_op = operand.getDefiningOp();
       if (may_const_op && dialect_->IsConstant(may_const_op))
@@ -2487,6 +2603,7 @@ class PartialAssocOpConstFolding : public FolderPatternBase {
     Operation *add_n = rewriter.create(state);
     TFOp(add_n).setName(Twine(TFOp(op).name(), "/_partial_split_") +
                         std::to_string(const_inputs.size()));
+    // Op inherits all the attrs of op, don't need to update the device attr.
 
     OperationState new_op_state(op->getLoc(), op->getName());
     // Note that in grappler, it puts the AddOp at the position of the first
@@ -2829,6 +2946,17 @@ class PartialConcatConstFolding : public FolderPatternBase {
       return failure();
     }
 
+    // TODO(chiahungduan): The optimization is able to be applied multiple
+    // times. Find a better way to name the new ops without having duplicate
+    // name. Now we just optimize it once.
+    if (llvm::any_of(non_control_operands, [](Value v) {
+          Operation *v_op = v.getDefiningOp();
+          return v_op &&
+                 TFOp(v_op).name().rfind("_partial_split_") != StringRef::npos;
+        })) {
+      return failure();
+    }
+
     DenseSet<int> inputs_to_delete;
     for (auto interval : constant_input_runs) {
       // Push the constant inputs in the interval to a child node than can be
@@ -2849,6 +2977,7 @@ class PartialConcatConstFolding : public FolderPatternBase {
       Operation *new_op = rewriter.create(state);
       TFOp(new_op).setName(Twine(TFOp(op).name(), "/_partial_split_") +
                            std::to_string(interval.first));
+      // Op inherits all the attrs of op, don't need to update the device attr.
 
       // Overwrite the first constant input with the result of the added
       // child node.
@@ -3271,7 +3400,11 @@ void ConstantFolding::runOnOperation() {
     (void)applyPatternsAndFoldGreedily(*region, final_patterns_);
   });
 
-  // TODO(chiahungduan): Remove dead op if meets certain conditions.
+  // TODO(chiahungduan): This is used to avoid evaluating a node multiple times.
+  // See more details in EvaluateConstant pattern. Maybe we can remove this by
+  // checking if the user of an op is empty.
+  auto has_folded = StringAttr::get(&getContext(), "has_folded");
+  getOperation()->walk([&](Operation *op) { op->removeAttr(has_folded); });
 }
 
 std::unique_ptr<Pass> CreateConstantFoldingPass() {

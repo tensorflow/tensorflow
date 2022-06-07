@@ -11,7 +11,7 @@ module {
     %TensorArrayV3_4:2, %ctl_5 = TensorArrayV3(%Const) name("static") {clear_after_read = true, dtype = f32, dynamic_size = false, element_shape = #tf_type.shape<*>, identical_element_shapes = false, tensor_array_name = ""} : (tensor<*xi32>) -> (tensor<*x!tf_type.resource>, tensor<*xf32>)
     // CHECK: TensorArraySizeV3{{.*}} name("dynamic_sz")
     %TensorArraySizeV3, %ctl_6 = TensorArraySizeV3(%TensorArrayV3#0, %TensorArrayV3#1) name("dynamic_sz") : (tensor<*x!tf_type.resource>, tensor<*xf32>) -> (tensor<*xi32>)
-    // CHECK: Const [%[[CTRL]], %[[CTRL]]] name("static_sz/const_folded") {{.*}} -> (tensor<i32>)
+    // CHECK: Const [%[[CTRL]], %[[CTRL]]] name("static_sz") {{.*}} -> (tensor<i32>)
     %TensorArraySizeV3_7, %ctl_8 = TensorArraySizeV3(%TensorArrayV3_4#0, %TensorArrayV3_4#1) name("static_sz") : (tensor<*x!tf_type.resource>, tensor<*xf32>) -> (tensor<*xi32>)
     // CHECK: TensorArraySizeV3{{.*}} name("placeholder_sz")
     %TensorArraySizeV3_9, %ctl_10 = TensorArraySizeV3(%Placeholder, %Const_1) name("placeholder_sz") : (tensor<*x!tf_type.resource>, tensor<*xf32>) -> (tensor<*xi32>)
