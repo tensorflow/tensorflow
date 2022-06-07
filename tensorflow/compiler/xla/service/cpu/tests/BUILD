@@ -302,20 +302,3 @@ tf_cc_test(
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ],
 )
-
-tf_cc_test(
-    name = "cpu_while_test",
-    srcs = ["cpu_while_test.cc"],
-    deps = [
-        ":cpu_codegen_test",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
-        "@llvm-project//llvm:Target",
-        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
-    ],
-)
