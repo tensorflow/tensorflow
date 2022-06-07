@@ -7250,32 +7250,38 @@ LogicalResult ValidateScatterDimensionNumbers(
 
   return success();
 }
-
 /*
  * We intend to verify the following properties:
  *  P0. scatter_indices argument must be an integral tensor. Enforced by ODS.
  *  P1. Scatter index leaf dimension must be within [0, rank(scatter_indices)"
  *      " + 1).
  *  P2. Verify reducer shape.
- *  P3. rank-of('updates') == size-of('update_window_dims') +
+ *  P3. rank-of('updates[i]') == size-of('update_window_dims') +
  *      rank-of('scatter_indices') - 1, where 'scatter_indices' is expanded by a
- *      trailing 1 dimension if 'index_vector_dim' ==
- *      rank-of('scatter_indices')
+ *      trailing 1 dimension if 'index_vector_dim' == rank-of('scatter_indices')
+ *      for all values of `i`.
  *  P4. Validate the scatter-dimensions-numbers.
- *  P5. Valide the bounds of 'updates' w.r.t the operand.
- *  P6. Validate the bounds of 'updates' w.r.t the 'scatter_indices'.
- *  P7. Check return type.
+ *  P5. Valide the bounds of each of the 'updates' w.r.t the operands.
+ *  P6. Validate the bounds of each of the 'updates' w.r.t the
+ * 'scatter_indices'.
+ *  P7. Check return types.
  */
 LogicalResult ScatterOp::verify() {
   // Get the first operand and update, since variadic Scatter is not yet
   // implemented
-  auto operandType = operands().getTypes()[0].cast<TensorType>();
-  auto updatesType = updates().getTypes()[0].cast<TensorType>();
+  auto num_operands = operands().size();
   auto scatterIndicesType = scatter_indices().getType().dyn_cast<TensorType>();
 
-  bool operandTypeRanked = operandType.isa<RankedTensorType>();
+  SmallVector<TensorType, 1> operandTypes =
+      llvm::to_vector(llvm::map_range(operands().getTypes(), [](Type type) {
+        return type.cast<TensorType>();
+      }));
+  SmallVector<TensorType, 1> updatesTypes = llvm::to_vector(llvm::map_range(
+      updates().getTypes(), [](Type type) { return type.cast<TensorType>(); }));
+  bool allOperandTypesRanked =
+      llvm::all_of(operands().getTypes(),
+                   [](Type type) { return type.isa<RankedTensorType>(); });
   bool scatterIndicesTypeRanked = scatterIndicesType.isa<RankedTensorType>();
-  bool updatesTypeRanked = updatesType.isa<RankedTensorType>();
 
   // P1.
   int64_t indexVectorDim = scatter_dimension_numbers().getIndexVectorDim();
@@ -7293,11 +7299,16 @@ LogicalResult ScatterOp::verify() {
   // P2.
   Block& block = update_computation().front();
   SmallVector<TensorType> accumulator_subshapes;
+  SmallVector<TensorType> inputTypes, initValueTypes;
+  for (int i = 0; i < num_operands; i++) {
+    inputTypes.push_back(operandTypes[i]);
+    initValueTypes.push_back(
+        RankedTensorType::get({}, updatesTypes[i].getElementType()));
+  }
   if (failed(verifyReducerShape(
-          this->getLoc(), block, {operandType},
-          {RankedTensorType::get({}, updatesType.getElementType())},
-          /*numInputs=*/1, /*allowedDimensions=*/{},
-          /*allInputsUnranked=*/!operandTypeRanked, accumulator_subshapes)))
+          this->getLoc(), block, inputTypes, initValueTypes, num_operands,
+          /*allowedDimensions=*/{},
+          /*allInputsUnranked=*/!allOperandTypesRanked, accumulator_subshapes)))
     return failure();
 
   // P3.
@@ -7310,104 +7321,114 @@ LogicalResult ScatterOp::verify() {
       expanded_scatter_indices_shape.push_back(1);
   }
 
-  if (scatterIndicesTypeRanked && updatesTypeRanked) {
-    int64_t expected_updates_rank =
-        expanded_scatter_indices_shape.size() - 1 + update_window_dims.size();
-    if (updatesType.getRank() != expected_updates_rank)
-      return emitOpError()
-             << "expects updates tensor must be of rank "
-             << expected_updates_rank
-             << " ( == rank-of('scatter_indices') - 1 + "
-                "size-of('update_window_dims'), where 'scatter_indices' is "
-                "expanded by a trailing 1 dimension if 'index_vector_dim' == "
-                "rank-of('scatter_indices')), but got "
-             << updatesType.getRank() << ".";
+  for (int i = 0; i < num_operands; i++) {
+    if (scatterIndicesTypeRanked && updatesTypes[i].isa<RankedTensorType>()) {
+      int64_t expected_updates_rank =
+          expanded_scatter_indices_shape.size() - 1 + update_window_dims.size();
+      if (updatesTypes[i].getRank() != expected_updates_rank)
+        return emitOpError()
+               << "expects updates tensor must be of rank "
+               << expected_updates_rank
+               << " ( == rank-of('scatter_indices') - 1 + "
+                  "size-of('update_window_dims'), where 'scatter_indices' is "
+                  "expanded by a trailing 1 dimension if 'index_vector_dim' == "
+                  "rank-of('scatter_indices')), but got "
+               << updatesTypes[i].getRank() << ".";
+    }
   }
 
   // P4.
-  if (failed(ValidateScatterDimensionNumbers(
-          operandType, expanded_scatter_indices_shape, updatesType,
-          operandTypeRanked, scatterIndicesTypeRanked, updatesTypeRanked,
-          scatter_dimension_numbers(), getLoc())))
-    return failure();
+  for (int i = 0; i < num_operands; i++) {
+    if (failed(ValidateScatterDimensionNumbers(
+            operandTypes[i], expanded_scatter_indices_shape, updatesTypes[i],
+            operandTypes[i].isa<RankedTensorType>(), scatterIndicesTypeRanked,
+            updatesTypes[i].isa<RankedTensorType>(),
+            scatter_dimension_numbers(), getLoc())))
+      return failure();
+  }
 
   // P5.
-  if (updatesTypeRanked) {
-    auto updatesShape = updatesType.getShape();
-    if (operandTypeRanked) {
-      auto operandShape = operandType.getShape();
-      auto inserted_window_dims =
-          scatter_dimension_numbers().getInsertedWindowDims();
+  for (int i = 0; i < num_operands; i++) {
+    if (updatesTypes[i].isa<RankedTensorType>()) {
+      auto updatesShape = updatesTypes[i].getShape();
+      if (operandTypes[i].isa<RankedTensorType>()) {
+        auto operandShape = operandTypes[i].getShape();
+        auto inserted_window_dims =
+            scatter_dimension_numbers().getInsertedWindowDims();
 
-      int64_t inserted_dims_seen = 0;
-      SmallVector<int64_t> max_update_slice_sizes;
-      const auto dimensionsSize = operandType.getRank();
-      max_update_slice_sizes.reserve(dimensionsSize);
-      for (int i = 0; i < dimensionsSize; ++i) {
-        if (inserted_dims_seen < inserted_window_dims.size() &&
-            inserted_window_dims[inserted_dims_seen] == i) {
-          ++inserted_dims_seen;
-        } else {
-          max_update_slice_sizes.push_back(operandShape[i]);
+        int64_t inserted_dims_seen = 0;
+        SmallVector<int64_t> max_update_slice_sizes;
+        const auto dimensionsSize = operandTypes[i].getRank();
+        max_update_slice_sizes.reserve(dimensionsSize);
+        for (int i = 0; i < dimensionsSize; ++i) {
+          if (inserted_dims_seen < inserted_window_dims.size() &&
+              inserted_window_dims[inserted_dims_seen] == i) {
+            ++inserted_dims_seen;
+          } else {
+            max_update_slice_sizes.push_back(operandShape[i]);
+          }
+        }
+
+        for (int i = 0; i < update_window_dims.size(); ++i) {
+          auto update_window_dim = update_window_dims[i];
+
+          if (isDynamicDimSize(updatesShape[update_window_dim]) ||
+              isDynamicDimSize(max_update_slice_sizes[i]))
+            continue;
+
+          if (updatesShape[update_window_dim] > max_update_slice_sizes[i]) {
+            return emitOpError()
+                   << "expects bounds of the window dimensions of "
+                      "updates to not exceed the "
+                      "bounds of the corresponding dimensions of "
+                      "operand. For dimension "
+                   << update_window_dim << ", updates bound is "
+                   << updatesShape[update_window_dim] << ", operand bound is "
+                   << max_update_slice_sizes[i] << ".";
+          }
         }
       }
 
-      for (int i = 0; i < update_window_dims.size(); ++i) {
-        auto update_window_dim = update_window_dims[i];
+      // P6.
+      if (scatterIndicesTypeRanked) {
+        int64_t scatter_dims_seen = 0;
+        for (int64_t i = 0; i < updatesShape.size(); ++i) {
+          bool is_update_window_dim = std::binary_search(
+              update_window_dims.begin(), update_window_dims.end(), i);
 
-        if (isDynamicDimSize(updatesShape[update_window_dim]) ||
-            isDynamicDimSize(max_update_slice_sizes[i]))
-          continue;
+          if (is_update_window_dim) continue;
+          if (scatter_dims_seen == indexVectorDim) ++scatter_dims_seen;
 
-        if (updatesShape[update_window_dim] > max_update_slice_sizes[i]) {
-          return emitOpError()
-                 << "expects bounds of the window dimensions of "
-                    "updates to not exceed the "
-                    "bounds of the corresponding dimensions of "
-                    "operand. For dimension "
-                 << update_window_dim << ", updates bound is "
-                 << updatesShape[update_window_dim] << ", operand bound is "
-                 << max_update_slice_sizes[i] << ".";
+          if (!isDynamicDimSize(updatesShape[i]) &&
+              !isDynamicDimSize(
+                  expanded_scatter_indices_shape[scatter_dims_seen]) &&
+              (updatesShape[i] !=
+               expanded_scatter_indices_shape[scatter_dims_seen])) {
+            return emitOpError()
+                   << "expects bounds of the scatter dimensions of "
+                      "updates to be same as the "
+                      "bounds of the corresponding dimensions of "
+                      "scatter indices. For "
+                      "scatter dimension "
+                   << i << ", updates bound is " << updatesShape[i]
+                   << " , scatter_indices "
+                      "bound is "
+                   << expanded_scatter_indices_shape[scatter_dims_seen] << ".";
+          }
+          ++scatter_dims_seen;
         }
-      }
-    }
-
-    // P6.
-    if (scatterIndicesTypeRanked) {
-      int64_t scatter_dims_seen = 0;
-      for (int64_t i = 0; i < updatesShape.size(); ++i) {
-        bool is_update_window_dim = std::binary_search(
-            update_window_dims.begin(), update_window_dims.end(), i);
-
-        if (is_update_window_dim) continue;
-        if (scatter_dims_seen == indexVectorDim) ++scatter_dims_seen;
-
-        if (!isDynamicDimSize(updatesShape[i]) &&
-            !isDynamicDimSize(
-                expanded_scatter_indices_shape[scatter_dims_seen]) &&
-            (updatesShape[i] !=
-             expanded_scatter_indices_shape[scatter_dims_seen])) {
-          return emitOpError()
-                 << "expects bounds of the scatter dimensions of "
-                    "updates to be same as the "
-                    "bounds of the corresponding dimensions of "
-                    "scatter indices. For "
-                    "scatter dimension "
-                 << i << ", updates bound is " << updatesShape[i]
-                 << " , scatter_indices "
-                    "bound is "
-                 << expanded_scatter_indices_shape[scatter_dims_seen] << ".";
-        }
-        ++scatter_dims_seen;
       }
     }
   }
 
   // P7.
-  if (!compatibleShapeAndElementType(operandType, getResult(0).getType()))
-    return emitOpError()
-           << "expects the return type to be same as the operand type: "
-           << operandType << ", but got " << getResult(0).getType() << ".";
+  for (int i = 0; i < num_operands; i++) {
+    if (!compatibleShapeAndElementType(operandTypes[i], getResult(i).getType()))
+      return emitOpError()
+             << "expects the return type to be same as the operand type: "
+             << operandTypes[i] << ", but got " << getResult(i).getType()
+             << ".";
+  }
 
   return success();
 }

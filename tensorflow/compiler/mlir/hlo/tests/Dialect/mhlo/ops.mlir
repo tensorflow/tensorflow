@@ -3876,8 +3876,8 @@ func.func @scatter_update_scalar(%arg0: tensor<3xi32>, %arg1: tensor<1x1xi32>,
 func.func @scatter_variadic(%arg0: tensor<3xi32>, %arg1: tensor<1x1xi32>,
                             %arg2: tensor<1xi32>) -> tensor<3xi32> {
   %0, %1 = "mhlo.scatter"(%arg0, %arg0, %arg1, %arg2, %arg2) ({
-  ^bb0(%arg3: tensor<i32>, %arg4: tensor<i32>):
-    "mhlo.return"(%arg4) : (tensor<i32>) -> ()
+  ^bb0(%arg3: tensor<i32>, %arg4: tensor<i32>, %arg5: tensor<i32>, %arg6: tensor<i32>):
+    "mhlo.return"(%arg3, %arg5) : (tensor<i32>, tensor<i32>) -> ()
   }) {
     indices_are_sorted = false,
     scatter_dimension_numbers = #mhlo.scatter<
