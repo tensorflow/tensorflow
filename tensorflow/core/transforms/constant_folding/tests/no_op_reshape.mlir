@@ -1,7 +1,7 @@
 // RUN: tfg-transforms-opt -tfg-constant-folding %s | FileCheck %s
 
 module {
-  tfg.graph #tf_type.version<producer = 1143, min_consumer = 0> {
+  tfg.func @test() {
     // CHECK:, %[[CTRL:.*]] = Const name("d1")
     %Const, %ctl = Const name("d1") {dtype = f32, value = dense<3.140000e+00> : tensor<17xf32>} : () -> (tensor<17xf32>)
     // CHECK: %[[VAR_0:.*]], %[[CTRL_0:.*]] = VariableV2 name("v1")
@@ -34,6 +34,7 @@ module {
     // CHECK: Reshape{{.*}} name("r2")
     %Reshape_30, %ctl_31 = Reshape(%VariableV2_26, %Const_28) name("r2") {T = f32, Tshape = i32} : (tensor<17x1xf32>, tensor<1xi32>) -> (tensor<17xf32>)
     %Square_32, %ctl_33 = Square(%Reshape_30) name("s2") {T = f32} : (tensor<17xf32>) -> (tensor<17xf32>)
+    return
   }
 }
 

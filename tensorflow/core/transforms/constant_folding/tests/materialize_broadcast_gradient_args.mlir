@@ -1,7 +1,7 @@
 // RUN: tfg-transforms-opt -tfg-constant-folding %s | FileCheck %s
 
 module {
-  tfg.graph #tf_type.version<producer = 1010, min_consumer = 0> {
+  tfg.func @test() {
     %Placeholder, %ctl = Placeholder name("a") {dtype = f32, shape = #tf_type.shape<2x2>} : () -> (tensor<2x2xf32>)
     %Square, %ctl_0 = Square(%Placeholder) name("b") {T = f32} : (tensor<2x2xf32>) -> (tensor<2x2xf32>)
     %Mul, %ctl_1 = Mul(%Placeholder, %Square) name("c") {T = f32} : (tensor<2x2xf32>, tensor<2x2xf32>) -> (tensor<*xf32>)
@@ -28,5 +28,6 @@ module {
     %Identity_15, %ctl_16 = Identity(%BroadcastGradientArgs_13#0) name("p1") {T = i32} : (tensor<*xi32>) -> (tensor<*xi32>)
     // CHECK: Identity{{.*}} name("p2")
     %Identity_17, %ctl_18 = Identity(%BroadcastGradientArgs_13#1) name("p2") {T = i32} : (tensor<*xi32>) -> (tensor<*xi32>)
+    return
   }
 }

@@ -1,7 +1,7 @@
 // RUN: tfg-transforms-opt -tfg-constant-folding %s | FileCheck %s
 
 module {
-  tfg.graph #tf_type.version<producer = 1010, min_consumer = 0> {
+  tfg.func @test() {
     %Const, %ctl = Const name("cf_half") {dtype = f32, value = dense<5.000000e-01> : tensor<1xf32>} : () -> (tensor<1xf32>)
     // CHECK: %[[PLACEHOLDER:.*]], {{.*}} = Placeholder name("xf")
     %Placeholder, %ctl_0 = Placeholder name("xf") {dtype = f32, shape = #tf_type.shape<2x2>} : () -> (tensor<2x2xf32>)
@@ -19,5 +19,6 @@ module {
     // CHECK: Mul(%[[PLACEHOLDER]], %[[CONST_REAL]]) name("realdiv")
     %RealDiv, %ctl_10 = RealDiv(%Placeholder, %Const_5) name("realdiv") {T = f32} : (tensor<2x2xf32>, tensor<1xf32>) -> (tensor<*xf32>)
     %Identity_2, %ctl_13 = Identity(%RealDiv) name("i3") {T = f32} : (tensor<*xf32>) -> (tensor<*xf32>)
+    return
   }
 }

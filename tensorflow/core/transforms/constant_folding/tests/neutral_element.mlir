@@ -2,7 +2,7 @@
 
 
 module {
-  tfg.graph #tf_type.version<producer = 1010, min_consumer = 0> {
+  tfg.func @test() {
     // CHECK: %[[P:.*]], %[[C:.*]] = Placeholder name("x")
     %Placeholder, %ctl = Placeholder name("x") {dtype = f32, shape = #tf_type.shape<2x2>} : () -> (tensor<2x2xf32>)
     // CHECK: %[[P0:.*]], %[[C0:.*]] = Placeholder name("y")
@@ -81,6 +81,7 @@ module {
     // CHECK: Neg{{.*}} name("sub2")
     %Sub_66, %ctl_67 = Sub(%Fill, %Placeholder_0) name("sub2") {T = f32} : (tensor<2x2xf32>, tensor<2x2xf32>) -> (tensor<2x2xf32>)
     %Pack, %ctl_68 = Pack(%Mul, %Mul_31, %Mul_37, %Mul_39, %MulNoNan, %MulNoNan_42, %Div, %Div_45, %FloorDiv, %MatMul, %MatMul_49, %Add, %Add_56, %BiasAdd, %BiasAdd_63, %Sub, %Sub_66) name("stack") {N = 17 : i64, T = f32, axis = 0 : i64} : (tensor<2x2xf32>, tensor<2x2xf32>, tensor<2x2xf32>, tensor<2x2xf32>, tensor<2x2xf32>, tensor<2x2xf32>, tensor<2x2xf32>, tensor<2x2xf32>, tensor<2x2xf32>, tensor<2x2xf32>, tensor<2x2xf32>, tensor<2x2xf32>, tensor<2x2xf32>, tensor<2x2xf32>, tensor<2x2xf32>, tensor<2x2xf32>, tensor<2x2xf32>) -> (tensor<17x2x2xf32>)
+    return
   }
 }
 

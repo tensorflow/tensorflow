@@ -1,7 +1,7 @@
 // RUN: tfg-transforms-opt -tfg-constant-folding %s | FileCheck %s
 
 module {
-  tfg.graph #tf_type.version<producer = 1010, min_consumer = 0> {
+  tfg.func @test() {
     %Const, %ctl = Const name("Const/Const") {dtype = i32, value = dense<[3, 5]> : tensor<2xi32>} : () -> (tensor<2xi32>)
     %RandomStandardNormal, %ctl_0 = RandomStandardNormal(%Const) name("x") {T = i32, dtype = f32, seed = 0 : i64, seed2 = 0 : i64} : (tensor<2xi32>) -> (tensor<*xf32>)
     %Const_1, %ctl_2 = Const name("Const_1/Const") {dtype = i32, value = dense<[3, 5]> : tensor<2xi32>} : () -> (tensor<2xi32>)
@@ -32,5 +32,6 @@ module {
     %Identity_27, %ctl_28 = Identity(%Merge_14#1) name("idx3") {T = i32} : (tensor<*xi32>) -> (tensor<*xi32>)
     %Identity_29, %ctl_30 = Identity(%Merge_16#0) name("out4") {T = f32} : (tensor<*xf32>) -> (tensor<*xf32>)
     %Identity_31, %ctl_32 = Identity(%Merge_16#1) name("idx4") {T = i32} : (tensor<*xi32>) -> (tensor<*xi32>)
+    return
   }
 }

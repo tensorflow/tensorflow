@@ -1,7 +1,7 @@
 // RUN: tfg-transforms-opt -tfg-constant-folding %s | FileCheck %s
 
 module {
-  tfg.graph #tf_type.version<producer = 1010, min_consumer = 0> {
+  tfg.func @test() {
     %Placeholder, %ctl = Placeholder name("x") {dtype = i1, shape = #tf_type.shape<>} : () -> (tensor<i1>)
     %Switch:2, %ctl_0 = Switch(%Placeholder, %Placeholder) name("switch") {T = i1} : (tensor<i1>, tensor<i1>) -> (tensor<*xi1>, tensor<*xi1>)
     // CHECK-DAG: , %[[CTRL1:.*]] = Identity(%[[SWITCH:.*]]#1) name("switch/ControlDependencyCtrl_1")
@@ -16,5 +16,6 @@ module {
     %LogicalNot_3, %ctl_4 = LogicalNot(%Switch#0) name("id_false_1") : (tensor<*xi1>) -> (tensor<*xi1>)
     // CHECK-DAG: Const [%[[CTRL_SWITCH_1]]] name("id_true_1")
     %LogicalNot_4, %ctl_5 = LogicalNot(%Switch#1) name("id_true_1") : (tensor<*xi1>) -> (tensor<*xi1>)
+    return
   }
 }

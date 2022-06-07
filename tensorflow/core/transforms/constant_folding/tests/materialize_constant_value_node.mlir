@@ -1,7 +1,7 @@
 // RUN: tfg-transforms-opt -tfg-constant-folding %s | FileCheck %s
 
 module {
-  tfg.graph #tf_type.version<producer = 1010, min_consumer = 0> {
+  tfg.func @test() {
     // CHECK-DAG: %[[PLACEHOLDER:.*]], %[[CTRL:.*]] = {{.*}} name("x")
     %Placeholder, %ctl = Placeholder name("x") {dtype = f32, shape = #tf_type.shape<1x2x3x4>} : () -> (tensor<1x2x3x4xf32>)
     // CHECK-DAG: Const [%[[CTRL]]] name("ones_like") {{.*}} value = dense<1.000000e+00> {{.*}} -> (tensor<1x2x3x4xf32>)
@@ -21,5 +21,6 @@ module {
     // Note that this op is supposed to be folded by operation evaluation. Not by the MaterializeFillNode pattern
     // CHECK: Const{{.*}} name("fill_3")
     %Fill_3, %ctl_8 = Fill(%Const, %Const_3) name("fill_3") {T = i32, index_type = i32} : (tensor<4xi32>, tensor<i32>) -> (tensor<*xi32>)
+    return
   }
 }

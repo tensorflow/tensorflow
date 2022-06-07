@@ -434,7 +434,7 @@ def ShapeInference : Pass<"tfg-shape-inference"> {
   let constructor = "CreateShapeInferencePass()";
 }
 
-def ConstantFoldingPass : Pass<"tfg-constant-folding"> {
+def ConstantFoldingPass : Pass<"tfg-constant-folding", "GraphFuncOp"> {
   let summary = "constant-folding on tfg";
   let description = [{
     This pass will fold operations into constants and do full/partial propagte

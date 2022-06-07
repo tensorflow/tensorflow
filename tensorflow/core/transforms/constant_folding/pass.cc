@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/transforms/constant_folding/pass.h"
 
 #include <algorithm>
+#include <iterator>
 #include <numeric>
 #include <string>
 #include <utility>
@@ -25,11 +26,9 @@ limitations under the License.
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/Twine.h"
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/types.h"
@@ -3394,11 +3393,36 @@ void ConstantFolding::runOnOperation() {
   // Because of the conveniency, in some cases we set up the device/name later
   // operation creation.
 
-  // TODO(chiahungduan): Do the folding start from constant ops so that we don't
-  // need to scan the entire nested ops in every iteration.
-  getOperation()->walk([&](Region *region) {
-    (void)applyPatternsAndFoldGreedily(*region, final_patterns_);
-  });
+  GraphFuncOp func = getOperation();
+  Operation *return_op = func.getBody()->getTerminator();
+  DenseSet<Operation *> unfoldable_ops;
+  for (Value v : return_op->getOperands())
+    unfoldable_ops.insert(v.getDefiningOp());
+
+  // The max iteration is the same as the max default iteration in
+  // applyPatternsAndFoldGreedily.
+  constexpr int max_iterations = 10;
+  int iteration = 0;
+
+  SmallVector<Operation *> foldable_ops;
+  do {
+    // We need to collect the valid operations before each run because the ops
+    // may be updated or removed.
+    foldable_ops.clear();
+    for (Operation &op : func.getBody()->without_terminator()) {
+      if (unfoldable_ops.contains(&op)) continue;
+      foldable_ops.push_back(&op);
+    }
+
+    // Unfoldable ops can't be folded. You may update its operands but the op
+    // kind needs to be the same. For example, you may update an operand of an
+    // AddOp with a constant but you can't fold the AddOp into a ConstOp even if
+    // all its operands are constants. Therefore, we can't use
+    // applyPatternsAndFoldGreedily which may optimize the ops as much as
+    // possible.
+    if (!applyOpPatternsAndFold(foldable_ops, final_patterns_, /*strict=*/true))
+      break;
+  } while (iteration++ < max_iterations);
 
   // TODO(chiahungduan): This is used to avoid evaluating a node multiple times.
   // See more details in EvaluateConstant pattern. Maybe we can remove this by
