@@ -2,7 +2,11 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_cuda_or_rocm",
+    "tf_cc_test",
+)
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 # buildifier: disable=same-origin-load
@@ -252,7 +256,7 @@ cc_library(
         "py_executable.cc",
         "py_values.cc",
         "sharded_device_array.cc",
-    ] + if_cuda([
+    ] + if_cuda_or_rocm([
         "py_client_gpu.cc",
     ]),
     hdrs = [
@@ -262,7 +266,7 @@ cc_library(
         "py_executable.h",
         "py_values.h",
         "sharded_device_array.h",
-    ] + if_cuda([
+    ] + if_cuda_or_rocm([
         "py_client_gpu.h",
     ]),
     compatible_with = [],
