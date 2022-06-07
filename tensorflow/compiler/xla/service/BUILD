@@ -558,7 +558,6 @@ cc_library(
         "hlo_sharding_metadata.h",
     ],
     deps = [
-        ":computation_placer_hdr",
         ":hlo_module_config",
         ":hlo_proto_cc",
         ":mapped_ptr_container_sorter",
