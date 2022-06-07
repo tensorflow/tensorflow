@@ -1117,7 +1117,7 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
     target_shape.set_dimensions(i, base_shape().dimensions(i));
     if (target_shape.dimensions(i) == shard_shape.dimensions(i)) {
       broadcast_dims.push_back(i);
-    } else if (target_shape.dimensions(i) < partitions / 2) {
+    } else if (target_shape.dimensions(i) <= partitions / 2) {
       dus_ar_dims.push_back(i);
     } else {
       padded_target_shape.set_dimensions(
@@ -1167,6 +1167,7 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
     for (int64_t dim : ag_dims) {
       dus_ar_dims.push_back(dim);
     }
+    result = broadcast;
   }
   if (!dus_ar_dims.empty()) {
     auto zero = state_.b->AddInstruction(HloInstruction::CreateConstant(
@@ -1189,21 +1190,23 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
           skipped_dims.push_back(i);
         }
       }
-      broadcast->set_sharding(sharding());
-      broadcast = PartitionedHlo(broadcast, padded_target_shape, state_)
-                      .PadWithValue(zero,
-                                    /*left_padded_dims=*/{},
-                                    /*skipped_dims=*/skipped_dims)
-                      .hlo();
+      result->set_sharding(sharding());
+      result = PartitionedHlo(result, padded_target_shape, state_)
+                   .PadWithValue(zero,
+                                 /*left_padded_dims=*/{},
+                                 /*skipped_dims=*/skipped_dims)
+                   .hlo();
     }
     auto zero_bcast = state_.b->AddInstruction(
         HloInstruction::CreateBroadcast(padded_target_shape, zero, {}));
-    auto offsets =
-        MakePartitionOffsets(padded_target_shape, sharding(),
-                             state_.partition_id, state_.b, dus_ar_dims);
+    auto offsets = MakePartitionOffsets(
+        padded_target_shape,
+        hlo_sharding_util::PartiallyReplicateTiledShardingOnAllDimsExcept(
+            sharding(), dus_ar_dims),
+        state_.partition_id, state_.b, dus_ar_dims);
     auto dus =
         state_.b->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-            padded_target_shape, zero_bcast, broadcast, offsets));
+            padded_target_shape, zero_bcast, result, offsets));
     HloComputation* reduction =
         MakeBinaryAdd(shard_shape.element_type(), state_.module);
     result = state_.partitioner->AllReduceAlongShardingDims(
