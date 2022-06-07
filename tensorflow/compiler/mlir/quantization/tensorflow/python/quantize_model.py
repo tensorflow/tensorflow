@@ -251,7 +251,10 @@ def _static_range_quantize(saved_model_path: str,
             node_def.attr['min'].f = float(min_val)
             node_def.attr['max'].f = float(max_val)
           except ValueError:
-            warnings.warn('%s does not have min/max values.' % node_id)
+            warnings.warn(
+                f'CustomAggregator id "{node_id.decode("utf-8")}" from '
+                f'FunctionDef "{function_def.signature.name}" does not have '
+                'min or max values. This function may not be quantized.')
 
     calibrated_model_dir = tempfile.mkdtemp()
     v1_builder = builder.SavedModelBuilder(calibrated_model_dir)
