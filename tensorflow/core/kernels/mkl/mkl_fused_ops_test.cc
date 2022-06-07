@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/mkl/mkl_matmul_ops_common.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
@@ -732,6 +733,13 @@ class FusedPadConvOpTest : public OpsTestBase {
  public:
   void Run(const string data_format) {
     DataType dtype = DataTypeToEnum<T>::v();
+
+    // FusedPadConv op is only supported on AVX512.
+    // So skip test if CPU instruction set is AVX2 or ealer version.
+    if ((dtype == DT_BFLOAT16) &&
+        !tensorflow::port::TestCPUFeature(tensorflow::port::CPUFeature::AVX512F))
+      return;
+
     const int depth = 1;
     const int image_width = 4;
     const int image_height = 3;
