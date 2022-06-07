@@ -1148,7 +1148,7 @@ REGISTER_OP("SaveDataset")
       shape_inference::ShapeHandle unused;
       // `path` should be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SaveDatasetV2")
@@ -1394,7 +1394,7 @@ REGISTER_OP("DummyIterationCounter")
     .Output("handle: resource")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("DataServiceDataset")
@@ -1483,7 +1483,7 @@ REGISTER_OP("InitializeTableFromDataset")
       shape_inference::ShapeHandle handle;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &handle));
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

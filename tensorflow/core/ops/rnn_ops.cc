@@ -45,7 +45,7 @@ REGISTER_OP("GRUBlockCell")
       for (int i = 0; i < 4; ++i) {
         c->set_output(i, output);
       }
-      return tensorflow::Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("GRUBlockCellGrad")
@@ -79,7 +79,7 @@ REGISTER_OP("GRUBlockCellGrad")
       c->set_output(1, batch_cell_shape);
       c->set_output(2, batch_cell_shape);
       c->set_output(3, c->Matrix(batch_size, twice_cell_size));
-      return tensorflow::Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("LSTMBlockCell")
@@ -113,7 +113,7 @@ REGISTER_OP("LSTMBlockCell")
       for (int i = 0; i < 7; ++i) {
         c->set_output(i, output);
       }
-      return tensorflow::Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("LSTMBlockCellGrad")
@@ -156,7 +156,7 @@ REGISTER_OP("LSTMBlockCellGrad")
       c->set_output(2, cell_size_vec);
       c->set_output(3, cell_size_vec);
       c->set_output(4, cell_size_vec);
-      return tensorflow::Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BlockLSTM")
@@ -196,7 +196,7 @@ REGISTER_OP("BlockLSTM")
       for (int i = 0; i < 7; ++i) {
         c->set_output(i, output);
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BlockLSTMV2")
@@ -235,7 +235,7 @@ REGISTER_OP("BlockLSTMV2")
       for (int i = 0; i < 7; ++i) {
         c->set_output(i, output);
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BlockLSTMGrad")
@@ -287,7 +287,7 @@ REGISTER_OP("BlockLSTMGrad")
       c->set_output(6, wcf);
       c->set_output(7, b);
 
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BlockLSTMGradV2")
@@ -339,7 +339,7 @@ REGISTER_OP("BlockLSTMGradV2")
       c->set_output(6, wcf);
       c->set_output(7, b);
 
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // end namespace tensorflow
