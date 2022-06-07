@@ -1267,7 +1267,7 @@ struct ConvertTanOp : public OpConversionPattern<TanOp> {
 struct ConvertTopKOp : public OpConversionPattern<TopKOp> {
   using OpConversionPattern<TopKOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      TopKOp op, OpAdaptor adaptor,
+      TopKOp op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
     // The last dimension of the operand's shape should be known so we can have
     // clamped end_indices for slices. This is verified by the op.
