@@ -24,6 +24,7 @@ on:
 
 jobs:
   build:
+    if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
     runs-on: [self-hosted, linux, ARM64]
     strategy:
       matrix:
