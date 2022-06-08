@@ -128,6 +128,17 @@ func.func @alltoall(%data: tensor<4x16xf32>) -> tensor<16x4xindex> {
 
 // -----
 
+// CHECK-LABEL: func @abs
+func.func @abs(%arg0: tensor<1x2xf32>) -> tensor<1x2xindex> {
+  %0 = "mhlo.abs"(%arg0) {} : (tensor<1x2xf32>) -> tensor<1x2xf32>
+  %1 = "mhlo_test.get_return_type_components"(%0)
+      : (tensor<1x2xf32>) -> tensor<1x2xindex>
+// CHECK: %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<1x2xf32>) -> tensor<1x2xindex>
+  func.return %1: tensor<1x2xindex>
+}
+
+// -----
+
 #CSR = #sparse_tensor.encoding<{
   dimLevelType = ["dense", "compressed"]
 }>

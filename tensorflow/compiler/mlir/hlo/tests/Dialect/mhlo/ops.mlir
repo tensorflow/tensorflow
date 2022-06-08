@@ -3909,3 +3909,25 @@ func.func @is_compatible_sparse_mix_non_sparse(%arg0: tensor<1xf32>, %arg1: tens
   %7 = "mhlo.add"(%arg1, %arg1) : (tensor<1xf32, #SV>, tensor<1xf32, #SV>) -> tensor<1xf32, #SV>
   func.return
 }
+
+// CHECK-LABEL: func @abs
+func.func @abs(%arg0: tensor<1x2xf32>) -> tensor<1x2xf32> {
+  %0 = "mhlo.abs"(%arg0) {} : (tensor<1x2xf32>) -> tensor<1x2xf32>
+  func.return %0 : tensor<1x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @abs_complex
+func.func @abs_complex(%arg0: tensor<1x2xcomplex<f32>>) -> tensor<1x2xf32> {
+  %0 = "mhlo.abs"(%arg0) {} : (tensor<1x2xcomplex<f32>>) -> tensor<1x2xf32>
+  func.return %0 : tensor<1x2xf32>
+}
+
+// -----
+
+func.func @abs_mismatch_element_type(%arg0: tensor<1x2xcomplex<f32>>) -> tensor<1x2xf64> {
+// expected-error@+1 {{'mhlo.abs' op inferred type(s) 'tensor<1x2xf32>' are incompatible with return type(s) of operation 'tensor<1x2xf64>'}}
+  %0 = "mhlo.abs"(%arg0) {} : (tensor<1x2xcomplex<f32>>) -> tensor<1x2xf64>
+  func.return %0 : tensor<1x2xf64>
+}
