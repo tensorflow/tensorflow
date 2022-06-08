@@ -43,15 +43,15 @@ func.func @float_conv(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x2xf32>) ->
 // CHECK: %[[CONST_0:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
 // CHECK: %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%arg0, %arg1, %[[CONST_0]])
 // CHECK-SAME: {_tfl_quant_trait = "fully_quantizable",
-// CHECK-SAME: f = @fused_conv2d_with_bias_and_relu6_fn_1}
+// CHECK-SAME: f = @composite_conv2d_with_bias_and_relu6_fn_1}
 // CHECK: %[[PARTITIONEDCALL_1:.*]] = "tf.PartitionedCall"(%arg0, %arg1, %[[CONST_0]])
-// CHECK-SAME: f = @fused_conv2d_with_bias_and_relu_fn_1}
+// CHECK-SAME: f = @composite_conv2d_with_bias_and_relu_fn_1}
 // CHECK: %[[PARTITIONEDCALL_2:.*]] = "tf.PartitionedCall"(%arg0, %arg1, %[[CONST_0]])
-// CHECK-SAME: f = @fused_conv2d_with_bias_fn_1}
+// CHECK-SAME: f = @composite_conv2d_with_bias_fn_1}
 // CHECK: return %[[PARTITIONEDCALL_0]], %[[PARTITIONEDCALL_1]], %[[PARTITIONEDCALL_2]]
 // CHECK: }
 
-// CHECK-LABEL: private @fused_conv2d_with_bias_and_relu6_fn_1
+// CHECK-LABEL: private @composite_conv2d_with_bias_and_relu6_fn_1
 // CHECK-NEXT: %[[CONV2D_0:.*]] = "tf.Conv2D"(%arg0, %arg1)
 // CHECK-SAME: {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations"
 // CHECK-SAME: data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true}
@@ -59,13 +59,13 @@ func.func @float_conv(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x2xf32>) ->
 // CHECK-NEXT: %[[RELU6_0:.*]] = "tf.Relu6"(%[[BIASADD_0]])
 // CHECK-NEXT: return %[[RELU6_0]]
 
-// CHECK-LABEL: private @fused_conv2d_with_bias_and_relu_fn_1
+// CHECK-LABEL: private @composite_conv2d_with_bias_and_relu_fn_1
 // CHECK-NEXT: %[[CONV2D_0:.*]] = "tf.Conv2D"(%arg0, %arg1)
 // CHECK-NEXT: %[[BIASADD_0:.*]] = "tf.BiasAdd"(%[[CONV2D_0]], %arg2)
 // CHECK-NEXT: %[[RELU6_0:.*]] = "tf.Relu"(%[[BIASADD_0]])
 // CHECK-NEXT: return %[[RELU6_0]]
 
-// CHECK-LABEL: private @fused_conv2d_with_bias_fn_1
+// CHECK-LABEL: private @composite_conv2d_with_bias_fn_1
 // CHECK-NEXT: %[[CONV2D_0:.*]] = "tf.Conv2D"(%arg0, %arg1)
 // CHECK-NEXT: %[[BIASADD_0:.*]] = "tf.BiasAdd"(%[[CONV2D_0]], %arg2)
 // CHECK-NEXT: return %[[BIASADD_0]]
@@ -83,10 +83,10 @@ func.func @float_conv_strides_equals_to_dilations(%arg0: tensor<1x3x4x3xf32>, %a
 
 // CHECK-LABEL: func @float_conv_strides_equals_to_dilations(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x2xf32>) -> tensor<*xf32> {
 // CHECK: %[[CONST_0:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
-// CHECK: %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%arg0, %arg1, %[[CONST_0]]) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @fused_conv2d_with_bias_and_relu6_fn_1} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>, tensor<2xf32>) -> tensor<*xf32>
+// CHECK: %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%arg0, %arg1, %[[CONST_0]]) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_1} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>, tensor<2xf32>) -> tensor<*xf32>
 // CHECK: return %[[PARTITIONEDCALL_0]] : tensor<*xf32>
 // CHECK: }
-// CHECK-LABEL: func private @fused_conv2d_with_bias_and_relu6_fn_1(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x2xf32>, %arg2: tensor<2xf32>) -> tensor<*xf32> attributes {tf_quant.fused_function} {
+// CHECK-LABEL: func private @composite_conv2d_with_bias_and_relu6_fn_1(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x2xf32>, %arg2: tensor<2xf32>) -> tensor<*xf32> attributes {tf_quant.composite_function} {
 // CHECK-NEXT: %[[CONV2D_0:.*]] = "tf.Conv2D"(%arg0, %arg1)
 // CHECK-SAME: {attr_map = "0:dilations,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations"
 // CHECK-SAME: data_format = "NHWC", device = "", dilations = [1, 1, 2, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true}
@@ -125,11 +125,11 @@ func.func @float_depthwise_conv(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x
 // CHECK: %[[CONST_0:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
 // CHECK: %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%arg0, %arg1, %[[CONST_0]])
 // CHECK-SAME: {_tfl_quant_trait = "fully_quantizable",
-// CHECK-SAME: f = @fused_depthwise_conv2d_with_bias_and_relu6_fn_1}
+// CHECK-SAME: f = @composite_depthwise_conv2d_with_bias_and_relu6_fn_1}
 // CHECK: %[[PARTITIONEDCALL_1:.*]] = "tf.PartitionedCall"(%arg0, %arg1, %[[CONST_0]])
-// CHECK-SAME: f = @fused_depthwise_conv2d_with_bias_and_relu_fn_1}
+// CHECK-SAME: f = @composite_depthwise_conv2d_with_bias_and_relu_fn_1}
 // CHECK: %[[PARTITIONEDCALL_2:.*]] = "tf.PartitionedCall"(%arg0, %arg1, %[[CONST_0]])
-// CHECK-SAME: f = @fused_depthwise_conv2d_with_bias_fn_1}
+// CHECK-SAME: f = @composite_depthwise_conv2d_with_bias_fn_1}
 // CHECK: return %[[PARTITIONEDCALL_0]], %[[PARTITIONEDCALL_1]], %[[PARTITIONEDCALL_2]]
 // CHECK: }
 }
@@ -161,28 +161,28 @@ func.func @float_matmul(
 // CHECK: %[[CONST_0:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<10xf32>}
 // CHECK: %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%arg0, %arg1, %[[CONST_0]])
 // CHECK-SAME: {_tfl_quant_trait = "fully_quantizable",
-// CHECK-SAME: f = @fused_matmul_with_bias_and_relu6_fn_1}
+// CHECK-SAME: f = @composite_matmul_with_bias_and_relu6_fn_1}
 // CHECK: %[[PARTITIONEDCALL_1:.*]] = "tf.PartitionedCall"(%arg0, %arg1, %[[CONST_0]])
-// CHECK-SAME: f = @fused_matmul_with_bias_and_relu_fn_1}
+// CHECK-SAME: f = @composite_matmul_with_bias_and_relu_fn_1}
 // CHECK: %[[PARTITIONEDCALL_2:.*]] = "tf.PartitionedCall"(%arg0, %arg1, %[[CONST_0]])
-// CHECK-SAME: f = @fused_matmul_with_bias_fn_1}
+// CHECK-SAME: f = @composite_matmul_with_bias_fn_1}
 // CHECK: return %[[PARTITIONEDCALL_0]], %[[PARTITIONEDCALL_1]], %[[PARTITIONEDCALL_2]]
 // CHECK: }
 
-// CHECK-LABEL: private @fused_matmul_with_bias_and_relu6_fn_1
+// CHECK-LABEL: private @composite_matmul_with_bias_and_relu6_fn_1
 // CHECK-NEXT: %[[matmul:.*]] = "tf.MatMul"(%arg0, %arg1)
 // CHECK-SAME: {attr_map = "0:transpose_a,1:transpose_a"
 // CHECK-NEXT: tf.BiasAdd
 // CHECK-NEXT: tf.Relu6
 // CHECK-NEXT: return
 
-// CHECK-LABEL: private @fused_matmul_with_bias_and_relu_fn_1
+// CHECK-LABEL: private @composite_matmul_with_bias_and_relu_fn_1
 // CHECK-NEXT: tf.MatMul"(%arg0, %arg1)
 // CHECK-NEXT: tf.BiasAdd
 // CHECK-NEXT: tf.Relu
 // CHECK-NEXT: return
 
-// CHECK-LABEL: private @fused_matmul_with_bias_fn_1
+// CHECK-LABEL: private @composite_matmul_with_bias_fn_1
 // CHECK-NEXT: tf.MatMul"(%arg0, %arg1)
 // CHECK-NEXT: tf.BiasAdd
 // CHECK-NEXT: return
@@ -214,17 +214,17 @@ func.func @float_conv_no_bias(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x2x
 
 // CHECK: %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%arg0, %arg1)
 // CHECK-SAME: {_tfl_quant_trait = "fully_quantizable",
-// CHECK-SAME: f = @fused_conv2d_with_relu6_fn_1}
+// CHECK-SAME: f = @composite_conv2d_with_relu6_fn_1}
 // CHECK: %[[PARTITIONEDCALL_1:.*]] = "tf.PartitionedCall"(%arg0, %arg1)
-// CHECK-SAME: f = @fused_conv2d_with_relu_fn_1}
+// CHECK-SAME: f = @composite_conv2d_with_relu_fn_1}
 // CHECK: %[[PARTITIONEDCALL_2:.*]] = "tf.PartitionedCall"(%arg0, %arg1)
-// CHECK-SAME: f = @fused_conv2d_fn_1}
+// CHECK-SAME: f = @composite_conv2d_fn_1}
 // CHECK: return %[[PARTITIONEDCALL_0]], %[[PARTITIONEDCALL_1]], %[[PARTITIONEDCALL_2]]
 // CHECK: }
 
-// CHECK-LABEL: private @fused_conv2d_with_relu6_fn_1
-// CHECK-LABEL: private @fused_conv2d_with_relu_fn_1
-// CHECK-LABEL: private @fused_conv2d_fn_1
+// CHECK-LABEL: private @composite_conv2d_with_relu6_fn_1
+// CHECK-LABEL: private @composite_conv2d_with_relu_fn_1
+// CHECK-LABEL: private @composite_conv2d_fn_1
 }
 
 // -----
@@ -253,17 +253,17 @@ func.func @float_depthwise_conv_no_bias(%arg0: tensor<1x3x4x3xf32>, %arg1: tenso
 
 // CHECK: %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%arg0, %arg1)
 // CHECK-SAME: {_tfl_quant_trait = "fully_quantizable",
-// CHECK-SAME: f = @fused_depthwise_conv2d_with_relu6_fn_1}
+// CHECK-SAME: f = @composite_depthwise_conv2d_with_relu6_fn_1}
 // CHECK: %[[PARTITIONEDCALL_1:.*]] = "tf.PartitionedCall"(%arg0, %arg1)
-// CHECK-SAME: f = @fused_depthwise_conv2d_with_relu_fn_1}
+// CHECK-SAME: f = @composite_depthwise_conv2d_with_relu_fn_1}
 // CHECK: %[[PARTITIONEDCALL_2:.*]] = "tf.PartitionedCall"(%arg0, %arg1)
-// CHECK-SAME: f = @fused_depthwise_conv2d_fn_1}
+// CHECK-SAME: f = @composite_depthwise_conv2d_fn_1}
 // CHECK: return %[[PARTITIONEDCALL_0]], %[[PARTITIONEDCALL_1]], %[[PARTITIONEDCALL_2]]
 // CHECK: }
 
-// CHECK-LABEL: private @fused_depthwise_conv2d_with_relu6_fn_1
-// CHECK-LABEL: private @fused_depthwise_conv2d_with_relu_fn_1
-// CHECK-LABEL: private @fused_depthwise_conv2d_fn_1
+// CHECK-LABEL: private @composite_depthwise_conv2d_with_relu6_fn_1
+// CHECK-LABEL: private @composite_depthwise_conv2d_with_relu_fn_1
+// CHECK-LABEL: private @composite_depthwise_conv2d_fn_1
 }
 
 // -----
@@ -288,15 +288,15 @@ func.func @float_matmul_no_bias(
 
 // CHECK: %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%arg0, %arg1)
 // CHECK-SAME: {_tfl_quant_trait = "fully_quantizable",
-// CHECK-SAME: f = @fused_matmul_with_relu6_fn_1}
+// CHECK-SAME: f = @composite_matmul_with_relu6_fn_1}
 // CHECK: %[[PARTITIONEDCALL_1:.*]] = "tf.PartitionedCall"(%arg0, %arg1)
-// CHECK-SAME: f = @fused_matmul_with_relu_fn_1}
+// CHECK-SAME: f = @composite_matmul_with_relu_fn_1}
 // CHECK: %[[PARTITIONEDCALL_2:.*]] = "tf.PartitionedCall"(%arg0, %arg1)
-// CHECK-SAME: f = @fused_matmul_fn_1}
+// CHECK-SAME: f = @composite_matmul_fn_1}
 // CHECK: return %[[PARTITIONEDCALL_0]], %[[PARTITIONEDCALL_1]], %[[PARTITIONEDCALL_2]]
 // CHECK: }
 
-// CHECK-LABEL: private @fused_matmul_with_relu6_fn_1
-// CHECK-LABEL: private @fused_matmul_with_relu_fn_1
-// CHECK-LABEL: private @fused_matmul_fn_1
+// CHECK-LABEL: private @composite_matmul_with_relu6_fn_1
+// CHECK-LABEL: private @composite_matmul_with_relu_fn_1
+// CHECK-LABEL: private @composite_matmul_fn_1
 }
