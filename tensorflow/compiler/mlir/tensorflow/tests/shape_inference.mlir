@@ -1852,22 +1852,4 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %0 = "tf.XlaConv"(%lhs, %rhs, %strides, %padding, %lhs_dilation, %rhs_dilation, %feature_group_count) {dimension_numbers = "\18\03 \042\03\00\01\02@\04P\04Z\03\01\02\03b\03\01\02\03", precision_config = ""} : (tensor<8x4x16x16x16xf32>, tensor<4x3x3x16x16xf32>, tensor<3xi64>, tensor<3x2xi32>, tensor<3xi32>, tensor<3xi32>, tensor<i32>) -> tensor<?x?x?x?x?xf32>
     func.return %0 : tensor<?x?x?x?x?xf32>
   }
-
-  // CHECK-LABEL: infer_lookup_table_find_v2
-  func.func @infer_lookup_table_find_v2(%key: tensor<5x!tf_type.string>, %default: tensor<i64>) -> tensor<*xi64> {
-    %table = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf_type.string, shared_name = "dummy_hash_table", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf_type.resource>
-    // CHECK: "tf.LookupTableFindV2"
-    // CHECK-SAME:  -> tensor<5xi64>
-    %result = "tf.LookupTableFindV2"(%table, %key, %default) {device = ""} : (tensor<!tf_type.resource>, tensor<5x!tf_type.string>, tensor<i64>) -> tensor<*xi64>
-    func.return %result : tensor<*xi64>
-  }
-
-  // CHECK-LABEL: infer_lookup_table_find_v2_dynamic_shape
-  func.func @infer_lookup_table_find_v2_dynamic_shape(%key: tensor<?x?x!tf_type.string>, %default: tensor<i64>) -> tensor<*xi64> {
-    %table = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf_type.string, shared_name = "dummy_hash_table", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf_type.resource>
-    // CHECK: "tf.LookupTableFindV2"
-    // CHECK-SAME:  -> tensor<?x?xi64>
-    %result = "tf.LookupTableFindV2"(%table, %key, %default) {device = ""} : (tensor<!tf_type.resource>, tensor<?x?x!tf_type.string>, tensor<i64>) -> tensor<*xi64>
-    func.return %result : tensor<*xi64>
-  }
 }
