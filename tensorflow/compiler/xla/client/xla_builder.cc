@@ -2322,6 +2322,16 @@ XlaOp XlaBuilder::RngBitGenerator(RandomAlgorithm algorithm,
     TF_ASSIGN_OR_RETURN(Shape state_shape, GetShape(initial_state));
     Shape output_shape = shape;
     switch (output_shape.element_type()) {
+      case PrimitiveType::S8:
+      case PrimitiveType::U8:
+        output_shape.set_element_type(PrimitiveType::U8);
+        break;
+      case PrimitiveType::BF16:
+      case PrimitiveType::F16:
+      case PrimitiveType::S16:
+      case PrimitiveType::U16:
+        output_shape.set_element_type(PrimitiveType::U16);
+        break;
       case PrimitiveType::F32:
       case PrimitiveType::S32:
       case PrimitiveType::U32:
