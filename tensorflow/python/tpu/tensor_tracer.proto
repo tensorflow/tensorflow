@@ -74,6 +74,8 @@ message TensorTracerReport {
     int32 traced_tensors = 2;
     // Counts of traced tensors by op type.
     map<string, int32> traced_tensor_types = 3;
+    // The number of tensors added by Tensor Tracer.
+    int32 added_tensors = 4;
   }
 
   message TracedTensorDef {

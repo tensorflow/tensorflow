@@ -47,7 +47,8 @@ class BFloat16Normalization : public HloModulePass {
 // BFloat16Support, and does not change HLOs that have BF16 data if they do not
 // use mixed precision; it removes mixed precision even if the backend supports
 // it. This pass is used to make the HLO module valid for other HLO passes which
-// do not support mixed precision.
+// do not support mixed precision. Currently, this pass is only used by the
+// Despecializer, not by our normal compilation flow on TPU.
 class BFloat16MixedPrecisionRemoval : public HloModulePass {
  public:
   BFloat16MixedPrecisionRemoval() {}

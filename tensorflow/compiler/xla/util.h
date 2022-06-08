@@ -20,6 +20,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_UTIL_H_
 
 #include <algorithm>
+#include <functional>
 #include <limits>
 #include <string>
 #include <type_traits>
@@ -672,7 +673,7 @@ Status EraseElementFromVector(std::vector<T>* container, const T& value) {
   auto it = std::find(container->begin(), container->end(), value);
   TF_RET_CHECK(it != container->end());
   container->erase(it);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Utility function which splits a double-precision float (F64) into a pair of
@@ -684,6 +685,11 @@ Status EraseElementFromVector(std::vector<T>* container, const T& value) {
 // Note: The resulting representation can still only represent 8-bit exponent
 // range that is available in F32s (out of a total of 11 exponent bits in F64s).
 std::pair<float, float> SplitF64ToF32(double x);
+
+class HloInstruction;
+
+// A predicate over HLO instruction.
+using HloPredicate = std::function<bool(const HloInstruction*)>;
 
 }  // namespace xla
 

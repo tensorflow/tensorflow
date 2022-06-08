@@ -129,7 +129,7 @@ StatusOr<se::DeviceMemoryBase> CreateBuffer(se::RedzoneAllocator& allocator,
 
 // Returns the index (into `algorithms`) of the fastest algorithm.
 template <typename AlgoT>
-StatusOr<absl::optional<size_t>> GetBestAlgorithm(
+StatusOr<std::optional<size_t>> GetBestAlgorithm(
     se::Stream* stream, se::RedzoneAllocator& allocator,
     const HloInstruction& gemm, const AutotuneConfig& autotune_config,
     se::DeviceMemoryBase lhs_buffer, se::DeviceMemoryBase rhs_buffer,
@@ -153,7 +153,7 @@ StatusOr<absl::optional<size_t>> GetBestAlgorithm(
   BufferComparator comparator(gemm.shape(), gemm.GetModule()->config());
 
   std::vector<AutotuneResult> results;
-  absl::optional<int64_t> reference_algorithm;
+  std::optional<int64_t> reference_algorithm;
 
   for (const AlgoT& algorithm : algorithms) {
     // Make sure the output buffer always has the same value if we use
@@ -242,7 +242,7 @@ StatusOr<absl::optional<size_t>> GetBestAlgorithm(
   LOG(WARNING) << "Failed to find best cuBLAS algorithm, GEMM performance "
                   "might be suboptimal: "
                << best.status();
-  return {absl::nullopt};
+  return {std::nullopt};
 }
 
 Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* gemm,
@@ -308,7 +308,7 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* gemm,
       algorithms = plan_and_algorithms->algorithms;
 
   TF_ASSIGN_OR_RETURN(
-      absl::optional<size_t> best_algorithm_idx,
+      std::optional<size_t> best_algorithm_idx,
       GetBestAlgorithm<std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm>>(
           stream, buffer_allocator, *gemm, autotune_config, lhs_buffer,
           rhs_buffer, output_buffer, algorithms,
@@ -330,7 +330,7 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* gemm,
   return ::tensorflow::OkStatus();
 }
 
-static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
+static StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
     const HloInstruction* gemm, const GemmBackendConfig& gemm_config,
     se::DeviceMemoryAllocator* allocator, se::Stream* stream) {
   VLOG(3) << "Starting autotune of GemmThunk " << gemm->ToString();
@@ -353,7 +353,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   static absl::Mutex mutex(absl::kConstInit);
   static auto& cache ABSL_GUARDED_BY(mutex) =
       *new absl::flat_hash_map<decltype(key),
-                               absl::optional<se::blas::AlgorithmType>>();
+                               std::optional<se::blas::AlgorithmType>>();
   static int64_t cache_hits ABSL_GUARDED_BY(mutex) = 0;
   static int64_t cache_misses ABSL_GUARDED_BY(mutex) = 0;
 
@@ -397,7 +397,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
       CreateBuffer(buffer_allocator, *gemm, autotune_config, rng_state));
 
   TF_ASSIGN_OR_RETURN(
-      absl::optional<size_t> best_algorithm_idx,
+      std::optional<size_t> best_algorithm_idx,
       GetBestAlgorithm<se::blas::AlgorithmType>(
           stream, buffer_allocator, *gemm, autotune_config, lhs_buffer,
           rhs_buffer, output_buffer, algorithms,
@@ -415,7 +415,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
             return std::move(profile_result);
           }));
 
-  absl::optional<se::blas::AlgorithmType> best_algorithm;
+  std::optional<se::blas::AlgorithmType> best_algorithm;
   if (best_algorithm_idx) best_algorithm = algorithms[*best_algorithm_idx];
 
   CHECK(cache.emplace(key, best_algorithm).second);
@@ -434,7 +434,7 @@ StatusOr<bool> RunOnInstruction(HloInstruction* instr,
   GemmBackendConfig gemm_config =
       instr->backend_config<GemmBackendConfig>().ValueOrDie();
 
-  TF_ASSIGN_OR_RETURN(absl::optional<se::blas::AlgorithmType> gemm_algorithm,
+  TF_ASSIGN_OR_RETURN(std::optional<se::blas::AlgorithmType> gemm_algorithm,
                       DoGemmAutotune(instr, gemm_config, allocator, stream));
 
   // We update instruction->backend_config(); if no algorithms are supported,

@@ -18,6 +18,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdlib.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -977,7 +978,7 @@ BufferOffset<tflite::Operator> Translator::BuildNumericVerifyOperator(
     const std::vector<int32_t>& results) {
   float tolerance = op.tolerance().convertToFloat();
   bool log_if_failed = op.log_if_failed();
-  auto fbb = absl::make_unique<flexbuffers::Builder>();
+  auto fbb = std::make_unique<flexbuffers::Builder>();
   fbb->Map([&]() {
     fbb->Float("tolerance", tolerance);
     fbb->Bool("log_if_failed", log_if_failed);
@@ -1019,7 +1020,7 @@ Optional<CustomOptionsOffset> Translator::CreateFlexOpCustomOptions(
            llvm::None;
   }
 
-  auto flex_builder = absl::make_unique<flexbuffers::Builder>();
+  auto flex_builder = std::make_unique<flexbuffers::Builder>();
   flex_builder->Vector([&]() {
     flex_builder->String(node_def.op());
     flex_builder->String(node_def_str);
@@ -1037,7 +1038,7 @@ Optional<CustomOptionsOffset> Translator::CreateCustomOpCustomOptions(
 std::unique_ptr<flexbuffers::Builder>
 Translator::CreateFlexBuilderWithNodeAttrs(
     const ::tensorflow::NodeDef& node_def, const mlir::Location& loc) {
-  auto flex_builder = absl::make_unique<flexbuffers::Builder>();
+  auto flex_builder = std::make_unique<flexbuffers::Builder>();
   size_t map_start = flex_builder->StartMap();
   using Item = std::pair<std::string, ::tensorflow::AttrValue>;
   std::vector<Item> attrs(node_def.attr().begin(), node_def.attr().end());
@@ -1310,7 +1311,7 @@ void Translator::InitializeNamesFromAttribute(FuncOp fn, bool* has_input_attr) {
       fn.emitWarning() << "invalid entry function specification";
       return;
     }
-    for (auto it : llvm::enumerate(fn.getArguments())) {
+    for (const auto& it : llvm::enumerate(fn.getArguments())) {
       name_mapper_.InitOpName(it.value(), input_names[it.index()].trim());
     }
     *has_input_attr = true;
@@ -1351,7 +1352,7 @@ Translator::GetQuantizationForQuantStatsOpOutput(
           ? axis_stats.getValue().cast<mlir::DenseFPElementsAttr>()
           : layer_stats;
 
-  for (auto index_and_value :
+  for (const auto& index_and_value :
        llvm::enumerate(min_max_attr.getValues<llvm::APFloat>())) {
     const llvm::APFloat value = index_and_value.value();
     if (index_and_value.index() % 2 == 0) {
@@ -1869,7 +1870,7 @@ Optional<std::string> Translator::TranslateInternal() {
   // subgraph_index is the index in entry functions and at the same, is the
   // index in the subgraph list.
   int subgraph_index = 0;
-  for (auto it : llvm::enumerate(named_regions)) {
+  for (const auto& it : llvm::enumerate(named_regions)) {
     auto subgraph_or =
         BuildSubGraph(it.value().first, it.value().second, subgraph_index);
     if (!subgraph_or) {

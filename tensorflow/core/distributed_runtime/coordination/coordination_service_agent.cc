@@ -110,6 +110,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   void CancelBarrierAsync(const std::string& barrier_id,
                           StatusCallback done) override;
 
+  StatusOr<Env*> GetEnv() override;
+
  protected:
   void SetError(const Status& error) override;
   Status ActivateWatch(const std::string& key,
@@ -770,6 +772,19 @@ Status CoordinationServiceAgentImpl::ValidateRunningAgent() {
       return MakeCoordinationError(errors::FailedPrecondition(absl::StrCat(
           "Agent is not in RUNNING state. Current state: ", state_)));
   }
+}
+
+StatusOr<Env*> CoordinationServiceAgentImpl::GetEnv() {
+  if (!IsInitialized()) {
+    return MakeCoordinationError(errors::FailedPrecondition(
+        "Coordination service agent has not been initialized."));
+  }
+  if (env_ == nullptr) {
+    return MakeCoordinationError(
+        errors::FailedPrecondition("Coordination service agent was not "
+                                   "initialized with a valid Env* object."));
+  }
+  return env_;
 }
 
 }  // namespace

@@ -32,7 +32,7 @@ namespace TFTPU {
 // outside compilation.
 mlir::LogicalResult WalkReachableFromTpuCluster(
     ModuleOp module, std::function<WalkResult(Operation*, tf_device::ClusterOp,
-                                              absl::optional<std::string>)>
+                                              std::optional<std::string>)>
                          callback);
 
 // Like above, except TPU clusters are not required to have a host device, and

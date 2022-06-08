@@ -280,6 +280,18 @@ I64_ELEMENTS_ATTR_TO_VECTOR(rhs_dilation);
 
 #undef I64_ELEMENTS_ATTR_TO_VECTOR
 
+#define BOOL_ELEMENTS_ATTR_TO_VECTOR(attribute)            \
+  static std::vector<bool> Convert_##attribute(            \
+      llvm::Optional<mlir::DenseElementsAttr> attribute) { \
+    if (!attribute) return {};                             \
+    auto values = attribute->getValues<bool>();            \
+    return {values.begin(), values.end()};                 \
+  }
+
+BOOL_ELEMENTS_ATTR_TO_VECTOR(window_reversal);
+
+#undef BOOL_ELEMENTS_ATTR_TO_VECTOR
+
 static std::vector<int64_t> Convert_ArrayRef(llvm::ArrayRef<int64_t> values) {
   return {values.begin(), values.end()};
 }
@@ -356,9 +368,9 @@ xla::ChannelHandle Convert_channel_handle(mlir::mhlo::ChannelHandle attr) {
   return channel_handle;
 }
 
-absl::optional<xla::ChannelHandle> Convert_channel_handle(
+std::optional<xla::ChannelHandle> Convert_channel_handle(
     llvm::Optional<mlir::mhlo::ChannelHandle> attr) {
-  if (!attr.hasValue()) return absl::nullopt;
+  if (!attr.hasValue()) return std::nullopt;
   return Convert_channel_handle(attr.getValue());
 }
 
@@ -419,20 +431,20 @@ static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
 }
 
 // Extracts sharding from attribute string.
-static absl::optional<xla::OpSharding> CreateOpShardingFromStringRef(
+static std::optional<xla::OpSharding> CreateOpShardingFromStringRef(
     llvm::StringRef sharding) {
   xla::OpSharding sharding_proto;
-  if (!sharding_proto.ParseFromString(sharding.str())) return absl::nullopt;
+  if (!sharding_proto.ParseFromString(sharding.str())) return std::nullopt;
   return sharding_proto;
 }
 
 // Returns an OpSharding proto from the "sharding" attribute of the op. If the
 // op doesn't have a sharding attribute or the sharding attribute is invalid,
-// returns absl::nullopt.
-static absl::optional<xla::OpSharding> CreateOpShardingFromAttribute(
+// returns std::nullopt.
+static std::optional<xla::OpSharding> CreateOpShardingFromAttribute(
     mlir::Operation* op) {
   auto sharding = op->getAttrOfType<mlir::StringAttr>(kShardingAttr);
-  if (!sharding) return absl::nullopt;
+  if (!sharding) return std::nullopt;
   return CreateOpShardingFromStringRef(sharding.getValue());
 }
 
@@ -490,9 +502,9 @@ static xla::OpMetadata CreateOpMetadataFromLocation(
 
 // Checks if all shardings are set.
 static bool AllOptionalShardingsAreSet(
-    llvm::ArrayRef<absl::optional<xla::OpSharding>> shardings) {
+    llvm::ArrayRef<std::optional<xla::OpSharding>> shardings) {
   return llvm::all_of(shardings,
-                      [](const absl::optional<xla::OpSharding>& sharding) {
+                      [](const std::optional<xla::OpSharding>& sharding) {
                         return sharding.has_value();
                       });
 }
@@ -500,17 +512,17 @@ static bool AllOptionalShardingsAreSet(
 // Extracts argument and result shardings from function.
 static void ExtractShardingsFromFunction(
     mlir::func::FuncOp function,
-    llvm::SmallVectorImpl<absl::optional<xla::OpSharding>>* arg_shardings,
-    llvm::SmallVectorImpl<absl::optional<xla::OpSharding>>* ret_shardings) {
+    llvm::SmallVectorImpl<std::optional<xla::OpSharding>>* arg_shardings,
+    llvm::SmallVectorImpl<std::optional<xla::OpSharding>>* ret_shardings) {
   arg_shardings->resize(function.getNumArguments(),
-                        absl::optional<xla::OpSharding>());
+                        std::optional<xla::OpSharding>());
   for (int i = 0, end = function.getNumArguments(); i < end; ++i)
     if (auto sharding =
             function.getArgAttrOfType<mlir::StringAttr>(i, kShardingAttr))
       (*arg_shardings)[i] = CreateOpShardingFromStringRef(sharding.getValue());
 
   ret_shardings->resize(function.getNumResults(),
-                        absl::optional<xla::OpSharding>());
+                        std::optional<xla::OpSharding>());
   for (int i = 0, end = function.getNumResults(); i < end; ++i)
     if (auto sharding =
             function.getResultAttrOfType<mlir::StringAttr>(i, kShardingAttr))
@@ -576,8 +588,8 @@ class ConvertToHloModule {
       Block* block, xla::XlaBuilder* builder, bool is_entry_function,
       bool ensure_single_arg,
       const std::vector<bool>& entry_args_same_across_replicas,
-      llvm::ArrayRef<absl::optional<xla::OpSharding>> arg_shardings,
-      llvm::ArrayRef<absl::optional<xla::OpSharding>> ret_shardings,
+      llvm::ArrayRef<std::optional<xla::OpSharding>> arg_shardings,
+      llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings,
       xla::XlaComputation* result,
       llvm::Optional<llvm::ArrayRef<mlir::Value>> implicit_operands =
           llvm::None);
@@ -608,7 +620,7 @@ class ConvertToHloModule {
 
   LogicalResult Lower(
       mlir::Operation* inst, bool is_entry_function,
-      llvm::ArrayRef<absl::optional<xla::OpSharding>> ret_shardings,
+      llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings,
       xla::XlaBuilder* builder,
       ConvertToHloModule::ValueLoweringMap* value_lowering,
       xla::XlaOp* return_value);
@@ -623,7 +635,7 @@ class ConvertToHloModule {
 
   LogicalResult SetEntryTupleShardings(
       Block* block, xla::XlaBuilder* builder,
-      llvm::ArrayRef<absl::optional<xla::OpSharding>> arg_shardings,
+      llvm::ArrayRef<std::optional<xla::OpSharding>> arg_shardings,
       llvm::SmallVectorImpl<xla::Shape>* arg_shapes);
 
   // The module being lowered.
@@ -1003,9 +1015,6 @@ LogicalResult ExportXlaOp(ConstOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(mlir::mhlo::ConvOp op, OpLoweringContext ctx) {
-  // XLA client builder API does not support generating convolution instructions
-  // with window reversal.
-  if (op.hasWindowReversal()) return failure();
   auto& value_map = *ctx.values;
   xla::XlaOp lhs, rhs;
   if (failed(GetXlaOp(op.lhs(), value_map, &lhs, op))) return mlir::failure();
@@ -1020,7 +1029,7 @@ LogicalResult ExportXlaOp(mlir::mhlo::ConvOp op, OpLoweringContext ctx) {
       Convertuint64_t(op.feature_group_count()),
       Convertuint64_t(op.batch_group_count()),
       Unwrap(Convert_precision_config(op.precision_config())),
-      preferred_element_type);
+      preferred_element_type, Convert_window_reversal(op.window_reversal()));
   value_map[op] = xla_result;
   return mlir::success();
 }
@@ -1428,15 +1437,29 @@ LogicalResult ExportXlaOp(ScatterOp op, OpLoweringContext ctx) {
   }
   xla::ScatterDimensionNumbers dimension_numbers =
       Convert_scatter_dimension_numbers(op.scatter_dimension_numbers());
-  xla::XlaOp operand, scatter_indices, updates;
-  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+
+  llvm::SmallVector<xla::XlaOp> operands;
+  llvm::SmallVector<xla::XlaOp> updates;
+  if (failed(GetTuple(op, op.operands(), ctx, operands))) return failure();
+  if (failed(GetTuple(op, op.updates(), ctx, updates))) return failure();
+
+  xla::XlaOp scatter_indices;
   if (failed(GetXlaOp(op.scatter_indices(), value_map, &scatter_indices, op)))
     return failure();
-  if (failed(GetXlaOp(op.updates(), value_map, &updates, op))) return failure();
 
-  value_map[op] = xla::Scatter(operand, scatter_indices, updates,
-                               update_computation, dimension_numbers,
-                               op.indices_are_sorted(), op.unique_indices());
+  auto scatter_op = xla::Scatter(operands, scatter_indices, updates,
+                                 update_computation, dimension_numbers,
+                                 op.indices_are_sorted(), op.unique_indices());
+  if (op->getNumResults() == 1) {
+    value_map[op.getResult(0)] = scatter_op;
+    return success();
+  }
+
+  // mhlo.ScatterOp supports multiple returns, untuple all the results of XLA's.
+  for (const auto& it : llvm::enumerate(op.getResults())) {
+    value_map[it.value()] = xla::GetTupleElement(scatter_op, it.index());
+  }
+
   return success();
 }
 
@@ -1907,7 +1930,7 @@ LogicalResult ExportXlaOperatorWrapped(mlir::Operation* inst,
 
 LogicalResult ConvertToHloModule::Lower(
     mlir::Operation* inst, bool is_entry_function,
-    llvm::ArrayRef<absl::optional<xla::OpSharding>> ret_shardings,
+    llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings,
     xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering,
     xla::XlaOp* return_value) {
@@ -2184,8 +2207,8 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
 
   xla::XlaComputation computation;
   std::vector<bool> entry_args_same_across_replicas;
-  llvm::SmallVector<absl::optional<xla::OpSharding>, 4> arg_shardings;
-  llvm::SmallVector<absl::optional<xla::OpSharding>, 4> ret_shardings;
+  llvm::SmallVector<std::optional<xla::OpSharding>, 4> arg_shardings;
+  llvm::SmallVector<std::optional<xla::OpSharding>, 4> ret_shardings;
   if (entry_function) {
     bool any_arg_replicated = false;
     entry_args_same_across_replicas.reserve(f.getNumArguments());
@@ -2256,7 +2279,7 @@ LogicalResult ConvertToHloModule::SetEntryTupleShapesAndLeafReplication(
     CHECK(shape_determination_fns_.layout_preference_fn &&  // Crash OK
           shape_determination_fns_.shape_representation_fn);
     auto layout_preference = shape_determination_fns_.layout_preference_fn(
-        arg_tensor_shape, arg_dtype, absl::nullopt);
+        arg_tensor_shape, arg_dtype, std::nullopt);
     auto arg_shape_status = shape_determination_fns_.shape_representation_fn(
         arg_tensor_shape, arg_dtype, /*use_fast_memory=*/false,
         layout_preference);
@@ -2277,7 +2300,7 @@ LogicalResult ConvertToHloModule::SetEntryTupleShapesAndLeafReplication(
 
 LogicalResult ConvertToHloModule::SetEntryTupleShardings(
     Block* block, xla::XlaBuilder* builder,
-    llvm::ArrayRef<absl::optional<xla::OpSharding>> arg_shardings,
+    llvm::ArrayRef<std::optional<xla::OpSharding>> arg_shardings,
     llvm::SmallVectorImpl<xla::Shape>* arg_shapes) {
   if (!arg_shardings.empty() && AllOptionalShardingsAreSet(arg_shardings)) {
     xla::OpSharding sharding;
@@ -2307,8 +2330,8 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     Block* block, xla::XlaBuilder* builder, bool is_entry_function,
     bool ensure_single_arg,
     const std::vector<bool>& entry_args_same_across_replicas,
-    llvm::ArrayRef<absl::optional<xla::OpSharding>> arg_shardings,
-    llvm::ArrayRef<absl::optional<xla::OpSharding>> ret_shardings,
+    llvm::ArrayRef<std::optional<xla::OpSharding>> arg_shardings,
+    llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings,
     xla::XlaComputation* result,
     llvm::Optional<llvm::ArrayRef<mlir::Value>> implicit_operands) {
   // Mapping from the Value to lowered XlaOp.

@@ -92,7 +92,7 @@ class EventNode {
   void SetIsEager(bool is_eager);
 
   // Returns true if this event is part of eagerly executed op.
-  bool IsEager();
+  bool IsEager() const;
 
   bool IsNestedIn(EventNode* parent);
 
@@ -125,8 +125,7 @@ class EventNode {
 };
 
 using EventNodeMap =
-    absl::flat_hash_map<int64_t /*event_type*/,
-                        std::vector<std::unique_ptr<EventNode>>>;
+    absl::flat_hash_map<int64_t /*event_type*/, std::deque<EventNode>>;
 
 using EventList = std::vector<EventNode*>;
 

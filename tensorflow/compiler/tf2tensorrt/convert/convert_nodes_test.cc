@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <numeric>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
@@ -30,12 +31,14 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "third_party/eigen3/Eigen/Core"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/cc/framework/ops.h"
@@ -49,15 +52,20 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_engine_utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_testutils.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_managed_allocator.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
+#include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/kernels/variable_ops.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -65,8 +73,11 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
@@ -1040,7 +1051,7 @@ class ConvertGraphDefToEngineTest : public ::testing::Test {
     }
     // TODO(laigd): execute the engine and get outputs.
     return ConvertGraphDefToEngine(
-        gdef, TrtPrecisionMode::FP32, /*max_batch_size=*/1,
+        gdef, /*ctx=*/nullptr, TrtPrecisionMode::FP32, /*max_batch_size=*/1,
         /*max_workspace_size_bytes=*/64 << 20, input_shapes, &logger_,
         /*allocator=*/nullptr, /*calibrator=*/nullptr, &engine_,
         /*use_calibration=*/false, /*use_implicit_batch=*/true,
@@ -1130,7 +1141,8 @@ class OpConverterTest : public ::testing::Test {
   }
 
   void Reset(TrtPrecisionMode precision_mode_to_test = TrtPrecisionMode::FP32,
-             TrtTestMode trt_mode = TrtTestMode::kImplicitBatch) {
+             TrtTestMode trt_mode = TrtTestMode::kImplicitBatch,
+             OpKernelContext* ctx = nullptr) {
     // Destroy existing TRT objects in a proper order.
     converter_.reset(nullptr);
     engine_.reset(nullptr);
@@ -1141,7 +1153,8 @@ class OpConverterTest : public ::testing::Test {
                                     /*use_calibration=*/false, &logger_,
                                     /*use_implicit_batch=*/trt_mode ==
                                         TrtTestMode::kImplicitBatch,
-                                    /*engine_name=*/"")
+                                    /*engine_name=*/"",
+                                    /*use_explicit_precision=*/false, ctx)
                       .ValueOrDie());
 
     // Reset other related artifacts.
@@ -1569,6 +1582,92 @@ class OpConverterTest : public ::testing::Test {
   // field list.
   Scope scope_;
   std::unordered_map<string, Output> node_inputs_;
+};
+
+// Extends the OpConverterTest for variable converters which require a properly
+// setup context.
+class VariableOpConverterTest : public OpConverterTest {
+ public:
+  void Reset(TrtPrecisionMode precision_mode_to_test = TrtPrecisionMode::FP32,
+             TrtTestMode trt_mode = TrtTestMode::kImplicitBatch) {
+    OpConverterTest::Reset(precision_mode_to_test, trt_mode, context_.get());
+  }
+
+  void CreateContext(const NodeDef& node_def, OpKernel** kernel,
+                     OpKernelContext** context) {
+    std::unique_ptr<Device> device_(
+        DeviceFactory::NewDevice("GPU", {}, "/job:a/replica:0/task:0"));
+    Device* device_ptr = device_.get();
+
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(device_));
+
+    managed_allocator_ = absl::make_unique<GpuManagedAllocator>();
+    Allocator* allocator = managed_allocator_.get();
+    step_container_ =
+        absl::make_unique<ScopedStepContainer>(0, [](const string&) {});
+    slice_reader_cache_wrapper_ =
+        absl::make_unique<checkpoint::TensorSliceReaderCacheWrapper>();
+
+    flib_def_ = absl::make_unique<FunctionLibraryDefinition>(
+        OpRegistry::Global(), FunctionDefLibrary{});
+
+    thread_pool_ =
+        absl::make_unique<thread::ThreadPool>(Env::Default(), "default",
+                                              /*num_threads=*/1);
+    pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
+        device_mgr_.get(), Env::Default(), /*config=*/nullptr,
+        TF_GRAPH_DEF_VERSION, flib_def_.get(), OptimizerOptions(),
+        thread_pool_.get());
+
+    FunctionLibraryRuntime* flib = pflr_->GetFLR(device_ptr->name());
+    ResourceMgr* resource_mgr = device_ptr->resource_manager();
+
+    TF_CHECK_OK(NodeProperties::CreateFromNodeDef(
+        node_def, OpRegistry::Global(), &props_));
+
+    OpKernel* kernel_ptr = nullptr;
+    TF_CHECK_OK(CreateOpKernel(DEVICE_GPU, device_ptr, allocator, flib,
+                               resource_mgr, props_, TF_GRAPH_DEF_VERSION,
+                               &kernel_ptr));
+    op_kernel_ = std::unique_ptr<OpKernel>(kernel_ptr);
+
+    auto* dev_info = device_ptr->tensorflow_accelerator_device_info();
+    CHECK_NOTNULL(dev_info);
+    DeviceContext* device_context = dev_info->default_context;
+
+    // Note: this setup is not exhaustive.
+    params_.device = device_ptr;
+    params_.op_kernel = op_kernel_.get();
+    params_.resource_manager = resource_mgr;
+    params_.frame_iter = FrameAndIter(0, 0);
+    params_.inputs = &inputs_;
+    params_.step_container = step_container_.get();
+    params_.function_library = flib;
+    params_.slice_reader_cache = slice_reader_cache_wrapper_.get();
+    params_.op_device_context = device_context;
+
+    context_ = absl::make_unique<OpKernelContext>(&params_);
+
+    // Outputs.
+    *kernel = op_kernel_.get();
+    *context = context_.get();
+  }
+
+ private:
+  // The following pointers manage the kernel context.
+  std::unique_ptr<DeviceMgr> device_mgr_;
+  std::unique_ptr<Allocator> managed_allocator_;
+  std::unique_ptr<ScopedStepContainer> step_container_;
+  std::unique_ptr<checkpoint::TensorSliceReaderCacheWrapper>
+      slice_reader_cache_wrapper_;
+  std::unique_ptr<FunctionLibraryDefinition> flib_def_;
+  std::unique_ptr<thread::ThreadPool> thread_pool_;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
+  OpKernelContext::Params params_;
+  std::unique_ptr<OpKernel> op_kernel_;
+  std::unique_ptr<OpKernelContext> context_;
+  std::shared_ptr<const NodeProperties> props_;
+  absl::InlinedVector<TensorValue, 4> inputs_;
 };
 
 // General test parameters to be used with ops that take a single input tensor.
@@ -2094,6 +2193,84 @@ void CopyTensorElements(const Tensor& tensor, protobuf::RepeatedField<T>* out) {
   const T* src = flat.data();
   T* dst = out->mutable_data();
   std::copy(src, src + num_out_elements, dst);
+}
+
+template <DataType dtype, typename CType>
+void TestConvertVariableV2(VariableOpConverterTest* test) {
+  struct TestParam {
+    string container;
+    string shared_name;
+    std::vector<int> dims;
+    float epsilon;
+    Status conversion_status;
+  };
+
+  std::vector<TestParam> test_param = {
+      {"", "var0", {}, 0.001, Status::OK()},
+      {"", "var0", {64}, 0.001, Status::OK()},
+      {"", "var0", {8, 16}, 0.001, Status::OK()},
+      {"box", "var", {8, 16}, 0.001, Status::OK()}};
+  for (auto p : test_param) {
+    // Create node definition.
+    NodeDef node_def;
+    std::vector<int64_t> dims_64(p.dims.begin(), p.dims.end());
+    TensorShape shape = TensorShape(absl::Span<int64_t>(dims_64));
+    TF_CHECK_OK(NodeDefBuilder("my_var", "VariableV2")
+                    .Attr("dtype", dtype)
+                    .Attr("shape", shape)
+                    .Attr("container", p.container)
+                    .Attr("shared_name", p.shared_name)
+                    .Finalize(&node_def));
+
+    OpKernel* kernel;
+    OpKernelContext* context;
+    test->CreateContext(node_def, &kernel, &context);
+
+    test->Reset(TrtPrecisionMode::FP32, TrtTestMode::kDynamicShape);
+
+    // Set the value of the variable according to p.dims.
+    int var_size = std::accumulate(p.dims.begin(), p.dims.end(), 1,
+                                   std::multiplies<int>());
+    std::vector<CType> expected_value;
+    expected_value.reserve(var_size);
+    for (int i = 0; i < var_size; i++) {
+      expected_value.push_back((CType)i);
+    }
+
+    // To set the variable, we get the tensor by executing the VariableV2 op
+    // rather than creating the resource directly in the manager, because:
+    // 1) LegacyVar defined in `variable_ops.cc` is not accessible.
+    // 2) Tensor::set_shape is private, VariableOp is a friend class.
+    kernel->Compute(context);
+    Tensor* tensor_ptr = context->mutable_output(0);
+    CHECK_NOTNULL(tensor_ptr);
+    // We allocate the tensor in the temporary memory. Note that creating a
+    // tensor in this scope and sharing the underlying storage by copy would
+    // lead to double destruction.
+    AllocatorAttributes attr;
+    attr.set_gpu_compatible(true);
+    attr.set_nic_compatible(true);
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(dtype, shape, tensor_ptr, attr));
+    // The tensor is allocated on GPU. We copy the values from the CPU.
+    auto tensor_flat = tensor_ptr->flat<CType>();
+    CHECK_NOTNULL(tensor_flat.data());
+    auto ret = cudaMemcpy(tensor_flat.data(), expected_value.data(),
+                          expected_value.size() * sizeof(CType),
+                          cudaMemcpyHostToDevice);
+    CHECK_EQ(ret, 0);
+
+    test->RunValidationAndConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(test->GetTensorOrWeights("my_var", &output));
+    EXPECT_THAT(output.weights(),
+                ShapedWeightsHasDimsAndValues<CType>(p.dims, expected_value));
+  }
+}
+
+TEST_F(VariableOpConverterTest, ConvertVariableV2) {
+  TestConvertVariableV2<DT_FLOAT, float>(this);
+  TestConvertVariableV2<DT_HALF, Eigen::half>(this);
 }
 
 template <DataType dtype, typename InputCType, typename OutputCType>
@@ -7650,7 +7827,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
       trt_mode_ == TrtTestMode::kDynamicShape
           ? errors::InvalidArgument(
                 "The argument `strided_slice_spec` is "
-                "`absl::nullopt` with `dynamic_input_size_indices` non empty.")
+                "`std::nullopt` with `dynamic_input_size_indices` non empty.")
           : Status::OK();
 
   std::vector<UnpackTestParams> params = {

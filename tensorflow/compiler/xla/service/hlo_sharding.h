@@ -223,7 +223,7 @@ class HloSharding {
   // span a single device, the return value will be empty.
   // In order for a sharding to span a single device, every leaf sharding must
   // be maximal and not replicated, and the used device must match.
-  absl::optional<int64_t> UniqueDevice() const;
+  std::optional<int64_t> UniqueDevice() const;
 
   // Retrieves the unique device or fails with a CHECK.
   int64_t GetUniqueDevice() const;
@@ -254,7 +254,7 @@ class HloSharding {
   // be returned. If it is a tuple, and all the tuple elements are common, the
   // common element will be returned. Otherwise the optional will contain no
   // value.
-  absl::optional<HloSharding> ExtractSingleSharding() const;
+  std::optional<HloSharding> ExtractSingleSharding() const;
 
   // Returns a copy of the sharding with no metadata. If sharding is of tuple
   // type, sub shardings will have no metadata.

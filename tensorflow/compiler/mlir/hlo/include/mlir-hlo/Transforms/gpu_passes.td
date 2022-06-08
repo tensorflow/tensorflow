@@ -20,11 +20,13 @@ include "mlir/Pass/PassBase.td"
 
 def GpuKernelToNVVMPass : Pass<"gpu-kernel-to-nvvm", "gpu::GPUModuleOp"> {
   let summary = "Pass to transform a gpu module to nvvm.";
+  let dependentDialects = ["LLVM::LLVMDialect", "NVVM::NVVMDialect"];
   let constructor = "CreateGpuKernelToNvvmPass()";
 }
 
 def GpuKernelToROCDLPass : Pass<"gpu-kernel-to-rocdl", "gpu::GPUModuleOp"> {
   let summary = "Pass to transform a gpu module to rocdl.";
+  let dependentDialects = ["LLVM::LLVMDialect", "ROCDL::ROCDLDialect"];
   let constructor = "CreateGpuKernelToRocdlPass()";
 }
 

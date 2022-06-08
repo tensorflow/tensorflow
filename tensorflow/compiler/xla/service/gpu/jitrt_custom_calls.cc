@@ -15,15 +15,16 @@
 #include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
 
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <memory>
+#include <numeric>
 #include <utility>
 
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
-#include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
@@ -31,16 +32,24 @@
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_all_to_all_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/core/platform/human_readable_json.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/stream_executor/gpu/gpu_types.h"
 #include "tfrt/jitrt/custom_call.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/triangular_solve_thunk.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
                                    xla::gpu::JitRtKernelsCache);
@@ -85,8 +94,8 @@ static constexpr CustomCall::RuntimeChecks RuntimeChecks() {
 // -------------------------------------------------------------------------- //
 
 se::KernelBase* JitRtKernelsCache::Get(se::StreamExecutor* executor,
-                                       const char* data) {
-  Key key = {executor, data};
+                                       const char* data, StringRef name) {
+  Key key(executor, data, name);
 
   absl::MutexLock lock(&mutex_);
   auto it = kernels_cache_.find(key);
@@ -96,9 +105,9 @@ se::KernelBase* JitRtKernelsCache::Get(se::StreamExecutor* executor,
 }
 
 se::KernelBase* JitRtKernelsCache::Set(se::StreamExecutor* executor,
-                                       const char* data,
+                                       const char* data, StringRef name,
                                        std::unique_ptr<se::KernelBase> kernel) {
-  Key key = {executor, data};
+  Key key(executor, data, name);
 
   absl::MutexLock lock(&mutex_);
   auto it = kernels_cache_.find(key);
@@ -298,7 +307,7 @@ LogicalResult LaunchFunc::operator()(
       {grid_size_x, grid_size_y, grid_size_z},
       {block_size_x, block_size_y, block_size_z});
 
-  se::KernelBase* kernel = kernels_cache->Get(executor, ptx.data());
+  se::KernelBase* kernel = kernels_cache->Get(executor, ptx.data(), name);
 
   // If kernel does not exists create it from the ptx.
   if (kernel == nullptr) {
@@ -306,7 +315,8 @@ LogicalResult LaunchFunc::operator()(
                                 args.size(), ptx.data(), {}, executor);
     if (!created.ok()) return failure();
 
-    kernel = kernels_cache->Set(executor, ptx.data(), std::move(*created));
+    kernel =
+        kernels_cache->Set(executor, ptx.data(), name, std::move(*created));
   }
 
   VLOG(3) << "Launching " << kernel->name();
@@ -1154,6 +1164,7 @@ LogicalResult Cholesky::operator()(
     const DebugOptions* debug_options, jitrt::MemrefView operand,
     jitrt::MemrefView a, jitrt::MemrefView workspace, jitrt::MemrefView info,
     int64_t batch_size, int64_t n, int64_t uplo) const {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   se::DeviceMemoryBase operand_buffer = GetDeviceAddress(operand);
   se::DeviceMemoryBase a_buffer = GetDeviceAddress(a);
   se::DeviceMemoryBase workspace_buffer = GetDeviceAddress(workspace);
@@ -1174,6 +1185,9 @@ LogicalResult Cholesky::operator()(
   if (!executed.ok()) return failure();
 
   return success();
+#else  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  return failure();
+#endif
 }
 
 static bool Cholesky(runtime::KernelContext* ctx, void** args, void** attrs) {
@@ -1194,6 +1208,130 @@ static bool Cholesky(runtime::KernelContext* ctx, void** args, void** attrs) {
 }
 
 // -------------------------------------------------------------------------- //
+
+namespace {
+
+// TODO(ezhulenev): Today XLA represents TriangularSolve as a "classic" XLA
+// custom call operation, and we provide a thin adaptor from Xla custom call
+// to JitRt custom call. Once we are fully migrated to JitRt exectuion, XLA
+// compiler should directly emit properly typed TriangularSolve JitRt custom
+// call (no need to pass config via the serialized string).
+struct TriangularSolve {
+  // Adaptor from XlaCustomCall API to properly typed TriangularSolve handler.
+  static LogicalResult run(const ServiceExecutableRunOptions* run_options,
+                           const DebugOptions* debug_options,
+                           CustomCall::RemainingArgs args,
+                           StringRef backend_config);
+
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           const DebugOptions* debug_options,
+                           jitrt::StridedMemrefView a,
+                           jitrt::StridedMemrefView b,
+                           jitrt::StridedMemrefView result,
+                           jitrt::FlatMemrefView temp, bool left_side,
+                           bool lower, bool unit_diagonal,
+                           TriangularSolveOptions::Transpose transpose_a) const;
+  static TriangularSolve Handler() { return TriangularSolve(); }
+};
+
+}  // namespace
+
+LogicalResult TriangularSolve::run(
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options, CustomCall::RemainingArgs args,
+    StringRef backend_config) {
+  TriangularSolve handler = TriangularSolve::Handler();
+
+  // We expect 4 memref argumets.
+  if (args.size() != 4) return failure();
+
+  // Check if all arguments have the correct type.
+  auto a = args.get<jitrt::StridedMemrefView>(0);
+  auto b = args.get<jitrt::StridedMemrefView>(1);
+  auto result = args.get<jitrt::StridedMemrefView>(2);
+  auto temp = args.get<jitrt::FlatMemrefView>(3);
+  if (failed(a) || failed(b) || failed(result) || failed(temp))
+    return failure();
+
+  // Parse backend config string.
+  TriangularSolveOptions opts;
+  if (!tensorflow::HumanReadableJsonToProto(backend_config.str(), &opts).ok())
+    return failure();
+
+  return handler(run_options, debug_options, *a, *b, *result, *temp,
+                 opts.left_side(), opts.lower(), opts.unit_diagonal(),
+                 opts.transpose_a());
+}
+
+LogicalResult TriangularSolve::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options, jitrt::StridedMemrefView a,
+    jitrt::StridedMemrefView b, jitrt::StridedMemrefView result,
+    jitrt::FlatMemrefView temp, bool left_side, bool lower, bool unit_diagonal,
+    TriangularSolveOptions::Transpose transpose_a) const {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  se::Stream* stream = run_options->stream();
+
+  se::DeviceMemoryBase a_data = GetDeviceAddress(a);
+  se::DeviceMemoryBase b_data = GetDeviceAddress(b);
+  se::DeviceMemoryBase result_data = GetDeviceAddress(result);
+  se::DeviceMemoryBase temp_data = GetDeviceAddress(temp);
+
+  // Triangular solve is in-place on 'b', so copy 'b' to the output if they
+  // aren't the same buffer.
+  if (b.data != result.data)
+    stream->ThenMemcpy(&result_data, b_data, b_data.size());
+
+  Shape b_shape = ToShape(b);
+  int64_t m = b_shape.dimensions(b_shape.rank() - 2);
+  int64_t n = b_shape.dimensions(b_shape.rank() - 1);
+  int64_t batch_size = std::accumulate(
+      b_shape.dimensions().begin(), b_shape.dimensions().end() - 2, int64_t{1},
+      [](int64_t a, int64_t b) { return a * b; });
+
+  PrimitiveType elem_type = ToPrimitiveType(b.dtype);
+  int64_t elem_size = ShapeUtil::ByteSizeOfPrimitiveType(elem_type);
+  int64_t a_batch_stride = left_side ? m * m * elem_size : n * n * elem_size;
+  int64_t b_batch_stride = m * n * elem_size;
+
+  using Side = se::blas::Side;
+  using Diagonal = se::blas::Diagonal;
+  using Transpose = se::blas::Transpose;
+  using UpperLower = se::blas::UpperLower;
+
+  // Convert custom call attributes to se::blas enums.
+  UpperLower uplo = lower ? UpperLower::kLower : UpperLower::kUpper;
+  Side side = left_side ? Side::kLeft : Side::kRight;
+  Diagonal diagonal = unit_diagonal ? Diagonal::kUnit : Diagonal::kNonUnit;
+
+  auto transpose = [&]() -> mlir::FailureOr<Transpose> {
+    switch (transpose_a) {
+      case TriangularSolveOptions::NO_TRANSPOSE:
+        return se::blas::Transpose::kNoTranspose;
+      case TriangularSolveOptions::TRANSPOSE:
+        return se::blas::Transpose::kTranspose;
+      case TriangularSolveOptions::ADJOINT:
+        return se::blas::Transpose::kConjugateTranspose;
+      default:
+        return failure();
+    }
+  }();
+
+  if (failed(transpose)) return failure();
+
+  auto st = RunTriangulatSolve(
+      a_data, result_data, temp_data, PtxOptsFromDebugOptions(*debug_options),
+      uplo, side, diagonal, *transpose, elem_type, batch_size, m, n,
+      a_batch_stride, b_batch_stride, stream);
+  if (!st.ok()) return failure();
+
+  return success();
+#else  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  return failure();
+#endif
+}
+
+// -------------------------------------------------------------------------- //
 // Implements JitRt custom call that forward to the Xla Custom Call handler.
 //
 // Longer term all Xla custom calls probably should be directly implemented as
@@ -1204,6 +1342,7 @@ struct XlaCustomCall {
   using Stream = se::gpu::GpuStreamHandle;
 
   LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           const DebugOptions* debug_options,
                            CustomCall::RemainingArgs args,
                            StringRef call_target_name, int32_t api_version,
                            StringRef backend_config) const;
@@ -1213,8 +1352,15 @@ struct XlaCustomCall {
 
 LogicalResult XlaCustomCall::operator()(
     const ServiceExecutableRunOptions* run_options,
-    CustomCall::RemainingArgs args, StringRef call_target_name,
-    int32_t api_version, StringRef backend_config) const {
+    const DebugOptions* debug_options, CustomCall::RemainingArgs args,
+    StringRef call_target_name, int32_t api_version,
+    StringRef backend_config) const {
+  // Pattern match custom call to a few special cases, otherwise find the custom
+  // call handler regustered with the runtime.
+  if (call_target_name == kTriangularSolveCallTarget)
+    return TriangularSolve::run(run_options, debug_options, args,
+                                backend_config);
+
   // Find the Xla custom call handler.
   auto& platform_name = run_options->stream()->parent()->platform()->Name();
   void* call_target = CustomCallTargetRegistry::Global()->Lookup(
@@ -1268,6 +1414,7 @@ LogicalResult XlaCustomCall::operator()(
 static bool CustomCall(runtime::KernelContext* ctx, void** args, void** attrs) {
   static auto* handler = CustomCall::Bind("xla.gpu.memcpy")
                              .UserData<const ServiceExecutableRunOptions*>()
+                             .UserData<const DebugOptions*>()
                              .Arg<jitrt::CustomCall::RemainingArgs>()  // args
                              .Attr<StringRef>("call_target_name")
                              .Attr<int32_t>("api_version")
@@ -1454,6 +1601,154 @@ static bool AllGather(runtime::KernelContext* ctx, void** args, void** attrs) {
 // -------------------------------------------------------------------------- //
 
 namespace {
+struct AllToAll {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           CustomCall::RemainingArgs args, int64_t group_mode,
+                           bool has_split_dimension, int64_t op_id,
+                           ArrayRef<int64_t> replica_group_offsets,
+                           ArrayRef<int64_t> replica_group_values) const;
+  static AllToAll Handler() { return AllToAll(); }
+};
+}  // namespace
+
+LogicalResult AllToAll::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    CustomCall::RemainingArgs args, int64_t group_mode,
+    bool has_split_dimension, int64_t op_id,
+    ArrayRef<int64_t> replica_group_offsets,
+    ArrayRef<int64_t> replica_group_values) const {
+#if XLA_ENABLE_XCCL
+  VLOG(3) << "Running AllToAll";
+  se::Stream* stream = run_options->stream();
+  NcclExecuteParams params(*run_options, stream);
+
+  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
+                          replica_group_values);
+  if (failed(comm)) return comm;
+
+  auto device_buffers = GetDeviceBufferPairs(args);
+  if (failed(device_buffers)) return device_buffers;
+
+  auto executed =
+      RunAllToAll(has_split_dimension, *device_buffers, *stream, **comm);
+  if (!executed.ok()) return failure();
+
+  return success();
+#else   // XLA_ENABLE_XCCL
+  // NCCL disabled.
+  return failure();
+#endif  // XLA_ENABLE_XCCL
+}
+
+static bool AllToAll(runtime::KernelContext* ctx, void** args, void** attrs) {
+  static auto* handler =
+      CustomCall::Bind("xla.gpu.all_to_all")
+          .UserData<const ServiceExecutableRunOptions*>()
+          .RemainingArgs()              // args
+          .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
+          .Attr<bool>("has_split_dimension")
+          .Attr<int64_t>("op_id")
+          .Attr<ArrayRef<int64_t>>("replica_group_offsets")
+          .Attr<ArrayRef<int64_t>>("replica_group_values")
+          .To<RuntimeChecks()>(AllToAll::Handler())
+          .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+// -------------------------------------------------------------------------- //
+
+namespace {
+struct CollectivePermute {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           CustomCall::RemainingArgs args, int64_t group_mode,
+                           int64_t op_id,
+                           ArrayRef<int64_t> replica_group_offsets,
+                           ArrayRef<int64_t> replica_group_values,
+                           ArrayRef<int64_t> source_peers,
+                           ArrayRef<int64_t> target_peers) const;
+  static CollectivePermute Handler() { return CollectivePermute(); }
+};
+}  // namespace
+
+LogicalResult CollectivePermute::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
+    ArrayRef<int64_t> replica_group_offsets,
+    ArrayRef<int64_t> replica_group_values, ArrayRef<int64_t> source_peers,
+    ArrayRef<int64_t> target_peers) const {
+#if XLA_ENABLE_XCCL
+  VLOG(3) << "Running CollectivePermute";
+  se::Stream* stream = run_options->stream();
+  NcclExecuteParams params(*run_options, stream);
+
+  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
+                          replica_group_values);
+  if (failed(comm)) return comm;
+
+  auto device_buffers = GetDeviceBufferPairs(args);
+  if (failed(device_buffers)) return device_buffers;
+  if (device_buffers->size() != 1) return failure();
+
+  StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
+  if (!global_device_id.ok()) return failure();
+
+  StatusOr<DeviceAssignment::LogicalID> current_logical_id =
+      params.device_assn->LogicalIdForDevice(global_device_id.value());
+  if (!current_logical_id.ok()) return failure();
+
+  const int64_t current_id = static_cast<CollectiveOpGroupMode>(group_mode) ==
+                                     CollectiveOpGroupMode::kCrossReplica
+                                 ? current_logical_id.value().replica_id
+                                 : current_logical_id.value().computation_id;
+  std::string device_string = NcclCollectiveThunk::GetDeviceString(params);
+
+  NcclCollectivePermuteConfig::IdToSourceTargetMap id_to_source_target;
+  for (int i = 0; i < source_peers.size(); ++i) {
+    id_to_source_target.insert({target_peers[i], {}}).first->second.source =
+        source_peers[i];
+    id_to_source_target.insert({source_peers[i], {}}).first->second.target =
+        target_peers[i];
+  }
+  const NcclCollectivePermuteConfig::SourceTargetMapEntry source_target =
+      NcclCollectivePermuteConfig::GetSourceTarget(id_to_source_target,
+                                                   current_id);
+
+  auto executed =
+      RunCollectivePermute(source_target, (*device_buffers)[0], *stream, **comm,
+                           device_string, current_id);
+  if (!executed.ok()) return failure();
+
+  return success();
+#else   // XLA_ENABLE_XCCL
+  // NCCL disabled.
+  return failure();
+#endif  // XLA_ENABLE_XCCL
+}
+
+static bool CollectivePermute(runtime::KernelContext* ctx, void** args,
+                              void** attrs) {
+  static auto* handler =
+      CustomCall::Bind("xla.gpu.collective_permute")
+          .UserData<const ServiceExecutableRunOptions*>()
+          .RemainingArgs()              // args
+          .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
+          .Attr<int64_t>("op_id")
+          .Attr<ArrayRef<int64_t>>("replica_group_offsets")
+          .Attr<ArrayRef<int64_t>>("replica_group_values")
+          .Attr<ArrayRef<int64_t>>("source_peers")
+          .Attr<ArrayRef<int64_t>>("target_peers")
+          .To<RuntimeChecks()>(CollectivePermute::Handler())
+          .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+// -------------------------------------------------------------------------- //
+
+namespace {
 struct ReplicaId {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
@@ -1495,6 +1790,49 @@ static bool ReplicaId(runtime::KernelContext* ctx, void** args, void** attrs) {
 
 // -------------------------------------------------------------------------- //
 
+namespace {
+struct PartitionId {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           jitrt::FlatMemrefView result) const;
+  static PartitionId Handler() { return PartitionId(); }
+};
+}  // namespace
+
+LogicalResult PartitionId::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    jitrt::FlatMemrefView result) const {
+  VLOG(3) << "Running PartitionId";
+  se::Stream* stream = run_options->stream();
+  NcclExecuteParams params(*run_options, stream);
+
+  StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
+  if (!global_device_id.ok()) return failure();
+
+  StatusOr<DeviceAssignment::LogicalID> logical_id =
+      params.device_assn->LogicalIdForDevice(global_device_id.value());
+  if (!logical_id.ok()) return failure();
+
+  se::DeviceMemoryBase result_data = GetDeviceAddress(result);
+  params.stream->ThenMemset32(&result_data, logical_id.value().computation_id,
+                              /*size=*/4);
+
+  return success();
+}
+
+static bool PartitionId(runtime::KernelContext* ctx, void** args,
+                        void** attrs) {
+  static auto* handler = CustomCall::Bind("xla.gpu.partition_id")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .Arg<jitrt::FlatMemrefView>()  // result
+                             .To<RuntimeChecks()>(PartitionId::Handler())
+                             .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+// -------------------------------------------------------------------------- //
+
 SymbolMap JitRtCustomCallsSymbolMap(MangleAndInterner mangle) {
   SymbolMap symbol_map;
 
@@ -1507,8 +1845,10 @@ SymbolMap JitRtCustomCallsSymbolMap(MangleAndInterner mangle) {
 
   bind("xla.gpu.all_gather", &xla::gpu::AllGather);
   bind("xla.gpu.all_reduce", &xla::gpu::AllReduce);
+  bind("xla.gpu.all_to_all", &xla::gpu::AllToAll);
   bind("xla.gpu.fft", &xla::gpu::Fft);
   bind("xla.gpu.cholesky", &xla::gpu::Cholesky);
+  bind("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
   bind("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
   bind("xla.gpu.gemm", &xla::gpu::Gemm);
   bind("xla.gpu.gemm.bias", &xla::gpu::GemmBias);
@@ -1525,6 +1865,7 @@ SymbolMap JitRtCustomCallsSymbolMap(MangleAndInterner mangle) {
   bind("xla.gpu.memcpy.d2h", &MemcpyFn<MemcpyDirection::kDeviceToHost>);
   bind("xla.gpu.infeed", &xla::gpu::Infeed);
   bind("xla.gpu.outfeed", &xla::gpu::Outfeed);
+  bind("xla.gpu.partition_id", &xla::gpu::PartitionId);
   bind("xla.gpu.reduce_scatter", &xla::gpu::ReduceScatter);
   bind("xla.gpu.replica_id", &xla::gpu::ReplicaId);
   bind("xla.gpu.custom_call", &xla::gpu::CustomCall);

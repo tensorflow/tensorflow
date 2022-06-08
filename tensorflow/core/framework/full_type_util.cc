@@ -175,7 +175,11 @@ Status SubstituteVar(AttrMap& attrs, FullTypeDef& t) {
 }
 
 Status SubstituteForEach(AttrMap& attrs, FullTypeDef& t) {
-  DCHECK_EQ(t.args_size(), 3);
+  if (t.args_size() != 3) {
+    return Status(error::INVALID_ARGUMENT,
+                  absl::StrCat("illegal FOR_EACH type, expected 3 args, got ",
+                               t.args_size()));
+  }
 
   const auto& cont = t.args(0);
   const auto& tmpl = t.args(1);

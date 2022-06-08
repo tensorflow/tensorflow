@@ -316,7 +316,7 @@ TEST(TensorBundleTest, SwapBytes) {
   // functions. As a workaround, we make some dummy calls here.
   // TODO(frreiss): Remove this workaround when the compiler bug is fixed.
   ByteSwap(Constant_2x3<int>(42));
-  EXPECT_NE(Status::OK(), FlipEndiannessBit(Prefix("not_a_valid_prefix")));
+  EXPECT_NE(OkStatus(), FlipEndiannessBit(Prefix("not_a_valid_prefix")));
 
   // Test patterns, manually swapped so that we aren't relying on the
   // correctness of our own byte-swapping macros when testing those macros.

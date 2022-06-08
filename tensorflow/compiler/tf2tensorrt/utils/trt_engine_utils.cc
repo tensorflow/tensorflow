@@ -73,7 +73,7 @@ Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
   }
   TF_RETURN_IF_ERROR(DimsAdapter(dims).TensorShape(
       &shape,
-      use_implicit_batch ? absl::optional<int>(batch_size) : absl::nullopt));
+      use_implicit_batch ? std::optional<int>(batch_size) : std::nullopt));
   return Status::OK();
 }
 

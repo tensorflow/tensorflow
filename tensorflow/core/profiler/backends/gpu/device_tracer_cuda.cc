@@ -155,14 +155,14 @@ Status GpuTracer::DoStart() {
                                           start_gputime_ns);
 
   cupti_tracer_->Enable(options_, cupti_collector_.get());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GpuTracer::Start() {
   Status status = DoStart();
   if (status.ok()) {
     profiling_state_ = State::kStartedOk;
-    return Status::OK();
+    return OkStatus();
   } else {
     profiling_state_ = State::kStartedError;
     return status;
@@ -171,7 +171,7 @@ Status GpuTracer::Start() {
 
 Status GpuTracer::DoStop() {
   cupti_tracer_->Disable();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GpuTracer::Stop() {
@@ -179,7 +179,7 @@ Status GpuTracer::Stop() {
     Status status = DoStop();
     profiling_state_ = status.ok() ? State::kStoppedOk : State::kStoppedError;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GpuTracer::CollectData(XSpace* space) {
@@ -187,15 +187,15 @@ Status GpuTracer::CollectData(XSpace* space) {
   switch (profiling_state_) {
     case State::kNotStarted:
       VLOG(1) << "No trace data collected, session wasn't started";
-      return Status::OK();
+      return OkStatus();
     case State::kStartedOk:
       return errors::FailedPrecondition("Cannot collect trace before stopping");
     case State::kStartedError:
       LOG(ERROR) << "Cannot collect, profiler failed to start";
-      return Status::OK();
+      return OkStatus();
     case State::kStoppedError:
       VLOG(1) << "No trace data collected";
-      return Status::OK();
+      return OkStatus();
     case State::kStoppedOk: {
       std::string cupti_error = CuptiTracer::ErrorIfAny();
       if (!cupti_error.empty()) {
@@ -209,7 +209,7 @@ Status GpuTracer::CollectData(XSpace* space) {
         uint64 end_gpu_ns = CuptiTracer::GetTimestamp();
         cupti_collector_->Export(space, end_gpu_ns);
       }
-      return Status::OK();
+      return OkStatus();
     }
   }
   return errors::Internal("Invalid profiling state: ", profiling_state_);

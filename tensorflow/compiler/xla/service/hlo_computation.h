@@ -95,7 +95,7 @@ class HloComputation {
       for (const auto& instruction : instructions_) {
         TF_RETURN_IF_ERROR(func(instruction.get()));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     HloInstruction* last_added_instruction() const {
@@ -752,7 +752,7 @@ Status HloComputation::AcceptOrdered(
     visited.insert(instruction);
   }
   TF_RETURN_IF_ERROR(visitor->FinishVisit(root_instruction()));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Explicit instantiations.

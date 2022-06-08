@@ -31,13 +31,13 @@ class BuildXlaOpsPass : public GraphOptimizationPass {
   // overrides --tf_xla_enable_lazy_compilation flag in deciding whether lazy
   // compilation is enabled.
   explicit BuildXlaOpsPass(
-      absl::optional<bool> enable_lazy_compilation = absl::nullopt)
+      std::optional<bool> enable_lazy_compilation = std::nullopt)
       : enable_lazy_compilation_(enable_lazy_compilation) {}
 
   Status Run(const GraphOptimizationPassOptions& options) override;
 
  private:
-  absl::optional<bool> enable_lazy_compilation_;
+  std::optional<bool> enable_lazy_compilation_;
 };
 
 }  // namespace tensorflow

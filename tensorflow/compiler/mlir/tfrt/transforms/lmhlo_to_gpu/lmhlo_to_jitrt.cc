@@ -47,6 +47,8 @@
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_all_to_all_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
@@ -81,11 +83,14 @@ using mlir::gpu::LaunchFuncOp;
 using mlir::gpu::MemcpyOp;
 using mlir::lmhlo::AllGatherOp;
 using mlir::lmhlo::AllReduceOp;
+using mlir::lmhlo::AllToAllOp;
 using mlir::lmhlo::CaseOp;
+using mlir::lmhlo::CollectivePermuteOp;
 using mlir::lmhlo::CustomCallOp;
 using mlir::lmhlo::FftOp;
 using mlir::lmhlo::InfeedOp;
 using mlir::lmhlo::OutfeedOp;
+using mlir::lmhlo::PartitionIdOp;
 using mlir::lmhlo::ReduceScatterOp;
 using mlir::lmhlo::ReplicaIdOp;
 using mlir::lmhlo::TerminatorOp;
@@ -1020,6 +1025,57 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
   static llvm::StringRef Name(AllGatherOp) { return "all_gather"; }
   static llvm::StringRef Name(AllReduceOp) { return "all_reduce"; }
   static llvm::StringRef Name(ReduceScatterOp) { return "reduce_scatter"; }
+  static llvm::StringRef Name(AllToAllOp) { return "all_to_all"; }
+  static llvm::StringRef Name(CollectivePermuteOp) {
+    return "collective_permute";
+  }
+
+  template <typename ReduceOrGatherOp>
+  static xla::gpu::NcclCollectiveConfig GetNcclCollectiveConfig(
+      ReduceOrGatherOp op, int /*replica_count*/, int /*num_partitions*/) {
+    return xla::gpu::GetNcclCollectiveConfigForMlir(op,
+                                                    op.use_global_device_ids());
+  }
+  static xla::gpu::NcclCollectiveConfig GetNcclCollectiveConfig(
+      AllToAllOp op, int /*replica_count*/, int /*num_partitions*/) {
+    // TODO(b/180174349): LMHLO AllToAll incorrectly has use_global_device_ids
+    // attribute and it should be removed.
+    return xla::gpu::GetNcclCollectiveConfigForMlir(op, std::nullopt);
+  }
+  static xla::gpu::NcclCollectiveConfig GetNcclCollectiveConfig(
+      CollectivePermuteOp op, int replica_count, int num_partitions) {
+    return xla::gpu::NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
+               op, replica_count, num_partitions)
+        .config;
+  }
+
+  template <typename NonCollectivePermuteOp>
+  static LogicalResult TryDegenerateToMemCopy(
+      NonCollectivePermuteOp op, const xla::gpu::NcclCollectiveConfig& config,
+      int replica_count, int num_partitions, PatternRewriter& rewriter) {
+    if (!config.IsDegenerate(replica_count, num_partitions)) {
+      return failure();
+    }
+
+    for (int64_t i = 0; i < op.operands().size(); i++) {
+      rewriter.create<gpu::MemcpyOp>(
+          op.getLoc(), TypeRange(),
+          ValueRange({op.results()[i], op.operands()[i]}));
+    }
+    return success();
+  }
+  static LogicalResult TryDegenerateToMemCopy(
+      CollectivePermuteOp op, const xla::gpu::NcclCollectiveConfig& config,
+      int replica_count, int num_partitions, PatternRewriter& rewriter) {
+    if (!xla::gpu::NcclCollectivePermuteThunk::IsDegenerate(op, replica_count,
+                                                            num_partitions)) {
+      return failure();
+    }
+
+    rewriter.create<gpu::MemcpyOp>(op.getLoc(), TypeRange(),
+                                   ValueRange({op.output(), op.operand()}));
+    return success();
+  }
 
   static bool CanImplement(AllGatherOp op) {
     return xla::gpu::NcclAllGatherThunk::CanImplement(op);
@@ -1030,12 +1086,15 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
   static bool CanImplement(ReduceScatterOp op) {
     return xla::gpu::NcclReduceScatterThunk::CanImplement(op);
   }
-
-  static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b, AllGatherOp op,
-                                        CallOp call) {
-    return success();
+  static bool CanImplement(AllToAllOp op) {
+    return xla::gpu::NcclAllToAllThunk::CanImplement(op);
   }
-  static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b, AllReduceOp op,
+  static bool CanImplement(CollectivePermuteOp op) {
+    return xla::gpu::NcclCollectivePermuteThunk::CanImplement(op);
+  }
+
+  template <typename ReduceOp>
+  static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b, ReduceOp op,
                                         CallOp call) {
     std::optional<xla::ReductionKind> reduction_kind =
         xla::gpu::NcclAllReduceThunkBase::MatchAllReduceComputation(
@@ -1049,18 +1108,40 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
         b.getI64IntegerAttr(static_cast<int64_t>(reduction_kind.value())));
     return success();
   }
+  static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b, AllGatherOp op,
+                                        CallOp call) {
+    return success();
+  }
+  static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b, AllToAllOp op,
+                                        CallOp call) {
+    call->setAttr(b.getStringAttr("has_split_dimension"),
+                  b.getBoolAttr(op.split_dimension().hasValue()));
+    return success();
+  }
   static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b,
-                                        ReduceScatterOp op, CallOp call) {
-    std::optional<xla::ReductionKind> reduction_kind =
-        xla::gpu::NcclAllReduceThunkBase::MatchAllReduceComputation(
-            op.computation());
-    if (!reduction_kind.has_value())
+                                        CollectivePermuteOp op, CallOp call) {
+    auto source_target_pairs_or =
+        xla::ConvertNx2Attribute(op.source_target_pairs());
+    if (!source_target_pairs_or.ok()) {
       return op.emitOpError()
-             << "Failed to determine reduction computation for ReduceScatter";
+             << source_target_pairs_or.status().error_message();
+    }
 
-    call->setAttr(
-        b.getStringAttr("reduction_kind"),
-        b.getI64IntegerAttr(static_cast<int64_t>(reduction_kind.value())));
+    // Pass an array of pairs as two vectors.
+    std::vector<std::pair<int64_t, int64_t>> source_target_pairs =
+        std::move(source_target_pairs_or.value());
+    std::vector<int64_t> source_peers, target_peers;
+    source_peers.reserve(source_target_pairs.size());
+    target_peers.reserve(source_target_pairs.size());
+    for (const auto& source_target_pair : source_target_pairs) {
+      source_peers.push_back(source_target_pair.first);
+      target_peers.push_back(source_target_pair.second);
+    }
+
+    auto source_peers_attr = b.getI64TensorAttr(source_peers);
+    auto target_peers_attr = b.getI64TensorAttr(target_peers);
+    call->setAttr(b.getStringAttr("source_peers"), source_peers_attr);
+    call->setAttr(b.getStringAttr("target_peers"), target_peers_attr);
     return success();
   }
 
@@ -1095,10 +1176,6 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     auto call = rewriter.create<CallOp>(op.getLoc(), inserted, TypeRange(),
                                         op.getOperands());
 
-    xla::gpu::NcclCollectiveConfig config =
-        xla::gpu::GetNcclCollectiveConfigForMlir(op,
-                                                 op.use_global_device_ids());
-
     FuncOp func = op->template getParentOfType<FuncOp>();
     IntegerAttr replica_count_attr =
         func->getAttrOfType<IntegerAttr>("replica_count");
@@ -1107,16 +1184,14 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     const int64_t replica_count = replica_count_attr.getInt();
     const int64_t num_partitions = num_partitions_attr.getInt();
 
+    xla::gpu::NcclCollectiveConfig config =
+        GetNcclCollectiveConfig(op, replica_count, num_partitions);
+
     // A given collective op can be degenerate if across all groups formed
     // by it are singleton. In such a case, we don't need to do any
     // communication and we can just copy the input to the output.
-    if (config.IsDegenerate(replica_count, num_partitions)) {
-      for (int64_t i = 0; i < op.operands().size(); i++) {
-        rewriter.create<gpu::MemcpyOp>(
-            op.getLoc(), TypeRange(),
-            ValueRange({op.results()[i], op.operands()[i]}));
-      }
-
+    if (succeeded(TryDegenerateToMemCopy(op, config, replica_count,
+                                         num_partitions, rewriter))) {
       // Erase the original collective operation.
       rewriter.eraseOp(op);
 
@@ -1129,7 +1204,6 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
              << " not implemented on GPU; replica_count: " << replica_count
              << ", num_partitions: " << num_partitions << ", group_mode: "
              << CollectiveOpGroupModeToString(config.group_mode)
-             << ", operand_count: " << op.operands().size()
              << ", NCCL support: "
              << xla::gpu::NcclCollectiveThunk::NcclIsEnabled();
     }
@@ -1186,30 +1260,45 @@ class ReduceScatterOpLowering : public CollectiveOpLowering<ReduceScatterOp> {
   using CollectiveOpLowering::CollectiveOpLowering;
 };
 
+class AllToAllOpLowering : public CollectiveOpLowering<AllToAllOp> {
+ public:
+  using CollectiveOpLowering::CollectiveOpLowering;
+};
+
+class CollectivePermuteOpLowering
+    : public CollectiveOpLowering<CollectivePermuteOp> {
+ public:
+  using CollectiveOpLowering::CollectiveOpLowering;
+};
+
 // -------------------------------------------------------------------------- //
 
-class ReplicaIdOpLowering : public OpRewritePattern<ReplicaIdOp> {
- public:
-  explicit ReplicaIdOpLowering(MLIRContext* ctx)
-      : OpRewritePattern<ReplicaIdOp>(ctx) {}
+template <typename IdOp>
+class IdOpLowering : public OpRewritePattern<IdOp> {
+ private:
+  static llvm::StringRef Name(ReplicaIdOp) { return "replica_id"; }
+  static llvm::StringRef Name(PartitionIdOp) { return "partition_id"; }
 
-  LogicalResult matchAndRewrite(ReplicaIdOp op,
+ public:
+  explicit IdOpLowering(MLIRContext* ctx) : OpRewritePattern<IdOp>(ctx) {}
+
+  LogicalResult matchAndRewrite(IdOp op,
                                 PatternRewriter& rewriter) const override {
     MLIRContext* ctx = this->getContext();
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
-    ModuleOp module = op->getParentOfType<ModuleOp>();
+    ModuleOp module = op->template getParentOfType<ModuleOp>();
 
     // Custom call target.
     NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
-                          b.getStringAttr("xla.gpu.replica_id"));
+                          b.getStringAttr(Twine("xla.gpu.") + Name(op)));
 
     // Create a custom call function declaration.
     auto custom_call_type =
         FunctionType::get(ctx, op->getOperandTypes(), TypeRange());
     auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
-    auto custom_call = FuncOp::create(op.getLoc(), "replica_id",
-                                      custom_call_type, custom_call_attrs);
+    auto custom_call = FuncOp::create(op.getLoc(), Name(op), custom_call_type,
+                                      custom_call_attrs);
     custom_call.setPrivate();
 
     SymbolTable sym_table(module);
@@ -1225,6 +1314,16 @@ class ReplicaIdOpLowering : public OpRewritePattern<ReplicaIdOp> {
 
     return success();
   }
+};
+
+class ReplicaIdOpLowering : public IdOpLowering<ReplicaIdOp> {
+ public:
+  using IdOpLowering::IdOpLowering;
+};
+
+class PartitionIdOpLowering : public IdOpLowering<PartitionIdOp> {
+ public:
+  using IdOpLowering::IdOpLowering;
 };
 
 // -------------------------------------------------------------------------- //
@@ -1280,10 +1379,11 @@ void ConvertLmhloGpuToJitRtPass::runOnOperation() {
   RewritePatternSet patterns(ctx);
   patterns.insert<GemmOpLowering, GemmBiasOpLowering>(ctx, uid);
   patterns
-      .insert<AllGatherOpLowering, AllReduceOpLowering, FftOpLowering,
-              CholeskyOpLowering, ReduceScatterOpLowering, ReplicaIdOpLowering,
-              WhileOpLowering, CaseOpLowering, CustomCallOpLowering,
-              TerminatorOpLowering, ConvForwardOpLowering,
+      .insert<AllGatherOpLowering, AllReduceOpLowering, AllToAllOpLowering,
+              FftOpLowering, CholeskyOpLowering, CollectivePermuteOpLowering,
+              PartitionIdOpLowering, ReduceScatterOpLowering,
+              ReplicaIdOpLowering, WhileOpLowering, CaseOpLowering,
+              CustomCallOpLowering, TerminatorOpLowering, ConvForwardOpLowering,
               ConvForwardFusedOpLowering, ConvForwardFusedSideInputOpLowering,
               ConvBackwardFilterOpLowering, ConvBackwardInputOpLowering>(ctx);
 

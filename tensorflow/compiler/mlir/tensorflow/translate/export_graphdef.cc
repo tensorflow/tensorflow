@@ -601,10 +601,10 @@ Status Exporter::ConvertLibFunction(
       auto sub_graph,
       Exporter::Convert(configs, tf_dialect, symbol_table, function, flib,
                         visited_functions, &control_ret_nodes));
-  const auto control_ret = [&](const Node* n) -> absl::optional<string> {
+  const auto control_ret = [&](const Node* n) -> std::optional<string> {
     return control_ret_nodes.contains(n)
                ? absl::make_optional<string>(n->name())
-               : absl::nullopt;
+               : std::nullopt;
   };
   FunctionDef func_def;
   TF_RETURN_IF_ERROR(
@@ -669,7 +669,7 @@ Status Exporter::Convert(mlir::ModuleOp module,
                          absl::flat_hash_set<Node*>* control_ret_nodes) {
   mlir::StringAttr entry_func_id =
       mlir::StringAttr::get(module.getContext(), "main");
-  absl::optional<FuncOp> entry_func;
+  std::optional<FuncOp> entry_func;
   FunctionDefLibrary flib;
   llvm::SmallDenseSet<FuncOp> visited_functions;
   auto tf_dialect = module.getContext()->getLoadedDialect("tf");

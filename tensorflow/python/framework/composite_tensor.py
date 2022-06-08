@@ -88,6 +88,19 @@ class CompositeTensor(object):
   def __tf_tracing_type__(self, context):
     return self._type_spec.__tf_tracing_type__(context)
 
+  def _convert_variables_to_tensors(self):
+    """Converts ResourceVariable components to Tensors.
+
+    Override this method to explicitly convert ResourceVariables embedded in the
+    CompositeTensor to Tensors. By default, it returns the CompositeTensor
+    unchanged.
+
+    Returns:
+      A CompositeTensor with all its ResourceVariable components converted to
+      Tensors.
+    """
+    return self
+
 
 _pywrap_utils.RegisterType("CompositeTensor", CompositeTensor)
 
@@ -113,6 +126,10 @@ def replace_composites_with_components(structure):
   else:
     return nest.map_structure(
         replace_composites_with_components, structure, expand_composites=False)
+
+
+def convert_variables_to_tensors(composite_tensor):
+  return composite_tensor._convert_variables_to_tensors()  # pylint: disable=protected-access
 
 
 # @TODO(edloper): Can we replace convert_to_tensor_or_xyz with just

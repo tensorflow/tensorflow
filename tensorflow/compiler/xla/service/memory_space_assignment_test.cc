@@ -55,7 +55,7 @@ class MemorySpaceAssignmentTest : public HloTestBase,
 
   std::unique_ptr<PresetAssignments> AssignMemorySpaceUsingCostAnalysis(
       HloModule* module,
-      absl::optional<Options> memory_space_assignment_options = absl::nullopt) {
+      std::optional<Options> memory_space_assignment_options = std::nullopt) {
     HloCostAnalysis::Options cost_options{ShapeSize};
     cost_options.set_flops_per_second(kFlopsPerSecond);
     cost_options.set_bytes_per_second(kBytesPerSecond);
@@ -92,7 +92,7 @@ class MemorySpaceAssignmentTest : public HloTestBase,
   std::unique_ptr<PresetAssignments> AssignMemorySpace(
       HloModule* module, int64_t max_outstanding_async_copies = -1,
       int64_t max_prefetch_interval = 10, int64_t min_prefetch_interval = 2,
-      absl::optional<Options> options = absl::nullopt) {
+      std::optional<Options> options = std::nullopt) {
     MemorySpaceAssignmentUtils::HoistParameters(*module);
     MemorySpaceAssignmentUtils::HoistConstantOperations(*module);
     InstructionCountPrefetchIntervalPicker prefetch_interval_picker(
@@ -104,10 +104,10 @@ class MemorySpaceAssignmentTest : public HloTestBase,
 
   std::unique_ptr<PresetAssignments> AssignMemorySpace(
       HloModule* module, int64_t max_outstanding_async_copies,
-      absl::optional<MemorySpaceAssignment::BufferIntervalCompare>
+      std::optional<MemorySpaceAssignment::BufferIntervalCompare>
           buffer_interval_compare,
       PrefetchIntervalPicker* prefetch_interval_picker,
-      absl::optional<Options> memory_space_assignment_options = absl::nullopt) {
+      std::optional<Options> memory_space_assignment_options = std::nullopt) {
     auto size_fn = [](const BufferValue& buffer) {
       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
     };

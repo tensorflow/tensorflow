@@ -77,7 +77,7 @@ Status CustomCallDynamicDimensionInference(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 class DynamicPadderTest : public HloTestBase {

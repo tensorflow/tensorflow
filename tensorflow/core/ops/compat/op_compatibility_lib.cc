@@ -95,7 +95,7 @@ static Status ReadOpHistory(Env* env, const string& file,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 OpCompatibilityLib::OpCompatibilityLib(const string& ops_prefix,
@@ -241,7 +241,7 @@ Status OpCompatibilityLib::ValidateCompatible(Env* env, int* changed_ops,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

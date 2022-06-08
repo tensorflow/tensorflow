@@ -642,7 +642,7 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateCompare(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
       Comparison::Direction direction,
-      absl::optional<Comparison::Type> type = absl::nullopt);
+      std::optional<Comparison::Type> type = std::nullopt);
 
   static std::unique_ptr<HloInstruction> CreateTriangularSolve(
       const Shape& shape, HloInstruction* a, HloInstruction* b,
@@ -674,7 +674,7 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       int64_t all_gather_dimension,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64_t>& channel_id, bool use_global_device_ids);
+      const std::optional<int64_t>& channel_id, bool use_global_device_ids);
 
   // Creates an all-gather-start op, which concats the operands of all
   // participants
@@ -687,7 +687,7 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       int64_t all_gather_dimension,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64_t>& channel_id, bool use_global_device_ids);
+      const std::optional<int64_t>& channel_id, bool use_global_device_ids);
 
   // Creates a cross replica reduction op.
   //
@@ -706,7 +706,7 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64_t>& channel_id, bool use_global_device_ids);
+      const std::optional<int64_t>& channel_id, bool use_global_device_ids);
 
   // Creates a reduce-scatter operation which reduces its inputs across the
   // given replica groups and then scatters the reduced data across the N
@@ -715,7 +715,7 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64_t>& channel_id, bool use_global_device_ids,
+      const std::optional<int64_t>& channel_id, bool use_global_device_ids,
       int64_t scatter_dimension);
 
   // Creates an asynchronous cross replica reduction op.
@@ -735,7 +735,7 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64_t>& channel_id, bool use_global_device_ids);
+      const std::optional<int64_t>& channel_id, bool use_global_device_ids);
 
   // An all-to-all op takes N array operands of the same shape and scatters them
   // to N replicas.  Each replica gathers the results into a tuple.
@@ -766,8 +766,8 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateAllToAll(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64_t>& channel_id,
-      const absl::optional<int64_t>& split_dimension = absl::nullopt);
+      const std::optional<int64_t>& channel_id,
+      const std::optional<int64_t>& split_dimension = std::nullopt);
 
   // Creates a communication instruction that permutes data cross replicas.
   // Data is sent/received according to the (source_replica_id,
@@ -777,28 +777,28 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateCollectivePermute(
       const Shape& shape, HloInstruction* operand,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-      const absl::optional<int64_t>& channel_id);
+      const std::optional<int64_t>& channel_id);
 
   static std::unique_ptr<HloInstruction> CreateCollectivePermute(
       const Shape& shape, HloInstruction* input, HloInstruction* output,
       HloInstruction* input_start_indices, HloInstruction* output_start_indices,
       absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs,
       absl::Span<const std::vector<int64_t>> slice_sizes,
-      const absl::optional<int64_t>& channel_id);
+      const std::optional<int64_t>& channel_id);
 
   // Creates a communication instruction that initiates the start of
   // CollectivePermute.
   static std::unique_ptr<HloInstruction> CreateCollectivePermuteStart(
       const Shape& shape, HloInstruction* operand,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-      const absl::optional<int64_t>& channel_id);
+      const std::optional<int64_t>& channel_id);
 
   static std::unique_ptr<HloInstruction> CreateCollectivePermuteStart(
       const Shape& shape, HloInstruction* input, HloInstruction* output,
       HloInstruction* input_start_indices, HloInstruction* output_start_indices,
       absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs,
       absl::Span<const std::vector<int64_t>> slice_sizes,
-      const absl::optional<int64_t>& channel_id);
+      const std::optional<int64_t>& channel_id);
 
   // Creates an instruction that returns a U32 replica ID.
   static std::unique_ptr<HloInstruction> CreateReplicaId(
@@ -1544,9 +1544,9 @@ class HloInstruction {
     return sharding_ ? *sharding_ : default_;
   }
   // Returns the sharding unique device, if any.
-  absl::optional<int64_t> sharding_unique_device() const {
+  std::optional<int64_t> sharding_unique_device() const {
     if (sharding_ == nullptr) {
-      return absl::optional<int64_t>();
+      return std::optional<int64_t>();
     }
     return sharding_->UniqueDevice();
   }
@@ -1724,7 +1724,7 @@ class HloInstruction {
 
   Status set_backend_config(const tensorflow::protobuf::Message& proto) {
     backend_config_ = proto;
-    return Status::OK();
+    return OkStatus();
   }
 
   bool has_backend_config() const { return !backend_config_.empty(); }
@@ -1858,8 +1858,8 @@ class HloInstruction {
   const std::vector<int64_t>& fft_length() const;
 
   // Delegates to HloChannelInstruction::channel_id.
-  absl::optional<int64_t> channel_id() const;
-  void set_channel_id(const absl::optional<int64_t>& channel_id);
+  std::optional<int64_t> channel_id() const;
+  void set_channel_id(const std::optional<int64_t>& channel_id);
 
   // Returns the dimension sizes or numbers associated with this instruction.
   virtual absl::Span<const int64_t> dimensions() const {
@@ -1974,8 +1974,8 @@ class HloInstruction {
       const std::vector<bool>& parameter_replicated_at_leaf_buffers);
 
   // Delegates to HloParameterInstruction::parameter_replicated_at_leaf_buffers.
-  const absl::optional<std::vector<bool>>&
-  parameter_replicated_at_leaf_buffers() const;
+  const std::optional<std::vector<bool>>& parameter_replicated_at_leaf_buffers()
+      const;
 
   // Delegates to HloGetTupleElementInstruction::tuple_index.
   int64_t tuple_index() const;
@@ -2235,7 +2235,7 @@ class HloInstruction {
   // NOTE: For all instructions other than kFusion, being elementwise on one of
   // the operands is equivalent to being elementwise on all the operands.
   virtual bool IsElementwiseImpl(
-      const absl::optional<int64_t>& operand_idx) const;
+      const std::optional<int64_t>& operand_idx) const;
 
   // Prints an operand to a string. Accessed by friend class HloInstruction.
   virtual std::string OperandsToStringWithCanonicalNameMap(

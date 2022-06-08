@@ -37,10 +37,10 @@ namespace {
 
 // Returns string attribute value for the node if the attribute is present,
 // otherwise returns empty optional value.
-absl::optional<string> GetStringAttr(const Node& n, const string& attr_name) {
+std::optional<string> GetStringAttr(const Node& n, const string& attr_name) {
   auto attr = n.attrs().Find(attr_name);
   if (!attr) {
-    return absl::nullopt;
+    return std::nullopt;
   } else {
     return attr->s();
   }

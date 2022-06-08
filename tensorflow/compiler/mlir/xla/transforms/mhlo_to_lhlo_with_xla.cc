@@ -238,7 +238,7 @@ class XlaHloToLhloPass
 // instruction. If `num_operands` is valid, then only the first `num_operands`
 // operands of the HLO instruction will be considered.
 Status LhloDialectEmitter::CreateOperands(
-    const HloInstruction* instr, absl::optional<int64_t> num_operands,
+    const HloInstruction* instr, std::optional<int64_t> num_operands,
     TokenLoweringMode token_mode, llvm::SmallVectorImpl<Value>& operands,
     size_t& num_arguments, size_t& num_results) {
   if (num_operands.value_or(0) > instr->operand_count())
@@ -265,7 +265,7 @@ OpType LhloDialectEmitter::CreateOpWithoutAttrs(const HloInstruction* instr,
 template <typename OpType>
 StatusOr<OpType> LhloDialectEmitter::CreateOpWithoutAttrs(
     const HloInstruction* instr, size_t& num_arguments, size_t& num_results,
-    absl::optional<int64_t> num_operands) {
+    std::optional<int64_t> num_operands) {
   llvm::SmallVector<Value, 4> operands;
   TF_RETURN_IF_ERROR(CreateOperands(instr, num_operands,
                                     TokenLoweringMode::kFailToLower, operands,
@@ -329,7 +329,7 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::CreateOpInFusion(
     const HloInstruction* instr) {
   llvm::SmallVector<Value, 4> operands;
   size_t num_arguments, num_results;
-  TF_RETURN_IF_ERROR(CreateOperands(instr, absl::nullopt,
+  TF_RETURN_IF_ERROR(CreateOperands(instr, std::nullopt,
                                     TokenLoweringMode::kFailToLower, operands,
                                     num_arguments, num_results));
   TF_ASSIGN_OR_RETURN(
@@ -713,7 +713,7 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
   // operands where each token is replaced with a null Value.
   llvm::SmallVector<Value, 4> operands;
   size_t num_arguments, num_results;
-  TF_RETURN_IF_ERROR(CreateOperands(instr, /*num_operands=*/absl::nullopt,
+  TF_RETURN_IF_ERROR(CreateOperands(instr, /*num_operands=*/std::nullopt,
                                     TokenLoweringMode::kUseNull, operands,
                                     num_arguments, num_results));
 

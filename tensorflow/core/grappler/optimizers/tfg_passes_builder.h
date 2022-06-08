@@ -29,7 +29,7 @@ void DefaultGrapplerPipeline(PassManager& manager);
 void DefaultModuleGrapplerPipeline(PassManager& manager,
                                    const tensorflow::RewriterConfig& config);
 
-// Add a remapper pass to the given pass manager.
+// Constructs the Remapper pass pipeline.
 void RemapperPassBuilder(PassManager& manager);
 
 }  // namespace tfg

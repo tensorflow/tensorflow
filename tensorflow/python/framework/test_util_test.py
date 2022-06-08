@@ -537,6 +537,10 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertNotAllEqual([20] * 3, j)
 
     with self.assertRaisesRegex(
+        AssertionError, r"two values are equal at all elements. $"):
+      self.assertNotAllEqual([120], k)
+
+    with self.assertRaisesRegex(
         AssertionError, r"two values are equal at all elements.*extra message"):
       self.assertNotAllEqual([120], k, msg="extra message")
 

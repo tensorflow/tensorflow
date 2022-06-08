@@ -298,7 +298,7 @@ struct BufferizeLoopOp : public OpConversionPattern<LoopOp> {
 
       OpBuilder::InsertionGuard g(rewriter);
       rewriter.setInsertionPoint(op);
-      auto new_alloc = rewriter.clone(*alloc.getOperation());
+      auto *new_alloc = rewriter.clone(*alloc.getOperation());
       operands[op.getNumControlOperands() + op.getNumInputs() + en.index()] =
           new_alloc->getResult(0);
     }

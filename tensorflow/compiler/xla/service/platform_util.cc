@@ -156,7 +156,7 @@ static bool IsDeviceSupported(se::StreamExecutor* executor) {
 /* static */ StatusOr<std::vector<se::StreamExecutor*>>
 PlatformUtil::GetStreamExecutors(
     se::Platform* platform,
-    const absl::optional<std::set<int>>& allowed_devices) {
+    const std::optional<std::set<int>>& allowed_devices) {
   int device_count = platform->VisibleDeviceCount();
   if (device_count <= 0) {
     return NotFound("no %s devices found", platform->Name());

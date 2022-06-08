@@ -29,19 +29,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
-#include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
-#include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
-#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/threadpool.h"
-#include "tensorflow/core/protobuf/cluster.pb.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 namespace xla {
 namespace {
@@ -59,35 +49,24 @@ class ClientServerTest : public testing::TestWithParam<ServiceParams> {
                     absl::string_view service_address = "") {
     ::grpc::ServerBuilder builder;
 
-    // Set up and register service on the gRPC server.
-    if (use_coordination_service) {
-      coord_service_ = EnableCoordinationService(service_options);
-      coord_compute_pool_ = absl::make_unique<tensorflow::thread::ThreadPool>(
-          service_options.env, "CoordinationServiceRpcHandler",
-          /*num_threads=*/1);
-      coord_rpc_service_ =
-          std::make_unique<tensorflow::GrpcCoordinationServiceImpl>(
-              coord_compute_pool_.get(), &builder);
-    } else {
-      distributed_runtime_service_ =
-          absl::make_unique<DistributedRuntimeServiceImpl>(service_options);
-      builder.RegisterService(distributed_runtime_service_.get());
-    }
-
     // Add a listening port if address is specified.
     if (!service_address.empty()) {
       auto credentials = ::grpc::InsecureServerCredentials();
       builder.AddListeningPort(std::string(service_address), credentials);
     }
 
-    // Start the gRPC server.
-    server_ = builder.BuildAndStart();
-
+    // Set up and register service on the gRPC server.
     if (use_coordination_service) {
-      // Start a separate thread to handle incoming RPCs.
-      coord_rpc_thread_.reset(service_options.env->StartThread(
-          tensorflow::ThreadOptions(), "CoordinationServiceHandleRPCsLoop",
-          [service = coord_rpc_service_.get()] { service->HandleRPCsLoop(); }));
+      coord_service_ =
+          std::make_unique<CoordinationServiceImpl>(service_options, &builder);
+      server_ = builder.BuildAndStart();
+      coord_service_->StartRpcThread();
+
+    } else {
+      distributed_runtime_service_ =
+          std::make_unique<DistributedRuntimeServiceImpl>(service_options);
+      builder.RegisterService(distributed_runtime_service_.get());
+      server_ = builder.BuildAndStart();
     }
   }
 
@@ -99,9 +78,6 @@ class ClientServerTest : public testing::TestWithParam<ServiceParams> {
       return;
     }
     server_->Shutdown();
-    if (GetParam().use_coordination_service) {
-      coord_rpc_service_->Shutdown();
-    }
     stop_is_already_called_ = true;
   }
 
@@ -110,45 +86,9 @@ class ClientServerTest : public testing::TestWithParam<ServiceParams> {
   std::unique_ptr<::grpc::Server> server_;
 
  private:
-  std::unique_ptr<tensorflow::CoordinationServiceInterface> coord_service_;
-  std::unique_ptr<tensorflow::thread::ThreadPool> coord_compute_pool_;
-  std::unique_ptr<tensorflow::AsyncServiceInterface> coord_rpc_service_;
-  std::unique_ptr<tensorflow::Thread> coord_rpc_thread_;
+  std::unique_ptr<CoordinationServiceImpl> coord_service_;
   std::unique_ptr<DistributedRuntimeServiceImpl> distributed_runtime_service_;
   bool stop_is_already_called_ = false;
-
-  // Set up coordination service.
-  std::unique_ptr<tensorflow::CoordinationServiceInterface>
-  EnableCoordinationService(
-      const xla::DistributedRuntimeServiceImpl::Options& options) {
-    std::string job_name = "jax_worker";
-
-    tensorflow::ServerDef server_def;
-    server_def.set_protocol("grpc+loas");
-    server_def.set_job_name(job_name);
-    server_def.set_task_index(0);
-    auto job_def = server_def.mutable_cluster()->add_job();
-    job_def->set_name(job_name);
-    for (int i = 0; i < options.num_nodes; ++i) {
-      job_def->mutable_tasks()->insert({i, "TEST_SERVER_ADDRESS"});
-    }
-
-    auto coordination_config = server_def.mutable_default_session_config()
-                                   ->mutable_experimental()
-                                   ->mutable_coordination_config();
-    coordination_config->set_service_type("standalone");
-    coordination_config->set_service_leader(
-        absl::StrCat("/job:", job_name, "/task:0"));
-    coordination_config->set_cluster_register_timeout_in_ms(
-        absl::ToInt64Milliseconds(options.enumerate_devices_timeout));
-    coordination_config->set_heartbeat_timeout_in_ms(absl::ToInt64Milliseconds(
-        options.heartbeat_interval * options.max_missing_heartbeats));
-    coordination_config->set_shutdown_barrier_timeout_in_ms(
-        absl::ToInt64Milliseconds(options.shutdown_timeout));
-
-    return tensorflow::CoordinationServiceInterface::EnableCoordinationService(
-        "standalone", options.env, server_def, /*cache=*/nullptr);
-  }
 };
 
 TEST_P(ClientServerTest, ConnectAndShutdownAreBarriers) {
@@ -205,7 +145,7 @@ TEST_P(ClientServerTest, ConnectAndShutdownAreBarriers) {
       TF_RET_CHECK(shutdown_count == num_nodes);
     }
 
-    return xla::Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   std::vector<xla::Status> statuses(num_nodes);
@@ -273,7 +213,7 @@ TEST_P(ClientServerTest, ConnectAndEnumerateDevices) {
         std::string value,
         client->BlockingKeyValueGet("key2", absl::InfiniteDuration()));
     TF_RET_CHECK(value == "value2");
-    return xla::Status::OK();
+    return ::tensorflow::OkStatus();
   };
   auto thread1_fn = [&]() -> xla::Status {
     // Wait for thread0 client to be ready for connection, to ensure global ids
@@ -296,7 +236,7 @@ TEST_P(ClientServerTest, ConnectAndEnumerateDevices) {
         client->BlockingKeyValueGet("key1", absl::InfiniteDuration()));
     TF_RET_CHECK(value == "value1");
     TF_RETURN_IF_ERROR(client->KeyValueSet("key2", "value2"));
-    return xla::Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   std::vector<std::function<xla::Status()>> functions = {thread0_fn,
@@ -336,13 +276,13 @@ TEST_P(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
     TF_RETURN_IF_ERROR(client->Connect());
 
     if (node_id == 0) {
-      return xla::Status::OK();
+      return ::tensorflow::OkStatus();
     }
 
     // The call to Shutdown() should be interrupted if a worker stops issuing
     // heartbeats.
     TF_RETURN_IF_ERROR(client->Shutdown());
-    return xla::Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   std::vector<xla::Status> statuses(num_nodes);
@@ -397,10 +337,10 @@ TEST_P(ClientServerTest, ClientsReceiveMissedHeartbeatIfAnyClientGoesAway) {
     TF_RETURN_IF_ERROR(client->Connect());
 
     if (node_id == 0) {
-      return xla::Status::OK();
+      return ::tensorflow::OkStatus();
     }
     shutdown.WaitForNotification();
-    return xla::Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   std::vector<xla::Status> statuses(num_nodes);
@@ -456,7 +396,7 @@ TEST_P(ClientServerTest, ClientsTerminateIfServiceGoesAway) {
     shutdown.WaitForNotification();
 
     TF_RETURN_IF_ERROR(client->Shutdown());
-    return xla::Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   std::vector<xla::Status> statuses(num_nodes);
@@ -501,7 +441,7 @@ TEST_P(ClientServerTest, LateClientsAreOk) {
     absl::SleepFor(absl::Milliseconds(200) * node_id);
     TF_RETURN_IF_ERROR(client->Connect());
     TF_RETURN_IF_ERROR(client->Shutdown());
-    return xla::Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   std::vector<xla::Status> statuses(num_nodes);
@@ -538,7 +478,7 @@ TEST_P(ClientServerTest, ConnectEventuallyTimesOutIfAClientDoesNotShowUp) {
 
     TF_RETURN_IF_ERROR(client->Connect());
     TF_RETURN_IF_ERROR(client->Shutdown());
-    return xla::Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   // Note: one fewer thread than 'num_nodes'.

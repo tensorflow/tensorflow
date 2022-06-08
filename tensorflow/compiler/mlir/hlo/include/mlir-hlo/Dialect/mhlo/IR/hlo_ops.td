@@ -1869,7 +1869,7 @@ def HLO_DynamicReshapeOp: HLO_ShapedInterfaceOp<"dynamic_reshape", [NoSideEffect
   let hasVerifier = 1;
 }
 
-def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]> {
+def HLO_ScatterOp: HLO_Op<"scatter", [SameVariadicOperandSize, RecursiveSideEffects]> {
   let summary = "Scatter operator";
   let description = [{
     Generates a result which is the value of the input array `operand`,
@@ -1879,9 +1879,9 @@ def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]> {
     See https://www.tensorflow.org/xla/operation_semantics#scatter.
   }];
   let arguments = (ins
-    HLO_Tensor:$operand,
+    Variadic<HLO_Tensor>:$operands,
     TensorOf<[AnyInteger, Index]>:$scatter_indices,
-    HLO_Tensor:$updates,
+    Variadic<HLO_Tensor>:$updates,
     ScatterDimensionNumbers:$scatter_dimension_numbers,
     DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted,
     DefaultValuedAttr<BoolAttr, "false">:$unique_indices
@@ -1889,7 +1889,7 @@ def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]> {
 
   let regions = (region SizedRegion<1>:$update_computation);
 
-  let results = (outs HLO_Tensor);
+  let results = (outs Variadic<HLO_Tensor>);
 
   let hasCustomHLOConverter = 1;
 
@@ -2435,7 +2435,7 @@ def HLO_BitcastOp : HLO_Op<"bitcast", [NoSideEffect]> {
 }
 
 def HLO_ReducePrecisionOp :
-    HLO_Op<"reduce_precision", [SameOperandsAndResultShape, SameOperandsAndResultElementType]> {
+    HLO_Op<"reduce_precision", [HLO_CompatibleOperandsAndResultType]> {
   let summary = "Reduce precision operator";
   let description = [{
     Models the effect of converting floating - point values to a lower -

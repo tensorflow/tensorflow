@@ -229,7 +229,7 @@ xla::Status DistributedRuntimeClientImpl::Connect() {
       tensorflow::ThreadOptions(), "pjrt_distributed_heartbeat",
       [this]() { HeartbeatLoop(); }));
   LOG(INFO) << "Connected to distributed JAX controller";
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 xla::Status DistributedRuntimeClientImpl::EnumerateDevices(
@@ -258,7 +258,7 @@ xla::Status DistributedRuntimeClientImpl::EnumerateDevices(
   }
   VLOG(10) << "EnumerateDevices() response: " << response.DebugString();
   response.mutable_global_topology()->Swap(global_topology);
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 xla::Status DistributedRuntimeClientImpl::Shutdown() {
@@ -290,7 +290,7 @@ xla::Status DistributedRuntimeClientImpl::Shutdown() {
   VLOG(10) << "Shutdown() response: " << response.DebugString();
   absl::MutexLock lock(&mu_);
   state_ = State::kClosed;
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 xla::StatusOr<std::string> DistributedRuntimeClientImpl::BlockingKeyValueGet(
@@ -477,7 +477,7 @@ xla::Status DistributedRuntimeCoordinationServiceClient::Connect() {
            // Retries are only made for RPC errors. If a valid service error is
            // returned, fail immediately.
            s.GetPayload(tensorflow::CoordinationErrorPayloadKey()) ==
-               absl::nullopt);
+               std::nullopt);
   if (s.ok()) {
     LOG(INFO) << "Connected to distributed JAX controller";
   } else {
@@ -504,7 +504,7 @@ xla::Status DistributedRuntimeCoordinationServiceClient::EnumerateDevices(
   Status s = coord_agent_->WaitForAllTasks(devices);
   if (!s.ok()) return s;
   *global_topology = coord_agent_->GetClusterDeviceInfo().xla().devices();
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 xla::StatusOr<std::string>

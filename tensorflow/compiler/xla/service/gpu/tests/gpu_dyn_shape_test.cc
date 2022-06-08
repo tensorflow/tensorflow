@@ -40,11 +40,11 @@ TEST_F(GpuDynamicShapeTest, DynamicShapeR2) {
 ; CHECK-LABEL: is_thread_0-true
 ; CHECK-LABEL: custom_call.in_dyn_bounds-true
 ; CHECK-LABEL: custom_call.in_bounds-true
-; CHECK: %[[dyn_dim_size:.*]] = load i32, i32*
+; CHECK: %[[dyn_dim_size:.*]] = load i32, ptr
 ; CHECK: %[[dyn_element_total:.*]] = mul i32 1, %[[dyn_dim_size:.*]]
 ; CHECK: %[[linear_index:.*]] = add nuw nsw i32
 ; CHECK: %[[linear_index_in_range:.*]] = icmp ult i32 %[[linear_index:.*]],
-; CHECK: store i32 %[[dyn_dim_size:.*]], i32*
+; CHECK: store i32 %[[dyn_dim_size:.*]], ptr
       )",
                      /*match_optimized_ir=*/false);
 }

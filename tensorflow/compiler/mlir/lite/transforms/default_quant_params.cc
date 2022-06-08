@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
@@ -231,8 +233,8 @@ quant::QuantParams DefaultQuantParamsPass::GetDefaultQuantParams(
 // Creates an instance of the default quant parameters pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantParamsPass(
     double default_min, double default_max, bool is_signed) {
-  return absl::make_unique<DefaultQuantParamsPass>(default_min, default_max,
-                                                   is_signed);
+  return std::make_unique<DefaultQuantParamsPass>(default_min, default_max,
+                                                  is_signed);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantParamsPass() {

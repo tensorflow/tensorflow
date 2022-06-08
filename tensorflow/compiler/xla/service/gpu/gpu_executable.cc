@@ -988,7 +988,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
             output_info.allocation_index);
       }
       if (maybe_owning_memory && maybe_owning_memory->HasOwnership()) {
-        absl::optional<tensorflow::se::OwningDeviceMemory> owning =
+        std::optional<tensorflow::se::OwningDeviceMemory> owning =
             maybe_owning_memory->Release();
         // If the caller passes the ownership of the device memory, reuse it
         // as the output buffer. It is up to the caller whether or not to

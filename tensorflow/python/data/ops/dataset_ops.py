@@ -615,9 +615,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       raise RuntimeError("`tf.data.Dataset.as_numpy_iterator()` is only "
                          "supported in eager mode.")
     for component_spec in nest.flatten(self.element_spec):
-      if not isinstance(
-          component_spec,
-          (tensor_spec.TensorSpec, ragged_tensor.RaggedTensorSpec)):
+      if not isinstance(component_spec,
+                        (tensor_spec.TensorSpec, ragged_tensor.RaggedTensorSpec,
+                         structure.NoneTensorSpec)):
         raise TypeError(
             f"`tf.data.Dataset.as_numpy_iterator()` is not supported for "
             f"datasets that produce values of type {component_spec.value_type}")

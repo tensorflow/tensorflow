@@ -1855,7 +1855,7 @@ Status InsertPadToStaticAfterModuleInputs(HloModule* module) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Remove all dynamic shapes between pad-to-static and slice-to-dynamic.
@@ -1908,7 +1908,7 @@ class DynamicShapeRemovingVisitor : public DfsHloVisitorWithDefault {
         computation->set_root_instruction(new_root);
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -2028,7 +2028,7 @@ Status DynamicShapeRemovingVisitor::DefaultAction(HloInstruction* hlo) {
   // rewritten it to support static shapes.
   if (!input_is_dynamic && op_support == OpDynamismSupport::kNoSupport) {
     hlo->mutable_shape()->clear_dynamic_dimensions();
-    return Status::OK();
+    return OkStatus();
   }
 
   // Op doesn't support dynamic tensor: For each operand rewrite dynamic input
@@ -2044,7 +2044,7 @@ Status DynamicShapeRemovingVisitor::DefaultAction(HloInstruction* hlo) {
     }
     // This op doesn't support dynamic lowering so the op has to be static.
     hlo->mutable_shape()->clear_dynamic_dimensions();
-    return Status::OK();
+    return OkStatus();
   }
 
   // If the op requires dynamic tensor and input is static -- construct a
@@ -2059,27 +2059,27 @@ Status DynamicShapeRemovingVisitor::DefaultAction(HloInstruction* hlo) {
         TF_RETURN_IF_ERROR(hlo->ReplaceOperandWith(i, dynamic_operand));
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DynamicShapeRemovingVisitor::HandleGetTupleElement(HloInstruction* hlo) {
   *hlo->mutable_shape() =
       hlo->operand(0)->shape().tuple_shapes(hlo->tuple_index());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DynamicShapeRemovingVisitor::HandleTuple(HloInstruction* hlo) {
   for (int64_t i = 0; i < hlo->operand_count(); ++i) {
     *hlo->mutable_shape()->mutable_tuple_shapes(i) = hlo->operand(i)->shape();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DynamicShapeRemovingVisitor::HandleParameter(HloInstruction* hlo) {
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DynamicShapeRemovingVisitor::HandleCustomCall(HloInstruction* hlo) {
@@ -2087,7 +2087,7 @@ Status DynamicShapeRemovingVisitor::HandleCustomCall(HloInstruction* hlo) {
       hlo->custom_call_target() == "PadToStatic") {
     // Those ops support are created to handle dynamic tensors so by their
     // nature they support dynamic lowering.
-    return Status::OK();
+    return OkStatus();
   }
 
   return DefaultAction(hlo);
@@ -2127,7 +2127,7 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
         ShapeUtil::UpdateDynamicDimension(parameter->mutable_shape(),
                                           dynamic_dimension.parameter_index,
                                           dynamic_dimension.dimension, false);
-        return Status::OK();
+        return OkStatus();
       }));
 
   TF_RETURN_IF_ERROR(InsertPadToStaticAfterModuleInputs(module));

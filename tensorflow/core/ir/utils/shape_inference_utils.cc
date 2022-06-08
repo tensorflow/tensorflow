@@ -97,9 +97,12 @@ Optional<tensorflow::PartialTensorShape> GetShapeFromMlirAttr(Value v) {
       int arg_idx = arg.getArgNumber();
       auto attrs =
           func_op.getArgAttrOfType<ArrayAttr>(arg_idx, "tf._output_shapes");
-      if (!attrs || attrs.empty()) return None;
-      auto shape_attr = attrs[0].cast<tf_type::ShapeAttr>();
-      if (shape_attr.hasRank())
+      if (!attrs || attrs.size() != 1) return None;
+
+      // "tf._output_shapes" in certain models may not store the shape as
+      // ShapeAttr, ignore them because we don't know how to interpret it.
+      auto shape_attr = attrs[0].dyn_cast<tf_type::ShapeAttr>();
+      if (shape_attr && shape_attr.hasRank())
         return tensorflow::PartialTensorShape(shape_attr.getShape());
     }
   }

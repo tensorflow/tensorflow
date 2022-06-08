@@ -32,7 +32,7 @@ class BoundNonLinearCompilerAnalysis {
   // abstract cost units, before it is considered for early termination.
   explicit BoundNonLinearCompilerAnalysis(HloModule* m,
                                           absl::string_view pass_name,
-                                          absl::optional<int64_t> sampling_rate)
+                                          std::optional<int64_t> sampling_rate)
       : analysis_allowance_(
             (!sampling_rate.has_value() || sampling_rate.value() <= 0 ||
              m->config().GetAnalysisAllowance(pass_name) < 0)

@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/Transforms/OptimizeForNVVM.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
@@ -377,6 +378,7 @@ Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
   kernelPm.addPass(mlir::CreateGpuKernelToRocdlPass());
 #elif GOOGLE_CUDA
   kernelPm.addPass(mlir::CreateGpuKernelToNvvmPass());
+  kernelPm.addPass(mlir::NVVM::createOptimizeForTargetPass());
 #endif
   // Remove all location information to prevent a debug build.
   pm.addPass(::mlir::createStripDebugInfoPass());

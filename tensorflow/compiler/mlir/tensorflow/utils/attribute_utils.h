@@ -39,6 +39,12 @@ inline constexpr llvm::StringRef kReplicationInfoAttr = "_replication_info";
 inline constexpr llvm::StringRef kTpuReplicateAttr = "_tpu_replicate";
 // Device types.
 inline constexpr llvm::StringRef kTpuDevice = "TPU";
+// Function attribute to signal that a function should be skipped from TPU
+// island outlining. The attribute is set in
+// `TpuV1BridgeExecutorIslandCoarsening` and removed in the subsequent
+// `TPUBridgeExecutorIslandOutlining` pass.
+inline constexpr llvm::StringRef kSkipIslandOutlining =
+    "_skip_island_outlining";
 
 // Copies attributes that satisfy the given predicate from `from` to `to`.
 template <typename Predicate>

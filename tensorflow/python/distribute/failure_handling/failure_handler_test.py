@@ -23,7 +23,7 @@ import time
 from absl.testing import parameterized
 
 # pylint:disable=g-direct-tensorflow-import
-
+from tensorflow.python.checkpoint import checkpoint as tracking_util
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
@@ -43,7 +43,6 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.tracking import util as tracking_util
 
 
 mock = test.mock
@@ -52,6 +51,7 @@ mock = test.mock
 CLUSTER_SIZE = 4
 EPOCHS_TO_RUN = 8
 STEPS_PER_EPOCH = 15
+MAX_WAIT_TIME = 40
 
 
 def _is_oss():
@@ -84,6 +84,26 @@ def _make_checkpoint_manager(checkpoint, checkpoint_dir, cluster_resolver):
         directory=failure_handling._non_chief_checkpoint_dir(
             checkpoint_dir, cluster_resolver.task_id),
         max_to_keep=1)
+
+
+def raise_if_not_all_exit(grace_period, mpr):
+  """Wait for all cluster to exit with a time out."""
+  waiting_time = 0
+  exit_process_count = 0
+  # This addition to mitigate the fact that our step time is too short in test
+  while exit_process_count != CLUSTER_SIZE and waiting_time < max(
+      grace_period + 15, MAX_WAIT_TIME):
+    exit_process_count = 0
+    for worker_id in range(CLUSTER_SIZE):
+      if not mpr.process_exists('worker', worker_id):
+        exit_process_count += 1
+    waiting_time += 1
+    time.sleep(1)
+
+  if waiting_time == max(grace_period + 5, 40):
+    raise RuntimeError('Waited long but at least one worker still exist. '
+                       'Considering size of our model, this should not'
+                       ' happen.')
 
 
 class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
@@ -251,7 +271,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
     os.kill(mpr.get_process_id('worker', killed_worker), signal.SIGTERM)
 
     logging.info('sigterm sent')
-    time.sleep(5)
+    raise_if_not_all_exit(0, mpr)
 
     logging.info('restarting workers')
     training_restarted.set()
@@ -332,20 +352,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
     os.kill(mpr.get_process_id('worker', killed_worker), signal.SIGTERM)
     logging.info('SIGTERM sent')
 
-    # wait for all cluster within the given grace period (plus a buffer since
-    # our per-step time here is too small)
-    waiting_time = 0
-    exit_process_count = 0
-    while exit_process_count != CLUSTER_SIZE and waiting_time < grace_period + 10:
-      exit_process_count = 0
-      for worker_id in range(CLUSTER_SIZE):
-        if not mpr.process_exists('worker', worker_id):
-          exit_process_count += 1
-      waiting_time += 1
-      time.sleep(1)
-
-    if waiting_time == grace_period + 10:
-      raise RuntimeError('Waited exceeding grace period. ')
+    raise_if_not_all_exit(grace_period, mpr)
 
     logging.info('restarting workers')
     training_restarted.set()

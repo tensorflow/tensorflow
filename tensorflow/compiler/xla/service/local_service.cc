@@ -77,7 +77,7 @@ namespace {
 // If the parameter number is invalid for this computation, nullopt is
 // returned. When the return value has_value(), nullptr will never be
 // the held value.
-absl::optional<const OpMetadata*> ParameterMetadata(
+std::optional<const OpMetadata*> ParameterMetadata(
     const XlaComputation& computation, int parameter_number) {
   for (const HloComputationProto& comp : computation.proto().computations()) {
     if (comp.id() == computation.proto().entry_computation_id()) {
@@ -85,14 +85,14 @@ absl::optional<const OpMetadata*> ParameterMetadata(
         if (instr.opcode() == HloOpcodeString(HloOpcode::kParameter) &&
             instr.parameter_number() == parameter_number) {
           if (!instr.has_metadata()) {
-            return absl::nullopt;
+            return std::nullopt;
           }
           return &instr.metadata();
         }
       }
     }
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 }  // namespace
@@ -117,7 +117,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> LocalService::GetHloModuleConfig(
     TF_RETURN_IF_ERROR(
         ShapeUtil::ValidateShapeWithOptionalLayout(argument_shape));
     if (!ShapeUtil::Compatible(argument_shape, program_shape.parameters(i))) {
-      absl::optional<const OpMetadata*> metadata =
+      std::optional<const OpMetadata*> metadata =
           ParameterMetadata(computation, /*parameter_number=*/i);
       auto metadata_string = [&metadata]() -> std::string {
         if (!metadata.has_value()) {

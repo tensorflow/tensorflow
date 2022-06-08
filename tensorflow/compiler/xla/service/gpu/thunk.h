@@ -71,7 +71,7 @@ class Thunk {
   };
 
   struct ThunkInfo {
-    absl::optional<int64_t> profile_index;
+    std::optional<int64_t> profile_index;
     std::string profile_annotation;
   };
 
@@ -123,11 +123,11 @@ class Thunk {
   static absl::string_view KindToString(Thunk::Kind kind);
 
  protected:
-  absl::optional<int64_t> profile_index() const { return profile_index_; }
+  std::optional<int64_t> profile_index() const { return profile_index_; }
 
  private:
   Kind kind_;
-  absl::optional<int64_t> profile_index_;
+  std::optional<int64_t> profile_index_;
   std::string profile_annotation_;
 };
 

@@ -28,7 +28,7 @@ using ::tensorflow::shape_inference::InferenceContext;
 
 ::tensorflow::Status ScalarOutput(InferenceContext* c) {
   c->set_output(0, c->Scalar());
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 REGISTER_OP("Examples>AsyncSleep")

@@ -254,6 +254,8 @@ enum StatType {
   kDevCapMemorySize,
   kDevCapComputeCapMajor,
   kDevCapComputeCapMinor,
+  kDevCapPeakTeraflopsPerSecond,
+  kDevCapPeakHbmBwGigabytesPerSecond,
   kDevVendor,
   // Batching related.
   kBatchSizeAfterPadding,
@@ -265,6 +267,10 @@ enum StatType {
   kOccupancySuggestedBlockSize,
   kLastStatType = kOccupancySuggestedBlockSize,
 };
+
+inline std::string TpuPlaneName(int32_t device_ordinal) {
+  return absl::StrCat(kTpuPlanePrefix, device_ordinal);
+}
 
 inline std::string GpuPlaneName(int32_t device_ordinal) {
   return absl::StrCat(kGpuPlanePrefix, device_ordinal);

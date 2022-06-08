@@ -97,11 +97,11 @@ class SpmdBuilder : public HloComputation::Builder {
   HloInstruction* visiting_hlo() const { return visiting_hlo_; }
 
   // Wrapper of queries to broadcast_dims_.
-  absl::optional<const absl::flat_hash_set<int64_t>*>
-  BroadcastDimsForCreatedHlo(const HloInstruction* hlo) {
+  std::optional<const absl::flat_hash_set<int64_t>*> BroadcastDimsForCreatedHlo(
+      const HloInstruction* hlo) {
     auto it = broadcast_dims_.find(hlo);
     if (it == broadcast_dims_.end()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     return &it->second;
   }
@@ -144,7 +144,7 @@ struct SPMDCollectiveOpsCreator {
   std::function<HloInstruction*(
       SpmdBuilder*, absl::Span<HloInstruction* const> operands,
       const std::vector<std::vector<int64_t>>& partition_subgroups,
-      int64_t channel_id, absl::optional<int64_t> split_dimension)>
+      int64_t channel_id, std::optional<int64_t> split_dimension)>
       create_cross_partition_all_to_all;
 
   // Function used to create a cross-partition all-gather HLO. This is optional:
@@ -296,7 +296,7 @@ class PartitionedHlo {
   struct WindowedInputShardReturnValue {
     HloInstruction* sharded_input;
     Window shard_window;
-    absl::optional<std::vector<HloInstruction*>> dynamic_slice_index_on_output;
+    std::optional<std::vector<HloInstruction*>> dynamic_slice_index_on_output;
   };
   // A cache for resharding each partitioned HLO.
   struct ReshardCache {
@@ -370,7 +370,7 @@ class PartitionedHlo {
 
   // Reshards the HLO to a usable partitioned input for a windowed user. Could
   // only modify the reshard cache.
-  absl::optional<WindowedInputShardReturnValue> ReshardAsWindowedInput(
+  std::optional<WindowedInputShardReturnValue> ReshardAsWindowedInput(
       const Window& window, const HloSharding& target,
       HloInstruction* pad_value, bool mask_invalid_region = true);
 
@@ -404,15 +404,15 @@ class PartitionedHlo {
   PartitionedHlo ReshardWithCollectivePermute(const HloSharding& target) const;
 
   // Helper function to reshard to partial replicate using AllGather.
-  absl::optional<PartitionedHlo> ReshardToPartialReplicateWithAllGather(
+  std::optional<PartitionedHlo> ReshardToPartialReplicateWithAllGather(
       const HloSharding& target);
 
   // Helper function to reshard from partial replicate using DynamicSlice.
-  absl::optional<PartitionedHlo> ReshardFromPartialReplicateWithDynamicSlice(
+  std::optional<PartitionedHlo> ReshardFromPartialReplicateWithDynamicSlice(
       const HloSharding& target);
 
   // Helper function to reshard from partial replicate using AllToAll.
-  absl::optional<PartitionedHlo> ReshardPartialReplicateWithAllToAll(
+  std::optional<PartitionedHlo> ReshardPartialReplicateWithAllToAll(
       const HloSharding& target);
 
   // SPMD instruction.
@@ -605,10 +605,10 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   const SpmdPartitionerOptions options_;
   SpmdPartitioner* partitioner_;
   std::vector<HloSharding> visiting_hlo_operand_shardings_;
-  absl::optional<HloSharding> visiting_hlo_sharding_;
-  absl::optional<int64_t> visiting_num_partitions_;
-  absl::optional<SPMDCollectiveOpsCreator> visiting_collective_ops_creator_;
-  absl::optional<HloInstruction*> visiting_partition_id_;
+  std::optional<HloSharding> visiting_hlo_sharding_;
+  std::optional<int64_t> visiting_num_partitions_;
+  std::optional<SPMDCollectiveOpsCreator> visiting_collective_ops_creator_;
+  std::optional<HloInstruction*> visiting_partition_id_;
   std::vector<PartitionedHlo::PartitioningState> visiting_state_;
   std::vector<std::vector<int64_t>> device_groups_;
 };

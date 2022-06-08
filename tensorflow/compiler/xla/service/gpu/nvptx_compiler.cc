@@ -166,9 +166,9 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
 }
 
 namespace {
-absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
-                                        const HloInstruction* operand,
-                                        const ShapeIndex& user_index) {
+std::optional<bool> CanShareBufferHint(const HloInstruction* user,
+                                       const HloInstruction* operand,
+                                       const ShapeIndex& user_index) {
   switch (user->opcode()) {
     case HloOpcode::kAllReduce:
       // NCCL all-reduce can be performed in-place.
@@ -186,7 +186,7 @@ absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
       }
       return false;
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 

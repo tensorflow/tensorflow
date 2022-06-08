@@ -158,10 +158,34 @@ py_library(
     srcs = ["graph_view.py"],
     srcs_version = "PY3",
     deps = [
+        ":trackable_view",
         ":util",
         "//tensorflow/python:util",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:converter",
+    ],
+)
+
+py_library(
+    name = "trackable_view",
+    srcs = ["trackable_view.py"],
+    srcs_version = "PY3",
+    tags = ["no_pip"],
+    deps = [
+        ":util",
+        "//tensorflow/python:util",
+        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/trackable:converter",
+    ],
+)
+
+tf_py_test(
+    name = "trackable_view_test",
+    srcs = ["trackable_view_test.py"],
+    deps = [
+        ":trackable_view",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/trackable:base",
     ],
 )
 

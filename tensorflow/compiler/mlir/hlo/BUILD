@@ -1697,6 +1697,7 @@ cc_library(
     deps = [
         ":gpu_kernel_lowering_passes",
         ":gpu_transforms_pass_inc_gen",
+        ":hlo_to_gpu_pipeline",
         "@llvm-project//mlir:Pass",
     ],
 )
@@ -1965,6 +1966,7 @@ cc_library(
         "@llvm-project//mlir:GPUToROCDLTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMCommonConversion",
+        "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:MathToLLVM",
         "@llvm-project//mlir:MemRefToLLVM",
         "@llvm-project//mlir:NVVMDialect",
@@ -2194,6 +2196,7 @@ cc_library(
         ":transforms_pass_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Affine",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
@@ -2201,6 +2204,35 @@ cc_library(
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFTransforms",
         "@llvm-project//mlir:SCFUtils",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "hlo_to_gpu_pipeline",
+    srcs = [
+        "lib/Transforms/hlo_to_gpu_pipeline.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Transforms/gpu_passes.h",
+    ],
+    deps = [
+        ":bufferize_pass",
+        ":gpu_kernel_lowering_passes",
+        ":hlo",
+        ":legalize_to_linalg",
+        ":propagate_static_shapes_to_kernel",
+        ":tile_loops_pass",
+        "@llvm-project//mlir:AffineToStandard",
+        "@llvm-project//mlir:BufferizationTransforms",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:GPUTransforms",
+        "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFToGPUPass",
+        "@llvm-project//mlir:SCFToStandard",
+        "@llvm-project//mlir:ShapeToStandard",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -2408,40 +2440,41 @@ cc_library(
 )
 
 gentbl_cc_library(
-    name = "tiling_interface_inc_gen",
+    name = "fusion_interface_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "include",
     tbl_outs = [
         (
             ["-gen-op-interface-decls"],
-            "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h.inc",
+            "include/mlir-hlo/Dialect/gml_st/transforms/fusion_interface.h.inc",
         ),
         (
             ["-gen-op-interface-defs"],
-            "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.cc.inc",
+            "include/mlir-hlo/Dialect/gml_st/transforms/fusion_interface.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.td",
+    td_file = "include/mlir-hlo/Dialect/gml_st/transforms/fusion_interface.td",
     deps = ["@llvm-project//mlir:OpBaseTdFiles"],
 )
 
 cc_library(
-    name = "tiling_interface",
+    name = "fusion_interface",
     srcs = [
-        "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.cc.inc",
-        "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h.inc",
-        "lib/Dialect/gml_st/transforms/tiling_interface.cc",
+        "include/mlir-hlo/Dialect/gml_st/transforms/fusion_interface.cc.inc",
+        "include/mlir-hlo/Dialect/gml_st/transforms/fusion_interface.h.inc",
+        "lib/Dialect/gml_st/transforms/fusion_interface.cc",
     ],
     hdrs = [
-        "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h",
+        "include/mlir-hlo/Dialect/gml_st/transforms/fusion_interface.h",
     ],
     includes = ["include"],
     deps = [
+        ":fusion_interface_inc_gen",
         ":gml_st",
         ":hlo",
         ":map_mhlo_to_scalar_op",
-        ":tiling_interface_inc_gen",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -2495,14 +2528,15 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":fusion_interface",
         ":gml_st",
         ":gml_st_passes_inc_gen",
         ":hlo",
-        ":tiling_interface",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
@@ -2551,7 +2585,6 @@ cc_library(
         ":gml_st",
         ":gml_st_passes_inc_gen",
         ":hlo",
-        ":tiling_interface",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",

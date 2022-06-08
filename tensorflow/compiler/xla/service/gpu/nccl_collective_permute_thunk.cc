@@ -171,8 +171,8 @@ Status RunCollectivePermute(
   VLOG(3) << "Performing collective permute from device ordinal: "
           << device_ordinal;
 
-  const absl::optional<int64_t> source_id = source_target.source;
-  const absl::optional<int64_t> target_id = source_target.target;
+  const std::optional<int64_t> source_id = source_target.source;
+  const std::optional<int64_t> target_id = source_target.target;
 
   // NCCL 2.8.x has an issue with point-to-point communication primitives if
   // different ranks process different amounts of data. This can happen in the

@@ -203,7 +203,7 @@ Status ConvertMultiXSpacesToCombinedOpStats(const std::vector<XSpace>& xspaces,
   // if there is only a single XSpace.
   if (xspaces.size() == 1) {
     *combined_op_stats = ConvertXSpaceToOpStats(xspaces[0], options);
-    return Status::OK();
+    return OkStatus();
   }
 
   // Read multiple XSpaces and convert to multiple OpStats.
@@ -227,7 +227,7 @@ Status ConvertMultiXSpacesToCombinedOpStats(const std::vector<XSpace>& xspaces,
       ComputeStepIntersectionToMergeOpStats(all_op_stats_info, kuint32max);
   CombineAllOpStats(all_op_stats_info, step_intersection, combined_op_stats);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace profiler

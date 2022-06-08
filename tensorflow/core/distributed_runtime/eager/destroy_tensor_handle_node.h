@@ -53,7 +53,7 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
           // 1. The remote tensor isn't ready.
           // 2. Lost connection to remote worker. In this case client will
           //    crash. We don't want to spam user with redundant warning logs.
-          if (!s.ok() && ready && s.code() != errors::Code::UNAVAILABLE) {
+          if (!s.ok() && ready && !errors::IsUnavailable(s)) {
             LOG_EVERY_N_SEC(WARNING, 60)
                 << "Ignoring an error encountered when deleting "
                    "remote tensors handles: "

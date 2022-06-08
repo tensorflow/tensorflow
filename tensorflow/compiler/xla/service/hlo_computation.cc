@@ -211,7 +211,7 @@ Status HloComputation::RemoveParameter(int64_t param_no) {
     param_no++;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 HloInstruction* HloComputation::ReplaceParameter(
@@ -265,7 +265,7 @@ Status HloComputation::RemoveUnusedParametersImpl(bool allow_non_fusion) {
     }
   }
   param_instructions_.resize(param_instructions_.size() - removed);
-  return Status::OK();
+  return OkStatus();
 }
 
 bool HloComputation::IsSafelyRemovable(const HloInstruction* instruction) {
@@ -326,7 +326,7 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
     TF_RETURN_IF_ERROR(RemoveInstruction(item));
     removed.insert(item);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloComputation::RemoveInstruction(HloInstruction* instruction) {
@@ -363,7 +363,7 @@ Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
   to_be_deleted_.back()->MarkAsDead();
   instructions_.erase(inst_it->second);
   instruction_iterators_.erase(inst_it);
-  return Status::OK();
+  return OkStatus();
 }
 
 void HloComputation::set_root_instruction(HloInstruction* new_root_instruction,
@@ -415,7 +415,7 @@ void ComputeComputationPostOrder(HloComputation* computation,
   }
 }
 
-absl::optional<int64_t> GetChannelId(const HloInstruction& inst) {
+std::optional<int64_t> GetChannelId(const HloInstruction& inst) {
   // Note that we only include Send and RecvDone, as we want to create a
   // dependency between those, but not SendDone and Recv.
   switch (inst.opcode()) {
@@ -428,7 +428,7 @@ absl::optional<int64_t> GetChannelId(const HloInstruction& inst) {
     case HloOpcode::kReduceScatter:
       return inst.channel_id();
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
@@ -461,10 +461,10 @@ void HloComputation::ComputeInstructionPostOrder(
     // Collectives with the same channel ID must be performed together, as these
     // represent MPMD-partitioned that will later be split into separate modules
     // and the order must be preserved.
-    absl::optional<int64_t> channel_id =
+    std::optional<int64_t> channel_id =
         ((&current != root) && (current.opcode() != HloOpcode::kSend))
             ? GetChannelId(current)
-            : absl::nullopt;
+            : std::nullopt;
     if (channel_id) {
       auto it = channel_dependencies.find(*channel_id);
       if (it != channel_dependencies.end()) {
@@ -495,7 +495,7 @@ HloComputation::ComputeChannelDependencies() const {
 
   ChannelDependencyGroup channel_dependencies;
   for (const auto& instruction : instructions_) {
-    absl::optional<int64_t> channel_id = GetChannelId(*instruction);
+    std::optional<int64_t> channel_id = GetChannelId(*instruction);
     if (channel_id)
       channel_dependencies[*channel_id].push_back(instruction.get());
   }
@@ -688,7 +688,7 @@ HloComputation::CreateFromProto(
     TF_RET_CHECK(parameters_seen_count == parameter_count)
         << "Not all parameters in range [0, " << parameter_count
         << ") were referenced";
-    return Status::OK();
+    return OkStatus();
   }());
 
   auto computation = absl::WrapUnique(
@@ -933,7 +933,7 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
                       ReplaceInstruction(old_instruction, new_instruction,
                                          /*preserve_sharding=*/false));
   DCHECK(changed);
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
@@ -997,7 +997,7 @@ Status HloComputation::ReplaceInstructionWithDifferentShape(
                                         old_instruction, new_instruction,
                                         /*preserve_sharding=*/false));
   DCHECK(changed);
-  return Status::OK();
+  return OkStatus();
 }
 
 std::vector<HloInstruction*> HloComputation::CollectUnreachableRoots() const {

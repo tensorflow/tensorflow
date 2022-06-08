@@ -57,7 +57,7 @@ class DynamicDimensionInferenceTest : public HloTestBase {
                                        assertion_generator));
 
     inference_ = absl::make_unique<DynamicDimensionInference>(inference);
-    return Status::OK();
+    return OkStatus();
   }
 
   HloComputation* GetAdd() {
@@ -1248,7 +1248,7 @@ TEST_F(DynamicDimensionInferenceTest, InfersCustomOp) {
     CHECK(inference != nullptr);
     CHECK(Cast<HloCustomCallInstruction>(hlo) != nullptr);
     handler_called = true;
-    return Status::OK();
+    return OkStatus();
   };
   TF_ASSERT_OK(RunInference(handler));
 

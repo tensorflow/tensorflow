@@ -16,6 +16,7 @@
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_JITRT_CUSTOM_CALLS_H_
 
 #include <cstdint>
+#include <tuple>
 
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
@@ -51,16 +52,19 @@ class JitRtKernelsCache {
   JitRtKernelsCache() = default;
 
   ::stream_executor::KernelBase* Get(
-      ::stream_executor::StreamExecutor* executor, const char* data);
+      ::stream_executor::StreamExecutor* executor, const char* data,
+      llvm::StringRef name);
 
   ::stream_executor::KernelBase* Set(
       ::stream_executor::StreamExecutor* executor, const char* data,
+      llvm::StringRef name,
       std::unique_ptr<::stream_executor::KernelBase> kernel);
 
  private:
   mutable absl::Mutex mutex_;
 
-  using Key = std::pair<::stream_executor::StreamExecutor*, const char*>;
+  using Key = std::tuple<::stream_executor::StreamExecutor*, const char*,
+                         llvm::StringRef>;
   llvm::SmallDenseMap<Key, std::unique_ptr<::stream_executor::KernelBase>>
       kernels_cache_ ABSL_GUARDED_BY(mutex_);
 };

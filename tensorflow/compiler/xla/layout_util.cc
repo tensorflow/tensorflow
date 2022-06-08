@@ -181,11 +181,11 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
       TF_RETURN_IF_ERROR(
           ValidateLayoutInShape(element_shape, allow_missing_layouts));
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   } else if (shape.IsArray()) {
     if (!shape.has_layout()) {
       if (allow_missing_layouts) {
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       }
       return InvalidArgument("shape %s does not have a layout",
                              ShapeUtil::HumanString(shape));
@@ -198,7 +198,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
           "shape of primitive type %s should not have a layout",
           PrimitiveType_Name(shape.element_type()));
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 }
 
@@ -214,7 +214,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
           "shape of primitive type %s should not have a non-trivial layout",
           PrimitiveType_Name(shape.element_type()));
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   if (layout.format() == INVALID_FORMAT || !Format_IsValid(layout.format())) {
@@ -253,7 +253,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
     }
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 /* static */ void LayoutUtil::ClearLayout(Shape* shape) {
@@ -388,7 +388,7 @@ Status CopyLayoutInternal(const Shape& src, Shape* dst) {
       dst->clear_layout();
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace

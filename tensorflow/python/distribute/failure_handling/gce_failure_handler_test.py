@@ -23,6 +23,7 @@ import urllib
 from absl.testing import parameterized
 
 # pylint:disable=g-direct-tensorflow-import
+from tensorflow.python.checkpoint import checkpoint as tracking_util
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
@@ -40,7 +41,6 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.tracking import util as tracking_util
 
 
 mock = test.mock
@@ -51,6 +51,7 @@ EPOCHS_TO_RUN = 5
 STEPS_PER_EPOCH = 6
 _PEER_WATCHER_THREAD_PREFIX = 'PeerTerminationWatcher'
 _LOCAL_WATCHER_THREAD_PREFIX = 'WorkerTerminationSignalWatcher'
+MAX_WAIT_TIME = 40
 
 
 def _is_oss():
@@ -83,6 +84,26 @@ def _make_checkpoint_manager(checkpoint, checkpoint_dir, cluster_resolver):
         directory=failure_handling._non_chief_checkpoint_dir(
             checkpoint_dir, cluster_resolver.task_id),
         max_to_keep=1)
+
+
+def raise_if_not_all_exit(grace_period, mpr):
+  """Wait for all cluster to exit with a time out."""
+  waiting_time = 0
+  exit_process_count = 0
+  # This addition to mitigate the fact that our step time is too short in test
+  while exit_process_count != CLUSTER_SIZE and waiting_time < max(
+      grace_period + 15, MAX_WAIT_TIME):
+    exit_process_count = 0
+    for worker_id in range(CLUSTER_SIZE):
+      if not mpr.process_exists('worker', worker_id):
+        exit_process_count += 1
+    waiting_time += 1
+    time.sleep(1)
+
+  if waiting_time == max(grace_period + 5, 40):
+    raise RuntimeError('Waited long but at least one worker still exist. '
+                       'Considering size of our model, this should not'
+                       ' happen.')
 
 
 class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
@@ -262,22 +283,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
     while (not maintenance_event.is_set()) and (not training_finished.is_set()):
       time.sleep(1)
 
-    # wait for all cluster to exit with a time out
-    waiting_time = 0
-    exit_process_count = 0
-    # this addition to mitigate the fact that our step time is too short in test
-    while exit_process_count != CLUSTER_SIZE and waiting_time < 15:
-      exit_process_count = 0
-      for worker_id in range(CLUSTER_SIZE):
-        if not mpr.process_exists('worker', worker_id):
-          exit_process_count += 1
-      waiting_time += 1
-      time.sleep(1)
-
-    if waiting_time >= 15:
-      raise RuntimeError('Waited long but at least one worker still exist. '
-                         'Considering size of our model, this should not'
-                         ' happen.')
+    raise_if_not_all_exit(0, mpr)
 
     if not training_finished.is_set():
       logging.info('restarting workers')
@@ -325,23 +331,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
     logging.info('Cluster starting.')
     mpr.start()
 
-    # wait for all cluster to exit with a time out
-    waiting_time = 0
-    exit_process_count = 0
-    # this addition to mitigate the fact that our step time is too short in test
-    while exit_process_count != CLUSTER_SIZE and waiting_time < max(
-        grace_period + 15, 40):
-      exit_process_count = 0
-      for worker_id in range(CLUSTER_SIZE):
-        if not mpr.process_exists('worker', worker_id):
-          exit_process_count += 1
-      waiting_time += 1
-      time.sleep(1)
-
-    if waiting_time == max(grace_period + 5, 40):
-      raise RuntimeError('Waited long but at least one worker still exist. '
-                         'Considering size of our model, this should not'
-                         ' happen.')
+    raise_if_not_all_exit(grace_period, mpr)
 
     maintenance_event.set()
     logging.info('restarting workers')
@@ -389,8 +379,8 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
     while (not maintenance_event.is_set()) and (not training_finished.is_set()):
       time.sleep(1)
 
-    # this addition to mitigate the fact that our step time is too short in test
-    time.sleep(grace_period + 10)
+    raise_if_not_all_exit(0, mpr)
+
     if not training_finished.is_set():
       logging.info('restarting workers')
       training_restarted.set()

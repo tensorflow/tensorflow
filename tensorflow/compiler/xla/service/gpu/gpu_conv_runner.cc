@@ -92,7 +92,7 @@ Status RunGpuConvUnfused(GpuConvParams params, se::Stream* stream,
 
   se::dnn::LazyOpRunner<se::dnn::ConvOp>* lazy_runner =
       options.runner_cache->AsConvRunner();
-  absl::optional<se::dnn::LazyOpRunner<se::dnn::ConvOp>> local_runner;
+  std::optional<se::dnn::LazyOpRunner<se::dnn::ConvOp>> local_runner;
   if (!lazy_runner) {
     local_runner.emplace(params.config->algorithm);
     lazy_runner = &*local_runner;
@@ -140,7 +140,7 @@ Status RunGpuConvForwardActivation(const GpuConvParams& params,
 
   se::dnn::LazyOpRunner<se::dnn::FusedConvOp>* lazy_runner =
       options.runner_cache->AsFusedConvRunner();
-  absl::optional<se::dnn::LazyOpRunner<se::dnn::FusedConvOp>> local_runner;
+  std::optional<se::dnn::LazyOpRunner<se::dnn::FusedConvOp>> local_runner;
   if (!lazy_runner) {
     local_runner.emplace(params.config->algorithm);
     lazy_runner = &*local_runner;

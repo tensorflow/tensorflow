@@ -61,7 +61,7 @@ se::Platform::Id XlaPlatformInfoFromDevice(DeviceBase* device_base) {
 
 VariableInfo::VariableInfo(
     int index, absl::string_view name, Var* var,
-    const absl::optional<ManagedStackTrace>& definition_stack_trace)
+    const std::optional<ManagedStackTrace>& definition_stack_trace)
     : index_(index),
       name_(name),
       var_(var),
@@ -204,7 +204,7 @@ Status SnapshotResourceVariables(OpKernelContext* ctx,
   for (int i = 0, end = variable_indices.size(); i < end; i++) {
     Var* var = variable_infos[i].var();
     (*result)[variable_indices[i]] =
-        var ? absl::make_optional(*var->tensor()) : absl::nullopt;
+        var ? absl::make_optional(*var->tensor()) : std::nullopt;
   }
   return OkStatus();
 }
@@ -330,7 +330,7 @@ static StatusOr<Tensor> GetOrCreateTensorForOutput(
                                      ? xla::ShapeIndex({output_num})
                                      : xla::ShapeIndex({});
   CHECK(input_output_alias.shape().IsTuple() || output_num == 0);
-  if (absl::optional<xla::HloInputOutputAliasConfig::Alias> alias =
+  if (std::optional<xla::HloInputOutputAliasConfig::Alias> alias =
           input_output_alias.GetAliasedParameter(output_index)) {
     VLOG(3) << "Found alias: " << alias->ToString();
     int tf_param =

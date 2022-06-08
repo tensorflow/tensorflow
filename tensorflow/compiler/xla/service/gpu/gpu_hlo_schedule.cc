@@ -200,9 +200,8 @@ bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
   }
 }
 
-bool ShouldScheduleSuccessor(
-    const HloInstruction& sussessor,
-    const std::function<bool(const HloInstruction*)>& is_scheduled) {
+bool ShouldScheduleSuccessor(const HloInstruction& sussessor,
+                             const HloPredicate& is_scheduled) {
   return ShouldScheduleAsEarlyAsPossible(sussessor) &&
          absl::c_all_of(sussessor.operands(), is_scheduled) &&
          absl::c_all_of(sussessor.control_predecessors(), is_scheduled);
@@ -220,9 +219,8 @@ bool ShouldScheduleAsLateAsPossible(const HloInstruction& instr) {
   }
 }
 
-bool ShouldSchedulePredecessor(
-    const HloInstruction& predecessor,
-    const std::function<bool(const HloInstruction*)>& is_scheduled) {
+bool ShouldSchedulePredecessor(const HloInstruction& predecessor,
+                               const HloPredicate& is_scheduled) {
   return ShouldScheduleAsLateAsPossible(predecessor) &&
          absl::c_all_of(predecessor.users(), is_scheduled) &&
          absl::c_all_of(predecessor.control_successors(), is_scheduled);

@@ -119,7 +119,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleSetDimensionSize(HloInstruction* set_size) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
 
-  Status FinishVisit(HloInstruction*) override { return Status::OK(); }
+  Status FinishVisit(HloInstruction*) override { return OkStatus(); }
 
  protected:
   // Check the instruction's shape against the shape given by ShapeInference
@@ -278,8 +278,7 @@ class HloVerifier : public HloModulePass {
  public:
   explicit HloVerifier(
       bool layout_sensitive, bool allow_mixed_precision,
-      std::function<bool(const HloInstruction*)>
-          instruction_can_change_layout_func = {},
+      HloPredicate instruction_can_change_layout_func = {},
       std::function<int64_t(const Shape&)> shape_size_func =
           [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); })
       : target_metadata_(absl::make_unique<DefaultVerifierMetadata>(
@@ -305,8 +304,7 @@ class HloVerifier : public HloModulePass {
   std::unique_ptr<TargetVerifierMetadata> target_metadata_;
 
   // Determines whether an instruction can change layouts.
-  std::function<bool(const HloInstruction*)>
-      instruction_can_change_layout_func_;
+  HloPredicate instruction_can_change_layout_func_;
 
   // The hlo pass when the verifier is invoked.
   std::string context_;

@@ -37,9 +37,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/core/platform/statusor.h"
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/python/py_client_gpu.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
 
@@ -642,9 +642,12 @@ StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_cpu_callback",
                                              &XlaPythonCpuCallback);
 
-#ifdef GOOGLE_CUDA
+#if TENSORFLOW_USE_ROCM
+XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_gpu_callback",
+                                         &XlaPythonGpuCallback, "ROCM");
+#elif defined(GOOGLE_CUDA)
 XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_gpu_callback",
                                          &XlaPythonGpuCallback, "CUDA");
-#endif  // GOOGLE_CUDA
+#endif  // TENSORFLOW_USE_ROCM
 
 }  // namespace xla

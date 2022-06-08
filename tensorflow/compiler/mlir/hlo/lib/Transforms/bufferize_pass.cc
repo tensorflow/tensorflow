@@ -277,8 +277,8 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
 
   void setCallbacks(BufferizeDialectsCallback dc,
                     BufferizePatternsCallback pc) {
-    dialects_callback = dc;
-    patterns_callback = pc;
+    dialects_callback = std::move(dc);
+    patterns_callback = std::move(pc);
   }
 
   void runOnOperation() override {
@@ -363,7 +363,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass(
     uint64_t alignment, BufferizeDialectsCallback dc,
     BufferizePatternsCallback pc) {
   auto pass = std::make_unique<FinalBufferizePass>(alignment);
-  pass->setCallbacks(dc, pc);
+  pass->setCallbacks(std::move(dc), std::move(pc));
   return pass;
 }
 

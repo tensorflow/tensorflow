@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 #include <unordered_set>
+#include <utility>
 
 #include "absl/types/span.h"
 #include "llvm/Support/raw_ostream.h"

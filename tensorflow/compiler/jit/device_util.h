@@ -205,7 +205,7 @@ StatusOr<jit::DeviceId> PickDeviceForXla(
 //
 // We return a failing Status for errors unrelated to the device choice
 // algorithm itself.
-StatusOr<absl::optional<jit::DeviceId>> MaybePickDeviceForXla(
+StatusOr<std::optional<jit::DeviceId>> MaybePickDeviceForXla(
     const jit::DeviceInfoCache& device_info_cache,
     const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu);
 }  // namespace tensorflow

@@ -192,7 +192,6 @@ class Status {
 // usage of `OkStatus()` when constructing such an OK status.
 Status OkStatus();
 
-
 // TODO(b/197552541) Move this namespace to errors.h.
 namespace errors {
 
@@ -317,7 +316,7 @@ inline tensorflow::string* TfCheckOpHelper(::tensorflow::Status v,
 #define TF_DCHECK_OK(val) TF_CHECK_OK(val)
 #else
 #define TF_DCHECK_OK(val) \
-  while (false && (::tensorflow::Status::OK() == (val))) LOG(FATAL)
+  while (false && (::tensorflow::OkStatus() == (val))) LOG(FATAL)
 #endif
 
 }  // namespace tensorflow

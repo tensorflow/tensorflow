@@ -17,11 +17,13 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -29,125 +31,138 @@ namespace mlir {
 namespace gml_st {
 namespace {
 
-Value MaterializeSpaceFromTensor(Value val, PatternRewriter& rewriter) {
-  auto loc = val.getLoc();
-  auto ty = val.getType().cast<RankedTensorType>();
+Value materializeSpaceFromTensor(Value operand, const SmallVector<Value>& dims,
+                                 PatternRewriter& rewriter) {
+  auto loc = operand.getLoc();
+  auto ty = operand.getType().cast<RankedTensorType>();
 
   // Collect dimension info and materialize `dim` ops for dynamic dimensions.
-  SmallVector<int64_t> static_dims;
-  SmallVector<Value> dynamic_dims;
+  SmallVector<int64_t> staticDims;
+  SmallVector<Value> dynamicDims;
   for (const auto& it : llvm::enumerate(ty.getShape())) {
     int64_t d = it.value();
     if (d != ShapedType::kDynamicSize) {
-      static_dims.push_back(d);
+      staticDims.push_back(d);
     } else {
-      auto dyn_dim = rewriter.create<tensor::DimOp>(loc, val, it.index());
-      static_dims.push_back(ShapedType::kDynamicSize);
-      dynamic_dims.push_back(dyn_dim);
+      staticDims.push_back(ShapedType::kDynamicSize);
+      dynamicDims.push_back(dims[it.index()]);
     }
   }
 
   // Materialize `space` op.
-  auto space_ty = rewriter.getType<TileType>(ty.getShape());
-  auto static_dims_attr = rewriter.getI64ArrayAttr(static_dims);
-  return rewriter.create<SpaceOp>(loc, space_ty, dynamic_dims,
-                                  static_dims_attr);
+  auto spaceTy = rewriter.getType<TileType>(ty.getShape());
+  auto staticDimsAttr = rewriter.getI64ArrayAttr(staticDims);
+  return rewriter.create<SpaceOp>(loc, spaceTy, dynamicDims, staticDimsAttr);
 }
 
-// TODO(frgossen): This should be an interface common to all subset ops.
-Value GetSpace(Value subset) {
-  Operation* subset_op = subset.getDefiningOp();
-
-  // Case: `gml.tile`:
-  if (auto tile_op = llvm::dyn_cast_or_null<TileOp>(subset_op))
-    return GetSpace(tile_op.subset());
-
-  // Otherwise, `subset` must be the space itself.
-  return subset;
-}
-
-// TODO(frgossen): This should become a tiling interface.
-Value WhatWillBeTheTilingIface(gml_st::DynamicBroadcastInDimOp op, Value tile,
+// TODO(frgossen): This should become a fusion interface.
+Value whatWillBeTheFusionIface(gml_st::DynamicBroadcastInDimOp op, Value tile,
                                PatternRewriter& rewriter) {
   auto loc = op.getLoc();
-  Value operand = op.operand();
-  auto operand_ty = operand.getType().cast<RankedTensorType>();
-  auto tile_ty = tile.getType().cast<TileType>();
-  auto result_ty = op.getType().cast<RankedTensorType>();
+  DenseMap<uint64_t, Value> localIndexCsts;
+  auto getIndexCst = [&](uint64_t c) -> Value {
+    auto it = localIndexCsts.find(c);
+    if (it != localIndexCsts.end()) return it->second;
+    auto cst = rewriter.create<arith::ConstantIndexOp>(loc, c);
+    localIndexCsts[c] = cst;
+    return cst;
+  };
 
-  // // Materialize tiled output dimensions.
-  // SmallVector<Value> tiled_output_dimensions_vec;
-  // for (int i = 0; i < result_ty.getRank(); i++) {
-  //   auto cst = rewriter.create<arith::ConstantIndexOp>(loc, i);
-  //   // TODO(frgossen): Use `tensor.dim` op and dimension reification and
-  //   remove
-  //   // `gml_st.dim` from the dialect.
-  //   auto dim = rewriter.create<DimOp>(loc, tile, cst);
-  //   tiled_output_dimensions_vec.push_back(dim);
-  // }
-  // auto tiled_output_dimensions =
-  //     rewriter.create<tensor::FromElementsOp>(loc,
-  //     tiled_output_dimensions_vec);
+  Value operand = op.operand();
+  auto operandTy = operand.getType().cast<RankedTensorType>();
+  auto tileTy = tile.getType().cast<TileType>();
+  auto resultTy = op.getType().cast<RankedTensorType>();
+
+  // Materiaize operand dimensions.
+  SmallVector<Value> operandDims;
+  operandDims.reserve(operandTy.getRank());
+  for (const auto& it : llvm::enumerate(operandTy.getShape())) {
+    int64_t d = it.value();
+    Value dim =
+        d == ShapedType::kDynamicSize
+            ? rewriter.create<tensor::DimOp>(loc, operand, it.index())
+                  .getResult()
+            : rewriter.create<arith::ConstantIndexOp>(loc, d).getResult();
+    operandDims.push_back(dim);
+  }
 
   // Materialize operand and result space.
-  Value result_space = GetSpace(tile);
-  Value operand_space = MaterializeSpaceFromTensor(operand, rewriter);
+  Value operandSpace =
+      materializeSpaceFromTensor(operand, operandDims, rewriter);
+
+  // Materialize offsets and sizes for operand tile.
+  auto collapsedTile =
+      rewriter.create<CollapseTileOp>(loc, tile, op.broadcast_dimensions());
+  SmallVector<Value> argTileOffsets;
+  SmallVector<Value> argTileSizes;
+  for (const auto& it : llvm::enumerate(op.broadcast_dimensions())) {
+    Value argIdx = getIndexCst(it.index());
+    Value resultIdx = getIndexCst(it.value().getLimitedValue());
+
+    // If corresponding operand and result dimensions are different, the
+    // dimension is expanding.
+    auto argDim = operandDims[it.index()];
+    auto resultDim = rewriter.create<tensor::DimOp>(loc, op.init(), resultIdx);
+    auto isExpanding = rewriter.create<arith::CmpIOp>(
+        loc, arith::CmpIPredicate::ne, argDim, resultDim);
+
+    // Copy offset for non-expanding dimensions and index at 0, otrherwise.
+    auto tileOffset = rewriter.create<OffsetOp>(loc, collapsedTile, argIdx);
+    auto tileSize = rewriter.create<SizeOp>(loc, collapsedTile, argIdx);
+    argTileOffsets.push_back(rewriter.create<arith::SelectOp>(
+        loc, isExpanding, getIndexCst(0), tileOffset));
+    argTileSizes.push_back(rewriter.create<arith::SelectOp>(
+        loc, isExpanding, getIndexCst(1), tileSize));
+  }
 
   // Materialize operand tile.
-  SmallVector<int64_t> operand_tile_shape(operand_ty.getRank(),
-                                          ShapedType::kDynamicSize);
-  auto operand_tile_ty = rewriter.getType<TileType>(operand_tile_shape);
-  // TODO(frgossen): Split this into a new `gml_st.extend_tile` op and express
-  // the remainder through a `gml_st.tile` op.
-  Value operand_tile = rewriter.create<OperandTileForDynamicBroadcastInDimOp>(
-      loc, operand_tile_ty, tile, operand_space, result_space,
-      op.broadcast_dimensions(), op.known_expanding_dimensionsAttr(),
-      op.known_nonexpanding_dimensionsAttr());
+  int64_t rank = operandTy.getRank();
+  auto staticOffsets = rewriter.getI64ArrayAttr(
+      SmallVector<int64_t>(rank, ShapedType::kDynamicStrideOrOffset));
+  auto staticSizes = rewriter.getI64ArrayAttr(
+      SmallVector<int64_t>(rank, ShapedType::kDynamicSize));
+  auto staticStrides = rewriter.getI64ArrayAttr(SmallVector<int64_t>(rank, 1));
+  auto operandTileTy = rewriter.getType<TileType>(
+      SmallVector<int64_t>(rank, ShapedType::kDynamicSize));
+  auto operandTile = rewriter.create<TileOp>(
+      loc, operandTileTy, operandSpace, argTileOffsets, argTileSizes,
+      ValueRange{}, staticOffsets, staticSizes, staticStrides);
 
   // Materialize operands' subsets.
-  Value tiled_init = rewriter.create<MaterializeOp>(loc, op.init(), tile);
-  Value tiled_operand =
-      rewriter.create<MaterializeOp>(loc, operand, operand_tile);
+  Value tiledInit = rewriter.create<MaterializeOp>(loc, op.init(), tile);
+  Value tiledOperand =
+      rewriter.create<MaterializeOp>(loc, operand, operandTile);
 
   // Finally, materialize tiled broadcast.
-  auto tiled_result_ty =
-      RankedTensorType::get(tile_ty.getShape(), result_ty.getElementType());
+  auto tiledResultTy =
+      RankedTensorType::get(tileTy.getShape(), resultTy.getElementType());
   return rewriter.create<DynamicBroadcastInDimOp>(
-      loc, tiled_result_ty, tiled_init, tiled_operand,
-      op.broadcast_dimensions(), op.known_expanding_dimensionsAttr(),
+      loc, tiledResultTy, tiledInit, tiledOperand, op.broadcast_dimensions(),
+      op.known_expanding_dimensionsAttr(),
       op.known_nonexpanding_dimensionsAttr());
 }
 
-// TODO(frgossen): This should become a tiling interface.
-Value WhatWillBeTheTilingIface(mhlo::AddOp op, Value tile,
-                               PatternRewriter& rewriter) {
-  auto loc = op.getLoc();
-  auto lhs_sub = rewriter.create<MaterializeOp>(loc, op.lhs(), tile);
-  auto rhs_sub = rewriter.create<MaterializeOp>(loc, op.rhs(), tile);
-  return rewriter.create<mhlo::AddOp>(loc, lhs_sub, rhs_sub);
-}
-
-struct TilingPattern : public OpRewritePattern<gml_st::MaterializeOp> {
+struct FusionPattern : public OpRewritePattern<gml_st::MaterializeOp> {
   using OpRewritePattern<gml_st::MaterializeOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(gml_st::MaterializeOp op,
                                 PatternRewriter& rewriter) const override {
-    auto def = op.source().getDefiningOp();
+    Operation* def = op.source().getDefiningOp();
+
+    if (auto iface = llvm::dyn_cast_or_null<FusionIterface>(def)) {
+      if (Value fused = iface.fuse(op, rewriter)) {
+        rewriter.replaceOp(op, fused);
+        return success();
+      }
+    }
 
     // TODO(frgossen): The below cases should eventually be replaced by the use
-    // of a common tiling interface.
+    // of a common fusion interface.
 
     // Case `dynamic_broadcast_in_dim`.
     if (auto bcast =
             llvm::dyn_cast_or_null<gml_st::DynamicBroadcastInDimOp>(def)) {
-      Value result = WhatWillBeTheTilingIface(bcast, op.subset(), rewriter);
-      rewriter.replaceOp(op, result);
-      return success();
-    }
-
-    // Case `add`.
-    if (auto add = llvm::dyn_cast_or_null<mhlo::AddOp>(def)) {
-      Value result = WhatWillBeTheTilingIface(add, op.subset(), rewriter);
+      Value result = whatWillBeTheFusionIface(bcast, op.subset(), rewriter);
       rewriter.replaceOp(op, result);
       return success();
     }
@@ -158,7 +173,9 @@ struct TilingPattern : public OpRewritePattern<gml_st::MaterializeOp> {
 
 class FusionPass : public FusionPassBase<FusionPass> {
   void getDependentDialects(DialectRegistry& registry) const final {
-    registry.insert<GmlStDialect>();
+    registry
+        .insert<GmlStDialect, math::MathDialect, arith::ArithmeticDialect>();
+    registerFusionInterfaceExternalModels(registry);
   }
 
   void runOnOperation() final {
@@ -166,7 +183,7 @@ class FusionPass : public FusionPassBase<FusionPass> {
     RewritePatternSet patterns(ctx);
 
     // List of patterns.
-    patterns.insert<TilingPattern>(ctx);
+    patterns.insert<FusionPattern>(ctx);
 
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {

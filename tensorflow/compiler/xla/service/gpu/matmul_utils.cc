@@ -254,7 +254,7 @@ bool IsBlasPlansCompatibleType(PrimitiveType type) {
     absl::Span<const int64_t> rhs_batch_dims,
     absl::Span<const int64_t> rhs_contracting_dims, const Shape& output_shape,
     double alpha_real, double alpha_imag, double beta,
-    absl::optional<int64_t> algorithm, bool use_cublaslt) {
+    std::optional<int64_t> algorithm, bool use_cublaslt) {
   absl::Span<const int64_t> lhs_col_dims = lhs_contracting_dims;
   TF_ASSIGN_OR_RETURN(
       std::vector<int64_t> lhs_row_dims,
@@ -342,7 +342,7 @@ bool IsBlasPlansCompatibleType(PrimitiveType type) {
   TF_ASSIGN_OR_RETURN(GemmBackendConfig config,
                       gemm->backend_config<GemmBackendConfig>());
 
-  absl::optional<int64_t> algorithm;
+  std::optional<int64_t> algorithm;
   if (config.algorithm_case() != GemmBackendConfig::ALGORITHM_NOT_SET) {
     algorithm = config.selected_algorithm();
   }
@@ -366,7 +366,7 @@ bool IsBlasPlansCompatibleType(PrimitiveType type) {
   auto get_config = [&](auto op, llvm::APFloat beta) {
     mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.dot_dimension_numbers();
 
-    absl::optional<int64_t> algorithm;
+    std::optional<int64_t> algorithm;
     if (op.algorithm()) algorithm = *op.algorithm();
 
     return GemmConfig::For(
@@ -418,7 +418,7 @@ namespace {
 // Converts from an XLA PrimitiveType to a blas::ComputationType, which is
 // used to specify the precision with which matmul computations should be
 // performed, separately from the precision of the inputs and result.
-absl::optional<se::blas::ComputationType> ComputationTypeFromPrimitive(
+std::optional<se::blas::ComputationType> ComputationTypeFromPrimitive(
     PrimitiveType type) {
   switch (type) {
     case F16:  // Use F32 computation for higher precision.
@@ -434,7 +434,7 @@ absl::optional<se::blas::ComputationType> ComputationTypeFromPrimitive(
     case S32:
       return se::blas::ComputationType::kI32;
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
@@ -474,7 +474,7 @@ Status DoGemm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
               const se::blas::MatrixDescriptor& rhs,
               const se::blas::MatrixDescriptor& output, Input alpha, Input beta,
               se::Stream* stream,
-              absl::optional<se::blas::AlgorithmType> algorithm,
+              std::optional<se::blas::AlgorithmType> algorithm,
               se::blas::ProfileResult* profile_result) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
   se::DeviceMemory<Input> output_data(output.data);
@@ -504,7 +504,7 @@ Status DoGemm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
 Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
                se::DeviceMemoryBase rhs_buffer,
                se::DeviceMemoryBase output_buffer, se::Stream* stream,
-               absl::optional<se::blas::AlgorithmType> algorithm,
+               std::optional<se::blas::AlgorithmType> algorithm,
                se::blas::ProfileResult* profile_result) {
   VLOG(2) << "Executing a GemmThunk";
   int64_t m = config.output_layout.num_rows;
@@ -694,7 +694,7 @@ std::optional<se::blas::AlgorithmConfig> BlasPlansAutotuneCache::Find(
   absl::MutexLock lock(&mu_);
   auto it = blas_plans_algorithms_map_.find(params);
   if (it == blas_plans_algorithms_map_.end()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return it->second;
 }

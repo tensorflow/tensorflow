@@ -434,7 +434,7 @@ def ShapeInference : Pass<"tfg-shape-inference"> {
   let constructor = "CreateShapeInferencePass()";
 }
 
-def ConstantFoldingPass : Pass<"tfg-constant-folding"> {
+def ConstantFoldingPass : Pass<"tfg-constant-folding", "GraphFuncOp"> {
   let summary = "constant-folding on tfg";
   let description = [{
     This pass will fold operations into constants and do full/partial propagte
@@ -496,4 +496,47 @@ def LiftLegacyCall : Pass<"tfg-lift-legacy-call", "ModuleOp"> {
 def CSEPass : Pass<"tfg-cse", "GraphFuncOp"> {
   let summary = "Common sub-expression elimination, ignoring op names";
   let constructor = "CreateCSEPass()";
+}
+
+def NameCompress : Pass<"tfg-name-compress", "GraphFuncOp"> {
+  let summary = "Compress the graph by shortening names";
+  let description = [{
+    This pass will rename operations, function arguments, results, and control
+    results to have "compressed" names, reducing the size of the graph. Only
+    operations in funtions can be safely renamed, and names need only be unique
+    in the scope of the function.
+    
+    This pass also assigns unique names to arguments, results, control results,
+    and operations without names.
+  }];
+  let constructor = "CreateNameCompressPass()";
+}
+
+def StripDefaultAttrs : Pass<"tfg-strip-default-attrs"> {
+  let summary = "Removes default-valued attributes from the graph";
+  let description = [{
+    This pass reduces the size of graphs by removing operation attributes equal
+    to their default values. This pass requires the TensorFlow registry
+    interface to inject an instance of the operation registry.
+
+    Note that removing default-valued attributes may render some pass inoperable
+    if they expect default-valued attributes to be present.
+
+    This pass is the opposite of `tfg-add-default-attrs`, which adds missing
+    default-valued attributes.
+  }];
+  let constructor = "CreateStripDefaultAttrsPass()";
+}
+
+def AddDefaultAttrs : Pass<"tfg-add-default-attrs"> {
+  let summary = "Add default-valued attributes to the graph";
+  let description = [{
+    This pass adds missing attributes with default values to the graph. This
+    pass requires the TensorFlow registry interface to inject an instance of the
+    operation registry.
+
+    This pass is the opposite of `tfg-strip-default-attrs`, which removes
+    default-valued attributes equal to their default values.
+  }];
+  let constructor = "CreateAddDefaultAttrsPass()";
 }

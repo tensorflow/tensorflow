@@ -32,7 +32,7 @@ func.func @elemenwise(%lhs : tensor<?x?xf32>,
 
 // POINT:        %[[SPACE:.*]] = gml_st.space {{.*}} : !gml_st.tile<?x?>
 // POINT:        %{{.*}} = gml_st.parallel (%[[I:.*]], %[[J:.*]]) =
-// POINT-SAME:   outs (%[[OUT_:.*]] = %{{.*}} at %[[SPACE]]
+// POINT-SAME:   outs (%{{.*}} at %[[SPACE]]
 // POINT-SAME:         tensor<?x?xf32> at !gml_st.tile<?x?>) {
 
 // POINT:        %[[PT:.*]] = gml_st.point %[[SPACE]] [%[[I]], %[[J]]]

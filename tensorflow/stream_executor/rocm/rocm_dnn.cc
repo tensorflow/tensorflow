@@ -2908,7 +2908,7 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
     const dnn::AlgorithmConfig& algorithm_config,
     ScratchAllocator* scratch_allocator, dnn::AlgorithmDesc* algorithm_desc,
     DeviceMemory<uint8>* scratch_memory) {
-  absl::optional<dnn::AlgorithmDesc> input_algo_desc =
+  std::optional<dnn::AlgorithmDesc> input_algo_desc =
       algorithm_config.algorithm();
 
   assert(input_algo_desc.has_value());

@@ -43,7 +43,7 @@ static Status InitDeviceAndGraphModule(void* dso_handle) {
                             status_graph.error_message());
   }
 
-  if (status_se == Status::OK()) {
+  if (status_se == OkStatus()) {
     auto init_fn =
         reinterpret_cast<stream_executor::SEInitPluginFn>(dso_symbol_se);
 
@@ -62,13 +62,13 @@ static Status InitDeviceAndGraphModule(void* dso_handle) {
         /*is_pluggable_device=*/true));  // Register the Copy tensor.
   }
 
-  if (status_graph == Status::OK()) {
+  if (status_graph == OkStatus()) {
     auto init_fn =
         reinterpret_cast<grappler::TFInitGraphPluginFn>(dso_symbol_graph);
     TF_RETURN_IF_ERROR(grappler::InitGraphPlugin(init_fn));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 typedef void (*TFKernelInitFn)();
@@ -80,7 +80,7 @@ static Status InitKernelModule(void* dso_handle) {
       env->GetSymbolFromLibrary(dso_handle, "TF_InitKernel", &dso_symbol));
   auto init_fn = reinterpret_cast<TFKernelInitFn>(dso_symbol);
   init_fn();
-  return Status::OK();
+  return OkStatus();
 }
 
 static Status InitProfilerModule(void* dso_handle) {
@@ -91,7 +91,7 @@ static Status InitProfilerModule(void* dso_handle) {
       env->GetSymbolFromLibrary(dso_handle, "TF_InitProfiler", &dso_symbol));
   auto init_fn = reinterpret_cast<profiler::TFInitProfilerFn>(dso_symbol);
   TF_RETURN_IF_ERROR(profiler::InitPluginProfiler(init_fn));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RegisterPluggableDevicePlugin(void* dso_handle) {
@@ -107,7 +107,7 @@ Status RegisterPluggableDevicePlugin(void* dso_handle) {
     VLOG(1) << "Failed to load pluggable profiler module due to "
             << status.error_message();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

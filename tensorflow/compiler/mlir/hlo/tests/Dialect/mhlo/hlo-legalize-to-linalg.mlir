@@ -1374,6 +1374,20 @@ func.func @convert_f32_to_i32(%input: tensor<2x2xf32>) -> tensor<2x2xi32> {
 
 // -----
 
+// CHECK-LABEL: func @convert_bf16_to_f16
+func.func @convert_bf16_to_f16(%input: tensor<2x2xbf16>) -> tensor<2x2xf16> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xbf16>) -> tensor<2x2xf16>
+  func.return %result : tensor<2x2xf16>
+}
+// CHECK: linalg.init_tensor
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: bf16, %{{.*}}: f16):
+// CHECK-NEXT:   %[[EXT:.*]] = arith.extf %[[OPERAND_IN]] : bf16 to f32
+// CHECK-NEXT:   %[[TRUNC:.*]] = arith.truncf %[[EXT]] : f32 to f16
+// CHECK-NEXT:   linalg.yield %[[TRUNC]] : f16
+
+// -----
+
 // CHECK-LABEL: func @convert_c64_to_c128
 func.func @convert_c64_to_c128(%input: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f64>> {
   %result = "mhlo.convert"(%input) : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f64>>
@@ -3036,6 +3050,21 @@ func.func @pad_interior(%arg0: tensor<12x4xui32>, %arg1: tensor<ui32>) -> tensor
 //       CHECK: %[[INIT:.+]] = linalg.init_tensor [29, 15] : tensor<29x15xi32>
 //       CHECK: %[[FILL:.+]] = linalg.fill ins(%[[PAD]] : i32) outs(%[[INIT]] : tensor<29x15xi32>) -> tensor<29x15xi32>
 //       CHECK: %[[INSERT:.+]] = tensor.insert_slice %[[CAST0]] into %[[FILL]][4, 5] [12, 4] [2, 2] : tensor<12x4xi32> into tensor<29x15xi32>
+
+// -----
+
+func.func @pad_interior_negative(%arg0: tensor<12x4xui32>, %arg1: tensor<ui32>) -> tensor<25x9xui32> {
+  %0 = arith.constant dense<0> : tensor<ui32>
+  %1 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[-2, 3]> : tensor<2xi64>,
+    edge_padding_low = dense<[4, -1]> : tensor<2xi64>,
+    interior_padding = dense<[1, 1]> : tensor<2xi64>
+  } : (tensor<12x4xui32>, tensor<ui32>) -> tensor<25x9xui32>
+  func.return %1 : tensor<25x9xui32>
+}
+// CHECK-LABEL: func @pad_interior_negative
+//       CHECK: %[[PAD:.]] = tensor.insert_slice %{{.+}} into %{{.+}}[4, 0] [12, 4] [2, 2] : tensor<12x4xi32> into tensor<29x10xi32>
+//       CHECK: %[[SLICE:.]] = tensor.extract_slice %[[PAD]][0, 1] [25, 9] [1, 1] : tensor<29x10xi32> to tensor<25x9xi32>
 
 // -----
 

@@ -599,7 +599,7 @@ PartitionedHlo PartitionedHlo::PadWithZero(
   return PadWithValue(zero, left_padded_dims, skipped_dims);
 }
 
-absl::optional<PartitionedHlo::WindowedInputShardReturnValue>
+std::optional<PartitionedHlo::WindowedInputShardReturnValue>
 PartitionedHlo::ReshardAsWindowedInput(const Window& window,
                                        const HloSharding& target,
                                        HloInstruction* pad_value,
@@ -779,13 +779,13 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
     if (full_size < dilated_size) {
       VLOG(2) << "Failed to reshard window operand because the window size is "
                  "larger than padded base size";
-      return absl::nullopt;
+      return std::nullopt;
     }
     if (wd.stride() != 1 &&
         (wd.stride() * per_shard_window_counts[i]) % wd.base_dilation() != 0) {
       // TODO(yuanzx): Support this case.
       VLOG(2) << "Failed to reshard window operand due to non-trivial dilation";
-      return absl::nullopt;
+      return std::nullopt;
     }
 
     // Calculation for the first element needed on the 'padded-but-not-dilated'
@@ -881,7 +881,7 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
         if ((wd.stride() * per_shard_window_counts[i]) % wd.base_dilation() !=
             0) {
           // General base dilation not yet implemented.
-          return absl::nullopt;
+          return std::nullopt;
         }
         // padding_low on all shards should equal the initially assigned
         // swd->padding_low(), i.e., the padding_low() on the original window.
@@ -889,14 +889,14 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
     }
   }
 
-  // Returns the output dynamic slice offset when needed, and absl::nullopt
+  // Returns the output dynamic slice offset when needed, and std::nullopt
   // otherwise.
   auto get_dynamic_slice_offset_on_output_if_needed =
-      [&]() -> absl::optional<std::vector<HloInstruction*>> {
+      [&]() -> std::optional<std::vector<HloInstruction*>> {
     if (absl::c_all_of(
             dynamic_slice_offset_on_output,
             [](HloInstruction* offset) { return offset == nullptr; })) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     auto zero = state_.b->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
@@ -951,7 +951,7 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
     trimmed_target_sharding_tile_shape.push_back(
         target.tile_assignment().dimensions().back());
   }
-  absl::optional<HloSharding> trimmed_target;
+  std::optional<HloSharding> trimmed_target;
   const HloSharding* halo_exchange_target = &target;
   if (trimmed_shards) {
     // Remove devices on the right side.
@@ -1117,7 +1117,7 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
     target_shape.set_dimensions(i, base_shape().dimensions(i));
     if (target_shape.dimensions(i) == shard_shape.dimensions(i)) {
       broadcast_dims.push_back(i);
-    } else if (target_shape.dimensions(i) < partitions / 2) {
+    } else if (target_shape.dimensions(i) <= partitions / 2) {
       dus_ar_dims.push_back(i);
     } else {
       padded_target_shape.set_dimensions(
@@ -1167,6 +1167,7 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
     for (int64_t dim : ag_dims) {
       dus_ar_dims.push_back(dim);
     }
+    result = broadcast;
   }
   if (!dus_ar_dims.empty()) {
     auto zero = state_.b->AddInstruction(HloInstruction::CreateConstant(
@@ -1189,21 +1190,23 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
           skipped_dims.push_back(i);
         }
       }
-      broadcast->set_sharding(sharding());
-      broadcast = PartitionedHlo(broadcast, padded_target_shape, state_)
-                      .PadWithValue(zero,
-                                    /*left_padded_dims=*/{},
-                                    /*skipped_dims=*/skipped_dims)
-                      .hlo();
+      result->set_sharding(sharding());
+      result = PartitionedHlo(result, padded_target_shape, state_)
+                   .PadWithValue(zero,
+                                 /*left_padded_dims=*/{},
+                                 /*skipped_dims=*/skipped_dims)
+                   .hlo();
     }
     auto zero_bcast = state_.b->AddInstruction(
         HloInstruction::CreateBroadcast(padded_target_shape, zero, {}));
-    auto offsets =
-        MakePartitionOffsets(padded_target_shape, sharding(),
-                             state_.partition_id, state_.b, dus_ar_dims);
+    auto offsets = MakePartitionOffsets(
+        padded_target_shape,
+        hlo_sharding_util::PartiallyReplicateTiledShardingOnAllDimsExcept(
+            sharding(), dus_ar_dims),
+        state_.partition_id, state_.b, dus_ar_dims);
     auto dus =
         state_.b->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-            padded_target_shape, zero_bcast, broadcast, offsets));
+            padded_target_shape, zero_bcast, result, offsets));
     HloComputation* reduction =
         MakeBinaryAdd(shard_shape.element_type(), state_.module);
     result = state_.partitioner->AllReduceAlongShardingDims(
@@ -1220,18 +1223,18 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
   return result;
 }
 
-absl::optional<PartitionedHlo>
+std::optional<PartitionedHlo>
 PartitionedHlo::ReshardToPartialReplicateWithAllGather(
     const HloSharding& target) {
   if (!target.ReplicateOnLastTileDim()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   // Tiled/partial replicate to partial replicate
   // Get the comptible sharding to target with resharding by all reduce.
   auto compatible_sharding =
       PartialReplicateReshardCompatibleSharding(target, sharding());
   if (!compatible_sharding.has_value()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   const auto& temp_sharding = compatible_sharding.value();
@@ -1263,7 +1266,7 @@ PartitionedHlo::ReshardToPartialReplicateWithAllGather(
       partitioned_hlo.state().next_channel_id,
       partitioned_hlo.state().partition_id, partitioned_hlo.state().b);
   if (!halo_exchange.has_value()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   auto halo_exchange_hlo = halo_exchange.value();
   // Grouped on replicate dimensions.
@@ -1286,11 +1289,11 @@ PartitionedHlo::ReshardToPartialReplicateWithAllGather(
   return PartitionedHlo(result, base_shape_, partitioned_hlo.state());
 }
 
-absl::optional<PartitionedHlo>
+std::optional<PartitionedHlo>
 PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
     const HloSharding& target) {
   if (!sharding().ReplicateOnLastTileDim()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   // Get the temp sharding target from partial replicate to target tile dims.
@@ -1303,7 +1306,7 @@ PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
       PartialReplicateReshardCompatibleSharding(sharding(), target);
   // Reshard to target_compatible_sharding by dynamic slice.
   if (!target_compatible_sharding.has_value()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   std::vector<int64_t> expand_tile_dims;
   std::vector<int64_t> tiling_dim_factors;
@@ -1332,7 +1335,7 @@ PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
       state_.collective_ops_creator, state_.next_channel_id,
       state_.partition_id, state_.b);
   if (!padded_hlo.has_value()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   // 3. Slice out the tile from replicate ones.
   auto shard_shape = MakePartitionedShape(base_shape_, temp_target_sharding);
@@ -1541,20 +1544,20 @@ PartitionedHlo PartitionedHlo::ReshardWithAllToAll(
       .ReshardWithAllToAll(target, remaining_source_target_dims);
 }
 
-absl::optional<PartitionedHlo>
+std::optional<PartitionedHlo>
 PartitionedHlo::ReshardPartialReplicateWithAllToAll(const HloSharding& target) {
   bool source_is_partial_replicate = sharding().ReplicateOnLastTileDim();
   const auto& partial_replicate_sharding =
       source_is_partial_replicate ? sharding() : target;
   // If neither the source nor the target is partial replicate, return null.
   if (!partial_replicate_sharding.ReplicateOnLastTileDim()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   const auto& tile_sharding = source_is_partial_replicate ? target : sharding();
   // If both source and target are partial replicate, should be supported in
   // Reshard with AllToAll already.
   if (tile_sharding.ReplicateOnLastTileDim() || tile_sharding.IsTileMaximal()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   // Only support resharding from sharding={devices=[2,3]0,1,2,3,4,5}
@@ -1569,7 +1572,7 @@ PartitionedHlo::ReshardPartialReplicateWithAllToAll(const HloSharding& target) {
   if (((tile_sharding.tile_assignment().num_dimensions() + 1) !=
        partial_replicate_sharding.tile_assignment().num_dimensions()) ||
       (partial_replicate_sharding.tile_assignment().dim(0) != 1)) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   int to_replicate_dim = -1;
   for (int i = tile_sharding.tile_assignment().num_dimensions() - 1; i >= 0;
@@ -1577,26 +1580,26 @@ PartitionedHlo::ReshardPartialReplicateWithAllToAll(const HloSharding& target) {
     if (tile_sharding.tile_assignment().dim(i) > 1 &&
         (to_replicate_dim == -1)) {
       if (tile_sharding.tile_assignment().dim(i) != num_replicas) {
-        return absl::nullopt;
+        return std::nullopt;
       }
       to_replicate_dim = i;
     }
 
     if (tile_sharding.tile_assignment().dim(i) !=
         partial_replicate_sharding.tile_assignment().dim(i + 1)) {
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
 
   if (to_replicate_dim == -1) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   // Check if core assignments for source and the target are the same.
   auto reshape_tile_assignment = partial_replicate_sharding.tile_assignment();
   reshape_tile_assignment.Reshape(tile_sharding.tile_assignment().dimensions());
   if (reshape_tile_assignment != tile_sharding.tile_assignment()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   auto tmp_tile_assignment = tile_sharding.tile_assignment();
@@ -1624,7 +1627,7 @@ PartitionedHlo::ReshardPartialReplicateWithAllToAll(const HloSharding& target) {
     }
   }
 
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 PartitionedHlo PartitionedHlo::ReshardWithCollectivePermute(
@@ -1742,7 +1745,8 @@ Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
   HloSharding sharding = hlo->sharding().HasUniqueDevice()
                              ? hlo->sharding()
                              : HloSharding::Replicate();
-  if (hlo->opcode() == HloOpcode::kSend || hlo->opcode() == HloOpcode::kRecv) {
+  if (hlo->opcode() == HloOpcode::kSend || hlo->opcode() == HloOpcode::kRecv ||
+      hlo->opcode() == HloOpcode::kRecvDone) {
     sharding = sharding.GetSubSharding(hlo->shape(), {0});
   }
 
@@ -2290,7 +2294,7 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
   auto operand = GetPartitionedHlo(hlo->operand(0));
   // The output shape is the source and the operand shape is the target to get
   // the aligned sharding for the operand.
-  absl::optional<HloSharding> desired_operand_sharding =
+  std::optional<HloSharding> desired_operand_sharding =
       hlo_sharding_util::ReshapeSharding(hlo->shape(), hlo->operand(0)->shape(),
                                          hlo->sharding());
   // Use the desired operand sharding only if the number of tiles returned
@@ -2304,7 +2308,7 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
     });
     return ::tensorflow::OkStatus();
   }
-  absl::optional<HloSharding> desired_output_sharding =
+  std::optional<HloSharding> desired_output_sharding =
       hlo_sharding_util::ReshapeSharding(hlo->operand(0)->shape(), hlo->shape(),
                                          operand.sharding());
   if (desired_output_sharding.has_value()) {
@@ -3926,7 +3930,7 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
       },
       [](SpmdBuilder* b, absl::Span<HloInstruction* const> operands,
          const std::vector<std::vector<int64_t>>& partition_subgroups,
-         int64_t channel_id, absl::optional<int64_t> split_dimension) {
+         int64_t channel_id, std::optional<int64_t> split_dimension) {
         std::vector<Shape> shapes(operands.size(), operands[0]->shape());
         const Shape output_shape = (shapes.size() == 1)
                                        ? shapes[0]
@@ -4324,13 +4328,13 @@ Status SpmdPartitioner::PreprocessHlos(HloModule* module) {
 
         // Merge pad->slice to avoid multiple halo exchanges.
         if (operand->opcode() == HloOpcode::kPad) {
-          absl::optional<PaddingConfig> merged_padding =
+          std::optional<PaddingConfig> merged_padding =
               operand->padding_config();
           bool may_have_multi_halo_exchanges = false;
           for (int64_t i = 0; i < hlo->shape().rank(); ++i) {
             const auto& dim = operand->padding_config().dimensions(i);
             if (dim.interior_padding() != 0 || hlo->slice_strides(i) != 1) {
-              merged_padding = absl::nullopt;
+              merged_padding = std::nullopt;
               break;
             }
             if (hlo->sharding().tile_assignment().dim(i) != 1 &&
@@ -4392,7 +4396,7 @@ Status SpmdPartitioner::PreprocessHlos(HloModule* module) {
           HloInstruction* mid = skip_copy_operands(hlo->mutable_operand(1),
                                                    /*check_single_use=*/false);
           HloInstruction* rhs = skip_copy_operands(hlo->mutable_operand(2));
-          absl::optional<PadWithWrapPattern> pad_pattern =
+          std::optional<PadWithWrapPattern> pad_pattern =
               FindPadWithWrapPattern(hlo, lhs, mid, rhs);
           if (!pad_pattern) {
             continue;

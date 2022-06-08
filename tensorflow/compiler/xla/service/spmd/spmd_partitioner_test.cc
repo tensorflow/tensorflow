@@ -4038,6 +4038,31 @@ ENTRY entry {
                           op::Shape("f32[32,24,39296]")));
 }
 
+TEST_F(SpmdPartitioningTest,
+       EinsumContractingDimsPartitionedResultPartiallySliced) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[32,64] parameter(0), sharding={devices=[1,4]0,1,2,3}
+  %rhs = f32[64,128] parameter(1), sharding={devices=[4,1]0,1,2,3}
+  ROOT %dot = f32[32,128] dot(%lhs, %rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    sharding={devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  const auto root = module->entry_computation()->root_instruction();
+  const auto lhs = AllOf(op::Parameter(0), op::Shape("f32[32,16]"));
+  const auto rhs = AllOf(op::Parameter(1), op::Shape("f32[16,128]"));
+  EXPECT_THAT(root, AllOf(op::AllReduce(op::DynamicSlice(
+                              op::AllReduce(op::Dot(lhs, rhs)), _, _)),
+                          op::Shape("f32[16,128]")));
+}
+
 TEST_F(SpmdPartitioningTest, EinsumLHSNonContractingDimsPartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -6521,6 +6546,43 @@ ENTRY entry {
                           op::Shape("f32[2,5]")));
 }
 
+TEST_F(SpmdPartitioningTest, PassthroughScatterVariadic) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add_min_max {
+  lhs0 = f32[] parameter(0)
+  lhs1 = f32[] parameter(1)
+  rhs0 = f32[] parameter(2)
+  rhs1 = f32[] parameter(3)
+  min = minimum(rhs0, rhs1)
+  max = maximum(rhs0, rhs1)
+  min_sum = add(lhs0, min)
+  max_sum = add(lhs1, max)
+  ROOT tuple = tuple(min_sum, max_sum)
+}
+
+ENTRY entry {
+  %input0 = f32[2,9] parameter(0), sharding={devices=[1,2]0,1}
+  %input1 = f32[2,9] parameter(1), sharding={devices=[1,2]0,1}
+  %indices = s32[3] parameter(2), sharding={replicated}
+  %updates0 = f32[3,9] parameter(3), sharding={devices=[1,2]0,1}
+  %updates1 = f32[3,9] parameter(4), sharding={devices=[1,2]0,1}
+  ROOT %scatter = (f32[2,9], f32[2,9])
+    scatter(%input0, %input1, %indices, %updates0, %updates1),
+      to_apply=add_min_max, update_window_dims={1}, inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0}, index_vector_dim=1,
+      sharding={devices=[1,2]0,1}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Scatter(op::Parameter(0), op::Parameter(1),
+                                      op::Parameter(2), op::Parameter(3),
+                                      op::Parameter(4)),
+                          op::Shape("(f32[2,5], f32[2,5])")));
+}
+
 TEST_F(SpmdPartitioningTest, PassthroughScatter_PartialReplicate) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -6552,6 +6614,47 @@ ENTRY entry {
   EXPECT_THAT(root, AllOf(op::Scatter(op::Parameter(0), op::Parameter(1),
                                       op::Parameter(2)),
                           op::Shape("f32[2,5]")));
+}
+
+TEST_F(SpmdPartitioningTest, PassthroughScatterVariadic_PartialReplicate) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add_min_max {
+  lhs0 = f32[] parameter(0)
+  lhs1 = f32[] parameter(1)
+  rhs0 = f32[] parameter(2)
+  rhs1 = f32[] parameter(3)
+  min = minimum(rhs0, rhs1)
+  max = maximum(rhs0, rhs1)
+  min_sum = add(lhs0, min)
+  max_sum = add(lhs1, max)
+  ROOT tuple = tuple(min_sum, max_sum)
+}
+
+ENTRY entry {
+  %input0 = f32[2,9] parameter(0),
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+  %input1 = f32[2,9] parameter(1),
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+  %indices = s32[3] parameter(2), sharding={replicated}
+  %updates0 = f32[3,9] parameter(3),
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+  %updates1 = f32[3,9] parameter(4),
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+  ROOT %scatter = (f32[2,9], f32[2,9])
+    scatter(%input0, %input1, %indices, %updates0, %updates1),
+      to_apply=add_min_max, update_window_dims={1}, inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0}, index_vector_dim=1,
+      sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Scatter(op::Parameter(0), op::Parameter(1),
+                                      op::Parameter(2), op::Parameter(3),
+                                      op::Parameter(4)),
+                          op::Shape("(f32[2,5], f32[2,5])")));
 }
 
 TEST_F(SpmdPartitioningTest, IndexPassthroughScatter) {
@@ -6692,6 +6795,47 @@ ENTRY entry {
                     op::Shape("f32[9,9]")));
 }
 
+TEST_F(SpmdPartitioningTest, ScatterPartitionedOnTrivialSliceDimsVariadic) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add_min_max {
+  lhs0 = f32[] parameter(0)
+  lhs1 = f32[] parameter(1)
+  rhs0 = f32[] parameter(2)
+  rhs1 = f32[] parameter(3)
+  min = minimum(rhs0, rhs1)
+  max = maximum(rhs0, rhs1)
+  min_sum = add(lhs0, min)
+  max_sum = add(lhs1, max)
+  ROOT tuple = tuple(min_sum, max_sum)
+}
+
+ENTRY entry {
+  %input0 = f32[17,9] parameter(0), sharding={devices=[2,1]0,1}
+  %input1 = f32[17,9] parameter(1), sharding={devices=[2,1]0,1}
+  %indices = s32[2,3] parameter(2), sharding={replicated}
+  %updates0 = f32[2,3,9] parameter(3), sharding={replicated}
+  %updates1 = f32[2,3,9] parameter(4), sharding={replicated}
+  ROOT %scatter = (f32[17,9], f32[17,9])
+    scatter(%input0, %input1, %indices, %updates0, %updates1),
+      to_apply=add_min_max, update_window_dims={2}, inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0}, index_vector_dim=2,
+      sharding={devices=[2,1]0,1}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  auto offset =
+      op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId()));
+  auto indices = op::Subtract(
+      op::Parameter(2), AllOf(op::Broadcast(offset), op::Shape("s32[2,3]")));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::Scatter(op::Parameter(0), op::Parameter(1), indices,
+                                op::Parameter(3), op::Parameter(4)),
+                    op::Shape("(f32[9,9], f32[9,9])")));
+}
+
 TEST_F(SpmdPartitioningTest,
        ScatterPartitionedOnTrivialSliceDims_PartialReplicate) {
   absl::string_view hlo_string = R"(
@@ -6727,6 +6871,51 @@ ENTRY entry {
   EXPECT_THAT(root,
               AllOf(op::Scatter(op::Parameter(0), indices, op::Parameter(2)),
                     op::Shape("f32[9,9]")));
+}
+
+TEST_F(SpmdPartitioningTest,
+       ScatterPartitionedOnTrivialSliceDimsVariadic_PartialReplicate) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add_min_max {
+  lhs0 = f32[] parameter(0)
+  lhs1 = f32[] parameter(1)
+  rhs0 = f32[] parameter(2)
+  rhs1 = f32[] parameter(3)
+  min = minimum(rhs0, rhs1)
+  max = maximum(rhs0, rhs1)
+  min_sum = add(lhs0, min)
+  max_sum = add(lhs1, max)
+  ROOT tuple = tuple(min_sum, max_sum)
+}
+
+ENTRY entry {
+  %input0 = f32[17,9] parameter(0),
+    sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
+  %input1 = f32[17,9] parameter(1),
+    sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
+  %indices = s32[2,3] parameter(2), sharding={replicated}
+  %updates0 = f32[2,3,9] parameter(3), sharding={replicated}
+  %updates1 = f32[2,3,9] parameter(4), sharding={replicated}
+  ROOT %scatter = (f32[17,9], f32[17,9])
+    scatter(%input0, %input1, %indices, %updates0, %updates1),
+      to_apply=add_min_max, update_window_dims={2}, inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0}, index_vector_dim=2,
+      sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  auto offset =
+      op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId()));
+  auto indices = op::Subtract(
+      op::Parameter(2), AllOf(op::Broadcast(offset), op::Shape("s32[2,3]")));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::Scatter(op::Parameter(0), op::Parameter(1), indices,
+                                op::Parameter(3), op::Parameter(4)),
+                    op::Shape("(f32[9,9], f32[9,9])")));
 }
 
 TEST_F(SpmdPartitioningTest, TiledReversePassthrough) {
@@ -7019,14 +7208,12 @@ ENTRY entry {
   const auto rhs = AllOf(op::Shape("f32[12,16]"), op::Parameter(1));
   auto masked_rhs = op::Select(_, rhs, op::Broadcast(op::Constant()));
   const auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(
-      root,
-      AllOf(op::Shape("f32[12,16]"),
-            op::DynamicSlice(
-                AllOf(op::Shape("f32[24,16]"),
-                      op::AllReduce(op::Dot(
-                          masked_lhs, op::CollectivePermute(masked_rhs)))),
-                _, _)));
+  EXPECT_THAT(root,
+              AllOf(op::Shape("f32[12,16]"),
+                    op::DynamicSlice(
+                        AllOf(op::Shape("f32[24,16]"),
+                              op::AllReduce(op::Dot(masked_lhs, masked_rhs))),
+                        _, _)));
 }
 
 TEST_F(SpmdPartitioningTest, Dot2DPartitionedBatchAndNonContracting) {

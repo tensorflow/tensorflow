@@ -792,12 +792,19 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(builder_->getNamedAttr(
           "unique_indices", builder_->getBoolAttr(scatter->unique_indices())));
 
+      llvm::SmallVector<Type> flattened_types;
+      FlattenTupleType(result_type, flattened_types);
+
       auto scatter_op = func_builder->create<mlir::mhlo::ScatterOp>(
-          loc, result_type, operands, attributes);
+          loc, flattened_types, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*scatter->to_apply(),
                                         &scatter_op.update_computation(),
                                         /*flatten_region_arg_tuple=*/true));
-      return scatter_op.getOperation();
+      TF_ASSIGN_OR_RETURN(auto result_type,
+                          ConvertShapeToType<RankedTensorType>(
+                              instruction->shape(), *builder_));
+      return CreateTupleFromOpResults(func_builder, loc,
+                                      scatter_op.getOperation(), result_type);
     }
     case HloOpcode::kSelectAndScatter: {
       auto select_scatter = Cast<HloSelectAndScatterInstruction>(instruction);
@@ -1229,6 +1236,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kConvolution: {
       llvm::SmallVector<int64_t, 4> strides, lhs_dilations, rhs_dilations;
+      llvm::SmallVector<bool, 4> reversals;
       llvm::SmallVector<int64_t, 8> paddings;
       for (const auto& dim : instruction->window().dimensions()) {
         strides.push_back(dim.stride());
@@ -1236,6 +1244,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         rhs_dilations.push_back(dim.window_dilation());
         paddings.push_back(dim.padding_low());
         paddings.push_back(dim.padding_high());
+        reversals.push_back(dim.window_reversal());
       }
 
       attributes.push_back(
@@ -1245,6 +1254,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           builder_->getNamedAttr("lhs_dilation", Convert(lhs_dilations)));
       attributes.push_back(
           builder_->getNamedAttr("rhs_dilation", Convert(rhs_dilations)));
+      attributes.push_back(
+          builder_->getNamedAttr("window_reversal", Convert(reversals)));
       attributes.push_back(builder_->getNamedAttr(
           "dimension_numbers",
           ConvertConvDimensionNumbers(
@@ -1579,6 +1590,12 @@ mlir::DenseIntElementsAttr HloFunctionImporter::Convert(
       elements);
 }
 
+mlir::DenseIntElementsAttr HloFunctionImporter::Convert(
+    llvm::ArrayRef<bool> elements) {
+  return DenseIntElementsAttr::get(
+      RankedTensorType::get(elements.size(), builder_->getI1Type()), elements);
+}
+
 mlir::NamedAttribute HloFunctionImporter::ConvertPadding(
     llvm::ArrayRef<int64_t> padding) {
   auto ty =
@@ -1626,7 +1643,7 @@ mlir::NamedAttribute HloFunctionImporter::ConvertReplicaGroups(
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(
-    absl::optional<int64_t> channel_id) {
+    std::optional<int64_t> channel_id) {
   xla::ChannelHandle channel_handle;
   if (channel_id) channel_handle.set_handle(*channel_id);
   return ConvertChannelHandle(channel_handle);

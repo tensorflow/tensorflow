@@ -492,11 +492,19 @@ inline Value MapMhloOpToStdScalarOp<mhlo::ConvertOp>(
     if (src.getWidth() > res.getWidth()) {
       return b->create<mlir::arith::TruncFOp>(loc, result_types, args,
                                               mlir::None);
-    } else if (src.getWidth() < res.getWidth()) {
+    }
+    if (src.getWidth() < res.getWidth()) {
       return b->create<mlir::arith::ExtFOp>(loc, result_types, args,
                                             mlir::None);
     }
-    // No conversion is needed for the same width floats
+    // There's no direct conversion between different 16 bit floating point
+    // types, so go through 32 bit float.
+    if (source_type != target_type) {
+      assert(source_type.isBF16() || target_type.isBF16());
+      Value ext = b->create<arith::ExtFOp>(loc, b->getF32Type(), args);
+      return b->create<arith::TruncFOp>(loc, result_types, ext);
+    }
+    // No conversion is needed for identical float types.
     return args.front();
   }
   if (target_type.isInteger(/*width=*/1)) {

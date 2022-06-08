@@ -143,6 +143,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/real_imag_expander.h"
 #include "tensorflow/compiler/xla/service/reduce_scatter_combiner.h"
+#include "tensorflow/compiler/xla/service/reshape_decomposer.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/result_caster.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
@@ -375,13 +376,12 @@ Status GpuCompiler::OptimizeHloModule(
                                               /*allow_mixed_precision=*/false);
     pipeline.AddPass<AllToAllDecomposer>();
 
-    OpExpanderPass::PatternExtraFilter upcaster_filter =
-        [&](const HloInstruction* instr) {
-          return !stream_exec->GetDeviceDescription()
-                      .cuda_compute_capability()
-                      .IsAtLeast(se::CudaComputeCapability::VOLTA) ||
-                 !gpu::IsMatrixMultiplication(*instr);
-        };
+    HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
+      return !stream_exec->GetDeviceDescription()
+                  .cuda_compute_capability()
+                  .IsAtLeast(se::CudaComputeCapability::VOLTA) ||
+             !gpu::IsMatrixMultiplication(*instr);
+    };
 
     pipeline.AddPass<OperandUpcaster>(upcaster_filter);
     pipeline.AddPass<ResultCaster>(upcaster_filter);
@@ -720,6 +720,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       /*allow_mixed_precision=*/false,
       LayoutAssignment::InstructionCanChangeLayout);
 
+  pipeline.AddPass<ReshapeDecomposer>();
+
   pipeline.AddPass<ReductionDegenerateDimRemover>();
   pipeline.AddPass<ReductionLayoutNormalizer>();
   pipeline.AddPass<ReductionDimensionGrouper>();
@@ -826,10 +828,10 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   return std::move(module);
 }
 
-static absl::optional<bool> DummyCanShareBufferFunction(const HloInstruction*,
-                                                        const HloInstruction*,
-                                                        const ShapeIndex&) {
-  return absl::nullopt;
+static std::optional<bool> DummyCanShareBufferFunction(const HloInstruction*,
+                                                       const HloInstruction*,
+                                                       const ShapeIndex&) {
+  return std::nullopt;
 }
 
 StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
@@ -1138,7 +1140,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   const auto compile_single_module =
       [this, stream_exec, &module_config, debug_module](
           llvm::Module* llvm_module, bool relocatable,
-          absl::optional<int> shard_number) -> StatusOr<BackendCompileResult> {
+          std::optional<int> shard_number) -> StatusOr<BackendCompileResult> {
     {
       XLA_SCOPED_LOGGING_TIMER(
           "GpuCompiler::RunBackend - Running LLVM verifier");
@@ -1217,7 +1219,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   };
 
   tensorflow::thread::ThreadPool* thread_pool;
-  absl::optional<tensorflow::thread::ThreadPool> overriding_thread_pool;
+  std::optional<tensorflow::thread::ThreadPool> overriding_thread_pool;
   switch (
       module_config.debug_options().xla_gpu_force_compilation_parallelism()) {
     case 0:
@@ -1237,14 +1239,14 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
 
   if (!thread_pool) {
     return compile_single_module(llvm_module.get(), /*relocatable=*/false,
-                                 /*shard_number=*/absl::nullopt);
+                                 /*shard_number=*/std::nullopt);
   }
 
   // Test whether LinkModules is supported.
   if (this->LinkModules(stream_exec, {}).status().code() ==
       tensorflow::error::Code::UNIMPLEMENTED) {
     return compile_single_module(llvm_module.get(), /*relocatable=*/false,
-                                 /*shard_number=*/absl::nullopt);
+                                 /*shard_number=*/std::nullopt);
   }
 
   std::vector<std::unique_ptr<llvm::Module>> llvm_modules;

@@ -344,7 +344,7 @@ Status TpuTransferManager::ReadDynamicShapes(se::Stream* stream,
   }
   *device_shape = ApiConverter::FromC(&c_updated_shape);
   ApiConverter::Destroy(&c_updated_shape);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tpu

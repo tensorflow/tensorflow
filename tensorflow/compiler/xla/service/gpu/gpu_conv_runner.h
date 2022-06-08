@@ -65,7 +65,7 @@ struct GpuConvConfig {
   Shape input_shape;
   Shape filter_shape;
   Shape output_shape;
-  absl::optional<FusionConfig> fusion;
+  std::optional<FusionConfig> fusion;
 };
 
 // Implementation struct exposed for debugging and log analysis.
@@ -80,7 +80,7 @@ struct GpuConvParams {
   se::DeviceMemoryBase filter_buf;
   se::DeviceMemoryBase output_buf;
 
-  absl::optional<FusionParams> fusion;
+  std::optional<FusionParams> fusion;
 };
 
 // The XLA convolution plumbing is all dynamically-typed w.r.t. whether a

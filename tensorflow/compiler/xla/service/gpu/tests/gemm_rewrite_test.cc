@@ -803,6 +803,48 @@ ENTRY test {
               .WithShape(F32, {4})));
 }
 
+TEST_F(GemmRewriteHloTest, FoldConstantBias) {
+  const char* hlo_text = R"(
+HloModule test
+ENTRY test {
+  x = f32[2,2] parameter(0)
+  y = f32[2,2] parameter(1)
+  bias = f32[2,2] broadcast(f32[2] constant({0, 0})), dimensions={0}
+
+  dot1 = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bias1 = f32[2,2] broadcast(f32[2] constant({0, 0})), dimensions={0}
+  sum1 = add(dot1, bias1)
+
+  dot2 = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  sum2 = add(dot2, f32[2,2] reshape(bias))
+
+  dot3 = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bias3 = f32[2,2] transpose(bias), dimensions={1,0}
+  sum3 = add(dot3, bias3)
+
+  dot4 = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  sum4 = add(dot4, f32[2,2] bitcast(bias))
+
+  ROOT root = tuple(sum1, sum2, sum3, sum4)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  SCOPED_TRACE(module->ToString());
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
+          m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
+          m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
+          m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()))));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

@@ -43,7 +43,7 @@ const char kRetvalOp[] = "_Retval";
 const int kMaxCallDepth = 100;
 
 Status AnalyzeResourceUsage(
-    const Graph* graph, const absl::optional<std::string>& function_name,
+    const Graph* graph, const std::optional<std::string>& function_name,
     const int call_depth, const absl::flat_hash_set<int>& resource_arg_indices,
     FunctionLibraryRuntime* lib_runtime,
     absl::flat_hash_map<ResourceUsageAnalysis::NodeInfo,
@@ -82,7 +82,7 @@ bool IsStackOrTensorArraySource(const Node& n) {
 }
 
 void PropagateFromStackOrTensorArraySourceOp(
-    const Node& n, const absl::optional<std::string>& function_name,
+    const Node& n, const std::optional<std::string>& function_name,
     absl::flat_hash_map<const Edge*, ResourceUsageAnalysis::NodeInfo>*
         user_to_source) {
   ResourceUsageAnalysis::NodeInfo src_node_info(function_name, n.name(),
@@ -97,7 +97,7 @@ void PropagateFromStackOrTensorArraySourceOp(
 }
 
 Status PropagateFromArgOp(
-    const Node& n, const absl::optional<std::string>& function_name,
+    const Node& n, const std::optional<std::string>& function_name,
     const absl::flat_hash_set<int>& resource_arg_indices,
     absl::flat_hash_map<const Edge*, ResourceUsageAnalysis::NodeInfo>*
         user_to_source) {
@@ -128,7 +128,7 @@ Status PropagateFromArgOp(
 
 Status UpdateResourceUsageFromFunctionBodyAnalysis(
     const Node& call_node,
-    const absl::optional<absl::string_view>& caller_function_name,
+    const std::optional<absl::string_view>& caller_function_name,
     const FunctionBody& fbody,
     const absl::flat_hash_map<
         ResourceUsageAnalysis::NodeInfo,
@@ -181,7 +181,7 @@ Status UpdateResourceUsageFromFunctionBodyAnalysis(
 }
 
 Status PropagateThroughCallOp(
-    const Node& n, const absl::optional<std::string>& function_name,
+    const Node& n, const std::optional<std::string>& function_name,
     const int call_depth, FunctionLibraryRuntime* lib_runtime,
     absl::flat_hash_map<const Edge*, ResourceUsageAnalysis::NodeInfo>*
         user_to_source,
@@ -251,7 +251,7 @@ Status PropagateThroughIdentityOp(
 }
 
 Status AnalyzeResourceUsage(
-    const Graph* graph, const absl::optional<std::string>& function_name,
+    const Graph* graph, const std::optional<std::string>& function_name,
     const int call_depth, const absl::flat_hash_set<int>& resource_arg_indices,
     FunctionLibraryRuntime* lib_runtime,
     absl::flat_hash_map<ResourceUsageAnalysis::NodeInfo,

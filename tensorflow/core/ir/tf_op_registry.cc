@@ -26,18 +26,18 @@ TensorFlowOpRegistryInterface::TensorFlowOpRegistryInterface(Dialect *dialect)
 }
 
 // Returns true if the op is stateful.
-static bool IsStatefulImpl(tensorflow::OpRegistry *registry,
+static bool IsStatefulImpl(const tensorflow::OpRegistry *registry,
                            StringRef op_name) {
-  const tensorflow::OpRegistrationData *op_def =
+  const tensorflow::OpRegistrationData *op_reg_data =
       registry->LookUp(op_name.str());
   // If an op definition was not found, conservatively assume stateful.
-  if (!op_def) return true;
-  return op_def->op_def.is_stateful();
+  if (!op_reg_data) return true;
+  return op_reg_data->op_def.is_stateful();
 }
 
 bool TensorFlowOpRegistryInterface::isStateful(Operation *op) const {
   // Handle TFG internal ops.
-  if (isa<ReturnOp, YieldOp, ConditionOp>(op)) return false;
+  if (op->hasTrait<OpTrait::IntrinsicOperation>()) return false;
   if (auto func = dyn_cast<GraphFuncOp>(op)) return func.is_stateful();
   // Handle TFG region ops.
   // TODO(jeffniu): Region ops should be marked with a trait.

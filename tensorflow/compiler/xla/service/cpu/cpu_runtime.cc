@@ -649,7 +649,7 @@ GlobalAllToAllRendezvousMap() {
 xla::RendezvousKey GetRendezvousKey(
     const xla::ExecutableRunOptions* run_options,
     std::vector<xla::ReplicaGroup> group, int32_t channel_id_present,
-    absl::optional<bool> use_global_device_ids, int64_t op_id) {
+    std::optional<bool> use_global_device_ids, int64_t op_id) {
   const xla::DeviceAssignment& device_assignment =
       *run_options->device_assignment();
   int device_ordinal = GetDeviceOrdinal(run_options);
@@ -683,7 +683,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllToAll(
       xla::ParseReplicaGroupsOnly(replica_groups_serialized).ValueOrDie();
   xla::RendezvousKey rendezvous_key =
       GetRendezvousKey(run_options, group, channel_id_present,
-                       /*use_global_device_ids=*/absl::nullopt, op_id);
+                       /*use_global_device_ids=*/std::nullopt, op_id);
 
   AllToAllParticipantData participant(rendezvous_key, device_ordinal,
                                       run_options->stream());
@@ -693,7 +693,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllToAll(
           xla::GlobalDeviceId(device_ordinal),
           *run_options->device_assignment(), group,
           xla::GetCollectiveOpGroupMode(channel_id_present != 0,
-                                        /*use_global_device_ids=*/absl::nullopt)
+                                        /*use_global_device_ids=*/std::nullopt)
               .ValueOrDie())
           .ValueOrDie();
   for (int i = 0; i < num_buffers; i++) {
@@ -807,7 +807,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_CollectivePermute(
   }
   xla::RendezvousKey rendezvous_key =
       GetRendezvousKey(run_options, {}, channel_id_present,
-                       /*use_global_device_ids=*/absl::nullopt, op_id);
+                       /*use_global_device_ids=*/std::nullopt, op_id);
 
   CollectivePermuteParticipantData participant(rendezvous_key, device_ordinal,
                                                run_options->stream());

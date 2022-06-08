@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for quantize_model."""
+from typing import List
 import warnings
 
 from absl.testing import parameterized
@@ -136,6 +137,13 @@ class QuantizationMethodTest(test.TestCase):
 
 
 class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
+
+  def _any_warning_contains(
+      self, substring: str,
+      warnings_list: List[warnings.WarningMessage]) -> bool:
+    """Returns True if any of the warnings contains a given substring."""
+    return any(
+        map(lambda warning: substring in str(warning.message), warnings_list))
 
   @parameterized.named_parameters(
       ('none', None, False),
@@ -491,6 +499,59 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
 
+  def test_model_no_representative_sample_shows_warnings(self):
+
+    class SimpleMatmulModel(module.Module):
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[1, 4], dtype=dtypes.float32)
+      ])
+      def matmul(self, input_tensor):
+        filters = random_ops.random_uniform(shape=(4, 3), minval=-1., maxval=1.)
+        bias = random_ops.random_uniform(shape=(3,), minval=-1., maxval=1.)
+
+        out = math_ops.matmul(input_tensor, filters)
+        out = nn_ops.bias_add(out, bias)
+        return {'output': out}
+
+    model = SimpleMatmulModel()
+    input_savedmodel_dir = self.create_tempdir('input').full_path
+    output_savedmodel_dir = self.create_tempdir().full_path
+    saved_model_save.save(model, input_savedmodel_dir)
+
+    tags = [tag_constants.SERVING]
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+
+    with warnings.catch_warnings(record=True) as warnings_list:
+      converted_model = quantize_model.quantize(
+          input_savedmodel_dir,
+          ['serving_default'],
+          tags,
+          output_savedmodel_dir,
+          quantization_options,
+          # Put no sample into the representative dataset to make calibration
+          # impossible.
+          representative_dataset=lambda: [])
+
+      self.assertNotEmpty(warnings_list)
+
+      # Warning message should contain the function name.
+      self.assertTrue(self._any_warning_contains('matmul', warnings_list))
+      self.assertTrue(
+          self._any_warning_contains('does not have min or max values',
+                                     warnings_list))
+
+    self.assertIsNotNone(converted_model)
+    self.assertEqual(
+        list(converted_model.signatures._signatures.keys()),
+        ['serving_default'])
+    output_loader = saved_model_loader.SavedModelLoader(output_savedmodel_dir)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    # Model is not quantized because there was no sample data for calibration.
+    self.assertFalse(_contains_quantized_function_call(output_meta_graphdef))
+
   def test_model_with_uncalibrated_subgraph(self):
 
     class IfModel(module.Module):
@@ -534,15 +595,25 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
 
-    with warnings.catch_warnings(record=True) as w:
+    with warnings.catch_warnings(record=True) as warnings_list:
       converted_model = quantize_model.quantize(
           input_saved_model_path, ['serving_default'],
           tags,
           output_directory,
           quantization_options,
           representative_dataset=data_gen)
-      self.assertGreaterEqual(len(w), 1)
-      self.assertIn('does not have min/max values', str(w[0]))
+
+      self.assertNotEmpty(warnings_list)
+
+      # Warning message should contain the function name. The uncalibrated path
+      # is when the condition is true, so 'cond_true' function must be part of
+      # the warning message.
+      self.assertTrue(self._any_warning_contains('cond_true', warnings_list))
+      self.assertFalse(self._any_warning_contains('cond_false', warnings_list))
+      self.assertTrue(
+          self._any_warning_contains('does not have min or max values',
+                                     warnings_list))
+
     self.assertIsNotNone(converted_model)
     self.assertEqual(
         list(converted_model.signatures._signatures.keys()),

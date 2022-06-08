@@ -201,10 +201,10 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // the bytes read/written from/to the given memory space only.
   int64_t GetBytesRead(
       const HloInstruction& hlo,
-      absl::optional<int64_t> memory_space = absl::nullopt) const;
+      std::optional<int64_t> memory_space = std::nullopt) const;
   int64_t GetBytesWritten(
       const HloInstruction& hlo,
-      absl::optional<int64_t> memory_space = absl::nullopt) const;
+      std::optional<int64_t> memory_space = std::nullopt) const;
 
   const Properties& properties() const { return properties_sum_; }
   const float property(const std::string& key) const {

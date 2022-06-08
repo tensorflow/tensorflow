@@ -77,7 +77,7 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
         break;
       case XlaExpression::Kind::kXlaOp:
         if (arg_must_be_compile_time_constant[i]) {
-          TF_ASSIGN_OR_RETURN(absl::optional<Tensor> value,
+          TF_ASSIGN_OR_RETURN(std::optional<Tensor> value,
                               expressions[i]->ResolveConstant(client));
           if (value.has_value()) {
             arg.kind = XlaCompiler::Argument::kConstant;

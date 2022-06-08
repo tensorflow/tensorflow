@@ -208,7 +208,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, AllReduceSliceAccumulate) {
   EXPECT_THAT(hoisted_all_reduces, SizeIs(3));
   ASSERT_THAT(
       hoisted_all_reduces,
-      Each(Pointee(Property(&HloInstruction::channel_id, Ne(absl::nullopt)))));
+      Each(Pointee(Property(&HloInstruction::channel_id, Ne(std::nullopt)))));
   // Check if added all-reduces have distinct channel IDs.
   absl::flat_hash_set<int> unique_channel_ids = {
       hoisted_all_reduces[0]->channel_id().value(),

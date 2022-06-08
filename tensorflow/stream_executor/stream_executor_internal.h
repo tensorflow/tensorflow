@@ -375,8 +375,8 @@ class StreamExecutorInterface {
   virtual void* GpuContextHack() { return nullptr; }
 
   // Return allocator statistics.
-  virtual absl::optional<AllocatorStats> GetAllocatorStats() {
-    return absl::nullopt;
+  virtual std::optional<AllocatorStats> GetAllocatorStats() {
+    return std::nullopt;
   }
 
   // If implemented, clears the internal stats except for the `in_use` fields

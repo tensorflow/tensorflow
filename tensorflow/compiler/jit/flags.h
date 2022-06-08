@@ -202,7 +202,7 @@ const JitRtFlags& GetJitRtFlags();
 // Returns the effective MLIR bridge rollout state based on the flags and the
 // optional configuration.
 ConfigProto::Experimental::MlirBridgeRollout GetMlirBridgeRolloutState(
-    absl::optional<const ConfigProto> config_proto);
+    std::optional<const ConfigProto> config_proto);
 
 // Appends the flag definitions associated with
 // MarkForCompilationPassFlags/DumpGraphFlags to `flag_list`.

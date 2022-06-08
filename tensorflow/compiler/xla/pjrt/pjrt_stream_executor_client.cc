@@ -508,7 +508,7 @@ Status AddDestinationBufferSynchronization(
   RecordUsage(std::move(device_buffer), local_device, local_device,
               definition_event, copy_stream,
               /*prefer_to_retain_reference=*/false);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace
@@ -689,7 +689,7 @@ PjRtStreamExecutorBuffer::ReleaseDeviceMemoryOwnership(
 StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorClient::BufferFromHostBuffer(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-    absl::optional<absl::Span<int64_t const>> byte_strides,
+    std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
     std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
   tensorflow::profiler::TraceMe traceme(
@@ -1022,9 +1022,8 @@ PjRtStreamExecutorClient::MakeCrossHostReceiveBuffers(
     buffers.push_back(std::move(buffer));
   }
 
-  TF_RETURN_IF_ERROR(
-      EnqueueCrossHostReceive(buffers, std::move(definition_event),
-                              std::move(notifier), absl::nullopt));
+  TF_RETURN_IF_ERROR(EnqueueCrossHostReceive(
+      buffers, std::move(definition_event), std::move(notifier), std::nullopt));
   return buffers;
 }
 
@@ -1605,11 +1604,11 @@ PjRtFuture<Status> PjRtStreamExecutorBuffer::GetReadyFuture() {
           [definition_promise, stream_ptr, local_device_state]() mutable {
             local_device_state->ReturnStreamToPool(
                 std::unique_ptr<se::Stream>(stream_ptr));
-            definition_promise.Set(Status::OK());
+            definition_promise.Set(::tensorflow::OkStatus());
           });
     } else {
       // All events are already complete.
-      definition_promise.Set(Status::OK());
+      definition_promise.Set(::tensorflow::OkStatus());
     }
   }
 
@@ -1668,7 +1667,7 @@ Status CheckCompatibleShapes(bool strict_shape_checking,
           ShapeUtil::HumanStringWithLayout(buffer_shape));
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Makes a tuple from the arguments to an execution.
@@ -1822,7 +1821,7 @@ Status PjRtStreamExecutorExecutable::SetUpDonation(bool tuple_inputs) {
     parameters_that_must_be_donated_.emplace_back(
         std::move(parameters_to_donate));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 absl::string_view PjRtStreamExecutorExecutable::name() const {
@@ -1852,7 +1851,7 @@ PjRtStreamExecutorExecutable::MakeExecutionInputsAndWaitForEvents(
       client_->client()->backend().transfer_manager();
   // Lift tuple_handle outside the conditional so that the event it returns is
   // not destroyed until after the loop below that waits on events.
-  absl::optional<TupleHandle> tuple_handle;
+  std::optional<TupleHandle> tuple_handle;
   if (parameter_is_tupled_arguments_ && !options.arguments_are_tupled) {
     TF_ASSIGN_OR_RETURN(
         tuple_handle,
@@ -2173,12 +2172,12 @@ StatusOr<PjRtExecutable::Result> PjRtStreamExecutorExecutable::ExecuteHelper(
     }
   }
 
-  absl::optional<PjRtFuture<Status>> future;
+  std::optional<PjRtFuture<Status>> future;
   if (fill_future) {
     auto promise = PjRtFuture<Status>::CreatePromise();
     future = PjRtFuture<Status>(promise);
     compute_callbacks.push_back([promise = std::move(promise)]() mutable {
-      promise.Set(Status::OK());
+      promise.Set(::tensorflow::OkStatus());
     });
   }
   device_state->ThenExecuteCallback(
@@ -2197,7 +2196,7 @@ StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 PjRtStreamExecutorExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
-    absl::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
+    std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
   if (device_assignment_ == nullptr) {
     return InvalidArgument("Execute expects a non-null device_assignment");
   }
@@ -2322,7 +2321,7 @@ StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtStreamExecutorExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
-    absl::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
+    std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
   if (device_assignment_ == nullptr) {
     return InvalidArgument("ExecuteShard expects a non-null device_assignment");
   }
@@ -2351,7 +2350,7 @@ StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtStreamExecutorExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
-    absl::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
+    std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
   if (device_assignment_ != nullptr) {
     return InvalidArgument("ExecutePortable gets a non-portable executable");
   }

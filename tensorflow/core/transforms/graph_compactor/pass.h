@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_INTERFACE_H
-#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_INTERFACE_H
+#ifndef TENSORFLOW_CORE_TRANSFORMS_GRAPH_COMPACTOR_PASS_H_
+#define TENSORFLOW_CORE_TRANSFORMS_GRAPH_COMPACTOR_PASS_H_
 
-#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "mlir/IR/OpDefinition.h"
+#include <memory>
 
-/// Include the generated interface declarations.
-#include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h.inc"
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
-namespace gml_st {
-void registerTilingInterfaceExternalModels(DialectRegistry &registry);
-}  // namespace gml_st
+namespace tfg {
+std::unique_ptr<Pass> CreateNameCompressPass();
+std::unique_ptr<Pass> CreateStripDefaultAttrsPass();
+std::unique_ptr<Pass> CreateAddDefaultAttrsPass();
+}  // namespace tfg
 }  // namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_INTERFACE_H
+#endif  // TENSORFLOW_CORE_TRANSFORMS_GRAPH_COMPACTOR_PASS_H_

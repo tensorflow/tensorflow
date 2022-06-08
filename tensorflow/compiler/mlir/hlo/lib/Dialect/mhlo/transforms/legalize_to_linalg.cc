@@ -933,8 +933,8 @@ class HloDynamicBroadcastInDimConverter
     SmallVector<AffineExpr> dim_exprs(operand_type.getRank(), nullptr);
 
     // Use static type info.
-    auto bcast_dims =
-        llvm::to_vector(llvm::map_range(op.broadcast_dimensions(), [](APInt d) {
+    auto bcast_dims = llvm::to_vector(
+        llvm::map_range(op.broadcast_dimensions(), [](const APInt& d) {
           return static_cast<int64_t>(d.getLimitedValue());
         }));
     for (const auto& it : llvm::enumerate(operand_type.getShape())) {
@@ -1929,6 +1929,63 @@ class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
   }
 };
 
+// Decomposes a pad with negative edge padding into a pad without negative edge
+// padding and a tensor.extract_slice.
+struct PadOpNegativePaddingConversion
+    : public OpConversionPattern<mhlo::PadOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::PadOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    SmallVector<int64_t, 4> pad_low;
+    SmallVector<int64_t, 4> pad_high;
+    SmallVector<OpFoldResult, 4> slice_starts;
+
+    bool hasNegativePadding = false;
+    for (int64_t low : op.edge_padding_low().getValues<int64_t>()) {
+      if (low >= 0) {
+        pad_low.push_back(low);
+        slice_starts.push_back(rewriter.getIndexAttr(0));
+      } else {
+        pad_low.push_back(0);
+        slice_starts.push_back(rewriter.getIndexAttr(-low));
+        hasNegativePadding = true;
+      }
+    }
+
+    for (int64_t high : op.edge_padding_high().getValues<int64_t>()) {
+      if (high >= 0) {
+        pad_high.push_back(high);
+      } else {
+        pad_high.push_back(-high);
+        hasNegativePadding = true;
+      }
+    }
+
+    // If there's no negative edge padding we're done.
+    if (!hasNegativePadding) return failure();
+
+    // Create a new pad op with the positive values.
+    Value pad = rewriter.create<mhlo::PadOp>(
+        op.getLoc(), adaptor.operand(), adaptor.padding_value(),
+        rewriter.getI64TensorAttr(pad_low), rewriter.getI64TensorAttr(pad_high),
+        op.interior_padding());
+
+    // Then slice according to the negative edge padding. Static shapes only for
+    // now.
+    if (!op.getType().hasStaticShape()) return failure();
+    SmallVector<OpFoldResult, 4> sizes(llvm::map_range(
+        op.getType().getShape(),
+        [&](int64_t dim) { return rewriter.getIndexAttr(dim); }));
+    SmallVector<OpFoldResult, 4> strides(slice_starts.size(),
+                                         rewriter.getIndexAttr(1));
+    rewriter.replaceOpWithNewOp<tensor::ExtractSliceOp>(op, pad, slice_starts,
+                                                        sizes, strides);
+    return success();
+  }
+};
+
 /// Converts mhlo.pad operation to tensor.pad or tensor.insert_slice.
 struct PadOpConversion : public OpConversionPattern<mhlo::PadOp> {
   using OpConversionPattern<mhlo::PadOp>::OpConversionPattern;
@@ -1938,6 +1995,13 @@ struct PadOpConversion : public OpConversionPattern<mhlo::PadOp> {
       ConversionPatternRewriter& rewriter) const override {
     auto loc = op.getLoc();
     auto result_type = typeConverter->convertType(op.getResult().getType());
+
+    // Negative edge padding is decomposed separately.
+    auto isNegative = [](const APInt& intVal) { return intVal.isNegative(); };
+    if (llvm::any_of(op.edge_padding_low().getValues<APInt>(), isNegative) ||
+        llvm::any_of(op.edge_padding_high().getValues<APInt>(), isNegative))
+      return failure();
+
     Value padding_val =
         rewriter.createOrFold<tensor::ExtractOp>(loc, adaptor.padding_value());
 
@@ -2930,16 +2994,20 @@ struct ScatterUpdateConversion : public OpConversionPattern<mhlo::ScatterOp> {
   LogicalResult matchAndRewrite(
       mhlo::ScatterOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
+    // Variadic Scatter support not yet implemented
+    if (op.operands().size() != 1 || op.updates().size() != 1) return failure();
+
     // Check if it is a tensor_scatter_nd_update-like op.
     auto& body_ops = op.getRegion().front().getOperations();
     if (body_ops.size() != 1) return failure();
     auto ret_arg = body_ops.front().getOperand(0).dyn_cast<BlockArgument>();
     if (!ret_arg || ret_arg.getArgNumber() != 1) return failure();
 
-    auto operand_ty = adaptor.operand().getType().dyn_cast<RankedTensorType>();
+    auto operandTy =
+        adaptor.operands()[0].getType().dyn_cast<RankedTensorType>();
     auto indices_ty =
         adaptor.scatter_indices().getType().dyn_cast<RankedTensorType>();
-    if (!operand_ty || !indices_ty) return failure();
+    if (!operandTy || !indices_ty) return failure();
 
     // Linalg operations put all the computation to the innermost loop. Since we
     // also iterate over scatter_indices() with some loops, we can only check
@@ -2957,18 +3025,18 @@ struct ScatterUpdateConversion : public OpConversionPattern<mhlo::ScatterOp> {
     }
 
     // One of indices dims is index depth vector.
-    int64_t nloops = operand_ty.getRank() + indices_ty.getRank() - 1;
+    int64_t nloops = operandTy.getRank() + indices_ty.getRank() - 1;
     SmallVector<AffineMap, 3> indexing_maps;
     {
       SmallVector<AffineExpr> exprs;
-      for (int64_t i = 0, e = operand_ty.getRank(); i < e; ++i)
+      for (int64_t i = 0, e = operandTy.getRank(); i < e; ++i)
         exprs.push_back(rewriter.getAffineDimExpr(i));
       indexing_maps.push_back(AffineMap::get(nloops, /*symbolCount=*/0, exprs,
                                              rewriter.getContext()));
     }
     {
       SmallVector<AffineExpr> exprs;
-      for (int64_t i = operand_ty.getRank(); i < nloops; ++i)
+      for (int64_t i = operandTy.getRank(); i < nloops; ++i)
         exprs.push_back(rewriter.getAffineDimExpr(i));
       // The index depth is 1.
       exprs.push_back(rewriter.getAffineConstantExpr(0));
@@ -2985,19 +3053,20 @@ struct ScatterUpdateConversion : public OpConversionPattern<mhlo::ScatterOp> {
     }
     indexing_maps.push_back(indexing_maps.front());
 
-    auto result_ty = this->typeConverter->convertType(op.getResult().getType())
-                         .cast<ShapedType>();
+    auto resultTy =
+        this->typeConverter->convertType(op.getResults()[0].getType())
+            .cast<ShapedType>();
     auto scatter_dims_to_operand_dims =
         op.scatter_dimension_numbers().getScatterDimsToOperandDims();
     assert(scatter_dims_to_operand_dims.size() == 1);
     // Do not need init_tensor because we'd like to initialize the output as
     // operand.
-    auto linalg_op = rewriter.create<linalg::GenericOp>(
-        op.getLoc(), /*resultTensors=*/ArrayRef<Type>{result_ty},
+    auto linalgOp = rewriter.create<linalg::GenericOp>(
+        op.getLoc(), /*resultTensors=*/ArrayRef<Type>{resultTy},
         /*inputs=*/
-        ValueRange{adaptor.operand(), adaptor.scatter_indices(),
-                   adaptor.updates()},
-        /*outputs=*/adaptor.operand(), indexing_maps,
+        ValueRange{adaptor.operands()[0], adaptor.scatter_indices(),
+                   adaptor.updates()[0]},
+        /*outputs=*/adaptor.operands()[0], indexing_maps,
         GetNParallelLoopsAttrs(nloops),
         [&](OpBuilder& b, Location loc, ValueRange args) {
           Value cmp_idx =
@@ -3013,7 +3082,7 @@ struct ScatterUpdateConversion : public OpConversionPattern<mhlo::ScatterOp> {
           b.create<linalg::YieldOp>(loc, res);
         },
         PruneAttributeList(op));
-    rewriter.replaceOp(op, linalg_op.getResults());
+    rewriter.replaceOp(op, linalgOp.getResults());
     return success();
   }
 };
@@ -3206,14 +3275,15 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       TransposeConverter<mhlo::TransposeOp>,
       NormalConvOpConversion,
       DepthwiseConvOpConversion,
+      GatherConversion,
+      PadOpConversion,
+      PadOpNegativePaddingConversion,
       ReduceConversion,
       ReduceWindowOpOnTensorsGenericConversion,
       ReduceWindowOpConversion,
       RngUniformConversion,
       ScatterUpdateConversion,
-      GatherConversion,
-      TorchIndexSelectOpConversion,
-      PadOpConversion>(type_converter, context);
+      TorchIndexSelectOpConversion>(type_converter, context);
     patterns->add<
       DotOpConversion<DotOperationType::kMatrixMatrix, linalg::MatmulOp>,
       DotOpConversion<DotOperationType::kMatrixVector, linalg::MatvecOp>,

@@ -806,6 +806,16 @@ StatusOr<std::vector<parallel_device::ParallelTensor*>> PrepareEmbeddingInputs(
 StatusOr<std::map<int64_t, Node*>> GetTPUEmbeddingInputNodes(
     TF_Status* s, const Graph& graph,
     const std::vector<TensorWithLayout*>& inputs) {
+  // After the graph is lowered, the sparse tensors live at the end of the
+  // argument list, so process the dtensor dense inputs only so that
+  // we index correctly.
+  std::vector<TensorWithLayout*> non_sparse_inputs;
+  non_sparse_inputs.reserve(inputs.size());
+  for (TensorWithLayout* input : inputs) {
+    if (input->tensor_type() != TensorType::kSparse) {
+      non_sparse_inputs.push_back(input);
+    }
+  }
   std::map<int64_t, Node*> table_id_node_map;
   for (Node* node : graph.nodes()) {
     if (!node->IsArg()) continue;
@@ -820,7 +830,7 @@ StatusOr<std::map<int64_t, Node*>> GetTPUEmbeddingInputNodes(
     const int64_t table_id = embedding_attr->i();
     EmbeddingResourceAttrs embedding_attrs;
     embedding_attrs.table_id = table_id;
-    inputs[arg_id - 1]->UpdateAttrs(embedding_attrs, s);
+    non_sparse_inputs[arg_id - 1]->UpdateAttrs(embedding_attrs, s);
     if (!s->status.ok()) {
       return errors::Internal(
           "Failed to set embedding resource attrs. \n Got error: ",
