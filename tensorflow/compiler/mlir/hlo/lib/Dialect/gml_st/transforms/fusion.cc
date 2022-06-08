@@ -54,8 +54,8 @@ Value materializeSpaceFromTensor(Value operand, const SmallVector<Value>& dims,
   return rewriter.create<SpaceOp>(loc, spaceTy, dynamicDims, staticDimsAttr);
 }
 
-// TODO(frgossen): This should become a tiling interface.
-Value whatWillBeTheTilingIface(gml_st::DynamicBroadcastInDimOp op, Value tile,
+// TODO(frgossen): This should become a fusion interface.
+Value whatWillBeTheFusionIface(gml_st::DynamicBroadcastInDimOp op, Value tile,
                                PatternRewriter& rewriter) {
   auto loc = op.getLoc();
   DenseMap<uint64_t, Value> localIndexCsts;
@@ -141,16 +141,16 @@ Value whatWillBeTheTilingIface(gml_st::DynamicBroadcastInDimOp op, Value tile,
       op.known_nonexpanding_dimensionsAttr());
 }
 
-// TODO(frgossen): This should become a tiling interface.
+// TODO(frgossen): This should become a fusion interface.
 template <class OpTy>
-Value whatWillBeTheTilingIfaceUnaryOp(OpTy op, Value tile,
+Value whatWillBeTheFusionIfaceUnaryOp(OpTy op, Value tile,
                                       PatternRewriter& rewriter) {
   auto loc = op.getLoc();
   auto operandSub = rewriter.create<MaterializeOp>(loc, op.operand(), tile);
   return rewriter.create<OpTy>(loc, operandSub);
 }
 
-struct TilingPattern : public OpRewritePattern<gml_st::MaterializeOp> {
+struct FusionPattern : public OpRewritePattern<gml_st::MaterializeOp> {
   using OpRewritePattern<gml_st::MaterializeOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(gml_st::MaterializeOp op,
@@ -163,12 +163,12 @@ struct TilingPattern : public OpRewritePattern<gml_st::MaterializeOp> {
     }
 
     // TODO(frgossen): The below cases should eventually be replaced by the use
-    // of a common tiling interface.
+    // of a common fusion interface.
 
     // Case `dynamic_broadcast_in_dim`.
     if (auto bcast =
             llvm::dyn_cast_or_null<gml_st::DynamicBroadcastInDimOp>(def)) {
-      Value result = whatWillBeTheTilingIface(bcast, op.subset(), rewriter);
+      Value result = whatWillBeTheFusionIface(bcast, op.subset(), rewriter);
       rewriter.replaceOp(op, result);
       return success();
     }
@@ -176,14 +176,14 @@ struct TilingPattern : public OpRewritePattern<gml_st::MaterializeOp> {
     // Case `cos`.
     if (auto cos = llvm::dyn_cast_or_null<mhlo::CosOp>(def)) {
       rewriter.replaceOp(
-          op, whatWillBeTheTilingIfaceUnaryOp(cos, op.subset(), rewriter));
+          op, whatWillBeTheFusionIfaceUnaryOp(cos, op.subset(), rewriter));
       return success();
     }
 
     // Case `tanh`.
     if (auto tanh = llvm::dyn_cast_or_null<mhlo::TanhOp>(def)) {
       rewriter.replaceOp(
-          op, whatWillBeTheTilingIfaceUnaryOp(tanh, op.subset(), rewriter));
+          op, whatWillBeTheFusionIfaceUnaryOp(tanh, op.subset(), rewriter));
       return success();
     }
 
@@ -202,7 +202,7 @@ class FusionPass : public FusionPassBase<FusionPass> {
     RewritePatternSet patterns(ctx);
 
     // List of patterns.
-    patterns.insert<TilingPattern>(ctx);
+    patterns.insert<FusionPattern>(ctx);
 
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
