@@ -13,6 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.h"
+#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_FUSION_INTERFACE_IMPL_H
+#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_FUSION_INTERFACE_IMPL_H
 
-#include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.cc.inc"
+namespace mlir {
+
+class DialectRegistry;
+
+namespace gml_st {
+
+void registerFusionInterfaceExternalModels(DialectRegistry &registry);
+
+}  // namespace gml_st
+}  // namespace mlir
+
+#endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_FUSION_INTERFACE_IMPL_H

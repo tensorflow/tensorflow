@@ -2472,6 +2472,21 @@ cc_library(
     deps = [
         ":fusion_interface_inc_gen",
         ":gml_st",
+    ],
+)
+
+cc_library(
+    name = "fusion_interface_impl",
+    srcs = [
+        "lib/Dialect/gml_st/transforms/fusion_interface_impl.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/fusion_interface_impl.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":fusion_interface",
+        ":gml_st",
         ":hlo",
         ":map_mhlo_to_scalar_op",
         "@llvm-project//llvm:Support",
@@ -2529,6 +2544,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":fusion_interface",
+        ":fusion_interface_impl",
         ":gml_st",
         ":gml_st_passes_inc_gen",
         ":hlo",
