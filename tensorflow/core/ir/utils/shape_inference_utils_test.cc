@@ -35,7 +35,7 @@ namespace {
 // These operations cover the most of logics used in the
 // InferReturnTypeComponentsForTFOp.
 const char *const code = R"mlir(
-  tfg.func @test(%arg : tensor<32x?x256x4xi32> {tfg.name = "arg"}) -> (tensor<2x2xf32>) {
+  tfg.func @test(%arg : tensor<32x?x256x4xi32> {tfg.name = "arg"}, %arg_1 : tensor<*xi32> {tfg.name = "arg1", tf._output_shapes = [5 : i32]}) -> (tensor<2x2xf32>) {
     %Placeholder, %ctl = Placeholder name("placeholder") {dtype = f32, shape = #tf_type.shape<>} : () -> (tensor<f32>)
     %Const, %ctl_0 = Const name("c0") {dtype = f32, value = dense<1.000000e+00> : tensor<2x2xf32>} : () -> (tensor<2x2xf32>)
     %Const_1, %ctl_2 = Const name("c1") {dtype = f32, value = dense<2.000000e+00> : tensor<2x2xf32>} : () -> (tensor<2x2xf32>)
@@ -54,6 +54,7 @@ const char *const code = R"mlir(
     %Const_7, %ctl_17 = Const name("index") {dtype = i32, value = dense<0> : tensor<i32>} : () -> (tensor<i32>)
     %Const_8, %ctl_18 = Const name("item") {dtype = f32, value = dense<[[1.000000e+00, 2.000000e+00], [3.000000e+00, 4.000000e+00]]> : tensor<2x2xf32>} : () -> (tensor<2x2xf32>)
     %TensorListSetItem, %ctl_19 = TensorListSetItem(%TensorListReserve, %Const_7, %Const_8) name("TensorListSetItem") {element_dtype = f32} : (tensor<!tf_type.variant<tensor<2x2xf32>>>, tensor<i32>, tensor<2x2xf32>) -> (tensor<!tf_type.variant<tensor<2x2xf32>>>)
+    %Identity_1, %ctl_20 = Identity(%arg_1) name("id2") {T = i32} : (tensor<*xi32>) -> (tensor<*xi32>)
     return (%Const_1) : tensor<2x2xf32>
   }
 )mlir";
