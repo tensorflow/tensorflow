@@ -2438,40 +2438,40 @@ cc_library(
 )
 
 gentbl_cc_library(
-    name = "tiling_interface_inc_gen",
+    name = "fusion_interface_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "include",
     tbl_outs = [
         (
             ["-gen-op-interface-decls"],
-            "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h.inc",
+            "include/mlir-hlo/Dialect/gml_st/transforms/fusion_interface.h.inc",
         ),
         (
             ["-gen-op-interface-defs"],
-            "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.cc.inc",
+            "include/mlir-hlo/Dialect/gml_st/transforms/fusion_interface.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.td",
+    td_file = "include/mlir-hlo/Dialect/gml_st/transforms/fusion_interface.td",
     deps = ["@llvm-project//mlir:OpBaseTdFiles"],
 )
 
 cc_library(
-    name = "tiling_interface",
+    name = "fusion_interface",
     srcs = [
-        "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.cc.inc",
-        "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h.inc",
-        "lib/Dialect/gml_st/transforms/tiling_interface.cc",
+        "include/mlir-hlo/Dialect/gml_st/transforms/fusion_interface.cc.inc",
+        "include/mlir-hlo/Dialect/gml_st/transforms/fusion_interface.h.inc",
+        "lib/Dialect/gml_st/transforms/fusion_interface.cc",
     ],
     hdrs = [
-        "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h",
+        "include/mlir-hlo/Dialect/gml_st/transforms/fusion_interface.h",
     ],
     includes = ["include"],
     deps = [
+        ":fusion_interface_inc_gen",
         ":gml_st",
         ":hlo",
         ":map_mhlo_to_scalar_op",
-        ":tiling_interface_inc_gen",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -2525,10 +2525,10 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":fusion_interface",
         ":gml_st",
         ":gml_st_passes_inc_gen",
         ":hlo",
-        ":tiling_interface",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",
@@ -2581,7 +2581,6 @@ cc_library(
         ":gml_st",
         ":gml_st_passes_inc_gen",
         ":hlo",
-        ":tiling_interface",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",

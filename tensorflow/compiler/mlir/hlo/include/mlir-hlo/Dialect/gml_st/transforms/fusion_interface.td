@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TILING_INTERFACE
-#define TILING_INTERFACE
+#ifndef FUSION_INTERFACE
+#define FUSION_INTERFACE
 
 include "mlir/IR/OpBase.td"
 
-def TilingInterface : OpInterface<"TilingInterface"> {
+def FusionIterface : OpInterface<"FusionIterface"> {
   let description = [{
     TBD
   }];
@@ -28,7 +28,7 @@ def TilingInterface : OpInterface<"TilingInterface"> {
     InterfaceMethod<
       /*desc=*/"TBD",
       /*retTy=*/"::mlir::Value",
-      /*methodName=*/"tile",
+      /*methodName=*/"fuse",
       /*args=*/(ins "::mlir::gml_st::MaterializeOp":$materialize, "OpBuilder&":$builder),
       /*methodBody=*/"",
       /*defaultImplementation=*/[{
@@ -37,4 +37,4 @@ def TilingInterface : OpInterface<"TilingInterface"> {
   ];
 }
 
-#endif // TILING_INTERFACE
+#endif // FUSION_INTERFACE

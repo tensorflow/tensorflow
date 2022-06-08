@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.h"
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.cc.inc"
+#include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.cc.inc"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
@@ -27,9 +27,9 @@ namespace gml_st {
 
 namespace {
 template <typename OpTy>
-struct ElementWiseTilingInterface
-    : public TilingInterface::ExternalModel<ElementWiseTilingInterface<OpTy>,
-                                            OpTy> {
+struct ElementWiseFusionIterface
+    : public FusionIterface::ExternalModel<ElementWiseFusionIterface<OpTy>,
+                                           OpTy> {
   Value tile(Operation* op, MaterializeOp materialize,
              OpBuilder& builder) const {
     if (materialize.subset().getType().isa<PointType>()) {
@@ -50,11 +50,11 @@ struct ElementWiseTilingInterface
 
 }  // namespace
 
-void registerTilingInterfaceExternalModels(DialectRegistry& registry) {
+void registerFusionInterfaceExternalModels(DialectRegistry& registry) {
   registry.insert<mhlo::MhloDialect>();
   registry.addExtension(+[](MLIRContext* ctx, mhlo::MhloDialect* /*dialect*/) {
-    mhlo::AddOp::attachInterface<ElementWiseTilingInterface<mhlo::AddOp>>(*ctx);
-    mhlo::SubOp::attachInterface<ElementWiseTilingInterface<mhlo::SubOp>>(*ctx);
+    mhlo::AddOp::attachInterface<ElementWiseFusionIterface<mhlo::AddOp>>(*ctx);
+    mhlo::SubOp::attachInterface<ElementWiseFusionIterface<mhlo::SubOp>>(*ctx);
   });
 }
 

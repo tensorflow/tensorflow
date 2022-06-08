@@ -13,19 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_INTERFACE_H
-#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_INTERFACE_H
+#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_FUSION_INTERFACE_H
+#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_FUSION_INTERFACE_H
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir/IR/OpDefinition.h"
 
 /// Include the generated interface declarations.
-#include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h.inc"
+#include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.h.inc"
 
 namespace mlir {
 namespace gml_st {
-void registerTilingInterfaceExternalModels(DialectRegistry &registry);
+
+void registerFusionInterfaceExternalModels(DialectRegistry &registry);
+
 }  // namespace gml_st
 }  // namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_INTERFACE_H
+#endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_FUSION_INTERFACE_H

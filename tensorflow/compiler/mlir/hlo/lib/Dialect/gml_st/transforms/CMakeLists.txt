@@ -20,8 +20,8 @@ set(LLVM_OPTIONAL_SOURCES
   bufferizable_op_interface_impl.cpp
 )
 
-add_mlir_library(GmlStTilingInterface
-  tiling_interface.cc
+add_mlir_library(GmlStFusionInterface
+  fusion_interface.cc
 
   LINK_LIBS PUBLIC
   MLIRArithmetic
@@ -29,7 +29,7 @@ add_mlir_library(GmlStTilingInterface
   MLIRSupport
 
   DEPENDS
-  MLIRGmlStTilingInterfaceIncGen
+  MLIRGmlStFusionInterfaceIncGen
 )
 
 add_mlir_library(GmlStBufferizableOpInterface
@@ -56,7 +56,7 @@ add_mlir_library(GmlStPasses
   Core
 
   LINK_LIBS PUBLIC
-  GmlStTilingInterface
+  GmlStFusionInterface
   MLIRIR
   MLIRPass
   MLIRSupport
