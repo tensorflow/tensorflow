@@ -66,7 +66,7 @@ void CreateXSpace(XSpace* space) {
 
 TEST(ConvertXPlaneToProfileResponse, ExtractTpuMxuUtilizationFromXSpace) {
   XSpace xspace;
-  auto xplane = FindOrAddMutablePlaneWithName(&xspace, kTpuRuntimePlaneName);
+  auto xplane = FindOrAddMutablePlaneWithName(&xspace, kHostThreadsPlaneName);
   XPlaneBuilder xplaneBuilder(xplane);
   xplaneBuilder.AddStatValue(
       *xplaneBuilder.GetOrCreateStatMetadata(

@@ -236,6 +236,26 @@ func.func @test_leaky_relu(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 
 // -----
 
+// CHECK-LABEL: test_prelu
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<1x1x1xf32>}
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%arg1) {new_shape = [1, 2, 3]}
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.mul"(%arg0, %[[VAR1]]) {shift = 0 : i32}
+// CHECK-DAG: %[[VAR3:.*]] = "tosa.greater_equal"(%arg0, %[[VAR0]])
+// CHECK: %[[VAR4:.*]] = "tosa.select"(%[[VAR3]], %arg0, %[[VAR2]])
+func.func @test_prelu(%arg0: tensor<4x2x3xf32>, %arg1: tensor<2x3xf32>) -> tensor<4x2x3xf32> {
+  %0 = "tfl.prelu"(%arg0, %arg1) : (tensor<4x2x3xf32>, tensor<2x3xf32>) -> tensor<4x2x3xf32>
+  func.return %0 : tensor<4x2x3xf32>
+}
+
+// CHECK-LABEL: test_prelu_quantized
+// CHECK: "tfl.prelu"
+func.func @test_prelu_quantized(%arg0: tensor<14x28x!quant.uniform<i8:f32, 0.19988977909088135:3>>, %arg1: tensor<28x!quant.uniform<i8:f32, 0.19988977909088135:3>>) -> tensor<14x28x!quant.uniform<i8:f32, 0.19988977909088135:3>> {
+  %0 = "tfl.prelu"(%arg0, %arg1) : (tensor<14x28x!quant.uniform<i8:f32, 0.19988977909088135:3>>, tensor<28x!quant.uniform<i8:f32, 0.19988977909088135:3>>) -> tensor<14x28x!quant.uniform<i8:f32, 0.19988977909088135:3>>
+  func.return %0 : tensor<14x28x!quant.uniform<i8:f32, 0.19988977909088135:3>>
+}
+
+// -----
+
 // CHECK-LABEL: test_logical_and
 // CHECK: %[[VAR0:.*]] = "tosa.logical_and"(%arg0, %arg1)
 func.func @test_logical_and(%arg0: tensor<13x21x3xi1>, %arg1: tensor<13x21x1xi1>) -> tensor<*xi1> {

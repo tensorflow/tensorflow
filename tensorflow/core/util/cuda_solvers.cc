@@ -634,6 +634,18 @@ static inline Status HeevdImpl(BufSizeFnT bufsize, SolverFnT solver,
   /* Allocate device memory for workspace. */
   auto dev_workspace =
       cuda_solver->GetScratchSpace<Scalar>(lwork, "", /* on_host */ false);
+#if CUDA_VERSION >= 11070
+  // TODO(b/223856016): CUDA 11.7 sometimes gives invalid outputs if the scratch
+  // space is not initialized to zero.
+  se::Stream* stream = context->op_device_context()->stream();
+  if (!stream) {
+    return errors::Internal("No GPU stream available");
+  }
+  uint64_t work_size_in_bytes = static_cast<uint64_t>(lwork) * sizeof(Scalar);
+  se::DeviceMemoryBase dev_workspace_ptr(dev_workspace.mutable_data(),
+                                         work_size_in_bytes);
+  stream->ThenMemZero(&dev_workspace_ptr, work_size_in_bytes);
+#endif
   /* Launch the solver kernel. */
   TF_RETURN_IF_CUSOLVER_ERROR(
       solver(cusolver_dn_handle, jobz, uplo, n, CUDAComplex(dev_A), lda,

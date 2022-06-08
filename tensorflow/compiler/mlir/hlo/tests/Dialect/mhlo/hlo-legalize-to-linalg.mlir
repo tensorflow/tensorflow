@@ -3039,6 +3039,21 @@ func.func @pad_interior(%arg0: tensor<12x4xui32>, %arg1: tensor<ui32>) -> tensor
 
 // -----
 
+func.func @pad_interior_negative(%arg0: tensor<12x4xui32>, %arg1: tensor<ui32>) -> tensor<25x9xui32> {
+  %0 = arith.constant dense<0> : tensor<ui32>
+  %1 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[-2, 3]> : tensor<2xi64>,
+    edge_padding_low = dense<[4, -1]> : tensor<2xi64>,
+    interior_padding = dense<[1, 1]> : tensor<2xi64>
+  } : (tensor<12x4xui32>, tensor<ui32>) -> tensor<25x9xui32>
+  func.return %1 : tensor<25x9xui32>
+}
+// CHECK-LABEL: func @pad_interior_negative
+//       CHECK: %[[PAD:.]] = tensor.insert_slice %{{.+}} into %{{.+}}[4, 0] [12, 4] [2, 2] : tensor<12x4xi32> into tensor<29x10xi32>
+//       CHECK: %[[SLICE:.]] = tensor.extract_slice %[[PAD]][0, 1] [25, 9] [1, 1] : tensor<29x10xi32> to tensor<25x9xi32>
+
+// -----
+
 func.func @linalg.conv_0d_nc(%arg0: tensor<3x2xf32>, %arg1: tensor<2x3xf32>) -> tensor<3x3xf32> {
 
   %0 = mhlo.convolution(%arg0, %arg1) dim_numbers = [b, f]x[i, o]->[b, f], window = {stride = [], pad = [], lhs_dilate = [], rhs_dilate = [], reverse = []} {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]} : (tensor<3x2xf32>, tensor<2x3xf32>) -> tensor<3x3xf32>

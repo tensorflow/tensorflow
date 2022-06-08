@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/preemption/preemption_notifier.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
@@ -36,6 +37,10 @@ class PreemptionSyncManager {
 
   // TODO(b/230630494): Allow init with PjRT distributed client.
   virtual Status Initialize(CoordinationServiceAgent* agent) = 0;
+#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
+  virtual Status InitWithBorgPreemptionNotifier(
+      CoordinationServiceAgent* agent) = 0;
+#endif
   virtual Status Initialize(CoordinationServiceAgent* agent,
                             std::unique_ptr<PreemptionNotifier> notifier) = 0;
 

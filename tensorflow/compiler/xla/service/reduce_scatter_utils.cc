@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/reduce_scatter_utils.h"
 
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
 namespace xla {
@@ -252,6 +253,26 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
     const HloAllReduceInstruction* ar, int64_t num_partitions,
     int64_t num_replicas, bool allow_multiple_split_dims,
     bool allow_intervening_reshape, int64_t min_rank) {
+  std::function<bool(const HloInstruction*)> match_partition_id =
+      [](const HloInstruction* i) {
+        return i->opcode() == HloOpcode::kPartitionId;
+      };
+  std::function<bool(const HloInstruction*)> match_replica_id =
+      [](const HloInstruction* i) {
+        return i->opcode() == HloOpcode::kReplicaId;
+      };
+  return MatchReduceScatter(ar, num_partitions, num_replicas,
+                            allow_multiple_split_dims,
+                            allow_intervening_reshape, min_rank,
+                            match_partition_id, match_replica_id);
+}
+
+std::optional<ReduceScatterSpec> MatchReduceScatter(
+    const HloAllReduceInstruction* ar, int64_t num_partitions,
+    int64_t num_replicas, bool allow_multiple_split_dims,
+    bool allow_intervening_reshape, int64_t min_rank,
+    std::function<bool(const HloInstruction*)> match_partition_id,
+    std::function<bool(const HloInstruction*)> match_replica_id) {
   if (!ar->shape().IsArray() || ar->constrain_layout() ||
       (ar->IsCrossModuleAllReduce() &&
        !ar->GetModule()->config().use_spmd_partitioning())) {
@@ -308,8 +329,8 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
     group_size = ar->replica_groups().empty()
                      ? num_replicas
                      : ar->replica_groups()[0].replica_ids_size();
-    map_id = [](const HloInstruction* hlo, int64_t id) {
-      return hlo->opcode() == HloOpcode::kReplicaId ? id : -1;
+    map_id = [&](const HloInstruction* hlo, int64_t id) {
+      return match_replica_id(hlo) ? id : -1;
     };
   } else if (ar->use_global_device_ids()) {
     spec.sharded_replicas = num_replicas;
@@ -335,10 +356,10 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
       }
     }
     map_id = [&, orthogonal_replicas](const HloInstruction* hlo, int64_t id) {
-      if (hlo->opcode() == HloOpcode::kReplicaId) {
+      if (match_replica_id(hlo)) {
         return num_partitions == 1 ? id : -1;
       }
-      if (hlo->opcode() == HloOpcode::kPartitionId) {
+      if (match_partition_id(hlo)) {
         if (num_replicas == 1) {
           return id;
         }
@@ -356,9 +377,9 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
                      num_partitions));
       };
       if (hlo->opcode() == HloOpcode::kAdd &&
-          ((hlo->operand(0)->opcode() == HloOpcode::kPartitionId &&
+          ((match_partition_id(hlo->operand(0)) &&
             is_replica_mul_num_partitions(hlo->operand(1))) ||
-           (hlo->operand(1)->opcode() == HloOpcode::kPartitionId &&
+           (match_partition_id(hlo->operand(1)) &&
             is_replica_mul_num_partitions(hlo->operand(0))))) {
         return id;
       }
@@ -377,7 +398,7 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
     spec.sharded_partitions = num_partitions;
     group_size = num_partitions;
     map_id = [&](const HloInstruction* hlo, int64_t id) {
-      return hlo->opcode() == HloOpcode::kPartitionId ? id : -1;
+      return match_partition_id(hlo) ? id : -1;
     };
   }
   if (group_size < 2) {

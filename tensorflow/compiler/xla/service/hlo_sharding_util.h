@@ -172,7 +172,8 @@ std::optional<HloSharding> ScatterOutputShardingFromUpdate(
 // Returns an update operand sharding of scatter by passing through the output's
 // sharding.
 std::optional<HloSharding> ScatterUpdateShardingFromOutput(
-    const HloSharding& output_sharding, const HloScatterInstruction& scatter);
+    const HloSharding& per_output_sharding,
+    const HloScatterInstruction& scatter);
 
 // Returns an identity value and an HloOpcode for reduce computation of scatter
 // instruction.

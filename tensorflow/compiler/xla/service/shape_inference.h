@@ -370,7 +370,8 @@ class ShapeInference {
       absl::Span<const int64_t> window_strides,
       absl::Span<const std::pair<int64_t, int64_t>> padding,
       absl::Span<const int64_t> lhs_dilation,
-      absl::Span<const int64_t> rhs_dilation);
+      absl::Span<const int64_t> rhs_dilation,
+      std::optional<std::vector<bool>> window_reversal = std::nullopt);
 
  private:
   // Helper that infers the shape produced by performing an element-wise binary

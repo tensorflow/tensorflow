@@ -94,8 +94,8 @@ static constexpr CustomCall::RuntimeChecks RuntimeChecks() {
 // -------------------------------------------------------------------------- //
 
 se::KernelBase* JitRtKernelsCache::Get(se::StreamExecutor* executor,
-                                       const char* data) {
-  Key key = {executor, data};
+                                       const char* data, StringRef name) {
+  Key key(executor, data, name);
 
   absl::MutexLock lock(&mutex_);
   auto it = kernels_cache_.find(key);
@@ -105,9 +105,9 @@ se::KernelBase* JitRtKernelsCache::Get(se::StreamExecutor* executor,
 }
 
 se::KernelBase* JitRtKernelsCache::Set(se::StreamExecutor* executor,
-                                       const char* data,
+                                       const char* data, StringRef name,
                                        std::unique_ptr<se::KernelBase> kernel) {
-  Key key = {executor, data};
+  Key key(executor, data, name);
 
   absl::MutexLock lock(&mutex_);
   auto it = kernels_cache_.find(key);
@@ -307,7 +307,7 @@ LogicalResult LaunchFunc::operator()(
       {grid_size_x, grid_size_y, grid_size_z},
       {block_size_x, block_size_y, block_size_z});
 
-  se::KernelBase* kernel = kernels_cache->Get(executor, ptx.data());
+  se::KernelBase* kernel = kernels_cache->Get(executor, ptx.data(), name);
 
   // If kernel does not exists create it from the ptx.
   if (kernel == nullptr) {
@@ -315,7 +315,8 @@ LogicalResult LaunchFunc::operator()(
                                 args.size(), ptx.data(), {}, executor);
     if (!created.ok()) return failure();
 
-    kernel = kernels_cache->Set(executor, ptx.data(), std::move(*created));
+    kernel =
+        kernels_cache->Set(executor, ptx.data(), name, std::move(*created));
   }
 
   VLOG(3) << "Launching " << kernel->name();

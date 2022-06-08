@@ -280,6 +280,18 @@ I64_ELEMENTS_ATTR_TO_VECTOR(rhs_dilation);
 
 #undef I64_ELEMENTS_ATTR_TO_VECTOR
 
+#define BOOL_ELEMENTS_ATTR_TO_VECTOR(attribute)            \
+  static std::vector<bool> Convert_##attribute(            \
+      llvm::Optional<mlir::DenseElementsAttr> attribute) { \
+    if (!attribute) return {};                             \
+    auto values = attribute->getValues<bool>();            \
+    return {values.begin(), values.end()};                 \
+  }
+
+BOOL_ELEMENTS_ATTR_TO_VECTOR(window_reversal);
+
+#undef BOOL_ELEMENTS_ATTR_TO_VECTOR
+
 static std::vector<int64_t> Convert_ArrayRef(llvm::ArrayRef<int64_t> values) {
   return {values.begin(), values.end()};
 }
@@ -1003,9 +1015,6 @@ LogicalResult ExportXlaOp(ConstOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(mlir::mhlo::ConvOp op, OpLoweringContext ctx) {
-  // XLA client builder API does not support generating convolution instructions
-  // with window reversal.
-  if (op.hasWindowReversal()) return failure();
   auto& value_map = *ctx.values;
   xla::XlaOp lhs, rhs;
   if (failed(GetXlaOp(op.lhs(), value_map, &lhs, op))) return mlir::failure();
@@ -1020,7 +1029,7 @@ LogicalResult ExportXlaOp(mlir::mhlo::ConvOp op, OpLoweringContext ctx) {
       Convertuint64_t(op.feature_group_count()),
       Convertuint64_t(op.batch_group_count()),
       Unwrap(Convert_precision_config(op.precision_config())),
-      preferred_element_type);
+      preferred_element_type, Convert_window_reversal(op.window_reversal()));
   value_map[op] = xla_result;
   return mlir::success();
 }
@@ -1430,31 +1439,27 @@ LogicalResult ExportXlaOp(ScatterOp op, OpLoweringContext ctx) {
       Convert_scatter_dimension_numbers(op.scatter_dimension_numbers());
 
   llvm::SmallVector<xla::XlaOp> operands;
+  llvm::SmallVector<xla::XlaOp> updates;
   if (failed(GetTuple(op, op.operands(), ctx, operands))) return failure();
+  if (failed(GetTuple(op, op.updates(), ctx, updates))) return failure();
 
-  xla::XlaOp operand;
-  if (operands.size() == 1)
-    operand = operands[0];
-  else
-    operand = Tuple(ctx.builder, operands);
-
-  llvm::SmallVector<xla::XlaOp> many_updates;
-  if (failed(GetTuple(op, op.updates(), ctx, many_updates))) return failure();
-
-  xla::XlaOp updates;
-  if (many_updates.size() == 1)
-    updates = many_updates[0];
-  else
-    updates = Tuple(ctx.builder, many_updates);
   xla::XlaOp scatter_indices;
-
   if (failed(GetXlaOp(op.scatter_indices(), value_map, &scatter_indices, op)))
     return failure();
 
-  // Export of varadic scatter currently not supported
-  value_map[op.getResult(0)] = xla::Scatter(
-      operand, scatter_indices, updates, update_computation, dimension_numbers,
-      op.indices_are_sorted(), op.unique_indices());
+  auto scatter_op = xla::Scatter(operands, scatter_indices, updates,
+                                 update_computation, dimension_numbers,
+                                 op.indices_are_sorted(), op.unique_indices());
+  if (op->getNumResults() == 1) {
+    value_map[op.getResult(0)] = scatter_op;
+    return success();
+  }
+
+  // mhlo.ScatterOp supports multiple returns, untuple all the results of XLA's.
+  for (const auto& it : llvm::enumerate(op.getResults())) {
+    value_map[it.value()] = xla::GetTupleElement(scatter_op, it.index());
+  }
+
   return success();
 }
 

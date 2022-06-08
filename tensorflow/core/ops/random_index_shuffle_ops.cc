@@ -57,7 +57,7 @@ static Status StatelessRandomPermuteShape(InferenceContext* c) {
       (index_rank == 0 && seed_rank == 1 && max_index_rank == 0);
   if (output_is_scalar) {
     c->set_output(0, c->Scalar());
-    return Status::OK();
+    return OkStatus();
   }
 
   if (!c->FullyDefined(index_shape) || !c->FullyDefined(seed_shape) ||
@@ -67,7 +67,7 @@ static Status StatelessRandomPermuteShape(InferenceContext* c) {
     if (output_is_vector) {
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Shape is fully defined and the output is a vector.
@@ -94,7 +94,7 @@ static Status StatelessRandomPermuteShape(InferenceContext* c) {
                                    "].");
   }
   c->set_output(0, c->Vector(num_outputs));
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_OP("RandomIndexShuffle")

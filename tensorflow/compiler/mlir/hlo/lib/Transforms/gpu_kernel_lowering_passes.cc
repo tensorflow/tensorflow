@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
 #include "mlir-hlo/Transforms/GPUPassDetail.h"
 #include "mlir-hlo/Transforms/gpu_passes.h"
 #include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"
@@ -26,13 +28,9 @@ limitations under the License.
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
-#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
-#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/Transforms/DialectConversion.h"
 
-namespace mlir {
-
-using gpu::GPUModuleOp;
+using namespace mlir;
 
 namespace {
 
@@ -40,71 +38,62 @@ namespace {
 /// that are currently required, currently mixing std, linalg and gpu.
 class GpuKernelToNVVMPass
     : public GpuKernelToNVVMPassBase<GpuKernelToNVVMPass> {
-  void getDependentDialects(mlir::DialectRegistry& registry) const override {
-    registry.insert<mlir::NVVM::NVVMDialect, mlir::LLVM::LLVMDialect>();
-  }
-
- public:
-  void runOnOperation() override {
-    GPUModuleOp m = getOperation();
-
-    RewritePatternSet patterns(&getContext());
-    mlir::LowerToLLVMOptions llvm_opts(m.getContext(), DataLayout(m));
-
-    LLVMTypeConverter converter(m.getContext(), llvm_opts);
-    arith::populateArithmeticToLLVMConversionPatterns(converter, patterns);
-    populateMathToLLVMConversionPatterns(converter, patterns);
-    populateMemRefToLLVMConversionPatterns(converter, patterns);
-    populateFuncToLLVMConversionPatterns(converter, patterns);
-    cf::populateControlFlowToLLVMConversionPatterns(converter, patterns);
-    populateGpuToNVVMConversionPatterns(converter, patterns);
-    populateComplexToLLVMConversionPatterns(converter, patterns);
-    ConversionTarget target(getContext());
-    configureGpuToNVVMConversionLegality(target);
-    if (failed(mlir::applyFullConversion(m, target, std::move(patterns)))) {
-      signalPassFailure();
-    }
-  }
+  void runOnOperation() override;
 };
 
 /// A pass that does the final lowering to ROCDL. It collects all the patterns
 /// that are currently required, currently mixing std, linalg and gpu.
 class GpuKernelToROCDLPass
     : public GpuKernelToROCDLPassBase<GpuKernelToROCDLPass> {
-  void getDependentDialects(mlir::DialectRegistry& registry) const override {
-    registry.insert<mlir::ROCDL::ROCDLDialect, mlir::LLVM::LLVMDialect>();
-  }
-
- public:
-  void runOnOperation() override {
-    gpu::GPUModuleOp m = getOperation();
-
-    RewritePatternSet patterns(&getContext());
-    LLVMTypeConverter converter(m.getContext());
-    arith::populateArithmeticToLLVMConversionPatterns(converter, patterns);
-    populateMathToLLVMConversionPatterns(converter, patterns);
-    populateMemRefToLLVMConversionPatterns(converter, patterns);
-    populateFuncToLLVMConversionPatterns(converter, patterns);
-    cf::populateControlFlowToLLVMConversionPatterns(converter, patterns);
-    populateGpuToROCDLConversionPatterns(converter, patterns,
-                                         gpu::amd::Runtime::Unknown);
-    populateComplexToLLVMConversionPatterns(converter, patterns);
-    ConversionTarget target(getContext());
-    configureGpuToROCDLConversionLegality(target);
-    if (failed(mlir::applyFullConversion(m, target, std::move(patterns)))) {
-      signalPassFailure();
-    }
-  }
+  void runOnOperation() override;
 };
 
 }  // namespace
 
-std::unique_ptr<OperationPass<GPUModuleOp> > CreateGpuKernelToNvvmPass() {
+static void populateCommonPatterns(LLVMTypeConverter& converter,
+                                   RewritePatternSet& patterns) {
+  arith::populateArithmeticToLLVMConversionPatterns(converter, patterns);
+  populateMathToLLVMConversionPatterns(converter, patterns);
+  populateMemRefToLLVMConversionPatterns(converter, patterns);
+  populateFuncToLLVMConversionPatterns(converter, patterns);
+  cf::populateControlFlowToLLVMConversionPatterns(converter, patterns);
+  populateComplexToLLVMConversionPatterns(converter, patterns);
+}
+
+void GpuKernelToNVVMPass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
+  LowerToLLVMOptions llvmOpts(&getContext(), DataLayout(getOperation()));
+  LLVMTypeConverter converter(&getContext(), llvmOpts);
+  populateCommonPatterns(converter, patterns);
+  populateGpuToNVVMConversionPatterns(converter, patterns);
+  ConversionTarget target(getContext());
+  configureGpuToNVVMConversionLegality(target);
+  if (failed(
+          applyFullConversion(getOperation(), target, std::move(patterns)))) {
+    signalPassFailure();
+  }
+}
+
+void GpuKernelToROCDLPass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
+  LLVMTypeConverter converter(&getContext());
+  populateCommonPatterns(converter, patterns);
+  populateGpuToROCDLConversionPatterns(converter, patterns,
+                                       gpu::amd::Runtime::Unknown);
+  ConversionTarget target(getContext());
+  configureGpuToROCDLConversionLegality(target);
+  if (failed(
+          applyFullConversion(getOperation(), target, std::move(patterns)))) {
+    signalPassFailure();
+  }
+}
+
+std::unique_ptr<OperationPass<gpu::GPUModuleOp> >
+mlir::CreateGpuKernelToNvvmPass() {
   return std::make_unique<GpuKernelToNVVMPass>();
 }
 
-std::unique_ptr<OperationPass<GPUModuleOp> > CreateGpuKernelToRocdlPass() {
+std::unique_ptr<OperationPass<gpu::GPUModuleOp> >
+mlir::CreateGpuKernelToRocdlPass() {
   return std::make_unique<GpuKernelToROCDLPass>();
 }
-
-}  // namespace mlir

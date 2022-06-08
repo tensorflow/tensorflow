@@ -16,6 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <string>
+#include <utility>
 
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -364,8 +365,13 @@ class PrepareDynamicRangeQuantizableOp
       DenseFPElementsAttr value_attr =
           op.getValue().cast<DenseFPElementsAttr>();
       new_values.reserve(value_attr.getNumElements());
+
+      constexpr float kMaxFloat16Value = 65504.f;
+      constexpr float kMinFloat16Value = -65504.f;
+
       for (auto value : value_attr.template getValues<float>()) {
-        new_values.push_back(Eigen::half(value));
+        new_values.push_back(Eigen::half(
+            std::min(std::max(value, kMinFloat16Value), kMaxFloat16Value)));
       }
       DenseElementsAttr new_value_attr = DenseFPElementsAttr::get(
           new_result_type, ArrayRef<Eigen::half>(new_values));

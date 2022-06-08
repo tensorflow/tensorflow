@@ -1,5 +1,6 @@
 """Targets for generating TensorFlow Python API __init__.py files."""
 
+load("//tensorflow:tensorflow.bzl", "if_indexing_source_code")
 load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "TENSORFLOW_API_INIT_FILES")
 
 def get_compat_files(
@@ -133,24 +134,31 @@ def gen_api_init_files(
             " --compat_init_template=$(location %s)" % compat_init_template
         )
 
+    flags = [
+        root_init_template_flag,
+        "--apidir=$(@D)" + output_dir,
+        "--apiname=" + api_name,
+        "--apiversion=" + str(api_version),
+        compat_api_version_flags,
+        compat_init_template_flags,
+        "--packages=" + ",".join(packages),
+        "--output_package=" + output_package,
+        "--use_relative_imports=True",
+    ]
+
     # copybara:uncomment_begin(configurable API loading)
     # native.vardef("TF_API_INIT_LOADING", "default")
-    # loading_flag = " --loading=$(TF_API_INIT_LOADING)"
+    # loading_value = "$(TF_API_INIT_LOADING)"
     # copybara:uncomment_end_and_comment_begin
-    loading_flag = " --loading=default"
+    loading_value = "default"
     # copybara:comment_end
 
     native.genrule(
         name = name,
         outs = all_output_files,
-        cmd = (
-            "$(location :" + api_gen_binary_target + ") " +
-            root_init_template_flag + " --apidir=$(@D)" + output_dir +
-            " --apiname=" + api_name + " --apiversion=" + str(api_version) +
-            compat_api_version_flags + " " + compat_init_template_flags +
-            loading_flag + " --packages=" + ",".join(packages) +
-            " --output_package=" + output_package +
-            " --use_relative_imports=True $(OUTS)"
+        cmd = if_indexing_source_code(
+            _make_cmd(api_gen_binary_target, flags, loading = "static"),
+            _make_cmd(api_gen_binary_target, flags, loading = loading_value),
         ),
         srcs = srcs,
         tools = [":" + api_gen_binary_target],
@@ -159,3 +167,8 @@ def gen_api_init_files(
             "//tensorflow/tools/api/tests:__pkg__",
         ],
     )
+
+def _make_cmd(api_gen_binary_target, flags, loading):
+    binary = "$(location :" + api_gen_binary_target + ")"
+    flags.append("--loading=" + loading)
+    return " ".join([binary] + flags + ["$(OUTS)"])

@@ -19,12 +19,16 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
-from tensorflow.python.platform import test as test_lib
+from tensorflow.python.ops.ragged import ragged_math_ops
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.platform import googletest
 
 
-class RaggedSoftmaxTest(test_lib.TestCase, parameterized.TestCase):
+class RaggedSoftmaxTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def _softmax(self, x):
     assert len(x.shape) == 2
@@ -85,3 +89,80 @@ class RaggedSoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     x_tf = ragged_factory_ops.constant(x_list, dtype=dtypes.float32)
     y_tf = nn_ops.softmax_v2(x_tf)
     self.assertAllClose(y_tf, y_expected_from_numpy, eps)
+
+
+def _cumsum_slow(rt, axis=0, exclusive=False, reverse=False, name=None):
+  dense = rt.to_tensor()
+  result = math_ops.cumsum(dense, axis=axis, exclusive=exclusive,
+                           reverse=reverse, name=name)
+  return ragged_tensor.RaggedTensor.from_tensor(
+      result, lengths=rt.nested_row_lengths())
+
+
+class RaggedCumsumTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+
+  @parameterized.parameters([
+      dict(original=[[1, 2], [3, 4, 5]],
+           expected=[[1, 2], [4, 6, 5]]),
+      dict(original=[[1, 2], [3, 4, 5]],
+           expected=[[4, 6], [3, 4, 5]],
+           reverse=True),
+      dict(original=[[1, 2], [3, 4, 5]],
+           expected=[[3, 4], [0, 0, 0]],
+           reverse=True,
+           exclusive=True),
+      dict(original=[[1, 2], [3, 4, 5]],
+           expected=[[0, 0], [1, 2, 0]],
+           exclusive=True),
+      dict(original=[[1, 2], [3, 4, 5]],
+           expected=[[0, 0], [1, 2, 0]],
+           exclusive=True),
+      dict(original=[[1, 2], [3, 4, 5]],
+           expected=[[1, 3], [3, 7, 12]],
+           axis=1),
+      dict(original=[[1, 2], [3, 4, 5]],
+           expected=[[3, 2], [12, 9, 5]],
+           axis=1, reverse=True),
+      dict(original=[[1, 2], [3, 4, 5]],
+           expected=[[2, 0], [9, 5, 0]],
+           axis=1, exclusive=True, reverse=True),
+      dict(original=[[1, 2], [3, 4, 5]],
+           expected=[[0, 1], [0, 3, 7]],
+           axis=1, exclusive=True),
+  ])
+  def test_cumsum(self, original, expected, axis=0, exclusive=False,
+                  reverse=False):
+    original_rt = ragged_factory_ops.constant(original)
+    expected_rt = ragged_factory_ops.constant(expected)
+    actual = ragged_math_ops.ragged_cumsum(
+        original_rt, axis=axis, exclusive=exclusive, reverse=reverse)
+    self.assertAllEqual(actual, expected_rt)
+    baseline = _cumsum_slow(original_rt, axis=axis, exclusive=exclusive,
+                            reverse=reverse)
+    self.assertAllEqual(baseline, expected_rt)
+
+  @parameterized.parameters([
+      dict(expected=[[[0, 1], [2, 5]], [[4, 9], [6, 13], [8, 17]]], axis=2),
+      dict(expected=[[[0, 0], [0, 2]], [[0, 4], [0, 6], [0, 8]]],
+           exclusive=True, axis=2),
+      dict(expected=[[[1, 0], [3, 0]], [[5, 0], [7, 0], [9, 0]]],
+           exclusive=True, reverse=True, axis=2),
+      dict(expected=[[[1, 1], [5, 3]], [[9, 5], [13, 7], [17, 9]]],
+           reverse=True, axis=2),
+  ])
+  def test_cumsum_deep(self, expected, axis=0, exclusive=False, reverse=False):
+    # [[[0, 1], [2, 3]], [[4, 5], [6, 7], [8, 9]]]
+
+    original_rt = ragged_tensor.RaggedTensor.from_row_lengths(
+        array_ops.reshape(math_ops.range(10), (5, 2)), [2, 3])
+
+    actual = ragged_math_ops.ragged_cumsum(
+        original_rt, axis=axis, exclusive=exclusive, reverse=reverse)
+    self.assertAllEqual(actual, expected)
+    baseline = _cumsum_slow(original_rt, axis=axis, exclusive=exclusive,
+                            reverse=reverse)
+    self.assertAllEqual(baseline, expected)
+
+if __name__ == '__main__':
+  googletest.main()
+

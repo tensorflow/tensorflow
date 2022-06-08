@@ -21,6 +21,8 @@ limitations under the License.
 //    "tfl_wrapped_jax_random_normal" with tfl.CustomOp("RandomUniform") and
 //     tfl.CustomOp("RandomStandardNormal"), respectively.
 
+#include <string>
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"

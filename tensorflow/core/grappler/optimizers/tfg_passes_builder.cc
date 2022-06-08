@@ -36,8 +36,6 @@ void DefaultGrapplerPipeline(PassManager& manager) {
   // inference for almost all operations.
   manager.addPass(CreateShapeInferencePass());
   // Contruct the shape attrs back from types.
-  // TODO(chiahungduan): This will be the required pass before exporting, remove
-  // this instance when the exporter has handled it.
   manager.addPass(CreatePrepareAttributesForExportPass());
 }
 
@@ -46,8 +44,6 @@ void DefaultGrapplerPipeline(PassManager& manager) {
 // functional control-flow and prepare the attributes for export.
 void DefaultModuleGrapplerPipeline(PassManager& manager,
                                    const tensorflow::RewriterConfig& config) {
-  // TODO(chiahungduan): This will be the default pass for TFG pipeline, remove
-  // this when the default pipeline has added it.
   manager.addPass(CreateConsolidateAttributesPass());
   manager.addPass(CreateFunctionalToRegionPass());
   if (config.experimental_conditional_code_motion() !=
@@ -57,14 +53,16 @@ void DefaultModuleGrapplerPipeline(PassManager& manager,
   manager.addPass(CreateLiftLegacyCallPass());
   manager.addPass(createSymbolPrivatizePass());
   manager.addPass(createSymbolDCEPass());
-  // TODO(chiahungduan): This will be the required pass before exporting, remove
-  // this instance when the exporter has handled it.
   manager.addPass(CreatePrepareAttributesForExportPass());
 }
 
 void RemapperPassBuilder(PassManager& manager) {
+  manager.addPass(CreateConsolidateAttributesPass());
+  manager.addPass(CreateTopoSortPass());
+  manager.addPass(CreateShapeInferencePass());
   manager.addPass(
       CreateRemapperPass(/*enable_mkl_patterns=*/tensorflow::IsMKLEnabled()));
+  manager.addPass(CreatePrepareAttributesForExportPass());
 }
 
 }  // namespace tfg

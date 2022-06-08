@@ -508,9 +508,6 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Tries to convert slice(reshape(X)) into reshape(slice(X))
   StatusOr<bool> TryToReorderSliceAndReshape(HloInstruction* slice);
 
-  // Tries to convert slice(reshape(X)) into reshape(slice(X))
-  StatusOr<bool> TryToReorderSliceAndTranspose(HloInstruction* slice);
-
   // Tries to convert slice(reverse(X)) into reverse(slice(X))
   StatusOr<bool> TryToReorderSliceAndReverse(HloInstruction* slice);
 

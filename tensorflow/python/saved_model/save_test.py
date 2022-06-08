@@ -1068,22 +1068,6 @@ class AssetTests(test.TestCase):
     with self.assertRaisesRegex(AssertionError, "tf.function"):
       _calls_save()
 
-  def test_rewrite_asset_to_same_destination(self):
-    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    asset_path = os.path.join(self.get_temp_dir(), "asset")
-    model = tracking.AutoTrackable()
-    with open(asset_path, "w") as f:
-      f.write("first")
-    save.save(model, save_dir)
-    load.load(save_dir)
-    self.assertEqual("first", file_io.read_file_to_string(asset_path))
-
-    with open(asset_path, "w") as f:
-      f.write("second")
-    save.save(model, save_dir)
-    load.load(save_dir)
-    self.assertEqual("second", file_io.read_file_to_string(asset_path))
-
 
 class ExportMetaGraphTests(test.TestCase):
 

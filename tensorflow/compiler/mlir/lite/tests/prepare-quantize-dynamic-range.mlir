@@ -396,3 +396,16 @@ func.func @QuantizeMultiUses(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112
 // Float16: %[[bmm:.*]] = "tfl.batch_matmul"(%[[conv]], %[[dconv]]) {adj_x = false, adj_y = true
 // Float16: return %[[bmm:.*]]
 }
+
+// Float16-LABEL: LargeFloat16Constants
+func.func @LargeFloat16Constants(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x64xf32> {
+  %0 = "quant.stats"(%arg0) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<1x224x224x3xf32>) -> tensor<1x224x224x3xf32>
+  %w = arith.constant dense<7.270000e+04> : tensor<64x3x3x3xf32>
+  %b = arith.constant dense<-8.0e+4> : tensor<64xf32>
+  %conv = "tfl.conv_2d"(%0, %w, %b) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<1x224x224x3xf32>, tensor<64x3x3x3xf32>, tensor<64xf32>) -> tensor<1x112x112x64xf32>
+  %conv_s = "quant.stats"(%conv) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<1x112x112x64xf32>) -> tensor<1x112x112x64xf32>
+  func.return %conv_s : tensor<1x112x112x64xf32>
+
+// Float16-DAG: %[[w:.*]] = arith.constant dense<6.550400e+04> : tensor<64x3x3x3xf16>
+// Float16-DAG: %[[b:.*]] = arith.constant dense<-6.550400e+04> : tensor<64xf16>
+}

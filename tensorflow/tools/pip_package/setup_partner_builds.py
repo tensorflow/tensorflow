@@ -64,8 +64,10 @@ def standard_or_nightly(standard, nightly):
 REQUIRED_PACKAGES = [
     # Install the TensorFlow package built by AWS if the user is running
     # Linux on an Aarch64 machine.
-    standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws ') +
-    '==' + _VERSION + ';platform_system=="Linux" and platform_machine=="arm64"',
+    standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws ') + '==' +
+    _VERSION +
+    ';platform_system=="Linux" and (platform_machine=="arm64" or '
+    'platform_machine=="aarch64")',
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 

@@ -498,6 +498,41 @@ func.func @main(%arg0 : tensor<100x26x26x32xi8>, %arg1 : tensor<3x3x1x32xi8>) ->
 
 // -----
 
+// Test convolution with window reversal.
+// CHECK:  HloModule
+func.func @main(%arg0 : tensor<100x26x26x32xi8>, %arg1 : tensor<3x3x1x32xi8>) -> tensor<100x28x28x1xi32> {
+  %result = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<raw
+      input_batch_dimension = 0,
+      input_feature_dimension = 3,
+      input_spatial_dimensions = [1, 2],
+      kernel_input_feature_dimension = 3,
+      kernel_output_feature_dimension = 2,
+      kernel_spatial_dimensions = [0, 1],
+      output_batch_dimension = 0,
+      output_feature_dimension = 3,
+      output_spatial_dimensions = [1, 2]
+    >,
+    feature_group_count = 1 : i64,
+    lhs_dilation = dense<1> : tensor<2xi64>,
+    padding = dense<2> : tensor<2x2xi64>,
+    rhs_dilation = dense<1> : tensor<2xi64>,
+    window_strides = dense<1> : tensor<2xi64>,
+    window_reversal = dense<1> : tensor<2xi1>
+  } : (tensor<100x26x26x32xi8>, tensor<3x3x1x32xi8>) -> tensor<100x28x28x1xi32>
+  func.return %result : tensor<100x28x28x1xi32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  %[[ARG0:.*]] = s8[100,26,26,32] parameter(0)
+// CHECK:  %[[ARG1:.*]] = s8[3,3,1,32] parameter(1)
+// CHECK:  ROOT %[[RESULT:.*]] = s32[100,28,28,1] convolution(s8[100,26,26,32] %[[ARG0]], s8[3,3,1,32] %[[ARG1]]),
+// CHECK-SAME:  window={size=3x3 pad=2_2x2_2 rhs_reversal=1x1},
+// CHECK-SAME:  dim_labels=b01f_01oi->b01f
+
+// -----
+
 // CHECK:  HloModule
 func.func @main(%arg0: tensor<2xi32>) -> tensor<2xf32> {
   %0 = "mhlo.convert"(%arg0) : (tensor<2xi32>) -> tensor<2xf32>
@@ -933,7 +968,7 @@ func.func @main(%arg0 : tensor<1x10xf32>, %arg1 : tensor<1x10xi32>, %arg2 : tens
 func.func @main(%arg0: tensor<2x17x31x7xi32>) -> tensor<2x5x8x7xi32> {
   %0 = mhlo.constant dense<-2147483648> : tensor<i32>
   %1 = "mhlo.reduce_window"(%arg0, %0) ({
-  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):	
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):
     %2 = mhlo.maximum %arg1, %arg2 : tensor<i32>
     "mhlo.return"(%2) : (tensor<i32>) -> ()
   }) {
@@ -1044,6 +1079,27 @@ func.func @main(%input_tensor: tensor<200x100x300xf32>, %scatter_indices: tensor
 // -----
 
 // CHECK:  HloModule
+func.func @main(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi64>, %arg2: tensor<10x300xf32>) -> (tensor<200x100x300xf32>, tensor<200x100x300xf32>) {
+    %0:2 = "mhlo.scatter"(%arg0, %arg0, %arg1, %arg2, %arg2) ({
+    ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>):
+      %2 = mhlo.add %arg3, %arg4 : tensor<f32>
+      %3 = mhlo.add %arg5, %arg6 : tensor<f32>
+      "mhlo.return"(%2, %3) : (tensor<f32>, tensor<f32>) -> ()
+    }) {indices_are_sorted = false, scatter_dimension_numbers = #mhlo.scatter<update_window_dims = [1], inserted_window_dims = [0, 1], scatter_dims_to_operand_dims = [0, 1], index_vector_dim = 1>, unique_indices = false} : (tensor<200x100x300xf32>, tensor<200x100x300xf32>, tensor<10x2xi64>, tensor<10x300xf32>, tensor<10x300xf32>) -> (tensor<200x100x300xf32>, tensor<200x100x300xf32>)
+    return %0#0, %0#1 : tensor<200x100x300xf32>, tensor<200x100x300xf32>
+  }
+
+// CHECK:  [[COMPUTATION:%.*]] ({{.*}}: f32[], {{.*}}: f32[], {{.*}}: f32[], {{.*}}: f32[]) -> (f32[], f32[])
+// CHECK:  ENTRY
+// CHECK:  [[VAL_1:%.*]] = f32[200,100,300] parameter(0)
+// CHECK:  [[VAL_2:%.*]] = s64[10,2] parameter(1)
+// CHECK:  [[VAL_3:%.*]] = f32[10,300] parameter(2)
+// CHECK: (f32[200,100,300], f32[200,100,300]) scatter(f32[200,100,300] [[VAL_1]], f32[200,100,300] [[VAL_1]], s64[10,2] [[VAL_2]], f32[10,300] [[VAL_3]], f32[10,300] [[VAL_3]]), update_window_dims={1}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=1, to_apply=[[COMPUTATION]]
+
+// -----
+
+
+// CHECK:  HloModule
 func.func @main(%arg0: tensor<i1>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
   // CHECK:  %[[ARG0:.*]] = pred[] parameter(0)
   // CHECK:  %[[COND:.*]] = pred[2,3] broadcast(pred[] %[[ARG0]]), dimensions={}
@@ -1061,11 +1117,11 @@ func.func @main(%arg0: tensor<i1>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32
 func.func @main(%arg0: tensor<10x24x24x64xf32>, %arg1: tensor<10x12x12x64xf32>) -> tensor<10x24x24x64xf32> {
   %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
   %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
-  ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):	
+  ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
     %2 = "mhlo.compare"(%arg3, %arg4) {compare_type = #mhlo<"comparison_type TOTALORDER">, comparison_direction = #mhlo<"comparison_direction GE">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%2) : (tensor<i1>) -> ()
   },  {
-  ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):	
+  ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
     %2 = mhlo.add %arg3, %arg4 : tensor<f32>
     "mhlo.return"(%2) : (tensor<f32>) -> ()
   }) {

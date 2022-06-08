@@ -3280,6 +3280,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/data/service:dispatcher_client",
         "//tensorflow/core/data/service:grpc_util",
         "//tensorflow/core/data/service:server_lib",
+        "//tensorflow/core/data/service:py_utils",
         "//tensorflow/core/function:runtime_client_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:grappler_item_builder",

@@ -492,7 +492,8 @@ inline Value MapMhloOpToStdScalarOp<mhlo::ConvertOp>(
     if (src.getWidth() > res.getWidth()) {
       return b->create<mlir::arith::TruncFOp>(loc, result_types, args,
                                               mlir::None);
-    } else if (src.getWidth() < res.getWidth()) {
+    }
+    if (src.getWidth() < res.getWidth()) {
       return b->create<mlir::arith::ExtFOp>(loc, result_types, args,
                                             mlir::None);
     }

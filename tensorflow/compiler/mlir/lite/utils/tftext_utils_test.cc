@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/tftext_utils.h"
 
 #include <memory>
+#include <string>
 
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"

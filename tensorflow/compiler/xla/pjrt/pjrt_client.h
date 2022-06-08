@@ -243,6 +243,109 @@ struct CompileOptions {
   const MultiSliceConfig* multi_slice_config = nullptr;
 };
 
+// A sized chunk of host data. The host data can be either in host layout or in
+// device layout, and it can be one part of the entire buffer. The PjRt
+// implementations can customize how the memory is allocated and deallocated.
+class PjRtChunk {
+ public:
+  PjRtChunk() = default;
+  PjRtChunk(void* data, size_t size, std::function<void(void*)> deleter)
+      : data_(static_cast<uint8_t*>(data)),
+        size_(size),
+        deleter_(std::move(deleter)) {}
+
+  ~PjRtChunk() {
+    if (data_) {
+      deleter_(data_);
+    }
+  }
+
+  PjRtChunk(PjRtChunk&& other)
+      : data_(other.data_),
+        size_(other.size_),
+        deleter_(std::move(other.deleter_)) {
+    other.data_ = nullptr;
+  }
+  PjRtChunk& operator=(PjRtChunk&& other) {
+    if (data_) {
+      deleter_(data_);
+    }
+    data_ = other.data_;
+    size_ = other.size_;
+    deleter_ = std::move(other.deleter_);
+    other.data_ = nullptr;
+    return *this;
+  }
+
+  PjRtChunk(const PjRtChunk&) = delete;
+  PjRtChunk& operator=(const PjRtChunk&) = delete;
+
+  uint8_t* data() { return data_; }
+  const uint8_t* data() const { return data_; }
+  int64_t size() const { return size_; }
+
+ private:
+  // The ownership of the bytes pointed to by `data_` is controlled by the
+  // `deleter_`.
+  uint8_t* data_ = nullptr;
+  size_t size_ = 0;
+  std::function<void(void*)> deleter_;
+};
+
+// A stream of Chunks from the host to the device. Once the stream enters
+// Complete state it never changes state again.
+//
+// This class is thread-safe.
+class CopyToDeviceStream {
+ public:
+  explicit CopyToDeviceStream(int64_t total_bytes, int64_t granule_bytes)
+      : total_bytes_(total_bytes), granule_bytes_(granule_bytes) {}
+
+  // Emplaces a new Chunk of data to copy to the device. Returns a non-OK status
+  // if the Chunk's size causes the amount of transferred data to exceed
+  // total_bytes() or if the stream is already complete.
+  //
+  // The size of the chunk must be a multiple of granule_bytes().
+  // TODO(jmolloy): Enforce the granule size.
+  Status AddChunk(PjRtChunk chunk);
+
+  // Returns the total amount of data the stream expects to be transferred.
+  int64_t total_bytes() const { return total_bytes_; }
+
+  // Returns the granule size in bytes. The size of the chunk added to this
+  // stream must be a multiple of this number.
+  int64_t granule_size_in_bytes() const { return granule_bytes_; }
+
+  // Returns the amount of data the stream currently has either transferred or
+  // has buffered to transfer.
+  int64_t current_bytes() const {
+    absl::MutexLock lock(&mu_);
+    return current_bytes_;
+  }
+
+  // Returns true if the stream is complete; all expected bytes have been
+  // transferred or are buffered to transfer.
+  bool IsComplete() const {
+    absl::MutexLock lock(&mu_);
+    return current_bytes_ == total_bytes_;
+  }
+
+  // Returns true if the stream is empty; no data has been queued.
+  bool empty() const { return current_bytes() == 0; }
+
+  // Consumes the next chunk. If no chunks remain, returns nullopt. Blocks
+  // until a chunk is available.
+  std::optional<PjRtChunk> ConsumeNextChunk();
+
+  // Members are protected to allow subclassing for mocking in tests.
+ protected:
+  int64_t total_bytes_;
+  int64_t granule_bytes_;
+  int64_t current_bytes_ ABSL_GUARDED_BY(mu_) = 0;
+  std::deque<PjRtChunk> buffered_chunks_ ABSL_GUARDED_BY(mu_);
+  mutable absl::Mutex mu_;
+};
+
 class PjRtExecutable;
 
 // Encapsulates the state of Python session with XLA.
@@ -844,6 +947,38 @@ class ExecuteContext {
   virtual ~ExecuteContext() = default;
 };
 
+struct PjRtTransferMetadata {
+  Shape device_shape;
+};
+
+struct SendCallback {
+  int64_t channel_id;
+  // The callback for retrieving the send value. It will be invoked once for
+  // each invocation of the corresponding Send op in the HLO program (So it can
+  // be invoked multiple times if it is in a loop). Currently there is no
+  // guarantee that the callback here will be invoked in the same order as their
+  // corresponding HLO Send ops.
+  //
+  // TODO(chky): Currently the callback invocation order may not be consistent
+  // with the HLO send op invocation order, due to limitations in some PjRt
+  // implementation. Consider making it strictly the same order as HLO program.
+  std::function<void(const PjRtTransferMetadata& metadata, PjRtChunk chunk,
+                     size_t total_size_in_bytes, bool done)>
+      callback;
+};
+
+struct RecvCallback {
+  int64_t channel_id;
+  // The callback for feeding the recv value. It will be invoked once for each
+  // invocation of the corresponding Recv op in the HLO program (So it can be
+  // invoked multiple times if it is in a loop). Currently there is no
+  // guarantee that the callback here will be invoked in the same order as their
+  // corresponding HLO Recv ops.
+  std::function<void(const PjRtTransferMetadata& metadata,
+                     CopyToDeviceStream& stream)>
+      callback;
+};
+
 struct ExecuteOptions {
   // If true, the client must pass a single PjRtBuffer which contains all of
   // the arguments as a single XLA tuple, otherwise each argument must be
@@ -869,6 +1004,14 @@ struct ExecuteOptions {
   // config should match what was used during compilation to generate this
   // executable.
   const MultiSliceConfig* multi_slice_config = nullptr;
+
+  // The send/recv callbacks for PjRt execution. The first level span is for
+  // multi-device parallel execution, the second level vector contains the
+  // callbacks for all send/recv ops in the executable. These callbacks can be
+  // stateful and the user code is responsible for managing the states here.
+  // These callbacks must outlive the execution.
+  absl::Span<const std::vector<SendCallback>> send_callbacks;
+  absl::Span<const std::vector<RecvCallback>> recv_callbacks;
 };
 
 // Static device memory usage for a compiled program.

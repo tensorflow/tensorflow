@@ -37,7 +37,7 @@ REGISTER_OP("GenerateVocabRemapping")
 
       c->set_output(0, c->Vector(num_new_vocab));
       c->set_output(1, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("LoadAndRemapMatrix")
@@ -66,6 +66,6 @@ REGISTER_OP("LoadAndRemapMatrix")
       TF_RETURN_IF_ERROR(c->GetAttr("num_cols", &num_cols));
 
       c->set_output(0, c->Matrix(num_rows, num_cols));
-      return Status::OK();
+      return OkStatus();
     });
 }  // namespace tensorflow

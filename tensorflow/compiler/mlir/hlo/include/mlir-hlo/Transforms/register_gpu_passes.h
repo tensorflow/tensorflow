@@ -51,4 +51,4 @@ inline void registerAllHloGpuPasses() {
 }  // end namespace hlo
 }  // end namespace mlir
 
-#endif  // MLIR_HLO_TRANSFORMS_REGISTER_PASSES_H
+#endif  // MLIR_HLO_TRANSFORMS_REGISTER_GPU_PASSES_H

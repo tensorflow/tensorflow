@@ -32,7 +32,7 @@ def ResultList : NativeCodeCall<"llvm::SmallVector<Value>{$0...}">;
 def AttributeList : NativeCodeCall<"llvm::SmallVector<Attribute>{$0...}">;
 
 // Checks if the value is not defined inside a lifted function by checking the
-// `tf_quant.fused_function` attribute.
+// `tf_quant.composite_function` attribute.
 def IsNotInLiftedFunc :
       Constraint<CPred<"!IsInLiftedFunc($0.getDefiningOp())">>;
 
