@@ -16,13 +16,17 @@ limitations under the License.
 // This files implements the logic for converting `scf.parallel` loops into
 // tiled loops.
 
+#include <utility>
+
 #include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/SCF/Transforms.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
 
@@ -86,6 +90,16 @@ void TileLoopsPass::runOnOperation() {
     tileParallelLoop(tiled_loops.second, unroll_factors_,
                      /*noMinMaxBounds=*/false);
   }
+
+  // Apply arithmetic dialect canonicalizations so that
+  // ParallelToGpuLaunchLowering can derive loop-invariant upper bound for
+  // number of iterations.
+  RewritePatternSet patterns(&getContext());
+  getContext()
+      .getOrLoadDialect<arith::ArithmeticDialect>()
+      ->getCanonicalizationPatterns(patterns);
+  if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
+    return signalPassFailure();
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTileLoopsPass(
