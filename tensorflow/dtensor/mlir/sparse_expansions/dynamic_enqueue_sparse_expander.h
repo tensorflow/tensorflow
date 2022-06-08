@@ -13,20 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#ifndef THIRD_PARTY_DTENSOR_MLIR_SPARSE_EXPANSIONS_DYNAMICE_ENQUEUE_SPARSE_EXPANDER_H_
+#define THIRD_PARTY_DTENSOR_MLIR_SPARSE_EXPANSIONS_DYNAMICE_ENQUEUE_SPARSE_EXPANDER_H_
+
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/dtensor/mlir/sparse_expander.h"
-#include "tensorflow/dtensor/mlir/sparse_expansions/dynamic_enqueue_sparse_expander.h"
-#include "tensorflow/dtensor/mlir/sparse_expansions/matmul_sparse_expander.h"
 
 namespace tensorflow {
 namespace dtensor {
 
-// MatMul
-REGISTER_SPARSE(MatMul, TF::MatMulOp, MatMulSparseExpander);
+class DynamicEnqueueSparseExpander : public SparseExpanderBase {
+ public:
+  StatusOr<mlir::Operation*> ExpandOp(mlir::Operation* op) override;
+};
 
-// Embedding Enqueue
-REGISTER_SPARSE(EmbeddingEnqueue,
-                TF::DynamicEnqueueTPUEmbeddingArbitraryTensorBatchOp,
-                DynamicEnqueueSparseExpander);
 }  // namespace dtensor
 }  // namespace tensorflow
+
+#endif  // THIRD_PARTY_DTENSOR_MLIR_SPARSE_EXPANSIONS_DYNAMICE_ENQUEUE_SPARSE_EXPANDER_H_
