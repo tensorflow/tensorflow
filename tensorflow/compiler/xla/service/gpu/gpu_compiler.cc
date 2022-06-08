@@ -715,13 +715,20 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     se::DeviceMemoryAllocator* device_allocator) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
 
+  {
+    HloPassPipeline pipeline("hlo normalization");
+    pipeline.AddPass<ReshapeDecomposer>();
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
   HloPassPipeline pipeline("post-layout_assignment");
   pipeline.AddInvariantCheckerDebug<HloVerifier>(
       /*layout_sensitive=*/true,
       /*allow_mixed_precision=*/false,
-      LayoutAssignment::InstructionCanChangeLayout);
-
-  pipeline.AddPass<ReshapeDecomposer>();
+      LayoutAssignment::InstructionCanChangeLayout,
+      /*shape_size_func=*/
+      [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); },
+      /*check_reshape_is_bitcast=*/true);
 
   pipeline.AddPass<ReductionDegenerateDimRemover>();
   pipeline.AddPass<ReductionLayoutNormalizer>();

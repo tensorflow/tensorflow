@@ -1068,6 +1068,13 @@ Status ShapeVerifier::HandleReshape(HloInstruction* reshape) {
   TF_RET_CHECK(SameElementType(reshape->shape(), operand_shape));
   TF_RET_CHECK(ShapeUtil::ElementsIn(reshape->shape()) ==
                ShapeUtil::ElementsIn(operand_shape));
+  if (check_reshape_is_bitcast_) {
+    // After layout assignment and normalization, all reshapes should not
+    // perform data movement.
+    TF_RET_CHECK(ShapeUtil::ReshapeIsBitcast(operand_shape, reshape->shape()))
+        << "Reshape (" << reshape->ToShortString()
+        << ") requires physical data movement";
+  }
   return OkStatus();
 }
 
