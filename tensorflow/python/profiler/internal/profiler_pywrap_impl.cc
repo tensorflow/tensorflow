@@ -57,7 +57,7 @@ tensorflow::Status ValidateHostPortPair(absl::string_view host_port) {
     return tensorflow::errors::InvalidArgument(
         "Could not interpret \"", host_port, "\" as a host-port pair.");
   }
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 tensorflow::Status ValidateOptions(
@@ -82,7 +82,7 @@ tensorflow::Status ValidateOptions(
         "to the local profiler duration.");
   }
 
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 // Receives a comma delimited list of service_addresses and adds them to
@@ -225,7 +225,7 @@ tensorflow::Status Trace(
     TF_RETURN_IF_ERROR(tensorflow::profiler::Trace(logdir, num_tracing_attempts,
                                                    opts, is_cloud_tpu_session));
   }
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 tensorflow::Status Monitor(const char* service_addr, int duration_ms,
@@ -237,7 +237,7 @@ tensorflow::Status Monitor(const char* service_addr, int duration_ms,
         service_addr, duration_ms, monitoring_level, display_timestamp,
         result));
   }
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 tensorflow::Status ProfilerSessionWrapper::Start(
@@ -257,12 +257,12 @@ tensorflow::Status ProfilerSessionWrapper::Stop(tensorflow::string* result) {
     tensorflow::profiler::ConvertXSpaceToTraceEventsString(xspace, result);
     TF_RETURN_IF_ERROR(status);
   }
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 tensorflow::Status ProfilerSessionWrapper::ExportToTensorBoard() {
   if (!session_ || logdir_.empty()) {
-    return Status::OK();
+    return OkStatus();
   }
   tensorflow::profiler::XSpace xspace;
   tensorflow::Status status;
