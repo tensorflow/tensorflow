@@ -130,7 +130,7 @@ class Flags {
   // Parse the command line represented by argv[0, ..., (*argc)-1] to find flag
   // instances matching flags in flaglist[].  Update the variables associated
   // with matching flags, and remove the matching arguments from (*argc, argv).
-  // Return true iff all recognized flag values were parsed correctly, and the
+  // Return true if all recognized flag values were parsed correctly, and the
   // first remaining argument is not "--help".
   static bool Parse(int* argc, char** argv, const std::vector<Flag>& flag_list);
 
