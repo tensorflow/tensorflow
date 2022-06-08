@@ -16,6 +16,7 @@
 find_package(googletest REQUIRED)
 find_package(nsync REQUIRED)
 find_package(re2 REQUIRED)
+find_package(benchmark REQUIRED)
 
 # Generate the mutable schema_generated.h header for tests.
 set(SCHEMA_FILE ${TFLITE_SOURCE_DIR}/schema/schema.fbs)
@@ -92,9 +93,9 @@ set(TEST_FRAMEWORK_SRC
   ${TFLITE_SOURCE_DIR}/tools/tool_params.cc
   ${TFLITE_SOURCE_DIR}/tools/versioning/op_version.cc
   ${TFLITE_SOURCE_DIR}/tools/versioning/op_signature.cc
-  ${TF_SOURCE_DIR}/core/platform/default/env_time.cc
-  ${TF_SOURCE_DIR}/core/platform/default/logging.cc
-  ${TF_SOURCE_DIR}/core/platform/default/mutex.cc
+  ${TF_SOURCE_DIR}/tsl/platform/default/env_time.cc
+  ${TF_SOURCE_DIR}/tsl/platform/default/logging.cc
+  ${TF_SOURCE_DIR}/tsl/platform/default/mutex.cc
   internal/test_util.cc
   acceleration_test_util.cc
   acceleration_test_util_internal.cc
@@ -114,6 +115,7 @@ target_link_libraries(tensorflow-lite-test-base
   gmock
   nsync_cpp
   re2
+  benchmark::benchmark
   tensorflow-lite
 )
 add_dependencies(tensorflow-lite-test-base mutable_schema_file)
