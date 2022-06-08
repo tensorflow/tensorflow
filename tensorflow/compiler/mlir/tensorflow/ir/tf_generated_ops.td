@@ -35,6 +35,7 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/IR/OpAsmInterface.td"
+include "mlir/IR/SymbolInterfaces.td"
 
 def TF_AbsOp : TF_Op<"Abs", [Idempotent, NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes the absolute value of a tensor.";
@@ -10489,7 +10490,7 @@ truncated normal values using the parameters for each row.}]>:$output
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_PartitionedCallOp : TF_Op<"PartitionedCall", [CallOpInterface, NoSideEffect]> {
+def TF_PartitionedCallOp : TF_Op<"PartitionedCall", [CallOpInterface, SymbolUserOpInterface, NoSideEffect]> {
   let summary = [{
 returns `f(inputs)`, where `f`'s body is placed and partitioned.
   }];
@@ -10527,9 +10528,10 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
     func::FuncOp func() {
       return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, f());
     }
-  }];
 
-  let hasVerifier = 1;
+    // SymbolUserOpInterface verifier.
+    LogicalResult verifySymbolUses(SymbolTableCollection &symbolTable);
+  }];
 }
 
 def TF_PolygammaOp : TF_Op<"Polygamma", [NoSideEffect, ResultsBroadcastableShape]>,

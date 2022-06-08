@@ -462,14 +462,11 @@ LogicalResult ParseExampleV2Op::verify() {
 // PartitionedCallOp
 //===----------------------------------------------------------------------===//
 
-template <class OpClass>
-static LogicalResult VerifyPartitionedCall(OpClass op) {
-  auto module = op->template getParentOfType<ModuleOp>();
+template <typename CallOpClass>
+static LogicalResult VerifyPartitionedCall(CallOpClass op,
+                                           SymbolTableCollection &symbolTable) {
   SymbolRefAttr func = op->getAttr("f").template cast<SymbolRefAttr>();
-
-  auto function =
-      dyn_cast_or_null<func::FuncOp>(SymbolTable::lookupSymbolIn(module, func));
-
+  auto function = symbolTable.lookupNearestSymbolFrom<func::FuncOp>(op, func);
   if (!function) {
     return op.emitError("'f' attribute refers to an undefined function: ")
            << func;
@@ -488,14 +485,17 @@ static LogicalResult VerifyPartitionedCall(OpClass op) {
   return success();
 }
 
-LogicalResult PartitionedCallOp::verify() {
-  return VerifyPartitionedCall(*this);
+LogicalResult PartitionedCallOp::verifySymbolUses(
+    SymbolTableCollection &symbolTable) {
+  return VerifyPartitionedCall(*this, symbolTable);
 }
-LogicalResult StatefulPartitionedCallOp::verify() {
-  return VerifyPartitionedCall(*this);
+LogicalResult StatefulPartitionedCallOp::verifySymbolUses(
+    SymbolTableCollection &symbolTable) {
+  return VerifyPartitionedCall(*this, symbolTable);
 }
-LogicalResult TPUPartitionedCallOp::verify() {
-  return VerifyPartitionedCall(*this);
+LogicalResult TPUPartitionedCallOp::verifySymbolUses(
+    SymbolTableCollection &symbolTable) {
+  return VerifyPartitionedCall(*this, symbolTable);
 }
 
 //===----------------------------------------------------------------------===//
