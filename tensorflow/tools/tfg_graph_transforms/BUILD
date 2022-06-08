@@ -45,6 +45,7 @@ TFG_GRAPH_TRANSFORM_DEPS = [
     "//tensorflow/core/ir/importexport:graphdef_import",
     "//tensorflow/core/ir/importexport:savedmodel_export",
     "//tensorflow/core/ir/importexport:savedmodel_import",
+    "//tensorflow/core/ir:tf_op_registry",
 ]
 
 # Description:
