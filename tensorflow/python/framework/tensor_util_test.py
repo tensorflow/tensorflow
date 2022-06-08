@@ -752,6 +752,19 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(np.float32, a.dtype)
     self.assertAllClose(np.array([10.0, 20.0, 30.0], dtype=np.float32), a)
 
+  def testNumpyArrayWithNonNativeByteOrder(self):
+    x = np.ones(shape=(1, 2), dtype=np.float32)
+    xbswap = x.astype('>f4') # if native byte order is little endian, set swap to big endian
+
+    if sys.byteorder == "big":
+      xbswap = x.astype('<f4') # if nbo is big, set swap to little for conflict
+
+    y = tensor_util.make_ndarray(tensor_util.make_tensor_proto(x))
+    ybswap = tensor_util.make_ndarray(tensor_util.make_tensor_proto(xbswap))
+
+    self.assertTrue(np.array_equal(x, y))
+    self.assertTrue(np.array_equal(x, ybswap))
+
   def testUnsupportedDTypes(self):
     with self.assertRaises(TypeError):
       tensor_util.make_tensor_proto(np.array([1]), 0)

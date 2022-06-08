@@ -15,6 +15,7 @@
 """Utilities to create TensorProtos."""
 import numpy as np
 import six
+import sys
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
@@ -520,7 +521,17 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
     if nparray.size * nparray.itemsize >= (1 << 31):
       raise ValueError(
           "Cannot create a tensor proto whose content is larger than 2GB.")
+    
+    #ensure sys and dtype endianness match
+    """sys_is_le = sys.byteorder == 'little'
+    numpy_is_le = numpy_dtype.byteorder == '<'
+    if sys_is_le and not numpy_is_le:
+      tensor_proto.tensor_content = nparray.astype('<i2').tobytes()
+    elif not sys_is_le and numpy_is_le:
+      tensor_proto.tensor_content = nparray.astype('>f4').tobytes()
+    else:"""
     tensor_proto.tensor_content = nparray.tobytes()
+
     return tensor_proto
 
   # If we were not given values as a numpy array, compute the proto_values
