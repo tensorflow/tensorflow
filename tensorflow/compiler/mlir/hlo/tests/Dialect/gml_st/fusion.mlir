@@ -87,3 +87,66 @@ func.func @add(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
   %1 = gml_st.materialize %0 at %tile : tensor<32x32xf32> at !gml_st.tile<?x?>
   func.return %1 : tensor<?x?xf32>
 }
+
+// -----
+
+#cwise_trait = {
+  indexing_maps = [
+    affine_map<(d0) -> (d0)>,
+    affine_map<(d0) -> (d0)>,
+    affine_map<(d0) -> (d0)>
+  ],
+  iterator_types = ["parallel"]
+}
+
+// CHECK-LABEL: @fuse_into_ploop
+// CHECK-SAME:  %[[LHS:.*]]: tensor<8xf32>, %[[RHS:.*]]: tensor<8xf32>, %[[OUT:.*]]: tensor<8xf32>
+func.func @fuse_into_ploop(%lhs : tensor<8xf32>, %rhs : tensor<8xf32>,
+                           %out: tensor<8xf32>) -> tensor<8xf32> {
+  // CHECK-DAG: %[[C8:.*]] = arith.constant 8
+  // CHECK-DAG: %[[C4:.*]] = arith.constant 4
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0
+  // CHECK-DAG: %[[SPACE:.*]] = gml_st.space [8] : !gml_st.tile<8>
+  // CHECK:     %[[RES:.*]] = gml_st.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[C8]]) step (%[[C4]]) outs (%[[OUT]] at %[[SPACE]]: tensor<8xf32> at !gml_st.tile<8>) {
+  // CHECK-DAG:   %[[TILE:.*]] = gml_st.tile %[[SPACE]] [%[[I]]] [4] [1] : !gml_st.tile<8> to !gml_st.tile<4>
+  // CHECK-DAG:   %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]] at %[[TILE]] : tensor<8xf32> at !gml_st.tile<4>
+  // CHECK-DAG:   %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]] at %[[TILE]] : tensor<8xf32> at !gml_st.tile<4>
+  // CHECK-DAG:   %[[OUT_SUB:.*]] = gml_st.materialize %[[OUT]] at %[[TILE]] : tensor<8xf32> at !gml_st.tile<4>
+  // CHECK-DAG:   %[[TANH_SUB:.*]] = mhlo.tanh %[[LHS_SUB]]
+  // CHECK-DAG:   %[[COS_SUB:.*]] = mhlo.cosine %[[RHS_SUB]]
+  // CHECK:       %[[RES_SUB:.*]] = linalg.generic {indexing_maps = [#map, #map, #map], iterator_types = ["parallel"]} ins(%[[TANH_SUB]], %[[COS_SUB]] : tensor<4xf32>, tensor<4xf32>) outs(%[[OUT_SUB]] : tensor<4xf32>)
+  // CHECK:       ^bb0(%[[TANH_SCALAR:.*]]: f32, %[[COS_SCALAR:.*]]: f32, %{{.*}}: f32):
+  // CHECK-DAG:     %[[RES_SCALAR:.*]] = arith.addf %[[TANH_SCALAR]], %[[COS_SCALAR]] : f32
+  // CHECK:         linalg.yield %[[RES_SCALAR]]
+  // CHECK:       gml_st.subset_yield %[[RES_SUB]] at %[[TILE]] : tensor<4xf32> at !gml_st.tile<4>
+  // CHECK:     return %[[RES]]
+
+  %tanh = mhlo.tanh %lhs : tensor<8xf32>
+  %cos = mhlo.cosine %rhs : tensor<8xf32>
+
+  %c0 = arith.constant 0 : index
+  %c4 = arith.constant 4 : index
+  %c8 = arith.constant 8 : index
+  %space = gml_st.space [8] : !gml_st.tile<8>
+  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4)
+      outs(%out at %space: tensor<8xf32> at !gml_st.tile<8>) {
+    %tile = gml_st.tile %space [%i] [4] [1] : !gml_st.tile<8> to !gml_st.tile<4>
+    %tanh_sub = gml_st.materialize %tanh at %tile
+        : tensor<8xf32> at !gml_st.tile<4>
+    %cos_sub = gml_st.materialize %cos at %tile
+        : tensor<8xf32> at !gml_st.tile<4>
+    %out_sub = gml_st.materialize %out at %tile
+        : tensor<8xf32> at !gml_st.tile<4>
+
+    %result_sub = linalg.generic #cwise_trait
+        ins(%tanh_sub, %cos_sub : tensor<4xf32>, tensor<4xf32>)
+        outs(%out_sub : tensor<4xf32>) {
+      ^bb(%l: f32, %r: f32, %o: f32) :
+        %s = arith.addf %l, %r : f32
+        linalg.yield %s : f32
+    } -> tensor<4xf32>
+
+    gml_st.subset_yield %result_sub at %tile : tensor<4xf32> at !gml_st.tile<4>
+  } : tensor<8xf32>
+  func.return %sum : tensor<8xf32>
+}

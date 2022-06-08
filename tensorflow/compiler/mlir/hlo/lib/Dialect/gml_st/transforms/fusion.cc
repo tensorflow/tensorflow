@@ -57,12 +57,12 @@ Value materializeSpaceFromTensor(Value operand, const SmallVector<Value>& dims,
 Value whatWillBeTheTilingIface(gml_st::DynamicBroadcastInDimOp op, Value tile,
                                PatternRewriter& rewriter) {
   auto loc = op.getLoc();
-  DenseMap<int64_t, Value> localCsts;
-  auto getCst = [&](int64_t c) -> Value {
-    auto it = localCsts.find(c);
-    if (it != localCsts.end()) return it->second;
+  DenseMap<uint64_t, Value> localIndexCsts;
+  auto getIndexCst = [&](uint64_t c) -> Value {
+    auto it = localIndexCsts.find(c);
+    if (it != localIndexCsts.end()) return it->second;
     auto cst = rewriter.create<arith::ConstantIndexOp>(loc, c);
-    localCsts[c] = cst;
+    localIndexCsts[c] = cst;
     return cst;
   };
 
@@ -94,8 +94,8 @@ Value whatWillBeTheTilingIface(gml_st::DynamicBroadcastInDimOp op, Value tile,
   SmallVector<Value> argTileOffsets;
   SmallVector<Value> argTileSizes;
   for (const auto& it : llvm::enumerate(op.broadcast_dimensions())) {
-    Value argIdx = getCst(it.index());
-    Value resultIdx = getCst(it.value().getLimitedValue());
+    Value argIdx = getIndexCst(it.index());
+    Value resultIdx = getIndexCst(it.value().getLimitedValue());
 
     // If corresponding operand and result dimensions are different, the
     // dimension is expanding.
@@ -108,9 +108,9 @@ Value whatWillBeTheTilingIface(gml_st::DynamicBroadcastInDimOp op, Value tile,
     auto tileOffset = rewriter.create<OffsetOp>(loc, collapsedTile, argIdx);
     auto tileSize = rewriter.create<SizeOp>(loc, collapsedTile, argIdx);
     argTileOffsets.push_back(rewriter.create<arith::SelectOp>(
-        loc, isExpanding, getCst(0), tileOffset));
+        loc, isExpanding, getIndexCst(0), tileOffset));
     argTileSizes.push_back(rewriter.create<arith::SelectOp>(
-        loc, isExpanding, getCst(1), tileSize));
+        loc, isExpanding, getIndexCst(1), tileSize));
   }
 
   // Materialize operand tile.
@@ -141,12 +141,22 @@ Value whatWillBeTheTilingIface(gml_st::DynamicBroadcastInDimOp op, Value tile,
 }
 
 // TODO(frgossen): This should become a tiling interface.
-Value whatWillBeTheTilingIface(mhlo::AddOp op, Value tile,
-                               PatternRewriter& rewriter) {
+template <class OpTy>
+Value whatWillBeTheTilingIfaceBinaryOp(OpTy op, Value tile,
+                                       PatternRewriter& rewriter) {
   auto loc = op.getLoc();
   auto lhsSub = rewriter.create<MaterializeOp>(loc, op.lhs(), tile);
   auto rhsSub = rewriter.create<MaterializeOp>(loc, op.rhs(), tile);
-  return rewriter.create<mhlo::AddOp>(loc, lhsSub, rhsSub);
+  return rewriter.create<OpTy>(loc, lhsSub, rhsSub);
+}
+
+// TODO(frgossen): This should become a tiling interface.
+template <class OpTy>
+Value whatWillBeTheTilingIfaceUnaryOp(OpTy op, Value tile,
+                                      PatternRewriter& rewriter) {
+  auto loc = op.getLoc();
+  auto operandSub = rewriter.create<MaterializeOp>(loc, op.operand(), tile);
+  return rewriter.create<OpTy>(loc, operandSub);
 }
 
 struct TilingPattern : public OpRewritePattern<gml_st::MaterializeOp> {
@@ -169,8 +179,22 @@ struct TilingPattern : public OpRewritePattern<gml_st::MaterializeOp> {
 
     // Case `add`.
     if (auto add = llvm::dyn_cast_or_null<mhlo::AddOp>(def)) {
-      Value result = whatWillBeTheTilingIface(add, op.subset(), rewriter);
-      rewriter.replaceOp(op, result);
+      rewriter.replaceOp(
+          op, whatWillBeTheTilingIfaceBinaryOp(add, op.subset(), rewriter));
+      return success();
+    }
+
+    // Case `cos`.
+    if (auto cos = llvm::dyn_cast_or_null<mhlo::CosOp>(def)) {
+      rewriter.replaceOp(
+          op, whatWillBeTheTilingIfaceUnaryOp(cos, op.subset(), rewriter));
+      return success();
+    }
+
+    // Case `tanh`.
+    if (auto tanh = llvm::dyn_cast_or_null<mhlo::TanhOp>(def)) {
+      rewriter.replaceOp(
+          op, whatWillBeTheTilingIfaceUnaryOp(tanh, op.subset(), rewriter));
       return success();
     }
 
