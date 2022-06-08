@@ -97,13 +97,14 @@ class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
   let regions = (region SizedRegion<1>:$region);
 
   let builders = [
-    OpBuilder<(ins "ValueRange":$lowerBounds, "ValueRange":$upperBounds,
-      "ValueRange":$steps, "ValueRange":$outputs, "ValueRange":$subsets,
+    OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$lowerBounds,
+      "ValueRange":$upperBounds, "ValueRange":$steps, "ValueRange":$outputs,
+      "ValueRange":$subsets,
       CArg<"function_ref<void (OpBuilder &, Location, /*ivs=*/ValueRange,"
         "/*outputs=*/ValueRange)>", "nullptr">:$bodyBuilderFn)>,
   ];
 
-  let extraClassDeclaration = [{
+  code extraBaseClassDeclaration = [{
     /// Number of loops
     unsigned getNumLoops() { return step().size(); }
 
@@ -115,9 +116,6 @@ class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
 
     ValueRange getInductionVars() {
       return getBody()->getArguments().take_front(getNumLoops());
-    }
-    ValueRange getRegionOutputArgs() {
-      return getBody()->getArguments().take_back(outputs().size());
     }
   }];
 
@@ -144,7 +142,7 @@ def GMLST_ParallelOp : GMLST_LoopLikeOp<"parallel", []> {
     %space = gml_st.space [8, 16] : !gml_st.tile<8x16>
 
     %result = gml_st.parallel (%i) = (%c0, %c0) to (%c8, %c16) step (%c4, %c4)
-        outs(%out_ = %output at %space: tensor<8x16xf32> at !gml_st.tile<8x16>) {
+        outs(%output at %space: tensor<8x16xf32> at !gml_st.tile<8x16>) {
       %tile = gml_st.tile %space [%i, %j] [4, 4] [1, 1]
         : ! gml_st.tile<8x16> to !gml_st.tile<4x4>
       %lhs_sub = gml_st.materialize %lhs_ at %tile
@@ -161,6 +159,7 @@ def GMLST_ParallelOp : GMLST_LoopLikeOp<"parallel", []> {
     }
     ```
   }];
+  let extraClassDeclaration = extraBaseClassDeclaration;
 }
 
 def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
@@ -199,6 +198,12 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
         : tensor<4x4xf32> at !gml_st.tile<4x4>
     }
     ```
+  }];
+
+  let extraClassDeclaration = extraBaseClassDeclaration # [{
+    ValueRange getRegionOutputArgs() {
+      return getBody()->getArguments().take_back(outputs().size());
+    }
   }];
 }
 

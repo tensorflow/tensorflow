@@ -461,9 +461,9 @@ LogicalResult LoopOp::verify() {
 
 template <typename LoopTy>
 void buildLoopLikeOp(
-    OpBuilder &builder, OperationState &result, ValueRange lowerBounds,
-    ValueRange upperBounds, ValueRange steps, ValueRange outputs,
-    ValueRange subsets,
+    OpBuilder &builder, OperationState &result, TypeRange resultTypes,
+    ValueRange lowerBounds, ValueRange upperBounds, ValueRange steps,
+    ValueRange outputs, ValueRange subsets,
     function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
         bodyBuilderFn) {
   result.addOperands(lowerBounds);
@@ -471,6 +471,7 @@ void buildLoopLikeOp(
   result.addOperands(steps);
   result.addOperands(outputs);
   result.addOperands(subsets);
+  result.addTypes(resultTypes);
   result.addAttribute(
       LoopOp::getOperandSegmentSizeAttr(),
       builder.getI32VectorAttr({static_cast<int32_t>(lowerBounds.size()),
@@ -478,12 +479,6 @@ void buildLoopLikeOp(
                                 static_cast<int32_t>(steps.size()),
                                 static_cast<int32_t>(outputs.size()),
                                 static_cast<int32_t>(subsets.size())}));
-
-  // Add output types for `RankedTensorType` output arguments.
-  for (Value output : outputs) {
-    Type output_type = output.getType();
-    if (output_type.isa<RankedTensorType>()) result.addTypes(output_type);
-  }
 
   OpBuilder::InsertionGuard guard(builder);
   unsigned num_ivs = steps.size();
@@ -505,32 +500,8 @@ void buildLoopLikeOp(
   }
 }
 
-template <typename LoopTy>
-void printLoopLikeOp(LoopTy op, OpAsmPrinter &p) {
-  p << " (" << op.getInductionVars() << ") = (" << op.lowerBound() << ") to ("
-    << op.upperBound() << ") step (" << op.step() << ")";
-
-  if (!op.outputs().empty()) {
-    p << " outs (";
-    llvm::interleaveComma(
-        llvm::zip(op.getRegionOutputArgs(), op.outputs(), op.subsets()), p,
-        [&](auto it) {
-          Value output_region_arg, output, subset;
-          std::tie(output_region_arg, output, subset) = it;
-          p << output_region_arg << " = " << output << " at " << subset << ": "
-            << output.getType() << " at " << subset.getType();
-        });
-    p << ")";
-  }
-
-  p << ' ';
-  p.printRegion(op.region(), /*printEntryBlockArgs=*/false);
-  p.printOptionalAttrDict(
-      op.getOperation()->getAttrs(),
-      /*elidedAttrs=*/{LoopTy::getOperandSegmentSizeAttr()});
-}
-
 namespace {
+template <typename LoopTy>
 ParseResult parseOutputArgs(
     OpAsmParser &parser,
     SmallVectorImpl<OpAsmParser::UnresolvedOperand> &output_region_args,
@@ -538,9 +509,14 @@ ParseResult parseOutputArgs(
     SmallVectorImpl<OpAsmParser::UnresolvedOperand> &subsets,
     SmallVectorImpl<Type> &output_types, SmallVectorImpl<Type> &subset_types) {
   auto parse_elt = [&]() -> ParseResult {
-    if (parser.parseOperand(output_region_args.emplace_back(),
-                            /*allowResultNumber=*/false) ||
-        parser.parseEqual() || parser.parseOperand(outputs.emplace_back()) ||
+    if (std::is_same<LoopTy, ForOp>::value) {
+      if (parser.parseOperand(output_region_args.emplace_back(),
+                              /*allowResultNumber=*/false) ||
+          parser.parseEqual()) {
+        return failure();
+      }
+    }
+    if (parser.parseOperand(outputs.emplace_back()) ||
         parser.parseKeyword("at") ||
         parser.parseOperand(subsets.emplace_back()) || parser.parseColon() ||
         parser.parseType(output_types.emplace_back()) ||
@@ -593,17 +569,34 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
   if (succeeded(parser.parseOptionalKeyword("outs"))) {
     SMLoc loc = parser.getCurrentLocation();
 
-    if (parseOutputArgs(parser, output_region_args, outputs, subsets,
-                        output_types, subset_types))
+    if (parseOutputArgs<LoopTy>(parser, output_region_args, outputs, subsets,
+                                output_types, subset_types))
       return failure();
 
     if (parser.resolveOperands(outputs, output_types, loc, result.operands) ||
         parser.resolveOperands(subsets, subset_types, loc, result.operands))
       return failure();
-    for (Type outputType : output_types)
-      if (outputType.isa<RankedTensorType>()) result.addTypes(outputType);
   }
 
+  // Parse the body.
+  SmallVector<Type, 4> region_types(ivs.size(), builder.getIndexType());
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> region_operands(ivs);
+
+  if (!output_region_args.empty()) {
+    region_operands.append(output_region_args);
+    region_types.append(output_types);
+  }
+
+  SmallVector<OpAsmParser::Argument, 4> region_args;
+  for (auto arg_and_type : llvm::zip(region_operands, region_types)) {
+    auto &arg = region_args.emplace_back();
+    std::tie(arg.ssaName, arg.type) = arg_and_type;
+  }
+  Region *body = result.addRegion();
+  if (parser.parseRegion(*body, region_args)) return failure();
+
+  // Parse attributes.
+  if (parser.parseOptionalAttrDict(result.attributes)) return failure();
   result.addAttribute(
       LoopTy::getOperandSegmentSizeAttr(),
       builder.getI32VectorAttr({static_cast<int32_t>(lower.size()),
@@ -612,27 +605,9 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
                                 static_cast<int32_t>(outputs.size()),
                                 static_cast<int32_t>(subsets.size())}));
 
-  // Parse the body.
-  Region *body = result.addRegion();
-
-  SmallVector<Type, 4> region_types(ivs.size(), builder.getIndexType());
-  region_types.append(output_types);
-
-  SmallVector<OpAsmParser::UnresolvedOperand, 4> region_operands(ivs);
-  region_operands.append(output_region_args);
-
-  SmallVector<OpAsmParser::Argument, 4> region_args;
-
-  for (auto arg_and_type : llvm::zip(region_operands, region_types)) {
-    auto &arg = region_args.emplace_back();
-    arg.ssaName = std::get<0>(arg_and_type);
-    arg.type = std::get<1>(arg_and_type);
-  }
-
-  if (parser.parseRegion(*body, region_args)) return failure();
-
-  // Parse optional attributes.
-  if (parser.parseOptionalAttrDict(result.attributes)) return failure();
+  // Parser result types.
+  if (parser.parseColon() || parser.parseTypeList(result.types))
+    return failure();
 
   return success();
 }
@@ -643,35 +618,39 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
 
 Region &ParallelOp::getLoopBody() { return region(); }
 
-LogicalResult ParallelOp::verify() {
-  // Check if types of output arguments match region args types.
-  for (auto &item :
-       llvm::enumerate(llvm::zip(outputs(), getRegionOutputArgs()))) {
-    Value output, outputRegionArg;
-    unsigned index = item.index();
-    std::tie(output, outputRegionArg) = item.value();
-    if (output.getType() != outputRegionArg.getType()) {
-      return emitOpError("expected output arg ")
-             << index << " with type = " << output.getType()
-             << " to match region arg " << index + getNumLoops()
-             << " type = " << outputRegionArg.getType();
-    }
-  }
-  return success();
-}
+LogicalResult ParallelOp::verify() { return success(); }
 
 void ParallelOp::build(
-    OpBuilder &builder, OperationState &result, ValueRange lowerBounds,
-    ValueRange upperBounds, ValueRange steps, ValueRange outputs,
-    ValueRange subsets,
+    OpBuilder &builder, OperationState &result, TypeRange resultTypes,
+    ValueRange lowerBounds, ValueRange upperBounds, ValueRange steps,
+    ValueRange outputs, ValueRange subsets,
     function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
         bodyBuilderFn) {
-  buildLoopLikeOp<ParallelOp>(builder, result, lowerBounds, upperBounds, steps,
-                              outputs, subsets, bodyBuilderFn);
+  buildLoopLikeOp<ParallelOp>(builder, result, resultTypes, lowerBounds,
+                              upperBounds, steps, outputs, subsets,
+                              bodyBuilderFn);
 }
 
 void ParallelOp::print(OpAsmPrinter &p) {
-  printLoopLikeOp<ParallelOp>(*this, p);
+  p << " (" << getInductionVars() << ") = (" << lowerBound() << ") to ("
+    << upperBound() << ") step (" << step() << ")";
+
+  if (!outputs().empty()) {
+    p << " outs (";
+    llvm::interleaveComma(llvm::zip(outputs(), subsets()), p, [&](auto it) {
+      Value output, subset;
+      std::tie(output, subset) = it;
+      p << output << " at " << subset << ": " << output.getType() << " at "
+        << subset.getType();
+    });
+    p << ")";
+  }
+
+  p << ' ';
+  p.printRegion(region(), /*printEntryBlockArgs=*/false);
+  p.printOptionalAttrDict(
+      getOperation()->getAttrs(),
+      /*elidedAttrs=*/{ParallelOp::getOperandSegmentSizeAttr()});
 }
 
 ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
@@ -702,16 +681,37 @@ LogicalResult ForOp::verify() {
 }
 
 void ForOp::build(
-    OpBuilder &builder, OperationState &result, ValueRange lowerBounds,
-    ValueRange upperBounds, ValueRange steps, ValueRange outputs,
-    ValueRange subsets,
+    OpBuilder &builder, OperationState &result, TypeRange resultTypes,
+    ValueRange lowerBounds, ValueRange upperBounds, ValueRange steps,
+    ValueRange outputs, ValueRange subsets,
     function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
         bodyBuilderFn) {
-  buildLoopLikeOp<ForOp>(builder, result, lowerBounds, upperBounds, steps,
-                         outputs, subsets, bodyBuilderFn);
+  buildLoopLikeOp<ForOp>(builder, result, resultTypes, lowerBounds, upperBounds,
+                         steps, outputs, subsets, bodyBuilderFn);
 }
 
-void ForOp::print(OpAsmPrinter &p) { printLoopLikeOp<ForOp>(*this, p); }
+void ForOp::print(OpAsmPrinter &p) {
+  p << " (" << getInductionVars() << ") = (" << lowerBound() << ") to ("
+    << upperBound() << ") step (" << step() << ")";
+
+  if (!outputs().empty()) {
+    p << " outs (";
+    llvm::interleaveComma(
+        llvm::zip(getRegionOutputArgs(), outputs(), subsets()), p,
+        [&](auto it) {
+          Value output_region_arg, output, subset;
+          std::tie(output_region_arg, output, subset) = it;
+          p << output_region_arg << " = " << output << " at " << subset << ": "
+            << output.getType() << " at " << subset.getType();
+        });
+    p << ")";
+  }
+
+  p << ' ';
+  p.printRegion(region(), /*printEntryBlockArgs=*/false);
+  p.printOptionalAttrDict(getOperation()->getAttrs(),
+                          /*elidedAttrs=*/{ForOp::getOperandSegmentSizeAttr()});
+}
 
 ParseResult ForOp::parse(OpAsmParser &parser, OperationState &result) {
   return parseLoopLikeOp<ForOp>(parser, result);

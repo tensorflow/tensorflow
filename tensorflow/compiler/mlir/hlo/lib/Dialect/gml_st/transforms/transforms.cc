@@ -361,7 +361,7 @@ FailureOr<Operation *> tileToPoints(RewriterBase &b,
     upperBounds.push_back(b.create<tensor::DimOp>(loc, output, i));
   }
   auto loop = b.create<ParallelOp>(
-      loc, lowerBounds, upperBounds, steps, output, space,
+      loc, output.getType(), lowerBounds, upperBounds, steps, output, space,
       [&](OpBuilder &b, Location nestedLoc, ValueRange ivs,
           ValueRange /*outputs*/) {
         Value point = b.create<PointOp>(
