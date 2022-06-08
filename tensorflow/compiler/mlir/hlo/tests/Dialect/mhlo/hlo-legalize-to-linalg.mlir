@@ -1374,6 +1374,20 @@ func.func @convert_f32_to_i32(%input: tensor<2x2xf32>) -> tensor<2x2xi32> {
 
 // -----
 
+// CHECK-LABEL: func @convert_bf16_to_f16
+func.func @convert_bf16_to_f16(%input: tensor<2x2xbf16>) -> tensor<2x2xf16> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xbf16>) -> tensor<2x2xf16>
+  func.return %result : tensor<2x2xf16>
+}
+// CHECK: linalg.init_tensor
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: bf16, %{{.*}}: f16):
+// CHECK-NEXT:   %[[EXT:.*]] = arith.extf %[[OPERAND_IN]] : bf16 to f32
+// CHECK-NEXT:   %[[TRUNC:.*]] = arith.truncf %[[EXT]] : f32 to f16
+// CHECK-NEXT:   linalg.yield %[[TRUNC]] : f16
+
+// -----
+
 // CHECK-LABEL: func @convert_c64_to_c128
 func.func @convert_c64_to_c128(%input: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f64>> {
   %result = "mhlo.convert"(%input) : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f64>>
