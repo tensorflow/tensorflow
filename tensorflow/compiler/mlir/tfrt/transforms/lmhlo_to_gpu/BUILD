@@ -42,6 +42,7 @@ cc_library(
     tags = ["gpu"],
     deps = [
         "//tensorflow/stream_executor:dnn",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@tf_runtime//:basic_kernels_opdefs",
