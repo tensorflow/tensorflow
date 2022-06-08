@@ -16,9 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_VERIFIER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_VERIFIER_H_
 
-#include <functional>
 #include <memory>
-#include <utility>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
@@ -31,12 +29,10 @@ namespace xla {
 class ShapeVerifier : public DfsHloVisitor {
  public:
   ShapeVerifier(bool layout_sensitive, bool allow_mixed_precision,
-                std::function<int64_t(const Shape&)> shape_size_function,
-                bool check_reshape_is_bitcast = false)
+                std::function<int64_t(const Shape&)> shape_size_function)
       : layout_sensitive_(layout_sensitive),
         allow_mixed_precision_(allow_mixed_precision),
-        shape_size_function_(shape_size_function),
-        check_reshape_is_bitcast_(check_reshape_is_bitcast) {}
+        shape_size_function_(shape_size_function) {}
 
   // Verifies that entry computation layout matches parameters and root shape of
   // the module's entry computation.
@@ -214,8 +210,6 @@ class ShapeVerifier : public DfsHloVisitor {
 
   // Returns a target-specific shape size.
   std::function<int64_t(const Shape&)> shape_size_function_;
-
-  bool check_reshape_is_bitcast_;
 };
 
 // An interface used to encapsulate target-specific verification quirks.
@@ -257,12 +251,10 @@ class DefaultVerifierMetadata : public TargetVerifierMetadata {
  public:
   DefaultVerifierMetadata(
       bool layout_sensitive, bool allow_mixed_precision,
-      std::function<int64_t(const Shape&)> shape_size_function,
-      bool check_reshape_is_bitcast = false)
+      std::function<int64_t(const Shape&)> shape_size_function)
       : TargetVerifierMetadata(shape_size_function),
         layout_sensitive_(layout_sensitive),
-        allow_mixed_precision_(allow_mixed_precision),
-        check_reshape_is_bitcast_(check_reshape_is_bitcast) {}
+        allow_mixed_precision_(allow_mixed_precision) {}
 
   // Creates a ShapeVerifier that checks that shapes match inferred
   // expectations. This creates a new verifier every time because ShapeVerifier,
@@ -270,8 +262,7 @@ class DefaultVerifierMetadata : public TargetVerifierMetadata {
   // the verifier.
   std::unique_ptr<ShapeVerifier> GetVerifier() const override {
     return absl::make_unique<ShapeVerifier>(
-        layout_sensitive_, allow_mixed_precision_, shape_size_function_,
-        check_reshape_is_bitcast_);
+        layout_sensitive_, allow_mixed_precision_, shape_size_function_);
   }
 
   bool IsLayoutSensitive() const override { return layout_sensitive_; }
@@ -279,7 +270,6 @@ class DefaultVerifierMetadata : public TargetVerifierMetadata {
  private:
   bool layout_sensitive_;
   bool allow_mixed_precision_;
-  bool check_reshape_is_bitcast_;
 };
 
 // HLO pass that verifies invariants of HLO instructions for each computation in
@@ -291,16 +281,13 @@ class HloVerifier : public HloModulePass {
       std::function<bool(const HloInstruction*)>
           instruction_can_change_layout_func = {},
       std::function<int64_t(const Shape&)> shape_size_func =
-          [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); },
-      bool check_reshape_is_bitcast = false)
+          [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); })
       : target_metadata_(absl::make_unique<DefaultVerifierMetadata>(
-            layout_sensitive, allow_mixed_precision, shape_size_func,
-            check_reshape_is_bitcast)),
+            layout_sensitive, allow_mixed_precision, shape_size_func)),
         instruction_can_change_layout_func_(
             std::move(instruction_can_change_layout_func)),
         context_("Unknown") {
     CHECK(instruction_can_change_layout_func_ == nullptr || layout_sensitive);
-    CHECK(!check_reshape_is_bitcast || layout_sensitive);
   }
 
   // Uses custom target metadata

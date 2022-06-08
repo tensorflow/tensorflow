@@ -589,12 +589,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     HloModule* module, bool is_aot_compile,
     LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile) {
-  {
-    HloPassPipeline pipeline("hlo normalization");
-    pipeline.AddPass<ReshapeDecomposer>();
-    TF_RETURN_IF_ERROR(pipeline.Run(module).status());
-  }
-
   HloPassPipeline pipeline("HLO passes after layout assignment");
 
   // CopyInsertion is still needed by BufferAssignment. MLIR passes will handle
@@ -609,11 +603,9 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   pipeline.AddPass<HloPassPipeline>("after layout assignment")
       .AddInvariantCheckerDebug<HloVerifier>(
           /*layout_sensitive=*/true,
-          /*allow_mixed_precision=*/false,
-          /*instruction_can_change_layout_func=*/nullptr,
-          /*shape_size_func=*/
-          [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); },
-          /*check_reshape_is_bitcast=*/true);
+          /*allow_mixed_precision=*/false);
+
+  pipeline.AddPass<ReshapeDecomposer>();
 
   // Add a fusion pass now that layout assignment is done.
   pipeline.AddPass<CpuInstructionFusion>();

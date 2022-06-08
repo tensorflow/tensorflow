@@ -603,59 +603,6 @@ TEST_F(HloVerifierTestLayoutSensitive, BitcastNeedsSameNumberOfElements) {
                         "(12) and operand (8)"));
 }
 
-TEST_F(HloVerifierTestLayoutSensitive, TransposingReshape) {
-  const char* const hlo_string = R"(
-  HloModule module
-
-  ENTRY computation {
-    p = f32[8,3]{1,0} parameter(0)
-    ROOT r = f32[4,2,3]{0,1,2} reshape(p)
-  }
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
-
-  HloVerifier verifier(
-      /*layout_sensitive=*/true,
-      /*allow_mixed_precision=*/false,
-      /*instruction_can_change_layout_func=*/nullptr,
-      /*shape_size_func=*/
-      [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); },
-      /*check_reshape_is_bitcast=*/true);
-
-  auto status = verifier.Run(module.get()).status();
-  ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("requires physical data movement"));
-
-  HloVerifier verifier_nocheck(
-      /*layout_sensitive=*/true,
-      /*allow_mixed_precision=*/false,
-      /*instruction_can_change_layout_func=*/nullptr,
-      /*shape_size_func=*/
-      [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); },
-      /*check_reshape_is_bitcast=*/false);
-
-  status = verifier_nocheck.Run(module.get()).status();
-  ASSERT_TRUE(status.ok());
-}
-
-TEST_F(HloVerifierTestLayoutSensitive, BitcastReshape) {
-  const char* const hlo_string = R"(
-  HloModule module
-
-  ENTRY computation {
-    p = f32[8]{0} parameter(0)
-    ROOT r = f32[4,2]{1,0} reshape(p)
-  }
-)";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
-  auto status = verifier().Run(module.get()).status();
-  ASSERT_TRUE(status.ok());
-}
-
 TEST_F(HloVerifierTest, SelectMixedPrecisionNotAllowed) {
   const char* const hlo_string = R"(
   HloModule Module
