@@ -944,13 +944,17 @@ cc_library(
 # TODO(ezhulenev): Extract `RunTriangularSolve` into a separate library.
 cc_library(
     name = "triangular_solve_thunk",
-    srcs = ["triangular_solve_thunk.cc"],
-    hdrs = ["triangular_solve_thunk.h"],
-    deps = [
+    srcs = if_gpu_is_configured(["triangular_solve_thunk.cc"]),
+    hdrs = if_gpu_is_configured(["triangular_solve_thunk.h"]),
+    deps = if_gpu_is_configured([
         ":buffer_allocations",
         ":cusolver_context",
         ":precompiled_kernels",
         ":thunk",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -962,11 +966,7 @@ cc_library(
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:stream_header",
         "//tensorflow/stream_executor/gpu:gpu_asm_opts",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
-    ],
+    ]),
 )
 
 cc_library(
