@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -141,15 +142,6 @@ Value whatWillBeTheFusionIface(gml_st::DynamicBroadcastInDimOp op, Value tile,
       op.known_nonexpanding_dimensionsAttr());
 }
 
-// TODO(frgossen): This should become a fusion interface.
-template <class OpTy>
-Value whatWillBeTheFusionIfaceUnaryOp(OpTy op, Value tile,
-                                      PatternRewriter& rewriter) {
-  auto loc = op.getLoc();
-  auto operandSub = rewriter.create<MaterializeOp>(loc, op.operand(), tile);
-  return rewriter.create<OpTy>(loc, operandSub);
-}
-
 struct FusionPattern : public OpRewritePattern<gml_st::MaterializeOp> {
   using OpRewritePattern<gml_st::MaterializeOp>::OpRewritePattern;
 
@@ -158,8 +150,10 @@ struct FusionPattern : public OpRewritePattern<gml_st::MaterializeOp> {
     Operation* def = op.source().getDefiningOp();
 
     if (auto iface = llvm::dyn_cast_or_null<FusionIterface>(def)) {
-      rewriter.replaceOp(op, iface.fuse(op, rewriter));
-      return success();
+      if (Value fused = iface.fuse(op, rewriter)) {
+        rewriter.replaceOp(op, fused);
+        return success();
+      }
     }
 
     // TODO(frgossen): The below cases should eventually be replaced by the use
@@ -173,27 +167,14 @@ struct FusionPattern : public OpRewritePattern<gml_st::MaterializeOp> {
       return success();
     }
 
-    // Case `cos`.
-    if (auto cos = llvm::dyn_cast_or_null<mhlo::CosOp>(def)) {
-      rewriter.replaceOp(
-          op, whatWillBeTheFusionIfaceUnaryOp(cos, op.subset(), rewriter));
-      return success();
-    }
-
-    // Case `tanh`.
-    if (auto tanh = llvm::dyn_cast_or_null<mhlo::TanhOp>(def)) {
-      rewriter.replaceOp(
-          op, whatWillBeTheFusionIfaceUnaryOp(tanh, op.subset(), rewriter));
-      return success();
-    }
-
     return failure();
   }
 };
 
 class FusionPass : public FusionPassBase<FusionPass> {
   void getDependentDialects(DialectRegistry& registry) const final {
-    registry.insert<GmlStDialect>();
+    registry
+        .insert<GmlStDialect, math::MathDialect, arith::ArithmeticDialect>();
     registerFusionInterfaceExternalModels(registry);
   }
 

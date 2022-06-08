@@ -20,8 +20,6 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.cc.inc"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
-#include "mlir/Support/LogicalResult.h"
 
 namespace mlir {
 namespace gml_st {
@@ -29,33 +27,34 @@ namespace gml_st {
 namespace {
 
 template <typename OpTy>
-struct BinaryElementwiseFusionInterface
-    : public FusionIterface::ExternalModel<
-          BinaryElementwiseFusionInterface<OpTy>, OpTy> {
+struct ElementwiseFusionInterface
+    : public FusionIterface::ExternalModel<ElementwiseFusionInterface<OpTy>,
+                                           OpTy> {
   Value fuse(Operation* op, MaterializeOp materializeOp,
              OpBuilder& builder) const {
-    auto binaryElementwiseOp = cast<OpTy>(op);
+    // Supports tile and point subsets.
     Value subset = materializeOp.subset();
-    Location loc = materializeOp.getLoc();
+    auto subsetTy = subset.getType();
+    if (!subsetTy.isa<PointType, TileType>()) return {};
 
-    return llvm::TypeSwitch<Type, Value>(subset.getType())
-        .Case([&](PointType) -> Value {
-          auto lhs = builder.create<MaterializeOp>(
-              loc, binaryElementwiseOp.lhs(), subset);
-          auto rhs = builder.create<MaterializeOp>(
-              loc, binaryElementwiseOp.rhs(), subset);
-          return mhlo::MhloOpToStdScalarOp::map<OpTy>(
-              binaryElementwiseOp, materializeOp.getType(),
-              llvm::ArrayRef<Value>{lhs, rhs}, &builder);
-        })
+    // Materialize subsets for all arguments.
+    auto ewiseOp = cast<OpTy>(op);
+    Location loc = materializeOp.getLoc();
+    auto subsetArgs = llvm::to_vector(
+        llvm::map_range(ewiseOp->getOperands(), [&](const auto& arg) -> Value {
+          return builder.create<MaterializeOp>(loc, arg, subset);
+        }));
+
+    // Materialize elementwise op for subset.
+    return llvm::TypeSwitch<Type, Value>(subsetTy)
         .Case([&](TileType) -> Value {
-          auto lhs = builder.create<MaterializeOp>(
-              loc, binaryElementwiseOp.lhs(), subset);
-          auto rhs = builder.create<MaterializeOp>(
-              loc, binaryElementwiseOp.rhs(), subset);
-          return builder.create<OpTy>(loc, lhs, rhs);
+          return builder.create<OpTy>(loc, subsetArgs);
         })
-        .Default([&](Type) -> Value { return {}; });
+        .Case([&](PointType) -> Value {
+          return mhlo::MhloOpToStdScalarOp::map<OpTy>(
+              ewiseOp, materializeOp.getType(), subsetArgs, &builder);
+        })
+        .Default([](Type) -> Value { return {}; });
   }
 };
 
@@ -64,9 +63,10 @@ struct BinaryElementwiseFusionInterface
 void registerFusionInterfaceExternalModels(DialectRegistry& registry) {
   registry.insert<mhlo::MhloDialect>();
   registry.addExtension(+[](MLIRContext* ctx, mhlo::MhloDialect* /*dialect*/) {
-    mhlo::AddOp::attachInterface<BinaryElementwiseFusionInterface<mhlo::AddOp>>(
-        *ctx);
-    mhlo::SubOp::attachInterface<BinaryElementwiseFusionInterface<mhlo::SubOp>>(
+    mhlo::AddOp::attachInterface<ElementwiseFusionInterface<mhlo::AddOp>>(*ctx);
+    mhlo::SubOp::attachInterface<ElementwiseFusionInterface<mhlo::SubOp>>(*ctx);
+    mhlo::CosOp::attachInterface<ElementwiseFusionInterface<mhlo::CosOp>>(*ctx);
+    mhlo::TanhOp::attachInterface<ElementwiseFusionInterface<mhlo::TanhOp>>(
         *ctx);
   });
 }

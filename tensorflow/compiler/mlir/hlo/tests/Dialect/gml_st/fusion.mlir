@@ -90,6 +90,48 @@ func.func @add(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
 
 // -----
 
+// CHECK-LABEL: @cos
+// CHECK-SAME:  %[[ARG:.*]]: tensor<32x32xf32>, %[[TILE:.*]]: !gml_st.tile<?x?>
+func.func @cos(%arg: tensor<32x32xf32>, %tile: !gml_st.tile<?x?>)
+    -> tensor<?x?xf32> {
+  // CHECK-DAG: %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]] at %[[TILE]] : tensor<32x32xf32> at !gml_st.tile<?x?>
+  // CHECK-DAG: %[[RES:.*]] = mhlo.cosine %[[ARG_SUB]] : tensor<?x?xf32>
+  // CHECK:     return %[[RES]]
+  %0 = mhlo.cosine %arg : tensor<32x32xf32>
+  %1 = gml_st.materialize %0 at %tile : tensor<32x32xf32> at !gml_st.tile<?x?>
+  return %1 : tensor<?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @add_point
+// CHECK-SAME:  %[[LHS:.*]]: tensor<32x32xf32>, %[[RHS:.*]]: tensor<32x32xf32>, %[[POINT:.*]]: !gml_st.point
+func.func @add_point(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
+    %point: !gml_st.point) -> f32 {
+  // CHECK-DAG: %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]] at %[[POINT]] : tensor<32x32xf32> at !gml_st.point
+  // CHECK-DAG: %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]] at %[[POINT]] : tensor<32x32xf32> at !gml_st.point
+  // CHECK-DAG: %[[RES:.*]] = arith.addf %[[LHS_SUB]], %[[RHS_SUB]]
+  // CHECK:     return %[[RES]]
+  %0 = mhlo.add %lhs, %rhs : tensor<32x32xf32>
+  %1 = gml_st.materialize %0 at %point : tensor<32x32xf32> at !gml_st.point
+  func.return %1 : f32
+}
+
+// -----
+
+// CHECK-LABEL: @cos_point
+// CHECK-SAME:  %[[ARG:.*]]: tensor<32x32xf32>, %[[POINT:.*]]: !gml_st.point
+func.func @cos_point(%arg: tensor<32x32xf32>, %point: !gml_st.point) -> f32 {
+  // CHECK-DAG: %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]] at %[[POINT]] : tensor<32x32xf32> at !gml_st.point
+  // CHECK-DAG: %[[RES:.*]] = math.cos %[[ARG_SUB]]
+  // CHECK:     return %[[RES]]
+  %0 = mhlo.cosine %arg : tensor<32x32xf32>
+  %1 = gml_st.materialize %0 at %point : tensor<32x32xf32> at !gml_st.point
+  return %1 : f32
+}
+
+// -----
+
 #cwise_trait = {
   indexing_maps = [
     affine_map<(d0) -> (d0)>,

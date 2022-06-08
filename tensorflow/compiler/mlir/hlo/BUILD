@@ -2536,6 +2536,7 @@ cc_library(
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
