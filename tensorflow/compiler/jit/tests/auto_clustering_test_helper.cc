@@ -49,7 +49,7 @@ StatusOr<string> SummarizeClustering(const GraphDef& auto_clustered_graph_def) {
   int clustered_nodes = 0;
   for (Node* n : graph.op_nodes()) {
     int cluster = kNoCluster;
-    if (absl::optional<absl::string_view> maybe_cluster =
+    if (std::optional<absl::string_view> maybe_cluster =
             GetXlaClusterForNode(*n)) {
       maybe_cluster->remove_prefix(absl::string_view("cluster_").size());
       TF_RET_CHECK(absl::SimpleAtoi(*maybe_cluster, &cluster));

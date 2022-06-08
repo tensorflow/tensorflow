@@ -783,12 +783,12 @@ class PoolingDescriptor {
 class AlgorithmDesc {
  public:
   typedef int64_t Index;
-  AlgorithmDesc() : AlgorithmDesc(0, false, absl::nullopt) {}
+  AlgorithmDesc() : AlgorithmDesc(0, false, std::nullopt) {}
   explicit AlgorithmDesc(AlgorithmProto proto) : proto_(std::move(proto)) {}
   AlgorithmDesc(Index algo_id, bool use_tensor_ops)
-      : AlgorithmDesc(algo_id, use_tensor_ops, absl::nullopt) {}
+      : AlgorithmDesc(algo_id, use_tensor_ops, std::nullopt) {}
   AlgorithmDesc(Index algo_id, bool use_tensor_ops,
-                absl::optional<uint64_t> workspace_size) {
+                std::optional<uint64_t> workspace_size) {
     proto_.set_is_cudnn_frontend(false);
     proto_.set_algo_id(algo_id);
     proto_.set_math_type(use_tensor_ops ? AlgorithmProto::TENSOR_OP_MATH
@@ -799,17 +799,17 @@ class AlgorithmDesc {
   }
   AlgorithmDesc(int64_t engine_id,
                 const std::vector<std::pair<int64_t, int64_t>>& tuning_knobs,
-                absl::optional<uint64_t> workspace_size);
+                std::optional<uint64_t> workspace_size);
   bool is_cudnn_frontend() const { return proto_.is_cudnn_frontend(); }
 
   bool tensor_ops_enabled() const {
     return proto_.math_type() == AlgorithmProto::TENSOR_OP_MATH;
   }
-  absl::optional<uint64_t> workspace_size() const {
+  std::optional<uint64_t> workspace_size() const {
     if (proto_.has_workspace_size()) {
       return proto_.workspace_size().value();
     }
-    return absl::nullopt;
+    return std::nullopt;
   }
   Index algo_id() const { return proto_.algo_id(); }
 
@@ -849,7 +849,7 @@ class ProfileResult {
   void set_scratch_size(size_t val) { scratch_size_ = val; }
 
  private:
-  absl::optional<AlgorithmDesc> algorithm_;
+  std::optional<AlgorithmDesc> algorithm_;
   float elapsed_time_in_ms_ = std::numeric_limits<float>::max();
   // The scratch size algorithm_ requires. Currently it's only populated by
   // convolutions.
@@ -953,15 +953,15 @@ class AlgorithmConfig {
     }
   }
 
-  absl::optional<AlgorithmDesc> algorithm() const { return algorithm_; }
+  std::optional<AlgorithmDesc> algorithm() const { return algorithm_; }
   void set_algorithm(AlgorithmDesc val) { algorithm_ = val; }
-  absl::optional<AlgorithmDesc> algorithm_no_scratch() const {
+  std::optional<AlgorithmDesc> algorithm_no_scratch() const {
     return algorithm_no_scratch_;
   }
   void set_algorithm_no_scratch(AlgorithmDesc val) {
     algorithm_no_scratch_ = val;
   }
-  absl::optional<size_t> scratch_size() const { return scratch_size_; }
+  std::optional<size_t> scratch_size() const { return scratch_size_; }
   void set_scratch_size(size_t val) { scratch_size_ = val; }
   bool operator==(const AlgorithmConfig& other) const {
     return this->algorithm_ == other.algorithm_ &&
@@ -992,9 +992,9 @@ class AlgorithmConfig {
   }
 
  private:
-  absl::optional<AlgorithmDesc> algorithm_;
-  absl::optional<AlgorithmDesc> algorithm_no_scratch_;
-  absl::optional<size_t> scratch_size_;
+  std::optional<AlgorithmDesc> algorithm_;
+  std::optional<AlgorithmDesc> algorithm_no_scratch_;
+  std::optional<size_t> scratch_size_;
 };
 
 // Describes a local response normalization (LRN). LRN is used e.g. in

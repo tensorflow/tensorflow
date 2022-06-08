@@ -86,7 +86,7 @@ class ClusterBatchSize {
   // Sets the max batch size assuming that the object doesn't have a max batch
   // size yet.
   ClusterBatchSize& SetMaxBatchSize(int max_batch_size);
-  absl::optional<int> GetOptionalMaxBatchSize() const;
+  std::optional<int> GetOptionalMaxBatchSize() const;
 
   // Merge `other` into the current ClusterBatchSize if the two are not
   // conflicting. Two ClusterBatchSizes are conflicting iff they both have a
@@ -107,11 +107,11 @@ class ClusterBatchSize {
   std::string ToString() const;
 
  private:
-  ClusterBatchSize& SetBatchSize(const absl::optional<int>& batch_size);
-  ClusterBatchSize& SetMaxBatchSize(const absl::optional<int>& batch_size);
+  ClusterBatchSize& SetBatchSize(const std::optional<int>& batch_size);
+  ClusterBatchSize& SetMaxBatchSize(const std::optional<int>& batch_size);
 
-  absl::optional<int> batch_size_;
-  absl::optional<int> max_batch_size_;
+  std::optional<int> batch_size_;
+  std::optional<int> max_batch_size_;
 };
 
 inline std::ostream& operator<<(std::ostream& os,

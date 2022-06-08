@@ -159,7 +159,7 @@ void SetLayerNameHelper(nvinfer1::ILayer* layer, absl::string_view engine_name,
 
 // Returns a string in the form of <sub_op_name><sub_op_instance>.
 std::string GetLayerNameSuffix(absl::string_view sub_op_name,
-                               absl::optional<int> sub_op_instance) {
+                               std::optional<int> sub_op_instance) {
   std::string op_suffix(sub_op_name);
   if (sub_op_instance.has_value()) {
     op_suffix =
@@ -381,7 +381,7 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
 // Prepares a dynamic shape tensor for broadcast by adding leading 1 dimensions.
 Status DynamicBroadcast(ITensorProxyPtr operand, OpConverterParams* params,
                         ITensorProxyPtr* output, int broadcasted_nbDims,
-                        absl::optional<int> op_instance) {
+                        std::optional<int> op_instance) {
   int operand_nbDims = operand->getDimensions().nbDims;
   if (broadcasted_nbDims > operand_nbDims) {
     if (params->validation_only) return Status::OK();
@@ -414,7 +414,7 @@ Status BroadcastWeights(std::unique_ptr<TRT_TensorOrWeights>& p,
 Status ApplyBroadcast(std::unique_ptr<TRT_TensorOrWeights>& operand,
                       const DimsAdapter& broadcasted_dims,
                       OpConverterParams* params,
-                      absl::optional<int> op_instance) {
+                      std::optional<int> op_instance) {
   if (operand->is_weights()) {
     TF_RETURN_IF_ERROR(BroadcastWeights(operand, broadcasted_dims));
   } else {
@@ -525,7 +525,7 @@ Status CreateBroadcastableScalarConstant(OpConverterParams* params, float value,
 // create a shape tensor from individual dimension sizes.
 StatusOr<ITensorProxyPtr> ConcatenateTensors(
     OpConverterParams* params, const std::vector<ITensorProxyPtr> input_tensors,
-    absl::optional<int> op_instance = absl::nullopt) {
+    std::optional<int> op_instance = std::nullopt) {
   std::vector<nvinfer1::ITensor*> trt_input_tensors;
   for (const auto& t : input_tensors) {
     trt_input_tensors.push_back(t->trt_tensor());
@@ -1461,8 +1461,8 @@ Status Converter::GetWeightRange(const TRT_ShapedWeights& weights,
 // layer name conflicts.
 void Converter::SetLayerName(nvinfer1::ILayer* layer, const NodeDef& node_def,
                              absl::string_view sub_op_name,
-                             absl::optional<int> sub_op_instance,
-                             absl::optional<std::string> origin_node_name) {
+                             std::optional<int> sub_op_instance,
+                             std::optional<std::string> origin_node_name) {
   std::string sub_op_suffix = GetLayerNameSuffix(sub_op_name, sub_op_instance);
   if (sub_op_suffix.empty()) {
     SetLayerNameHelper(layer, engine_name_, node_def.name());
@@ -1483,7 +1483,7 @@ void Converter::SetLayerName(nvinfer1::ILayer* layer, const NodeDef& node_def,
 void Converter::SetLayerName(nvinfer1::ILayer* layer,
                              absl::string_view main_op_name,
                              absl::string_view sub_op_name,
-                             absl::optional<int> sub_op_instance) {
+                             std::optional<int> sub_op_instance) {
   std::string layer_name_suffix =
       GetLayerNameSuffix(sub_op_name, sub_op_instance);
   SetLayerNameHelper(layer, engine_name_,
@@ -1501,8 +1501,8 @@ Status PrepareTensorForShape(Converter* converter,
                              const DimsAdapter& dims,
                              const bool validation_only,
                              ITensorProxyPtr* tensor, const NodeDef& node_def,
-                             absl::optional<int> op_instance,
-                             absl::optional<std::string> origin_node_name) {
+                             std::optional<int> op_instance,
+                             std::optional<std::string> origin_node_name) {
   DimsAdapter input_dims(input.GetTrtDims());
   // The input shape may have -1s for dynamic shape. The target shape may have
   // 0s representing copy over the corresponding input dimensions. It may also
@@ -2280,7 +2280,7 @@ Status Converter::DynamicReshape(ITensorProxyPtr input,
                                  OpConverterParams* params,
                                  ITensorProxyPtr* output,
                                  std::vector<int> size_for_added_dims,
-                                 absl::optional<int> op_instance) {
+                                 std::optional<int> op_instance) {
   *output = nullptr;
   // DynamicReshape relies on INetworkDefinition::addShape
   if (params->validation_only) {
@@ -2340,7 +2340,7 @@ Status Converter::DynamicExpandDims(ITensorProxyPtr input,
                                     const nvinfer1::Dims& dims, int axis,
                                     OpConverterParams* params,
                                     ITensorProxyPtr* output,
-                                    absl::optional<int> op_instance) {
+                                    std::optional<int> op_instance) {
   if (params->validation_only) {
     *output = nullptr;
     return errors::Internal(
@@ -2369,7 +2369,7 @@ Status Converter::SqueezeTensor(ITensorProxyPtr input,
                                 std::vector<int>* input_dims,
                                 OpConverterParams* params,
                                 ITensorProxyPtr* output,
-                                absl::optional<int> op_instance) {
+                                std::optional<int> op_instance) {
   // If the remaining dimensions of a squeeze operation have dynamic sizes, we
   // need to use TRT ops to build the result shape for the squeeze operation.
   // This is because IShuffleLayer::setReshapeDimensions treats -1 as a special
@@ -2489,8 +2489,8 @@ Status ConvertSlice(OpConverterParams* params) {
       DimsAdapter(inputs.at(0).GetTrtDims())
           .PartialTensorShape(
               &input_shape, params->use_implicit_batch
-                                ? absl::optional<int>(inputs.at(0).batch_size())
-                                : absl::nullopt));
+                                ? std::optional<int>(inputs.at(0).batch_size())
+                                : std::nullopt));
 
   if (static_cast<int64>(input_shape.dims()) !=
           begin_weights.GetTensor().NumElements() ||
@@ -2589,7 +2589,7 @@ Status ConvertSlice(OpConverterParams* params) {
           << std::bitset<32>(strided_slice_spec.shrink_axis_dense_mask);
 
   return ConvertStridedSliceHelper(params, inputs.at(0), input_shape, begin,
-                                   strides, end, absl::nullopt, absl::nullopt,
+                                   strides, end, std::nullopt, std::nullopt,
                                    strided_slice_spec);
 }
 
@@ -2631,8 +2631,8 @@ Status ConvertStridedSlice(OpConverterParams* params) {
       DimsAdapter(inputs.at(0).GetTrtDims())
           .PartialTensorShape(
               &input_shape, params->use_implicit_batch
-                                ? absl::optional<int>(inputs.at(0).batch_size())
-                                : absl::nullopt));
+                                ? std::optional<int>(inputs.at(0).batch_size())
+                                : std::nullopt));
 
   const TRT_ShapedWeights& begin_weights = inputs.at(1).weights();
   const TRT_ShapedWeights& end_weights = inputs.at(2).weights();
@@ -2706,7 +2706,7 @@ Status ConvertStridedSlice(OpConverterParams* params) {
   }
 
   // shrink_axis_mask requires a reshape after the slice.
-  absl::optional<nvinfer1::Dims> final_shape_dims = absl::nullopt;
+  std::optional<nvinfer1::Dims> final_shape_dims = std::nullopt;
   if (shrink_axis_mask) {
     final_shape_dims.emplace();
     auto dims_adap =
@@ -3891,7 +3891,7 @@ Status ConvertSplitHelper(OpConverterParams* params,
   PartialTensorShape input_shape(input_dims);
 
   // Create final shape for Unpack/Unstack, where split axis is squeezed.
-  absl::optional<nvinfer1::Dims> final_shape_for_unpack = absl::nullopt;
+  std::optional<nvinfer1::Dims> final_shape_for_unpack = std::nullopt;
 
   // We can't use final_shape_for_unpack_ptr when input dimensions are not
   // fully defined.
@@ -3924,7 +3924,7 @@ Status ConvertSplitHelper(OpConverterParams* params,
     TF_RETURN_IF_ERROR(ConvertStridedSliceHelper(
         params, input, input_shape, begin_v, stride_v, end_v,
         final_shape_for_unpack,
-        /*op_instance=*/i, /*strided_slice_spec=*/absl::nullopt));
+        /*op_instance=*/i, /*strided_slice_spec=*/std::nullopt));
   }
   if (params->validation_only) return Status::OK();
 

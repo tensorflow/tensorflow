@@ -234,7 +234,7 @@ class CudnnAccess {
 
   // If set, indicates the stream currently active on handle_, to avoid the
   // overhead of re-setting the same stream unnecessarily.
-  absl::optional<CUstream> current_stream_ TF_GUARDED_BY(mutex_);
+  std::optional<CUstream> current_stream_ TF_GUARDED_BY(mutex_);
 
   // cuDNN library handle.
   cudnnHandle_t handle_ TF_GUARDED_BY(mutex_);  // Owned.
@@ -311,7 +311,7 @@ port::StatusOr<int> GetCudnnProperty(libraryPropertyType type) {
   return value;
 }
 
-cudnnRNNAlgo_t ToCudnnRNNAlgo(absl::optional<dnn::AlgorithmDesc> algorithm) {
+cudnnRNNAlgo_t ToCudnnRNNAlgo(std::optional<dnn::AlgorithmDesc> algorithm) {
   if (!algorithm.has_value()) {
     return CUDNN_RNN_ALGO_STANDARD;
   }
@@ -2961,7 +2961,7 @@ AllocateCudnnConvolutionBackwardFilterWorkspace(
 }
 
 port::StatusOr<bool> UseTensorOps(Stream* stream, dnn::DataType type,
-                                  absl::optional<dnn::AlgorithmDesc> desc) {
+                                  std::optional<dnn::AlgorithmDesc> desc) {
   bool use_tensor_ops;
   if (desc.has_value()) {
     use_tensor_ops = desc->tensor_ops_enabled();
@@ -2986,7 +2986,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const CudnnTensorDescriptor& output_nd, ScratchAllocator* scratch_allocator,
     DeviceMemory<uint8>* scratch) {
-  absl::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
+  std::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
 
   CudnnConvolutionDescriptor conv(
       convolution_descriptor,
@@ -3049,7 +3049,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardDataAlgorithm(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const CudnnTensorDescriptor& output_nd, ScratchAllocator* scratch_allocator,
     DeviceMemory<uint8>* scratch) {
-  absl::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
+  std::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
   CudnnConvolutionDescriptor conv(
       convolution_descriptor,
       ToCudnnDataType(GetConvAccumulatorType(element_type)));
@@ -3110,7 +3110,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardFilterAlgorithm(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const CudnnTensorDescriptor& output_nd, ScratchAllocator* scratch_allocator,
     DeviceMemory<uint8>* scratch) {
-  absl::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
+  std::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
   CudnnConvolutionDescriptor conv(
       convolution_descriptor,
       ToCudnnDataType(GetConvAccumulatorType(element_type)));
@@ -3713,8 +3713,8 @@ GetCudnnFusedOperationGraph(
   absl::InlinedVector<cudnn_frontend::Operation const*, 4> ops = {
       &conv_op, &add_op, &bias_add_op};
 
-  absl::optional<cudnn_frontend::PointWiseDesc_v8> act_desc;
-  absl::optional<cudnn_frontend::Operation_v8> act_op;
+  std::optional<cudnn_frontend::PointWiseDesc_v8> act_desc;
+  std::optional<cudnn_frontend::Operation_v8> act_op;
   switch (activation_mode) {
     case dnn::ActivationMode::kNone:
       break;

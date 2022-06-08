@@ -108,7 +108,7 @@ struct EngineInfo {
   EngineInfo()
       : engine_type(EngineType::TRTStatic),
         max_workspace_size_bytes(0),
-        max_batch_size(absl::nullopt),
+        max_batch_size(std::nullopt),
         maximum_cached_engines(0),
         precision_mode(TrtPrecisionMode::FP32),
         use_calibration(true),
@@ -128,7 +128,7 @@ struct EngineInfo {
   enum class EngineType { TRTStatic = 0, TRTDynamic = 1 };
   EngineType engine_type;
   int64 max_workspace_size_bytes;
-  absl::optional<int> max_batch_size;
+  std::optional<int> max_batch_size;
   int maximum_cached_engines;
   TrtPrecisionMode precision_mode;
   bool use_calibration;
@@ -376,13 +376,13 @@ class Converter {
                         std::vector<std::pair<int, int>> slices,
                         OpConverterParams* params, ITensorProxyPtr* output,
                         std::vector<int> size_for_added_dims = {},
-                        absl::optional<int> op_instance = absl::nullopt);
+                        std::optional<int> op_instance = std::nullopt);
 
   // Inserts a singleton dimension at axis for a dynamic shape tensor.
   Status DynamicExpandDims(ITensorProxyPtr input, const nvinfer1::Dims& dims,
                            int axis, OpConverterParams* params,
                            ITensorProxyPtr* output,
-                           absl::optional<int> op_instance = absl::nullopt);
+                           std::optional<int> op_instance = std::nullopt);
 
   // Helper function to add a squeeze op to the network.
   //
@@ -390,7 +390,7 @@ class Converter {
   // where the dimensions to be squeezed are replaced by 0.
   Status SqueezeTensor(ITensorProxyPtr input, std::vector<int>* input_dims,
                        OpConverterParams* params, ITensorProxyPtr* output,
-                       absl::optional<int> op_instance = absl::nullopt);
+                       std::optional<int> op_instance = std::nullopt);
 
   // Creates an IConstantLayer using 'weights' whose dimensions are specified by
   // 'dims', and returns the output ITensor.
@@ -402,15 +402,14 @@ class Converter {
                         float* out_max) const;
 
   // Constructs a name and passed it to the TensorRT layer to support xprof.
-  void SetLayerName(
-      nvinfer1::ILayer* layer, const NodeDef& node_def,
-      absl::string_view sub_op_name = "",
-      absl::optional<int> sub_op_instance = absl::nullopt,
-      absl::optional<std::string> origin_node_name = absl::nullopt);
+  void SetLayerName(nvinfer1::ILayer* layer, const NodeDef& node_def,
+                    absl::string_view sub_op_name = "",
+                    std::optional<int> sub_op_instance = std::nullopt,
+                    std::optional<std::string> origin_node_name = std::nullopt);
 
   void SetLayerName(nvinfer1::ILayer* layer, absl::string_view main_op_name,
                     absl::string_view sub_op_name,
-                    absl::optional<int> sub_op_instance = absl::nullopt);
+                    std::optional<int> sub_op_instance = std::nullopt);
 
   std::unordered_map<string, TRT_TensorOrWeights>& TensorsMap() {
     return trt_tensors_;
@@ -507,8 +506,8 @@ Status PrepareTensorForShape(
     Converter* converter, const TRT_TensorOrWeights& input,
     const DimsAdapter& dims, const bool validation_only,
     ITensorProxyPtr* tensor, const NodeDef& node_def,
-    absl::optional<int> op_instance = absl::nullopt,
-    absl::optional<std::string> origin_node_name = absl::nullopt);
+    std::optional<int> op_instance = std::nullopt,
+    std::optional<std::string> origin_node_name = std::nullopt);
 
 // Return OK if the broadcast scheme is supported and compute the shapes after
 // broadcasting. check_feasibility can be set to false in cases where dimensions
