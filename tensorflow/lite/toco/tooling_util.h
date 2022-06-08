@@ -348,7 +348,7 @@ tensorflow::Status NumElements(const std::vector<T>& shape, U* num_elements) {
     }
     *num_elements *= dim;
   }
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // A model file may have shuffled FC weights.

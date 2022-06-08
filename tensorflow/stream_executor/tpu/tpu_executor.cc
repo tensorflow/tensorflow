@@ -105,11 +105,11 @@ bool TpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
       get_stream(other->implementation()));
 }
 
-Status TpuExecutor::AllocateEvent(Event* event) { return Status::OK(); }
+Status TpuExecutor::AllocateEvent(Event* event) { return OkStatus(); }
 
 Status TpuExecutor::DeallocateEvent(Event* event) {
   tpu_platform().EraseEvent(event->implementation());
-  return Status::OK();
+  return OkStatus();
 }
 
 // AllocateTimer/DeallocateTimer have no specialization.
