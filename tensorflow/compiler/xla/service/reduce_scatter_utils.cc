@@ -253,14 +253,12 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
     const HloAllReduceInstruction* ar, int64_t num_partitions,
     int64_t num_replicas, bool allow_multiple_split_dims,
     bool allow_intervening_reshape, int64_t min_rank) {
-  std::function<bool(const HloInstruction*)> match_partition_id =
-      [](const HloInstruction* i) {
-        return i->opcode() == HloOpcode::kPartitionId;
-      };
-  std::function<bool(const HloInstruction*)> match_replica_id =
-      [](const HloInstruction* i) {
-        return i->opcode() == HloOpcode::kReplicaId;
-      };
+  HloPredicate match_partition_id = [](const HloInstruction* i) {
+    return i->opcode() == HloOpcode::kPartitionId;
+  };
+  HloPredicate match_replica_id = [](const HloInstruction* i) {
+    return i->opcode() == HloOpcode::kReplicaId;
+  };
   return MatchReduceScatter(ar, num_partitions, num_replicas,
                             allow_multiple_split_dims,
                             allow_intervening_reshape, min_rank,
@@ -271,8 +269,7 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
     const HloAllReduceInstruction* ar, int64_t num_partitions,
     int64_t num_replicas, bool allow_multiple_split_dims,
     bool allow_intervening_reshape, int64_t min_rank,
-    std::function<bool(const HloInstruction*)> match_partition_id,
-    std::function<bool(const HloInstruction*)> match_replica_id) {
+    HloPredicate match_partition_id, HloPredicate match_replica_id) {
   if (!ar->shape().IsArray() || ar->constrain_layout() ||
       (ar->IsCrossModuleAllReduce() &&
        !ar->GetModule()->config().use_spmd_partitioning())) {

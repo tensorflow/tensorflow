@@ -51,27 +51,6 @@ HloInstruction* CreateConstant(const Shape& shape,
   }
 }
 
-// Extracts an instruction that satisfies filter from a fusion instruction.
-// Returns nullptr if the fusion doesn't contain any instruction that satisfies
-// filter.
-const HloInstruction* ExtractInstruction(
-    const HloInstruction* hlo,
-    const std::function<bool(const HloInstruction*)>& filter) {
-  if (filter(hlo)) {
-    return hlo;
-  }
-  if (hlo->opcode() != HloOpcode::kFusion) {
-    return nullptr;
-  }
-  for (HloInstruction* inst :
-       hlo->fused_instructions_computation()->instructions()) {
-    if (filter(inst)) {
-      return inst;
-    }
-  }
-  return nullptr;
-}
-
 // Prints sub-expression rooted at inst for a given depth.
 void PrintSubexpression(HloInstruction* inst, int depth) {
   if (depth == 0) {

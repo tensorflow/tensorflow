@@ -42,8 +42,7 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
     const HloAllReduceInstruction* ar, int64_t num_partitions,
     int64_t num_replicas, bool allow_multiple_split_dims,
     bool allow_intervening_reshape, int64_t min_rank,
-    std::function<bool(const HloInstruction*)> match_partition_id,
-    std::function<bool(const HloInstruction*)> match_replica_id);
+    HloPredicate match_partition_id, HloPredicate match_replica_id);
 
 }  // namespace xla
 

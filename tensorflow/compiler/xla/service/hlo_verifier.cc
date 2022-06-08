@@ -2273,8 +2273,7 @@ Status CheckElementwiseInstruction(HloInstruction* instruction) {
 // not check result shape as that is checked in the ShapeVerifier.
 class InstructionVerifier : public DfsHloVisitorWithDefault {
  public:
-  explicit InstructionVerifier(std::function<bool(const HloInstruction*)>
-                                   instruction_can_change_layout_func)
+  explicit InstructionVerifier(HloPredicate instruction_can_change_layout_func)
       : instruction_can_change_layout_func_(
             instruction_can_change_layout_func) {}
 
@@ -2412,8 +2411,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
  private:
   absl::flat_hash_map<std::string, const HloInstruction*> instructions_by_name_;
   // Determines whether an instruction can change layouts.
-  std::function<bool(const HloInstruction*)>
-      instruction_can_change_layout_func_;
+  HloPredicate instruction_can_change_layout_func_;
 };
 
 }  // namespace

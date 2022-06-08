@@ -114,8 +114,7 @@ class HloTestBase : public ManifestCheckingTest {
   // and the reference backend.
   explicit HloTestBase(bool verifier_layout_sensitive = false,
                        bool allow_mixed_precision_in_hlo_verifier = true,
-                       std::function<bool(const HloInstruction*)>
-                           instruction_can_change_layout_func = {});
+                       HloPredicate instruction_can_change_layout_func = {});
 
   // If your test doesn't use interpreter as the reference backend, you can use
   // this constructor. Note that your test target is responsible for linking in
@@ -123,8 +122,7 @@ class HloTestBase : public ManifestCheckingTest {
   HloTestBase(se::Platform* test_platform, se::Platform* reference_platform,
               bool verifier_layout_sensitive = false,
               bool allow_mixed_precision_in_hlo_verifier = true,
-              std::function<bool(const HloInstruction*)>
-                  instruction_can_change_layout_func = {});
+              HloPredicate instruction_can_change_layout_func = {});
 
   ~HloTestBase() override {}
 

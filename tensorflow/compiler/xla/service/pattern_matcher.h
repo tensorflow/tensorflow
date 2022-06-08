@@ -1788,9 +1788,7 @@ class HloInstructionPatternComparisonDirectionImpl {
 
 class HloInstructionPredicateImpl {
  public:
-  explicit HloInstructionPredicateImpl(
-      std::function<bool(const HloInstruction*)> fn)
-      : fn_(std::move(fn)) {}
+  explicit HloInstructionPredicateImpl(HloPredicate fn) : fn_(std::move(fn)) {}
 
   bool Match(const HloInstruction* inst, MatchOption option) const {
     bool match = fn_(inst);
@@ -1805,7 +1803,7 @@ class HloInstructionPredicateImpl {
   }
 
  private:
-  std::function<bool(const HloInstruction*)> fn_;
+  HloPredicate fn_;
 };
 
 // Matches a constant scalar or effective scalar, optionally with a given value.
@@ -2091,7 +2089,7 @@ class HloInstructionPattern {
     return AppendImpl(HloInstructionPatternComparisonDirectionImpl(direction));
   }
 
-  auto WithPredicate(std::function<bool(const HloInstruction*)> fn) const {
+  auto WithPredicate(HloPredicate fn) const {
     return AppendImpl(HloInstructionPredicateImpl(std::move(fn)));
   }
 

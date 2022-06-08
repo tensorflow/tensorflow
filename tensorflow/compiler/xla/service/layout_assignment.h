@@ -610,8 +610,7 @@ class LayoutAssignment : public HloModulePass {
   // receiving propagated default layouts.
   absl::flat_hash_set<const HloInstruction*> unconstrained_layout_instructions_;
 
-  std::function<bool(const HloInstruction*)>
-      instruction_can_change_layout_func_;
+  HloPredicate instruction_can_change_layout_func_;
 
   // CallGraph of the module, used to track callsites of each computation.
   std::unique_ptr<CallGraph> call_graph_;

@@ -74,8 +74,7 @@ ProgramShape GetProgramShapeWithLayout(const HloModule& module) {
 
 HloTestBase::HloTestBase(bool verifier_layout_sensitive,
                          bool allow_mixed_precision_in_hlo_verifier,
-                         std::function<bool(const HloInstruction*)>
-                             instruction_can_change_layout_func)
+                         HloPredicate instruction_can_change_layout_func)
     : HloTestBase(GetTestPlatform(), GetReferencePlatform(),
                   verifier_layout_sensitive,
                   allow_mixed_precision_in_hlo_verifier,
@@ -85,8 +84,7 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
                          se::Platform* reference_platform,
                          bool verifier_layout_sensitive,
                          bool allow_mixed_precision_in_hlo_verifier,
-                         std::function<bool(const HloInstruction*)>
-                             instruction_can_change_layout_func)
+                         HloPredicate instruction_can_change_layout_func)
     : test_runner_(test_platform),
       reference_runner_(reference_platform),
       verifier_layout_sensitive_(verifier_layout_sensitive),
