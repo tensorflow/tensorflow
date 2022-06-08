@@ -29,7 +29,7 @@ namespace quant {
 
 constexpr char kAttrMapAttribute[] = "attr_map";
 // This attribute will be set for functions created by this pass.
-constexpr char kFusedFunctionAttr[] = "tf_quant.fused_function";
+constexpr char kFusedFunctionAttr[] = "tf_quant.composite_function";
 // The keyword to detect if this is a `NullAttribute`.
 constexpr char kNullAttributeValue[] = "N/A";
 
