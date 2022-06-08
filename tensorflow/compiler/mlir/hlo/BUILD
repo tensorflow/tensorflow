@@ -2474,6 +2474,7 @@ cc_library(
         ":gml_st",
         ":hlo",
         ":map_mhlo_to_scalar_op",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",

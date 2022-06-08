@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -142,16 +143,6 @@ Value whatWillBeTheTilingIface(gml_st::DynamicBroadcastInDimOp op, Value tile,
 
 // TODO(frgossen): This should become a tiling interface.
 template <class OpTy>
-Value whatWillBeTheTilingIfaceBinaryOp(OpTy op, Value tile,
-                                       PatternRewriter& rewriter) {
-  auto loc = op.getLoc();
-  auto lhsSub = rewriter.create<MaterializeOp>(loc, op.lhs(), tile);
-  auto rhsSub = rewriter.create<MaterializeOp>(loc, op.rhs(), tile);
-  return rewriter.create<OpTy>(loc, lhsSub, rhsSub);
-}
-
-// TODO(frgossen): This should become a tiling interface.
-template <class OpTy>
 Value whatWillBeTheTilingIfaceUnaryOp(OpTy op, Value tile,
                                       PatternRewriter& rewriter) {
   auto loc = op.getLoc();
@@ -166,6 +157,11 @@ struct TilingPattern : public OpRewritePattern<gml_st::MaterializeOp> {
                                 PatternRewriter& rewriter) const override {
     Operation* def = op.source().getDefiningOp();
 
+    if (auto iface = llvm::dyn_cast_or_null<FusionIterface>(def)) {
+      rewriter.replaceOp(op, iface.fuse(op, rewriter));
+      return success();
+    }
+
     // TODO(frgossen): The below cases should eventually be replaced by the use
     // of a common tiling interface.
 
@@ -174,13 +170,6 @@ struct TilingPattern : public OpRewritePattern<gml_st::MaterializeOp> {
             llvm::dyn_cast_or_null<gml_st::DynamicBroadcastInDimOp>(def)) {
       Value result = whatWillBeTheTilingIface(bcast, op.subset(), rewriter);
       rewriter.replaceOp(op, result);
-      return success();
-    }
-
-    // Case `add`.
-    if (auto add = llvm::dyn_cast_or_null<mhlo::AddOp>(def)) {
-      rewriter.replaceOp(
-          op, whatWillBeTheTilingIfaceBinaryOp(add, op.subset(), rewriter));
       return success();
     }
 
@@ -205,6 +194,7 @@ struct TilingPattern : public OpRewritePattern<gml_st::MaterializeOp> {
 class FusionPass : public FusionPassBase<FusionPass> {
   void getDependentDialects(DialectRegistry& registry) const final {
     registry.insert<GmlStDialect>();
+    registerFusionInterfaceExternalModels(registry);
   }
 
   void runOnOperation() final {
