@@ -47,7 +47,7 @@ struct LinalgGenericTilingPattern : public OpRewritePattern<GenericOp> {
 
     if (linalgOp.getNumLoops() != tileSizes.size()) return failure();
 
-    FailureOr<Operation *> tilingResult;
+    FailureOr<TilingResult> tilingResult;
     if (llvm::all_of(tileSizes, [](int64_t size) { return size == 1; })) {
       tilingResult = tileToPoints(rewriter, linalgOp);
     } else {
@@ -56,7 +56,12 @@ struct LinalgGenericTilingPattern : public OpRewritePattern<GenericOp> {
 
     if (failed(tilingResult)) return failure();
 
-    rewriter.replaceOp(linalgOp, (*tilingResult)->getResults());
+    // Add filter to the `tiled_op` to prevent recursive tiling.
+    if (tilingResult->tiled_op)
+      filter.replaceLinalgTransformationFilter(rewriter,
+                                               tilingResult->tiled_op);
+
+    rewriter.replaceOp(linalgOp, (*tilingResult).outer_loop->getResults());
     return success();
   }
 

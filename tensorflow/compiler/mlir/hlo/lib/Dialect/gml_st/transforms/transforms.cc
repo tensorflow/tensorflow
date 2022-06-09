@@ -332,13 +332,13 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOp(
   return tileLinalgOpImpl(b, op, tileSizeVector, options);
 }
 
-FailureOr<Operation *> tileToSlices(RewriterBase &, linalg::LinalgOp,
-                                    ArrayRef<int64_t>) {
+FailureOr<TilingResult> tileToSlices(RewriterBase &, linalg::LinalgOp,
+                                     ArrayRef<int64_t>) {
   return failure();
 }
 
-FailureOr<Operation *> tileToPoints(RewriterBase &b,
-                                    linalg::LinalgOp linalgOp) {
+FailureOr<TilingResult> tileToPoints(RewriterBase &b,
+                                     linalg::LinalgOp linalgOp) {
   Location loc = linalgOp.getLoc();
   auto output = linalgOp.getOutputOperand(0)->get();
   auto outputType = output.getType().cast<RankedTensorType>();
@@ -385,7 +385,7 @@ FailureOr<Operation *> tileToPoints(RewriterBase &b,
             SmallVector<Value>(yieldedValues.size(), point));
       });
 
-  return loop.getOperation();
+  return TilingResult{loop.getOperation(), nullptr};
 }
 
 }  // namespace gml_st
