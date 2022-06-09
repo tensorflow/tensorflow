@@ -6382,3 +6382,34 @@ cc_library(
         "@com_google_absl//absl/types:span",
     ],
 )
+
+cc_library(
+    name = "compilation_environments",
+    srcs = ["compilation_environments.cc"],
+    hdrs = ["compilation_environments.h"],
+    deps = [
+        "//tensorflow/core:lib",  # fixdeps: keep
+        "//tensorflow/core:portable_gif_internal",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+tf_proto_library(
+    name = "test_compilation_environment_proto",
+    testonly = 1,
+    srcs = ["test_compilation_environment.proto"],
+    cc_api_version = 2,
+)
+
+tf_cc_test(
+    name = "compilation_environments_test",
+    srcs = ["compilation_environments_test.cc"],
+    deps = [
+        ":compilation_environments",
+        ":test_compilation_environment_proto_cc",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
