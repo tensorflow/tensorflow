@@ -10,6 +10,16 @@
     `tensorflow/python/tracking` and `tensorflow/python/checkpoint`. Please
     update your imports accordingly, the old files will be removed in Release
     2.11.
+*   RNG behavior change for `tf.keras.initializers`. Keras initializers will now
+    use stateless random ops to generate random numbers.
+    *   Both seeded and unseeded initializers will always generate the same
+        values every time they are called (for a given variable shape).
+        For unseeded initializers (`seed=None`), a
+        random seed will be created and assigned at initializer creation
+        (different initializer instances get different seeds).
+    *   An unseeded initializer will raise a warning if it is reused (called)
+        multiple times. This is because it would produce the same values
+        each time, which may not be intended.
 
 ## Known Caveats
 
