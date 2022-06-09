@@ -28,7 +28,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.stateless_random_ops import Algorithm
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -206,7 +206,7 @@ def get_replica_id():
 
 
 @tf_export("random.Generator", "random.experimental.Generator")
-class Generator(tracking.AutoTrackable):
+class Generator(autotrackable.AutoTrackable):
   """Random-number generator.
 
   Example:

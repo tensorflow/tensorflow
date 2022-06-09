@@ -50,7 +50,8 @@ from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils
 from tensorflow.python.tools import saved_model_utils
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
+from tensorflow.python.trackable import resource
 from tensorflow.python.util import nest
 
 TfTrtIntegrationTestParams = collections.namedtuple(
@@ -966,7 +967,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def _MakeSavedModelV2(self, run_params):
     params = self._GetParamsCached()
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.run = def_function.function(
         params.graph_fn, input_signature=params.input_specs)
     saved_model_dir = self._GetSavedModelDir(run_params, GraphState.ORIGINAL)

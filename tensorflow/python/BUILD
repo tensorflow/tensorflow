@@ -2658,7 +2658,7 @@ py_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/trackable:base",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_should_use",
     ],

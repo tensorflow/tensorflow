@@ -25,7 +25,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.saved_model import save
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 
 
 flags.DEFINE_string('out_dir', None,
@@ -36,7 +36,7 @@ FLAGS = flags.FLAGS
 
 def create_large_matmul_savedmodel(out_dir):
   """Create a SavedModel that performs a large matmul."""
-  root = tracking.AutoTrackable()
+  root = autotrackable.AutoTrackable()
   root.f = def_function.function(
       lambda x, y: math_ops.matmul(x, y),  # pylint: disable=unnecessary-lambda
       input_signature=[tensor_spec.TensorSpec([3000, 5000], dtypes.float32),
@@ -53,7 +53,7 @@ def create_large_matmul_savedmodel(out_dir):
 
 def create_small_matmul_savedmodel(out_dir):
   """Create a SavedModel that performs a small matmul."""
-  root = tracking.AutoTrackable()
+  root = autotrackable.AutoTrackable()
   root.f = def_function.function(
       lambda x, y: math_ops.matmul(x, y),  # pylint: disable=unnecessary-lambda
       input_signature=[tensor_spec.TensorSpec([3, 5], dtypes.float32),

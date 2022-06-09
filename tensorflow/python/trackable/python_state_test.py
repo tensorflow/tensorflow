@@ -16,14 +16,13 @@ import io
 import os
 
 import numpy
-
+from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.module import module
 from tensorflow.python.platform import test
 from tensorflow.python.trackable import python_state
-from tensorflow.python.training.tracking import util
 
 
 class _NumpyState(module.Module):

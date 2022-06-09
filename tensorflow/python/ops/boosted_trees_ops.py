@@ -44,8 +44,8 @@ from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_update_ens
 from tensorflow.python.ops.gen_boosted_trees_ops import is_boosted_trees_quantile_stream_resource_initialized as is_quantile_resource_initialized
 # pylint: enable=unused-import
 
+from tensorflow.python.trackable import resource
 from tensorflow.python.training import saver
-from tensorflow.python.training.tracking import tracking
 
 
 class PruningMode:
@@ -93,7 +93,7 @@ class QuantileAccumulatorSaveable(saver.BaseSaverBuilder.SaveableObject):
           self._resource_handle, bucket_boundaries=bucket_boundaries)
 
 
-class QuantileAccumulator(tracking.TrackableResource):
+class QuantileAccumulator(resource.TrackableResource):
   """SaveableObject implementation for QuantileAccumulator.
 
      The bucket boundaries are serialized and deserialized from checkpointing.
@@ -204,7 +204,7 @@ class _TreeEnsembleSavable(saver.BaseSaverBuilder.SaveableObject):
           tree_ensemble_serialized=restored_tensors[1])
 
 
-class TreeEnsemble(tracking.TrackableResource):
+class TreeEnsemble(resource.TrackableResource):
   """Creates TreeEnsemble resource."""
 
   def __init__(self, name, stamp_token=0, is_local=False, serialized_proto=''):
