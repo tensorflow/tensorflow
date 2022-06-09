@@ -34,7 +34,7 @@ class ReshapeDecomposerVisitor : public DfsHloRewriteVisitor {
     } else if (auto output_aligned_input_shape =
                    ShapeUtil::AlignLayouts(s, s0)) {
       Shape new_input_shape = *output_aligned_input_shape;
-      HloInstruction* copied_operand = CopyToShape(new_input_shape, operand);
+      HloInstruction* copied_operand = MakeCopyHlo(operand, new_input_shape);
       VLOG(3) << "Decomposing reshape into reshape-bitcast and a physical "
                  "transpose on the operand: "
               << copied_operand->ToString();
@@ -47,7 +47,7 @@ class ReshapeDecomposerVisitor : public DfsHloRewriteVisitor {
       Shape new_output_shape = *input_aligned_output_shape;
       TF_ASSIGN_OR_RETURN(auto r, MakeReshapeHlo(new_output_shape, operand));
       DCHECK(ShapeUtil::ReshapeIsBitcast(r->shape(), r->operand(0)->shape()));
-      HloInstruction* copied_result = CopyToShape(s, r);
+      HloInstruction* copied_result = MakeCopyHlo(r, s);
       VLOG(3) << "Decomposing reshape into reshape-bitcast and a physical "
                  "transposition on the operand: "
               << copied_result->ToString();
@@ -57,21 +57,15 @@ class ReshapeDecomposerVisitor : public DfsHloRewriteVisitor {
                  "two physical transposes";
       auto s0_normalized = ShapeUtil::MakeShapeWithDescendingLayout(
           s0.element_type(), s0.dimensions());
-      auto c1 = CopyToShape(s0_normalized, reshape->mutable_operand(0));
+      auto c1 = MakeCopyHlo(reshape->mutable_operand(0), s0_normalized);
       auto s_normalized = ShapeUtil::MakeShapeWithDescendingLayout(
           s.element_type(), s.dimensions());
       TF_ASSIGN_OR_RETURN(auto r, MakeReshapeHlo(s_normalized, c1));
       DCHECK(ShapeUtil::ReshapeIsBitcast(r->shape(), r->operand(0)->shape()));
-      auto c2 = CopyToShape(s, r);
+      auto c2 = MakeCopyHlo(r, s);
       TF_RETURN_IF_ERROR(ReplaceInstruction(reshape, c2));
     }
     return OkStatus();
-  }
-
- private:
-  HloInstruction* CopyToShape(const Shape& s, HloInstruction* operand) {
-    return operand->AddInstruction(
-        HloInstruction::CreateUnary(s, HloOpcode::kCopy, operand));
   }
 };
 

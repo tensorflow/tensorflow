@@ -37,6 +37,9 @@ StatusOr<HloInstruction*> MakeUnaryHlo(HloOpcode opcode,
 StatusOr<HloInstruction*> MakeBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
                                         HloInstruction* rhs);
 
+// Creates a kCopy HLO.
+HloInstruction* MakeCopyHlo(HloInstruction* from, const Shape& to);
+
 // Creates a compare HLO instruction and adds it to the computation containing
 // `lhs` and `rhs` (`lhs` and `rhs` must be in the same computation).
 StatusOr<HloInstruction*> MakeCompareHlo(Comparison::Direction direction,

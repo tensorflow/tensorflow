@@ -43,6 +43,11 @@ StatusOr<HloInstruction*> MakeUnaryHlo(HloOpcode opcode,
       HloInstruction::CreateUnary(unary_op_shape, opcode, operand));
 }
 
+HloInstruction* MakeCopyHlo(HloInstruction* from, const Shape& to) {
+  return from->AddInstruction(
+      HloInstruction::CreateUnary(to, HloOpcode::kCopy, from));
+}
+
 StatusOr<HloInstruction*> MakeBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
                                         HloInstruction* rhs) {
   HloComputation* computation = lhs->parent();
