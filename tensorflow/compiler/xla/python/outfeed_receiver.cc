@@ -419,7 +419,7 @@ Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
   TF_ASSIGN_OR_RETURN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers,
       executable->Execute({{}}, execute_options));
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 StatusOr<XlaOp> OutfeedReceiverImpl::AddOutfeedToBuilder(

@@ -265,7 +265,7 @@ Status PyBuffer::CopyToHostAsync() {
                          host_value->ready.Notify();
                        });
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 StatusOr<pybind11::object> PyBuffer::AsNumPyArray(py::handle this_obj) {
@@ -447,7 +447,7 @@ int PyBuffer_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
     }
     TF_RETURN_IF_ERROR(buffer.BlockHostUntilReady());
     view->internal = extra.release();
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }();
   if (!status.ok()) {
     // numpy.asarray(...) silents the PyExc_BufferError. Adding a log here helps
@@ -678,7 +678,7 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       [](PyBuffer::object self) { return self.buf()->Clone(); },
       py::is_method(type));
   type.attr("__module__") = m.attr("__name__");
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace xla

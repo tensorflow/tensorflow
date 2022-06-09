@@ -310,14 +310,14 @@ Status LinkWithBitcodeVector(
                                 bitcode_path);
     }
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 // Links libdevice into the given module if the module needs libdevice.
 Status LinkLibdeviceIfNecessary(llvm::Module* module,
                                 const std::string& libdevice_dir_path) {
   if (!CouldNeedDeviceBitcode(*module)) {
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   // CUDA 9+ uses a single libdevice file for all devices, and we don't support
@@ -354,7 +354,7 @@ Status NVPTXTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
     }
   }
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
@@ -455,7 +455,7 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
   function_passes.doFinalization();
   module_passes.run(*module);
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 // One-time module initializer.
@@ -779,7 +779,7 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
 Status LinkROCDLIfNecessary(llvm::Module* module, std::string gcn_arch_name,
                             const std::string& rocdl_dir_path) {
   if (!CouldNeedDeviceBitcode(*module)) {
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   return LinkWithBitcodeVector(module,
@@ -808,7 +808,7 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
     }
   }
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 // The following routine maps a feature token extracted from the

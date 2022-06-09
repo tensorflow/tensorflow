@@ -762,7 +762,7 @@ class ShapeUtil {
                                      const FnType& visitor_function,
                                      bool parallel = false) {
     if (ShapeUtil::IsZeroElementArray(shape)) {
-      return ::tensorflow::OkStatus();
+      return OkStatus();
     }
     CHECK_EQ(shape.rank(), base.size());
     CHECK_EQ(incr.size(), base.size());

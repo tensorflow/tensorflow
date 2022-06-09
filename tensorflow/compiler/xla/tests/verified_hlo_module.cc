@@ -47,7 +47,7 @@ void VerifiedHloModule::VerifyOrAddFailure(absl::string_view message) {
 Status VerifiedHloModule::Verify() {
   if (computation_count() == 0) {
     // The computation was never built. Nothing to verify.
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
   return verifier_.Run(this).status();
 }

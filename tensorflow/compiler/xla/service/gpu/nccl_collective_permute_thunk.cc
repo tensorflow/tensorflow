@@ -235,7 +235,7 @@ Status RunCollectivePermute(
                                   device_string);
     stream.ThenMemZero(&dest_addr, dest_addr.size());
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "

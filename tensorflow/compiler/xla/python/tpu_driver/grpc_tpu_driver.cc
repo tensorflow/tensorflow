@@ -35,6 +35,7 @@
 namespace tpu_driver {
 namespace {
 
+using xla::OkStatus;
 using xla::Status;
 
 const int64_t kMaxStreamWriteSize = 10 * 1000 * 1000;
@@ -135,7 +136,7 @@ class GrpcCompiledProgramHandle : public CompiledProgramHandle {
       return status;
     }
     *program_shape = metadata_->program_shape();
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   std::shared_ptr<CompiledProgramMetadata> metadata() { return metadata_; }
@@ -569,7 +570,7 @@ absl::optional<Status> GrpcTpuStream::WaitForEvent(EventId id,
   if (it == events_.end()) {
     // This event has already been marked as done and deleted. Assume success.
     events_mutex_.Unlock();
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   if (!it->second.all_deps_done) {
@@ -597,8 +598,7 @@ absl::optional<Status> GrpcTpuStream::WaitForEvent(EventId id,
     return !events_.contains(id) || events_[id].done;
   };
   if (events_mutex_.AwaitWithTimeout(absl::Condition(&done), duration)) {
-    auto status =
-        events_.contains(id) ? events_[id].status : ::tensorflow::OkStatus();
+    auto status = events_.contains(id) ? events_[id].status : OkStatus();
     events_mutex_.Unlock();
     return status;
   }
@@ -711,7 +711,7 @@ void GrpcTpuStream::StreamReaderFn() {
             Status(static_cast<tensorflow::error::Code>(entry.status().code()),
                    entry.status().message()));
       } else {
-        UpdateEventStatus(event_id, ::tensorflow::OkStatus());
+        UpdateEventStatus(event_id, OkStatus());
       }
     }
   }
@@ -1051,7 +1051,7 @@ Status GrpcTpuDriver::Close() {
                                     ". Details: ", status.error_details()));
   }
   closed_ = true;
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 }  // namespace
 

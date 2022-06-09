@@ -44,13 +44,13 @@ class GpuDummyCompiler : public GpuCompiler {
   Status OptimizeHloConvolutionCanonicalization(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       se::DeviceMemoryAllocator* device_allocator) {
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       se::DeviceMemoryAllocator* device_allocator) {
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   GpuVersion GetGpuVersion(se::StreamExecutor*) override {
@@ -98,11 +98,11 @@ class LLVMCompilerTest : public ::testing::Test {
 
     auto pre_opt_hook = [&pre_opt_hook_call_count](const llvm::Module&) {
       ++pre_opt_hook_call_count;
-      return ::tensorflow::OkStatus();
+      return OkStatus();
     };
     auto post_opt_hook = [&post_opt_hook_call_count](const llvm::Module&) {
       ++post_opt_hook_call_count;
-      return ::tensorflow::OkStatus();
+      return OkStatus();
     };
 
     // Create HLO module, and run the compiler.

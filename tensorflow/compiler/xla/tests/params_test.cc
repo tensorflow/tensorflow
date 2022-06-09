@@ -159,7 +159,7 @@ XLA_TEST_F(ParamsTest, MissingParameter) {
   Parameter(&builder, 2, ShapeUtil::MakeShape(F32, {}), "param2");
   auto computation_status = builder.Build();
 
-  ASSERT_NE(computation_status.status(), ::tensorflow::OkStatus());
+  ASSERT_NE(computation_status.status(), OkStatus());
 }
 
 XLA_TEST_F(ParamsTest, UnusedParameter) {

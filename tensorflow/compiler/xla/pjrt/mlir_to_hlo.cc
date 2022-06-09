@@ -66,7 +66,7 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
                           /*shape_determination_fns=*/{}, options));
 
   xla_computation = XlaComputation(std::move(*proto.mutable_hlo_module()));
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(

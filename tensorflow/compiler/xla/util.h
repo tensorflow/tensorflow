@@ -673,7 +673,7 @@ Status EraseElementFromVector(std::vector<T>* container, const T& value) {
   auto it = std::find(container->begin(), container->end(), value);
   TF_RET_CHECK(it != container->end());
   container->erase(it);
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 // Utility function which splits a double-precision float (F64) into a pair of

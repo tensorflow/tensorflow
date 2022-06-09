@@ -40,7 +40,7 @@ Status ConditionalThunk::Initialize(const GpuExecutable& executable,
   for (auto& branch_thunk : config_.branch_thunks) {
     TF_RETURN_IF_ERROR(branch_thunk->Initialize(executable, executor));
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -76,7 +76,7 @@ Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_RETURN_IF_ERROR(
       config_.branch_thunks[branch_index]->ExecuteOnStream(params));
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace gpu

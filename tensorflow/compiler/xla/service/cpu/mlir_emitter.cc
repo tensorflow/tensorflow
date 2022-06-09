@@ -140,7 +140,7 @@ Status EmitMlirFuncAndCall(
   }
   b->CreateCall(func, op_vals);
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace cpu

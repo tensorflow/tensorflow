@@ -43,7 +43,7 @@ Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Note: Cannot do this before `BlockingGetNextDestination` above to dequeue
   // an entry from the outfeed manager.
   if (source_slices_.empty()) {
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   const int64_t leaf_count = output_buffers->leaf_count();
@@ -102,7 +102,7 @@ Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   VLOG(2) << "Outfeeding from GPU complete";
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace gpu

@@ -578,7 +578,7 @@ static Status CreateAndWriteStringToFile(const std::string& directory_name,
       tensorflow::Env::Default()->NewWritableFile(file_name, &f));
   TF_RETURN_IF_ERROR(f->Append(text));
   TF_RETURN_IF_ERROR(f->Close());
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 void DumpIrIfEnabled(const HloModule& hlo_module,

@@ -35,6 +35,7 @@ namespace {
     if (p != nullptr) return p;                                        \
   }
 
+using xla::OkStatus;
 using xla::Status;
 using xla::WorkerThread;
 
@@ -94,7 +95,7 @@ class CombinedEvent : public PodEvent {
     for (auto& event : events_) {
       TF_RETURN_IF_ERROR(event->Await());
     }
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   absl::optional<xla::Status> AwaitWithTimeout(
@@ -109,7 +110,7 @@ class CombinedEvent : public PodEvent {
         TF_RETURN_IF_ERROR(status.value());
       }
     }
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   void AddCallback(std::function<void(Status)> callback)
@@ -344,7 +345,7 @@ class PodTpuDriver : public TpuDriver {
     for (auto& driver : drivers_) {
       TF_RETURN_IF_ERROR(driver.second->Reset());
     }
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   std::unique_ptr<BufferHandle> Allocate(
@@ -733,7 +734,7 @@ class PodTpuDriver : public TpuDriver {
       if (event == events_.end()) {
         auto event_status = abnormal_event_status_.find(event_id);
         if (event_status == abnormal_event_status_.end()) {
-          return ::tensorflow::OkStatus();
+          return OkStatus();
         } else {
           return event_status->second;
         }
@@ -768,7 +769,7 @@ class PodTpuDriver : public TpuDriver {
       absl::MutexLock l(&mu_);
       auto event_status = abnormal_event_status_.find(event_id);
       if (event_status == abnormal_event_status_.end()) {
-        return ::tensorflow::OkStatus();
+        return OkStatus();
       } else {
         return event_status->second;
       }
@@ -783,7 +784,7 @@ class PodTpuDriver : public TpuDriver {
     if (event == events_.end()) {
       auto event_status = abnormal_event_status_.find(event_id);
       if (event_status == abnormal_event_status_.end()) {
-        fn(::tensorflow::OkStatus());
+        fn(OkStatus());
       } else {
         fn(event_status->second);
       }

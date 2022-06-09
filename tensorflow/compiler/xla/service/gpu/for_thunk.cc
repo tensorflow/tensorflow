@@ -35,7 +35,7 @@ ForThunk::ForThunk(ThunkInfo thunk_info, const int64_t loop_limit,
 Status ForThunk::Initialize(const GpuExecutable& executable,
                             se::StreamExecutor* executor) {
   TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(executable, executor));
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status ForThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -45,7 +45,7 @@ Status ForThunk::ExecuteOnStream(const ExecuteParams& params) {
     // Invoke loop body thunk sequence.
     TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace gpu

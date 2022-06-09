@@ -183,7 +183,7 @@ struct GpuExecutable::BefExecutable {
       return InternalError("Failed to get '%s' function", func_name);
     }
 
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
  public:
@@ -404,7 +404,7 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
     return InternalError("Unknown platform: %d", platform_kind);
   }
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 namespace {
@@ -507,7 +507,7 @@ Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
     profile->set_compute_time_ns(std::max(nanoseconds, 1.0));
   }
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace
@@ -656,7 +656,7 @@ static Status CheckAlignment(const BufferAllocation& allocation,
         "was %p",
         arg_idx, expected_alignment, buffer.opaque());
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
@@ -1186,7 +1186,7 @@ Status GpuExecutable::SetUpMlirAllocation(
                      .getValue()
                      .str()));
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 #if XLA_ENABLE_XLIR
@@ -1367,7 +1367,7 @@ GetOutputInfo(const HloModule& hlo_module, const BufferAssignment& assignment) {
         output[index].alias_config =
             hlo_module.input_output_alias_config().GetAliasedParameter(index);
 
-        return ::tensorflow::OkStatus();
+        return OkStatus();
       }));
   return output;
 }

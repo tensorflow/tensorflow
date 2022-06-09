@@ -202,7 +202,7 @@ Status RunGpuConvInternalImpl(const GpuConvParams& params, se::Stream* stream,
           scratch_memory);
     }
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 // Specialization for integer types.  Only two forward convolutions are allowed.
@@ -228,7 +228,7 @@ Status RunGpuConvInternalImpl(const GpuConvParams& params, se::Stream* stream,
           "Only convolution kinds kForward and kForwardActivation are "
           "supported for integer types");
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 template <typename ElementType, typename BiasType, typename OutputType>
@@ -248,7 +248,7 @@ Status RunGpuConvImpl(const GpuConvParams& params, se::Stream* stream,
       params, stream, options, input_buf, filter_buf, output_buf,
       scratch_memory);
 
-  if (run_status != ::tensorflow::OkStatus()) {
+  if (run_status != OkStatus()) {
     return run_status;
   }
 
@@ -257,7 +257,7 @@ Status RunGpuConvImpl(const GpuConvParams& params, se::Stream* stream,
         "Unable to launch convolution with type %s and algorithm %s",
         CudnnConvKindToString(params.config->kind), algorithm.ToString());
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 int64_t GetVectCSize(DataLayout layout) {

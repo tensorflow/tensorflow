@@ -125,7 +125,7 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
           new_reduce_shape_layout);
 
       if (new_operand_shape == operand_shape && reduce->inputs().size() == 1) {
-        return ::tensorflow::OkStatus();
+        return OkStatus();
       }
 
       HloInstruction *canonical_reduce_input =

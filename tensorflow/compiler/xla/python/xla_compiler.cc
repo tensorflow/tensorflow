@@ -190,7 +190,7 @@ Status PyRegisterCustomCallTarget(const std::string& fn_name,
   }
   CustomCallTargetRegistry::Global()->Register(
       fn_name, static_cast<void*>(capsule), platform);
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 template <typename T, typename Container>

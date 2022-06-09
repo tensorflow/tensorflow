@@ -173,7 +173,7 @@ Status PyClient::Defragment() {
 
       // TODO(skyewm): delete executables?
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 StatusOr<std::vector<std::vector<ClientAndPtr<PjRtDevice>>>>

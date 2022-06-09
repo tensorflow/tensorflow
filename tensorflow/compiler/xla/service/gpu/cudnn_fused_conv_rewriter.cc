@@ -660,7 +660,7 @@ Status CheckNoIllegalIntegerConvs(HloComputation* comp) {
   }
 
   if (bad_convs.empty()) {
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   return Unimplemented(

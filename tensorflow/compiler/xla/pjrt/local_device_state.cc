@@ -105,7 +105,7 @@ Status LocalDeviceState::ThenMemcpyDeviceToDevice(
   // the buffer addresses identify the devices. This does not work
   // on all platforms; this method is virtual so it can be overridden.
   transfer_stream->ThenMemcpyD2D(&dst_buffer, src_buffer, dst_buffer.size());
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 void LocalDeviceState::ThenExecuteCallback(se::Stream* stream,

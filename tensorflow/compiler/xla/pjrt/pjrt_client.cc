@@ -66,7 +66,7 @@ Status CopyToDeviceStream::AddChunk(PjRtChunk chunk) {
   }
 
   buffered_chunks_.push_back(std::move(chunk));
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 std::optional<PjRtChunk> CopyToDeviceStream::ConsumeNextChunk() {

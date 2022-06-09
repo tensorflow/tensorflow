@@ -170,7 +170,7 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
                 alias->ToString());
           }
         }
-        return ::tensorflow::OkStatus();
+        return OkStatus();
       }));
 
   se::StreamExecutor* executor = stream->parent();

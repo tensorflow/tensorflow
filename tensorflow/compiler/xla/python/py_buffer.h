@@ -142,7 +142,7 @@ class PyBuffer {
     TF_RET_CHECK(sticky_device == nullptr ||
                  sticky_device == buffer_->device());
     sticky_device_ = sticky_device;
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
   PjRtDevice* sticky_device() const { return sticky_device_; }
 

@@ -676,7 +676,7 @@ Status GpuCompiler::OptimizeHloModule(
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
@@ -802,7 +802,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
@@ -1099,7 +1099,7 @@ static Status CompileModuleToLlvmIrImpl(
                           GpuExecutable::CreatePreloadedGpuContextCache(
                               bef_array, stream_exec));
     }
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   if (IsJitRtExecutableEnabled(hlo_module->config())) {
@@ -1110,13 +1110,13 @@ static Status CompileModuleToLlvmIrImpl(
     TF_ASSIGN_OR_RETURN(results->executable,
                         LowerToJitRt(*mlir_module, entry_function.getName(),
                                      buffer_sizes, hlo_module));
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 #endif  // XLA_ENABLE_XLIR
 
   results->executable =
       absl::make_unique<ThunkSchedule>(ir_emitter->ConsumeThunkSequence());
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 static void NullDiagnosticHandler(const llvm::DiagnosticInfo& diag_info,

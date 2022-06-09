@@ -168,7 +168,7 @@ Status PyTpuClient::CheckDeviceId(int device_id,
     return InvalidArgument("%s got bad device_id: %d (num_devices=%d).",
                            caller_name, device_id, device_count());
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 static Status CheckDataType(xla::PrimitiveType dtype) {
@@ -178,7 +178,7 @@ static Status CheckDataType(xla::PrimitiveType dtype) {
         "64-bit data types are not yet supported on the TPU driver API. "
         "Convert inputs to float32/int32_t before using.");
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 /* static */
@@ -303,7 +303,7 @@ Status PyTpuBuffer::CopyToHostAsync() {
 
     if (host_value_) {
       // The host value has already been requested or is available.
-      return ::tensorflow::OkStatus();
+      return OkStatus();
     }
 
     host_value->value = std::make_shared<Literal>(on_host_shape_);
@@ -350,7 +350,7 @@ Status PyTpuBuffer::CopyToHostAsync() {
       }
     });
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 StatusOr<std::shared_ptr<Literal>> PyTpuBuffer::ToLiteral() {
