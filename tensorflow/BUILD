@@ -742,9 +742,15 @@ config_setting(
 )
 
 # This flag enables experimental TPU support
+bool_flag(
+    name = "enable_tpu_support",
+    build_setting_default = False,
+)
+
 config_setting(
     name = "with_tpu_support",
     define_values = {"with_tpu_support": "true"},
+    flag_values = {":enable_tpu_support": "True"},
     visibility = ["//visibility:public"],
 )
 
@@ -767,9 +773,15 @@ selects.config_setting_group(
 # TODO(timshen): Currently this option only disables some dependencies.
 # See b/122528503.
 # copybara:uncomment_begin(google-only)
+# bool_flag(
+#     name = "tf_no_prod_deps",
+#     build_setting_default = False,
+# )
+#
 # config_setting(
 #     name = "no_prod_deps",
 #     define_values = {"tf_no_prod_deps": "1"},
+#     flag_values = {":tf_no_prod_deps": "True"},
 # )
 #
 # config_setting(
