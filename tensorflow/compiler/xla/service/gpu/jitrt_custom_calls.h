@@ -80,8 +80,7 @@ class JitRtGemmConfigCache {
   llvm::SmallDenseMap<int64_t, GemmConfig> configs_ ABSL_GUARDED_BY(mutex_);
 };
 
-llvm::orc::SymbolMap JitRtCustomCallsSymbolMap(
-    llvm::orc::MangleAndInterner mangle);
+tfrt::jitrt::DirectCustomCallLibrary JitRtGpuCustomCalls();
 
 }  // namespace gpu
 }  // namespace xla

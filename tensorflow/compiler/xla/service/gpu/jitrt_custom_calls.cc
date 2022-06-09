@@ -65,8 +65,6 @@ namespace gpu {
 
 using llvm::ArrayRef;
 using llvm::Optional;
-using llvm::orc::MangleAndInterner;
-using llvm::orc::SymbolMap;
 
 using mlir::failure;
 using mlir::FailureOr;
@@ -76,6 +74,7 @@ using mlir::succeeded;
 using mlir::success;
 
 using tfrt::jitrt::CustomCall;
+using tfrt::jitrt::DirectCustomCallLibrary;
 using tfrt::jitrt::Executable;
 
 namespace se = ::stream_executor;
@@ -1833,44 +1832,39 @@ static bool PartitionId(runtime::KernelContext* ctx, void** args,
 
 // -------------------------------------------------------------------------- //
 
-SymbolMap JitRtCustomCallsSymbolMap(MangleAndInterner mangle) {
-  SymbolMap symbol_map;
+DirectCustomCallLibrary JitRtGpuCustomCalls() {
+  DirectCustomCallLibrary lib;
 
-  auto bind = [&](llvm::StringRef name, auto symbol_ptr) {
-    symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
-        llvm::pointerToJITTargetAddress(symbol_ptr), llvm::JITSymbolFlags());
-  };
+  lib.Insert("xla.gpu.all_gather", &xla::gpu::AllGather);
+  lib.Insert("xla.gpu.all_reduce", &xla::gpu::AllReduce);
+  lib.Insert("xla.gpu.all_to_all", &xla::gpu::AllToAll);
+  lib.Insert("xla.gpu.fft", &xla::gpu::Fft);
+  lib.Insert("xla.gpu.cholesky", &xla::gpu::Cholesky);
+  lib.Insert("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
+  lib.Insert("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
+  lib.Insert("xla.gpu.gemm", &xla::gpu::Gemm);
+  lib.Insert("xla.gpu.gemm.bias", &xla::gpu::GemmBias);
 
   auto conv = [](StringRef name) { return ("xla.gpu.conv." + name).str(); };
+  lib.Insert(conv("forward"), &ConvFn<CudnnConvKind::kForward>);
+  lib.Insert(conv("backward.input"), &ConvFn<CudnnConvKind::kBackwardInput>);
+  lib.Insert(conv("backward.filter"), &ConvFn<CudnnConvKind::kBackwardFilter>);
+  lib.Insert(conv("forward.fused"),
+             &ConvFusedFn<CudnnConvKind::kForwardActivation>);
+  lib.Insert(conv("forward.fused.side_input"),
+             &ConvFuseSideInputdFn<CudnnConvKind::kForwardActivation>);
 
-  bind("xla.gpu.all_gather", &xla::gpu::AllGather);
-  bind("xla.gpu.all_reduce", &xla::gpu::AllReduce);
-  bind("xla.gpu.all_to_all", &xla::gpu::AllToAll);
-  bind("xla.gpu.fft", &xla::gpu::Fft);
-  bind("xla.gpu.cholesky", &xla::gpu::Cholesky);
-  bind("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
-  bind("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
-  bind("xla.gpu.gemm", &xla::gpu::Gemm);
-  bind("xla.gpu.gemm.bias", &xla::gpu::GemmBias);
+  lib.Insert("xla.gpu.memcpy.d2d", &MemcpyFn<MemcpyDirection::kDeviceToDevice>);
+  lib.Insert("xla.gpu.memcpy.h2d", &MemcpyFn<MemcpyDirection::kHostToDevice>);
+  lib.Insert("xla.gpu.memcpy.d2h", &MemcpyFn<MemcpyDirection::kDeviceToHost>);
+  lib.Insert("xla.gpu.infeed", &xla::gpu::Infeed);
+  lib.Insert("xla.gpu.outfeed", &xla::gpu::Outfeed);
+  lib.Insert("xla.gpu.partition_id", &xla::gpu::PartitionId);
+  lib.Insert("xla.gpu.reduce_scatter", &xla::gpu::ReduceScatter);
+  lib.Insert("xla.gpu.replica_id", &xla::gpu::ReplicaId);
+  lib.Insert("xla.gpu.custom_call", &xla::gpu::CustomCall);
 
-  bind(conv("forward"), &ConvFn<CudnnConvKind::kForward>);
-  bind(conv("backward.input"), &ConvFn<CudnnConvKind::kBackwardInput>);
-  bind(conv("backward.filter"), &ConvFn<CudnnConvKind::kBackwardFilter>);
-  bind(conv("forward.fused"), &ConvFusedFn<CudnnConvKind::kForwardActivation>);
-  bind(conv("forward.fused.side_input"),
-       &ConvFuseSideInputdFn<CudnnConvKind::kForwardActivation>);
-
-  bind("xla.gpu.memcpy.d2d", &MemcpyFn<MemcpyDirection::kDeviceToDevice>);
-  bind("xla.gpu.memcpy.h2d", &MemcpyFn<MemcpyDirection::kHostToDevice>);
-  bind("xla.gpu.memcpy.d2h", &MemcpyFn<MemcpyDirection::kDeviceToHost>);
-  bind("xla.gpu.infeed", &xla::gpu::Infeed);
-  bind("xla.gpu.outfeed", &xla::gpu::Outfeed);
-  bind("xla.gpu.partition_id", &xla::gpu::PartitionId);
-  bind("xla.gpu.reduce_scatter", &xla::gpu::ReduceScatter);
-  bind("xla.gpu.replica_id", &xla::gpu::ReplicaId);
-  bind("xla.gpu.custom_call", &xla::gpu::CustomCall);
-
-  return symbol_map;
+  return lib;
 }
 
 }  // namespace gpu

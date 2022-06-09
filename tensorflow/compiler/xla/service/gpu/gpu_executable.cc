@@ -222,7 +222,7 @@ class GpuExecutable::JitRtExecutable {
     opts.register_dialects = jitrt::RegisterDefaultJitRtDialects;
 
     // Register JitRt Gpu runtime custom calls with the linker.
-    opts.runtime_symbol_map = JitRtCustomCallsSymbolMap;
+    opts.runtime_symbol_map = GetSymbolsBinding(JitRtGpuCustomCalls());
 
     // We just use the default compilation pipeline provided by the JitRt.
     // Alternatively instead of having a separate JitRtProgram (LMHLO lowered to
