@@ -731,7 +731,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
           Type innerResultTy = getElementTypeOrSelf(output);
           auto argvec = llvm::to_vector<2>(args.take_front(inputs.size()));
           auto semiring = preSparsify(op, argvec, innerResultTy, &rewriter);
-          Value innerResult = mhlo::MhloOpToStdScalarOp::map<OpTy>(
+          Value innerResult = mhlo::MhloOpToStdScalarOp::mapOp(
               op, innerResultTy, argvec, &rewriter);
           if (innerResult == nullptr) {
             failed = true;
@@ -766,7 +766,7 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<MhloOp> {
     // Create two loads from the input.
     auto lhs = rewriter.create<memref::LoadOp>(loc, mhloOp.lhs());
     auto rhs = rewriter.create<memref::LoadOp>(loc, mhloOp.rhs());
-    Value opResult = mhlo::MhloOpToStdScalarOp::map<MhloOp>(
+    Value opResult = mhlo::MhloOpToStdScalarOp::mapOp(
         mhloOp, argType.getElementType(), llvm::ArrayRef<Value>{lhs, rhs},
         &rewriter);
     rewriter.create<memref::StoreOp>(loc, opResult, mhloOp.out());
@@ -1078,7 +1078,7 @@ class RealDynamicSliceConverter
       start = rewriter.createOrFold<arith::IndexCastOp>(loc, arithType, start);
       upperBound =
           rewriter.createOrFold<arith::IndexCastOp>(loc, arithType, upperBound);
-      start = mhlo::MhloOpToStdScalarOp::map<mhlo::ClampOp>(
+      start = mhlo::MhloOpToStdScalarOp::mapOpOfType<mhlo::ClampOp>(
           loc, arithType, clampType, ValueRange{zero, start, upperBound},
           &rewriter);
 
@@ -1246,7 +1246,7 @@ class IotaConverter : public OpConversionPattern<OpTy> {
               nestedBuilder.getIntegerType(
                   unwrappedResultElementType.getIntOrFloatBitWidth()),
               indexOp);
-          castOp = mhlo::MhloOpToStdScalarOp::map<mhlo::ConvertOp>(
+          castOp = mhlo::MhloOpToStdScalarOp::mapOpOfType<mhlo::ConvertOp>(
               nestedLoc, resultElementType, castOp.getType(), castOp,
               &nestedBuilder);
           nestedBuilder.create<linalg::YieldOp>(nestedLoc, castOp);
@@ -1466,7 +1466,7 @@ class DynamicSliceConverter : public OpConversionPattern<mhlo::DynamicSliceOp> {
           loc, ub,
           rewriter.create<arith::ConstantOp>(
               loc, rewriter.getIntegerAttr(startIndex.getType(), size)));
-      startIndex = mhlo::MhloOpToStdScalarOp::map<mhlo::ClampOp>(
+      startIndex = mhlo::MhloOpToStdScalarOp::mapOpOfType<mhlo::ClampOp>(
           loc, startIndex.getType(),
           ArrayRef<Type>{startIndex.getType(), startIndex.getType(),
                          startIndex.getType()},
@@ -1535,7 +1535,7 @@ class DynamicUpdateSliceConverter
           loc, rewriter.getIntegerAttr(startIndexType,
                                        operandType.getDimSize(en.index()) -
                                            updateType.getDimSize(en.index())));
-      startIndex = mhlo::MhloOpToStdScalarOp::map<mhlo::ClampOp>(
+      startIndex = mhlo::MhloOpToStdScalarOp::mapOpOfType<mhlo::ClampOp>(
           loc, startIndexType,
           ArrayRef<Type>{startIndexType, startIndexType, startIndexType},
           ArrayRef<Value>{zero, startIndex, ub}, &rewriter);
@@ -1780,7 +1780,7 @@ struct ReduceRegionXLAOpConversion : public OpConversionPattern<OpTy> {
     // `ui32` from the original operands.
     auto operandTypes = llvm::to_vector(llvm::map_range(
         op->getOperandTypes(), [](Type t) { return getElementTypeOrSelf(t); }));
-    Value result = mhlo::MhloOpToStdScalarOp::map<OpTy>(
+    Value result = mhlo::MhloOpToStdScalarOp::mapOpWithArgTypes(
         op, resultType, operandTypes, adaptor.getOperands(), &rewriter);
     rewriter.replaceOp(op, result);
     return success();

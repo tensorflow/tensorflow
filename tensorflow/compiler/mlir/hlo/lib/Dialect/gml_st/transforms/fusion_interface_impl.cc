@@ -51,7 +51,7 @@ struct ElementwiseFusionInterface
           return builder.create<OpTy>(loc, subsetArgs);
         })
         .Case([&](PointType) -> Value {
-          return mhlo::MhloOpToStdScalarOp::map<OpTy>(
+          return mhlo::MhloOpToStdScalarOp::mapOp(
               ewiseOp, materializeOp.getType(), subsetArgs, &builder);
         })
         .Default([](Type) -> Value { return {}; });

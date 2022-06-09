@@ -97,7 +97,7 @@ class MhloElementwiseConverter : public OpRewritePattern<OpTy> {
         }
       }
 
-      Value scalarOp = mhlo::MhloOpToStdScalarOp::map<OpTy>(
+      Value scalarOp = mhlo::MhloOpToStdScalarOp::mapOp(
           op, resultTy.getElementType(), extracts, &rewriter);
       operands.push_back(scalarOp);
     }
