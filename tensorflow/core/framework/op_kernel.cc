@@ -1144,7 +1144,7 @@ static Status IsProbablySafeToLoad(const string& path) {
   if (!missing_features.empty()) {
     string errmsg = "Missing CPU features: ";
     errmsg.append(absl::StrJoin(missing_features, ", "));
-    return Status(errors::Code::FAILED_PRECONDITION, errmsg);
+    return errors::FailedPrecondition(errmsg);
   }
   return OkStatus();
 }

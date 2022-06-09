@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -34,7 +35,7 @@ TEST(RetryingUtilsTest, CallWithRetries_RetryDelays) {
 
   const auto& status = RetryingUtils::CallWithRetries(
       f, sleep, RetryConfig(500000 /* init_delay_time_us */));
-  EXPECT_EQ(errors::Code::ABORTED, status.code());
+  EXPECT_TRUE(errors::IsAborted(status));
   EXPECT_TRUE(absl::StrContains(
       status.error_message(),
       "All 10 retry attempts failed. The last failure: Failed."))
@@ -63,10 +64,8 @@ TEST(RetryingUtilsTest, CallWithRetries_NotFoundIsNotRetried) {
     results.erase(results.begin());
     return result;
   };
-  EXPECT_EQ(
-      errors::Code::NOT_FOUND,
-      RetryingUtils::CallWithRetries(f, RetryConfig(0 /* init_delay_time_us */))
-          .code());
+  EXPECT_TRUE(errors::IsNotFound(RetryingUtils::CallWithRetries(
+      f, RetryConfig(0 /* init_delay_time_us */))));
 }
 
 TEST(RetryingUtilsTest, CallWithRetries_ImmediateSuccess) {
@@ -126,10 +125,8 @@ TEST(RetryingUtilsTest, DeleteWithRetries_PermissionDeniedNotRetried) {
     delete_results.erase(delete_results.begin());
     return result;
   };
-  EXPECT_EQ(errors::Code::PERMISSION_DENIED,
-            RetryingUtils::DeleteWithRetries(
-                delete_func, RetryConfig(0 /* init_delay_time_us */))
-                .code());
+  EXPECT_TRUE(errors::IsPermissionDenied(RetryingUtils::DeleteWithRetries(
+      delete_func, RetryConfig(0 /* init_delay_time_us */))));
 }
 
 TEST(RetryingUtilsTest, DeleteWithRetries_SuccessThroughFileNotFound) {

@@ -335,7 +335,7 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
           offset + copy_size >= buffer_end && buffer_end_is_past_eof_;
       if (copy_size < n && !consumed_buffer_to_eof) {
         Status status = FillBuffer(offset + copy_size);
-        if (!status.ok() && status.code() != errors::Code::OUT_OF_RANGE) {
+        if (!status.ok() && !errors::IsOutOfRange(status)) {
           // Empty the buffer to avoid caching bad reads.
           buffer_.resize(0);
           return status;
@@ -364,7 +364,7 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
     StringPiece str_piece;
     Status status = read_fn_(filename_, buffer_start_, buffer_size_, &str_piece,
                              &(buffer_[0]));
-    buffer_end_is_past_eof_ = status.code() == errors::Code::OUT_OF_RANGE;
+    buffer_end_is_past_eof_ = errors::IsOutOfRange(status);
     buffer_.resize(str_piece.size());
     return status;
   }
@@ -599,7 +599,7 @@ class GcsWritableFile : public WritableFile {
                                  already_uploaded);
         },
         retry_config_);
-    if (upload_status.code() == errors::Code::NOT_FOUND) {
+    if (errors::IsNotFound(upload_status)) {
       // GCS docs recommend retrying the whole upload. We're relying on the
       // RetryingFileSystem to retry the Sync() call.
       return errors::Unavailable(strings::StrCat(
@@ -1418,7 +1418,7 @@ Status GcsFileSystem::FileExists(const string& fname, TransactionToken* token) {
   // Check if the object exists.
   GcsFileStat stat;
   const Status status = StatForObject(fname, bucket, object, &stat);
-  if (status.code() != errors::Code::NOT_FOUND) {
+  if (!errors::IsNotFound(status)) {
     return status;
   }
 
@@ -1435,11 +1435,11 @@ Status GcsFileSystem::ObjectExists(const string& fname, const string& bucket,
                                    const string& object, bool* result) {
   GcsFileStat stat;
   const Status status = StatForObject(fname, bucket, object, &stat);
-  switch (status.code()) {
-    case errors::Code::OK:
+  switch (static_cast<int>(status.code())) {
+    case static_cast<int>(error::Code::OK):
       *result = !stat.base.is_directory;
       return OkStatus();
-    case errors::Code::NOT_FOUND:
+    case static_cast<int>(error::Code::NOT_FOUND):
       *result = false;
       return OkStatus();
     default:
@@ -1811,7 +1811,7 @@ Status GcsFileSystem::Stat(const string& fname, TransactionToken* token,
     *stat = gcs_stat.base;
     return OkStatus();
   }
-  if (status.code() != errors::Code::NOT_FOUND) {
+  if (!errors::IsNotFound(status)) {
     return status;
   }
   bool is_folder;

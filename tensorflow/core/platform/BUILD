@@ -972,11 +972,11 @@ tf_cc_test(
     srcs = ["retrying_utils_test.cc"],
     deps = [
         ":retrying_utils",
+        ":str_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:str_util",
     ],
 )
 
