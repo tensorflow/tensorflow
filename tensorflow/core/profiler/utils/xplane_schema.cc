@@ -216,6 +216,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"_a", kIsAsync},
       // Device trace arguments.
       {"device_id", kDeviceId},
+      {"device_type_string", kDeviceTypeString},
       {"context_id", kContextId},
       {"correlation_id", kCorrelationId},
       {"memcpy_details", kMemcpyDetails},

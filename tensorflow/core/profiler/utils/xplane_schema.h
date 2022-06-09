@@ -207,6 +207,7 @@ enum StatType {
   kIsAsync,
   // Device trace arguments.
   kDeviceId,
+  kDeviceTypeString,
   kContextId,
   kCorrelationId,
   // TODO(b/176137043): These "details" should differentiate between activity
