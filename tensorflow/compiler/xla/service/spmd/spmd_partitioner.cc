@@ -4211,9 +4211,9 @@ StatusOr<bool> SpmdPartitioner::Run(HloModule* module) {
 
   if (changed) {
     HloPassPipeline pass("spmd-cleanup");
-    pass.AddPass<HloDCE>();
+    pass.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true);
     pass.AddPass<TupleSimplifier>();
-    pass.AddPass<HloDCE>();
+    pass.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true);
     pass.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
     pass.AddPass<FlattenCallGraph>();
     TF_RETURN_IF_ERROR(pass.Run(module).status());

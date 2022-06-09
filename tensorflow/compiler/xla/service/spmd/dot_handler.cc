@@ -2665,21 +2665,38 @@ StatusOr<HloInstruction*> PartitionDotGroupOnContracting(
     }
     return result;
   };
-  // Disable doing the inner reshard when the "faster windowed einsum" flag is
-  // enabled, because the windowed einsum implementation is currently slow with
-  // this kind of reshard happening.
-  if (options.choose_faster_windowed_einsum_over_mem) {
-    inner_output_base_shape = output_base_shape;
-    inner_creator = create_sharded_dot;
-    outer_output_tmp_sharding =
-        hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-            outer_output_tmp_sharding, output_slice_dims);
-  }
+
   PartitionedHlo::PartitioningState inner_state =
       CreatePerGroupPartitioningState(lhs.state(), lhs_grouped.device_groups,
                                       b);
+
+  HloInstruction* maybe_windowed_dot = nullptr;
+
+  // Tentatively disables the inner reshard when the "faster windowed einsum"
+  // flag is enabled, because the windowed einsum implementation is currently
+  // slow with this kind of reshard happening.
+  int original_num_windowed_loops = windowed_dot_general_loops->size();
+  if (options.choose_faster_windowed_einsum_over_mem) {
+    Shape predicted_inner_output_base_shape = output_base_shape;
+    auto predicted_inner_creator = create_sharded_dot;
+    TF_ASSIGN_OR_RETURN(
+        maybe_windowed_dot,
+        PartitionDot(
+            PartitionedHlo(lhs.hlo(),
+                           GetPerGroupBaseShape(lhs_grouped, lhs.base_shape()),
+                           inner_state),
+            PartitionedHlo(rhs.hlo(),
+                           GetPerGroupBaseShape(rhs_grouped, rhs.base_shape()),
+                           inner_state),
+            predicted_inner_output_base_shape, inner_output_sharding,
+            dims_mapping, num_partitions / group_count, predicted_inner_creator,
+            conv_window, module, original_hlo, options, b,
+            windowed_dot_general_loops, visitor));
+  }
+  int new_num_windowed_loops = windowed_dot_general_loops->size();
+
   TF_ASSIGN_OR_RETURN(
-      auto dot,
+      auto inner_dot,
       PartitionDot(
           PartitionedHlo(lhs.hlo(),
                          GetPerGroupBaseShape(lhs_grouped, lhs.base_shape()),
@@ -2690,20 +2707,28 @@ StatusOr<HloInstruction*> PartitionDotGroupOnContracting(
           inner_output_base_shape, inner_output_sharding, dims_mapping,
           num_partitions / group_count, inner_creator, conv_window, module,
           original_hlo, options, b, windowed_dot_general_loops, visitor));
-  if (!dot) {
+
+  // Reenables the inner reshard if there is an inner dot and no actual
+  // windowed_dot_general_loops generated.
+  if (inner_dot && (new_num_windowed_loops == original_num_windowed_loops)) {
+    maybe_windowed_dot = inner_dot;
+  } else if (maybe_windowed_dot) {
+    if (options.choose_faster_windowed_einsum_over_mem) {
+      HloInstruction* ar = lhs.state().partitioner->AllReduceAlongShardingDims(
+          b, maybe_windowed_dot, lhs_sharding, lhs.state().next_channel_id,
+          lhs_dims, lhs.state().collective_ops_creator,
+          MakeBinaryAdd(output_base_shape.element_type(), module));
+      maybe_windowed_dot = ar;
+      outer_output_tmp_sharding =
+          hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+              outer_output_tmp_sharding, output_slice_dims);
+    }
+  } else {
     return nullptr;
   }
 
-  if (options.choose_faster_windowed_einsum_over_mem) {
-    HloInstruction* ar = lhs.state().partitioner->AllReduceAlongShardingDims(
-        b, dot, lhs_sharding, lhs.state().next_channel_id, lhs_dims,
-        lhs.state().collective_ops_creator,
-        MakeBinaryAdd(output_base_shape.element_type(), module));
-    dot = ar;
-  }
-
-  dot->set_sharding(outer_output_tmp_sharding);
-  auto d = PartitionedHlo(dot, output_base_shape, lhs.state())
+  maybe_windowed_dot->set_sharding(outer_output_tmp_sharding);
+  auto d = PartitionedHlo(maybe_windowed_dot, output_base_shape, lhs.state())
                .Reshard(output_sharding)
                .hlo();
   return d;

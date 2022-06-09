@@ -9671,7 +9671,7 @@ ENTRY entry {
                            /*conv_halo_exchange_always_on_lhs =*/true,
                            /*choose_faster_windowed_einsum =*/true));
 
-  const HloInstruction* dot_op = FindInstruction(module.get(), "dot.1");
+  const HloInstruction* dot_op = FindInstruction(module.get(), HloOpcode::kDot);
   auto op1 = op::Shape("f32[4,2,4,4]");
   auto op2 = op::Shape("f32[2,4,4]");
   EXPECT_THAT(dot_op, op::Dot(op1, op2));
@@ -9692,8 +9692,11 @@ ENTRY entry {
     sharding={devices=[1,2,1,2]0,1,2,3}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_devices=*/4,
+                           /*conv_halo_exchange_always_on_lhs=*/true,
+                           /*choose_faster_windowed_einsum=*/true));
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
   auto dot = AllOf(op::Shape("f32[16,32,24,1024]"),
