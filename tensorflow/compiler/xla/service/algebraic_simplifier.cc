@@ -1208,6 +1208,14 @@ std::optional<Shape> AlgebraicSimplifierVisitor::ReshapeLayoutDimensions(
   for (int i = 0; i < result_shape.rank(); ++i) {
     if (result_shape.dimensions(i) == 1) {
       bitcast_pos++;
+      // Since there is a possiblity of over-incrementing bitcast_pos
+      // we need such a check here also before accessing the vector.
+      // Overincrementing is possible when the result's dimension is
+      // smaller than the original dimension.
+      if (bitcast_pos >= reshaped_dimensions->size()) {
+        VLOG(3) << "bitcast pos is over incremented:" << bitcast_pos << "\n";
+        return std::nullopt;
+      }
       (*reshaped_dimensions)[bitcast_pos] = i;
     }
   }

@@ -962,6 +962,29 @@ TEST_F(AlgebraicSimplifierTest, DegenerateDimsInOperandRemovedFromBroadcast) {
               GmockMatch(m::Broadcast(m::Reshape(m::Parameter(0)))));
 }
 
+// Test to catch a crash where we were overshooting the reshaped_dimensions
+// vector.
+TEST_F(AlgebraicSimplifierTest, ArrayOvershootTest) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      param0 = f32[18,18,2,1,1,128]{1,0,5,2,4,3} parameter(0)
+      cpy1 = f32[18,18,2,1,1,128]{5,2,1,0,4,3} copy(f32[18,18,2,1,1,128]{1,0,5,2,4,3} param0)
+      bitcast = f32[648,128,1,1]{3,2,1,0} bitcast(cpy1)
+      ROOT cpy2 = f32[648,128,1,1]{3,2,0,1} copy(f32[648,128,1,1]{3,2,1,0} bitcast)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  // Assert false because algebraic simplifier - at the time of adding this
+  // test - does not change anything. Motivation of the test to make sure it
+  // does not crash the compiler.
+  ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
+}
+
 // Test that (A/B)/C is simplified to A/(B*C).
 TEST_F(AlgebraicSimplifierTest, LhsDivOfDiv) {
   auto m = CreateNewVerifiedModule();
