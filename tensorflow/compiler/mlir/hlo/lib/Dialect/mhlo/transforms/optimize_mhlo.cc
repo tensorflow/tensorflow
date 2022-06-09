@@ -34,8 +34,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
 
-using mlir::RewritePatternSet;
-
 namespace mlir {
 namespace mhlo {
 namespace {

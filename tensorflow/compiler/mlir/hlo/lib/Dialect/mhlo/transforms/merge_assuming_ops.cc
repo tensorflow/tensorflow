@@ -100,11 +100,6 @@ struct InlineBroadcastedShapeOperandsPattern : public OpRewritePattern<OpTy> {
   }
 };
 
-bool isMovable(Operation *op) {
-  return MemoryEffectOpInterface::hasNoEffect(op) ||
-         llvm::isa<shape::CstrBroadcastableOp>(op);
-}
-
 LogicalResult moveUpIntoAssumingOpMatchAndRewrite(Operation *op,
                                                   PatternRewriter &rewriter) {
   // Only implemented for single-result ops.

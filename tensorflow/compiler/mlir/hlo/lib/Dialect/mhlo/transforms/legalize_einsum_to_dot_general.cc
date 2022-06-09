@@ -29,13 +29,6 @@ namespace mlir {
 namespace mhlo {
 namespace {
 
-DenseIntElementsAttr make1DElementsAttr(OpBuilder &b,
-                                        ArrayRef<int64_t> integers) {
-  auto type = RankedTensorType::get({static_cast<int64_t>(integers.size())},
-                                    b.getI64Type());
-  return DenseIntElementsAttr::get(type, integers);
-}
-
 struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
   using OpRewritePattern<EinsumOp>::OpRewritePattern;
 

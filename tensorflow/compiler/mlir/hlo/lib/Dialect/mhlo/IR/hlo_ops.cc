@@ -5908,22 +5908,6 @@ UNARY_FOLDER_FLOAT(RoundOp, Round);
 // BinaryOps
 //===----------------------------------------------------------------------===//
 
-namespace {
-
-// Updates the element type of a (presumed) tensor type 'x', returning either
-// a permuted UnrankedTensorType or RankedTensorType.
-static Type updateResultElementType(Builder* builder, Type x,
-                                    Type elementType) {
-  auto xRanked = x.dyn_cast<RankedTensorType>();
-  if (!xRanked) {
-    return UnrankedTensorType::get(elementType);
-  }
-
-  auto shapeX = xRanked.getShape();
-  return RankedTensorType::get(shapeX, elementType);
-}
-}  // namespace
-
 ParseResult parseBinaryOp(OpAsmParser& parser, OperationState& result) {
   SmallVector<OpAsmParser::UnresolvedOperand> operands;
   Type type;
