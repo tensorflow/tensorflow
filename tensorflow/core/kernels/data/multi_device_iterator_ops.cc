@@ -448,8 +448,8 @@ class MultiDeviceIterator : public ResourceBase {
     const size_t size_;
     const int64_t max_buffer_size_;
     const int64_t incarnation_id_;
-    const std::unique_ptr<IteratorBase> host_iterator_;
     CancellationManager cancellation_manager_;
+    const std::unique_ptr<IteratorBase> host_iterator_;
     MultiDeviceIterator* const parent_;  // Not owned.
     std::unique_ptr<Thread> background_thread_ TF_GUARDED_BY(mu_);
   };
