@@ -55,18 +55,18 @@ namespace {
 
 // We assume that if one of the operands is a FromElements operation that means
 // it is a shape computation.
-bool OpIsShapeComputation(Operation *op) {
-  bool found_from_elements = false;
+bool opIsShapeComputation(Operation *op) {
+  bool foundFromElements = false;
   for (auto operand : op->getOperands()) {
-    auto shaped_ty = operand.getType().template cast<ShapedType>();
-    if (!shaped_ty.hasRank() || shaped_ty.getRank() > 1) return false;
-    if (auto from_elements =
+    auto shapedTy = operand.getType().template cast<ShapedType>();
+    if (!shapedTy.hasRank() || shapedTy.getRank() > 1) return false;
+    if (auto fromElements =
             operand.template getDefiningOp<tensor::FromElementsOp>()) {
-      found_from_elements = true;
+      foundFromElements = true;
       continue;
     }
   }
-  return found_from_elements;
+  return foundFromElements;
 }
 
 template <typename OpTy>
@@ -76,17 +76,17 @@ class MhloElementwiseConverter : public OpRewritePattern<OpTy> {
 
   LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const final {
-    if (!OpIsShapeComputation(op)) return failure();
+    if (!opIsShapeComputation(op)) return failure();
 
-    auto result_ty = op.getType().template cast<ShapedType>();
+    auto resultTy = op.getType().template cast<ShapedType>();
 
     Location loc = op.getLoc();
     SmallVector<Value> operands;
-    for (int i = 0, s = result_ty.getNumElements(); i < s; i++) {
+    for (int i = 0, s = resultTy.getNumElements(); i < s; i++) {
       SmallVector<Value> extracts;
       for (auto operand : op->getOperands()) {
-        ShapedType operand_ty = operand.getType().template cast<ShapedType>();
-        if (operand_ty.getRank() == 0) {
+        ShapedType operandTy = operand.getType().template cast<ShapedType>();
+        if (operandTy.getRank() == 0) {
           Value extract =
               rewriter.create<tensor::ExtractOp>(loc, operand, ValueRange({}));
           extracts.push_back(extract);
@@ -97,13 +97,12 @@ class MhloElementwiseConverter : public OpRewritePattern<OpTy> {
         }
       }
 
-      Value scalar_op = mhlo::MhloOpToStdScalarOp::map<OpTy>(
-          op, result_ty.getElementType(), extracts, &rewriter);
-      operands.push_back(scalar_op);
+      Value scalarOp = mhlo::MhloOpToStdScalarOp::map<OpTy>(
+          op, resultTy.getElementType(), extracts, &rewriter);
+      operands.push_back(scalarOp);
     }
 
-    rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, result_ty,
-                                                        operands);
+    rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, resultTy, operands);
 
     return success();
   }
@@ -115,21 +114,21 @@ class ConcatenateConverter : public OpRewritePattern<mhlo::ConcatenateOp> {
 
   LogicalResult matchAndRewrite(mhlo::ConcatenateOp op,
                                 PatternRewriter &rewriter) const final {
-    if (!OpIsShapeComputation(op)) return failure();
+    if (!opIsShapeComputation(op)) return failure();
 
     Location loc = op.getLoc();
-    auto result_ty = op.getType().cast<ShapedType>();
+    auto resultTy = op.getType().cast<ShapedType>();
     llvm::SmallVector<Value> elements;
-    elements.reserve(result_ty.getNumElements());
+    elements.reserve(resultTy.getNumElements());
 
     for (auto operand : op->getOperands()) {
-      ShapedType operand_ty = operand.getType().template cast<ShapedType>();
-      if (operand_ty.getRank() == 0) {
+      ShapedType operandTy = operand.getType().template cast<ShapedType>();
+      if (operandTy.getRank() == 0) {
         Value extract =
             rewriter.create<tensor::ExtractOp>(loc, operand, ValueRange({}));
         elements.push_back(extract);
       } else {
-        for (int i = 0, s = operand_ty.getNumElements(); i < s; i++) {
+        for (int i = 0, s = operandTy.getNumElements(); i < s; i++) {
           Value idx = rewriter.create<arith::ConstantIndexOp>(loc, i);
           Value extract = rewriter.create<tensor::ExtractOp>(loc, operand, idx);
           elements.push_back(extract);
@@ -137,8 +136,7 @@ class ConcatenateConverter : public OpRewritePattern<mhlo::ConcatenateOp> {
       }
     }
 
-    rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, result_ty,
-                                                        elements);
+    rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, resultTy, elements);
     return success();
   }
 };
@@ -150,17 +148,17 @@ class GetDimSizeConverter : public OpRewritePattern<mhlo::GetDimensionSizeOp> {
   LogicalResult matchAndRewrite(mhlo::GetDimensionSizeOp op,
                                 PatternRewriter &rewriter) const final {
     Location loc = op.getLoc();
-    auto result_ty = op.getType();
-    auto element_ty = getElementTypeOrSelf(result_ty);
-    auto dim_attr = rewriter.getIndexAttr(op.dimension());
-    auto dim_const = rewriter.create<arith::ConstantOp>(loc, dim_attr);
+    auto resultTy = op.getType();
+    auto elementTy = getElementTypeOrSelf(resultTy);
+    auto dimAttr = rewriter.getIndexAttr(op.dimension());
+    auto dimConst = rewriter.create<arith::ConstantOp>(loc, dimAttr);
 
-    Value dim_op = rewriter.create<tensor::DimOp>(loc, rewriter.getIndexType(),
-                                                  op.operand(), dim_const);
+    Value dimOp = rewriter.create<tensor::DimOp>(loc, rewriter.getIndexType(),
+                                                 op.operand(), dimConst);
 
     // Cast to the correct element type and convert to a tensor.
-    Value cast = rewriter.create<arith::IndexCastOp>(loc, element_ty, dim_op);
-    rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, result_ty, cast);
+    Value cast = rewriter.create<arith::IndexCastOp>(loc, elementTy, dimOp);
+    rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, resultTy, cast);
     return success();
   }
 };
@@ -172,16 +170,16 @@ class ReshapeConverter : public OpRewritePattern<mhlo::ReshapeOp> {
   LogicalResult matchAndRewrite(mhlo::ReshapeOp op,
                                 PatternRewriter &rewriter) const final {
     auto operand = op.operand();
-    auto shaped_ty = operand.getType().template cast<ShapedType>();
-    if (!shaped_ty.hasRank() || shaped_ty.getRank() > 1) return failure();
+    auto shapedTy = operand.getType().template cast<ShapedType>();
+    if (!shapedTy.hasRank() || shapedTy.getRank() > 1) return failure();
 
-    auto result_ty = op.getType().cast<ShapedType>();
+    auto resultTy = op.getType().cast<ShapedType>();
 
-    auto from_elements = op.operand().getDefiningOp<tensor::FromElementsOp>();
-    if (!from_elements) return failure();
+    auto fromElements = op.operand().getDefiningOp<tensor::FromElementsOp>();
+    if (!fromElements) return failure();
 
     rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(
-        op, result_ty, from_elements.getOperands());
+        op, resultTy, fromElements.getOperands());
     return success();
   }
 };

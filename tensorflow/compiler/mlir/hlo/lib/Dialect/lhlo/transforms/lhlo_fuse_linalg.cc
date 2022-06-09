@@ -48,10 +48,10 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
  public:
   LhloFuseLinalgPass() = default;
   LhloFuseLinalgPass(const LhloFuseLinalgPass&) {}
-  LhloFuseLinalgPass(bool use_parallel_loops,
-                     llvm::ArrayRef<unsigned> tile_sizes) {
-    tile_sizes_ = tile_sizes;
-    use_parallel_loops_.setValue(use_parallel_loops);
+  LhloFuseLinalgPass(bool useParallelLoops,
+                     llvm::ArrayRef<unsigned> tileSizes) {
+    tile_sizes_ = tileSizes;
+    use_parallel_loops_.setValue(useParallelLoops);
   }
 
   void runOnOperation() override {
@@ -68,23 +68,23 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
     // tiled. In order to greedily fuse the ops, we have to start from the tiled
     // root linalg ops, i.e. linalg ops that write to output buffers of the
     // function or are returned in case of escaping allocations.
-    llvm::SmallDenseSet<Value> result_buffers;
-    for (auto func_arg : func.getArguments()) {
-      result_buffers.insert(func_arg);
+    llvm::SmallDenseSet<Value> resultBuffers;
+    for (auto funcArg : func.getArguments()) {
+      resultBuffers.insert(funcArg);
     }
     for (auto& block : func) {
       auto returnOp =
           mlir::dyn_cast<mlir::func::ReturnOp>(block.getTerminator());
       if (!returnOp) continue;
       for (auto operand : returnOp.getOperands()) {
-        result_buffers.insert(operand);
+        resultBuffers.insert(operand);
       }
     }
     // Resolve aliasing operations (like casts) on the result to identify
     // results. This only handles escaping results.
     // TODO(herhut): Use BufferizeAliasAnalysis for this.
-    llvm::SmallVector<Value, 4> worklist(result_buffers.begin(),
-                                         result_buffers.end());
+    llvm::SmallVector<Value, 4> worklist(resultBuffers.begin(),
+                                         resultBuffers.end());
     while (!worklist.empty()) {
       Value result = worklist.pop_back_val();
       auto* definingOp = result.getDefiningOp();
@@ -94,31 +94,31 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
 
       if (auto viewLike = dyn_cast<ViewLikeOpInterface>(definingOp)) {
         auto alias = viewLike.getViewSource();
-        if (result_buffers.insert(alias).second) {
+        if (resultBuffers.insert(alias).second) {
           worklist.push_back(alias);
         }
         continue;
       }
 
-      if (auto to_tensor = dyn_cast<bufferization::ToTensorOp>(definingOp)) {
-        auto alias = to_tensor.memref();
-        if (result_buffers.insert(alias).second) {
+      if (auto toTensor = dyn_cast<bufferization::ToTensorOp>(definingOp)) {
+        auto alias = toTensor.memref();
+        if (resultBuffers.insert(alias).second) {
           worklist.push_back(alias);
         }
         continue;
       }
 
-      if (auto to_memref = dyn_cast<bufferization::ToMemrefOp>(definingOp)) {
-        auto alias = to_memref.tensor();
-        if (result_buffers.insert(alias).second) {
+      if (auto toMemref = dyn_cast<bufferization::ToMemrefOp>(definingOp)) {
+        auto alias = toMemref.tensor();
+        if (resultBuffers.insert(alias).second) {
           worklist.push_back(alias);
         }
         continue;
       }
 
-      if (auto tensor_cast = dyn_cast<tensor::CastOp>(definingOp)) {
-        auto alias = tensor_cast.source();
-        if (result_buffers.insert(alias).second) {
+      if (auto tensorCast = dyn_cast<tensor::CastOp>(definingOp)) {
+        auto alias = tensorCast.source();
+        if (resultBuffers.insert(alias).second) {
           worklist.push_back(alias);
         }
         continue;
@@ -143,7 +143,7 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
             Operation& operation = block.back();
             if (!operation.hasTrait<OpTrait::ReturnLike>()) continue;
             auto idx = result.dyn_cast<OpResult>().getResultNumber();
-            if (result_buffers.insert(operation.getOperand(idx)).second) {
+            if (resultBuffers.insert(operation.getOperand(idx)).second) {
               worklist.push_back(operation.getOperand(idx));
             }
           }
@@ -153,17 +153,16 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
 
     MLIRContext* ctx = func.getContext();
     OpBuilder b(func);
-    func.walk([&](linalg::GenericOp generic_op) {
-      SmallVector<int64_t, 2> tile_sizes(tile_sizes_.begin(),
-                                         tile_sizes_.end());
-      if (tile_sizes.empty()) {
-        tile_sizes = SmallVector<int64_t, 2>(generic_op.getNumLoops(), 1);
+    func.walk([&](linalg::GenericOp genericOp) {
+      SmallVector<int64_t, 2> tileSizes(tile_sizes_.begin(), tile_sizes_.end());
+      if (tileSizes.empty()) {
+        tileSizes = SmallVector<int64_t, 2>(genericOp.getNumLoops(), 1);
       }
-      auto op = cast<LinalgOp>(generic_op.getOperation());
-      for (OpOperand* op_operand : op.getOutputBufferOperands()) {
-        if (!result_buffers.count(op_operand->get())) continue;
-        if (tileGenericOp(op, tile_sizes, &b)) {
-          generic_op.erase();
+      auto op = cast<LinalgOp>(genericOp.getOperation());
+      for (OpOperand* opOperand : op.getOutputBufferOperands()) {
+        if (!resultBuffers.count(opOperand->get())) continue;
+        if (tileGenericOp(op, tileSizes, &b)) {
+          genericOp.erase();
           return;
         }
       }
@@ -173,19 +172,19 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
       return signalPassFailure();
 
     // Fuse producers of tiled linalg ops.
-    llvm::SmallDenseSet<Operation*> erase_set;
-    SmallVector<LinalgOp, 8> linalg_ops;
-    func.walk([&](LinalgOp op) { linalg_ops.push_back(op); });
-    for (LinalgOp op : llvm::reverse(linalg_ops)) {
+    llvm::SmallDenseSet<Operation*> eraseSet;
+    SmallVector<LinalgOp, 8> linalgOps;
+    func.walk([&](LinalgOp op) { linalgOps.push_back(op); });
+    for (LinalgOp op : llvm::reverse(linalgOps)) {
       for (OpOperand* inputOperand : op.getInputOperands()) {
         linalg::Aliases aliases;
-        linalg::LinalgDependenceGraph graph(aliases, linalg_ops);
+        linalg::LinalgDependenceGraph graph(aliases, linalgOps);
         auto info = fuseProducerOfBuffer(b, *inputOperand, graph);
         if (failed(info)) continue;
         auto* originalOp = info->originalProducer.getOperation();
-        erase_set.insert(originalOp);
+        eraseSet.insert(originalOp);
         auto* originalOpInLinalgOpsVector =
-            std::find_if(linalg_ops.begin(), linalg_ops.end(),
+            std::find_if(linalgOps.begin(), linalgOps.end(),
                          [&](const Operation* op) { return op == originalOp; });
         *originalOpInLinalgOpsVector = info->fusedProducer.getOperation();
       }
@@ -194,27 +193,27 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
       if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
         return signalPassFailure();
     }
-    for (auto* e : erase_set) e->erase();
+    for (auto* e : eraseSet) e->erase();
   }
 
  private:
-  bool tileGenericOp(LinalgOp op, ArrayRef<int64_t> tile_sizes, OpBuilder* b) {
+  bool tileGenericOp(LinalgOp op, ArrayRef<int64_t> tileSizes, OpBuilder* b) {
     auto loopType = use_parallel_loops_
                         ? linalg::LinalgTilingLoopType::ParallelLoops
                         : linalg::LinalgTilingLoopType::Loops;
     IRRewriter rewriter(*b);
-    return succeeded(linalg::tileLinalgOp(rewriter, op,
-                                          linalg::LinalgTilingOptions()
-                                              .setTileSizes(tile_sizes)
-                                              .setLoopType(loopType)));
+    return succeeded(linalg::tileLinalgOp(
+        rewriter, op,
+        linalg::LinalgTilingOptions().setTileSizes(tileSizes).setLoopType(
+            loopType)));
   }
 };
 
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>> createLhloFuseLinalgPass(
-    bool use_parallel_loops, ArrayRef<unsigned> tile_sizes) {
-  return std::make_unique<LhloFuseLinalgPass>(use_parallel_loops, tile_sizes);
+    bool useParallelLoops, ArrayRef<unsigned> tileSizes) {
+  return std::make_unique<LhloFuseLinalgPass>(useParallelLoops, tileSizes);
 }
 
 }  // namespace lmhlo

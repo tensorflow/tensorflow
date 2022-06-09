@@ -30,8 +30,8 @@ class CopyRemoval : bufferization::BufferPlacementTransformationBase {
  public:
   explicit CopyRemoval(Operation *op)
       : BufferPlacementTransformationBase(op),
-        userange_(op, allocs, aliases),
-        dominators_(op) {}
+        userange(op, allocs, aliases),
+        dominators(op) {}
 
   void removeCopy() {
     // A vector with the allocation value / copy operation pairs s to process.
@@ -61,10 +61,10 @@ class CopyRemoval : bufferization::BufferPlacementTransformationBase {
         continue;
 
       // Get the UserangeIntervals.
-      auto sourceAlloc = alias_to_alloc_map_[copySource];
+      auto sourceAlloc = aliasToAllocMap[copySource];
       UseInterval::Vector sourceInterval =
           getOrInsert(sourceAlloc, updatedUserange, lambdaUserangeUpdate);
-      auto targetAlloc = alias_to_alloc_map_[copyTarget];
+      auto targetAlloc = aliasToAllocMap[copyTarget];
       UseInterval::Vector targetInterval =
           getOrInsert(targetAlloc, updatedUserange, lambdaUserangeUpdate);
 
@@ -90,7 +90,7 @@ class CopyRemoval : bufferization::BufferPlacementTransformationBase {
       // dealloc, as it ended the original source range. If we do the reuse,
       // we have to remove that dealloc to extend the liferange of the original
       // value.
-      auto *lastOp = userange_.getOperation(intersect.back().end);
+      auto *lastOp = userange.getOperation(intersect.back().end);
       if (!isDeallocOperationFor(lastOp, copySource)) continue;
       toErase.insert(lastOp);
 
@@ -134,9 +134,9 @@ class CopyRemoval : bufferization::BufferPlacementTransformationBase {
         // If the alias is already processed, continue.
         if (!processedAliases.insert(alias).second) continue;
         // Union the use ranges.
-        userange_.unionRanges(allocValue, alias);
+        userange.unionRanges(allocValue, alias);
         // Remember the alias.
-        alias_to_alloc_map_.insert({alias, allocValue});
+        aliasToAllocMap.insert({alias, allocValue});
         // If any of the uses are a copy, we have a canidate.
         for (auto *user : alias.getUsers()) {
           auto copyOp = dyn_cast<CopyOpInterface>(user);
@@ -163,7 +163,7 @@ class CopyRemoval : bufferization::BufferPlacementTransformationBase {
   /// Insert the original userange intervals of the operation in the map.
   UseInterval::Vector &insertUserangeInterval(
       Value v, DenseMap<Value, UseInterval::Vector> &updateMap) {
-    const auto *original = userange_.getUserangeInterval(v).getValue();
+    const auto *original = userange.getUserangeInterval(v).getValue();
     auto &entry = updateMap[v];
     entry = *original;
     return entry;
@@ -176,7 +176,7 @@ class CopyRemoval : bufferization::BufferPlacementTransformationBase {
     // Check if any use of the target is not dominated by the useOp. Erased
     // operations are ignored as uses.
     return llvm::all_of(userRange, [=](Operation *user) {
-      return ignoreSet.count(user) || dominators_.dominates(operation, user);
+      return ignoreSet.count(user) || dominators.dominates(operation, user);
     });
   }
 
@@ -184,10 +184,10 @@ class CopyRemoval : bufferization::BufferPlacementTransformationBase {
   /// This helper is aware of aliasing via the alias_to_alloc_map_.
   bool isDeallocOperationFor(Operation *op, Value value) {
     auto effect = dyn_cast<MemoryEffectOpInterface>(op);
-    Value originalAlloc = alias_to_alloc_map_[value];
+    Value originalAlloc = aliasToAllocMap[value];
     return effect && effect.hasEffect<MemoryEffects::Free>() &&
            llvm::any_of(op->getOperands(), [&](Value operand) {
-             Value operandAlloc = alias_to_alloc_map_[operand];
+             Value operandAlloc = aliasToAllocMap[operand];
              return operandAlloc == originalAlloc;
            });
   }
@@ -205,28 +205,28 @@ class CopyRemoval : bufferization::BufferPlacementTransformationBase {
       // an ancestor.
       // TODO(herhut): This is a bit of a big hammer. Ideally this should only
       //               look at use positions. Refactor to use those here.
-      Operation *op_in_interval = userange_.getOperation(id * 2);
-      if (op->isAncestor(op_in_interval)) continue;
-      auto effect = dyn_cast<MemoryEffectOpInterface>(op_in_interval);
+      Operation *opInInterval = userange.getOperation(id * 2);
+      if (op->isAncestor(opInInterval)) continue;
+      auto effect = dyn_cast<MemoryEffectOpInterface>(opInInterval);
       // If we do not know about effects, fail.
       if (!effect) return false;
       // If it has no effect we are safe. It is OK if it gets the operand as
       // it does not use it.
       if (effect.hasNoEffect()) continue;
-      if (isDeallocOperationFor(op_in_interval, source)) continue;
+      if (isDeallocOperationFor(opInInterval, source)) continue;
       return false;
     }
     return true;
   }
 
   /// The current userange info.
-  UserangeAnalysis userange_;
+  UserangeAnalysis userange;
 
   /// A map from aliases to their allocation value.
-  DenseMap<Value, Value> alias_to_alloc_map_;
+  DenseMap<Value, Value> aliasToAllocMap;
 
   /// The current dominance info.
-  DominanceInfo dominators_;
+  DominanceInfo dominators;
 };
 
 struct CopyRemovalPass : public CopyRemovalBase<CopyRemovalPass> {

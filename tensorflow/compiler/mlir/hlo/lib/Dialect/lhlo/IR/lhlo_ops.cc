@@ -71,17 +71,17 @@ LmhloDialect::LmhloDialect(MLIRContext* context)
 
 LogicalResult AbsOp::verify() {
   AbsOp op = *this;
-  auto operand_type = getElementTypeOrSelf(op.input().getType());
-  auto output_type = getElementTypeOrSelf(op.output().getType());
-  if (auto complex_type = operand_type.dyn_cast<ComplexType>()) {
-    if (complex_type.getElementType() != output_type) {
+  auto operandType = getElementTypeOrSelf(op.input().getType());
+  auto outputType = getElementTypeOrSelf(op.output().getType());
+  if (auto complexType = operandType.dyn_cast<ComplexType>()) {
+    if (complexType.getElementType() != outputType) {
       return op.emitOpError(
           "requires output type to be the same as the element type of the "
           "input");
     }
     return success();
   }
-  if (operand_type != output_type)
+  if (operandType != outputType)
     return op.emitOpError("requires all operands to have the same type");
   return success();
 }
@@ -194,44 +194,42 @@ LogicalResult CustomCallOp::verify() {
   CustomCallOp op = *this;
   if (op.target_arg_mapping()) {
     CustomCallTargetArgMapping mapping = *op.target_arg_mapping();
-    auto verify_mapping = [&](int64_t target_num, size_t op_num,
-                              ArrayAttr mapping,
-                              StringRef kind) -> LogicalResult {
-      if (target_num < op_num)
+    auto verifyMapping = [&](int64_t targetNum, size_t opNum, ArrayAttr mapping,
+                             StringRef kind) -> LogicalResult {
+      if (targetNum < opNum)
         return op.emitOpError("number of target " + kind + " (")
-               << target_num << ") cannot be less than the number of " << kind
-               << "(" << op_num << ") for the operation";
+               << targetNum << ") cannot be less than the number of " << kind
+               << "(" << opNum << ") for the operation";
 
-      if (mapping.size() != op_num)
+      if (mapping.size() != opNum)
         return op.emitOpError("number of entries in the mapping for " + kind +
                               " (")
                << mapping.size() << ") should match the number of " << kind
-               << " for the operation (" << op_num << ")";
+               << " for the operation (" << opNum << ")";
 
       std::unordered_set<int64_t> entries;
       // Each entry in the mapping should be < target_num and an entry cannot
       // appear more than once.
       for (Attribute entry : mapping) {
-        int64_t int_entry = entry.cast<IntegerAttr>().getInt();
+        int64_t intEntry = entry.cast<IntegerAttr>().getInt();
         // ODS verification will ensure that these entries are integers.
-        if (!entries.insert(int_entry).second)
+        if (!entries.insert(intEntry).second)
           return op.emitOpError("entry ")
-                 << int_entry
+                 << intEntry
                  << " cannot appear more than once in the mapping for " << kind;
-        if (int_entry < 0 || int_entry >= target_num)
+        if (intEntry < 0 || intEntry >= targetNum)
           return op.emitOpError(
                      "entries in mapping for " + kind +
                      " must be >= 0 and less than target's number of " + kind +
                      " (")
-                 << target_num << ")";
+                 << targetNum << ")";
       }
       return success();
     };
-    if (failed(verify_mapping(mapping.num_args().getInt(), op.args().size(),
-                              mapping.args_to_target_args(), "args")) ||
-        failed(verify_mapping(mapping.num_results().getInt(),
-                              op.output().size(),
-                              mapping.results_to_target_results(), "results")))
+    if (failed(verifyMapping(mapping.num_args().getInt(), op.args().size(),
+                             mapping.args_to_target_args(), "args")) ||
+        failed(verifyMapping(mapping.num_results().getInt(), op.output().size(),
+                             mapping.results_to_target_results(), "results")))
       return failure();
   }
   return success();
@@ -248,28 +246,27 @@ LogicalResult CustomCallOp::verify() {
 //     configurations are applied to the operand.
 LogicalResult PadOp::verify() {
   PadOp op = *this;
-  auto operand_type = op.operand().getType().dyn_cast<ShapedType>();
-  auto output_type = op.output().getType().dyn_cast<ShapedType>();
-  if (!(operand_type && output_type && operand_type.hasRank() &&
-        output_type.hasRank())) {
+  auto operandType = op.operand().getType().dyn_cast<ShapedType>();
+  auto outputType = op.output().getType().dyn_cast<ShapedType>();
+  if (!(operandType && outputType && operandType.hasRank() &&
+        outputType.hasRank())) {
     return success();
   }
 
-  unsigned rank = operand_type.getRank();
+  unsigned rank = operandType.getRank();
   // Checks if operand and output ranks match.
-  if (output_type.getRank() != rank) {
+  if (outputType.getRank() != rank) {
     return op.emitOpError()
-           << "output's rank(" << output_type.getRank()
+           << "output's rank(" << outputType.getRank()
            << ") is not same as operand's rank(" << rank << ")";
   }
 
-  auto edge_pad_low_ranges = op.edge_padding_low().getValues<int64_t>();
-  auto edge_pad_high_ranges = op.edge_padding_high().getValues<int64_t>();
-  auto interior_pad_ranges = op.interior_padding().getValues<int64_t>();
+  auto edgePadLowRanges = op.edge_padding_low().getValues<int64_t>();
+  auto edgePadHighRanges = op.edge_padding_high().getValues<int64_t>();
+  auto interiorPadRanges = op.interior_padding().getValues<int64_t>();
   // Checks if padding configurations are specified for each dimension.
-  if (edge_pad_low_ranges.size() != rank ||
-      edge_pad_high_ranges.size() != rank ||
-      interior_pad_ranges.size() != rank) {
+  if (edgePadLowRanges.size() != rank || edgePadHighRanges.size() != rank ||
+      interiorPadRanges.size() != rank) {
     return op.emitOpError() << "pad configurations to be specified for all "
                             << rank << " dimensions";
   }
@@ -279,20 +276,19 @@ LogicalResult PadOp::verify() {
   // dimension is calculated as :-
   //     low_padding + operand_dim_size + total_interior_padding + high_padding
   //  where, total_interior_padding = (operand_dim_size - 1) * interior_padding.
-  for (const auto& paddings : llvm::enumerate(llvm::zip(
-           edge_pad_low_ranges, edge_pad_high_ranges, interior_pad_ranges,
-           operand_type.getShape(), output_type.getShape()))) {
+  for (const auto& paddings : llvm::enumerate(
+           llvm::zip(edgePadLowRanges, edgePadHighRanges, interiorPadRanges,
+                     operandType.getShape(), outputType.getShape()))) {
     auto index = static_cast<unsigned>(paddings.index());
-    int64_t low_pad, high_pad, interior_pad, operand_dim_size, output_dim_size;
-    std::tie(low_pad, high_pad, interior_pad, operand_dim_size,
-             output_dim_size) = paddings.value();
-    int64_t expected_dim_size = low_pad + operand_dim_size +
-                                (operand_dim_size - 1) * interior_pad +
-                                high_pad;
-    if (expected_dim_size != output_dim_size) {
+    int64_t lowPad, highPad, interiorPad, operandDimSize, outputDimSize;
+    std::tie(lowPad, highPad, interiorPad, operandDimSize, outputDimSize) =
+        paddings.value();
+    int64_t expectedDimSize =
+        lowPad + operandDimSize + (operandDimSize - 1) * interiorPad + highPad;
+    if (expectedDimSize != outputDimSize) {
       return op.emitOpError()
              << "expected " << index << "-th dimension size after padding is "
-             << expected_dim_size << " but found " << output_dim_size;
+             << expectedDimSize << " but found " << outputDimSize;
     }
   }
 
@@ -312,35 +308,35 @@ struct RemoveCopyInReduceBody : public OpRewritePattern<ReduceOp> {
   LogicalResult matchAndRewrite(ReduceOp reduce,
                                 PatternRewriter& rewriter) const override {
     // Find the only `lmhlo.copy` in the body of `reduce`.
-    CopyOp the_only_copy;
+    CopyOp theOnlyCopy;
     for (auto& op : reduce.body().front()) {
       if (auto copy = dyn_cast<lmhlo::CopyOp>(op)) {
-        if (the_only_copy == nullptr) {
-          the_only_copy = copy;
+        if (theOnlyCopy == nullptr) {
+          theOnlyCopy = copy;
         } else {
-          the_only_copy = nullptr;
+          theOnlyCopy = nullptr;
           break;
         }
       }
     }
-    if (!the_only_copy) return failure();
+    if (!theOnlyCopy) return failure();
 
-    auto new_reduce = rewriter.cloneWithoutRegions(reduce);
-    auto& old_reduce_body = reduce.body().front();
-    Block* new_block = rewriter.createBlock(
-        &new_reduce.body(), new_reduce.body().end(),
-        old_reduce_body.getArgumentTypes(),
-        SmallVector<Location>(old_reduce_body.getNumArguments(),
+    auto newReduce = rewriter.cloneWithoutRegions(reduce);
+    auto& oldReduceBody = reduce.body().front();
+    Block* newBlock = rewriter.createBlock(
+        &newReduce.body(), newReduce.body().end(),
+        oldReduceBody.getArgumentTypes(),
+        SmallVector<Location>(oldReduceBody.getNumArguments(),
                               reduce.getLoc()));
 
     mlir::BlockAndValueMapping bvm;
     for (auto item : llvm::zip(reduce.body().front().getArguments(),
-                               new_block->getArguments())) {
+                               newBlock->getArguments())) {
       bvm.map(std::get<0>(item), std::get<1>(item));
     }
-    bvm.map(the_only_copy.operand(), bvm.lookup(the_only_copy.output()));
+    bvm.map(theOnlyCopy.operand(), bvm.lookup(theOnlyCopy.output()));
 
-    rewriter.setInsertionPointToStart(new_block);
+    rewriter.setInsertionPointToStart(newBlock);
     for (auto& op : reduce.body().front()) {
       if (llvm::isa<lmhlo::CopyOp>(op) || llvm::isa<memref::DeallocOp>(op) ||
           llvm::isa<memref::AllocOp>(op))

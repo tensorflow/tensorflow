@@ -44,28 +44,28 @@ namespace {
 // types. Regions are also rewritten.
 class ConvertToSignless : public ConversionPattern {
  public:
-  ConvertToSignless(TypeConverter& type_converter, MLIRContext* context)
-      : ConversionPattern(type_converter, MatchAnyOpTypeTag{}, 0, context) {}
+  ConvertToSignless(TypeConverter& typeConverter, MLIRContext* context)
+      : ConversionPattern(typeConverter, MatchAnyOpTypeTag{}, 0, context) {}
 
   LogicalResult matchAndRewrite(
       Operation* op, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final {
-    SmallVector<Type> result_types;
-    if (failed(typeConverter->convertTypes(op->getResultTypes(), result_types)))
+    SmallVector<Type> resultTypes;
+    if (failed(typeConverter->convertTypes(op->getResultTypes(), resultTypes)))
       return failure();
 
-    auto* new_op = Operation::create(op->getLoc(), op->getName(), result_types,
-                                     operands, op->getAttrs(),
-                                     op->getSuccessors(), op->getNumRegions());
-    for (auto regions : llvm::zip(op->getRegions(), new_op->getRegions())) {
+    auto* newOp = Operation::create(op->getLoc(), op->getName(), resultTypes,
+                                    operands, op->getAttrs(),
+                                    op->getSuccessors(), op->getNumRegions());
+    for (auto regions : llvm::zip(op->getRegions(), newOp->getRegions())) {
       Region& before = std::get<0>(regions);
       Region& parent = std::get<1>(regions);
       rewriter.inlineRegionBefore(before, parent, parent.end());
       if (failed(rewriter.convertRegionTypes(&parent, *typeConverter)))
         return failure();
     }
-    rewriter.insert(new_op);
-    rewriter.replaceOp(op, new_op->getResults());
+    rewriter.insert(newOp);
+    rewriter.replaceOp(op, newOp->getResults());
     return success();
   }
 };
@@ -75,21 +75,21 @@ class ConvertToSignless : public ConversionPattern {
 class ConvertConstantToSignless
     : public OpConversionPattern<arith::ConstantOp> {
  public:
-  ConvertConstantToSignless(TypeConverter& type_converter, MLIRContext* context)
-      : OpConversionPattern<arith::ConstantOp>(type_converter, context) {}
+  ConvertConstantToSignless(TypeConverter& typeConverter, MLIRContext* context)
+      : OpConversionPattern<arith::ConstantOp>(typeConverter, context) {}
 
   LogicalResult matchAndRewrite(
-      arith::ConstantOp constant_op, arith::ConstantOpAdaptor adaptor,
+      arith::ConstantOp constantOp, arith::ConstantOpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
     // We only care about unsigned integers
     if (!adaptor.getValue().isa<DenseIntElementsAttr>()) return failure();
 
     auto values = llvm::to_vector(
         adaptor.getValue().cast<DenseIntElementsAttr>().getValues<APInt>());
-    auto new_values = DenseIntElementsAttr::get(
-        typeConverter->convertType(constant_op.getType()), values);
+    auto newValues = DenseIntElementsAttr::get(
+        typeConverter->convertType(constantOp.getType()), values);
 
-    rewriter.replaceOpWithNewOp<arith::ConstantOp>(constant_op, new_values);
+    rewriter.replaceOpWithNewOp<arith::ConstantOp>(constantOp, newValues);
     return success();
   }
 };
