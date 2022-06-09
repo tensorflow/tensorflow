@@ -2,6 +2,8 @@ syntax = "proto2";
 
 package tensorflow.core.function.trace_type.default_types;
 
+import "tensorflow/core/function/trace_type/serialization.proto";
+
 // Represents a serialized Literal type.
 message SerializedLiteral {
   oneof value {
@@ -10,4 +12,18 @@ message SerializedLiteral {
     double float_value = 3;  // Python "float" is double precision.
     string str_value = 4;
   }
+}
+
+// Represents a serialized Dict type.
+message SerializedDict {
+  repeated SerializedLiteral keys = 1;
+  repeated tensorflow.core.function.trace_type.serialization.SerializedTraceType
+      values = 2;
+}
+
+// Represents a serialized Reference type.
+message SerializedReference {
+  optional SerializedLiteral identifier = 1;
+  optional tensorflow.core.function.trace_type.serialization.SerializedTraceType
+      base = 2;
 }

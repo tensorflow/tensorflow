@@ -181,6 +181,17 @@ class DefaultTypesTest(test.TestCase):
             'c': MockSupertypes2With3(3)
         }))
 
+  def testDictSerialization(self):
+    dict_original = default_types.Dict({
+        'a': default_types.Literal(1),
+        'b': default_types.Literal(2),
+        'c': default_types.Literal(3)
+    })
+
+    self.assertEqual(
+        serialization.deserialize(serialization.serialize(dict_original)),
+        dict_original)
+
   def testListTupleInequality(self):
     literal = default_types.Literal
 
@@ -231,6 +242,11 @@ class DefaultTypesTest(test.TestCase):
     self.assertIsNone(original.most_specific_common_supertype([different_id]))
     self.assertIsNone(original.most_specific_common_supertype([different_type]))
 
+  def testReferencetSerialization(self):
+    ref_original = default_types.Reference(default_types.Literal(3), 1)
+    self.assertEqual(
+        serialization.deserialize(serialization.serialize(ref_original)),
+        ref_original)
 
 if __name__ == '__main__':
   test.main()
