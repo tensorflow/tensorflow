@@ -351,6 +351,9 @@ mlir::LogicalResult ConductSPMDExpansion(mlir::ModuleOp module) {
   return mlir::success();
 }
 
+// DTensorLayout only conveys layout information of tensors which is no
+// longer needed after SPMD expansion. As so, remove all layouts from
+// graph.
 void RemoveDTensorLayoutOps(mlir::ModuleOp module) {
   llvm::SmallVector<mlir::TF::DTensorLayout, 4> layout_ops;
   module.walk(
@@ -359,9 +362,19 @@ void RemoveDTensorLayoutOps(mlir::ModuleOp module) {
   for (auto layout_op : layout_ops) RemoveDTensorLayoutOp(layout_op);
 }
 
+// Removes temporary attrs created during SPMD expansion.
+void RemoveTemporarySPMDAttrs(mlir::ModuleOp module) {
+  module.walk([&](mlir::Operation* op) {
+    if (op->hasAttr(kDeviceSeedForMeshDims)) {
+      op->removeAttr(kDeviceSeedForMeshDims);
+    }
+  });
+}
+
 // MLIR pass that converts graph in global view into a local view which can be
-// invoked in parallel on distributed set of devices. This pass also removes
-// all DTensorLayout ops after the expansion is done.
+// invoked in parallel on distributed set of devices. This pass removes
+// all DTensorLayout ops after the expansion is done. Temporary nodes and
+// attributes are also removed after the pass is done.
 struct DTensorSPMDExpansion
     : public DTensorSPMDExpansionBase<DTensorSPMDExpansion> {
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
@@ -372,10 +385,9 @@ struct DTensorSPMDExpansion
     auto module = getOperation();
     if (failed(ConductSPMDExpansion(module))) return signalPassFailure();
 
-    // DTensorLayout only conveys layout information of tensors which is no
-    // longer needed after SPMD expansion. As so, remove all layouts from
-    // graph.
     RemoveDTensorLayoutOps(module);
+
+    RemoveTemporarySPMDAttrs(module);
   };
 };
 
