@@ -191,6 +191,7 @@ cc_library(
     srcs = [
         "passes/convert_custom_aggregation_op_to_quant_stats.cc",
         "passes/convert_fake_quant_to_qdq.cc",
+        "passes/convert_tf_quant_ops_to_mhlo.cc",
         "passes/insert_custom_aggregation_ops.cc",
         "passes/insert_main_function.cc",
         "passes/insert_quantized_functions.cc",
@@ -215,6 +216,8 @@ cc_library(
     ],
     deps = [
         ":pass_util",
+        ":tf_quant_ops",
+        "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
@@ -224,7 +227,10 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/ir/importexport:mangling",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:path",
