@@ -8,7 +8,7 @@ set(LIBS
         AllMhloPasses
         MLIRHLOAnalysis
         )
-add_llvm_executable(mhlo-tosa-opt mhlo_tosa_opt.cpp
+add_llvm_executable(mhlo-tosa-opt mhlo_tosa_opt.cc
   DEPENDS
         MLIRMhloPassIncGen
 )

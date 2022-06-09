@@ -12,7 +12,7 @@ package_group(
 
 cc_binary(
     name = "mhlo-tosa-opt",
-    srcs = ["mhlo_tosa_opt.cpp"],
+    srcs = ["mhlo_tosa_opt.cc"],
     deps = [
         "//tensorflow/compiler/mlir/hlo:all_passes",
         "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",

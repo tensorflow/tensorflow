@@ -33,7 +33,7 @@ set(LIBS
         MLIRHLOAnalysis
         MLIRHLOTestAnalysis
         )
-add_llvm_executable(mlir-hlo-opt mlir-hlo-opt.cpp
+add_llvm_executable(mlir-hlo-opt mlir-hlo-opt.cc
   DEPENDS
         MLIRLmhloPassIncGen
         MLIRMhloPassIncGen
