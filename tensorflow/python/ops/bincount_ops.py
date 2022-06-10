@@ -24,20 +24,19 @@ from tensorflow.python.ops import gen_count_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.eager import def_function
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 @def_function.function(jit_compile=True)
-def dense_bincount_1d(input=[],
+def dense_bincount_1d(input_arr=[],
               size=None,
               weights=[],
               binary_output=False):
 
-  input = array_ops.reshape(input, [array_ops.shape(input)[0],-1])
+  input_arr = array_ops.reshape(input_arr, [array_ops.shape(input_arr)[0],-1])
   output_shape = [size]
-  idx = input
+  idx = array_ops.reshape(input_arr, [array_ops.shape(input_arr)[0],-1])
   if (binary_output):
     updates = array_ops.ones(array_ops.shape(idx)[0], dtype=dtypes.bool)
     output = array_ops.zeros(output_shape, dtype=dtypes.bool)
@@ -52,22 +51,24 @@ def dense_bincount_1d(input=[],
 
   return histogram_out
 
-def prepare_idxs(input):
-  j_indices = array_ops.reshape(input, [-1, 1])
-  i_indices = array_ops.expand_dims(array_ops.repeat(math_ops.range(array_ops.shape(input)[0]), array_ops.shape(input)[1]), axis=-1)
+def prepare_idxs(input_arr):
+  j_indices = array_ops.reshape(input_arr, [-1, 1])
+  dim1 = math_ops.range(array_ops.shape(input_arr)[0])
+  dim2 = array_ops.shape(input_arr)[1]
+  i_indices = array_ops.expand_dims(array_ops.repeat(dim1, dim2), axis=-1)
 
   new_indices = array_ops.concat([i_indices, j_indices], axis=-1)
   return new_indices
 
 @def_function.function(jit_compile=True)
-def dense_bincount_2d(input=[],
+def dense_bincount_2d(input_arr=[],
               size=None,
               weights=[],
               binary_output=False):
 
-  input = array_ops.reshape(input, [array_ops.shape(input)[0],-1])
-  idx = prepare_idxs(input)
-  output_shape = [input.shape[0], size] 
+  input_arr = array_ops.reshape(input_arr, [array_ops.shape(input_arr)[0],-1])
+  idx = prepare_idxs(input_arr)
+  output_shape = [input_arr.shape[0], size] 
   
   if (binary_output):
     updates = array_ops.ones(array_ops.shape(idx)[0], dtype=dtypes.bool)
@@ -268,13 +269,13 @@ def bincount(arr,
       if (pseudo_hlo == True):
         if (len(arr.shape)==1):
           return dense_bincount_1d(          
-            input=arr,
+            input_arr=arr,
             size=output_size,
             weights=weights,
             binary_output=binary_output)
         else:
           return dense_bincount_2d(          
-            input=arr,
+            input_arr=arr,
             size=output_size,
             weights=weights,
             binary_output=binary_output)
