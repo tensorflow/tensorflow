@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -29,7 +30,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
@@ -207,7 +207,7 @@ StatusOr<DeviceAssignment> TfrtCpuClient::GetDefaultDeviceAssignment(
 }
 
 StatusOr<std::unique_ptr<HloCostAnalysis>> TfrtCpuClient::GetHloCostAnalysis() {
-  return absl::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
+  return std::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
 }
 
 StatusOr<std::optional<std::string>> TfrtCpuClient::ExecutableFingerprint(

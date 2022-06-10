@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_SHARDING_UTIL_H_
 
 #include <map>
+#include <optional>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"

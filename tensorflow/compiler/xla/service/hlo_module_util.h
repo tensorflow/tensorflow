@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"

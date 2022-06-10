@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"

@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_EXECUTABLE_RUN_OPTIONS_H_
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/statusor.h"

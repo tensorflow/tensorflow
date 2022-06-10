@@ -21,7 +21,6 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
@@ -701,7 +700,7 @@ template <typename NativeT>
 std::unique_ptr<Array2D<NativeT>> ClientLibraryTestBase::CreatePseudorandomR2(
     const int rows, const int cols, NativeT min_value, NativeT max_value,
     uint32_t seed) {
-  auto result = absl::make_unique<Array2D<NativeT>>(rows, cols);
+  auto result = std::make_unique<Array2D<NativeT>>(rows, cols);
   PseudorandomGenerator<NativeT> generator(min_value, max_value, seed);
   for (int y = 0; y < rows; ++y) {
     for (int x = 0; x < cols; ++x) {

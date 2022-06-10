@@ -29,9 +29,9 @@ limitations under the License.
 
 // IWYU pragma: no_include "llvm/Config/Disassemblers.def.inc"
 // IWYU pragma: no_include "llvm/Config/Targets.def.inc"
+
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"

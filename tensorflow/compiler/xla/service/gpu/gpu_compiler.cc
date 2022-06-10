@@ -20,11 +20,11 @@ limitations under the License.
 #include <atomic>
 #include <functional>
 #include <iterator>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
@@ -967,7 +967,7 @@ struct CompileModuleResults {
   std::unique_ptr<llvm::Module> llvm_module;
   std::unique_ptr<BufferAssignment> buffer_assignment;
   std::vector<BufferAllocation> allocations;
-  absl::variant<OwnedThunkSchedule, OwnedBefBuffer, OwnedJitRtProgram>
+  std::variant<OwnedThunkSchedule, OwnedBefBuffer, OwnedJitRtProgram>
       executable;
   GpuExecutable::OwnedGpuContextCache gpu_ctx_cache;
   EntryFunctionAttributes entry_func_attrs;
@@ -1092,7 +1092,7 @@ static Status CompileModuleToLlvmIrImpl(
                         LowerToBef(*mlir_module, entry_function.getName(),
                                    buffer_sizes, hlo_module));
     if (stream_exec) {
-      auto& bef_buffer = absl::get<OwnedBefBuffer>(results->executable);
+      auto& bef_buffer = std::get<OwnedBefBuffer>(results->executable);
       llvm::ArrayRef<uint8_t> bef_array(bef_buffer.get(),
                                         bef_buffer.get_deleter().size);
       TF_ASSIGN_OR_RETURN(results->gpu_ctx_cache,
@@ -1389,10 +1389,10 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
                             std::move(compile_module_results.llvm_module),
                             stream_exec, options, module.get()));
   if (DumpingEnabledForHloModule(*module) &&
-      absl::holds_alternative<OwnedThunkSchedule>(
+      std::holds_alternative<OwnedThunkSchedule>(
           compile_module_results.executable)) {
     const ThunkSchedule& thunk_schedule =
-        *absl::get<OwnedThunkSchedule>(compile_module_results.executable);
+        *std::get<OwnedThunkSchedule>(compile_module_results.executable);
     DumpToFileInDirOrStdout(*module, "", "thunk_schedule",
                             thunk_schedule.ToString());
   }
@@ -1536,12 +1536,12 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
         stream_exec->GetDeviceDescription().rocm_compute_capability(),
         GetCanShareBuffer(), pointer_size_, &compile_module_results));
 
-    if (!absl::holds_alternative<OwnedBefBuffer>(
+    if (!std::holds_alternative<OwnedBefBuffer>(
             compile_module_results.executable)) {
       return FailedPrecondition("Expected BefBuffer is not supplied.");
     }
     const auto& bef_buffer =
-        absl::get<OwnedBefBuffer>(compile_module_results.executable);
+        std::get<OwnedBefBuffer>(compile_module_results.executable);
     const std::string bef(reinterpret_cast<char*>(bef_buffer.get()),
                           bef_buffer.get_deleter().size);
 

@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <map>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"

@@ -20,7 +20,6 @@ limitations under the License.
 #include <new>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/local_client.h"

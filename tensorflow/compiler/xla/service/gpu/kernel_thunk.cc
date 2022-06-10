@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"

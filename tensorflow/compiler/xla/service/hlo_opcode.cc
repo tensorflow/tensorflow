@@ -64,7 +64,7 @@ std::optional<int> HloOpcodeArity(HloOpcode opcode) {
 #define CASE_ARITY(enum_name, opcode_name, arity, ...)  \
   case HloOpcode::enum_name:                            \
     return arity == kHloOpcodeIsVariadic ? std::nullopt \
-                                         : absl::make_optional(arity);
+                                         : std::make_optional(arity);
     HLO_OPCODE_LIST(CASE_ARITY)
 #undef CASE_ARITY
   }

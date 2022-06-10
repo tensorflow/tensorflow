@@ -17,11 +17,11 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_DYNAMIC_PARAMETER_BINDING_H_
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"

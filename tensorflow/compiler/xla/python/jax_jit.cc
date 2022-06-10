@@ -31,6 +31,7 @@ limitations under the License.
 #include <algorithm>
 #include <exception>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -40,7 +41,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/notification.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "pybind11/cast.h"
 #include "pybind11/numpy.h"
@@ -112,13 +112,13 @@ std::optional<py::object> GetDefaultDevice() {
              : global_state.default_device;
 }
 
-absl::optional<pybind11::function> GetPostHook() {
+std::optional<pybind11::function> GetPostHook() {
   return thread_local_state.post_hook.has_value() ? thread_local_state.post_hook
                                                   : global_state.post_hook;
 }
 
 static std::string OptionalDebugString(
-    const absl::optional<py::object> optional) {
+    const std::optional<py::object> optional) {
   if (optional.has_value()) {
     return py::cast<std::string>(py::str(optional.value()));
   } else {
@@ -231,7 +231,7 @@ H AbslHashValue(H h, const CallSignature& s) {
 // Filter out static arguments, flatten and concatenate other arguments (i.e.
 // dynamic positional and keyword arguments), filling `arguments` in place.
 xla::Status ParseArguments(py::handle args,
-                           const absl::optional<py::kwargs>& py_kwargs,
+                           const std::optional<py::kwargs>& py_kwargs,
                            absl::Span<int const> static_argnums,
                            absl::Span<py::str const> static_argnames,
                            ParsedArgumentsAsBuffers& arguments) {
@@ -339,8 +339,8 @@ struct CacheEntry {
 
   // Bitvector of kept arguments from Jaxpr DCE pass. Used to drop some `args`
   // in CompiledFunction::Call before calling into compiled computation.
-  absl::optional<std::vector<bool>> kept_var_bitvec;
-  absl::optional<xla::ClientAndPtr<xla::PjRtDevice>> sticky_device;
+  std::optional<std::vector<bool>> kept_var_bitvec;
+  std::optional<xla::ClientAndPtr<xla::PjRtDevice>> sticky_device;
 
   // Fallback to Python happens:
   // - for trivial computations
@@ -486,7 +486,7 @@ class CompiledFunction {
   // (d) construct `DeviceArray` objects from the outputs
   // (e) reconstruct the `PyTree`.
   xla::StatusOr<py::object> Call(py::handle args,
-                                 absl::optional<py::kwargs> kwargs);
+                                 std::optional<py::kwargs> kwargs);
 
   // This allows `inspect.signature(cpp_jitted_f)` from Python.
   py::object PythonSignature() {
@@ -698,7 +698,7 @@ xla::Status ComputeSignature(bool jax_enable_x64,
 // Returns `Status::OK()` on success. Returning an error should lead to
 // calling the Python fallback.
 xla::Status CopyBuffersToDevice(
-    bool jax_enable_x64, const absl::optional<std::vector<bool>>& kept_args,
+    bool jax_enable_x64, const std::optional<std::vector<bool>>& kept_args,
     ParsedArgumentsAsBuffers& arguments) {
   std::vector<xla::PjRtBuffer*>& arg_buffers = arguments.arg_buffers;
   xla::PjRtDevice* data_device = arguments.signature.device;
@@ -754,7 +754,7 @@ void CompiledFunction::PopulateCacheEntry(
   cache_entry->out_pytree_def = std::move(out_tree);
 
   cache_entry->sticky_device =
-      py::cast<absl::optional<xla::ClientAndPtr<xla::PjRtDevice>>>(
+      py::cast<std::optional<xla::ClientAndPtr<xla::PjRtDevice>>>(
           executable_handlers_out_tree.attr("sticky_device"));
   auto avals = py::cast<py::list>(executable_handlers_out_tree.attr("avals"));
 
@@ -772,7 +772,7 @@ void CompiledFunction::PopulateCacheEntry(
   if (!kept_var_bitvec_attr.is_none()) {
     auto kept_var_bitvec = py::cast<py::list>(kept_var_bitvec_attr);
     cache_entry->kept_var_bitvec =
-        absl::make_optional<std::vector<bool>>(kept_var_bitvec.size(), false);
+        std::make_optional<std::vector<bool>>(kept_var_bitvec.size(), false);
     for (int i = 0; i < kept_var_bitvec.size(); ++i) {
       cache_entry->kept_var_bitvec.value()[i] =
           py::cast<bool>(kept_var_bitvec[i]);
@@ -807,7 +807,7 @@ void CompiledFunction::TryToPopulateDefaultDevice() {
 }
 
 xla::StatusOr<py::object> CompiledFunction::Call(
-    py::handle args, absl::optional<py::kwargs> kwargs) {
+    py::handle args, std::optional<py::kwargs> kwargs) {
   VLOG(3) << "Calling CompiledFunction " << function_name_;
 
   // Make sure we trigger a garbage collection on JIT function calls. Otherwise
@@ -986,7 +986,7 @@ xla::StatusOr<py::object> CompiledFunction::Call(
   py::object out = cache_entry->out_pytree_def.Unflatten(flat_device_arrays);
 
   // If there is a post-hook function, call it with the inputs and the outputs.
-  absl::optional<py::object> post_hook = GetPostHook();
+  std::optional<py::object> post_hook = GetPostHook();
   if (post_hook) {
     (*post_hook)(AsPyHandle(), args,
                  py::cast<py::dict>(kwargs.value_or(py::kwargs())), out);
@@ -1121,7 +1121,7 @@ PyObject* JaxCompiledFunction_tp_call(PyObject* self, PyObject* args,
   tensorflow::profiler::TraceMe traceme([&] {
     return absl::StrCat("JaxCompiledFunction(", o->fun.function_name(), ")");
   });
-  absl::optional<py::kwargs> py_kwargs;
+  std::optional<py::kwargs> py_kwargs;
   if (kwargs) {
     py_kwargs = py::reinterpret_borrow<py::kwargs>(kwargs);
   }

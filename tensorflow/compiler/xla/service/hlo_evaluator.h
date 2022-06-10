@@ -20,11 +20,10 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
-#include "absl/memory/memory.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/literal.h"

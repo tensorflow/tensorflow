@@ -130,7 +130,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -333,7 +332,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
@@ -523,7 +521,6 @@ tf_cuda_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -791,7 +788,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "//tensorflow/stream_executor:scratch_allocator",
@@ -1016,7 +1012,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -1048,7 +1043,6 @@ cc_library(
         ":gpu_conv_runner",
         ":ir_emission_utils",
         ":stream_executor_util",
-        "@com_google_absl//absl/types:optional",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo",
@@ -1121,7 +1115,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:optional",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
@@ -1163,7 +1156,6 @@ cc_library(
         "//tensorflow/stream_executor:dnn",
         "//tensorflow/stream_executor:lazy_op_runner",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -1234,7 +1226,6 @@ cc_library(
     deps = if_gpu_is_configured([
         ":cusolver_context",
         ":ir_emission_utils",
-        "@com_google_absl//absl/types:optional",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:util",
@@ -1880,7 +1871,6 @@ cc_library(
         ":triangular_solve_rewriter",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/types:optional",
         "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:Support",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
@@ -2022,7 +2012,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_query",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -2571,7 +2560,6 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -2591,7 +2579,6 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -2638,7 +2625,6 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -2678,7 +2664,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 

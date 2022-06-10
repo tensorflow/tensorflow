@@ -23,7 +23,6 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/array2d.h"

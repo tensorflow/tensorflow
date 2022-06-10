@@ -16,7 +16,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"

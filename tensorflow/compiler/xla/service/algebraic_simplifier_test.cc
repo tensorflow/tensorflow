@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"

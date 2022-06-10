@@ -53,8 +53,7 @@ class GrpcEvent : public Event {
   ~GrpcEvent() override;
 
   xla::Status Await() override;
-  absl::optional<xla::Status> AwaitWithTimeout(
-      absl::Duration duration) override;
+  std::optional<xla::Status> AwaitWithTimeout(absl::Duration duration) override;
   void AddCallback(std::function<void(Status)> callback) override;
 
   EventId id() const { return id_; }
@@ -72,7 +71,7 @@ class ErrorEvent : public GrpcEvent {
   }
 
   xla::Status Await() override { return status_; }
-  absl::optional<xla::Status> AwaitWithTimeout(
+  std::optional<xla::Status> AwaitWithTimeout(
       absl::Duration duration) override {
     return status_;
   }
@@ -86,9 +85,9 @@ class ErrorEvent : public GrpcEvent {
 
 class GrpcBufferHandle : public BufferHandle {
  public:
-  explicit GrpcBufferHandle(
-      EventId id, std::shared_ptr<GrpcEvent> event, int64_t bytes,
-      absl::optional<xla::ShapeProto> shape = absl::nullopt)
+  explicit GrpcBufferHandle(EventId id, std::shared_ptr<GrpcEvent> event,
+                            int64_t bytes,
+                            std::optional<xla::ShapeProto> shape = std::nullopt)
       : id_(id),
         stream_(event->stream()),
         event_(std::move(event)),
@@ -101,14 +100,14 @@ class GrpcBufferHandle : public BufferHandle {
   EventId id() const { return id_; }
   GrpcTpuStream* stream() const { return stream_; }
 
-  absl::optional<xla::ShapeProto> shape() override { return shape_; }
+  std::optional<xla::ShapeProto> shape() override { return shape_; }
 
  private:
   const EventId id_;
   GrpcTpuStream* stream_;
   std::shared_ptr<GrpcEvent> event_;
   int64_t bytes_;
-  absl::optional<xla::ShapeProto> shape_;
+  std::optional<xla::ShapeProto> shape_;
 };
 
 class GrpcCompiledProgramHandle : public CompiledProgramHandle {
@@ -259,7 +258,7 @@ class GrpcTpuStream {
 
   // Wait at most `duration` for event `id` to complete. Returns the event
   // status or an empty optional if the event does not complete in time.
-  absl::optional<Status> WaitForEvent(EventId id, absl::Duration duration)
+  std::optional<Status> WaitForEvent(EventId id, absl::Duration duration)
       ABSL_LOCKS_EXCLUDED(events_mutex_);
 
   void AddEventCallback(EventId id, std::function<void(Status)> callback)
@@ -448,7 +447,7 @@ Status GrpcEvent::Await() {
   return opt_status.value();
 }
 
-absl::optional<Status> GrpcEvent::AwaitWithTimeout(absl::Duration duration) {
+std::optional<Status> GrpcEvent::AwaitWithTimeout(absl::Duration duration) {
   return stream_->WaitForEvent(id_, duration);
 }
 
@@ -562,8 +561,8 @@ void GrpcTpuStream::DeleteEvent(EventId id) {
   }
 }
 
-absl::optional<Status> GrpcTpuStream::WaitForEvent(EventId id,
-                                                   absl::Duration duration) {
+std::optional<Status> GrpcTpuStream::WaitForEvent(EventId id,
+                                                  absl::Duration duration) {
   events_mutex_.Lock();
   auto it = events_.find(id);
 
@@ -579,7 +578,7 @@ absl::optional<Status> GrpcTpuStream::WaitForEvent(EventId id,
     for (auto dep : deps) {
       // If a requirement event timed out, no point in any further waiting.
       if (!WaitForEvent(dep, duration)) {
-        return absl::nullopt;
+        return std::nullopt;
       }
     }
     events_mutex_.Lock();
@@ -603,7 +602,7 @@ absl::optional<Status> GrpcTpuStream::WaitForEvent(EventId id,
     return status;
   }
   events_mutex_.Unlock();
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 void GrpcTpuStream::AddEventCallback(EventId id,
@@ -730,7 +729,7 @@ std::unique_ptr<BufferHandle> GrpcTpuStream::Allocate(
       std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
   return std::make_unique<GrpcBufferHandle>(event->id(), std::move(event),
-                                             num_bytes);
+                                            num_bytes);
 }
 
 std::unique_ptr<BufferHandle> GrpcTpuStream::Allocate(
@@ -848,7 +847,7 @@ std::unique_ptr<CompiledProgramHandle> GrpcTpuStream::CompileProgram(
       std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
 
   auto handle = std::make_unique<GrpcCompiledProgramHandle>(event->id(),
-                                                             std::move(event));
+                                                            std::move(event));
   {
     absl::MutexLock lock(&compiles_mutex_);
     CompileMetadataInfo info(handle->metadata());
@@ -872,14 +871,14 @@ std::unique_ptr<LoadedProgramHandle> GrpcTpuStream::LoadProgram(
         xla::InvalidArgument("Invalid program handle (wrong client id). Did "
                              "you restart the server or use a stale handle?"));
     return std::make_unique<GrpcLoadedProgramHandle>(event->id(),
-                                                      std::move(event));
+                                                     std::move(event));
   }
   req->mutable_load()->set_compiled_program_handle(grpc_handle->id().AsInt());
   auto event =
       std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
   return std::make_unique<GrpcLoadedProgramHandle>(event->id(),
-                                                    std::move(event));
+                                                   std::move(event));
 }
 
 std::shared_ptr<Event> GrpcTpuStream::UnloadProgram(

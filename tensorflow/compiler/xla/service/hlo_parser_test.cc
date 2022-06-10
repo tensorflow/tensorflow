@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -2241,7 +2240,7 @@ class HloParameterizedParserTest
     HloModuleConfig config;
     config.set_replica_count(GetParam().replica_count);
     if (GetParam().enable_verification) {
-      auto verified_module = absl::make_unique<VerifiedHloModule>(
+      auto verified_module = std::make_unique<VerifiedHloModule>(
           GetParam().test_name, config,
           /*verifier_layout_sensitive=*/false,
           /*allow_mixed_precision_in_hlo_verifier=*/true,
@@ -2296,7 +2295,7 @@ INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation,
 class HloNonRoundtripParserTest
     : public ::testing::TestWithParam<NonRoundtripTestData> {};
 TEST_P(HloNonRoundtripParserTest, Run) {
-  auto module = absl::make_unique<VerifiedHloModule>(
+  auto module = std::make_unique<VerifiedHloModule>(
       GetParam().test_name, HloModuleConfig{},
       /*verifier_layout_sensitive=*/false,
       /*allow_mixed_precision_in_hlo_verifier=*/true,
@@ -2321,7 +2320,7 @@ class HloParserTest : public ::testing::Test {
   }
   StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
       absl::string_view hlo_text) {
-    auto module = absl::make_unique<VerifiedHloModule>(
+    auto module = std::make_unique<VerifiedHloModule>(
         ::testing::UnitTest::GetInstance()->current_test_info()->name(),
         HloModuleConfig(),
         /*verifier_layout_sensitive=*/false,

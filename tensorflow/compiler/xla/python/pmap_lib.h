@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_PMAP_LIB_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_PMAP_LIB_H_
 
+#include <optional>
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "pybind11/cast.h"
 #include "pybind11/numpy.h"

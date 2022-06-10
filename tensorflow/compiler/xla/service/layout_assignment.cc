@@ -28,7 +28,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -142,7 +141,7 @@ PointsToSet::BufferSet* LayoutAssignment::GetBufferSet(
   }
   auto& buffer_set =
       buffer_sets_cache_
-          .emplace(instruction, absl::make_unique<PointsToSet::BufferSet>())
+          .emplace(instruction, std::make_unique<PointsToSet::BufferSet>())
           .first->second;
   const auto& points_to_set = points_to_analysis_->GetPointsToSet(instruction);
   points_to_set.ForEachElement(
@@ -1246,7 +1245,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     // the result also has the following benefits:
     // 1) the elementwise operation can reuse its operand's buffer, and
     // 2) the input and output elements can reuse the same linear index.
-    return absl::make_unique<Layout>(output_layout);
+    return std::make_unique<Layout>(output_layout);
   }
 
   if (instruction->opcode() == HloOpcode::kReshape) {
@@ -1275,7 +1274,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
       auto operand_layout = aligned_operand_shape.value().layout();
       TF_CHECK_OK(
           LayoutUtil::ValidateLayoutForShape(operand_layout, operand_shape));
-      return absl::make_unique<Layout>(operand_layout);
+      return std::make_unique<Layout>(operand_layout);
     }
   }
 
@@ -1291,7 +1290,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     Layout operand_layout = LayoutUtil::MakeLayout(new_minor_to_major);
     TF_CHECK_OK(
         LayoutUtil::ValidateLayoutForShape(operand_layout, operand->shape()));
-    return absl::make_unique<Layout>(operand_layout);
+    return std::make_unique<Layout>(operand_layout);
   }
 
   return nullptr;
@@ -1318,7 +1317,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
   // Enforce standard layout on variadic reduction output to avoid having two
   // inconsistent layouts.
   if (user->opcode() == HloOpcode::kReduce && user->shape().IsTuple()) {
-    return absl::make_unique<Layout>(
+    return std::make_unique<Layout>(
         GetReduceLayoutFromOperand(operand_layout, user));
   }
 
@@ -1329,7 +1328,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
       operand->shape().rank() == user->shape().rank() &&
       !InstructionCanChangeLayoutInstance(user)) {
     // Assign users the same layout as the operand.
-    return absl::make_unique<Layout>(operand_layout);
+    return std::make_unique<Layout>(operand_layout);
   }
 
   if (user->opcode() == HloOpcode::kReshape) {
@@ -1356,7 +1355,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
       auto user_layout = aligned_user_shape.value().layout();
       TF_CHECK_OK(
           LayoutUtil::ValidateLayoutForShape(user_layout, output_shape));
-      return absl::make_unique<Layout>(user_layout);
+      return std::make_unique<Layout>(user_layout);
     }
   }
 
@@ -1372,7 +1371,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
     }
     Layout user_layout = LayoutUtil::MakeLayout(new_minor_to_major);
     TF_CHECK_OK(LayoutUtil::ValidateLayoutForShape(user_layout, user->shape()));
-    return absl::make_unique<Layout>(user_layout);
+    return std::make_unique<Layout>(user_layout);
   }
 
   return nullptr;

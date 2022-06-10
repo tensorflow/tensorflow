@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "tensorflow/compiler/xla/shape_util.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

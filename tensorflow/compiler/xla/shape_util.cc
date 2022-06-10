@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -34,7 +35,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/overflow_util.h"

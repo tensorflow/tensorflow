@@ -17,12 +17,12 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_GROUP_METADATA_H_
 
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"

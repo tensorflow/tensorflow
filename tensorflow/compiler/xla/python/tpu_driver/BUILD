@@ -43,7 +43,6 @@ cc_library(
         "tpu_driver.h",
     ],
     deps = [
-        "@com_google_absl//absl/types:optional",
         "//tensorflow/core/platform:logging",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
@@ -102,7 +101,6 @@ cc_library(
     deps = [
         ":tpu_driver",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/types:optional",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:logging",
         "//tensorflow/compiler/xla:status",

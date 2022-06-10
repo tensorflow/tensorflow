@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
@@ -135,7 +136,7 @@ class LLVMCompilerTest : public ::testing::Test {
     std::unique_ptr<HloModule> hlo_module = CreateNewVerifiedModule();
     hlo_module->AddEntryComputation(builder.Build());
 
-    auto module_group = absl::make_unique<HloModuleGroup>("test_module_group");
+    auto module_group = std::make_unique<HloModuleGroup>("test_module_group");
     module_group->push_back(hlo_module->Clone());
     module_group->push_back(std::move(hlo_module));
 
@@ -164,7 +165,7 @@ class LLVMCompilerTest : public ::testing::Test {
   std::unique_ptr<HloModule> CreateNewVerifiedModule() {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsFromFlags());
-    return absl::make_unique<VerifiedHloModule>(
+    return std::make_unique<VerifiedHloModule>(
         TestName(), config, /*verifier_layout_sensitive=*/false,
         /*allow_mixed_precision_in_hlo_verifier=*/true,
         backend_->compiler()->ShapeSizeBytesFunction());

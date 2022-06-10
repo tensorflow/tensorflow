@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -26,7 +27,6 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/util.h"

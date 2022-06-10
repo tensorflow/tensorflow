@@ -29,7 +29,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"

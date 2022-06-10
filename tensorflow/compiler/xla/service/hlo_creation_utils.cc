@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 
+#include <memory>
+
 #include "absl/algorithm/container.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"

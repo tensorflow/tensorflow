@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_transfer_manager.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "llvm/IR/DataLayout.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"

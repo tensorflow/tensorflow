@@ -17,9 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_OPCODE_H_
 
 #include <iosfwd>
+#include <optional>
 #include <string>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"

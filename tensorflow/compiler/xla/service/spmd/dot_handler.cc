@@ -14,11 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <optional>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"

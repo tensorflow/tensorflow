@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstring>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -27,10 +28,8 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SetVector.h"
@@ -1308,8 +1307,8 @@ Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
   if (thunks.size() == 1) {
     AddThunkToThunkSequence(std::move(thunks[0]));
   } else {
-    AddThunkToThunkSequence(std::make_unique<SequentialThunk>(
-        GetThunkInfo(op), std::move(thunks)));
+    AddThunkToThunkSequence(
+        std::make_unique<SequentialThunk>(GetThunkInfo(op), std::move(thunks)));
   }
 
   return OkStatus();
@@ -1471,10 +1470,10 @@ Status IrEmitterUnnested::EmitFftThunk(mlir::Operation* op) {
 
   AddThunkToThunkSequence(
       std::make_unique<FftThunk>(GetThunkInfo(op), fft_type, fft_length,
-                                  /*input_buffer=*/arg_slice,
-                                  /*output_buffer=*/dest_slice,
-                                  /*input_shape=*/operand_shape,
-                                  /*output_shape=*/output_shape));
+                                 /*input_buffer=*/arg_slice,
+                                 /*output_buffer=*/dest_slice,
+                                 /*input_shape=*/operand_shape,
+                                 /*output_shape=*/output_shape));
   return OkStatus();
 }
 
@@ -1558,8 +1557,8 @@ Status IrEmitterUnnested::EmitTriangularSolveCustomCall(mlir::Operation* op) {
   if (thunks.size() == 1) {
     AddThunkToThunkSequence(std::move(thunks[0]));
   } else {
-    AddThunkToThunkSequence(std::make_unique<SequentialThunk>(
-        GetThunkInfo(op), std::move(thunks)));
+    AddThunkToThunkSequence(
+        std::make_unique<SequentialThunk>(GetThunkInfo(op), std::move(thunks)));
   }
   return OkStatus();
 }
@@ -1912,8 +1911,8 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
       TF_RETURN_IF_ERROR(
           EmitScatter(desc, thunks.back().get(), launch_dimensions));
     }
-    AddThunkToThunkSequence(std::make_unique<SequentialThunk>(
-        GetThunkInfo(op), std::move(thunks)));
+    AddThunkToThunkSequence(
+        std::make_unique<SequentialThunk>(GetThunkInfo(op), std::move(thunks)));
     return OkStatus();
   }
 
@@ -2403,8 +2402,8 @@ Status IrEmitterUnnested::EmitScatter(mlir::Operation* op) {
   if (thunks.size() == 1) {
     AddThunkToThunkSequence(std::move(thunks[0]));
   } else {
-    AddThunkToThunkSequence(std::make_unique<SequentialThunk>(
-        GetThunkInfo(op), std::move(thunks)));
+    AddThunkToThunkSequence(
+        std::make_unique<SequentialThunk>(GetThunkInfo(op), std::move(thunks)));
   }
 
   return OkStatus();
@@ -3007,7 +3006,7 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
                                    replica_count, partition_count));
     } else {
       thunk = std::make_unique<NcclThunkType>(GetThunkInfo(op), op,
-                                               /*buffers=*/std::move(buffers));
+                                              /*buffers=*/std::move(buffers));
     }
     // Record thunks for all-reduce-start ops as the done ops need them.
     TF_RETURN_IF_ERROR(MaybeAddAllReduceStartThunkToMap(
@@ -3054,8 +3053,8 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   if (thunks.size() == 1) {
     AddThunkToThunkSequence(std::move(thunks[0]));
   } else {
-    AddThunkToThunkSequence(std::make_unique<SequentialThunk>(
-        GetThunkInfo(op), std::move(thunks)));
+    AddThunkToThunkSequence(
+        std::make_unique<SequentialThunk>(GetThunkInfo(op), std::move(thunks)));
   }
   return OkStatus();
 }
@@ -3111,7 +3110,7 @@ Status IrEmitterUnnested::EmitInfeed(mlir::Operation* op) {
   } else {
     TF_ASSIGN_OR_RETURN(auto shaped_slices, GetShapedSlices(operands));
     thunk = std::make_unique<InfeedThunk>(GetThunkInfo(op),
-                                           std::move(shaped_slices));
+                                          std::move(shaped_slices));
   }
   AddThunkToThunkSequence(std::move(thunk));
 
@@ -3129,7 +3128,7 @@ Status IrEmitterUnnested::EmitOutfeed(mlir::Operation* op) {
   } else {
     TF_ASSIGN_OR_RETURN(auto shaped_slices, GetShapedSlices(operands));
     thunk = std::make_unique<OutfeedThunk>(GetThunkInfo(op),
-                                            std::move(shaped_slices));
+                                           std::move(shaped_slices));
   }
   AddThunkToThunkSequence(std::move(thunk));
 
@@ -3253,8 +3252,8 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunkImpl(
                                 launch_dimensions);
   } else {
     return {std::make_unique<KernelThunk>(thunk_info, non_constant_buffers,
-                                           std::string(kernel->getName()),
-                                           launch_dimensions)};
+                                          std::string(kernel->getName()),
+                                          launch_dimensions)};
   }
 }
 
@@ -3335,7 +3334,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConstantInitializerThunk(
     }
     uint32_t pattern32 = uint32_t{pattern16} | (uint32_t{pattern16} << 16);
     return std::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(),
-                                                    pattern32, dest);
+                                                   pattern32, dest);
   }
 
   // If the literal is an even multiple of 32 bits wide, we can emit a 32-bit
@@ -3346,7 +3345,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConstantInitializerThunk(
     uint32_t word;
     memcpy(&word, init_value.data(), sizeof(word));
     return std::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(), word,
-                                                    dest);
+                                                   dest);
   }
 
   return nullptr;

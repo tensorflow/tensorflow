@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_COMPARISON_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_COMPARISON_UTIL_H_
 
+#include <optional>
 #include <string>
 #include <type_traits>
 
 #include "absl/base/attributes.h"
 #include "absl/base/macros.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"

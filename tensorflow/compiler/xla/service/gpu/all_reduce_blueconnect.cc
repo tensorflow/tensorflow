@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <iterator>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"

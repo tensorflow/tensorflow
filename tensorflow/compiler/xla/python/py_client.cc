@@ -317,7 +317,7 @@ PyClient::MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
 StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
     const XlaComputation& computation, CompileOptions options) {
   std::unique_ptr<PjRtExecutable> executable;
-  absl::optional<std::string> fingerprint;
+  std::optional<std::string> fingerprint;
   {
     py::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(executable,
@@ -334,7 +334,7 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
 StatusOr<std::shared_ptr<PyExecutable>> PyClient::CompileMlir(
     std::string mlir_module, CompileOptions options) {
   std::unique_ptr<PjRtExecutable> executable;
-  absl::optional<std::string> fingerprint;
+  std::optional<std::string> fingerprint;
   {
     py::gil_scoped_release gil_release;
     mlir::MLIRContext context;
@@ -359,7 +359,7 @@ StatusOr<py::bytes> PyClient::SerializeExecutable(
 StatusOr<std::shared_ptr<PyExecutable>> PyClient::DeserializeExecutable(
     const std::string& serialized, CompileOptions options) {
   std::unique_ptr<PjRtExecutable> executable;
-  absl::optional<std::string> fingerprint;
+  std::optional<std::string> fingerprint;
   {
     py::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(executable, pjrt_client_->DeserializeExecutable(
@@ -547,7 +547,7 @@ PyClient::GetEmitPythonCallbackDescriptor(
 StatusOr<XlaOp> PyClient::EmitPythonCallbackFromDescriptor(
     XlaBuilder& builder, uint64_t descriptor, absl::Span<XlaOp const> operands,
     absl::Span<Shape const> result_shapes,
-    absl::optional<std::vector<Shape>> operand_layouts, bool has_side_effect) {
+    std::optional<std::vector<Shape>> operand_layouts, bool has_side_effect) {
   std::vector<Shape> custom_call_arg_layouts(operands.size() + 1);
   custom_call_arg_layouts[0] =
       ShapeUtil::MakeShapeWithDescendingLayout(U64, {});
@@ -619,7 +619,7 @@ StatusOr<XlaOp> PyClient::EmitPythonCallbackFromDescriptor(
 StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
     pybind11::function callable, XlaBuilder& builder,
     absl::Span<XlaOp const> operands, absl::Span<Shape const> result_shapes,
-    absl::optional<std::vector<Shape>> operand_layouts, bool has_side_effect) {
+    std::optional<std::vector<Shape>> operand_layouts, bool has_side_effect) {
   std::vector<Shape> operand_shapes(operands.size());
   for (int i = 0; i < operands.size(); ++i) {
     TF_ASSIGN_OR_RETURN(Shape shape, builder.GetShape(operands[i]));

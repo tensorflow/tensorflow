@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,7 +29,6 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
@@ -93,7 +93,7 @@ inline constexpr absl::string_view PjRtRuntimeTypeString(PjRtRuntimeType type) {
 class PjRtClient;
 
 using PjRtDeviceAttribute =
-    absl::variant<std::string, int64_t, std::vector<int64_t>>;
+    std::variant<std::string, int64_t, std::vector<int64_t>>;
 
 class PjRtDevice {
  public:

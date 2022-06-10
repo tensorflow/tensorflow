@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/array2d.h"

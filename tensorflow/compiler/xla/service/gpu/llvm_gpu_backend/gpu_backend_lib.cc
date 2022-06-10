@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/call_once.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
@@ -534,7 +533,7 @@ StatusOr<std::string> CompileToPtx(
     }
 
     auto compute_capability =
-        absl::get_if<se::CudaComputeCapability>(&gpu_version);
+        std::get_if<se::CudaComputeCapability>(&gpu_version);
     if (!compute_capability) {
       return xla::InternalError(
           "Incompatible compute capability was specified.");
@@ -792,7 +791,7 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
   // Link the input module with ROCDL.
 
   auto compute_capability =
-      absl::get_if<se::RocmComputeCapability>(&gpu_version);
+      std::get_if<se::RocmComputeCapability>(&gpu_version);
   if (!compute_capability) {
     return xla::InternalError("Incompatible compute capability was specified.");
   }
@@ -862,7 +861,7 @@ std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
     llvm::Triple target_triple, GpuVersion gpu_version,
     const HloModuleConfig& hlo_module_config) {
   auto compute_capability =
-      absl::get_if<se::RocmComputeCapability>(&gpu_version);
+      std::get_if<se::RocmComputeCapability>(&gpu_version);
 
   std::string gcn_arch_name = compute_capability->gcn_arch_name();
   auto arch = GetFeatureStrFromGCNArchName(gcn_arch_name);
@@ -922,7 +921,7 @@ StatusOr<std::vector<uint8_t>> CompileToHsaco(
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
 
     auto compute_capability =
-        absl::get_if<se::RocmComputeCapability>(&gpu_version);
+        std::get_if<se::RocmComputeCapability>(&gpu_version);
     if (!compute_capability) {
       return xla::InternalError(
           "Incompatible compute capability was specified.");

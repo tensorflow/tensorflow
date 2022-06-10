@@ -16,9 +16,9 @@ limitations under the License.
 
 #include <cmath>
 #include <cstdint>
+#include <memory>
 
 #include "absl/algorithm/container.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"

@@ -22,13 +22,13 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <initializer_list>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
 
 #include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"

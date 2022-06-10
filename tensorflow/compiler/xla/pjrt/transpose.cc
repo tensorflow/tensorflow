@@ -880,7 +880,7 @@ void TransposePlan::BuildPlanNodes(
 StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
     size_t elem_size_in_bytes, absl::Span<int64_t const> dims,
     absl::Span<int64_t const> permutation,
-    absl::variant<Tiling, Striding> input_layout, Tiling output_tiling,
+    std::variant<Tiling, Striding> input_layout, Tiling output_tiling,
     Transformation transformation, int num_threads) {
   auto is_negative = [](int d) { return d < 0; };
   if (absl::c_find_if(dims, is_negative) != dims.end()) {
@@ -927,9 +927,9 @@ StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
       ParseTilingSpecification(ndim, output_tiling.tiling, plan->b_tiling_));
 
   // Handles strides.
-  if (absl::holds_alternative<Striding>(input_layout)) {
+  if (std::holds_alternative<Striding>(input_layout)) {
     absl::Span<int64_t const> input_strides_in_bytes =
-        absl::get<Striding>(input_layout).strides_in_bytes;
+        std::get<Striding>(input_layout).strides_in_bytes;
     if (input_strides_in_bytes.size() != dims.size()) {
       return InvalidArgument(
           "dims and input_strides_in_bytes must have equal sizes, got %d "
@@ -979,7 +979,7 @@ StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
     plan->a_tiling_.resize(ndim, 1);
   } else {
     TF_RETURN_IF_ERROR(ParseTilingSpecification(
-        ndim, absl::get<Tiling>(input_layout).tiling, plan->a_tiling_));
+        ndim, std::get<Tiling>(input_layout).tiling, plan->a_tiling_));
 
     plan->a_dims_ = plan->original_a_dims_;
     plan->permutation_.resize(ndim);
@@ -1365,7 +1365,7 @@ TransposePlanCache::~TransposePlanCache() = default;
 StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
     size_t elem_size_in_bytes, absl::Span<int64_t const> dims,
     absl::Span<int64_t const> permutation,
-    absl::variant<TransposePlan::Tiling, TransposePlan::Striding> input_layout,
+    std::variant<TransposePlan::Tiling, TransposePlan::Striding> input_layout,
     TransposePlan::Tiling output_tiling,
     TransposePlan::Transformation transformation, int num_threads) {
   TransposePlanCacheKey key;
@@ -1374,15 +1374,15 @@ StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
   absl::c_copy(dims, key.dims.begin());
   key.permutation.resize(permutation.size());
   absl::c_copy(permutation, key.permutation.begin());
-  if (absl::holds_alternative<TransposePlan::Striding>(input_layout)) {
+  if (std::holds_alternative<TransposePlan::Striding>(input_layout)) {
     absl::Span<int64_t const> input_strides_in_bytes =
-        absl::get<TransposePlan::Striding>(input_layout).strides_in_bytes;
+        std::get<TransposePlan::Striding>(input_layout).strides_in_bytes;
     key.input_layout = absl::InlinedVector<int64_t, 4>(
         input_strides_in_bytes.begin(), input_strides_in_bytes.end());
     key.input_layout_is_tiling = false;
   } else {
     absl::Span<int64_t const> input_tiling =
-        absl::get<TransposePlan::Tiling>(input_layout).tiling;
+        std::get<TransposePlan::Tiling>(input_layout).tiling;
     key.input_layout = absl::InlinedVector<int64_t, 4>(input_tiling.begin(),
                                                        input_tiling.end());
     key.input_layout_is_tiling = true;

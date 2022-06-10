@@ -21,6 +21,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -28,12 +29,10 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/hash/hash.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"

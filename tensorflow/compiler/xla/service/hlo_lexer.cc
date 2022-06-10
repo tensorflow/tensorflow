@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_lexer.h"
 
 #include <limits>
+#include <optional>
 #include <string>
 
 #include "absl/base/casts.h"
@@ -23,7 +24,6 @@ limitations under the License.
 #include "absl/strings/escaping.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"

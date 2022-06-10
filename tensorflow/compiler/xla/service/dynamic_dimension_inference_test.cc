@@ -56,7 +56,7 @@ class DynamicDimensionInferenceTest : public HloTestBase {
         DynamicDimensionInference::Run(module_.get(), handler, shape_check_mode,
                                        assertion_generator));
 
-    inference_ = absl::make_unique<DynamicDimensionInference>(inference);
+    inference_ = std::make_unique<DynamicDimensionInference>(inference);
     return OkStatus();
   }
 

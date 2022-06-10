@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/logistic_expander.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"

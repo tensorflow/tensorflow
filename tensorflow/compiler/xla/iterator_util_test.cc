@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <list>
+#include <memory>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/test.h"
 
 namespace xla {

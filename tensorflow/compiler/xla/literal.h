@@ -22,15 +22,14 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
@@ -456,21 +455,21 @@ class LiteralBase {
     void AllocateBuffers();
     void DeallocateBuffers();
     // Gets/sets the buffer holding the array data.
-    const char* buffer() const { return absl::visit(BufferVisitor{}, rep_); }
+    const char* buffer() const { return std::visit(BufferVisitor{}, rep_); }
     char* buffer() {
       return const_cast<char*>(const_cast<const Piece*>(this)->buffer());
     }
     void set_buffer(char* buffer) {
       CHECK(subshape_->IsArray());
-      auto* array_rep = absl::holds_alternative<Uninitialized>(rep_)
+      auto* array_rep = std::holds_alternative<Uninitialized>(rep_)
                             ? &rep_.emplace<ArrayRep>()
                             : GetArrayRep();
       DCHECK(array_rep);
       array_rep->data = buffer;
     }
     void MoveDataFrom(Piece& from) {
-      DCHECK(!absl::holds_alternative<ArrayRep>(rep_));
-      DCHECK(!absl::holds_alternative<TupleRep>(rep_));
+      DCHECK(!std::holds_alternative<ArrayRep>(rep_));
+      DCHECK(!std::holds_alternative<TupleRep>(rep_));
       if (auto* array_rep = from.GetArrayRep()) {
         rep_.emplace<ArrayRep>().data = array_rep->data;
       } else if (auto* inlined_rep = from.GetInlinedRep()) {
@@ -498,7 +497,7 @@ class LiteralBase {
     const Shape& subshape() const { return *subshape_; }
     void set_subshape(const Shape* subshape) {
       subshape_ = subshape;
-      if (absl::holds_alternative<Uninitialized>(rep_)) {
+      if (std::holds_alternative<Uninitialized>(rep_)) {
         if (subshape_->IsTuple()) {
           rep_.emplace<TupleRep>();
         }
@@ -645,12 +644,10 @@ class LiteralBase {
       std::vector<Piece> children = {};
     };
 
-    // TODO(b/157309856): Turn this into a inlined constexpr when we switch to
-    // c++17 or later.
-    enum {
-      // Use just so many bytes that we don't increase the sizeof(Piece).
-      kMaxInlinedBytes = std::max(sizeof(ArrayRep), sizeof(TupleRep)),
-    };
+    // Use just so many bytes that we don't increase the sizeof(Piece).
+    static inline constexpr size_t kMaxInlinedBytes =
+        std::max(sizeof(ArrayRep), sizeof(TupleRep));
+
     // Inlined array storage.
     struct InlinedRep {
       char data[kMaxInlinedBytes];
@@ -669,19 +666,15 @@ class LiteralBase {
     };
 
     const InlinedRep* GetInlinedRep() const {
-      return absl::get_if<InlinedRep>(&rep_);
+      return std::get_if<InlinedRep>(&rep_);
     }
-    InlinedRep* GetInlinedRep() { return absl::get_if<InlinedRep>(&rep_); }
+    InlinedRep* GetInlinedRep() { return std::get_if<InlinedRep>(&rep_); }
 
-    const ArrayRep* GetArrayRep() const {
-      return absl::get_if<ArrayRep>(&rep_);
-    }
-    ArrayRep* GetArrayRep() { return absl::get_if<ArrayRep>(&rep_); }
+    const ArrayRep* GetArrayRep() const { return std::get_if<ArrayRep>(&rep_); }
+    ArrayRep* GetArrayRep() { return std::get_if<ArrayRep>(&rep_); }
 
-    const TupleRep* GetTupelRep() const {
-      return absl::get_if<TupleRep>(&rep_);
-    }
-    TupleRep* GetTupelRep() { return absl::get_if<TupleRep>(&rep_); }
+    const TupleRep* GetTupelRep() const { return std::get_if<TupleRep>(&rep_); }
+    TupleRep* GetTupelRep() { return std::get_if<TupleRep>(&rep_); }
     // Helpers for traversing the piece via ForEachSubpiece rooted at 'index'.
     // The first non-OK (or non-true) value is returned by the function.
     // The callable 'func' has the same signature as described above in
@@ -742,7 +735,7 @@ class LiteralBase {
     void CopyElementsWithDynamicBound(const LiteralBase::Piece& src);
 
     // Storage representation of this piece.
-    absl::variant<Uninitialized, InlinedRep, ArrayRep, TupleRep> rep_;
+    std::variant<Uninitialized, InlinedRep, ArrayRep, TupleRep> rep_;
 
     // The shape of piece. This points into the shape of the containing Literal
     // (Literal::shape_).

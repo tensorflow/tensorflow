@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/service/optimize_input_output_buffer_alias.h"
 
+#include <memory>
 #include <queue>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"

@@ -25,7 +25,6 @@ limitations under the License.
 #include <random>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/types.h"

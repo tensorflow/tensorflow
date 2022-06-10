@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 
+#include <optional>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"

@@ -25,7 +25,6 @@ limitations under the License.
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
@@ -290,22 +289,22 @@ StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(Params params) {
   auto gpu_ctx_cache = std::move(params.gpu_ctx_cache);
   std::unique_ptr<GpuExecutable> result(new GpuExecutable(std::move(params)));
 
-  if (absl::holds_alternative<OwnedThunkSchedule>(executable)) {
-    result->thunks_ = std::move(absl::get<OwnedThunkSchedule>(executable));
+  if (std::holds_alternative<OwnedThunkSchedule>(executable)) {
+    result->thunks_ = std::move(std::get<OwnedThunkSchedule>(executable));
     return result;
   }
 
 #if XLA_ENABLE_XLIR
-  if (absl::holds_alternative<OwnedBefBuffer>(executable)) {
-    auto& bef_buffer = absl::get<OwnedBefBuffer>(executable);
+  if (std::holds_alternative<OwnedBefBuffer>(executable)) {
+    auto& bef_buffer = std::get<OwnedBefBuffer>(executable);
     TF_ASSIGN_OR_RETURN(
         result->bef_executable_,
         BefExecutable::Create(std::move(bef_buffer), std::move(gpu_ctx_cache)));
     return result;
   }
 
-  if (absl::holds_alternative<OwnedJitRtProgram>(executable)) {
-    auto& program = absl::get<OwnedJitRtProgram>(executable);
+  if (std::holds_alternative<OwnedJitRtProgram>(executable)) {
+    auto& program = std::get<OwnedJitRtProgram>(executable);
     TF_ASSIGN_OR_RETURN(result->jitrt_executable_,
                         JitRtExecutable::Create(std::move(program)));
     return result;
@@ -392,17 +391,17 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
     auto cc = main_stream->GetRocmComputeCapability();
     std::string stream_arch = cc.gcn_arch_name();
     std::string gpu_exec_arch =
-        absl::get<se::RocmComputeCapability>(gpu_version_).gcn_arch_name();
+        std::get<se::RocmComputeCapability>(gpu_version_).gcn_arch_name();
     TF_RET_CHECK(stream_arch == gpu_exec_arch)
         << "AMDGPU GCN ISA version mismatch; expected {" << gpu_exec_arch
         << ", but was " << stream_arch;
   } else if (platform_kind == stream_executor::PlatformKind::kCuda) {
     GpuVersion cc = main_stream->GetCudaComputeCapability();
-    TF_RET_CHECK(absl::get<se::CudaComputeCapability>(cc) ==
-                 absl::get<se::CudaComputeCapability>(gpu_version_))
+    TF_RET_CHECK(std::get<se::CudaComputeCapability>(cc) ==
+                 std::get<se::CudaComputeCapability>(gpu_version_))
         << "Compute capability mismatch; expected {"
-        << absl::get<se::CudaComputeCapability>(gpu_version_).ToString()
-        << "}, but was {" << absl::get<se::CudaComputeCapability>(cc).ToString()
+        << std::get<se::CudaComputeCapability>(gpu_version_).ToString()
+        << "}, but was {" << std::get<se::CudaComputeCapability>(cc).ToString()
         << "}";
   } else {
     return InternalError("Unknown platform: %d", platform_kind);
@@ -600,11 +599,11 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
     int64_t param_no = allocation.parameter_number();
     se::DeviceMemoryBase registered_buffer = [&] {
       if (auto unowned_shapedbuffers =
-              absl::get_if<absl::Span<const ShapedBuffer* const>>(&arguments)) {
+              std::get_if<absl::Span<const ShapedBuffer* const>>(&arguments)) {
         return (*unowned_shapedbuffers)[param_no]->buffers().element(
             allocation.param_shape_index());
       } else {
-        return absl::get<absl::Span<ExecutionInput>>(arguments)[param_no]
+        return std::get<absl::Span<ExecutionInput>>(arguments)[param_no]
             .Buffer(allocation.param_shape_index())
             .AsDeviceMemoryBase();
       }
@@ -986,12 +985,12 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
           [&]() -> xla::MaybeOwningDeviceMemory* {
         // ScopedBuffer is never an owned buffer.
         if (auto* unowned_shapedbuffers =
-                absl::get_if<absl::Span<const ShapedBuffer* const>>(
+                std::get_if<absl::Span<const ShapedBuffer* const>>(
                     &arguments)) {
           return nullptr;
         } else {
           auto unowned_execution_input =
-              absl::get<absl::Span<ExecutionInput>>(arguments);
+              std::get<absl::Span<ExecutionInput>>(arguments);
           ExecutionInput& input =
               unowned_execution_input[allocation->parameter_number()];
           return input.MutableBuffer(allocation->param_shape_index());
@@ -1073,7 +1072,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
       buffer_allocations.TearDown(buffers_in_result, allocations_));
 
   // Free allocations for arguments.
-  if (auto args = absl::get_if<absl::Span<ExecutionInput>>(&arguments)) {
+  if (auto args = std::get_if<absl::Span<ExecutionInput>>(&arguments)) {
     MarkToBeReleasedArguments(*args, result);
   }
   return std::move(result);

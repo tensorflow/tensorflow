@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <list>
 #include <memory>
+#include <optional>
 #include <random>
 #include <string>
 #include <utility>
@@ -27,7 +28,6 @@ limitations under the License.
 
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"

@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstring>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -28,7 +29,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"

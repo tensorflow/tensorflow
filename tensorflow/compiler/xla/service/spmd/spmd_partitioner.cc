@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,9 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -4121,7 +4120,7 @@ std::unique_ptr<SpmdPartitioningVisitor> SpmdPartitioner::CreateVisitor(
     const SPMDCollectiveOpsCreator& collective_ops_creator,
     int64_t* next_channel_id, SpmdLogger* logger,
     SpmdPartitionerOptions options) {
-  return absl::make_unique<SpmdPartitioningVisitor>(
+  return std::make_unique<SpmdPartitioningVisitor>(
       computation, num_partitions, num_replicas, collective_ops_creator,
       next_channel_id, logger, std::move(options), this);
 }

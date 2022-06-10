@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 
 #include <functional>
+#include <memory>
 #include <numeric>
 #include <queue>
 #include <string>
@@ -24,7 +25,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -441,7 +441,7 @@ Status XlaBuilder::SetDynamicBinding(int64_t dynamic_size_param_num,
                                              /*is_dynamic=*/true);
       *instr.mutable_shape() = param_shape.ToProto();
       instruction_shapes_[index] =
-          absl::make_unique<Shape>(std::move(param_shape));
+          std::make_unique<Shape>(std::move(param_shape));
     }
   }
   if (!param_exists) {
@@ -3818,7 +3818,7 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
 
 std::unique_ptr<XlaBuilder> XlaBuilder::CreateSubBuilder(
     const std::string& computation_name) {
-  auto sub_builder = absl::make_unique<XlaBuilder>(computation_name);
+  auto sub_builder = std::make_unique<XlaBuilder>(computation_name);
   sub_builder->parent_builder_ = this;
   sub_builder->die_immediately_on_error_ = this->die_immediately_on_error_;
   return sub_builder;
@@ -3930,7 +3930,7 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
   handle_to_index_[handle] = instructions_.size();
   instructions_.push_back(std::move(instr));
   instruction_shapes_.push_back(
-      absl::make_unique<Shape>(instructions_.back().shape()));
+      std::make_unique<Shape>(instructions_.back().shape()));
 
   XlaOp op(handle, this);
   return op;

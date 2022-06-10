@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"

@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/topk_rewriter.h"
 
+#include <optional>
+
 #include "absl/algorithm/container.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"

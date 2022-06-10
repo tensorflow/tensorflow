@@ -23,12 +23,12 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/service/compile_only_service.h"

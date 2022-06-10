@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/profiler/lib/traceme.h"

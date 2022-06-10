@@ -120,7 +120,6 @@ cc_library(
         "//tensorflow/core:test",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -177,7 +176,6 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -380,7 +378,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -400,7 +397,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -426,7 +422,6 @@ xla_test(
         "//tensorflow/compiler/xla/service:bfloat16_normalization",
         "//tensorflow/compiler/xla/service:despecializer",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -789,7 +784,6 @@ cc_library(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -2495,7 +2489,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -2674,7 +2667,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -2734,7 +2726,6 @@ xla_test(
         ":xla_internal_test_main",
         "//tensorflow/compiler/xla:error_spec",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -2852,6 +2843,5 @@ xla_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/types:optional",
     ],
 )

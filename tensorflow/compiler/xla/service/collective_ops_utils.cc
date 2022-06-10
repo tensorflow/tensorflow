@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 
-#include "absl/types/optional.h"
+#include <optional>
+
 #include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"

@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "pybind11/pybind11.h"
@@ -49,7 +48,7 @@ namespace py = pybind11;
     auto add_builtin_type = [&](PyTypeObject* type_obj, PyTreeKind kind) {
       py::object type = py::reinterpret_borrow<py::object>(
           reinterpret_cast<PyObject*>(type_obj));
-      auto registration = absl::make_unique<Registration>();
+      auto registration = std::make_unique<Registration>();
       registration->kind = kind;
       registration->type = type;
       CHECK(registry->registrations_.emplace(type, std::move(registration))
@@ -68,7 +67,7 @@ namespace py = pybind11;
                                              py::function to_iterable,
                                              py::function from_iterable) {
   PyTreeTypeRegistry* registry = Singleton();
-  auto registration = absl::make_unique<Registration>();
+  auto registration = std::make_unique<Registration>();
   registration->kind = PyTreeKind::kCustom;
   registration->type = type;
   registration->to_iterable = std::move(to_iterable);
@@ -132,7 +131,7 @@ bool PyTreeDef::operator==(const PyTreeDef& other) const {
 template <typename T>
 void PyTreeDef::FlattenIntoImpl(
     py::handle handle, T& leaves,
-    const absl::optional<py::function>& leaf_predicate) {
+    const std::optional<py::function>& leaf_predicate) {
   Node node;
   int start_num_nodes = traversal_.size();
   int start_num_leaves = leaves.size();
@@ -210,19 +209,19 @@ void PyTreeDef::FlattenIntoImpl(
 
 void PyTreeDef::FlattenInto(py::handle handle,
                             absl::InlinedVector<py::object, 2>& leaves,
-                            absl::optional<py::function> leaf_predicate) {
+                            std::optional<py::function> leaf_predicate) {
   FlattenIntoImpl(handle, leaves, leaf_predicate);
 }
 
 void PyTreeDef::FlattenInto(py::handle handle, std::vector<py::object>& leaves,
-                            absl::optional<py::function> leaf_predicate) {
+                            std::optional<py::function> leaf_predicate) {
   FlattenIntoImpl(handle, leaves, leaf_predicate);
 }
 
 /*static*/ std::pair<std::vector<py::object>, std::unique_ptr<PyTreeDef>>
-PyTreeDef::Flatten(py::handle x, absl::optional<py::function> leaf_predicate) {
+PyTreeDef::Flatten(py::handle x, std::optional<py::function> leaf_predicate) {
   std::vector<py::object> leaves;
-  auto tree = absl::make_unique<PyTreeDef>();
+  auto tree = std::make_unique<PyTreeDef>();
   tree->FlattenInto(x, leaves, leaf_predicate);
   return std::make_pair(std::move(leaves), std::move(tree));
 }
@@ -572,7 +571,7 @@ py::object PyTreeDef::FromIterableTree(py::handle xs) const {
 }
 
 std::unique_ptr<PyTreeDef> PyTreeDef::Compose(const PyTreeDef& inner) const {
-  auto out = absl::make_unique<PyTreeDef>();
+  auto out = std::make_unique<PyTreeDef>();
   for (const Node& n : traversal_) {
     if (n.kind == PyTreeKind::kLeaf) {
       absl::c_copy(inner.traversal_, std::back_inserter(out->traversal_));
@@ -592,7 +591,7 @@ std::unique_ptr<PyTreeDef> PyTreeDef::Compose(const PyTreeDef& inner) const {
 
 /*static*/ std::unique_ptr<PyTreeDef> PyTreeDef::Tuple(
     const std::vector<PyTreeDef>& defs) {
-  auto out = absl::make_unique<PyTreeDef>();
+  auto out = std::make_unique<PyTreeDef>();
   int num_leaves = 0;
   for (const PyTreeDef& def : defs) {
     absl::c_copy(def.traversal_, std::back_inserter(out->traversal_));
@@ -616,7 +615,7 @@ std::vector<std::unique_ptr<PyTreeDef>> PyTreeDef::Children() const {
   children.resize(root.arity);
   int pos = traversal_.size() - 1;
   for (int i = root.arity - 1; i >= 0; --i) {
-    children[i] = absl::make_unique<PyTreeDef>();
+    children[i] = std::make_unique<PyTreeDef>();
     const Node& node = traversal_.at(pos - 1);
     if (pos < node.num_nodes) {
       throw std::logic_error("children() walked off start of array");
@@ -705,7 +704,7 @@ void BuildPytreeSubmodule(py::module& m) {
   py::module pytree = m.def_submodule("pytree", "Python tree library");
   pytree.attr("version") = py::int_(1);
   pytree.def("flatten", &PyTreeDef::Flatten, py::arg("tree"),
-             py::arg("leaf_predicate") = absl::nullopt);
+             py::arg("leaf_predicate") = std::nullopt);
   pytree.def("tuple", &PyTreeDef::Tuple);
   pytree.def("all_leaves", &PyTreeDef::AllLeaves);
 

@@ -18,7 +18,6 @@ limitations under the License.
 #include <cmath>
 #include <memory>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"

@@ -21,6 +21,8 @@ limitations under the License.
 #include <cstdlib>
 #include <functional>
 #include <iterator>
+#include <memory>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -29,10 +31,8 @@ limitations under the License.
 #include "absl/base/internal/endian.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -203,7 +203,7 @@ struct WhileCondComparison {
 // of NoOp, it contains the parameter index and initial value of the loop
 // induction variable.
 using WhileCondComparisonOrNoOp =
-    absl::variant<WhileCondComparison, ParamIndexAndValue>;
+    std::variant<WhileCondComparison, ParamIndexAndValue>;
 
 // Finds the while loop condition comparison by matching the loop condition root
 // with known patterns.
@@ -473,7 +473,7 @@ std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
   }
   if (loop_comparison_or_noop->index() == 1) {
     ParamIndexAndValue& parameter_index_and_value =
-        absl::get<ParamIndexAndValue>(*loop_comparison_or_noop);
+        std::get<ParamIndexAndValue>(*loop_comparison_or_noop);
     CHECK(parameter_index_and_value.param_index.has_value());
     int64_t loop_cond_var_index = *parameter_index_and_value.param_index;
     std::optional<DynamicOrStaticValue> noop_value =
@@ -516,7 +516,7 @@ std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
   }
   CHECK_EQ(loop_comparison_or_noop->index(), 0);
   WhileCondComparison loop_comparison =
-      absl::get<WhileCondComparison>(*loop_comparison_or_noop);
+      std::get<WhileCondComparison>(*loop_comparison_or_noop);
   CHECK(loop_comparison.lhs.IsValid() && loop_comparison.rhs.IsValid());
 
   // If the while loop condition comparison's both sides take an init value
@@ -715,53 +715,53 @@ std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
 HloEvaluator::HloEvaluator(int64_t max_loop_iterations)
     : max_loop_iterations_(max_loop_iterations) {
   typed_visitors_[PRED] =
-      absl::make_unique<HloEvaluatorTypedVisitor<bool>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<bool>>(this);
   typed_visitors_[U8] =
-      absl::make_unique<HloEvaluatorTypedVisitor<uint8_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<uint8_t>>(this);
   typed_visitors_[U16] =
-      absl::make_unique<HloEvaluatorTypedVisitor<uint16_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<uint16_t>>(this);
   typed_visitors_[U32] =
-      absl::make_unique<HloEvaluatorTypedVisitor<uint32_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<uint32_t>>(this);
   typed_visitors_[U64] =
-      absl::make_unique<HloEvaluatorTypedVisitor<uint64_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<uint64_t>>(this);
   typed_visitors_[S8] =
-      absl::make_unique<HloEvaluatorTypedVisitor<int8_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<int8_t>>(this);
   typed_visitors_[S16] =
-      absl::make_unique<HloEvaluatorTypedVisitor<int16_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<int16_t>>(this);
   typed_visitors_[S32] =
-      absl::make_unique<HloEvaluatorTypedVisitor<int32_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<int32_t>>(this);
   typed_visitors_[S64] =
-      absl::make_unique<HloEvaluatorTypedVisitor<int64_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<int64_t>>(this);
   typed_visitors_[F16] =
-      absl::make_unique<HloEvaluatorTypedVisitor<Eigen::half, float>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<Eigen::half, float>>(this);
   typed_visitors_[F32] =
-      absl::make_unique<HloEvaluatorTypedVisitor<float>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<float>>(this);
   typed_visitors_[F64] =
-      absl::make_unique<HloEvaluatorTypedVisitor<double>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<double>>(this);
   typed_visitors_[C64] =
-      absl::make_unique<HloEvaluatorTypedVisitor<complex64>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<complex64>>(this);
   typed_visitors_[C128] =
-      absl::make_unique<HloEvaluatorTypedVisitor<complex128>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<complex128>>(this);
 
   // Most of the evaluator computations we use don't support BF16 (e.g.,
   // std::ceil, std::tanh). To make evaluator work with BF16, we set all
   // elementwise computations to be done in F32 and do BF16<->F32 conversion
   // around the input and the output of the computations.
   typed_visitors_[BF16] =
-      absl::make_unique<HloEvaluatorTypedVisitor<bfloat16, float>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<bfloat16, float>>(this);
 
   typed_visitors_[TUPLE] =
-      absl::make_unique<FunctionVisitor>([](HloInstruction*) {
+      std::make_unique<FunctionVisitor>([](HloInstruction*) {
         return Unimplemented(
             "HloEvaluatorTypedVisitor: unhandled primitive type: TUPLE.");
       });
   typed_visitors_[OPAQUE_TYPE] =
-      absl::make_unique<FunctionVisitor>([](HloInstruction*) {
+      std::make_unique<FunctionVisitor>([](HloInstruction*) {
         return Unimplemented(
             "HloEvaluatorTypedVisitor: unhandled primitive type: OPAQUE_TYPE.");
       });
   typed_visitors_[TOKEN] =
-      absl::make_unique<FunctionVisitor>([](HloInstruction*) {
+      std::make_unique<FunctionVisitor>([](HloInstruction*) {
         return Unimplemented(
             "HloEvaluatorTypedVisitor: unhandled primitive type: TOKEN.");
       });
@@ -3878,7 +3878,7 @@ std::unique_ptr<Array2D<T>> MatmulArray2DImpl(
   int m = lhs.height();
   int n = rhs.width();
   int k = lhs.width();
-  auto result = absl::make_unique<Array2D<T>>(m, n);
+  auto result = std::make_unique<Array2D<T>>(m, n);
   // Because Eigen is a header-oriented library, make sure that the Eigen code
   // is the same as the code used by the CPU backend (otherwise the linker will
   // randomly pick *some* definition).

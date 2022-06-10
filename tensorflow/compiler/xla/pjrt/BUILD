@@ -170,7 +170,6 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
     ],
@@ -259,7 +258,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -341,7 +339,6 @@ cc_library(
         ":pjrt_stream_executor_client",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/types:optional",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
@@ -502,7 +499,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
@@ -515,7 +511,6 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 

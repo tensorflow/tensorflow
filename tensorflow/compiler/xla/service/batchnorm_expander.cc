@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"

@@ -73,12 +73,12 @@ class DirectEvent : public Event {
     return ret;
   }
 
-  absl::optional<xla::Status> AwaitWithTimeout(
+  std::optional<xla::Status> AwaitWithTimeout(
       absl::Duration duration) override {
     auto tpu_status_or = driver_fn_->TpuDriver_EventAwait(
         event_, absl::ToInt64Microseconds(duration));
     if (tpu_status_or == nullptr) {
-      return absl::nullopt;
+      return std::nullopt;
     } else {
       auto ret = CreateXlaStatus(tpu_status_or);
       driver_fn_->TpuDriver_FreeStatus(tpu_status_or);
@@ -122,9 +122,9 @@ class DirectBufferHandle : public BufferHandle {
 
   int64_t size_in_bytes() override { return handle_->size_in_bytes; }
 
-  absl::optional<xla::ShapeProto> shape() override {
+  std::optional<xla::ShapeProto> shape() override {
     LOG(FATAL) << "Unimplemented.";
-    return absl::nullopt;
+    return std::nullopt;
   }
 
  private:

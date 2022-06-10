@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_ANALYSIS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_ANALYSIS_H_
 
-#include "absl/types/optional.h"
+#include <optional>
+
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {

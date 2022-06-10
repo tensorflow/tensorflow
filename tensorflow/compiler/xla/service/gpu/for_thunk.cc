@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 

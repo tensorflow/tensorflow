@@ -18,11 +18,10 @@ limitations under the License.
 #include <cmath>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/memory/memory.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"

@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/reference_util.h"
 
 #include <array>
+#include <memory>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"

@@ -89,14 +89,14 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCpuClientWithNonLocalDevice() {
   se::StreamExecutorConfig config(0);
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       platform->GetExecutor(config));
-  auto device_state = absl::make_unique<LocalDeviceState>(
+  auto device_state = std::make_unique<LocalDeviceState>(
       executor, client, LocalDeviceState::kSynchronous,
       /*max_inflight_computations=*/32,
       /*allow_event_reuse=*/false, /*use_callback_stream=*/false);
 
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
-  devices.push_back(absl::make_unique<CpuDevice>(0, std::move(device_state)));
-  devices.push_back(absl::make_unique<CpuDevice>(1, nullptr));
+  devices.push_back(std::make_unique<CpuDevice>(0, std::move(device_state)));
+  devices.push_back(std::make_unique<CpuDevice>(1, nullptr));
 
   return std::unique_ptr<PjRtClient>(std::make_unique<PjRtStreamExecutorClient>(
       CpuName(), client, std::move(devices), /*process_index=*/0,
@@ -110,7 +110,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedSimple) {
                           GetCpuClient(true));
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
-  auto receiver = absl::make_unique<Accumulator>();
+  auto receiver = std::make_unique<Accumulator>();
   OutfeedReceiver::Callback callback =
       [&receiver](PjRtDevice* device, uint32_t consumer_id,
                   std::shared_ptr<Literal> data) {
@@ -143,7 +143,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoComputations) {
                           GetCpuClient(true));
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
-  auto receiver = absl::make_unique<Accumulator>();
+  auto receiver = std::make_unique<Accumulator>();
   OutfeedReceiver::Callback callback =
       [&receiver](PjRtDevice* device, uint32_t consumer_id,
                   std::shared_ptr<Literal> data) {
@@ -188,7 +188,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoOutfeed) {
                           GetCpuClient(true));
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
-  auto receiver = absl::make_unique<Accumulator>();
+  auto receiver = std::make_unique<Accumulator>();
   OutfeedReceiver::Callback callback =
       [&receiver](PjRtDevice* device, uint32_t consumer_id,
                   std::shared_ptr<Literal> data) {
@@ -231,7 +231,7 @@ TEST(OutfeedReceiverTest, DifferentShapeForConsumerIdError) {
                           GetCpuClient(true));
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
-  auto receiver = absl::make_unique<Accumulator>();
+  auto receiver = std::make_unique<Accumulator>();
   OutfeedReceiver::Callback callback =
       [&receiver](PjRtDevice* device, uint32_t consumer_id,
                   std::shared_ptr<Literal> data) {
@@ -265,7 +265,7 @@ TEST(OutfeedReceiverTest, InvalidConsumerIdError) {
                           GetCpuClient(true));
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
-  auto receiver = absl::make_unique<Accumulator>();
+  auto receiver = std::make_unique<Accumulator>();
   OutfeedReceiver::Callback callback =
       [&receiver](PjRtDevice* device, uint32_t consumer_id,
                   std::shared_ptr<Literal> data) {
@@ -291,7 +291,7 @@ TEST(OutfeedReceiverTest, NonLocalDevicesIgnored) {
                           GetCpuClientWithNonLocalDevice());
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
-  auto receiver = absl::make_unique<Accumulator>();
+  auto receiver = std::make_unique<Accumulator>();
   OutfeedReceiver::Callback callback =
       [&receiver](PjRtDevice* device, uint32_t consumer_id,
                   std::shared_ptr<Literal> data) {

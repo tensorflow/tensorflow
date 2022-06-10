@@ -18,9 +18,10 @@ limitations under the License.
 #include <stdio.h>
 #include <unistd.h>
 
+#include <memory>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -43,7 +44,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
       const HloModule& old_module,
       absl::flat_hash_set<const HloInstruction*>* boundary)
       : old_module_(old_module),
-        module_(absl::make_unique<HloModule>("extracted", config_)),
+        module_(std::make_unique<HloModule>("extracted", config_)),
         clone_context_(module_.get()),
         builder_("entry_computation"),
         boundary_(boundary) {}

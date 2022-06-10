@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -432,7 +431,7 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   }
   TF_RET_CHECK(entry != nullptr);
 
-  auto module = absl::make_unique<HloModule>(proto.name(), module_config);
+  auto module = std::make_unique<HloModule>(proto.name(), module_config);
 
   // Sort the computations in the proto id's order.
   absl::c_sort(computations, [&](const std::unique_ptr<HloComputation>& a,
@@ -822,7 +821,7 @@ std::unique_ptr<HloModule> HloModule::Clone(const std::string& suffix) const {
 std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
                                             const std::string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
-  auto module = absl::make_unique<HloModule>(
+  auto module = std::make_unique<HloModule>(
       absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config);
 
   HloCloneContext context(module.get(), suffix);
@@ -876,7 +875,7 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
 
 Status HloModule::RemoveUnusedComputations() {
   std::string suffix = "tmp";
-  auto module = absl::make_unique<HloModule>(
+  auto module = std::make_unique<HloModule>(
       absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config());
   HloCloneContext context(module.get(), suffix);
   entry_computation_->Clone(suffix, &context);

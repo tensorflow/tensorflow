@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_MATRIX_H_
 
 #include <array>
+#include <optional>
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/statusor.h"

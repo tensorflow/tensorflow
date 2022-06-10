@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 
+#include <memory>
+
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"

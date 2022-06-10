@@ -475,7 +475,7 @@ UsesList GetUsers(const InstructionList& instruction_list,
       std::optional<int64_t> user_index =
           logical_buffer->index().size() != 1
               ? std::nullopt
-              : absl::make_optional(logical_buffer->index().back());
+              : std::make_optional(logical_buffer->index().back());
       for (int64_t op_idx : user->OperandIndices(buffer_alias.instruction())) {
         if (!absl::c_linear_search(
                 users,

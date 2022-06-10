@@ -46,7 +46,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     absl::Span<const Shape* const> argument_shapes,
     const ExecutionOptions* execution_options, int default_num_replicas,
     std::optional<int> num_threads, const AotCompilationOptions* aot_options) {
-  auto config = absl::make_unique<HloModuleConfig>(program_shape);
+  auto config = std::make_unique<HloModuleConfig>(program_shape);
   ComputationLayout* computation_layout =
       config->mutable_entry_computation_layout();
   const int64_t argument_shapes_size = argument_shapes.size();

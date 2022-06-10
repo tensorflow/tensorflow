@@ -51,7 +51,7 @@ StatefulRngSpmdPartitioner::CreateVisitor(
     const spmd::SPMDCollectiveOpsCreator& collective_ops_creator,
     int64_t* next_channel_id, spmd::SpmdLogger* logger,
     spmd::SpmdPartitionerOptions options) {
-  return absl::make_unique<StatefulRngSpmdPartitioningVisitor>(
+  return std::make_unique<StatefulRngSpmdPartitioningVisitor>(
       computation, num_partitions, num_replicas, collective_ops_creator,
       next_channel_id, logger, std::move(options), this);
 }

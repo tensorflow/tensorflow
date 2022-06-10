@@ -69,6 +69,7 @@ limitations under the License.
 #include <cstdlib>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -76,11 +77,9 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -262,7 +261,7 @@ StatusOr<DeviceAssignment> PjRtStreamExecutorClient::GetDefaultDeviceAssignment(
 
 StatusOr<std::unique_ptr<HloCostAnalysis>>
 PjRtStreamExecutorClient::GetHloCostAnalysis() {
-  return absl::make_unique<HloCostAnalysis>(
+  return std::make_unique<HloCostAnalysis>(
       client_->backend().compiler()->ShapeSizeBytesFunction());
 }
 
@@ -463,7 +462,7 @@ StatusOr<std::unique_ptr<PjRtStreamExecutorBuffer>> AllocateDestinationBuffer(
       TrackedDeviceBuffer::FromScopedShapedBuffer(&dst_buffer,
                                                   definition_events);
 
-  auto py_buffer = absl::make_unique<PjRtStreamExecutorBuffer>(
+  auto py_buffer = std::make_unique<PjRtStreamExecutorBuffer>(
       on_device_shape, std::move(dst_device_buffer), client, device);
 
   if (on_device_shape.IsTuple()) {
@@ -1749,7 +1748,7 @@ std::unique_ptr<PjRtBuffer> OutputBufferHelper(
   std::shared_ptr<TrackedDeviceBuffer> out_buffer =
       TrackedDeviceBuffer::FromScopedShapedBuffer(result_buffer,
                                                   {definition_event});
-  auto pjrt_buffer = absl::make_unique<PjRtStreamExecutorBuffer>(
+  auto pjrt_buffer = std::make_unique<PjRtStreamExecutorBuffer>(
       result_buffer->on_device_shape(), std::move(out_buffer), client, device);
   RecordUsage(pjrt_buffer->GetBufferWithUsageHold(), local_device, local_device,
               definition_event, local_device->compute_stream(),
@@ -2472,7 +2471,7 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtStreamExecutorClient::Compile(
       client()->Compile(computation, argument_layout_pointers,
                         options.executable_build_options));
 
-  auto executable = absl::make_unique<PjRtStreamExecutorExecutable>(
+  auto executable = std::make_unique<PjRtStreamExecutorExecutable>(
       std::move(local_executables), options.parameter_is_tupled_arguments,
       std::move(device_assignment), std::move(addressable_device_logical_ids),
       std::move(addressable_devices), this);

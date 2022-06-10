@@ -17,13 +17,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -722,8 +721,8 @@ OffsetCalculation& OffsetCalculation::operator=(
   opcode_ = other.opcode_;
   copy_from_ = other.copy_from_;
   if (opcode_ != HloOpcode::kCopy) {
-    lhs_ = absl::make_unique<OffsetCalculation>(*other.lhs_);
-    rhs_ = absl::make_unique<OffsetCalculation>(*other.rhs_);
+    lhs_ = std::make_unique<OffsetCalculation>(*other.lhs_);
+    rhs_ = std::make_unique<OffsetCalculation>(*other.rhs_);
   }
   return *this;
 }
@@ -1653,7 +1652,7 @@ PartitionedHlo::PartitioningState CreatePerGroupPartitioningState(
   auto& grouped_cache =
       state.reshard_cache->groupd_caches[absl::StrJoin(per_group_strings, ";")];
   if (!grouped_cache) {
-    grouped_cache = absl::make_unique<PartitionedHlo::ReshardCache>();
+    grouped_cache = std::make_unique<PartitionedHlo::ReshardCache>();
   }
   result.reshard_cache = grouped_cache.get();
   return result;

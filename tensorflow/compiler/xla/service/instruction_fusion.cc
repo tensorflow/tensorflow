@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/fusion_queue.h"
@@ -490,7 +489,7 @@ std::vector<HloComputation*> InstructionFusion::GetFusionComputations(
 
 std::unique_ptr<FusionQueue> InstructionFusion::GetFusionQueue(
     HloComputation* computation) {
-  return absl::make_unique<ReversePostOrderFusionQueue>(computation);
+  return std::make_unique<ReversePostOrderFusionQueue>(computation);
 }
 
 StatusOr<bool> InstructionFusion::Run(HloModule* module) {

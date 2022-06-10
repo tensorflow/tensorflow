@@ -129,7 +129,7 @@ class ExecutionInput {
  private:
   void SetHostShape(xla::Shape host_shape) {
     if (shape() != host_shape) {
-      host_shape_ = absl::make_unique<Shape>(std::move(host_shape));
+      host_shape_ = std::make_unique<Shape>(std::move(host_shape));
     }
   }
 

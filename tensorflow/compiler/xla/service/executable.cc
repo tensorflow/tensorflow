@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/executable.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/dump.h"
@@ -47,7 +48,7 @@ Status ExecutionInput::SetDynamicShape(Shape dynamic_shape) {
         "Cannot set dynamic shape: ", input_shape.DebugString(), " vs. ",
         dynamic_shape.DebugString());
   }
-  dynamic_shape_ = absl::make_unique<Shape>(std::move(dynamic_shape));
+  dynamic_shape_ = std::make_unique<Shape>(std::move(dynamic_shape));
   return OkStatus();
 }
 

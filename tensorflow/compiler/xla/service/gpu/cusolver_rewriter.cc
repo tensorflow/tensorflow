@@ -18,10 +18,10 @@ limitations under the License.
 #include <cstdlib>
 #include <functional>
 #include <numeric>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"

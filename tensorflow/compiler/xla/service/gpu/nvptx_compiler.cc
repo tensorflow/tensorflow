@@ -368,7 +368,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   }
 
   std::vector<uint8_t> cubin = CompileGpuAsmOrGetCachedResult(
-      stream_exec, ptx, absl::get<se::CudaComputeCapability>(gpu_version),
+      stream_exec, ptx, std::get<se::CudaComputeCapability>(gpu_version),
       module_config, relocatable);
 
   return std::pair<std::string, std::vector<uint8_t>>(std::move(ptx),

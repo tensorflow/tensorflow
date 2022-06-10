@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_xfeed.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"

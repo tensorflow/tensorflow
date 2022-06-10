@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"

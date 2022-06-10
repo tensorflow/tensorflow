@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
 
 #include <algorithm>
+#include <memory>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"

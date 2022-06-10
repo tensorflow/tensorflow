@@ -18,12 +18,12 @@ limitations under the License.
 #include <chrono>  // NOLINT (required by TF interfaces)
 #include <cstdlib>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"

@@ -84,7 +84,6 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -104,7 +103,6 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -179,7 +177,6 @@ cc_library(
         "//tensorflow/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -234,7 +231,6 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )

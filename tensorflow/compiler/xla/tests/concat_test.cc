@@ -758,7 +758,7 @@ ENTRY jit_broken.874 {
   ROOT tuple.873 = (f32[]) tuple(multiply)
 })")
                     .ConsumeValueOrDie();
-  auto input_array = absl::make_unique<Array2D<float>>(4, 2);
+  auto input_array = std::make_unique<Array2D<float>>(4, 2);
   input_array->FillUnique(1.0f);
   auto input = LiteralUtil::CreateR2FromArray2D<float>(*input_array);
   EXPECT_TRUE(RunAndCompare(std::move(module), {&input}, error_spec_));
