@@ -2577,48 +2577,6 @@ tf_cc_test(
     ],
 )
 
-cc_library(
-    name = "bitcast_decomposer",
-    srcs = ["bitcast_decomposer.cc"],
-    hdrs = ["bitcast_decomposer.h"],
-    deps = [
-        ":hlo",
-        ":hlo_pass",
-        "//tensorflow/compiler/xla:permutation_util",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-    ],
-)
-
-xla_test(
-    name = "bitcast_decomposer_test",
-    srcs = ["bitcast_decomposer_test.cc"],
-    backends = [
-        "cpu",
-        "gpu",
-    ],
-    deps = [
-        ":bitcast_decomposer",
-        ":hlo",
-        ":hlo_matchers",
-        ":hlo_parser",
-        ":pattern_matcher",
-        ":pattern_matcher_gmock",
-        "//tensorflow/compiler/xla:permutation_util",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:test_utils",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//tensorflow/core:test",
-        "//tensorflow/core/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/random",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
 tf_cc_test(
     name = "all_gather_broadcast_reorder_test",
     srcs = ["all_gather_broadcast_reorder_test.cc"],

@@ -104,13 +104,10 @@ ENTRY main {
 
 )";
 
-  MatchOptimizedHloWithShapes(hlo_text, R"(
-// CHECK: %reduce.1 = (f32[4,12,12,16,5]{2,1,3,4,0}, u32[4,12,12,16,5]{2,1,3,4,0})
-// CHECK:   reduce(f32[5,3,3,4,12,12,16,5]{7,6,5,4,3,2,1,0}
-// CHECK:          u32[5,3,3,4,12,12,16,5]{7,6,5,4,3,2,1,0}
-// CHECK:          f32[]
-// CHECK:          u32[]
-// CHECK:     dimensions={0,1,2}, to_apply=%argmax
+  MatchOptimizedHloWithShapes(hlo_text,
+                              R"(
+// CHECK: %reduce.1 = (f32[4,12,12,16,5]{2,1,3,4,0}, u32[4,12,12,16,5]{2,1,3,4,0}) reduce(f32[5,3,3,4,12,12,16,5]{7,6,5,4,3,2,1,0} %bitcast.5, u32[5,3,3,4,12,12,16,5]{7,6,5,4,3,2,1,0} %bitcast.4, f32[] %constant0_1, u32[] %constant1_1), dimensions={0,1,2}, to_apply=%argmax
+//
       )");
 }
 
@@ -152,12 +149,20 @@ ENTRY main {
 
   MatchOptimizedHloWithShapes(hlo_text,
                               R"(
-// CHECK:  ROOT %reduce0 = (f32[2,3,4]{2,1,0}, u32[2,3,4]{2,1,0})
-// CHECK:    reduce(f32[7,2,3,4]{3,2,1,0}
-// CHECK:           u32[7,2,3,4]{3,2,1,0}
-// CHECK:           f32[]
-// CHECK:           u32[]
-// CHECK:      dimensions={0}, to_apply=%argmax
+// CHECK: %fused_computation (param_0.1: u32[2,3,4,7]) -> u32[7,2,3,4] {
+// CHECK:  %param_0.1 = u32[2,3,4,7]{3,2,1,0} parameter(0)
+// CHECK:  %copy.1 = u32[2,3,4,7]{2,1,0,3} copy(u32[2,3,4,7]{3,2,1,0} %param_0.1)
+// CHECK:  ROOT %bitcast.2 = u32[7,2,3,4]{3,2,1,0} bitcast(u32[2,3,4,7]{2,1,0,3} %copy.1)
+// CHECK: }
+//
+// CHECK: ENTRY %main (arg0: f32[2,3,4,7], idxs: u32[2,3,4,7]) -> (f32[2,3,4], u32[2,3,4]) {
+// CHECK:  %arg0 = f32[2,3,4,7]{2,1,0,3} parameter(0)
+// CHECK:  %bitcast = f32[7,2,3,4]{3,2,1,0} bitcast(f32[2,3,4,7]{2,1,0,3} %arg0)
+// CHECK:  %idxs = u32[2,3,4,7]{3,2,1,0} parameter(1)
+// CHECK:  %fusion = u32[7,2,3,4]{3,2,1,0} fusion(u32[2,3,4,7]{3,2,1,0} %idxs), kind=kLoop, calls=%fused_computation
+// CHECK:  %constant0 = f32[] constant(0)
+// CHECK:  %constant1 = u32[] constant(0)
+// CHECK:  ROOT %reduce0 = (f32[2,3,4]{2,1,0}, u32[2,3,4]{2,1,0}) reduce(f32[7,2,3,4]{3,2,1,0} %bitcast, u32[7,2,3,4]{3,2,1,0} %fusion, f32[] %constant0, u32[] %constant1), dimensions={0}, to_apply=%argmax
 // CHECK: }
       )");
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
