@@ -29,7 +29,10 @@ def FusionIterface : OpInterface<"FusionIterface"> {
       /*desc=*/"TBD",
       /*retTy=*/"::mlir::Value",
       /*methodName=*/"fuse",
-      /*args=*/(ins "::mlir::gml_st::MaterializeOp":$materialize, "OpBuilder&":$builder),
+      /*args=*/(ins
+          "::mlir::Location":$loc,
+          "::mlir::Value":$subset,
+          "OpBuilder&":$builder),
       /*methodBody=*/"",
       /*defaultImplementation=*/[{
         return {};

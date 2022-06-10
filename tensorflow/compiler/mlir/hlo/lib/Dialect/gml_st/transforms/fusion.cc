@@ -43,7 +43,7 @@ struct FusionPattern : public OpRewritePattern<gml_st::MaterializeOp> {
     auto iface = llvm::dyn_cast<FusionIterface>(def);
     if (!iface) return failure();
 
-    Value fused = iface.fuse(op, rewriter);
+    Value fused = iface.fuse(op.getLoc(), op.subset(), rewriter);
     if (!fused) return failure();
 
     rewriter.replaceOp(op, fused);

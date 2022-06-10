@@ -55,17 +55,16 @@ Value materializeSpaceFromTensor(Value operand, const SmallVector<Value>& dims,
 struct DynamicBroadcastInDimFusionIterface
     : public FusionIterface::ExternalModel<DynamicBroadcastInDimFusionIterface,
                                            DynamicBroadcastInDimOp> {
-  Value fuse(Operation* op, MaterializeOp materializeOp,
+  Value fuse(Operation* op, Location loc, Value subset,
              OpBuilder& builder) const {
     // Supports tile subsets.
-    Value tile = materializeOp.subset();
-    Type subsetTy = tile.getType();
+    Type subsetTy = subset.getType();
     if (!subsetTy.isa<TileType>()) return {};
+    Value tile = subset;
 
     // Create the needed constants only once.
     DenseMap<uint64_t, Value> localIndexConstants;
     auto bcastOp = llvm::dyn_cast<DynamicBroadcastInDimOp>(op);
-    auto loc = bcastOp.getLoc();
     auto getIndexConstant = [&](uint64_t c) -> Value {
       auto it = localIndexConstants.find(c);
       if (it != localIndexConstants.end()) return it->second;
@@ -155,18 +154,20 @@ template <typename OpTy>
 struct ElementwiseFusionInterface
     : public FusionIterface::ExternalModel<ElementwiseFusionInterface<OpTy>,
                                            OpTy> {
-  Value fuse(Operation* op, MaterializeOp materializeOp,
+  Value fuse(Operation* op, Location loc, Value subset,
              OpBuilder& builder) const {
     // Supports tile and point subsets.
-    Value subset = materializeOp.subset();
     Type subsetTy = subset.getType();
     if (!subsetTy.isa<PointType, TileType>()) return {};
 
+    // Expect ranked element-wise op.
+    auto cwiseOp = llvm::cast<OpTy>(op);
+    auto rankedTy = cwiseOp.getType().template dyn_cast<RankedTensorType>();
+    if (!rankedTy) return {};
+
     // Materialize subsets for all arguments.
-    auto ewiseOp = cast<OpTy>(op);
-    Location loc = materializeOp.getLoc();
     auto subsetArgs = llvm::to_vector(
-        llvm::map_range(ewiseOp->getOperands(), [&](const auto& arg) -> Value {
+        llvm::map_range(cwiseOp->getOperands(), [&](const auto& arg) -> Value {
           return builder.create<MaterializeOp>(loc, arg, subset);
         }));
 
@@ -177,7 +178,7 @@ struct ElementwiseFusionInterface
         })
         .Case([&](PointType) -> Value {
           return mhlo::MhloOpToStdScalarOp::mapOp(
-              ewiseOp, materializeOp.getType(), subsetArgs, &builder);
+              cwiseOp, rankedTy.getElementType(), subsetArgs, &builder);
         })
         .Default([](Type) -> Value { return {}; });
   }
