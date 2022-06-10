@@ -98,7 +98,7 @@ class Array2D : public Array<T> {
 template <typename NativeT = float>
 std::unique_ptr<Array2D<NativeT>> MakeLinspaceArray2D(double from, double to,
                                                       int64_t n1, int64_t n2) {
-  auto array = absl::make_unique<Array2D<NativeT>>(n1, n2);
+  auto array = std::make_unique<Array2D<NativeT>>(n1, n2);
   int64_t count = n1 * n2;
   NativeT step =
       static_cast<NativeT>((count > 1) ? (to - from) / (count - 1) : 0);

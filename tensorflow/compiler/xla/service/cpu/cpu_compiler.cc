@@ -656,7 +656,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
                                  llvm::TargetMachine* target_machine,
                                  bool is_mlir_compile) {
   if (DumpingEnabledForHloModule(*module)) {
-    hlo_proto_ = absl::make_unique<HloProto>();
+    hlo_proto_ = std::make_unique<HloProto>();
     *hlo_proto_->mutable_hlo_module() = module->ToProto();
   }
 
@@ -750,7 +750,7 @@ Status CreateHloProfilingArtifacts(
         computation_to_profile_idx,
     std::unique_ptr<HloProfileIndexMap>* hlo_profile_index_map,
     std::unique_ptr<HloProfilePrinterData>* hlo_profile_printer_data) {
-  *hlo_profile_index_map = absl::make_unique<HloProfileIndexMap>(module);
+  *hlo_profile_index_map = std::make_unique<HloProfileIndexMap>(module);
   const HloComputation& entry_computation = *module.entry_computation();
 
   TF_ASSIGN_OR_RETURN(
@@ -806,7 +806,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> CpuCompiler::AssignBuffers(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> assignment,
       BufferAssigner::Run(module,
-                          absl::make_unique<SequentialHloOrdering>(schedule),
+                          std::make_unique<SequentialHloOrdering>(schedule),
                           BufferSizeBytesFunction(), memory_alignment,
                           /*allocate_buffers_for_constants=*/true));
 
@@ -1090,7 +1090,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   LoadMLIRDialects(mlir_context);
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
   auto llvm_module =
-      absl::make_unique<llvm::Module>("__compute_module", *llvm_context);
+      std::make_unique<llvm::Module>("__compute_module", *llvm_context);
 
   auto jit = SimpleOrcJIT::Create(
       CompilerTargetOptions(module->config()),
@@ -1137,7 +1137,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> assignment,
       BufferAssigner::Run(module.get(),
-                          absl::make_unique<SequentialHloOrdering>(schedule),
+                          std::make_unique<SequentialHloOrdering>(schedule),
                           BufferSizeBytesFunction(), memory_alignment,
                           /*allocate_buffers_for_constants=*/true));
   DumpHloModuleIfEnabled(*module, *assignment, "cpu_after_optimizations");
@@ -1206,7 +1206,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
                                                  std::move(llvm_context));
   cantFail((*jit)->AddModule(std::move(thread_safe_module)));
 
-  auto cpu_executable = absl::make_unique<CpuExecutable>(
+  auto cpu_executable = std::make_unique<CpuExecutable>(
       std::move(*jit), std::move(assignment), std::move(module), function_name,
       std::move(hlo_profile_printer_data), std::move(hlo_profile_index_map));
 
@@ -1218,7 +1218,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // dump or embed_ir_in_executable is enabled.
   if (embed_ir_in_executable ||
       DumpingEnabledForHloModule(cpu_executable->module())) {
-    auto hlo_proto = absl::make_unique<HloProto>();
+    auto hlo_proto = std::make_unique<HloProto>();
     if (hlo_proto_) {
       *hlo_proto = *hlo_proto_;
     } else {
@@ -1346,7 +1346,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<BufferAssignment> assignment,
         BufferAssigner::Run(module,
-                            absl::make_unique<SequentialHloOrdering>(schedule),
+                            std::make_unique<SequentialHloOrdering>(schedule),
                             BufferSizeBytesFunction(), memory_alignment,
                             /*allocate_buffers_for_constants=*/true));
     // BufferAssignment::ToString() includes a header, so no need for us to
@@ -1485,7 +1485,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
                         assignment->GetUniqueTopLevelOutputSlice());
 
-    results.emplace_back(absl::make_unique<CpuAotCompilationResult>(
+    results.emplace_back(std::make_unique<CpuAotCompilationResult>(
         std::move(object_file_data), std::move(buffer_infos),
         result_slice.index(), std::move(hlo_profile_printer_data)));
   }
@@ -1508,7 +1508,7 @@ HloCostAnalysis::ShapeSizeFunction CpuCompiler::ShapeSizeBytesFunction() const {
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
       stream_executor::host::kHostPlatformId,
-      []() { return absl::make_unique<xla::cpu::CpuCompiler>(); });
+      []() { return std::make_unique<xla::cpu::CpuCompiler>(); });
   return true;
 }
 static bool module_initialized = InitModule();

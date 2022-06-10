@@ -36,7 +36,7 @@ namespace {
 class ReferenceUtilTest : public ::testing::Test {
  protected:
   ReferenceUtilTest() {
-    matrix_ = absl::make_unique<Array2D<float>>(rows_, cols_);
+    matrix_ = std::make_unique<Array2D<float>>(rows_, cols_);
     // [1.f  2.f  3.f]
     // [4.f  5.f  6.f]
     for (int64_t i = 0; i < rows_; ++i) {
@@ -122,8 +122,8 @@ TEST_F(ReferenceUtilTest, MapWithIndexArray2D) {
 }
 
 TEST_F(ReferenceUtilTest, MapArray4D) {
-  auto input = absl::make_unique<Array4D<float>>(/*planes=*/2, /*depth=*/3,
-                                                 /*height=*/4, /*width=*/5);
+  auto input = std::make_unique<Array4D<float>>(/*planes=*/2, /*depth=*/3,
+                                                /*height=*/4, /*width=*/5);
   input->FillWithMultiples(1.0f);
   auto multiply_by_two = [](float value) { return 2 * value; };
   auto result = ReferenceUtil::MapArray4D(*input, multiply_by_two);
@@ -136,8 +136,8 @@ TEST_F(ReferenceUtilTest, MapArray4D) {
 }
 
 TEST_F(ReferenceUtilTest, MapWithIndexArray4D) {
-  auto input = absl::make_unique<Array4D<float>>(/*planes=*/2, /*depth=*/3,
-                                                 /*height=*/4, /*width=*/5);
+  auto input = std::make_unique<Array4D<float>>(/*planes=*/2, /*depth=*/3,
+                                                /*height=*/4, /*width=*/5);
   input->FillWithMultiples(1.0f);
   auto subtract_index = [](float value, int64_t plane, int64_t depth,
                            int64_t height, int64_t width) {

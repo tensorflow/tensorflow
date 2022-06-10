@@ -250,7 +250,7 @@ TEST_F(ShapeTreeTest, InvalidIndexingNestedTuple) {
 TEST_F(ShapeTreeTest, ShapeTreeOfNonCopyableType) {
   ShapeTree<std::unique_ptr<int>> shape_tree{tuple_shape_};
   EXPECT_EQ(shape_tree.element({2}).get(), nullptr);
-  *shape_tree.mutable_element({2}) = absl::make_unique<int>(42);
+  *shape_tree.mutable_element({2}) = std::make_unique<int>(42);
   EXPECT_EQ(*shape_tree.element({2}), 42);
 }
 

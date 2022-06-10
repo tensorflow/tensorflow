@@ -70,7 +70,7 @@ Status CpuTransferManager::ReadDynamicShapes(se::Stream* stream,
 }  // namespace xla
 
 static std::unique_ptr<xla::TransferManager> CreateCpuTransferManager() {
-  return absl::make_unique<xla::CpuTransferManager>();
+  return std::make_unique<xla::CpuTransferManager>();
 }
 
 static bool InitModule() {

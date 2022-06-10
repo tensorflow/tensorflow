@@ -132,7 +132,7 @@ StatusOr<Shape> TransferBuffersFromOutfeedInternal(
     VLOG(2)
         << "Enqueueing outfeed buffer (for the device to populate) of length "
         << size_32 << "B";
-    buffers.push_back(absl::make_unique<CpuOutfeedBuffer>(b.first, size_32));
+    buffers.push_back(std::make_unique<CpuOutfeedBuffer>(b.first, size_32));
   }
 
   std::vector<cpu::runtime::XfeedBuffer*> buffer_pointers;

@@ -702,7 +702,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllToAll(
                                                  buffer_size);
   }
   auto make_cpu_rendezvous = [](const xla::RendezvousKey& k) {
-    return absl::make_unique<CpuAllToAllRendezvous>(k);
+    return std::make_unique<CpuAllToAllRendezvous>(k);
   };
   TF_CHECK_OK(CpuAllToAllRendezvous::SubmitParticipant(
                   [&] {
@@ -751,7 +751,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllReduce(
   }
 
   auto make_cpu_rendezvous = [](const xla::RendezvousKey& k) {
-    return absl::make_unique<CpuAllReduceRendezvous>(k);
+    return std::make_unique<CpuAllReduceRendezvous>(k);
   };
 
   TF_CHECK_OK(CpuAllReduceRendezvous::SubmitParticipant(
@@ -818,7 +818,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_CollectivePermute(
   participant.byte_size = byte_size;
 
   auto make_cpu_rendezvous = [](const xla::RendezvousKey& k) {
-    return absl::make_unique<CpuCollectivePermuteRendezvous>(k);
+    return std::make_unique<CpuCollectivePermuteRendezvous>(k);
   };
   TF_CHECK_OK(
       CpuCollectivePermuteRendezvous::SubmitParticipant(
