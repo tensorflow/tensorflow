@@ -295,12 +295,10 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
  public:
   // Runs a visitor on the module and returns whether the module has changed.
   StatusOr<bool> RunOnModule(HloModule* module) {
-    bool is_changed = false;
-    for (const auto& computation : module->computations()) {
+    for (const auto& computation : module->MakeNonfusionComputations()) {
       TF_RETURN_IF_ERROR(computation->Accept(this));
-      is_changed |= changed();
     }
-    return is_changed;
+    return changed();
   }
 
   // Default visitor action is to do nothing and return OK.
@@ -351,6 +349,10 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
     return OkStatus();
   }
 
+  // Mark the computation as having changed.
+  void MarkAsChanged() { changed_ = true; }
+
+ private:
   bool changed_ = false;
 };
 

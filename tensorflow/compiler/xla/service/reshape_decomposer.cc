@@ -72,13 +72,7 @@ class ReshapeDecomposerVisitor : public DfsHloRewriteVisitor {
 }  // namespace
 
 StatusOr<bool> ReshapeDecomposer::Run(HloModule* module) {
-  ReshapeDecomposerVisitor visitor;
-  bool is_changed = false;
-  for (const auto& computation : module->MakeNonfusionComputations()) {
-    TF_RETURN_IF_ERROR(computation->Accept(&visitor));
-    is_changed |= visitor.changed();
-  }
-  return is_changed;
+  return ReshapeDecomposerVisitor{}.RunOnModule(module);
 }
 
 }  // namespace xla
