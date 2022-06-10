@@ -100,8 +100,8 @@ enum class AdrenoGpu {
 
 struct AMDInfo {
   AMDInfo() = default;
-  int shader_engines;
-  int compute_units_per_shader_engine;
+  int shader_engines = 0;
+  int compute_units_per_shader_engine = 0;
   int GetComputeUnitsCount() const {
     return shader_engines * compute_units_per_shader_engine;
   }
@@ -250,6 +250,9 @@ struct MaliInfo {
   bool IsValhallGen2() const;
   bool IsValhallGen3() const;
   bool IsValhall() const;
+
+  // returns approximate compute units count using GPU name
+  int GetApproximateComputeUnitsCount() const;
 };
 
 struct OpenGlInfo {
