@@ -234,7 +234,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   # Remove the graph sequence number prefix from the name only if the name has
   # a prefix TRTEngineOp_n_.
   def _MayRemoveGraphSequenceNumber(self, name):
-    prefix = re.search(r"TRTEngineOp_\d+_", name)
+    prefix = re.search(r"TRTEngineOp_\d{3,}_", name)
     if prefix and name.startswith(prefix.group(0)):
       parts = name.split("_", maxsplit=2)
       assert len(parts) == 3
