@@ -7670,6 +7670,19 @@ ParseResult WhileOp::parse(OpAsmParser& parser, OperationState& result) {
   return success();
 }
 
+LogicalResult WhileOp::fold(ArrayRef<Attribute> /*operands*/,
+                            SmallVectorImpl<OpFoldResult>& results) {
+  DenseIntElementsAttr condValue;
+  auto condReturnOp = cast<ReturnOp>(cond().front().back());
+  if (!matchPattern(condReturnOp.getOperand(0), m_Constant(&condValue)))
+    return failure();
+  if (condValue.getSplatValue<BoolAttr>().getValue())
+    return failure();  // TODO(mhlo): this is an infinite loop, should we fold?
+
+  results.append(getOperands().begin(), getOperands().end());
+  return success();
+}
+
 static LogicalResult whileCanonicalization(WhileOp whileOp,
                                            PatternRewriter& rewriter) {
   // Turn loop invariant values into implicit capture.
