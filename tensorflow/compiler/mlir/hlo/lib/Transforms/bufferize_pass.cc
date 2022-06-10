@@ -237,7 +237,6 @@ struct OneShotBufferizePass
   void runOnOperation() override {
     bufferization::OneShotBufferizationOptions opts;
     opts.allowReturnAllocs = true;
-    opts.dropEquivalentFuncResults = false;
     opts.bufferizeFunctionBoundaries = true;
     opts.functionBoundaryTypeConversion =
         bufferization::BufferizationOptions::LayoutMapOption::IdentityLayoutMap;

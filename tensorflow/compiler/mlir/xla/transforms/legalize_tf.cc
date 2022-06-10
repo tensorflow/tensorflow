@@ -3205,7 +3205,7 @@ static void BroadcastBatchMatMulV2Operands(Value lhs, Value rhs, Location loc,
     auto result_type =
         RankedTensorType::get(result_shape, type.getElementType());
     auto shape =
-        rewriter->create<shape::ConcatOp>(loc, result_batch_shape, tail_shape);
+        rewriter->create<shape::ConcatOp>(loc, shape_type, result_batch_shape, tail_shape);
     auto shape_tensor = rewriter->create<shape::ToExtentTensorOp>(
         loc,
         RankedTensorType::get({static_cast<int64_t>(result_shape.size())},
