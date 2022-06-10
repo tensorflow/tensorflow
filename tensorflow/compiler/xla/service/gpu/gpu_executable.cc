@@ -250,6 +250,7 @@ class GpuExecutable::JitRtExecutable {
   jitrt::Executable& default_executable() { return *default_executable_; }
   JitRtKernelsCache& kernels_cache() { return kernels_cache_; }
   JitRtGemmConfigCache& gemm_configs_cache() { return gemm_configs_cache_; }
+  JitRtCollectiveSupport& collectives() { return collectives_; }
 
   // We pass a pointer to the buffer size to the compiled function, so we return
   // a reference to a stable memory location.
@@ -278,6 +279,9 @@ class GpuExecutable::JitRtExecutable {
 
   // Keep a cache of gemm configs for all gemm operation in the program.
   JitRtGemmConfigCache gemm_configs_cache_;
+
+  // Support for running collective operations.
+  JitRtCollectiveSupport collectives_;
 };
 #endif  // XLA_ENABLE_XLIR
 
@@ -878,11 +882,24 @@ static Status ExecuteJitRt(const std::string& module_name,
   opts.async_task_runner =
       reinterpret_cast<jitrt::AsyncTaskRunner*>(0XDEADBEEF);
 
+  // Get the async communications stream for async collectives.
+  int device_ordinal = run_options->stream()->parent()->device_ordinal();
+  StatusOr<StreamPool::Ptr> async_comms_stream =
+      run_options->BorrowStream(device_ordinal);
+
+  // Async collective support instantiated for each Gpu executable run, so that
+  // concurrent executions can run independenty using a separate set of events
+  // for communication.
+  JitRtAsyncCollectiveSupport async_collectives(
+      async_comms_stream.ok() ? async_comms_stream->get() : nullptr);
+
   // Pass auxiliary data to the custom call handlers.
   jitrt::CustomCall::UserData user_data;
-  user_data.insert_all(run_options, &jitrt_executable->debug_options(),
-                       &jitrt_executable->kernels_cache(),
-                       &jitrt_executable->gemm_configs_cache());
+  user_data.insert_all(
+      run_options, &jitrt_executable->debug_options(),
+      &jitrt_executable->kernels_cache(),
+      &jitrt_executable->gemm_configs_cache(), &jitrt_executable->collectives(),
+      async_collectives.async_comm_stream() ? &async_collectives : nullptr);
   opts.custom_call_data = &user_data;
 
   // Get the default executable. We do not support specialization because

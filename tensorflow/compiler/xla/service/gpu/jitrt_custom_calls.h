@@ -30,6 +30,8 @@ namespace xla {
 namespace gpu {
 class JitRtKernelsCache;
 class JitRtGemmConfigCache;
+class JitRtCollectiveSupport;
+class JitRtAsyncCollectiveSupport;
 }  // namespace gpu
 }  // namespace xla
 
@@ -39,6 +41,10 @@ TFRT_DECLARE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
                                     xla::gpu::JitRtKernelsCache);
 TFRT_DECLARE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
                                     xla::gpu::JitRtGemmConfigCache);
+TFRT_DECLARE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
+                                    xla::gpu::JitRtCollectiveSupport);
+TFRT_DECLARE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
+                                    xla::gpu::JitRtAsyncCollectiveSupport);
 TFRT_DECLARE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
                                     const xla::ServiceExecutableRunOptions);
 TFRT_DECLARE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
@@ -78,6 +84,58 @@ class JitRtGemmConfigCache {
   mutable absl::Mutex mutex_;
 
   llvm::SmallDenseMap<int64_t, GemmConfig> configs_ ABSL_GUARDED_BY(mutex_);
+};
+
+class JitRtCollectiveSupport {
+ public:
+  // Maybe block host after the first call to the collective operation with the
+  // given uid, to ensure that all devices have allocated the required buffers
+  // for their communicators before allowing any device to continue enqueuing
+  // operations. Otherwise, the allocations can cause deadlock in the CUDA
+  // driver.
+  //
+  // This basically ports workaround form cr/435058849 to JitRt (see details in
+  // the b/215649390).
+  Status MaybeBlockAfterFirstRun(int32_t uid, int32_t device_ordinal,
+                                 se::Stream* stream);
+
+ private:
+  static int64_t Key(int32_t uid, int32_t device_ordinal) {
+    return static_cast<int64_t>(uid) << 32 | device_ordinal;
+  }
+
+  mutable absl::Mutex mutex_;
+
+  // Store if a particular collective operation was executed at least once. We
+  // rely on unique `uid` assigned to each collective operation by the lowering
+  // pass.
+  llvm::SmallDenseMap<int64_t, bool> executed_ ABSL_GUARDED_BY(mutex_);
+};
+
+// Support for running async collective operations communicating via events.
+class JitRtAsyncCollectiveSupport {
+ public:
+  explicit JitRtAsyncCollectiveSupport(se::Stream* async_comm_stream);
+
+  mlir::FailureOr<se::Event> PopEvent(int32_t uid, int32_t device_ordinal);
+  mlir::LogicalResult PushEvent(int32_t uid, int32_t device_ordinal,
+                                se::Event done_event);
+
+  ::stream_executor::Stream* async_comm_stream() const {
+    return async_comm_stream_;
+  }
+
+ private:
+  static int64_t EventKey(int32_t uid, int32_t device_ordinal) {
+    return static_cast<int64_t>(uid) << 32 | device_ordinal;
+  }
+
+  mutable absl::Mutex mutex_;
+
+  ::stream_executor::Stream* async_comm_stream_;
+
+  // Store done events for the AllReduceDone to wait on.
+  llvm::SmallDenseMap<int64_t, se::Event> done_events_ ABSL_GUARDED_BY(mutex_);
 };
 
 tfrt::jitrt::DirectCustomCallLibrary JitRtGpuCustomCalls();
