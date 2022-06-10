@@ -255,6 +255,8 @@ upper_tabs:
       - heading: "Convert models"
       - title: "Overview"
         path: /lite/models/convert/
+      - title: "TensorFlow Lite converter"
+        path: /lite/models/convert/convert_models
       - title: "Model compatibility"
         section:
         - title: "Overview"
