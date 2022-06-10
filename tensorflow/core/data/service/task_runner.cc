@@ -80,13 +80,12 @@ Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
                                                   task_def.num_consumers(),
                                                   task_def.worker_address());
   } else if (task_def.use_cross_trainer_cache()) {
-    // TODO(b/221104308): Add a validation to check enough RAM is available.
     const size_t max_cache_size_bytes =
         worker_config.cross_trainer_cache_size_bytes() > 0
             ? worker_config.cross_trainer_cache_size_bytes()
             : kDefaultCrossTrainerCacheSizeBytes;
-    out = std::make_unique<CachingTaskRunner>(
-        std::move(iterator), /*max_cache_size_bytes=*/max_cache_size_bytes);
+    out = std::make_unique<CachingTaskRunner>(std::move(iterator),
+                                              max_cache_size_bytes);
   } else {
     out = std::make_unique<FirstComeFirstServedTaskRunner>(std::move(iterator));
   }
