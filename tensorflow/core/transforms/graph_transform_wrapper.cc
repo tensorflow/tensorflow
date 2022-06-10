@@ -39,8 +39,8 @@ tensorflow::Status RunTransformOnGraph(
   // to avoid overhead of creating threadpool that won't be used.
   MLIRContext context(MLIRContext::Threading::DISABLED);
   TF_ASSIGN_OR_RETURN(OwningOpRef<ModuleOp> module,
-                      ImportGraphAndFunctionsToMlir(
-                          &context, *graph, debug_info, graph->flib_def()));
+                      ImportGraphAndFunctionsToMlir(&context, debug_info,
+                                                    *graph, graph->flib_def()));
 
   PassManager pm(&context, mlir::PassManager::Nesting::Explicit);
   // Construct passes.

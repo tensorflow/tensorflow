@@ -910,8 +910,8 @@ StatusOr<OwningOpRef<ModuleOp>> ImportGraphDef(MLIRContext *context,
   return importer.ConvertGraphDef(graph_def);
 }
 
-StatusOr<OwningOpRef<mlir::ModuleOp>> ImportGraphAndFunctionsToMlir(
-    MLIRContext *context, const Graph &graph, const GraphDebugInfo &debug_info,
+StatusOr<OwningOpRef<ModuleOp>> ImportGraphAndFunctionsToMlir(
+    MLIRContext *context, const GraphDebugInfo &debug_info, const Graph &graph,
     const FunctionLibraryDefinition &flib_def) {
   // TODO(b/231723721): This conversion path is slow because both the graph and
   // the function library are converted to GraphDef.
