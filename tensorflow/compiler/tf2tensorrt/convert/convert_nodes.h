@@ -560,6 +560,10 @@ StatusOr<ITensorProxyPtr> ConvertMatMulImpl(OpConverterParams* params,
 std::string convert_range_error_msg(float start, float limit, float delta);
 std::string convert_range_expected_msg(const NodeDef& node_def);
 
+inline bool find_name(const string& name, const std::vector<string> names) {
+  return std::find(names.begin(), names.end(), name) != names.end();
+}
+
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow

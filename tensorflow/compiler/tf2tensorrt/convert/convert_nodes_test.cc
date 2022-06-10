@@ -1918,15 +1918,10 @@ class ParameterizedOpConverterTestBase
                        const Status& expected_runtime_status,
                        const Matcher<std::vector<float>>& matcher,
                        const std::vector<DataType>& out_tf_types = {}) {
-    const auto& exp_dims =
-        std::vector<std::vector<int>>({expected_output_dims});
-    RunValidationAndConversion(node_def, expected_conversion_status, name,
-                               exp_dims);
-    if (expected_conversion_status.ok()) {
-      BuildAndRun(name, exp_dims, expected_runtime_status,
-                  std::vector<Matcher<std::vector<float>>>({matcher}),
-                  out_tf_types);
-    }
+    TestOpConverterMultiOut(
+        name, node_def, std::vector<std::vector<int>>({expected_output_dims}),
+        expected_conversion_status, expected_runtime_status,
+        std::vector<Matcher<std::vector<float>>>({matcher}), out_tf_types);
   }
 
  protected:
@@ -2028,37 +2023,53 @@ class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
                std::pair<std::function<NodeDef(DataType)>, std::vector<T>>>&
           op_test_info,
       const std::vector<std::vector<T>>& data) {
-    // Test combinations of tensor vs weight inputs (except when both inputs are
-    // weights).
+    const std::vector<DataType> bool_types{DT_BOOL}, default_types{};
+    std::vector<string> logical_ops{"Greater", "Less", "Equal"};
+    std::vector<string> combined_ops{"GreaterEqual", "LessEqual"};
     const DataType tf_type = get_tf_type();
-    for (const bool operand_1_is_tensor : {true, false}) {
-      for (const bool operand_2_is_tensor : {true, false}) {
-        for (auto& iter : map) {
-          const string& op_name = iter.first;
+    AttrValue dtype;
+    dtype.set_type(tf_type);
+    std::map<std::string, NodeDef> nodes;
+    for (const auto op_name : combined_ops) {
+      nodes[op_name] = MakeNodeDef("my_binary", op_name, {"input1", "input2"},
+                                   {{"T", dtype}});
+    }
+
+    for (auto& iter : map) {
+      const string& op_name = iter.first;
+      if (!op_test_info.count(op_name)) {
+        FAIL() << "Binary op test map does not contain op " << op_name;
+      }
+      const auto comb_op = find_name(op_name, combined_ops);
+      const auto& node_def =
+          comb_op ? nodes[op_name] : op_test_info[op_name].first(tf_type);
+
+      for (const bool operand_1_is_tensor : {true, false}) {
+        for (const bool operand_2_is_tensor : {true, false}) {
           SCOPED_TRACE(StrCat(op_name, "_", operand_1_is_tensor ? "T" : "W",
                               operand_2_is_tensor ? "T" : "W"));
-
-          if (!op_test_info.count(op_name)) {
-            FAIL() << "Binary op test map does not contain op " << op_name;
-          }
-
+          Reset();
           if (!operand_1_is_tensor && !operand_2_is_tensor) {
-            runExpectedToFailTest(op_name);
+            // In that case the only test which should be launched is in
+            // runExpectedToFailTest
+            runExpectedToFailTest(op_name, node_def);
             continue;
           }
+
+          const bool logical_op = comb_op || find_name(op_name, logical_ops);
           auto conv_status = Status::OK();
-          if (tf_type == DT_BOOL) {
+          if (tf_type == DT_BOOL || logical_op) {
             if (trt_mode_ == TrtTestMode::kImplicitBatch) {
               conv_status = errors::Unimplemented(
                   "Binary op: '", op_name,
                   "' is not supported in implicit batch mode");
-            } else if (!operand_1_is_tensor || !operand_2_is_tensor) {
+            } else if (!logical_op &&
+                       (!operand_1_is_tensor || !operand_2_is_tensor)) {
               conv_status = errors::InvalidArgument(
                   "Both inputs  of '", op_name, "' are expected to be tensors");
             }
           }
 
-          Reset();
           if (operand_1_is_tensor) {
             AddTestTensor("input1", {2, 1, 2}, data[0]);
           } else {
@@ -2070,29 +2081,23 @@ class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
             AddTestWeights("input2", {2, 1}, data[3], tf_type);
           }
 
-          const NodeDef& node_def = op_test_info[op_name].first(tf_type);
           TestOpConverter("my_binary", node_def, {2, 2, 2}, conv_status,
                           Status::OK(),
-                          ElementsAreArray(op_test_info[op_name].second));
+                          ElementsAreArray(op_test_info[op_name].second),
+                          logical_op ? bool_types : default_types);
         }
       }
     }
   }
 
-  void runExpectedToFailTest(const std::string& op_name) {
-    Reset();
-    AttrValue dtype;
-    dtype.set_type(tf_type_);
-
-    const auto& node_def = MakeNodeDef(
-        "my_oper", op_name, {"weights1", "weights2"}, {{"T", dtype}});
-    AddTestWeights("weights1", {1}, {1}, tf_type_);
-    AddTestWeights("weights2", {1}, {1}, tf_type_);
+  void runExpectedToFailTest(const std::string& op_name, const NodeDef& node) {
+    AddTestWeights("input1", {1}, {1}, tf_type_);
+    AddTestWeights("input2", {1}, {1}, tf_type_);
     const string error =
         "Constant folding is falled back to TensorFlow, "
         "binary op '" +
         op_name + "' received both input as constant";
-    RunValidationAndConversion(node_def, error::UNIMPLEMENTED, error);
+    RunValidationAndConversion(node, error::UNIMPLEMENTED, error);
   }
 };
 
@@ -3417,6 +3422,13 @@ TEST_P(OpConverter_FP32_FP16_BinaryTest, ConvertBinary) {
   ADD_OP("Minimum", ops::Minimum, {2, 2, 3, 3, 2, 2, 3, 3});
   ADD_OP("Maximum", ops::Maximum, {3, 6, 3, 6, 3, 6, 3, 6});
   ADD_OP("Pow", ops::Pow, {9, 36, 27, 216, 9, 36, 27, 216});
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+  ADD_OP("Greater", ops::Greater, {1, 1, 0, 1, 1, 1, 0, 1});
+  ADD_OP("Less", ops::Less, {0, 0, 0, 0, 0, 0, 0, 0});
+  ADD_OP("Equal", ops::Equal, {0, 0, 1, 0, 0, 0, 1, 0});
+  ADD_OP("GreaterEqual", ops::Less, {1, 1, 1, 1, 1, 1, 1, 1});
+  ADD_OP("LessEqual", ops::Greater, {0, 0, 1, 0, 0, 0, 1, 0});
+#endif
 #undef ADD_OP
   std::vector<std::vector<float>> data = {
       {3, 6, 3, 6}, {3, 6}, {2, 3, 2, 3}, {2, 3}};
