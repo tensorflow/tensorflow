@@ -78,7 +78,7 @@ class DenseBincountOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("DenseBincount").CompileTimeConstantInput("size"), DenseBincountOp);
+//REGISTER_XLA_OP(Name("DenseBincount").CompileTimeConstantInput("size"), DenseBincountOp);
 
 }  // namespace
 }  // namespace tensorflow

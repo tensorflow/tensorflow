@@ -22,10 +22,66 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gen_count_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.eager import def_function
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
+
+@def_function.function(jit_compile=True)
+def dense_bincount_1d(input=[],
+              size=None,
+              weights=[],
+              binary_output=False):
+
+  input = array_ops.reshape(input, [array_ops.shape(input)[0],-1])
+  output_shape = [size]
+  idx = input
+  if (binary_output):
+    updates = array_ops.ones(array_ops.shape(idx)[0], dtype=dtypes.bool)
+    output = array_ops.zeros(output_shape, dtype=dtypes.bool)
+  elif (len(weights)):
+    updates = weights
+    output = array_ops.zeros(output_shape, dtype=weights.dtype)
+  else:
+    updates = array_ops.ones(array_ops.shape(idx)[0], dtype=dtypes.int32)
+    output = array_ops.zeros(output_shape, dtype=dtypes.int32)
+
+  histogram_out = array_ops.tensor_scatter_add(output, idx, updates)
+
+  return histogram_out
+
+def prepare_idxs(input):
+  j_indices = array_ops.reshape(input, [-1, 1])
+  i_indices = array_ops.expand_dims(array_ops.repeat(math_ops.range(array_ops.shape(input)[0]), array_ops.shape(input)[1]), axis=-1)
+
+  new_indices = array_ops.concat([i_indices, j_indices], axis=-1)
+  return new_indices
+
+@def_function.function(jit_compile=True)
+def dense_bincount_2d(input=[],
+              size=None,
+              weights=[],
+              binary_output=False):
+
+  input = array_ops.reshape(input, [array_ops.shape(input)[0],-1])
+  idx = prepare_idxs(input)
+  output_shape = [input.shape[0], size] 
+  
+  if (binary_output):
+    updates = array_ops.ones(array_ops.shape(idx)[0], dtype=dtypes.bool)
+    output = array_ops.zeros(output_shape, dtype=dtypes.bool)
+  elif (len(weights)):
+    updates = array_ops.reshape(weights, [array_ops.shape(idx)[0]])
+    output = array_ops.zeros(output_shape, dtype=weights.dtype)
+  else:
+    updates = array_ops.ones(array_ops.shape(idx)[0], dtype=dtypes.int32)
+    output = array_ops.zeros(output_shape, dtype=dtypes.int32)
+
+  histogram_out = array_ops.tensor_scatter_add(output, idx, updates)
+
+  return histogram_out
 
 
 @tf_export("math.bincount", v1=[])
@@ -36,7 +92,8 @@ def bincount(arr,
              dtype=dtypes.int32,
              name=None,
              axis=None,
-             binary_output=False):
+             binary_output=False,
+             pseudo_hlo=False):
   """Counts the number of occurrences of each value in an integer array.
 
   If `minlength` and `maxlength` are not given, returns a vector with length
@@ -208,7 +265,21 @@ def bincount(arr,
           binary_output=binary_output)
     else:
       weights = validate_dense_weights(arr, weights, dtype)
-      return gen_math_ops.dense_bincount(
+      if (pseudo_hlo == True):
+        if (len(arr.shape)==1):
+          return dense_bincount_1d(          
+            input=arr,
+            size=output_size,
+            weights=weights,
+            binary_output=binary_output)
+        else:
+          return dense_bincount_2d(          
+            input=arr,
+            size=output_size,
+            weights=weights,
+            binary_output=binary_output)
+      else:
+        return gen_math_ops.dense_bincount(
           input=arr,
           size=output_size,
           weights=weights,
