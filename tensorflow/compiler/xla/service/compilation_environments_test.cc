@@ -45,39 +45,6 @@ CompilationEnvironments::CreateDefaultEnv<test::TestCompilationEnvironment2>() {
 namespace test {
 namespace {
 
-class EnvWrapperTest : public ::testing::Test {
- public:
-  using CEnvWrapper = CompilationEnvironments::EnvWrapper;
-};
-
-TEST_F(EnvWrapperTest, FromUniquePtr) {
-  auto env = std::make_unique<TestCompilationEnvironment1>();
-  env->set_some_flag(10);
-  auto env_ptr = env.get();
-  auto wrapper = CEnvWrapper::FromUniquePtr(std::move(env));
-
-  EXPECT_EQ(wrapper.EnvTypeid(), typeid(TestCompilationEnvironment1));
-  EXPECT_EQ(&wrapper.Get(), env_ptr);
-  EXPECT_EQ(
-      tensorflow::down_cast<const TestCompilationEnvironment1&>(wrapper.Get())
-          .some_flag(),
-      10);
-}
-
-TEST_F(EnvWrapperTest, FromRef) {
-  TestCompilationEnvironment1 env;
-  env.set_some_flag(10);
-  auto env_ptr = &env;
-  auto wrapper = CEnvWrapper::FromRef(env);
-
-  EXPECT_EQ(wrapper.EnvTypeid(), typeid(TestCompilationEnvironment1));
-  EXPECT_EQ(&wrapper.Get(), env_ptr);
-  EXPECT_EQ(
-      tensorflow::down_cast<const TestCompilationEnvironment1&>(wrapper.Get())
-          .some_flag(),
-      10);
-}
-
 class CompilationEnvironmentsTest : public ::testing::Test {};
 
 TEST_F(CompilationEnvironmentsTest, GetDefaultEnv) {
@@ -90,8 +57,7 @@ TEST_F(CompilationEnvironmentsTest, GetAddedEnv) {
   CompilationEnvironments envs;
   auto env = std::make_unique<TestCompilationEnvironment1>();
   env->set_some_flag(5);
-  envs.AddEnv(
-      CompilationEnvironments::EnvWrapper::FromUniquePtr(std::move(env)));
+  envs.AddEnv(std::move(env));
   EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 5);
 }
 

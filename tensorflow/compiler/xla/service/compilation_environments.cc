@@ -19,16 +19,19 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
 
-void CompilationEnvironments::AddEnv(EnvWrapper env) {
-  if (environments_.contains(env.EnvTypeid())) {
+void CompilationEnvironments::AddEnv(
+    std::unique_ptr<tensorflow::protobuf::Message> env) {
+  auto descriptor = env->GetDescriptor();
+  if (environments_.contains(descriptor)) {
     LOG(WARNING) << "Replacing CompilationEnvironment of type "
-                 << env.EnvTypeid().name();
+                 << descriptor->full_name();
   }
-  auto id = env.EnvTypeid();
-  environments_.insert({id, std::move(env)});
+
+  environments_.insert({descriptor, std::move(env)});
 }
 
 }  // namespace xla

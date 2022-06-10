@@ -37,59 +37,24 @@ namespace xla {
 // B) Requiring CompilationEnvironments to implicitly construct all needed
 //    environments, thereby requiring it to statically know the types of all
 //    such environments
+//
+// CompilationEnvironments is not thread-safe.
 class CompilationEnvironments {
  public:
-  // A wrapper around a proto Message, holding a CompilationEnvironment. The
-  // wrapper can take ownership of the environment object (see FromUniquePtr()),
-  // or it can hold a const reference to an environment object (see FromRef()).
-  //
-  // EnvWrapper is movable but not copyable.
-  class EnvWrapper {
-   public:
-    template <typename T>
-    static EnvWrapper FromUniquePtr(std::unique_ptr<T> env);
-
-    template <typename T>
-    static EnvWrapper FromRef(const T& ref);
-
-    EnvWrapper(EnvWrapper&& rhs) = default;  // move constructor
-    ~EnvWrapper() = default;
-
-    EnvWrapper& operator=(EnvWrapper&& rhs) = default;  // move assignment
-
-    // Returns the std::type_index of the actual type of the const reference
-    // stored in env_ref_.
-    std::type_index EnvTypeid() const { return typeid_; }
-
-    const tensorflow::protobuf::Message& Get() const { return env_ref_; }
-
-   protected:
-    EnvWrapper() = delete;
-    EnvWrapper(const EnvWrapper& rhs) = delete;
-    EnvWrapper& operator=(const EnvWrapper& rhs) = delete;
-
-    EnvWrapper(std::type_index the_typeid,
-               std::unique_ptr<tensorflow::protobuf::Message> env,
-               const tensorflow::protobuf::Message& env_ref)
-        : typeid_(the_typeid), env_(std::move(env)), env_ref_(env_ref) {}
-
-    std::type_index typeid_;
-    std::unique_ptr<tensorflow::protobuf::Message> env_;
-    const tensorflow::protobuf::Message& env_ref_;
-  };
+  CompilationEnvironments() = default;
+  ~CompilationEnvironments() = default;
 
   // Users of CompilationEnvironments must specialize this method for each type
   // of CompilationEnvironment they wish to use in code.
+  //
+  // T must be a type of proto message.
   template <typename T>
   static std::unique_ptr<T> CreateDefaultEnv() = delete;
-
-  CompilationEnvironments() = default;
-  ~CompilationEnvironments() = default;
 
   // Adds env to the list of CompilationEnvironments. If an environment with
   // std::type_index equal to env.GetTypeid() has already been added, env
   // will replace it.
-  void AddEnv(EnvWrapper env);
+  void AddEnv(std::unique_ptr<tensorflow::protobuf::Message> env);
 
   // Returns the CompilationEnvironment corresponding to T. If such an
   // environment has not been added, CreateDefaultEnv<T>() will be called to
@@ -107,7 +72,9 @@ class CompilationEnvironments {
   void Clear() { environments_.clear(); }
 
  private:
-  absl::flat_hash_map<std::type_index, EnvWrapper> environments_;
+  absl::flat_hash_map<const tensorflow::protobuf::Descriptor*,
+                      std::unique_ptr<tensorflow::protobuf::Message>>
+      environments_;
 };
 
 // ----- Template implementation below -----
@@ -120,42 +87,14 @@ std::unique_ptr<tensorflow::protobuf::Message>
 CompilationEnvironments::CreateDefaultEnv() = delete;
 
 template <typename T>
-CompilationEnvironments::EnvWrapper
-CompilationEnvironments::EnvWrapper::FromUniquePtr(std::unique_ptr<T> env) {
-  const T& ref = *env;
-  return EnvWrapper(typeid(T), std::move(env), ref);
-}
-
-// Disallow the creation of wrappers around tensorflow::protobuf::Message.
-// Wrappers should be created around proto messages, using the real message
-// type.
-template <>
-CompilationEnvironments::EnvWrapper
-CompilationEnvironments::EnvWrapper::FromUniquePtr(
-    std::unique_ptr<tensorflow::protobuf::Message> env) = delete;
-
-template <typename T>
-CompilationEnvironments::EnvWrapper
-CompilationEnvironments::EnvWrapper::FromRef(const T& ref) {
-  return EnvWrapper(typeid(T), nullptr, ref);
-}
-
-// Disallow the creation of wrappers around tensorflow::protobuf::Message.
-// Wrappers should be created around proto messages, using the real message
-// type.
-template <>
-CompilationEnvironments::EnvWrapper
-CompilationEnvironments::EnvWrapper::FromRef(
-    const tensorflow::protobuf::Message& ref) = delete;
-
-template <typename T>
 const T& CompilationEnvironments::GetEnv() {
-  auto it = environments_.find(typeid(T));
+  auto descriptor = T::descriptor();
+  auto it = environments_.find(descriptor);
   if (it == environments_.end()) {
-    AddEnv(EnvWrapper::FromUniquePtr(CreateDefaultEnv<T>()));
-    it = environments_.find(typeid(T));
+    AddEnv(CreateDefaultEnv<T>());
+    it = environments_.find(descriptor);
   }
-  return tensorflow::down_cast<const T&>(it->second.Get());
+  return tensorflow::down_cast<const T&>(*it->second);
 }
 
 }  // namespace xla
