@@ -39,7 +39,7 @@ class Literal(trace.TraceType, serialization.Serializable):
     return self if all(self == other for other in types) else None
 
   @classmethod
-  def type_proto(cls) -> type[default_types_pb2.SerializedLiteral]:
+  def type_proto(cls) -> Type[default_types_pb2.SerializedLiteral]:
     return default_types_pb2.SerializedLiteral
 
   @classmethod
