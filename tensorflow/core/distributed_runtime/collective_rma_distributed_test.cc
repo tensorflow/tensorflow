@@ -71,7 +71,7 @@ static std::unique_ptr<Device> NewDevice(const string& type, const string& name,
   attr.set_device_type(type);
   attr.mutable_locality()->set_numa_node(3);  // a non-default value
   attr.set_incarnation(random::New64());
-  return absl::make_unique<FakeDevice>(attr, allocator);
+  return std::make_unique<FakeDevice>(attr, allocator);
 }
 
 static int64_t kStepId = 123;

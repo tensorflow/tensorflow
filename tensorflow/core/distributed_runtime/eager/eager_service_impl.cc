@@ -308,7 +308,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
       eager::CreateClusterFLR(request->context_id(), ctx, worker_session.get());
 
   auto remote_mgr =
-      absl::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/false, ctx);
+      std::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/false, ctx);
   Status s = ctx->InitializeRemoteWorker(
       std::move(remote_eager_workers), worker_session->remote_device_mgr(),
       remote_workers, request->context_id(), request->context_view_id(),
@@ -603,9 +603,9 @@ Status EagerServiceImpl::Enqueue(CallOptions* call_opts,
       s = ExecuteOp(call_opts, item.operation(), context->Context(), &executor,
                     queue_response);
     } else if (item.has_handle_to_decref()) {
-      auto handle_to_decref = absl::make_unique<RemoteTensorHandleInternal>(
+      auto handle_to_decref = std::make_unique<RemoteTensorHandleInternal>(
           item.handle_to_decref());
-      auto node = absl::make_unique<ClientTensorHandleDeleteNode>(
+      auto node = std::make_unique<ClientTensorHandleDeleteNode>(
           context, std::move(handle_to_decref));
       s = context->Context()->Executor().AddOrExecute(std::move(node));
     } else if (item.has_send_tensor()) {

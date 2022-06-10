@@ -45,7 +45,7 @@ std::unique_ptr<Device> NewDevice(const string& type, const string& name) {
   attr.set_name(name);
   attr.set_device_type(type);
   attr.set_incarnation(random::New64());
-  return absl::make_unique<FakeDevice>(attr);
+  return std::make_unique<FakeDevice>(attr);
 }
 
 class DeviceResDistTest : public ::testing::Test {
@@ -56,9 +56,9 @@ class DeviceResDistTest : public ::testing::Test {
         NewDevice("CPU", "/job:worker/replica:0/task:0/device:CPU:0"));
     devices.push_back(
         NewDevice("CPU", "/job:worker/replica:0/task:0/device:CPU:1"));
-    dev_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
+    dev_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(devices));
     dev_resolver_ =
-        absl::make_unique<DeviceResolverDistributed>(dev_mgr_.get());
+        std::make_unique<DeviceResolverDistributed>(dev_mgr_.get());
 
     std::vector<DeviceAttributes> attributes;
     attributes.push_back(
