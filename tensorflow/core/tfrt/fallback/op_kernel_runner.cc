@@ -155,16 +155,26 @@ OpKernelRunner::OpKernelRunner(
   }
 }
 
+void OpKernelRunner::Run(OpKernelContext* context) const {
+  DVLOG(1) << "KernelFallbackExecuteCompat Running Op: "
+           << op_kernel_->def().DebugString()
+           << ", on Device: " << context->device()->name();
+
+  static_cast<tensorflow::Device*>(context->device())
+      ->Compute(op_kernel_.get(), context);
+}
+
 void OpKernelRunner::RunAsync(OpKernelContext* context,
                               AsyncOpKernel::DoneCallback done_callback) const {
   DVLOG(1) << "KernelFallbackExecuteCompat Running Async Op: "
            << op_kernel_->def().DebugString()
-           << ", on Device: " << device_->name();
+           << ", on Device: " << context->device()->name();
 
   AsyncOpKernel* async = op_kernel_->AsAsync();
   DCHECK(async);
 
-  async->ComputeAsync(context, std::move(done_callback));
+  static_cast<tensorflow::Device*>(context->device())
+      ->ComputeAsync(async, context, std::move(done_callback));
 }
 
 }  // namespace tfrt_stub
