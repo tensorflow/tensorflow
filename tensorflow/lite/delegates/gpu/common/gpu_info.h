@@ -392,6 +392,8 @@ enum class MetalLanguageVersion {
   kMetal2_1,
   kMetal2_2,
   kMetal2_3,
+  kMetal2_4,
+  kMetal3_0,
   kUnknown,
 };
 
@@ -412,6 +414,8 @@ struct MetalInfo {
   uint64_t image3d_max_depth;
 
   bool IsSIMDMatMulSupported() const;
+  // MSL is Metal shading language
+  bool IsMslVersionEqualOrHigher(int major, int minor = 0) const;
 };
 
 struct GpuInfo {

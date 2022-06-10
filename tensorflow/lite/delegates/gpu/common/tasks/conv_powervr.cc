@@ -1417,19 +1417,27 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     }
     conv_params.block_size = int4(1, 1, 1, 4);
     conv_params.src_depth_loop_size = 1;
-    int sub_group_size = 16;
-    const bool supports_subgroups =
-        gpu_info.SupportsExtension("cl_khr_subgroups") ||
-        gpu_info.SupportsExtension("cl_intel_subgroups");
-    if (definition.precision != CalculationsPrecision::F32_F16 &&
-        supports_subgroups &&
-        gpu_info.SupportsExtension("cl_intel_required_subgroup_size") &&
-        gpu_info.SupportsSubGroupWithSize(sub_group_size)) {
+    conv_params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+    if (gpu_info.IsApiMetal() &&
+        definition.precision != CalculationsPrecision::F32_F16 &&
+        gpu_info.metal_info.IsMslVersionEqualOrHigher(2)) {
       conv_params.weights_upload_type =
           WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
-      conv_params.simd_size = sub_group_size;
-    } else {
-      conv_params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+      conv_params.simd_size = 8;
+    }
+    if (gpu_info.IsApiOpenCl()) {
+      const int kSubGroupSize = 16;
+      const bool supports_subgroups =
+          gpu_info.SupportsExtension("cl_khr_subgroups") ||
+          gpu_info.SupportsExtension("cl_intel_subgroups");
+      if (definition.precision != CalculationsPrecision::F32_F16 &&
+          supports_subgroups &&
+          gpu_info.SupportsExtension("cl_intel_required_subgroup_size") &&
+          gpu_info.SupportsSubGroupWithSize(kSubGroupSize)) {
+        conv_params.weights_upload_type =
+            WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
+        conv_params.simd_size = kSubGroupSize;
+      }
     }
     if (dst_depth % 4 == 0 || dst_depth >= 8) {
       conv_params.block_size.w = 4;

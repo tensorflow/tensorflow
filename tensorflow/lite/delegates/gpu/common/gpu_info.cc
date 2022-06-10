@@ -653,6 +653,28 @@ bool MetalInfo::IsSIMDMatMulSupported() const {
   return true;
 }
 
+bool MetalInfo::IsMslVersionEqualOrHigher(int major, int minor) const {
+  const std::map<MetalLanguageVersion, std::pair<int, int>> kMapping = {
+      {MetalLanguageVersion::kUnknown, {1, 0}},
+      {MetalLanguageVersion::kMetal1_0, {1, 0}},
+      {MetalLanguageVersion::kMetal1_1, {1, 1}},
+      {MetalLanguageVersion::kMetal1_2, {1, 2}},
+      {MetalLanguageVersion::kMetal2_0, {2, 0}},
+      {MetalLanguageVersion::kMetal2_1, {2, 1}},
+      {MetalLanguageVersion::kMetal2_2, {2, 2}},
+      {MetalLanguageVersion::kMetal2_3, {2, 3}},
+      {MetalLanguageVersion::kMetal2_4, {2, 4}},
+      {MetalLanguageVersion::kMetal3_0, {3, 0}}};
+  auto version = kMapping.at(language_version);
+  if (major > version.first) {
+    return true;
+  } else if (major == version.first && minor >= version.second) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
 bool GpuInfo::IsAdreno() const { return vendor == GpuVendor::kQualcomm; }
 
 bool GpuInfo::IsApple() const { return vendor == GpuVendor::kApple; }
