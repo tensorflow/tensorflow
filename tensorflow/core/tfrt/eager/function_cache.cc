@@ -130,7 +130,7 @@ tensorflow::Status FunctionCache::GetOrAddFunction(
   }
 
   auto runner_table =
-      absl::make_unique<tensorflow::tfrt_stub::OpKernelRunnerTable>();
+      std::make_unique<tensorflow::tfrt_stub::OpKernelRunnerTable>();
   RCReference<RequestContext> request_ctx;
   TF_RETURN_IF_ERROR(request_ctx_fn(runner_table.get(), &request_ctx));
 
