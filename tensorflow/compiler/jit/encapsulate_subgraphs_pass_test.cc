@@ -498,8 +498,8 @@ Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library,
   TF_CHECK_OK(DeviceFactory::AddDevices(
       session_options, "/job:localhost/replica:0/task:0", &devices));
   OptimizerOptions opts;
-  auto device_mgr = absl::make_unique<StaticDeviceMgr>(std::move(devices));
-  auto pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
+  auto device_mgr = std::make_unique<StaticDeviceMgr>(std::move(devices));
+  auto pflr = std::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr.get(), Env::Default(), /*config=*/nullptr,
       TF_GRAPH_DEF_VERSION, lib_def.get(), opts,
       /*default_thread_pool=*/nullptr, /*cluster_flr=*/nullptr);
@@ -2701,7 +2701,7 @@ TEST(EncapsulateSubgraphsTest, RefVariablesMarked) {
   Scope root = Scope::NewRootScope().ExitOnError();
   CreateSubgraphTouchingRefVar(root);
 
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(root.ToGraph(graph.get()));
 
   GraphOptimizationPassWrapper wrapper;
@@ -2731,7 +2731,7 @@ TEST(EncapsulateSubgraphsTest, NoRefVarsNoAttr) {
   Scope root = Scope::NewRootScope().ExitOnError();
   CreateSubgraphNotTouchingRefVar(root);
 
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(root.ToGraph(graph.get()));
 
   GraphOptimizationPassWrapper wrapper;

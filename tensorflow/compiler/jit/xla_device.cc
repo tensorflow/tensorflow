@@ -122,7 +122,7 @@ XlaDeviceAllocator* XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
   }
 
   std::unique_ptr<XlaDeviceAllocator> alloc =
-      absl::make_unique<XlaDeviceAllocator>(
+      std::make_unique<XlaDeviceAllocator>(
           backend->stream_executors()[device_ordinal]);
   XlaDeviceAllocator* alloc_ptr = alloc.get();
   state.allocators_[{backend, device_ordinal}] = std::move(alloc);
@@ -316,7 +316,7 @@ StatusOr<std::vector<XlaDeviceContext*>> XlaDevice::GetDeviceContextLocked() {
     } else {
       // Directly create the stream here instead of borrowing from the stream
       // pool to avoid potential lifetime issues.
-      stream_ = absl::make_unique<se::Stream>(
+      stream_ = std::make_unique<se::Stream>(
           backend->stream_executors()[device_ordinal_]);
       stream_->Init();
       TF_RETURN_IF_ERROR(EnsureStreamOkLocked(backend, "stream", &stream_,
@@ -384,7 +384,7 @@ StatusOr<std::vector<XlaDeviceContext*>> XlaDevice::GetDeviceContextLocked() {
   // the moment is that this race doesn't seem to occur in practice.
   if (use_accelerator_device_info_) {
     auto accelerator_device_info =
-        absl::make_unique<DeviceBase::AcceleratorDeviceInfo>();
+        std::make_unique<DeviceBase::AcceleratorDeviceInfo>();
     accelerator_device_info->stream = stream_.get();
     accelerator_device_info->default_context = device_contexts_.at(0);
     set_tensorflow_accelerator_device_info(accelerator_device_info.get());

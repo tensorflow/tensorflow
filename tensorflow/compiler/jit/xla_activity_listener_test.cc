@@ -64,7 +64,7 @@ class TestListener : public XlaActivityListener {
 class XlaActivityListenerTest : public ::testing::Test {
  protected:
   XlaActivityListenerTest() {
-    auto listener = absl::make_unique<TestListener>();
+    auto listener = std::make_unique<TestListener>();
     listener_ = listener.get();
     RegisterXlaActivityListener(std::move(listener));
   }

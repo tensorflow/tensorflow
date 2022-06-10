@@ -342,7 +342,7 @@ class MarkForCompilationPassImpl {
                           std::optional<DeadnessPredicate> deadness_predicate,
                           bool is_xla_compile_attr_true,
                           std::optional<string> xla_scope) {
-    cluster_storage_.push_back(absl::make_unique<Cluster>(
+    cluster_storage_.push_back(std::make_unique<Cluster>(
         cycles_graph_node_id, effective_cluster_size,
         has_functional_control_flow, device_set, resource_op_device,
         resource_var_operation_node_id, deadness_predicate,

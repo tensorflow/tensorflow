@@ -304,7 +304,7 @@ class XlaCompilationCache : public ResourceBase {
     std::unique_ptr<thread::ThreadPool> compiler_threads;
 
     AsyncCompilationState() {
-      compiler_threads = absl::make_unique<tensorflow::thread::ThreadPool>(
+      compiler_threads = std::make_unique<tensorflow::thread::ThreadPool>(
           tensorflow::Env::Default(), "async_compiler_threads",
           kNumCompilerThreads);
     }

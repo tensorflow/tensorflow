@@ -386,7 +386,7 @@ Status TpuNodeDeviceFactory::CreateDevices(
         UseNoPreferenceLayoutFn(), &TpuShapeRepresentation};
     options.shape_determination_fns = {shape_determination_fns};
     options.padded_shape_fn = &TpuPaddedShapeFn;
-    auto device = absl::make_unique<XlaDevice>(session_options, options);
+    auto device = std::make_unique<XlaDevice>(session_options, options);
 
     // The AcceleratorDeviceInfo actually provides information not only for GPU
     // devices but also for TPU. The name is a legacy from the pre-TPU
@@ -447,7 +447,7 @@ Status TpuSystemDeviceFactory::CreateDevices(
       absl::StrCat(name_prefix, "/device:", DEVICE_TPU_SYSTEM, ":", 0),
       DeviceType(DEVICE_TPU_SYSTEM), Bytes(memory_limit), DeviceLocality(),
       absl::StrCat("device: ", DEVICE_TPU_SYSTEM, " device"));
-  devices->push_back(absl::make_unique<VirtualDevice>(options.env, attrs));
+  devices->push_back(std::make_unique<VirtualDevice>(options.env, attrs));
   VLOG(1) << "Created TPU_SYSTEM device. This host has " << device_count
           << " TPUs";
 

@@ -344,7 +344,7 @@ Status PerformStaticShapeInferenceBeforeEncapsulation(Graph* g) {
 StatusOr<std::unique_ptr<absl::flat_hash_map<string, std::vector<string>>>>
 OutsideCompilationClusterDependencies(
     const Graph* g, const string& outside_compilation_attr_name) {
-  auto cluster_deps = absl::make_unique<
+  auto cluster_deps = std::make_unique<
       absl::flat_hash_map<string, absl::flat_hash_set<string>>>();
 
   for (const Edge* e : g->edges()) {
@@ -367,7 +367,7 @@ OutsideCompilationClusterDependencies(
   }
 
   auto cluster_deps_ordered =
-      absl::make_unique<absl::flat_hash_map<string, std::vector<string>>>();
+      std::make_unique<absl::flat_hash_map<string, std::vector<string>>>();
 
   for (auto it = cluster_deps->begin(); it != cluster_deps->end(); it++) {
     std::vector<string> ordered_deps(it->second.begin(), it->second.end());

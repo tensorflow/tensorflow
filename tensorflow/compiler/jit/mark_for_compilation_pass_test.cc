@@ -998,7 +998,7 @@ TEST(XlaCompilationTest, RandomShapeWithFunc) {
 
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   TF_ASSERT_OK(root.ToGraph(graph.get()));
-  auto fld = absl::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(),
+  auto fld = std::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(),
                                                           flib_def);
   TF_ASSERT_OK(
       MarkForCompilationPassTestHelper::MarkForCompilation(&graph, fld.get()));

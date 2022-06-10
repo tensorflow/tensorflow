@@ -1851,7 +1851,7 @@ TF_ATTRIBUTE_NOINLINE Status ExtractOutsideCompilationForFuncCallNode(
 
   // Change `n` to call the new function directly.
   auto replace_builder =
-      absl::make_unique<NodeDefBuilder>(n->name(), new_func_name, fld);
+      std::make_unique<NodeDefBuilder>(n->name(), new_func_name, fld);
   std::vector<NodeDefBuilder::NodeOut> inputs(n->num_inputs());
   for (const Edge* e : n->in_edges()) {
     if (e->IsControlEdge()) {
@@ -1871,7 +1871,7 @@ TF_ATTRIBUTE_NOINLINE Status ExtractOutsideCompilationForFuncCallNode(
   for (const auto& attr : n->attrs()) {
     replace_builder->Attr(attr.first, attr.second);
   }
-  auto replace_def = absl::make_unique<NodeDef>();
+  auto replace_def = std::make_unique<NodeDef>();
   TF_RETURN_IF_ERROR(replace_builder->Finalize(replace_def.get()));
   TF_ASSIGN_OR_RETURN(Node * replace, ReplaceNode(g, n, *replace_def));
   replace->AddAttr(kXlaTokenInputNodesAttrName,
@@ -2362,7 +2362,7 @@ Status ExtractOutsideCompilationForFunction(
         fbody->graph, outside_compilation_attr_name));
 
     // Encapsulate outside_compilation cluster into function call node.
-    auto rewrite_fn = absl::make_unique<RewriteOutsideCompilationSubgraphFn>(
+    auto rewrite_fn = std::make_unique<RewriteOutsideCompilationSubgraphFn>(
         xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name,
         new_func_name);
     TF_RETURN_IF_ERROR(EncapsulateSubgraphsInFunctions(
@@ -2379,7 +2379,7 @@ Status ExtractOutsideCompilationForFunction(
         // If we could not infer shapes for XlaSendFromHost inputs statically,
         // we will set the "shape_inference_graph" attribute. In that case, copy
         // outside compilation subgraph as shape inference graph in `fld`.
-        auto shape_inference_graph = absl::make_unique<NameAttrList>();
+        auto shape_inference_graph = std::make_unique<NameAttrList>();
         TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "shape_inference_graph",
                                        shape_inference_graph.get()));
         if (!shape_inference_graph->name().empty()) {
@@ -2391,7 +2391,7 @@ Status ExtractOutsideCompilationForFunction(
           if (!xla_fdef) {
             return errors::Internal("Cannot find XLA function ", n->name());
           }
-          auto shape_inference_fdef = absl::make_unique<FunctionDef>(*xla_fdef);
+          auto shape_inference_fdef = std::make_unique<FunctionDef>(*xla_fdef);
           shape_inference_fdef->mutable_signature()->set_name(
               shape_inference_graph->name());
           if (fld->Find(shape_inference_graph->name())) {
@@ -2444,7 +2444,7 @@ Status ExtractOutsideCompilationForFunction(
     TF_RETURN_IF_ERROR(
         ConstructHostGraph(xla_cluster_name, outside_compilation_attr_name,
                            outside_compilation_host_graphs, fld, &host_graph));
-    auto host_graph_fdef = absl::make_unique<FunctionDef>();
+    auto host_graph_fdef = std::make_unique<FunctionDef>();
     TF_RETURN_IF_ERROR(GraphToFunctionDef(*host_graph, host_graph_func_name,
                                           HostGraphControlRetMapping,
                                           host_graph_fdef.get()));
@@ -2471,7 +2471,7 @@ Status ExtractOutsideCompilationForFunction(
     }
 
     // Replace original function.
-    auto updated_fdef = absl::make_unique<FunctionDef>();
+    auto updated_fdef = std::make_unique<FunctionDef>();
     TF_RETURN_IF_ERROR(
         GraphToFunctionDef(*g, new_func_name, updated_fdef.get()));
     updated_fdef->mutable_signature()->set_is_stateful(true);
