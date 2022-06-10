@@ -15,7 +15,7 @@
 """Defines TF Quantization API from SavedModel to SavedModel."""
 
 import tempfile
-from typing import Iterable, List, Mapping, Optional, Set, Tuple, Union
+from typing import Callable, Iterable, List, Mapping, Optional, Set, Tuple, Union
 import uuid
 import warnings
 
@@ -26,6 +26,7 @@ from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quant
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
@@ -34,13 +35,24 @@ from tensorflow.python.saved_model import loader_impl as saved_model_loader
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model.load import load as saved_model_load
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.types import core
 
 # The signature key of the saved model init op.
 _INIT_OP_SIGNATURE_KEY = '__saved_model_init_op'
 
+# Type aliases for quant_opts_pb2 messages.
 _Method = quant_opts_pb2.QuantizationMethod.Method
 _ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod
+
+# Types required for representative dataset. A representative dataset should
+# be a callable that returns an iterable of representative samples:
+# A representative sample should be either:
+# 1. (signature_key, {input_name -> input_tensor}) tuple, or
+# 2. {input_name -> input_tensor} mappings.
+_RepresentativeSample = Union[Tuple[str, Mapping[str, core.Tensor]],
+                              Mapping[str, core.Tensor]]
+_RepresentativeDataset = Callable[[], Iterable[_RepresentativeSample]]
 
 
 def _legalize_tensor_name(tensor_name: str) -> str:
@@ -139,6 +151,113 @@ def _fix_tensor_names(signatures, exported_graph):
   return signatures
 
 
+def _get_signature_key_and_input(
+    representative_sample: _RepresentativeSample,
+    signature_keys: List[str],
+) -> Tuple[str, Mapping[str, core.Tensor]]:
+  """Gets the signature key and input data from `representative_sample`.
+
+  The `representative_sample` can be in two formats:
+
+  1. A tuple of: (signature_key, {input_name -> input_tensor})
+  2. A dict: {input_name -> input_tensor}.
+
+  (2) assumes the signature_key to be the default signature key (first item in
+  `signature_keys`).
+
+  Args:
+    representative_sample: A single sample from the representative dataset, used
+      for calibration.
+    signature_keys: A list of signature keys that identifies a function to run
+      the data samples with. When the `representative_sample` is provided as a
+      `dict`, it should have a single item.
+
+  Returns:
+    signature_key: Signature key that indicates the function to be used for the
+      returned input data.
+    input data: A input_name -> input_tensor mapping (dict).
+
+  Raises:
+    ValueError: When the format of `representative_sample` is invalid, or when
+    the length of `signature_keys` not 1 when `representative_sample` is `dict`.
+  """
+  # TODO(b/214311251): Add a test case with multiple signatures.
+  if isinstance(representative_sample, tuple):
+    if (not isinstance(representative_sample[1], dict) or
+        len(representative_sample) != 2):
+      raise ValueError('You need to provide a dictionary with input '
+                       'names and values in the second argument in the '
+                       'tuple')
+    return representative_sample
+  elif isinstance(representative_sample, dict):
+    if len(signature_keys) > 1:
+      raise ValueError('When the model has multiple signatures, you need '
+                       'to provide a tuple with signature key and a '
+                       'dictionary with input names and values')
+    return signature_keys[0], representative_sample
+  else:
+    raise ValueError('You need to provide either a dictionary with input '
+                     'names and values or a tuple with signature key and a '
+                     'dictionary with input names and values')
+
+
+def _run_graph_for_calibration_eager_mode(
+    root: autotrackable.AutoTrackable, signature_keys: List[str],
+    representative_dataset: _RepresentativeDataset) -> None:
+  """Runs the graph for calibration in eager mode.
+
+  This function assumes _eager mode_ (enabled in TF2 by default) when running
+  the graph. This step is used in order to collect the statistics in
+  CustomAggregatorOp for quantization using the representative dataset for the
+  actual data provided for inference.
+
+  Args:
+    root: Root node of the graph.
+    signature_keys: A list of signature keys that identifies a function to run
+      the data samples with.
+    representative_dataset: Representative dataset used for calibration.
+
+  Raises:
+    ValueError: When the samples in representative dataset is invalid.
+  """
+  for sample in representative_dataset():
+    signature_key, input_data = _get_signature_key_and_input(
+        sample, signature_keys)
+
+    func = root.signatures[signature_key]
+    func(**input_data)
+
+
+def _run_graph_for_calibration_graph_mode(
+    root: autotrackable.AutoTrackable, signature_keys: List[str],
+    representative_dataset: _RepresentativeDataset) -> None:
+  """Runs the graph for calibration in graph mode.
+
+  This function assumes _graph mode_ (used when legacy TF1 is used or when eager
+  mode is explicitly disabled) when running the graph. This step is used in
+  order to collect the statistics in CustomAggregatorOp for quantization using
+  the representative dataset for the actual data provided for inference.
+
+  Args:
+    root: Root node of the graph.
+    signature_keys: A list of signature keys that identifies a function to run
+      the data samples with.
+    representative_dataset: Representative dataset used for calibration.
+
+  Raises:
+    ValueError: When the samples in representative dataset is invalid.
+  """
+  with session.Session() as sess:
+    outputs = []
+    for sample in representative_dataset():
+      signature_key, input_data = _get_signature_key_and_input(
+          sample, signature_keys)
+
+      func = root.signatures[signature_key]
+      outputs.append(func(**input_data))
+    sess.run(outputs)
+
+
 def _static_range_quantize(saved_model_path: str,
                            signature_keys=None,
                            tags=None,
@@ -217,28 +336,15 @@ def _static_range_quantize(saved_model_path: str,
 
     float_model = saved_model_load(float_model_dir)
 
-    for sample in representative_dataset():
-      # TODO(b/214311251): Add a test case with multiple signatures.
-      if isinstance(sample, tuple):
-        if not isinstance(sample[1], dict):
-          raise ValueError('You need to provide a dictionary with input '
-                           'names and values in the second argument in the '
-                           'tuple')
-        signature_key = sample[0]
-        input_data_map = sample[1]
-      elif isinstance(sample, dict):
-        if len(signature_keys) > 1:
-          raise ValueError('When the model has multiple signatures, you need '
-                           'to provide a tuple with signature key and a '
-                           'dictionary with input names and values')
-        signature_key = signature_keys[0]
-        input_data_map = sample
-      else:
-        raise ValueError('You need to provide either a dictionary with input '
-                         'names and values or a tuple with signature key and a '
-                         'dictionary with input names and values')
-      func = float_model.signatures[signature_key]
-      func(**input_data_map)
+    # Uses the representative dataset to collect statistics for calibration.
+    # Handles the graph mode execution separately in case TF2 is disabled or
+    # eager execution is disabled.
+    if context.executing_eagerly():
+      _run_graph_for_calibration_eager_mode(float_model, signature_keys,
+                                            representative_dataset)
+    else:
+      _run_graph_for_calibration_graph_mode(float_model, signature_keys,
+                                            representative_dataset)
 
     for function_def in graph_def.library.function:
       for node_def in function_def.node_def:
@@ -360,21 +466,13 @@ def _dynamic_range_quantize(saved_model_path: str,
   return saved_model_load(output_directory)
 
 
-# A type required for representative dataset. It should be an iterable
-# of either:
-# 1. signature_key -> {input_name -> input_tensor} mappings, or
-# 2. {input_name -> input_tensor} mappings.
-_TensorMapIterable = Iterable[Union[Tuple[str, Mapping[str, core.Tensor]],
-                                    Mapping[str, core.Tensor]]]
-
-
-def quantize(saved_model_path: str,
-             signature_keys: Optional[List[str]] = None,
-             tags: Optional[Iterable[str]] = None,
-             output_directory: Optional[str] = None,
-             quantization_options: Optional[
-                 quant_opts_pb2.QuantizationOptions] = None,
-             representative_dataset: Optional[_TensorMapIterable] = None) ->...:
+def quantize(
+    saved_model_path: str,
+    signature_keys: Optional[List[str]] = None,
+    tags: Optional[Iterable[str]] = None,
+    output_directory: Optional[str] = None,
+    quantization_options: Optional[quant_opts_pb2.QuantizationOptions] = None,
+    representative_dataset: Optional[_RepresentativeDataset] = None) ->...:
   """Quantizes the given SavedModel.
 
   Args:

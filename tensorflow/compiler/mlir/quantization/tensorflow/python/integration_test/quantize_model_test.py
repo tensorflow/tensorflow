@@ -26,6 +26,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -64,7 +65,13 @@ def _contains_op(meta_graphdef, op_name):
   return False
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class QuantizationMethodTest(test.TestCase):
+  """Test cases regarding the use of QuantizationMethod proto.
+
+  Run all tests cases in both the graph mode (default in TF1) and the eager mode
+  (default in TF2) to ensure support for when TF2 is disabled.
+  """
 
   class SimpleModel(module.Module):
 
@@ -153,6 +160,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
       ('with_bias_and_relu', nn_ops.relu, True),
       ('with_bias_and_relu6', nn_ops.relu6, True),
   )
+  @test_util.run_in_graph_and_eager_modes
   def test_qat_conv_model(self, activation_fn, has_bias):
 
     class ConvModel(module.Module):
@@ -220,6 +228,9 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
 
+  # Run this test only with the eager mode.
+  # TODO(b/234820600): Allow models with variables to work when TF2 is disabled.
+  @test_util.run_v2_only
   def test_ptq_model_with_variable(self):
 
     class ConvModelWithVariable(module.Module):
@@ -295,6 +306,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
       ('with_bias_and_relu', nn_ops.relu, True, False),
       ('with_bias_and_relu6', nn_ops.relu6, True, False),
   )
+  @test_util.run_in_graph_and_eager_modes
   def test_conv_ptq_model(self, activation_fn, has_bias, has_bn):
 
     class ConvModel(module.Module):
@@ -373,6 +385,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
       ('with_bias_and_relu', nn_ops.relu, True, False),
       ('with_bias_and_relu6', nn_ops.relu6, True, False),
   )
+  @test_util.run_in_graph_and_eager_modes
   def test_depthwise_conv_ptq_model(self, activation_fn, has_bias, has_bn):
 
     class DepthwiseConvModel(module.Module):
@@ -447,6 +460,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
       ('with_bias_and_relu', nn_ops.relu, True),
       ('with_bias_and_relu6', nn_ops.relu6, True),
   )
+  @test_util.run_in_graph_and_eager_modes
   def test_matmul_ptq_model(self, activation_fn, has_bias):
 
     class MatmulModel(module.Module):
@@ -499,6 +513,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
 
+  @test_util.run_in_graph_and_eager_modes
   def test_model_no_representative_sample_shows_warnings(self):
 
     class SimpleMatmulModel(module.Module):
@@ -552,6 +567,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     # Model is not quantized because there was no sample data for calibration.
     self.assertFalse(_contains_quantized_function_call(output_meta_graphdef))
 
+  @test_util.run_in_graph_and_eager_modes
   def test_model_with_uncalibrated_subgraph(self):
 
     class IfModel(module.Module):
@@ -623,7 +639,13 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class DynamicRangeQuantizationTest(test.TestCase, parameterized.TestCase):
+  """Test cases for dynamic range quantization.
+
+  Run all tests cases in both the graph mode (default in TF1) and the eager mode
+  (default in TF2) to ensure support for when TF2 is disabled.
+  """
 
   def test_matmul_model(self):
 
