@@ -961,6 +961,31 @@ Status VerifyVirtualDeviceSettings(
         " #valid GPUs: ", valid_platform_device_ids.size(),
         " virtual_devices.size(): ", virtual_devices.size());
   }
+  for (int i = 0; i < virtual_devices.size(); ++i) {
+    // Compares against the first virtual_device list.
+    if (virtual_devices.Get(0).device_ordinal().empty() !=
+        virtual_devices.Get(i).device_ordinal().empty()) {
+      return errors::InvalidArgument(
+          "Device ordinals must be set for all virtual devices or none. But "
+          "the device_ordinal is specified for ",
+          i, " while previous devices didn't have any set.");
+    }
+  }
+  if (!virtual_devices.Get(0).device_ordinal().empty()) {
+    for (int i = 0; i < virtual_devices.size(); ++i) {
+      const size_t memory_limit_mb_size =
+          virtual_devices.Get(i).memory_limit_mb().size();
+      const size_t device_ordinal_size =
+          virtual_devices.Get(i).device_ordinal().size();
+      if (memory_limit_mb_size != device_ordinal_size) {
+        return errors::InvalidArgument(
+            "Number of virtual device ordinals specified doesn't "
+            "match with number of memory_limit_mb specified for GPU# ",
+            i, " memory_limit_mb size: ", memory_limit_mb_size,
+            " and device_ordinal size: ", device_ordinal_size);
+      }
+    }
+  }
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // Check memory_limt_mb and priority sizes match if priority is non-empty.
   bool priority_exists = !virtual_devices.Get(0).priority().empty();
@@ -1425,8 +1450,24 @@ Status BaseGPUDeviceFactory::CreateDevices(
     CHECK(gpu_options.visible_device_list().empty() ||
           valid_platform_device_ids == visible_gpu_order);
   }
-  int next_tf_device_id = 0;
-  std::vector<int64_t> memory_limit_bytes;
+
+  struct TfDeviceSpec {
+    PlatformDeviceId platform_device_id;
+    int64_t memory_limit_bytes;
+    int index;  // Index in the concatenated virtual device configuration list.
+    int device_ordinal;  // Ordinal for determining the tf device id.
+    TfDeviceSpec(PlatformDeviceId platform_device_id,
+                 int64_t memory_limit_bytes, int index, int device_ordinal)
+        : platform_device_id(platform_device_id),
+          memory_limit_bytes(memory_limit_bytes),
+          index(index),
+          device_ordinal(device_ordinal) {}
+  };
+
+  std::vector<TfDeviceSpec> tf_device_specs;
+
+  constexpr int64_t kMegaByte = 1ll << 20;
+
   for (int i = 0; i < num_gpus_to_use; ++i) {
     const PlatformDeviceId platform_device_id = valid_platform_device_ids[i];
     if (virtual_devices.empty() ||
@@ -1435,39 +1476,65 @@ Status BaseGPUDeviceFactory::CreateDevices(
       TF_RETURN_IF_ERROR(
           SingleVirtualDeviceMemoryLimit(gpu_options, platform_device_id,
                                          &single_virtual_device_memory_limit));
-      memory_limit_bytes.push_back(single_virtual_device_memory_limit);
+      tf_device_specs.emplace_back(
+          platform_device_id, single_virtual_device_memory_limit,
+          /*index=*/tf_device_specs.size(), /*device_ordinal=*/0);
     } else {
-      const auto& memory_limit_mb = virtual_devices.Get(i).memory_limit_mb();
-      std::transform(memory_limit_mb.begin(), memory_limit_mb.end(),
-                     std::back_inserter(memory_limit_bytes), [](float mb) {
-                       return static_cast<int64_t>(mb) * (1ll << 20);
-                     });
-    }
-    while (next_tf_device_id < memory_limit_bytes.size()) {
-      TfDeviceId tf_device_id(next_tf_device_id);
-      ++next_tf_device_id;
-      TF_RETURN_IF_ERROR(GpuIdManager::InsertTfPlatformDeviceIdPair(
-          tf_device_id, platform_device_id));
+      const GPUOptions::Experimental::VirtualDevices& virtual_devices_for_gpu =
+          virtual_devices.Get(i);
+      for (int j = 0; j < virtual_devices_for_gpu.memory_limit_mb().size();
+           j++) {
+        tf_device_specs.emplace_back(
+            platform_device_id,
+            static_cast<int64_t>(virtual_devices_for_gpu.memory_limit_mb(j)) *
+                kMegaByte,
+            /*index=*/tf_device_specs.size(),
+            /*device_ordinal=*/j <
+                    virtual_devices_for_gpu.device_ordinal().size()
+                ? virtual_devices_for_gpu.device_ordinal(j)
+                : 0);
+      }
     }
   }
-  const int num_tf_gpus = next_tf_device_id;
+
+  // Reorder virtual devices by their device_ordinal, breaking ties by the index
+  // in the concatenated virtual device list.
+  std::sort(tf_device_specs.begin(), tf_device_specs.end(),
+            [](const TfDeviceSpec& a, const TfDeviceSpec& b) {
+              if (a.device_ordinal < b.device_ordinal) {
+                return true;
+              } else if (a.device_ordinal > b.device_ordinal) {
+                return false;
+              }
+              DCHECK_EQ(a.device_ordinal, b.device_ordinal);
+              DCHECK_NE(a.index, b.index);  // index is unique.
+              if (a.index < b.index) {
+                return true;
+              }
+              return false;
+            });
+
+  for (int di = 0; di < tf_device_specs.size(); ++di) {
+    TfDeviceId tf_device_id(di);
+    TF_RETURN_IF_ERROR(GpuIdManager::InsertTfPlatformDeviceIdPair(
+        tf_device_id, tf_device_specs[di].platform_device_id));
+  }
 
   LocalityMap device_localities;
-  TF_RETURN_IF_ERROR(
-      GetDeviceLocalities(num_tf_gpus, interconnect_maps, &device_localities));
+  TF_RETURN_IF_ERROR(GetDeviceLocalities(
+      tf_device_specs.size(), interconnect_maps, &device_localities));
 
   // Build the GPUDevices
-  CHECK_EQ(next_tf_device_id, memory_limit_bytes.size());
-  for (int di = 0; di < num_tf_gpus; ++di) {
+  for (int di = 0; di < tf_device_specs.size(); ++di) {
     TfDeviceId tf_device_id(di);
-    int64_t bytes = memory_limit_bytes[di];
     auto it = device_localities.find(tf_device_id);
     if (it == device_localities.end()) {
       return errors::Internal("Failed to find DeviceLocality for GPU device ",
                               tf_device_id.value());
     }
     TF_RETURN_IF_ERROR(CreateGPUDevice(options, name_prefix, tf_device_id,
-                                       bytes, it->second, num_tf_gpus,
+                                       tf_device_specs[di].memory_limit_bytes,
+                                       it->second, tf_device_specs.size(),
                                        devices));
   }
   return OkStatus();

@@ -91,6 +91,9 @@
 
 ## Bug Fixes and Other Changes
 
+*  New argument `experimental_device_ordinal` in `LogicalDeviceConfiguration`
+   to control the order of logical devices. (GPU only)
+
 *   `tf.keras`:
 
     *   Changed the TensorBoard tag names produced by the
