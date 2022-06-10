@@ -657,7 +657,7 @@ class TestVirtualScheduler : public VirtualScheduler {
       : VirtualScheduler(
             use_static_shapes, use_aggressive_shape_inference, cluster,
             ready_node_manager,
-            absl::make_unique<VirtualPlacer>(cluster->GetDevices())) {
+            std::make_unique<VirtualPlacer>(cluster->GetDevices())) {
     enable_mem_usage_tracking();
   }
 
@@ -681,8 +681,8 @@ class VirtualSchedulerTest : public ::testing::Test {
     // force_cpu_type is defaulted to "Haswell"
     devices[kCPU0] = cpu_device;
     devices[kCPU1] = cpu_device;
-    cluster_ = absl::make_unique<VirtualCluster>(devices);
-    scheduler_ = absl::make_unique<TestVirtualScheduler>(
+    cluster_ = std::make_unique<VirtualCluster>(devices);
+    scheduler_ = std::make_unique<TestVirtualScheduler>(
         /*use_static_shapes=*/true,
         /*use_aggressive_shape_inference=*/true, &first_ready_manager_,
         cluster_.get());
@@ -716,7 +716,7 @@ class VirtualSchedulerTest : public ::testing::Test {
     auto c1 = ops::Conv2D(s.WithOpName("c1"), y, f, strides, "SAME");
     auto c2 = ops::Conv2D(s.WithOpName("c2"), z, f, strides, "SAME");
 
-    grappler_item_ = absl::make_unique<GrapplerItem>();
+    grappler_item_ = std::make_unique<GrapplerItem>();
     TF_CHECK_OK(s.ToGraphDef(&grappler_item_->graph));
     grappler_item_->id = "test_conv2d_graph";
     grappler_item_->fetch = {"c0", "c1"};
@@ -735,7 +735,7 @@ class VirtualSchedulerTest : public ::testing::Test {
     std::vector<int> strides = {1, 1, 1, 1};
     auto y = ops::Conv2D(s.WithOpName("y"), x, f, strides, "SAME");
 
-    grappler_item_ = absl::make_unique<GrapplerItem>();
+    grappler_item_ = std::make_unique<GrapplerItem>();
     TF_CHECK_OK(s.ToGraphDef(&grappler_item_->graph));
     grappler_item_->id = "test_conv2d_var_graph";
 
@@ -763,7 +763,7 @@ class VirtualSchedulerTest : public ::testing::Test {
     auto abcd = ops::MatMul(s.WithOpName("abcd"), abc, d);
     auto abcde = ops::MatMul(s.WithOpName("abcde"), abcd, e);
 
-    grappler_item_ = absl::make_unique<GrapplerItem>();
+    grappler_item_ = std::make_unique<GrapplerItem>();
     TF_CHECK_OK(s.ToGraphDef(&grappler_item_->graph));
     grappler_item_->id = "test_matmul_sequence_graph";
     grappler_item_->fetch = {"abcde"};
@@ -785,7 +785,7 @@ class VirtualSchedulerTest : public ::testing::Test {
     auto add = ops::AddN(s.WithOpName("add"), input_tensors);
     auto out = ops::Identity(s.WithOpName("out"), add);
 
-    grappler_item_ = absl::make_unique<GrapplerItem>();
+    grappler_item_ = std::make_unique<GrapplerItem>();
     TF_CHECK_OK(s.ToGraphDef(&grappler_item_->graph));
     grappler_item_->id = "test_addn_graph";
     grappler_item_->fetch = {"out"};
@@ -799,7 +799,7 @@ class VirtualSchedulerTest : public ::testing::Test {
     auto unnecessary = ops::Placeholder(s.WithOpName("unnecessary"), DT_FLOAT);
     auto x = ops::Placeholder(s.WithOpName("x"), DT_FLOAT);
 
-    grappler_item_ = absl::make_unique<GrapplerItem>();
+    grappler_item_ = std::make_unique<GrapplerItem>();
     TF_CHECK_OK(s.ToGraphDef(&grappler_item_->graph));
 
     grappler_item_->id = "test_extra_placeholders";
@@ -822,7 +822,7 @@ class VirtualSchedulerTest : public ::testing::Test {
     auto out =
         ops::NoOp(s.WithControlDependencies(input_tensors).WithOpName("out"));
 
-    grappler_item_ = absl::make_unique<GrapplerItem>();
+    grappler_item_ = std::make_unique<GrapplerItem>();
     TF_CHECK_OK(s.ToGraphDef(&grappler_item_->graph));
 
     grappler_item_->id = "test_control_dependency_graph";
@@ -839,7 +839,7 @@ class VirtualSchedulerTest : public ::testing::Test {
     auto y = tensorflow::ops::Add(s.WithOpName("y"), x, x);
     Output fetch = ops::Identity(s.WithOpName("fetch"), y);
 
-    grappler_item_ = absl::make_unique<GrapplerItem>();
+    grappler_item_ = std::make_unique<GrapplerItem>();
     TF_CHECK_OK(s.ToGraphDef(&grappler_item_->graph));
 
     grappler_item_->id = "test_add_from_one_tensor";
@@ -868,7 +868,7 @@ class VirtualSchedulerTest : public ::testing::Test {
         s.WithOpName("z"), {batch_size_, width_, height_, depth_in_}, DT_FLOAT);
     auto y = ops::Add(s.WithOpName("y"), m.output, z);
 
-    grappler_item_ = absl::make_unique<GrapplerItem>();
+    grappler_item_ = std::make_unique<GrapplerItem>();
     TF_CHECK_OK(s.ToGraphDef(&grappler_item_->graph));
 
     grappler_item_->id = "test_add_merge_switch";
@@ -908,7 +908,7 @@ class VirtualSchedulerTest : public ::testing::Test {
     };
     auto z4 = ops::NoOp(s.WithControlDependencies(batch_var).WithOpName("z4"));
 
-    grappler_item_ = absl::make_unique<GrapplerItem>();
+    grappler_item_ = std::make_unique<GrapplerItem>();
     TF_CHECK_OK(s.ToGraphDef(&grappler_item_->graph));
 
     grappler_item_->id = "test_complex_dependency_graph";
@@ -1085,7 +1085,7 @@ versions {
 }
     )EOF";
 
-    grappler_item_ = absl::make_unique<GrapplerItem>();
+    grappler_item_ = std::make_unique<GrapplerItem>();
 
     CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii,
                                                 &grappler_item_->graph));
@@ -1143,7 +1143,7 @@ versions {
 }
     )EOF";
 
-    grappler_item_ = absl::make_unique<GrapplerItem>();
+    grappler_item_ = std::make_unique<GrapplerItem>();
     CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii,
                                                 &grappler_item_->graph));
     grappler_item_->id = "test_graph";
@@ -1539,7 +1539,7 @@ versions {
 }
   )EOF";
 
-    grappler_item_ = absl::make_unique<GrapplerItem>();
+    grappler_item_ = std::make_unique<GrapplerItem>();
     CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii,
                                                 &grappler_item_->graph));
     grappler_item_->id = "test_graph";
@@ -2206,7 +2206,7 @@ versions {
   producer: 27
 })EOF";
 
-    grappler_item_ = absl::make_unique<GrapplerItem>();
+    grappler_item_ = std::make_unique<GrapplerItem>();
     CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii,
                                                 &grappler_item_->graph));
     grappler_item_->id = "test_graph";
@@ -2247,7 +2247,7 @@ versions {
                                      .WithControlDependencies(y)
                                      .WithDevice(kCPU1));
 
-    grappler_item_ = absl::make_unique<GrapplerItem>();
+    grappler_item_ = std::make_unique<GrapplerItem>();
     TF_CHECK_OK(s.ToGraphDef(&grappler_item_->graph));
     grappler_item_->id = "test_conv2d_graph";
     grappler_item_->fetch = {"y1", "y2", "batch_mean1", "batch_var1",
@@ -3127,7 +3127,7 @@ TEST_F(VirtualSchedulerTest, GraphWihtOnlyRecv) {
 
 TEST_F(VirtualSchedulerTest, AddMergeSwitch) {
   // Override scheduler_ with CompositeNodeManager.
-  scheduler_ = absl::make_unique<TestVirtualScheduler>(
+  scheduler_ = std::make_unique<TestVirtualScheduler>(
       /*use_static_shapes=*/true,
       /*use_aggressive_shape_inference=*/true, &composite_node_manager_,
       cluster_.get());

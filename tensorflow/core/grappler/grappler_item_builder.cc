@@ -245,7 +245,7 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
   TF_RETURN_IF_ERROR(cpu_factory->CreateDevices(
       options, "/job:localhost/replica:0/task:0", &devices));
   Device* cpu_device = devices[0].get();
-  auto dvc_mgr = absl::make_unique<StaticDeviceMgr>(std::move(devices));
+  auto dvc_mgr = std::make_unique<StaticDeviceMgr>(std::move(devices));
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              graph_def.library());
   Env* env = Env::Default();

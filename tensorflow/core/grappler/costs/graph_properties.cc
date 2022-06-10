@@ -2602,7 +2602,7 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
 
   // Heap-allocate SymbolicShapeRefiner in order to not consume a large amount
   // of stack space.
-  auto refiner = absl::make_unique<SymbolicShapeRefiner>(
+  auto refiner = std::make_unique<SymbolicShapeRefiner>(
       graph_view, fed_ports, aggressive_shape_inference);
 
   TopoQueue new_shapes(topo_order);
@@ -2620,7 +2620,7 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
 
   // Track shapes globally across the graph.
   std::unique_ptr<SymbolicShapeManager> shape_manager =
-      absl::make_unique<SymbolicShapeManager>();
+      std::make_unique<SymbolicShapeManager>();
   bool found_error = false;
   for (const NodeDef& node : item_.graph.node()) {
     auto node_ctx = refiner->GetContext(&node);
@@ -2648,7 +2648,7 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
     if (found_error) {
       // The shapes aren't consistent, we can't infer safely: discard all the
       // information discovered so far.
-      shape_manager = absl::make_unique<SymbolicShapeManager>();
+      shape_manager = std::make_unique<SymbolicShapeManager>();
       break;
     }
   }

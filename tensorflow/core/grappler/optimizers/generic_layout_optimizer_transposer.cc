@@ -227,14 +227,14 @@ Status TransposeContext::InitializeTransposeContext(bool assume_valid_feeds,
                                                     const Cluster* cluster,
                                                     TransposeContext* context) {
   DCHECK(context != nullptr);
-  context->graph_properties = absl::make_unique<GraphProperties>(item);
+  context->graph_properties = std::make_unique<GraphProperties>(item);
   TF_RETURN_IF_ERROR(
       context->graph_properties->InferStatically(assume_valid_feeds));
   TF_RETURN_IF_ERROR(
       context->graph_properties->AnnotateOutputShapes(&context->graph));
   Status status;
   context->graph_view =
-      absl::make_unique<utils::MutableGraphView>(&context->graph, &status);
+      std::make_unique<utils::MutableGraphView>(&context->graph, &status);
   TF_RETURN_IF_ERROR(status);
   context->num_nodes = context->graph.node_size();
   const auto& nodes_to_preserve = item.NodesToPreserve();

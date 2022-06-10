@@ -64,7 +64,7 @@ TEST(SubgraphTest, Comparison) {
 
 TEST(SubgraphTest, EmptyIteration) {
   NodeDef node1 = MakeNodeConst("node1");
-  auto gn1 = absl::make_unique<GenNode>(&node1);
+  auto gn1 = std::make_unique<GenNode>(&node1);
   Subgraph::Identity id1;
   id1.insert(gn1.get());
   Subgraph sg1(id1);

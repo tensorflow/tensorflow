@@ -117,7 +117,7 @@ AnalyticalCostEstimator::AnalyticalCostEstimator(
     Cluster* cluster, bool use_static_shapes,
     bool use_aggressive_shape_inference)
     : AnalyticalCostEstimator(
-          cluster, absl::make_unique<OpLevelCostEstimator>(),
+          cluster, std::make_unique<OpLevelCostEstimator>(),
           ReadyNodeManagerFactory("FirstReady"), use_static_shapes,
           use_aggressive_shape_inference) {}
 
@@ -129,10 +129,10 @@ AnalyticalCostEstimator::AnalyticalCostEstimator(
       node_manager_(std::move(node_manager)),
       use_static_shapes_(use_static_shapes),
       use_aggressive_shape_inference_(use_aggressive_shape_inference) {
-  scheduler_ = absl::make_unique<VirtualScheduler>(
+  scheduler_ = std::make_unique<VirtualScheduler>(
       use_static_shapes_, use_aggressive_shape_inference_, cluster,
       node_manager_.get(),
-      absl::make_unique<VirtualPlacer>(cluster->GetDevices()));
+      std::make_unique<VirtualPlacer>(cluster->GetDevices()));
 }
 
 AnalyticalCostEstimator::AnalyticalCostEstimator(
@@ -144,7 +144,7 @@ AnalyticalCostEstimator::AnalyticalCostEstimator(
       node_manager_(std::move(node_manager)),
       use_static_shapes_(use_static_shapes),
       use_aggressive_shape_inference_(use_aggressive_shape_inference) {
-  scheduler_ = absl::make_unique<VirtualScheduler>(
+  scheduler_ = std::make_unique<VirtualScheduler>(
       use_static_shapes_, use_aggressive_shape_inference_, cluster,
       node_manager_.get(), std::move(placer));
 }
@@ -165,7 +165,7 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
     item = item_;
   } else {
     GraphDef graph_copy = optimized_graph;
-    item_storage = absl::make_unique<GrapplerItem>(
+    item_storage = std::make_unique<GrapplerItem>(
         item_->WithGraph(std::move(graph_copy)));
     item = item_storage.get();
   }
