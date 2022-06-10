@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/platform/casts.h"
 
@@ -88,8 +89,8 @@ class PjRtCApiDevice : public PjRtDevice {
 
 class PjRtCApiClient : public PjRtClient {
  public:
-  PjRtCApiClient(std::vector<std::unique_ptr<PjRtCApiDevice>> devices,
-                 PjRtClient* wrapped);
+  PjRtCApiClient(const PJRT_Api* c_api, PJRT_Client* c_client,
+                 std::vector<std::unique_ptr<PjRtCApiDevice>> devices);
 
   ~PjRtCApiClient() override;
 
@@ -251,6 +252,9 @@ class PjRtCApiClient : public PjRtClient {
       StatusOr<std::unique_ptr<PjRtBuffer>> to_wrap);
 
  private:
+  const PJRT_Api* c_api_;
+  PJRT_Client* c_client_;
+
   std::vector<std::unique_ptr<PjRtCApiDevice>> owned_devices_;
   std::vector<PjRtDevice*> devices_;
   std::vector<PjRtDevice*> addressable_devices_;
@@ -426,7 +430,7 @@ class PjRtCApiExecutable : public PjRtExecutable {
 };
 
 // Takes ownership of wrapped.
-StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(PjRtClient* wrapped);
+StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient();
 
 }  // namespace xla
 

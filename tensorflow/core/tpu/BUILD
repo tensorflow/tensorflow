@@ -12,6 +12,7 @@ package(
     default_visibility = [
         "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
         "//tensorflow/compiler/tf2xla/kernels:__subpackages__",
+        "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/compiler/xrt:__subpackages__",
         "//tensorflow/core/profiler/backends/tpu:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
