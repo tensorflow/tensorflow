@@ -165,7 +165,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     for (const auto& fdef : flib) *(proto.add_function()) = fdef;
     lib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), proto));
     OptimizerOptions opts;
-    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
+    device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(devices));
     pflr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), &options.config,
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, /*thread_pool=*/nullptr,
@@ -1030,7 +1030,7 @@ TEST_F(FunctionLibraryRuntimeTest,
   //   c = NoOp(^b)
   //   ret = RetVal(b, ^c)
   const auto init_graph = [this](std::unique_ptr<Graph>* g) -> void {
-    *g = absl::make_unique<Graph>(OpRegistry::Global());
+    *g = std::make_unique<Graph>(OpRegistry::Global());
 
     Scope s = Scope::NewRootScope();
     TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
@@ -1147,7 +1147,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndKeepCallerNode) {
   {
     opts.native_options.keep_caller_node = KeepCallerNode::kFetchable;
 
-    std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
+    std::unique_ptr<Graph> g = std::make_unique<Graph>(OpRegistry::Global());
     TF_ASSERT_OK(construct_graph(&g));
 
     ExpandInlineFunctions(flr0_, g.get(), opts);
@@ -1166,7 +1166,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndKeepCallerNode) {
   {
     opts.native_options.keep_caller_node = KeepCallerNode::kTargetable;
 
-    std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
+    std::unique_ptr<Graph> g = std::make_unique<Graph>(OpRegistry::Global());
     TF_ASSERT_OK(construct_graph(&g));
 
     ExpandInlineFunctions(flr0_, g.get(), opts);
@@ -1237,7 +1237,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndPlaceInlinedNodes) {
     opts.native_options.inlined_function_body_placer =
         InlinedFunctionBodyPlacer::Default();
 
-    auto g = absl::make_unique<Graph>(OpRegistry::Global());
+    auto g = std::make_unique<Graph>(OpRegistry::Global());
     TF_ASSERT_OK(construct_graph(&g));
 
     ExpandInlineFunctions(flr0_, g.get(), opts);
@@ -1258,7 +1258,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndPlaceInlinedNodes) {
     opts.native_options.inlined_function_body_placer =
         InlinedFunctionBodyPlacer::SingleDevice();
 
-    auto g = absl::make_unique<Graph>(OpRegistry::Global());
+    auto g = std::make_unique<Graph>(OpRegistry::Global());
     TF_ASSERT_OK(construct_graph(&g));
 
     ExpandInlineFunctions(flr0_, g.get(), opts);
@@ -1279,7 +1279,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndPlaceInlinedNodes) {
     opts.native_options.inlined_function_body_placer =
         InlinedFunctionBodyPlacer::MultiDevice();
 
-    auto g = absl::make_unique<Graph>(OpRegistry::Global());
+    auto g = std::make_unique<Graph>(OpRegistry::Global());
     TF_ASSERT_OK(construct_graph(&g));
 
     const string merged_device = "/job:body/replica:0/task:1/device:CPU:*";

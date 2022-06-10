@@ -56,11 +56,11 @@ class ThreadPoolDeviceFactory : public DeviceFactory {
         }
         DeviceLocality dev_locality;
         dev_locality.set_numa_node(numa_node);
-        tpd = absl::make_unique<ThreadPoolDevice>(
+        tpd = std::make_unique<ThreadPoolDevice>(
             options, name, Bytes(256 << 20), dev_locality,
             ProcessState::singleton()->GetCPUAllocator(numa_node));
       } else {
-        tpd = absl::make_unique<ThreadPoolDevice>(
+        tpd = std::make_unique<ThreadPoolDevice>(
             options, name, Bytes(256 << 20), DeviceLocality(),
             ProcessState::singleton()->GetCPUAllocator(port::kNUMANoAffinity));
       }

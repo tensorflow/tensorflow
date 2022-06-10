@@ -94,7 +94,7 @@ GraphExecutionState::~GraphExecutionState() {
   VLOG(4) << "Graph proto is \n" << graph_def.DebugString();
 #endif  // __ANDROID__
 
-  auto flib_def = absl::make_unique<FunctionLibraryDefinition>(
+  auto flib_def = std::make_unique<FunctionLibraryDefinition>(
       OpRegistry::Global(), graph_def.library());
 
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&graph_def, *flib_def, 0));
@@ -103,14 +103,14 @@ GraphExecutionState::~GraphExecutionState() {
       !options.session_options->config.experimental()
            .optimize_for_static_graph()) {
     auto ret = absl::WrapUnique(new GraphExecutionState(
-        absl::make_unique<GraphDef>(std::move(graph_def)), std::move(flib_def),
+        std::make_unique<GraphDef>(std::move(graph_def)), std::move(flib_def),
         options));
 
     // When place_pruned_graph is true, a different Graph* will be initialized
     // each time we prune the original graph, so there is no need to
     // construct a Graph* in this case.
     if (!options.session_options->config.graph_options().place_pruned_graph()) {
-      auto base_graph = absl::make_unique<Graph>(OpRegistry::Global());
+      auto base_graph = std::make_unique<Graph>(OpRegistry::Global());
       TF_RETURN_IF_ERROR(ConvertGraphDefToGraph({}, *ret->original_graph_def_,
                                                 base_graph.get()));
       TF_RETURN_IF_ERROR(ret->InitBaseGraph(std::move(base_graph)));
@@ -119,7 +119,7 @@ GraphExecutionState::~GraphExecutionState() {
   } else {
     auto ret = absl::WrapUnique(
         new GraphExecutionState(nullptr, std::move(flib_def), options));
-    auto base_graph = absl::make_unique<Graph>(OpRegistry::Global());
+    auto base_graph = std::make_unique<Graph>(OpRegistry::Global());
     TF_RETURN_IF_ERROR(
         ConvertGraphDefToGraph({}, std::move(graph_def), base_graph.get()));
     TF_RETURN_IF_ERROR(ret->InitBaseGraph(std::move(base_graph)));
@@ -158,13 +158,13 @@ GraphExecutionState::~GraphExecutionState() {
   // also that the previous version used `Extend()`, which is strictly
   // more expensive than copying a `GraphDef`.)
   GraphDef temp(*base_execution_state.original_graph_def_);
-  auto flib_def = absl::make_unique<FunctionLibraryDefinition>(
+  auto flib_def = std::make_unique<FunctionLibraryDefinition>(
       OpRegistry::Global(), temp.library());
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&temp, *flib_def, 0));
   auto ret = absl::WrapUnique(
       new GraphExecutionState(nullptr, std::move(flib_def), options));
 
-  auto base_graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto base_graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_RETURN_IF_ERROR(
       ConvertGraphDefToGraph({}, std::move(temp), base_graph.get()));
 
@@ -264,14 +264,14 @@ Status GraphExecutionState::Extend(
   combined_options.stateful_placements = stateful_placements_;
 
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&gdef, *flib_def_, 0));
-  auto flib_def = absl::make_unique<FunctionLibraryDefinition>(
+  auto flib_def = std::make_unique<FunctionLibraryDefinition>(
       OpRegistry::Global(), gdef.library());
   auto new_execution_state = absl::WrapUnique(
-      new GraphExecutionState(absl::make_unique<GraphDef>(std::move(gdef)),
+      new GraphExecutionState(std::make_unique<GraphDef>(std::move(gdef)),
                               std::move(flib_def), combined_options));
 
   if (!session_options_->config.graph_options().place_pruned_graph()) {
-    auto base_graph = absl::make_unique<Graph>(OpRegistry::Global());
+    auto base_graph = std::make_unique<Graph>(OpRegistry::Global());
     TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
         {}, *new_execution_state->original_graph_def_, base_graph.get()));
     TF_RETURN_IF_ERROR(

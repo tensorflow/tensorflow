@@ -73,7 +73,7 @@ ImmutableExecutorState::FrameInfo* ImmutableExecutorState::EnsureFrameInfo(
   if (iter != frame_info_.end()) {
     return iter->second.get();
   } else {
-    auto frame_info = absl::make_unique<FrameInfo>(fname);
+    auto frame_info = std::make_unique<FrameInfo>(fname);
     absl::string_view fname_view = frame_info->name;
     auto emplace_result =
         frame_info_.emplace(fname_view, std::move(frame_info));
@@ -90,7 +90,7 @@ Status ImmutableExecutorState::Initialize(const Graph& graph) {
 
   for (auto& it : cf_info.unique_frame_names) {
     EnsureFrameInfo(it)->nodes =
-        absl::make_unique<std::vector<const NodeItem*>>();
+        std::make_unique<std::vector<const NodeItem*>>();
   }
   root_frame_info_ = frame_info_[""].get();
 
@@ -356,7 +356,7 @@ void ImmutableExecutorState::InitializePending(const Graph* graph,
     FrameInfo* finfo = EnsureFrameInfo(it);
     DCHECK_EQ(finfo->pending_counts.get(), nullptr);
     finfo->pending_counts =
-        absl::make_unique<PendingCounts>(finfo->pending_counts_layout);
+        std::make_unique<PendingCounts>(finfo->pending_counts_layout);
   }
 
   if (!requires_control_flow_) {
