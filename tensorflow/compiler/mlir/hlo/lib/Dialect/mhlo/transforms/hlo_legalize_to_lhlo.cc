@@ -514,6 +514,8 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<mhlo::AddOp>,
       HloToLhloOpConverter<mhlo::AndOp>,
       HloToLhloOpConverter<mhlo::Atan2Op>,
+      HloToLhloOpConverter<mhlo::BatchNormGradOp>,
+      HloToLhloOpConverter<mhlo::BatchNormTrainingOp>,
       HloToLhloOpConverter<mhlo::BroadcastInDimOp>,
       HloToLhloOpConverter<mhlo::CeilOp>,
       HloToLhloOpConverter<mhlo::ClampOp>,
