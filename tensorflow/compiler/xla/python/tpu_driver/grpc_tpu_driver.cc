@@ -720,7 +720,7 @@ void GrpcTpuStream::StreamReaderFn() {
 std::unique_ptr<BufferHandle> GrpcTpuStream::Allocate(
     int32_t core_id, MemoryRegion region, int64_t num_bytes,
     absl::Span<Event* const> wait_for) {
-  auto req = absl::make_unique<StreamRequest::Entry>();
+  auto req = std::make_unique<StreamRequest::Entry>();
   InitializeRequest(req.get(), wait_for);
   TraceMe activity("GrpcTpuStream::Allocate(num_bytes)");
   req->mutable_alloc()->set_core_id(core_id);
@@ -729,14 +729,14 @@ std::unique_ptr<BufferHandle> GrpcTpuStream::Allocate(
   auto event =
       std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
-  return absl::make_unique<GrpcBufferHandle>(event->id(), std::move(event),
+  return std::make_unique<GrpcBufferHandle>(event->id(), std::move(event),
                                              num_bytes);
 }
 
 std::unique_ptr<BufferHandle> GrpcTpuStream::Allocate(
     int32_t core_id, MemoryRegion region, const xla::ShapeProto& shape,
     absl::Span<Event* const> wait_for) {
-  auto req = absl::make_unique<StreamRequest::Entry>();
+  auto req = std::make_unique<StreamRequest::Entry>();
   InitializeRequest(req.get(), wait_for);
   TraceMe activity("GrpcTpuStream::Allocate(shape)");
   req->mutable_alloc()->set_core_id(core_id);
@@ -745,7 +745,7 @@ std::unique_ptr<BufferHandle> GrpcTpuStream::Allocate(
   auto event =
       std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
-  return absl::make_unique<GrpcBufferHandle>(
+  return std::make_unique<GrpcBufferHandle>(
       event->id(), std::move(event), ComputeBytesFromShape(shape), shape);
 }
 
@@ -753,7 +753,7 @@ std::unique_ptr<BufferHandle> GrpcTpuStream::AllocateTuple(
     int32_t core_id, MemoryRegion region,
     absl::Span<BufferHandle* const> children,
     absl::Span<Event* const> wait_for) {
-  auto req = absl::make_unique<StreamRequest::Entry>();
+  auto req = std::make_unique<StreamRequest::Entry>();
   InitializeRequest(req.get(), wait_for);
   TraceMe activity("GrpcTpuStream::AllocateTuple");
   req->mutable_alloc_tuple()->set_core_id(core_id);
@@ -765,12 +765,12 @@ std::unique_ptr<BufferHandle> GrpcTpuStream::AllocateTuple(
   auto event =
       std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
-  return absl::make_unique<GrpcBufferHandle>(event->id(), std::move(event), 0);
+  return std::make_unique<GrpcBufferHandle>(event->id(), std::move(event), 0);
 }
 
 std::shared_ptr<Event> GrpcTpuStream::Deallocate(
     std::unique_ptr<BufferHandle> handle, absl::Span<Event* const> wait_for) {
-  auto req = absl::make_unique<StreamRequest::Entry>();
+  auto req = std::make_unique<StreamRequest::Entry>();
   InitializeRequest(req.get(), wait_for);
   TraceMe activity("GrpcTpuStream::Deallocate");
   auto grpc_handle = static_cast<GrpcBufferHandle*>(handle.get());
@@ -783,7 +783,7 @@ std::shared_ptr<Event> GrpcTpuStream::Deallocate(
 
 std::shared_ptr<Event> GrpcTpuStream::TransferToDevice(
     const void* src, BufferHandle* dst, absl::Span<Event* const> wait_for) {
-  auto req = absl::make_unique<StreamRequest::Entry>();
+  auto req = std::make_unique<StreamRequest::Entry>();
   InitializeRequest(req.get(), wait_for);
   TraceMe activity("GrpcTpuStream::TransferToDevice");
   req->mutable_transfer_to()->mutable_data()->assign(
@@ -798,7 +798,7 @@ std::shared_ptr<Event> GrpcTpuStream::TransferToDevice(
 
 std::shared_ptr<Event> GrpcTpuStream::TransferFromDevice(
     const BufferHandle* src, void* dst, absl::Span<Event* const> wait_for) {
-  auto req = absl::make_unique<StreamRequest::Entry>();
+  auto req = std::make_unique<StreamRequest::Entry>();
   InitializeRequest(req.get(), wait_for);
   TraceMe activity("GrpcTpuStream::TransferFromDevice");
   req->mutable_transfer_from()->set_source_handle(
@@ -817,7 +817,7 @@ std::shared_ptr<Event> GrpcTpuStream::TransferFromDevice(
 std::shared_ptr<Event> GrpcTpuStream::TransferFromDeviceToDevice(
     const BufferHandle* src, BufferHandle* dst,
     absl::Span<Event* const> wait_for) {
-  auto req = absl::make_unique<StreamRequest::Entry>();
+  auto req = std::make_unique<StreamRequest::Entry>();
   InitializeRequest(req.get(), wait_for);
   TraceMe activity([&req] {
     return absl::StrCat("GrpcTpuStream::TransferFromDeviceToDevice",
@@ -837,7 +837,7 @@ std::shared_ptr<Event> GrpcTpuStream::TransferFromDeviceToDevice(
 std::unique_ptr<CompiledProgramHandle> GrpcTpuStream::CompileProgram(
     const xla::HloProto& source, int32_t num_replicas,
     absl::Span<Event* const> wait_for) {
-  auto req = absl::make_unique<StreamRequest::Entry>();
+  auto req = std::make_unique<StreamRequest::Entry>();
   InitializeRequest(req.get(), wait_for);
   TraceMe activity("GrpcTpuStream::CompileProgram");
   *req->mutable_compile()->mutable_hlo_program() = source;
@@ -847,7 +847,7 @@ std::unique_ptr<CompiledProgramHandle> GrpcTpuStream::CompileProgram(
   auto event =
       std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
 
-  auto handle = absl::make_unique<GrpcCompiledProgramHandle>(event->id(),
+  auto handle = std::make_unique<GrpcCompiledProgramHandle>(event->id(),
                                                              std::move(event));
   {
     absl::MutexLock lock(&compiles_mutex_);
@@ -862,7 +862,7 @@ std::unique_ptr<CompiledProgramHandle> GrpcTpuStream::CompileProgram(
 std::unique_ptr<LoadedProgramHandle> GrpcTpuStream::LoadProgram(
     int32_t core_id, const CompiledProgramHandle* handle,
     absl::Span<Event* const> wait_for) {
-  auto req = absl::make_unique<StreamRequest::Entry>();
+  auto req = std::make_unique<StreamRequest::Entry>();
   InitializeRequest(req.get(), wait_for);
   TraceMe activity("GrpcTpuStream::LoadProgram");
   req->mutable_load()->set_core_id(core_id);
@@ -871,21 +871,21 @@ std::unique_ptr<LoadedProgramHandle> GrpcTpuStream::LoadProgram(
     auto event = std::make_shared<ErrorEvent>(
         xla::InvalidArgument("Invalid program handle (wrong client id). Did "
                              "you restart the server or use a stale handle?"));
-    return absl::make_unique<GrpcLoadedProgramHandle>(event->id(),
+    return std::make_unique<GrpcLoadedProgramHandle>(event->id(),
                                                       std::move(event));
   }
   req->mutable_load()->set_compiled_program_handle(grpc_handle->id().AsInt());
   auto event =
       std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
-  return absl::make_unique<GrpcLoadedProgramHandle>(event->id(),
+  return std::make_unique<GrpcLoadedProgramHandle>(event->id(),
                                                     std::move(event));
 }
 
 std::shared_ptr<Event> GrpcTpuStream::UnloadProgram(
     std::unique_ptr<LoadedProgramHandle> handle,
     absl::Span<Event* const> wait_for) {
-  auto req = absl::make_unique<StreamRequest::Entry>();
+  auto req = std::make_unique<StreamRequest::Entry>();
   InitializeRequest(req.get(), wait_for);
   TraceMe activity("GrpcTpuStream::UnloadProgram");
   req->mutable_unload()->set_loaded_program_handle(
@@ -901,7 +901,7 @@ std::shared_ptr<Event> GrpcTpuStream::ExecuteProgram(
     absl::Span<BufferHandle* const> outputs,
     const xla::DeviceAssignmentProto& device_assignment,
     absl::Span<Event* const> wait_for) {
-  auto req = absl::make_unique<StreamRequest::Entry>();
+  auto req = std::make_unique<StreamRequest::Entry>();
   InitializeRequest(req.get(), wait_for);
   auto program_handle = static_cast<GrpcLoadedProgramHandle*>(program);
   if (program_handle->id().client_id != driver_->client_id()) {
@@ -992,7 +992,7 @@ std::unique_ptr<GrpcTpuStream> GrpcTpuDriver::AllocateStream(int32_t id) {
   ::grpc::ClientContext ctx;
   ctx.set_fail_fast(false);
   ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(10));
-  return absl::make_unique<GrpcTpuStream>(id, this, std::move(stub));
+  return std::make_unique<GrpcTpuStream>(id, this, std::move(stub));
 }
 
 void GrpcTpuDriver::QuerySystemInfo(SystemInfo* system_info) {

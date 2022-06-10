@@ -276,7 +276,7 @@ class DirectTpuDriver : public TpuDriver {
       int32_t core_id, MemoryRegion region, int64_t num_bytes,
       absl::Span<Event* const> wait_for) override {
     auto tpu_events = MakeEventArray(wait_for);
-    auto bh = absl::make_unique<DirectBufferHandle>(
+    auto bh = std::make_unique<DirectBufferHandle>(
         &driver_fn_,
         driver_fn_.TpuDriver_Allocate(driver_, core_id, region, num_bytes,
                                       wait_for.size(), tpu_events));
@@ -290,7 +290,7 @@ class DirectTpuDriver : public TpuDriver {
     auto tpu_events = MakeEventArray(wait_for);
 
     ::TpuAllocationShape shape_ = GetTpuAllocationShape(shape);
-    auto bh = absl::make_unique<DirectBufferHandle>(
+    auto bh = std::make_unique<DirectBufferHandle>(
         &driver_fn_,
         driver_fn_.TpuDriver_AllocateShape(driver_, core_id, region, shape_,
                                            wait_for.size(), tpu_events));
@@ -312,7 +312,7 @@ class DirectTpuDriver : public TpuDriver {
           static_cast<DirectBufferHandle* const>(children[i])->handle_;
     }
 
-    auto bh = absl::make_unique<DirectBufferHandle>(
+    auto bh = std::make_unique<DirectBufferHandle>(
         &driver_fn_, driver_fn_.TpuDriver_AllocateTuple(
                          driver_, core_id, region, children.size(), childbuf,
                          wait_for.size(), tpu_events));
@@ -388,7 +388,7 @@ class DirectTpuDriver : public TpuDriver {
       return nullptr;
     }
 
-    auto handle = absl::make_unique<DirectCompiledProgramHandle>(
+    auto handle = std::make_unique<DirectCompiledProgramHandle>(
         &driver_fn_,
         driver_fn_.TpuDriver_CompileProgram(driver_, hlo, num_replicas,
                                             wait_for.size(), tpu_events));
@@ -402,7 +402,7 @@ class DirectTpuDriver : public TpuDriver {
       absl::Span<Event* const> wait_for) override {
     auto tpu_events = MakeEventArray(wait_for);
 
-    auto loaded_handle = absl::make_unique<DirectLoadedProgramHandle>(
+    auto loaded_handle = std::make_unique<DirectLoadedProgramHandle>(
         &driver_fn_,
         driver_fn_.TpuDriver_LoadProgram(
             driver_, core_id,
@@ -487,14 +487,14 @@ xla::StatusOr<std::unique_ptr<TpuDriver>> RegisterDirectTpuDriver(
   if (shared_lib == "internal") {
 #ifdef TPU_SHARED_LIBRARY_COMPILE_LINK
     return xla::StatusOr<std::unique_ptr<TpuDriver>>(
-        absl::make_unique<DirectTpuDriver>());
+        std::make_unique<DirectTpuDriver>());
 #else
     LOG(FATAL) << "Request to use compile-time linked TPU library, but did not "
                << "link in appropriate library at compile time.";
 #endif
   }
   return xla::StatusOr<std::unique_ptr<TpuDriver>>(
-      absl::make_unique<DirectTpuDriver>(shared_lib));
+      std::make_unique<DirectTpuDriver>(shared_lib));
 }
 
 REGISTER_TPU_DRIVER(kDirectProtocol, RegisterDirectTpuDriver);

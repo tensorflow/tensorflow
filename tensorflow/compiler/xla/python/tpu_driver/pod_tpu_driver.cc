@@ -366,7 +366,7 @@ class PodTpuDriver : public TpuDriver {
             },
         deps);
 
-    return absl::make_unique<PodBufferHandle>(this, operation_id, num_bytes,
+    return std::make_unique<PodBufferHandle>(this, operation_id, num_bytes,
                                               absl::nullopt, core_id);
   }
 
@@ -388,7 +388,7 @@ class PodTpuDriver : public TpuDriver {
             },
         deps);
 
-    return absl::make_unique<PodBufferHandle>(
+    return std::make_unique<PodBufferHandle>(
         this, operation_id, ComputeBytesFromShape(shape), shape, core_id);
   }
 
@@ -430,7 +430,7 @@ class PodTpuDriver : public TpuDriver {
             },
         deps);
 
-    return absl::make_unique<PodBufferHandle>(this, operation_id, 0,
+    return std::make_unique<PodBufferHandle>(this, operation_id, 0,
                                               absl::nullopt, core_id);
   }
 
@@ -588,7 +588,7 @@ class PodTpuDriver : public TpuDriver {
         },
         deps);
 
-    return absl::make_unique<PodCompiledProgramHandle>(this, operation_id);
+    return std::make_unique<PodCompiledProgramHandle>(this, operation_id);
   }
 
   std::unique_ptr<LoadedProgramHandle> LoadProgram(
@@ -619,7 +619,7 @@ class PodTpuDriver : public TpuDriver {
             },
         deps);
 
-    return absl::make_unique<PodLoadedProgramHandle>(this, operation_id,
+    return std::make_unique<PodLoadedProgramHandle>(this, operation_id,
                                                      core_id);
   }
 
@@ -901,7 +901,7 @@ class PodTpuDriver : public TpuDriver {
     absl::btree_map<int64_t, std::unique_ptr<EventInFlight>>::iterator event;
     absl::flat_hash_set<int64_t> incomplete_deps;
 
-    event = events_.insert({operation_id, absl::make_unique<EventInFlight>()})
+    event = events_.insert({operation_id, std::make_unique<EventInFlight>()})
                 .first;
     for (const auto& dep : deps) {
       if (events_.count(dep) > 0) incomplete_deps.insert(dep);
