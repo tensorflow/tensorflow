@@ -86,20 +86,18 @@ as shown in the following example code:
 import org.tensorflow.lite.InterpreterApi
 import org.tensorflow.lite.InterpreterApi.Options.TfLiteRuntime
 ...
-private lateinit val interpreter: InterpreterApi
+private lateinit var interpreter: InterpreterApi
 ...
-initializeTask.addOnSuccessListener(object: OnSuccessListener {
-     override fun onSuccess(response: DataReadResponse) {
-       interpreter = InterpreterApi.create(modelBuffer,
-         object: InterpreterApi.Options().setRuntime(
-                    InterpreterApi.Options.TfLiteRuntime.FROM_SYSTEM_ONLY))
-     }
-   })
-   .addOnFailureListener(object: OnFailureListener {
-     override fun onFailure(ex: Exception) {
-       Log.e("Interpreter", "Cannot initialize interpreter", ex)
-     }
-   })
+initializeTask.addOnSuccessListener {
+  val interpreterOption =
+    InterpreterApi.Options().setRuntime(TfLiteRuntime.FROM_SYSTEM_ONLY)
+  interpreter = InterpreterApi.create(
+    modelBuffer,
+    interpreterOption
+  )}
+  .addOnFailureListener { e ->
+    Log.e("Interpreter", "Cannot initialize interpreter", e)
+  }
 </pre>
     </section>
     <section>
