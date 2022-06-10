@@ -37,7 +37,11 @@ endif()
 cmake_policy(SET CMP0028 NEW)
 # Enable MACOSX_RPATH (@rpath) for built dynamic libraries.
 cmake_policy(SET CMP0042 NEW)
-project(tensorflow-lite C CXX)
+# Set VERSION as documented by the project() command.
+cmake_policy(SET CMP0048 NEW)
+project(tensorflow-lite
+  VERSION 2.17.0
+  LANGUAGES C CXX)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(TENSORFLOW_SOURCE_DIR "" CACHE PATH
   "Directory that contains the TensorFlow project"
@@ -82,6 +86,7 @@ if(TFLITE_KERNEL_TEST AND ${CMAKE_CROSSCOMPILING})
                         Please specify it using -DTFLITE_HOST_TOOLS_DIR=<flatc_dir_path> launch argument.")
   endif()
 endif()
+option(TFLITE_BUILD_SHARED_LIB "Build shared library instead of static" OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -581,6 +586,10 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "iOS")
   set_source_files_properties(${TFLITE_SOURCE_DIR}/profiling/signpost_profiler.mm PROPERTIES COMPILE_FLAGS -fno-objc-arc)
 endif()
 
+if(${TFLITE_BUILD_SHARED_LIB})
+  set(LIB_TYPE "SHARED")
+endif()
+
 # TFLite library
 set(_ALL_TFLITE_SRCS
   ${TFLITE_CORE_ACCELERATION_SRCS}
@@ -623,8 +632,24 @@ set(_ALL_TFLITE_SRCS
   ${TFLITE_SOURCE_DIR}/schema/schema_utils.cc
   ${TFLITE_SOURCE_DIR}/schema/schema_generated.h
 )
-add_library(tensorflow-lite
+add_library(tensorflow-lite ${LIB_TYPE}
   ${_ALL_TFLITE_SRCS}
+)
+
+if (TFLITE_BUILD_SHARED_LIB)
+  # TODO: Add branch for windows (based on bazel - export all symbols)
+  if (APPLE)
+    target_link_options(tensorflow-lite PRIVATE "-Wl,-exported_symbols_list,${TENSORFLOW_SOURCE_DIR}/tensorflow/lite/tflite_exported_symbols.lds")
+  else ()
+    target_link_options(tensorflow-lite PRIVATE "-Wl,--no-undefined")
+    target_link_options(tensorflow-lite PRIVATE "-Wl,--version-script,${TENSORFLOW_SOURCE_DIR}/tensorflow/lite/tflite_version_script.lds")
+  endif()
+endif()
+
+set_target_properties(tensorflow-lite
+  PROPERTIES
+    VERSION ${PROJECT_VERSION}
+    SOVERSION  ${PROJECT_VERSION}
 )
 set(_ALL_TFLITE_HDRS ${_ALL_TFLITE_SRCS})
 list(FILTER _ALL_TFLITE_HDRS INCLUDE REGEX ".*\\.h$")
