@@ -48,8 +48,14 @@ cc_library(
 
 cc_library(
     name = "bfloat16_lib",
-    srcs = ["bfloat16.cc"],
-    hdrs = ["bfloat16.h"],
+    srcs = [
+        "bfloat16.cc",
+        "float8_e4m3b11.cc",
+    ],
+    hdrs = [
+        "bfloat16.h",
+        "float8_e4m3b11.h",
+    ],
     deps = [
         ":numpy_lib",
         "//tensorflow/core/platform:logging",
