@@ -34,28 +34,26 @@ class ReshapeDecomposerTest : public HloTestBase {
   // Check that all generated reshapes are bitcasts.
   void CheckReshapeDecomposer(const char* hlo,
                               std::optional<absl::string_view> expected) {
-    StatusOr<std::unique_ptr<VerifiedHloModule>> module =
-        ParseAndReturnVerifiedModule(hlo);
-    EXPECT_TRUE(module.status().ok());
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                            ParseAndReturnVerifiedModule(hlo));
+
     ReshapeDecomposer pass;
-    StatusOr<bool> changed = RunHloPass(&pass, module->get());
-    EXPECT_TRUE(changed.status().ok());
-    if (!expected) {
-      EXPECT_FALSE(*changed);
-    } else {
-      EXPECT_TRUE(*changed);
-      auto filecheck_result =
-          RunFileCheck(module->get()->ToString(
+    TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+    EXPECT_EQ(changed, expected.has_value());
+    if (changed) {
+      TF_ASSERT_OK_AND_ASSIGN(
+          bool filecheck_matches,
+          RunFileCheck(module->ToString(
                            HloPrintOptions{}.set_print_operand_shape(false)),
-                       *expected);
-      EXPECT_TRUE(filecheck_result.status().ok());
-      EXPECT_TRUE(filecheck_result.ValueOrDie());
-      for (auto* instr : module->get()->entry_computation()->instructions()) {
-        if (instr->opcode() == HloOpcode::kReshape) {
-          EXPECT_TRUE(ShapeUtil::ReshapeIsBitcast(instr->operand(0)->shape(),
-                                                  instr->shape()));
-        }
-      }
+                       *expected));
+      EXPECT_TRUE(filecheck_matches);
+      EXPECT_TRUE(absl::c_all_of(
+          module->entry_computation()->instructions(),
+          [&](const HloInstruction* instr) {
+            return instr->opcode() != HloOpcode::kReshape ||
+                   ShapeUtil::ReshapeIsBitcast(instr->operand(0)->shape(),
+                                               instr->shape());
+          }));
     }
   }
 };
