@@ -21,7 +21,4 @@ PYBIND11_MODULE(_pywrap_bfloat16, m) {
 
   m.def("TF_bfloat16_type",
         [] { return pybind11::handle(tensorflow::Bfloat16Dtype()); });
-
-  m.def("TF_float8_e4m3b11_type",
-        [] { return pybind11::handle(tensorflow::Float8_E4M3B11Dtype()); });
 }
