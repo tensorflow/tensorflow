@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -803,7 +804,7 @@ StatusOr<std::vector<parallel_device::ParallelTensor*>> PrepareEmbeddingInputs(
   return parallel_inputs;
 }
 
-StatusOr<std::map<int64_t, Node*>> GetTPUEmbeddingInputNodes(
+StatusOr<std::map<int64_t, std::vector<Node*>>> GetTPUEmbeddingInputNodes(
     TF_Status* s, const Graph& graph,
     const std::vector<TensorWithLayout*>& inputs) {
   // After the graph is lowered, the sparse tensors live at the end of the
@@ -816,7 +817,7 @@ StatusOr<std::map<int64_t, Node*>> GetTPUEmbeddingInputNodes(
       non_sparse_inputs.push_back(input);
     }
   }
-  std::map<int64_t, Node*> table_id_node_map;
+  std::map<int64_t, std::vector<Node*>> table_id_node_map;
   for (Node* node : graph.nodes()) {
     if (!node->IsArg()) continue;
 
@@ -826,17 +827,28 @@ StatusOr<std::map<int64_t, Node*>> GetTPUEmbeddingInputNodes(
 
     if (embedding_attr == nullptr) continue;
 
-    // Offset due to device id.
     const int64_t table_id = embedding_attr->i();
+
+    // Add embedding slot id if there is one.
+    const AttrValue* embedding_slot_attr =
+        node->attrs().Find("_tpu_embedding_slot_id");
     EmbeddingResourceAttrs embedding_attrs;
     embedding_attrs.table_id = table_id;
+
+    if (embedding_slot_attr != nullptr) {
+      const int64_t slot_id = embedding_slot_attr->i();
+      embedding_attrs.slot_id = slot_id;
+    }
+
+    // Arg input offset due to device id.
     non_sparse_inputs[arg_id - 1]->UpdateAttrs(embedding_attrs, s);
     if (!s->status.ok()) {
       return errors::Internal(
           "Failed to set embedding resource attrs. \n Got error: ",
           s->status.error_message());
     }
-    table_id_node_map.insert({table_id, node});
+
+    table_id_node_map[table_id].push_back(node);
   }
   return table_id_node_map;
 }
@@ -873,7 +885,7 @@ Status InsertFunctionForTPUEmbeddingCheckpoint(
         " \n expects : ", kLoadEmbeddingFn, " or ", kRetrieveEmbeddingFn));
   }
 
-  StatusOr<std::map<int64_t, Node*>> table_id_node_map =
+  StatusOr<std::map<int64_t, std::vector<Node*>>> table_id_node_map =
       GetTPUEmbeddingInputNodes(status, *graph, inputs);
   if (!table_id_node_map.ok()) {
     return errors::Internal(table_id_node_map.status().error_message());
@@ -890,14 +902,16 @@ Status InsertFunctionForTPUEmbeddingCheckpoint(
   input_types.reserve(num_tables);
 
   for (int i = 0; i < num_tables; ++i) {
-    auto node_ptr = table_id_node_map->find(i);
-    if (node_ptr == table_id_node_map->end()) {
+    auto node_vec_ptr = table_id_node_map->find(i);
+    if (node_vec_ptr == table_id_node_map->end()) {
       return errors::Internal(
           absl::StrCat("Embedding table id ", i, " is not found."));
     }
-    const std::string& node_name = node_ptr->second->name();
-    func_inputs.push_back({node_name, i, DT_RESOURCE});
-    input_types.push_back(DT_RESOURCE);
+    for (const Node* n : node_vec_ptr->second) {
+      const std::string& node_name = n->name();
+      func_inputs.push_back({node_name, i, DT_RESOURCE});
+      input_types.push_back(DT_RESOURCE);
+    }
   }
 
   AttrValue mesh_attr;
@@ -916,8 +930,10 @@ Status InsertFunctionForTPUEmbeddingCheckpoint(
 
   TF_ASSIGN_OR_RETURN(Node * func_node, graph->AddNode(func_node_def));
   for (int i = 0; i < num_tables; ++i) {
-    Node* node = table_id_node_map->find(i)->second;
-    graph->AddEdge(node, 0, func_node, i);
+    const std::vector<Node*>& node_vec = table_id_node_map->find(i)->second;
+    for (int j = 0; j < node_vec.size(); ++j) {
+      graph->AddEdge(node_vec[j], 0, func_node, j + i);
+    }
   }
 
   return OkStatus();
