@@ -26,6 +26,8 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+class CoordinationServiceAgent;
+
 namespace activity_watcher {
 
 using ActivityId = uint64;
@@ -67,6 +69,10 @@ struct Activity {
         category(category),
         attributes(std::move(attributes)) {}
 };
+
+// Enable activity wathcer to send own workers activities to coordination
+// service and also fetch all workers' activities.
+void MaybeEnableMultiWorkersWatching(CoordinationServiceAgent* agent);
 
 namespace tfw_internal {
 

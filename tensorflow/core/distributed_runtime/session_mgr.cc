@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
@@ -216,6 +217,8 @@ Status SessionMgr::CreateSession(
     TF_RETURN_IF_ERROR(coordination_service_agent_->Initialize(
         worker_env_->env, server_def, std::move(agent_cache),
         std::move(coordination_error_callback)));
+    activity_watcher::MaybeEnableMultiWorkersWatching(
+        coordination_service_agent_.get());
   }
   return OkStatus();
 }
