@@ -22,6 +22,7 @@ import traceback
 
 from absl import logging
 
+from tensorflow.core.config import flags
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
@@ -1297,10 +1298,15 @@ def save_and_return_nodes(obj,
       compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
   file_io.atomic_write_string_to_file(
       path, saved_model.SerializeToString(deterministic=True))
+
+  # Write fingerprint, if requested.
+  if flags.config().saved_model_fingerprinting.value():
+    # Do nothing for now.
+    pass
+
   # Save debug info, if requested.
   if options.save_debug_info:
     _export_debug_info(exported_graph, export_dir)
-
   # Clean reference cycles so repeated export()s don't make work for the garbage
   # collector. Before this point, we need to keep references to captured
   # constants in the saved graph.
