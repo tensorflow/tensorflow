@@ -6360,6 +6360,7 @@ cc_library(
         "//tensorflow/core:lib",  # fixdeps: keep
         "//tensorflow/core:portable_gif_internal",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
     ],
 )
 

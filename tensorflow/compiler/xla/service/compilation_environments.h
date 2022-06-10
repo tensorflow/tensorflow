@@ -42,6 +42,8 @@ namespace xla {
 class CompilationEnvironments {
  public:
   CompilationEnvironments() = default;
+  CompilationEnvironments(const CompilationEnvironments& rhs) { *this = rhs; }
+  CompilationEnvironments& operator=(const CompilationEnvironments& rhs);
   ~CompilationEnvironments() = default;
 
   // Users of CompilationEnvironments must specialize this method for each type

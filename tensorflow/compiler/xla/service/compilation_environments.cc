@@ -18,10 +18,22 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
+
+CompilationEnvironments& CompilationEnvironments::operator=(
+    const CompilationEnvironments& rhs) {
+  Clear();
+  for (const auto& descriptor_message_pair : rhs.environments_) {
+    auto env = absl::WrapUnique(descriptor_message_pair.second->New());
+    env->CopyFrom(*descriptor_message_pair.second);
+    environments_.insert({descriptor_message_pair.first, std::move(env)});
+  }
+  return *this;
+}
 
 void CompilationEnvironments::AddEnv(
     std::unique_ptr<tensorflow::protobuf::Message> env) {

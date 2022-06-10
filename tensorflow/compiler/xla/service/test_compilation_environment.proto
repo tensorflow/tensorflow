@@ -24,3 +24,7 @@ message TestCompilationEnvironment1 {
 message TestCompilationEnvironment2 {
   uint32 some_other_flag = 1;
 }
+
+message TestCompilationEnvironment3 {
+  uint32 a_third_flag = 1;
+}
