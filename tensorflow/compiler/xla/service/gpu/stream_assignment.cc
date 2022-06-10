@@ -83,7 +83,7 @@ int ComputeStreamToAssign(
 }  // namespace
 
 std::unique_ptr<StreamAssignment> AssignStreams(const HloModule& module) {
-  auto stream_assignment = absl::make_unique<StreamAssignment>();
+  auto stream_assignment = std::make_unique<StreamAssignment>();
   const HloComputation& computation = *module.entry_computation();
   std::unique_ptr<HloReachabilityMap> reachability =
       HloReachabilityMap::Build(&computation);

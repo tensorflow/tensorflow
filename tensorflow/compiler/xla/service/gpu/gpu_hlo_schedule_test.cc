@@ -49,7 +49,7 @@ class GpuHloScheduleTest : public HloTestBase {
     auto debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_disable_multi_streaming(false);
     config.set_debug_options(debug_options);
-    return absl::make_unique<HloModule>("test_module", config);
+    return std::make_unique<HloModule>("test_module", config);
   }
 
   HloVec RemoveHlo(const HloVec& input,

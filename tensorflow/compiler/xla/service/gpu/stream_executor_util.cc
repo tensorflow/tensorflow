@@ -340,7 +340,7 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
         reinterpret_cast<const char*>(cubin_data.data()), kernel_name);
   }
 
-  auto kernel_base = absl::make_unique<se::KernelBase>(stream_exec);
+  auto kernel_base = std::make_unique<se::KernelBase>(stream_exec);
   TF_RETURN_IF_ERROR(stream_exec->GetKernel(loader_spec, kernel_base.get()));
   return std::move(kernel_base);
 }
@@ -348,7 +348,7 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
 template <int n>
 static std::unique_ptr<se::KernelArgsArrayBase> MakeKernelArgs(
     absl::Span<const se::DeviceMemoryBase> args) {
-  auto kernel_args = absl::make_unique<se::KernelArgsArray<n>>();
+  auto kernel_args = std::make_unique<se::KernelArgsArray<n>>();
   for (const se::DeviceMemoryBase& buf : args) {
     kernel_args->add_device_memory_argument(buf);
   }

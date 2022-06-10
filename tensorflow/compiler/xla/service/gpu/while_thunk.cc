@@ -29,9 +29,9 @@ WhileThunk::WhileThunk(
     std::unique_ptr<ThunkSequence> body_thunk_sequence)
     : Thunk(Kind::kWhile, thunk_info),
       condition_result_buffer_index_(condition_result_buffer_index),
-      condition_thunk_sequence_(absl::make_unique<SequentialThunk>(
+      condition_thunk_sequence_(std::make_unique<SequentialThunk>(
           ThunkInfo(), std::move(*condition_thunk_sequence))),
-      body_thunk_sequence_(absl::make_unique<SequentialThunk>(
+      body_thunk_sequence_(std::make_unique<SequentialThunk>(
           ThunkInfo(), std::move(*body_thunk_sequence))) {}
 
 Status WhileThunk::Initialize(const GpuExecutable& executable,

@@ -30,7 +30,7 @@ constexpr int kMaxInfeedsInFlight = 8;
 
 InfeedManager::InfeedManager(se::StreamExecutor* executor)
     : BlockingXfeedQueue(/*max_pending_xfeeds=*/kMaxInfeedsInFlight),
-      stream_(absl::make_unique<se::Stream>(executor)) {
+      stream_(std::make_unique<se::Stream>(executor)) {
   stream_->Init();
 }
 

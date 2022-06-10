@@ -49,9 +49,9 @@ Status OutfeedManager::TransferLiteralFromOutfeed(
     const Shape& shape = ShapeUtil::GetSubshape(literal.shape(), leaf.first);
     CHECK(shape.IsArray()) << ShapeUtil::HumanStringWithLayout(shape);
     leaf.second =
-        absl::make_unique<gpu::OutfeedBuffer>(ShapeUtil::ByteSizeOf(shape));
+        std::make_unique<gpu::OutfeedBuffer>(ShapeUtil::ByteSizeOf(shape));
     leaf.second->set_destination(
-        absl::make_unique<MutableBorrowingLiteral>(literal, leaf.first));
+        std::make_unique<MutableBorrowingLiteral>(literal, leaf.first));
   }
 
   // Give the tree of buffers to the outfeed manager. The device will fill it

@@ -157,7 +157,7 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
             << "Unable to copy dynamic shape buffer of size " << src.size()
             << " to host using pinned memory.  Falling back to unpinned "
                "memory, which may be slow.";
-        fallback_buffers.push_back(absl::make_unique<char[]>(src.size()));
+        fallback_buffers.push_back(std::make_unique<char[]>(src.size()));
         h2d_memcpy_dsts.push_back(
             reinterpret_cast<int32_t*>(fallback_buffers.back().get()));
       }
@@ -191,14 +191,14 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
 }  // namespace xla
 
 static std::unique_ptr<xla::TransferManager> CreateNVPTXTransferManager() {
-  return absl::make_unique<xla::gpu::GpuTransferManager>(
+  return std::make_unique<xla::gpu::GpuTransferManager>(
       /*id=*/stream_executor::cuda::kCudaPlatformId,
       /*pointer_size=*/llvm::DataLayout(xla::gpu::nvptx::DataLayout())
           .getPointerSize(0 /* default address space */));
 }
 
 static std::unique_ptr<xla::TransferManager> CreateAMDGPUTransferManager() {
-  return absl::make_unique<xla::gpu::GpuTransferManager>(
+  return std::make_unique<xla::gpu::GpuTransferManager>(
       /*id=*/stream_executor::rocm::kROCmPlatformId,
       /*pointer_size=*/llvm::DataLayout(xla::gpu::amdgpu::DataLayout())
           .getPointerSize(0 /* default address space */));
