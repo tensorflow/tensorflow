@@ -51,7 +51,7 @@ struct LinalgGenericTilingPattern : public OpRewritePattern<GenericOp> {
     if (llvm::all_of(tileSizes, [](int64_t size) { return size == 1; })) {
       tilingResult = tileToPoints(rewriter, linalgOp);
     } else {
-      tilingResult = tileToSlices(rewriter, linalgOp, tileSizes);
+      tilingResult = tileToTiles(rewriter, linalgOp, tileSizes);
     }
 
     if (failed(tilingResult)) return failure();

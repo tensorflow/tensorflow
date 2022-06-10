@@ -68,8 +68,8 @@ struct TilingResult {
 
 /// Perform tiling that creates gml_st.parallel and gml_st.for operations with
 /// gml_st.tile subsets. If the tiling is successful, returns the outer loop.
-FailureOr<TilingResult> tileToSlices(RewriterBase &b, linalg::LinalgOp op,
-                                     ArrayRef<int64_t> tileSizes);
+FailureOr<TilingResult> tileToTiles(RewriterBase &b, linalg::LinalgOp op,
+                                    ArrayRef<int64_t> tileSizes);
 
 /// Perform tiling that creates gml_st.parallel and gml_st.for operations with
 /// gml_st.point subsets. If the tiling is successful, returns the outer loop.

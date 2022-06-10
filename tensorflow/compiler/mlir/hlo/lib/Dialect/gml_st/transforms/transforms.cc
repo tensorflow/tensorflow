@@ -332,9 +332,104 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOp(
   return tileLinalgOpImpl(b, op, tileSizeVector, options);
 }
 
-FailureOr<TilingResult> tileToSlices(RewriterBase &, linalg::LinalgOp,
-                                     ArrayRef<int64_t>) {
-  return failure();
+namespace {
+TileOp createTile(OpBuilder &b, Location loc, ValueRange ivs,
+                  ValueRange upperBounds, ValueRange steps,
+                  ArrayRef<int64_t> staticDims, ArrayRef<int64_t> tileSizes,
+                  Value space) {
+  // Compute the actual sizes of the tile.
+  auto rank = ivs.size();
+  SmallVector<Value> dynamicTileSizes;
+  SmallVector<int64_t> staticTileSizes;
+  staticTileSizes.reserve(rank);
+  for (int i = 0; i < rank; ++i) {
+    // Check if this dimension can be perfectly tiled.
+    if (tileSizes[i] == 1 || (staticDims[i] != ShapedType::kDynamicSize &&
+                              staticDims[i] % tileSizes[i] == 0)) {
+      staticTileSizes.push_back(tileSizes[i]);
+      continue;
+    }
+    auto nextIv = b.create<arith::AddIOp>(loc, ivs[i], steps[i]);
+    auto isPartialTile = b.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sgt,
+                                                 nextIv, upperBounds[i]);
+    auto rem = b.create<arith::SubIOp>(loc, upperBounds[i], ivs[i]);
+    auto size = b.create<arith::SelectOp>(loc, isPartialTile, rem, steps[i]);
+    dynamicTileSizes.push_back(size);
+    staticTileSizes.push_back(ShapedType::kDynamicSize);
+  }
+  SmallVector<int64_t> allDynamic(rank, ShapedType::kDynamicStrideOrOffset);
+  auto staticSizes = b.getI64ArrayAttr(staticTileSizes);
+  auto staticOffsets = b.getI64ArrayAttr(allDynamic);
+  auto staticStrides = b.getI64ArrayAttr(SmallVector<int64_t>(rank, 1));
+  auto tileTy = b.getType<TileType>(staticTileSizes);
+  return b.create<TileOp>(loc, tileTy, space, ivs, dynamicTileSizes,
+                          ValueRange{}, staticOffsets, staticSizes,
+                          staticStrides);
+}
+}  // namespace
+
+FailureOr<TilingResult> tileToTiles(RewriterBase &b, linalg::LinalgOp linalgOp,
+                                    ArrayRef<int64_t> tileSizes) {
+  Location loc = linalgOp.getLoc();
+  Value output = linalgOp.getOutputOperand(0)->get();
+  auto outputType = output.getType().cast<RankedTensorType>();
+
+  SmallVector<Value> dynamicDims;
+  SmallVector<int64_t> staticDims;
+  std::tie(dynamicDims, staticDims) = getDynamicAndStaticDims(b, output);
+  auto spaceType = b.getType<TileType>(outputType.getShape());
+  auto space = b.create<SpaceOp>(loc, spaceType, dynamicDims,
+                                 b.getI64ArrayAttr(staticDims));
+
+  SmallVector<Value> steps;
+  steps.reserve(outputType.getRank());
+  for (int64_t size : tileSizes) {
+    steps.push_back(b.create<arith::ConstantIndexOp>(loc, size));
+  }
+
+  auto zero = b.create<arith::ConstantIndexOp>(loc, 0);
+  SmallVector<Value> lowerBounds(outputType.getRank(), zero);
+
+  SmallVector<Value> upperBounds;
+  for (int i = 0; i < outputType.getRank(); ++i) {
+    if (staticDims[i] == ShapedType::kDynamicSize) {
+      upperBounds.push_back(b.create<tensor::DimOp>(loc, output, i));
+    } else {
+      upperBounds.push_back(
+          b.create<arith::ConstantIndexOp>(loc, staticDims[i]));
+    }
+  }
+  LinalgOp result;
+  auto loop = b.create<ParallelOp>(
+      loc, output.getType(), lowerBounds, upperBounds, steps, output,
+      ValueRange{space},
+      [&](OpBuilder &b, Location nestedLoc, ValueRange ivs,
+          ValueRange /*outputs*/) {
+        auto operandTile = createTile(b, nestedLoc, ivs, upperBounds, steps,
+                                      staticDims, tileSizes, space);
+        auto tiledResultTy = RankedTensorType::get(
+            operandTile.getType().getShape(), outputType.getElementType());
+        SmallVector<Value> tiledOperands;
+        tiledOperands.reserve(linalgOp.getNumInputs());
+
+        for (auto input : linalgOp.inputs()) {
+          tiledOperands.push_back(
+              b.create<MaterializeOp>(nestedLoc, input, operandTile));
+        }
+        for (auto output : linalgOp.outputs()) {
+          tiledOperands.push_back(
+              b.create<MaterializeOp>(nestedLoc, output, operandTile));
+        }
+        // Clone 'linalgOp' and replace the original operands with
+        // 'tiledOperands'.
+        result = linalgOp.clone(b, loc, tiledResultTy, tiledOperands);
+        SmallVector<Value> outputOperands = result->getResults();
+        b.create<SubsetYieldOp>(
+            nestedLoc, outputOperands,
+            SmallVector<Value>(outputOperands.size(), operandTile));
+      });
+
+  return TilingResult{loop.getOperation(), result};
 }
 
 FailureOr<TilingResult> tileToPoints(RewriterBase &b,
@@ -358,7 +453,12 @@ FailureOr<TilingResult> tileToPoints(RewriterBase &b,
 
   SmallVector<Value> upperBounds;
   for (int i = 0; i < outputType.getRank(); ++i) {
-    upperBounds.push_back(b.create<tensor::DimOp>(loc, output, i));
+    if (staticDims[i] == ShapedType::kDynamicSize) {
+      upperBounds.push_back(b.create<tensor::DimOp>(loc, output, i));
+    } else {
+      upperBounds.push_back(
+          b.create<arith::ConstantIndexOp>(loc, staticDims[i]));
+    }
   }
   auto loop = b.create<ParallelOp>(
       loc, output.getType(), lowerBounds, upperBounds, steps, output, space,
