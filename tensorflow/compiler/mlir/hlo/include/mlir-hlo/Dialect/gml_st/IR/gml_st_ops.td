@@ -21,6 +21,7 @@ limitations under the License.
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_subset_ops.td"
+include "mlir-hlo/Dialect/gml_st/IR/gml_st_extension_ops.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_legacy_ops.td"
 
 def GMLST_MaterializeOp : GMLST_Op<"materialize",
@@ -59,24 +60,6 @@ def GMLST_SizeOp : GMLST_Op<"size", []> {
   let results = (outs Index:$result);
   let assemblyFormat = [{
     $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
-  }];
-  let hasVerifier = 0;
-}
-
-def GMLST_DynamicBroadcastInDimOp : GMLST_Op<"dynamic_broadcast_in_dim", [
-    NoSideEffect]> {
-  let summary = [{Destination-style twin for `mhlo.dynamic_broadcast_in_dim`}];
-  let arguments = (ins
-    AnyTensor:$init,
-    AnyTensor:$operand,
-    I64ElementsAttr:$broadcast_dimensions,
-    OptionalAttr<I64ElementsAttr>:$known_expanding_dimensions,
-    OptionalAttr<I64ElementsAttr>:$known_nonexpanding_dimensions
-  );
-  let results = (outs AnyTensor:$result);
-  let assemblyFormat = [{
-    $init `,` $operand `,` custom<I64ElementsAttr>($broadcast_dimensions)
-    attr-dict `:` type($init) `,` type($operand) `->` type($result)
   }];
   let hasVerifier = 0;
 }

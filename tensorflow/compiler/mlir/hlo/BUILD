@@ -2411,6 +2411,7 @@ gentbl_cc_library(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.td",
     td_srcs = [
+        "include/mlir-hlo/Dialect/gml_st/IR/gml_st_extension_ops.td",
         "include/mlir-hlo/Dialect/gml_st/IR/gml_st_legacy_ops.td",
         "include/mlir-hlo/Dialect/gml_st/IR/gml_st_subset_ops.td",
     ],
@@ -2471,7 +2472,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":fusion_interface_inc_gen",
-        ":gml_st",
+        "@llvm-project//mlir:IR",
     ],
 )
 

@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_FUSION_INTERFACE_H
 #define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_FUSION_INTERFACE_H
 
-#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
 
 /// Include the generated interface declarations.
 #include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.h.inc"

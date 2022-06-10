@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file defines the operations used in the ST dialect.
-
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 
 #include "llvm/ADT/TypeSwitch.h"
