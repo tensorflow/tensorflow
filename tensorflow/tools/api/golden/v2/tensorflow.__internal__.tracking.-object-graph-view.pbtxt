@@ -16,6 +16,10 @@ tf_class {
     argspec: "args=[\'self\', \'root\', \'attached_dependencies\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "all_nodes"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "breadth_first_traversal"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
