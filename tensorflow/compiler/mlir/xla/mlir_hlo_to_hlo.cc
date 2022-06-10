@@ -303,7 +303,7 @@ static std::unique_ptr<xla::PrecisionConfig> Convert_precision_config(
     llvm::Optional<mlir::ArrayAttr> optional_precision_config_attr) {
   if (!optional_precision_config_attr.hasValue()) return nullptr;
 
-  auto precision_config = absl::make_unique<xla::PrecisionConfig>();
+  auto precision_config = std::make_unique<xla::PrecisionConfig>();
   for (auto attr : optional_precision_config_attr.getValue()) {
     xla::PrecisionConfig::Precision p;
     auto operand_precision =

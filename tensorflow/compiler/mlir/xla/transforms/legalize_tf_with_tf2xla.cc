@@ -419,9 +419,9 @@ static std::unique_ptr<tensorflow::StaticDeviceMgr> CreateDeviceMgr(
   // Register compilation kernels for all registered XLA backends.
   tensorflow::XlaOpRegistry::RegisterCompilationKernels();
 
-  auto device = absl::make_unique<tensorflow::XlaCompilationDevice>(
+  auto device = std::make_unique<tensorflow::XlaCompilationDevice>(
       tensorflow::SessionOptions(), tensorflow::DeviceType(device_type));
-  return absl::make_unique<tensorflow::StaticDeviceMgr>(std::move(device));
+  return std::make_unique<tensorflow::StaticDeviceMgr>(std::move(device));
 }
 
 class Tf2XlaRewriter {
@@ -500,7 +500,7 @@ LogicalResult Tf2XlaRewriter::PrepareParams() {
   auto cleanup = [](const std::string& name) {};
   // Use step_id zero as we only have a single context concurrently and
   // concurrently running each of the MLIR functions create a new device.
-  step_container_ = absl::make_unique<tensorflow::ScopedStepContainer>(
+  step_container_ = std::make_unique<tensorflow::ScopedStepContainer>(
       /*step_id=*/0, cleanup);
   tensorflow::Status status = step_container_->Create(
       device_->resource_manager(),
@@ -518,9 +518,9 @@ LogicalResult Tf2XlaRewriter::PrepareParams() {
     return emitError(op_->getLoc()) << version_or.status().ToString();
   }
 
-  flib_def_ = absl::make_unique<tensorflow::FunctionLibraryDefinition>(
+  flib_def_ = std::make_unique<tensorflow::FunctionLibraryDefinition>(
       tensorflow::OpRegistry::Global(), tensorflow::FunctionDefLibrary());
-  pflr_ = absl::make_unique<tensorflow::ProcessFunctionLibraryRuntime>(
+  pflr_ = std::make_unique<tensorflow::ProcessFunctionLibraryRuntime>(
       device_mgr_.get(), tensorflow::Env::Default(), /*config=*/nullptr,
       version_or.ValueOrDie(), flib_def_.get(), tensorflow::OptimizerOptions());
   params_.function_library = pflr_->GetFLR(device_->name());

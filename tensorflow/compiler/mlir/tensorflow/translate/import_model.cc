@@ -813,7 +813,7 @@ Status ImporterBase::GetInputOutputNodes(
 // TODO(jpienaar): Remove this post shape inference on import flag is removed.
 Status ImporterBase::AddNodesToShapeRefiner(
     std::unordered_map<string, Node*>* node_name_map) {
-  shape_refiner_ = absl::make_unique<ShapeRefiner>(graph_->versions(),
+  shape_refiner_ = std::make_unique<ShapeRefiner>(graph_->versions(),
                                                    graph_->op_registry());
   // Some operations (for example "TPUExecute") don't have shape inference
   // function defined, so we should set this to false for adding nodes with
@@ -1509,7 +1509,7 @@ Status ImporterBase::PrepareConvert(const Graph& graph,
     graph_def = std::make_unique<GraphDef>();
     graph.ToGraphDef(graph_def.get());
   }
-  graph_ = absl::make_unique<Graph>(graph.flib_def());
+  graph_ = std::make_unique<Graph>(graph.flib_def());
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
   opts.add_default_attributes = true;
