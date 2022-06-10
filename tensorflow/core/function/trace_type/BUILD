@@ -68,11 +68,7 @@ pytype_strict_library(
     ],
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
-    deps = [
-        ":serialization",
-        "//tensorflow/core/function/trace_type:default_types_proto_py",
-        "//tensorflow/python/types",
-    ],
+    deps = ["//tensorflow/python/types"],
 )
 
 py_strict_test(
@@ -81,9 +77,7 @@ py_strict_test(
     python_version = "PY3",
     deps = [
         ":default_types",
-        ":serialization",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/types",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -130,15 +124,6 @@ tf_proto_library(
     visibility = ["//tensorflow:internal"],
 )
 
-tf_proto_library(
-    name = "default_types_proto",
-    srcs = [
-        "default_types.proto",
-    ],
-    cc_api_version = 2,
-    visibility = ["//tensorflow:internal"],
-)
-
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "serialization_py_pb2",
@@ -152,12 +137,5 @@ tf_proto_library(
 #     api_version = 2,
 #     visibility = ["//tensorflow:internal"],
 #     deps = [":serialization_test_proto"],
-# )
-#
-# py_proto_library(
-#     name = "default_types_py_pb2",
-#     api_version = 2,
-#     visibility = ["//tensorflow:internal"],
-#     deps = [":default_types_proto"],
 # )
 # copybara:uncomment_end

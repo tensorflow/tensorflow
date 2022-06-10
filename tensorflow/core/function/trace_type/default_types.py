@@ -12,104 +12,55 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
 """TraceType implementations for common Python types."""
 
 from typing import Any, Hashable, Optional, Sequence, Type
 from typing import Dict as PythonDict
 from typing import Tuple as PythonTuple
-import weakref
 
-from tensorflow.core.function.trace_type import default_types_pb2
-from tensorflow.core.function.trace_type import serialization
 from tensorflow.python.types import trace
 
 
-class Literal(trace.TraceType, serialization.Serializable):
-  """Represents a Literal type like bool, int or string."""
+class Generic(trace.TraceType):
+  """Represents an arbitrary Python object."""
 
-  def __init__(self, value: Any):
-    self._value = value
-    self._value_hash = hash(value)
+  def __init__(self, obj):
+    self._object = obj
+    self._object_hash = hash(obj)
 
   def is_subtype_of(self, other: trace.TraceType) -> bool:
     return self == other
 
   def most_specific_common_supertype(
-      self, types: Sequence[trace.TraceType]) -> Optional["Literal"]:
+      self, types: Sequence[trace.TraceType]) -> Optional["Generic"]:
     return self if all(self == other for other in types) else None
 
-  @classmethod
-  def type_proto(cls) -> Type[default_types_pb2.SerializedLiteral]:
-    return default_types_pb2.SerializedLiteral
-
-  @classmethod
-  def from_proto(cls, proto: default_types_pb2.SerializedLiteral) -> "Literal":
-    if proto.HasField("bool_value"):
-      return Literal(proto.bool_value)
-
-    if proto.HasField("int_value"):
-      return Literal(proto.int_value)
-
-    if proto.HasField("float_value"):
-      return Literal(proto.float_value)
-
-    if proto.HasField("str_value"):
-      return Literal(proto.str_value)
-
-    raise ValueError("Malformed Literal proto can not be deserialized")
-
-  def to_proto(self) -> default_types_pb2.SerializedLiteral:
-    if isinstance(self._value, bool):
-      return default_types_pb2.SerializedLiteral(bool_value=self._value)
-
-    if isinstance(self._value, int):
-      return default_types_pb2.SerializedLiteral(int_value=self._value)
-
-    if isinstance(self._value, float):
-      return default_types_pb2.SerializedLiteral(float_value=self._value)
-
-    if isinstance(self._value, str):
-      return default_types_pb2.SerializedLiteral(str_value=self._value)
-
-    raise ValueError("Can not serialize Literal of type " +
-                     type(self._value).__name__)
-
   def _placeholder_value(self) -> Any:
-    return self._value
+    return self._object
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):
       return NotImplemented
 
-    return isinstance(other, Literal) and self._value == other._value
+    return isinstance(other, Generic) and self._object == other._object
 
   def __hash__(self) -> int:
-    return self._value_hash
+    return self._object_hash
 
   def __repr__(self):
-    return f"{self.__class__.__name__}(value={self._value!r})"
+    return f"{self.__class__.__name__}(obj={self._object!r})"
 
 
-class Weakref(trace.TraceType):
+class Weakref(Generic):
   """Represents weakref of an arbitrary Python object.
 
   When a function argument is a custom class, instead of making a copy of it
   just for the sake of function cache, a weakref is instead kept to save memory.
   """
 
-  def __init__(self, ref: weakref.ReferenceType):
-    self._ref = ref
-    self._ref_hash = hash(ref)
-
-  def is_subtype_of(self, other: trace.TraceType) -> bool:
-    return self == other
-
-  def most_specific_common_supertype(
-      self, types: Sequence[trace.TraceType]) -> Optional["Weakref"]:
-    return self if all(self == other for other in types) else None
-
   def _placeholder_value(self) -> Any:
-    return self._ref()
+    return self._object()
 
   def __eq__(self, other):
     if not isinstance(other, trace.TraceType):
@@ -118,19 +69,16 @@ class Weakref(trace.TraceType):
     if not isinstance(other, Weakref):
       return False
 
-    if self._ref() is None or other._ref() is None:
+    if self._object() is None or other._object() is None:
       return False
 
-    if self._ref() is other._ref():
+    if self._object() is other._object():
       return True
 
-    return self._ref == other._ref
+    return self._object == other._object
 
   def __hash__(self):
-    return self._ref_hash
-
-  def __repr__(self):
-    return f"{self.__class__.__name__}(ref={self._ref!r})"
+    return self._object_hash
 
 
 class OrderedCollection(trace.TraceType):

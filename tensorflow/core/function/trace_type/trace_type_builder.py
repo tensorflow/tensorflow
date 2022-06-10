@@ -129,7 +129,7 @@ def from_object(obj: Any,
       return default_types.Weakref(ref)
   except TypeError:
     try:
-      return default_types.Literal(obj)
+      return default_types.Generic(obj)
     except:
       raise TypeError(
           f"Python object could not be represented through the generic tracing "
