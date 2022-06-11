@@ -1476,5 +1476,24 @@ absl::Status TensorDescriptor::CanCreateTensorWithShape(
   const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
   return CanCreateTensorWithShape(gpu_info, shape5D);
 }
+
+absl::Status TensorDescriptor::UpdateToSupportedStorageType(
+    const GpuInfo& gpu_info, const BHWC& shape) {
+  if (CanCreateTensorWithShape(gpu_info, shape).ok()) {
+    return absl::OkStatus();
+  }
+  if (gpu_info.IsApiMetal()) {
+    storage_type = TensorStorageType::BUFFER;
+    return CanCreateTensorWithShape(gpu_info, shape);
+  }
+
+  storage_type = TensorStorageType::IMAGE_BUFFER;
+  if (gpu_info.SupportsImageBuffer() &&
+      CanCreateTensorWithShape(gpu_info, shape).ok()) {
+    return absl::OkStatus();
+  }
+  storage_type = TensorStorageType::BUFFER;
+  return CanCreateTensorWithShape(gpu_info, shape);
+}
 }  // namespace gpu
 }  // namespace tflite

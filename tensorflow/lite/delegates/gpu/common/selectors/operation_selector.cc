@@ -94,20 +94,10 @@ absl::Status WinogradFromNode(const GpuInfo& gpu_info,
   const int tiles_y = DivideRoundUp(output_shape.h, 4);
   const BHWC shape_0{input_shape.b, 36, tiles_x * tiles_y, input_shape.c};
   const BHWC shape_1{input_shape.b, 36, tiles_x * tiles_y, output_shape.c};
-  TensorDescriptor td_0;
-  RETURN_IF_ERROR(SelectBestStorageType(
-      gpu_info, shape_0, op_def.src_tensors[0].storage_type,
-      op_def.src_tensors[0].data_type, op_def.src_tensors[0].layout,
-      &td_0.storage_type));
-  td_0.data_type = op_def.src_tensors[0].data_type;
-  td_0.layout = op_def.src_tensors[0].layout;
-  TensorDescriptor td_1;
-  RETURN_IF_ERROR(SelectBestStorageType(
-      gpu_info, shape_1, op_def.src_tensors[0].storage_type,
-      op_def.src_tensors[0].data_type, op_def.src_tensors[0].layout,
-      &td_1.storage_type));
-  td_1.data_type = op_def.src_tensors[0].data_type;
-  td_1.layout = op_def.src_tensors[0].layout;
+  TensorDescriptor td_0 = op_def.src_tensors[0];
+  RETURN_IF_ERROR(td_0.UpdateToSupportedStorageType(gpu_info, shape_0));
+  TensorDescriptor td_1 = op_def.src_tensors[0];
+  RETURN_IF_ERROR(td_1.UpdateToSupportedStorageType(gpu_info, shape_1));
   gpu_subgraph->new_tensors = {{shape_0, td_0}, {shape_1, td_1}};
   gpu_subgraph->operations.clear();
   gpu_subgraph->operations.resize(3);
@@ -324,7 +314,7 @@ absl::Status GPUOperationFromNodePart0(
            inputs[1]->tensor.shape.c == 1)) {
         GPUOperation operation =
             CreateElementwiseTwoInput(op_def, op_type, inputs[1]->tensor.shape);
-        *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
+        *gpu_op = std::make_unique<GPUOperation>(std::move(operation));
         return absl::OkStatus();
       } else if (inputs.size() >= 2) {
         auto output = outputs[0];
@@ -339,7 +329,7 @@ absl::Status GPUOperationFromNodePart0(
             absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
         GPUOperation operation =
             CreateElementwise(gpu_info, op_def, op_type, attr);
-        *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
+        *gpu_op = std::make_unique<GPUOperation>(std::move(operation));
         return absl::OkStatus();
       }
       return absl::UnimplementedError(absl::StrCat(
@@ -372,10 +362,8 @@ absl::Status GPUOperationFromNodePart0(
       TensorDescriptor transposed_desc = {op_def.src_tensors[1].data_type,
                                           op_def.src_tensors[1].storage_type,
                                           Layout::BHWC};
-      RETURN_IF_ERROR(SelectBestStorageType(
-          gpu_info, weights_shape_bhwc, transposed_desc.storage_type,
-          transposed_desc.data_type, transposed_desc.layout,
-          &transposed_desc.storage_type));
+      RETURN_IF_ERROR(transposed_desc.UpdateToSupportedStorageType(
+          gpu_info, weights_shape_bhwc));
       gpu_subgraph->operations.resize(1);
       auto& transpose_op = gpu_subgraph->operations[0];
       OperationDef transpose_def;
@@ -386,7 +374,7 @@ absl::Status GPUOperationFromNodePart0(
       transpose_op.input_ids = {static_cast<int>(inputs[1]->id)};
       TransposeAttributes transpose_attr;
       transpose_attr.perm = BHWC(3, 0, 1, 2);
-      transpose_op.operation = absl::make_unique<GPUOperation>(
+      transpose_op.operation = std::make_unique<GPUOperation>(
           CreateTranspose(transpose_def, transpose_attr));
       transpose_op.name = "mat_mul_transpose_second_tensor";
 
@@ -608,8 +596,7 @@ absl::Status GPUOperationFromNodePart0(
     case OperationType::MEAN_STDDEV_NORMALIZATION: {
       MeanStdDevNormalization operation = CreateMeanStdDevNormalization(
           op_def, gpu_info, (inputs[0]->tensor.shape.c + 3) / 4);
-      *gpu_op =
-          absl::make_unique<MeanStdDevNormalization>(std::move(operation));
+      *gpu_op = std::make_unique<MeanStdDevNormalization>(std::move(operation));
       return absl::OkStatus();
     }
     case OperationType::PAD: {
@@ -704,7 +691,7 @@ absl::Status GPUOperationFromNodePart0(
     case OperationType::TANH: {
       GPUOperation operation =
           CreateElementwiseOneInput(gpu_info, op_def, op_type);
-      *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
+      *gpu_op = std::make_unique<GPUOperation>(std::move(operation));
       return absl::OkStatus();
     }
     case OperationType::DIV:
@@ -723,14 +710,14 @@ absl::Status GPUOperationFromNodePart0(
       if (inputs.size() == 2) {
         GPUOperation operation =
             CreateElementwiseTwoInput(op_def, op_type, inputs[1]->tensor.shape);
-        *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
+        *gpu_op = std::make_unique<GPUOperation>(std::move(operation));
         return absl::OkStatus();
       } else if (inputs.size() == 1 && node.operation.attributes.has_value()) {
         auto attr =
             absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
         GPUOperation operation =
             CreateElementwise(gpu_info, op_def, op_type, attr);
-        *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
+        *gpu_op = std::make_unique<GPUOperation>(std::move(operation));
         return absl::OkStatus();
       }
       return absl::UnimplementedError(absl::StrCat(
