@@ -1605,6 +1605,16 @@ func.func @main(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>, %init0: tensor<f
 
 // -----
 
+// CHECK: HloModule
+func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK: %[[ARG0:.*]] = f32[2] parameter(0)
+  %0 = "mhlo.round_nearest_even"(%arg0) {} : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: round-nearest-even(f32[2] %[[ARG0]])
+  func.return %0 : tensor<2xf32>
+}
+
+// -----
+
 // CHECK:  HloModule
 func.func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> {
 // CHECK: %[[ARG0:.*]] = f32[3,4] parameter(0)

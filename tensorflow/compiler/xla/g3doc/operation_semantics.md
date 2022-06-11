@@ -1390,6 +1390,9 @@ using the comparison operator of the element type of `operand`.
 
 <b>`Tanh(operand)`</b> Element-wise hyperbolic tangent `x -> tanh(x)`.
 
+<b>`Round(operand)`</b> Element-wise rounding, ties away from zero.
+
+<b>`RoundNearestEven(operand)`</b> Element-wise rounding, ties to nearest even.
 
 Arguments | Type    | Semantics
 --------- | ------- | ---------------------------

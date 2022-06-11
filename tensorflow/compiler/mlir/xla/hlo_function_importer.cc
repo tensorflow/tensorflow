@@ -1407,6 +1407,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       // implements it as a separate transpose.
       NO_ATTRIBUTE_CASE(kReshape, ReshapeOp);
       NO_ATTRIBUTE_CASE(kRoundNearestAfz, RoundOp);
+      NO_ATTRIBUTE_CASE(kRoundNearestEven, RoundNearestEvenOp);
       NO_ATTRIBUTE_CASE(kRsqrt, RsqrtOp);
       NO_ATTRIBUTE_CASE(kSelect, SelectOp);
       NO_ATTRIBUTE_CASE(kShiftLeft, ShiftLeftOp);

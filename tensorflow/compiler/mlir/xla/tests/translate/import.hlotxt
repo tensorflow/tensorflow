@@ -1470,6 +1470,14 @@ add {
   ROOT %pid = u32[] partition-id()
 }
 
+// CHECK-LABEL: func private @round_nearest_even
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<2xf32>)
+%round_nearest_even (Arg_0.1: f32[2]) -> f32[2] {
+  %Arg_0.1 = f32[2] parameter(0)
+  ROOT %round-nearest-even.2 = f32[2] round-nearest-even(f32[2] %Arg_0.1)
+  // CHECK: mhlo.round_nearest_even %[[ARG0]] : tensor<2xf32>
+}
+
 // CHECK-LABEL: func private @add_dependency
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<4x4xf32>)
 %add_dependency (Arg_0.1: f32[4,4]) -> f32[4,4] {

@@ -4755,6 +4755,9 @@ XlaOp Ceil(const XlaOp operand) {
 XlaOp Round(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kRoundNearestAfz, operand);
 }
+XlaOp RoundNearestEven(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kRoundNearestEven, operand);
+}
 XlaOp Log(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kLog, operand);
 }
