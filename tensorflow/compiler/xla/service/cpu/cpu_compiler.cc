@@ -424,7 +424,9 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       spmd_pipeline.AddPass<ZeroSizedHloElimination>();
       spmd_pipeline.AddPass<ConditionalCanonicalizer>();
 
-      spmd_pipeline.AddPass<ShardingPropagation>(/*is_spmd=*/true);
+      spmd_pipeline.AddPass<ShardingPropagation>(
+          /*is_spmd=*/true, /*propagate_metadata=*/false,
+          module->config().allow_spmd_sharding_propagation_to_output());
       spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
           num_partitions, module->config().replica_count());
     } else {
