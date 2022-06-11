@@ -29,11 +29,6 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-enum class AddressMode {
-  kDontCare,
-  kZero,
-};
-
 enum class TensorStorageType {
   UNKNOWN,
   BUFFER,
@@ -78,7 +73,6 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   size_t GetSizeInBytesForShape(const BHWDC& shape5d) const;
 
   bool HasAxis(Axis axis) const;
-  void SetAddressMode(AddressMode mode);
   int GetWidthSize(BHWDC shape) const;
   int GetSliceStrideSize(BHWDC shape) const;
 
@@ -203,8 +197,6 @@ struct TensorDescriptor : public GPUObjectDescriptor {
                     const std::vector<std::string>& coords) const;
 
   bool IsBatchedWidth() const;
-
-  AddressMode AddressModeFromState() const;
 
   absl::Status MaybeGetDataTypeFromTemplateArgs(
       const std::vector<std::string>& template_args, DataType* result) const;

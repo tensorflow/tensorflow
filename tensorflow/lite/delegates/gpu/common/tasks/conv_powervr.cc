@@ -267,7 +267,6 @@ void ConvPowerVR::GenerateCode(const GpuInfo& gpu_info) {
       definition_.IsBatchSupported() && stride_.x != 1;
 
   auto src_desc = definition_.src_tensors[0];
-  src_desc.SetAddressMode(AddressMode::kZero);
   if (definition_.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }

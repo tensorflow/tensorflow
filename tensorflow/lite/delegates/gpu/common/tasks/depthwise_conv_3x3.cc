@@ -56,7 +56,6 @@ std::string DepthwiseConv3x3::GenerateDepthwiseConvCode(
     const GpuInfo& gpu_info, const OperationDef& op_def,
     bool weights_are_buffer, bool local_mem_uploads) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetAddressMode(AddressMode::kZero);
   AddSrcTensor("src_tensor", src_desc);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
