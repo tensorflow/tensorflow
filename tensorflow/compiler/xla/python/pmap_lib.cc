@@ -284,9 +284,21 @@ class PmapFunction {
       arguments.signature.dynamic_arg_signatures.push_back(
           std::move(signature_or_error).ValueOrDie());
     }
-    arguments.signature.global_extra_jit_context =
-        global_state.extra_jit_context;
-    arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;
+    try {
+      py::object pxla_module = py::module::import("jax").attr("config");
+      py::object sda = py::getattr(pxla_module, "_trace_context", py::none());
+      if (!sda.is_none()) {
+        arguments.signature.thread_local_extra_jit_context = sda();
+      }
+    } catch (const py::error_already_set& e) {
+      // Ignore; jax may not be present.
+    }
+    if (!arguments.signature.thread_local_extra_jit_context.has_value()) {
+      arguments.signature.thread_local_extra_jit_context =
+          tls.extra_jit_context;
+      arguments.signature.global_extra_jit_context =
+          global_state.extra_jit_context;
+    }
     return xla::Status();
   }
 
