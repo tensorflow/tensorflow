@@ -359,7 +359,9 @@ Status GpuCompiler::OptimizeHloModule(
       spmd_simplify.AddPass<ConditionalSimplifier>();
       spmd_simplify.AddPass<HloDCE>();
 
-      spmd_pipeline.AddPass<ShardingPropagation>(/*is_spmd=*/true);
+      spmd_pipeline.AddPass<ShardingPropagation>(
+          /*is_spmd=*/true, /*propagate_metadata=*/false,
+          hlo_module->config().allow_spmd_sharding_propagation_to_output());
       spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
           num_partitions, hlo_module->config().replica_count());
     } else {
