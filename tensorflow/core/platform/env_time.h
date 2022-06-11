@@ -58,6 +58,37 @@ class EnvTime {
   virtual uint64 GetOverridableNowSeconds() const {
     return GetOverridableNowNanos() / kSecondsToNanos;
   }
+
+  /// \brief Returns the absolute elapsed wall-clock time in nano-seconds since
+  /// some arbitrary and fixed point. Use it for time measurement or profiling.
+  static uint64 MonotonicNanos();
+
+  /// \brief Returns the absolute elapsed wall-clock time in micro-seconds since
+  /// some arbitrary and fixed point. Use it for time measurement or profiling.
+  static uint64 MonotonicMicros() { return MonotonicNanos() / kMicrosToNanos; }
+
+  /// \brief Returns the absolute elapsed wall-clock time in seconds since some
+  /// arbitrary and fixed point. Use it for time measurement or profiling.
+  static uint64 MonotonicSeconds() {
+    return MonotonicNanos() / kSecondsToNanos;
+  }
+
+  /// \brief A version of MonotonicNanos() that may be overridden by a subclass.
+  virtual uint64 GetOverridableMonotonicNanos() const {
+    return MonotonicNanos();
+  }
+
+  /// \brief A version of MonotonicMicros() that may be overridden by a
+  /// subclass.
+  virtual uint64 GetOverridableMonotonicMicros() const {
+    return GetOverridableMonotonicNanos() / kMicrosToNanos;
+  }
+
+  /// \brief A version of MonotonicSeconds() that may be overridden by a
+  /// subclass.
+  virtual uint64 GetOverridableMonotonicSeconds() const {
+    return GetOverridableMonotonicNanos() / kSecondsToNanos;
+  }
 };
 
 }  // namespace tensorflow
