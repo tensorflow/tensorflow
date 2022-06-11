@@ -15,15 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/platform/env_time.h"
 
-#include <profileapi.h>
 #include <time.h>
 #include <windows.h>
-
 #include <chrono>
 
 using std::chrono::duration_cast;
 using std::chrono::nanoseconds;
-using std::chrono::steady_clock;
 using std::chrono::system_clock;
 
 namespace tensorflow {
@@ -68,22 +65,6 @@ uint64 EnvTime::NowNanos() {
     return li.QuadPart;
   }
   return duration_cast<nanoseconds>(system_clock::now().time_since_epoch())
-      .count();
-}
-
-uint64 EnvTime::MonotonicNanos() {
-  LARGE_INTEGER frequency;
-  LARGE_INTEGER counter;
-  // QueryPerformanceCounter and QueryPerformanceFrequency are guaranteed to
-  // succeed on Windows XP or later. In case of any failures, we then rely on
-  // std::chrono::steady_clock for monotonic time.
-  // All std::chrono clocks on Windows proved to return values that may
-  // repeat, which is not good enough for some uses.
-  if (QueryPerformanceFrequency(&frequency) &&
-      QueryPerformanceCounter(&counter)) {
-    return counter.QuadPart / frequency.QuadPart * kSecondsToNanos;
-  }
-  return duration_cast<nanoseconds>(steady_clock::now().time_since_epoch())
       .count();
 }
 

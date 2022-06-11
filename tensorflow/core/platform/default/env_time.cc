@@ -28,12 +28,4 @@ uint64 EnvTime::NowNanos() {
           static_cast<uint64>(ts.tv_nsec));
 }
 
-/* static */
-uint64 EnvTime::MonotonicNanos() {
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  return (static_cast<uint64>(ts.tv_sec) * kSecondsToNanos +
-          static_cast<uint64>(ts.tv_nsec));
-}
-
 }  // namespace tensorflow

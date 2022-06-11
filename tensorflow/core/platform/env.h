@@ -417,20 +417,6 @@ class Env {
   /// \brief Returns the number of seconds since the Unix epoch.
   virtual uint64 NowSeconds() const { return EnvTime::NowSeconds(); }
 
-  /// \brief Returns the absolute elapsed wall-clock time in nano-seconds since
-  /// some arbitrary and fixed point. Use it for time measurement or profiling.
-  virtual uint64 MonotonicNanos() const { return EnvTime::MonotonicNanos(); }
-
-  /// \brief Returns the absolute elapsed wall-clock time in micro-seconds since
-  /// some arbitrary and fixed point. Use it for time measurement or profiling.
-  virtual uint64 MonotonicMicros() const { return EnvTime::MonotonicMicros(); }
-
-  /// \brief Returns the absolute elapsed wall-clock time in seconds since some
-  /// arbitrary and fixed point. Use it for time measurement or profiling.
-  virtual uint64 MonotonicSeconds() const {
-    return EnvTime::MonotonicSeconds();
-  }
-
   /// Sleeps/delays the thread for the prescribed number of micro-seconds.
   virtual void SleepForMicroseconds(int64_t micros) = 0;
 
