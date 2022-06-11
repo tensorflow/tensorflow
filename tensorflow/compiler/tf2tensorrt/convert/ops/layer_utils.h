@@ -341,6 +341,18 @@ class TRTNetworkBuilder {
     return const_layer;
   }
 
+  Status get_tensor4TensorOrWeights(const TRT_TensorOrWeights& input,
+                                    ITensorProxyPtr* pTensor) {
+    if (input.is_weights()) {
+      StatusOr<nvinfer1::IConstantLayer*> const_layer = WeightsToConstant(
+          input.weights().GetTrtWeights(), input.GetTrtDims());
+      if (!const_layer.status().ok()) return const_layer.status();
+      *pTensor = (*const_layer)->getOutput(0);
+    } else {
+      *pTensor = input.tensor();
+    }
+    return Status::OK();
+  }
   // Creates a nvinfer1::Weights object containing a single scalar.
   template <typename T,
             typename std::enable_if<std::is_pod<T>::value>::type* = nullptr>
