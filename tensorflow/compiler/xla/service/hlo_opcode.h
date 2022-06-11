@@ -36,6 +36,10 @@ namespace xla {
 // Each entry has the format:
 // (enum_name, opcode_name, arity)
 //
+// If you change one of these opcodes, please make the corresponding change to
+// mhlo in tf/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td, to
+// keep both operation sets synchronized.
+//
 // Note: Do not use ':' in opcode names. It is used as a special character
 // in these places:
 // - In extended opcode strings (HloInstruction::ExtendedOpcodeString()), to
