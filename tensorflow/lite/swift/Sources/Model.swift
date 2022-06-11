@@ -23,6 +23,12 @@ final class Model {
   /// The underlying `TfLiteModel` C pointer.
   let cModel: CModel?
 
+  /// The underlying data if data init is used
+  /// From c_api.h: The caller retains ownership of the `model_data` and should ensure that
+  // the lifetime of the `model_data` must be at least as long as the lifetime
+  // of the `TfLiteModel`.
+  let data: Data?
+
   /// Creates a new instance with the given `filePath`.
   ///
   /// - Precondition: Initialization can fail if the given `filePath` is invalid.
@@ -34,7 +40,8 @@ final class Model {
   }
 
   init?(modelData: Data) {
-    self.cModel = modelData.withUnsafeBytes { TfLiteModelCreate($0, modelData.count) }
+    self.data = modelData
+    self.cModel = self.data.withUnsafeBytes { TfLiteModelCreate($0, self.data.count) }
   }
 
   deinit {
