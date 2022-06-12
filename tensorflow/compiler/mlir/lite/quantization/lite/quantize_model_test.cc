@@ -210,7 +210,7 @@ void ExpectSameModels(const ModelT& model, const ModelT& expected_model) {
           continue;
         }
         ExpectEqualTensor(tensor.get(), expected_tensor);
-        if (tensor->buffer >= 0) {
+        if (expected_tensor->buffer > 0) {
           const int buffer_idx = tensor->buffer;
           const int expected_buffer_idx = expected_tensor->buffer;
           const auto buffer = model.buffers[buffer_idx].get()->data;

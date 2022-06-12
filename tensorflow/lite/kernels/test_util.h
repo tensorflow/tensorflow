@@ -268,12 +268,12 @@ class SingleOpModel {
       if (i < t.shape.size() &&
           t.format[t.traversal_order[i]] == kTfLiteDimSparseCSR) {
         auto array_segments =
-            CreateInt32Vector(builder_,
-                              builder_.CreateVector(dim_metadata[metadata_idx]))
+            CreateInt32Vector(builder_, builder_.CreateVector<int>(
+                                            dim_metadata[metadata_idx]))
                 .Union();
         auto array_indices =
-            CreateInt32Vector(
-                builder_, builder_.CreateVector(dim_metadata[metadata_idx + 1]))
+            CreateInt32Vector(builder_, builder_.CreateVector<int>(
+                                            dim_metadata[metadata_idx + 1]))
                 .Union();
         fb_dim_metadata[i] = CreateDimensionMetadata(
             builder_, DimensionType_SPARSE_CSR, 0,
@@ -286,8 +286,8 @@ class SingleOpModel {
     }
 
     flatbuffers::Offset<SparsityParameters> s_param = CreateSparsityParameters(
-        builder_, builder_.CreateVector(t.traversal_order),
-        builder_.CreateVector(t.block_map),
+        builder_, builder_.CreateVector<int>(t.traversal_order),
+        builder_.CreateVector<int>(t.block_map),
         builder_.CreateVector(fb_dim_metadata));
 
     int buffer_id = 0;
@@ -382,9 +382,11 @@ class SingleOpModel {
         float min, max, scaling_factor;
         tensor_utils::SymmetricQuantizeFloats(
             sparse_data.data(), length, q.data(), &min, &max, &scaling_factor);
+        std::vector<float> scales{scaling_factor};
+        std::vector<int64_t> zero_points{0};
         q_params = CreateQuantizationParameters(
-            builder_, 0, 0, builder_.CreateVector<float>({scaling_factor}),
-            builder_.CreateVector<int64_t>({0}));
+            builder_, 0, 0, builder_.CreateVector<float>(scales),
+            builder_.CreateVector<int64_t>(zero_points));
         auto data_buffer = builder_.CreateVector(
             reinterpret_cast<const uint8_t*>(q.data()), q.size());
         buffers_.push_back(CreateBuffer(builder_, data_buffer));
@@ -392,9 +394,11 @@ class SingleOpModel {
         CHECK_EQ(t.type, TensorType_INT8)
             << "The INT8 quantization is only supported for sparsified tensor";
         auto q = Quantize<int8_t>(sparse_data, t.scale, t.zero_point);
+        std::vector<float> scales{t.scale};
+        std::vector<int64_t> zero_points{0};
         q_params = CreateQuantizationParameters(
-            builder_, t.min, t.max, builder_.CreateVector<float>({t.scale}),
-            builder_.CreateVector<int64_t>({0}));
+            builder_, t.min, t.max, builder_.CreateVector<float>(scales),
+            builder_.CreateVector<int64_t>(zero_points));
         auto data_buffer = builder_.CreateVector(
             reinterpret_cast<const uint8_t*>(q.data()), q.size());
         buffers_.push_back(CreateBuffer(builder_, data_buffer));
@@ -710,10 +714,11 @@ class SingleOpModel {
         t.max = 0;
       }
 
+      std::vector<float> scales{t.scale};
+      std::vector<int64_t> zero_points{t.zero_point};
       q_params = CreateQuantizationParameters(
-          builder_, /*min=*/0, /*max=*/0,
-          builder_.CreateVector<float>({t.scale}),
-          builder_.CreateVector<int64_t>({t.zero_point}));
+          builder_, /*min=*/0, /*max=*/0, builder_.CreateVector<float>(scales),
+          builder_.CreateVector<int64_t>(zero_points));
     }
 
     int buffer_id = 0;

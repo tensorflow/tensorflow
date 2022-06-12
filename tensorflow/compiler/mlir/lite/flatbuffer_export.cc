@@ -785,17 +785,19 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
       GetTFLiteType(tensor_type.getElementType()).ValueOrDie();
   BufferOffset<tflite::QuantizationParameters> q_params = 0;
   if (auto qtype = element_type.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+    std::vector<float> scales = {static_cast<float>(qtype.getScale())};
+    std::vector<int64_t> zero_points = {qtype.getZeroPoint()};
     q_params = tflite::CreateQuantizationParameters(
-        builder_, /*min=*/0, /*max=*/0,
-        builder_.CreateVector<float>({static_cast<float>(qtype.getScale())}),
-        builder_.CreateVector<int64_t>({qtype.getZeroPoint()}));
+        builder_, /*min=*/0, /*max=*/0, builder_.CreateVector<float>(scales),
+        builder_.CreateVector<int64_t>(zero_points));
   } else if (auto qtype =
                  element_type
                      .dyn_cast<mlir::quant::CalibratedQuantizedType>()) {
+    std::vector<float> mins = {static_cast<float>(qtype.getMin())};
+    std::vector<float> maxs = {static_cast<float>(qtype.getMax())};
     q_params = tflite::CreateQuantizationParameters(
-        builder_,
-        builder_.CreateVector<float>({static_cast<float>(qtype.getMin())}),
-        builder_.CreateVector<float>({static_cast<float>(qtype.getMax())}));
+        builder_, builder_.CreateVector<float>(mins),
+        builder_.CreateVector<float>(maxs));
   }
   return tflite::CreateTensor(
       builder_, builder_.CreateVector(shape), tflite_element_type,
@@ -869,20 +871,23 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
 
   BufferOffset<tflite::QuantizationParameters> q_params;
   if (auto qtype = element_type.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+    std::vector<float> scales = {static_cast<float>(qtype.getScale())};
+    std::vector<int64_t> zero_points = {qtype.getZeroPoint()};
     q_params = tflite::CreateQuantizationParameters(
         // min and max values are not stored in the quantized type from MLIR, so
         // both are set to 0 in the flatbuffer when they are exported.
-        builder_, /*min=*/0, /*max=*/0,
-        builder_.CreateVector<float>({static_cast<float>(qtype.getScale())}),
-        builder_.CreateVector<int64_t>({qtype.getZeroPoint()}));
+        builder_, /*min=*/0, /*max=*/0, builder_.CreateVector<float>(scales),
+        builder_.CreateVector<int64_t>(zero_points));
   } else if (auto qtype =
                  element_type
                      .dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
     std::vector<float> scales(qtype.getScales().begin(),
                               qtype.getScales().end());
+    std::vector<int64_t> zero_points(qtype.getZeroPoints().begin(),
+                                     qtype.getZeroPoints().end());
     q_params = tflite::CreateQuantizationParameters(
         builder_, /*min=*/0, /*max=*/0, builder_.CreateVector<float>(scales),
-        builder_.CreateVector<int64_t>(qtype.getZeroPoints()),
+        builder_.CreateVector<int64_t>(zero_points),
         tflite::QuantizationDetails_NONE, /*details=*/0,
         qtype.getQuantizedDimension());
   } else if (quant_parameters.hasValue()) {
