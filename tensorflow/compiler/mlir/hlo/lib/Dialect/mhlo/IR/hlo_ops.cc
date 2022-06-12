@@ -4030,123 +4030,6 @@ LogicalResult InfeedOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// Logical Ops
-//===----------------------------------------------------------------------===//
-
-OpFoldResult AndOp::fold(ArrayRef<Attribute> operands) {
-  if (lhs() == rhs()) return lhs();
-
-  auto rType = getType().cast<ShapedType>();
-  auto lhsVal = operands[0].dyn_cast_or_null<DenseElementsAttr>();
-  auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
-
-  if (lhsVal && lhsVal.isSplat()) {
-    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnesValue()) {
-      return rhs();
-    }
-
-    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
-      return lhsVal;
-    }
-  }
-
-  if (rhsVal && rhsVal.isSplat()) {
-    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnesValue()) {
-      return lhs();
-    }
-
-    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
-      return rhsVal;
-    }
-  }
-
-  if (!rhsVal || !lhsVal) return {};
-
-  llvm::SmallVector<APInt, 4> values;
-  values.reserve(rhsVal.getNumElements());
-  for (auto it :
-       llvm::zip(rhsVal.getValues<APInt>(), lhsVal.getValues<APInt>())) {
-    values.push_back(std::get<0>(it) & std::get<1>(it));
-  }
-
-  return DenseIntElementsAttr::get(rType, values);
-}
-
-OpFoldResult OrOp::fold(ArrayRef<Attribute> operands) {
-  if (lhs() == rhs()) return lhs();
-
-  auto rType = getType().cast<ShapedType>();
-  auto lhsVal = operands[0].dyn_cast_or_null<DenseElementsAttr>();
-  auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
-
-  if (lhsVal && lhsVal.isSplat()) {
-    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnesValue()) {
-      return lhsVal;
-    }
-
-    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
-      return rhs();
-    }
-  }
-
-  if (rhsVal && rhsVal.isSplat()) {
-    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnesValue()) {
-      return rhsVal;
-    }
-
-    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
-      return lhs();
-    }
-  }
-
-  if (!rhsVal || !lhsVal) return {};
-
-  llvm::SmallVector<APInt, 4> values;
-  values.reserve(rhsVal.getNumElements());
-  for (auto it :
-       llvm::zip(rhsVal.getValues<APInt>(), lhsVal.getValues<APInt>())) {
-    values.push_back(std::get<0>(it) | std::get<1>(it));
-  }
-
-  return DenseIntElementsAttr::get(rType, values);
-}
-
-OpFoldResult XorOp::fold(ArrayRef<Attribute> operands) {
-  // Fold x^x to 0. Attributes only support static shapes.
-  auto rType = getType().cast<ShapedType>();
-  if (lhs() == rhs() && rType.hasStaticShape()) {
-    Builder builder(getContext());
-    return builder.getZeroAttr(rType);
-  }
-
-  auto lhsVal = operands[0].dyn_cast_or_null<DenseElementsAttr>();
-  auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
-
-  if (lhsVal && lhsVal.isSplat()) {
-    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
-      return rhs();
-    }
-  }
-
-  if (rhsVal && rhsVal.isSplat()) {
-    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
-      return lhs();
-    }
-  }
-
-  if (!rhsVal || !lhsVal) return {};
-
-  llvm::SmallVector<APInt, 4> values;
-  values.reserve(rhsVal.getNumElements());
-  for (auto it :
-       llvm::zip(rhsVal.getValues<APInt>(), lhsVal.getValues<APInt>())) {
-    values.push_back(std::get<0>(it) ^ std::get<1>(it));
-  }
-
-  return DenseIntElementsAttr::get(rType, values);
-}
-
-//===----------------------------------------------------------------------===//
 // MapOp
 //===----------------------------------------------------------------------===//
 
@@ -6054,6 +5937,21 @@ struct Min {
   T operator()(const T& a, const T& b) const { return std::min<T>(a, b); }
 };
 
+template <typename T>
+struct And {
+  T operator()(const T& a, const T& b) const { return a & b; }
+};
+
+template <typename T>
+struct Or {
+  T operator()(const T& a, const T& b) const { return a | b; }
+};
+
+template <typename T>
+struct Xor {
+  T operator()(const T& a, const T& b) const { return a ^ b; }
+};
+
 #define BINARY_FOLDER_INTERNAL(Op, Func)                                     \
   if (getElementTypeOrSelf(getType()).isa<FloatType>())                      \
     return BinaryFolder<Op, FloatType, APFloat, Func<APFloat>>(this, attrs); \
@@ -6124,6 +6022,97 @@ OpFoldResult MulOp::fold(ArrayRef<Attribute> attrs) {
     BINARY_FOLDER_INTERNAL(MulOp, std::multiplies);
   }
   return {};
+}
+
+//===----------------------------------------------------------------------===//
+// Logical Ops
+//===----------------------------------------------------------------------===//
+
+OpFoldResult AndOp::fold(ArrayRef<Attribute> operands) {
+  if (lhs() == rhs()) return lhs();
+
+  auto lhsVal = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+
+  if (lhsVal && lhsVal.isSplat()) {
+    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnesValue()) {
+      return rhs();
+    }
+
+    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
+      return lhsVal;
+    }
+  }
+
+  if (rhsVal && rhsVal.isSplat()) {
+    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnesValue()) {
+      return lhs();
+    }
+
+    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
+      return rhsVal;
+    }
+  }
+
+  if (!rhsVal || !lhsVal) return {};
+  return BinaryFolder<AndOp, IntegerType, APInt, And<APSInt>>(this, operands);
+}
+
+OpFoldResult OrOp::fold(ArrayRef<Attribute> operands) {
+  if (lhs() == rhs()) return lhs();
+
+  auto lhsVal = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+
+  if (lhsVal && lhsVal.isSplat()) {
+    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnesValue()) {
+      return lhsVal;
+    }
+
+    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
+      return rhs();
+    }
+  }
+
+  if (rhsVal && rhsVal.isSplat()) {
+    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnesValue()) {
+      return rhsVal;
+    }
+
+    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
+      return lhs();
+    }
+  }
+
+  if (!rhsVal || !lhsVal) return {};
+  return BinaryFolder<OrOp, IntegerType, APInt, Or<APSInt>>(this, operands);
+}
+
+OpFoldResult XorOp::fold(ArrayRef<Attribute> operands) {
+  // Fold x^x to 0. Attributes only support static shapes.
+  auto rType = getType().cast<ShapedType>();
+  if (lhs() == rhs() && rType.hasStaticShape()) {
+    Builder builder(getContext());
+    return builder.getZeroAttr(rType);
+  }
+
+  auto lhsVal = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+
+  if (lhsVal && lhsVal.isSplat()) {
+    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
+      return rhs();
+    }
+  }
+
+  if (rhsVal && rhsVal.isSplat()) {
+    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
+      return lhs();
+    }
+  }
+
+  if (!rhsVal || !lhsVal) return {};
+  return BinaryFolder<XorOp, IntegerType, APInt, Xor<APSInt>>(this, operands);
 }
 
 #undef BINARY_FOLDER_INTERNAL
