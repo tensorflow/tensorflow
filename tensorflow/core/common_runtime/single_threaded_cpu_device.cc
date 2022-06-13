@@ -56,7 +56,7 @@ class SingleThreadedCpuDevice : public Device {
 
   ~SingleThreadedCpuDevice() override { eigen_device_.reset(); }
 
-  Status Sync() override { return Status::OK(); }
+  Status Sync() override { return OkStatus(); }
 
   Status MakeTensorFromProto(const TensorProto& tensor_proto,
                              const AllocatorAttributes alloc_attrs,
@@ -66,7 +66,7 @@ class SingleThreadedCpuDevice : public Device {
       return errors::InvalidArgument("Cannot parse tensor from tensor_proto.");
     }
     *tensor = parsed;
-    return Status::OK();
+    return OkStatus();
   }
 
   void CopyTensorInSameDevice(const Tensor* input_tensor, Tensor* output_tensor,
@@ -79,7 +79,7 @@ class SingleThreadedCpuDevice : public Device {
       return;
     }
     tensor::DeepCopy(*input_tensor, output_tensor);
-    done(Status::OK());
+    done(OkStatus());
   }
 
   Allocator* GetAllocator(AllocatorAttributes attr) override {

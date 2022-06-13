@@ -300,7 +300,7 @@ func.func @testConcatCwiseBinarySynthMulOp3Inputs(%arg0: tensor<?x1xf32>, %arg1:
   func.return %ret : tensor<?x3xf32>
 }
 
-// Similar to to the above, with tf.Sub as the binary op kind.
+// Similar to the above, with tf.Sub as the binary op kind.
 func.func @testConcatCwiseBinarySynthSubOp3Inputs(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1xf32>, %arg2: tensor<?x1xf32>) -> tensor<?x3xf32> {
   // CHECK: %[[CONST:.*]] = "tf.Const"() {value = dense<[2.000000e+00, 3.000000e+00, 0.000000e+00]>
   // CHECK: %[[CONCAT:.*]] = "tf.ConcatV2"(%arg0, %arg1, %arg2,
@@ -1898,9 +1898,9 @@ func.func @testHashTableAndLookupTableFindToV2(%arg0: tensor<!tf_type.string>, %
 // CHECK-LABEL: testDivNoNanAndMulNoNanWithConstantY
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<2xf32>)
 func.func @testDivNoNanAndMulNoNanWithConstantY(%arg0: tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>) {
-  // CHECK: %[[CON3:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
+  // CHECK: %[[CON1:.*]] = "tf.Const"() {value = dense<[1.000000e+00, 2.000000e+00]> : tensor<2xf32>} : () -> tensor<2xf32>
   // CHECK-NEXT: %[[CON2:.*]] = "tf.Const"() {value = dense<[1.000000e+01, 0.000000e+00]> : tensor<2xf32>} : () -> tensor<2xf32>
-  // CHECK-NEXT: %[[CON1:.*]] = "tf.Const"() {value = dense<[1.000000e+00, 2.000000e+00]> : tensor<2xf32>} : () -> tensor<2xf32>
+  // CHECK-NEXT: %[[CON3:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
   // CHECK-NEXT: %[[RES1:.*]] = "tf.Div"(%[[ARG0]], %[[CON1]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   // CHECK-NEXT: %[[RES2:.*]] = "tf.MulNoNan"(%[[ARG0]], %[[CON2]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   // CHECK-NEXT: return %[[RES1]], %[[RES2]], %[[CON3]] : tensor<2xf32>, tensor<2xf32>, tensor<2xf32>
@@ -2037,4 +2037,26 @@ func.func @testReluOfMinimum6ToRelu6Int(%arg0: tensor<4xi32>) -> tensor<4xi32> {
   %0 = "tf.Minimum"(%arg0, %cst_6) : (tensor<4xi32>, tensor<i32>) -> tensor<4xi32>
   %1 = "tf.Relu"(%0) : (tensor<4xi32>) -> tensor<4xi32>
   func.return %1 : tensor<4xi32>
+}
+
+// CHECK-LABEL: testTensorListGetItem
+func.func @testTensorListGetItem(%arg0: tensor<1600x1x32xf32>, %arg1: tensor<2xi32>, %arg2: tensor<i32>) -> tensor<1x32xf32> {
+  %0 = "tf.TensorListFromTensor"(%arg0, %arg1) : (tensor<1600x1x32xf32>, tensor<2xi32>) -> tensor<!tf_type.variant<tensor<1x32xf32>>>
+  %1 = "tf.TensorListGetItem"(%0, %arg2, %arg1) : (tensor<!tf_type.variant<tensor<1x32xf32>>>, tensor<i32>, tensor<2xi32>) -> tensor<1x32xf32>
+  func.return %1 : tensor<1x32xf32>
+
+  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[RES:.*]] = "tf.GatherV2"(%arg0, %arg2, %cst) {batch_dims = 0 : i64} : (tensor<1600x1x32xf32>, tensor<i32>, tensor<i32>) -> tensor<1x32xf32>
+}
+
+// CHECK-LABEL: testTensorListGetItemMultipleUsers
+func.func @testTensorListGetItemMultipleUsers(%arg0: tensor<1600x1x32xf32>, %arg1: tensor<2xi32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> (tensor<1x32xf32>, tensor<1x32xf32>) {
+  %0 = "tf.TensorListFromTensor"(%arg0, %arg1) : (tensor<1600x1x32xf32>, tensor<2xi32>) -> tensor<!tf_type.variant<tensor<1x32xf32>>>
+  %1 = "tf.TensorListGetItem"(%0, %arg2, %arg1) : (tensor<!tf_type.variant<tensor<1x32xf32>>>, tensor<i32>, tensor<2xi32>) -> tensor<1x32xf32>
+  %2 = "tf.TensorListGetItem"(%0, %arg3, %arg1) : (tensor<!tf_type.variant<tensor<1x32xf32>>>, tensor<i32>, tensor<2xi32>) -> tensor<1x32xf32>
+  func.return %1, %2 : tensor<1x32xf32>, tensor<1x32xf32>
+
+  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[RES0:.*]] = "tf.GatherV2"(%arg0, %arg2, %cst) {batch_dims = 0 : i64} : (tensor<1600x1x32xf32>, tensor<i32>, tensor<i32>) -> tensor<1x32xf32>
+  // CHECK: %[[RES1:.*]] = "tf.GatherV2"(%arg0, %arg3, %cst) {batch_dims = 0 : i64} : (tensor<1600x1x32xf32>, tensor<i32>, tensor<i32>) -> tensor<1x32xf32>
 }

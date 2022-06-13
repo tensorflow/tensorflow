@@ -112,7 +112,7 @@ Status RandomShuffleQueue::Initialize() {
   for (int i = 0; i < num_components(); ++i) {
     queues_[i].reserve(min_after_dequeue_);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void RandomShuffleQueue::DequeueLocked(OpKernelContext* ctx, Tuple* tuple) {
@@ -175,7 +175,7 @@ Status RandomShuffleQueue::GetElementComponentFromBatch(const Tuple& tuple,
       ctx->allocate_temp(tuple[component].dtype(), element_shape, out_tensor));
   TF_RETURN_IF_ERROR(
       batch_util::CopySliceToElement(tuple[component], out_tensor, index));
-  return Status::OK();
+  return OkStatus();
 }
 
 void RandomShuffleQueue::TryEnqueueMany(const Tuple& tuple,
@@ -468,7 +468,7 @@ Status RandomShuffleQueue::MatchesNodeDef(const NodeDef& node_def) {
   TF_RETURN_IF_ERROR(MatchesNodeDefTypes(node_def));
   TF_RETURN_IF_ERROR(MatchesNodeDefShapes(node_def));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Defines a RandomShuffleQueueOp, which produces a Queue (specifically, one

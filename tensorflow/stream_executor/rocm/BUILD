@@ -140,7 +140,6 @@ cc_library(
         ":rocm_platform_id",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
-        "//tensorflow/core:lib",
         "//tensorflow/stream_executor",  # buildcleaner: keep
         "//tensorflow/stream_executor:executor_cache",
         "//tensorflow/stream_executor:multi_platform_manager",
@@ -192,7 +191,6 @@ cc_library(
         ":rocm_gpu_executor",
         ":rocm_platform_id",
         "//third_party/eigen3",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:event",
@@ -269,7 +267,6 @@ cc_library(
         ":rocm_gpu_executor",
         ":rocm_platform_id",
         "//third_party/eigen3",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor:dnn",
         "//tensorflow/stream_executor:event",

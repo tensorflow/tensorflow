@@ -112,11 +112,11 @@ class FakeDevice : public Device {
 class DummyFactory : public DeviceFactory {
  public:
   Status ListPhysicalDevices(std::vector<string>* devices) override {
-    return Status::OK();
+    return OkStatus();
   }
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
                        std::vector<std::unique_ptr<Device>>* devices) override {
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -255,14 +255,14 @@ class PlacerTest : public ::testing::Test {
   Status BuildGraph(const GraphDefBuilder& builder, Graph* out_graph) {
     TF_RETURN_IF_ERROR(GraphDefBuilderToGraph(builder, out_graph));
     RebuildNodeNameMap(*out_graph);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status BuildGraph(const GraphDef& graph_def, Graph* out_graph) {
     GraphConstructorOptions opts;
     TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, graph_def, out_graph));
     RebuildNodeNameMap(*out_graph);
-    return Status::OK();
+    return OkStatus();
   }
 
   // Invokes the Placer on "graph". If no DeviceSet is specified, the
@@ -959,7 +959,7 @@ Status PlacerTest::ReferenceTestHelper(const string& variable_op_type,
     EXPECT_DEVICE_TYPE(g, strings::StrCat("assign_", i), expected_device_type);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Test all 2^3 combinations of Variable and Assignment op types
@@ -1030,7 +1030,7 @@ TEST_F(PlacerTest, TestResourceHandle) {
     EXPECT_COLOCATED(g, "var", "assign");
     EXPECT_DEVICE_TYPE(g, "var", device);
     EXPECT_DEVICE_TYPE(g, "assign", device);
-    return Status::OK();
+    return OkStatus();
   };
   TF_EXPECT_OK(
       handle_test("TestHandleVariable", "TestHandleAssign", "FakeGPU"));
@@ -1096,7 +1096,7 @@ TEST_F(PlacerTest, TestResourceHandlesOnDifferentDevicesFails) {
           << s.ToString();
     }
 
-    return Status::OK();
+    return OkStatus();
   };
 
   TF_EXPECT_OK(handle_test(false, false));
@@ -1201,7 +1201,7 @@ TEST_F(PlacerTest, TestResourceHandleOnCompositeDevice) {
     // `var` is assigned to COMPOSITE.
     GetNodeByName(*g, "var")->set_assigned_device_name(
         "/job:a/replica:0/task:0/device:COMPOSITE:0");
-    return Status::OK();
+    return OkStatus();
   };
 
   {

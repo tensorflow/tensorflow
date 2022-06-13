@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/utils/perception_ops_utils.h"
 
+#include <string>
+
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project

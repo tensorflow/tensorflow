@@ -17,6 +17,7 @@ limitations under the License.
 #define HLO_OPS_BASE
 
 include "mlir/Dialect/Quant/QuantOpsBase.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/OpBase.td"
 
@@ -41,6 +42,8 @@ def HLO_SInt : SignlessIntOfWidths<[4, 8, 16, 32, 64]>;
 def HLO_UInt : UnsignedIntOfWidths<[4, 8, 16, 32, 64]>;
 def HLO_Int : AnyTypeOf<[HLO_SInt, HLO_UInt]>;
 
+def HLO_Float : AnyTypeOf<[F16, F32, F64, BF16]>;
+
 def HLO_Complex : Complex<AnyTypeOf<[F32, F64]>>;
 
 //===----------------------------------------------------------------------===//
@@ -49,22 +52,34 @@ def HLO_Complex : Complex<AnyTypeOf<[F32, F64]>>;
 
 // TODO(b/230381284): Upstream width-specific uniform quantized element types.
 class UniformQuantizedSignedInt<int width>
-  : Type<And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedType>()">,
-              CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
-                    ".getStorageTypeIntegralWidth() == " # width>,
-              CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
-                    ".isSigned()">]>,
+  : Type<Or<[
+      And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedType>()">,
+           CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
+                 ".getStorageTypeIntegralWidth() == " # width>,
+           CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
+                 ".isSigned()">]>,
+      And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedPerAxisType>()">,
+           CPred<"$_self.cast<mlir::quant::UniformQuantizedPerAxisType>()" #
+                 ".getStorageTypeIntegralWidth() == " # width>,
+           CPred<"$_self.cast<mlir::quant::UniformQuantizedPerAxisType>()" #
+                 ".isSigned()">]>]>,
     "QI" # width # " type"> {
   string name = "UniformQuantizedSignedInt";
   int bitwidth = width;
 }
 
 class UniformQuantizedUnsignedInt<int width>
-  : Type<And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedType>()">,
-              CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
-                    ".getStorageTypeIntegralWidth() == " # width>,
-              CPred<"!$_self.cast<mlir::quant::UniformQuantizedType>()" #
-                    ".isSigned()">]>,
+  : Type<Or<[
+      And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedType>()">,
+           CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
+                 ".getStorageTypeIntegralWidth() == " # width>,
+           CPred<"!$_self.cast<mlir::quant::UniformQuantizedType>()" #
+                 ".isSigned()">]>,
+      And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedPerAxisType>()">,
+           CPred<"$_self.cast<mlir::quant::UniformQuantizedPerAxisType>()" #
+                 ".getStorageTypeIntegralWidth() == " # width>,
+           CPred<"!$_self.cast<mlir::quant::UniformQuantizedPerAxisType>()" #
+                 ".isSigned()">]>]>,
     "QUI" # width # " type"> {
   string name = "UniformQuantizedUnsignedInt";
   int bitwidth = width;
@@ -107,14 +122,14 @@ def HLO_IntTensor : TensorOf<[HLO_Int]>;
 def HLO_ScalarIntTensor : 0DTensorOf<[HLO_Int]>;
 
 // Any floating-point tensor types
-def HLO_FpTensor : TensorOf<[AnyFloat]>;
+def HLO_FpTensor : TensorOf<[HLO_Float]>;
 
 // Any quantized integer tensor types
 def HLO_QuantizedIntTensor : TensorOf<[HLO_QuantizedInt]>;
 
 def HLO_PredTensor : TensorOf<[HLO_Pred]>;
 
-def HLO_Tensor : TensorOf<[AnyFloat, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt]>;
+def HLO_Tensor : TensorOf<[HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt]>;
 
 def HLO_ComplexTensor : TensorOf<[HLO_Complex]>;
 
@@ -126,7 +141,7 @@ def HLO_TensorOrToken : AnyTypeOf<[HLO_Tensor, HLO_Token]>;
 
 def HLO_TensorOrTokenOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Token, HLO_Tuple]>;
 
-def HLO_DimensionValue : AnyTypeOf<[Index, HLO_Pred, HLO_Int]>;
+def HLO_DimensionValue : AnyTypeOf<[Index, HLO_Int]>;
 
 // Dynamic representation of a shape vector as a tensor.
 def HLO_DimensionTensor : 1DTensorOf<[HLO_DimensionValue]>;
@@ -134,26 +149,26 @@ def HLO_DimensionTensor : 1DTensorOf<[HLO_DimensionValue]>;
 // In general, static shaped tensor constraints should be avoided unless
 // it is for a legacy op which is only correct with static shapes.
 def HLO_StaticShapeTensor : StaticShapeTensorOf<[
-      AnyFloat, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt]>;
+      HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt]>;
 
 //===----------------------------------------------------------------------===//
 // MHLO on tensors combined type definitions.
 //===----------------------------------------------------------------------===//
 
 // Any integer or floating-point tensor types
-def HLO_IntOrFpTensor : TensorOf<[HLO_Int, AnyFloat]>;
+def HLO_IntOrFpTensor : TensorOf<[HLO_Int, HLO_Float]>;
 
 // Any integer or predicate tensor types
 def HLO_PredOrIntTensor : TensorOf<[HLO_Pred, HLO_Int]>;
 
 // Any floating-point or complex tensor types
-def HLO_FpOrComplexTensor : TensorOf<[AnyFloat, HLO_Complex]>;
+def HLO_FpOrComplexTensor : TensorOf<[HLO_Float, HLO_Complex]>;
 
 // Any int, floating-point or complex tensor types
-def HLO_IntFpOrComplexTensor : TensorOf<[HLO_Int, AnyFloat, HLO_Complex]>;
+def HLO_IntFpOrComplexTensor : TensorOf<[HLO_Int, HLO_Float, HLO_Complex]>;
 
 // Any pred, int or floating-point tensor types
-def HLO_PredIntOrFpTensor : TensorOf<[HLO_Pred, HLO_Int, AnyFloat]>;
+def HLO_PredIntOrFpTensor : TensorOf<[HLO_Pred, HLO_Int, HLO_Float]>;
 
 // A layout attribute (1D tensor of index type)
 def HLO_LayoutAttr : Attr<
@@ -202,13 +217,13 @@ def ConvolutionAttributes {
   dag attributes = (ins
     // Default value: one for each of the spatial dimension.
     OptionalAttr<I64ElementsAttr>:$window_strides,
-    // Default value: zero for each of the spatial dimension.
+    // Default value: two zeros for each of the spatial dimension.
     OptionalAttr<I64ElementsAttr>:$padding,
     // Default value: one for each of the spatial dimension.
     OptionalAttr<I64ElementsAttr>:$lhs_dilation,
     // Default value: one for each of the spatial dimension.
     OptionalAttr<I64ElementsAttr>:$rhs_dilation,
-    // Default value: one for each of the spatial dimension.
+    // Default value: false for each of the spatial dimension.
     OptionalAttr<BoolElementsAttr>:$window_reversal,
     ConvDimensionNumbers:$dimension_numbers,
     I64Attr:$feature_group_count,
@@ -235,5 +250,17 @@ def HLO_BroadcastingElementwise : HLO_NativeOpTrait<"BroadcastingElementwise">;
 // TODO(b/195086460) Promote this to be an mlir trait and remove it here.
 def HLO_PairwiseSameOperandAndResultType :
   HLO_NativeOpTrait<"PairwiseSameOperandAndResultType">;
+
+// Op has operand and result types compatible with each other according to
+// the rules implemented in isCompatibleForMhloTypeInference, which account for
+// special properties dynamism, quantization and sparsity.
+def HLO_CompatibleOperandsAndResultType : TraitList<
+  // TODO(b/231358795): Review the use of InferTypeOpInterface for ops that
+  // support quantization or sparsity.
+  [
+    InferTypeOpInterface,
+    DeclareOpInterfaceMethods<InferShapedTypeOpInterface, ["inferReturnTypeComponents"]>,
+    HLO_NativeOpTrait<"CompatibleOperandsAndResultType">
+  ]>;
 
 #endif // HLO_OPS_BASE

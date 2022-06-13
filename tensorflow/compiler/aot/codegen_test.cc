@@ -40,7 +40,7 @@ namespace {
 using ::xla::cpu_function_runtime::BufferInfo;
 
 void ExpectErrorContains(const Status& status, absl::string_view str) {
-  EXPECT_NE(Status::OK(), status);
+  EXPECT_NE(OkStatus(), status);
   EXPECT_TRUE(absl::StrContains(status.error_message(), str))
       << "expected error: " << status.error_message() << " to contain: " << str;
 }
@@ -88,7 +88,7 @@ class ParseCppClassTest : public ::testing::Test {
   void ExpectFail(const string& cpp_class) {
     string class_name;
     std::vector<string> namespaces;
-    EXPECT_NE(ParseCppClass(cpp_class, &class_name, &namespaces), Status::OK())
+    EXPECT_NE(ParseCppClass(cpp_class, &class_name, &namespaces), OkStatus())
         << cpp_class;
   }
 };

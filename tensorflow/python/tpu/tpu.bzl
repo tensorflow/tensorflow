@@ -24,6 +24,7 @@ def tpu_py_test(
         tags = None,
         disable_v2 = False,
         disable_v3 = False,
+        disable_v3_4chips = True,
         disable_experimental = False,
         disable_mlir_bridge = True,
         disable_tfrt = None,
@@ -38,6 +39,7 @@ def tpu_py_test(
         tags: BUILD tags to apply to tests.
         disable_v2: If true, don't generate TPU v2 tests.
         disable_v3: If true, don't generate TPU v3 tests.
+        disable_v3_4chips: If true, don't generate TPU v3 2x2 tests.
         disable_experimental: Unused.
         disable_mlir_bridge: Unused.
         disable_tfrt: Unused.

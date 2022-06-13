@@ -17,18 +17,20 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_TFG_PASSES_BUILDER_H_
 
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace mlir {
 namespace tfg {
 
 // Constructs the default graph/function-level TFG pass pipeline.
-void DefaultGrapplerPipeline(PassManager& mgr);
+void DefaultGrapplerPipeline(PassManager& manager);
 
 // Constructs the default module-level TFG pass pipeline.
-void DefaultModuleGrapplerPipeline(PassManager& mgr);
+void DefaultModuleGrapplerPipeline(PassManager& manager,
+                                   const tensorflow::RewriterConfig& config);
 
-// Add a remapper pass to the given pass manager.
-void RemapperPassBuilder(PassManager& mgr);
+// Constructs the Remapper pass pipeline.
+void RemapperPassBuilder(PassManager& manager);
 
 }  // namespace tfg
 }  // namespace mlir

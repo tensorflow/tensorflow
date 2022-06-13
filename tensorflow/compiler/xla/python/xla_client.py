@@ -43,10 +43,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 63
+_version = 74
 
 # Version number for MLIR:Python components.
-mlir_api_version = 12
+mlir_api_version = 21
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -65,7 +65,7 @@ def make_cpu_client(*, use_tfrt: bool = True) -> ...:
     return _xla.get_cpu_client(asynchronous=True)
 
 
-def make_gpu_client(distributed_client=None, node_id=0):
+def make_gpu_client(distributed_client=None, node_id=0, platform_name=None):
   """Returns a GPU client. BFC allocator is used by default."""
   allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
   memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION')
@@ -91,7 +91,8 @@ def make_gpu_client(distributed_client=None, node_id=0):
       asynchronous=True,
       allocator_config=config,
       distributed_client=distributed_client,
-      node_id=node_id)
+      node_id=node_id,
+      platform_name=platform_name)
 
 
 def make_tpu_client():

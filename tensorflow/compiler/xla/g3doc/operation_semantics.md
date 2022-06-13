@@ -934,13 +934,6 @@ then b == f32[3]{0.0, 1.0, 2.0}
 
 Performs `AllReduce` with a summation computation.
 
-## OptimizationBarrier
-
-Blocks any optimization pass from moving computations across the barrier.
-
-Ensures that all inputs are evaluated before any operators that depend on the
-barrier's outputs.
-
 ## CustomCall
 
 See also
@@ -1397,6 +1390,9 @@ using the comparison operator of the element type of `operand`.
 
 <b>`Tanh(operand)`</b> Element-wise hyperbolic tangent `x -> tanh(x)`.
 
+<b>`Round(operand)`</b> Element-wise rounding, ties away from zero.
+
+<b>`RoundNearestEven(operand)`</b> Element-wise rounding, ties to nearest even.
 
 Arguments | Type    | Semantics
 --------- | ------- | ---------------------------
@@ -1862,6 +1858,13 @@ with S.
 For example: `Map(op1, op2, op3, computation, par1)` maps `elem_out <-
 computation(elem1, elem2, elem3, par1)` at each (multi-dimensional) index in the
 input arrays to produce the output array.
+
+## OptimizationBarrier
+
+Blocks any optimization pass from moving computations across the barrier.
+
+Ensures that all inputs are evaluated before any operators that depend on the
+barrier's outputs.
 
 ## Pad
 
@@ -2829,7 +2832,7 @@ rank as the input and contains the values inside a bounding box within the input
 array where the dimensions and indices of the bounding box are given as
 arguments to the slice operation.
 
-<b> `Slice(operand, start_indices, limit_indices)` </b>
+<b> `Slice(operand, start_indices, limit_indices, strides)` </b>
 
 | Arguments       | Type                | Semantics                            |
 | --------------- | ------------------- | ------------------------------------ |

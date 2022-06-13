@@ -53,7 +53,7 @@ Status GetNumLinesInTextFile(Env* env, const string& vocab_file,
     return s;
   }
   *num_lines = next_id;
-  return Status::OK();
+  return OkStatus();
 }
 
 // Iterator that reads a text file. Each iteration process one line, it parses
@@ -209,7 +209,7 @@ class TextFileLineIterator
                   int64_t index, Tensor* tensor) {
     if (index == kLineNumber) {
       tensor->flat<int64_t>()(0) = next_id_ + offset_;
-      return Status::OK();
+      return OkStatus();
     }
     const string& token = (index == kWholeLine) ? line : tokens[index];
     const DataType& dtype = tensor->dtype();
@@ -258,7 +258,7 @@ class TextFileLineIterator
         return errors::InvalidArgument("Data type ", DataTypeString(dtype),
                                        " not supported.");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   TF_DISALLOW_COPY_AND_ASSIGN(TextFileLineIterator);
@@ -281,7 +281,7 @@ Status GetTableHandle(StringPiece input_name, OpKernelContext* ctx,
     *container = h(0);
     *table_handle = h(1);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -343,7 +343,7 @@ Status GetInitializableLookupTable(StringPiece input_name, OpKernelContext* ctx,
                                      " is not initializable");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CheckTableDataTypes(const LookupInterface& table, DataType key_dtype,
@@ -355,7 +355,7 @@ Status CheckTableDataTypes(const LookupInterface& table, DataType key_dtype,
         DataTypeString(table.key_dtype()), "-",
         DataTypeString(table.value_dtype()), " for table ", table_name);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Helper function to initialize an InitializableLookupTable from a text file.
@@ -411,7 +411,7 @@ Status InitializeTableFromTextFile(
   if (errors::IsFailedPrecondition(s) && table->is_initialized()) {
     LOG(INFO) << "Table trying to initialize from file " << filename
               << " is already initialized.";
-    return Status::OK();
+    return OkStatus();
   }
   return s;
 }

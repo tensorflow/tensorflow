@@ -55,7 +55,7 @@ class MemorySpaceAssignmentTest : public HloTestBase,
 
   std::unique_ptr<PresetAssignments> AssignMemorySpaceUsingCostAnalysis(
       HloModule* module,
-      absl::optional<Options> memory_space_assignment_options = absl::nullopt) {
+      std::optional<Options> memory_space_assignment_options = std::nullopt) {
     HloCostAnalysis::Options cost_options{ShapeSize};
     cost_options.set_flops_per_second(kFlopsPerSecond);
     cost_options.set_bytes_per_second(kBytesPerSecond);
@@ -92,7 +92,8 @@ class MemorySpaceAssignmentTest : public HloTestBase,
   std::unique_ptr<PresetAssignments> AssignMemorySpace(
       HloModule* module, int64_t max_outstanding_async_copies = -1,
       int64_t max_prefetch_interval = 10, int64_t min_prefetch_interval = 2,
-      absl::optional<Options> options = absl::nullopt) {
+      std::optional<Options> options = std::nullopt) {
+    MemorySpaceAssignmentUtils::HoistParameters(*module);
     MemorySpaceAssignmentUtils::HoistConstantOperations(*module);
     InstructionCountPrefetchIntervalPicker prefetch_interval_picker(
         min_prefetch_interval, max_prefetch_interval);
@@ -103,10 +104,10 @@ class MemorySpaceAssignmentTest : public HloTestBase,
 
   std::unique_ptr<PresetAssignments> AssignMemorySpace(
       HloModule* module, int64_t max_outstanding_async_copies,
-      absl::optional<MemorySpaceAssignment::BufferIntervalCompare>
+      std::optional<MemorySpaceAssignment::BufferIntervalCompare>
           buffer_interval_compare,
       PrefetchIntervalPicker* prefetch_interval_picker,
-      absl::optional<Options> memory_space_assignment_options = absl::nullopt) {
+      std::optional<Options> memory_space_assignment_options = std::nullopt) {
     auto size_fn = [](const BufferValue& buffer) {
       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
     };
@@ -170,6 +171,7 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     if (check_parameters_in_default_memory) {
       CheckParametersInDefaultMemory(module);
     }
+    CheckRootInDefaultMemory(module);
     CheckPresetAssignments(preset_assignments.get());
     return preset_assignments;
   }
@@ -209,6 +211,15 @@ class MemorySpaceAssignmentTest : public HloTestBase,
             }
           });
     }
+  }
+
+  void CheckRootInDefaultMemory(const HloModule* module) {
+    EXPECT_EQ(module->entry_computation()
+                  ->root_instruction()
+                  ->shape()
+                  .layout()
+                  .memory_space(),
+              kDefaultMemorySpace);
   }
 
   struct OutstandingAsyncCopies {
@@ -1759,13 +1770,6 @@ TEST_P(MemorySpaceAssignmentTest, WhileCondAliasBug) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
-  // Expect the output to have default memory space.
-  EXPECT_EQ(module->entry_computation()
-                ->root_instruction()
-                ->shape()
-                .layout()
-                .memory_space(),
-            kDefaultMemorySpace);
 }
 
 TEST_P(MemorySpaceAssignmentTest, WhileInPlaceBuffer) {
@@ -2371,6 +2375,54 @@ TEST_P(MemorySpaceAssignmentTest, NestedConditionalBufferReuseVerificationBug) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
+}
+
+TEST_P(MemorySpaceAssignmentTest,
+       ConditionalComputationBufferOverlapBeforeParam) {
+  absl::string_view hlo_string = R"(
+  HloModule CondAllocation, is_scheduled=true
+
+  true_computation {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    ROOT neg2 = f32[3]{0} negate(gte)
+  }
+
+  false_computation {
+    c = f32[3]{0} constant({0.0, 1.0, 2.0})
+    neg0 = f32[3]{0} negate(c)
+    neg1 = f32[3]{0} negate(neg0)
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    ROOT add = f32[3]{0} add(gte, neg1)
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = pred[] parameter(1)
+    copy = f32[3]{0} copy(p0)
+    tuple = (f32[3]{0}) tuple(copy)
+    ROOT conditional = f32[3]{0} conditional(p1, tuple, tuple), true_computation=true_computation, false_computation=false_computation
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto preset_assignments = AssignMemorySpace(module.get());
+
+  auto get_offset = [&](absl::string_view hlo_name) {
+    for (const auto& chunk : preset_assignments->chunks()) {
+      if (chunk.first.instruction->name() == hlo_name) {
+        return chunk.second.offset;
+      }
+    }
+    return static_cast<int64_t>(-1);
+  };
+
+  int64_t copy_offset = get_offset("copy");
+  int64_t neg0_offset = get_offset("neg0");
+  EXPECT_NE(copy_offset, -1);
+  EXPECT_NE(neg0_offset, -1);
+  EXPECT_NE(copy_offset, neg0_offset);
 }
 
 TEST_P(MemorySpaceAssignmentTest,
@@ -5586,13 +5638,6 @@ TEST_P(MemorySpaceAssignmentTest,
   AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
                     /*buffer_interval_compare=*/{}, &prefetch_interval_picker,
                     options);
-  // Make sure the root of the entry computation is in the default memory space.
-  EXPECT_EQ(module->entry_computation()
-                ->root_instruction()
-                ->shape()
-                .layout()
-                .memory_space(),
-            kDefaultMemorySpace);
 }
 
 TEST_P(MemorySpaceAssignmentTest, Determinism) {
@@ -5688,13 +5733,6 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
-  // Make sure the root of the entry computation is in the default memory space.
-  EXPECT_EQ(module->entry_computation()
-                ->root_instruction()
-                ->shape()
-                .layout()
-                .memory_space(),
-            kDefaultMemorySpace);
 }
 
 INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
@@ -6483,6 +6521,106 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTupleTest) {
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 0);
+}
+
+TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDupMayAlias) {
+  absl::string_view hlo_string = R"(
+  HloModule cross_program_prefetch, is_scheduled=true, input_output_alias={ {}: (0, {}, may-alias) }
+    ENTRY CrossProgramPrefetch {
+      c0 = s32[1,2] constant({{77, 77}})
+      c1 = s32[] constant(0)
+      p0 = s32[2,2] parameter(0)
+      ROOT dup = s32[2,2] dynamic-update-slice(s32[2,2] p0, s32[1,2] c0, s32[] c1, s32[] c1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto preset_assignments = AssignMemorySpace(
+      module.get(), /*max_outstanding_async_copies=*/-1,
+      /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 1);
+}
+
+TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDup) {
+  absl::string_view hlo_string = R"(
+  HloModule cross_program_prefetch, is_scheduled=true
+    ENTRY CrossProgramPrefetch {
+      c0 = s32[1,2] constant({{77, 77}})
+      c1 = s32[] constant(0)
+      p0 = s32[2,2] parameter(0)
+      ROOT dup = s32[2,2] dynamic-update-slice(s32[2,2] p0, s32[1,2] c0, s32[] c1, s32[] c1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto preset_assignments = AssignMemorySpace(
+      module.get(), /*max_outstanding_async_copies=*/-1,
+      /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 1);
+}
+
+TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDupDot) {
+  // Cross program prefetch since the parameter and the root don't alias.
+  absl::string_view hlo_string = R"(
+  HloModule cross_program_prefetch, is_scheduled=true
+    ENTRY CrossProgramPrefetch {
+      c0 = s32[1,2] constant({{77, 77}})
+      c1 = s32[] constant(0)
+      p0 = s32[2,2] parameter(0)
+      p1 = s32[2,2] parameter(1)
+      dup = s32[2,2] dynamic-update-slice(s32[2,2] p0, s32[1,2] c0, s32[] c1, s32[] c1)
+      ROOT dot = s32[2,2] dot(p1, dup), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto preset_assignments = AssignMemorySpace(
+      module.get(), /*max_outstanding_async_copies=*/-1,
+      /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 1);
+}
+
+TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDotMayAlias) {
+  absl::string_view hlo_string = R"(
+  HloModule cross_program_prefetch, is_scheduled=true, input_output_alias={ {}: (0, {}, may-alias) }
+    ENTRY CrossProgramPrefetch {
+      p0 = s32[2,2] parameter(0)
+      p1 = s32[2,2] parameter(1)
+      ROOT dot = s32[2,2] dot(p1, p0), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto preset_assignments = AssignMemorySpace(
+      module.get(), /*max_outstanding_async_copies=*/-1,
+      /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 1);
+}
+
+TEST_P(MemorySpaceAssignmentTest, CrossProgramRootParameter) {
+  absl::string_view hlo_string = R"(
+  HloModule cross_program_prefetch, is_scheduled=true
+    ENTRY CrossProgramPrefetch {
+      p0 = s32[2,2] parameter(0)
+      ROOT bitcast = u32[2,2] bitcast(p0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto preset_assignments = AssignMemorySpace(
+      module.get(), /*max_outstanding_async_copies=*/-1,
+      /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 1);
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {

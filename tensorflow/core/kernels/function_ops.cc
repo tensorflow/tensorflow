@@ -50,7 +50,7 @@ void ArgOp::Compute(OpKernelContext* ctx) {
 
   auto validate_type = [this](const Tensor& val) {
     if (val.dtype() == dtype_) {
-      return Status::OK();
+      return OkStatus();
     } else {
       return errors::InvalidArgument("Type mismatch: actual ",
                                      DataTypeString(val.dtype()),

@@ -23,40 +23,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/stream_executor/scratch_allocator.h"
 
 namespace xla {
 namespace gpu {
-
-FftScratchAllocator::FftScratchAllocator(
-    int device_ordinal, se::DeviceMemoryAllocator* memory_allocator)
-    : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
-
-int64_t FftScratchAllocator::GetMemoryLimitInBytes() {
-  constexpr int64_t kFftScratchSize = 1LL << 32;  // 4GB by default.
-  return kFftScratchSize;
-}
-
-StatusOr<se::DeviceMemory<uint8_t>> FftScratchAllocator::AllocateBytes(
-    int64_t byte_size) {
-  CHECK_GE(byte_size, 0) << "byte_size must be positive.";
-  if (byte_size > GetMemoryLimitInBytes()) {
-    return se::port::Status(
-        se::port::error::RESOURCE_EXHAUSTED,
-        absl::StrFormat(
-            "Allocating %d bytes exceeds the memory limit of %d bytes.",
-            byte_size, GetMemoryLimitInBytes()));
-  }
-
-  TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory allocated_buffer,
-                      memory_allocator_->Allocate(device_ordinal_, byte_size,
-                                                  /*retry_on_failure=*/false));
-  total_allocated_bytes_ += byte_size;
-
-  se::DeviceMemoryBase buffer_addr = *allocated_buffer;
-  allocated_buffers_.push_back(std::move(allocated_buffer));
-  return se::DeviceMemory<uint8_t>(buffer_addr);
-}
-
 namespace {
 
 se::fft::Type FftTypeToSeType(FftType type, bool double_precision) {
@@ -107,43 +77,46 @@ FftThunk::FftThunk(ThunkInfo thunk_info, FftType fft_type,
           FftTypeToSeType(fft_type, input_shape.element_type() == F64 ||
                                         input_shape.element_type() == C128)),
       fft_length_(fft_length.begin(), fft_length.end()),
-      scale_factor_(1.0f),
       input_buffer_(input_buffer),
       output_buffer_(output_buffer),
       input_shape_(input_shape),
       output_shape_(output_shape) {}
 
 Status FftThunk::ExecuteOnStream(const ExecuteParams& params) {
-  auto& stream = *params.stream;
   auto& buffer_allocations = *params.buffer_allocations;
 
-  VLOG(3) << "FFT type: " << FftTypeToString(fft_type_);
-  VLOG(3) << "Input shape: " << ShapeUtil::HumanStringWithLayout(input_shape_);
-  VLOG(3) << "Output shape: "
-          << ShapeUtil::HumanStringWithLayout(output_shape_);
+  return RunFft(
+      buffer_allocations.GetDeviceAddress(input_buffer_), input_shape_,
+      buffer_allocations.GetDeviceAddress(output_buffer_), output_shape_,
+      fft_type_, fft_length_, buffer_allocations.device_ordinal(),
+      &fft_plan_cache_, params.stream, buffer_allocations.memory_allocator());
+}
 
-  FftScratchAllocator scratch_allocator(buffer_allocations.device_ordinal(),
-                                        buffer_allocations.memory_allocator());
-  FftPlan* fft_plan_ptr;
-  {
-    absl::MutexLock lock(&mu_);
-    std::unique_ptr<FftPlan>& plan =
-        fft_plans_[buffer_allocations.device_ordinal()];
-    if (!plan) {
-      plan = std::make_unique<FftPlan>();
-    }
-    fft_plan_ptr = plan.get();
-  }
+Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
+              se::DeviceMemoryBase output, const Shape& output_shape,
+              se::fft::Type fft_type, absl::Span<const int64_t> fft_len,
+              int device_ordinal, FftPlanCache* fft_plan_cache,
+              se::Stream* stream, se::DeviceMemoryAllocator* memory_allocator) {
+  VLOG(3) << "FFT type: " << FftTypeToString(fft_type);
+  VLOG(3) << "Input shape: " << ShapeUtil::HumanStringWithLayout(input_shape);
+  VLOG(3) << "Output shape: " << ShapeUtil::HumanStringWithLayout(output_shape);
+
+  se::OwningScratchAllocator<2> scratch_allocator(device_ordinal,
+                                                  memory_allocator);
+
+  // Get the Fft plan for the given device ordinal.
+  FftPlan* fft_plan_ptr = fft_plan_cache->GetOrCreate(device_ordinal);
+
   // CuFFT thread-safety requires that separate host threads not share plans;
   // protect each plan with a mutex.
   absl::MutexLock lock(&fft_plan_ptr->mu);
   std::unique_ptr<se::fft::Plan>& fft_plan = fft_plan_ptr->plan;
   if (fft_plan == nullptr) {
-    const int64_t fft_rank = fft_length_.size();
+    const int64_t fft_rank = fft_len.size();
     CHECK_LE(fft_rank, 3);
     int batch_size = 1;
-    for (int i = 0; i < input_shape_.dimensions_size() - fft_rank; ++i) {
-      batch_size *= input_shape_.dimensions(i);
+    for (int i = 0; i < input_shape.dimensions_size() - fft_rank; ++i) {
+      batch_size *= input_shape.dimensions(i);
     }
     uint64_t fft_length[3];
     uint64_t input_embed[3];
@@ -154,112 +127,106 @@ Status FftThunk::ExecuteOnStream(const ExecuteParams& params) {
     uint64_t output_distance = 1;
 
     for (int i = 0; i < fft_rank; ++i) {
-      auto dim_offset = input_shape_.dimensions_size() - fft_rank + i;
-      fft_length[i] = static_cast<uint64_t>(fft_length_[i]);
-      input_embed[i] = input_shape_.dimensions(dim_offset);
-      input_distance *= input_shape_.dimensions(dim_offset);
-      output_embed[i] = output_shape_.dimensions(dim_offset);
-      output_distance *= output_shape_.dimensions(dim_offset);
+      auto dim_offset = input_shape.dimensions_size() - fft_rank + i;
+      fft_length[i] = static_cast<uint64_t>(fft_len[i]);
+      input_embed[i] = input_shape.dimensions(dim_offset);
+      input_distance *= input_shape.dimensions(dim_offset);
+      output_embed[i] = output_shape.dimensions(dim_offset);
+      output_distance *= output_shape.dimensions(dim_offset);
     }
 
     constexpr bool kInPlaceFft = false;
-    fft_plan = stream.parent()->AsFft()->CreateBatchedPlanWithScratchAllocator(
-        &stream, fft_rank, fft_length, input_embed, input_stride,
-        input_distance, output_embed, output_stride, output_distance, fft_type_,
-        kInPlaceFft, batch_size, &scratch_allocator);
-    scale_factor_ = 1.0f / output_distance;
+    fft_plan = stream->parent()->AsFft()->CreateBatchedPlanWithScratchAllocator(
+        stream, fft_rank, fft_length, input_embed, input_stride, input_distance,
+        output_embed, output_stride, output_distance, fft_type, kInPlaceFft,
+        batch_size, &scratch_allocator);
+    fft_plan_ptr->scale_factor = 1.0f / output_distance;
   } else {
-    stream.parent()->AsFft()->UpdatePlanWithScratchAllocator(
-        &stream, fft_plan.get(), &scratch_allocator);
+    stream->parent()->AsFft()->UpdatePlanWithScratchAllocator(
+        stream, fft_plan.get(), &scratch_allocator);
   }
 
+  float scale_factor = fft_plan_ptr->scale_factor;
+
   bool launch_ok;
-  switch (fft_type_) {
+  switch (fft_type) {
     case se::fft::Type::kC2CForward: {
-      se::DeviceMemory<complex64> input_data(
-          buffer_allocations.GetDeviceAddress(input_buffer_));
-      se::DeviceMemory<complex64> output_data(
-          buffer_allocations.GetDeviceAddress(output_buffer_));
-      launch_ok = stream.ThenFft(fft_plan.get(), input_data, &output_data).ok();
+      se::DeviceMemory<complex64> input_data(input);
+      se::DeviceMemory<complex64> output_data(output);
+      launch_ok =
+          stream->ThenFft(fft_plan.get(), input_data, &output_data).ok();
       break;
     }
     case se::fft::Type::kZ2ZForward: {
-      se::DeviceMemory<complex128> input_data(
-          buffer_allocations.GetDeviceAddress(input_buffer_));
-      se::DeviceMemory<complex128> output_data(
-          buffer_allocations.GetDeviceAddress(output_buffer_));
-      launch_ok = stream.ThenFft(fft_plan.get(), input_data, &output_data).ok();
+      se::DeviceMemory<complex128> input_data(input);
+      se::DeviceMemory<complex128> output_data(output);
+      launch_ok =
+          stream->ThenFft(fft_plan.get(), input_data, &output_data).ok();
       break;
     }
     case se::fft::Type::kC2CInverse: {
-      se::DeviceMemory<complex64> input_data(
-          buffer_allocations.GetDeviceAddress(input_buffer_));
-      se::DeviceMemory<complex64> output_data(
-          buffer_allocations.GetDeviceAddress(output_buffer_));
-      launch_ok = stream.ThenFft(fft_plan.get(), input_data, &output_data).ok();
+      se::DeviceMemory<complex64> input_data(input);
+      se::DeviceMemory<complex64> output_data(output);
+      launch_ok =
+          stream->ThenFft(fft_plan.get(), input_data, &output_data).ok();
       if (launch_ok) {
         launch_ok = stream
-                        .ThenBlasScal(ShapeUtil::ElementsIn(output_shape_),
-                                      complex64(scale_factor_), &output_data, 1)
+                        ->ThenBlasScal(ShapeUtil::ElementsIn(output_shape),
+                                       complex64(scale_factor), &output_data, 1)
                         .ok();
       }
       break;
     }
     case se::fft::Type::kZ2ZInverse: {
-      se::DeviceMemory<complex128> input_data(
-          buffer_allocations.GetDeviceAddress(input_buffer_));
-      se::DeviceMemory<complex128> output_data(
-          buffer_allocations.GetDeviceAddress(output_buffer_));
-      launch_ok = stream.ThenFft(fft_plan.get(), input_data, &output_data).ok();
+      se::DeviceMemory<complex128> input_data(input);
+      se::DeviceMemory<complex128> output_data(output);
+      launch_ok =
+          stream->ThenFft(fft_plan.get(), input_data, &output_data).ok();
       if (launch_ok) {
         launch_ok =
             stream
-                .ThenBlasScal(ShapeUtil::ElementsIn(output_shape_),
-                              complex128(scale_factor_), &output_data, 1)
+                ->ThenBlasScal(ShapeUtil::ElementsIn(output_shape),
+                               complex128(scale_factor), &output_data, 1)
                 .ok();
       }
       break;
     }
     case se::fft::Type::kR2C: {
-      se::DeviceMemory<float> input_data(
-          buffer_allocations.GetDeviceAddress(input_buffer_));
-      se::DeviceMemory<complex64> output_data(
-          buffer_allocations.GetDeviceAddress(output_buffer_));
-      launch_ok = stream.ThenFft(fft_plan.get(), input_data, &output_data).ok();
+      se::DeviceMemory<float> input_data(input);
+      se::DeviceMemory<complex64> output_data(output);
+      launch_ok =
+          stream->ThenFft(fft_plan.get(), input_data, &output_data).ok();
       break;
     }
     case se::fft::Type::kD2Z: {
-      se::DeviceMemory<double> input_data(
-          buffer_allocations.GetDeviceAddress(input_buffer_));
-      se::DeviceMemory<complex128> output_data(
-          buffer_allocations.GetDeviceAddress(output_buffer_));
-      launch_ok = stream.ThenFft(fft_plan.get(), input_data, &output_data).ok();
+      se::DeviceMemory<double> input_data(input);
+      se::DeviceMemory<complex128> output_data(output);
+      launch_ok =
+          stream->ThenFft(fft_plan.get(), input_data, &output_data).ok();
       break;
     }
     case se::fft::Type::kC2R: {
-      se::DeviceMemory<complex64> input_data(
-          buffer_allocations.GetDeviceAddress(input_buffer_));
-      se::DeviceMemory<float> output_data(
-          buffer_allocations.GetDeviceAddress(output_buffer_));
-      launch_ok = stream.ThenFft(fft_plan.get(), input_data, &output_data).ok();
+      se::DeviceMemory<complex64> input_data(input);
+      se::DeviceMemory<float> output_data(output);
+      launch_ok =
+          stream->ThenFft(fft_plan.get(), input_data, &output_data).ok();
       if (launch_ok) {
         launch_ok = stream
-                        .ThenBlasScal(ShapeUtil::ElementsIn(output_shape_),
-                                      scale_factor_, &output_data, 1)
+                        ->ThenBlasScal(ShapeUtil::ElementsIn(output_shape),
+                                       scale_factor, &output_data, 1)
                         .ok();
       }
       break;
     }
     case se::fft::Type::kZ2D: {
-      se::DeviceMemory<complex128> input_data(
-          buffer_allocations.GetDeviceAddress(input_buffer_));
-      se::DeviceMemory<double> output_data(
-          buffer_allocations.GetDeviceAddress(output_buffer_));
-      launch_ok = stream.ThenFft(fft_plan.get(), input_data, &output_data).ok();
+      se::DeviceMemory<complex128> input_data(input);
+      se::DeviceMemory<double> output_data(output);
+      launch_ok =
+          stream->ThenFft(fft_plan.get(), input_data, &output_data).ok();
       if (launch_ok) {
         launch_ok = stream
-                        .ThenBlasScal(ShapeUtil::ElementsIn(output_shape_),
-                                      scale_factor_, &output_data, 1)
+                        ->ThenBlasScal(ShapeUtil::ElementsIn(output_shape),
+                                       scale_factor, &output_data, 1)
                         .ok();
       }
       break;
@@ -268,10 +235,10 @@ Status FftThunk::ExecuteOnStream(const ExecuteParams& params) {
       LOG(FATAL) << "unsupported fft type";
   }
   if (launch_ok) {
-    return Status::OK();
+    return OkStatus();
   }
-  return InternalError("Unable to launch fft for thunk %p with type %s", this,
-                       FftTypeToString(fft_type_));
+  return InternalError("Unable to launch fft with type %s",
+                       FftTypeToString(fft_type));
 }
 
 }  // namespace gpu

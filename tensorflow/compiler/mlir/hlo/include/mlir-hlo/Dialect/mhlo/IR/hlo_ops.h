@@ -84,9 +84,9 @@ class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
   using Base::Base;
 };
 
-// Returns true if the given types are the same, but while ignoring
-// any sparsity properties of tensor types.
-bool isSameTypesWithoutSparseEncoding(Type tp1, Type tp2);
+// Returns true if the given types are the same for the purposes of MHLO type
+// inference, accounting for special properties of quantization and sparsity.
+bool isCompatibleForMhloTypeInference(Type tp1, Type tp2);
 
 // Shape derivation function that computes the shape of the result based on an
 // operand. For a 2-dimensional input tensor, this produces IR of the form
@@ -111,5 +111,17 @@ TensorType getSameShapeTensorType(TensorType tensor_type, Type element_type);
 
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"
+
+namespace mlir {
+namespace mhlo {
+
+SortOp CreateSortOp(PatternRewriter *rewriter, const Location &loc,
+                    const llvm::ArrayRef<Value> &operands,
+                    const llvm::ArrayRef<Type> &element_types,
+                    int64_t dimension, bool is_stable,
+                    ComparisonDirection direction);
+
+}  // end namespace mhlo
+}  // end namespace mlir
 
 #endif  // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H

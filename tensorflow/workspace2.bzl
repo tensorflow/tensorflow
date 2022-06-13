@@ -57,7 +57,7 @@ def _initialize_third_party():
     FP16()
     absl()
     benchmark()
-    clog()
+    clog()  # Note: needed only by XNNPACK, at some point it should be removed
     cpuinfo()
     dlpack()
     eigen3()
@@ -125,7 +125,7 @@ def _tf_toolchains():
 def _tf_repositories():
     """All external dependencies for TF builds."""
 
-    # To update any of the dependencies bellow:
+    # To update any of the dependencies below:
     # a) update URL and strip_prefix to the new git commit hash
     # b) get the sha256 hash of the commit by running:
     #    curl -L <url> | sha256sum
@@ -134,9 +134,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "1be2e5d8380e7a2983f7325d462cba044f8a1016bd3e403ede093c3086595040",
-        strip_prefix = "XNNPACK-d5dc9e245f0d474235f2b0a48e3e8525de02a5db",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/d5dc9e245f0d474235f2b0a48e3e8525de02a5db.zip"),
+        sha256 = "55bf8c49c80ff52643f3e09c1bed8b2bec8d5c4bd60ee4ac76feca069f40967a",
+        strip_prefix = "XNNPACK-108f3657bc0cc9592f88adb124a21bcf9ca63f06",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/108f3657bc0cc9592f88adb124a21bcf9ca63f06.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -158,9 +158,9 @@ def _tf_repositories():
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
         patch_file = ["//third_party:cudnn_frontend_header_fix.patch"],
-        sha256 = "42199b34ad892c48202a567ff5b982a9c2cc6a2ddff7d7b48754aa4b8f4308a0",
-        strip_prefix = "cudnn-frontend-0.6.1",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.6.1.zip"),
+        sha256 = "314569f65d5c7d05fb7e90157a838549db3e2cfb464c80a6a399b39a004690fa",
+        strip_prefix = "cudnn-frontend-0.6.2",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.6.2.zip"),
     )
 
     tf_http_archive(
@@ -459,10 +459,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "nsync",
         patch_file = ["//third_party:nsync.patch"],
-        sha256 = "47a6eb2a295be5121a1904a6a775722338a20dc02ee3eec4169ed2c3f203617a",
-        strip_prefix = "nsync-1.24.0",
+        sha256 = "2be9dbfcce417c7abcc2aa6fee351cd4d292518d692577e74a2c6c05b049e442",
+        strip_prefix = "nsync-1.25.0",
         system_build_file = "//third_party/systemlibs:nsync.BUILD",
-        urls = tf_mirror_urls("https://github.com/google/nsync/archive/1.24.0.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/google/nsync/archive/1.25.0.tar.gz"),
     )
 
     tf_http_archive(
@@ -482,10 +482,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "c0e64302a33d2fb79e0fc4e674260a22941e92ee2f11b894bf94d32b8f5531af",
-        strip_prefix = "curl-7.83.0",
+        sha256 = "93fb2cd4b880656b4e8589c912a9fd092750166d555166370247f09d18f5d0c0",
+        strip_prefix = "curl-7.83.1",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
-        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.83.0.tar.gz"),
+        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.83.1.tar.gz"),
     )
 
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule

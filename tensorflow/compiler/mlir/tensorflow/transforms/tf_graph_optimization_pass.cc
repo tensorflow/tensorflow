@@ -69,7 +69,7 @@ void GraphOptPass::runOnOperation() {
   FunctionLibraryDefinition flib_def(OpRegistry::Global(),
                                      FunctionDefLibrary());
   GraphExportConfig confs;
-  auto graph = absl::make_unique<Graph>(flib_def);
+  auto graph = std::make_unique<Graph>(flib_def);
   Status status = ConvertMlirToGraph(module_in, confs, &graph, &flib_def);
   if (!status.ok()) {
     mlir::emitError(mlir::UnknownLoc::get(&ctx)) << status.error_message();

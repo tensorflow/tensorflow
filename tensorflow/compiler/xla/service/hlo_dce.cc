@@ -37,6 +37,30 @@ limitations under the License.
 
 namespace xla {
 
+namespace {
+
+// Checks if the instruction is a removable while given
+// remove_cross_partition_collective_ops
+bool IsRemovableWhile(HloInstruction* instruction,
+                      bool remove_cross_partition_collective_ops) {
+  if (instruction->opcode() != HloOpcode::kWhile) {
+    return false;
+  }
+  for (HloComputation* computation : instruction->called_computations()) {
+    for (HloInstruction* called_instr : computation->instructions()) {
+      auto maybe_collective_op =
+          DynCast<HloCollectiveInstruction>(called_instr);
+      if (called_instr->HasSideEffect() &&
+          (!remove_cross_partition_collective_ops || !maybe_collective_op ||
+           maybe_collective_op->constrain_layout())) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+}  // namespace
+
 /*static*/ StatusOr<bool> HloDCE::RunOnComputation(
     HloComputation* computation, bool remove_cross_partition_collective_ops) {
   bool changed = false;
@@ -51,7 +75,9 @@ namespace xla {
     if (instruction->IsDead() && computation->IsSafelyRemovable(instruction) &&
         (!instruction->HasSideEffect() ||
          (remove_cross_partition_collective_ops && maybe_collective_op &&
-          !maybe_collective_op->constrain_layout()))) {
+          !maybe_collective_op->constrain_layout()) ||
+         IsRemovableWhile(instruction,
+                          remove_cross_partition_collective_ops))) {
       dead_roots.push_back(instruction);
     }
   }

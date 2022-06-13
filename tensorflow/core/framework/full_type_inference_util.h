@@ -134,7 +134,6 @@ FullTypeDef BatchTensor(const FullTypeDef& t);
 // function itself.
 // TODO(mdan): Replace with a trait, when available.
 FullTypeDef ShardTensor(const FullTypeDef& t);
-
 }  // namespace full_type
 
 }  // namespace tensorflow

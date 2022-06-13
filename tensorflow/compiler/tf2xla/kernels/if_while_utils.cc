@@ -42,9 +42,9 @@ absl::InlinedVector<int, 5> ConvertCompileTimeConstArgumentsToConst(
       // If we can infer the constant values of an inner computation's argument,
       // replace them with constants. If that fails, we fallback to infer the
       // bounds of the argument.
-      StatusOr<absl::optional<Tensor>> maybe_constant =
+      StatusOr<std::optional<Tensor>> maybe_constant =
           expression.ResolveConstant(ctx->compiler()->client());
-      StatusOr<absl::optional<Tensor>> bounds =
+      StatusOr<std::optional<Tensor>> bounds =
           expression.ResolveConstant(ctx->compiler()->client(), false,
                                      xla::ValueInferenceMode::kUpperBound);
       if ((maybe_constant.ok() && maybe_constant->has_value()) ||

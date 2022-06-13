@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -63,9 +63,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTFKernelToLLVMPass(
 // using memref descriptors.
 std::unique_ptr<OperationPass<ModuleOp>> CreateShapeToDescriptorsPass();
 
-// Pass to replace unsigned types with signless integers.
-std::unique_ptr<OperationPass<ModuleOp>> CreateConvertToSignlessPass();
-
 // Pass to convert scf::ParallelOp to scf::ForOp.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateParallelLoopsToSequential();
 
@@ -94,14 +91,6 @@ std::unique_ptr<mlir::OperationPass<func::FuncOp>> CreateMapParallelLoopsPass();
 /// be closed from above.
 std::unique_ptr<mlir::OperationPass<func::FuncOp>>
 CreateFuseInnerParallelLoopsPass();
-
-/// Pass that transforms gpu modules in standard dialect to NNVM.
-std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
-CreateGpuKernelToNvvmPass();
-
-/// Pass that transforms gpu modules in standard dialect to ROCDL.
-std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
-CreateGpuKernelToRocdlPass();
 
 // Pass to create vectorized code for CPU.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateVectorizationPass();

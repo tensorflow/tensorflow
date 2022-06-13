@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/service/optimize_input_output_buffer_alias.h"
 
+#include <memory>
 #include <queue>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -65,7 +65,7 @@ StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       output_shape, [&](const Shape& subshape, const ShapeIndex& index) {
         if (subshape.IsTuple()) {
-          return Status::OK();
+          return OkStatus();
         }
         for (Entry& entry : parameter_entries) {
           if (Shape::Equal()(entry.shape, subshape) && !entry.used) {
@@ -81,7 +81,7 @@ StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
             break;
           }
         }
-        return Status::OK();
+        return OkStatus();
       }));
   return changed;
 }

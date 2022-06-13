@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/util/env_var.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
@@ -240,7 +241,7 @@ class DimsAdapter {
   // Converts to a TensorShape and assigns the result to the object passed in
   // via the shape pointer.
   Status TensorShape(TensorShape* shape,
-                     absl::optional<int> batch_size = absl::nullopt) const {
+                     std::optional<int> batch_size = std::nullopt) const {
     TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
         static_cast<const int64_t*>(storage_.data()), storage_.size(), shape));
     if (batch_size) shape->InsertDim(0, *batch_size);
@@ -251,7 +252,7 @@ class DimsAdapter {
   // passed in via the shape pointer.
   Status PartialTensorShape(
       PartialTensorShape* shape,
-      absl::optional<int> batch_size = absl::nullopt) const {
+      std::optional<int> batch_size = std::nullopt) const {
     TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
         static_cast<const int64_t*>(storage_.data()), storage_.size(), shape));
     if (batch_size) shape->InsertDim(0, *batch_size);
@@ -322,7 +323,7 @@ class DimsAdapter {
     return *this;
   }
 
-  DimsAdapter& Prepend(absl::optional<int32_t> dim) {
+  DimsAdapter& Prepend(std::optional<int32_t> dim) {
     if (dim) {
       num_dims_ = IsScalar() ? 2 : num_dims_ + 1;
       storage_.insert(storage_.begin(), *dim);
@@ -378,18 +379,20 @@ absl::string_view GetDeviceName(const Node* node);
 
 // Returns the ParsedName representation for the assigned device or the
 // requested device string of the given node. If the device string is invalid,
-// returns absl::nullopt.
-absl::optional<DeviceNameUtils::ParsedName> GetDeviceParsedName(
+// returns std::nullopt.
+std::optional<DeviceNameUtils::ParsedName> GetDeviceParsedName(
     const Node* node);
 
 // If the given two device assignments as compatible, returns the merge of the
-// two assignments. Otherwise, returns absl::nullopt.
-absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
+// two assignments. Otherwise, returns std::nullopt.
+std::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
     const DeviceNameUtils::ParsedName& a, const DeviceNameUtils::ParsedName& b);
 // Similar to the above, except that the second device assignment is represented
 // by a string_view.
-absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
+std::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
     const DeviceNameUtils::ParsedName& a, absl::string_view b);
+
+bool isExperimentalFeatureActivated(string feature_name);
 
 }  // namespace tensorrt
 }  // namespace tensorflow

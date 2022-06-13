@@ -3607,7 +3607,7 @@ func.func @tensor_scatter_update(%tensor: tensor<4x4x4xf32>, %indices: tensor<i3
 // -----
 
 func.func @tensor_scatter_update(%tensor: tensor<4x4x4xf32>, %indices: tensor<4x2xi32>, %updates: tensor<f32>) -> tensor<4x4x4xf32> {
-  // expected-error @+1 {{op requires updates operand to have at least 1 dimension}}
+  // CHECK: TensorScatterUpdate
   %0 = "tf.TensorScatterUpdate"(%tensor, %indices, %updates) : (tensor<4x4x4xf32>, tensor<4x2xi32>, tensor<f32>) -> tensor<4x4x4xf32>
   func.return %0 : tensor<4x4x4xf32>
 }
@@ -3772,6 +3772,20 @@ func.func @testBatchMatMulV2InvalidBroadcastingBatchDimensionWithHigherYRank(%lh
 func.func @testBatchMatMulV2InvalidOutputBatchDimension(%lhs: tensor<10x2x5x10xf32>, %rhs: tensor<2x10x10xf32>) {
   // expected-error @+1 {{has mismatching input batch dimension 2 and output batch dimension 3}}
   %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<10x2x5x10xf32>, tensor<2x10x10xf32>) -> tensor<10x3x10x10xf32>
+}
+
+// -----
+
+func.func @testBatchMatMulV2DynamicInputBatchDimension(%lhs: tensor<?x2x5x10xf32>, %rhs: tensor<?x10xf32>) -> tensor<5x2x5x10xf32> {
+  %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<?x2x5x10xf32>, tensor<?x10xf32>) -> tensor<5x2x5x10xf32>
+  func.return %0 : tensor<5x2x5x10xf32>
+}
+
+// -----
+
+func.func @testBatchMatMulV2DynamicOutputBatchDimension(%lhs: tensor<1x2x5x10xf32>, %rhs: tensor<1x10xf32>) -> tensor<?x2x5x10xf32> {
+  %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<1x2x5x10xf32>, tensor<1x10xf32>) -> tensor<?x2x5x10xf32>
+  func.return %0 : tensor<?x2x5x10xf32>
 }
 
 // -----
@@ -4353,7 +4367,7 @@ func.func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
 // -----
 
 func.func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
-  "tf._XlaHostComputeMlir"(%arg0) {send_key="", recv_key="", host_mlir_module="module  {\0A  func @host_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    return %0 : tensor<*xf32> \0A  } \0A} \0A"} : (tensor<2xf32>) -> (tensor<2xf32>)
+  "tf._XlaHostComputeMlir"(%arg0) {send_key="", recv_key="", host_mlir_module="module  {\0A  func.func @host_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    func.return %0 : tensor<*xf32> \0A  } \0A} \0A"} : (tensor<2xf32>) -> (tensor<2xf32>)
   func.return
 }
 
@@ -4369,7 +4383,7 @@ func.func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
 
 func.func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
   // expected-error @+1 {{'host_mlir_module' does not contain 'host_func' function}}
-  "tf._XlaHostComputeMlir"(%arg0) {send_key="", recv_key="", host_mlir_module="module  {\0A  func @bad_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    return %0 : tensor<*xf32> \0A  } \0A} \0A"} : (tensor<2xf32>) -> ()
+  "tf._XlaHostComputeMlir"(%arg0) {send_key="", recv_key="", host_mlir_module="module  {\0A  func.func @bad_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    func.return %0 : tensor<*xf32> \0A  } \0A} \0A"} : (tensor<2xf32>) -> ()
   func.return
 }
 
@@ -4377,7 +4391,7 @@ func.func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
 
 func.func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
   // expected-error @+1 {{Number of operands/inputs should be the same}}
-  "tf._XlaHostComputeMlir"() {send_key="", recv_key="", host_mlir_module="module  {\0A  func @host_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    return %0 : tensor<*xf32> \0A  } \0A} \0A"} : () -> ()
+  "tf._XlaHostComputeMlir"() {send_key="", recv_key="", host_mlir_module="module  {\0A  func.func @host_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    func.return %0 : tensor<*xf32> \0A  } \0A} \0A"} : () -> ()
   func.return
 }
 
@@ -4385,7 +4399,7 @@ func.func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
 
 func.func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
   // expected-error @+1 {{Number of results should be the same}}
-  "tf._XlaHostComputeMlir"(%arg0) {send_key="", recv_key="", host_mlir_module="module  {\0A  func @host_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    return %0 : tensor<*xf32> \0A  } \0A} \0A"} : (tensor<2xf32>) -> ()
+  "tf._XlaHostComputeMlir"(%arg0) {send_key="", recv_key="", host_mlir_module="module  {\0A  func.func @host_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    func.return %0 : tensor<*xf32> \0A  } \0A} \0A"} : (tensor<2xf32>) -> ()
   func.return
 }
 
@@ -4547,6 +4561,19 @@ func.func private @xla_reduce_window_op_reducer(%arg0: tensor<*xf32>, %arg1: ten
   func.return %0 : tensor<*xf32>
 }
 
+// -----
+
+func.func @testLogStaticShapeInputAndDynamicShapeOutput(%arg0: tensor<8x16xf32>) -> tensor<*xf32> {
+  %0 = "tf.Log"(%arg0) : (tensor<8x16xf32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testReluStaticShapeInputAndDynamicShapeOutput(%arg0: tensor<8x16xf32>) -> tensor<*xf32> {
+  %0 = "tf.Relu"(%arg0) : (tensor<8x16xf32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
 // -----
 
 func.func @set_dynamic_dimension_size(%input: tensor<4xf32>, %size: tensor<i32>) -> tensor<?xf16> {

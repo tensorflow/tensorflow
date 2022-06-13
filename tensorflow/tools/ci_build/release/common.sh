@@ -61,7 +61,12 @@ function install_bazelisk {
   date
   case "$(uname -s)" in
     Darwin) local name=bazelisk-darwin-amd64 ;;
-    Linux)  local name=bazelisk-linux-amd64  ;;
+    Linux)
+      case "$(uname -m)" in
+       x86_64) local name=bazelisk-linux-amd64 ;;
+       aarch64) local name=bazelisk-linux-arm64 ;;
+       *) die "Unknown machine type: $(uname -m)" ;;
+      esac ;;
     *) die "Unknown OS: $(uname -s)" ;;
   esac
   mkdir -p "$HOME/bin"

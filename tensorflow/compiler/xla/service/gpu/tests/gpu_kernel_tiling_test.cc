@@ -373,8 +373,8 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithPowerOf2OutputElementsUnrolled) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .ValueOrDie();
   const char *expected_ir = R"(
-; CHECK: store float %{{.*}}, float addrspace(1)
-; CHECK: store float %{{.*}}, float addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
 )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/true);
@@ -417,8 +417,8 @@ TEST_F(GpuKernelTilingTest,
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .ValueOrDie();
   const char *expected_ir = R"(
-; CHECK: store float %{{.*}}, float addrspace(1)
-; CHECK-NOT: store float %{{.*}}, float addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
+; CHECK-NOT: store float %{{.*}}, ptr addrspace(1)
 )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/true);
@@ -464,19 +464,19 @@ TEST_F(GpuKernelTilingTest, ColumnReductionMOFUnrolled) {
           .ValueOrDie();
   const char *expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK-LABEL: define amdgpu_kernel void @fusion
-; CHECK: store float %{{.*}}, float addrspace(1)
-; CHECK: store float %{{.*}}, float addrspace(1)
-; CHECK: store float %{{.*}}, float addrspace(1)
-; CHECK: store float %{{.*}}, float addrspace(1)
-; CHECK-NOT: store float %{{.*}}, float addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
+; CHECK-NOT: store float %{{.*}}, ptr addrspace(1)
 )"
                                                 : R"(
 ; CHECK-LABEL: define void @fusion
-; CHECK: store float %{{.*}}, float addrspace(1)
-; CHECK: store float %{{.*}}, float addrspace(1)
-; CHECK: store float %{{.*}}, float addrspace(1)
-; CHECK: store float %{{.*}}, float addrspace(1)
-; CHECK-NOT: store float %{{.*}}, float addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
+; CHECK-NOT: store float %{{.*}}, ptr addrspace(1)
 )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/true);
@@ -506,12 +506,12 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithLayoutChangeTiled) {
           .ValueOrDie();
   const char *expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK-LABEL: define amdgpu_kernel void @
-; CHECK: store float %{{.*}}, float addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
 ; CHECK: }
 )"
                                                 : R"(
 ; CHECK-LABEL: define void @
-; CHECK: store float %{{.*}}, float addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
 ; CHECK: }
 )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
@@ -581,12 +581,12 @@ TEST_F(GpuKernelTilingTest,
           .ValueOrDie();
   const char *expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK-LABEL: define amdgpu_kernel void @reduce
-; CHECK: store float %{{.*}}, float addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
 ; CHECK: }
 )"
                                                 : R"(
 ; CHECK-LABEL: define void @reduce
-; CHECK: store float %{{.*}}, float addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
 ; CHECK: }
 )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
@@ -719,7 +719,7 @@ ENTRY kernel_entry {
 }
   )";
   auto expected_ir = R"(
-; CHECK: load <2 x float>, <2 x float>
+; CHECK: load <2 x float>, ptr
   )";
   auto hlo_module = ParseAndReturnVerifiedModule(kHloString).ValueOrDie();
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,

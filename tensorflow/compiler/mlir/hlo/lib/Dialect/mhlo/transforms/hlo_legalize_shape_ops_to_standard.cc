@@ -54,55 +54,55 @@ struct ComputeReshapeShapeConversion
     auto* ctx = op->getContext();
     Value neg_one = rewriter.create<arith::ConstantIndexOp>(loc, -1);
     auto index_type = rewriter.getIndexType();
-    auto num_elements = adaptor.getOperands()[0];
-    auto target_shape_type =
+    auto numElements = adaptor.getOperands()[0];
+    auto targetShapeType =
         adaptor.getOperands()[1].getType().cast<ShapedType>();
-    auto extent_type =
-        shape::getExtentTensorType(ctx, target_shape_type.getDimSize(0));
+    auto extentType =
+        shape::getExtentTensorType(ctx, targetShapeType.getDimSize(0));
 
     // Calculate the computed actual extent for a possible dynamic extent.
-    auto new_shape = target_shape_type.getElementType().isIndex()
-                         ? adaptor.getOperands()[1]
-                         : rewriter.create<arith::IndexCastOp>(
-                               loc, extent_type, adaptor.getOperands()[1]);
-    Value new_shape_rank =
-        rewriter.create<shape::RankOp>(loc, index_type, new_shape);
+    auto newShape = targetShapeType.getElementType().isIndex()
+                        ? adaptor.getOperands()[1]
+                        : rewriter.create<arith::IndexCastOp>(
+                              loc, extentType, adaptor.getOperands()[1]);
+    Value newShapeRank =
+        rewriter.create<shape::RankOp>(loc, index_type, newShape);
     // The product begins with a -1 seed which will cancel out a -1 extent in
     // the input shape if there is one. If there is not, this computed result
     // will never be used, so it's okay to compute a negative number of
     // elements.
-    auto accounted_num_els =
-        rewriter.create<shape::ReduceOp>(loc, new_shape, neg_one);
+    auto accountedNumEls =
+        rewriter.create<shape::ReduceOp>(loc, newShape, neg_one);
     {
       PatternRewriter::InsertionGuard g(rewriter);
-      rewriter.setInsertionPointToEnd(accounted_num_els.getBody());
-      Value lhs = accounted_num_els.getBody()->getArgument(1);
-      Value rhs = accounted_num_els.getBody()->getArgument(2);
+      rewriter.setInsertionPointToEnd(accountedNumEls.getBody());
+      Value lhs = accountedNumEls.getBody()->getArgument(1);
+      Value rhs = accountedNumEls.getBody()->getArgument(2);
       rewriter.create<shape::YieldOp>(
           loc, rewriter.create<arith::MulIOp>(loc, lhs, rhs).getResult());
     }
     Value missing_dim_val = rewriter.create<arith::DivUIOp>(
-        loc, num_elements, accounted_num_els->getResult(0));
+        loc, numElements, accountedNumEls->getResult(0));
 
     // Create the final target shape with a possible dynamic extent replace with
     // the calculated extent.
-    SmallVector<Value> dynamic_extent;
-    if (!target_shape_type.hasStaticShape())
-      dynamic_extent.push_back(new_shape_rank);
+    SmallVector<Value> dynamicExtent;
+    if (!targetShapeType.hasStaticShape())
+      dynamicExtent.push_back(newShapeRank);
     auto gen = rewriter.create<tensor::GenerateOp>(
-        loc, target_shape_type, dynamic_extent,
+        loc, targetShapeType, dynamicExtent,
         [&](OpBuilder& b, Location loc, ValueRange indices) {
-          Value extent = b.create<shape::GetExtentOp>(loc, index_type,
-                                                      new_shape, indices[0]);
-          Value use_missing_dim_val = b.create<arith::CmpIOp>(
+          Value extent = b.create<shape::GetExtentOp>(loc, index_type, newShape,
+                                                      indices[0]);
+          Value useMissingDimVal = b.create<arith::CmpIOp>(
               loc, arith::CmpIPredicate::eq, extent, neg_one);
-          Value dim_val = b.create<arith::SelectOp>(loc, use_missing_dim_val,
-                                                    missing_dim_val, extent);
-          dim_val = target_shape_type.getElementType().isIndex()
-                        ? dim_val
-                        : b.create<arith::IndexCastOp>(
-                              loc, target_shape_type.getElementType(), dim_val);
-          b.create<tensor::YieldOp>(loc, dim_val);
+          Value dimVal = b.create<arith::SelectOp>(loc, useMissingDimVal,
+                                                   missing_dim_val, extent);
+          dimVal = targetShapeType.getElementType().isIndex()
+                       ? dimVal
+                       : b.create<arith::IndexCastOp>(
+                             loc, targetShapeType.getElementType(), dimVal);
+          b.create<tensor::YieldOp>(loc, dimVal);
         });
     rewriter.replaceOp(op, gen.result());
 
@@ -118,76 +118,74 @@ struct CstrReshapableConversion
       ConversionPatternRewriter& rewriter) const final {
     auto loc = op.getLoc();
     auto* ctx = op->getContext();
-    Value neg_one = rewriter.create<arith::ConstantIndexOp>(loc, -1);
+    Value negOne = rewriter.create<arith::ConstantIndexOp>(loc, -1);
     Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     Value one = rewriter.create<arith::ConstantIndexOp>(loc, 1);
-    auto num_elements = adaptor.getOperands()[0];
-    auto target_shape_type =
+    auto numElements = adaptor.getOperands()[0];
+    auto targetShapeType =
         adaptor.getOperands()[1].getType().cast<ShapedType>();
-    auto extent_type =
-        shape::getExtentTensorType(ctx, target_shape_type.getDimSize(0));
+    auto extentType =
+        shape::getExtentTensorType(ctx, targetShapeType.getDimSize(0));
 
     // Calculate the computed actual extent for a possible dynamic extent.
-    auto new_shape = target_shape_type.getElementType().isIndex()
-                         ? adaptor.getOperands()[1]
-                         : rewriter.create<arith::IndexCastOp>(
-                               loc, extent_type, adaptor.getOperands()[1]);
+    auto newShape = targetShapeType.getElementType().isIndex()
+                        ? adaptor.getOperands()[1]
+                        : rewriter.create<arith::IndexCastOp>(
+                              loc, extentType, adaptor.getOperands()[1]);
     auto reduction = rewriter.create<shape::ReduceOp>(
-        loc, new_shape, llvm::makeArrayRef({one, zero, zero}));
+        loc, newShape, llvm::makeArrayRef({one, zero, zero}));
     {
       PatternRewriter::InsertionGuard g(rewriter);
       auto* body = reduction.getBody();
       rewriter.setInsertionPointToEnd(body);
       Value extent = body->getArgument(1);
-      Value is_dynamic = rewriter.create<arith::CmpIOp>(
-          loc, arith::CmpIPredicate::eq, neg_one, extent);
-      Value is_invalid = rewriter.create<arith::CmpIOp>(
-          loc, arith::CmpIPredicate::slt, extent, neg_one);
-      Value total_dynamic = rewriter.create<arith::AddIOp>(
-          loc, rewriter.create<arith::SelectOp>(loc, is_dynamic, one, zero),
+      Value isDynamic = rewriter.create<arith::CmpIOp>(
+          loc, arith::CmpIPredicate::eq, negOne, extent);
+      Value isInvalid = rewriter.create<arith::CmpIOp>(
+          loc, arith::CmpIPredicate::slt, extent, negOne);
+      Value totalDynamic = rewriter.create<arith::AddIOp>(
+          loc, rewriter.create<arith::SelectOp>(loc, isDynamic, one, zero),
           body->getArgument(3));
-      Value total_invalid = rewriter.create<arith::AddIOp>(
-          loc, rewriter.create<arith::SelectOp>(loc, is_invalid, one, zero),
+      Value totalInvalid = rewriter.create<arith::AddIOp>(
+          loc, rewriter.create<arith::SelectOp>(loc, isInvalid, one, zero),
           body->getArgument(4));
-      Value extent_or_one =
-          rewriter.create<arith::SelectOp>(loc, is_dynamic, one, extent);
-      Value total_elements = rewriter.create<arith::MulIOp>(
-          loc, extent_or_one, body->getArgument(2));
+      Value extentOrOne =
+          rewriter.create<arith::SelectOp>(loc, isDynamic, one, extent);
+      Value totalElements = rewriter.create<arith::MulIOp>(
+          loc, extentOrOne, body->getArgument(2));
       rewriter.create<shape::YieldOp>(
-          loc,
-          llvm::makeArrayRef({total_elements, total_dynamic, total_invalid}));
+          loc, llvm::makeArrayRef({totalElements, totalDynamic, totalInvalid}));
     }
     // Avoid division by zero.
-    Value is_zero_elements = rewriter.create<arith::CmpIOp>(
+    Value isZeroElements = rewriter.create<arith::CmpIOp>(
         loc, arith::CmpIPredicate::eq, reduction->getResult(0), zero);
-    Value divisor = rewriter.create<arith::SelectOp>(loc, is_zero_elements, one,
+    Value divisor = rewriter.create<arith::SelectOp>(loc, isZeroElements, one,
                                                      reduction->getResult(0));
-    Value is_divisible = rewriter.create<arith::CmpIOp>(
+    Value isDivisible = rewriter.create<arith::CmpIOp>(
         loc, arith::CmpIPredicate::eq, zero,
-        rewriter.create<arith::RemSIOp>(loc, num_elements, divisor));
+        rewriter.create<arith::RemSIOp>(loc, numElements, divisor));
     // Must have 0 or 1 dynamic dimensions.
-    Value acceptably_dynamic = rewriter.create<arith::CmpIOp>(
+    Value acceptablyDynamic = rewriter.create<arith::CmpIOp>(
         loc, arith::CmpIPredicate::ule, reduction->getResult(1), one);
     // Must have no invalid dimensions.
-    Value no_invalid = rewriter.create<arith::CmpIOp>(
+    Value noInvalid = rewriter.create<arith::CmpIOp>(
         loc, arith::CmpIPredicate::eq, reduction->getResult(2), zero);
     // If there is no dynamic dimension then the number of elements must match.
-    Value has_one_dynamic = rewriter.create<arith::CmpIOp>(
+    Value hasOneDynamic = rewriter.create<arith::CmpIOp>(
         loc, arith::CmpIPredicate::eq, reduction->getResult(1), one);
-    Value equal_if_not_dynamic = rewriter.create<arith::OrIOp>(
-        loc, has_one_dynamic,
+    Value equalIfNotDynamic = rewriter.create<arith::OrIOp>(
+        loc, hasOneDynamic,
         rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::eq,
-                                       num_elements, reduction->getResult(0)));
+                                       numElements, reduction->getResult(0)));
 
-    Value all_passing = rewriter.create<arith::AndIOp>(
-        loc, is_divisible,
+    Value allPassing = rewriter.create<arith::AndIOp>(
+        loc, isDivisible,
         rewriter.create<arith::AndIOp>(
-            loc, acceptably_dynamic,
-            rewriter.create<arith::AndIOp>(loc, no_invalid,
-                                           equal_if_not_dynamic)));
+            loc, acceptablyDynamic,
+            rewriter.create<arith::AndIOp>(loc, noInvalid, equalIfNotDynamic)));
 
     rewriter.replaceOpWithNewOp<shape::CstrRequireOp>(
-        op, all_passing, "Required valid reshape shape input");
+        op, allPassing, "Required valid reshape shape input");
 
     return success();
   }
@@ -211,8 +209,8 @@ struct HloLegalizeShapeOpsToStandardPass
     target.addLegalOp<UnrealizedConversionCastOp>();
 
     auto func = getOperation();
-    mhlo::RemoveSignTypeConverter type_converter;
-    mhlo::populateHLOShapeOpsToStandardConversionPattern(&ctx, type_converter,
+    mhlo::RemoveSignTypeConverter typeConverter;
+    mhlo::populateHLOShapeOpsToStandardConversionPattern(&ctx, typeConverter,
                                                          &patterns);
     if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
       signalPassFailure();
@@ -225,12 +223,12 @@ struct HloLegalizeShapeOpsToStandardPass
 namespace mhlo {
 
 void populateHLOShapeOpsToStandardConversionPattern(
-    MLIRContext* context, TypeConverter& type_converter,
+    MLIRContext* context, TypeConverter& typeConverter,
     RewritePatternSet* patterns) {
   // clang-format off
   patterns->add<
       ComputeReshapeShapeConversion,
-      CstrReshapableConversion>(type_converter, context);
+      CstrReshapableConversion>(typeConverter, context);
   // clang-format on
 }
 

@@ -5,6 +5,7 @@ load(
     "tflite_custom_c_library",
 )
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -119,6 +120,7 @@ cc_library(
         ":c_api_internal",
         ":c_api_types",
         ":common",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/kernels:kernel_util",
@@ -202,10 +204,19 @@ cc_library(
         "common.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts(),
+    copts = tflite_copts() + select({
+        "//tensorflow/lite:tensorflow_profiler_config": ["-DTF_LITE_TENSORFLOW_PROFILER"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":c_api_types",
-    ],
+    ] + select({
+        "//tensorflow/lite:tensorflow_profiler_config": [
+            "//tensorflow/lite:macros",
+            "//tensorflow/lite:tensorflow_profiler_logger_shim",
+        ],
+        "//conditions:default": [],
+    }),
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
@@ -262,9 +273,17 @@ cc_test(
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/multi_signatures.bin",
     ],
+    tags = [
+        # Testing on Android uses "--gunit_output=xml:test.xml" runtime flag,
+        # but this test is C code, not C++, and hence doesn't use GUnit,
+        # so doesn't support that flag.
+        "tflite_not_portable_android",
+    ],
     deps = [
         ":c_api",
         ":c_api_experimental",
         ":common",
     ],
 )
+
+tflite_portable_test_suite()

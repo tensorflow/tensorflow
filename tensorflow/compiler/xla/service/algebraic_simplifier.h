@@ -338,7 +338,7 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   Status HandleDynamicUpdateSlice(
       HloInstruction* dynamic_update_slice) override;
-  Status HandleScatter(HloInstruction* scatter) override;
+  Status HandleScatter(HloInstruction* hlo) override;
 
   Status HandleSelect(HloInstruction* select) override;
 
@@ -356,9 +356,9 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
            AlgebraicSimplifier* simplifier);
 
   // Compute a function that maps from bitcasted dimensions to the resulting
-  // ones. Returns the function as a vector if successful; absl::optional
+  // ones. Returns the function as a vector if successful; std::optional
   // otherwise.
-  static absl::optional<std::vector<std::vector<int64_t>>> ComputeBitcastDimMap(
+  static std::optional<std::vector<std::vector<int64_t>>> ComputeBitcastDimMap(
       const Shape& bitcast_shape, const Shape& operand_shape);
   // Invert the directions of the given bitcast dimension map.
   static std::vector<std::vector<int64_t>> InvertBitcastDimMap(
@@ -369,8 +369,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // re-shaped result of applying bitcast to the original_shape, by using
   // dim_map to re-shape layout dimensions of original_shape. Returns the
   // result_shape with modified layout if the conversion succeeds; Returns
-  // absl::nullopt if fails.
-  static absl::optional<Shape> ReshapeLayoutDimensions(
+  // std::nullopt if fails.
+  static std::optional<Shape> ReshapeLayoutDimensions(
       const Shape& original_shape, const Shape& result_shape,
       const std::vector<std::vector<int64_t>>& original_map,
       const std::vector<std::vector<int64_t>>& result_map);
@@ -439,6 +439,11 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Updates uses and root instruction. Returns whether a replacement was made.
   bool ReplaceInstructionIfCompatible(HloInstruction* old_instruction,
                                       HloInstruction* new_instruction);
+  // Similar to above but tuplizes `new_instructions` if there are more than 1
+  // instructions.
+  bool ReplaceInstructionIfCompatible(
+      HloInstruction* old_instruction,
+      absl::Span<HloInstruction* const> new_instructions);
 
   // Returns whether the shape of the output of the given instructions are the
   // same for the purposes of simplification. If options_.is_layout_sensitive()
@@ -446,6 +451,9 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // (ShapeUtil::Equal). If options_.is_layout_sensitive() is false, then the
   // tests shape compatibility (ShapeUtil::Compatible).
   bool SameShape(const HloInstruction* lhs, const HloInstruction* rhs) const;
+
+  // Same as above but takes shape arguments directly.
+  bool SameShape(const Shape& lhs, const Shape& rhs) const;
 
   // A Broadcast that feeds an element-wise operation with a unique non-scalar
   // operand can sink to after the operation.

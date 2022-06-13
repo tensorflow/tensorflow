@@ -102,8 +102,8 @@ class CustomBufferizeTypeConverter
       // a memref with a specified layout, i.e. non-empty affine map.
       // TODO(pifon) : Change how target materialization is invoked in dialect
       // conversion.
-      if (auto memref_type = inputs[0].getType().dyn_cast<MemRefType>()) {
-        assert(!memref_type.getLayout().isIdentity());
+      if (auto memrefType = inputs[0].getType().dyn_cast<MemRefType>()) {
+        assert(!memrefType.getLayout().isIdentity());
         return inputs[0];
       }
       assert(inputs[0].getType().isa<TensorType>());
@@ -144,24 +144,24 @@ struct BufferizeInitTensorOp : public OpConversionPattern<InitTensorOp> {
   }
 };
 
-bool IsBlockArgOfTiledLoop(Value value) {
-  if (auto block_arg = value.dyn_cast<BlockArgument>())
-    return isa<LoopOp>(block_arg.getOwner()->getParentOp());
+bool isBlockArgOfTiledLoop(Value value) {
+  if (auto blockArg = value.dyn_cast<BlockArgument>())
+    return isa<LoopOp>(blockArg.getOwner()->getParentOp());
   return false;
 }
 
 // Attempts to find an existing `memref.subview` of `destMemRef` in the tiled
 // loop. The assumption is that in `gml_st.loop` the tile of the output
 // tensor that we read and the tile that we write to are the same.
-Value FindExistingSubview(Value destMemRef) {
-  if (auto to_memref = destMemRef.getDefiningOp<ToMemrefOp>()) {
-    if (auto to_tensor = to_memref.tensor().getDefiningOp<ToTensorOp>()) {
-      if (!IsBlockArgOfTiledLoop(to_tensor.memref())) return Value{};
+Value findExistingSubview(Value destMemRef) {
+  if (auto toMemref = destMemRef.getDefiningOp<ToMemrefOp>()) {
+    if (auto toTensor = toMemref.tensor().getDefiningOp<ToTensorOp>()) {
+      if (!isBlockArgOfTiledLoop(toTensor.memref())) return Value{};
       // Scan through users of the block argument to find `subview` op.
-      for (Operation *tensor_user : to_memref.tensor().getUsers()) {
-        if (auto another_cast = mlir::dyn_cast<ToMemrefOp>(tensor_user)) {
-          for (Operation *memref_user : another_cast.memref().getUsers()) {
-            if (auto subview = mlir::dyn_cast<SubViewOp>(memref_user)) {
+      for (Operation *tensorUser : toMemref.tensor().getUsers()) {
+        if (auto anotherCast = mlir::dyn_cast<ToMemrefOp>(tensorUser)) {
+          for (Operation *memrefUser : anotherCast.memref().getUsers()) {
+            if (auto subview = mlir::dyn_cast<SubViewOp>(memrefUser)) {
               if (subview.source() == destMemRef) return subview;
             }
           }
@@ -188,7 +188,7 @@ struct BufferizeInsertSliceOp : public OpConversionPattern<InsertSliceOp> {
 
     if (!op->getParentOfType<LoopOp>()) return failure();
 
-    Value subview = FindExistingSubview(destMemRef);
+    Value subview = findExistingSubview(destMemRef);
     if (!subview) {
       subview = rewriter.create<SubViewOp>(
           op.getLoc(), destMemRef, op.getMixedOffsets(), op.getMixedSizes(),
@@ -220,14 +220,14 @@ linalg::LinalgOp createLinalgOpOnBuffers(ConversionPatternRewriter &rewriter,
 }
 
 /// Get a variadic operand segment.
-ValueRange GetVariadicOperands(DenseIntElementsAttr size_attr,
+ValueRange getVariadicOperands(DenseIntElementsAttr sizeAttr,
                                ValueRange operands, unsigned index) {
-  const uint32_t *size_it = &*size_attr.value_begin<uint32_t>();
-  if (size_attr.isSplat()) return operands.slice(*size_it * index, *size_it);
+  const uint32_t *sizeIt = &*sizeAttr.value_begin<uint32_t>();
+  if (sizeAttr.isSplat()) return operands.slice(*sizeIt * index, *sizeIt);
 
   unsigned start = 0;
-  for (unsigned i = 0; i < index; ++i) start += size_it[i];
-  return operands.slice(start, size_it[index]);
+  for (unsigned i = 0; i < index; ++i) start += sizeIt[i];
+  return operands.slice(start, sizeIt[index]);
 }
 
 // Bufferize LinalgOps in-place.
@@ -242,12 +242,12 @@ struct BufferizeLinalgOp
     if (!op->getParentOfType<LoopOp>()) return failure();
 
     // An op with two variadic operand groups expects a segment size attribute.
-    auto operand_segments =
+    auto operandSegments =
         op->getAttrOfType<DenseIntElementsAttr>("operand_segment_sizes");
-    if (!operand_segments) return failure();
+    if (!operandSegments) return failure();
 
     const auto getOperands = [&](unsigned index) {
-      return GetVariadicOperands(operand_segments, operands, index);
+      return getVariadicOperands(operandSegments, operands, index);
     };
     createLinalgOpOnBuffers(rewriter, op, getOperands(0), getOperands(1));
     rewriter.replaceOp(op, getOperands(1));
@@ -290,25 +290,25 @@ struct BufferizeLoopOp : public OpConversionPattern<LoopOp> {
     for (auto &en : llvm::enumerate(op.outputs())) {
       Value output = en.value();
 
-      auto to_tensor = output.getDefiningOp<bufferization::ToTensorOp>();
-      if (!to_tensor || to_tensor->hasOneUse()) continue;
+      auto toTensor = output.getDefiningOp<bufferization::ToTensorOp>();
+      if (!toTensor || toTensor->hasOneUse()) continue;
 
-      auto alloc = to_tensor.memref().getDefiningOp<memref::AllocOp>();
+      auto alloc = toTensor.memref().getDefiningOp<memref::AllocOp>();
       if (!alloc) continue;
 
       OpBuilder::InsertionGuard g(rewriter);
       rewriter.setInsertionPoint(op);
-      auto new_alloc = rewriter.clone(*alloc.getOperation());
+      auto *newAlloc = rewriter.clone(*alloc.getOperation());
       operands[op.getNumControlOperands() + op.getNumInputs() + en.index()] =
-          new_alloc->getResult(0);
+          newAlloc->getResult(0);
     }
 
-    SmallVector<NamedAttribute> attr_list;
+    SmallVector<NamedAttribute> attrList;
     for (auto &item : adaptor.getAttributes()) {
-      attr_list.push_back(item);
+      attrList.push_back(item);
     }
     auto newOp = rewriter.create<LoopOp>(op.getLoc(), mlir::TypeRange{},
-                                         operands, attr_list);
+                                         operands, attrList);
     // Take the region from the old op and put it in the new op.
     rewriter.inlineRegionBefore(op.getLoopBody(), newOp.getLoopBody(),
                                 newOp.getLoopBody().end());
@@ -377,7 +377,7 @@ struct TiledLoopBufferizePass
         mlir::bufferization::getPartialBufferizationOptions();
     // TODO(springerm): Add dialects to this filter as more and more dialects
     // will be migrated to BufferizableOpInterface-based bufferization.
-    options.allowDialectInFilter<shape::ShapeDialect>();
+    options.opFilter.allowDialect<shape::ShapeDialect>();
     if (failed(mlir::bufferization::bufferizeOp(getOperation(), options))) {
       signalPassFailure();
       return;
@@ -405,7 +405,7 @@ struct TiledLoopBufferizePass
     target.addIllegalOp<tensor::ExtractSliceOp, tensor::InsertSliceOp>();
 
     CustomBufferizeTypeConverter converter;
-    mlir::mhlo::RemoveSignTypeConverter remove_sign_converter;
+    mlir::mhlo::RemoveSignTypeConverter removeSignConverter;
 
     // Configure bufferize pattern.
     populateCallOpTypeConversionPattern(patterns, converter);

@@ -129,7 +129,7 @@ class ExecutionInput {
  private:
   void SetHostShape(xla::Shape host_shape) {
     if (shape() != host_shape) {
-      host_shape_ = absl::make_unique<Shape>(std::move(host_shape));
+      host_shape_ = std::make_unique<Shape>(std::move(host_shape));
     }
   }
 
@@ -308,7 +308,7 @@ class Executable {
   virtual Status PopulateExecutionProfile(
       ExecutionProfile* execution_profile,
       HloExecutionProfile* hlo_execution_profile, se::Stream* stream) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Convenience wrapper for calling Executable::ExecuteOnStream. Sets up a

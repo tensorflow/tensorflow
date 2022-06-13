@@ -112,6 +112,10 @@ void QuantizedFullyConnectedTester::Test(TfLiteDelegate* delegate) const {
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
+  if (weights_cache_ != nullptr) {
+    TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache_);
+  }
+
   if (Unsigned()) {
     Test<uint8_t>(delegate_interpreter.get(), default_interpreter.get());
   } else {

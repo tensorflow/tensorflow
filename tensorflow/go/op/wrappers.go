@@ -4606,22 +4606,27 @@ func BroadcastGradientArgs(scope *Scope, s0 tf.Output, s1 tf.Output) (r0 tf.Outp
 //
 // Broadcasting is the process of making arrays to have compatible shapes
 // for arithmetic operations. Two shapes are compatible if for each
-// dimension pair they are either equal or one of them is one. When trying
-// to broadcast a Tensor to a shape, it starts with the trailing dimensions,
-// and works its way forward.
+// dimension pair they are either equal or one of them is one.
 //
-// For example,
+// For example:
 //
-// >>> x = tf.constant([1, 2, 3])
-// >>> y = tf.broadcast_to(x, [3, 3])
+// >>> x = tf.constant([[1, 2, 3]])   # Shape (1, 3,)
+// >>> y = tf.broadcast_to(x, [2, 3])
 // >>> print(y)
 // tf.Tensor(
 //     [[1 2 3]
-//      [1 2 3]
-//      [1 2 3]], shape=(3, 3), dtype=int32)
+//      [1 2 3]], shape=(2, 3), dtype=int32)
 //
 // In the above example, the input Tensor with the shape of `[1, 3]`
-// is broadcasted to output Tensor with shape of `[3, 3]`.
+// is broadcasted to output Tensor with shape of `[2, 3]`.
+//
+// When broadcasting, if a tensor has fewer axes than necessary its shape is
+// padded on the left with ones. So this gives the same result as the previous
+// example:
+//
+// >>> x = tf.constant([1, 2, 3])   # Shape (3,)
+// >>> y = tf.broadcast_to(x, [2, 3])
+//
 //
 // When doing broadcasted operations such as multiplying a tensor
 // by a scalar, broadcasting (usually) confers some time or space
@@ -9079,6 +9084,14 @@ func DataServiceDatasetTargetWorkers(value string) DataServiceDatasetAttr {
 	}
 }
 
+// DataServiceDatasetCrossTrainerCacheOptions sets the optional cross_trainer_cache_options attribute to value.
+// If not specified, defaults to ""
+func DataServiceDatasetCrossTrainerCacheOptions(value string) DataServiceDatasetAttr {
+	return func(m optionalAttr) {
+		m["cross_trainer_cache_options"] = value
+	}
+}
+
 // Creates a dataset that reads data from the tf.data service.
 func DataServiceDataset(scope *Scope, dataset_id tf.Output, processing_mode tf.Output, address tf.Output, protocol tf.Output, job_name tf.Output, max_outstanding_requests tf.Output, iteration_counter tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...DataServiceDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
@@ -9123,6 +9136,14 @@ func DataServiceDatasetV2DataTransferProtocol(value string) DataServiceDatasetV2
 func DataServiceDatasetV2TargetWorkers(value string) DataServiceDatasetV2Attr {
 	return func(m optionalAttr) {
 		m["target_workers"] = value
+	}
+}
+
+// DataServiceDatasetV2CrossTrainerCacheOptions sets the optional cross_trainer_cache_options attribute to value.
+// If not specified, defaults to ""
+func DataServiceDatasetV2CrossTrainerCacheOptions(value string) DataServiceDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["cross_trainer_cache_options"] = value
 	}
 }
 
@@ -33251,6 +33272,14 @@ func RangeDatasetMetadata(value string) RangeDatasetAttr {
 	}
 }
 
+// RangeDatasetReplicateOnSplit sets the optional replicate_on_split attribute to value.
+// If not specified, defaults to false
+func RangeDatasetReplicateOnSplit(value bool) RangeDatasetAttr {
+	return func(m optionalAttr) {
+		m["replicate_on_split"] = value
+	}
+}
+
 // Creates a dataset with a range of values. Corresponds to python's xrange.
 //
 // Arguments:
@@ -45623,6 +45652,42 @@ func StatelessSampleDistortedBoundingBox(scope *Scope, image_size tf.Output, bou
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// Randomly and deterministically shuffles a tensor along its first dimension.
+//
+// The tensor is shuffled along dimension 0, such that each `value[j]` is mapped
+// to one and only one `output[i]`. For example, a mapping that might occur for a
+// 3x2 tensor is:
+//
+// ```
+// [[1, 2],       [[5, 6],
+//  [3, 4],  ==>   [1, 2],
+//  [5, 6]]        [3, 4]]
+// ```
+//
+// The outputs are a deterministic function of `value`, `key`, `counter` and `alg`.
+//
+// Arguments:
+//	value: The tensor to be shuffled.
+//	key: Key for the counter-based RNG algorithm (shape uint64[1]).
+//	counter: Initial counter for the counter-based RNG algorithm (shape uint64[2] or uint64[1] depending on the algorithm). If a larger vector is given, only the needed portion on the left (i.e. [:N]) will be used.
+//	alg: The RNG algorithm (shape int32[]).
+//
+// Returns A tensor of same shape and type as `value`, shuffled along its first
+// dimension.
+func StatelessShuffle(scope *Scope, value tf.Output, key tf.Output, counter tf.Output, alg tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "StatelessShuffle",
+		Input: []tf.Input{
+			value, key, counter, alg,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // StatelessTruncatedNormalAttr is an optional argument to StatelessTruncatedNormal.
 type StatelessTruncatedNormalAttr func(optionalAttr)
 
@@ -47498,6 +47563,14 @@ func TPUReplicateMetadataUseSpmdForXlaPartitioning(value bool) TPUReplicateMetad
 	}
 }
 
+// TPUReplicateMetadataTpuCompileOptionsProto sets the optional tpu_compile_options_proto attribute to value.
+// If not specified, defaults to ""
+func TPUReplicateMetadataTpuCompileOptionsProto(value string) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["tpu_compile_options_proto"] = value
+	}
+}
+
 // Metadata indicating how the TPU computation should be replicated.
 //
 // This operation holds the metadata common to operations of a `tpu.replicate()` computation subgraph.
@@ -47638,6 +47711,26 @@ func TPUReshardVariables(scope *Scope, vars []tf.Output, new_format_key tf.Outpu
 		},
 	}
 	return scope.AddOperation(opspec)
+}
+
+// Round-robin load balancing on TPU cores.
+//
+// A load balancing op that round-robins among TPU cores.
+//
+// This op round-robins between the integers in [0, NumTPUCoresVisiblePerHost]. It
+// is useful for interfacing with TensorFlow ops that take as input a TPU core on
+// which to execute computations, such as `TPUPartitionedCall`.
+//
+// device_ordinal: An integer in [0, NumTPUCoresVisiblePerHost].
+func TPURoundRobin(scope *Scope) (device_ordinal tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TPURoundRobin",
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // TakeDatasetAttr is an optional argument to TakeDataset.
@@ -49393,6 +49486,14 @@ func TensorSliceDatasetMetadata(value string) TensorSliceDatasetAttr {
 	}
 }
 
+// TensorSliceDatasetReplicateOnSplit sets the optional replicate_on_split attribute to value.
+// If not specified, defaults to false
+func TensorSliceDatasetReplicateOnSplit(value bool) TensorSliceDatasetAttr {
+	return func(m optionalAttr) {
+		m["replicate_on_split"] = value
+	}
+}
+
 // Creates a dataset that emits each dim-0 slice of `components` once.
 func TensorSliceDataset(scope *Scope, components []tf.Output, output_shapes []tf.Shape, optional ...TensorSliceDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
@@ -50088,6 +50189,30 @@ func TopKWithUnique(scope *Scope, input tf.Output, k int64) (topk tf.Output, top
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Converts XRT's uid handles to TensorFlow-friendly input format.
+//
+// Converts a uid handle for a compiled program into a vector of proto keys.
+//
+// XRT compile ops return uids, and the TensorFlow execute op takes a proto
+// key. This op enables a client to compile on TPU using XRT and execute using the
+// standard TensorFlow execute op.
+//
+// 'uid' is the input handle.
+// 'proto_keys' is a vector of proto keys, one for each core program.
+func TpuHandleToProtoKey(scope *Scope, uid tf.Output) (proto_keys tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TpuHandleToProtoKey",
+		Input: []tf.Input{
+			uid,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Shuffle dimensions of x according to a permutation.

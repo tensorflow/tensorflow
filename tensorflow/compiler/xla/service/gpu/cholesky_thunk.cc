@@ -54,6 +54,52 @@ StatusOr<GpuSolverContext*> GetContext(se::Stream* stream) {
   return &result.first->second;
 }
 
+template <typename T>
+Status DoPotrfBatched(const se::GpuAsmOpts& asm_opts, CholeskyParams* params,
+                      se::Stream* stream, GpuSolverContext* context) {
+  T* a_base = static_cast<T*>(params->a_buffer.opaque());
+  se::DeviceMemory<int> infos(params->info_buffer);
+#if TENSORFLOW_USE_ROCSOLVER
+  // hipsolver is not supported so allocate a GPU buffer
+  se::ScopedDeviceMemory<T*> ptrs =
+      stream->parent()->AllocateOwnedArray<T*>(batch_size_);
+  auto as = *ptrs;
+#else
+  se::DeviceMemory<T*> as(params->workspace_buffer);
+#endif
+
+  CHECK_GE(as.size(), params->batch_size);
+  CHECK_GE(infos.size(), params->batch_size);
+
+  // Run a kernel that sets as[i] = &a_base[i * stride].
+  const int64_t stride_bytes = params->n * params->n * sizeof(T);
+  TF_RETURN_IF_ERROR(MakeBatchPointers(
+      stream, asm_opts, se::DeviceMemoryBase(a_base), stride_bytes,
+      static_cast<int>(params->batch_size), se::DeviceMemoryBase(as)));
+
+  // Now that we've set up the `as` array, we can call cusolver.
+  return context->PotrfBatched(params->uplo, params->n, as, params->n, infos,
+                               params->batch_size);
+}
+
+template <typename T>
+Status DoPotrfUnbatched(CholeskyParams* params, GpuSolverContext* context) {
+  T* a_base = static_cast<T*>(params->a_buffer.opaque());
+  int* info_base = static_cast<int*>(params->info_buffer.opaque());
+
+  int64_t stride = params->n * params->n;
+  for (int64_t i = 0; i < params->batch_size; ++i) {
+    se::DeviceMemory<T> a_data(
+        se::DeviceMemoryBase(&a_base[i * stride], sizeof(T) * stride));
+    se::DeviceMemory<int> info_data(
+        se::DeviceMemoryBase(&info_base[i], sizeof(int)));
+    TF_RETURN_IF_ERROR(context->Potrf(params->uplo, params->n, a_data,
+                                      params->n, info_data,
+                                      params->workspace_buffer));
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
 CholeskyThunk::CholeskyThunk(ThunkInfo thunk_info,
@@ -82,89 +128,53 @@ Status CholeskyThunk::ExecuteOnStream(const ExecuteParams& params) {
           << " workspace=" << workspace_buffer_.ToString()
           << " info=" << info_buffer_.ToString();
 
-  TF_ASSIGN_OR_RETURN(GpuSolverContext * context, GetContext(params.stream));
+  se::DeviceMemoryBase a_buffer =
+      params.buffer_allocations->GetDeviceAddress(a_buffer_);
+  se::DeviceMemoryBase info_buffer =
+      params.buffer_allocations->GetDeviceAddress(info_buffer_);
+  se::DeviceMemoryBase workspace_buffer =
+      params.buffer_allocations->GetDeviceAddress(workspace_buffer_);
+  CholeskyParams cholesky_params{n_,       batch_size_,      uplo_,
+                                 a_buffer, workspace_buffer, info_buffer};
+  return RunCholesky(asm_opts_, type_, &cholesky_params, params.stream);
+}
+
+Status RunCholesky(const se::GpuAsmOpts& asm_opts, PrimitiveType type,
+                   CholeskyParams* cholesky_params, se::Stream* stream) {
+  TF_ASSIGN_OR_RETURN(GpuSolverContext * context, GetContext(stream));
   if (context->SupportsPotrfBatched()) {
-    switch (type_) {
+    switch (type) {
       case F32:
-        return DoPotrfBatched<float>(params, context);
+        return DoPotrfBatched<float>(asm_opts, cholesky_params, stream,
+                                     context);
       case F64:
-        return DoPotrfBatched<double>(params, context);
+        return DoPotrfBatched<double>(asm_opts, cholesky_params, stream,
+                                      context);
       case C64:
-        return DoPotrfBatched<std::complex<float>>(params, context);
+        return DoPotrfBatched<std::complex<float>>(asm_opts, cholesky_params,
+                                                   stream, context);
       case C128:
-        return DoPotrfBatched<std::complex<double>>(params, context);
+        return DoPotrfBatched<std::complex<double>>(asm_opts, cholesky_params,
+                                                    stream, context);
       default:
         return InvalidArgument("Invalid type for cholesky %s",
-                               PrimitiveType_Name(type_));
+                               PrimitiveType_Name(type));
     }
   } else {
-    switch (type_) {
+    switch (type) {
       case F32:
-        return DoPotrfUnbatched<float>(params, context);
+        return DoPotrfUnbatched<float>(cholesky_params, context);
       case F64:
-        return DoPotrfUnbatched<double>(params, context);
+        return DoPotrfUnbatched<double>(cholesky_params, context);
       case C64:
-        return DoPotrfUnbatched<std::complex<float>>(params, context);
+        return DoPotrfUnbatched<std::complex<float>>(cholesky_params, context);
       case C128:
-        return DoPotrfUnbatched<std::complex<double>>(params, context);
+        return DoPotrfUnbatched<std::complex<double>>(cholesky_params, context);
       default:
         return InvalidArgument("Invalid type for cholesky %s",
-                               PrimitiveType_Name(type_));
+                               PrimitiveType_Name(type));
     }
   }
-}
-
-template <typename T>
-Status CholeskyThunk::DoPotrfBatched(const ExecuteParams& params,
-                                     GpuSolverContext* context) {
-  se::Stream* stream = params.stream;
-  T* a_base = static_cast<T*>(
-      params.buffer_allocations->GetDeviceAddress(a_buffer_).opaque());
-  se::DeviceMemory<int> infos(
-      params.buffer_allocations->GetDeviceAddress(info_buffer_));
-#if TENSORFLOW_USE_ROCSOLVER
-  // hipsolver is not supported so allocate a GPU buffer
-  se::ScopedDeviceMemory<T*> ptrs =
-      stream->parent()->AllocateOwnedArray<T*>(batch_size_);
-  auto as = *ptrs;
-#else
-  se::DeviceMemory<T*> as(
-      params.buffer_allocations->GetDeviceAddress(workspace_buffer_));
-#endif
-
-  CHECK_GE(as.size(), batch_size_);
-  CHECK_GE(infos.size(), batch_size_);
-
-  // Run a kernel that sets as[i] = &a_base[i * stride].
-  const int64_t stride_bytes = n_ * n_ * sizeof(T);
-  TF_RETURN_IF_ERROR(MakeBatchPointers(
-      stream, asm_opts_, se::DeviceMemoryBase(a_base), stride_bytes,
-      static_cast<int>(batch_size_), se::DeviceMemoryBase(as)));
-
-  // Now that we've set up the `as` array, we can call cusolver.
-  return context->PotrfBatched(uplo_, n_, as, n_, infos, batch_size_);
-}
-
-template <typename T>
-Status CholeskyThunk::DoPotrfUnbatched(const ExecuteParams& params,
-                                       GpuSolverContext* context) {
-  T* a_base = static_cast<T*>(
-      params.buffer_allocations->GetDeviceAddress(a_buffer_).opaque());
-  int* info_base = static_cast<int*>(
-      params.buffer_allocations->GetDeviceAddress(info_buffer_).opaque());
-  se::DeviceMemoryBase workspace =
-      params.buffer_allocations->GetDeviceAddress(workspace_buffer_);
-
-  int64_t stride = n_ * n_;
-  for (int64_t i = 0; i < batch_size_; ++i) {
-    se::DeviceMemory<T> a_data(
-        se::DeviceMemoryBase(&a_base[i * stride], sizeof(T) * stride));
-    se::DeviceMemory<int> info_data(
-        se::DeviceMemoryBase(&info_base[i], sizeof(int)));
-    TF_RETURN_IF_ERROR(
-        context->Potrf(uplo_, n_, a_data, n_, info_data, workspace));
-  }
-  return Status::OK();
 }
 
 }  // namespace gpu

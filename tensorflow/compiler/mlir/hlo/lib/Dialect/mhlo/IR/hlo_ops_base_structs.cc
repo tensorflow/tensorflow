@@ -33,8 +33,8 @@ namespace mlir {
 namespace mhlo {
 
 void printConvolutionDimensions(AsmPrinter &p, Operation *,
-                                ConvDimensionNumbersAttr dnums_) {
-  printConvolutionDimensions(p, dnums_);
+                                ConvDimensionNumbersAttr dnums) {
+  printConvolutionDimensions(p, dnums);
 }
 
 }  // namespace mhlo

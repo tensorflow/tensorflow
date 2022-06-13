@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/text_literal_reader.h"
 
 #include <limits>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"

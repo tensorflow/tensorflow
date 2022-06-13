@@ -415,6 +415,7 @@ NamedObject = combinations_lib.NamedObject
 _running_in_worker = False
 
 
+@tf_export("__internal__.distribute.combinations.in_main_process", v1=[])
 def in_main_process():
   """Whether it's in the main test process.
 
@@ -428,6 +429,12 @@ def in_main_process():
 
 
 class TestEnvironment(object):
+  """Holds the test environment information.
+
+  Tests should modify the attributes of the instance returned by `env()` in the
+  main process if needed, and it will be passed to the worker processes each
+  time a test case is run.
+  """
 
   def __init__(self):
     self.tf_data_service_dispatcher = None
@@ -446,11 +453,12 @@ class TestEnvironment(object):
 _env = TestEnvironment()
 
 
+@tf_export("__internal__.distribute.combinations.env", v1=[])
 def env():
   """Returns the object holds the test environment information.
 
-  Tests should modifies this in the main process if needed, and it will be
-  passed to the worker processes each time a test case is ran.
+  Tests should modify this in the main process if needed, and it will be passed
+  to the worker processes each time a test case is run.
 
   Returns:
     a TestEnvironment object.

@@ -365,7 +365,7 @@ TEST(VariantOpCopyTest, CreateCopyCPUToGPUStringFailsSafely) {
   ClientSession session(root);
   std::vector<Tensor> outputs;
   Status err = session.Run({create_op, identity}, &outputs);
-  EXPECT_EQ(err.code(), errors::Code::INVALID_ARGUMENT);
+  EXPECT_TRUE(errors::IsInvalidArgument(err));
   EXPECT_TRUE(
       absl::StrContains(err.error_message(),
                         "During Variant Host->Device Copy: non-DMA-copy "

@@ -27,29 +27,33 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-struct NcclCollectivePermuteConfig : public NcclCollectiveConfig {
- public:
+struct NcclCollectivePermuteConfig {
   // During a collective permute, every node optionally sends its data to
   // another node (including possibly itself) and received data from another
   // node. For each node, remember who it receives data from (source) and who
   // it send data to (target). Either are optional.
   struct SourceTargetMapEntry {
-    absl::optional<int64_t> source;
-    absl::optional<int64_t> target;
+    std::optional<int64_t> source;
+    std::optional<int64_t> target;
   };
 
-  absl::flat_hash_map<int64_t, SourceTargetMapEntry> id_to_source_target;
+  using IdToSourceTargetMap =
+      absl::flat_hash_map<int64_t, SourceTargetMapEntry>;
 
   // Returns the source and target ID corresponding to the given ID (these IDs
   // are replica_ids for cross replica permute or partition_ids for cross
   // partition permute). The source ID is the id which will send data to this
   // ID and the target ID is the id to which this ID will send its data. Either
   // can be optional.
-  SourceTargetMapEntry GetSourceTarget(int64_t id) const {
+  static SourceTargetMapEntry GetSourceTarget(
+      const IdToSourceTargetMap& id_to_source_target, int64_t id) {
     auto it = id_to_source_target.find(id);
     if (it != id_to_source_target.end()) return it->second;
     return SourceTargetMapEntry{};
   }
+
+  NcclCollectiveConfig config;
+  IdToSourceTargetMap id_to_source_target;
 };
 
 // Thunk that performs a NCCL-based collective permute.
@@ -73,7 +77,7 @@ class NcclCollectivePermuteThunk : public NcclCollectiveThunk {
                            int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo::CollectivePermuteOp op) {
-    return GetCollectiveOpGroupMode(op.channel_id().hasValue(), absl::nullopt)
+    return GetCollectiveOpGroupMode(op.channel_id().hasValue(), std::nullopt)
         .ValueOrDie();
   }
 
@@ -81,12 +85,17 @@ class NcclCollectivePermuteThunk : public NcclCollectiveThunk {
   Status RunNcclCollective(const ExecuteParams& params,
                            ncclComm_t comm) override;
 
-  const NcclCollectiveConfig& config() const override { return config_; }
+  const NcclCollectiveConfig& config() const override { return config_.config; }
 
  private:
   const NcclCollectivePermuteConfig config_;
   const Buffer buffer_;
 };
+
+Status RunCollectivePermute(
+    NcclCollectivePermuteConfig::SourceTargetMapEntry source_target,
+    DeviceBufferPair& buffer, se::Stream& stream, ncclComm_t comm,
+    absl::string_view device_string, int64_t current_id);
 
 }  // namespace gpu
 }  // namespace xla

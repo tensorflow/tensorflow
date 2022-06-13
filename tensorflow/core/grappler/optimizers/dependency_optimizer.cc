@@ -497,7 +497,7 @@ Status DependencyOptimizer::OptimizeDependencies() {
     node_map_.reset(new NodeMap(optimized_graph_));
     BuildNodeToIdx();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -625,7 +625,7 @@ Status DependencyOptimizer::TransitiveReduction() {
   }
   VLOG(1) << "Removed " << num_controls_removed << " out of " << num_controls
           << " control dependencies";
-  return Status::OK();
+  return OkStatus();
 }
 
 void DependencyOptimizer::BuildNodeToIdx() {
@@ -786,7 +786,7 @@ Status DependencyOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     GroupCrossDeviceControlEdges(/*host_granularity=*/true);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace grappler

@@ -55,22 +55,22 @@ class StringDest : public WritableFile {
  public:
   explicit StringDest(string* contents) : contents_(contents) {}
 
-  Status Close() override { return Status::OK(); }
-  Status Flush() override { return Status::OK(); }
-  Status Sync() override { return Status::OK(); }
+  Status Close() override { return OkStatus(); }
+  Status Flush() override { return OkStatus(); }
+  Status Sync() override { return OkStatus(); }
   Status Append(StringPiece slice) override {
     contents_->append(slice.data(), slice.size());
-    return Status::OK();
+    return OkStatus();
   }
 #if defined(TF_CORD_SUPPORT)
   Status Append(const absl::Cord& data) override {
     contents_->append(std::string(data));
-    return Status::OK();
+    return OkStatus();
   }
 #endif
   Status Tell(int64_t* pos) override {
     *pos = contents_->size();
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -97,7 +97,7 @@ class StringSource : public RandomAccessFile {
       n = contents_->size() - offset;
     }
     *result = StringPiece(contents_->data() + offset, n);
-    return Status::OK();
+    return OkStatus();
   }
 
   void force_error() { force_error_ = true; }

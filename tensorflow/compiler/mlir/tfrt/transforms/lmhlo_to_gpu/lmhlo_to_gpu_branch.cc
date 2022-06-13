@@ -25,8 +25,9 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project

@@ -29,11 +29,6 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-enum class AddressMode {
-  kDontCare,
-  kZero,
-};
-
 enum class TensorStorageType {
   UNKNOWN,
   BUFFER,
@@ -42,13 +37,6 @@ enum class TensorStorageType {
   TEXTURE_3D,
   TEXTURE_ARRAY,
   SINGLE_TEXTURE_2D
-};
-
-struct ZeroClampSupport {
-  bool image_buffer = true;
-  bool image2d = true;
-  bool image3d = true;
-  bool image2d_array = true;
 };
 
 struct TensorDescriptor : public GPUObjectDescriptor {
@@ -85,7 +73,6 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   size_t GetSizeInBytesForShape(const BHWDC& shape5d) const;
 
   bool HasAxis(Axis axis) const;
-  void SetAddressMode(AddressMode mode);
   int GetWidthSize(BHWDC shape) const;
   int GetSliceStrideSize(BHWDC shape) const;
 
@@ -104,15 +91,15 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   int GetLinearIndex(const BHWDC& shape5d, int b, int x, int y, int d, int s,
                      int sub_c) const;
 
-  bool SupportsZeroClamp(const Axis& axis) const;
+  bool SupportsZeroClamp(const Axis& axis, const GpuInfo& gpu_info) const;
   bool CanReadOutOfBorder(const Axis& axis) const;
   bool IsLinear() const;
 
   // applicable only for types that: IsLinear -> true.
   // In this case for address we have 1d component - addr (int)
-  // If for addr == -1 this linear storage type returns FLT4(0.0), this function
-  // returns true, otherwise false
-  bool ReturnsZeroForNegOneRead() const;
+  // If for addr == -1 this linear storage type returns zero value, this
+  // function returns true, otherwise false
+  bool ReturnsZeroForNegOneRead(const GpuInfo& gpu_info) const;
 
   absl::Status CanCreateTensorWithShape(const GpuInfo& gpu_info,
                                         const BHWDC& shape) const;
@@ -120,16 +107,20 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   absl::Status CanCreateTensorWithShape(const GpuInfo& gpu_info,
                                         const BHWC& shape) const;
 
+  // Can udate storage type if in the current storage type this tensor can not
+  // be allocated with shape on specified device(gpu_info)
+  // Usual scenario is to create new tensor_desc on base of another and may be
+  // update storage type for new tensor_desc shape because it can be unsuported
+  // with old storage type
+  absl::Status UpdateToSupportedStorageType(const GpuInfo& gpu_info,
+                                            const BHWC& shape);
+
   DataType data_type = DataType::UNKNOWN;
   TensorStorageType storage_type = TensorStorageType::UNKNOWN;
   // This field describes logical layout, actual(physical) GPU layout can be
   // totally different.
   Layout layout =
       Layout::UNKNOWN;  // Supported layouts is HWC, BHWC, HWDC, BHWDC
-
-  void SetZeroClampSupport(const ZeroClampSupport& new_state) {
-    zero_clamp_support = new_state;
-  }
 
   void SetBHWCShape(const BHWC& new_shape) {
     shape = BHWDC(new_shape.b, new_shape.h, new_shape.w, 1, new_shape.c);
@@ -207,8 +198,6 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
   bool IsBatchedWidth() const;
 
-  AddressMode AddressModeFromState() const;
-
   absl::Status MaybeGetDataTypeFromTemplateArgs(
       const std::vector<std::string>& template_args, DataType* result) const;
 
@@ -248,8 +237,6 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   void UploadData(const T* src);
   template <typename T>
   void DownloadData(T* dst);
-
-  ZeroClampSupport zero_clamp_support;
 
   // optional
   BHWDC shape;

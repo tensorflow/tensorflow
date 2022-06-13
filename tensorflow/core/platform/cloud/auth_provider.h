@@ -46,7 +46,7 @@ class EmptyAuthProvider : public AuthProvider {
  public:
   Status GetToken(string* token) override {
     *token = "";
-    return Status::OK();
+    return OkStatus();
   }
 };
 

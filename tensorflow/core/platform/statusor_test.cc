@@ -477,7 +477,7 @@ class BenchmarkFactory {
   // the user provided pointer result.
   Status ArgumentFactory(T** result) TF_ATTRIBUTE_NOINLINE {
     *result = value_;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status ArgumentFactoryFail(T** result) TF_ATTRIBUTE_NOINLINE {

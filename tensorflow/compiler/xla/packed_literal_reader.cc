@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/packed_literal_reader.h"
 
 #include <limits>
+#include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/base/casts.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"

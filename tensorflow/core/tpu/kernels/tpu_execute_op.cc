@@ -85,7 +85,7 @@ Status GetComputationCacheEntry(
   core::ScopedUnref lookup_unref(proto_lookup);
   TF_RETURN_IF_ERROR(proto_lookup->Lookup(key->vec<tstring>()(0), entry));
   *rendezvous_key_base = key->vec<tstring>()(1);
-  return Status::OK();
+  return OkStatus();
 }
 
 struct VariableUpdateMap {
@@ -118,7 +118,7 @@ xla::StatusOr<VariableUpdateMap> BuildVariableUpdateMap(
                        .second)
           << "Duplicate variable output index: " << output;
     }
-    return Status::OK();
+    return OkStatus();
   };
 
   // First add the updates produced by the compilation. Not all variables are
@@ -236,7 +236,7 @@ xla::StatusOr<std::unique_ptr<InputBuffers>> BuildComputationInputs(
       }
     }
 
-    return Status::OK();
+    return OkStatus();
   };
 
   // Iterate over the inputs, validating the shapes of non-variable inputs,
@@ -331,7 +331,7 @@ xla::StatusOr<std::unique_ptr<InputBuffers>> BuildComputationInputs(
                                &xla_tensor->shaped_buffer());
       xla_tensor->WaitForDefinitionEventOnStream(stream);
     }
-    return Status::OK();
+    return OkStatus();
   };
 
   for (int i = 0; i < arg_list.size(); ++i) {
@@ -781,7 +781,7 @@ Status TPUExecuteOp::DoWork(OpKernelContext* context) {
                                    xla::GetDebugOptionsFromFlags());
         });
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 TPUExecuteOp::~TPUExecuteOp() = default;

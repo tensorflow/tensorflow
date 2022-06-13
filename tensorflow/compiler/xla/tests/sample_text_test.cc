@@ -16,10 +16,10 @@ limitations under the License.
 // This demonstrates how to use hlo_test_base to create textual IR based
 // testcases.
 
+#include <optional>
 #include <string>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -29,7 +29,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using absl::nullopt;
+using std::nullopt;
 
 class SampleTextTest : public HloTestBase {};
 

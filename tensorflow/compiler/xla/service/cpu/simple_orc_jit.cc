@@ -20,9 +20,9 @@ limitations under the License.
 #include <algorithm>
 #include <cstdio>
 #include <list>
+#include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"

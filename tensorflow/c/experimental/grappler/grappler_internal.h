@@ -75,7 +75,7 @@ class CGraphOptimizer : public CustomGraphOptimizer {
   bool UsesFunctionLibrary() const override { return false; }
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
-    return Status::OK();
+    return OkStatus();
   }
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph_def) override;

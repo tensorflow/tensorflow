@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -42,7 +41,7 @@ ENTRY entry {
 }
 )";
 
-  auto module = absl::make_unique<VerifiedHloModule>(
+  auto module = std::make_unique<VerifiedHloModule>(
       "TupleUtilTest", HloModuleConfig(), /*verifier_layout_sensitive=*/true,
       /*allow_mixed_precision_in_hlo_verifier=*/false,
       ShapeUtil::ByteSizeOfElements);

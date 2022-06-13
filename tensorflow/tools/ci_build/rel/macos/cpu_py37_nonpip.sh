@@ -40,6 +40,7 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 # Pass PYENV_VERSION since we're using pyenv. See b/182399580
 bazel test \
   --config=release_cpu_macos \
+  --config=nonccl \
   --action_env PYENV_VERSION="${PY_VERSION}" \
   --build_tag_filters="${tag_filters}" \
   --test_tag_filters="${tag_filters}" \

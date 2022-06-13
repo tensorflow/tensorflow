@@ -539,7 +539,7 @@ Status InitConv2DParameters(const OpKernelConstruction* context,
                                        params->explicit_paddings,
                                        /*num_dims=*/4, data_format));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ComputeConv2DDimension(const Conv2DParameters& params,
@@ -646,7 +646,7 @@ Status ComputeConv2DDimension(const Conv2DParameters& params,
   dimensions->pad_cols_before = pad_cols_before;
   dimensions->pad_cols_after = pad_cols_after;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #undef TF_REQUIRES
@@ -863,12 +863,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   }
 
 #if GOOGLE_CUDA
-  // Tensor Core (NVIDIA Volta+ GPUs) supports efficient convolution with fp16
-  // in NHWC data layout. In all other configurations it's more efficient to
-  // run computation in NCHW data format.
-  const bool compute_in_nhwc = DataTypeToEnum<T>::value == DT_HALF &&
-                               stream->GetCudaComputeCapability().IsAtLeast(
-                                   se::CudaComputeCapability::VOLTA);
+  const bool compute_in_nhwc = ComputeInNhwcEnabled(DataTypeToEnum<T>::value,
+                                                    stream, /*is_conv2d=*/true);
 #else
   // fast NHWC implementation is a CUDA only feature
   const bool compute_in_nhwc = false;
@@ -1054,7 +1050,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         To32Bit(filter.tensor<T, 4>()),
         To32Bit(transformed_filter.tensor<T, 4>()));
 
-    return Status::OK();
+    return OkStatus();
   };
 
   if (compute_data_format == FORMAT_NCHW) {

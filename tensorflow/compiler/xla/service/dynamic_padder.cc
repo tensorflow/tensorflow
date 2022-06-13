@@ -16,13 +16,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -1381,9 +1381,7 @@ StatusOr<bool> RewriteDynamicSort(
                                                       new_param_1.get()};
   HloComputation* sort_comp = sort->parent()->parent()->AddEmbeddedComputation(
       sort->called_computations()[0]->CloneWithReplacements(
-          /*replacements=*/absl::flat_hash_map<
-              const HloInstruction*, std::unique_ptr<HloInstruction>>(),
-          extra_parameters));
+          /*replacements=*/nullptr, extra_parameters));
   auto inbound_lhs =
       sort_comp->parameter_instruction(param_number_before_rewritten);
   auto inbound_rhs =
@@ -1830,23 +1828,34 @@ StatusOr<HloInstruction*> InsertPadToStaticOnInstruction(HloInstruction* inst) {
       HloInstruction::CreateTuple(static_tuple_elements));
 }
 
+// Inserts PadToStatic for parameters and custom-calls which "materialize"
+// dynamic outputs given only static inputs.
 Status InsertPadToStaticAfterModuleInputs(HloModule* module) {
   std::vector<HloInstruction*> params;
   HloComputation* entry = module->entry_computation();
-  for (int64_t i = 0; i < entry->num_parameters(); ++i) {
-    HloInstruction* param =
-        module->entry_computation()->parameter_instruction(i);
-    auto users = param->users();
-    TF_ASSIGN_OR_RETURN(HloInstruction * static_param,
-                        InsertPadToStaticOnInstruction(param));
-    for (auto* user : users) {
-      TF_RETURN_IF_ERROR(param->ReplaceUseWith(user, static_param));
-    }
-    if (param == entry->root_instruction()) {
-      module->entry_computation()->set_root_instruction(static_param);
+  for (HloComputation* comp : module->MakeNonfusionComputationsSorted()) {
+    for (HloInstruction* instr : comp->instructions()) {
+      if (!instr->shape().is_static() &&
+          ((instr->opcode() == HloOpcode::kParameter && comp == entry) ||
+           instr->opcode() == HloOpcode::kCustomCall) &&
+          absl::c_all_of(instr->operands(), [&](HloInstruction* operand) {
+            return operand->shape().is_static();
+          })) {
+        LOG(ERROR) << "Inserting PadToStatic for instruction: "
+                   << instr->ToString();
+        auto users = instr->users();
+        TF_ASSIGN_OR_RETURN(HloInstruction * instr_static,
+                            InsertPadToStaticOnInstruction(instr));
+        for (auto* user : users) {
+          TF_RETURN_IF_ERROR(instr->ReplaceUseWith(user, instr_static));
+        }
+        if (instr == entry->root_instruction()) {
+          module->entry_computation()->set_root_instruction(instr_static);
+        }
+      }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Remove all dynamic shapes between pad-to-static and slice-to-dynamic.
@@ -1899,7 +1908,7 @@ class DynamicShapeRemovingVisitor : public DfsHloVisitorWithDefault {
         computation->set_root_instruction(new_root);
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -2019,7 +2028,7 @@ Status DynamicShapeRemovingVisitor::DefaultAction(HloInstruction* hlo) {
   // rewritten it to support static shapes.
   if (!input_is_dynamic && op_support == OpDynamismSupport::kNoSupport) {
     hlo->mutable_shape()->clear_dynamic_dimensions();
-    return Status::OK();
+    return OkStatus();
   }
 
   // Op doesn't support dynamic tensor: For each operand rewrite dynamic input
@@ -2035,7 +2044,7 @@ Status DynamicShapeRemovingVisitor::DefaultAction(HloInstruction* hlo) {
     }
     // This op doesn't support dynamic lowering so the op has to be static.
     hlo->mutable_shape()->clear_dynamic_dimensions();
-    return Status::OK();
+    return OkStatus();
   }
 
   // If the op requires dynamic tensor and input is static -- construct a
@@ -2050,27 +2059,27 @@ Status DynamicShapeRemovingVisitor::DefaultAction(HloInstruction* hlo) {
         TF_RETURN_IF_ERROR(hlo->ReplaceOperandWith(i, dynamic_operand));
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DynamicShapeRemovingVisitor::HandleGetTupleElement(HloInstruction* hlo) {
   *hlo->mutable_shape() =
       hlo->operand(0)->shape().tuple_shapes(hlo->tuple_index());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DynamicShapeRemovingVisitor::HandleTuple(HloInstruction* hlo) {
   for (int64_t i = 0; i < hlo->operand_count(); ++i) {
     *hlo->mutable_shape()->mutable_tuple_shapes(i) = hlo->operand(i)->shape();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DynamicShapeRemovingVisitor::HandleParameter(HloInstruction* hlo) {
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DynamicShapeRemovingVisitor::HandleCustomCall(HloInstruction* hlo) {
@@ -2078,7 +2087,7 @@ Status DynamicShapeRemovingVisitor::HandleCustomCall(HloInstruction* hlo) {
       hlo->custom_call_target() == "PadToStatic") {
     // Those ops support are created to handle dynamic tensors so by their
     // nature they support dynamic lowering.
-    return Status::OK();
+    return OkStatus();
   }
 
   return DefaultAction(hlo);
@@ -2118,14 +2127,15 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
         ShapeUtil::UpdateDynamicDimension(parameter->mutable_shape(),
                                           dynamic_dimension.parameter_index,
                                           dynamic_dimension.dimension, false);
-        return Status::OK();
+        return OkStatus();
       }));
 
   TF_RETURN_IF_ERROR(InsertPadToStaticAfterModuleInputs(module));
   TF_ASSIGN_OR_RETURN(
       DynamicDimensionInference dynamic_dimension_inference,
       DynamicDimensionInference::Run(module, options_.custom_call_handler,
-                                     options_.shape_check_mode));
+                                     options_.shape_check_mode,
+                                     options_.assertion_generator));
 
   std::vector<HloComputation*> computations =
       module->MakeComputationPostOrder();

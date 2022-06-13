@@ -73,17 +73,24 @@ constexpr char kOpKernelRunnerTableResourceName[] =
 constexpr char kFallbackResourceArray[] = "FallbackResourceArray";
 
 void KernelFallbackEmitError(
-    const tfrt::ExecutionContext& exec_ctx, tfrt::string_view op_name,
-    tfrt::AsyncValueRef<tfrt::Chain>* op_chain,
+    const tfrt::ExecutionContext& exec_ctx,
+    const KernelFallbackCompatRequestState* fallback_request_state,
+    tfrt::string_view op_name, tfrt::AsyncValueRef<tfrt::Chain>* op_chain,
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results,
     const tensorflow::Status& status) {
   // Set all results to error, with the correct TFRT error code according to the
   // error propagated from runtime fallback execution.
-  auto error =
-      EmitErrorAsync(exec_ctx,
-                     tfrt::StrCat("error running kernel fallback kernel ",
-                                  op_name, ": ", status.error_message()),
-                     tfrt::ConvertTfErrorCodeToTfrtErrorCode(status));
+  auto model_info =
+      fallback_request_state == nullptr
+          ? "(missing model info) "
+          : tfrt::StrCat(
+                fallback_request_state->session_metadata().name(), " (",
+                fallback_request_state->session_metadata().version(), ") ");
+  auto error = EmitErrorAsync(
+      exec_ctx,
+      tfrt::StrCat(model_info, "error running kernel fallback kernel ", op_name,
+                   ": ", status.error_message()),
+      tfrt::ConvertTfErrorCodeToTfrtErrorCode(status));
   std::fill(results.begin(), results.end(), error);
   if (op_chain) *op_chain = std::move(error);
 }
@@ -137,7 +144,7 @@ Status SetUpKernelFallbackCompatRequestContext(
       runner_table, resource_array, user_intra_op_threadpool, model_metadata,
       pflr);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SetUpKernelFallbackCompatRequestContext(
@@ -170,7 +177,7 @@ Status SetUpKernelFallbackCompatRequestContext(
   fallback_request_state.set_log_device_placement(
       eager_context->LogDevicePlacement());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 static llvm::Expected<gtl::InlinedVector<tensorflow::Tensor, 4>>
@@ -211,7 +218,7 @@ static Status ValidateInputTypes(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -325,8 +332,9 @@ static void KernelFallbackExecuteCompatAsyncInternal(
 // from tensorflow::Tensor.
 template <typename TensorType>
 static void KernelFallbackExecuteCompatSyncInternal(
-    const tfrt::ExecutionContext& exec_ctx, OpKernelRunState* run_state,
-    const OpKernelRunner& kernel_runner,
+    const tfrt::ExecutionContext& exec_ctx,
+    const KernelFallbackCompatRequestState* fallback_request_state,
+    OpKernelRunState* run_state, const OpKernelRunner& kernel_runner,
     tfrt::AsyncValueRef<tfrt::Chain>* op_chain,
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results) {
   DCHECK_EQ(results.size(), kernel_runner.op_kernel()->num_outputs());
@@ -334,8 +342,9 @@ static void KernelFallbackExecuteCompatSyncInternal(
   kernel_runner.Run(&context);
 
   if (!context.status().ok()) {
-    KernelFallbackEmitError(exec_ctx, kernel_runner.op_kernel()->name(),
-                            op_chain, results, context.status());
+    KernelFallbackEmitError(exec_ctx, fallback_request_state,
+                            kernel_runner.op_kernel()->name(), op_chain,
+                            results, context.status());
     return;
   }
 
@@ -368,7 +377,8 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
   if (!expected_input_tf_tensors) {
     status = tensorflow::errors::Internal(
         tfrt::StrCat(expected_input_tf_tensors.takeError()));
-    KernelFallbackEmitError(exec_ctx, op_name, &op_chain, results, status);
+    KernelFallbackEmitError(exec_ctx, &fallback_request_state, op_name,
+                            &op_chain, results, status);
     return op_chain;
   }
 
@@ -387,7 +397,8 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
   // due to b/176997538. Remove the skipping once the SavedModel lowering
   // problem is fixed.
   if (!status.ok() && !op_name.equals("_BatchFunctionFallback")) {
-    KernelFallbackEmitError(exec_ctx, op_name, &op_chain, results, status);
+    KernelFallbackEmitError(exec_ctx, &fallback_request_state, op_name,
+                            &op_chain, results, status);
     return op_chain;
   }
 
@@ -407,7 +418,8 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
         exec_ctx, &run_state, op_kernel_runner, &op_chain, results);
   } else {
     KernelFallbackExecuteCompatSyncInternal<KernelFallbackTensor>(
-        exec_ctx, &run_state, op_kernel_runner, &op_chain, results);
+        exec_ctx, &fallback_request_state, &run_state, op_kernel_runner,
+        &op_chain, results);
   }
 
   return op_chain;
@@ -559,7 +571,8 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
   } else {
     KernelFallbackExecuteCompatSyncInternal<
         tensorflow::tfrt_stub::FallbackTensor>(
-        exec_ctx, &run_state, kernel_runner, op_chain, results);
+        exec_ctx, &fallback_request_state, &run_state, kernel_runner, op_chain,
+        results);
   }
 }
 
@@ -574,7 +587,8 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOp(
           ->GetDataIfExists<KernelFallbackCompatRequestState>();
   if (!fallback_request_state) {
     KernelFallbackEmitError(
-        exec_ctx, frame.op_name().GetValue(), op_chain, results,
+        exec_ctx, /*fallback_request_state=*/nullptr,
+        frame.op_name().GetValue(), op_chain, results,
         tensorflow::errors::NotFound(
             "KernelFallbackCompatRequestState not found in RequestContext."));
     return;
@@ -827,7 +841,8 @@ void KernelFallbackExecuteOpCustomAllocatorInternal(
           ->GetDataIfExists<KernelFallbackCompatRequestState>();
   if (!fallback_request_state) {
     KernelFallbackEmitError(
-        exec_ctx, attr_frame.op_name().GetValue(), op_chain, results,
+        exec_ctx, /*fallback_request_state=*/nullptr,
+        attr_frame.op_name().GetValue(), op_chain, results,
         tensorflow::errors::NotFound(
             "KernelFallbackCompatRequestState not found in RequestContext."));
     return;

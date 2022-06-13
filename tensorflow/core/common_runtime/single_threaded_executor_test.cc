@@ -98,7 +98,7 @@ class ExecutorTest : public ::testing::Test {
           if ((*kernel)->type_string_view() == "Mock") {
             down_cast<MockOp*>(*kernel)->SetCompute(mock_fn);
           }
-          return Status::OK();
+          return OkStatus();
         };
     params.delete_kernel = [](OpKernel* kernel) {
       DeleteNonCachedKernel(kernel);
@@ -125,7 +125,7 @@ class ExecutorTest : public ::testing::Test {
 
   void TestContext(Executor::Args args,
                    std::function<void(OpKernelContext*)> test_fn) {
-    auto g = absl::make_unique<Graph>(OpRegistry::Global());
+    auto g = std::make_unique<Graph>(OpRegistry::Global());
     Node* arg = test::graph::Arg(g.get(), 0, DT_FLOAT);
     Node* tmp;
     TF_ASSERT_OK(NodeBuilder(g->NewName("n"), "Mock")
@@ -202,7 +202,7 @@ TEST_F(ExecutorTest, UserIntraOpThreadPool) {
 
 TEST_F(ExecutorTest, SimpleAdd) {
   // c = a + b
-  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = std::make_unique<Graph>(OpRegistry::Global());
   auto in0 = test::graph::Arg(g.get(), 0, DT_FLOAT);
   auto in1 = test::graph::Arg(g.get(), 1, DT_FLOAT);
   auto tmp = test::graph::Add(g.get(), in0, in1);
@@ -228,7 +228,7 @@ TEST_F(ExecutorTest, SimpleAdd) {
 
 TEST_F(ExecutorTest, EmptyOutput) {
   // in, _ = MockOp(in)
-  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = std::make_unique<Graph>(OpRegistry::Global());
   Node* in = test::graph::Arg(g.get(), 0, DT_FLOAT);
   Node* mock;
   TF_ASSERT_OK(
@@ -257,7 +257,7 @@ TEST_F(ExecutorTest, SelfAdd) {
   //
   // b <- v10
   // All nodes are executed by one thread.
-  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = std::make_unique<Graph>(OpRegistry::Global());
   auto v = test::graph::Arg(g.get(), 0, DT_FLOAT);
   const int N = 10;
   for (int i = 1; i <= N; ++i) {
@@ -313,7 +313,7 @@ void BuildTree(int N, Graph* g) {
 }
 
 TEST_F(ExecutorTest, RandomTree) {
-  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = std::make_unique<Graph>(OpRegistry::Global());
   BuildTree(4096, g.get());
   Create(std::move(g));
   FunctionCallFrame call_frame({DT_FLOAT}, {DT_FLOAT});
@@ -325,7 +325,7 @@ TEST_F(ExecutorTest, RandomTree) {
 }
 
 TEST_F(ExecutorTest, OpError) {
-  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = std::make_unique<Graph>(OpRegistry::Global());
   auto zero = test::graph::Constant(g.get(), V(0.0));
   auto inf = test::graph::Unary(g.get(), "Reciprocal", zero);
   auto check = test::graph::CheckNumerics(g.get(), inf, "message");
@@ -339,7 +339,7 @@ TEST_F(ExecutorTest, OpError) {
 }
 
 TEST_F(ExecutorTest, ControlDependenciesFromSpecialNodes) {
-  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = std::make_unique<Graph>(OpRegistry::Global());
   auto in0 = test::graph::Arg(g.get(), 0, DT_FLOAT);
   auto one = test::graph::Constant(g.get(), V(2.0));
   auto add = test::graph::Add(g.get(), in0, one);

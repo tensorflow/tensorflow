@@ -539,7 +539,7 @@ Status ConvertProtoToJson(const Proto& proto_output, std::string* json_output) {
         "Could not convert proto to JSON string: ",
         absl::string_view(error_msg.data(), error_msg.length()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -561,7 +561,7 @@ Status ConvertXSpaceToMemoryProfileJson(const XSpace& xspace,
     MemoryProfile memory_profile = ConvertXPlaneToMemoryProfile(*host_plane);
     TF_RETURN_IF_ERROR(ConvertProtoToJson(memory_profile, json_output));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace profiler

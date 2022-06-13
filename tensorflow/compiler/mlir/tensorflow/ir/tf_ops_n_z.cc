@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -461,14 +462,11 @@ LogicalResult ParseExampleV2Op::verify() {
 // PartitionedCallOp
 //===----------------------------------------------------------------------===//
 
-template <class OpClass>
-static LogicalResult VerifyPartitionedCall(OpClass op) {
-  auto module = op->template getParentOfType<ModuleOp>();
+template <typename CallOpClass>
+static LogicalResult VerifyPartitionedCall(CallOpClass op,
+                                           SymbolTableCollection &symbolTable) {
   SymbolRefAttr func = op->getAttr("f").template cast<SymbolRefAttr>();
-
-  auto function =
-      dyn_cast_or_null<func::FuncOp>(SymbolTable::lookupSymbolIn(module, func));
-
+  auto function = symbolTable.lookupNearestSymbolFrom<func::FuncOp>(op, func);
   if (!function) {
     return op.emitError("'f' attribute refers to an undefined function: ")
            << func;
@@ -487,14 +485,17 @@ static LogicalResult VerifyPartitionedCall(OpClass op) {
   return success();
 }
 
-LogicalResult PartitionedCallOp::verify() {
-  return VerifyPartitionedCall(*this);
+LogicalResult PartitionedCallOp::verifySymbolUses(
+    SymbolTableCollection &symbolTable) {
+  return VerifyPartitionedCall(*this, symbolTable);
 }
-LogicalResult StatefulPartitionedCallOp::verify() {
-  return VerifyPartitionedCall(*this);
+LogicalResult StatefulPartitionedCallOp::verifySymbolUses(
+    SymbolTableCollection &symbolTable) {
+  return VerifyPartitionedCall(*this, symbolTable);
 }
-LogicalResult TPUPartitionedCallOp::verify() {
-  return VerifyPartitionedCall(*this);
+LogicalResult TPUPartitionedCallOp::verifySymbolUses(
+    SymbolTableCollection &symbolTable) {
+  return VerifyPartitionedCall(*this, symbolTable);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2307,6 +2308,43 @@ void TPUExecuteAndUpdateVariablesOp::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// TensorListGetItemOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+// If the input of TensorListGetItemOp is TensorListFromTensorOp and the
+// TensorListFromTensorOp is only used by TensorListGetItemOp (not modified by
+// other TensorList ops), we can convert it to a GatherOp.
+class ConvertTensorListGetItemOpOfTensorListFromTensorOpToGather
+    : public OpRewritePattern<TensorListGetItemOp> {
+  using OpRewritePattern<TensorListGetItemOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(TensorListGetItemOp op,
+                                PatternRewriter &rewriter) const override {
+    // Checks that the input is created by TensorListFromTensorOp and the input
+    // is only used by TensorListGetItemOp.
+    auto tensor_list_from_tensor_op = dyn_cast_or_null<TensorListFromTensorOp>(
+        op.input_handle().getDefiningOp());
+    if (!tensor_list_from_tensor_op ||
+        llvm::any_of(
+            tensor_list_from_tensor_op->getUsers(),
+            [](Operation *user) { return !isa<TensorListGetItemOp>(user); })) {
+      return failure();
+    }
+
+    rewriter.replaceOpWithNewOp<GatherOp>(
+        op, op.getType(), tensor_list_from_tensor_op.tensor(), op.index());
+    return success();
+  }
+};
+}  // namespace
+
+void TensorListGetItemOp::getCanonicalizationPatterns(
+    RewritePatternSet &results, MLIRContext *context) {
+  results.add<ConvertTensorListGetItemOpOfTensorListFromTensorOpToGather>(
+      context);
+}
+
+//===----------------------------------------------------------------------===//
 // TensorListReserveOp
 //===----------------------------------------------------------------------===//
 
@@ -2368,9 +2406,6 @@ LogicalResult TensorScatterUpdateOp::verify() {
   if (!HasRankAtLeast(op.indices(), 1))
     return op.emitOpError(
         "requires indices operand to have at least 1 dimension");
-  if (!HasRankAtLeast(op.updates(), 1))
-    return op.emitOpError(
-        "requires updates operand to have at least 1 dimension");
 
   auto tensor_ty = op.tensor().getType().dyn_cast<RankedTensorType>();
   auto indices_ty = op.indices().getType().dyn_cast<RankedTensorType>();

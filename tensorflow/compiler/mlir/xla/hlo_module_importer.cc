@@ -53,7 +53,7 @@ Status HloModuleImporter::Import(const xla::HloModule& module) {
     TF_RETURN_IF_ERROR(HloFunctionImporter::ImportAsFunc(
         *computation, module_, &function_map_, &builder_));
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status HloModuleImporter::Import(const xla::HloModuleProto& module_proto) {

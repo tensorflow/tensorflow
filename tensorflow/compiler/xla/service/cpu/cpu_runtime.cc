@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstring>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -28,7 +29,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/device_memory.h"
@@ -191,7 +190,7 @@ struct AllToAllParticipantData : xla::ParticipantData {
   xla::GlobalDeviceId device_id;
 
   // Replica ids participating in AllToAll, concatenation happens in the order
-  // of appearence.
+  // of appearance.
   std::vector<xla::GlobalDeviceId> devices_to_copy_to;
 
   std::string ToString() const override {
@@ -650,7 +649,7 @@ GlobalAllToAllRendezvousMap() {
 xla::RendezvousKey GetRendezvousKey(
     const xla::ExecutableRunOptions* run_options,
     std::vector<xla::ReplicaGroup> group, int32_t channel_id_present,
-    absl::optional<bool> use_global_device_ids, int64_t op_id) {
+    std::optional<bool> use_global_device_ids, int64_t op_id) {
   const xla::DeviceAssignment& device_assignment =
       *run_options->device_assignment();
   int device_ordinal = GetDeviceOrdinal(run_options);
@@ -684,7 +683,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllToAll(
       xla::ParseReplicaGroupsOnly(replica_groups_serialized).ValueOrDie();
   xla::RendezvousKey rendezvous_key =
       GetRendezvousKey(run_options, group, channel_id_present,
-                       /*use_global_device_ids=*/absl::nullopt, op_id);
+                       /*use_global_device_ids=*/std::nullopt, op_id);
 
   AllToAllParticipantData participant(rendezvous_key, device_ordinal,
                                       run_options->stream());
@@ -694,7 +693,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllToAll(
           xla::GlobalDeviceId(device_ordinal),
           *run_options->device_assignment(), group,
           xla::GetCollectiveOpGroupMode(channel_id_present != 0,
-                                        /*use_global_device_ids=*/absl::nullopt)
+                                        /*use_global_device_ids=*/std::nullopt)
               .ValueOrDie())
           .ValueOrDie();
   for (int i = 0; i < num_buffers; i++) {
@@ -703,7 +702,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllToAll(
                                                  buffer_size);
   }
   auto make_cpu_rendezvous = [](const xla::RendezvousKey& k) {
-    return absl::make_unique<CpuAllToAllRendezvous>(k);
+    return std::make_unique<CpuAllToAllRendezvous>(k);
   };
   TF_CHECK_OK(CpuAllToAllRendezvous::SubmitParticipant(
                   [&] {
@@ -752,7 +751,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllReduce(
   }
 
   auto make_cpu_rendezvous = [](const xla::RendezvousKey& k) {
-    return absl::make_unique<CpuAllReduceRendezvous>(k);
+    return std::make_unique<CpuAllReduceRendezvous>(k);
   };
 
   TF_CHECK_OK(CpuAllReduceRendezvous::SubmitParticipant(
@@ -808,7 +807,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_CollectivePermute(
   }
   xla::RendezvousKey rendezvous_key =
       GetRendezvousKey(run_options, {}, channel_id_present,
-                       /*use_global_device_ids=*/absl::nullopt, op_id);
+                       /*use_global_device_ids=*/std::nullopt, op_id);
 
   CollectivePermuteParticipantData participant(rendezvous_key, device_ordinal,
                                                run_options->stream());
@@ -819,7 +818,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_CollectivePermute(
   participant.byte_size = byte_size;
 
   auto make_cpu_rendezvous = [](const xla::RendezvousKey& k) {
-    return absl::make_unique<CpuCollectivePermuteRendezvous>(k);
+    return std::make_unique<CpuCollectivePermuteRendezvous>(k);
   };
   TF_CHECK_OK(
       CpuCollectivePermuteRendezvous::SubmitParticipant(

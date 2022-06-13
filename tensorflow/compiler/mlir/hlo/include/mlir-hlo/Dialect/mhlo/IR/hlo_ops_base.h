@@ -18,9 +18,14 @@ limitations under the License.
 
 #include "llvm/ADT/Sequence.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/Interfaces/InferTypeOpInterface.h"
 
 namespace mlir {
 namespace mhlo {
+
+// Forward declaration for a function declared in hlo_ops.h.
+bool isCompatibleForMhloTypeInference(Type tp1, Type tp2);
+
 namespace OpTrait {
 
 template <typename ConcreteType>
@@ -47,6 +52,61 @@ class PairwiseSameOperandAndResultType
                << idx;
       }
     }
+    return success();
+  }
+};
+
+template <typename ConcreteType>
+class CompatibleOperandsAndResultType
+    : public mlir::OpTrait::TraitBase<ConcreteType,
+                                      CompatibleOperandsAndResultType> {
+ public:
+  static LogicalResult verifyTrait(Operation *op) {
+    Type expected;
+    if (op->getNumResults() != 0) expected = op->getResult(0).getType();
+    if (op->getNumOperands() != 0) expected = op->getOperand(0).getType();
+    if (!expected) return failure();
+
+    auto type_match = [&](Type actual) {
+      return isCompatibleForMhloTypeInference(actual, expected);
+    };
+    auto all_match = llvm::all_of(op->getOperandTypes(), type_match) &&
+                     llvm::all_of(op->getResultTypes(), type_match);
+    if (!all_match) {
+      return op->emitOpError(
+          "requires compatible types for all operands and results");
+    }
+
+    return success(all_match);
+  }
+
+  static LogicalResult inferReturnTypes(
+      MLIRContext * /*context*/, Optional<Location> location,
+      ValueRange operands, DictionaryAttr /*attributes*/,
+      RegionRange /*regions*/, SmallVectorImpl<Type> &inferredReturnTypes) {
+    // TODO(b/231358795): Review the use of InferTypeOpInterface for ops that
+    // support quantization or sparsity.
+    if (operands.empty())
+      return emitOptionalError(
+          location,
+          "Expected non-empty operands for [CompatibleOperandsAndResultType]");
+    inferredReturnTypes.push_back(operands[0].getType());
+    return success();
+  }
+
+  // This function is not going to be called automatically.
+  // It needs to be paired with INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS
+  // (see examples in hlo_ops.cc).
+  static LogicalResult inferReturnTypeComponentsFromOperands(
+      MLIRContext *context, Optional<Location> location,
+      ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
+      SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+    SmallVector<Type> inferred_return_types;
+    if (failed(inferReturnTypes(context, location, operands.getValues(),
+                                attributes, regions, inferred_return_types)))
+      return failure();
+    auto inferred_return_type = inferred_return_types[0].cast<ShapedType>();
+    inferredReturnShapes.push_back(inferred_return_type);
     return success();
   }
 };

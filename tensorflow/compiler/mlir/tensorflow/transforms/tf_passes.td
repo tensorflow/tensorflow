@@ -267,7 +267,7 @@ def TPUShardingIdentificationPass : Pass<"tf-tpu-sharding-identification", "Modu
       }
     ```
 
-    Now, cluster_func recieves the following `*_sharding_configuration`
+    Now, cluster_func receives the following `*_sharding_configuration`
     attributes, and `func` receives the mhlo.sharding attribute:
 
     ```mlir
@@ -1078,7 +1078,7 @@ def HoistReplicateInvariantResourceWritesPass : Pass<"tf-hoist-replicate-invaria
 
     The benefit of this optimization is reduced memory requirement on host. For
     multiple writes (one from each replica) to such variables, the host would
-    allocate buffer space to recieve the device output from all replicas, which is
+    allocate buffer space to receive the device output from all replicas, which is
     not required. We can use the output of first replica in such cases.
   }];
 
@@ -1681,7 +1681,7 @@ def TPUUpdateEmbeddingEnqueueOpInputsPass : Pass<"tf-tpu-update-embedding-enqueu
 }
 
 def DropWhileShapeInvariantPass : Pass<"tf-drop-while-shape-invariant", "mlir::func::FuncOp"> {
-  let summary = "Drop `shape_invariant` attrbute from While/WhileRegion ops.";
+  let summary = "Drop `shape_invariant` attribute from While/WhileRegion ops.";
 
   let description = [{
     Drop `shape_invariant` attribute from tf.While and tf.WhileRegion op. This
@@ -1693,7 +1693,7 @@ def DropWhileShapeInvariantPass : Pass<"tf-drop-while-shape-invariant", "mlir::f
 }
 
 def DropWhileShapeInvariantInDeviceClusterPass : Pass<"tf-drop-while-shape-invariant-in-device-cluster", "mlir::func::FuncOp"> {
-  let summary = "Drop `shape_invariant` attrbute from While/WhileRegion ops inside device cluster.";
+  let summary = "Drop `shape_invariant` attribute from While/WhileRegion ops inside device cluster.";
 
   let description = [{
     Drop `shape_invariant` attribute from tf.While and tf.WhileRegion op only
@@ -1994,6 +1994,11 @@ def SimpleTFDeviceAssignmentPass : Pass<"tf-simple-device-assignment", "mlir::fu
       %2 = "tf.Const"() {device = "baz", value = dense<[[42.0]]> : tensor<1x1xf32>} : () -> tensor<1x1xf32>
     ```
   }];
+}
+
+def TFDeviceAssignmentByFuncAttrPass : Pass<"tf-device-assignment-by-func-attr", "mlir::func::FuncOp"> {
+  let summary = "Device assignment in TF dialect using the device specified in the function attribute.";
+  let constructor = "TF::CreateTFDeviceAssignmentByFuncAttrPass()";
 }
 
 def LayoutAssignmentPass : Pass<"tf-layout-assignment", "mlir::func::FuncOp"> {

@@ -54,7 +54,7 @@ bool TransposeAffectsMemoryOrder(std::vector<int> perm,
   *modified = false;
   auto transpose_it = model->operators.begin() + op_index;
   if (transpose_it->get()->type != OperatorType::kTranspose) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   TransposeOperator* transpose_op =
       static_cast<TransposeOperator*>(transpose_it->get());
@@ -63,14 +63,14 @@ bool TransposeAffectsMemoryOrder(std::vector<int> perm,
   const auto& output_array = model->GetArray(transpose_op->outputs[0]);
   if (!input_array.has_shape() || !output_array.has_shape()) {
     // Yield until PropagateFixedSizes has been run on this op.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   // Note: We can assume we have error checked inputs in PropagateFixedSizes.
 
   // Check that the permutation has propagated.
   std::vector<int> const& perm = transpose_op->perm;
   if (perm.empty()) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // This transpose is trivial if non-unitary dimensions remain in the same
@@ -79,7 +79,7 @@ bool TransposeAffectsMemoryOrder(std::vector<int> perm,
   std::vector<int> const& output_dims = output_array.shape().dims();
 
   if (TransposeAffectsMemoryOrder(perm, input_dims)) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // This transpose is trivial. Replace it with a Reshape op.
@@ -112,7 +112,7 @@ bool TransposeAffectsMemoryOrder(std::vector<int> perm,
   DeleteOpAndArrays(model, transpose_op);
 
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

@@ -39,7 +39,7 @@ static std::unique_ptr<Device> NewDevice(const string& type,
   class FakeDevice : public Device {
    public:
     explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
-    Status Sync() override { return Status::OK(); }
+    Status Sync() override { return OkStatus(); }
     Allocator* GetAllocator(AllocatorAttributes) override { return nullptr; }
   };
   DeviceAttributes attr;
@@ -47,7 +47,7 @@ static std::unique_ptr<Device> NewDevice(const string& type,
   attr.set_device_type(type);
   attr.mutable_locality()->set_numa_node(3);  // a non-default value
   attr.set_incarnation(random::New64());
-  return absl::make_unique<FakeDevice>(attr);
+  return std::make_unique<FakeDevice>(attr);
 }
 
 class FakeCache : public TestWorkerCache {
@@ -83,7 +83,7 @@ class FakeCache : public TestWorkerCache {
     for (const auto& it : resp.device_attributes()) {
       if (it.name() == device) {
         *locality = it.locality();
-        done(Status::OK());
+        done(OkStatus());
         return;
       }
     }
@@ -98,7 +98,7 @@ class FakeNcclCommunicator : public NcclCommunicatorInterface {
 
   void Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
                StatusCallback done) override {
-    done(Status::OK());
+    done(OkStatus());
   }
 
   void StartAbort(const Status& s) override {}
@@ -135,27 +135,27 @@ class DeviceResDistTest : public ::testing::Test {
           strings::StrCat(worker_name, "/device:", device_type, ":", i)));
     }
     device_mgrs_[worker_name] =
-        absl::make_unique<StaticDeviceMgr>(std::move(devices));
+        std::make_unique<StaticDeviceMgr>(std::move(devices));
     std::vector<string>* dv = &dev_by_task_[worker_name];
     dv->clear();
     for (auto* d : device_mgrs_[worker_name]->ListDevices()) {
       dv->push_back(d->name());
     }
-    dev_resolvers_[worker_name] = absl::make_unique<DeviceResolverDistributed>(
+    dev_resolvers_[worker_name] = std::make_unique<DeviceResolverDistributed>(
         device_mgrs_[worker_name].get());
     cp_resolvers_[worker_name] =
-        absl::make_unique<CollectiveParamResolverDistributed>(
+        std::make_unique<CollectiveParamResolverDistributed>(
             config, device_mgrs_[worker_name].get(),
             dev_resolvers_[worker_name].get(), &nccl_communicator_, &wc_,
             worker_name);
-    auto worker_env = absl::make_unique<WorkerEnv>();
+    auto worker_env = std::make_unique<WorkerEnv>();
     worker_env->env = Env::Default();
     worker_env->local_devices = device_mgrs_[worker_name]->ListDevices();
     worker_env->device_mgr = device_mgrs_[worker_name].get();
     worker_env->collective_executor_mgr =
-        absl::make_unique<TestCollectiveExecutorMgr>(
+        std::make_unique<TestCollectiveExecutorMgr>(
             cp_resolvers_[worker_name].get(), /*rma=*/nullptr);
-    workers_[worker_name] = absl::make_unique<Worker>(worker_env.get());
+    workers_[worker_name] = std::make_unique<Worker>(worker_env.get());
     worker_envs_[worker_name] = std::move(worker_env);
     wc_.AddWorker(worker_name, workers_[worker_name].get());
   }

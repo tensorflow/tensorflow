@@ -118,6 +118,7 @@ FRAMEWORK_LIB_HDRS = STABLE_FRAMEWORK_LIB_HDRS + [
     "context.h",
     "core/subgraph.h",
     "graph_info.h",
+    "interpreter_options.h",
     "optional_debug_tools.h",
     "signature_runner.h",
 ]
@@ -254,6 +255,39 @@ cc_library(
         ":macros",
         "//tensorflow/lite/c:common",
     ],
+)
+
+# A config for enabling tensorflow profiler in TFLite. Currently, it only supports dynamic
+# allocation. Add '--define=tflite_tensorflow_profiler=true' in your build command line to use it.
+config_setting(
+    name = "tensorflow_profiler_config",
+    define_values = {"tflite_tensorflow_profiler": "true"},
+)
+
+# This is intended to be used only by allocators.
+cc_library(
+    name = "tensorflow_profiler_logger_shim",
+    srcs = ["tensorflow_profiler_logger_shim.cc"],
+    hdrs = ["tensorflow_profiler_logger.h"],
+    copts = tflite_copts_warnings(),
+    deps = [
+        ":macros",
+    ],
+    alwayslink = 1,
+)
+
+# Benchmarks should link this library to see the actual result.
+cc_library(
+    name = "tensorflow_profiler_logger",
+    srcs = ["tensorflow_profiler_logger.cc"],
+    hdrs = ["tensorflow_profiler_logger.h"],
+    copts = tflite_copts_warnings(),
+    deps = [
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -398,6 +432,7 @@ cc_library(
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
+        "//tensorflow/lite/profiling:root_profiler",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers//:runtime_cc",
     ],
@@ -438,6 +473,7 @@ cc_library(
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
+        "//tensorflow/lite/profiling:root_profiler",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers//:runtime_cc",
     ],
@@ -474,6 +510,7 @@ cc_library(
     hdrs = [
         "interpreter.h",
         "interpreter_builder.h",
+        "interpreter_options.h",
         "model.h",
         "model_builder.h",
     ],
@@ -513,6 +550,7 @@ cc_library(
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/profiling:platform_profiler",
+        "//tensorflow/lite/profiling:root_profiler",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@flatbuffers//:runtime_cc",
@@ -536,6 +574,7 @@ cc_library(
         "graph_info.h",
         "interpreter.h",
         "interpreter_builder.h",
+        "interpreter_options.h",
         "model.h",
         "model_builder.h",
         "signature_runner.h",
@@ -570,6 +609,7 @@ cc_library(
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
+        "//tensorflow/lite/profiling:root_profiler",
         "//tensorflow/lite/schema:schema_fbs",
     ] + select({
         ":tflite_use_simple_memory_planner": [

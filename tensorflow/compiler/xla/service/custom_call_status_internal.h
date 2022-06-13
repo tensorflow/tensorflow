@@ -16,13 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CUSTOM_CALL_STATUS_INTERNAL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CUSTOM_CALL_STATUS_INTERNAL_H_
 
+#include <optional>
+
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/custom_call_status.h"
 
 struct XlaCustomCallStatus_ {
   // The message being present means "failure". Otherwise means "success".
-  absl::optional<std::string> message;
+  std::optional<std::string> message;
 };
 
 namespace xla {
@@ -30,7 +31,7 @@ namespace xla {
 // Get a view of the internal error message of the XlaCustomCallStatus. Only
 // lives as long as the XlaCustomCallStatus. Returns an empty optional if the
 // result was "success".
-absl::optional<absl::string_view> CustomCallStatusGetMessage(
+std::optional<absl::string_view> CustomCallStatusGetMessage(
     const XlaCustomCallStatus* status);
 
 }  // namespace xla

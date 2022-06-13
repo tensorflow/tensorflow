@@ -34,16 +34,16 @@ class PredArithmeticTest : public GpuCodegenTest {
     // deleting the module, so just Clone it.
 
     EXPECT_TRUE(RunAndCompareNoHloPasses(
-        module->Clone(), {&false_literal, &false_literal}, absl::nullopt));
+        module->Clone(), {&false_literal, &false_literal}, std::nullopt));
 
     EXPECT_TRUE(RunAndCompareNoHloPasses(
-        module->Clone(), {&false_literal, &true_literal}, absl::nullopt));
+        module->Clone(), {&false_literal, &true_literal}, std::nullopt));
 
     EXPECT_TRUE(RunAndCompareNoHloPasses(
-        module->Clone(), {&true_literal, &false_literal}, absl::nullopt));
+        module->Clone(), {&true_literal, &false_literal}, std::nullopt));
 
     EXPECT_TRUE(RunAndCompareNoHloPasses(
-        module->Clone(), {&true_literal, &true_literal}, absl::nullopt));
+        module->Clone(), {&true_literal, &true_literal}, std::nullopt));
   }
 };
 

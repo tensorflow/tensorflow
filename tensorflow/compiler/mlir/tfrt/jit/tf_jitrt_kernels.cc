@@ -446,7 +446,8 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     // Register a custom pipeline for lowering from Tensorflow dialect to LLVM.
     opts.create_compilation_pipeline = [=](mlir::PassManager& pm) {
-      SetCrashReproducer(pm, kCrashReproducerStdErr);
+      if (GetJitRtFlags().enable_crash_reproducer)
+        SetCrashReproducer(pm, kCrashReproducerStdErr);
 
       TfJitRtPipelineOptions opts;
       if (tf_jitrt_opts) {
@@ -465,7 +466,8 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     // Register a custom pipeline to propagate specialization information.
     opts.create_specialization_pipeline = [=](mlir::PassManager& pm) {
-      SetCrashReproducer(pm, kCrashReproducerStdErr);
+      if (GetJitRtFlags().enable_crash_reproducer)
+        SetCrashReproducer(pm, kCrashReproducerStdErr);
       CreateJitRtSpecializationPipeline(pm);
     };
 
@@ -492,7 +494,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
                 << absl::ToInt64Milliseconds(compile_duration) << " ms):\n"
                 << kernel_info.serialized_operation;
 
-    RecordCompileTime(session_name, kernel_info.name, absl::nullopt,
+    RecordCompileTime(session_name, kernel_info.name, std::nullopt,
                       compile_duration);
 
     // Set the entry async value state to error or concrete.

@@ -35,14 +35,13 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/ir/dialect.h"
-#include "tensorflow/core/ir/importexport/export.h"
-#include "tensorflow/core/ir/importexport/import.h"
-#include "tensorflow/core/ir/ops.h"
+#include "tensorflow/core/ir/importexport/graphdef_export.h"
+#include "tensorflow/core/ir/importexport/graphdef_import.h"
 #include "tensorflow/core/ir/tf_op_registry.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
-
+#include "tensorflow/core/util/dump_graph.h"
 using tensorflow::Status;
 using tensorflow::errors::InvalidArgument;
 
@@ -111,6 +110,12 @@ Status TFGGrapplerOptimizer::Optimize(
     tensorflow::grappler::Cluster* cluster,
     const tensorflow::grappler::GrapplerItem& item,
     tensorflow::GraphDef* optimized_graph) {
+  if (VLOG_IS_ON(4)) {
+    tensorflow::DumpGraphDefToFile(
+        absl::StrCat("tfg_before_graph_", item.id, "_",
+                     std::hash<std::string>()(name())),
+        item.graph);
+  }
   VLOG(5) << "TFG Before Graph: \n" << item.graph.DebugString();
 
   // Import the GraphDef to TFG.
@@ -119,40 +124,54 @@ Status TFGGrapplerOptimizer::Optimize(
       tensorflow::metrics::GetGraphOptimizationCounter(),
       {"TfgOptimizer", "convert_graphdef_to_tfg"});
   auto error_or_module =
-      ImportGraphDefToMlir(impl_->GetContext(), debug_info, item.graph);
+      ImportGraphDef(impl_->GetContext(), debug_info, item.graph);
   if (!error_or_module.ok()) {
     auto status = error_or_module.status();
     tensorflow::errors::AppendToMessage(
         &status, "when importing GraphDef to MLIR module in GrapplerHook");
-    VLOG(4) << "GraphDef import error: " << status.ToString();
-    return status;
+    // Import errors are not fatal. Log the error here and return `Aborted` so
+    // the meta optimizer knows to swallow the error.
+    LOG(ERROR) << name() << " failed: " << status.ToString();
+    return tensorflow::errors::Aborted(status.error_message());
   }
   metrics.ReportAndStop();
 
-  // Run the pipeline on the graph.
   ModuleOp module = (*error_or_module).get();
-  StatusScopedDiagnosticHandler error_handler(impl_->GetContext());
-  if (failed(impl_->RunPipeline(module)))
-    return error_handler.Combine(
-        InvalidArgument("MLIR Graph Optimizer failed: "));
+  // TODO(chiahungduan): There was a StatusScopedDiagnosticHandler here to
+  // collect the diagnostics emitted from the pass pipeline. Given that even a
+  // successful pass execution may have error diagnostics emitted in between
+  // execution and those logs are not useful for debugging. Besides, there's an
+  // issue (b/36186527) which relates to the handler. Remove this to temporary
+  // bypass the problem. Find a better way to collect the pipeline failure
+  // message here.
+  if (failed(impl_->RunPipeline(module))) {
+    return InvalidArgument("MLIR Graph Optimizer failed: ");
+  }
 
   // Export the TFG module to GraphDef.
   tensorflow::GraphDef graphdef;
-  *graphdef.mutable_library() = item.graph.library();
   metrics.Reset({"TfgOptimizer", "convert_tfg_to_graphdef"});
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      tensorflow::ExportMlirToGraphdef(module, &graphdef),
+      ConvertToGraphDef(module, &graphdef),
       "when exporting MLIR module to GraphDef in GrapplerHook");
+  // Ensure that an empty library is instantiated.
+  (void)graphdef.mutable_library();
   metrics.ReportAndStop();
   *optimized_graph = std::move(graphdef);
 
+  if (VLOG_IS_ON(4)) {
+    tensorflow::DumpGraphDefToFile(
+        absl::StrCat("tfg_after_graph_", item.id, "_",
+                     std::hash<std::string>()(name())),
+        *optimized_graph);
+  }
   if (VLOG_IS_ON(5)) {
     VLOG(5) << "TFG After Graph: \n"
             << optimized_graph->DebugString() << "\nMLIR module: \n";
     module.dump();
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // end namespace tfg

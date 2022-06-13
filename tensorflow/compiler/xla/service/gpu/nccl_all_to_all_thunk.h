@@ -65,6 +65,10 @@ class NcclAllToAllThunk : public NcclCollectiveThunk {
   const std::vector<Buffer> buffers_;
 };
 
+Status RunAllToAll(bool has_split_dimension,
+                   std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
+                   ncclComm_t comm);
+
 }  // namespace gpu
 }  // namespace xla
 

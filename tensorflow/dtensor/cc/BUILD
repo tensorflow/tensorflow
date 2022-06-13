@@ -94,7 +94,7 @@ cc_library(
         ":dstatus",
         ":small_constant_optimization",
         ":tensor_layout",
-        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c:tf_status_headers",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_internal",
@@ -108,6 +108,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:composite_device",
         "//tensorflow/core/common_runtime/eager:context",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -142,7 +143,6 @@ cc_library(
     srcs = ["tpu_system_interface.cc"],
     hdrs = ["tpu_system_interface.h"],
     deps = [
-        "//tensorflow/c/eager:c_api",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/time",

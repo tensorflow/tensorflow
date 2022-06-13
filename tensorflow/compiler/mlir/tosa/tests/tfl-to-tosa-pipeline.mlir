@@ -57,7 +57,7 @@ func.func @test_transpose_conv2d(%arg0: tensor<1x32x32x8xf32>, %cst_0: tensor<16
 // CHECK-LABEL: test_conv2d_qi8
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<{{.*}}> : tensor<16x2x2x8xi8>}
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<0> : tensor<16xi32>}
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.conv2d"(%arg0, %[[VAR0]], %[[VAR1]]) {dilation = [1, 1], pad = [0, 1, 0, 1], quantization_info = {input_zp = 0 : i32, weight_zp = 0 : i32}, stride = [1, 1]}
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.conv2d"(%arg0, %[[VAR0]], %[[VAR1]]) {dilation = [1, 1], pad = [0, 1, 0, 1], quantization_info = #tosa.conv_quant<input_zp = 0, weight_zp = 0>, stride = [1, 1]}
 // CHECK: %[[VAR3:.*]] = "tosa.rescale"(%[[VAR2]])
 func.func @test_conv2d_qi8(%arg0: tensor<1x32x32x8x!quant.uniform<i8:f32, 0.015684768557548523>>) -> tensor<1x32x32x16x!quant.uniform<i8:f32, 0.078431375324726104>> {
   %0 = "tfl.pseudo_qconst"() {qtype = tensor<16x2x2x8x!quant.uniform<i8<-127:127>:f32:0, {0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1}>>, value = dense<42> : tensor<16x2x2x8xi8>} : () -> tensor<16x2x2x8x!quant.uniform<i8<-127:127>:f32:0,  {0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1} >>
@@ -71,7 +71,7 @@ func.func @test_conv2d_qi8(%arg0: tensor<1x32x32x8x!quant.uniform<i8:f32, 0.0156
 // CHECK-LABEL: test_conv2d_qi16
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<0> : tensor<16xi48>}
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<{{.*}}> : tensor<16x1x1x8xi8>}
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.conv2d"(%arg0, %[[VAR1]], %[[VAR0]]) {dilation = [1, 1], pad = [0, 0, 0, 0], quantization_info = {input_zp = 0 : i32, weight_zp = 0 : i32}, stride = [1, 1]}
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.conv2d"(%arg0, %[[VAR1]], %[[VAR0]]) {dilation = [1, 1], pad = [0, 0, 0, 0], quantization_info = #tosa.conv_quant<input_zp = 0, weight_zp = 0>, stride = [1, 1]}
 // CHECK: %[[VAR3:.*]] = "tosa.rescale"(%[[VAR2]])
 func.func @test_conv2d_qi16(%arg0: tensor<1x32x32x8x!quant.uniform<i16:f32, 1.0>>) -> tensor<1x32x32x16x!quant.uniform<i16:f32, 1.0>> {
   %0 = "tfl.pseudo_qconst"() {qtype = tensor<16x1x1x8x!quant.uniform<i8:f32, 1.0>>, value = dense<42> : tensor<16x1x1x8xi8>} : () -> tensor<16x1x1x8x!quant.uniform<i8:f32, 1.0>>
@@ -88,7 +88,7 @@ func.func @test_conv2d_qi16(%arg0: tensor<1x32x32x8x!quant.uniform<i16:f32, 1.0>
 // CHECK-DAG: %[[VAR2:.*]] = "tosa.const"() {value = dense<{{.*}}> : tensor<16xi32>}
 // CHECK-DAG: %[[VAR3:.*]] = "tosa.transpose"(%[[VAR0]], %[[VAR1]])
 // CHECK-DAG: %[[VAR4:.*]] = "tosa.reshape"(%[[VAR3]]) {new_shape = [2, 2, 8, 2]}
-// CHECK-DAG: %[[VAR5:.*]] = "tosa.depthwise_conv2d"(%arg0, %[[VAR4]], %[[VAR2]]) {dilation = [1, 1], pad = [0, 1, 0, 1], quantization_info = {input_zp = -1 : i32, weight_zp = 0 : i32}, stride = [1, 1]}
+// CHECK-DAG: %[[VAR5:.*]] = "tosa.depthwise_conv2d"(%arg0, %[[VAR4]], %[[VAR2]]) {dilation = [1, 1], pad = [0, 1, 0, 1], quantization_info = #tosa.conv_quant<input_zp = -1, weight_zp = 0>, stride = [1, 1]}
 // CHECK: %[[VAR6:.*]] = "tosa.rescale"(%[[VAR5]])
 // CHECK-SAME: multiplier = [1373724854 : i32, 1373724854 : i32, 1373724854 : i32, 1373724854 : i32, 1803013871 : i32, 1373724854 : i32, 1373724854 : i32, 1373724854 : i32, 1373724854 : i32, 1373724854 : i32, 1373724854 : i32, 1373724854 : i32, 1373724854 : i32, 1373724854 : i32, 1373724854 : i32, 1373724854 : i32]
 // CHECK-SAME: shift = [36 : i32, 36 : i32, 36 : i32, 36 : i32, 32 : i32, 36 : i32, 36 : i32, 36 : i32, 36 : i32, 36 : i32, 36 : i32, 36 : i32, 36 : i32, 36 : i32, 36 : i32, 36 : i32]
@@ -232,6 +232,26 @@ func.func @test_relu6_dynamic(%arg0: tensor<?x21x3xf32>) -> tensor<?x?x?xf32> {
 func.func @test_leaky_relu(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
   %0 = "tfl.leaky_relu"(%arg0)  {alpha = 0.707330704 : f32}  : (tensor<13x21x3xf32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_prelu
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<1x1x1xf32>}
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%arg1) {new_shape = [1, 2, 3]}
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.mul"(%arg0, %[[VAR1]]) {shift = 0 : i32}
+// CHECK-DAG: %[[VAR3:.*]] = "tosa.greater_equal"(%arg0, %[[VAR0]])
+// CHECK: %[[VAR4:.*]] = "tosa.select"(%[[VAR3]], %arg0, %[[VAR2]])
+func.func @test_prelu(%arg0: tensor<4x2x3xf32>, %arg1: tensor<2x3xf32>) -> tensor<4x2x3xf32> {
+  %0 = "tfl.prelu"(%arg0, %arg1) : (tensor<4x2x3xf32>, tensor<2x3xf32>) -> tensor<4x2x3xf32>
+  func.return %0 : tensor<4x2x3xf32>
+}
+
+// CHECK-LABEL: test_prelu_quantized
+// CHECK: "tfl.prelu"
+func.func @test_prelu_quantized(%arg0: tensor<14x28x!quant.uniform<i8:f32, 0.19988977909088135:3>>, %arg1: tensor<28x!quant.uniform<i8:f32, 0.19988977909088135:3>>) -> tensor<14x28x!quant.uniform<i8:f32, 0.19988977909088135:3>> {
+  %0 = "tfl.prelu"(%arg0, %arg1) : (tensor<14x28x!quant.uniform<i8:f32, 0.19988977909088135:3>>, tensor<28x!quant.uniform<i8:f32, 0.19988977909088135:3>>) -> tensor<14x28x!quant.uniform<i8:f32, 0.19988977909088135:3>>
+  func.return %0 : tensor<14x28x!quant.uniform<i8:f32, 0.19988977909088135:3>>
 }
 
 // -----
@@ -1027,6 +1047,18 @@ func.func @test_batch_matmul(%arg0: tensor<1x16x128xf32>, %arg1: tensor<1x128x32
 
 // -----
 
+// CHECK-LABEL: @test_batch_matmul_4d
+func.func @test_batch_matmul_4d(%arg0: tensor<4x5x16x128xf32>, %arg1: tensor<4x5x128x32xf32>) -> (tensor<4x5x16x32xf32> ) {
+  // CHECK: %[[R0:.*]] = "tosa.reshape"(%arg0) {new_shape = [20, 16, 128]}
+  // CHECK: %[[R1:.*]] = "tosa.reshape"(%arg1) {new_shape = [20, 128, 32]}
+  // CHECK: %[[MM:.*]] = "tosa.matmul"(%[[R0]], %[[R1]])
+  // CHECK: "tosa.reshape"(%[[MM]]) {new_shape = [4, 5, 16, 32]}
+  %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<4x5x16x128xf32>, tensor<4x5x128x32xf32>) -> tensor<4x5x16x32xf32>
+  func.return %0 : tensor<4x5x16x32xf32>
+}
+
+// -----
+
 // CHECK-LABEL: @test_batch_matmul_transpose
 func.func @test_batch_matmul_transpose(%arg0: tensor<1x16x128xf32>, %arg1: tensor<1x128x32xf32>) -> (tensor<1x32x16xf32> ) {
   // CHECK-DAG: %[[PERM:.+]] = "tosa.const"() {value = dense<[0, 2, 1]> : tensor<3xi32>}
@@ -1354,7 +1386,7 @@ func.func @test_mul_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.015681236
 // -----
 
 // CHECK-LABEL: test_avg_pool2d_qi8
-// CHECK: %[[VAR0:.*]] = "tosa.avg_pool2d"(%arg0) {kernel = [1, 1], pad = [0, 0, 0, 0], quantization_info = {input_zp = 0 : i32, output_zp = 0 : i32}, stride = [1, 1]}
+// CHECK: %[[VAR0:.*]] = "tosa.avg_pool2d"(%arg0) {kernel = [1, 1], pad = [0, 0, 0, 0], quantization_info = #tosa.unary_quant<input_zp = 0, output_zp = 0>, stride = [1, 1]}
 // CHECK-SAME: -> tensor<1x32x32x8x!quant.uniform<i8:f32, 0.015684349462389946:-1>>
 func.func @test_avg_pool2d_qi8(%arg0: tensor<1x32x32x8x!quant.uniform<i8:f32, 0.015684349462389946:-1>>) -> tensor<*x!quant.uniform<i8:f32, 0.015684349462389946:-1>> {
   %0 = "tfl.average_pool_2d"(%arg0)  {filter_height = 1 : i32, filter_width = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}  : (tensor<1x32x32x8x!quant.uniform<i8:f32, 0.015684349462389946:-1>>) -> tensor<*x!quant.uniform<i8:f32, 0.015684349462389946:-1>>
@@ -1559,7 +1591,7 @@ func.func @test_resize_bilinear_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f3
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<[1, 0]> : tensor<2xi32>}
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<0> : tensor<28xi32>}
 // CHECK-DAG: %[[VAR2:.*]] = "tosa.transpose"(%arg1, %[[VAR0]])
-// CHECK-DAG: %[[VAR3:.*]] = "tosa.fully_connected"(%arg0, %[[VAR2]], %[[VAR1]]) {quantization_info = {input_zp = -1 : i32, weight_zp = -1 : i32}}
+// CHECK-DAG: %[[VAR3:.*]] = "tosa.fully_connected"(%arg0, %[[VAR2]], %[[VAR1]]) {quantization_info = #tosa.conv_quant<input_zp = -1, weight_zp = -1>}
 // CHECK: %[[VAR4:.*]] = "tosa.rescale"(%[[VAR3]]) {double_round = true, input_zp = 0 : i32, multiplier = [1353377973 : i32], output_zp = 3 : i32, per_channel = false, scale32 = true, shift = [40 : i32]}
 func.func @test_fullyconnected_qi8(%arg0: tensor<14x19x!quant.uniform<i8:f32, 0.015685491263866425:-1>>, %arg1: tensor<19x28x!quant.uniform<i8:f32, 0.015685983002185822:-1>>) -> tensor<14x28x!quant.uniform<i8:f32, 0.19988977909088135:3>> {
   %0 = "tfl.pseudo_const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<2xi32>

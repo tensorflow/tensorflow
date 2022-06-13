@@ -1128,5 +1128,19 @@ class DeprecatedEndpointsTest(test.TestCase):
         pass
 
 
+class DeprecateMovedModuleTest(test.TestCase):
+
+  @test.mock.patch.object(logging, "warning", autospec=True)
+  def testCallDeprecatedModule(self, mock_warning):
+    from tensorflow.python.util import deprecated_module  # pylint: disable=g-import-not-at-top
+    self.assertEqual(0, mock_warning.call_count)
+    result = deprecated_module.a()
+    self.assertEqual(1, mock_warning.call_count)
+    self.assertEqual(1, result)
+
+    deprecated_module.a()
+    self.assertEqual(1, mock_warning.call_count)
+
+
 if __name__ == "__main__":
   test.main()

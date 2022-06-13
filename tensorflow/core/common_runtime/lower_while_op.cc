@@ -223,7 +223,7 @@ Status LowerWhileHelper::RunInternal() {
   TF_RETURN_IF_ERROR(CreateNextIterationNodes());
   TF_RETURN_IF_ERROR(UpdateMergeNodes());
   TF_RETURN_IF_ERROR(UpdateConsumers());
-  return Status::OK();
+  return OkStatus();
 }
 
 void LowerWhileHelper::InitializeInputOutputToLoweredNodeMap() {
@@ -275,7 +275,7 @@ Status LowerWhileHelper::CreateEnterNodes() {
       graph_->AddControlEdge(incoming_control_node, n);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LowerWhileHelper::CreateMergeNodes() {
@@ -292,7 +292,7 @@ Status LowerWhileHelper::CreateMergeNodes() {
             .Finalize(graph_, &merge_node));
     merge_nodes_.emplace_back(merge_node);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LowerWhileHelper::CreateCondFuncCallNode() {
@@ -315,7 +315,7 @@ Status LowerWhileHelper::CreateCondFuncCallNode() {
           .Input(NodeOut(cond_call_node_, 0))
           .Device(while_op_->requested_device())
           .Finalize(graph_, &loop_cond_node_));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LowerWhileHelper::CreateSwitchNodes() {
@@ -344,7 +344,7 @@ Status LowerWhileHelper::CreateSwitchNodes() {
             .Finalize(graph_, &switch_node));
     switch_nodes_.emplace_back(switch_node);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LowerWhileHelper::CreateBodyFuncCallNode() {
@@ -376,7 +376,7 @@ Status LowerWhileHelper::CreateBodyFuncCallNode() {
                          .Device(while_op_->requested_device())
                          .Finalize(graph_, &body_control_node_));
   graph_->AddControlEdge(body_control_node_, body_call_node_);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LowerWhileHelper::CreateExitNodes() {
@@ -437,7 +437,7 @@ Status LowerWhileHelper::CreateExitNodes() {
             .Finalize(graph_, &lowered_while_output_));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LowerWhileHelper::CreateNextIterationNodes() {
@@ -456,7 +456,7 @@ Status LowerWhileHelper::CreateNextIterationNodes() {
                            .Finalize(graph_, &next_iteration));
     next_iterations_nodes_.emplace_back(next_iteration);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LowerWhileHelper::UpdateMergeNodes() {
@@ -464,7 +464,7 @@ Status LowerWhileHelper::UpdateMergeNodes() {
     TF_RETURN_IF_ERROR(
         graph_->UpdateEdge(next_iterations_nodes_[i], 0, merge_nodes_[i], 1));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LowerWhileHelper::UpdateConsumers() {
@@ -491,7 +491,7 @@ Status LowerWhileHelper::UpdateConsumers() {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 string LowerWhileHelper::NewName(const string& infix) {
@@ -523,13 +523,16 @@ Status RewriteWhileNode(Node* n, Graph* g,
   if (parallel_iterations_attr == nullptr) {
     return errors::InvalidArgument("parallel_iterations attr missing");
   }
+  if (parallel_iterations_attr->i() < 1) {
+    return errors::InvalidArgument("parallel_iterations must be > 0");
+  }
 
   TF_RETURN_IF_ERROR(LowerWhileHelper::Run(
       n, cond_attr->func(), body_attr->func(), parallel_iterations_attr->i(), g,
       flib_def, keep_node_fetchable));
   g->RemoveNode(n);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

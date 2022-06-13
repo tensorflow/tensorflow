@@ -210,7 +210,7 @@ void ExpectSameModels(const ModelT& model, const ModelT& expected_model) {
           continue;
         }
         ExpectEqualTensor(tensor.get(), expected_tensor);
-        if (tensor->buffer >= 0) {
+        if (expected_tensor->buffer > 0) {
           const int buffer_idx = tensor->buffer;
           const int expected_buffer_idx = expected_tensor->buffer;
           const auto buffer = model.buffers[buffer_idx].get()->data;
@@ -235,8 +235,8 @@ class QuantizeConvModelTest : public QuantizeModelTest,
     auto& subgraph = model_.subgraphs[0];
     auto* input = subgraph->tensors[subgraph->inputs[0]].get();
     auto* output = subgraph->tensors[subgraph->outputs[0]].get();
-    input->quantization.reset(new QuantizationParametersT());
-    output->quantization.reset(new QuantizationParametersT());
+    input->quantization = std::make_unique<QuantizationParametersT>();
+    output->quantization = std::make_unique<QuantizationParametersT>();
     input->quantization->min.push_back(0.0);
     output->quantization->min.push_back(0.0);
     input->quantization->max.push_back(6.0);
@@ -405,8 +405,8 @@ class QuantizeConvModel2Test : public QuantizeModelTest,
     auto& subgraph = model_.subgraphs[0];
     auto* input = subgraph->tensors[subgraph->inputs[0]].get();
     auto* output = subgraph->tensors[subgraph->outputs[0]].get();
-    input->quantization.reset(new QuantizationParametersT());
-    output->quantization.reset(new QuantizationParametersT());
+    input->quantization = std::make_unique<QuantizationParametersT>();
+    output->quantization = std::make_unique<QuantizationParametersT>();
     input->quantization->min.push_back(0.0);
     output->quantization->min.push_back(0.0);
     input->quantization->max.push_back(6.0);

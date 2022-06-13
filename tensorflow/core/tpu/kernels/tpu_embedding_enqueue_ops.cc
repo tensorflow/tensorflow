@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
@@ -37,7 +37,7 @@ Status ValidateCombiners(absl::Span<const std::string> combiners) {
           "\"sqrtn\" are supported.");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetValidatedModeOverride(const string& mode_override,
@@ -52,7 +52,7 @@ Status GetValidatedModeOverride(const string& mode_override,
     return errors::InvalidArgument("Unsupported value ", mode_override,
                                    " specified for mode_override.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -135,17 +135,23 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
     std::vector<TF_Tensor*> embedding_indices_tensors(num_input_features);
     std::vector<TF_Tensor*> aggregation_weights_tensors(num_input_features);
 
-    for (int i = 0; i < num_input_features; ++i) {
-      Status tf_status;
-      sample_indices_or_row_splits_tensors[i] =
-          TF_TensorFromTensor(sample_indices_or_row_splits_list[i], &tf_status);
-      OP_REQUIRES_OK(ctx, tf_status);
-      embedding_indices_tensors[i] =
-          TF_TensorFromTensor(embedding_indices_list[i], &tf_status);
-      OP_REQUIRES_OK(ctx, tf_status);
-      aggregation_weights_tensors[i] =
-          TF_TensorFromTensor(aggregation_weights_list[i], &tf_status);
-      OP_REQUIRES_OK(ctx, tf_status);
+    {
+      tensorflow::profiler::TraceMe copy_tensors_trace(
+          [] { return "CopyTensors"; },
+          tensorflow::profiler::TraceMeLevel::kInfo);
+
+      for (int i = 0; i < num_input_features; ++i) {
+        Status tf_status;
+        sample_indices_or_row_splits_tensors[i] = TF_TensorFromTensor(
+            sample_indices_or_row_splits_list[i], &tf_status);
+        OP_REQUIRES_OK(ctx, tf_status);
+        embedding_indices_tensors[i] =
+            TF_TensorFromTensor(embedding_indices_list[i], &tf_status);
+        OP_REQUIRES_OK(ctx, tf_status);
+        aggregation_weights_tensors[i] =
+            TF_TensorFromTensor(aggregation_weights_list[i], &tf_status);
+        OP_REQUIRES_OK(ctx, tf_status);
+      }
     }
 
     TpuEmbeddingEngine_EnqueueTensorBatch_Params params;
@@ -163,12 +169,23 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
     params.local_device_ordinal = device_ordinal_;
     params.mode = mode;
 
-    tpu::OpsApiFn()->TpuEmbeddingEngine_EnqueueTensorBatchFn(&params);
-    OP_REQUIRES_OK(ctx, status.status());
+    {
+      tensorflow::profiler::TraceMe enqueue_batch_trace(
+          [] { return "EnqueueBatch"; },
+          tensorflow::profiler::TraceMeLevel::kInfo);
+      tpu::OpsApiFn()->TpuEmbeddingEngine_EnqueueTensorBatchFn(&params);
+      OP_REQUIRES_OK(ctx, status.status());
+    }
 
-    DeleteTensors(sample_indices_or_row_splits_tensors);
-    DeleteTensors(embedding_indices_tensors);
-    DeleteTensors(aggregation_weights_tensors);
+    {
+      tensorflow::profiler::TraceMe delete_tensors_trace(
+          [] { return "DeleteTensors"; },
+          tensorflow::profiler::TraceMeLevel::kInfo);
+
+      DeleteTensors(sample_indices_or_row_splits_tensors);
+      DeleteTensors(embedding_indices_tensors);
+      DeleteTensors(aggregation_weights_tensors);
+    }
 
     VLOG(2) << "EnqueueTPUEmbeddingArbitraryTensorBatchOp::Compute done";
   }

@@ -67,7 +67,7 @@ tf_py_test(
 
 tf_py_test(
     name = "checkpoint_input_pipeline_hook_test",
-    size = "small",
+    size = "medium",
     srcs = ["checkpoint_input_pipeline_hook_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -538,7 +538,7 @@ tf_py_test(
 
 tf_py_test(
     name = "replicate_test",
-    size = "small",
+    size = "medium",
     srcs = ["replicate_test.py"],
     grpc_enabled = True,
     tags = [

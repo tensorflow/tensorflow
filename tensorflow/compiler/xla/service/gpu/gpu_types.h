@@ -32,7 +32,7 @@ namespace gpu {
 //
 // On ROCm platform, it comprises of se::RocmComputeCapability.
 using GpuVersion =
-    absl::variant<se::CudaComputeCapability, se::RocmComputeCapability>;
+    std::variant<se::CudaComputeCapability, se::RocmComputeCapability>;
 }  // namespace gpu
 }  // namespace xla
 

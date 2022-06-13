@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_TYPES_H_
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "absl/types/optional.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
@@ -141,7 +141,7 @@ struct CastToArrayResult {
   const char* buf_ptr;
   xla::Shape shape;
 };
-absl::optional<CastToArrayResult> CastToArray(pybind11::handle h);
+std::optional<CastToArrayResult> CastToArray(pybind11::handle h);
 
 }  // namespace xla
 

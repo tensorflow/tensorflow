@@ -35,8 +35,8 @@ namespace cpu {
 // instruction stream.
 
 namespace {
-using absl::nullopt;
-using absl::optional;
+using std::nullopt;
+using std::optional;
 
 using ShouldMakeOperandColMajorCache =
     absl::flat_hash_map<const HloInstruction*, bool>;
@@ -158,7 +158,7 @@ Status CpuLayoutAssignment::AddBackendConstraints(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace cpu
 }  // namespace xla

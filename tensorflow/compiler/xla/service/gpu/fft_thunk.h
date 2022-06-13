@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FFT_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FFT_THUNK_H_
 
+#include <optional>
+
 #include "absl/container/flat_hash_map.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -31,27 +31,28 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// A one-time scratch allocator for FFT. The scratch buffers allocated are
-// released on destruction.
-//
-// Not thread-safe in that AllocateBytes, destructor are not locked.
-class FftScratchAllocator : public se::ScratchAllocator {
+struct FftPlan {
+  // CuFFT thread-safety requires that separate host threads not share plans;
+  // protect each plan with a mutex.
+  absl::Mutex mu;
+  std::unique_ptr<se::fft::Plan> plan ABSL_GUARDED_BY(mu);
+  float scale_factor ABSL_GUARDED_BY(mu);
+};
+
+class FftPlanCache {
  public:
-  FftScratchAllocator(int device_ordinal,
-                      se::DeviceMemoryAllocator* memory_allocator);
-
-  int64_t GetMemoryLimitInBytes() override;
-
-  int64_t TotalAllocatedBytes() { return total_allocated_bytes_; }
-
-  se::port::StatusOr<se::DeviceMemory<uint8_t>> AllocateBytes(
-      int64_t byte_size) override;
+  // Returnes Fft plan cached for the given device ordinal or creates a new one.
+  FftPlan* GetOrCreate(int device_ordinal) {
+    absl::MutexLock lock(&mu_);
+    std::unique_ptr<FftPlan>& plan = fft_plans_[device_ordinal];
+    if (!plan) plan = std::make_unique<FftPlan>();
+    return plan.get();
+  }
 
  private:
-  const int device_ordinal_;
-  se::DeviceMemoryAllocator* memory_allocator_;
-  std::vector<se::OwningDeviceMemory> allocated_buffers_;
-  int64_t total_allocated_bytes_ = 0;
+  absl::Mutex mu_;
+  absl::flat_hash_map<int, std::unique_ptr<FftPlan>> fft_plans_
+      ABSL_GUARDED_BY(mu_);
 };
 
 // This class stores everything that StreamExecutor needs to launch an FFT.
@@ -78,16 +79,7 @@ class FftThunk : public Thunk {
   const se::fft::Type fft_type_;
   const std::vector<int64_t> fft_length_;
 
-  float scale_factor_;
-
-  // One plan per device ordinal.
-  absl::Mutex mu_;
-  struct FftPlan {
-    absl::Mutex mu;
-    std::unique_ptr<se::fft::Plan> plan;
-  };
-  absl::flat_hash_map<int, std::unique_ptr<FftPlan>> fft_plans_
-      ABSL_GUARDED_BY(mu_);
+  FftPlanCache fft_plan_cache_;
 
   const BufferAllocation::Slice input_buffer_;
   const BufferAllocation::Slice output_buffer_;
@@ -95,6 +87,12 @@ class FftThunk : public Thunk {
   const Shape input_shape_;
   const Shape output_shape_;
 };
+
+Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
+              se::DeviceMemoryBase output, const Shape& output_shape,
+              se::fft::Type fft_type, absl::Span<const int64_t> fft_length,
+              int device_ordinal, FftPlanCache* fft_plan_cache,
+              se::Stream* stream, se::DeviceMemoryAllocator* memory_allocator);
 
 }  // namespace gpu
 }  // namespace xla

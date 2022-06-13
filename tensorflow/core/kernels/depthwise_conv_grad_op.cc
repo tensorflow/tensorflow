@@ -641,13 +641,11 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
 
     // If in_depth==1, this operation is just a standard convolution.
     // Depthwise convolution is a special case of cuDNN's grouped convolution.
-    bool use_cudnn = std::is_same<Device, GPUDevice>::value &&
-                     (in_depth == 1 ||
-                      (use_cudnn_grouped_conv_ &&
-                       IsCudnnSupportedFilterSize(/*filter_rows=*/filter_rows,
-                                                  /*filter_cols=*/filter_cols,
-                                                  /*in_depth=*/in_depth,
-                                                  /*out_depth=*/out_depth)));
+    bool use_cudnn =
+        std::is_same<Device, GPUDevice>::value &&
+        (in_depth == 1 || (use_cudnn_grouped_conv_ &&
+                           ShouldCudnnGroupedConvolutionBeUsed(
+                               filter_rows, filter_cols, in_depth, out_depth)));
 
     VLOG(2) << "DepthwiseConv2dNativeBackpropInput: "
             << " Input: [" << batch << ", " << input_rows << ", " << input_cols
@@ -1151,10 +1149,8 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
     bool use_cudnn = std::is_same<Device, GPUDevice>::value &&
                      (in_depth == 1 ||
                       (use_cudnn_grouped_conv_ &&
-                       (IsCudnnSupportedFilterSize(/*filter_rows=*/filter_rows,
-                                                   /*filter_cols=*/filter_cols,
-                                                   /*in_depth=*/in_depth,
-                                                   /*out_depth=*/out_depth) ||
+                       (ShouldCudnnGroupedConvolutionBeUsed(
+                            filter_rows, filter_cols, in_depth, out_depth) ||
                         OpDeterminismRequired())));
 
     VLOG(2) << "DepthwiseConv2dNativeBackpropFilter: "

@@ -114,7 +114,7 @@ class FakeDevice : public Device {
  public:
   FakeDevice(Env* env, const string& device) : Device(env, attr(device)) {}
   explicit FakeDevice(const string& device) : FakeDevice(nullptr, device) {}
-  Status Sync() override { return Status::OK(); }
+  Status Sync() override { return OkStatus(); }
 
  private:
   static DeviceAttributes attr(const string& device) {
@@ -492,7 +492,7 @@ Status PushDownConstInputs(const NodeDef& func_node,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Remove inputs that were pushed into the function body, and attach their
@@ -597,7 +597,7 @@ Status UpdateSpecializedFunctionCallSite(const FunctionDef& func,
     return errors::InvalidArgument("Unknown function call site");
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Update a graph node created from the original function caller node, to the
@@ -637,7 +637,7 @@ Status UpdateSpecializedFunctionNode(
   // 5. Remove custom gradient annotation.
   specialized_func_node->mutable_attr()->erase("_gradient_op_type");
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status InitializeFunctionSpecializationSignature(
@@ -664,7 +664,7 @@ Status InitializeFunctionSpecializationSignature(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Create a name for the function specialization. The name of the function, name
@@ -710,7 +710,7 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
 
     ctx->AddTensorMapping(specialized_func_node->name(), *already_specialized);
 
-    return Status::OK();
+    return OkStatus();
   }
 
   // Add a new specialized function definition to the library.
@@ -777,7 +777,7 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
   ctx->AddSpecializedFunction(signature, func_specialization);
   ctx->AddTensorMapping(specialized_func_node->name(), func_specialization);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // -------------------------------------------------------------------------- //
@@ -941,7 +941,7 @@ Status ValidateSideEffectsExecution(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Validates that no dead tensor can reach function output.
@@ -1006,7 +1006,7 @@ Status ValidateNoDeadOutputs(const FunctionLibraryDefinition& flib_def,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Makes an instance of FunctionBody for inlining from a Node.
@@ -1024,7 +1024,7 @@ Status MakeFunctionBodyForInlining(const Node& node,
           "Was not able to find a function definition (name=", name,
           ") for a function call: ", SummarizeNode(node));
     }
-    return Status::OK();
+    return OkStatus();
   };
 
   // SymbolicGradient is a special "function call" op, which has been
@@ -1084,7 +1084,7 @@ Status MakeFunctionBodyForInlining(const Node& node,
                                                &flib_def, fbody));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Adds a control edges from each data input to the 'caller' to enforce strict
@@ -1216,7 +1216,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
 
   FunctionLibraryDefinition flib_def =
       FunctionLibraryDefinition(OpRegistry::Global(), item.graph.library());
-  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(flib_def);
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(flib_def);
 
   GraphConstructorOptions graph_constructor_options;
   graph_constructor_options.allow_internal_ops = true;
@@ -1337,7 +1337,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
       if (!can_inline_function_call.ok() &&
           (is_aggressive || force_inline_as_multi_device)) {
         VLOG(2) << "Ignore error: " << can_inline_function_call.error_message();
-        can_inline_function_call = Status::OK();
+        can_inline_function_call = OkStatus();
       }
     }
     if (can_inline_function_call.ok()) {
@@ -1393,7 +1393,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
     std::vector<std::unique_ptr<Device>> fake_devices;  // owns fake devices
 
     for (const string& name : item.devices()) {
-      auto device = absl::make_unique<FakeDevice>(name);
+      auto device = std::make_unique<FakeDevice>(name);
       device_set.AddDevice(device.get());
       fake_devices.push_back(std::move(device));
     }
@@ -1403,7 +1403,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
   }
 
   graph->ToGraphDef(output_graph);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Restores tensor mapping after function specialization: all inputs must be
@@ -1509,7 +1509,7 @@ Status FunctionOptimizer::RunFunctionOptimizerPass(
   *optimized_graph->mutable_library() =
       PruneFunctionLibrary(ctx.function_library(), *optimized_graph);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
@@ -1521,7 +1521,7 @@ Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
 
   TF_RETURN_IF_ERROR(RunFunctionOptimizerPass(item, optimized_graph));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace grappler

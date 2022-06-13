@@ -184,7 +184,7 @@ TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache);
 
 // Later, after all the interpreters and XNNPACK delegates using the cache are
 // destroyed, release the weights cache.
-TfLiteXNNPackWeightsCacheDelete(weights_cache);
+TfLiteXNNPackDelegateWeightsCacheDelete(weights_cache);
 ```
 
 The weights cache is a contents-based cache. Every time XNNPACK has to pack
@@ -404,6 +404,12 @@ Below is the list of currently supported floating-point operators:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+#### `TRANSPOSE`
+
+* The first input and the output must be in 32-bit floating-point format.
+* The second input (the input with the permutation specification) must be
+  static (use `kTfLiteMmapRo` allocation type).
+
 #### `TRANSPOSE_CONV`
 
 * Input, filter, bias (if present) and output tensors must be in 32-bit
@@ -420,7 +426,7 @@ inference when the following conditions are met:
 * XNNPACK runs on hardware that natively supports computations in IEEE FP16
 format. Currently, this hardware is limited to ARM64 devices with ARMv8.2 FP16
 arithmetics extension, and includes Android phones starting with Pixel 3,
-Galaxy S9 (Snadrapgon SoC), Galaxy S10 (Exynos SoC), iOS devices with A11 or
+Galaxy S9 (Snapdragon SoC), Galaxy S10 (Exynos SoC), iOS devices with A11 or
 newer SoCs, and all Apple Silicon Macs.
 
 * IEEE FP16 inference is supported for every floating-point operator in the
@@ -615,6 +621,10 @@ Below is the list of operators supported in IEEE FP16 inference:
 * Must satisfy constraints on the floating-point (FP32) operator.
 * Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
 
+#### `TRANSPOSE`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
 #### `TRANSPOSE_CONV`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
@@ -750,6 +760,12 @@ Below is the list of currently supported quantized operators:
 * Inputs and outputs must be in 8-bit quantized format.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `TRANSPOSE`
+
+* The first input and the output must be in 8-bit quantized format.
+* The second input (the input with the permutation specification) must be
+  static (use `kTfLiteMmapRo` allocation type).
 
 #### `TRANSPOSE_CONV`
 

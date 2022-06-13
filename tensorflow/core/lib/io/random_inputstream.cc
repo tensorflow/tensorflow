@@ -80,7 +80,7 @@ Status RandomAccessInputStream::SkipNBytes(int64_t bytes_to_skip) {
     Status s = file_->Read(pos_ + bytes_to_skip - 1, 1, &data, scratch.get());
     if ((s.ok() || errors::IsOutOfRange(s)) && data.size() == 1) {
       pos_ += bytes_to_skip;
-      return Status::OK();
+      return OkStatus();
     }
   }
   // Read kDefaultSkipSize at a time till bytes_to_skip.
@@ -98,7 +98,7 @@ Status RandomAccessInputStream::SkipNBytes(int64_t bytes_to_skip) {
     }
     bytes_to_skip -= bytes_to_read;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 int64_t RandomAccessInputStream::Tell() const { return pos_; }

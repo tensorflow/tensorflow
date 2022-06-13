@@ -26,6 +26,7 @@ class ModuleOp;
 class MLIRContext;
 class ConversionTarget;
 class DialectRegistry;
+class PassManager;
 
 namespace func {
 class FuncOp;
@@ -78,17 +79,32 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateShapeSimplification();
 
 // Pass to tranform compute computations (hlo and linalg) on values to their
 // corresponding counterparts on buffers. Also bufferizes function signatures.
-std::unique_ptr<OperationPass<mlir::ModuleOp>>
-CreateComputeOpAndFuncBufferizePass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateComputeOpAndFuncBufferizePass();
 
 // Pass to tranform computations on values to their corresponding parts on
 // buffers.
-std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateFinalBufferizePass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass();
 
-std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateFinalBufferizePass(
+std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass(
     uint64_t alignment, BufferizeDialectsCallback dc = {},
     BufferizePatternsCallback pc = {});
 
+// Pass to propagate static shapes to kernel, reducing the kernel arguments
+// from a flattened memref to a single pointer. The pointer is converted to
+// `pointer_type`, if provided.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreatePropagateStaticShapesToKernelPass(Type pointer_type = {});
+
+// Creates a TileLoopsPass with tiles sizes provided through `tile_sizes`
+// and unroll factors provided through `unroll_factors`.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTileLoopsPass(
+    ArrayRef<int64_t> tile_sizes = {}, ArrayRef<int64_t> unroll_factors = {});
+
+namespace hlo {
+std::unique_ptr<OperationPass<ModuleOp>> CreateOneShotBufferizePass();
+
+std::unique_ptr<OperationPass<ModuleOp>> createGenericHostToLLVMPass();
+}  // namespace hlo
 }  // namespace mlir
 
 #endif  // MLIR_HLO_TRANSFORMS_PASSES_H

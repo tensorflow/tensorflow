@@ -92,7 +92,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -118,7 +118,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
                        std::make_pair(kCpuBudget, cpu_budget_attr),
                        std::make_pair(kRamBudget, ram_budget_attr)},
                       output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -196,7 +196,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
           }
         });
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     mutex mu_;

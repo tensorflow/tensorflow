@@ -79,7 +79,7 @@ if(TFLITE_KERNEL_TEST AND ${CMAKE_CROSSCOMPILING})
   endif()
 endif()
 
-set(CMAKE_CXX_STANDARD 14)  # Some components require C++14.
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(_TFLITE_ENABLE_RUY "${TFLITE_ENABLE_RUY}")
 if("${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
@@ -376,6 +376,11 @@ if(_TFLITE_ENABLE_NNAPI)
   populate_tflite_source_vars(
     "nnapi" TFLITE_NNAPI_SRCS FILTER "(_disabled)\\.(cc|h)$"
   )
+
+  list(APPEND TFLITE_NNAPI_SRCS
+    "${TFLITE_SOURCE_DIR}/nnapi/sl/SupportLibrary.cc"
+  )
+
   if(${TFLITE_ENABLE_NNAPI_VERBOSE_VALIDATION})
     list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DNNAPI_VERBOSE_VALIDATION")
   endif()

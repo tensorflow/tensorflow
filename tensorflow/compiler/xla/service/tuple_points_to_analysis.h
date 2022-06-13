@@ -327,7 +327,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
     DCHECK_GE(id, 0);
     auto iter = per_instruction_.find(id);
     if (iter == per_instruction_.end()) {
-      return per_instruction_.emplace(id, absl::make_unique<PerInstruction>())
+      return per_instruction_.emplace(id, std::make_unique<PerInstruction>())
           .first->second.get();
     } else {
       return iter->second.get();

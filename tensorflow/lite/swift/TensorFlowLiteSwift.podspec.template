@@ -13,6 +13,7 @@ Pod::Spec.new do |s|
   small binary size and fast performance supporting hardware acceleration.
                        DESC
 
+  s.cocoapods_version = '>= ${TFL_MIN_COCOAPODS_VERSION}'
   s.ios.deployment_target = '11.0'
 
   s.module_name = 'TensorFlowLite'
@@ -23,12 +24,12 @@ Pod::Spec.new do |s|
 
   # TODO: Remove this after adding support for arm64 simulator.
   s.pod_target_xcconfig = {
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64'
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => '${TFL_EXCLUDED_SIM_ARCHS}'
   }
 
   # TODO: Remove this after adding support for arm64 simulator.
   s.user_target_xcconfig = {
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64'
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => '${TFL_EXCLUDED_SIM_ARCHS}'
   }
 
   s.default_subspec = 'Core'

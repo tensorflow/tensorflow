@@ -44,17 +44,29 @@ namespace testing {
 // auto* test_string_gauge = monitoring::Gauge<2>::New(
 //    "/tensorflow/monitoring/test/gauge", "label1", "label2",
 //    "Test tfstreamz gauge.");
+// auto* test_percentiles = monitoring::PercentileSampler<2>::New(
+//    {"/tensorflow/monitoring/test/percentiles", "Test percentiles.",
+//     "label1", "label2"},
+//     /*percentiles=*/{25.0, 50.0, 80.0, 90.0, 95.0, 99.0},
+//     /*max_samples=*/1024,
+//     monitoring::UnitOfMeasure::kNumber);
 // ```
 //
 // one could read the exported tfstreamz values using a `CellReader` like this:
 //
 // ```
+// using tensorflow::monitoring::testing::Histogram;
+// using tensorflow::monitoring::testing::Percentiles;
+//
 // CellReader<int64_t> counter_reader("/tensorflow/monitoring/test/counter");
 // CellReader<Histogram> sampler_reader("/tensorflow/monitoring/test/sampler");
 // CellReader<std::string> gauge_reader("/tensorflow/monitoring/test/gauge");
+// CellReader<Percentiles> percentiles_reader(
+//     "/tensorflow/monitoring/test/percentiles");
 // EXPECT_EQ(counter_reader.Delta("label_value"), 0);
-// EXPECT_EQ(sampler_reader.Delta("x", "y").num(), 0.0);
+// EXPECT_FLOAT_EQ(sampler_reader.Delta("x", "y").num(), 0.0);
 // EXPECT_EQ(gauge_reader.Delta("x", "y"), "");
+// EXPECT_EQ(percentiles_reader.Delta("x", "y").num(), 0);
 //
 // CodeThatUpdateMetrics();
 // EXPECT_EQ(counter_reader.Delta("label_value"), 5);
@@ -62,10 +74,8 @@ namespace testing {
 // EXPECT_FLOAT_EQ(histogram.num(), 5.0);
 // EXPECT_GT(histogram.sum(), 0.0);
 // EXPECT_EQ(gauge_reader.Delta("x", "y"), "gauge value");
+// EXPECT_EQ(percentiles_reader.Delta("x", "y").num(), 5);
 // ```
-//
-// TODO(b/147227594): This library is working-in-progress. Currently, only
-// counter, sampler, and string gauges are supported.
 template <typename ValueType>
 class CellReader {
  public:
@@ -91,10 +101,12 @@ class CellReader {
   // Returns the difference in the value of this cell since the last time
   // `Delta()` was called for this cell, or when the `CellReader` was created,
   // whichever was most recent. If the metric has not been modified, it returns
-  // a default value appropriate for `ValueType`.
+  // a default value appropriate for `ValueType`. `Delta` is not supported for
+  // string and bool gauges.
   //
-  // REQUIRES: The tfstreamz exists, and `labels` contains a correct number of
-  // labels per tfstreamz definition. Otherwise, it will CHECK-fail.
+  // REQUIRES: The tfstreamz exists, `labels` contains a correct number of
+  // labels per tfstreamz definition, and the ValueType is not string or bool.
+  // Otherwise, it will CHECK-fail.
   template <typename... LabelType>
   ValueType Delta(const LabelType&... labels);
 
@@ -145,22 +157,6 @@ ValueType CellReader<ValueType>::Delta(const LabelType&... labels) {
   }
   delta_map_[labels_list] = value;
   return internal::GetDelta<ValueType>(value, initial_value);
-}
-
-template <>
-template <typename... LabelType>
-std::string CellReader<std::string>::Delta(const LabelType&... labels) {
-  LOG(FATAL) << "`CellReader<std::string>` does not support `Delta`. "
-             << "Please use `Read` instead.";
-  return "";
-}
-
-template <>
-template <typename... LabelType>
-bool CellReader<bool>::Delta(const LabelType&... labels) {
-  LOG(FATAL) << "`CellReader<bool>` does not support `Delta`. "
-             << "Please use `Read` instead.";
-  return false;
 }
 
 }  // namespace testing

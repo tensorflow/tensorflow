@@ -40,7 +40,7 @@ Status HostTensorToBorrowingLiteral(const xla::Shape& xla_shape,
       << "Provided xla::Shape must have the same dims as the Tensor shape.";
   *literal = xla::BorrowingLiteral(
       static_cast<const char*>(DMAHelper::base(&host_tensor)), xla_shape);
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<xla::Literal> HostTensorToLiteral(const Tensor& host_tensor) {
@@ -63,7 +63,7 @@ Status HostTensorToMutableBorrowingLiteral(
   *literal = xla::MutableBorrowingLiteral(
       static_cast<const char*>(DMAHelper::base(host_tensor)), xla_shape);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HostTensorsToBorrowingLiteralTuple(absl::Span<const Tensor> host_tensors,
@@ -83,7 +83,7 @@ Status HostTensorsToBorrowingLiteralTuple(absl::Span<const Tensor> host_tensors,
   *literal = xla::BorrowingLiteral(
       buf_ptrs, xla::ShapeUtil::MakeTupleShape(tensor_shapes));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CopyLiteralToHostTensor(const xla::LiteralSlice& literal,
@@ -106,7 +106,7 @@ Status CopyLiteralToHostTensor(const xla::LiteralSlice& literal,
     void* dst_ptr = DMAHelper::base(host_tensor);
     memcpy(dst_ptr, src_ptr, total_bytes);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LiteralToHostTensor(const xla::LiteralSlice& literal,

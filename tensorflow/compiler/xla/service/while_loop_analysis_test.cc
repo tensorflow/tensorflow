@@ -84,7 +84,7 @@ TEST_F(WhileLoopAnalysisTest, NoUpperBound) {
                           ParseAndReturnVerifiedModule(kHloModule));
 
   HloInstruction* while_op = module->entry_computation()->root_instruction();
-  EXPECT_EQ(ComputeWhileLoopTripCountUpperBound(while_op), absl::nullopt);
+  EXPECT_EQ(ComputeWhileLoopTripCountUpperBound(while_op), std::nullopt);
 }
 
 TEST_F(WhileLoopAnalysisTest, ExactBound) {

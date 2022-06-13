@@ -1,4 +1,4 @@
-// RUN: tf-opt -tfl-prepare-composite-funcs-tf -tfl-fuse-tftext=true %s | FileCheck %s
+// RUN: tf-opt -tfl-prepare-composite-funcs-tf="fuse-tftext=true" %s | FileCheck %s
 
 func.func private @whitespace_tokenizer_rank1(%arg0: tensor<1x!tf_type.string> {tf._user_specified_name = "input"}) -> (tensor<?x!tf_type.string>, tensor<?xi64>) attributes {tf._input_shapes = [#tf_type.shape<1>], tf._implements = #tf_type.func<@"tftext:WhitespaceTokenizer", {}>, tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi64>} : () -> tensor<2xi64>

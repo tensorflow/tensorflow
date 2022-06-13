@@ -1,5 +1,16 @@
 // RUN: mlir-hlo-opt %s -split-input-file -pass-pipeline='func.func(canonicalize)' | FileCheck %s
 
+// CHECK-LABEL: func @transpose_splat_constant
+func.func @transpose_splat_constant() -> tensor<5x10xf32> {
+  // CHECK-NEXT: [[CST:%.+]] = mhlo.constant dense<1.000000e+00> : tensor<5x10xf32>
+  %cst = mhlo.constant dense<1.000000e+00> : tensor<10x5xf32>
+  %0 = "mhlo.transpose"(%cst) {permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<10x5xf32>) -> tensor<5x10xf32>
+  // CHECK-NEXT: return [[CST]]
+  func.return %0 : tensor<5x10xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @remove_noop
 // CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
 func.func @remove_noop(%arg : tensor<2x3x9x5xi32>) -> tensor<2x3x9x5xi32> {

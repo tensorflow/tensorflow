@@ -407,8 +407,9 @@ void PromoteVarHandlesToArgsPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteResourcesToArgsPass() {
-  return std::make_unique<PromoteResourcesToArgsPass>();
+std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteResourcesToArgsPass(
+    llvm::ArrayRef<std::string> functions) {
+  return std::make_unique<PromoteResourcesToArgsPass>(functions);
 }
 
 std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteVarHandlesToArgsPass() {

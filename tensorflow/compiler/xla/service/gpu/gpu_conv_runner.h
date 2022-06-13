@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONV_RUNNER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONV_RUNNER_H_
 
-#include "absl/types/optional.h"
+#include <optional>
+
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -65,7 +66,7 @@ struct GpuConvConfig {
   Shape input_shape;
   Shape filter_shape;
   Shape output_shape;
-  absl::optional<FusionConfig> fusion;
+  std::optional<FusionConfig> fusion;
 };
 
 // Implementation struct exposed for debugging and log analysis.
@@ -80,7 +81,7 @@ struct GpuConvParams {
   se::DeviceMemoryBase filter_buf;
   se::DeviceMemoryBase output_buf;
 
-  absl::optional<FusionParams> fusion;
+  std::optional<FusionParams> fusion;
 };
 
 // The XLA convolution plumbing is all dynamically-typed w.r.t. whether a
@@ -112,21 +113,21 @@ class MaybeFusedConvRunner {
                           config.algorithm))) {}
 
   se::dnn::AlgorithmDesc ToAlgorithmDesc() const {
-    return absl::visit(ToAlgorithmDescVisitor{}, repr_);
+    return std::visit(ToAlgorithmDescVisitor{}, repr_);
   }
 
   se::dnn::LazyOpRunner<se::dnn::ConvOp>* AsConvRunner() {
-    CHECK(absl::holds_alternative<
+    CHECK(std::holds_alternative<
           std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::ConvOp>>>(repr_));
-    return absl::get<std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::ConvOp>>>(
+    return std::get<std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::ConvOp>>>(
                repr_)
         .get();
   }
 
   se::dnn::LazyOpRunner<se::dnn::FusedConvOp>* AsFusedConvRunner() {
-    CHECK(absl::holds_alternative<
+    CHECK(std::holds_alternative<
           std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedConvOp>>>(repr_));
-    return absl::get<
+    return std::get<
                std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedConvOp>>>(
                repr_)
         .get();
@@ -139,15 +140,15 @@ class MaybeFusedConvRunner {
       return runner->ToAlgorithmDesc();
     }
 
-    se::dnn::AlgorithmDesc operator()(const absl::monostate&) {
+    se::dnn::AlgorithmDesc operator()(const std::monostate&) {
       CHECK(false) << "Internal error: uninitialized runner in ToAlgorithmDesc";
     }
   };
 
-  using Repr = absl::variant<
-      absl::monostate,  // To allow GpuConvConfig default ctor
-      std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedConvOp>>,
-      std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::ConvOp>>>;
+  using Repr =
+      std::variant<std::monostate,  // To allow GpuConvConfig default ctor
+                   std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedConvOp>>,
+                   std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::ConvOp>>>;
   Repr repr_;
 };
 

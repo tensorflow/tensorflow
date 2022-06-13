@@ -37,7 +37,7 @@ class TestDataTransferServer : public DataTransferServer {
   explicit TestDataTransferServer(bool* called) : called_(called) {}
   Status Start() override {
     *called_ = true;
-    return Status::OK();
+    return OkStatus();
   }
   int get_port() override { return 0; }
 

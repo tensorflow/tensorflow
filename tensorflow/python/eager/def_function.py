@@ -88,7 +88,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
-from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
@@ -1520,7 +1520,7 @@ def function(func=None,
   `func` may contain TensorFlow operations mixed with pure Python operations.
   However, when the function is executed, only the TensorFlow operations will
   run. The Python operations run only once, at trace time. If TensorFlow
-  operations depend on results from Pyhton operations, those results will be
+  operations depend on results from Python operations, those results will be
   frozen into the graph.
 
   >>> @tf.function

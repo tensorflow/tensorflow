@@ -20,7 +20,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -70,7 +69,7 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
   // Limit the constant folding to 0 iterations to skip folding loops. This
   // retains the behavior from before while loop support in HloEvaluator and may
   // be revised.
-  auto evaluator = absl::make_unique<HloEvaluator>(/*max_loop_iterations=*/0);
+  auto evaluator = std::make_unique<HloEvaluator>(/*max_loop_iterations=*/0);
   // fast-path lets us e.g. use Eigen for matmuls.
   evaluator->set_use_fast_path(true);
 
@@ -132,6 +131,11 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
       // broadcasts.
       if (instruction->opcode() == HloOpcode::kBroadcast ||
           instruction->opcode() == HloOpcode::kIota) {
+        continue;
+      }
+
+      // Do not fold FFT. Evaluating it may significantly increase compile time.
+      if (instruction->opcode() == HloOpcode::kFft) {
         continue;
       }
 

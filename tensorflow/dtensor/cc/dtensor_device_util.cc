@@ -15,20 +15,30 @@ limitations under the License.
 
 #include "tensorflow/dtensor/cc/dtensor_device_util.h"
 
+#include <cstddef>
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/dtensor/cc/constants.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/small_constant_optimization.h"
 
 namespace tensorflow {
@@ -59,7 +69,7 @@ Status ParseAttrMap(const Node& node, absl::string_view indices_attr,
                     std::map<int, Layout>* indices_layout_map) {
   std::vector<std::string> layouts;
   if (!TryGetNodeAttr(node.attrs(), layout_attr, &layouts)) {
-    return Status::OK();
+    return OkStatus();
   }
   const TensorProto* indices;
   if (!TryGetNodeAttr(node.attrs(), indices_attr, &indices)) {
@@ -78,7 +88,7 @@ Status ParseAttrMap(const Node& node, absl::string_view indices_attr,
         arg_index,
         tensorflow::dtensor::Layout::FromString(arg_layout).ValueOrDie());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseResourceArgumentLayouts(
@@ -326,6 +336,16 @@ void ResourceHandleWithLayout::UpdateLayout(const Layout& new_layout,
   dereferenced_layout_.emplace(new_layout);
 }
 
+void ResourceHandleWithLayout::UpdateAttrs(const EmbeddingResourceAttrs& attrs,
+                                           TF_Status* status) {
+  if (attrs_.has_value()) {
+    RETURN_STATUS(status, TF_INVALID_ARGUMENT,
+                  "Attepted to overwrite an existing embedding resource "
+                  "attribute.");
+  }
+  attrs_.emplace(attrs);
+}
+
 StatusOr<std::unique_ptr<TensorWithLayout>> SparseTensorWithLayout::Wrap(
     std::unique_ptr<parallel_device::ParallelTensor> indices_tensor,
     std::unique_ptr<parallel_device::ParallelTensor> values_tensor,
@@ -472,6 +492,16 @@ Status PrepareGraphForMlir(
     // Delegate TensorWithLayout to encode attributes if applicable.
     input->EncodeAttributes(builder);
 
+    // Here we set each arg node's `index` attribute to the position of
+    // the dtensor inputs. This is important for later use when we create
+    // a mapping from the graph argument node to the corresponding argument
+    // index of the list of dtensor inputs. Thus, even if the argument node
+    // orderings change within the graph, we can always correctly
+    // find the dtensor input corresponding to that arg node.
+    //
+    // This assumes that the dtensor inputs stay unchanged in ordering,
+    // and if there is an ordering change of dtensor inputs, then special
+    // care must be taken.
     TF_RETURN_IF_ERROR(
         builder.Attr("shape", partial_shape)
             .Attr("T", dtype)
@@ -590,7 +620,7 @@ Status PrepareGraphForMlir(
     }
     output_layouts->push_back(layout);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns set of functions to run to execute DTensor computation.
@@ -692,7 +722,7 @@ StatusOr<ExecutionFunctions> IdentifyAllFunctionsToExecute(
 // nodes.
 Status MaybeInsertIdentityNodes(const FunctionDef* function_def, Graph* graph) {
   if (function_def == nullptr || function_def->control_ret().empty()) {
-    return Status::OK();
+    return OkStatus();
   }
   tensorflow::Status status;
   for (Node* n : graph->nodes()) {
@@ -721,7 +751,7 @@ Status MaybeInsertIdentityNodes(const FunctionDef* function_def, Graph* graph) {
     // Add an edge between Identity and _Retval.
     graph->AddEdge(ret_identity_node, 0, n, 0);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void AddDTensorFunctionAttr(FunctionDef& function_def) {
@@ -739,6 +769,174 @@ void AddDTensorFunctionAttr(FunctionDef& function_def) {
   outputs_on_op_device.set_b(true);
   function_def.mutable_attr()->insert(
       {"_OutputsOnOpDevice", outputs_on_op_device});
+}
+
+StatusOr<std::vector<parallel_device::ParallelTensor*>> PrepareEmbeddingInputs(
+    const std::vector<TensorWithLayout*>& inputs) {
+  absl::flat_hash_map<int64_t, int64_t> table_and_input_index;
+  for (int64_t i = 0; i < inputs.size(); ++i) {
+    if (inputs[i]->tensor_type() != kResource) continue;
+    auto* resource = dynamic_cast<ResourceHandleWithLayout*>(inputs[i]);
+    if (resource == nullptr) {
+      return errors::Internal("Failed to cast a resource handle");
+    }
+
+    const absl::optional<EmbeddingResourceAttrs>& resource_attrs =
+        resource->attrs();
+    if (resource_attrs.has_value()) {
+      table_and_input_index.insert({resource_attrs->table_id, i});
+    }
+  }
+
+  // Check if there is no embedding resource input found.
+  if (table_and_input_index.empty()) {
+    return errors::Internal("There are no TPU embedding resource input found.");
+  }
+  const size_t num_tables = table_and_input_index.size();
+  std::vector<parallel_device::ParallelTensor*> parallel_inputs;
+  parallel_inputs.reserve(num_tables);
+
+  // Assure parallel inputs has numeric order as table ids.
+  for (int64_t table_id = 0; table_id < num_tables; ++table_id) {
+    const int64_t input_index = table_and_input_index[table_id];
+    parallel_inputs.push_back(inputs[input_index]->tensor());
+  }
+  return parallel_inputs;
+}
+
+StatusOr<std::map<int64_t, std::vector<Node*>>> GetTPUEmbeddingInputNodes(
+    TF_Status* s, const Graph& graph,
+    const std::vector<TensorWithLayout*>& inputs) {
+  // After the graph is lowered, the sparse tensors live at the end of the
+  // argument list, so process the dtensor dense inputs only so that
+  // we index correctly.
+  std::vector<TensorWithLayout*> non_sparse_inputs;
+  non_sparse_inputs.reserve(inputs.size());
+  for (TensorWithLayout* input : inputs) {
+    if (input->tensor_type() != TensorType::kSparse) {
+      non_sparse_inputs.push_back(input);
+    }
+  }
+  std::map<int64_t, std::vector<Node*>> table_id_node_map;
+  for (Node* node : graph.nodes()) {
+    if (!node->IsArg()) continue;
+
+    const int64_t& arg_id = node->attrs().Find("index")->i();
+    const AttrValue* embedding_attr =
+        node->attrs().Find("_tpu_embedding_table_id");
+
+    if (embedding_attr == nullptr) continue;
+
+    const int64_t table_id = embedding_attr->i();
+
+    // Add embedding slot id if there is one.
+    const AttrValue* embedding_slot_attr =
+        node->attrs().Find("_tpu_embedding_slot_id");
+    EmbeddingResourceAttrs embedding_attrs;
+    embedding_attrs.table_id = table_id;
+
+    if (embedding_slot_attr != nullptr) {
+      const int64_t slot_id = embedding_slot_attr->i();
+      embedding_attrs.slot_id = slot_id;
+    }
+
+    // Arg input offset due to device id.
+    non_sparse_inputs[arg_id - 1]->UpdateAttrs(embedding_attrs, s);
+    if (!s->status.ok()) {
+      return errors::Internal(
+          "Failed to set embedding resource attrs. \n Got error: ",
+          s->status.error_message());
+    }
+
+    table_id_node_map[table_id].push_back(node);
+  }
+  return table_id_node_map;
+}
+
+StatusOr<std::string> ValidateResourceMeshConsistency(
+    const std::vector<TensorWithLayout*>& inputs) {
+  std::string mesh_str;
+  for (TensorWithLayout* inp : inputs) {
+    if (inp->tensor_type() != kResource) continue;
+
+    auto* resource = dynamic_cast<ResourceHandleWithLayout*>(inp);
+    if (!resource || !resource->attrs().has_value()) continue;
+    const std::string& input_mesh_str = inp->layout().mesh().ToString();
+    if (mesh_str.empty()) {
+      mesh_str = input_mesh_str;
+    } else if (mesh_str != input_mesh_str) {
+      return errors::Internal(absl::StrCat(
+          "All inputs of embedding resource must be on same mesh. but get : ",
+          mesh_str, " != ", input_mesh_str));
+    }
+  }
+  VLOG(1) << "Resource input mesh is : " << mesh_str;
+  return mesh_str;
+}
+
+Status InsertFunctionForTPUEmbeddingCheckpoint(
+    TF_Status* status, Graph* graph,
+    const std::vector<TensorWithLayout*>& inputs,
+    const std::string& checkpoint_fn_name) {
+  if (checkpoint_fn_name != kLoadEmbeddingFn &&
+      checkpoint_fn_name != kRetrieveEmbeddingFn) {
+    return errors::InvalidArgument(absl::StrCat(
+        "Found wrong function name: ", checkpoint_fn_name,
+        " \n expects : ", kLoadEmbeddingFn, " or ", kRetrieveEmbeddingFn));
+  }
+
+  StatusOr<std::map<int64_t, std::vector<Node*>>> table_id_node_map =
+      GetTPUEmbeddingInputNodes(status, *graph, inputs);
+  if (!table_id_node_map.ok()) {
+    return errors::Internal(table_id_node_map.status().error_message());
+  }
+
+  StatusOr<std::string> mesh_str = ValidateResourceMeshConsistency(inputs);
+
+  const int64_t& num_tables = table_id_node_map->size();
+  NodeDef func_node_def;
+  std::vector<NodeDefBuilder::NodeOut> func_inputs;
+  std::vector<DataType> input_types, output_types;
+
+  func_inputs.reserve(num_tables);
+  input_types.reserve(num_tables);
+
+  for (int i = 0; i < num_tables; ++i) {
+    auto node_vec_ptr = table_id_node_map->find(i);
+    if (node_vec_ptr == table_id_node_map->end()) {
+      return errors::Internal(
+          absl::StrCat("Embedding table id ", i, " is not found."));
+    }
+    for (const Node* n : node_vec_ptr->second) {
+      const std::string& node_name = n->name();
+      func_inputs.push_back({node_name, i, DT_RESOURCE});
+      input_types.push_back(DT_RESOURCE);
+    }
+  }
+
+  AttrValue mesh_attr;
+  *mesh_attr.mutable_s() = *mesh_str;
+  NameAttrList func_attr;
+  func_attr.set_name(checkpoint_fn_name);
+  TF_RETURN_IF_ERROR(
+      NodeDefBuilder(checkpoint_fn_name, "StatefulPartitionedCall")
+          .Attr("Tin", input_types)
+          .Attr("Tout", output_types)
+          .Attr("f", func_attr)
+          .Attr(kMeshAttr, mesh_attr)
+          .Attr("config", mesh_attr)
+          .Input(func_inputs)
+          .Finalize(&func_node_def, true));
+
+  TF_ASSIGN_OR_RETURN(Node * func_node, graph->AddNode(func_node_def));
+  for (int i = 0; i < num_tables; ++i) {
+    const std::vector<Node*>& node_vec = table_id_node_map->find(i)->second;
+    for (int j = 0; j < node_vec.size(); ++j) {
+      graph->AddEdge(node_vec[j], 0, func_node, j + i);
+    }
+  }
+
+  return OkStatus();
 }
 
 }  // namespace dtensor

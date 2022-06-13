@@ -63,6 +63,11 @@ void TriggerSaveCallbackIfFileNotExist(absl::string_view checkpoint_id,
     return;
   }
 
+  // An empty string means nothing to be saved.
+  if (save_content->empty()) {
+    return;
+  }
+
   Status write_status =
       WriteStringToFile(Env::Default(), file_path, *save_content);
   if (!write_status.ok()) {
@@ -162,7 +167,7 @@ Status CheckpointCallbackManager::RegisterSaveCallback(
     TriggerSaveCallbackIfFileNotExist(checkpoint_id, checkpoint_dir,
                                       file_extension, lazy_callback);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool CheckpointCallbackManager::DoesSaveCallbackExist(
@@ -196,7 +201,7 @@ Status CheckpointCallbackManager::RegisterRestoreCallback(
     TriggerRestoreCallbackIfFileExists(checkpoint_id, checkpoint_dir,
                                        file_extension, lazy_callback);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool CheckpointCallbackManager::DoesRestoreCallbackExist(

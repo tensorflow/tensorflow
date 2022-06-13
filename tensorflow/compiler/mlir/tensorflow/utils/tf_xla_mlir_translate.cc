@@ -145,7 +145,7 @@ Status ParseArgumentShapes(
         shape.value().getValue(), &arg_shapes[shape.index()].shape));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseDataTypes(absl::string_view data_types_str,
@@ -168,14 +168,14 @@ Status ParseDataTypes(absl::string_view data_types_str,
                                      data_type.value());
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseArgumentKinds(
     absl::string_view input_types_str,
     llvm::SmallVectorImpl<XlaArgument::Kind>& argument_kinds) {
   argument_kinds.clear();
-  if (input_types_str.empty()) return Status::OK();
+  if (input_types_str.empty()) return OkStatus();
 
   std::vector<absl::string_view> argument_kind_strs =
       absl::StrSplit(input_types_str, ',');
@@ -193,7 +193,7 @@ Status ParseArgumentKinds(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseXlaArguments(absl::string_view input_shapes_str,
@@ -243,7 +243,7 @@ Status ParseXlaArguments(absl::string_view input_shapes_str,
     arg.kind = std::get<3>(arg_components);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // anonymous namespace

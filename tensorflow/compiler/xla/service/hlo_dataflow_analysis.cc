@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <utility>
@@ -26,9 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -154,7 +153,7 @@ struct ConcatUsageInfo {
 // Returns an optional concat usage info to denote whether the concat is used in
 // an elementwise manner. A concat followed by slices is considered effectively
 // elementwise if the slices combinedly is a reverse function of the concat.
-absl::optional<ConcatUsageInfo> ConcatIsEffectivelyElementwise(
+std::optional<ConcatUsageInfo> ConcatIsEffectivelyElementwise(
     const HloInstruction& concat, const HloInstruction& operand,
     const ConcatUsageInfo& info) {
   // First, check if this concat is in the below pattern. Also, we check
@@ -168,12 +167,12 @@ absl::optional<ConcatUsageInfo> ConcatIsEffectivelyElementwise(
   std::vector<HloInstruction*> users = concat.users();
   if (!absl::c_all_of(users, Is1dSliceWithoutStrides)) {
     // Limit our supported cases to 1 dimensional slices.
-    return absl::optional<ConcatUsageInfo>();
+    return std::optional<ConcatUsageInfo>();
   }
   // Verify that each operand to the concat is reversed by a slice.
   if (users.size() != concat.operand_count() ||
       concat.operand_count() != concat.unique_operands().size()) {
-    return absl::optional<ConcatUsageInfo>();
+    return std::optional<ConcatUsageInfo>();
   }
   absl::c_sort(users, [](const HloInstruction* a, const HloInstruction* b) {
     return a->slice_starts().at(0) < b->slice_starts().at(0);
@@ -184,7 +183,7 @@ absl::optional<ConcatUsageInfo> ConcatIsEffectivelyElementwise(
     int64_t slice_size = u->slice_limits().at(0) - u->slice_starts().at(0);
     if (u->slice_starts().at(0) != prev_limit ||
         slice_size != ShapeUtil::ElementsIn(concat.operand(i)->shape())) {
-      return absl::optional<ConcatUsageInfo>();
+      return std::optional<ConcatUsageInfo>();
     }
     prev_limit = u->slice_limits().at(0);
   }
@@ -203,12 +202,12 @@ absl::optional<ConcatUsageInfo> ConcatIsEffectivelyElementwise(
           return true;
         });
     if (!is_concat_identical || info.concat_opnd_idx != operand_idx) {
-      return absl::optional<ConcatUsageInfo>();
+      return std::optional<ConcatUsageInfo>();
     }
   }
 
   const HloInstruction* slice_to_recover_opnd = users.at(operand_idx);
-  return absl::optional<ConcatUsageInfo>(
+  return std::optional<ConcatUsageInfo>(
       ConcatUsageInfo{&concat, operand_idx, slice_to_recover_opnd});
 }
 
@@ -250,7 +249,7 @@ bool AreTransitiveUsesEffectivelyElementwise(const HloInstruction* param,
           }
           break;
         case HloOpcode::kConcatenate: {
-          absl::optional<ConcatUsageInfo> optional_concat_info =
+          std::optional<ConcatUsageInfo> optional_concat_info =
               ConcatIsEffectivelyElementwise(*user, *current,
                                              concat_usage_info);
           if (!optional_concat_info) {
@@ -1435,7 +1434,7 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void HloDataflowAnalysis::OptimizePhiValues() {
@@ -1564,7 +1563,7 @@ Status HloDataflowAnalysis::Verify() const {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
@@ -1833,7 +1832,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
   }
 
   if (can_share_buffer_ != nullptr) {
-    if (absl::optional<bool> hint =
+    if (std::optional<bool> hint =
             can_share_buffer_(user, operand, user_index)) {
       return *hint;
     }

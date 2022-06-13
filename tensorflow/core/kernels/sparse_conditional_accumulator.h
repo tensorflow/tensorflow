@@ -140,7 +140,7 @@ class SparseConditionalAccumulator
       }
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   void AllocateAndAssignToAccumGradFunction(

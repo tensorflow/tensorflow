@@ -66,6 +66,9 @@ class NcclAllGatherThunk : public NcclCollectiveThunk {
   const std::vector<Buffer> buffers_;
 };
 
+Status RunAllGather(std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
+                    ncclComm_t comm);
+
 }  // namespace gpu
 }  // namespace xla
 

@@ -41,13 +41,13 @@ class TFRecordReader : public ReaderBase {
     io::RecordReaderOptions options =
         io::RecordReaderOptions::CreateRecordReaderOptions(compression_type_);
     reader_.reset(new io::RecordReader(file_.get(), options));
-    return Status::OK();
+    return OkStatus();
   }
 
   Status OnWorkFinishedLocked() override {
     reader_.reset(nullptr);
     file_.reset(nullptr);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status ReadLocked(tstring* key, tstring* value, bool* produced,
@@ -56,11 +56,11 @@ class TFRecordReader : public ReaderBase {
     Status status = reader_->ReadRecord(&offset_, value);
     if (errors::IsOutOfRange(status)) {
       *at_end = true;
-      return Status::OK();
+      return OkStatus();
     }
     if (!status.ok()) return status;
     *produced = true;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status ResetLocked() override {

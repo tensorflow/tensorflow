@@ -23,6 +23,7 @@ limitations under the License.
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/data/service/data_transfer.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
@@ -59,6 +60,9 @@ class GrpcDataServerBase {
   // Returns the port bound by the server. Only valid after calling Start().
   int BoundPort();
 
+  // Exports the server state to improve debuggability.
+  virtual ServerStateExport ExportState() const = 0;
+
  protected:
   virtual void AddDataServiceToBuilder(::grpc::ServerBuilder& builder) = 0;
   void AddProfilerServiceToBuilder(::grpc::ServerBuilder& builder);
@@ -93,8 +97,11 @@ class DispatchGrpcDataServer : public GrpcDataServerBase {
 
   // Returns the number of workers registered with the dispatcher.
   Status NumWorkers(int* num_workers);
-  // Returns the number of active (non-finished) jobs running on the dispatcher.
-  size_t NumActiveJobs();
+  // Returns the number of active (non-finished) iterations running on the
+  // dispatcher.
+  size_t NumActiveIterations();
+
+  ServerStateExport ExportState() const override;
 
  protected:
   void AddDataServiceToBuilder(::grpc::ServerBuilder& builder) override;
@@ -115,6 +122,8 @@ class WorkerGrpcDataServer : public GrpcDataServerBase {
 
   // Returns the number of tasks currently being executed by the worker.
   Status NumTasks(int* num_tasks);
+
+  ServerStateExport ExportState() const override;
 
  protected:
   void AddDataServiceToBuilder(::grpc::ServerBuilder& builder) override;

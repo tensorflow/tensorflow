@@ -222,7 +222,7 @@ void VersionAttr::print(AsmPrinter &printer) const {
 }
 
 FailureOr<FullTypeAttr> RawFullTypeAttrParser(AsmParser &parser) {
-  ::llvm::SmallVector<FullTypeAttr> args;
+  SmallVector<FullTypeAttr> args;
 
   // Parse variable 'type_id'
   llvm::StringRef type_id_str;
@@ -242,13 +242,14 @@ FailureOr<FullTypeAttr> RawFullTypeAttrParser(AsmParser &parser) {
   }
 
   // Parse variable 'args'
-  parser.parseCommaSeparatedList(
+  if (parser.parseCommaSeparatedList(
       AsmParser::Delimiter::OptionalLessGreater, [&]() {
         FailureOr<tf_type::FullTypeAttr> arg = RawFullTypeAttrParser(parser);
         if (failed(arg)) return failure();
         args.push_back(*arg);
         return success();
-      });
+      }))
+    return failure();
 
   // Parse variable 'attr'
   Attribute attr;
@@ -477,7 +478,7 @@ bool ShapeAttr::hasStaticShape() const {
 namespace {
 // Returns the shape of the given value if it's ranked; returns llvm::None
 // otherwise.
-llvm::Optional<llvm::ArrayRef<int64_t>> GetShape(Value value) {
+Optional<ArrayRef<int64_t>> GetShape(Value value) {
   auto shaped_type = value.getType().cast<ShapedType>();
   if (shaped_type.hasRank()) return shaped_type.getShape();
   return llvm::None;
@@ -488,9 +489,9 @@ llvm::Optional<llvm::ArrayRef<int64_t>> GetShape(Value value) {
 // either both have same size or one of them is dynamic. Returns false if the
 // given shapes are not cast compatible. The refined shape is same or more
 // precise than the two input shapes.
-bool GetCastCompatibleShape(llvm::ArrayRef<int64_t> a_shape,
-                            llvm::ArrayRef<int64_t> b_shape,
-                            llvm::SmallVectorImpl<int64_t> *refined_shape) {
+bool GetCastCompatibleShape(ArrayRef<int64_t> a_shape,
+                            ArrayRef<int64_t> b_shape,
+                            SmallVectorImpl<int64_t> *refined_shape) {
   if (a_shape.size() != b_shape.size()) return false;
   int64_t rank = a_shape.size();
   refined_shape->reserve(rank);
@@ -773,7 +774,7 @@ Type GetCastCompatibleType(Type a, Type b, bool may_ignore_ref_type_a) {
     if (a_wst_st.empty()) return b;
     if (b_wst_st.empty()) return a;
     if (a_wst_st.size() != b_wst_st.size()) return nullptr;
-    llvm::SmallVector<TensorType, 4> refined_subtypes;
+    SmallVector<TensorType, 4> refined_subtypes;
     for (auto subtypes : llvm::zip(a_wst_st, b_wst_st)) {
       Type refined_st =
           GetCastCompatibleType(std::get<0>(subtypes), std::get<1>(subtypes),
@@ -800,7 +801,7 @@ Type GetCastCompatibleType(Type a, Type b, bool may_ignore_ref_type_a) {
     return RankedTensorType::get(a_tt.getShape(), refined_element_ty);
   }
 
-  llvm::SmallVector<int64_t, 8> refined_shape;
+  SmallVector<int64_t, 4> refined_shape;
   if (!GetCastCompatibleShape(a_tt.getShape(), b_tt.getShape(), &refined_shape))
     return nullptr;
 

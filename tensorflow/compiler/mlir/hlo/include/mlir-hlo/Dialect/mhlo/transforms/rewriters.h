@@ -132,6 +132,10 @@ void PopulateRankSpecializationToSCFPatterns(MLIRContext *context,
                                              RewritePatternSet *patterns,
                                              int64_t max_target_rank);
 
+/// Populate sparse tensor specific rewriting patterns.
+void PopulateSparseRewritingPatterns(RewritePatternSet *patterns,
+                                     MLIRContext *ctx);
+
 }  // namespace mhlo
 
 namespace chlo {

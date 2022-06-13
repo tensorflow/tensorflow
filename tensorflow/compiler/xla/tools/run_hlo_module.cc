@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tools/run_hlo_module.pb.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
@@ -200,7 +199,7 @@ Status RunAndCompare(
 
   if (reference_module == nullptr) {
     std::cerr << "Skipping reference runner\n";
-    return Status::OK();
+    return OkStatus();
   }
 
   Literal reference_result =

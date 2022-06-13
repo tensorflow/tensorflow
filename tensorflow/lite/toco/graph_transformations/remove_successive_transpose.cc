@@ -62,21 +62,21 @@ void ReplaceOpInputsWith(Model* model, const std::string& lookfor,
   *modified = false;
   auto op = model->operators.begin() + op_index;
   if (op->get()->type != OperatorType::kTranspose) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   TransposeOperator* t_op = static_cast<TransposeOperator*>(op->get());
   if (CountOpsWithInput(*model, t_op->outputs[0]) != 1) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   Operator* next = GetOpWithInput(*model, t_op->outputs[0]);
   if (!next || next->type != OperatorType::kTranspose) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   TransposeOperator* t_next = static_cast<TransposeOperator*>(next);
   if (!CountOpsWithInput(*model, t_next->outputs[0])) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   if (TransformsToIdentity(t_op->perm, t_next->perm)) {
@@ -89,7 +89,7 @@ void ReplaceOpInputsWith(Model* model, const std::string& lookfor,
     *modified = true;
   }
 
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

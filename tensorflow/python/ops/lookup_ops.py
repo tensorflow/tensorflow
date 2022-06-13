@@ -35,11 +35,11 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.gen_lookup_ops import *
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import registration
-from tensorflow.python.training.saver import BaseSaverBuilder
+from tensorflow.python.trackable import asset
 # pylint: enable=wildcard-import
-from tensorflow.python.training.tracking import base as trackable_base
-from tensorflow.python.training.tracking import resource
-from tensorflow.python.training.tracking import tracking as trackable
+from tensorflow.python.trackable import base as trackable_base
+from tensorflow.python.trackable import resource
+from tensorflow.python.training.saver import BaseSaverBuilder
 from tensorflow.python.util import compat as compat_util
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
@@ -745,7 +745,7 @@ class TextFileInitializer(TableInitializerBase):
     self._delimiter = delimiter
     self._name = name
     self._filename = self._track_trackable(
-        trackable.Asset(filename), "_filename")
+        asset.Asset(filename), "_filename")
     self._offset = value_index_offset
 
     super(TextFileInitializer, self).__init__(key_dtype, value_dtype)

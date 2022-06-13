@@ -14,11 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/lib/monitoring/test_utils.h"
 
+#include <cmath>
 #include <cstdint>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/lib/monitoring/types.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 
@@ -73,6 +75,20 @@ StatusOr<Histogram> Histogram::Subtract(const Histogram& other) const {
         ", right operand: ", other.histogram_proto_.ShortDebugString());
   }
   return Histogram(histogram_proto);
+}
+
+size_t Percentiles::num() const { return percentiles_.total_samples; }
+
+double Percentiles::sum() const {
+  return std::isnan(percentiles_.accumulator) ? 0 : percentiles_.accumulator;
+}
+
+Percentiles Percentiles::Subtract(const Percentiles& other) const {
+  tensorflow::monitoring::Percentiles delta;
+  delta.unit_of_measure = percentiles_.unit_of_measure;
+  delta.total_samples = num() - other.num();
+  delta.accumulator = sum() - other.sum();
+  return Percentiles(delta);
 }
 
 }  // namespace testing

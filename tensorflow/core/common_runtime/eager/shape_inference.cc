@@ -34,7 +34,7 @@ Status RunShapeInference(const NodeDef& ndef,
   // FunctionLibraryDefinition::LookUp delegates to global OpRegistry
   // if op is not a function.
   TF_RETURN_IF_ERROR(lib_def.LookUp(ndef.op(), &op_reg_data));
-  if (op_reg_data->shape_inference_fn == nullptr) return Status::OK();
+  if (op_reg_data->shape_inference_fn == nullptr) return OkStatus();
 
   shape_inference::InferenceContext ic(
       TF_GRAPH_DEF_VERSION, ndef, op_reg_data->op_def,
@@ -52,7 +52,7 @@ Status RunShapeInference(const NodeDef& ndef,
     retvals[i]->SetInferenceShape(&ic, shape_handle);
   }
   // TODO(slebedev): populate TensorHandle::handle_dtypes_and_shapes.
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace eager

@@ -281,6 +281,7 @@ py_library(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python/eager:backprop",
         "//third_party/py/numpy",
     ],
 )
@@ -330,9 +331,6 @@ cuda_py_test(
     timeout = "long",
     srcs = ["depthwise_conv_op_d9m_test.py"],
     shard_count = 8,
-    tags = [
-        "no_oss",  # TODO(b/118842098): Re-enable this test in Kokoro.
-    ],
     deps = [
         ":depthwise_conv_op_base",
         "//tensorflow/python:random_ops",
@@ -346,9 +344,6 @@ cuda_py_test(
     timeout = "long",
     srcs = ["depthwise_conv_op_test.py"],
     shard_count = 8,
-    tags = [
-        "no_oss",  # TODO(b/118842098): Re-enable this test in Kokoro.
-    ],
     deps = [
         ":depthwise_conv_op_base",
     ],
@@ -659,7 +654,12 @@ cuda_py_test(
     name = "xent_op_d9m_test",
     size = "medium",
     srcs = ["xent_op_d9m_test.py"],
-    tags = ["notsan"],  # TODO(b/200548634): Remove.
+    tags = [
+        "no_windows",  # Flaky on Windows CPU: https://github.com/tensorflow/tensorflow/issues/55827
+        "noasan",  # TODO(b/231484532): Remove after flakiness resolved.
+        "nomac",  # TODO(b/235277289) Flaky on OSX
+        "notsan",  # TODO(b/200548634): Remove.
+    ],
     xla_enable_strict_auto_jit = False,
     deps = [
         ":xent_op_test_base",

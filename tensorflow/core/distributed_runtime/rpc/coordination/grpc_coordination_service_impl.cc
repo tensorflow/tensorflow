@@ -50,6 +50,8 @@ void GrpcCoordinationServiceImpl::HandleRPCsLoop() {
   ENQUEUE_REQUEST(ReportErrorToService);
   ENQUEUE_REQUEST(InsertKeyValue);
   ENQUEUE_REQUEST(GetKeyValue);
+  ENQUEUE_REQUEST(TryGetKeyValue);
+  ENQUEUE_REQUEST(GetKeyValueDir);
   ENQUEUE_REQUEST(DeleteKeyValue);
   ENQUEUE_REQUEST(Barrier);
   ENQUEUE_REQUEST(CancelBarrier);

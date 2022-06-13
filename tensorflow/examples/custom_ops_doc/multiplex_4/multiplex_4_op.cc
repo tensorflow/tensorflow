@@ -43,7 +43,7 @@ Status MultiplexShapeFunction(InferenceContext* c) {
     TF_RETURN_IF_ERROR(c->Merge(c->input(i), c->input(last), &unused));
   }
   c->set_output(0, c->input(last));
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 REGISTER_OP("Examples>MultiplexDense")

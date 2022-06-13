@@ -45,65 +45,62 @@ struct RngGetAndUpdateStatePattern
     // Get various type related information
     auto loc = op->getLoc();
 
-    const auto global_name = rewriter.getStringAttr("rng_state");
-    constexpr auto initial_seed = 0x7012395ull;
-    auto seed_type = rewriter.getIntegerType(128);
-    auto memref_type = MemRefType::get({}, seed_type);
+    const auto globalName = rewriter.getStringAttr("rng_state");
+    constexpr auto initialSeed = 0x7012395ull;
+    auto seedType = rewriter.getIntegerType(128);
+    auto memrefType = MemRefType::get({}, seedType);
 
-    auto result_type = op.getType();
-    auto word_size = result_type.getElementType().getIntOrFloatBitWidth();
-    auto smaller_int_type = rewriter.getIntegerType(word_size);
-    auto num_elements = result_type.getNumElements();
+    auto resultType = op.getType();
+    auto wordSize = resultType.getElementType().getIntOrFloatBitWidth();
+    auto smallerIntType = rewriter.getIntegerType(wordSize);
+    auto numElements = resultType.getNumElements();
 
     // Get or define the global variable
-    auto* global_op =
-        mlir::SymbolTable::lookupNearestSymbolFrom(op, global_name);
-    if (!global_op) {
+    auto* globalOp = mlir::SymbolTable::lookupNearestSymbolFrom(op, globalName);
+    if (!globalOp) {
       auto* parent = mlir::SymbolTable::getNearestSymbolTable(op);
       OpBuilder::InsertionGuard g(rewriter);
       rewriter.setInsertionPointToStart(&parent->getRegions().front().front());
 
       const auto priv = rewriter.getStringAttr("private");
-      auto initial_value = mlir::DenseElementsAttr::get(
-          mlir::RankedTensorType::get({}, seed_type),
-          rewriter.getIntegerAttr(seed_type, initial_seed));
-      global_op =
-          rewriter.create<memref::GlobalOp>(loc, global_name, priv, memref_type,
-                                            initial_value, /*constant=*/false,
-                                            /*alignment=*/IntegerAttr());
+      auto initialValue = mlir::DenseElementsAttr::get(
+          mlir::RankedTensorType::get({}, seedType),
+          rewriter.getIntegerAttr(seedType, initialSeed));
+      globalOp = rewriter.create<memref::GlobalOp>(
+          loc, globalName, priv, memrefType, initialValue, /*constant=*/false,
+          /*alignment=*/IntegerAttr());
     }
-    assert(isa<memref::GlobalOp>(global_op) &&
+    assert(isa<memref::GlobalOp>(globalOp) &&
            "rng_state was defined somewhere else, not as a global op");
 
     // Get and update
-    Value rng_state =
-        rewriter.create<memref::GetGlobalOp>(loc, memref_type, global_name);
-    Value old_val = rewriter.create<memref::LoadOp>(loc, rng_state);
+    Value rngState =
+        rewriter.create<memref::GetGlobalOp>(loc, memrefType, globalName);
+    Value oldVal = rewriter.create<memref::LoadOp>(loc, rngState);
     Value delta = rewriter.create<arith::ConstantOp>(
-        loc, rewriter.getIntegerAttr(seed_type,
+        loc, rewriter.getIntegerAttr(seedType,
                                      static_cast<int64_t>(adaptor.delta())));
-    Value new_val = rewriter.create<arith::AddIOp>(loc, old_val, delta);
-    (void)rewriter.create<memref::StoreOp>(loc, new_val, rng_state);
+    Value newVal = rewriter.create<arith::AddIOp>(loc, oldVal, delta);
+    (void)rewriter.create<memref::StoreOp>(loc, newVal, rngState);
 
     // Create the proper return type by packing the old seed into a tensor
     SmallVector<Value> pieces;
-    for (int i = (num_elements - 1) * word_size; i >= 0; i -= word_size) {
-      Value shift_distance = rewriter.create<arith::ConstantOp>(
-          loc, rewriter.getIntegerAttr(seed_type, i));
+    for (int i = (numElements - 1) * wordSize; i >= 0; i -= wordSize) {
+      Value shiftDistance = rewriter.create<arith::ConstantOp>(
+          loc, rewriter.getIntegerAttr(seedType, i));
       pieces.push_back(rewriter.create<arith::TruncIOp>(
-          loc, smaller_int_type,
-          rewriter.create<arith::ShRUIOp>(loc, old_val, shift_distance)));
+          loc, smallerIntType,
+          rewriter.create<arith::ShRUIOp>(loc, oldVal, shiftDistance)));
     }
 
     // Obtain a tensor with the correct shape and bit widths but the incorrect
     // integer signedness, then cast the tensor to the correct signedness to
     // ensure that unrealized casts will successfully lower later.
-    Value result_tensor = rewriter.create<tensor::FromElementsOp>(
-        loc,
-        mlir::RankedTensorType::get(result_type.getShape(), smaller_int_type),
+    Value resultTensor = rewriter.create<tensor::FromElementsOp>(
+        loc, mlir::RankedTensorType::get(resultType.getShape(), smallerIntType),
         pieces);
-    rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(op, result_type,
-                                                            result_tensor);
+    rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(op, resultType,
+                                                            resultTensor);
     return success();
   }
 };

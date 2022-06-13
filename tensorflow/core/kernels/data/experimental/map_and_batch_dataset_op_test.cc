@@ -67,7 +67,7 @@ class MapAndBatchDatasetParams : public DatasetParams {
     input_names->emplace_back(MapAndBatchDatasetOp::kNumParallelCalls);
     input_names->emplace_back(MapAndBatchDatasetOp::kDropRemainder);
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -77,7 +77,7 @@ class MapAndBatchDatasetParams : public DatasetParams {
                     {"output_types", output_dtypes_},
                     {"preserve_cardinality", preserve_cardinality_},
                     {"metadata", ""}};
-    return Status::OK();
+    return OkStatus();
   }
 
   std::vector<FunctionDef> func_lib() const override { return func_lib_; }

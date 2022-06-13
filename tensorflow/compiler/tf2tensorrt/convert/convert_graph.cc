@@ -715,7 +715,7 @@ Status CreateStaticEngine(const TRTOptimizationPass::ConversionParams& params,
   // Create static engines with precision_mode fp32/fp16.
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
   TF_RETURN_IF_ERROR(ConvertGraphDefToEngine(
-      info.segment_graph_def,
+      info.segment_graph_def, nullptr,
       calibrate_int8 ? TrtPrecisionMode::FP32 : info.precision_mode,
       max_batch_size, info.max_workspace_size_bytes, input_shapes, trt_logger,
       trt_allocator.get(), /*calibrator=*/nullptr, &engine,
@@ -870,7 +870,7 @@ Status ConvertGraph(const TRTOptimizationPass::ConversionParams& params,
 
   // Save the cuda device since we may need to switch to another cuda device to
   // build static engines.
-  absl::optional<int> old_cuda_device = absl::nullopt;
+  std::optional<int> old_cuda_device = std::nullopt;
   if (!params.is_dynamic_op) {
     int cuda_device_id;
     cudaError_t cuda_error = cudaGetDevice(&cuda_device_id);

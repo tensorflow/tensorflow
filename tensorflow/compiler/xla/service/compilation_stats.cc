@@ -20,7 +20,6 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/env.h"
@@ -73,12 +72,12 @@ class Stats : public CompilationStats {
 
 /* static */
 std::unique_ptr<CompilationStats> CompilationStats::MakeNoopStats() {
-  return absl::make_unique<NoopStats>();
+  return std::make_unique<NoopStats>();
 }
 
 /* static */
 std::unique_ptr<CompilationStats> CompilationStats::MakeStats() {
-  return absl::make_unique<Stats>();
+  return std::make_unique<Stats>();
 }
 
 void Stats::StartPass(absl::string_view pass_name) {

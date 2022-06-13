@@ -30,7 +30,7 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
-constexpr StringRef kPrintStringFuncName = "print_c_string";
+constexpr StringRef kPrintStringFuncName = "printCString";
 
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
@@ -39,16 +39,16 @@ Operation* EmitMemRefPrint(Location loc, Type element_type, Value arg,
                            OpBuilder* b) {
   StringRef func_name;
   if (element_type.isF32()) {
-    func_name = "print_memref_f32";
+    func_name = "printMemrefF32";
   }
   if (element_type.isF64()) {
-    func_name = "print_memref_f64";
+    func_name = "printMemrefF64";
   }
   if (element_type.isInteger(32)) {
-    func_name = "print_memref_i32";
+    func_name = "printMemrefI32";
   }
   if (element_type.isInteger(64) || element_type.isIndex()) {
-    func_name = "print_memref_i64";
+    func_name = "printMemrefI64";
   }
   assert(!func_name.empty() &&
          "Did not find a print function for the element type");

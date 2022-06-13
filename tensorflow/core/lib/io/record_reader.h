@@ -166,7 +166,7 @@ class SequentialRecordReader {
           "Trying to seek offset: ", offset,
           " which is less than the current offset: ", offset_);
     offset_ = offset;
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

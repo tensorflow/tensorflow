@@ -71,8 +71,8 @@ cc_library(
     deps = [
         ":profiler_client_impl",
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler:profiler_analysis_proto_cc",
-        "//tensorflow/core/profiler:profiler_service_proto_cc",
+        "//tensorflow/core/profiler:profiler_analysis_cc_grpc_proto",
+        "//tensorflow/core/profiler:profiler_service_cc_grpc_proto",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
     ],
@@ -93,8 +93,8 @@ cc_library(
         "@com_google_absl//absl/time",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/profiler:profiler_analysis_proto_cc",
-        "//tensorflow/core/profiler:profiler_service_proto_cc",
+        "//tensorflow/core/profiler:profiler_analysis_cc_grpc_proto",
+        "//tensorflow/core/profiler:profiler_service_cc_grpc_proto",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = True,
 )

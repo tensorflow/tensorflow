@@ -148,10 +148,49 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "graph_partition",
+    srcs = ["graph_partition.cc"],
+    hdrs = ["graph_partition.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime:device_set",
+        "//tensorflow/core/common_runtime:graph_constructor",
+        "//tensorflow/core/common_runtime:partitioning_utils",
+        "//tensorflow/core/grappler:utils",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cc_test(
+    name = "graph_partition_test",
+    srcs = ["graph_partition_test.cc"],
+    deps = [
+        ":graph_partition",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:core_cpu",
+        "//tensorflow/core/common_runtime:inline_function_utils",
+        "//tensorflow/core/common_runtime:placer",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/grappler/utils:grappler_test",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "tfrt_graph_execution_state",
     srcs = ["tfrt_graph_execution_state.cc"],
     hdrs = ["tfrt_graph_execution_state.h"],
     deps = [
+        ":graph_partition",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:upgrade_graph",
         "//tensorflow/core:core_cpu_base",

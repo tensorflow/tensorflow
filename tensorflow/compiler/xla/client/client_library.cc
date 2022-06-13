@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/client_library.h"
 
+#include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -29,7 +29,7 @@ namespace xla {
 LocalClientOptions::LocalClientOptions(
     se::Platform* platform, int number_of_replicas,
     int intra_op_parallelism_threads,
-    const absl::optional<std::set<int>>& allowed_devices)
+    const std::optional<std::set<int>>& allowed_devices)
     : platform_(platform),
       number_of_replicas_(number_of_replicas),
       intra_op_parallelism_threads_(intra_op_parallelism_threads),
@@ -63,12 +63,12 @@ int LocalClientOptions::intra_op_parallelism_threads() const {
 }
 
 LocalClientOptions& LocalClientOptions::set_allowed_devices(
-    const absl::optional<std::set<int>>& allowed_devices) {
+    const std::optional<std::set<int>>& allowed_devices) {
   allowed_devices_ = allowed_devices;
   return *this;
 }
 
-const absl::optional<std::set<int>>& LocalClientOptions::allowed_devices()
+const std::optional<std::set<int>>& LocalClientOptions::allowed_devices()
     const {
   return allowed_devices_;
 }
@@ -82,7 +82,7 @@ ClientLibrary::ClientLibrary() = default;
 ClientLibrary::~ClientLibrary() = default;
 
 /* static */ StatusOr<LocalClient*> ClientLibrary::GetOrCreateLocalClient(
-    se::Platform* platform, const absl::optional<std::set<int>>& device_set) {
+    se::Platform* platform, const std::optional<std::set<int>>& device_set) {
   LocalClientOptions default_options;
   default_options.set_platform(platform);
   default_options.set_allowed_devices(device_set);
@@ -111,10 +111,10 @@ ClientLibrary::~ClientLibrary() = default;
   service_options.set_intra_op_parallelism_threads(
       options.intra_op_parallelism_threads());
   service_options.set_allowed_devices(options.allowed_devices());
-  auto instance = absl::make_unique<LocalInstance>();
+  auto instance = std::make_unique<LocalInstance>();
   TF_ASSIGN_OR_RETURN(instance->service,
                       LocalService::NewService(service_options));
-  instance->client = absl::make_unique<LocalClient>(instance->service.get());
+  instance->client = std::make_unique<LocalClient>(instance->service.get());
   LocalClient* cl = instance->client.get();
 
   client_library.local_instances_.insert(
@@ -151,11 +151,11 @@ ClientLibrary::GetOrCreateCompileOnlyClient(se::Platform* platform) {
     return it->second->client.get();
   }
 
-  auto instance = absl::make_unique<CompileOnlyInstance>();
+  auto instance = std::make_unique<CompileOnlyInstance>();
   TF_ASSIGN_OR_RETURN(instance->service,
                       CompileOnlyService::NewService(platform));
   instance->client =
-      absl::make_unique<CompileOnlyClient>(instance->service.get());
+      std::make_unique<CompileOnlyClient>(instance->service.get());
   CompileOnlyClient* cl = instance->client.get();
 
   client_library.compile_only_instances_.insert(

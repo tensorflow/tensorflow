@@ -66,38 +66,6 @@ using se::dnn::FilterDescriptor;
 using se::dnn::FilterLayout;
 using se::dnn::ProfileResult;
 
-// A StreamExecutor ScratchAllocator that wraps a single XLA allocation,
-// returning it (in its entirety) the first time Allocate() is called.
-class ScratchBufAllocator : public se::ScratchAllocator {
- public:
-  explicit ScratchBufAllocator(se::DeviceMemoryBase scratch)
-      : scratch_(scratch) {}
-
-  ~ScratchBufAllocator() override = default;
-
-  int64_t GetMemoryLimitInBytes() override { return scratch_.size(); }
-
-  se::port::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
-      int64_t byte_size) override {
-    if (allocated_) {
-      return se::port::InternalError(
-          "Can't allocate twice from a ScratchBufAllocator.");
-    }
-    if (byte_size > scratch_.size()) {
-      return se::port::InternalError(absl::StrCat(
-          "Can't allocate ", byte_size,
-          " bytes from a ScratchBufAllocator of size ", scratch_.size()));
-    }
-
-    allocated_ = true;
-    return se::DeviceMemory<uint8_t>(scratch_);
-  }
-
- private:
-  se::DeviceMemoryBase scratch_;
-  bool allocated_ = false;
-};
-
 template <typename ElementType, typename OutputType>
 Status RunGpuConvUnfused(GpuConvParams params, se::Stream* stream,
                          RunConvOptions options,
@@ -124,7 +92,7 @@ Status RunGpuConvUnfused(GpuConvParams params, se::Stream* stream,
 
   se::dnn::LazyOpRunner<se::dnn::ConvOp>* lazy_runner =
       options.runner_cache->AsConvRunner();
-  absl::optional<se::dnn::LazyOpRunner<se::dnn::ConvOp>> local_runner;
+  std::optional<se::dnn::LazyOpRunner<se::dnn::ConvOp>> local_runner;
   if (!lazy_runner) {
     local_runner.emplace(params.config->algorithm);
     lazy_runner = &*local_runner;
@@ -172,7 +140,7 @@ Status RunGpuConvForwardActivation(const GpuConvParams& params,
 
   se::dnn::LazyOpRunner<se::dnn::FusedConvOp>* lazy_runner =
       options.runner_cache->AsFusedConvRunner();
-  absl::optional<se::dnn::LazyOpRunner<se::dnn::FusedConvOp>> local_runner;
+  std::optional<se::dnn::LazyOpRunner<se::dnn::FusedConvOp>> local_runner;
   if (!lazy_runner) {
     local_runner.emplace(params.config->algorithm);
     lazy_runner = &*local_runner;
@@ -234,7 +202,7 @@ Status RunGpuConvInternalImpl(const GpuConvParams& params, se::Stream* stream,
           scratch_memory);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Specialization for integer types.  Only two forward convolutions are allowed.
@@ -260,7 +228,7 @@ Status RunGpuConvInternalImpl(const GpuConvParams& params, se::Stream* stream,
           "Only convolution kinds kForward and kForwardActivation are "
           "supported for integer types");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename ElementType, typename BiasType, typename OutputType>
@@ -280,7 +248,7 @@ Status RunGpuConvImpl(const GpuConvParams& params, se::Stream* stream,
       params, stream, options, input_buf, filter_buf, output_buf,
       scratch_memory);
 
-  if (run_status != Status::OK()) {
+  if (run_status != OkStatus()) {
     return run_status;
   }
 
@@ -289,7 +257,7 @@ Status RunGpuConvImpl(const GpuConvParams& params, se::Stream* stream,
         "Unable to launch convolution with type %s and algorithm %s",
         CudnnConvKindToString(params.config->kind), algorithm.ToString());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 int64_t GetVectCSize(DataLayout layout) {

@@ -32,7 +32,7 @@ Status GetNodeAttr(const NodeDef& node_def, StringPiece attr_name,
   } else {
     return errors::NotFound(str_value, " is not an allowed padding mode.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 string GetMirrorPadModeAttrString() { return "mode: {'REFLECT', 'SYMMETRIC'}"; }

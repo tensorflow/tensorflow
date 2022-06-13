@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/threadpool.h"
 
 namespace xla {
@@ -90,11 +89,17 @@ class TpuDevice : public PjRtDevice {
     return nullptr;
   }
 
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    return attributes_;
+  }
+
  private:
   const int id_;
   const int process_index_;
   const std::array<int, 3> coords_;
   const std::string device_kind_ = "Cloud TPU";
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_ = {};
   // Index of the core of the same chip.
   int core_on_chip_;
   PyTpuClient* tpu_client_;
@@ -277,7 +282,7 @@ class PyTpuBuffer {
   // Allocates and optionally initializes a non-tuple buffer on the device.
   static StatusOr<std::unique_ptr<PyTpuBuffer>> CreateBuffer(
       const Shape& non_tuple_shape,
-      absl::optional<BufferInitializer> initializer,
+      std::optional<BufferInitializer> initializer,
       std::shared_ptr<PyTpuClient> client, std::shared_ptr<PjRtDevice> device);
 
   const std::shared_ptr<PyTpuClient> client_;
@@ -312,13 +317,12 @@ class PyTpuExecutable {
  public:
   static StatusOr<std::unique_ptr<PyTpuExecutable>> Compile(
       const XlaComputation& computation,
-      absl::optional<std::vector<Shape>> argument_layouts,
+      std::optional<std::vector<Shape>> argument_layouts,
       const ExecutableBuildOptions* build_options,
       std::shared_ptr<PyTpuClient> client, bool tuple_arguments);
 
   static StatusOr<std::unique_ptr<PyTpuExecutable>> CompileMlir(
-      mlir::ModuleOp module,
-      absl::optional<std::vector<Shape>> argument_layouts,
+      mlir::ModuleOp module, std::optional<std::vector<Shape>> argument_layouts,
       const ExecutableBuildOptions* build_options,
       std::shared_ptr<PyTpuClient> client, bool tuple_arguments);
 

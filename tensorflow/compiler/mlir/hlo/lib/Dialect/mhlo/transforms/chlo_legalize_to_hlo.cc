@@ -18,6 +18,7 @@ limitations under the License.
 // included by any other header it has the define set on first processing.
 // https://docs.microsoft.com/en-us/cpp/c-runtime-library/math-constants
 #define _USE_MATH_DEFINES
+#include <algorithm>
 #include <cmath>
 #include <numeric>
 #include <vector>
@@ -50,15 +51,15 @@ struct ConvertConstantLikeOp : public OpConversionPattern<ConstantLikeOp> {
   LogicalResult matchAndRewrite(
       ConstantLikeOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    auto result_ty = op.getType().cast<ShapedType>();
+    auto resultTy = op.getType().cast<ShapedType>();
 
     // Unranked uses are not supported.
-    if (!result_ty.hasRank()) return failure();
+    if (!resultTy.hasRank()) return failure();
 
     // Lower to MHLO constant if statically shaped.
-    if (result_ty.hasStaticShape()) {
+    if (resultTy.hasStaticShape()) {
       rewriter.replaceOpWithNewOp<mhlo::ConstOp>(
-          op, DenseElementsAttr::get(result_ty, op.value()));
+          op, DenseElementsAttr::get(resultTy, op.value()));
       return success();
     }
 
@@ -67,13 +68,13 @@ struct ConvertConstantLikeOp : public OpConversionPattern<ConstantLikeOp> {
     Value constant = rewriter.create<mhlo::ConstOp>(loc, op.value());
     Value shape = rewriter.create<shape::ShapeOfOp>(loc, adaptor.operand());
     rewriter.replaceOpWithNewOp<mhlo::DynamicBroadcastInDimOp>(
-        op, result_ty, constant, shape, rewriter.getI64TensorAttr({}));
+        op, resultTy, constant, shape, rewriter.getI64TensorAttr({}));
     return success();
   }
 };
 
 template <typename FTy>
-Value MaterializePolynomialApproximation(ConversionPatternRewriter &rewriter,
+Value materializePolynomialApproximation(ConversionPatternRewriter &rewriter,
                                          Location loc, Value x,
                                          ArrayRef<FTy> coefficients) {
   Value poly = chlo::getConstantLike(rewriter, loc, 0.0, x);
@@ -90,7 +91,7 @@ Value MaterializePolynomialApproximation(ConversionPatternRewriter &rewriter,
 // We rely on multiple polynomial approximations for x >= 1. We pass |x| as an
 // argument and derive the final approximation for all |x| >= 1.
 // This implementation is based on Cephes.
-Value MaterializeErfcApproximationF64ForMagnituteGEOne(
+Value materializeErfcApproximationF64ForMagnituteGeOne(
     ConversionPatternRewriter &rewriter, Location loc, ValueRange args) {
   Value x = args.front();
   assert(x.getType().cast<ShapedType>().getElementType().isF64() &&
@@ -119,63 +120,61 @@ Value MaterializeErfcApproximationF64ForMagnituteGEOne(
       3.36907645100081516050E0};
 
   // Let z = -x^2.
-  Value x_sq = rewriter.create<mhlo::MulOp>(loc, x, x);
-  Value z = rewriter.create<mhlo::NegOp>(loc, x_sq);
+  Value xSq = rewriter.create<mhlo::MulOp>(loc, x, x);
+  Value z = rewriter.create<mhlo::NegOp>(loc, xSq);
 
   // Materialize polynomial approximation for x in [1, 8) as
   //   erfc(x) = exp(z) P(|x|) / Q(|x|).
-  Value exp_z = rewriter.create<mhlo::ExpOp>(loc, z);
-  Value abs_x = rewriter.create<mhlo::AbsOp>(loc, x);
-  Value poly_p = MaterializePolynomialApproximation(
-      rewriter, loc, abs_x, llvm::makeArrayRef(kErfcPCoefficients));
-  Value exp_z_mul_poly_p = rewriter.create<mhlo::MulOp>(loc, exp_z, poly_p);
-  Value poly_q = MaterializePolynomialApproximation(
-      rewriter, loc, abs_x, llvm::makeArrayRef(kErfcQCoefficients));
-  Value erfc_approx_1_8 =
-      rewriter.create<mhlo::DivOp>(loc, exp_z_mul_poly_p, poly_q);
+  Value expZ = rewriter.create<mhlo::ExpOp>(loc, z);
+  Value absX = rewriter.create<mhlo::AbsOp>(loc, x);
+  Value polP = materializePolynomialApproximation(
+      rewriter, loc, absX, llvm::makeArrayRef(kErfcPCoefficients));
+  Value expZMulPolyP = rewriter.create<mhlo::MulOp>(loc, expZ, polP);
+  Value polQ = materializePolynomialApproximation(
+      rewriter, loc, absX, llvm::makeArrayRef(kErfcQCoefficients));
+  Value erfcApprox18 = rewriter.create<mhlo::DivOp>(loc, expZMulPolyP, polQ);
 
   // Materialize polynomial approximation for x in >= 8 as
   //   erfc(x) exp(z) R(|x|) / S(|x|).
-  Value poly_r = MaterializePolynomialApproximation(
-      rewriter, loc, abs_x, llvm::makeArrayRef(kErfcRCoefficients));
-  Value exp_z_mul_poly_r = rewriter.create<mhlo::MulOp>(loc, exp_z, poly_r);
-  Value poly_s = MaterializePolynomialApproximation(
-      rewriter, loc, abs_x, llvm::makeArrayRef(kErfcSCoefficients));
-  Value erfc_approx_8_inf =
-      rewriter.create<mhlo::DivOp>(loc, exp_z_mul_poly_r, poly_s);
+  Value polR = materializePolynomialApproximation(
+      rewriter, loc, absX, llvm::makeArrayRef(kErfcRCoefficients));
+  Value expZMulPolyR = rewriter.create<mhlo::MulOp>(loc, expZ, polR);
+  Value polS = materializePolynomialApproximation(
+      rewriter, loc, absX, llvm::makeArrayRef(kErfcSCoefficients));
+  Value erfcApprox8Inf = rewriter.create<mhlo::DivOp>(loc, expZMulPolyR, polS);
 
   // Combine polynomial approximations for x >= 1.
   Value eight = chlo::getConstantLike(rewriter, loc, 8.0, x);
-  Value abs_x_lt_8 = rewriter.create<mhlo::CompareOp>(
-      loc, abs_x, eight, mhlo::ComparisonDirection::LT);
-  Value erfc_approx = rewriter.create<mhlo::SelectOp>(
-      loc, abs_x_lt_8, erfc_approx_1_8, erfc_approx_8_inf);
+  Value absXLt8 = rewriter.create<mhlo::CompareOp>(
+      loc, absX, eight, mhlo::ComparisonDirection::LT);
+  Value erfcApprox = rewriter.create<mhlo::SelectOp>(loc, absXLt8, erfcApprox18,
+                                                     erfcApprox8Inf);
 
   // Clamp to prevent overflow and materialize approximation for large x as
   //   erfc(x) = 0.
-  Value z_lt_neg_maxlog = rewriter.create<mhlo::CompareOp>(
+  Value zLtNegMaxlog = rewriter.create<mhlo::CompareOp>(
       loc, z, chlo::getConstantLike(rewriter, loc, -kMaxlog, x),
       mhlo::ComparisonDirection::LT);
   Value zero = chlo::getConstantLike(rewriter, loc, 0.0, x);
-  Value erfc_approx_clamped =
-      rewriter.create<mhlo::SelectOp>(loc, z_lt_neg_maxlog, zero, erfc_approx);
+  Value erfcApproxClamped =
+      rewriter.create<mhlo::SelectOp>(loc, zLtNegMaxlog, zero, erfcApprox);
 
   // Derive approximation for x <= -1 as
   //   erfc(x) = 2 - erfc(-x).
   // Reuse previously materialized approximations all of which take |x| as their
   // argument.
-  Value x_lt_zero = rewriter.create<mhlo::CompareOp>(
+  Value xLtZero = rewriter.create<mhlo::CompareOp>(
       loc, x, zero, mhlo::ComparisonDirection::LT);
   Value two = chlo::getConstantLike(rewriter, loc, 2.0, x);
-  Value two_sub_erfc_approx_clamped =
-      rewriter.create<mhlo::SubOp>(loc, two, erfc_approx_clamped);
-  return rewriter.create<mhlo::SelectOp>(
-      loc, x_lt_zero, two_sub_erfc_approx_clamped, erfc_approx_clamped);
+  Value twoSubErfcApproxClamped =
+      rewriter.create<mhlo::SubOp>(loc, two, erfcApproxClamped);
+  return rewriter.create<mhlo::SelectOp>(loc, xLtZero, twoSubErfcApproxClamped,
+                                         erfcApproxClamped);
 }
 
 // Precondition is |x| <= 1. Use erfc approximation, otherwise.
 // This implementation is based on Cephes.
-Value MaterializeErfApproximationF64ForMagnituteLEOne(
+Value materializeErfApproximationF64ForMagnituteLeOne(
     ConversionPatternRewriter &rewriter, Location loc, ValueRange args) {
   Value x = args.front();
   assert(x.getType().cast<ShapedType>().getElementType().isF64() &&
@@ -191,17 +190,17 @@ Value MaterializeErfApproximationF64ForMagnituteLEOne(
 
   // Materialize polynomial approximation for |x| <= 1 as
   //   erf(x) = x T(x^2) / U(x^2).
-  Value x_sq = rewriter.create<mhlo::MulOp>(loc, x, x);
-  Value poly_t = MaterializePolynomialApproximation(
-      rewriter, loc, x_sq, llvm::makeArrayRef(kErfTCoefficients));
-  Value x_mul_poly_t = rewriter.create<mhlo::MulOp>(loc, x, poly_t);
-  Value poly_u = MaterializePolynomialApproximation(
-      rewriter, loc, x_sq, llvm::makeArrayRef(kErfUCoefficients));
-  return rewriter.create<mhlo::DivOp>(loc, x_mul_poly_t, poly_u);
+  Value xSq = rewriter.create<mhlo::MulOp>(loc, x, x);
+  Value polyT = materializePolynomialApproximation(
+      rewriter, loc, xSq, llvm::makeArrayRef(kErfTCoefficients));
+  Value xMulPolyT = rewriter.create<mhlo::MulOp>(loc, x, polyT);
+  Value polyU = materializePolynomialApproximation(
+      rewriter, loc, xSq, llvm::makeArrayRef(kErfUCoefficients));
+  return rewriter.create<mhlo::DivOp>(loc, xMulPolyT, polyU);
 }
 
 // This implementation is based on Cephes.
-Value MaterializeErfApproximationF64(ConversionPatternRewriter &rewriter,
+Value materializeErfApproximationF64(ConversionPatternRewriter &rewriter,
                                      Location loc, ValueRange args) {
   Value x = args.front();
   assert(x.getType().cast<ShapedType>().getElementType().isF64() &&
@@ -209,25 +208,25 @@ Value MaterializeErfApproximationF64(ConversionPatternRewriter &rewriter,
 
   // Rely on erf approximation for |x| < 1
   //   erf(x) = erf_approx(x)
-  Value erf_approx =
-      MaterializeErfApproximationF64ForMagnituteLEOne(rewriter, loc, x);
+  Value erfApprox =
+      materializeErfApproximationF64ForMagnituteLeOne(rewriter, loc, x);
 
   // Rely on erfc approximation for |x| >= 1 and materialize erf as
   //   erf(x) = 1 - erfc_approx(x)
   Value one = chlo::getConstantLike(rewriter, loc, 1.0, x);
-  Value erfc_approx =
-      MaterializeErfcApproximationF64ForMagnituteGEOne(rewriter, loc, x);
-  Value erfc_based_approx = rewriter.create<mhlo::SubOp>(loc, one, erfc_approx);
+  Value erfcApprox =
+      materializeErfcApproximationF64ForMagnituteGeOne(rewriter, loc, x);
+  Value erfcBasedApprox = rewriter.create<mhlo::SubOp>(loc, one, erfcApprox);
 
   // Materialize approximation selection based on argument.
-  Value abs_x = rewriter.create<mhlo::AbsOp>(loc, x);
-  Value abs_x_lt_one = rewriter.create<mhlo::CompareOp>(
-      loc, abs_x, one, mhlo::ComparisonDirection::LT);
-  return rewriter.create<mhlo::SelectOp>(loc, abs_x_lt_one, erf_approx,
-                                         erfc_based_approx);
+  Value absX = rewriter.create<mhlo::AbsOp>(loc, x);
+  Value absXLtOne = rewriter.create<mhlo::CompareOp>(
+      loc, absX, one, mhlo::ComparisonDirection::LT);
+  return rewriter.create<mhlo::SelectOp>(loc, absXLtOne, erfApprox,
+                                         erfcBasedApprox);
 }
 
-Value MaterializeErfcApproximationF64(ConversionPatternRewriter &rewriter,
+Value materializeErfcApproximationF64(ConversionPatternRewriter &rewriter,
                                       Location loc, ValueRange args) {
   Value x = args.front();
   assert(x.getType().cast<ShapedType>().getElementType().isF64() &&
@@ -235,22 +234,22 @@ Value MaterializeErfcApproximationF64(ConversionPatternRewriter &rewriter,
 
   // Rely on erfc approximation for |x| >= 1
   //   erfc(x) = erfc_approx(x)
-  Value erfc_approx =
-      MaterializeErfcApproximationF64ForMagnituteGEOne(rewriter, loc, x);
+  Value erfcApprox =
+      materializeErfcApproximationF64ForMagnituteGeOne(rewriter, loc, x);
 
   // Rely on erf approximation for |x| < 1 and materialize erfc as
   //   erfc(x) = 1 - erf_approx(x)
   Value one = chlo::getConstantLike(rewriter, loc, 1.0, x);
-  Value erf_approx =
-      MaterializeErfApproximationF64ForMagnituteLEOne(rewriter, loc, x);
-  Value erf_based_approx = rewriter.create<mhlo::SubOp>(loc, one, erf_approx);
+  Value erfApprox =
+      materializeErfApproximationF64ForMagnituteLeOne(rewriter, loc, x);
+  Value erfBasedApprox = rewriter.create<mhlo::SubOp>(loc, one, erfApprox);
 
   // Materialize approximation selection based on argument.
-  Value abs_x = rewriter.create<mhlo::AbsOp>(loc, x);
-  Value abs_x_lt_one = rewriter.create<mhlo::CompareOp>(
-      loc, abs_x, one, mhlo::ComparisonDirection::LT);
-  return rewriter.create<mhlo::SelectOp>(loc, abs_x_lt_one, erf_based_approx,
-                                         erfc_approx);
+  Value absX = rewriter.create<mhlo::AbsOp>(loc, x);
+  Value absXLtOne = rewriter.create<mhlo::CompareOp>(
+      loc, absX, one, mhlo::ComparisonDirection::LT);
+  return rewriter.create<mhlo::SelectOp>(loc, absXLtOne, erfBasedApprox,
+                                         erfcApprox);
 }
 
 // Precondition is |x| >= 1. Use erf approximation, otherwise.
@@ -258,7 +257,7 @@ Value MaterializeErfcApproximationF64(ConversionPatternRewriter &rewriter,
 // We rely on multiple polynomial approximations for x >= 1. We pass |x| as an
 // argument and derive the final approximation for all |x| >= 1.
 // This implementation is based on Cephes.
-Value MaterializeErfcApproximationF32ForMagnitudeGEOne(
+Value materializeErfcApproximationF32ForMagnitudeGeOne(
     ConversionPatternRewriter &rewriter, Location loc, ValueRange args) {
   Value x = args.front();
   assert(x.getType().cast<ShapedType>().getElementType().isF32() &&
@@ -276,55 +275,52 @@ Value MaterializeErfcApproximationF32ForMagnitudeGEOne(
   };
 
   // Let z = -x^2.
-  Value x_sq = rewriter.create<mhlo::MulOp>(loc, x, x);
-  Value z = rewriter.create<mhlo::NegOp>(loc, x_sq);
+  Value xSq = rewriter.create<mhlo::MulOp>(loc, x, x);
+  Value z = rewriter.create<mhlo::NegOp>(loc, xSq);
 
   // Materialize polynomial approximation for x >= 1 as
   //   erfc(x) = exp(z) 1/x P(1/x^2)   if x in [1, 2)
   //   erfc(x) = exp(z) 1/x R(1/x^2)   if x >= 2
-  Value abs_x = rewriter.create<mhlo::AbsOp>(loc, x);
+  Value absX = rewriter.create<mhlo::AbsOp>(loc, x);
   Value one = chlo::getConstantLike(rewriter, loc, 1.0, x);
-  Value reciprocal_x_sq = rewriter.create<mhlo::DivOp>(loc, one, x_sq);
-  Value exp_z = rewriter.create<mhlo::ExpOp>(loc, z);
-  Value one_div_abs_x = rewriter.create<mhlo::DivOp>(loc, one, abs_x);
-  Value exp_z_mul_one_div_abs_x =
-      rewriter.create<mhlo::MulOp>(loc, exp_z, one_div_abs_x);
+  Value reciprocalXSq = rewriter.create<mhlo::DivOp>(loc, one, xSq);
+  Value expZ = rewriter.create<mhlo::ExpOp>(loc, z);
+  Value oneDivAbsX = rewriter.create<mhlo::DivOp>(loc, one, absX);
+  Value expZMulOneDivAbsX = rewriter.create<mhlo::MulOp>(loc, expZ, oneDivAbsX);
   Value two = chlo::getConstantLike(rewriter, loc, 2.0, x);
-  Value abs_x_lt_two = rewriter.create<mhlo::CompareOp>(
-      loc, abs_x, two, mhlo::ComparisonDirection::LT);
-  Value poly_p = MaterializePolynomialApproximation(
-      rewriter, loc, reciprocal_x_sq, llvm::makeArrayRef(kErfcPCoefficients));
-  Value poly_r = MaterializePolynomialApproximation(
-      rewriter, loc, reciprocal_x_sq, llvm::makeArrayRef(kErfcRCoefficients));
-  Value poly =
-      rewriter.create<mhlo::SelectOp>(loc, abs_x_lt_two, poly_p, poly_r);
-  Value erfc_approx =
-      rewriter.create<mhlo::MulOp>(loc, exp_z_mul_one_div_abs_x, poly);
+  Value absXLtTwo = rewriter.create<mhlo::CompareOp>(
+      loc, absX, two, mhlo::ComparisonDirection::LT);
+  Value polP = materializePolynomialApproximation(
+      rewriter, loc, reciprocalXSq, llvm::makeArrayRef(kErfcPCoefficients));
+  Value polR = materializePolynomialApproximation(
+      rewriter, loc, reciprocalXSq, llvm::makeArrayRef(kErfcRCoefficients));
+  Value poly = rewriter.create<mhlo::SelectOp>(loc, absXLtTwo, polP, polR);
+  Value erfcApprox = rewriter.create<mhlo::MulOp>(loc, expZMulOneDivAbsX, poly);
 
   // Clamp to prevent overflow and materialize approximation for large x as
   //   erfc(x) = 0.
-  Value z_lt_neq_maxlog = rewriter.create<mhlo::CompareOp>(
+  Value zLtNeqMaxlog = rewriter.create<mhlo::CompareOp>(
       loc, z, chlo::getConstantLike(rewriter, loc, -kMaxlog, x),
       mhlo::ComparisonDirection::LT);
   Value zero = chlo::getConstantLike(rewriter, loc, 0.0, x);
-  Value erfc_approx_clamped =
-      rewriter.create<mhlo::SelectOp>(loc, z_lt_neq_maxlog, zero, erfc_approx);
+  Value erfcApproxClamped =
+      rewriter.create<mhlo::SelectOp>(loc, zLtNeqMaxlog, zero, erfcApprox);
 
   // Derive approximation for x <= -1 as
   //   erfc(x) = 2 - erfc(-x).
   // Reuse previously materialized approximations all of which take |x| as their
   // argument.
-  Value x_lt_zero = rewriter.create<mhlo::CompareOp>(
+  Value xLtZero = rewriter.create<mhlo::CompareOp>(
       loc, x, zero, mhlo::ComparisonDirection::LT);
-  Value two_sub_erfc_approx =
-      rewriter.create<mhlo::SubOp>(loc, two, erfc_approx_clamped);
-  return rewriter.create<mhlo::SelectOp>(loc, x_lt_zero, two_sub_erfc_approx,
-                                         erfc_approx_clamped);
+  Value twoSubErfcApprox =
+      rewriter.create<mhlo::SubOp>(loc, two, erfcApproxClamped);
+  return rewriter.create<mhlo::SelectOp>(loc, xLtZero, twoSubErfcApprox,
+                                         erfcApproxClamped);
 }
 
 // Precondition is |x| <= 1. Use erfc approximation, otherwise.
 // This implementation is based on Cephes.
-Value MaterializeErfApproximationF32ForMagnitudeLEOne(
+Value materializeErfApproximationF32ForMagnitudeLeOne(
     ConversionPatternRewriter &rewriter, Location loc, ValueRange args) {
   Value x = args.front();
   assert(x.getType().cast<ShapedType>().getElementType().isF32() &&
@@ -337,14 +333,14 @@ Value MaterializeErfApproximationF32ForMagnitudeLEOne(
 
   // Materialize polynomial approximation for |x| <= 1 as
   //   erf(x) = x T(x^2).
-  Value x_sq = rewriter.create<mhlo::MulOp>(loc, x, x);
-  Value poly_t = MaterializePolynomialApproximation(
-      rewriter, loc, x_sq, llvm::makeArrayRef(kErfTCoefficients));
-  return rewriter.create<mhlo::MulOp>(loc, x, poly_t);
+  Value xSq = rewriter.create<mhlo::MulOp>(loc, x, x);
+  Value polyT = materializePolynomialApproximation(
+      rewriter, loc, xSq, llvm::makeArrayRef(kErfTCoefficients));
+  return rewriter.create<mhlo::MulOp>(loc, x, polyT);
 }
 
 // This is the same approximation as used in Eigen.
-Value MaterializeErfApproximationF32(ConversionPatternRewriter &rewriter,
+Value materializeErfApproximationF32(ConversionPatternRewriter &rewriter,
                                      Location loc, ValueRange args) {
   Value x = args.front();
   assert(x.getType().cast<ShapedType>().getElementType().isF32() &&
@@ -363,19 +359,19 @@ Value MaterializeErfApproximationF32(ConversionPatternRewriter &rewriter,
   Value lb = chlo::getConstantLike(rewriter, loc, -4.0, x);
   Value ub = chlo::getConstantLike(rewriter, loc, 4.0, x);
   x = rewriter.create<mhlo::ClampOp>(loc, x.getType(), lb, x, ub);
-  Value x_sq = rewriter.create<mhlo::MulOp>(loc, x, x);
+  Value xSq = rewriter.create<mhlo::MulOp>(loc, x, x);
 
   // Materialize polynomial approximation for x in [-4, 4] as
   //   erf(x) = x * Alpha(x^2) / Beta(x^2).
-  Value alpha_poly = MaterializePolynomialApproximation(
-      rewriter, loc, x_sq, llvm::makeArrayRef(kAlpha));
-  Value beta_poly = MaterializePolynomialApproximation(
-      rewriter, loc, x_sq, llvm::makeArrayRef(kBeta));
-  Value x_mul_alpha_poly = rewriter.create<mhlo::MulOp>(loc, x, alpha_poly);
-  return rewriter.create<mhlo::DivOp>(loc, x_mul_alpha_poly, beta_poly);
+  Value alphaPoly = materializePolynomialApproximation(
+      rewriter, loc, xSq, llvm::makeArrayRef(kAlpha));
+  Value betaPoly = materializePolynomialApproximation(
+      rewriter, loc, xSq, llvm::makeArrayRef(kBeta));
+  Value xMulAlphaPoly = rewriter.create<mhlo::MulOp>(loc, x, alphaPoly);
+  return rewriter.create<mhlo::DivOp>(loc, xMulAlphaPoly, betaPoly);
 }
 
-Value MaterializeErfcApproximationF32(ConversionPatternRewriter &rewriter,
+Value materializeErfcApproximationF32(ConversionPatternRewriter &rewriter,
                                       Location loc, ValueRange args) {
   Value x = args.front();
   assert(x.getType().cast<ShapedType>().getElementType().isF32() &&
@@ -383,48 +379,48 @@ Value MaterializeErfcApproximationF32(ConversionPatternRewriter &rewriter,
 
   // Rely on erfc approximation for |x| >= 1
   //   erfc(x) = erfc_approx(x)
-  Value erfc_approx =
-      MaterializeErfcApproximationF32ForMagnitudeGEOne(rewriter, loc, x);
+  Value erfcApprox =
+      materializeErfcApproximationF32ForMagnitudeGeOne(rewriter, loc, x);
 
   // Rely on erf approximation for |x| < 1 and materialize erfc as
   //   erfc(x) = 1 - erf_approx(x)
   Value one = chlo::getConstantLike(rewriter, loc, 1.0, x);
-  Value erf_approx =
-      MaterializeErfApproximationF32ForMagnitudeLEOne(rewriter, loc, x);
-  Value erf_based_approx = rewriter.create<mhlo::SubOp>(loc, one, erf_approx);
+  Value erfApprox =
+      materializeErfApproximationF32ForMagnitudeLeOne(rewriter, loc, x);
+  Value erfBasedApprox = rewriter.create<mhlo::SubOp>(loc, one, erfApprox);
 
   // Materialize approximation selection based on argument.
-  Value abs_x = rewriter.create<mhlo::AbsOp>(loc, x);
-  Value abs_x_lt_one = rewriter.create<mhlo::CompareOp>(
-      loc, abs_x, one, mhlo::ComparisonDirection::LT);
-  return rewriter.create<mhlo::SelectOp>(loc, abs_x_lt_one, erf_based_approx,
-                                         erfc_approx);
+  Value absX = rewriter.create<mhlo::AbsOp>(loc, x);
+  Value absXLtOne = rewriter.create<mhlo::CompareOp>(
+      loc, absX, one, mhlo::ComparisonDirection::LT);
+  return rewriter.create<mhlo::SelectOp>(loc, absXLtOne, erfBasedApprox,
+                                         erfcApprox);
 }
 
-Value MaterializeWithUpcast(ConversionPatternRewriter &rewriter, Location loc,
-                            ValueRange args, FloatType min_precision_ty,
+Value materializeWithUpcast(ConversionPatternRewriter &rewriter, Location loc,
+                            ValueRange args, FloatType minPrecisionTy,
                             Value callback(ConversionPatternRewriter &,
                                            Location, ValueRange)) {
-  auto original_ty = getElementTypeOrSelf(args.front().getType());
-  auto float_original_ty = original_ty.dyn_cast<FloatType>();
-  bool needs_upcast = float_original_ty && float_original_ty.getWidth() <
-                                               min_precision_ty.getWidth();
+  auto originalTy = getElementTypeOrSelf(args.front().getType());
+  auto floatOriginalTy = originalTy.dyn_cast<FloatType>();
+  bool needsUpcast =
+      floatOriginalTy && floatOriginalTy.getWidth() < minPrecisionTy.getWidth();
 
   // Upcast arguments if necessary.
-  llvm::SmallVector<Value, 2> casted_args;
-  if (needs_upcast) {
+  llvm::SmallVector<Value, 2> castedArgs;
+  if (needsUpcast) {
     for (Value a : args) {
-      casted_args.push_back(
-          rewriter.create<mhlo::ConvertOp>(loc, a, min_precision_ty));
+      castedArgs.push_back(
+          rewriter.create<mhlo::ConvertOp>(loc, a, minPrecisionTy));
     }
-    args = casted_args;
+    args = castedArgs;
   }
 
   Value result = callback(rewriter, loc, args);
 
   // Cast back if necessary.
-  if (needs_upcast) {
-    result = rewriter.create<mhlo::ConvertOp>(loc, result, original_ty);
+  if (needsUpcast) {
+    result = rewriter.create<mhlo::ConvertOp>(loc, result, originalTy);
   }
 
   return result;
@@ -444,14 +440,14 @@ struct ConvertErfOp : public OpConversionPattern<ErfOp> {
       return failure();
 
     if (ty.isF64()) {
-      rewriter.replaceOp(op, MaterializeErfApproximationF64(rewriter, loc, x));
+      rewriter.replaceOp(op, materializeErfApproximationF64(rewriter, loc, x));
       return success();
     }
 
     rewriter.replaceOp(
-        op, MaterializeWithUpcast(rewriter, loc, adaptor.getOperands(),
+        op, materializeWithUpcast(rewriter, loc, adaptor.getOperands(),
                                   rewriter.getF32Type(),
-                                  &MaterializeErfApproximationF32));
+                                  &materializeErfApproximationF32));
     return success();
   }
 };
@@ -470,14 +466,14 @@ struct ConvertErfcOp : public OpConversionPattern<ErfcOp> {
       return failure();
 
     if (ty.isF64()) {
-      rewriter.replaceOp(op, MaterializeErfcApproximationF64(rewriter, loc, x));
+      rewriter.replaceOp(op, materializeErfcApproximationF64(rewriter, loc, x));
       return success();
     }
 
     rewriter.replaceOp(
-        op, MaterializeWithUpcast(rewriter, loc, adaptor.getOperands(),
+        op, materializeWithUpcast(rewriter, loc, adaptor.getOperands(),
                                   rewriter.getF32Type(),
-                                  &MaterializeErfcApproximationF32));
+                                  &materializeErfcApproximationF32));
     return success();
   }
 };
@@ -506,7 +502,7 @@ constexpr std::array<double, 8> kLanczosCoefficients = {
 //   with   t(z) = z + kLanczosGamma + 1/2
 //          a(z) = kBaseLanczosCoeff
 //                   + sum(k = 1, n, kLanczosCoefficients[i] / (z + k))
-Value MaterializeLgamma(ConversionPatternRewriter &rewriter, Location loc,
+Value materializeLgamma(ConversionPatternRewriter &rewriter, Location loc,
                         ValueRange args) {
   // If the input is less than 0.5 use Euler's reflection formula.
   //   gamma(x) = pi / (sin(pi * x) * gamma(1 - x))
@@ -515,13 +511,12 @@ Value MaterializeLgamma(ConversionPatternRewriter &rewriter, Location loc,
   //   z = x - 1   otheriwse
   Value x = args.front();
   Value half = getConstantLike(rewriter, loc, 0.5, x);
-  Value need_to_reflect = rewriter.create<mhlo::CompareOp>(
+  Value needToReflect = rewriter.create<mhlo::CompareOp>(
       loc, x, half, mhlo::ComparisonDirection::LT);
-  Value neg_x = rewriter.create<mhlo::NegOp>(loc, x);
+  Value negX = rewriter.create<mhlo::NegOp>(loc, x);
   Value one = getConstantLike(rewriter, loc, 1, x);
-  Value x_sub_one = rewriter.create<mhlo::SubOp>(loc, x, one);
-  Value z =
-      rewriter.create<mhlo::SelectOp>(loc, need_to_reflect, neg_x, x_sub_one);
+  Value xSubOne = rewriter.create<mhlo::SubOp>(loc, x, one);
+  Value z = rewriter.create<mhlo::SelectOp>(loc, needToReflect, negX, xSubOne);
 
   // Materialize
   //   a(z) = kBaseLanczosCoeff
@@ -529,9 +524,9 @@ Value MaterializeLgamma(ConversionPatternRewriter &rewriter, Location loc,
   Value a = getConstantLike(rewriter, loc, kBaseLanczosCoeff, x);
   for (int i = 0, end = kLanczosCoefficients.size(); i < end; ++i) {
     Value coeff = getConstantLike(rewriter, loc, kLanczosCoefficients[i], x);
-    Value one_based_index = getConstantLike(rewriter, loc, i + 1, x);
+    Value oneBasedIndex = getConstantLike(rewriter, loc, i + 1, x);
     Value quotient = rewriter.create<mhlo::DivOp>(
-        loc, coeff, rewriter.create<mhlo::AddOp>(loc, z, one_based_index));
+        loc, coeff, rewriter.create<mhlo::AddOp>(loc, z, oneBasedIndex));
     a = rewriter.create<mhlo::AddOp>(loc, a, quotient);
   }
 
@@ -541,35 +536,35 @@ Value MaterializeLgamma(ConversionPatternRewriter &rewriter, Location loc,
   // Materialize as
   //   log(t) = log(kLanczosGamma + 1/2 + z)
   //          = log(kLanczosGamma + 1/2) + log1p(z / (kLanczosGamma + 1/2)).
-  Value lanczos_plus_half =
+  Value lanczosPlusHalf =
       getConstantLike(rewriter, loc, kLanczosGamma + 0.5, x);
-  Value t = rewriter.create<mhlo::AddOp>(loc, lanczos_plus_half, z);
-  Value log_term =
+  Value t = rewriter.create<mhlo::AddOp>(loc, lanczosPlusHalf, z);
+  Value logTerm =
       getConstantLike(rewriter, loc, std::log(kLanczosGamma + 0.5), x);
-  Value log1p_term = rewriter.create<mhlo::Log1pOp>(
-      loc, rewriter.create<mhlo::DivOp>(loc, z, lanczos_plus_half));
-  Value log_t = rewriter.create<mhlo::AddOp>(loc, log_term, log1p_term);
+  Value log1pTerm = rewriter.create<mhlo::Log1pOp>(
+      loc, rewriter.create<mhlo::DivOp>(loc, z, lanczosPlusHalf));
+  Value logT = rewriter.create<mhlo::AddOp>(loc, logTerm, log1pTerm);
 
   // Note that t(z) may be large and we need to be careful not to overflow to
   // infinity in the relevant term
   //   r = (z + 1/2) * log(t(z)) - t(z).
   // Therefore, we compute this as
   //   r = (z + 1/2 - t(z) / log(t(z))) * log(t(z)).
-  Value t_div_log_t = rewriter.create<mhlo::DivOp>(loc, t, log_t);
+  Value tDivLogT = rewriter.create<mhlo::DivOp>(loc, t, logT);
   Value sum = rewriter.create<mhlo::SubOp>(
-      loc, rewriter.create<mhlo::AddOp>(loc, z, half), t_div_log_t);
-  Value r = rewriter.create<mhlo::MulOp>(loc, sum, log_t);
+      loc, rewriter.create<mhlo::AddOp>(loc, z, half), tDivLogT);
+  Value r = rewriter.create<mhlo::MulOp>(loc, sum, logT);
 
   // Compute the final result (modulo reflection) as
   //   lgamma(z + 1) = (log(2) + log(pi)) / 2 + r + log(a(z)).
-  Value log_a = rewriter.create<mhlo::LogOp>(loc, a);
+  Value logA = rewriter.create<mhlo::LogOp>(loc, a);
   Value lgamma = rewriter.create<mhlo::AddOp>(
       loc,
       rewriter.create<mhlo::AddOp>(
           loc,
           getConstantLike(rewriter, loc, (std::log(2) + std::log(M_PI)) / 2, x),
           r),
-      log_a);
+      logA);
 
   // Compute the reflected value for x < 0.5 as
   //   lgamma(x) = log(pi) - lgamma(1-x) - log(abs(sin(pi * x))).
@@ -599,47 +594,67 @@ Value MaterializeLgamma(ConversionPatternRewriter &rewriter, Location loc,
   // Convert values of abs_frac > 0.5 to (1 - abs_frac) to improve precision of
   // pi * abs_frac for values of abs_frac close to 1.
   Value abs = rewriter.create<mhlo::AbsOp>(loc, x);
-  Value abs_frac = rewriter.create<mhlo::SubOp>(
+  Value absFrac = rewriter.create<mhlo::SubOp>(
       loc, abs, rewriter.create<mhlo::FloorOp>(loc, abs));
-  Value reduce_abs_frac = rewriter.create<mhlo::CompareOp>(
-      loc, half, abs_frac, mhlo::ComparisonDirection::LT);
-  abs_frac = rewriter.create<mhlo::SelectOp>(
-      loc, reduce_abs_frac, rewriter.create<mhlo::SubOp>(loc, one, abs_frac),
-      abs_frac);
+  Value reduceAbsFrac = rewriter.create<mhlo::CompareOp>(
+      loc, half, absFrac, mhlo::ComparisonDirection::LT);
+  absFrac = rewriter.create<mhlo::SelectOp>(
+      loc, reduceAbsFrac, rewriter.create<mhlo::SubOp>(loc, one, absFrac),
+      absFrac);
 
   // Materialize reflection.
-  Value reflection_denom = rewriter.create<mhlo::LogOp>(
+  Value reflectionDenom = rewriter.create<mhlo::LogOp>(
       loc,
       rewriter.create<mhlo::SinOp>(
           loc, rewriter.create<mhlo::MulOp>(
-                   loc, getConstantLike(rewriter, loc, M_PI, x), abs_frac)));
-  Value lgamma_reflection = rewriter.create<mhlo::SubOp>(
+                   loc, getConstantLike(rewriter, loc, M_PI, x), absFrac)));
+  Value lgammaReflection = rewriter.create<mhlo::SubOp>(
       loc,
       rewriter.create<mhlo::SubOp>(
           loc, getConstantLike(rewriter, loc, std::log(M_PI), x),
-          reflection_denom),
+          reflectionDenom),
       lgamma);
 
   // Avoid computing -inf - inf, which is nan. If reflection_denom is +/-inf,
   // then it "wins" and the result is +/-inf.
-  Value finite_reflection_denom =
-      rewriter.create<mhlo::IsFiniteOp>(loc, reflection_denom);
-  Value neg_reflection_denom =
-      rewriter.create<mhlo::NegOp>(loc, reflection_denom);
-  lgamma_reflection = rewriter.create<mhlo::SelectOp>(
-      loc, finite_reflection_denom, lgamma_reflection, neg_reflection_denom);
+  Value finiteReflectionDenom =
+      rewriter.create<mhlo::IsFiniteOp>(loc, reflectionDenom);
+  Value negReflectionDenom = rewriter.create<mhlo::NegOp>(loc, reflectionDenom);
+  lgammaReflection = rewriter.create<mhlo::SelectOp>(
+      loc, finiteReflectionDenom, lgammaReflection, negReflectionDenom);
 
   // Select whether or not to rely on the reflection.
-  lgamma = rewriter.create<mhlo::SelectOp>(loc, need_to_reflect,
-                                           lgamma_reflection, lgamma);
+  lgamma = rewriter.create<mhlo::SelectOp>(loc, needToReflect, lgammaReflection,
+                                           lgamma);
 
   // Materialize +/-inf behavior as
   //   lgamma(+/-inf) = +inf.
-  Value x_is_inf = rewriter.create<chlo::IsInfOp>(loc, x);
+  Value xIsInf = rewriter.create<chlo::IsInfOp>(loc, x);
   return rewriter.create<mhlo::SelectOp>(
-      loc, x_is_inf,
+      loc, xIsInf,
       chlo::getConstantLikeInfValue(rewriter, loc, x, /*negative=*/false),
       lgamma);
+}
+
+// Uses `rewriter` to materialize the IR for generating a constant tensor of
+// log(1/2) values with the same shape and type as `operand`, and associates the
+// generated IR to code location `loc`.
+//
+// Since we currently only support generating integer constants, we actually
+// generate the code for -log(2) (which equals log(1/2)).
+// TODO(b/190374484): Remove when mhlo::ConstantLikeOp supports complex types.
+Value materializeLogOneHalf(ConversionPatternRewriter &rewriter, Location loc,
+                            Value operand) {
+  auto resultTy = operand.getType().cast<ShapedType>();
+
+  Value two = rewriter.create<mhlo::ConstOp>(
+      loc, hlo::GetScalarOfType(getElementTypeOrSelf(operand.getType()), 2));
+  Value shape = rewriter.create<shape::ShapeOfOp>(loc, operand);
+  Value twoWithOperandShape = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
+      loc, resultTy, two, shape, rewriter.getI64TensorAttr({}));
+
+  Value logTwo = rewriter.create<mhlo::LogOp>(loc, twoWithOperandShape);
+  return rewriter.create<mhlo::NegOp>(loc, logTwo);
 }
 
 // Express `cosh` as
@@ -652,18 +667,18 @@ Value MaterializeLgamma(ConversionPatternRewriter &rewriter, Location loc,
 // +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
 // correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
 // we deem this acceptable.
-Value MaterializeCoshApproximation(ConversionPatternRewriter &rewriter,
+Value materializeCoshApproximation(ConversionPatternRewriter &rewriter,
                                    Location loc, ValueRange operands) {
   CoshOp::Adaptor transformed(operands);
   Value x = transformed.operand();
 
-  Value log_one_half =
-      rewriter.create<mhlo::LogOp>(loc, getConstantLike(rewriter, loc, 0.5, x));
-  Value exp_add = rewriter.create<mhlo::ExpOp>(
-      loc, rewriter.create<mhlo::AddOp>(loc, x, log_one_half));
-  Value exp_sub = rewriter.create<mhlo::ExpOp>(
-      loc, rewriter.create<mhlo::SubOp>(loc, log_one_half, x));
-  return rewriter.create<mhlo::AddOp>(loc, exp_add, exp_sub);
+  // TODO(b/190374484): Use mhlo::ConstantLikeOp when it supports complex types.
+  Value logOneHalf = materializeLogOneHalf(rewriter, loc, x);
+  Value expAdd = rewriter.create<mhlo::ExpOp>(
+      loc, rewriter.create<mhlo::AddOp>(loc, x, logOneHalf));
+  Value expSub = rewriter.create<mhlo::ExpOp>(
+      loc, rewriter.create<mhlo::SubOp>(loc, logOneHalf, x));
+  return rewriter.create<mhlo::AddOp>(loc, expAdd, expSub);
 }
 
 struct ConvertCoshOp : public OpConversionPattern<CoshOp> {
@@ -672,9 +687,9 @@ struct ConvertCoshOp : public OpConversionPattern<CoshOp> {
       CoshOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     rewriter.replaceOp(
-        op, MaterializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
+        op, materializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
                                   rewriter.getF32Type(),
-                                  &MaterializeCoshApproximation));
+                                  &materializeCoshApproximation));
     return success();
   }
 };
@@ -687,7 +702,7 @@ struct ConvertCoshOp : public OpConversionPattern<CoshOp> {
 //          a(z) = kBaseLanczosCoeff
 //                   + sum(k = 1, n, kLanczosCoefficients[i] / (z + k))
 //          a'(z) = - sum(k = 1, n, kLanczosCoefficients[i] / (z + k) / (z + k))
-Value MaterializeDigamma(ConversionPatternRewriter &rewriter, Location loc,
+Value materializeDigamma(ConversionPatternRewriter &rewriter, Location loc,
                          ValueRange args) {
   // If the input is less than 0.5 use Euler's reflection formula.
   //   digamma(x) = digamma(1 - x) - pi * cot(pi * x)
@@ -696,13 +711,12 @@ Value MaterializeDigamma(ConversionPatternRewriter &rewriter, Location loc,
   //   z = x - 1   otheriwse
   Value x = args.front();
   Value half = getConstantLike(rewriter, loc, 0.5, x);
-  Value need_to_reflect = rewriter.create<mhlo::CompareOp>(
+  Value needToReflect = rewriter.create<mhlo::CompareOp>(
       loc, x, half, mhlo::ComparisonDirection::LT);
-  Value neg_x = rewriter.create<mhlo::NegOp>(loc, x);
+  Value negX = rewriter.create<mhlo::NegOp>(loc, x);
   Value one = getConstantLike(rewriter, loc, 1, x);
-  Value x_sub_one = rewriter.create<mhlo::SubOp>(loc, x, one);
-  Value z =
-      rewriter.create<mhlo::SelectOp>(loc, need_to_reflect, neg_x, x_sub_one);
+  Value xSubOne = rewriter.create<mhlo::SubOp>(loc, x, one);
+  Value z = rewriter.create<mhlo::SelectOp>(loc, needToReflect, negX, xSubOne);
 
   // Materialize
   //   a(z) = kBaseLanczosCoeff
@@ -710,17 +724,17 @@ Value MaterializeDigamma(ConversionPatternRewriter &rewriter, Location loc,
   //   a'(z) = - sum(k = 1, n, kLanczosCoefficients[i] / (z + k) / (z + k))
   Value zero = getConstantLike(rewriter, loc, 0.0, x);
   Value a = getConstantLike(rewriter, loc, kBaseLanczosCoeff, x);
-  Value a_prime = zero;
+  Value aPrime = zero;
   for (int i = 0, end = kLanczosCoefficients.size(); i < end; ++i) {
     Value coeff = getConstantLike(rewriter, loc, kLanczosCoefficients[i], x);
-    Value one_based_index = getConstantLike(rewriter, loc, i + 1, x);
-    Value z_term = rewriter.create<mhlo::AddOp>(loc, z, one_based_index);
-    a_prime = rewriter.create<mhlo::SubOp>(
-        loc, a_prime,
+    Value oneBasedIndex = getConstantLike(rewriter, loc, i + 1, x);
+    Value zTerm = rewriter.create<mhlo::AddOp>(loc, z, oneBasedIndex);
+    aPrime = rewriter.create<mhlo::SubOp>(
+        loc, aPrime,
         rewriter.create<mhlo::DivOp>(
-            loc, coeff, rewriter.create<mhlo::MulOp>(loc, z_term, z_term)));
+            loc, coeff, rewriter.create<mhlo::MulOp>(loc, zTerm, zTerm)));
     a = rewriter.create<mhlo::AddOp>(
-        loc, a, rewriter.create<mhlo::DivOp>(loc, coeff, z_term));
+        loc, a, rewriter.create<mhlo::DivOp>(loc, coeff, zTerm));
   }
 
   // To improve accuracy on platforms with less-precise log implementations,
@@ -729,23 +743,23 @@ Value MaterializeDigamma(ConversionPatternRewriter &rewriter, Location loc,
   // Materialize as
   //   log(t) = log(kLanczosGamma + 1/2 + z)
   //          = log(kLanczosGamma + 1/2) + log1p(z / (kLanczosGamma + 1/2)).
-  Value lanczos_plus_half =
+  Value lanczosPlusHalf =
       getConstantLike(rewriter, loc, kLanczosGamma + 0.5, x);
-  Value t = rewriter.create<mhlo::AddOp>(loc, lanczos_plus_half, z);
-  Value log_term =
+  Value t = rewriter.create<mhlo::AddOp>(loc, lanczosPlusHalf, z);
+  Value logTerm =
       getConstantLike(rewriter, loc, std::log(kLanczosGamma + 0.5), x);
-  Value log1p_term = rewriter.create<mhlo::Log1pOp>(
-      loc, rewriter.create<mhlo::DivOp>(loc, z, lanczos_plus_half));
-  Value log_t = rewriter.create<mhlo::AddOp>(loc, log_term, log1p_term);
+  Value log1pTerm = rewriter.create<mhlo::Log1pOp>(
+      loc, rewriter.create<mhlo::DivOp>(loc, z, lanczosPlusHalf));
+  Value logT = rewriter.create<mhlo::AddOp>(loc, logTerm, log1pTerm);
 
   // Materialize the final result (modulo reflection) as
   //   digamma(z + 1) = log(t(z)) + a'(z) / a(z) - kLanczosGamma / t(z).
-  Value a_prime_div_a = rewriter.create<mhlo::DivOp>(loc, a_prime, a);
-  Value lanczos_gamma_div_t = rewriter.create<mhlo::DivOp>(
+  Value aPrimeDivA = rewriter.create<mhlo::DivOp>(loc, aPrime, a);
+  Value lanczosGammaDivT = rewriter.create<mhlo::DivOp>(
       loc, getConstantLike(rewriter, loc, kLanczosGamma, x), t);
   Value digamma = rewriter.create<mhlo::SubOp>(
-      loc, rewriter.create<mhlo::AddOp>(loc, log_t, a_prime_div_a),
-      lanczos_gamma_div_t);
+      loc, rewriter.create<mhlo::AddOp>(loc, logT, aPrimeDivA),
+      lanczosGammaDivT);
 
   // We need to be careful how we compute cot(pi * input) below: For
   // near-integral arguments, pi * input can lose precision.
@@ -753,7 +767,7 @@ Value MaterializeDigamma(ConversionPatternRewriter &rewriter, Location loc,
   // Input is already known to be less than 0.5 (otherwise we don't have to
   // reflect). We shift values smaller than -0.5 into the range [-0.5, 0.5] to
   // increase precision of pi * x and the resulting cotangent.
-  Value reduced_x = rewriter.create<mhlo::AddOp>(
+  Value reducedX = rewriter.create<mhlo::AddOp>(
       loc, x,
       rewriter.create<mhlo::AbsOp>(
           loc, rewriter.create<mhlo::FloorOp>(
@@ -764,33 +778,33 @@ Value MaterializeDigamma(ConversionPatternRewriter &rewriter, Location loc,
   //   digamma(x) = digamma(1 - x) - pi * cot(pi * x)
   //              = digamma(1 - x) - pi * cos(pi * x) / sin(pi * x)
   Value pi = getConstantLike(rewriter, loc, M_PI, x);
-  Value pi_mul_reduced_x = rewriter.create<mhlo::MulOp>(loc, pi, reduced_x);
-  Value cos = rewriter.create<mhlo::CosOp>(loc, pi_mul_reduced_x);
-  Value sin = rewriter.create<mhlo::SinOp>(loc, pi_mul_reduced_x);
+  Value piMulReducedX = rewriter.create<mhlo::MulOp>(loc, pi, reducedX);
+  Value cos = rewriter.create<mhlo::CosOp>(loc, piMulReducedX);
+  Value sin = rewriter.create<mhlo::SinOp>(loc, piMulReducedX);
   Value reflection = rewriter.create<mhlo::SubOp>(
       loc, digamma,
       rewriter.create<mhlo::DivOp>(
           loc, rewriter.create<mhlo::MulOp>(loc, pi, cos), sin));
 
   // Select whether or not to rely on the reflection.
-  digamma = rewriter.create<mhlo::SelectOp>(loc, need_to_reflect, reflection,
-                                            digamma);
+  digamma =
+      rewriter.create<mhlo::SelectOp>(loc, needToReflect, reflection, digamma);
 
   // Digamma has poles at negative integers and zero; return nan for those.
-  Value is_le_zero = rewriter.create<mhlo::CompareOp>(
+  Value isLeZero = rewriter.create<mhlo::CompareOp>(
       loc, x, zero, mhlo::ComparisonDirection::LE);
-  Value is_int = rewriter.create<mhlo::CompareOp>(
+  Value isInt = rewriter.create<mhlo::CompareOp>(
       loc, x, rewriter.create<mhlo::FloorOp>(loc, x),
       mhlo::ComparisonDirection::EQ);
-  Value is_pole = rewriter.create<mhlo::AndOp>(loc, is_le_zero, is_int);
+  Value isPole = rewriter.create<mhlo::AndOp>(loc, isLeZero, isInt);
   return rewriter.create<mhlo::SelectOp>(
-      loc, is_pole,
+      loc, isPole,
       getConstantLike(rewriter, loc, std::numeric_limits<double>::quiet_NaN(),
                       x),
       digamma);
 }
 
-Value MaterializeZeta(ConversionPatternRewriter &rewriter, Location loc,
+Value materializeZeta(ConversionPatternRewriter &rewriter, Location loc,
                       ValueRange args) {
   assert(args.size() == 2);
   Value x = args[0];
@@ -814,116 +828,115 @@ Value MaterializeZeta(ConversionPatternRewriter &rewriter, Location loc,
   // and a 12 term expansion for the Euler-Maclaurin formula.
   Value a = q;
   Value zero = chlo::getConstantLike(rewriter, loc, 0.0, a);
-  Value neg_power = zero;
-  Value neg_x = rewriter.create<mhlo::NegOp>(loc, x);
-  Value initial_sum = rewriter.create<mhlo::PowOp>(loc, q, neg_x);
+  Value negPower = zero;
+  Value negX = rewriter.create<mhlo::NegOp>(loc, x);
+  Value initialSum = rewriter.create<mhlo::PowOp>(loc, q, negX);
   Value one = chlo::getConstantLike(rewriter, loc, 1.0, a);
   for (int i = 0; i < 9; ++i) {
     a = rewriter.create<mhlo::AddOp>(loc, a, one);
-    neg_power = rewriter.create<mhlo::PowOp>(loc, a, neg_x);
-    initial_sum = rewriter.create<mhlo::AddOp>(loc, initial_sum, neg_power);
+    negPower = rewriter.create<mhlo::PowOp>(loc, a, negX);
+    initialSum = rewriter.create<mhlo::AddOp>(loc, initialSum, negPower);
   }
   a = rewriter.create<mhlo::AddOp>(loc, a, one);
-  neg_power = rewriter.create<mhlo::PowOp>(loc, a, neg_x);
-  Value one_like_x = chlo::getConstantLike(rewriter, loc, 1.0, x);
-  Value x_minus_one = rewriter.create<mhlo::SubOp>(loc, x, one_like_x);
-  Value neg_power_mul_a = rewriter.create<mhlo::MulOp>(loc, neg_power, a);
-  Value neg_power_mul_a_div_x_minus_one =
-      rewriter.create<mhlo::DivOp>(loc, neg_power_mul_a, x_minus_one);
-  Value s = rewriter.create<mhlo::AddOp>(loc, initial_sum,
-                                         neg_power_mul_a_div_x_minus_one);
-  Value a_inverse_square = rewriter.create<mhlo::DivOp>(
+  negPower = rewriter.create<mhlo::PowOp>(loc, a, negX);
+  Value oneLikeX = chlo::getConstantLike(rewriter, loc, 1.0, x);
+  Value xMinusOne = rewriter.create<mhlo::SubOp>(loc, x, oneLikeX);
+  Value negPowerMulA = rewriter.create<mhlo::MulOp>(loc, negPower, a);
+  Value negPowerMulADivXMinusOne =
+      rewriter.create<mhlo::DivOp>(loc, negPowerMulA, xMinusOne);
+  Value s =
+      rewriter.create<mhlo::AddOp>(loc, initialSum, negPowerMulADivXMinusOne);
+  Value aInverseSquare = rewriter.create<mhlo::DivOp>(
       loc, one, rewriter.create<mhlo::MulOp>(loc, a, a));
 
-  Value horner_sum = zero;
+  Value hornerSum = zero;
   Value factor = one;
   // Use Horner's rule for this.
   // Note this differs from Cephes which does a 'naive' polynomial evaluation.
   // Using Horner's rule allows to avoid some NaN's and Infs from happening,
   // resulting in more numerically stable code.
   for (int i = 0; i < 11; ++i) {
-    Value factor_lhs = rewriter.create<mhlo::SubOp>(
+    Value factorLhs = rewriter.create<mhlo::SubOp>(
         loc, x, chlo::getConstantLike(rewriter, loc, 22 - 2 * i, x));
-    Value factor_rhs = rewriter.create<mhlo::SubOp>(
+    Value factorRhs = rewriter.create<mhlo::SubOp>(
         loc, x, chlo::getConstantLike(rewriter, loc, 21 - 2 * i, x));
-    factor = rewriter.create<mhlo::MulOp>(loc, factor_lhs, factor_rhs);
-    horner_sum = rewriter.create<mhlo::MulOp>(
+    factor = rewriter.create<mhlo::MulOp>(loc, factorLhs, factorRhs);
+    hornerSum = rewriter.create<mhlo::MulOp>(
         loc, factor,
         rewriter.create<mhlo::MulOp>(
-            loc, a_inverse_square,
+            loc, aInverseSquare,
             rewriter.create<mhlo::AddOp>(
-                loc, horner_sum,
+                loc, hornerSum,
                 chlo::getConstantLike(rewriter, loc, 1. / kZetaCoeffs[i], a))));
   }
-  Value zero_point_five_like_neg_power =
-      chlo::getConstantLike(rewriter, loc, .5, neg_power);
-  Value x_div_a = rewriter.create<mhlo::DivOp>(loc, x, a);
+  Value zeroPointFiveLikeNegPower =
+      chlo::getConstantLike(rewriter, loc, .5, negPower);
+  Value xDivA = rewriter.create<mhlo::DivOp>(loc, x, a);
   s = rewriter.create<mhlo::AddOp>(
       loc, s,
       rewriter.create<mhlo::MulOp>(
-          loc, neg_power,
+          loc, negPower,
           rewriter.create<mhlo::AddOp>(
-              loc, zero_point_five_like_neg_power,
+              loc, zeroPointFiveLikeNegPower,
               rewriter.create<mhlo::MulOp>(
-                  loc, x_div_a,
+                  loc, xDivA,
                   rewriter.create<mhlo::AddOp>(
                       loc,
                       chlo::getConstantLike(rewriter, loc, 1. / kZetaCoeffs[11],
                                             a),
-                      horner_sum)))));
+                      hornerSum)))));
 
   // Use the initial zeta sum without the correction term coming
   // from Euler-Maclaurin if it is accurate enough.
-  Value abs_neg_power = rewriter.create<mhlo::AbsOp>(loc, neg_power);
-  Value abs_initial_sum = rewriter.create<mhlo::AbsOp>(loc, initial_sum);
+  Value absNegPower = rewriter.create<mhlo::AbsOp>(loc, negPower);
+  Value absInitialSum = rewriter.create<mhlo::AbsOp>(loc, initialSum);
   Value output = rewriter.create<mhlo::SelectOp>(
       loc,
       rewriter.create<mhlo::CompareOp>(
-          loc, abs_neg_power,
+          loc, absNegPower,
           rewriter.create<mhlo::MulOp>(
-              loc, abs_initial_sum,
+              loc, absInitialSum,
               chlo::getConstantLikeSmallestFiniteValue(rewriter, loc, a)),
           mhlo::ComparisonDirection::LT),
-      initial_sum, s);
+      initialSum, s);
 
   // Function is not defined for x < 1.
   Value nan = chlo::getConstantLike(
       rewriter, loc, std::numeric_limits<double>::quiet_NaN(), x);
   output = rewriter.create<mhlo::SelectOp>(
       loc,
-      rewriter.create<mhlo::CompareOp>(loc, x, one_like_x,
+      rewriter.create<mhlo::CompareOp>(loc, x, oneLikeX,
                                        mhlo::ComparisonDirection::LT),
       nan, output);
 
   // For q <= 0, x must be an integer.
-  Value q_le_zero = rewriter.create<mhlo::CompareOp>(
+  Value qLeZero = rewriter.create<mhlo::CompareOp>(
       loc, q, zero, mhlo::ComparisonDirection::LE);
-  Value x_not_int = rewriter.create<mhlo::CompareOp>(
+  Value xNotInt = rewriter.create<mhlo::CompareOp>(
       loc, x, rewriter.create<mhlo::FloorOp>(loc, x),
       mhlo::ComparisonDirection::NE);
-  Value x_domain_error =
-      rewriter.create<mhlo::AndOp>(loc, q_le_zero, x_not_int);
-  output = rewriter.create<mhlo::SelectOp>(loc, x_domain_error, nan, output);
+  Value xDomainError = rewriter.create<mhlo::AndOp>(loc, qLeZero, xNotInt);
+  output = rewriter.create<mhlo::SelectOp>(loc, xDomainError, nan, output);
 
   // For all integer q <= 0, zeta has a pole. The limit is only defined as
   // +inf if x is and even integer.
   Value inf = chlo::getConstantLike(rewriter, loc,
                                     std::numeric_limits<double>::infinity(), x);
-  Value q_is_int = rewriter.create<mhlo::CompareOp>(
+  Value qIsInt = rewriter.create<mhlo::CompareOp>(
       loc, q, rewriter.create<mhlo::FloorOp>(loc, q),
       mhlo::ComparisonDirection::EQ);
-  Value at_pole = rewriter.create<mhlo::AndOp>(loc, q_le_zero, q_is_int);
+  Value atPole = rewriter.create<mhlo::AndOp>(loc, qLeZero, qIsInt);
   Value two = chlo::getConstantLike(rewriter, loc, 2.0, x);
-  Value x_is_int = rewriter.create<mhlo::CompareOp>(
+  Value xIsInt = rewriter.create<mhlo::CompareOp>(
       loc, x, rewriter.create<mhlo::FloorOp>(loc, x),
       mhlo::ComparisonDirection::EQ);
-  Value x_is_even = rewriter.create<mhlo::CompareOp>(
+  Value xIsEven = rewriter.create<mhlo::CompareOp>(
       loc, rewriter.create<mhlo::RemOp>(loc, x, two), zero,
       mhlo::ComparisonDirection::EQ);
-  Value x_is_even_int = rewriter.create<mhlo::AndOp>(loc, x_is_int, x_is_even);
+  Value xIsEvenInt = rewriter.create<mhlo::AndOp>(loc, xIsInt, xIsEven);
   output = rewriter.create<mhlo::SelectOp>(
-      loc, at_pole,
-      rewriter.create<mhlo::SelectOp>(loc, x_is_even_int, inf, nan), output);
+      loc, atPole, rewriter.create<mhlo::SelectOp>(loc, xIsEvenInt, inf, nan),
+      output);
 
   // For x = 1, this is the harmonic series and diverges.
   output = rewriter.create<mhlo::SelectOp>(
@@ -935,7 +948,7 @@ Value MaterializeZeta(ConversionPatternRewriter &rewriter, Location loc,
   return output;
 }
 
-Value MaterializePolygamma(ConversionPatternRewriter &rewriter, Location loc,
+Value materializePolygamma(ConversionPatternRewriter &rewriter, Location loc,
                            ValueRange args) {
   PolygammaOp::Adaptor transformed(args);
   Value n = transformed.n();
@@ -949,29 +962,29 @@ Value MaterializePolygamma(ConversionPatternRewriter &rewriter, Location loc,
       rewriter.create<mhlo::MulOp>(loc, two,
                                    rewriter.create<mhlo::RemOp>(loc, n, two)),
       one);
-  Value n_plus_one = rewriter.create<mhlo::AddOp>(loc, n, one);
-  Value exp_lgamma_np1 = rewriter.create<mhlo::ExpOp>(
-      loc, rewriter.create<chlo::LgammaOp>(loc, n_plus_one));
-  Value zeta = rewriter.create<chlo::ZetaOp>(loc, n_plus_one, x);
+  Value nPlusOne = rewriter.create<mhlo::AddOp>(loc, n, one);
+  Value expLgammaNp1 = rewriter.create<mhlo::ExpOp>(
+      loc, rewriter.create<chlo::LgammaOp>(loc, nPlusOne));
+  Value zeta = rewriter.create<chlo::ZetaOp>(loc, nPlusOne, x);
   Value result = rewriter.create<mhlo::MulOp>(
-      loc, rewriter.create<mhlo::MulOp>(loc, sign, exp_lgamma_np1), zeta);
+      loc, rewriter.create<mhlo::MulOp>(loc, sign, expLgammaNp1), zeta);
 
   // Handle n = 0.
   Value zero = getConstantLike(rewriter, loc, 0.0, x);
-  Value n_eq_zero = rewriter.create<mhlo::CompareOp>(
+  Value nEqZero = rewriter.create<mhlo::CompareOp>(
       loc, n, zero, mhlo::ComparisonDirection::EQ);
   result = rewriter.create<mhlo::SelectOp>(
-      loc, n_eq_zero, rewriter.create<chlo::DigammaOp>(loc, x), result);
+      loc, nEqZero, rewriter.create<chlo::DigammaOp>(loc, x), result);
 
   // Check that n is a natural number. Return nan, otherwise.
-  Value non_int = rewriter.create<mhlo::CompareOp>(
+  Value nonInt = rewriter.create<mhlo::CompareOp>(
       loc, n, rewriter.create<mhlo::FloorOp>(loc, n),
       mhlo::ComparisonDirection::NE);
   Value negative = rewriter.create<mhlo::CompareOp>(
       loc, n, zero, mhlo::ComparisonDirection::LT);
-  Value non_natural = rewriter.create<mhlo::OrOp>(loc, non_int, negative);
+  Value nonNatural = rewriter.create<mhlo::OrOp>(loc, nonInt, negative);
   return rewriter.create<mhlo::SelectOp>(
-      loc, non_natural,
+      loc, nonNatural,
       getConstantLike(rewriter, loc, std::numeric_limits<double>::quiet_NaN(),
                       x),
       result);
@@ -982,10 +995,10 @@ struct ConvertLgammaOp : public OpConversionPattern<LgammaOp> {
   LogicalResult matchAndRewrite(
       LgammaOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    FloatType min_precision_ty = rewriter.getF32Type();
+    FloatType minPrecisionTy = rewriter.getF32Type();
     rewriter.replaceOp(
-        op, MaterializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
-                                  min_precision_ty, &MaterializeLgamma));
+        op, materializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
+                                  minPrecisionTy, &materializeLgamma));
     return success();
   }
 };
@@ -995,66 +1008,64 @@ struct ConvertDigammaOp : public OpConversionPattern<DigammaOp> {
   LogicalResult matchAndRewrite(
       DigammaOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    FloatType min_precision_ty = rewriter.getF32Type();
+    FloatType minPrecisionTy = rewriter.getF32Type();
     rewriter.replaceOp(
-        op, MaterializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
-                                  min_precision_ty, &MaterializeDigamma));
+        op, materializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
+                                  minPrecisionTy, &materializeDigamma));
     return success();
   }
 };
 
-Value MaterializeNextAfter(ConversionPatternRewriter &rewriter, Location loc,
+Value materializeNextAfter(ConversionPatternRewriter &rewriter, Location loc,
                            ValueRange operands) {
   NextAfterOp::Adaptor transformed(operands);
   Value x = transformed.x();
   Value y = transformed.y();
-  auto result_ty = x.getType().cast<ShapedType>();
-  auto bitwidth = result_ty.getElementType().getIntOrFloatBitWidth();
+  auto resultTy = x.getType().cast<ShapedType>();
+  auto bitwidth = resultTy.getElementType().getIntOrFloatBitWidth();
   ImplicitLocOpBuilder b(loc, rewriter);
-  auto int_ty = result_ty.clone(b.getIntegerType(bitwidth));
-  auto x_as_int = b.create<mhlo::BitcastConvertOp>(int_ty, x);
-  auto y_as_int = b.create<mhlo::BitcastConvertOp>(int_ty, y);
+  auto intTy = resultTy.clone(b.getIntegerType(bitwidth));
+  auto xAsInt = b.create<mhlo::BitcastConvertOp>(intTy, x);
+  auto yAsInt = b.create<mhlo::BitcastConvertOp>(intTy, y);
 
   // The result is NaN if either "x" or "y" are NaN.
-  auto x_is_nan =
-      b.create<mhlo::CompareOp>(x, x, mhlo::ComparisonDirection::NE);
-  auto y_is_nan =
-      b.create<mhlo::CompareOp>(y, y, mhlo::ComparisonDirection::NE);
-  auto nan_input = b.create<mhlo::OrOp>(x_is_nan, y_is_nan);
-  auto result_for_nan = getConstantLike(
+  auto xIsNan = b.create<mhlo::CompareOp>(x, x, mhlo::ComparisonDirection::NE);
+  auto yIsNan = b.create<mhlo::CompareOp>(y, y, mhlo::ComparisonDirection::NE);
+  auto nanInput = b.create<mhlo::OrOp>(xIsNan, yIsNan);
+  auto resultForNan = getConstantLike(
       rewriter, loc, std::numeric_limits<double>::quiet_NaN(), x);
-  auto result_for_nan_as_int =
-      b.create<mhlo::BitcastConvertOp>(int_ty, result_for_nan);
+  auto resultForNanAsInt =
+      b.create<mhlo::BitcastConvertOp>(intTy, resultForNan);
 
   // The sign bit is the MSB.
-  const int64_t sign_bit = int64_t{1} << (bitwidth - 1);
+  const int64_t signBit = int64_t{1} << (bitwidth - 1);
   // Discard the sign bit to make the result non-negative.
-  auto sign_mask = getConstantLike(rewriter, loc, sign_bit, x_as_int);
-  auto negated_sign_mask = getConstantLike(rewriter, loc, ~sign_bit, x_as_int);
-  auto x_abs = b.create<mhlo::AndOp>(x_as_int, negated_sign_mask);
-  auto y_abs = b.create<mhlo::AndOp>(y_as_int, negated_sign_mask);
+  auto signMask = getConstantLike(rewriter, loc, signBit, xAsInt);
+  auto negatedSignMask = getConstantLike(rewriter, loc, ~signBit, xAsInt);
+  auto xAbs = b.create<mhlo::AndOp>(xAsInt, negatedSignMask);
+  auto yAbs = b.create<mhlo::AndOp>(yAsInt, negatedSignMask);
 
   // When both "x" and "y" are equal, the result is "y".
-  auto x_and_y_are_equal =
+  auto xAndYAreEqual =
       b.create<mhlo::CompareOp>(x, y, mhlo::ComparisonDirection::EQ);
-  auto result_for_equal = y_as_int;
+  auto resultForEqual = yAsInt;
 
   // When both "x" and "y" are 0, the result is "y". This is a separate case
   // from above because "x" and "y" might have a different sign.
-  auto zero = getConstantLike(rewriter, loc, 0, x_as_int);
-  auto x_is_zero =
-      b.create<mhlo::CompareOp>(x_abs, zero, mhlo::ComparisonDirection::EQ);
-  auto y_is_zero =
-      b.create<mhlo::CompareOp>(y_abs, zero, mhlo::ComparisonDirection::EQ);
-  auto result_for_both_zero = y_as_int;
+  auto zero = getConstantLike(rewriter, loc, 0, xAsInt);
+  auto xIsZero =
+      b.create<mhlo::CompareOp>(xAbs, zero, mhlo::ComparisonDirection::EQ);
+  auto yIsZero =
+      b.create<mhlo::CompareOp>(yAbs, zero, mhlo::ComparisonDirection::EQ);
+  auto resultForBothZero = yAsInt;
 
-  auto x_sign = b.create<mhlo::AndOp>(x_as_int, sign_mask);
-  auto y_sign = b.create<mhlo::AndOp>(y_as_int, sign_mask);
+  auto xSign = b.create<mhlo::AndOp>(xAsInt, signMask);
+  auto ySign = b.create<mhlo::AndOp>(yAsInt, signMask);
 
   // If from == 0 && to != 0, we need to return the smallest subnormal number
   // signed like "to".
-  auto one = getConstantLike(rewriter, loc, 1, x_as_int);
-  auto result_for_x_zero_y_non_zero = b.create<mhlo::OrOp>(y_sign, one);
+  auto one = getConstantLike(rewriter, loc, 1, xAsInt);
+  auto resultForXZeroYNonZero = b.create<mhlo::OrOp>(ySign, one);
 
   // If the sign of "x" and "y" disagree:
   // - we need to make the magnitude of "from" smaller so that it is closer to
@@ -1065,30 +1076,29 @@ Value MaterializeNextAfter(ConversionPatternRewriter &rewriter, Location loc,
   //   smaller.
   // - "x" with a magnitude smaller than "y" means we need to make the magnitude
   //   larger.
-  auto signs_disagree =
-      b.create<mhlo::CompareOp>(x_sign, y_sign, mhlo::ComparisonDirection::NE);
-  auto x_magnitude_larger_than_y =
-      b.create<mhlo::CompareOp>(x_abs, y_abs, mhlo::ComparisonDirection::GT);
-  auto result_has_smaller_magnitude =
-      b.create<mhlo::OrOp>(x_magnitude_larger_than_y, signs_disagree);
-  auto minus_one = getConstantLike(rewriter, loc, -1, x_as_int);
-  auto magnitude_adjustment =
-      b.create<mhlo::SelectOp>(result_has_smaller_magnitude, minus_one, one);
-  Value result = b.create<mhlo::AddOp>(x_as_int, magnitude_adjustment);
+  auto signsDisagree =
+      b.create<mhlo::CompareOp>(xSign, ySign, mhlo::ComparisonDirection::NE);
+  auto xMagnitudeLargerThanY =
+      b.create<mhlo::CompareOp>(xAbs, yAbs, mhlo::ComparisonDirection::GT);
+  auto resultHasSmallerMagnitude =
+      b.create<mhlo::OrOp>(xMagnitudeLargerThanY, signsDisagree);
+  auto minusOne = getConstantLike(rewriter, loc, -1, xAsInt);
+  auto magnitudeAdjustment =
+      b.create<mhlo::SelectOp>(resultHasSmallerMagnitude, minusOne, one);
+  Value result = b.create<mhlo::AddOp>(xAsInt, magnitudeAdjustment);
   // Handle from == +-0.
   result = b.create<mhlo::SelectOp>(
-      x_is_zero,
-      b.create<mhlo::SelectOp>(y_is_zero, result_for_both_zero,
-                               result_for_x_zero_y_non_zero),
+      xIsZero,
+      b.create<mhlo::SelectOp>(yIsZero, resultForBothZero,
+                               resultForXZeroYNonZero),
       result);
   // Handle from == to.
-  result =
-      b.create<mhlo::SelectOp>(x_and_y_are_equal, result_for_equal, result);
+  result = b.create<mhlo::SelectOp>(xAndYAreEqual, resultForEqual, result);
   // Handle isnan(x) || isnan(y).
-  result = b.create<mhlo::SelectOp>(nan_input, result_for_nan_as_int, result);
+  result = b.create<mhlo::SelectOp>(nanInput, resultForNanAsInt, result);
 
   // Cast back to the original type.
-  return b.create<mhlo::BitcastConvertOp>(result_ty, result);
+  return b.create<mhlo::BitcastConvertOp>(resultTy, result);
 }
 
 struct ConvertNextAfterOp : public OpConversionPattern<NextAfterOp> {
@@ -1097,7 +1107,7 @@ struct ConvertNextAfterOp : public OpConversionPattern<NextAfterOp> {
       NextAfterOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     rewriter.replaceOp(
-        op, MaterializeNextAfter(rewriter, op.getLoc(), adaptor.getOperands()));
+        op, materializeNextAfter(rewriter, op.getLoc(), adaptor.getOperands()));
     return success();
   }
 };
@@ -1108,10 +1118,10 @@ struct ConvertPolygammaOp : public OpConversionPattern<PolygammaOp> {
       PolygammaOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    FloatType min_precision_ty = rewriter.getF32Type();
+    FloatType minPrecisionTy = rewriter.getF32Type();
     rewriter.replaceOp(
-        op, MaterializeWithUpcast(rewriter, loc, adaptor.getOperands(),
-                                  min_precision_ty, &MaterializePolygamma));
+        op, materializeWithUpcast(rewriter, loc, adaptor.getOperands(),
+                                  minPrecisionTy, &materializePolygamma));
     return success();
   }
 };
@@ -1126,35 +1136,27 @@ struct ConvertPolygammaOp : public OpConversionPattern<PolygammaOp> {
 // +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
 // correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
 // we deem this acceptable.
-Value MaterializeSinhApproximationForLargeX(ConversionPatternRewriter &rewriter,
+Value materializeSinhApproximationForLargeX(ConversionPatternRewriter &rewriter,
                                             Location loc, ValueRange operands) {
   SinhOp::Adaptor transformed(operands);
   Value x = transformed.operand();
-  auto result_ty = x.getType().cast<ShapedType>();
 
   // TODO(b/190374484): Use mhlo::ConstantLikeOp when it supports complex types.
-  Value two = rewriter.create<mhlo::ConstOp>(
-      loc, hlo::GetScalarOfType(getElementTypeOrSelf(x.getType()), 2));
-  Value shape = rewriter.create<shape::ShapeOfOp>(loc, x);
-  Value two_with_x_shape = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
-      loc, result_ty, two, shape, rewriter.getI64TensorAttr({}));
-
-  Value log_two = rewriter.create<mhlo::LogOp>(loc, two_with_x_shape);
-  Value log_one_half = rewriter.create<mhlo::NegOp>(loc, log_two);
-  Value exp_add = rewriter.create<mhlo::ExpOp>(
-      loc, rewriter.create<mhlo::AddOp>(loc, x, log_one_half));
-  Value exp_sub = rewriter.create<mhlo::ExpOp>(
-      loc, rewriter.create<mhlo::SubOp>(loc, log_one_half, x));
-  return rewriter.create<mhlo::SubOp>(loc, exp_add, exp_sub);
+  Value logOneHalf = materializeLogOneHalf(rewriter, loc, x);
+  Value expAdd = rewriter.create<mhlo::ExpOp>(
+      loc, rewriter.create<mhlo::AddOp>(loc, x, logOneHalf));
+  Value expSub = rewriter.create<mhlo::ExpOp>(
+      loc, rewriter.create<mhlo::SubOp>(loc, logOneHalf, x));
+  return rewriter.create<mhlo::SubOp>(loc, expAdd, expSub);
 }
 
 // Express `sinh` as
 //   sinh(x) = (e^x - e^-x) / 2                     if |x| < 1
 //           = e^(x + log(1/2)) - e^(-x + log(1/2)) otherwise.
-Value MaterializeSinhApproximation(ConversionPatternRewriter &rewriter,
+Value materializeSinhApproximation(ConversionPatternRewriter &rewriter,
                                    Location loc, ValueRange operands) {
-  Value large_sinh_result =
-      MaterializeSinhApproximationForLargeX(rewriter, loc, operands);
+  Value largeSinhResult =
+      materializeSinhApproximationForLargeX(rewriter, loc, operands);
 
   SinhOp::Adaptor transformed(operands);
   Value x = transformed.operand();
@@ -1169,17 +1171,17 @@ Value MaterializeSinhApproximation(ConversionPatternRewriter &rewriter,
   // (expm1(x) + expm1(x) / (expm1(x) + 1)) / 2.
   Value expm1 = rewriter.create<mhlo::Expm1Op>(loc, x);
   Value one = getConstantLike(rewriter, loc, 1.0, x);
-  Value one_half = getConstantLike(rewriter, loc, 0.5, x);
-  Value expm1_plus_one = rewriter.create<mhlo::AddOp>(loc, expm1, one);
-  Value ratio = rewriter.create<mhlo::DivOp>(loc, expm1, expm1_plus_one);
+  Value oneHalf = getConstantLike(rewriter, loc, 0.5, x);
+  Value expm1PlusOne = rewriter.create<mhlo::AddOp>(loc, expm1, one);
+  Value ratio = rewriter.create<mhlo::DivOp>(loc, expm1, expm1PlusOne);
   Value sum = rewriter.create<mhlo::AddOp>(loc, expm1, ratio);
-  Value small_sinh_result = rewriter.create<mhlo::MulOp>(loc, one_half, sum);
+  Value smallSinhResult = rewriter.create<mhlo::MulOp>(loc, oneHalf, sum);
 
-  Value abs_x = rewriter.create<mhlo::AbsOp>(loc, x);
-  Value abs_x_lt_one = rewriter.create<mhlo::CompareOp>(
-      loc, abs_x, one, mhlo::ComparisonDirection::LT);
-  return rewriter.create<mhlo::SelectOp>(loc, abs_x_lt_one, small_sinh_result,
-                                         large_sinh_result);
+  Value absX = rewriter.create<mhlo::AbsOp>(loc, x);
+  Value absXLtOne = rewriter.create<mhlo::CompareOp>(
+      loc, absX, one, mhlo::ComparisonDirection::LT);
+  return rewriter.create<mhlo::SelectOp>(loc, absXLtOne, smallSinhResult,
+                                         largeSinhResult);
 }
 
 struct ConvertSinhOp : public OpConversionPattern<SinhOp> {
@@ -1189,19 +1191,19 @@ struct ConvertSinhOp : public OpConversionPattern<SinhOp> {
       ConversionPatternRewriter &rewriter) const override {
     Value x = adaptor.operand();
     if (x.getType().cast<ShapedType>().getElementType().isa<ComplexType>()) {
-      rewriter.replaceOp(op, MaterializeSinhApproximationForLargeX(
+      rewriter.replaceOp(op, materializeSinhApproximationForLargeX(
                                  rewriter, op.getLoc(), adaptor.getOperands()));
       return success();
     }
     rewriter.replaceOp(
-        op, MaterializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
+        op, materializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
                                   rewriter.getF32Type(),
-                                  &MaterializeSinhApproximation));
+                                  &materializeSinhApproximation));
     return success();
   }
 };
 
-Value MaterializeTan(ConversionPatternRewriter &rewriter, Location loc,
+Value materializeTan(ConversionPatternRewriter &rewriter, Location loc,
                      ValueRange operands) {
   TanOp::Adaptor transformed(operands);
   return rewriter.create<mhlo::DivOp>(
@@ -1215,8 +1217,92 @@ struct ConvertTanOp : public OpConversionPattern<TanOp> {
       TanOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     rewriter.replaceOp(
-        op, MaterializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
-                                  rewriter.getF32Type(), &MaterializeTan));
+        op, materializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
+                                  rewriter.getF32Type(), &materializeTan));
+    return success();
+  }
+};
+
+// Converts chlo.top_k to MHLO iota, sort, and slice ops.
+//
+// chlo.top_k sorts along last dimension of the input tensor and then returns
+// the top K components' values and indices. This is translated into a few
+// ops in MHLO: first generating an integer sequence for the indices,
+// then sort both the original input tensor and the indices togheter, and
+// at last slice out the top K components.
+//
+// For example, for the following IR:
+//
+// %0:2 = "chlo.top_k"(%input, k=8): tensor<16x16xf32> ->
+//                                   (tensor<16x8xf32>, tensor<16x8xi32>)
+//
+// We will get:
+//
+// %1 = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<16x16xi32>
+// %2 = "mhlo.sort"(%input, %1) ({
+// ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>,
+//      %arg3: tensor<i32>, %arg4: tensor<i32>):
+//   %7 = "mhlo.compare"(%arg1, %arg2) {comparison_direction = "GT"}: ...
+//   "mhlo.return"(%7) : (tensor<i1>) -> ()
+// }) {dimension = 1 : i64, is_stable = true} : ...
+// %3 = "mhlo.get_tuple_element"(%2) {index = 0 : i32} : ...
+// %4 = "mhlo.get_tuple_element"(%2) {index = 1 : i32} : ...
+// %5 = "mhlo.slice"(%3) {limit_indices = dense<[16, 8]> : tensor<2xi64>,
+//                           start_indices dense<0> : tensor<2xi64>,
+//                           strides = dense<1> : tensor<2xi64>} :
+//                              (tensor<16x16xf32>) -> tensor<16x8xf32>
+// %6 = "mhlo.slice"(%4) ...
+struct ConvertTopKOp : public OpConversionPattern<TopKOp> {
+  using OpConversionPattern<TopKOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      TopKOp op, OpAdaptor /*adaptor*/,
+      ConversionPatternRewriter &rewriter) const override {
+    // The last dimension of the operand's shape should be known so we can have
+    // clamped end_indices for slices. This is verified by the op.
+    auto operandType = op.operand().getType().cast<RankedTensorType>();
+    int64_t operandRank = operandType.getRank();
+    int64_t lastDimIndex = operandRank - 1;
+    int64_t lastDimSize = operandType.getDimSize(lastDimIndex);
+    assert(lastDimSize != ShapedType::kDynamicSize);
+
+    // Create an Iota op for indices.
+    auto i32Type = rewriter.getIntegerType(32);
+    Type iotaType = RankedTensorType::get(operandType.getShape(), i32Type);
+    Value iotaOp = rewriter.create<mhlo::IotaOp>(
+        op.getLoc(), iotaType, rewriter.getI64IntegerAttr(lastDimIndex));
+
+    // Create the sort op. It takes two inputs, one for the original input, the
+    // other for the indices. Use TOTALORDER comparison type instead of the
+    // default comparison if the element type is of type float.
+    Type elementType = operandType.getElementType();
+    auto sortOp = CreateSortOp(&rewriter, op.getLoc(), {op.operand(), iotaOp},
+                               {elementType, i32Type}, lastDimIndex,
+                               /*is_stable=*/true,
+                               /*direction=*/mhlo::ComparisonDirection::GT);
+
+    // Get the sorted input and index tuple element.
+    auto tupleFirstElement = sortOp.getResult(0);
+    auto tupleSecondElement = sortOp.getResult(1);
+
+    SmallVector<int64_t, 4> beginIndices(operandRank, 0);
+    auto endIndices = llvm::to_vector<4>(operandType.getShape());
+    endIndices.back() = std::min(static_cast<int64_t>(op.k()), lastDimSize);
+    SmallVector<int64_t, 4> strides(operandRank, 1);
+
+    // Get the slice for the top K elements.
+    auto indicesTy = RankedTensorType::get(operandRank, rewriter.getI64Type());
+    Value values = rewriter.create<mhlo::SliceOp>(
+        op.getLoc(), tupleFirstElement,
+        DenseIntElementsAttr::get(indicesTy, beginIndices),
+        DenseIntElementsAttr::get(indicesTy, endIndices),
+        DenseIntElementsAttr::get(indicesTy, strides));
+    Value indices = rewriter.create<mhlo::SliceOp>(
+        op.getLoc(), tupleSecondElement,
+        DenseIntElementsAttr::get(indicesTy, beginIndices),
+        DenseIntElementsAttr::get(indicesTy, endIndices),
+        DenseIntElementsAttr::get(indicesTy, strides));
+
+    rewriter.replaceOp(op, {values, indices});
     return success();
   }
 };
@@ -1227,10 +1313,10 @@ struct ConvertZetaOp : public OpConversionPattern<ZetaOp> {
       ZetaOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    FloatType min_precision_ty = rewriter.getF32Type();
+    FloatType minPrecisionTy = rewriter.getF32Type();
     rewriter.replaceOp(
-        op, MaterializeWithUpcast(rewriter, loc, adaptor.getOperands(),
-                                  min_precision_ty, &MaterializeZeta));
+        op, materializeWithUpcast(rewriter, loc, adaptor.getOperands(),
+                                  minPrecisionTy, &materializeZeta));
     return success();
   }
 };
@@ -1242,78 +1328,76 @@ struct ConvertSelectOp : public OpConversionPattern<BroadcastSelectOp> {
       ConversionPatternRewriter &rewriter) const override {
     // Only support ranked operands.
     Value pred = adaptor.pred();
-    Value on_true = adaptor.on_true();
-    Value on_false = adaptor.on_false();
-    auto pred_type = pred.getType().dyn_cast<RankedTensorType>();
-    auto on_true_type = on_true.getType().dyn_cast<RankedTensorType>();
-    auto on_false_type = on_false.getType().dyn_cast<RankedTensorType>();
-    auto result_type = op.getResult().getType().dyn_cast<RankedTensorType>();
-    if (!pred_type || !on_true_type || !on_false_type || !result_type) {
+    Value onTrue = adaptor.on_true();
+    Value onFalse = adaptor.on_false();
+    auto predType = pred.getType().dyn_cast<RankedTensorType>();
+    auto onTrueType = onTrue.getType().dyn_cast<RankedTensorType>();
+    auto onFalseType = onFalse.getType().dyn_cast<RankedTensorType>();
+    auto resultType = op.getResult().getType().dyn_cast<RankedTensorType>();
+    if (!predType || !onTrueType || !onFalseType || !resultType) {
       return failure();
     }
 
     auto loc = op.getLoc();
 
-    Value pred_shape = rewriter.createOrFold<shape::ShapeOfOp>(loc, pred);
-    Value on_true_shape = rewriter.createOrFold<shape::ShapeOfOp>(loc, on_true);
-    Value on_false_shape =
-        rewriter.createOrFold<shape::ShapeOfOp>(loc, on_false);
-    int64_t result_rank = std::max(
-        {pred_type.getRank(), on_true_type.getRank(), on_false_type.getRank()});
+    Value predShape = rewriter.createOrFold<shape::ShapeOfOp>(loc, pred);
+    Value onTrueShape = rewriter.createOrFold<shape::ShapeOfOp>(loc, onTrue);
+    Value onFalseShape = rewriter.createOrFold<shape::ShapeOfOp>(loc, onFalse);
+    int64_t resultRank = std::max(
+        {predType.getRank(), onTrueType.getRank(), onFalseType.getRank()});
 
-    Value broadcastable_cstr =
-        rewriter.createOrFold<shape::CstrBroadcastableOp>(
-            loc, ValueRange{pred_shape, on_true_shape, on_false_shape});
-    auto assuming_op = rewriter.create<shape::AssumingOp>(
-        loc, ArrayRef<Type>{result_type}, broadcastable_cstr);
+    Value broadcastableCstr = rewriter.createOrFold<shape::CstrBroadcastableOp>(
+        loc, ValueRange{predShape, onTrueShape, onFalseShape});
+    auto assumingOp = rewriter.create<shape::AssumingOp>(
+        loc, ArrayRef<Type>{resultType}, broadcastableCstr);
 
     OpBuilder::InsertionGuard guard(rewriter);
-    rewriter.createBlock(&assuming_op.getDoRegion());
+    rewriter.createBlock(&assumingOp.getDoRegion());
 
-    Value result_extents = rewriter.createOrFold<shape::BroadcastOp>(
+    Value resultExtents = rewriter.createOrFold<shape::BroadcastOp>(
         loc, shape::getExtentTensorType(op.getContext()),
-        ValueRange{pred_shape, on_true_shape, on_false_shape},
+        ValueRange{predShape, onTrueShape, onFalseShape},
         /*error=*/nullptr);
-    auto shape_type =
-        RankedTensorType::get({result_rank}, rewriter.getIndexType());
-    result_extents =
-        rewriter.createOrFold<tensor::CastOp>(loc, shape_type, result_extents);
+    auto shapeType =
+        RankedTensorType::get({resultRank}, rewriter.getIndexType());
+    resultExtents =
+        rewriter.createOrFold<tensor::CastOp>(loc, shapeType, resultExtents);
 
-    Value broadcasted_pred = pred;
+    Value broadcastedPred = pred;
     // Pred has an implicit broadcast for scalars, so use that when convenient.
-    if (pred_type.getRank() > 0) {
-      auto pred_broadcast_dimensions = llvm::to_vector<4>(
-          llvm::seq<int64_t>(result_rank - pred_type.getRank(), result_rank));
-      broadcasted_pred = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
+    if (predType.getRank() > 0) {
+      auto predBroadcastDimensions = llvm::to_vector<4>(
+          llvm::seq<int64_t>(resultRank - predType.getRank(), resultRank));
+      broadcastedPred = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
           loc,
-          RankedTensorType::get(result_type.getShape(),
-                                pred_type.getElementType()),
-          pred, result_extents,
-          rewriter.getI64TensorAttr(pred_broadcast_dimensions));
+          RankedTensorType::get(resultType.getShape(),
+                                predType.getElementType()),
+          pred, resultExtents,
+          rewriter.getI64TensorAttr(predBroadcastDimensions));
     }
-    auto on_true_broadcast_dimensions = llvm::to_vector<4>(
-        llvm::seq<int64_t>(result_rank - on_true_type.getRank(), result_rank));
-    Value broadcasted_on_true = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
+    auto onTrueBroadcastDimensions = llvm::to_vector<4>(
+        llvm::seq<int64_t>(resultRank - onTrueType.getRank(), resultRank));
+    Value broadcastedOnTrue = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
         loc,
-        RankedTensorType::get(result_type.getShape(),
-                              on_true_type.getElementType()),
-        on_true, result_extents,
-        rewriter.getI64TensorAttr(on_true_broadcast_dimensions));
-    auto on_false_broadcast_dimensions = llvm::to_vector<4>(
-        llvm::seq<int64_t>(result_rank - on_false_type.getRank(), result_rank));
-    Value broadcasted_on_false = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
+        RankedTensorType::get(resultType.getShape(),
+                              onTrueType.getElementType()),
+        onTrue, resultExtents,
+        rewriter.getI64TensorAttr(onTrueBroadcastDimensions));
+    auto onFalseBroadcastDimensions = llvm::to_vector<4>(
+        llvm::seq<int64_t>(resultRank - onFalseType.getRank(), resultRank));
+    Value broadcastedOnFalse = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
         loc,
-        RankedTensorType::get(result_type.getShape(),
-                              on_false_type.getElementType()),
-        on_false, result_extents,
-        rewriter.getI64TensorAttr(on_false_broadcast_dimensions));
+        RankedTensorType::get(resultType.getShape(),
+                              onFalseType.getElementType()),
+        onFalse, resultExtents,
+        rewriter.getI64TensorAttr(onFalseBroadcastDimensions));
 
     // And generate the final non-broadcasted ternary op.
-    Value final_result = rewriter.create<mhlo::SelectOp>(
-        loc, result_type, broadcasted_pred, broadcasted_on_true,
-        broadcasted_on_false);
-    rewriter.create<shape::AssumingYieldOp>(loc, final_result);
-    rewriter.replaceOp(op, {assuming_op.getResult(0)});
+    Value finalResult =
+        rewriter.create<mhlo::SelectOp>(loc, resultType, broadcastedPred,
+                                        broadcastedOnTrue, broadcastedOnFalse);
+    rewriter.create<shape::AssumingYieldOp>(loc, finalResult);
+    rewriter.replaceOp(op, {assumingOp.getResult(0)});
     return success();
   }
 };
@@ -1328,23 +1412,23 @@ struct ConvertTrivialNonBroadcastBinaryOp
       ChloOpTy op, typename ChloOpTy::Adaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     // Only rewrite for statically determinable non-broadcasting cases.
-    auto lhs_type =
+    auto lhsType =
         adaptor.lhs().getType().template dyn_cast<RankedTensorType>();
-    auto rhs_type =
+    auto rhsType =
         adaptor.rhs().getType().template dyn_cast<RankedTensorType>();
-    if (!lhs_type || !rhs_type) return failure();
+    if (!lhsType || !rhsType) return failure();
 
     // Requires rank broadcast.
-    if (lhs_type.getRank() != rhs_type.getRank()) return failure();
+    if (lhsType.getRank() != rhsType.getRank()) return failure();
     // Any dynamic dimension may require broadcasting and requires more
     // analysis.
-    if (!lhs_type.hasStaticShape() || !rhs_type.hasStaticShape())
+    if (!lhsType.hasStaticShape() || !rhsType.hasStaticShape())
       return failure();
 
-    for (auto extents : llvm::zip(lhs_type.getShape(), rhs_type.getShape())) {
-      auto lhs_extent = std::get<0>(extents);
-      auto rhs_extent = std::get<1>(extents);
-      if (lhs_extent != rhs_extent) {
+    for (auto extents : llvm::zip(lhsType.getShape(), rhsType.getShape())) {
+      auto lhsExtent = std::get<0>(extents);
+      auto rhsExtent = std::get<1>(extents);
+      if (lhsExtent != rhsExtent) {
         return failure();
       }
     }
@@ -1378,16 +1462,16 @@ struct ConvertRankedDynamicBroadcastBinaryOp
     // Only support ranked operands.
     Value lhs = adaptor.lhs();
     Value rhs = adaptor.rhs();
-    auto lhs_type = lhs.getType().dyn_cast<RankedTensorType>();
-    auto rhs_type = rhs.getType().dyn_cast<RankedTensorType>();
-    auto result_type =
+    auto lhsType = lhs.getType().dyn_cast<RankedTensorType>();
+    auto rhsType = rhs.getType().dyn_cast<RankedTensorType>();
+    auto resultType =
         op.getResult().getType().template dyn_cast<RankedTensorType>();
-    if (!lhs_type || !rhs_type || !result_type) return failure();
+    if (!lhsType || !rhsType || !resultType) return failure();
 
     // Check for "numpy"-style rank broadcast.
-    auto broadcast_dimensions = op.broadcast_dimensions();
-    if (broadcast_dimensions &&
-        !hlo::IsLegalNumpyRankedBroadcast(lhs, rhs, *broadcast_dimensions)) {
+    auto broadcastDimensions = op.broadcast_dimensions();
+    if (broadcastDimensions &&
+        !hlo::IsLegalNumpyRankedBroadcast(lhs, rhs, *broadcastDimensions)) {
       // Note: It is unclear whether the general specification of explicit
       // broadcast_dimensions on binary ops is a feature we want to carry
       // forward. While it can technically be implemented for ranked-dynamic,
@@ -1396,7 +1480,7 @@ struct ConvertRankedDynamicBroadcastBinaryOp
       // implemented versus just falling back on the more standard definition
       // of numpy-like prefix-padding.
       op.emitWarning() << "unsupported non prefix-padded dynamic rank "
-                       << "broadcast_dimensions = " << *broadcast_dimensions;
+                       << "broadcast_dimensions = " << *broadcastDimensions;
       return failure();
     }
 
@@ -1405,18 +1489,18 @@ struct ConvertRankedDynamicBroadcastBinaryOp
 
     // Insert a constraint on the shapes being broadcastable and insert all
     // future code into an assuming block reliant on the constraint.
-    Value lhs_shape = rewriter.create<shape::ShapeOfOp>(loc, lhs);
-    Value rhs_shape = rewriter.create<shape::ShapeOfOp>(loc, rhs);
-    auto broadcastable_cstr =
-        rewriter.create<shape::CstrBroadcastableOp>(loc, lhs_shape, rhs_shape);
-    auto assuming_op = rewriter.create<shape::AssumingOp>(
-        loc, ArrayRef<Type>{result_type}, broadcastable_cstr.getResult());
+    Value lhsShape = rewriter.create<shape::ShapeOfOp>(loc, lhs);
+    Value rhsShape = rewriter.create<shape::ShapeOfOp>(loc, rhs);
+    auto broadcastableCstr =
+        rewriter.create<shape::CstrBroadcastableOp>(loc, lhsShape, rhsShape);
+    auto assumingOp = rewriter.create<shape::AssumingOp>(
+        loc, ArrayRef<Type>{resultType}, broadcastableCstr.getResult());
 
     OpBuilder::InsertionGuard guard(rewriter);
-    rewriter.createBlock(&assuming_op.getDoRegion());
+    rewriter.createBlock(&assumingOp.getDoRegion());
 
-    int64_t result_rank = std::max(lhs_type.getRank(), rhs_type.getRank());
-    Value result_extents =
+    int64_t resultRank = std::max(lhsType.getRank(), rhsType.getRank());
+    Value resultExtents =
         hlo::ComputeBinaryElementwiseBroadcastingResultExtents(loc, lhs, rhs,
                                                                rewriter);
 
@@ -1425,28 +1509,24 @@ struct ConvertRankedDynamicBroadcastBinaryOp
     // because, in the dynamic case, there are many corner cases regarding
     // when it is safe to omit, and some of them require analysis to prove
     // properly.
-    auto lhs_broadcast_dimensions = llvm::to_vector<4>(
-        llvm::seq<int64_t>(result_rank - lhs_type.getRank(), result_rank));
-    Value broadcasted_lhs = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
+    auto lhsBroadcastDimensions = llvm::to_vector<4>(
+        llvm::seq<int64_t>(resultRank - lhsType.getRank(), resultRank));
+    Value broadcastedLhs = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
         loc,
-        RankedTensorType::get(result_type.getShape(),
-                              lhs_type.getElementType()),
-        lhs, result_extents,
-        rewriter.getI64TensorAttr(lhs_broadcast_dimensions));
-    auto rhs_broadcast_dimensions = llvm::to_vector<4>(
-        llvm::seq<int64_t>(result_rank - rhs_type.getRank(), result_rank));
-    Value broadcasted_rhs = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
+        RankedTensorType::get(resultType.getShape(), lhsType.getElementType()),
+        lhs, resultExtents, rewriter.getI64TensorAttr(lhsBroadcastDimensions));
+    auto rhsBroadcastDimensions = llvm::to_vector<4>(
+        llvm::seq<int64_t>(resultRank - rhsType.getRank(), resultRank));
+    Value broadcastedRhs = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
         loc,
-        RankedTensorType::get(result_type.getShape(),
-                              rhs_type.getElementType()),
-        rhs, result_extents,
-        rewriter.getI64TensorAttr(rhs_broadcast_dimensions));
+        RankedTensorType::get(resultType.getShape(), rhsType.getElementType()),
+        rhs, resultExtents, rewriter.getI64TensorAttr(rhsBroadcastDimensions));
 
     // And generate the final non-broadcasted binary op.
-    Value final_result = Adaptor::CreateOp(
-        op, result_type, {broadcasted_lhs, broadcasted_rhs}, rewriter);
-    rewriter.create<shape::AssumingYieldOp>(loc, final_result);
-    rewriter.replaceOp(op, {assuming_op.getResult(0)});
+    Value finalResult = Adaptor::CreateOp(
+        op, resultType, {broadcastedLhs, broadcastedRhs}, rewriter);
+    rewriter.create<shape::AssumingYieldOp>(loc, finalResult);
+    rewriter.replaceOp(op, {assumingOp.getResult(0)});
     return success();
   }
 };
@@ -1462,19 +1542,19 @@ class ConvertDynamicReshapeOp
     auto tensor = op.operand();
     auto shape = op.output_shape();
 
-    auto shape_ty = shape.getType().cast<ShapedType>();
-    auto result_ty = op.getType().cast<ShapedType>();
+    auto shapeTy = shape.getType().cast<ShapedType>();
+    auto resultTy = op.getType().cast<ShapedType>();
 
-    Value input_shape = rewriter.create<shape::ShapeOfOp>(loc, tensor);
-    Value num_els = rewriter.create<shape::NumElementsOp>(loc, input_shape);
-    Value cstr = rewriter.create<mhlo::CstrReshapableOp>(loc, num_els, shape);
+    Value inputShape = rewriter.create<shape::ShapeOfOp>(loc, tensor);
+    Value numEls = rewriter.create<shape::NumElementsOp>(loc, inputShape);
+    Value cstr = rewriter.create<mhlo::CstrReshapableOp>(loc, numEls, shape);
     rewriter.replaceOpWithNewOp<shape::AssumingOp>(
         op, cstr, [&](OpBuilder &b, Location l) {
-          Value computed_shape = b.create<mhlo::ComputeReshapeShapeOp>(
-              l, shape_ty, num_els, shape);
+          Value computedShape =
+              b.create<mhlo::ComputeReshapeShapeOp>(l, shapeTy, numEls, shape);
           SmallVector<Value> result;
-          result.push_back(b.create<mhlo::DynamicReshapeOp>(
-              l, result_ty, tensor, computed_shape));
+          result.push_back(b.create<mhlo::DynamicReshapeOp>(l, resultTy, tensor,
+                                                            computedShape));
           return result;
         });
 
@@ -1514,6 +1594,7 @@ void PopulateDecomposeChloPatterns(MLIRContext *context,
                    ConvertPolygammaOp,
                    ConvertSinhOp,
                    ConvertTanOp,
+                   ConvertTopKOp,
                    ConvertZetaOp>(context);
   // clang-format on
 }

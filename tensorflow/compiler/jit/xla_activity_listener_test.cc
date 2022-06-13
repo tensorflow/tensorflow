@@ -34,17 +34,17 @@ class TestListener : public XlaActivityListener {
   Status Listen(
       const XlaAutoClusteringActivity& auto_clustering_activity) override {
     auto_clustering_activity_ = auto_clustering_activity;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Listen(
       const XlaJitCompilationActivity& jit_compilation_activity) override {
     jit_compilation_activity_ = jit_compilation_activity;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Listen(const XlaOptimizationRemark& optimization_remark) override {
-    return Status::OK();
+    return OkStatus();
   }
 
   ~TestListener() override {}
@@ -64,7 +64,7 @@ class TestListener : public XlaActivityListener {
 class XlaActivityListenerTest : public ::testing::Test {
  protected:
   XlaActivityListenerTest() {
-    auto listener = absl::make_unique<TestListener>();
+    auto listener = std::make_unique<TestListener>();
     listener_ = listener.get();
     RegisterXlaActivityListener(std::move(listener));
   }

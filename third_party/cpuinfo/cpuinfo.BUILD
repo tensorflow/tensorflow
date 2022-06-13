@@ -122,6 +122,7 @@ cc_library(
         ":ios_armv7": COMMON_SRCS + MACH_SRCS + MACH_ARM_SRCS,
         ":ios_arm64": COMMON_SRCS + MACH_SRCS + MACH_ARM_SRCS,
         ":ios_arm64e": COMMON_SRCS + MACH_SRCS + MACH_ARM_SRCS,
+        ":ios_sim_arm64": COMMON_SRCS + MACH_SRCS + MACH_ARM_SRCS,
         ":watchos_x86_64": COMMON_SRCS + X86_SRCS + MACH_SRCS + MACH_X86_SRCS,
         ":watchos_x86": COMMON_SRCS + X86_SRCS + MACH_SRCS + MACH_X86_SRCS,
         ":watchos_armv7k": COMMON_SRCS + MACH_SRCS + MACH_ARM_SRCS,
@@ -300,6 +301,14 @@ config_setting(
     values = {
         "apple_platform_type": "ios",
         "cpu": "ios_arm64",
+    },
+)
+
+config_setting(
+    name = "ios_sim_arm64",
+    values = {
+        "apple_platform_type": "ios",
+        "cpu": "ios_sim_arm64",
     },
 )
 

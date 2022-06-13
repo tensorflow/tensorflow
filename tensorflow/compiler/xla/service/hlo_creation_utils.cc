@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 
+#include <memory>
+
 #include "absl/algorithm/container.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -41,6 +42,11 @@ StatusOr<HloInstruction*> MakeUnaryHlo(HloOpcode opcode,
                       ShapeInference::InferUnaryOpShape(opcode, operand));
   return computation->AddInstruction(
       HloInstruction::CreateUnary(unary_op_shape, opcode, operand));
+}
+
+HloInstruction* MakeCopyHlo(HloInstruction* from, const Shape& to) {
+  return from->AddInstruction(
+      HloInstruction::CreateUnary(to, HloOpcode::kCopy, from));
 }
 
 StatusOr<HloInstruction*> MakeBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
@@ -95,7 +101,7 @@ StatusOr<HloInstruction*> MakeConvolveHlo(
     int64_t batch_group_count, const Window& window,
     const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
-    absl::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type) {
   HloComputation* computation = lhs->parent();
   CHECK_EQ(computation, rhs->parent());
   TF_ASSIGN_OR_RETURN(
@@ -259,6 +265,11 @@ HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type) {
   return hlo;
 }
 
+HloInstruction* MakeBitcastHlo(HloInstruction* hlo, const Shape& shape) {
+  return hlo->parent()->AddInstruction(
+      HloInstruction::CreateBitcast(shape, hlo));
+}
+
 HloInstruction* MakeBitcastConvertToHlo(HloInstruction* hlo,
                                         PrimitiveType type) {
   if (hlo->shape().element_type() == type) {
@@ -286,7 +297,7 @@ StatusOr<HloInstruction*> MakeDotHlo(
     HloInstruction* lhs, HloInstruction* rhs,
     const DotDimensionNumbers& dim_numbers,
     const PrecisionConfig& precision_config,
-    absl::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type) {
   HloComputation* computation = lhs->parent();
   CHECK_EQ(computation, rhs->parent());
   TF_ASSIGN_OR_RETURN(
@@ -323,11 +334,7 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
                                         absl::Span<const int64_t> dimensions,
                                         HloComputation* reduce_computation) {
   auto scalar_shape = ShapeUtil::MakeShape(operand->shape().element_type(), {});
-  auto result_shape = ShapeUtil::FilterDimensions(
-      [&](const int64_t dim) {
-        return !absl::c_linear_search(dimensions, dim);
-      },
-      operand->shape());
+  auto result_shape = ShapeUtil::DeleteDimensions(dimensions, operand->shape());
 
   return operand->parent()->AddInstruction(HloInstruction::CreateReduce(
       result_shape, operand, init_value, dimensions, reduce_computation));

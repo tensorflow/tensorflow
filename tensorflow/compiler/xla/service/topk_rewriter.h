@@ -37,7 +37,7 @@ class TopkRewriter : public HloModulePass {
 
  protected:
   // Check if the sort instruction is in TopK.
-  absl::optional<int64_t> SortIsInTopK(HloInstruction* inst);
+  std::optional<int64_t> SortIsInTopK(HloInstruction* inst);
 
   // Transform to CustomCall.
   StatusOr<bool> TransformToCustomCall(HloModule* module);

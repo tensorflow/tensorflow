@@ -61,7 +61,7 @@ Status ValidateProcessingMode(const ProcessingModeDef& processing_mode) {
         "specify a valid sharding policy. Please add the policy to either "
         "`IsDynamicShard` or `IsStaticShard` (i.e., auto-shard).");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<AutoShardPolicy> ToAutoShardPolicy(

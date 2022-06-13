@@ -22,6 +22,7 @@ limitations under the License.
 #include <deque>
 #include <map>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <tuple>
@@ -34,7 +35,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -51,7 +51,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -64,12 +63,12 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using absl::nullopt;
-using absl::optional;
 using absl::StrAppend;
 using absl::StrCat;
 using absl::StrFormat;
 using absl::StrJoin;
+using std::nullopt;
+using std::optional;
 
 // Used to indicate how we should treat a given HLOInstruction in the graph.
 // should we treat it like normal, hide it, and so on?
@@ -342,18 +341,18 @@ class HloDotDumper {
   std::string Dump();
 
   // Returns a CSS id assigned to the instruction, if that exists.
-  absl::optional<std::string> CssIdForInstruction(const HloInstruction& instr) {
+  std::optional<std::string> CssIdForInstruction(const HloInstruction& instr) {
     if (instr.opcode() == HloOpcode::kFusion) {
       // For fusion we render it as a subcomputation.
       auto it = cluster_ids_.find(instr.called_computations()[0]);
       if (it == cluster_ids_.end()) {
-        return absl::nullopt;
+        return std::nullopt;
       }
       return StrCat("#a_clust", it->second, " path");
     }
     auto it = node_ids_.find(&instr);
     if (it == node_ids_.end()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     return StrCat("#node", it->second, " polygon");
   }
@@ -886,8 +885,14 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
     // collected from profiling tools. Those constants may not have a valid
     // literal.
     if (elem_count.has_value() && *elem_count <= 8 && constant->HasLiteral()) {
-      return StrFormat("%s %s", shape.ToString(),
-                       constant->literal().ToStringWithoutShape());
+      // In addition to our check that the constant doesn't have too many
+      // elements, also check that the stringified constant isn't too long.  For
+      // example, 8 small ints is okay, but 8 long floats takes up a lot of
+      // horizontal space and probably isn't interesting.
+      std::string literal_str = constant->literal().ToStringWithoutShape();
+      if (literal_str.size() <= 64) {
+        return StrFormat("%s %s", shape.ToString(), literal_str);
+      }
     }
 
     // Otherwise, print e.g. "%constant.42 (s32[100])".
@@ -1227,7 +1232,7 @@ ExtractCudnnConvBackendConfigProps(const gpu::CudnnConvBackendConfig& config) {
 
 static std::vector<std::pair<std::string, std::string>>
 ExtractGemmBackendConfigProps(const gpu::GemmBackendConfig& config,
-                              const HloInstruction* instr, bool show_strides) {
+                              const HloInstruction* instr) {
   std::vector<std::pair<std::string, std::string>> props;
   if (primitive_util::IsComplexType(instr->shape().element_type())) {
     if (config.alpha_real() != 1 || config.alpha_imag() != 1) {
@@ -1241,13 +1246,6 @@ ExtractGemmBackendConfigProps(const gpu::GemmBackendConfig& config,
   }
   if (config.beta() != 0 && config.beta() != 1) {
     props.emplace_back("beta", StrCat(config.beta()));
-  }
-  if (config.batch_size() > 1) {
-    props.emplace_back("batch_size", StrCat(config.batch_size()));
-  }
-  if (show_strides) {
-    props.emplace_back("lhs_stride", StrCat(config.lhs_stride()));
-    props.emplace_back("rhs_stride", StrCat(config.rhs_stride()));
   }
   props.emplace_back(
       "", absl::StrReplaceAll(
@@ -1279,9 +1277,7 @@ std::string HloDotDumper::GetInstructionNodeBackendConfig(
     if (config.ok()) {
       // gemm strides are generally uninteresting (derived from the instruction
       // shape), so we hide them by default.
-      props = ExtractGemmBackendConfigProps(
-          *config, instr,
-          /*show_strides=*/hlo_render_options_.show_backend_config);
+      props = ExtractGemmBackendConfigProps(*config, instr);
     }
   }
 
@@ -1764,7 +1760,7 @@ namespace {
 struct FusionVisualizerProgress {
   // Creates a frame with a new rendered graph.
   void AddState(absl::string_view dot, absl::string_view explanation,
-                absl::optional<std::string> to_highlight) {
+                std::optional<std::string> to_highlight) {
     if (dot_graphs.empty() || dot_graphs.back() != dot) {
       dot_graphs.push_back(std::string(dot));
     }
@@ -1829,12 +1825,12 @@ static StatusOr<std::string> CompressAndEncode(absl::string_view input) {
 
     Status Append(absl::string_view data) override {
       absl::StrAppend(data_, data);
-      return Status::OK();
+      return OkStatus();
     }
 
-    Status Close() override { return Status::OK(); }
-    Status Flush() override { return Status::OK(); }
-    Status Sync() override { return Status::OK(); }
+    Status Close() override { return OkStatus(); }
+    Status Flush() override { return OkStatus(); }
+    Status Sync() override { return OkStatus(); }
 
    private:
     std::string* data_;
@@ -2097,7 +2093,7 @@ void RegisterFusionState(const HloComputation& computation,
       MakeNodeRadiusAroundFilter(&consumer, kRenderRadius, render_boundary));
   std::string dot_txt = dumper.Dump();
 
-  absl::optional<std::string> producer_to_highlight;
+  std::optional<std::string> producer_to_highlight;
   if (producer) {
     producer_to_highlight = dumper.CssIdForInstruction(*producer);
   }

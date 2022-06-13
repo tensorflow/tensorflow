@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -40,7 +39,7 @@ GpuCodegenTest::CreateNewVerifiedModuleWithFTZ(bool ftz) {
   debug_options.add_xla_disable_hlo_passes("constant_folding");
   config.set_debug_options(debug_options);
 
-  return absl::make_unique<VerifiedHloModule>(
+  return std::make_unique<VerifiedHloModule>(
       TestName(), config, /*verifier_layout_sensitive=*/true,
       /*allow_mixed_precision_in_hlo_verifier=*/false,
       ShapeUtil::ByteSizeOfElements);

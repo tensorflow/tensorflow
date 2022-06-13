@@ -77,14 +77,14 @@ Status FileSystem::IsDirectory(const string& name, TransactionToken* token) {
   FileStatistics stat;
   TF_RETURN_IF_ERROR(Stat(name, &stat));
   if (stat.is_directory) {
-    return Status::OK();
+    return OkStatus();
   }
   return Status(tensorflow::error::FAILED_PRECONDITION, "Not a directory");
 }
 
 Status FileSystem::HasAtomicMove(const string& path, bool* has_atomic_move) {
   *has_atomic_move = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 void FileSystem::FlushCaches(TransactionToken* token) {}
@@ -222,7 +222,7 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname,
       return status;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FileSystem::CopyFile(const string& src, const string& target,
@@ -266,6 +266,34 @@ std::pair<StringPiece, StringPiece> FileSystem::SplitPath(
   StringPiece scheme, host, path;
   ParseURI(uri, &scheme, &host, &path);
 
+  // We have 3 cases of results from `ParseURI`:
+  //
+  //   1. `path` is empty (`uri` is something like http://google.com/)
+  //      Here, we don't have anything to split, so return empty components
+  //
+  //   2. all 3 components are non-empty (`uri` is something like
+  //      http://google.com/path/to/resource)
+  //      Here, all 3 components point to elements inside the same buffer as
+  //      `uri`. In the given example, `scheme` contains `http://`, `host`
+  //      contains `google.com/` and `path` contains `path/to/resource`.
+  //      Since all 3 components point to the same buffer, we can do arithmetic
+  //      such as `host.end() - uri.begin()` because we know for sure that
+  //      `host` starts after `uri`.
+  //
+  //   3. `scheme` and `host` are empty (`uri` is local file, like /etc/passwd)
+  //      Here, we split `path`, but we need to be careful with pointer
+  //      arithmetic. Here we only know that `path` and `uri` represent the
+  //      exact same buffer.
+  //
+  // To summarize, if `path` is empty there is nothing to return, in all other
+  // cases we can do arithmetic involving `path` and `uri` but if
+  // `host`/`scheme` are involved we need to make sure these are not empty.
+
+  // Case 1 above
+  if (path.empty()) {
+    return std::make_pair(StringPiece(), StringPiece());
+  }
+
   size_t pos = path.rfind(this->Separator());
 
   // Our code assumes it is written for linux too many times. So, for windows
@@ -283,18 +311,27 @@ std::pair<StringPiece, StringPiece> FileSystem::SplitPath(
 #endif
 
   // Handle the case with no SEP in 'path'.
-  if (pos == StringPiece::npos)
-    return std::make_pair(StringPiece(uri.begin(), host.end() - uri.begin()),
+  if (pos == StringPiece::npos) {
+    if (host.empty()) {
+      // Case 3 above, `uri` and `path` point to the same thing
+      // We are returning all of the `path` as basename here.
+      return std::make_pair(StringPiece(), path);
+    }
+
+    // Safe to do this arithmetic here, we are in case 2 above
+    return std::make_pair(StringPiece(uri.data(), host.end() - uri.begin()),
                           path);
+  }
 
   // Handle the case with a single leading '/' in 'path'.
-  if (pos == 0)
+  if (pos == 0) {
     return std::make_pair(
-        StringPiece(uri.begin(), path.begin() + 1 - uri.begin()),
+        StringPiece(uri.data(), path.begin() + 1 - uri.begin()),
         StringPiece(path.data() + 1, path.size() - 1));
+  }
 
   return std::make_pair(
-      StringPiece(uri.begin(), path.begin() + pos - uri.begin()),
+      StringPiece(uri.data(), path.begin() + pos - uri.begin()),
       StringPiece(path.data() + pos + 1, path.size() - (pos + 1)));
 }
 
@@ -415,8 +452,8 @@ void FileSystem::ParseURI(StringPiece remaining, StringPiece* scheme,
            .OneLiteral("://")
            .GetResult(&remaining, scheme)) {
     // If there's no scheme, assume the entire string is a path.
-    *scheme = StringPiece(remaining.begin(), 0);
-    *host = StringPiece(remaining.begin(), 0);
+    *scheme = StringPiece();
+    *host = StringPiece();
     *path = remaining;
     return;
   }
@@ -425,7 +462,7 @@ void FileSystem::ParseURI(StringPiece remaining, StringPiece* scheme,
   if (!strings::Scanner(remaining).ScanUntil('/').GetResult(&remaining, host)) {
     // No path, so the rest of the URI is the host.
     *host = remaining;
-    *path = StringPiece(remaining.end(), 0);
+    *path = StringPiece();
     return;
   }
 

@@ -389,3 +389,107 @@ op {
   }
   is_stateful: true
 }
+op {
+  name: "DataServiceDatasetV2"
+  input_arg {
+    name: "dataset_id"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "processing_mode"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "address"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "protocol"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "job_name"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "consumer_index"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "num_consumers"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "max_outstanding_requests"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "iteration_counter"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
+      }
+    }
+  }
+  attr {
+    name: "task_refresh_interval_hint_ms"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "data_transfer_protocol"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "target_workers"
+    type: "string"
+    default_value {
+      s: "AUTO"
+    }
+  }
+  attr {
+    name: "cross_trainer_cache_options"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}

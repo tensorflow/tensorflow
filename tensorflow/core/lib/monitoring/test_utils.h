@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/lib/monitoring/types.h"
 #include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
@@ -61,6 +62,29 @@ class Histogram final {
 
  private:
   HistogramProto histogram_proto_;
+};
+
+// Represents a collected `Percentiles` but with a restricted API. Subtracting
+// two `Percentiles` does not produce a meaningful `Percentiles`, so we only
+// expose a limited API that supports testing the number and sum of the samples.
+class Percentiles final {
+ public:
+  Percentiles() = default;
+  explicit Percentiles(const tensorflow::monitoring::Percentiles& percentiles)
+      : percentiles_(percentiles) {}
+
+  // Returns the number of samples.
+  size_t num() const;
+
+  // Returns the sum of samples.
+  double sum() const;
+
+  // Subtracts the percentiles by `other`. This is used by `CellReader` to
+  // compute the delta of the metrics.
+  Percentiles Subtract(const Percentiles& other) const;
+
+ private:
+  tensorflow::monitoring::Percentiles percentiles_;
 };
 
 }  // namespace testing

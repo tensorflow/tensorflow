@@ -234,7 +234,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -292,11 +291,9 @@ cc_library(
     hdrs = ["prng.h"],
     deps = [
         ":constants",
-        ":math",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "@com_google_absl//absl/base",
     ],
 )
 

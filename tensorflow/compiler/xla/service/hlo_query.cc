@@ -68,9 +68,8 @@ bool AllOperandsAreConstants(const HloInstruction& instruction) {
   return true;
 }
 
-HloInstruction* GetMatchingOperand(
-    const std::function<bool(const HloInstruction*)>& matcher,
-    HloInstruction* instruction) {
+HloInstruction* GetMatchingOperand(const HloPredicate& matcher,
+                                   HloInstruction* instruction) {
   for (HloInstruction* op : instruction->operands()) {
     if (matcher(op)) {
       return op;
@@ -79,10 +78,10 @@ HloInstruction* GetMatchingOperand(
   return nullptr;
 }
 
-bool MatchBinaryInstructionOperand(
-    const std::function<bool(const HloInstruction*)>& matcher,
-    HloInstruction* instruction, HloInstruction** matching_operand,
-    HloInstruction** other_operand) {
+bool MatchBinaryInstructionOperand(const HloPredicate& matcher,
+                                   HloInstruction* instruction,
+                                   HloInstruction** matching_operand,
+                                   HloInstruction** other_operand) {
   CHECK_EQ(instruction->operand_count(), 2);
   if (matcher(instruction->operand(0))) {
     *matching_operand = instruction->mutable_operand(0);

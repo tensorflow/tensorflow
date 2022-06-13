@@ -17,7 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/dynamic_annotations.h"
-#include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/custom_call_status.h"
@@ -73,6 +73,15 @@ void CustomCallFail(float*, float** in, XlaCustomCallStatus* status) {
   XlaCustomCallStatusSetFailure(status, msg.data(), msg.length());
 }
 
+void CustomCallFailWithBackendConfigStr(float*, float**, const char* opaque,
+                                        size_t opaque_len,
+                                        XlaCustomCallStatus* status) {
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(opaque, opaque_len);
+  auto msg = absl::StrFormat("Fail with raw backend config str: %s.",
+                             absl::string_view(opaque, opaque_len));
+  XlaCustomCallStatusSetFailure(status, msg.data(), msg.length());
+}
+
 }  // namespace
 
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R0F32Add2);
@@ -81,9 +90,12 @@ XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(Add1ToValues);
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(F32TupleSwap);
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R0F32Add2Succeed);
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(CustomCallFail);
+XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(CustomCallFailWithBackendConfigStr);
 
 namespace xla {
 namespace {
+
+using ::testing::HasSubstr;
 
 class CustomCallTest : public HloTestBase {
  protected:
@@ -297,7 +309,27 @@ XLA_TEST_F(CustomCallTest, TransitiveCustomCallReportsFirstFailure) {
 
   auto status = Execute(std::move(module), {}).status();
   EXPECT_EQ(status.code(), tensorflow::error::Code::INTERNAL);
-  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Failed: 1.0"));
+  EXPECT_THAT(status.error_message(), HasSubstr("Failed: 1.0"));
+}
+
+XLA_TEST_F(CustomCallTest, FillStatusMsgWithBackendConfigStr) {
+  const char* const kModuleStr = R"(
+    HloModule m
+    ENTRY test {
+      c0 = f32[] constant(1.0)
+      ROOT dummy-result = f32[] custom-call(f32[] %c0),
+                                custom_call_target="CustomCallFailWithBackendConfigStr",
+                                backend_config="foo",
+                                api_version=API_VERSION_STATUS_RETURNING_UNIFIED
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  auto status = Execute(std::move(module), {}).status();
+  EXPECT_EQ(status.code(), tensorflow::error::Code::INTERNAL);
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Fail with raw backend config str: foo"));
 }
 
 class CustomCallClientAPITest : public ClientLibraryTestBase {};

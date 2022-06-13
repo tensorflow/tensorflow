@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
 
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -115,7 +115,7 @@ StatusOr<HloInstruction*> AllToAllDecomposer::ExpandInstruction(
   HloInstruction* new_all_to_all =
       all_to_all->parent()->AddInstruction(HloInstruction::CreateAllToAll(
           all_to_all_shape, slices, all_to_all->replica_groups(), false,
-          all_to_all->channel_id(), absl::nullopt));
+          all_to_all->channel_id(), std::nullopt));
   std::vector<HloInstruction*> gtes;
   gtes.reserve(all_to_all_group_size);
   for (int64_t i = 0; i < all_to_all_group_size; ++i) {

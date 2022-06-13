@@ -59,7 +59,7 @@ class MetadataCollector : public ProfilerInterface {
       xla::XlaDebugInfoManager::Get()->StartTracing();
       trace_active_ = true;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Stop() override {
@@ -67,7 +67,7 @@ class MetadataCollector : public ProfilerInterface {
       xla::XlaDebugInfoManager::Get()->StopTracing(&debug_info_);
       trace_active_ = false;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CollectData(XSpace* space) override {
@@ -76,17 +76,21 @@ class MetadataCollector : public ProfilerInterface {
       XPlaneBuilder xplane(plane);
       const XStatMetadata& hlo_proto_stat =
           *xplane.GetOrCreateStatMetadata(kHloProto);
-      for (auto& p : debug_info_) {
-        xplane.AddStatValue(hlo_proto_stat, *p.hlo_proto);
-        p.hlo_proto.reset();
+      for (auto& hlo_proto : debug_info_) {
+        XEventMetadata* metadata =
+            xplane.GetOrCreateEventMetadata(hlo_proto->hlo_module().id());
+        metadata->set_name(hlo_proto->hlo_module().name());
+        XStatsBuilder<XEventMetadata> stats(metadata, &xplane);
+        stats.AddStatValue(hlo_proto_stat, *hlo_proto);
+        hlo_proto.reset();
       }
       debug_info_.clear();
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
-  std::vector<xla::XlaModuleDebugInfo> debug_info_;
+  std::vector<std::unique_ptr<xla::HloProto>> debug_info_;
   bool trace_active_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(MetadataCollector);

@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 
@@ -119,7 +118,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleSetDimensionSize(HloInstruction* set_size) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
 
-  Status FinishVisit(HloInstruction*) override { return Status::OK(); }
+  Status FinishVisit(HloInstruction*) override { return OkStatus(); }
 
  protected:
   // Check the instruction's shape against the shape given by ShapeInference
@@ -261,7 +260,7 @@ class DefaultVerifierMetadata : public TargetVerifierMetadata {
   // being a DfsHloVisitor, is stateful. We want a clean object for each run of
   // the verifier.
   std::unique_ptr<ShapeVerifier> GetVerifier() const override {
-    return absl::make_unique<ShapeVerifier>(
+    return std::make_unique<ShapeVerifier>(
         layout_sensitive_, allow_mixed_precision_, shape_size_function_);
   }
 
@@ -278,11 +277,10 @@ class HloVerifier : public HloModulePass {
  public:
   explicit HloVerifier(
       bool layout_sensitive, bool allow_mixed_precision,
-      std::function<bool(const HloInstruction*)>
-          instruction_can_change_layout_func = {},
+      HloPredicate instruction_can_change_layout_func = {},
       std::function<int64_t(const Shape&)> shape_size_func =
           [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); })
-      : target_metadata_(absl::make_unique<DefaultVerifierMetadata>(
+      : target_metadata_(std::make_unique<DefaultVerifierMetadata>(
             layout_sensitive, allow_mixed_precision, shape_size_func)),
         instruction_can_change_layout_func_(
             std::move(instruction_can_change_layout_func)),
@@ -305,8 +303,7 @@ class HloVerifier : public HloModulePass {
   std::unique_ptr<TargetVerifierMetadata> target_metadata_;
 
   // Determines whether an instruction can change layouts.
-  std::function<bool(const HloInstruction*)>
-      instruction_can_change_layout_func_;
+  HloPredicate instruction_can_change_layout_func_;
 
   // The hlo pass when the verifier is invoked.
   std::string context_;

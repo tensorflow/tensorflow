@@ -19,6 +19,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <string>
@@ -540,15 +541,15 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
 // statistically, if we will find this is necessary.
 class BitChunks {
  public:
-  class iterator
-      : public std::iterator<std::input_iterator_tag,  // iterator_category
-                             uint64_t,                 // value_type
-                             uint64_t,                 // difference_type
-                             const uint64_t*,          // pointer
-                             uint64_t                  // reference
-                             > {
+  class iterator {
    public:
-    iterator() {}
+    using iterator_category = std::input_iterator_tag;
+    using value_type = uint64_t;
+    using difference_type = uint64_t;
+    using pointer = const uint64_t*;
+    using reference = uint64_t;
+
+    iterator() = default;
 
     explicit iterator(const BitChunks* bit_chunks)
         : bit_chunks_(bit_chunks), next_bit_chunk_(bit_chunks->start_) {}
@@ -658,16 +659,16 @@ void AppendStringifyNum(std::string* s, T x) {
 // iterator for retrieving all the represented floating point values.
 class FpValues {
  public:
-  static constexpr uint kTotalBitChunks = 3;
+  static constexpr int kTotalBitChunks = 3;
 
-  class iterator
-      : public std::iterator<std::input_iterator_tag,  // iterator_category
-                             uint64_t,                 // value_type
-                             uint64_t,                 // difference_type
-                             const uint64_t*,          // pointer
-                             uint64_t                  // reference
-                             > {
+  class iterator {
    public:
+    using iterator_category = std::input_iterator_tag;
+    using value_type = uint64_t;
+    using difference_type = uint64_t;
+    using pointer = const uint64_t*;
+    using reference = uint64_t;
+
     explicit iterator(const FpValues* fp_values) : fp_values_(fp_values) {
       for (int i = 0; i < FpValues::kTotalBitChunks; ++i) {
         iters_[i] = BitChunks::iterator(&fp_values->GetBitChunks(i));

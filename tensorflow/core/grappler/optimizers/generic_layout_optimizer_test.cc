@@ -166,7 +166,7 @@ class GenericLayoutOptimizerTest : public GrapplerTest {
 
     if (gpu_available) {
       virtual_cluster_ =
-          absl::make_unique<SingleMachine>(/*timeout_s=*/10, 1, 1);
+          std::make_unique<SingleMachine>(/*timeout_s=*/10, 1, 1);
     } else {
       DeviceProperties cpu_device;
       cpu_device.set_type("CPU");

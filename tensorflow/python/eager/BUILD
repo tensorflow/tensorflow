@@ -89,7 +89,6 @@ tf_python_pybind_extension(
     name = "pywrap_tensor_test_util",
     testonly = True,
     srcs = ["pywrap_tensor_test_util.cc"],
-    module_name = "pywrap_tensor_test_util",
     deps = [
         ":pywrap_tfe_lib",
         "//tensorflow/c:tf_status_helper",
@@ -226,7 +225,6 @@ tf_python_pybind_extension(
     name = "custom_device_testutil",
     testonly = True,
     srcs = ["custom_device_testutil.cc"],
-    module_name = "custom_device_testutil",
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:tf_status_helper",
@@ -673,12 +671,17 @@ py_library(
     srcs = ["function_saved_model_utils.py"],
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python/trackable:asset",
+        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/trackable:resource",
+    ],
 )
 
 pybind_extension(
     name = "_concrete_function",
     srcs = ["function.cc"],
-    module_name = "_concrete_function",
     deps = [
         "//third_party/python_runtime:headers",
         "@pybind11",
@@ -948,7 +951,7 @@ py_library(
         "//tensorflow/python:while_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python/distribute/parallel_device",
         "//tensorflow/python/profiler:trace",
-        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/trackable:base",
     ],
 )
 
@@ -1079,7 +1082,7 @@ py_library(
         "//tensorflow/python:template",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/saved_model:nested_structure_coder",
-        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/trackable:base",
     ],
 )
 

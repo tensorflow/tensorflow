@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
@@ -35,29 +37,15 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // This pass outlines the cond/body region of the TFL WhileOp into functions and
 // replaces the regions with calls to these outlined functions.
-class WhileOutlinePass
-    : public mlir::PassWrapper<WhileOutlinePass, OperationPass<ModuleOp>> {
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<TF::TensorFlowDialect>();
-  }
-
+class WhileOutlinePass : public WhileOutlinePassBase<WhileOutlinePass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(WhileOutlinePass)
-
   explicit WhileOutlinePass() {}
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-while-loop-outline";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Hoist while op regions into functions";
-  }
 
  private:
   void runOnOperation() override;
@@ -215,7 +203,7 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
   auto old_extern_values_size = extern_values.size();
 
   llvm::SmallVector<Region*, 2> regions{&while_op.cond(), &while_op.body()};
-  for (auto it : llvm::enumerate(regions)) {
+  for (const auto& it : llvm::enumerate(regions)) {
     llvm::SetVector<Value> region_extern_values;
     getUsedValuesDefinedAbove(*it.value(), region_extern_values);
 
@@ -298,8 +286,6 @@ void WhileOutlinePass::runOnOperation() {
 std::unique_ptr<OperationPass<ModuleOp>> CreateWhileOutlinePass() {
   return std::make_unique<WhileOutlinePass>();
 }
-
-static PassRegistration<WhileOutlinePass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

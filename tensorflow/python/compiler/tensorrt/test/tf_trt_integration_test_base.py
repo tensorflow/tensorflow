@@ -50,7 +50,8 @@ from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils
 from tensorflow.python.tools import saved_model_utils
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
+from tensorflow.python.trackable import resource
 from tensorflow.python.util import nest
 
 TfTrtIntegrationTestParams = collections.namedtuple(
@@ -154,6 +155,15 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
     if not is_tensorrt_enabled():
       self.skipTest("Test requires TensorRT")
+
+  def tearDown(self):
+    """Making sure to clean artifact."""
+    idx = 0
+    while gc.garbage:
+      gc.collect()  # Force GC to destroy the TRT engine cache.
+      idx += 1
+      if idx >= 10:  # After 10 iterations, break to avoid infinite collect.
+        break
 
   def _GetTensorSpec(self, shape, mask, dtype, name):
     # Set dimension i to None if mask[i] == False
@@ -521,6 +531,13 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
                                       conversion_params)
     converter.convert()
 
+    if run_params.is_v2:
+      try:
+        line_length = max(160, os.get_terminal_size().columns)
+      except OSError:
+        line_length = 160
+      converter.summary(line_length=line_length, detailed=True)
+
     if run_params.dynamic_shape and self._ShouldConverterBuild(run_params):
       logging.info("Using build mode")
 
@@ -577,7 +594,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   # The input value can be a string or a sequence of string.
   def _RemoveGraphSequenceNumberImpl(self, value, expecting_prefix):
     if isinstance(value, str):
-      match = re.search(r"TRTEngineOp_\d+_", value)
+      match = re.search(r"TRTEngineOp_\d{3,}_", value)
       has_prefix = match and value.startswith(match.group(0))
       assert (not expecting_prefix) or has_prefix
       if has_prefix:
@@ -859,7 +876,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     all_op_names = [node.name for node in gdef_to_verify.node]
     trt_op_names = []
     for func in gdef_to_verify.library.function:
-      if not re.search(r"TRTEngineOp_\d+_\d+_native_segment",
+      if not re.search(r"TRTEngineOp_\d{3,}_\d{3,}_native_segment",
                        func.signature.name):
         for node in func.node_def:
           all_op_names.append(node.name)
@@ -950,7 +967,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def _MakeSavedModelV2(self, run_params):
     params = self._GetParamsCached()
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.run = def_function.function(
         params.graph_fn, input_signature=params.input_specs)
     saved_model_dir = self._GetSavedModelDir(run_params, GraphState.ORIGINAL)

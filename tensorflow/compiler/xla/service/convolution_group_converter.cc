@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -47,7 +46,7 @@ class ConvolutionVisitor : public DfsHloVisitorWithDefault {
  public:
   // Default visitor action is to do nothing and return OK.
   Status DefaultAction(HloInstruction* /*hlo_instruction*/) override {
-    return Status::OK();
+    return OkStatus();
   }
 
   Status HandleConvolution(HloInstruction* convolution) override;
@@ -210,7 +209,7 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
 
   if (batch_group_count == 1 ||
       (should_expand_ && !should_expand_(convolution))) {
-    return Status::OK();
+    return OkStatus();
   }
 
   VLOG(2) << "Dealing with batch_group_count " << batch_group_count
@@ -316,7 +315,7 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
         convolution,
         MakeReshapeHlo(convolution->shape(), new_convolution).ValueOrDie()));
     changed_ = true;
-    return Status::OK();
+    return OkStatus();
   }
 
   VLOG(2) << "is_cost_viable_ " << is_cost_viable_(convolution);
@@ -416,7 +415,7 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
     changed_ = true;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
@@ -430,7 +429,7 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
 
   int64_t group_count = convolution->feature_group_count();
   if (group_count == 1 || (should_expand_ && !should_expand_(convolution))) {
-    return Status::OK();
+    return OkStatus();
   }
 
   changed_ = true;
@@ -456,7 +455,7 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
     // inherently, then no filter expansion is needed.
     if (!filter_expansion_ && depthwise_separable) {
       changed_ = false;
-      return Status::OK();
+      return OkStatus();
     }
     VLOG(2) << "is_cost_viable_ " << is_cost_viable_(convolution);
     // We want to repeat 'filter' in the 'input_feature_dim' dimension

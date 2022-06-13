@@ -258,20 +258,19 @@ static tfrt::AsyncValueRef<tfrt::Chain> CclCollectivePermute(
           ? current_logical_id->replica_id
           : current_logical_id->computation_id;
 
-  NcclCollectivePermuteConfig config;
+  NcclCollectivePermuteConfig::IdToSourceTargetMap id_to_source_target;
   for (int i = 0; i < source_peers_attr.GetNumElements(); ++i) {
     int64_t source = source_peers_attr.GetValue<int64_t>()[i];
     int64_t target = target_peers_attr.GetValue<int64_t>()[i];
 
-    config.id_to_source_target.insert({target, {}}).first->second.source =
-        source;
-    config.id_to_source_target.insert({source, {}}).first->second.target =
-        target;
+    id_to_source_target.insert({target, {}}).first->second.source = source;
+    id_to_source_target.insert({source, {}}).first->second.target = target;
   }
   NcclCollectivePermuteConfig::SourceTargetMapEntry source_target =
-      config.GetSourceTarget(current_id);
-  const absl::optional<int64_t>& source_peer = source_target.source;
-  const absl::optional<int64_t>& target_peer = source_target.target;
+      NcclCollectivePermuteConfig::GetSourceTarget(id_to_source_target,
+                                                   current_id);
+  const std::optional<int64_t>& source_peer = source_target.source;
+  const std::optional<int64_t>& target_peer = source_target.target;
 
   auto type = static_cast<ncclDataType_t>(*data_type_attr);
   auto width = tfrt::gpu::wrapper::GetCclDataTypeSizeBytes(type);

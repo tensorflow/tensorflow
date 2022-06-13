@@ -32,7 +32,7 @@ limitations under the License.
 #include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project

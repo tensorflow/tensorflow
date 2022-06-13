@@ -52,7 +52,7 @@ Status SetDefaultTracingEngine(const char* name) {
   auto entry = GetFactories().find(name);
   if (entry != GetFactories().end()) {
     default_factory = GetFactories().find(name)->second;
-    return Status::OK();
+    return OkStatus();
   }
   string msg = absl::StrCat(
       "No tracing engine factory has been registered with the key '", name,

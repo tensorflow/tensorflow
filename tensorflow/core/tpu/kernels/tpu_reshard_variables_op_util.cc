@@ -68,7 +68,7 @@ Status CheckIsValidKey(const Tensor& key) {
         "new_format_key argument to TPUReshardVariables must be DT_STRING "
         "type");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool IsDefaultKey(const Tensor& key) { return key.vec<tstring>()(0).empty(); }
@@ -91,7 +91,7 @@ Status GetComputationCacheEntry(
   TF_RETURN_IF_ERROR(
       proto_lookup->Lookup(key.vec<tstring>()(0), entry, fetch_target));
   *rendezvous_key_base = key.vec<tstring>()(1);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Builds an InputBuffers object that describes the inputs to the computation.
@@ -138,7 +138,7 @@ xla::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
       }
     }
 
-    return Status::OK();
+    return OkStatus();
   };
 
   for (int i = 0; i < variables.size(); ++i) {
@@ -196,7 +196,7 @@ xla::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
                                tensor.RefCountIsOne());
       xla_tensor->WaitForDefinitionEventOnStream(stream);
     }
-    return Status::OK();
+    return OkStatus();
   };
 
   for (int i = 0; i < var_list.size(); ++i) {

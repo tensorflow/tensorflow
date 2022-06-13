@@ -33,14 +33,14 @@ class ReductionSplitterVisitor : public DfsHloRewriteVisitor {
     // Reductions with contiguous dimensions are lowered to efficient code. No
     // need to split such ops.
     if (IsReductionFromOrToContiguousDimensions(*reduce)) {
-      return Status::OK();
+      return OkStatus();
     }
     if (reduce->dimensions().size() < 2) {
-      return Status::OK();
+      return OkStatus();
     }
     if (!reduce->shape().IsArray()) {
       // TODO(cheshire): Handle variadic reduction.
-      return Status::OK();
+      return OkStatus();
     }
 
     HloInstruction *operand = reduce->mutable_operand(0);
@@ -70,7 +70,7 @@ class ReductionSplitterVisitor : public DfsHloRewriteVisitor {
     }
     // TODO(tjoerg): Run microbenchmarks to tune this threshold.
     if (max_shape_dim < 128) {
-      return Status::OK();
+      return OkStatus();
     }
 
     // Split the reduction into a pre-reduction and a final reduction.

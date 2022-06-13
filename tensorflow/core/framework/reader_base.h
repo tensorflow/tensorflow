@@ -64,8 +64,8 @@ class ReaderBase : public ReaderInterface {
                                 bool* at_end);
 
   // Called when work starts / finishes.
-  virtual Status OnWorkStartedLocked() { return Status::OK(); }
-  virtual Status OnWorkFinishedLocked() { return Status::OK(); }
+  virtual Status OnWorkStartedLocked() { return OkStatus(); }
+  virtual Status OnWorkFinishedLocked() { return OkStatus(); }
 
   // Called to reset the Reader to a newly constructed state.
   virtual Status ResetLocked();

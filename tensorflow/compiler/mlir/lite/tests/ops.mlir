@@ -133,6 +133,14 @@ func.func @testLog(tensor<? x f32>) -> tensor<? x f32> {
   func.return %0 : tensor<? x f32>
 }
 
+// CHECK-LABEL: testLogStaticShapeInputAndDynamicShapeOutput
+func.func @testLogStaticShapeInputAndDynamicShapeOutput(tensor<8 x f32>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<8 x f32>):
+  // CHECK: "tfl.log"(%arg0)
+  %0 = "tfl.log"(%arg0): (tensor<8 x f32>) -> tensor<? x f32>
+  func.return %0 : tensor<? x f32>
+}
+
 // CHECK-LABEL: testNeg
 func.func @testNeg(tensor<? x f32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<? x f32>):
@@ -2899,7 +2907,7 @@ func.func @select_v2_with_dynamic_shape_from_broadcast_args(%arg0: tensor<8x7x6x
 func.func @select_v2_with_dynamic_shape_not_from_broadcast_args(%arg0: tensor<8x7x6x5x?x3x2x1xi1>, %arg1: tensor<8x7x6x5x?x3x2x1xf32>, %arg2: tensor<?x3x2x1xf32>, %arg3: tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32> {
   %0 = "tfl.broadcast_to"(%arg1, %arg3) : (tensor<8x7x6x5x?x3x2x1xf32>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32>
   %1 = "tfl.broadcast_to"(%arg2, %arg3) : (tensor<?x3x2x1xf32>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32>
-  // expected-error @+1 {{'tfl.select_v2' op failed to verify that operands do not have the same shape or broadcastable shapes within the rank 4}}
+  // expected-error @+1 {{'tfl.select_v2' op failed to verify that operands do not have the same shape or broadcastable shapes within the rank 5}}
   %2 = "tfl.select_v2"(%arg0, %0, %1) : (tensor<8x7x6x5x?x3x2x1xi1>, tensor<8x7x6x5x?x3x2x1xf32>, tensor<8x7x6x5x?x3x2x1xf32>) -> tensor<8x7x6x5x?x3x2x1xf32>
   func.return %2 : tensor<8x7x6x5x?x3x2x1xf32>
 }

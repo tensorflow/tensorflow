@@ -23,7 +23,7 @@ namespace DsoLoader {
 // Skip check when GPU libraries are statically linked.
 port::Status MaybeTryDlopenGPULibraries() {
   LOG(INFO) << "GPU libraries are statically linked, skip dlopen check.";
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 }  // namespace DsoLoader
 }  // namespace internal

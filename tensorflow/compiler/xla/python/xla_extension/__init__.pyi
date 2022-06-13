@@ -162,6 +162,8 @@ class HloPrintOptions:
 class HloModule:
   spmd_output_sharding: Optional[OpSharding]
   spmd_parameters_shardings: Optional[List[OpSharding]]
+  @property
+  def name(self) -> str: ...
   def to_string(self, options: HloPrintOptions = ...) -> str: ...
   def as_serialized_hlo_module_proto(self)-> bytes: ...
   @staticmethod
@@ -210,6 +212,7 @@ class CompileOptions:
   tuple_arguments: bool
   num_replicas: int
   num_partitions: int
+  profile_version: int
   device_assignment: Optional[DeviceAssignment]
 
 def register_custom_call_target(fn_name: str, capsule: Any, platform: str) -> _Status: ...
@@ -302,13 +305,13 @@ class Device:
   def transfer_to_infeed(self, literal: _LiteralSlice): ...
   def transfer_from_outfeed(self, shape: Shape): ...
   def live_buffers(self) -> List[Buffer]: ...
+  def __getattr__(self, name: str) -> Any: ...
 
 class GpuDevice(Device):
-  device_vendor: str
+  pass
 
 class TpuDevice(Device):
-  coords: Tuple[int, ...]
-  core_on_chip: int
+  pass
 
 class _GpuAllocatorKind(enum.IntEnum):
     DEFAULT: int
@@ -397,7 +400,9 @@ def get_gpu_client(
     asynchronous: bool = ...,
     allocator_config: GpuAllocatorConfig = ...,
     distributed_client: Optional[DistributedRuntimeClient] = ...,
-    node_id: int = ...) -> Client:...
+    node_id: int = ...,
+    allowed_devices: Optional[Any] = ...,
+    platform_name: Optional[str] = ...) -> Client:...
 def get_tpu_client(max_inflight_computations: int = ...) -> Client: ...
 
 class DeviceArrayBase: ...
@@ -490,10 +495,13 @@ class DistributedRuntimeService:
 class DistributedRuntimeClient:
   def connect(self) -> _Status: ...
   def shutdown(self) -> _Status: ...
-
+  def blocking_key_value_get(self, key: str, timeout_in_ms: int) -> _Status: ...
+  def key_value_set(self, key: str, value: str) -> _Status: ...
+  def wait_at_barrier(self, barrier_id: str, timeout_in_ms: int) -> _Status: ...
 def get_distributed_runtime_service(
     address: str,
     num_nodes: int,
+    use_coordination_service: bool = ...,
     heartbeat_interval: Optional[int] = ...,
     max_missing_heartbeats: Optional[int] = ...,
     enumerate_devices_timeout: Optional[int] = ...,
@@ -501,6 +509,7 @@ def get_distributed_runtime_service(
 def get_distributed_runtime_client(
     address: str,
     node_id: int,
+    use_coordination_service: bool = ...,
     rpc_timeout: Optional[int] = ...,
     init_timeout: Optional[int] = ...,
     shutdown_timeout: Optional[int] = ...,

@@ -33,8 +33,8 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 # CHECK: "tf_saved_model.session_initializer"() {initializers = [@[[init:.*]]]} : () -> ()
 
 # CHECK:      func @[[init]]
-# CHECK-NEXT: [[R5:%.*]] = "tf.Const"()
 # CHECK-NEXT: [[R6:%.*]] = "tf.Const"()
+# CHECK-NEXT: [[R5:%.*]] = "tf.Const"() {device = "", value = dense<[1, 2,
 # CHECK-NEXT: [[R7:%.*]] = "tf.HashTableV2"()
 # CHECK-SAME: shared_name = "[[hash_table:.*]]"
 # CHECK-NEXT: "tf.LookupTableImportV2"([[R7]], [[R5]], [[R6]])

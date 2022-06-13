@@ -366,12 +366,12 @@ bool StreamExecutor::GetRnnAlgorithms(
 }
 
 bool StreamExecutor::GetBlasGemmAlgorithms(
-    std::vector<blas::AlgorithmType>* out_algorithms) {
+    Stream* stream, std::vector<blas::AlgorithmType>* out_algorithms) {
   blas::BlasSupport* blas_support = AsBlas();
   if (!blas_support) {
     return false;
   }
-  return blas_support->GetBlasGemmAlgorithms(out_algorithms);
+  return blas_support->GetBlasGemmAlgorithms(stream, out_algorithms);
 }
 
 port::StatusOr<std::unique_ptr<blas::IBlasLtMatmulPlan>>
@@ -899,7 +899,7 @@ bool StreamExecutor::UnregisterTraceListener(TraceListener* listener) {
   return true;
 }
 
-absl::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
+std::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
   return implementation_->GetAllocatorStats();
 }
 
@@ -964,7 +964,7 @@ port::Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
                                   mem.opaque(), device_ordinal);
     executor->Deallocate(&mem);
   }
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::StatusOr<StreamExecutor*>

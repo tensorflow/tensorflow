@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/channel_tracker.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -88,7 +89,7 @@ Status ChannelTracker::RegisterSendInternal(const ChannelHandle& handle) {
         handle.handle());
   }
   channel.has_sender = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ChannelTracker::RegisterRecvInternal(const ChannelHandle& handle) {
@@ -111,7 +112,7 @@ Status ChannelTracker::RegisterRecvInternal(const ChannelHandle& handle) {
         handle.handle());
   }
   channel.receiver_count += 1;
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace xla

@@ -19,6 +19,14 @@ exports_files(
     glob(["*test.py"]),
 )
 
+py_library(
+    name = "test_utils",
+    srcs = [
+        "test_utils.py",
+    ],
+    srcs_version = "PY3",
+)
+
 filegroup(
     name = "tf_trt_integration_test_base_srcs",
     srcs = ["tf_trt_integration_test_base.py"],
@@ -28,6 +36,9 @@ filegroup(
 filegroup(
     name = "trt_convert_test_data",
     srcs = [
+        "testdata/tf_variablev2_saved_model/saved_model.pb",
+        "testdata/tf_variablev2_saved_model/variables/variables.data-00000-of-00001",
+        "testdata/tf_variablev2_saved_model/variables/variables.index",
         "testdata/tftrt_2.0_saved_model/saved_model.pb",
         "testdata/tftrt_2.0_saved_model/variables/variables.data-00000-of-00002",
         "testdata/tftrt_2.0_saved_model/variables/variables.data-00001-of-00002",
@@ -399,10 +410,13 @@ cuda_py_test(
     ],
     python_version = "PY3",
     tags = [
+        "manual",  # TODO(b/231239602): re-enable once naming issue is resolved.
         "no_cuda_on_cpu_tap",
+        "no_oss",  # TODO(b/231239602): re-enable once naming issue is resolved.
         "no_rocm",
         "no_windows",
         "nomac",
+        "notap",  # TODO(b/231239602): re-enable once naming issue is resolved.
     ],
     xla_enable_strict_auto_jit = False,
     deps = [

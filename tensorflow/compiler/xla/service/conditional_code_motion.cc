@@ -470,7 +470,7 @@ Status RestructureConditionalInstruction(HloComputation* computation,
     }
   }
   VLOG(2) << "computation after root restructure:\n" << computation->ToString();
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,

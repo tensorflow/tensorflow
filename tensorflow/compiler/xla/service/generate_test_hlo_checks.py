@@ -60,13 +60,14 @@ class FileCheckVarReplacer:
     instr_name = m.group(0)
     if instr_name in self._replacement_cache:
       return self._replacement_cache[instr_name]
-    replacement_instr = self._generate_unique_varname()
+    replacement_instr = self._generate_unique_varname(instr_name)
     self._replacement_cache[instr_name] = f"[[{replacement_instr}]]"
     return "".join([f"[[{replacement_instr}:", r"%[^ ]+", "]]"])
 
-  def _generate_unique_varname(self) -> str:
+  def _generate_unique_varname(self, instr_name: str) -> str:
     self._counter += 1
-    return f"INSTR_{self._counter}"
+    normalized_instr_name = instr_name.replace("%", "").replace(".", "_")
+    return f"{normalized_instr_name}_{self._counter}"
 
 
 def replace_instruction_names(t: str) -> str:

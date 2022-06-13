@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 
 #include <limits>
+#include <memory>
 #include <vector>
 
 #include "absl/base/casts.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array3d.h"
@@ -1517,7 +1517,7 @@ TEST_F(LiteralUtilTest, BitcastConvertBetweenInvalidTypes) {
   Status status =
       literal.BitcastConvert(ShapeUtil::ChangeElementType(literal.shape(), F64))
           .status();
-  EXPECT_NE(Status::OK(), status);
+  EXPECT_NE(OkStatus(), status);
   EXPECT_TRUE(absl::StrContains(status.error_message(),
                                 "to a shape of different size"));
 }

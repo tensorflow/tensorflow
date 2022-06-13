@@ -69,7 +69,7 @@ Status DecodeThreeChars(const char* codes, char* result) {
   result[0] = static_cast<char>(packed >> 16);
   result[1] = static_cast<char>(packed >> 8);
   result[2] = static_cast<char>(packed);
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -81,7 +81,7 @@ Status Base64Decode(StringPiece data, T* decoded) {
 
   if (data.empty()) {
     decoded->clear();
-    return Status::OK();
+    return OkStatus();
   }
 
   // This decoding procedure will write 3 * ceil(data.size() / 4) bytes to be
@@ -133,7 +133,7 @@ Status Base64Decode(StringPiece data, T* decoded) {
   current += remain - 1;
 
   decoded->assign(buffer.get(), current - buffer.get());
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T>
@@ -191,7 +191,7 @@ Status Base64Encode(StringPiece source, bool with_padding, T* encoded) {
   }
 
   encoded->assign(buffer.get(), current - buffer.get());
-  return Status::OK();
+  return OkStatus();
 }
 
 template Status Base64Decode<std::string>(StringPiece data,

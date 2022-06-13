@@ -52,7 +52,7 @@ class FlatMapDatasetParams : public DatasetParams {
       input_names->emplace_back(
           absl::StrCat(FlatMapDatasetOp::kOtherArguments, "_", i));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -61,7 +61,7 @@ class FlatMapDatasetParams : public DatasetParams {
                     {"output_shapes", output_shapes_},
                     {"output_types", output_dtypes_},
                     {"metadata", ""}};
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override {

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/collective_decomposer_utils.h"
 
+#include <functional>
 #include <limits>
 
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -33,9 +34,13 @@ StatusOr<std::vector<HloInstruction *>>
 CreateStartIndicesForCollectiveDecomposition(
     CollectiveOpGroupMode group_mode,
     absl::Span<const ReplicaGroup> replica_groups, const Shape &shard_shape,
-    int64_t shard_dimension, HloComputation *computation) {
+    int64_t shard_dimension, HloComputation *computation,
+    std::function<void(Shape &)> update_layout) {
   HloInstruction *zero = computation->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(U32)));
+  if (update_layout) {
+    update_layout(*zero->mutable_shape());
+  }
   std::vector<HloInstruction *> start_indices(shard_shape.rank(), zero);
   const Shape &scalar_shape = zero->shape();
 
@@ -131,9 +136,15 @@ CreateStartIndicesForCollectiveDecomposition(
     HloInstruction *table =
         computation->AddInstruction(HloInstruction::CreateConstant(
             LiteralUtil::CreateR1<uint32_t>(index_values)));
+    if (update_layout) {
+      update_layout(*table->mutable_shape());
+    }
     HloInstruction *ds =
         computation->AddInstruction(HloInstruction::CreateDynamicSlice(
             ShapeUtil::MakeShape(U32, {1}), table, {participant_id}, {1}));
+    if (update_layout) {
+      update_layout(*ds->mutable_shape());
+    }
     index = computation->AddInstruction(
         HloInstruction::CreateReshape(scalar_shape, ds));
   }

@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <list>
 #include <memory>
+#include <optional>
 #include <random>
 #include <string>
 #include <utility>
@@ -27,7 +28,6 @@ limitations under the License.
 
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
@@ -66,11 +66,8 @@ using LayoutCanonicalizationCallback =
 // attached to.
 class HloModule {
  public:
-  // Constructor without a versioned computation handle. This constructor should
-  // only be used for HloModules used outside of the XLA service (eg
-  // tests). The versioned handle is used by the service in the compilation
-  // cache. A default configuration is created for this module.
-  explicit HloModule(const std::string& name, HloModuleConfig config);
+  // Constructor.
+  HloModule(const std::string& name, HloModuleConfig config);
   virtual ~HloModule() {}
 
   // Adds an entry computation to the module. A module can only have one entry
@@ -428,10 +425,10 @@ class HloModule {
     module->metadata_ = std::move(metadata_);
   }
 
-  uint64_t profile_handle() const { return profile_handle_; }
+  int64_t profile_version() const { return profile_version_; }
 
-  void set_profile_handle(uint64_t profile_handle) {
-    profile_handle_ = profile_handle;
+  void set_profile_version(int64_t profile_version) {
+    profile_version_ = profile_version;
   }
 
   void add_profile_info(const HloModuleProto::ProfileInfo& profile_info) {
@@ -490,7 +487,7 @@ class HloModule {
   // The HloSchedule of the module. The schedule if it exists contains a
   // sequential order of instructions for each non-fusion computation in the
   // module.
-  absl::optional<HloSchedule> schedule_;
+  std::optional<HloSchedule> schedule_;
 
   // alias_config indicates the alias information of input/output buffers that
   // are expected from the module.
@@ -501,11 +498,11 @@ class HloModule {
 
   // The HLO shardings of the entry computation's parameters for
   // SPMD-partitioned programs.
-  absl::optional<std::vector<HloSharding>> spmd_parameters_shardings_;
+  std::optional<std::vector<HloSharding>> spmd_parameters_shardings_;
 
   // The HLO sharding of the entry computation's output (root) for
   // SPMD-partitioned programs.
-  absl::optional<HloSharding> spmd_output_sharding_;
+  std::optional<HloSharding> spmd_output_sharding_;
 
   // Arguments to be prefetched across programs.
   std::vector<std::pair<int64_t, ShapeIndex>> cross_program_prefetches_;
@@ -517,7 +514,7 @@ class HloModule {
   bool is_dynamic_ = false;
 
   // Optional compilation profile handle.
-  uint64_t profile_handle_ = 0;
+  int64_t profile_version_ = 0;
 
   // An array of ProfileInfo specifying what optimization profiles this module
   // contains, along with the relative speedups.

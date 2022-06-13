@@ -3,7 +3,7 @@ tf_class {
   is_instance: "<class \'tensorflow.python.eager.def_function.Function\'>"
   is_instance: "<class \'tensorflow.python.types.core.GenericFunction\'>"
   is_instance: "<class \'tensorflow.python.types.core.Callable\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "function_spec"

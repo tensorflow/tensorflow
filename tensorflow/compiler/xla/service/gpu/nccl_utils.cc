@@ -16,15 +16,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/nccl_utils.h"
 
 #include <memory>
+#include <string_view>
 #include <utility>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
+#include "tensorflow/compiler/xla/service/rendezvous.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/platform/env.h"
@@ -38,15 +38,17 @@ bool IsGlobalNcclConfig() {
 }
 
 bool IsNcclLaunchModeParallel() {
-  static const bool is_launch_mode_parallel =
-      absl::string_view(std::getenv("NCCL_LAUNCH_MODE")) == "PARALLEL";
+  static const bool is_launch_mode_parallel = []() {
+    const char* launch_mode = std::getenv("NCCL_LAUNCH_MODE");
+    return launch_mode && std::string_view(launch_mode) == "PARALLEL";
+  }();
   return is_launch_mode_parallel;
 }
 
 Status ToStatus(ncclResult_t s, const char* file, int64_t line,
                 const char* expr) {
   if (s == ncclSuccess) {
-    return Status::OK();
+    return OkStatus();
   }
   return tensorflow::errors::Internal(
       absl::StrFormat("%s:%d: NCCL operation %s failed: %s", file, line, expr,
@@ -111,115 +113,10 @@ StatusOr<ncclUniqueId> ToNcclUniqueId(const std::string& id_str) {
   return id;
 }
 
-template <typename K, typename V>
-class ThreadSafeMap {
- public:
-  V& operator[](const K& key) {
-    absl::MutexLock lock(&mutex_);
-    std::unique_ptr<V>& value = map_[key];
-    if (value == nullptr) value = std::make_unique<V>();
-    return *value;
-  }
-
-  void ForEachValue(const std::function<void(V&)>& fn) {
-    absl::MutexLock lock(&mutex_);
-    for (const auto& it : map_) fn(*it.second);
-  }
-
- private:
-  absl::Mutex mutex_;
-  absl::flat_hash_map<K, std::unique_ptr<V>> map_ ABSL_GUARDED_BY(mutex_);
-};
-
 StatusOr<std::string> LocalNcclUniqueIdCallback(const NcclCliqueKey&) {
   ncclUniqueId id;
   XLA_CUDA_RETURN_IF_ERROR(ncclGetUniqueId(&id));
   return std::string(id.internal, NCCL_UNIQUE_ID_BYTES);
-}
-
-void WaitAndLogIfStuck(absl::Mutex& mutex, const absl::Condition& condition) {
-  constexpr absl::Duration kTimeout = absl::Seconds(10);
-  if (mutex.AwaitWithTimeout(condition, kTimeout)) {
-    return;
-  }
-
-  LOG(ERROR) << "This thread has been waiting for "
-             << absl::ToInt64Seconds(kTimeout) << "s and may be stuck:";
-
-  int64_t termination_timeout = xla::GetDebugOptionsFromFlags()
-                                    .xla_gpu_nccl_termination_timeout_seconds();
-  // infinite timeout is equivalent to await call without timeout.
-  absl::Duration kTerminationTimeout = termination_timeout >= 0
-                                           ? absl::Seconds(termination_timeout)
-                                           : absl::InfiniteDuration();
-
-  if (mutex.AwaitWithTimeout(condition, kTerminationTimeout)) {
-    LOG(ERROR) << "Thread is unstuck! Warning above was a false-positive. "
-                  "Perhaps the timeout is too short.";
-    return;
-  }
-  LOG(ERROR)
-      << "Termination timeout of " << termination_timeout
-      << " seconds exceeded. Exiting to ensure a consistent program state.";
-  std::exit(42);
-}
-
-// A rendezvous for a group of threads.
-//
-// The group of threads identifies itself with a key that must be unique to the
-// the group. When all threads have arrived at the rendezvous, one thread
-// executes the given function and all threads received the result.
-// TODO(cjfj): Replace XLA rendezvous code with this simpler implementation.
-template <typename R, typename K>
-std::shared_ptr<R> Rendezvous(const K& key, size_t num_threads,
-                              const std::function<R()>& fn) {
-  // Fast-path (DO NOT REMOVE: the logic below doesn't work for single thread).
-  if (num_threads == 1) return std::make_shared<R>(fn());
-
-  struct State {
-    absl::Mutex mutex;
-    size_t num_threads_arrived ABSL_GUARDED_BY(mutex) = 0;
-    std::shared_ptr<R> result ABSL_GUARDED_BY(mutex);
-  };
-
-  static auto& states = *new ThreadSafeMap<K, State>;
-  State& state = states[key];
-
-  absl::MutexLock lock(&state.mutex);
-  ++state.num_threads_arrived;
-
-  std::shared_ptr<R> result;
-  if (state.num_threads_arrived == num_threads) {
-    // Last thread to arrive executes the function.
-    CHECK(state.result == nullptr);
-    result = std::make_shared<R>(fn());
-    state.result = result;
-    state.num_threads_arrived = 0;
-  } else {
-    absl::Condition result_ready(
-        +[](std::shared_ptr<R>* ptr) { return ptr->get() != nullptr; },
-        &state.result);
-    WaitAndLogIfStuck(state.mutex, result_ready);
-
-    // There is one use of the result in the shared state, plus one use for each
-    // thread that has already retrieved the result.
-    if (state.result.use_count() < num_threads) {
-      result = state.result;
-    } else {
-      // Last thread to retrieve the result takes the result from the state,
-      // allowing the other threads to exit the function.
-      return std::move(state.result);
-    }
-  }
-
-  // Wait for all threads to have retrieved the result. Without this, a thread
-  // could duplicate or delete its copy of the result, invalidating the use
-  // count logic above.
-  absl::Condition result_taken(
-      +[](std::shared_ptr<R>* ptr) { return ptr->get() == nullptr; },
-      &state.result);
-  WaitAndLogIfStuck(state.mutex, result_taken);
-  return result;
 }
 
 struct NcclCliqueState {
@@ -237,7 +134,10 @@ std::shared_ptr<StatusOr<NcclClique::Lock>> AcquireNcclClique(
 
   auto rendezvous_key = std::make_tuple(run_id, op_id, std::move(clique_key));
 
-  return Rendezvous<StatusOr<NcclClique::Lock>>(
+  int64_t terminate_timeout = xla::GetDebugOptionsFromFlags()
+                                  .xla_gpu_nccl_termination_timeout_seconds();
+
+  return RendezvousSingle<StatusOr<NcclClique::Lock>>(
       rendezvous_key, num_local_participants,
       [&]() -> StatusOr<NcclClique::Lock> {
         const NcclCliqueKey& clique_key = std::get<2>(rendezvous_key);
@@ -254,7 +154,10 @@ std::shared_ptr<StatusOr<NcclClique::Lock>> AcquireNcclClique(
         TF_RET_CHECK(is_local || (run_id.ToInt() >= clique->run_id));
         clique->run_id = run_id.ToInt();
         return clique;
-      });
+      },
+      /*warn_stuck_timeout=*/absl::Seconds(10),
+      (terminate_timeout >= 0) ? absl::Seconds(terminate_timeout)
+                               : absl::InfiniteDuration());
 }
 
 void CheckNcclAsyncError(NcclComm& lockable_comm) {

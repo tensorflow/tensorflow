@@ -109,7 +109,6 @@ tf_python_pybind_extension(
     hdrs = [
         "quantize_model_wrapper.h",
     ],
-    module_name = "pywrap_quantize_model",
     deps = [
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
@@ -126,19 +125,22 @@ pytype_strict_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pywrap_quantize_model",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:variables",
         "//tensorflow/python/client:session",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/platform",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:loader",
-        "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
-        "//tensorflow/python/saved_model:utils",
-        "//tensorflow/python/training/tracking:trackable_utils",
+        "//tensorflow/python/trackable:autotrackable",
+        "//tensorflow/python/types",
     ],
 )
 
@@ -146,10 +148,12 @@ tf_py_test(
     name = "quantize_model_test",
     size = "medium",
     srcs = ["integration_test/quantize_model_test.py"],
+    shard_count = 10,  # Parallelize the test to avoid timeouts.
     tags = ["no_pip"],
     deps = [
         ":quantize_model",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/saved_model:tag_constants",
         "@absl_py//absl/testing:parameterized",

@@ -84,7 +84,7 @@ port::Status PluginRegistry::RegisterFactoryInternal(
 
   (*factories)[plugin_id] = factory;
   plugin_names_[plugin_id] = plugin_name;
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 template <typename FACTORY_TYPE>

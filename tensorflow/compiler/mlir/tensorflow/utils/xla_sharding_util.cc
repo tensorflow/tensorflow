@@ -36,10 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace tensorflow {
-
-const char* const kInputShardingAttr = "input_sharding_configuration";
-const char* const kOutputShardingAttr = "output_sharding_configuration";
-
 namespace {
 
 constexpr char kNumSplitAttr[] = "num_split";

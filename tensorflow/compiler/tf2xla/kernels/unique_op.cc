@@ -174,8 +174,8 @@ class UniqueOpBase : public XlaOpKernel {
     sort_keys.push_back(iota);
     sort_types.push_back(xla::S32);
 
-    std::vector<absl::optional<xla::XlaOp (*)(xla::XlaOp, xla::XlaOp,
-                                              absl::Span<const int64_t>)>>
+    std::vector<std::optional<xla::XlaOp (*)(xla::XlaOp, xla::XlaOp,
+                                             absl::Span<const int64_t>)>>
         generators(sort_types.size(), xla::LtTotalOrder);
     auto lt_chain = xla::CreateScalarComparisonComputation(
         "UniqueV2Lt", sort_types, generators, ctx->builder());

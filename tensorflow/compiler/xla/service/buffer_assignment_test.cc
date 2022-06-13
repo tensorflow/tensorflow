@@ -22,7 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
@@ -62,7 +61,7 @@ class InstructionListVisitor : public DfsHloVisitorWithDefault {
     // operands.
     instructions_.push_back(hlo);
     VLOG(0) << "List instruction " << hlo->ToString();
-    return Status::OK();
+    return OkStatus();
   }
 
   std::vector<const HloInstruction*> GetInstructions() { return instructions_; }
@@ -91,7 +90,7 @@ class BufferAssignmentTest : public HloTestBase {
   std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
                                                         int64_t alignment = 1) {
     return BufferAssigner::Run(
-               module, absl::make_unique<DependencyHloOrdering>(module),
+               module, std::make_unique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true)
@@ -102,7 +101,7 @@ class BufferAssignmentTest : public HloTestBase {
       HloModule* module, int64_t alignment = 1) {
     return BufferAssigner::Run(
                module,
-               absl::make_unique<SequentialHloOrdering>(module->schedule()),
+               std::make_unique<SequentialHloOrdering>(module->schedule()),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true)
@@ -112,7 +111,7 @@ class BufferAssignmentTest : public HloTestBase {
   std::unique_ptr<BufferAssignment> RunBufferAssignmentNoBuffersForConstants(
       HloModule* module, int64_t alignment = 1) {
     return BufferAssigner::Run(
-               module, absl::make_unique<DependencyHloOrdering>(module),
+               module, std::make_unique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/false)
@@ -127,7 +126,7 @@ class BufferAssignmentTest : public HloTestBase {
     };
 
     return BufferAssigner::Run(
-               module, absl::make_unique<DependencyHloOrdering>(module),
+               module, std::make_unique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/false,
@@ -140,7 +139,7 @@ class BufferAssignmentTest : public HloTestBase {
       HloModule* module, BufferAssigner::Colorer colorer,
       int64_t alignment = 1) {
     return BufferAssigner::Run(
-               module, absl::make_unique<DependencyHloOrdering>(module),
+               module, std::make_unique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true, std::move(colorer))
@@ -153,7 +152,7 @@ class BufferAssignmentTest : public HloTestBase {
     HloSchedule schedule(module);
     schedule.set_sequence(module->entry_computation(), instruction_sequence);
     return BufferAssigner::Run(
-               module, absl::make_unique<SequentialHloOrdering>(schedule),
+               module, std::make_unique<SequentialHloOrdering>(schedule),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true)
@@ -164,12 +163,12 @@ class BufferAssignmentTest : public HloTestBase {
       HloModule* module, std::unique_ptr<PresetAssignments> preset_assignments,
       int64_t alignment = 1) {
     return BufferAssigner::Run(
-               module, absl::make_unique<DependencyHloOrdering>(module),
+               module, std::make_unique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true,
                BufferAssigner::DefaultColorer(),
-               /*must_not_live_out=*/absl::nullopt,
+               /*must_not_live_out=*/std::nullopt,
                /*can_share_buffer=*/nullptr, std::move(preset_assignments))
         .ConsumeValueOrDie();
   }
@@ -608,7 +607,7 @@ TEST_F(BufferAssignmentTest, BasicUniquelyColored) {
       auto& value = alias_analysis->dataflow_analysis().GetValue(id);
       value.set_color(BufferValue::Color(color++));
     }
-    return Status::OK();
+    return OkStatus();
   };
 
   auto buffers = RunColoredBufferAssignment(module.get(), colorer);
@@ -682,7 +681,7 @@ TEST_F(BufferAssignmentTest, BasicPartiallyColored) {
         value.set_color(LogicalBuffer::Color(0));
       }
     }
-    return Status::OK();
+    return OkStatus();
   };
 
   auto buffers = RunColoredBufferAssignment(module.get(), colorer);
@@ -745,7 +744,7 @@ TEST_F(BufferAssignmentTest, PresetAssignments) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  auto preset_assignments = absl::make_unique<PresetAssignments>();
+  auto preset_assignments = std::make_unique<PresetAssignments>();
   preset_assignments->add_chunk({mul, {}}, {/*offset=*/100, /*size=*/400});
   preset_assignments->add_chunk({add, {}}, {/*offset=*/550, /*size=*/400});
   preset_assignments->assignment_information_for_space(/*memory_space=*/1)
@@ -852,7 +851,7 @@ TEST_F(BufferAssignmentTest, PresetAssignmentsWhile) {
   module->AddEntryComputation(builder.Build());
 
   // Set only one preset assignment for while data and its aliases.
-  auto preset_assignments = absl::make_unique<PresetAssignments>();
+  auto preset_assignments = std::make_unique<PresetAssignments>();
   preset_assignments->add_chunk({negate, {}}, {/*offset=*/100, /*size=*/40});
   preset_assignments->assignment_information_for_space(/*memory_space=*/1)
       ->size = 140;
@@ -2118,7 +2117,7 @@ class WhileBufferAssignmentTest : public HloTestBase {
     HloSchedule schedule =
         ScheduleModule(module, ByteSizeOf).ConsumeValueOrDie();
     return BufferAssigner::Run(
-               module, absl::make_unique<SequentialHloOrdering>(schedule),
+               module, std::make_unique<SequentialHloOrdering>(schedule),
                ByteSizeOf,
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true)
@@ -2437,7 +2436,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto assignment,
       BufferAssigner::Run(
-          module.get(), absl::make_unique<SequentialHloOrdering>(schedule),
+          module.get(), std::make_unique<SequentialHloOrdering>(schedule),
           backend().compiler()->BufferSizeBytesFunction(),
           [](LogicalBuffer::Color) { return 1; },
           /*allocate_buffers_for_constants=*/true));
@@ -2705,7 +2704,7 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
 
   auto assignment =
       BufferAssigner::Run(
-          module.get(), absl::make_unique<SequentialHloOrdering>(schedule),
+          module.get(), std::make_unique<SequentialHloOrdering>(schedule),
           ByteSizeOf, [](LogicalBuffer::Color) { return 1; },
           /*allocate_buffers_for_constants=*/true)
           .ConsumeValueOrDie();

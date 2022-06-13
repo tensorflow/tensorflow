@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_MATMUL_UTILS_H_
 
 #include <cstdint>
+#include <optional>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -25,6 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/stream_executor/blas.h"
+#include "tensorflow/stream_executor/matmul_util.h"
+#include "tensorflow/stream_executor/scratch_allocator.h"
 
 namespace xla {
 namespace gpu {
@@ -47,10 +51,17 @@ struct MatrixLayout {
 
   // Returns the matrix layout for a logical shape (batch, rows, columns).
   static StatusOr<MatrixLayout> For(const Shape& shape);
+  // Returns the matrix layout with the given batch, row, col dimensions.
   static StatusOr<MatrixLayout> For(const Shape& shape,
                                     absl::Span<const int64_t> batch_dims,
                                     absl::Span<const int64_t> row_dims,
                                     absl::Span<const int64_t> col_dims);
+  // Returns the matrix layout for the output.
+  static StatusOr<MatrixLayout> For(const Shape& shape,
+                                    size_t lhs_num_batch_dims,
+                                    size_t lhs_num_row_dims,
+                                    size_t rhs_num_batch_dims,
+                                    size_t rhs_num_col_dims);
 
   PrimitiveType dtype;
   // `num_rows` / `num_cols` are for the "logical" matrix shape:
@@ -64,25 +75,72 @@ struct MatrixLayout {
   int64_t batch_stride;  // `batch_stride` is set to `0` when `batch_size == 1`.
 };
 
+// GPU folding rule for the `TransposeFolding` pass.
+StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
+                                              int64_t operand_idx);
+
 struct GemmConfig {
   static StatusOr<GemmConfig> For(const HloInstruction* gemm);
   static StatusOr<GemmConfig> For(mlir::Operation* op, bool use_cublaslt);
+
+  static StatusOr<GemmConfig> For(
+      const Shape& lhs_shape, absl::Span<const int64_t> lhs_batch_dims,
+      absl::Span<const int64_t> lhs_contracting_dims, const Shape& rhs_shape,
+      absl::Span<const int64_t> rhs_batch_dims,
+      absl::Span<const int64_t> rhs_contracting_dims, const Shape& output_shape,
+      double alpha_real, double alpha_imag, double beta,
+      std::optional<int64_t> algorithm, bool use_cublaslt);
 
   MatrixLayout lhs_layout;
   MatrixLayout rhs_layout;
   MatrixLayout output_layout;
   complex128 alpha;
   double beta;
-  absl::optional<int64_t> algorithm;
+  std::optional<int64_t> algorithm;
   bool use_cublaslt;
 };
 
 se::blas::MatrixDescriptor GetMatrixDesc(const MatrixLayout& layout,
                                          se::DeviceMemoryBase data);
 
-void MakeBlasGemmCompatible(se::blas::MatrixDescriptor& lhs,
+void MakeBlasGemmCompatible(int64_t& m, int64_t& n,
+                            se::blas::MatrixDescriptor& lhs,
                             se::blas::MatrixDescriptor& rhs,
                             se::blas::MatrixDescriptor& output);
+
+// Run the given GEMM instruction `gemm` subject to the configuration
+// in `gemm_config` and the passed buffers.
+//
+// If `algorithm` is provided, it overrides the one specified in `config`.
+Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
+               se::DeviceMemoryBase rhs_buffer,
+               se::DeviceMemoryBase output_buffer, se::Stream* stream,
+               std::optional<se::blas::AlgorithmType> algorithm = std::nullopt,
+               se::blas::ProfileResult* profile_result = nullptr);
+
+Status RunBlasLtMatmul(
+    const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
+    se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
+    se::Stream* stream, se::ScratchAllocator& scratch_allocator,
+    const se::blas::IBlasLtMatmulAlgorithm* algorithm = nullptr,
+    se::blas::ProfileResult* profile_result = nullptr);
+
+class BlasPlansAutotuneCache {
+ public:
+  BlasPlansAutotuneCache() = default;
+
+  std::optional<se::blas::AlgorithmConfig> Find(
+      const se::BatchMatmulParameters& params) const;
+  void Insert(se::BatchMatmulParameters params,
+              se::blas::AlgorithmConfig config);
+
+ private:
+  mutable absl::Mutex mu_;
+  absl::flat_hash_map<se::BatchMatmulParameters, se::blas::AlgorithmConfig>
+      blas_plans_algorithms_map_ ABSL_GUARDED_BY(mu_);
+};
+
+BlasPlansAutotuneCache& GetBlasPlansAutotuneCache();
 
 }  // namespace gpu
 }  // namespace xla
