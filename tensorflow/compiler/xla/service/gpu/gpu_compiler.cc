@@ -39,7 +39,7 @@ limitations under the License.
 #include "llvm/Transforms/Utils/SplitModule.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project

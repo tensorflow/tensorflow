@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project

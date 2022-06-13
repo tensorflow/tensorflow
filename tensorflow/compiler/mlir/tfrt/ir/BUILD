@@ -116,7 +116,7 @@ td_library(
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
     ],
     deps = [
-        "@llvm-project//mlir:SideEffectTdFiles",
+        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
         "@tf_runtime//:CoreRTTdFiles",
         "@tf_runtime//:OpBaseTdFiles",
         "@tf_runtime//:compiler_td_files",

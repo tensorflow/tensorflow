@@ -593,7 +593,7 @@ gentbl_cc_library(
     visibility = ["//visibility:private"],
     deps = [
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
-        "@llvm-project//mlir:SideEffectTdFiles",
+        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
         "@tf_runtime//:OpBaseTdFiles",
         "@tf_runtime//backends/gpu:GpuOpBaseTdFile",
     ],

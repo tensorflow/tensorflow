@@ -114,17 +114,17 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:ArithmeticToLLVM",
-        "@llvm-project//mlir:CFGTransforms",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncToLLVM",
+        "@llvm-project//mlir:FuncTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:LLVMTransforms",
         "@llvm-project//mlir:MathToLLVM",
         "@llvm-project//mlir:MemRefToLLVM",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
-        "@llvm-project//mlir:StandardOpsTransforms",
+        "@llvm-project//mlir:SCFToControlFlow",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
@@ -404,7 +404,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Translation",
+        "@llvm-project//mlir:TranslateLib",
     ],
 )
 
@@ -643,7 +643,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:Translation",
+        "@llvm-project//mlir:TranslateLib",
     ],
     alwayslink = 1,
 )
@@ -695,7 +695,7 @@ gentbl_cc_library(
         "//tensorflow/compiler/mlir/hlo:hlo_ops_td_files",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:SideEffectTdFiles",
+        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
     ],
 )
 
@@ -756,7 +756,7 @@ td_library(
     deps = [
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:SideEffectTdFiles",
+        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
     ],
 )
 

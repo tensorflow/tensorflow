@@ -36,7 +36,7 @@ td_library(
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:LoopLikeInterfaceTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:SideEffectTdFiles",
+        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
     ],
 )
 
@@ -291,7 +291,7 @@ gentbl_cc_library(
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
         "@llvm-project//mlir:FuncTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:SideEffectTdFiles",
+        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
     ],
 )
 
@@ -426,7 +426,7 @@ cc_library(
         ":tensorflow_op_interfaces",
         ":tensorflow_types",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:SideEffects",
+        "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
     ],
 )
@@ -474,7 +474,7 @@ cc_library(
             "@llvm-project//mlir:InferTypeOpInterface",
             "@llvm-project//mlir:LoopLikeInterface",
             "@llvm-project//mlir:Parser",
-            "@llvm-project//mlir:SideEffects",
+            "@llvm-project//mlir:SideEffectInterfaces",
             "@llvm-project//mlir:FuncDialect",
             "@llvm-project//mlir:Support",
             "//tensorflow/core:framework",
@@ -523,7 +523,7 @@ cc_library(
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:LoopLikeInterface",
         "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:SideEffects",
+        "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
     ],
 )
@@ -568,7 +568,7 @@ cc_library(
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:LoopLikeInterface",
         "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:SideEffects",
+        "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
     ],
 )
@@ -609,7 +609,7 @@ cc_library(
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:LoopLikeInterface",
         "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:SideEffects",
+        "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Support",
         "//tensorflow/core/common_runtime:inline_function_utils",
@@ -645,7 +645,7 @@ cc_library(
     hdrs = [
         "ir/tf_side_effects.h",
     ],
-    deps = ["@llvm-project//mlir:SideEffects"],
+    deps = ["@llvm-project//mlir:SideEffectInterfaces"],
 )
 
 cc_library(
@@ -709,8 +709,8 @@ cc_library(
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:CallOpInterfacesIncGen",
+        "@llvm-project//mlir:ControlFlowDialect",
         "@llvm-project//mlir:ControlFlowInterfaces",
-        "@llvm-project//mlir:ControlFlowOps",
         "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:FuncDialect",
@@ -719,7 +719,7 @@ cc_library(
         "@llvm-project//mlir:LoopLikeInterface",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SideEffects",
+        "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
@@ -1299,7 +1299,7 @@ cc_library(
         "@llvm-project//mlir:AffineUtils",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ArithmeticDialect",
-        "@llvm-project//mlir:ControlFlowOps",
+        "@llvm-project//mlir:ControlFlowDialect",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -1697,7 +1697,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Translation",
+        "@llvm-project//mlir:TranslateLib",
     ],
     alwayslink = 1,
 )
@@ -1898,7 +1898,7 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:SideEffects",
+        "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
     ],
     alwayslink = 1,
@@ -2031,7 +2031,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Translation",
+        "@llvm-project//mlir:TranslateLib",
     ],
     alwayslink = 1,
 )
@@ -2185,7 +2185,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Translation",
+        "@llvm-project//mlir:TranslateLib",
     ],
     alwayslink = 1,
 )

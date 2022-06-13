@@ -34,8 +34,8 @@ limitations under the License.
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
-#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
-#include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/Transforms/OptimizeForNVVM.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project

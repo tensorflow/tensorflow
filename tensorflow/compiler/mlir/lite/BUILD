@@ -49,7 +49,7 @@ td_library(
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:LoopLikeInterfaceTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:SideEffectTdFiles",
+        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
     ],
 )
 
@@ -361,7 +361,7 @@ cc_library(
         "@llvm-project//mlir:LoopLikeInterface",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:SideEffects",
+        "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
@@ -965,7 +965,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Translation",
+        "@llvm-project//mlir:TranslateLib",
     ],
 )
 
@@ -1004,7 +1004,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Translation",
+        "@llvm-project//mlir:TranslateLib",
     ],
 )
 
@@ -1066,7 +1066,7 @@ cc_library(
         "@llvm-project//mlir:MlirTranslateMain",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Translation",
+        "@llvm-project//mlir:TranslateLib",
     ],
     alwayslink = 1,
 )

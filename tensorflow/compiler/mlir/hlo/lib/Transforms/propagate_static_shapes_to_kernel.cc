@@ -25,7 +25,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
-#include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/IR/BuiltinAttributes.h"
