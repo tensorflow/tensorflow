@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
-#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/gpu/gpu_diagnostics.h"
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/stream_executor/lib/env.h"
