@@ -20,10 +20,14 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/common_runtime/device/device_id_manager.h"
+#include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_factory.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer.h"
@@ -128,6 +132,38 @@ gtl::FlatMap<string, GrapplerItem::OptimizationOptions>*
     GrapplerItemPropertiesAccumulator::optimization_options_;
 
 REGISTER_GRAPH_OPTIMIZER(GrapplerItemPropertiesAccumulator);
+
+std::unique_ptr<Device> Dev(const char* type, const char* name) {
+  class FakeDevice : public Device {
+   public:
+    explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
+    absl::Status Sync() override { return absl::OkStatus(); }
+    Allocator* GetAllocator(AllocatorAttributes) override { return nullptr; }
+  };
+
+  auto st = DeviceIdManager::InsertTfPlatformDeviceIdPair(type, TfDeviceId(0),
+                                                          PlatformDeviceId(0));
+  if (!st.ok()) {
+    return nullptr;
+  }
+
+  DeviceAttributes attr;
+  attr.set_name(name);
+  attr.set_device_type(type);
+  return std::unique_ptr<FakeDevice>(new FakeDevice(attr));
+}
+
+class NoOpDeviceFactory : public DeviceFactory {
+ public:
+  Status ListPhysicalDevices(std::vector<string>* devices) override {
+    return OkStatus();
+  }
+
+  Status CreateDevices(const SessionOptions& options, const string& name_prefix,
+                       std::vector<std::unique_ptr<Device>>* devices) override {
+    return OkStatus();
+  }
+};
 
 class MetaOptimizerTest : public GrapplerTest {};
 
@@ -418,6 +454,188 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
 
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
   test::ExpectTensorEqual<int>(tensors_expected[1], tensors[1]);
+}
+
+TEST_F(MetaOptimizerTest, OptimizeFunctionLibrarySelectImplementation) {
+  using test::function::NDef;
+
+  // Enable function optimization and implementation selector.
+  ConfigProto config_proto;
+  auto& rewriter_config =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
+
+  rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
+  rewriter_config.set_function_optimization(RewriterConfig::ON);
+  rewriter_config.set_implementation_selector(RewriterConfig::ON);
+  rewriter_config.set_min_graph_nodes(-1);
+
+  MetaOptimizer optimizer(nullptr, config_proto);
+
+  FunctionDef cpu_magic = FunctionDefHelper::Create(
+      "cpu_magic", {"x:float", "specialization_cause:float"}, {"y:float"}, {},
+      // node_def
+      {
+          FunctionDefHelper::Const("forty_two", 42.f),
+          {{"magic"}, "Mul", {"x", "forty_two:output:0"}, {{"T", DT_FLOAT}}},
+      },
+      // ret_def
+      {{"y", "magic:z:0"}});
+  (*cpu_magic.mutable_attr())["api_implements"].set_s("heterogeneous_magic");
+  (*cpu_magic.mutable_attr())["api_preferred_device"].set_s("CPU");
+
+  FunctionDef gpu_magic = FunctionDefHelper::Create(
+      "gpu_magic", {"x:float", "specialization_cause:float"}, {"y:float"}, {},
+      // node_def
+      {
+          FunctionDefHelper::Const("forty_six", 46.f),
+          {{"magic"}, "Mul", {"x", "forty_six:output:0"}, {{"T", DT_FLOAT}}},
+      },
+      // ret_def
+      {{"y", "magic:z:0"}});
+  (*gpu_magic.mutable_attr())["api_implements"].set_s("heterogeneous_magic");
+  (*gpu_magic.mutable_attr())["api_preferred_device"].set_s("GPU");
+
+  FunctionDef predict_func = FunctionDefHelper::Create(
+      "__inference_predict_26", {"x:float"}, {"y:float"}, {},
+      {
+          FunctionDefHelper::Const("specialization_cause", 0.f),
+          {{"model/backbone/PartitionedCall"},
+           "PartitionedCall",
+           {"x", "specialization_cause:output:0"},
+           {
+               {"Tin", DataTypeSlice{DT_FLOAT, DT_FLOAT}},
+               {"Tout", DataTypeSlice{DT_FLOAT}},
+               {"f", FunctionDefHelper::FunctionRef("cpu_magic", {})},
+           }},
+          {{"Identity"},
+           "Identity",
+           {"model/backbone/PartitionedCall:output:0"},
+           {{"T", DT_FLOAT}}},
+      },
+      // ret_def
+      {{"y", "Identity:output:0"}});
+
+  FunctionDef wrapper_func = FunctionDefHelper::Create(
+      "__inference_signature_wrapper_33", {"x:float"}, {"y:float"}, {},
+      {
+          {{"PartitionedCall"},
+           "PartitionedCall",
+           {"x"},
+           {
+               {"Tin", DataTypeSlice{DT_FLOAT}},
+               {"Tout", DataTypeSlice{DT_FLOAT}},
+               {"f",
+                FunctionDefHelper::FunctionRef("__inference_predict_26", {})},
+           }},
+          {{"Identity"},
+           "Identity",
+           {"PartitionedCall:output:0"},
+           {{"T", DT_FLOAT}}},
+      },
+      // ret_def
+      {{"y", "Identity:output:0"}});
+
+  FunctionDef noinline_func = FunctionDefHelper::Create(
+      "noinline_func", {"x:float"}, {"y:float"}, {},
+      {
+          {{"invoke_from_func"},
+           "PartitionedCall",
+           {"x", "x"},
+           {
+               {"Tin", DataTypeSlice{DT_FLOAT, DT_FLOAT}},
+               {"Tout", DataTypeSlice{DT_FLOAT}},
+               {"f", FunctionDefHelper::FunctionRef("cpu_magic", {})},
+           }},
+          {{"Identity"},
+           "Identity",
+           {"invoke_from_func:output:0"},
+           {{"T", DT_FLOAT}}},
+      },
+      // ret_def
+      {{"y", "Identity:output:0"}});
+  (*noinline_func.mutable_attr())["_noinline"].set_b(true);
+
+  GrapplerItem item;
+  item.id = "tf_graph";
+  item.graph = test::function::GDef(
+      {
+          NDef("model_predict_x", "Placeholder", {}, {{"dtype", DT_FLOAT}}),
+          // Calls into function library
+          NDef("PartitionedCall", "PartitionedCall", {"model_predict_x"},
+               {
+                   {"Tin", DataTypeSlice{DT_FLOAT}},
+                   {"Tout", DataTypeSlice{DT_FLOAT}},
+                   {"f", FunctionDefHelper::FunctionRef(
+                             "__inference_signature_wrapper_33", {})},
+               }),
+          NDef("PartitionedCall_1", "PartitionedCall", {"model_predict_x"},
+               {
+                   {"Tin", DataTypeSlice{DT_FLOAT}},
+                   {"Tout", DataTypeSlice{DT_FLOAT}},
+                   {"f", FunctionDefHelper::FunctionRef("noinline_func", {})},
+               }),
+          NDef("add", "Add", {"PartitionedCall:0", "PartitionedCall_1:0"},
+               {{"T", DT_FLOAT}}),
+      },
+      /*funcs=*/
+      {cpu_magic, gpu_magic, noinline_func, wrapper_func, predict_func});
+
+  Tensor fake_input(DT_INVALID, {0});
+  item.feed.emplace_back("model_predict_x", fake_input);
+  item.fetch.emplace_back("add");
+
+  std::unique_ptr<Device> cpu_device = Dev("CPU", "/CPU:0");
+  std::unique_ptr<Device> gpu_device = Dev("GPU", "/GPU:0");
+  ASSERT_TRUE(cpu_device);
+  ASSERT_TRUE(gpu_device);
+  if (!DeviceFactory::GetFactory(gpu_device->device_type())) {
+    int cpu_priority = DeviceFactory::DevicePriority(cpu_device->device_type());
+    DeviceFactory::Register(gpu_device->device_type(),
+                            std::make_unique<NoOpDeviceFactory>(),
+                            cpu_priority + 1, false);
+  }
+  DeviceSet device_set;
+  device_set.AddDevice(cpu_device.get());
+  device_set.AddDevice(gpu_device.get());
+  tensorflow::grappler::VirtualCluster cluster(&device_set);
+
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(&cluster, item, &output));
+
+  FunctionLibraryDefinition optimized_flib(OpRegistry::Global(),
+                                           output.library());
+
+  std::vector<float> output_consts;
+  std::vector<const protobuf::RepeatedPtrField<NodeDef>*> stack;
+  absl::flat_hash_set<const protobuf::RepeatedPtrField<NodeDef>*> visited;
+  stack.push_back(&output.node());
+  visited.insert(stack.back());
+  while (!stack.empty()) {
+    const protobuf::RepeatedPtrField<NodeDef>& nodes = *stack.back();
+    stack.pop_back();
+    for (const NodeDef& node : nodes) {
+      if (node.op() == "Const") {
+        const TensorProto* value;
+        if (TryGetNodeAttr(AttrSlice(&node.attr()), "value", &value))
+          for (float x : value->float_val()) {
+            output_consts.push_back(x);
+          }
+      }
+
+      for (const std::pair<std::string, AttrValue>& attr : node.attr())
+        if (attr.second.has_func()) {
+          const FunctionDef* to_func =
+              optimized_flib.Find(attr.second.func().name());
+          if (to_func && !visited.contains(&to_func->node_def())) {
+            stack.push_back(&to_func->node_def());
+            visited.insert(stack.back());
+          }
+        }
+    }
+  }
+
+  const std::vector<float> answer_consts = {46.f, 46.f};
+  EXPECT_EQ(output_consts, answer_consts);
 }
 
 TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryPruneUnusedOutputs) {
