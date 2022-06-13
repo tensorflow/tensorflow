@@ -457,17 +457,14 @@ def ConstantFoldingPass : Pass<"tfg-constant-folding", "GraphFuncOp"> {
    Option<"fold_quantization_emulation_",
           "fold-quantization-emulation", "bool",
           /*default=*/"true",
-          "Determine if we should fold quantization emulation ops">,
-   Option<"pattern_category_", "pattern-category", "int", /*default=*/"0",
-          "Select the pattern kind that we would like to run:"
-          "0 = all patterns, 1 = folder patterns, 2 = propagation patterns">
+          "Determine if we should fold quantization emulation ops">
   ];
 }
 
 def LiftLegacyCall : Pass<"tfg-lift-legacy-call", "ModuleOp"> {
   let summary = "Tag legacy calls with symbol references to add symbol uses";
   let description = [{
-    A legacy function call is when an operation's name refers to a function in
+    A legacy function call is when an operation's name refers to a function in 
     the function library. For example,
 
     ```
