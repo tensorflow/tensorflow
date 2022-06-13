@@ -520,14 +520,14 @@ def HLO_Atan2Op : HLO_BinaryElementwiseOp<"atan2",
   }];
 }
 
-def HLO_ComplexOp: HLO_BinaryElementwiseOpNoAssembly<"complex",
-    [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+def HLO_ComplexOp: HLO_BinaryElementwiseOpNoAssembly<"complex", [NoSideEffect, 
+    SameOperandsElementType, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Complex operator";
   let description = [{
     Performs element-wise conversion of a pair of real and imaginary values to
     a complex value.
   }];
-  let arguments = (ins HLO_FpTensor:$lhs, HLO_FpTensor:$rhs);
+  let arguments = (ins HLO_Fp32Or64Tensor:$lhs, HLO_Fp32Or64Tensor:$rhs);
   let results = (outs HLO_ComplexTensor:$result);
   let assemblyFormat = "`(`operands`)` attr-dict `:` `(`type(operands)`)` `->` type($result)";
   let hasFolder = 1;

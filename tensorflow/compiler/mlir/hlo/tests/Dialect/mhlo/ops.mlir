@@ -592,6 +592,22 @@ func.func @comp_compatible_operand_types(%arg0: tensor<3xi32>, %arg1: tensor<?xi
 
 // -----
 
+func.func @comp_mismatch_return_element_type(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>) -> tensor<3xf16> {
+  // expected-error@+1 {{result #0 must be tensor of pred (AKA boolean or 1-bit integer) values, but got 'tensor<3xf16>'}}
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<3xi32>, tensor<3xi32>) -> tensor<3xf16>
+  func.return %0 : tensor<3xf16>
+}
+
+// -----
+
+func.func @comp_mismatch_return_shape(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>) -> tensor<2xi1> {
+  // expected-error@+1 {{requires the same shape for all operands and results}}
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<3xi32>, tensor<3xi32>) -> tensor<2xi1>
+  func.return %0 : tensor<2xi1>
+}
+
+// -----
+
 func.func @collective_permute_duplicate_sources(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
   // expected-error@+1 {{duplicate sources not allowed}}
   %0 = "mhlo.collective_permute"(%arg0) {
@@ -872,6 +888,38 @@ func.func @imag_fp_input(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 
 // -----
 
+func.func @imag_int_input(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+  // expected-error@+1 {{operand #0 must be tensor of 16-bit float or 32-bit float or 64-bit float or bfloat16 type or complex type with 32-bit float or 64-bit float elements values, but got 'tensor<*xi32>'}}
+  %0 = "mhlo.imag"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
+  func.return %0 : tensor<*xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @imag_complex_input
+func.func @imag_complex_input(%arg0: tensor<2x3xcomplex<f32>>) -> tensor<2x3xf32> {
+  %0 = "mhlo.imag"(%arg0) : (tensor<2x3xcomplex<f32>>) -> tensor<2x3xf32>
+  func.return %0 : tensor<2x3xf32>
+}
+
+// -----
+
+func.func @imag_mismatch_return_shape(%arg0: tensor<2xf32>) -> tensor<4xf32> {
+  // expected-error@+1 {{all non-scalar operands/results must have the same shape and base type}}
+  %0 = "mhlo.imag"(%arg0) : (tensor<2xf32>) -> tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}
+
+// -----
+
+func.func @imag_mismatch_return_element_type(%arg0: tensor<2xf32>) -> tensor<2xf16> {
+  // expected-error@+1 {{inferred type(s) 'tensor<2xf32>' are incompatible with return type(s) of operation 'tensor<2xf16>'}}
+  %0 = "mhlo.imag"(%arg0) : (tensor<2xf32>) -> tensor<2xf16>
+  func.return %0 : tensor<2xf16>
+}
+
+// -----
+
 func.func @infeed_non_token_second_result(%token: !mhlo.token) -> tuple<tensor<i32>, tensor<i32>> {
   // expected-error@+1 {{last element of result types is expected to be of token type, but got 'tensor<i32>'}}
   %0:2 = "mhlo.infeed"(%token) {infeed_config = "foobar", layout = [[[0]], [0]]} : (!mhlo.token) -> (tensor<i32>, tensor<i32>)
@@ -1053,6 +1101,38 @@ func.func @map_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*x
 func.func @real_fp_input(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "mhlo.real"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @real_int_input(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+  // expected-error@+1 {{operand #0 must be tensor of 16-bit float or 32-bit float or 64-bit float or bfloat16 type or complex type with 32-bit float or 64-bit float elements values, but got 'tensor<*xi32>'}}
+  %0 = "mhlo.real"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
+  func.return %0 : tensor<*xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @real_complex_input
+func.func @real_complex_input(%arg0: tensor<2x3xcomplex<f32>>) -> tensor<2x3xf32> {
+  %0 = "mhlo.real"(%arg0) : (tensor<2x3xcomplex<f32>>) -> tensor<2x3xf32>
+  func.return %0 : tensor<2x3xf32>
+}
+
+// -----
+
+func.func @real_mismatch_return_shape(%arg0: tensor<2x3xcomplex<f32>>) -> tensor<2x10xf32> {
+  // expected-error@+1 {{all non-scalar operands/results must have the same shape and base type}}
+  %0 = "mhlo.real"(%arg0) : (tensor<2x3xcomplex<f32>>) -> tensor<2x10xf32>
+  func.return %0 : tensor<2x10xf32>
+}
+
+// -----
+
+func.func @real_mismatch_return_element_type(%arg0: tensor<2x3xcomplex<f32>>) -> tensor<2x3xf16> {
+  // expected-error@+1 {{inferred type(s) 'tensor<2x3xf32>' are incompatible with return type(s) of operation 'tensor<2x3xf16>'}}
+  %0 = "mhlo.real"(%arg0) : (tensor<2x3xcomplex<f32>>) -> tensor<2x3xf16>
+  func.return %0 : tensor<2x3xf16>
 }
 
 // -----
@@ -3986,4 +4066,84 @@ func.func @abs_mismatch_element_type(%arg0: tensor<1x2xcomplex<f32>>) -> tensor<
 // expected-error@+1 {{'mhlo.abs' op inferred type(s) 'tensor<1x2xf32>' are incompatible with return type(s) of operation 'tensor<1x2xf64>'}}
   %0 = "mhlo.abs"(%arg0) {} : (tensor<1x2xcomplex<f32>>) -> tensor<1x2xf64>
   func.return %0 : tensor<1x2xf64>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex
+func.func @complex(%arg0: tensor<10x10xf32>, %arg1: tensor<10x10xf32>) -> tensor<10x10xcomplex<f32>> {
+  %0 = "mhlo.complex"(%arg0, %arg1) {} : (tensor<10x10xf32>, tensor<10x10xf32>) -> tensor<10x10xcomplex<f32>>
+  func.return %0 : tensor<10x10xcomplex<f32>>
+}
+
+// -----
+
+func.func @complex_int_input(%arg0: tensor<10x10xi32>, %arg1: tensor<10x10xi32>) -> tensor<10x10xcomplex<i32>> {
+  // expected-error@+1 {{operand #0 must be tensor of 32-bit float or 64-bit float values, but got 'tensor<10x10xi32>'}}
+  %0 = "mhlo.complex"(%arg0, %arg1) {} : (tensor<10x10xi32>, tensor<10x10xi32>) -> tensor<10x10xcomplex<i32>>
+  func.return %0 : tensor<10x10xcomplex<i32>>
+}
+
+// -----
+
+func.func @complex_f32_f64_mix_input(%arg0: tensor<10x10xf32>, %arg1: tensor<10x10xf64>) -> tensor<10x10xcomplex<f64>> {
+  // expected-error@+1 {{requires the same element type for all operands}}
+  %0 = "mhlo.complex"(%arg0, %arg1) {} : (tensor<10x10xf32>, tensor<10x10xf64>) -> tensor<10x10xcomplex<f64>>
+  func.return %0 : tensor<10x10xcomplex<f64>>
+}
+
+// -----
+
+func.func @complex_f16_input(%arg0: tensor<10x10xf16>, %arg1: tensor<10x10xf16>) -> tensor<10x10xcomplex<f16>> {
+  // expected-error@+1 {{operand #0 must be tensor of 32-bit float or 64-bit float values, but got 'tensor<10x10xf16>'}}
+  %0 = "mhlo.complex"(%arg0, %arg1) {} : (tensor<10x10xf16>, tensor<10x10xf16>) -> tensor<10x10xcomplex<f16>>
+  func.return %0 : tensor<10x10xcomplex<f16>>
+}
+
+// -----
+
+func.func @complex_mismatch_return_element_type(%arg0: tensor<10x10xf32>, %arg1: tensor<10x10xf32>) -> tensor<10x10xcomplex<f64>> {
+  // expected-error@+1 {{inferred type(s) 'tensor<10x10xcomplex<f32>>' are incompatible with return type(s) of operation 'tensor<10x10xcomplex<f64>>'}}
+  %0 = "mhlo.complex"(%arg0, %arg1) {} : (tensor<10x10xf32>, tensor<10x10xf32>) -> tensor<10x10xcomplex<f64>>
+  func.return %0 : tensor<10x10xcomplex<f64>>
+}
+
+// -----
+
+func.func @complex_mismatch_return_shape(%arg0: tensor<10x10xf32>, %arg1: tensor<10x10xf32>) -> tensor<5x5xcomplex<f32>> {
+  // expected-error@+1 {{requires the same shape for all operands and results}}
+  %0 = "mhlo.complex"(%arg0, %arg1) {} : (tensor<10x10xf32>, tensor<10x10xf32>) -> tensor<5x5xcomplex<f32>>
+  func.return %0 : tensor<5x5xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: func @is_finite
+func.func @is_finite(%arg0: tensor<3xf32>) -> tensor<3xi1> {
+  %0 = "mhlo.is_finite"(%arg0) {} : (tensor<3xf32>) -> tensor<3xi1>
+  func.return %0 : tensor<3xi1>
+}
+
+// -----
+
+func.func @is_finite_int_input(%arg0: tensor<3xi32>) -> tensor<3xi1> {
+  // expected-error@+1 {{operand #0 must be tensor of 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<3xi32>'}}
+  %0 = "mhlo.is_finite"(%arg0) {} : (tensor<3xi32>) -> tensor<3xi1>
+  func.return %0 : tensor<3xi1>
+}
+
+// -----
+
+func.func @is_finite_mismatch_return_element_type(%arg0: tensor<3xf32>) -> tensor<3xi10> {
+  // expected-error@+1 {{result #0 must be tensor of pred (AKA boolean or 1-bit integer) values, but got 'tensor<3xi10>'}}
+  %0 = "mhlo.is_finite"(%arg0) {} : (tensor<3xf32>) -> tensor<3xi10>
+  func.return %0 : tensor<3xi10>
+}
+
+// -----
+
+func.func @is_finite_mismatch_return_shape(%arg0: tensor<3xf32>) -> tensor<4xi1> {
+  // expected-error@+1 {{all non-scalar operands/results must have the same shape and base type}}
+  %0 = "mhlo.is_finite"(%arg0) {} : (tensor<3xf32>) -> tensor<4xi1>
+  func.return %0 : tensor<4xi1>
 }
