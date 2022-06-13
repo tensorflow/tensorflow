@@ -20715,13 +20715,13 @@ def TF__RecvOp : TF_Op<"_Recv", [DeclareOpInterfaceMethods<TF_GetResourceInstanc
   TF_DerivedResultTypeAttr tensor_type = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF__RecvTPUEmbeddingActivationsOp : TF_Op<"_RecvTPUEmbeddingActivations", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
+def TF_XlaRecvTPUEmbeddingActivationsOp : TF_Op<"XlaRecvTPUEmbeddingActivations", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "An op that receives embeddng activations on the TPU.";
 
   let description = [{
 The TPU system performs the embedding lookups and aggregations. The results of
 these aggregations are visible to the Tensorflow Graph as the outputs of a
-_RecvTPUEmbeddingActivations Op. This op returns a list containing one
+XlaRecvTPUEmbeddingActivations Op. This op returns a list containing one
 Tensor of activations per table specified in the model.
   }];
 
@@ -20744,7 +20744,7 @@ embedding table in the model.}]>:$outputs
   TF_DerivedResultSizeAttr num_tables = TF_DerivedResultSizeAttr<0>;
 }
 
-def TF__RecvTPUEmbeddingDeduplicationDataOp : TF_Op<"_RecvTPUEmbeddingDeduplicationData", []> {
+def TF_XlaRecvTPUEmbeddingDeduplicationDataOp : TF_Op<"XlaRecvTPUEmbeddingDeduplicationData", []> {
   let summary = [{
 Receives deduplication data (indices and weights) from the embedding core.
   }];
@@ -20785,12 +20785,12 @@ def TF__SendOp : TF_Op<"_Send", [DeclareOpInterfaceMethods<TF_GetResourceInstanc
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF__SendTPUEmbeddingGradientsOp : TF_Op<"_SendTPUEmbeddingGradients", [AttrSizedOperandSegments, TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
+def TF_XlaSendTPUEmbeddingGradientsOp : TF_Op<"XlaSendTPUEmbeddingGradients", [AttrSizedOperandSegments, TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
   let summary = "An op that performs gradient updates of embedding tables.";
 
   let description = [{
 The gradients argument is a TensorList having the same length and shapes as the
-return value of _RecvTPUEmbeddingActivations, but contains gradients of the
+return value of XlaRecvTPUEmbeddingActivations, but contains gradients of the
 model's loss with respect to the embedding activations. The embedding tables are
 updated from these gradients via the optimizer specified in the
 TPUEmbeddingConfiguration proto given to tpu.initialize_system.

@@ -62,8 +62,8 @@ xla::Status CheckNumInputsOrOutputs(
   return OkStatus();
 }
 
-// Constructs a NodeDef proto for the _RecvTPUEmbeddingDeduplicationData node to
-// be added to the graph or function def.
+// Constructs a NodeDef proto for the XlaRecvTPUEmbeddingDeduplicationData node
+// to be added to the graph or function def.
 xla::StatusOr<NodeDef> MakeRecvDeduplicationDataNodeDef(
     absl::string_view device_name, absl::string_view tpu_replicate_attr,
     absl::string_view tpu_embedding_config_str,
@@ -74,7 +74,7 @@ xla::StatusOr<NodeDef> MakeRecvDeduplicationDataNodeDef(
   NodeDefBuilder builder(
       absl::StrFormat("RecvTPUEmbeddingDeduplicationData_%s_%s_%d",
                       tpu_replicate_attr, parsed_name.type, parsed_name.id),
-      "_RecvTPUEmbeddingDeduplicationData");
+      "XlaRecvTPUEmbeddingDeduplicationData");
   if (!device_name.empty()) {
     builder.Device(device_name);
   }
@@ -88,12 +88,12 @@ xla::StatusOr<NodeDef> MakeRecvDeduplicationDataNodeDef(
 
   NodeDef deduplication_data_node_def;
   TF_RETURN_IF_ERROR(builder.Finalize(&deduplication_data_node_def));
-  VLOG(1) << "Created new _RecvTPUEmbeddingDeduplicationData node def: "
+  VLOG(1) << "Created new XlaRecvTPUEmbeddingDeduplicationData node def: "
           << deduplication_data_node_def.DebugString();
   return deduplication_data_node_def;
 }
 
-// Constructs a NodeDef proto for the _RecvTPUEmbeddingActivations node to be
+// Constructs a NodeDef proto for the XlaRecvTPUEmbeddingActivations node to be
 // added to the graph or function def.
 xla::StatusOr<NodeDef> MakeRecvActivationsNodeDef(
     const NodeDef& old_activations_node_def,
@@ -125,7 +125,7 @@ xla::StatusOr<NodeDef> MakeRecvActivationsNodeDef(
                                              tpu_embedding_config));
 
   NodeDefBuilder builder(old_activations_node_def.name(),
-                         "_RecvTPUEmbeddingActivations");
+                         "XlaRecvTPUEmbeddingActivations");
   if (!device_name.empty()) {
     builder.Device(device_name);
   }
@@ -152,13 +152,13 @@ xla::StatusOr<NodeDef> MakeRecvActivationsNodeDef(
   TF_RETURN_IF_ERROR(builder.Finalize(&activations_node_def));
   *activations_node_def.mutable_experimental_debug_info() =
       old_activations_node_def.experimental_debug_info();
-  VLOG(1) << "Created new _RecvTPUEmbeddingActivations node def: "
+  VLOG(1) << "Created new XlaRecvTPUEmbeddingActivations node def: "
           << activations_node_def.DebugString();
   return activations_node_def;
 }
 
-// Constructs a NodeDef proto for the _RecvTPUEmbeddingDeduplicationData node to
-// be added to the graph or function def.
+// Constructs a NodeDef proto for the XlaRecvTPUEmbeddingDeduplicationData node
+// to be added to the graph or function def.
 xla::StatusOr<NodeDef> MakeSendGradientsNodeDef(
     const NodeDef& old_gradients_node_def,
     absl::string_view deduplication_data_node_name,
@@ -215,7 +215,7 @@ xla::StatusOr<NodeDef> MakeSendGradientsNodeDef(
   }
 
   NodeDefBuilder builder(old_gradients_node_def.name(),
-                         "_SendTPUEmbeddingGradients");
+                         "XlaSendTPUEmbeddingGradients");
   if (!device_name.empty()) {
     builder.Device(device_name);
   }
@@ -247,7 +247,7 @@ xla::StatusOr<NodeDef> MakeSendGradientsNodeDef(
   TF_RETURN_IF_ERROR(builder.Finalize(&gradients_node_def));
   *gradients_node_def.mutable_experimental_debug_info() =
       old_gradients_node_def.experimental_debug_info();
-  VLOG(1) << "Created new _SendTPUEmbeddingGradients node def: "
+  VLOG(1) << "Created new XlaSendTPUEmbeddingGradients node def: "
           << gradients_node_def.DebugString();
   return gradients_node_def;
 }
@@ -368,7 +368,7 @@ Status ValidateAndGetTPUEmbeddingConfiguration(
   return OkStatus();
 }
 
-// Adds a _RecvTPUEmbeddingDeduplicationNode to the graph assigning to the
+// Adds a XlaRecvTPUEmbeddingDeduplicationNode to the graph assigning to the
 // specified device and setting its attributes to tpu_replicate_attr and
 // tpu_embedding_config_str. Control inputs for the old_activations_node
 // (Op=RecvTPUEmbeddingActivations) and the old_gradients_node
@@ -423,9 +423,9 @@ Status AddRecvDeduplicationDataNode(const Node* old_activations_node,
 }
 
 // Replaces the old_activations_node (Op=RecvTPUEmbeddingActivations) with a new
-// node (Op=_RecvTPUEmbeddingActivations) and initializes it with the specified
-// tpu_replicate and tpu_embedding_config_str attributes. Connects the output of
-// the deduplication_data_node to the input of the newly added node.
+// node (Op=XlaRecvTPUEmbeddingActivations) and initializes it with the
+// specified tpu_replicate and tpu_embedding_config_str attributes. Connects the
+// output of the deduplication_data_node to the input of the newly added node.
 Status ReplaceRecvActivationsNodeAndAddDeduplicationInputs(
     absl::string_view tpu_replicate_attr,
     absl::string_view tpu_embedding_config_str, Node* old_activations_node,
@@ -465,7 +465,7 @@ Status ReplaceRecvActivationsNodeAndAddDeduplicationInputs(
 }
 
 // Replaces the old_gradients_node (Op=SendTPUEmbeddingGradients) with a new
-// node (Op=_SendTPUEmbeddingGradients) and initializes it with the specified
+// node (Op=XlaSendTPUEmbeddingGradients) and initializes it with the specified
 // tpu_replicate and tpu_embedding_config_str attributes. Connects the output of
 // the deduplication_data_node to the last input of the newly added node.
 Status ReplaceSendGradientsNodeAndAddDeduplicationInputs(

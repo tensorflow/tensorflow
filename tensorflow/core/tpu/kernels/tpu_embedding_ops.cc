@@ -113,7 +113,7 @@ class RecvTPUEmbeddingActivationsOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RecvTPUEmbeddingActivationsOp);
 };
 
-REGISTER_XLA_OP(Name("_RecvTPUEmbeddingActivations").AllowVariantTypes(),
+REGISTER_XLA_OP(Name("XlaRecvTPUEmbeddingActivations").AllowVariantTypes(),
                 RecvTPUEmbeddingActivationsOp);
 
 // This TensorFlow op receives a batch of deduplication data from the
@@ -184,8 +184,9 @@ class RecvTPUEmbeddingDeduplicationDataOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RecvTPUEmbeddingDeduplicationDataOp);
 };
 
-REGISTER_XLA_OP(Name("_RecvTPUEmbeddingDeduplicationData").AllowVariantTypes(),
-                RecvTPUEmbeddingDeduplicationDataOp);
+REGISTER_XLA_OP(
+    Name("XlaRecvTPUEmbeddingDeduplicationData").AllowVariantTypes(),
+    RecvTPUEmbeddingDeduplicationDataOp);
 
 // This TensorFlow op sends a batch of gradient and learning rate updates to the
 // TpuEmbeddingEngine.
@@ -290,7 +291,7 @@ class SendTPUEmbeddingGradientsOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(SendTPUEmbeddingGradientsOp);
 };
 
-REGISTER_XLA_OP(Name("_SendTPUEmbeddingGradients").AllowVariantTypes(),
+REGISTER_XLA_OP(Name("XlaSendTPUEmbeddingGradients").AllowVariantTypes(),
                 SendTPUEmbeddingGradientsOp);
 
 }  // anonymous namespace
