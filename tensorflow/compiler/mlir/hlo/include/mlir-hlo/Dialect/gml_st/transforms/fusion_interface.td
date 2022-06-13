@@ -32,11 +32,7 @@ def FusionIterface : OpInterface<"FusionIterface"> {
       /*args=*/(ins
           "::mlir::Location":$loc,
           "::mlir::Value":$subset,
-          "OpBuilder&":$builder),
-      /*methodBody=*/"",
-      /*defaultImplementation=*/[{
-        return {};
-      }]>,
+          "OpBuilder&":$builder)>,
   ];
 }
 

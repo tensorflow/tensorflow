@@ -16,6 +16,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 
 #include "llvm/ADT/TypeSwitch.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BlockAndValueMapping.h"
@@ -1425,6 +1426,119 @@ LogicalResult CollapseTileOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult SubsetYieldOp::verify() { return success(); }
+
+//===----------------------------------------------------------------------===//
+// DynamicBroadcastInDimOp
+//===----------------------------------------------------------------------===//
+
+static Value materializeSpaceFromTensor(Value operand,
+                                        const SmallVector<Value> &dims,
+                                        OpBuilder &builder) {
+  auto loc = operand.getLoc();
+  auto ty = operand.getType().cast<RankedTensorType>();
+
+  // Collect dimension info and materialize `dim` ops for dynamic dimensions.
+  SmallVector<int64_t> staticDims;
+  SmallVector<Value> dynamicDims;
+  for (const auto &it : llvm::enumerate(ty.getShape())) {
+    int64_t d = it.value();
+    staticDims.push_back(d);
+    if (d == ShapedType::kDynamicSize) dynamicDims.push_back(dims[it.index()]);
+  }
+
+  // Materialize `space` op.
+  auto spaceTy = builder.getType<TileType>(ty.getShape());
+  auto staticDimsAttr = builder.getI64ArrayAttr(staticDims);
+  return builder.create<SpaceOp>(loc, spaceTy, dynamicDims, staticDimsAttr);
+}
+
+Value DynamicBroadcastInDimOp::fuse(Location loc, Value subset,
+                                    OpBuilder &builder) {
+  // Supports tile subsets.
+  Type subsetTy = subset.getType();
+  if (!subsetTy.isa<TileType>()) return {};
+  Value tile = subset;
+
+  // Create the needed constants only once.
+  DenseMap<uint64_t, Value> localIndexConstants;
+  auto getIndexConstant = [&](uint64_t c) -> Value {
+    auto it = localIndexConstants.find(c);
+    if (it != localIndexConstants.end()) return it->second;
+    auto cst = builder.create<arith::ConstantIndexOp>(loc, c);
+    localIndexConstants[c] = cst;
+    return cst;
+  };
+
+  auto operandTy = operand().getType().cast<RankedTensorType>();
+  auto tileTy = tile.getType().cast<TileType>();
+  auto resultTy = getType().cast<RankedTensorType>();
+
+  // Materiaize operand dimensions.
+  SmallVector<Value> operandDims;
+  operandDims.reserve(operandTy.getRank());
+  for (const auto &it : llvm::enumerate(operandTy.getShape())) {
+    int64_t d = it.value();
+    Value dim =
+        d == ShapedType::kDynamicSize
+            ? builder.create<tensor::DimOp>(loc, operand(), it.index())
+                  .getResult()
+            : builder.create<arith::ConstantIndexOp>(loc, d).getResult();
+    operandDims.push_back(dim);
+  }
+
+  // Materialize operand and result space.
+  Value operandSpace =
+      materializeSpaceFromTensor(operand(), operandDims, builder);
+
+  // Materialize offsets and sizes for operand tile.
+  auto collapsedTile =
+      builder.create<CollapseTileOp>(loc, tile, broadcast_dimensions());
+  SmallVector<Value> argTileOffsets;
+  SmallVector<Value> argTileSizes;
+  for (const auto &it : llvm::enumerate(broadcast_dimensions())) {
+    Value argIdx = getIndexConstant(it.index());
+    Value resultIdx = getIndexConstant(it.value().getLimitedValue());
+
+    // If corresponding operand and result dimensions are different, the
+    // dimension is expanding.
+    auto argDim = operandDims[it.index()];
+    auto resultDim = builder.create<tensor::DimOp>(loc, init(), resultIdx);
+    auto isExpanding = builder.create<arith::CmpIOp>(
+        loc, arith::CmpIPredicate::ne, argDim, resultDim);
+
+    // Copy offset for non-expanding dimensions and index at 0, otherwise.
+    auto tileOffset = builder.create<OffsetOp>(loc, collapsedTile, argIdx);
+    auto tileSize = builder.create<SizeOp>(loc, collapsedTile, argIdx);
+    argTileOffsets.push_back(builder.create<arith::SelectOp>(
+        loc, isExpanding, getIndexConstant(0), tileOffset));
+    argTileSizes.push_back(builder.create<arith::SelectOp>(
+        loc, isExpanding, getIndexConstant(1), tileSize));
+  }
+
+  // Materialize operand tile.
+  int64_t rank = operandTy.getRank();
+  auto staticOffsets = builder.getI64ArrayAttr(
+      SmallVector<int64_t>(rank, ShapedType::kDynamicStrideOrOffset));
+  SmallVector<int64_t> allDynamicSizes(rank, ShapedType::kDynamicSize);
+  auto staticSizes = builder.getI64ArrayAttr(allDynamicSizes);
+  auto staticStrides = builder.getI64ArrayAttr(SmallVector<int64_t>(rank, 1));
+  auto operandTileTy = builder.getType<TileType>(allDynamicSizes);
+  auto operandTile = builder.create<TileOp>(
+      loc, operandTileTy, operandSpace, argTileOffsets, argTileSizes,
+      ValueRange{}, staticOffsets, staticSizes, staticStrides);
+
+  // Materialize operands' subsets.
+  Value tiledInit = builder.create<MaterializeOp>(loc, init(), tile);
+  Value tiledOperand =
+      builder.create<MaterializeOp>(loc, operand(), operandTile);
+
+  // Finally, materialize tiled broadcast.
+  auto tiledResultTy =
+      RankedTensorType::get(tileTy.getShape(), resultTy.getElementType());
+  return builder.create<DynamicBroadcastInDimOp>(
+      loc, tiledResultTy, tiledInit, tiledOperand, broadcast_dimensions(),
+      known_expanding_dimensionsAttr(), known_nonexpanding_dimensionsAttr());
+}
 
 }  // namespace gml_st
 }  // namespace mlir
