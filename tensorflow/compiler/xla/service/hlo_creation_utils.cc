@@ -383,6 +383,34 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
   return MakeReduceHlo(operand, init_value, all_dims, reduce_computation);
 }
 
+StatusOr<HloInstruction*> MakeReduceHlo(
+    absl::Span<HloInstruction* const> operands,
+    absl::Span<HloInstruction* const> init_values,
+    absl::Span<const int64_t> dimensions, HloComputation* reduce_computation) {
+  CHECK(!operands.empty());
+  CHECK_EQ(operands.size(), init_values.size());
+  auto root = reduce_computation->root_instruction();
+  if (root->shape().IsTuple()) {
+    CHECK_EQ(root->shape().tuple_shapes_size(), operands.size());
+  } else {
+    CHECK_EQ(operands.size(), 1);
+  }
+
+  std::vector<Shape> expected_shapes;
+  for (auto operand : operands) {
+    expected_shapes.push_back(ShapeUtil::FilterDimensions(
+        [&](const int64_t dim) {
+          return !absl::c_linear_search(dimensions, dim);
+        },
+        operand->shape()));
+  }
+
+  auto output_shape = ShapeUtil::MakeMaybeTupleShape(expected_shapes);
+
+  return operands[0]->parent()->AddInstruction(HloInstruction::CreateReduce(
+      output_shape, operands, init_values, dimensions, reduce_computation));
+}
+
 StatusOr<HloInstruction*> MakeReverseHlo(HloInstruction* operand,
                                          absl::Span<const int64_t> dimensions) {
   HloComputation* computation = operand->parent();

@@ -169,6 +169,18 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
                                         HloOpcode binary_opcode,
                                         HloModule* module);
 
+// Generic helper function to create a reduction.
+//
+// Precondition: size of operands is equal to the size of init values and equal
+// to the size of the computation output shape.
+//
+// Creates a non-variadic reduction if the size is singular, and a variadic one
+// otherwise.
+StatusOr<HloInstruction*> MakeReduceHlo(
+    absl::Span<HloInstruction* const> operands,
+    absl::Span<HloInstruction* const> init_values,
+    absl::Span<const int64_t> dimensions, HloComputation* reduce_computation);
+
 // Creates a Reverse HLO instruction and adds it to the computation containing
 // `operand`.
 StatusOr<HloInstruction*> MakeReverseHlo(HloInstruction* operand,
