@@ -90,9 +90,12 @@ export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} \
     -//tensorflow/python/training:server_lib_test"
 export TF_PIP_TESTS="test_pip_virtualenv_clean"
 export TF_TEST_FILTER_TAGS="-no_oss,-oss_serial,-no_oss_py${py_ver},-gpu,-tpu,-benchmark-test,-v1only,-no_aarch64,-requires-gpu"
-export IS_NIGHTLY=0 # This variable is not used, but is required to be set
 export TF_PIP_TEST_ROOT="pip_test"
 export TF_AUDITWHEEL_TARGET_PLAT="manylinux2014"
+
+if [ ${IS_NIGHTLY} == 1 ]; then
+  ./tensorflow/tools/ci_build/update_version.py --nightly
+fi
 
 source tensorflow/tools/ci_build/builds/pip_new.sh
 
