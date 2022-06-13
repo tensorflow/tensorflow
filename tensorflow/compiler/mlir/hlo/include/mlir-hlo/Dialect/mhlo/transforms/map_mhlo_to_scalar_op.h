@@ -242,12 +242,15 @@ struct isAnyIntegerType {
 struct isSignedIntegerType {
   bool operator()(Type t) {
     // Pretend that signless is signed. This will change eventually.
-    return t.isa<IntegerType>() && !t.isUnsignedInteger();
+    return t.isa<IntegerType>() && !t.isUnsignedInteger() &&
+           !t.isSignlessInteger(1);
   }
 };
 
 struct isUnsignedIntegerType {
-  bool operator()(Type t) { return t.isUnsignedInteger(); }
+  bool operator()(Type t) {
+    return t.isUnsignedInteger() || t.isSignlessInteger(1);
+  }
 };
 
 struct isFloatType {
@@ -392,11 +395,10 @@ inline Value MapCompareOpToStdScalarOp(Location loc,
   const auto& rhs = args[1];
   Type element_type = getElementTypeOrSelf(arg_types.front());
   if (element_type.isa<IntegerType>()) {
-    bool is_unsigned =
-        element_type.isInteger(1) || element_type.isUnsignedInteger();
+    bool isUnsigned = isUnsignedIntegerType{}(element_type);
     Optional<arith::CmpIPredicate> predicate =
         getCmpPredicate<arith::CmpIPredicate>(comparison_direction,
-                                              !is_unsigned);
+                                              !isUnsigned);
     assert(predicate.hasValue() && "expected valid comparison direction");
     return b->create<ScalarIOp<mhlo::CompareOp>>(loc, predicate.getValue(), lhs,
                                                  rhs);
@@ -478,13 +480,7 @@ inline Value MapConvertOpToStdScalarOp(Location loc,
 
   // A boolean value is considered to be unsigned when converting to
   // floating-point. Otherwise, it will become `-1`.
-  if ((source_type.isInteger(/*width=*/1) || source_type.isUnsignedInteger()) &&
-      mlir::arith::UIToFPOp::areCastCompatible(converted_source_type,
-                                               target_type)) {
-    return b->create<mlir::arith::UIToFPOp>(loc, result_types, args,
-                                            mlir::None);
-  }
-  if (source_type.isUnsignedInteger() &&
+  if (isUnsignedIntegerType{}(source_type) &&
       mlir::arith::UIToFPOp::areCastCompatible(converted_source_type,
                                                target_type)) {
     return b->create<mlir::arith::UIToFPOp>(loc, result_types, args,
@@ -540,7 +536,7 @@ inline Value MapConvertOpToStdScalarOp(Location loc,
     }
     if (src.getWidth() < res.getWidth()) {
       // Special case boolean values, so they get casted to `1` instead of `-1`.
-      if (src.isUnsignedInteger() || src.getWidth() == 1) {
+      if (isUnsignedIntegerType{}(src)) {
         return b->create<mlir::arith::ExtUIOp>(loc, result_types, args,
                                                mlir::None);
       }

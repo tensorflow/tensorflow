@@ -1096,6 +1096,19 @@ func.func @maxu(%lhs: tensor<2x2xui32>, %rhs: tensor<2x2xui32>) -> tensor<2x2xui
 
 // -----
 
+// CHECK-LABEL: func @maxi1
+func.func @maxi1(%lhs: tensor<?x?xi1>, %rhs: tensor<?x?xi1>) -> tensor<?x?xi1> {
+  %0 = "mhlo.maximum"(%lhs, %rhs)
+          : (tensor<?x?xi1>, tensor<?x?xi1>) -> tensor<?x?xi1>
+  func.return %0 : tensor<?x?xi1>
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i1, %[[RHS_IN:.*]]: i1, %{{.*}}: i1):
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.maxui %[[LHS_IN]], %[[RHS_IN]] : i1
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
 // CHECK-DAG: #[[MAP:.*]] = affine_map<() -> ()>
 // CHECK-LABEL: func @add_scalar
 func.func @add_scalar(%lhs: tensor<f32>, %rhs: tensor<f32>) -> tensor<f32> {
