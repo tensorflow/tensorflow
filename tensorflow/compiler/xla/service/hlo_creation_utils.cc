@@ -334,11 +334,7 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
                                         absl::Span<const int64_t> dimensions,
                                         HloComputation* reduce_computation) {
   auto scalar_shape = ShapeUtil::MakeShape(operand->shape().element_type(), {});
-  auto result_shape = ShapeUtil::FilterDimensions(
-      [&](const int64_t dim) {
-        return !absl::c_linear_search(dimensions, dim);
-      },
-      operand->shape());
+  auto result_shape = ShapeUtil::DeleteDimensions(dimensions, operand->shape());
 
   return operand->parent()->AddInstruction(HloInstruction::CreateReduce(
       result_shape, operand, init_value, dimensions, reduce_computation));

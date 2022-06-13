@@ -582,6 +582,10 @@ class ShapeUtil {
   // • `DeleteDimension(1, T[m, n, k]) = T[m, k]`
   static Shape DeleteDimension(int64_t dim_to_delete, Shape shape);
 
+  // Returns a shape with dimensions in `to_drop` dropped.
+  static Shape DeleteDimensions(absl::Span<int64_t const> dims_to_delete,
+                                Shape shape);
+
   // Returns a shape with all the dimensions of the input shape for which `p`
   // returns true.
   // For examples:

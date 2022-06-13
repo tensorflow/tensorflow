@@ -3927,11 +3927,8 @@ llvm::Value* IrEmitterUnnested::GetOutputAddressForReduction(
 
   const IrArray& output_array = output_arrays.at(reduction)[output_idx];
   const Shape& operand_shape = reduction->inputs()[output_idx]->shape();
-  Shape reduction_kept_element_shape = ShapeUtil::FilterDimensions(
-      [&](int64_t dim) {
-        return !absl::c_linear_search(reduction->dimensions(), dim);
-      },
-      operand_shape);
+  Shape reduction_kept_element_shape =
+      ShapeUtil::DeleteDimensions(reduction->dimensions(), operand_shape);
 
   // Given the IrArray index of a reduction input, returns the linear address of
   // the reduction output as if the reduction were going to keep the input shape

@@ -2110,9 +2110,7 @@ HloInstruction* AlgebraicSimplifierVisitor::AddReduce(
       computation_->AddInstruction(simplifier_->CreateConstantWithLayoutUpdated(
           LiteralUtil::Zero(hlo->shape().element_type()).Clone()));
   HloComputation* AddReduce_computation = GetOrCreateScalarAddComputation(type);
-  Shape shape = ShapeUtil::FilterDimensions(
-      [&](int64_t dim) { return !absl::c_linear_search(dims, dim); },
-      hlo->shape());
+  Shape shape = ShapeUtil::DeleteDimensions(dims, hlo->shape());
   simplifier_->UpdateLayout(&shape);
   return computation_->AddInstruction(HloInstruction::CreateReduce(
       shape, hlo, zero, dims, AddReduce_computation));
@@ -5310,11 +5308,8 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
       new_reduce_dimensions.push_back(transpose_dimensions[dim]);
     }
 
-    Shape new_reduce_result_shape = ShapeUtil::FilterDimensions(
-        [&](const int64_t dim) {
-          return !absl::c_linear_search(new_reduce_dimensions, dim);
-        },
-        arg->mutable_operand(0)->shape());
+    Shape new_reduce_result_shape = ShapeUtil::DeleteDimensions(
+        new_reduce_dimensions, arg->mutable_operand(0)->shape());
     HloInstruction* new_reduce =
         reduce->AddInstruction(HloInstruction::CreateReduce(
             new_reduce_result_shape, arg->mutable_operand(0), init_value,
@@ -5696,11 +5691,8 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(HloInstruction* hlo) {
     // If a reduce window can be expressed as a reduce, do so and reshape the
     // output.
     if (!effective_reduce_dims.empty()) {
-      Shape reduce_shape = ShapeUtil::FilterDimensions(
-          [&](int64_t dim) {
-            return !absl::c_linear_search(effective_reduce_dims, dim);
-          },
-          reduce_window->shape());
+      Shape reduce_shape = ShapeUtil::DeleteDimensions(effective_reduce_dims,
+                                                       reduce_window->shape());
       simplifier_->UpdateLayout(&reduce_shape);
       HloInstruction* reduce = hlo->AddInstruction(HloInstruction::CreateReduce(
           /*shape=*/reduce_shape,

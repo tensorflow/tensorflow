@@ -798,6 +798,21 @@ TEST(ShapeUtilTest, MoveDimToMajor) {
                                            F32, {10, 10, 10}, {2, 1, 0})}));
 }
 
+TEST(ShapeUtilTest, DeleteDimensions) {
+  Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {5, 3, 2}, {2, 0, 1});
+  Shape new_shape = ShapeUtil::DeleteDimensions({1}, shape);
+  EXPECT_EQ(new_shape, ShapeUtil::MakeShapeWithLayout(F32, {5, 2}, {1, 0}));
+}
+
+TEST(ShapeUtilTest, DeleteDimensionsUnsorted) {
+  Shape shape =
+      ShapeUtil::MakeShapeWithLayout(F32, {5, 3, 2, 7, 9}, {2, 0, 1, 4, 3});
+  Shape a = ShapeUtil::DeleteDimensions({1, 2, 3}, shape);
+  Shape b = ShapeUtil::DeleteDimensions({3, 2, 1}, shape);
+  EXPECT_EQ(a, b);
+  EXPECT_EQ(a, ShapeUtil::MakeShapeWithLayout(F32, {5, 9}, {0, 1}));
+}
+
 TEST(AlgebraicSimplifierTest, ReshapeIsBitcast_3x2x2_6x2_Dim0IsMostMinor) {
   EXPECT_FALSE(ShapeUtil::ReshapeIsBitcast(
       ShapeUtil::MakeShapeWithLayout(F32, {3, 2, 2}, {0, 1, 2}),

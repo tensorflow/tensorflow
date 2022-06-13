@@ -1301,11 +1301,7 @@ static Layout GetReduceLayoutFromOperand(const Layout& operand_layout,
   CHECK_EQ(hlo->opcode(), HloOpcode::kReduce);
   Shape operand_shape = hlo->operand(0)->shape();
   *operand_shape.mutable_layout() = operand_layout;
-  operand_shape = ShapeUtil::FilterDimensions(
-      [&](int64_t dim) {
-        return !absl::c_linear_search(hlo->dimensions(), dim);
-      },
-      operand_shape);
+  operand_shape = ShapeUtil::DeleteDimensions(hlo->dimensions(), operand_shape);
   return operand_shape.layout();
 }
 
