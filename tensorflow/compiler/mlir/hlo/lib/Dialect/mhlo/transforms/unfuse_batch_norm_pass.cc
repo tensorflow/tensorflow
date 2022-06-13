@@ -39,7 +39,7 @@ struct TestUnfuseBatchNormPass
   }
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    PopulateUnfuseBatchNormPatterns(&getContext(), &patterns);
+    populateUnfuseBatchNormPatterns(&getContext(), &patterns);
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
       return signalPassFailure();

@@ -76,7 +76,7 @@ struct SparseRewritingPass
     : public SparseRewritingPassBase<SparseRewritingPass> {
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    PopulateSparseRewritingPatterns(&patterns, &getContext());
+    populateSparseRewritingPatterns(&patterns, &getContext());
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
       return signalPassFailure();
@@ -86,7 +86,7 @@ struct SparseRewritingPass
 
 }  // namespace
 
-void PopulateSparseRewritingPatterns(RewritePatternSet *patterns,
+void populateSparseRewritingPatterns(RewritePatternSet *patterns,
                                      MLIRContext *ctx) {
   patterns->add<SparseConvertConverter>(ctx);
 }

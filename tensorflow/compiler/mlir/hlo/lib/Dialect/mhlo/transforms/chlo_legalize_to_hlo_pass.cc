@@ -58,12 +58,12 @@ struct ChloLegalizeToHloPass
     conversionTarget.addLegalOp<chlo::MinimumBroadcastShapesOp>();
 
     if (legalize_broadcasts_) {
-      chlo::PopulateChloBroadcastingPatterns(&getContext(),
+      chlo::populateChloBroadcastingPatterns(&getContext(),
                                              &conversionPatterns);
     }
 
     if (expand_compositions_) {
-      chlo::PopulateDecomposeChloPatterns(&getContext(), &conversionPatterns);
+      chlo::populateDecomposeChloPatterns(&getContext(), &conversionPatterns);
     } else {
       conversionTarget
           .addLegalOp<chlo::NextAfterOp, chlo::PolygammaOp, chlo::ZetaOp>();

@@ -134,7 +134,7 @@ struct LegalizeGatherToTorchIndexSelectPass
   /// Perform the lowering of standard dialect operations to approximations.
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    PopulateGatherToTorchIndexSelectPatterns(&getContext(), &patterns);
+    populateGatherToTorchIndexSelectPatterns(&getContext(), &patterns);
     if (failed(
             applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
       return signalPassFailure();
@@ -142,7 +142,7 @@ struct LegalizeGatherToTorchIndexSelectPass
 };
 }  // namespace
 
-void PopulateGatherToTorchIndexSelectPatterns(mlir::MLIRContext *context,
+void populateGatherToTorchIndexSelectPatterns(mlir::MLIRContext *context,
                                               RewritePatternSet *patterns) {
   patterns->add<GatherIsTorchIndexSelect>(context);
 }

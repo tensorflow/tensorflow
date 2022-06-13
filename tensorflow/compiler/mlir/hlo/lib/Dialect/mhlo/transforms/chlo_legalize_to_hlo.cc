@@ -1434,7 +1434,7 @@ struct ConvertTrivialNonBroadcastBinaryOp
     }
 
     rewriter.replaceOp(op,
-                       {Adaptor::CreateOp(op, op.getResult().getType(),
+                       {Adaptor::createOp(op, op.getResult().getType(),
                                           adaptor.getOperands(), rewriter)});
     return success();
   }
@@ -1523,7 +1523,7 @@ struct ConvertRankedDynamicBroadcastBinaryOp
         rhs, resultExtents, rewriter.getI64TensorAttr(rhsBroadcastDimensions));
 
     // And generate the final non-broadcasted binary op.
-    Value finalResult = Adaptor::CreateOp(
+    Value finalResult = Adaptor::createOp(
         op, resultType, {broadcastedLhs, broadcastedRhs}, rewriter);
     rewriter.create<shape::AssumingYieldOp>(loc, finalResult);
     rewriter.replaceOp(op, {assumingOp.getResult(0)});
@@ -1565,21 +1565,21 @@ class ConvertDynamicReshapeOp
 #include "generated_chlo_legalize_to_hlo.inc"
 }  // namespace
 
-void PopulateChloBroadcastingPatterns(MLIRContext *context,
+void populateChloBroadcastingPatterns(MLIRContext *context,
                                       RewritePatternSet *patterns) {
   // Instantiate conversion templates for conforming binary elementwise ops
   // that do not have different dtypes between operands and results and do
   // not have special attributes that need to be preserved.
-  PopulateForBroadcastingBinaryOp<ConvertTrivialNonBroadcastBinaryOp>(
+  populateForBroadcastingBinaryOp<ConvertTrivialNonBroadcastBinaryOp>(
       context, patterns, 10);
-  PopulateForBroadcastingBinaryOp<ConvertRankedDynamicBroadcastBinaryOp>(
+  populateForBroadcastingBinaryOp<ConvertRankedDynamicBroadcastBinaryOp>(
       context, patterns, 5);
   patterns
       ->add<ConvertConstantLikeOp, ConvertDynamicReshapeOp, ConvertSelectOp>(
           context);
 }
 
-void PopulateDecomposeChloPatterns(MLIRContext *context,
+void populateDecomposeChloPatterns(MLIRContext *context,
                                    RewritePatternSet *patterns) {
   populateWithGenerated(*patterns);
 

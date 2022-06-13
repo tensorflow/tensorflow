@@ -864,7 +864,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   // efficient broadcast operations moving.
   // Move up broadcasting operations to allow for more fusion opportunities.
   pm.addPass(mlir::createInlinerPass());
-  pm.addPass(mlir::mhlo::CreateExpandHloTuplesPass("main"));
+  pm.addPass(mlir::mhlo::createExpandHloTuplesPass("main"));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeGeneralDotPass());
   pm.addNestedPass<mlir::func::FuncOp>(

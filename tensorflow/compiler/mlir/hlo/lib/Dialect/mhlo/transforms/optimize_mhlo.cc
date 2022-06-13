@@ -160,7 +160,7 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
 
 }  // end anonymous namespace
 
-void PopulateOptimizeMHLOPatterns(MLIRContext* context,
+void populateOptimizeMhloPatterns(MLIRContext* context,
                                   RewritePatternSet* patterns) {
   patterns->add<GatherIsSlice>(context);
 }

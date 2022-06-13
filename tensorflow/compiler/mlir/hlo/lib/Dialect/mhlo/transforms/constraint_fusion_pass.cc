@@ -440,7 +440,7 @@ struct ConstraintFusionPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateConstraintFusionPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createConstraintFusionPass() {
   return std::make_unique<ConstraintFusionPass>();
 }
 

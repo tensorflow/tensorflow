@@ -427,7 +427,7 @@ struct MergeAssumingOpsPass
   void runOnOperation() override {
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
-    mhlo::PopulateMergeAssumingOpsPatterns(ctx, &patterns);
+    mhlo::populateMergeAssumingOpsPatterns(ctx, &patterns);
     GreedyRewriteConfig config;
     config.maxIterations = GreedyRewriteConfig::kNoIterationLimit;
     if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
@@ -439,7 +439,7 @@ struct MergeAssumingOpsPass
 
 }  // namespace
 
-void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
+void populateMergeAssumingOpsPatterns(MLIRContext *context,
                                       RewritePatternSet *patterns) {
   // clang-format off
   patterns->add<

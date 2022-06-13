@@ -142,7 +142,7 @@ class ExpandHloTuplesPass
 
 }  // end namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateExpandHloTuplesPass(
+std::unique_ptr<OperationPass<ModuleOp>> createExpandHloTuplesPass(
     const std::string& entryFunctionName) {
   return std::make_unique<ExpandHloTuplesPass>(entryFunctionName);
 }

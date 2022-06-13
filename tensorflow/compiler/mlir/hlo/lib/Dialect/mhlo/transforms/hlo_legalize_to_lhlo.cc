@@ -471,7 +471,7 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
                              isMemRefType);
         });
 
-    populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
+    populateHloToLhloConversionPattern(&context, &converter, &patterns);
     populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
                                                                    converter);
     populateCallOpTypeConversionPattern(patterns, converter);
@@ -487,7 +487,7 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
 }  // namespace
 
 // Simply lowers all mhlo ops to their lmhlo counterparts.
-void populateDynamicHLOToLHLOConversionPattern(
+void populateDynamicHloToLhloConversionPattern(
     MLIRContext* context, bufferization::BufferizeTypeConverter* converter,
     RewritePatternSet* patterns) {
   // clang-format off
@@ -501,10 +501,10 @@ void populateDynamicHLOToLHLOConversionPattern(
   // clang-format on
 }
 
-void populateHLOToLHLOConversionPattern(
+void populateHloToLhloConversionPattern(
     MLIRContext* context, bufferization::BufferizeTypeConverter* converter,
     RewritePatternSet* patterns) {
-  populateDynamicHLOToLHLOConversionPattern(context, converter, patterns);
+  populateDynamicHloToLhloConversionPattern(context, converter, patterns);
 
   // clang-format off
   patterns->add<

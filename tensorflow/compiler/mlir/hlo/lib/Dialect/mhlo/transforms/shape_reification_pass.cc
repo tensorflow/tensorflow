@@ -158,7 +158,7 @@ struct ShapeReificationPass
     // Collect patterns.
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
-    PopulateShapeReificationPatterns(ctx, &patterns);
+    populateShapeReificationPatterns(ctx, &patterns);
 
     // Apply patterns from the bottom up. This ensures to need no more than one
     // iteration.
@@ -173,7 +173,7 @@ struct ShapeReificationPass
 
 }  // namespace
 
-void PopulateShapeReificationPatterns(MLIRContext *ctx,
+void populateShapeReificationPatterns(MLIRContext *ctx,
                                       RewritePatternSet *patterns) {
   // clang-format off
   patterns->add<
@@ -182,7 +182,7 @@ void PopulateShapeReificationPatterns(MLIRContext *ctx,
   // clang-format on
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateShapeReificationPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createShapeReificationPass() {
   return std::make_unique<ShapeReificationPass>();
 }
 

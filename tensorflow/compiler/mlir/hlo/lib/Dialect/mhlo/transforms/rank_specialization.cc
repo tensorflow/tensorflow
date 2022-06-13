@@ -286,7 +286,7 @@ struct RankSpecializationClusterPass
   void runOnOperation() override {
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
-    mhlo::PopulateRankSpecializationClusterPatterns(ctx, &patterns);
+    mhlo::populateRankSpecializationClusterPatterns(ctx, &patterns);
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
       return signalPassFailure();
@@ -920,7 +920,7 @@ struct RankSpecializationToSCFPass
   void runOnOperation() override {
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
-    PopulateRankSpecializationToSCFPatterns(ctx, &patterns,
+    populateRankSpecializationToSCFPatterns(ctx, &patterns,
                                             this->max_target_rank_);
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
@@ -931,13 +931,13 @@ struct RankSpecializationToSCFPass
 
 }  // namespace
 
-void PopulateRankSpecializationClusterPatterns(MLIRContext *context,
+void populateRankSpecializationClusterPatterns(MLIRContext *context,
                                                RewritePatternSet *patterns) {
   patterns->add<MergeRankSpecializationClusterOpsPattern,
                 RankSpecializationClusterPattern>(context);
 }
 
-void PopulateRankSpecializationToSCFPatterns(MLIRContext *context,
+void populateRankSpecializationToSCFPatterns(MLIRContext *context,
                                              RewritePatternSet *patterns,
                                              int64_t maxTargetRank) {
   patterns->add<LowerRankSpecializationClusterPattern>(context, maxTargetRank);

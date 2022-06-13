@@ -17,6 +17,7 @@ limitations under the License.
 #define MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSES_H
 
 #include <memory>
+#include <string>
 
 #include "llvm/ADT/ArrayRef.h"
 
@@ -44,7 +45,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeToStdPass();
 
 /// Lowers from the CHLO dialect to the HLO dialect.
 std::unique_ptr<OperationPass<func::FuncOp>> createChloLegalizeToHloPass(
-    bool legalize_broadcasts = true, bool expand_compositions = true);
+    bool legalizeBroadcasts = true, bool expandCompositions = true);
 
 // canonicalize reduction ops to be suitable for codegen.
 std::unique_ptr<OperationPass<func::FuncOp>>
@@ -97,15 +98,15 @@ std::unique_ptr<OperationPass<func::FuncOp>> createRestrictMaxRankPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createMergeAssumingOpsPass();
 
 // Iteratively reifies all shape computations in the function.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateShapeReificationPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createShapeReificationPass();
 
 // Fuse shape constraints and merge all assuming regions.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateConstraintFusionPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createConstraintFusionPass();
 
 // Group reduction and parallel dimensions of reduction operations and realize
 // them through equivalent 1D or 2D reductions.
 std::unique_ptr<OperationPass<func::FuncOp>> createGroupReductionDimensionsPass(
-    bool prefer_columns_reductions = true);
+    bool preferColumnsReductions = true);
 
 /// Rank specialization passes:
 ///   - Find compatible operations and group them together in one rank
@@ -114,7 +115,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> createGroupReductionDimensionsPass(
 std::unique_ptr<OperationPass<func::FuncOp>>
 createRankSpecializationClusterPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createRankSpecializationToSCFPass(
-    int64_t max_target_rank = 5);
+    int64_t maxTargetRank = 5);
 
 std::unique_ptr<OperationPass<func::FuncOp>> createOptimizeMhloPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerComplexPass();
@@ -126,8 +127,8 @@ createLegalizeGatherToTorchIndexSelectPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createFlattenTuplePass();
 
 // Creates a pass for expanding mhlo.tuple ops.
-std::unique_ptr<OperationPass<ModuleOp>> CreateExpandHloTuplesPass(
-    const std::string& entry_function_name = "main");
+std::unique_ptr<OperationPass<ModuleOp>> createExpandHloTuplesPass(
+    const std::string& entryFunctionName = "main");
 
 // Creates a pass for collapsing the mhlo.map if the map only has elementwise
 // op.

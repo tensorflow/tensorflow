@@ -118,7 +118,7 @@ struct HloLegalizeToArithmeticPass
     RewritePatternSet patterns(&context);
     ConversionTarget target(context);
 
-    populateHLOToArithmeticConversionPatterns(&patterns);
+    populateHloToArithmeticConversionPatterns(&patterns);
 
     target.addIllegalOp<XlaRngGetAndUpdateStateOp>();
     target.addLegalDialect<arith::ArithmeticDialect, BuiltinDialect,
@@ -132,7 +132,7 @@ struct HloLegalizeToArithmeticPass
 
 }  // namespace
 
-void populateHLOToArithmeticConversionPatterns(RewritePatternSet* patterns) {
+void populateHloToArithmeticConversionPatterns(RewritePatternSet* patterns) {
   patterns->add<RngGetAndUpdateStatePattern>(patterns->getContext());
 }
 

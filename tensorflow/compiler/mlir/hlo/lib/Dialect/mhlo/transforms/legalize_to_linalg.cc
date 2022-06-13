@@ -3180,7 +3180,7 @@ struct HloLegalizeToLinalgPass
 
     mhlo::RemoveSignTypeConverter typeConverter;
     auto func = getOperation();
-    mhlo::populateHLOToLinalgConversionPattern(&ctx, typeConverter, &patterns);
+    mhlo::populateHloToLinalgConversionPattern(&ctx, typeConverter, &patterns);
     if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
       signalPassFailure();
     }
@@ -3191,7 +3191,7 @@ struct HloLegalizeToLinalgPass
 
 namespace mhlo {
 
-void populateHLOToLinalgConversionPattern(MLIRContext* context,
+void populateHloToLinalgConversionPattern(MLIRContext* context,
                                           TypeConverter& typeConverter,
                                           RewritePatternSet* patterns) {
   // clang-format off

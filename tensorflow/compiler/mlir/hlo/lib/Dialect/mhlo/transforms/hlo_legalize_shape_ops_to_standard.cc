@@ -210,7 +210,7 @@ struct HloLegalizeShapeOpsToStandardPass
 
     auto func = getOperation();
     mhlo::RemoveSignTypeConverter typeConverter;
-    mhlo::populateHLOShapeOpsToStandardConversionPattern(&ctx, typeConverter,
+    mhlo::populateHloShapeOpsToStandardConversionPattern(&ctx, typeConverter,
                                                          &patterns);
     if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
       signalPassFailure();
@@ -222,7 +222,7 @@ struct HloLegalizeShapeOpsToStandardPass
 
 namespace mhlo {
 
-void populateHLOShapeOpsToStandardConversionPattern(
+void populateHloShapeOpsToStandardConversionPattern(
     MLIRContext* context, TypeConverter& typeConverter,
     RewritePatternSet* patterns) {
   // clang-format off

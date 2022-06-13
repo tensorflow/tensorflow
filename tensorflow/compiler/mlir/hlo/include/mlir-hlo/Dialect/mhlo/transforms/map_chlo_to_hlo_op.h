@@ -27,20 +27,20 @@ namespace chlo {
 
 template <typename FromOpTy, typename ToOpTy>
 struct HloNaryElementwiseAdaptor {
-  static ToOpTy CreateOp(FromOpTy from_op, Type result_type,
-                         ValueRange broadcasted_operands, OpBuilder &builder) {
-    return builder.create<ToOpTy>(from_op.getLoc(), result_type,
-                                  broadcasted_operands);
+  static ToOpTy createOp(FromOpTy fromOp, Type resultType,
+                         ValueRange broadcastedOperands, OpBuilder &builder) {
+    return builder.create<ToOpTy>(fromOp.getLoc(), resultType,
+                                  broadcastedOperands);
   }
 };
 struct HloCompareAdaptor {
-  static mhlo::CompareOp CreateOp(BroadcastCompareOp from_op, Type result_type,
-                                  ValueRange broadcasted_operands,
+  static mhlo::CompareOp createOp(BroadcastCompareOp fromOp, Type resultType,
+                                  ValueRange broadcastedOperands,
                                   OpBuilder &builder) {
     return builder.create<mhlo::CompareOp>(
-        from_op.getLoc(), result_type, broadcasted_operands[0],
-        broadcasted_operands[1], from_op.comparison_direction(),
-        from_op.compare_typeAttr());
+        fromOp.getLoc(), resultType, broadcastedOperands[0],
+        broadcastedOperands[1], fromOp.comparison_direction(),
+        fromOp.compare_typeAttr());
   }
 };
 
@@ -48,7 +48,7 @@ struct HloCompareAdaptor {
 // to take a ChloOpTy, NonBroadcastingOpTy, and an Adaptor as templated values.
 template <template <typename, typename, typename> class Pattern,
           typename... ConstructorArgs>
-void PopulateForBroadcastingBinaryOp(MLIRContext *context,
+void populateForBroadcastingBinaryOp(MLIRContext *context,
                                      RewritePatternSet *patterns,
                                      ConstructorArgs &&...args) {
 #define POPULATE_BCAST(ChloOp, HloOp)                                          \
