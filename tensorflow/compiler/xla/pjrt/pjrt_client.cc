@@ -81,7 +81,7 @@ std::optional<PjRtChunk> CopyToDeviceStream::ConsumeNextChunk() {
       &buffered_chunks_));
   PjRtChunk chunk = std::move(buffered_chunks_.front());
   buffered_chunks_.pop_front();
-  return chunk;
+  return std::move(chunk);
 }
 
 }  // namespace xla
