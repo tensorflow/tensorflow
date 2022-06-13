@@ -203,10 +203,10 @@ def _inverse_kronecker(kronecker_operator):
 
 
 @linear_operator_algebra.RegisterInverse(
-    linear_operator_circulant.LinearOperatorCirculant)
+    linear_operator_circulant._BaseLinearOperatorCirculant)  # pylint: disable=protected-access
 def _inverse_circulant(circulant_operator):
   # Inverting the spectrum is sufficient to get the inverse.
-  return linear_operator_circulant.LinearOperatorCirculant(
+  return circulant_operator.__class__(
       spectrum=1. / circulant_operator.spectrum,
       is_non_singular=circulant_operator.is_non_singular,
       is_self_adjoint=circulant_operator.is_self_adjoint,

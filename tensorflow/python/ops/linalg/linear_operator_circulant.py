@@ -527,6 +527,17 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
     return x, spectrum
 
+  def _cond(self):
+    # Regardless of whether the operator is real, it is always diagonalizable by
+    # the Fourier basis F. I.e.  A = F S F^H, with S a diagonal matrix
+    # containing the spectrum. We then have:
+    #  A A^H = F SS^H F^H = F K F^H,
+    # where K = diag with squared absolute values of the spectrum.
+    # So in all cases,
+    abs_singular_values = math_ops.abs(self._unblockify(self.spectrum))
+    return (math_ops.reduce_max(abs_singular_values, axis=-1) /
+            math_ops.reduce_min(abs_singular_values, axis=-1))
+
   def _eigvals(self):
     return ops.convert_to_tensor_v2_with_dispatch(
         self._unblockify(self.spectrum))

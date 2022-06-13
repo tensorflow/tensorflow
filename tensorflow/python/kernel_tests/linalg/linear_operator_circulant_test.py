@@ -585,6 +585,21 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
 class LinearOperatorCirculant2DBaseTest(object):
   """Common class for 2D circulant tests."""
 
+  _atol = {
+      dtypes.float16: 1e-3,
+      dtypes.float32: 1e-6,
+      dtypes.float64: 1e-7,
+      dtypes.complex64: 1e-6,
+      dtypes.complex128: 1e-7
+  }
+  _rtol = {
+      dtypes.float16: 1e-3,
+      dtypes.float32: 1e-6,
+      dtypes.float64: 1e-7,
+      dtypes.complex64: 1e-6,
+      dtypes.complex128: 1e-7
+  }
+
   @contextlib.contextmanager
   def _constrain_devices_and_set_default(self, sess, use_gpu, force_gpu):
     """We overwrite the FFT operation mapping for testing."""
@@ -602,6 +617,14 @@ class LinearOperatorCirculant2DBaseTest(object):
         shape_info((1, 6, 6)),
         shape_info((3, 4, 4)),
         shape_info((2, 1, 3, 3))
+    ]
+
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    return [
+        "operator_matmul_with_same_type",
+        "operator_solve_with_same_type",
     ]
 
   def _shape_to_spectrum_shape(self, shape):
@@ -678,10 +701,6 @@ class LinearOperatorCirculant2DTestHermitianSpectrum(
   def setUp(self):
     self.tf32_keep_ = config.tensor_float_32_execution_enabled()
     config.enable_tensor_float_32_execution(False)
-
-  @staticmethod
-  def skip_these_tests():
-    return ["cond"]
 
   def operator_and_matrix(self,
                           shape_info,
@@ -866,6 +885,21 @@ class LinearOperatorCirculant2DTestNonHermitianSpectrum(
 @test_util.run_all_in_graph_and_eager_modes
 class LinearOperatorCirculant3DTest(test.TestCase):
   """Simple test of the 3D case.  See also the 1D and 2D tests."""
+
+  _atol = {
+      dtypes.float16: 1e-3,
+      dtypes.float32: 1e-6,
+      dtypes.float64: 1e-7,
+      dtypes.complex64: 1e-6,
+      dtypes.complex128: 1e-7
+  }
+  _rtol = {
+      dtypes.float16: 1e-3,
+      dtypes.float32: 1e-6,
+      dtypes.float64: 1e-7,
+      dtypes.complex64: 1e-6,
+      dtypes.complex128: 1e-7
+  }
 
   @contextlib.contextmanager
   def _constrain_devices_and_set_default(self, sess, use_gpu, force_gpu):
