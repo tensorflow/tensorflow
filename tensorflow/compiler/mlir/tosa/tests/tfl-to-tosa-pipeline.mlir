@@ -1225,6 +1225,24 @@ func.func @test_space_to_batch(%arg0: tensor<13x21x3xf32>) -> tensor<26x11x3xf32
 
 // -----
 
+// CHECK-LABEL: test_space_to_batch_dyn
+// CHECK-DAG: %[[C0:.+]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<f32>}
+// CHECK-DAG: %[[C1:.+]] = "tosa.const"() {value = dense<{{\[\[}}0, 0], [0, 2], [0, 0], [0, 0]]> : tensor<4x2xi32>}
+// CHECK-DAG: %[[C2:.+]] = "tosa.const"() {value = dense<[2, 4, 0, 1, 3, 5]> : tensor<6xi32>}
+// CHECK-DAG: %[[PAD:.+]] = "tosa.pad"(%arg0, %[[C1]], %[[C0]]) : (tensor<?x241x1x80xf32>, tensor<4x2xi32>, tensor<f32>) -> tensor<?x243x1x80xf32>
+// CHECK-DAG: %[[R0:.+]] = "tosa.reshape"(%[[PAD]]) {new_shape = [-1, 81, 3, 1, 1, 80]}
+// CHECK-DAG: %[[T:.+]] = "tosa.transpose"(%[[R0]], %[[C2]])
+// CHECK-DAG: %[[R1:.+]] = "tosa.reshape"(%[[T]]) {new_shape = [-1, 81, 1, 80]}
+// CHECK: return %[[R1]] : tensor<?x81x1x80xf32>
+func.func @test_space_to_batch_dyn(%arg0 : tensor<?x241x1x80xf32>) -> (tensor<?x81x1x80xf32>) {
+    %0 = "tfl.pseudo_const"() {value = dense<[3, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %1 = "tfl.pseudo_const"() {value = dense<[[0, 2], [0, 0]]> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+    %2 = "tfl.space_to_batch_nd"(%arg0, %0, %1) : (tensor<?x241x1x80xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<?x81x1x80xf32>
+    func.return %2 : tensor<?x81x1x80xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_batch_to_space
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<[3, 1, 2, 0]> : tensor<4xi32>}
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<[2, 3, 0, 4, 1, 5]> : tensor<6xi32>}
@@ -1240,6 +1258,22 @@ func.func @test_batch_to_space(%arg0: tensor<1x32x32x8xf32>) -> tensor<2x64x64x1
   %0 = "tfl.transpose"(%arg0, %cst_1) : (tensor<1x32x32x8xf32>, tensor<4xi32>) -> tensor<8x32x32x1xf32>
   %1 = "tfl.batch_to_space_nd"(%0, %cst, %cst_0) : (tensor<8x32x32x1xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<2x64x64x1xf32>
   func.return %1 : tensor<2x64x64x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @test_batch_to_space_dyn
+// CHECK-DAG: %[[C0:.+]] = "tosa.const"() {value = dense<[2, 3, 0, 4, 1, 5]> : tensor<6xi32>}
+// CHECK-DAG: %[[R0:.+]] = "tosa.reshape"(%arg0) {new_shape = [3, 1, -1, 79, 1, 80]}
+// CHECK-DAG: %[[T:.+]] = "tosa.transpose"(%[[R0]], %[[C0]])
+// CHECK-DAG: %[[R1:.+]] = "tosa.reshape"(%[[T]]) {new_shape = [-1, 237, 1, 80]}
+// CHECK-DAG: %[[SLICE:.+]] = "tosa.slice"(%[[R1]]) {size = [-1, 235, 1, 80], start = [0, 0, 0, 0]}
+// CHECK: return %[[SLICE]]
+func.func @test_batch_to_space_dyn(%arg0 : tensor<?x79x1x80xf32>) -> (tensor<?x235x1x80xf32>) {
+    %0 = "tfl.pseudo_const"() {value = dense<[3, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %1 = "tfl.pseudo_const"() {value = dense<[[0, 2], [0, 0]]> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+    %2 = "tfl.batch_to_space_nd"(%arg0, %0, %1) : (tensor<?x79x1x80xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<?x235x1x80xf32>
+    func.return %2 : tensor<?x235x1x80xf32>
 }
 
 // -----
