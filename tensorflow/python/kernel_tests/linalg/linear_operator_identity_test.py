@@ -577,6 +577,14 @@ class LinearOperatorScaledIdentityTest(
         num_rows=2, multiplier=multiplier)
     self.check_tape_safe(operator)
 
+  def test_convert_variables_to_tensors(self):
+    multiplier = variables_module.Variable(1.23)
+    operator = linalg_lib.LinearOperatorScaledIdentity(
+        num_rows=2, multiplier=multiplier)
+    with self.cached_session() as sess:
+      sess.run([multiplier.initializer])
+      self.check_convert_variables_to_tensors(operator)
+
 
 if __name__ == "__main__":
   linear_operator_test_util.add_tests(LinearOperatorIdentityTest)

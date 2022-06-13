@@ -108,6 +108,13 @@ class LinearOperatorHouseholderTest(
             CheckTapeSafeSkipOptions.TRACE,
         ])
 
+  def test_convert_variables_to_tensors(self):
+    reflection_axis = variables_module.Variable([1., 3., 5., 8.])
+    operator = householder.LinearOperatorHouseholder(reflection_axis)
+    with self.cached_session() as sess:
+      sess.run([reflection_axis.initializer])
+      self.check_convert_variables_to_tensors(operator)
+
 
 if __name__ == "__main__":
   linear_operator_test_util.add_tests(LinearOperatorHouseholderTest)

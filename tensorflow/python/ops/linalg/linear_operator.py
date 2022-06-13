@@ -42,6 +42,7 @@ from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
+from tensorflow.python.util import variable_utils
 from tensorflow.python.util.tf_export import tf_export
 
 __all__ = ["LinearOperator"]
@@ -1191,6 +1192,28 @@ class LinearOperator(
     # class `CompositeTensor` can be constructed and passed to the
     # `@make_composite_tensor` decorator.
     pass
+
+  def _convert_variables_to_tensors(self):
+    """Recursively converts ResourceVariables in the LinearOperator to Tensors.
+
+    The usage of `self._type_spec._from_components` violates the contract of
+    `CompositeTensor`, since it is called on a different nested structure
+    (one containing only `Tensor`s) than `self.type_spec` specifies (one that
+    may contain `ResourceVariable`s). Since `LinearOperator`'s
+    `_from_components` method just passes the contents of the nested structure
+    to `__init__` to rebuild the operator, and any `LinearOperator` that may be
+    instantiated with `ResourceVariables` may also be instantiated with
+    `Tensor`s, this usage is valid.
+
+    Returns:
+      tensor_operator: `self` with all internal Variables converted to Tensors.
+    """
+    # pylint: disable=protected-access
+    components = self._type_spec._to_components(self)
+    tensor_components = variable_utils.convert_variables_to_tensors(
+        components)
+    return self._type_spec._from_components(tensor_components)
+    # pylint: enable=protected-access
 
   def __getitem__(self, slices):
     return slicing.batch_slice(self, params_overrides={}, slices=slices)

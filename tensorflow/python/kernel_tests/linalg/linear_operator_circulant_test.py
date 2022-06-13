@@ -340,6 +340,14 @@ class LinearOperatorCirculantTestSelfAdjointOperator(
     operator = linalg.LinearOperatorCirculant(spectrum, is_self_adjoint=True)
     self.check_tape_safe(operator)
 
+  def test_convert_variables_to_tensors(self):
+    spectrum = variables_module.Variable(
+        math_ops.cast([1. + 0j, 1. + 0j], dtypes.complex64))
+    operator = linalg.LinearOperatorCirculant(spectrum, is_self_adjoint=True)
+    with self.cached_session() as sess:
+      sess.run([spectrum.initializer])
+      self.check_convert_variables_to_tensors(operator)
+
 
 class LinearOperatorCirculantTestHermitianSpectrum(
     LinearOperatorCirculantBaseTest,
