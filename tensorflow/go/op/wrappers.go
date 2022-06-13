@@ -53014,6 +53014,77 @@ func XlaRecvFromHost(scope *Scope, Toutput tf.DataType, shape tf.Shape, key stri
 	return op.Output(0)
 }
 
+// An op that receives embedding activations on the TPU.
+//
+// The TPU system performs the embedding lookups and aggregations. The results of
+// these aggregations are visible to the Tensorflow Graph as the outputs of a
+// XlaRecvTPUEmbeddingActivations Op. This op returns a list containing one
+// Tensor of activations per table specified in the model.
+//
+// Arguments:
+//	deduplication_data: A Tensor with type=DT_VARIANT containing the deduplication
+// data. The tensor is an XLA nested tuple containing N elements (where N is
+// the ratio of the number of embedding to tensor cores per TPU chip). Each
+// element of the nested tuple is a tuple of rank 1 tensors. Each tensor either
+// contains indices (DT_UINT32) for embedding lookup on the TensorCore or
+// weights (DT_FLOAT) to apply to the output of the embedding lookup operation.
+//	num_tables: The number of output activation tensors. If feature descriptor is
+// present in the tpu embedding config, it is equal to the number of features
+// otherwise equal to number of embedding tables in the model.
+//	config: Serialized TPUEmbeddingConfiguration proto.
+//
+// Returns A TensorList of embedding activations containing one Tensor per
+// embedding table in the model.
+func XlaRecvTPUEmbeddingActivations(scope *Scope, deduplication_data tf.Output, num_tables int64, config string) (outputs []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_tables": num_tables, "config": config}
+	opspec := tf.OpSpec{
+		Type: "XlaRecvTPUEmbeddingActivations",
+		Input: []tf.Input{
+			deduplication_data,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if outputs, idx, err = makeOutputList(op, idx, "outputs"); err != nil {
+		scope.UpdateErr("XlaRecvTPUEmbeddingActivations", err)
+		return
+	}
+	return outputs
+}
+
+// Receives deduplication data (indices and weights) from the embedding core.
+//
+// The deduplication data is a Tensor with type=DT_VARIANT. The tensor itself is an
+// XLA nested tuple containing N elements (where N is the ratio of the number of
+// embedding to tensor cores per TPU chip). Each element of the nested tuple is a
+// tuple of rank 1 tensors. Each tensor either contains indices (DT_UINT32) for
+// embedding lookup on the TensorCore or weights (DT_FLOAT) to apply to the output
+// of the embedding lookup operation.
+//
+// Arguments:
+//	config: Serialized TPUEmbeddingConfiguration proto.
+func XlaRecvTPUEmbeddingDeduplicationData(scope *Scope, config string) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"config": config}
+	opspec := tf.OpSpec{
+		Type: "XlaRecvTPUEmbeddingDeduplicationData",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Wraps the XLA ReduceScatter operator
 //
 //   documented at https://www.tensorflow.org/xla/operation_semantics#reducescatter.
@@ -53170,6 +53241,44 @@ func XlaSend(scope *Scope, tensor tf.Output, tensor_name string) (o *tf.Operatio
 		Type: "XlaSend",
 		Input: []tf.Input{
 			tensor,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// An op that performs gradient updates of embedding tables.
+//
+// The gradients argument is a TensorList having the same length and shapes as the
+// return value of XlaRecvTPUEmbeddingActivations, but contains gradients of the
+// model's loss with respect to the embedding activations. The embedding tables are
+// updated from these gradients via the optimizer specified in the
+// TPUEmbeddingConfiguration proto given to tpu.initialize_system.
+//
+// Arguments:
+//	gradients: A TensorList of gradients with which to update embedding tables.
+//	learning_rates: A TensorList of learning rates used for updating the embedding
+// tables via the optimizer. The length of the TensorList must be equal to the
+// number of dynamic learning rate tags specified in the
+// TPUEmbeddingConfiguration proto.
+//	deduplication_data: A Tensor with type=DT_VARIANT containing the deduplication
+// data. The tensor is an XLA nested tuple containing N elements (where N is
+// the ratio of the number of embedding to tensor cores per TPU chip). Each
+// element of the nested tuple is a tuple of rank 1 tensors. Each tensor either
+// contains indices (DT_UINT32) for embedding lookup on the TensorCore or
+// weights (DT_FLOAT) to apply to the output of the embedding lookup operation.
+//	config: Serialized TPUEmbeddingConfiguration proto.
+//
+// Returns the created operation.
+func XlaSendTPUEmbeddingGradients(scope *Scope, gradients []tf.Output, learning_rates []tf.Output, deduplication_data tf.Output, config string) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"config": config}
+	opspec := tf.OpSpec{
+		Type: "XlaSendTPUEmbeddingGradients",
+		Input: []tf.Input{
+			tf.OutputList(gradients), tf.OutputList(learning_rates), deduplication_data,
 		},
 		Attrs: attrs,
 	}
