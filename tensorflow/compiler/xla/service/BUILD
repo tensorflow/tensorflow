@@ -557,6 +557,7 @@ cc_library(
         "hlo_sharding_metadata.h",
     ],
     deps = [
+        ":compilation_environments",
         ":hlo_module_config",
         ":hlo_proto_cc",
         ":mapped_ptr_container_sorter",
@@ -3757,6 +3758,7 @@ tf_cc_test(
         ":hlo",
         ":hlo_matchers",
         ":hlo_memory_scheduler",
+        ":test_compilation_environment_proto_cc",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",

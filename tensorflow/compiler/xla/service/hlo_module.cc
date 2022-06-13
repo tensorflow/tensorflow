@@ -29,8 +29,10 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/compilation_environments.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -48,12 +50,7 @@ limitations under the License.
 namespace xla {
 
 HloModule::HloModule(const std::string& name, HloModuleConfig config)
-    : name_(NameUniquer::GetSanitizedName(name)),
-      config_(std::move(config)),
-      unique_id_(next_unique_module_id_++),
-      metadata_(tensorflow::Env::Default()) {
-  metadata_.set_canonical_module_id(unique_id_);
-}
+    : HloModule(name, config, std::make_unique<CompilationEnvironments>()) {}
 
 Status HloModule::set_schedule(HloSchedule schedule) {
   TF_RET_CHECK(schedule.module() == this);
@@ -821,8 +818,9 @@ std::unique_ptr<HloModule> HloModule::Clone(const std::string& suffix) const {
 std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
                                             const std::string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
-  auto module = std::make_unique<HloModule>(
-      absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config);
+  auto module = absl::WrapUnique(new HloModule(
+      absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config,
+      std::make_unique<CompilationEnvironments>(*comp_envs_)));
 
   HloCloneContext context(module.get(), suffix);
   auto cloned_computation = entry_computation_->Clone(suffix, &context);
@@ -918,6 +916,16 @@ HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
       computations_in_module,
       [&](HloComputation* computation) { return computation->name() == name; });
   return it == computations_in_module.end() ? nullptr : *it;
+}
+
+HloModule::HloModule(const std::string& name, HloModuleConfig config,
+                     std::unique_ptr<CompilationEnvironments> comp_envs)
+    : name_(NameUniquer::GetSanitizedName(name)),
+      config_(std::move(config)),
+      unique_id_(next_unique_module_id_++),
+      metadata_(tensorflow::Env::Default()),
+      comp_envs_(std::move(comp_envs)) {
+  metadata_.set_canonical_module_id(unique_id_);
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);
