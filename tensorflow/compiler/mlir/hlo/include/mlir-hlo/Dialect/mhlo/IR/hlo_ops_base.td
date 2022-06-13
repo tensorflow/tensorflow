@@ -52,22 +52,34 @@ def HLO_Complex : Complex<AnyTypeOf<[F32, F64]>>;
 
 // TODO(b/230381284): Upstream width-specific uniform quantized element types.
 class UniformQuantizedSignedInt<int width>
-  : Type<And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedType>()">,
-              CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
-                    ".getStorageTypeIntegralWidth() == " # width>,
-              CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
-                    ".isSigned()">]>,
+  : Type<Or<[
+      And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedType>()">,
+           CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
+                 ".getStorageTypeIntegralWidth() == " # width>,
+           CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
+                 ".isSigned()">]>,
+      And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedPerAxisType>()">,
+           CPred<"$_self.cast<mlir::quant::UniformQuantizedPerAxisType>()" #
+                 ".getStorageTypeIntegralWidth() == " # width>,
+           CPred<"$_self.cast<mlir::quant::UniformQuantizedPerAxisType>()" #
+                 ".isSigned()">]>]>,
     "QI" # width # " type"> {
   string name = "UniformQuantizedSignedInt";
   int bitwidth = width;
 }
 
 class UniformQuantizedUnsignedInt<int width>
-  : Type<And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedType>()">,
-              CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
-                    ".getStorageTypeIntegralWidth() == " # width>,
-              CPred<"!$_self.cast<mlir::quant::UniformQuantizedType>()" #
-                    ".isSigned()">]>,
+  : Type<Or<[
+      And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedType>()">,
+           CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
+                 ".getStorageTypeIntegralWidth() == " # width>,
+           CPred<"!$_self.cast<mlir::quant::UniformQuantizedType>()" #
+                 ".isSigned()">]>,
+      And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedPerAxisType>()">,
+           CPred<"$_self.cast<mlir::quant::UniformQuantizedPerAxisType>()" #
+                 ".getStorageTypeIntegralWidth() == " # width>,
+           CPred<"!$_self.cast<mlir::quant::UniformQuantizedPerAxisType>()" #
+                 ".isSigned()">]>]>,
     "QUI" # width # " type"> {
   string name = "UniformQuantizedUnsignedInt";
   int bitwidth = width;
