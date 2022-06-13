@@ -1542,8 +1542,8 @@ class ConvertDynamicReshapeOp
     auto tensor = op.operand();
     auto shape = op.output_shape();
 
-    auto shape_ty = shape.getType().cast<ShapedType>();
-    auto result_ty = op.getType().cast<ShapedType>();
+    auto shapeTy = shape.getType().cast<ShapedType>();
+    auto resultTy = op.getType().cast<ShapedType>();
 
     Value inputShape = rewriter.create<shape::ShapeOfOp>(loc, tensor);
     Value numEls = rewriter.create<shape::NumElementsOp>(loc, inputShape);
@@ -1551,10 +1551,10 @@ class ConvertDynamicReshapeOp
     rewriter.replaceOpWithNewOp<shape::AssumingOp>(
         op, cstr, [&](OpBuilder &b, Location l) {
           Value computedShape =
-              b.create<mhlo::ComputeReshapeShapeOp>(l, shape_ty, numEls, shape);
+              b.create<mhlo::ComputeReshapeShapeOp>(l, shapeTy, numEls, shape);
           SmallVector<Value> result;
-          result.push_back(b.create<mhlo::DynamicReshapeOp>(
-              l, result_ty, tensor, computedShape));
+          result.push_back(b.create<mhlo::DynamicReshapeOp>(l, resultTy, tensor,
+                                                            computedShape));
           return result;
         });
 

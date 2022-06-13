@@ -93,7 +93,7 @@ PYBIND11_MODULE(_mlirHlo, m) {
   // Attributes.
   //
 
-  auto scattered_dims_to_operand_dims_func = [](MlirAttribute self) {
+  auto scatteredDimsToOperandDimsFunc = [](MlirAttribute self) {
     return attributePropertyVector(
         self, mlirMhloScatterDimensionNumbersGetScatteredDimsToOperandDimsSize,
         mlirMhloScatterDimensionNumbersGetScatteredDimsToOperandDimsElem);
@@ -134,7 +134,7 @@ PYBIND11_MODULE(_mlirHlo, m) {
                 mlirMhloScatterDimensionNumbersGetInsertedWindowDimsElem);
           })
       .def_property_readonly("scattered_dims_to_operand_dims",
-                             scattered_dims_to_operand_dims_func)
+                             scatteredDimsToOperandDimsFunc)
       .def_property_readonly("index_vector_dim", [](MlirAttribute self) {
         return mlirMhloDimensionNumbersGetIndexVectorDim(self);
       });

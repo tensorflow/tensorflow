@@ -33,7 +33,7 @@ mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
     return {};
   }
 
-  size_t bit_width = newType.isBF16() ? 64 : newType.getIntOrFloatBitWidth();
+  size_t bitWidth = newType.isBF16() ? 64 : newType.getIntOrFloatBitWidth();
   // Treat signless integers except i1 as signed.
   bool isOldTypeUnsigned = oldType.isInteger(1) || oldType.isUnsignedInteger();
   bool isNewTypeUnsigned = newType.isInteger(1) || newType.isUnsignedInteger();
@@ -54,7 +54,7 @@ mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
     return elements.cast<DenseIntOrFPElementsAttr>().mapValues(
         newType, [&](const APFloat& floatVal) -> APInt {
           bool ignored;
-          APSInt intVal(bit_width, isNewTypeUnsigned);
+          APSInt intVal(bitWidth, isNewTypeUnsigned);
           floatVal.convertToInteger(intVal, APFloat::rmTowardZero, &ignored);
           return intVal;
         });
@@ -77,7 +77,7 @@ mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
   // Int -> Int
   return elements.cast<DenseIntOrFPElementsAttr>().mapValues(
       newType, [&](const APInt& intVal) -> APInt {
-        return APSInt(intVal, isOldTypeUnsigned).extOrTrunc(bit_width);
+        return APSInt(intVal, isOldTypeUnsigned).extOrTrunc(bitWidth);
       });
 }
 

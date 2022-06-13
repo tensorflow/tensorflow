@@ -46,11 +46,11 @@ LogicalResult tryLowerToCollapseShape(
   }
 
   int64_t argRank = argTy.getRank();
-  int64_t num_reduction_dims = orderedReductionDims.size();
+  int64_t numReductionDims = orderedReductionDims.size();
 
   int64_t j = 0;
   auto isDeclaredAsReductionDim = [&](int64_t i) {
-    if (j < num_reduction_dims && orderedReductionDims[j] == i) {
+    if (j < numReductionDims && orderedReductionDims[j] == i) {
       j++;
       return true;
     }

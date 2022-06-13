@@ -476,15 +476,15 @@ int64_t getShapedTypyDimSize(const SymbolicProduct &symProduct) {
 // be inlcuded in the dimension group. This is useful iff they are "unpaired",
 // in which case they would only limit us in the subsequent iteration.
 //
-LogicalResult FindExpandingAndCollapsingDimensionGroups(
-    ArrayRef<SymbolicExpr> operand_shape_info,
-    ArrayRef<SymbolicExpr> result_shape_info,
+LogicalResult findExpandingAndCollapsingDimensionGroups(
+    ArrayRef<SymbolicExpr> operandShapeInfo,
+    ArrayRef<SymbolicExpr> resultShapeInfo,
     SmallVector<DimensionGroup> *dimensionGroups,
     SmallVector<int64_t> *expandedIntermShape) {
-  const auto *operandShapeIt = operand_shape_info.begin();
-  const auto *operandShapeEnd = operand_shape_info.end();
-  const auto *resultShapeIt = result_shape_info.begin();
-  const auto *resultShapeEnd = result_shape_info.end();
+  const auto *operandShapeIt = operandShapeInfo.begin();
+  const auto *operandShapeEnd = operandShapeInfo.end();
+  const auto *resultShapeIt = resultShapeInfo.begin();
+  const auto *resultShapeEnd = resultShapeInfo.end();
 
   // Crucial iteration state.
   SymbolicProduct remainingOperandShapeFactors;
@@ -669,7 +669,7 @@ LogicalResult materializeReshapeAsExpandAndCollapse(
   // Identify dimension groups and the intermediate expanded type.
   SmallVector<DimensionGroup> dimensionGroups;
   SmallVector<int64_t> expandedIntermShape;
-  if (failed(FindExpandingAndCollapsingDimensionGroups(
+  if (failed(findExpandingAndCollapsingDimensionGroups(
           *operandShapeInfo, *resultShapeInfo, &dimensionGroups,
           &expandedIntermShape))) {
     return failure();

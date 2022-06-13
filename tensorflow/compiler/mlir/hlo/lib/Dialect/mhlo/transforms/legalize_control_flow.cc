@@ -228,8 +228,8 @@ struct SortOpPattern : public OpConversionPattern<mhlo::SortOp> {
                                                  OpBuilder& b, ValueRange ivs,
                                                  ValueRange args) {
     auto loc = op.getLoc();
-    auto sort_dim = adaptor.dimension();
-    SmallVector<Value> indices, sort_args;
+    auto sortDim = adaptor.dimension();
+    SmallVector<Value> indices, sortArgs;
     indices.append(ivs.begin(), ivs.end());
     // Bubble sort innermost loop.
     Value zero = b.create<arith::ConstantIndexOp>(loc, 0);
@@ -240,16 +240,15 @@ struct SortOpPattern : public OpConversionPattern<mhlo::SortOp> {
         adaptor.getOperands().front().getType().cast<TensorType>();
     SmallVector<Value> results(args);
     // Create inner most loop with one less iterations, so 1 can be added later.
-    if (firstOperandType.isDynamicDim(sort_dim)) {
-      ub =
-          b.create<tensor::DimOp>(loc, adaptor.getOperands().front(), sort_dim);
+    if (firstOperandType.isDynamicDim(sortDim)) {
+      ub = b.create<tensor::DimOp>(loc, adaptor.getOperands().front(), sortDim);
     } else {
       ub = b.create<arith::ConstantIndexOp>(
-          loc, firstOperandType.getDimSize(sort_dim));
+          loc, firstOperandType.getDimSize(sortDim));
     }
     ub = b.create<arith::SubIOp>(loc, ub, one);
     auto& srcBlock = op.comparator().front();
-    auto scf_for = b.create<scf::ForOp>(
+    auto scfFor = b.create<scf::ForOp>(
         loc, zero, ub, one, args,
         [&](OpBuilder& b, Location loc, Value iv, ValueRange args) {
           // Extract and create tensors with relevant values to merge with the
@@ -257,13 +256,13 @@ struct SortOpPattern : public OpConversionPattern<mhlo::SortOp> {
           SmallVector<Value> indices(ivs);
           Value ivPlusOne = b.create<arith::AddIOp>(loc, iv, one);
           for (const auto& idxAndOutput : llvm::enumerate(args)) {
-            indices[sort_dim] = iv;
-            sort_args.push_back(b.create<tensor::FromElementsOp>(
+            indices[sortDim] = iv;
+            sortArgs.push_back(b.create<tensor::FromElementsOp>(
                 loc, srcBlock.getArgumentTypes()[2 * idxAndOutput.index()],
                 b.create<tensor::ExtractOp>(loc, idxAndOutput.value(), indices)
                     .result()));
-            indices[sort_dim] = ivPlusOne;
-            sort_args.push_back(b.create<tensor::FromElementsOp>(
+            indices[sortDim] = ivPlusOne;
+            sortArgs.push_back(b.create<tensor::FromElementsOp>(
                 loc, srcBlock.getArgumentTypes()[2 * idxAndOutput.index() + 1],
                 b.create<tensor::ExtractOp>(loc, idxAndOutput.value(), indices)
                     .result()));
@@ -271,18 +270,18 @@ struct SortOpPattern : public OpConversionPattern<mhlo::SortOp> {
         });
 
     // Clone the region twice. to compare A,B and B,A
-    Region& region = scf_for.getRegion();
+    Region& region = scfFor.getRegion();
     BlockAndValueMapping bvm, bvm2;
     {
       OpBuilder::InsertionGuard guard(b);
       auto& block = region.front();
       b.setInsertionPointToEnd(&block);
       for (int i = 0; i < srcBlock.getNumArguments(); i += 2) {
-        bvm.map(srcBlock.getArgument(i), sort_args[i]);
-        bvm.map(srcBlock.getArgument(i + 1), sort_args[i + 1]);
+        bvm.map(srcBlock.getArgument(i), sortArgs[i]);
+        bvm.map(srcBlock.getArgument(i + 1), sortArgs[i + 1]);
 
-        bvm2.map(srcBlock.getArgument(i), sort_args[i + 1]);
-        bvm2.map(srcBlock.getArgument(i + 1), sort_args[i]);
+        bvm2.map(srcBlock.getArgument(i), sortArgs[i + 1]);
+        bvm2.map(srcBlock.getArgument(i + 1), sortArgs[i]);
       }
       for (auto& blockOp : srcBlock.without_terminator()) {
         b.clone(blockOp, bvm2);
@@ -309,17 +308,17 @@ struct SortOpPattern : public OpConversionPattern<mhlo::SortOp> {
         [&](OpBuilder& b, Location loc) {
           SmallVector<Value> indices(ivs.begin(), ivs.end());
           Value ivPlusOne =
-              b.create<arith::AddIOp>(loc, scf_for.getInductionVar(), one);
+              b.create<arith::AddIOp>(loc, scfFor.getInductionVar(), one);
           SmallVector<Value> swappedResults;
           for (const auto& idxAndOutput :
-               llvm::enumerate(scf_for.getRegionIterArgs())) {
-            Value v1 = sort_args[idxAndOutput.index() * 2];
-            Value v2 = sort_args[idxAndOutput.index() * 2 + 1];
-            indices[sort_dim] = scf_for.getInductionVar();
+               llvm::enumerate(scfFor.getRegionIterArgs())) {
+            Value v1 = sortArgs[idxAndOutput.index() * 2];
+            Value v2 = sortArgs[idxAndOutput.index() * 2 + 1];
+            indices[sortDim] = scfFor.getInductionVar();
             Value afterFirstInsert = b.create<tensor::InsertOp>(
                 loc, b.create<tensor::ExtractOp>(loc, v2), idxAndOutput.value(),
                 indices);
-            indices[sort_dim] = ivPlusOne;
+            indices[sortDim] = ivPlusOne;
             swappedResults.push_back(b.create<tensor::InsertOp>(
                 loc, b.create<tensor::ExtractOp>(loc, v1), afterFirstInsert,
                 indices));
@@ -327,10 +326,10 @@ struct SortOpPattern : public OpConversionPattern<mhlo::SortOp> {
           b.create<scf::YieldOp>(loc, swappedResults);
         },
         [&](OpBuilder& b, Location loc) {
-          b.create<scf::YieldOp>(loc, scf_for.getRegionIterArgs());
+          b.create<scf::YieldOp>(loc, scfFor.getRegionIterArgs());
         });
     b.create<scf::YieldOp>(loc, swapResult.getResults());
-    return scf_for;
+    return scfFor;
   }
 
   LogicalResult matchAndRewrite(

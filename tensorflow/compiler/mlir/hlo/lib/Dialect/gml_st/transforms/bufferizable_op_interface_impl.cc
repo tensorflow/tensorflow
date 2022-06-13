@@ -33,35 +33,35 @@ namespace {
 /// that operates entirely on memrefs.
 struct LoopOpInterface
     : public BufferizableOpInterface::ExternalModel<LoopOpInterface, LoopOp> {
-  bool bufferizesToMemoryRead(Operation *op, OpOperand &op_operand,
+  bool bufferizesToMemoryRead(Operation *op, OpOperand &opOperand,
                               const BufferizationState &state) const {
-    auto loop_op = cast<LoopOp>(op);
+    auto loopOp = cast<LoopOp>(op);
 
     // gml_st.loop operands alone do not bufferize to a memory read, but
     // one of the uses of their matching bbArgs may.
     return state.getAnalysisState().isValueRead(
-        loop_op.getTiedBlockArgument(op_operand));
+        loopOp.getTiedBlockArgument(opOperand));
   }
 
-  bool bufferizesToMemoryWrite(Operation *op, OpOperand &op_operand,
+  bool bufferizesToMemoryWrite(Operation *op, OpOperand &opOperand,
                                const BufferizationState &state) const {
     // Only operands with an aliasing OpResult (i.e., output operands) bufferize
     // to a memory write.
-    auto bufferizable_op = cast<BufferizableOpInterface>(op);
-    return !bufferizable_op
-                .getAliasingOpResult(op_operand, state.getAnalysisState())
+    auto bufferizableOp = cast<BufferizableOpInterface>(op);
+    return !bufferizableOp
+                .getAliasingOpResult(opOperand, state.getAnalysisState())
                 .empty();
   }
 
   SmallVector<OpResult> getAliasingOpResult(
-      Operation *op, OpOperand &op_operand,
+      Operation *op, OpOperand &opOperand,
       const BufferizationState &state) const {
-    auto loop_op = cast<LoopOp>(op);
+    auto loopOp = cast<LoopOp>(op);
 
     // Output operands are tied to their corresponding OpResults.
-    OpResult op_result = loop_op.getTiedOpResult(op_operand);
-    if (!op_result) return {};
-    return {op_result};
+    OpResult opResult = loopOp.getTiedOpResult(opOperand);
+    if (!opResult) return {};
+    return {opResult};
   }
 
   BufferRelation bufferRelation(Operation *op, OpResult op_result,
@@ -82,102 +82,96 @@ struct LoopOpInterface
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
                           BufferizationState &state) const {
-    auto loop_op = cast<LoopOp>(op);
+    auto loopOp = cast<LoopOp>(op);
 
     // Compute new inputs, outputs and results.
-    SmallVector<Value> new_inputs, new_outputs, new_results;
-    for (unsigned i = loop_op.getNumControlOperands();
-         i < loop_op->getNumOperands(); ++i) {
-      OpOperand &operand = loop_op->getOpOperand(i);
-      Value rewritten_value = operand.get();
-      if (rewritten_value.getType().isa<TensorType>()) {
-        FailureOr<Value> buffer_or_failure = state.getBuffer(rewriter, operand);
-        if (failed(buffer_or_failure)) return failure();
-        rewritten_value = *buffer_or_failure;
+    SmallVector<Value> newInputs, newOutputs, newResults;
+    for (unsigned i = loopOp.getNumControlOperands();
+         i < loopOp->getNumOperands(); ++i) {
+      OpOperand &operand = loopOp->getOpOperand(i);
+      Value rewrittenValue = operand.get();
+      if (rewrittenValue.getType().isa<TensorType>()) {
+        FailureOr<Value> bufferOrFailure = state.getBuffer(rewriter, operand);
+        if (failed(bufferOrFailure)) return failure();
+        rewrittenValue = *bufferOrFailure;
       }
-      if (i < loop_op.getNumControlOperands() + loop_op.getNumInputs()) {
-        new_inputs.push_back(rewritten_value);
+      if (i < loopOp.getNumControlOperands() + loopOp.getNumInputs()) {
+        newInputs.push_back(rewrittenValue);
       } else {
-        new_outputs.push_back(rewritten_value);
+        newOutputs.push_back(rewrittenValue);
         if (operand.get().getType().isa<TensorType>())
-          new_results.push_back(rewritten_value);
+          newResults.push_back(rewrittenValue);
       }
     }
 
     // Create new TiledLoopOp.
-    auto new_loop_op = rewriter.create<LoopOp>(
-        loop_op.getLoc(), loop_op.lowerBound(), loop_op.upperBound(),
-        loop_op.step(), new_inputs, new_outputs, loop_op.iterator_types(),
-        loop_op.distribution_types());
+    auto newLoopOp = rewriter.create<LoopOp>(
+        loopOp.getLoc(), loopOp.lowerBound(), loopOp.upperBound(),
+        loopOp.step(), newInputs, newOutputs, loopOp.iterator_types(),
+        loopOp.distribution_types());
 
     // Remove terminator.
-    if (!new_loop_op.getBody()->empty())
-      rewriter.eraseOp(loop_op.getBody()->getTerminator());
+    if (!newLoopOp.getBody()->empty())
+      rewriter.eraseOp(loopOp.getBody()->getTerminator());
 
     // Compute new loop body arguments.
-    SmallVector<Value> new_block_args, new_region_in_out_args,
-        old_region_in_out_args;
-    ValueRange newInductionVars = new_loop_op.getInductionVars();
-    new_block_args.append(newInductionVars.begin(), newInductionVars.end());
+    SmallVector<Value> newBlockArgs, newRegionInOutArgs, oldRegionInOutArgs;
+    ValueRange newInductionVars = newLoopOp.getInductionVars();
+    newBlockArgs.append(newInductionVars.begin(), newInductionVars.end());
 
-    ValueRange new_region_in_args = new_loop_op.getRegionInputArgs();
-    ValueRange new_region_out_args = new_loop_op.getRegionOutputArgs();
-    new_region_in_out_args.append(new_region_in_args.begin(),
-                                  new_region_in_args.end());
-    new_region_in_out_args.append(new_region_out_args.begin(),
-                                  new_region_out_args.end());
+    ValueRange newRegionInArgs = newLoopOp.getRegionInputArgs();
+    ValueRange newRegionOutArgs = newLoopOp.getRegionOutputArgs();
+    newRegionInOutArgs.append(newRegionInArgs.begin(), newRegionInArgs.end());
+    newRegionInOutArgs.append(newRegionOutArgs.begin(), newRegionOutArgs.end());
 
-    ValueRange old_region_in_args = loop_op.getRegionInputArgs();
-    ValueRange old_region_out_args = loop_op.getRegionOutputArgs();
-    old_region_in_out_args.append(old_region_in_args.begin(),
-                                  old_region_in_args.end());
-    old_region_in_out_args.append(old_region_out_args.begin(),
-                                  old_region_out_args.end());
-    assert(new_region_in_args.size() == old_region_in_args.size() &&
+    ValueRange oldRegionInArgs = loopOp.getRegionInputArgs();
+    ValueRange oldRegionOutArgs = loopOp.getRegionOutputArgs();
+    oldRegionInOutArgs.append(oldRegionInArgs.begin(), oldRegionInArgs.end());
+    oldRegionInOutArgs.append(oldRegionOutArgs.begin(), oldRegionOutArgs.end());
+    assert(newRegionInArgs.size() == oldRegionInArgs.size() &&
            "expected same number of input args");
-    assert(new_region_out_args.size() == old_region_out_args.size() &&
+    assert(newRegionOutArgs.size() == oldRegionOutArgs.size() &&
            "expected same number of output args");
 
-    for (auto it : llvm::zip(old_region_in_out_args, new_region_in_out_args)) {
-      Value old_arg = std::get<0>(it);
-      Value new_arg = std::get<1>(it);
-      rewriter.setInsertionPointToStart(new_loop_op.getBody());
-      if (old_arg.getType().isa<TensorType>()) {
-        new_block_args.push_back(rewriter.create<bufferization::ToTensorOp>(
-            old_arg.getLoc(), new_arg));
+    for (auto it : llvm::zip(oldRegionInOutArgs, newRegionInOutArgs)) {
+      Value oldArg = std::get<0>(it);
+      Value newArg = std::get<1>(it);
+      rewriter.setInsertionPointToStart(newLoopOp.getBody());
+      if (oldArg.getType().isa<TensorType>()) {
+        newBlockArgs.push_back(rewriter.create<bufferization::ToTensorOp>(
+            oldArg.getLoc(), newArg));
       } else {
-        new_block_args.push_back(new_arg);
+        newBlockArgs.push_back(newArg);
       }
     }
 
     // Move old body into new loop.
-    rewriter.mergeBlocks(loop_op.getBody(), new_loop_op.getBody(),
-                         new_block_args);
+    rewriter.mergeBlocks(loopOp.getBody(), newLoopOp.getBody(), newBlockArgs);
 
     // Replace previous terminator with a new one that does not yield anything.
-    auto old_terminator =
-        cast<gml_st::YieldOp>(new_loop_op.getBody()->getTerminator());
-    rewriter.setInsertionPointToEnd(new_loop_op.getBody());
-    auto new_terminator =
-        rewriter.create<gml_st::YieldOp>(old_terminator->getLoc());
+    auto oldTerminator =
+        cast<gml_st::YieldOp>(newLoopOp.getBody()->getTerminator());
+    rewriter.setInsertionPointToEnd(newLoopOp.getBody());
+    auto newTerminator =
+        rewriter.create<gml_st::YieldOp>(oldTerminator->getLoc());
 
     // Copy buffer of yielded tensor to output buffer. If everything bufferized
     // inplace, this copy will fold away.
-    rewriter.setInsertionPoint(new_terminator);
-    for (auto it : llvm::zip(old_terminator.values(), new_outputs)) {
+    rewriter.setInsertionPoint(newTerminator);
+    for (auto it : llvm::zip(oldTerminator.values(), newOutputs)) {
       Value output = std::get<1>(it);
-      Value to_memref_op = rewriter.create<bufferization::ToMemrefOp>(
-          new_terminator.getLoc(), output.getType(), std::get<0>(it));
+      Value toMemrefOp = rewriter.create<bufferization::ToMemrefOp>(
+          newTerminator.getLoc(), output.getType(), std::get<0>(it));
       if (failed(state.getOptions().createMemCpy(
-              rewriter, new_terminator.getLoc(), to_memref_op, output)))
+              rewriter, newTerminator.getLoc(), toMemrefOp, output)))
         return failure();
     }
 
     // Erase old terminator.
-    rewriter.eraseOp(old_terminator);
+    rewriter.eraseOp(oldTerminator);
 
     // Replace results and delete old op.
-    bufferization::replaceOpWithBufferizedValues(rewriter, op, new_results);
+    bufferization::replaceOpWithBufferizedValues(rewriter, op, newResults);
 
     return success();
   }

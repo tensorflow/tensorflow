@@ -578,17 +578,17 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
 
   // Parse the body.
   SmallVector<Type, 4> regionTypes(ivs.size(), builder.getIndexType());
-  SmallVector<OpAsmParser::UnresolvedOperand, 4> region_operands(ivs);
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> regionOperands(ivs);
 
   if (!outputRegionArgs.empty()) {
-    region_operands.append(outputRegionArgs);
+    regionOperands.append(outputRegionArgs);
     regionTypes.append(outputTypes);
   }
 
   SmallVector<OpAsmParser::Argument, 4> regionArgs;
-  for (auto arg_and_type : llvm::zip(region_operands, regionTypes)) {
+  for (auto argAndType : llvm::zip(regionOperands, regionTypes)) {
     auto &arg = regionArgs.emplace_back();
-    std::tie(arg.ssaName, arg.type) = arg_and_type;
+    std::tie(arg.ssaName, arg.type) = argAndType;
   }
   Region *body = result.addRegion();
   if (parser.parseRegion(*body, regionArgs)) return failure();
@@ -697,9 +697,9 @@ void ForOp::print(OpAsmPrinter &p) {
     llvm::interleaveComma(
         llvm::zip(getRegionOutputArgs(), outputs(), subsets()), p,
         [&](auto it) {
-          Value output_region_arg, output, subset;
-          std::tie(output_region_arg, output, subset) = it;
-          p << output_region_arg << " = " << output << " at " << subset << ": "
+          Value outputRegionArg, output, subset;
+          std::tie(outputRegionArg, output, subset) = it;
+          p << outputRegionArg << " = " << output << " at " << subset << ": "
             << output.getType() << " at " << subset.getType();
         });
     p << ")";

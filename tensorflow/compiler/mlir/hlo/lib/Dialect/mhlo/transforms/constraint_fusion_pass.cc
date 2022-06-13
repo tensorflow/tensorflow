@@ -231,7 +231,7 @@ void materializeBlockGlobalConstraintFusion(
   theBlockTerminator->setOperands(fusedAop.getResults());
 }
 
-bool isRemainingUse(OpOperand &use, Block *the_block,
+bool isRemainingUse(OpOperand &use, Block *theBlock,
                     llvm::SmallSetVector<Operation *, 16> &considerDead) {
   Operation *op = use.getOwner();
 
@@ -241,14 +241,14 @@ bool isRemainingUse(OpOperand &use, Block *the_block,
   // Assuming regions in the regarded block are not a real use as they will be
   // inlined.
   if (auto aop = llvm::dyn_cast<shape::AssumingOp>(op))
-    return aop->getBlock() == the_block;
+    return aop->getBlock() == theBlock;
 
   // Look through assuming regions' yield ops.
   if (auto yop = llvm::dyn_cast<shape::AssumingYieldOp>(op)) {
     auto aop = yop->getParentOfType<shape::AssumingOp>();
     auto outerResult = aop.getResults()[use.getOperandNumber()];
     return llvm::all_of(outerResult.getUses(), [&](auto &outerUse) {
-      return isRemainingUse(outerUse, the_block, considerDead);
+      return isRemainingUse(outerUse, theBlock, considerDead);
     });
   }
 
@@ -256,10 +256,10 @@ bool isRemainingUse(OpOperand &use, Block *the_block,
   return true;
 }
 
-void tryFlagForErase(Block *the_block, Operation *op,
+void tryFlagForErase(Block *theBlock, Operation *op,
                      llvm::SmallSetVector<Operation *, 16> &toBeErased) {
   if (llvm::none_of(op->getUses(), [&](auto &use) {
-        return isRemainingUse(use, the_block, toBeErased);
+        return isRemainingUse(use, theBlock, toBeErased);
       })) {
     toBeErased.insert(op);
   }

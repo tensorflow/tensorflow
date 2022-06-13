@@ -106,32 +106,32 @@ LogicalResult moveUpIntoAssumingOpMatchAndRewrite(Operation *op,
   if (op->getNumResults() != 1) return failure();
 
   // Find a preceding `assuming` op.
-  auto *the_block = op->getBlock();
+  auto *theBlock = op->getBlock();
   Operation *prev = op->getPrevNode();
   while (prev != nullptr && !llvm::isa<shape::AssumingOp>(prev))
     prev = prev->getPrevNode();
   auto assumingOp = llvm::dyn_cast_or_null<shape::AssumingOp>(prev);
   if (!assumingOp) return failure();
-  assert(assumingOp->getBlock() == the_block && op->getBlock() == the_block &&
+  assert(assumingOp->getBlock() == theBlock && op->getBlock() == theBlock &&
          "expect assuming op and root op to be in the same block");
 
   // Make sure that all operands will be available after moving.
   auto isAvailable = [&](Value v) {
     Operation *def = v.getDefiningOp();
-    return def == nullptr || def->getBlock() != the_block ||
+    return def == nullptr || def->getBlock() != theBlock ||
            !assumingOp->isBeforeInBlock(def);
   };
   if (!llvm::all_of(op->getOperands(), isAvailable)) return failure();
 
   Block *body = assumingOp.getBody();
-  auto yield_op = llvm::cast<shape::AssumingYieldOp>(body->getTerminator());
+  auto yieldOp = llvm::cast<shape::AssumingYieldOp>(body->getTerminator());
 
   // Find the operands to use if the op was within the assuming region. We
   // will later use their copies, as we copy the assuming op and its body.
   SmallVector<Value, 8> newOperandsUnmapped =
       llvm::to_vector<8>(llvm::map_range(op->getOperands(), [&](Value v) {
         for (const auto &result : llvm::enumerate(assumingOp->getResults())) {
-          if (result.value() == v) return yield_op->getOperand(result.index());
+          if (result.value() == v) return yieldOp->getOperand(result.index());
         }
         return v;
       }));
@@ -157,7 +157,7 @@ LogicalResult moveUpIntoAssumingOpMatchAndRewrite(Operation *op,
 
         // Yield the previous results and also the new ones.
         auto mappedResults = llvm::to_vector<8>(llvm::map_range(
-            yield_op.getOperands(),
+            yieldOp.getOperands(),
             [&](Value v) { return mapping.lookupOrDefault(v); }));
         mappedResults.append(newOp->getResults().begin(),
                              newOp->getResults().end());
@@ -284,12 +284,11 @@ struct MoveUpOutOfAssumingOpPattern : public OpRewritePattern<OpTy> {
     // If the assuming region yields none of the new op's results, these values
     // are exclusively used in the assuming op's body. In these cases there is
     // no need for further rewrites.
-    auto is_new_op_result = [newOp](Value v) {
+    auto isNewOpResult = [newOp](Value v) {
       return llvm::is_contained(newOp->getResults(), v);
     };
     auto yield_op = cast<shape::AssumingYieldOp>(body->getTerminator());
-    if (llvm::none_of(yield_op.getOperands(), is_new_op_result))
-      return success();
+    if (llvm::none_of(yield_op.getOperands(), isNewOpResult)) return success();
 
     // If the assuming region yields any of the new op's results, these values
     // can instead bypass the assuming region. There is no need to yield them
@@ -308,7 +307,7 @@ struct MoveUpOutOfAssumingOpPattern : public OpRewritePattern<OpTy> {
           // Collect new yield operands.
           SmallVector<Value, 2> newYieldOperands;
           for (Value result : yield_op.getOperands()) {
-            if (is_new_op_result(result)) {
+            if (isNewOpResult(result)) {
               replacementValues.push_back(result);
             } else {
               newYieldOperands.push_back(mapping.lookupOrDefault(result));

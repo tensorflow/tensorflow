@@ -138,10 +138,10 @@ void findBroadcastIntents(
 
   // Use the result vector of broadcast intents as a worklist. The set of
   // broadcast intents helps to ensure their uniqueness.
-  DenseSet<BroadcastIntent> bcast_intents_set;
+  DenseSet<BroadcastIntent> bcastIntentsSet;
   auto addToWorklistIfNew = [&](BroadcastIntent bcastIntent) {
-    if (!bcast_intents_set.count(bcastIntent)) {
-      bcast_intents_set.insert(bcastIntent);
+    if (!bcastIntentsSet.count(bcastIntent)) {
+      bcastIntentsSet.insert(bcastIntent);
       bcastIntents.push_back(bcastIntent);
     }
   };

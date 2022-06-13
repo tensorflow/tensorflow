@@ -47,7 +47,7 @@ Value createLoadOrUseCachedValue(Location loc, OpBuilder* b, Value memref,
   // within the current Block. Alternatively we can do this for
   // all the Blocks that dominant this Block, but that will be
   // complicated anyway.
-  std::vector<StoreOp> store_ops;
+  std::vector<StoreOp> storeOps;
   insertPoint.getBlock()->walk(
       insertPoint.getBlock()->begin(), insertPoint.getPoint(),
       [&](StoreOp storeOp) {
@@ -55,9 +55,9 @@ Value createLoadOrUseCachedValue(Location loc, OpBuilder* b, Value memref,
           return;
         if ((storeOp.getMemRef() == memref) &&
             (storeOp.getIndices() == indices))
-          store_ops.emplace_back(storeOp);
+          storeOps.emplace_back(storeOp);
       });
-  if (!store_ops.empty()) return store_ops[0].getOperand(0);
+  if (!storeOps.empty()) return storeOps[0].getOperand(0);
   int rank = memref.getType().dyn_cast<MemRefType>().getRank();
   return rank > 0 ? b->create<LoadOp>(loc, memref, indices)
                   : b->create<LoadOp>(loc, memref);

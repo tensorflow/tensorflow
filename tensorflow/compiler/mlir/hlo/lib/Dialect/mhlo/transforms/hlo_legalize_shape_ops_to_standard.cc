@@ -61,18 +61,18 @@ struct ComputeReshapeShapeConversion
         shape::getExtentTensorType(ctx, targetShapeType.getDimSize(0));
 
     // Calculate the computed actual extent for a possible dynamic extent.
-    auto new_shape = targetShapeType.getElementType().isIndex()
-                         ? adaptor.getOperands()[1]
-                         : rewriter.create<arith::IndexCastOp>(
-                               loc, extentType, adaptor.getOperands()[1]);
+    auto newShape = targetShapeType.getElementType().isIndex()
+                        ? adaptor.getOperands()[1]
+                        : rewriter.create<arith::IndexCastOp>(
+                              loc, extentType, adaptor.getOperands()[1]);
     Value newShapeRank =
-        rewriter.create<shape::RankOp>(loc, index_type, new_shape);
+        rewriter.create<shape::RankOp>(loc, index_type, newShape);
     // The product begins with a -1 seed which will cancel out a -1 extent in
     // the input shape if there is one. If there is not, this computed result
     // will never be used, so it's okay to compute a negative number of
     // elements.
     auto accountedNumEls =
-        rewriter.create<shape::ReduceOp>(loc, new_shape, neg_one);
+        rewriter.create<shape::ReduceOp>(loc, newShape, neg_one);
     {
       PatternRewriter::InsertionGuard g(rewriter);
       rewriter.setInsertionPointToEnd(accountedNumEls.getBody());
@@ -92,8 +92,8 @@ struct ComputeReshapeShapeConversion
     auto gen = rewriter.create<tensor::GenerateOp>(
         loc, targetShapeType, dynamicExtent,
         [&](OpBuilder& b, Location loc, ValueRange indices) {
-          Value extent = b.create<shape::GetExtentOp>(loc, index_type,
-                                                      new_shape, indices[0]);
+          Value extent = b.create<shape::GetExtentOp>(loc, index_type, newShape,
+                                                      indices[0]);
           Value useMissingDimVal = b.create<arith::CmpIOp>(
               loc, arith::CmpIPredicate::eq, extent, neg_one);
           Value dimVal = b.create<arith::SelectOp>(loc, useMissingDimVal,

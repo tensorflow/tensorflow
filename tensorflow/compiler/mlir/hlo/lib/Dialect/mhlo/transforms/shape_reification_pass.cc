@@ -67,12 +67,12 @@ struct ShapeReificationThroughAssumingOpsPattern
                                 PatternRewriter &rewriter) const override {
     // Analyze in which results' values and shapes we are interested.
     size_t numResults = aop->getNumResults();
-    SmallVector<SmallVector<shape::ShapeOfOp>> shape_users_per_result;
-    shape_users_per_result.reserve(numResults);
+    SmallVector<SmallVector<shape::ShapeOfOp>> shapeUsersPerResult;
+    shapeUsersPerResult.reserve(numResults);
     SmallVector<bool> hasNonShapeUsersPerResult;
     hasNonShapeUsersPerResult.reserve(numResults);
     for (Value result : aop.getResults()) {
-      auto &shapeUsers = shape_users_per_result.emplace_back();
+      auto &shapeUsers = shapeUsersPerResult.emplace_back();
       auto &hasNonShapeUsers = hasNonShapeUsersPerResult.emplace_back(false);
       for (Operation *user : result.getUsers()) {
         if (auto sop = llvm::dyn_cast<shape::ShapeOfOp>(user)) {
@@ -84,8 +84,7 @@ struct ShapeReificationThroughAssumingOpsPattern
     }
 
     // Fail, if there is nothing to make progress on.
-    if (llvm::all_of(shape_users_per_result,
-                     [](auto it) { return it.empty(); }) &&
+    if (llvm::all_of(shapeUsersPerResult, [](auto it) { return it.empty(); }) &&
         llvm::all_of(hasNonShapeUsersPerResult, [](auto it) { return it; })) {
       return failure();
     }
@@ -114,7 +113,7 @@ struct ShapeReificationThroughAssumingOpsPattern
             if (hasNonShapeUsersPerResult[it.index()]) {
               results.push_back(it.value());
             }
-            if (!shape_users_per_result[it.index()].empty()) {
+            if (!shapeUsersPerResult[it.index()].empty()) {
               shapeResults.push_back(
                   b.create<shape::ShapeOfOp>(loc, it.value()));
             }
@@ -133,7 +132,7 @@ struct ShapeReificationThroughAssumingOpsPattern
 
     // Replace all the shape uses with the shape values from the new assuming
     // region.
-    for (const auto &shapeUsers : shape_users_per_result) {
+    for (const auto &shapeUsers : shapeUsersPerResult) {
       if (shapeUsers.empty()) continue;
       for (shape::ShapeOfOp sop : shapeUsers) {
         rewriter.replaceOp(sop, newAopResults[i]);

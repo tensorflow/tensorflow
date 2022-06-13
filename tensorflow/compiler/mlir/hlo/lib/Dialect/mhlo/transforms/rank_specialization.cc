@@ -464,7 +464,7 @@ Value materializeScalarRankSpecializationCase(
           if (llvm::is_contained(nonScalarsOfSameShape, operand))
             nonScalarShapes.push_back(shape);
         }
-        Value flat_shape = materializeFlatShape(b, loc, nonScalarShapes);
+        Value flatShape = materializeFlatShape(b, loc, nonScalarShapes);
 
         // Derive ranked operands.
         auto rankedOperands =
@@ -480,7 +480,7 @@ Value materializeScalarRankSpecializationCase(
               return b
                   .create<mhlo::DynamicReshapeOp>(
                       loc, deriveRankedTensorTypes(v.getType(), /*rank=*/1), v,
-                      flat_shape)
+                      flatShape)
                   .getResult();
             }));
 
@@ -730,8 +730,7 @@ materializeRankSpecializationForSingleNonScalarShapeEquivalenceClass(
 Value materializeRankSpecializationForTwoNonScalarShapeEquivalenceClasses(
     PatternRewriter &rewriter, Location loc,
     chlo::RankSpecializationClusterOp op,
-    SmallVector<SmallVector<Value, 4>, 4> nonScalarEqs,
-    int64_t max_target_rank) {
+    SmallVector<SmallVector<Value, 4>, 4> nonScalarEqs, int64_t maxTargetRank) {
   assert(nonScalarEqs.size() == 2 &&
          "Expect two non-scalar equivalence classes.");
   auto shapes = llvm::to_vector<8>(llvm::map_range(op.operands(), [&](Value v) {
@@ -750,7 +749,7 @@ Value materializeRankSpecializationForTwoNonScalarShapeEquivalenceClasses(
                      [&](OpBuilder &b, Location loc) {
                        b.create<scf::YieldOp>(
                            loc, materializeDefaultRankSpecializationCases(
-                                    b, loc, op, shapes, max_target_rank));
+                                    b, loc, op, shapes, maxTargetRank));
                      }));
       });
 

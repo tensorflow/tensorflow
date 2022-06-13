@@ -52,7 +52,7 @@ struct DotOpConverter : public OpRewritePattern<DotOp> {
     Value rhs = op.rhs();
     MemRefType lhsType = lhs.getType().cast<MemRefType>();
     MemRefType rhsType = rhs.getType().cast<MemRefType>();
-    Type element_type = lhsType.getElementType();
+    Type elementType = lhsType.getElementType();
     ArrayRef<int64_t> shapeLhs = lhsType.getShape();
     ArrayRef<int64_t> shapeRhs = rhsType.getShape();
 
@@ -84,7 +84,7 @@ struct DotOpConverter : public OpRewritePattern<DotOp> {
       auto result =
           rewriter.create<AffineLoadOp>(loc, op.output(), resultIndices);
       Value opResult = lmhlo::LhloOpToStdScalarOp::map<DotOp>(
-          op, element_type, {l, r, result}, &builder);
+          op, elementType, {l, r, result}, &builder);
       mapStatus = success(opResult != nullptr);
       if (failed(mapStatus)) return;
       builder.create<AffineStoreOp>(loc, opResult, op.output(), resultIndices);
@@ -566,7 +566,7 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOpTy> {
     const auto& rhs = op.rhs();
     const auto& lhsType = lhs.getType().template cast<MemRefType>();
     const auto& rhsType = rhs.getType().template cast<MemRefType>();
-    const auto& element_type = lhsType.getElementType();
+    const auto& elementType = lhsType.getElementType();
 
     if (lhsType.getShape() != rhsType.getShape()) {
       return failure();
@@ -578,7 +578,7 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOpTy> {
       auto l = builder.create<AffineLoadOp>(loc, lhs, inductionVars);
       auto r = builder.create<AffineLoadOp>(loc, rhs, inductionVars);
       Value opResult = lmhlo::LhloOpToStdScalarOp::map<LhloOpTy>(
-          op, element_type, {l, r}, &builder);
+          op, elementType, {l, r}, &builder);
       mapStatus = success(opResult != nullptr);
       if (failed(mapStatus)) return;
       rewriter.create<AffineStoreOp>(loc, opResult, op.out(), inductionVars);

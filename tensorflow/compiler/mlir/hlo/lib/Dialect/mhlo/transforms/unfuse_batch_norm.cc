@@ -182,10 +182,10 @@ Value createReduce(Location loc, Value operand, Value zero,
   // setup "mhlo.reduce"'s body
   Region& region = reduce.body();
   Block& block = region.emplaceBlock();
-  RankedTensorType block_argument_type =
+  RankedTensorType blockArgumentType =
       RankedTensorType::get({}, operandType.getElementType());
-  block.addArgument(block_argument_type, loc);
-  block.addArgument(block_argument_type, loc);
+  block.addArgument(blockArgumentType, loc);
+  block.addArgument(blockArgumentType, loc);
   auto* firstArgument = block.args_begin();
   auto secondArgument = block.args_rbegin();
   {
