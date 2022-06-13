@@ -558,6 +558,7 @@ cc_library(
     ],
     deps = [
         ":compilation_environments",
+        ":computation_placer_hdr",
         ":hlo_module_config",
         ":hlo_proto_cc",
         ":mapped_ptr_container_sorter",
