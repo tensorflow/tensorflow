@@ -144,12 +144,10 @@ class PyTreeDef {
   std::vector<std::unique_ptr<PyTreeDef>> Children() const;
 
   // Maps a function over a PyTree structure, applying f_leaf to each leaf, and
-  // f_node to each container node.
-  // TODO(phawkins): use flattening everywhere instead and delete this method.
+  // f_node(node, node_data) to each container node.
   pybind11::object Walk(const pybind11::function& f_node,
                         pybind11::handle f_leaf,
-                        pybind11::iterable leaves,
-                        bool pass_node_data = false) const;
+                        pybind11::iterable leaves) const;
 
   // Given a tree of iterables with the same node/leaf structure as this PyTree,
   // build the corresponding PyTree.

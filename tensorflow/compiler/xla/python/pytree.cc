@@ -490,8 +490,7 @@ py::list PyTreeDef::FlattenUpTo(py::handle xs) const {
 }
 
 py::object PyTreeDef::Walk(const py::function& f_node, py::handle f_leaf,
-                           py::iterable leaves,
-                           bool pass_node_data) const {
+                           py::iterable leaves) const {
   std::vector<py::object> agenda;
   auto it = leaves.begin();
   for (const Node& node : traversal_) {
@@ -522,11 +521,8 @@ py::object PyTreeDef::Walk(const py::function& f_node, py::handle f_leaf,
           tuple[i] = agenda.back();
           agenda.pop_back();
         }
-        if (pass_node_data)
-          agenda.push_back(f_node(tuple, node.node_data ? node.node_data 
-                                                        : py::none()));
-        else
-          agenda.push_back(f_node(tuple));
+        agenda.push_back(f_node(tuple, node.node_data ? node.node_data 
+                                                      : py::none()));
       }
     }
   }
@@ -720,9 +716,8 @@ void BuildPytreeSubmodule(py::module& m) {
       .def("flatten_up_to", &PyTreeDef::FlattenUpTo)
       .def("compose", &PyTreeDef::Compose)
       .def("walk", &PyTreeDef::Walk, 
-           "Walk pytree, calling f_node at nodes, and f_leaf at leaves",
-            py::arg("f_node"), py::arg("f_leaf"), py::arg("leaves"),
-                           py::arg("pass_node_data") = false)
+           "Walk pytree, calling f_node(node, node_data) at nodes, and f_leaf at leaves",
+            py::arg("f_node"), py::arg("f_leaf"), py::arg("leaves"))
       .def("from_iterable_tree", &PyTreeDef::FromIterableTree)
       .def("children", &PyTreeDef::Children)
       .def_property_readonly("num_leaves", &PyTreeDef::num_leaves)

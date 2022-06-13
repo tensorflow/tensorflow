@@ -42,16 +42,17 @@ def pytree_print(td, leaves):
     elif isinstance(node_data, list):
       labels = node_data
     elif isinstance(node_data, xla_extension.PyTreeDef):
-      out = node_data.walk(lambda x,d: d, 
+      out = node_data.walk(lambda x,node_data: node_data, 
                             lambda x:None, 
-                            range(node_data.num_leaves), 
-                            pass_node_data=True)
+                            range(node_data.num_leaves))
       assert len(xs) == len(out) 
       labels = out
     else:
       assert False
 
     return [*zip(map(str,labels),xs)]
+
+  out = td.walk(node_visit, lambda x:(x,), leaves)
 
   def print_with_paths(prefix, nodes):
     for (l,x) in nodes:
@@ -61,7 +62,6 @@ def pytree_print(td, leaves):
       else:
         print(p + ':', str(x[0]).replace('\n','\\n'))
 
-  out = td.walk(node_visit, lambda x:(x,), leaves, pass_node_data=True)
   print_with_paths('', out)
 
 class PyTreeTest(absltest.TestCase):
@@ -84,10 +84,10 @@ class PyTreeTest(absltest.TestCase):
 
     leaves,td = pytree.flatten(obj)
 
-    out = td.walk(lambda n:sum(n), lambda x:1, leaves)
+    out = td.walk(lambda n,node_data:sum(n), lambda x:1, leaves)
     self.assertEqual(out, len(leaves))
 
-    out = td.walk(lambda n:n, lambda x:3, leaves)
+    out = td.walk(lambda n,node_data:n, lambda x:3, leaves)
     expect = (3, 
               ((3, 3, 3), 3, (3, (3, 3))), 
               ((3, ((3, 3),), 3), (3, ((3, 3),))), 
