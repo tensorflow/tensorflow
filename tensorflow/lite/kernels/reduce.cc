@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/mean.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/internal/optimized/reduce.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/mean.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"

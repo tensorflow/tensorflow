@@ -293,6 +293,8 @@ cc_library(
         "optimized/integer_ops/sub.h",
         "optimized/integer_ops/transpose_conv.h",
         "optimized/optimized_ops.h",
+        "optimized/optimized_ops_utils.h",
+        "optimized/reduce.h",
         "optimized/resize_bilinear.h",
         "optimized/sparse_ops/fully_connected.h",
     ],
