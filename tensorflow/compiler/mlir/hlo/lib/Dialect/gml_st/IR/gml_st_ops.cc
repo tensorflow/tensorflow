@@ -1431,27 +1431,6 @@ LogicalResult SubsetYieldOp::verify() { return success(); }
 // DynamicBroadcastInDimOp
 //===----------------------------------------------------------------------===//
 
-static Value materializeSpaceFromTensor(Value operand,
-                                        const SmallVector<Value> &dims,
-                                        OpBuilder &builder) {
-  auto loc = operand.getLoc();
-  auto ty = operand.getType().cast<RankedTensorType>();
-
-  // Collect dimension info and materialize `dim` ops for dynamic dimensions.
-  SmallVector<int64_t> staticDims;
-  SmallVector<Value> dynamicDims;
-  for (const auto &it : llvm::enumerate(ty.getShape())) {
-    int64_t d = it.value();
-    staticDims.push_back(d);
-    if (d == ShapedType::kDynamicSize) dynamicDims.push_back(dims[it.index()]);
-  }
-
-  // Materialize `space` op.
-  auto spaceTy = builder.getType<TileType>(ty.getShape());
-  auto staticDimsAttr = builder.getI64ArrayAttr(staticDims);
-  return builder.create<SpaceOp>(loc, spaceTy, dynamicDims, staticDimsAttr);
-}
-
 Value DynamicBroadcastInDimOp::fuse(Location loc, Value subset,
                                     OpBuilder &builder) {
   // Supports tile subsets.
@@ -1473,22 +1452,29 @@ Value DynamicBroadcastInDimOp::fuse(Location loc, Value subset,
   auto tileTy = tile.getType().cast<TileType>();
   auto resultTy = getType().cast<RankedTensorType>();
 
+  // Materialize operand and result root space.
+  auto spaceTy = builder.getType<TileType>(operandTy.getShape());
+  SmallVector<Value> dynamicDims;
+  for (const auto &it : llvm::enumerate(operandTy.getShape())) {
+    if (it.value() == ShapedType::kDynamicSize) {
+      dynamicDims.push_back(
+          builder.create<tensor::DimOp>(loc, operand(), it.index()));
+    }
+  }
+  auto staticDims = builder.getI64ArrayAttr(operandTy.getShape());
+  Value operandSpace =
+      builder.create<SpaceOp>(loc, spaceTy, dynamicDims, staticDims);
+
   // Materiaize operand dimensions.
   SmallVector<Value> operandDims;
+  int64_t dynamicDimsIdx = 0;
   operandDims.reserve(operandTy.getRank());
   for (const auto &it : llvm::enumerate(operandTy.getShape())) {
     int64_t d = it.value();
-    Value dim =
-        d == ShapedType::kDynamicSize
-            ? builder.create<tensor::DimOp>(loc, operand(), it.index())
-                  .getResult()
-            : builder.create<arith::ConstantIndexOp>(loc, d).getResult();
+    Value dim = d == ShapedType::kDynamicSize ? dynamicDims[dynamicDimsIdx++]
+                                              : getIndexConstant(d);
     operandDims.push_back(dim);
   }
-
-  // Materialize operand and result space.
-  Value operandSpace =
-      materializeSpaceFromTensor(operand(), operandDims, builder);
 
   // Materialize offsets and sizes for operand tile.
   auto collapsedTile =
