@@ -87,7 +87,7 @@ using uint32 = std::uint32_t;
 #endif  // !defined(TF_LITE_STATIC_MEMORY)
 
 
-// Allow for cross-compiler usage of function signatures - used for specifying 
+// Allow for cross-compiler usage of function signatures - currently used for specifying 
 // named RUY profiler regions in templated methods.
 #if defined(_MSC_VER)
 #define TFLITE_PRETTY_FUNCTION __FUNCSIG__
