@@ -34,7 +34,7 @@ bazel build -c opt //tensorflow/lite/c:tensorflowlite_c
 ```
 
 and for Android (replace `android_arm` with `android_arm64` for 64-bit),
-assuming you've [configured your project for Android builds](../g3doc/guide/android.md):
+assuming you've [configured your project for Android builds](../g3doc/android/lite_build.md):
 
 ```sh
 bazel build -c opt --cxxopt=--std=c++11 --config=android_arm \
