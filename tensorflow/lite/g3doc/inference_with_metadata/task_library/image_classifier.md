@@ -34,7 +34,7 @@ The following models are guaranteed to be compatible with the `ImageClassifier`
 API.
 
 *   Models created by
-    [TensorFlow Lite Model Maker for Image Classification](https://www.tensorflow.org/lite/tutorials/model_maker_image_classification).
+    [TensorFlow Lite Model Maker for Image Classification](https://www.tensorflow.org/lite/models/modify/model_maker/image_classification).
 
 *   The
     [pretrained image classification models on TensorFlow Hub](https://tfhub.dev/tensorflow/collections/lite/task-library/image-classifier/1).
@@ -268,9 +268,9 @@ with your own model and test data.
 ## Model compatibility requirements
 
 The `ImageClassifier` API expects a TFLite model with mandatory
-[TFLite Model Metadata](../../convert/metadata). See examples of creating
+[TFLite Model Metadata](../../models/convert/metadata). See examples of creating
 metadata for image classifiers using the
-[TensorFlow Lite Metadata Writer API](../../convert/metadata_writer_tutorial.ipynb#image_classifiers).
+[TensorFlow Lite Metadata Writer API](../../models/convert/metadata_writer_tutorial.ipynb#image_classifiers).
 
 The compatible image classifier models should meet the following requirements:
 

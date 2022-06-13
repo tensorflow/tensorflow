@@ -35,7 +35,7 @@ Status FunctionDefToBodyHelper(
   InstantiationResult result;
   TF_RETURN_IF_ERROR(InstantiateFunction(fdef, attrs, get_func_sig, &result));
 
-  auto graph = absl::make_unique<Graph>(lib_def);
+  auto graph = std::make_unique<Graph>(lib_def);
 
   auto construction_context_iter = fdef.attr().find("_construction_context");
   if (construction_context_iter != fdef.attr().end()) {
@@ -68,9 +68,9 @@ Status FunctionDefToBodyHelper(
   std::vector<ControlFlowInfo> dummy;
   TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph.get(), &dummy));
 
-  *fbody = absl::make_unique<FunctionBody>(fdef, result.arg_types,
+  *fbody = std::make_unique<FunctionBody>(fdef, result.arg_types,
                                            result.ret_types, graph.release());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FunctionDefToBodyHelper(const FunctionDef& fdef, const AttrSlice& attrs,

@@ -50,3 +50,20 @@ module  {
     func.return %0 : tensor<i32>
   }
 }
+
+// -----
+
+// CHECK-LABEL: func @fold_constant_cond
+func.func @fold_constant_cond(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>) {
+// CHECK-NOT: while
+// CHECK: return %arg0, %arg
+  %0:2 = mhlo.while(%iterArg = %arg0, %iterArg_0 = %arg1) : tensor<4xf32>, tensor<4xf32>
+   cond {
+    %cst = arith.constant dense<false> : tensor<i1>
+    "mhlo.return"(%cst) : (tensor<i1>) -> ()
+  } do {
+    %1 = mhlo.add %iterArg, %iterArg_0 : tensor<4xf32>
+    "mhlo.return"(%1, %1) : (tensor<4xf32>, tensor<4xf32>) -> ()
+  }
+  return %0#0, %0#1 : tensor<4xf32>, tensor<4xf32>
+}

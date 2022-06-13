@@ -85,7 +85,7 @@ REGISTER_OP("DenseToDenseSetOperation")
       c->set_output(0, c->Matrix(c->UnknownDim(), output_rank));
       c->set_output(1, c->Vector(c->UnknownDim()));
       c->set_output(2, c->Vector(output_rank));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("DenseToSparseSetOperation")
@@ -129,7 +129,7 @@ REGISTER_OP("DenseToSparseSetOperation")
       c->set_output(0, c->Matrix(c->UnknownDim(), output_rank_dim));
       c->set_output(1, c->Vector(c->UnknownDim()));
       c->set_output(2, c->Vector(output_rank_dim));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseToSparseSetOperation")
@@ -185,7 +185,7 @@ REGISTER_OP("SparseToSparseSetOperation")
       c->set_output(0, c->Matrix(c->UnknownDim(), output_rank_dim));
       c->set_output(1, c->Vector(c->UnknownDim()));
       c->set_output(2, c->Vector(output_rank_dim));
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

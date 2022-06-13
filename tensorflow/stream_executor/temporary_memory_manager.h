@@ -24,8 +24,8 @@ limitations under the License.
 #include <map>
 #include <memory>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -115,12 +115,12 @@ class TemporaryMemoryManager {
   // If a device memory is not in this mapping, it is not a temporary currently
   // allocated and owned by this temporary memory manager.
   std::map<DeviceMemoryBase, TemporaryMemoryRecord> records_
-      TF_GUARDED_BY(mutex_);
+      ABSL_GUARDED_BY(mutex_);
 
   // Allocation generation -- we bump this counter to distinguish temporary
   // memory handles that have been deallocated and later reallocated at the same
   // device memory address.
-  uint64_t generation_ TF_GUARDED_BY(mutex_);
+  uint64_t generation_ ABSL_GUARDED_BY(mutex_);
 
   // The stream (parent object) for this temporary memory manager -- allocations
   // are performed through this stream handle.

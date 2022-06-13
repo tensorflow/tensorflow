@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <iostream>
 #include <iterator>
+#include <memory>
 #include <ostream>
 #include <set>
 #include <string>
@@ -28,7 +29,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/numbers.h"
@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_op_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
+#include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -55,6 +56,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/human_readable_json.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -87,7 +89,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   TF_RET_CHECK(!proto.opcode().empty());
   HloOpcode opcode;
   auto opcode_or = StringToHloOpcode(proto.opcode());
-  absl::optional<ComparisonDirection> comparison_direction;
+  std::optional<ComparisonDirection> comparison_direction;
   if (opcode_or.ok()) {
     opcode = opcode_or.ConsumeValueOrDie();
   } else {
@@ -154,7 +156,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   Shape shape(proto.shape());
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
 
-  absl::optional<int> arity = HloOpcodeArity(opcode);
+  std::optional<int> arity = HloOpcodeArity(opcode);
   if (arity) {
     TF_RET_CHECK(proto.operand_ids_size() == *arity)
         << proto.opcode() << " instruction should have " << *arity
@@ -372,7 +374,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             << shape.ToString(true);
         *instruction->mutable_shape() = shape;
       } else {
-        instruction = absl::make_unique<HloConstantInstruction>(shape);
+        instruction = std::make_unique<HloConstantInstruction>(shape);
       }
       break;
     }
@@ -442,7 +444,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     }
     case HloOpcode::kAllGather:
     case HloOpcode::kAllGatherStart: {
-      absl::optional<int64_t> channel_id;
+      std::optional<int64_t> channel_id;
       if (proto.channel_id() > 0) {
         channel_id = proto.channel_id();
       }
@@ -475,7 +477,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << proto.called_computation_ids_size();
       TF_RET_CHECK(proto.channel_id() <= 0 || proto.all_reduce_id() <= 0)
           << "AllReduce cannot have both channel_id() and all_reduce_id()";
-      absl::optional<int64_t> channel_id;
+      std::optional<int64_t> channel_id;
       if (proto.channel_id() > 0) {
         channel_id = proto.channel_id();
       }
@@ -506,11 +508,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kAllToAll: {
-      absl::optional<int64_t> channel_id;
+      std::optional<int64_t> channel_id;
       if (proto.channel_id() > 0) {
         channel_id = proto.channel_id();
       }
-      absl::optional<int64_t> split_dimension;
+      std::optional<int64_t> split_dimension;
       if (proto.dimensions_size() > 0) {
         TF_RET_CHECK(proto.dimensions_size() == 1)
             << "AllToAll cannot have more than 1 dimension (split dimension)";
@@ -534,7 +536,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                    proto.operand_ids().size() == 4);
       std::vector<std::pair<int64_t, int64_t>> source_target_pairs(
           proto.source_target_pairs_size());
-      absl::optional<int64_t> channel_id;
+      std::optional<int64_t> channel_id;
       if (proto.channel_id() > 0) {
         channel_id = proto.channel_id();
       }
@@ -812,7 +814,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kGather: {
       TF_RET_CHECK(proto.has_gather_dimension_numbers())
           << "Gather instruction should have GatherDimensionNumbers set.";
-      auto gather_dimension_numbers = absl::make_unique<GatherDimensionNumbers>(
+      auto gather_dimension_numbers = std::make_unique<GatherDimensionNumbers>(
           proto.gather_dimension_numbers());
       std::vector<int64_t> gather_slice_sizes;
       const auto& slice_sizes = proto.gather_slice_sizes();
@@ -832,7 +834,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << "Scatter instruction should have 1 called computation but sees "
           << proto.called_computation_ids_size();
       auto scatter_dimension_numbers =
-          absl::make_unique<ScatterDimensionNumbers>(
+          std::make_unique<ScatterDimensionNumbers>(
               proto.scatter_dimension_numbers());
       auto operands = all_operands();
       auto operand_span = absl::MakeConstSpan(operands);
@@ -856,7 +858,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       PrecisionConfig precision_config = proto.precision_config();
       precision_config.mutable_operand_precision()->Resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
-      instruction = absl::make_unique<HloDotInstruction>(
+      instruction = std::make_unique<HloDotInstruction>(
           shape, operands(0), operands(1), proto.dot_dimension_numbers(),
           precision_config);
       break;
@@ -876,10 +878,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             HloSharding::FromProto(proto.domain_exit_sharding()));
         exit_hlo_sharding = std::make_shared<const HloSharding>(sharding);
       }
-      instruction = absl::make_unique<HloDomainInstruction>(
+      instruction = std::make_unique<HloDomainInstruction>(
           shape, operands(0),
-          absl::make_unique<ShardingMetadata>(entry_hlo_sharding),
-          absl::make_unique<ShardingMetadata>(exit_hlo_sharding));
+          std::make_unique<ShardingMetadata>(entry_hlo_sharding),
+          std::make_unique<ShardingMetadata>(exit_hlo_sharding));
       break;
     }
     case HloOpcode::kGetDimensionSize:
@@ -975,49 +977,48 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateParameter(
     int64_t parameter_number, const Shape& shape, const std::string& name) {
-  return absl::make_unique<HloParameterInstruction>(parameter_number, shape,
-                                                    name);
+  return std::make_unique<HloParameterInstruction>(parameter_number, shape,
+                                                   name);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateConstant(
     Literal literal) {
-  return absl::make_unique<HloConstantInstruction>(std::move(literal));
+  return std::make_unique<HloConstantInstruction>(std::move(literal));
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateIota(
     const Shape& shape, int64_t iota_dimension) {
-  return absl::make_unique<HloIotaInstruction>(shape, iota_dimension);
+  return std::make_unique<HloIotaInstruction>(shape, iota_dimension);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateGetTupleElement(const Shape& shape,
                                       HloInstruction* operand, int64_t index) {
-  return absl::make_unique<HloGetTupleElementInstruction>(shape, operand,
-                                                          index);
+  return std::make_unique<HloGetTupleElementInstruction>(shape, operand, index);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateGetTupleElement(HloInstruction* operand, int64_t index) {
-  return absl::make_unique<HloGetTupleElementInstruction>(
+  return std::make_unique<HloGetTupleElementInstruction>(
       operand->shape().tuple_shapes(index), operand, index);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRng(
     const Shape& shape, RandomDistribution distribution,
     absl::Span<HloInstruction* const> parameters) {
-  return absl::make_unique<HloRngInstruction>(shape, distribution, parameters);
+  return std::make_unique<HloRngInstruction>(shape, distribution, parameters);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateRngGetAndUpdateState(const Shape& shape, int64_t delta) {
-  return absl::make_unique<HloRngGetAndUpdateStateInstruction>(shape, delta);
+  return std::make_unique<HloRngGetAndUpdateStateInstruction>(shape, delta);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
                                       RandomAlgorithm algorithm) {
-  return absl::make_unique<HloRngBitGeneratorInstruction>(shape, state,
-                                                          algorithm);
+  return std::make_unique<HloRngBitGeneratorInstruction>(shape, state,
+                                                         algorithm);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateNary(
@@ -1134,7 +1135,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateMap(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* map_computation) {
-  return absl::make_unique<HloMapInstruction>(shape, operands, map_computation);
+  return std::make_unique<HloMapInstruction>(shape, operands, map_computation);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateConvolve(
@@ -1142,7 +1143,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     int64_t feature_group_count, int64_t batch_group_count,
     const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config) {
-  return absl::make_unique<HloConvolutionInstruction>(
+  return std::make_unique<HloConvolutionInstruction>(
       shape, lhs, rhs, feature_group_count, batch_group_count, window,
       dimension_numbers, precision_config);
 }
@@ -1150,63 +1151,63 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFft(
     const Shape& shape, HloInstruction* operand, FftType fft_type,
     absl::Span<const int64_t> fft_length) {
-  return absl::make_unique<HloFftInstruction>(shape, operand, fft_type,
-                                              fft_length);
+  return std::make_unique<HloFftInstruction>(shape, operand, fft_type,
+                                             fft_length);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncStart(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* async_computation) {
-  return absl::make_unique<HloAsyncInstruction>(HloOpcode::kAsyncStart, shape,
-                                                operands, async_computation);
+  return std::make_unique<HloAsyncInstruction>(HloOpcode::kAsyncStart, shape,
+                                               operands, async_computation);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncUpdate(
     const Shape& shape, HloInstruction* operand,
     HloComputation* async_computation) {
-  return absl::make_unique<HloAsyncInstruction>(HloOpcode::kAsyncUpdate, shape,
-                                                operand, async_computation);
+  return std::make_unique<HloAsyncInstruction>(HloOpcode::kAsyncUpdate, shape,
+                                               operand, async_computation);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncDone(
     const Shape& shape, HloInstruction* operand,
     HloComputation* async_computation) {
-  return absl::make_unique<HloAsyncInstruction>(HloOpcode::kAsyncDone, shape,
-                                                operand, async_computation);
+  return std::make_unique<HloAsyncInstruction>(HloOpcode::kAsyncDone, shape,
+                                               operand, async_computation);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCopyStart(
     const Shape& shape, HloInstruction* operand,
     bool is_cross_program_prefetch) {
-  return absl::make_unique<HloCopyStartInstruction>(shape, operand,
-                                                    is_cross_program_prefetch);
+  return std::make_unique<HloCopyStartInstruction>(shape, operand,
+                                                   is_cross_program_prefetch);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCompare(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-    ComparisonDirection direction, absl::optional<Comparison::Type> type) {
-  return absl::make_unique<HloCompareInstruction>(shape, lhs, rhs, direction,
-                                                  type);
+    ComparisonDirection direction, std::optional<Comparison::Type> type) {
+  return std::make_unique<HloCompareInstruction>(shape, lhs, rhs, direction,
+                                                 type);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateTriangularSolve(const Shape& shape, HloInstruction* a,
                                       HloInstruction* b,
                                       const TriangularSolveOptions& options) {
-  return absl::make_unique<HloTriangularSolveInstruction>(shape, a, b, options);
+  return std::make_unique<HloTriangularSolveInstruction>(shape, a, b, options);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCholesky(
     const Shape& shape, HloInstruction* a, const CholeskyOptions& options) {
-  return absl::make_unique<HloCholeskyInstruction>(shape, a, options);
+  return std::make_unique<HloCholeskyInstruction>(shape, a, options);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDot(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     const DotDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config) {
-  return absl::make_unique<HloDotInstruction>(
-      shape, lhs, rhs, dimension_numbers, precision_config);
+  return std::make_unique<HloDotInstruction>(shape, lhs, rhs, dimension_numbers,
+                                             precision_config);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1214,16 +1215,16 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
                                       HloInstruction* operand,
                                       const int exponent_bits,
                                       const int mantissa_bits) {
-  return absl::make_unique<HloReducePrecisionInstruction>(
+  return std::make_unique<HloReducePrecisionInstruction>(
       shape, operand, exponent_bits, mantissa_bits);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllGather(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     int64_t all_gather_dimension, absl::Span<const ReplicaGroup> replica_groups,
-    bool constrain_layout, const absl::optional<int64_t>& channel_id,
+    bool constrain_layout, const std::optional<int64_t>& channel_id,
     bool use_global_device_ids) {
-  return absl::make_unique<HloAllGatherInstruction>(
+  return std::make_unique<HloAllGatherInstruction>(
       HloOpcode::kAllGather, shape, operands, all_gather_dimension,
       replica_groups, constrain_layout, channel_id, use_global_device_ids);
 }
@@ -1232,9 +1233,9 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 HloInstruction::CreateAllGatherStart(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     int64_t all_gather_dimension, absl::Span<const ReplicaGroup> replica_groups,
-    bool constrain_layout, const absl::optional<int64_t>& channel_id,
+    bool constrain_layout, const std::optional<int64_t>& channel_id,
     bool use_global_device_ids) {
-  return absl::make_unique<HloAllGatherInstruction>(
+  return std::make_unique<HloAllGatherInstruction>(
       HloOpcode::kAllGatherStart, shape, operands, all_gather_dimension,
       replica_groups, constrain_layout, channel_id, use_global_device_ids);
 }
@@ -1243,8 +1244,8 @@ HloInstruction::CreateAllGatherStart(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const absl::optional<int64_t>& channel_id, bool use_global_device_ids) {
-  return absl::make_unique<HloAllReduceInstruction>(
+    const std::optional<int64_t>& channel_id, bool use_global_device_ids) {
+  return std::make_unique<HloAllReduceInstruction>(
       HloOpcode::kAllReduce, shape, operands, reduce_computation,
       replica_groups, constrain_layout, channel_id, use_global_device_ids);
 }
@@ -1254,9 +1255,9 @@ HloInstruction::CreateReduceScatter(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const absl::optional<int64_t>& channel_id, bool use_global_device_ids,
+    const std::optional<int64_t>& channel_id, bool use_global_device_ids,
     int64_t scatter_dimension) {
-  return absl::make_unique<HloReduceScatterInstruction>(
+  return std::make_unique<HloReduceScatterInstruction>(
       shape, operands, reduce_computation, replica_groups, constrain_layout,
       channel_id, use_global_device_ids, scatter_dimension);
 }
@@ -1266,8 +1267,8 @@ HloInstruction::CreateAllReduceStart(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const absl::optional<int64_t>& channel_id, bool use_global_device_ids) {
-  return absl::make_unique<HloAllReduceInstruction>(
+    const std::optional<int64_t>& channel_id, bool use_global_device_ids) {
+  return std::make_unique<HloAllReduceInstruction>(
       HloOpcode::kAllReduceStart, shape, operands, reduce_computation,
       replica_groups, constrain_layout, channel_id, use_global_device_ids);
 }
@@ -1275,9 +1276,9 @@ HloInstruction::CreateAllReduceStart(
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllToAll(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const absl::optional<int64_t>& channel_id,
-    const absl::optional<int64_t>& split_dimension) {
-  return absl::make_unique<HloAllToAllInstruction>(
+    const std::optional<int64_t>& channel_id,
+    const std::optional<int64_t>& split_dimension) {
+  return std::make_unique<HloAllToAllInstruction>(
       shape, operands, replica_groups, constrain_layout, channel_id,
       split_dimension);
 }
@@ -1286,8 +1287,8 @@ HloInstruction::CreateAllReduceStart(
 HloInstruction::CreateCollectivePermute(
     const Shape& shape, HloInstruction* operand,
     const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-    const absl::optional<int64_t>& channel_id) {
-  return absl::make_unique<HloCollectivePermuteInstruction>(
+    const std::optional<int64_t>& channel_id) {
+  return std::make_unique<HloCollectivePermuteInstruction>(
       HloOpcode::kCollectivePermute, shape, operand, source_target_pairs,
       channel_id);
 }
@@ -1298,8 +1299,8 @@ HloInstruction::CreateCollectivePermute(
     HloInstruction* input_start_indices, HloInstruction* output_start_indices,
     absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs,
     absl::Span<const std::vector<int64_t>> slice_sizes,
-    const absl::optional<int64_t>& channel_id) {
-  return absl::make_unique<HloCollectivePermuteInstruction>(
+    const std::optional<int64_t>& channel_id) {
+  return std::make_unique<HloCollectivePermuteInstruction>(
       HloOpcode::kCollectivePermute, shape, input, output, input_start_indices,
       output_start_indices, source_target_pairs, slice_sizes, channel_id);
 }
@@ -1308,8 +1309,8 @@ HloInstruction::CreateCollectivePermute(
 HloInstruction::CreateCollectivePermuteStart(
     const Shape& shape, HloInstruction* operand,
     const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-    const absl::optional<int64_t>& channel_id) {
-  return absl::make_unique<HloCollectivePermuteInstruction>(
+    const std::optional<int64_t>& channel_id) {
+  return std::make_unique<HloCollectivePermuteInstruction>(
       HloOpcode::kCollectivePermuteStart, shape, operand, source_target_pairs,
       channel_id);
 }
@@ -1320,8 +1321,8 @@ HloInstruction::CreateCollectivePermuteStart(
     HloInstruction* input_start_indices, HloInstruction* output_start_indices,
     absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs,
     absl::Span<const std::vector<int64_t>> slice_sizes,
-    const absl::optional<int64_t>& channel_id) {
-  return absl::make_unique<HloCollectivePermuteInstruction>(
+    const std::optional<int64_t>& channel_id) {
+  return std::make_unique<HloCollectivePermuteInstruction>(
       HloOpcode::kCollectivePermuteStart, shape, input, output,
       input_start_indices, output_start_indices, source_target_pairs,
       slice_sizes, channel_id);
@@ -1346,22 +1347,22 @@ HloInstruction::CreateCollectivePermuteStart(
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
     const Shape& infeed_shape, HloInstruction* token_operand,
     const std::string& config) {
-  return absl::make_unique<HloInfeedInstruction>(infeed_shape, token_operand,
-                                                 config);
+  return std::make_unique<HloInfeedInstruction>(infeed_shape, token_operand,
+                                                config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateOutfeed(
     const Shape& outfeed_shape, HloInstruction* operand,
     HloInstruction* token_operand, absl::string_view outfeed_config) {
-  return absl::make_unique<HloOutfeedInstruction>(
-      outfeed_shape, operand, token_operand, outfeed_config);
+  return std::make_unique<HloOutfeedInstruction>(outfeed_shape, operand,
+                                                 token_operand, outfeed_config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSend(
     HloInstruction* operand, HloInstruction* token, int64_t channel_id,
     bool is_host_transfer) {
-  return absl::make_unique<HloSendInstruction>(operand, token, channel_id,
-                                               is_host_transfer);
+  return std::make_unique<HloSendInstruction>(operand, token, channel_id,
+                                              is_host_transfer);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSendDone(
@@ -1369,15 +1370,15 @@ HloInstruction::CreateCollectivePermuteStart(
   auto send_operand = DynCast<HloSendInstruction>(operand);
   CHECK(send_operand != nullptr)
       << "SendDone must take the context operand from Send";
-  return absl::make_unique<HloSendDoneInstruction>(send_operand,
-                                                   is_host_transfer);
+  return std::make_unique<HloSendDoneInstruction>(send_operand,
+                                                  is_host_transfer);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRecv(
     const Shape& shape, HloInstruction* token, int64_t channel_id,
     bool is_host_transfer) {
-  return absl::make_unique<HloRecvInstruction>(shape, token, channel_id,
-                                               is_host_transfer);
+  return std::make_unique<HloRecvInstruction>(shape, token, channel_id,
+                                              is_host_transfer);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRecvDone(
@@ -1385,14 +1386,14 @@ HloInstruction::CreateCollectivePermuteStart(
   auto recv_operand = DynCast<HloRecvInstruction>(operand);
   CHECK(recv_operand != nullptr)
       << "RecvDone must take the context operand from Recv";
-  return absl::make_unique<HloRecvDoneInstruction>(recv_operand,
-                                                   is_host_transfer);
+  return std::make_unique<HloRecvDoneInstruction>(recv_operand,
+                                                  is_host_transfer);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReverse(
     const Shape& shape, HloInstruction* operand,
     absl::Span<const int64_t> dimensions) {
-  return absl::make_unique<HloReverseInstruction>(shape, operand, dimensions);
+  return std::make_unique<HloReverseInstruction>(shape, operand, dimensions);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAfterAll(
@@ -1470,15 +1471,15 @@ HloInstruction::CreateAddDependency(HloInstruction* data_operand,
     absl::Span<const int64_t> start_indices,
     absl::Span<const int64_t> limit_indices,
     absl::Span<const int64_t> strides) {
-  return absl::make_unique<HloSliceInstruction>(shape, operand, start_indices,
-                                                limit_indices, strides);
+  return std::make_unique<HloSliceInstruction>(shape, operand, start_indices,
+                                               limit_indices, strides);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDynamicSlice(
     const Shape& shape, HloInstruction* operand,
     absl::Span<HloInstruction* const> start_indices,
     absl::Span<const int64_t> slice_sizes) {
-  return absl::make_unique<HloDynamicSliceInstruction>(
+  return std::make_unique<HloDynamicSliceInstruction>(
       shape, operand, start_indices, slice_sizes);
 }
 
@@ -1486,15 +1487,15 @@ HloInstruction::CreateAddDependency(HloInstruction* data_operand,
 HloInstruction::CreateDynamicUpdateSlice(
     const Shape& shape, HloInstruction* operand, HloInstruction* update,
     absl::Span<HloInstruction* const> start_indices) {
-  return absl::make_unique<HloDynamicUpdateSliceInstruction>(
+  return std::make_unique<HloDynamicUpdateSliceInstruction>(
       shape, operand, update, start_indices);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateConcatenate(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     int64_t dimension) {
-  return absl::make_unique<HloConcatenateInstruction>(shape, operands,
-                                                      dimension);
+  return std::make_unique<HloConcatenateInstruction>(shape, operands,
+                                                     dimension);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateConvert(
@@ -1540,7 +1541,7 @@ HloInstruction::CreateBitcastConvert(const Shape& shape,
   all_args.reserve(operands.size() * 2);
   all_args.insert(all_args.end(), operands.begin(), operands.end());
   all_args.insert(all_args.end(), init_values.begin(), init_values.end());
-  return absl::make_unique<HloReduceInstruction>(
+  return std::make_unique<HloReduceInstruction>(
       shape, all_args, dimensions_to_reduce, reduce_computation);
 }
 
@@ -1571,7 +1572,7 @@ HloInstruction::CreateBitcastConvert(const Shape& shape,
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReduceWindow(
     const Shape& shape, HloInstruction* operand, HloInstruction* init_value,
     const Window& window, HloComputation* reduce_computation) {
-  return absl::make_unique<HloReduceWindowInstruction>(
+  return std::make_unique<HloReduceWindowInstruction>(
       shape, operand, init_value, window, reduce_computation);
 }
 
@@ -1579,7 +1580,7 @@ HloInstruction::CreateBitcastConvert(const Shape& shape,
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::Span<HloInstruction* const> init_values, const Window& window,
     HloComputation* reduce_computation) {
-  return absl::make_unique<HloReduceWindowInstruction>(
+  return std::make_unique<HloReduceWindowInstruction>(
       shape, operands, init_values, window, reduce_computation);
 }
 /* static */ std::unique_ptr<HloInstruction>
@@ -1588,7 +1589,7 @@ HloInstruction::CreateBatchNormTraining(const Shape& shape,
                                         HloInstruction* scale,
                                         HloInstruction* offset, float epsilon,
                                         int64_t feature_index) {
-  return absl::make_unique<HloBatchNormTrainingInstruction>(
+  return std::make_unique<HloBatchNormTrainingInstruction>(
       shape, operand, scale, offset, epsilon, feature_index);
 }
 
@@ -1597,7 +1598,7 @@ HloInstruction::CreateBatchNormInference(
     const Shape& shape, HloInstruction* operand, HloInstruction* scale,
     HloInstruction* offset, HloInstruction* mean, HloInstruction* variance,
     float epsilon, int64_t feature_index) {
-  return absl::make_unique<HloBatchNormInferenceInstruction>(
+  return std::make_unique<HloBatchNormInferenceInstruction>(
       shape, operand, scale, offset, mean, variance, epsilon, feature_index);
 }
 
@@ -1607,7 +1608,7 @@ HloInstruction::CreateBatchNormGrad(const Shape& shape, HloInstruction* operand,
                                     HloInstruction* variance,
                                     HloInstruction* grad_output, float epsilon,
                                     int64_t feature_index) {
-  return absl::make_unique<HloBatchNormGradInstruction>(
+  return std::make_unique<HloBatchNormGradInstruction>(
       shape, operand, scale, mean, variance, grad_output, epsilon,
       feature_index);
 }
@@ -1617,31 +1618,31 @@ HloInstruction::CreateSelectAndScatter(
     const Shape& shape, HloInstruction* operand, HloComputation* select,
     const Window& window, HloInstruction* source, HloInstruction* init_value,
     HloComputation* scatter) {
-  return absl::make_unique<HloSelectAndScatterInstruction>(
+  return std::make_unique<HloSelectAndScatterInstruction>(
       shape, operand, select, window, source, init_value, scatter);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateBroadcast(
     const Shape& shape, HloInstruction* operand,
     absl::Span<const int64_t> broadcast_dimensions) {
-  return absl::make_unique<HloBroadcastInstruction>(shape, operand,
-                                                    broadcast_dimensions);
+  return std::make_unique<HloBroadcastInstruction>(shape, operand,
+                                                   broadcast_dimensions);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateGetDimensionSize(const Shape& shape,
                                        HloInstruction* operand,
                                        int64_t dimension) {
-  return absl::make_unique<HloGetDimensionSizeInstruction>(shape, operand,
-                                                           dimension);
+  return std::make_unique<HloGetDimensionSizeInstruction>(shape, operand,
+                                                          dimension);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateSetDimensionSize(const Shape& shape,
                                        HloInstruction* operand,
                                        HloInstruction* val, int64_t dimension) {
-  return absl::make_unique<HloSetDimensionSizeInstruction>(shape, operand, val,
-                                                           dimension);
+  return std::make_unique<HloSetDimensionSizeInstruction>(shape, operand, val,
+                                                          dimension);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1702,8 +1703,8 @@ HloInstruction::CreateBroadcastSequence(
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreatePad(
     const Shape& shape, HloInstruction* operand, HloInstruction* padding_value,
     const PaddingConfig& padding_config) {
-  return absl::make_unique<HloPadInstruction>(shape, operand, padding_value,
-                                              padding_config);
+  return std::make_unique<HloPadInstruction>(shape, operand, padding_value,
+                                             padding_config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReshape(
@@ -1713,8 +1714,8 @@ HloInstruction::CreateBroadcastSequence(
       << "shape: " << ShapeUtil::HumanString(shape)
       << " operand: " << ShapeUtil::HumanString(operand->shape());
 
-  return absl::make_unique<HloReshapeInstruction>(shape, operand,
-                                                  inferred_dimension);
+  return std::make_unique<HloReshapeInstruction>(shape, operand,
+                                                 inferred_dimension);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1726,36 +1727,35 @@ HloInstruction::CreateDynamicReshape(
       << "shape: " << ShapeUtil::HumanString(shape)
       << " operand: " << ShapeUtil::HumanString(data_operand[0].shape());
   CHECK_EQ(shape.rank(), dim_sizes.size());
-  return absl::make_unique<HloDynamicReshapeInstruction>(shape, data_operand,
-                                                         dim_sizes);
+  return std::make_unique<HloDynamicReshapeInstruction>(shape, data_operand,
+                                                        dim_sizes);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTranspose(
     const Shape& shape, HloInstruction* operand,
     absl::Span<const int64_t> dimensions) {
-  return absl::make_unique<HloTransposeInstruction>(shape, operand, dimensions);
+  return std::make_unique<HloTransposeInstruction>(shape, operand, dimensions);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSort(
     const Shape& shape, int64_t dimension,
     absl::Span<HloInstruction* const> operands, HloComputation* compare,
     bool is_stable) {
-  return absl::make_unique<HloSortInstruction>(shape, dimension, operands,
-                                               compare, is_stable);
+  return std::make_unique<HloSortInstruction>(shape, dimension, operands,
+                                              compare, is_stable);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFusion(
     const Shape& shape, FusionKind fusion_kind, HloInstruction* fused_root) {
-  return absl::make_unique<HloFusionInstruction>(shape, fusion_kind,
-                                                 fused_root);
+  return std::make_unique<HloFusionInstruction>(shape, fusion_kind, fused_root);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFusion(
     const Shape& shape, FusionKind fusion_kind,
     absl::Span<HloInstruction* const> operands,
     HloComputation* fusion_computation) {
-  return absl::make_unique<HloFusionInstruction>(shape, fusion_kind, operands,
-                                                 fusion_computation);
+  return std::make_unique<HloFusionInstruction>(shape, fusion_kind, operands,
+                                                fusion_computation);
 }
 
 void HloInstruction::set_single_sharding(const HloSharding& sharding) {
@@ -1845,7 +1845,7 @@ bool HloInstruction::HasSideEffect() const {
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::string_view custom_call_target, std::string opaque,
     CustomCallApiVersion api_version) {
-  return absl::make_unique<HloCustomCallInstruction>(
+  return std::make_unique<HloCustomCallInstruction>(
       shape, operands, custom_call_target, std::move(opaque), api_version);
 }
 
@@ -1853,7 +1853,7 @@ bool HloInstruction::HasSideEffect() const {
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* to_apply, absl::string_view custom_call_target,
     std::string opaque, CustomCallApiVersion api_version) {
-  return absl::make_unique<HloCustomCallInstruction>(
+  return std::make_unique<HloCustomCallInstruction>(
       shape, operands, to_apply, custom_call_target, std::move(opaque),
       api_version);
 }
@@ -1863,7 +1863,7 @@ bool HloInstruction::HasSideEffect() const {
     absl::Span<HloComputation* const> called_computations,
     absl::string_view custom_call_target, std::string opaque,
     CustomCallApiVersion api_version) {
-  return absl::make_unique<HloCustomCallInstruction>(
+  return std::make_unique<HloCustomCallInstruction>(
       shape, operands, called_computations, custom_call_target,
       std::move(opaque), api_version);
 }
@@ -1873,7 +1873,7 @@ bool HloInstruction::HasSideEffect() const {
     absl::string_view custom_call_target,
     absl::Span<const Shape> operand_shapes_with_layout, std::string opaque,
     CustomCallApiVersion api_version) {
-  return absl::make_unique<HloCustomCallInstruction>(
+  return std::make_unique<HloCustomCallInstruction>(
       shape, operands, custom_call_target, std::move(opaque),
       operand_shapes_with_layout, api_version);
 }
@@ -1893,9 +1893,9 @@ bool HloInstruction::HasSideEffect() const {
     const Shape& shape, HloInstruction* operand, HloInstruction* start_indices,
     const GatherDimensionNumbers& gather_dim_numbers,
     absl::Span<const int64_t> slice_sizes, bool indices_are_sorted) {
-  return absl::make_unique<HloGatherInstruction>(
-      shape, operand, start_indices, gather_dim_numbers, slice_sizes,
-      indices_are_sorted);
+  return std::make_unique<HloGatherInstruction>(shape, operand, start_indices,
+                                                gather_dim_numbers, slice_sizes,
+                                                indices_are_sorted);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateScatter(
@@ -1929,7 +1929,7 @@ bool HloInstruction::HasSideEffect() const {
     const Shape& shape, HloInstruction* operand,
     std::unique_ptr<DomainMetadata> operand_side_metadata,
     std::unique_ptr<DomainMetadata> user_side_metadata) {
-  return absl::make_unique<HloDomainInstruction>(
+  return std::make_unique<HloDomainInstruction>(
       shape, operand, std::move(operand_side_metadata),
       std::move(user_side_metadata));
 }
@@ -2276,7 +2276,7 @@ Status HloInstruction::AddControlDependencyTo(HloInstruction* instruction) {
         !absl::c_linear_search(instruction->control_predecessors_, this));
     instruction->control_predecessors_.push_back(this);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloInstruction::RemoveControlDependencyTo(HloInstruction* instruction) {
@@ -2284,7 +2284,7 @@ Status HloInstruction::RemoveControlDependencyTo(HloInstruction* instruction) {
   TF_RETURN_IF_ERROR(EraseElementFromVector(&control_successors_, instruction));
   TF_RETURN_IF_ERROR(
       EraseElementFromVector(&instruction->control_predecessors_, this));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloInstruction::DropAllControlDeps() {
@@ -2298,7 +2298,7 @@ Status HloInstruction::DropAllControlDeps() {
   }
   control_successors_.clear();
   control_predecessors_.clear();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloInstruction::CopyAllControlDepsFrom(const HloInstruction* inst) {
@@ -2310,7 +2310,7 @@ Status HloInstruction::CopyAllControlDepsFrom(const HloInstruction* inst) {
     TF_RETURN_IF_ERROR(this->AddControlDependencyTo(ctrl_succ));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 bool HloInstruction::IdenticalInternal(
@@ -2620,7 +2620,7 @@ Status HloInstruction::ReplaceUseWithDifferentShape(
     TF_RETURN_IF_ERROR(
         Cast<HloFusionInstruction>(user)->DeduplicateFusionOperands());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloInstruction::ReplaceUseWith(HloInstruction* user, int operand_number,
@@ -2647,7 +2647,7 @@ Status HloInstruction::ReplaceUseWithDifferentShape(
       << " to be equal to " << ToString();
   user->operands_[operand_number] = new_producer;
   new_producer->AddUser(user);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloInstruction::ReplaceOperandWith(int64_t operand_num,
@@ -2666,7 +2666,7 @@ Status HloInstruction::ReplaceOperandWithDifferentShape(
   TF_RET_CHECK(operand_num < operand_count());
   HloInstruction* old_operand = mutable_operand(operand_num);
   if (old_operand == new_operand) {
-    return Status::OK();
+    return OkStatus();
   }
 
   operands_[operand_num] = new_operand;
@@ -2678,7 +2678,7 @@ Status HloInstruction::ReplaceOperandWithDifferentShape(
     old_operand->RemoveUser(this);
   }
   new_operand->AddUser(this);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloInstruction::ReplaceUsesWith(absl::Span<HloInstruction* const> users,
@@ -2699,7 +2699,7 @@ Status HloInstruction::ReplaceAllUsesWithDifferentShape(
     parent_->set_root_instruction(new_producer,
                                   /*accept_different_shape=*/true);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
@@ -2739,7 +2739,7 @@ Status HloInstruction::ReplaceAllUsesWithDifferentShape(
                                   /*accept_different_shape=*/true);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 bool HloInstruction::IsEffectiveBitcast() const {
@@ -2999,7 +2999,7 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
 }
 
 bool HloInstruction::IsElementwiseImpl(
-    const absl::optional<int64_t>& operand_idx) const {
+    const std::optional<int64_t>& operand_idx) const {
   if (opcode_ == HloOpcode::kDynamicUpdateSlice) {
     return operand_idx.has_value() && operand_idx.value() == 0;
   }
@@ -3777,7 +3777,7 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
     std::reverse(dfs_stack.begin() + old_dfs_stack_size, dfs_stack.end());
   } while (!dfs_stack.empty());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename HloInstructionPtr>
@@ -3790,7 +3790,7 @@ Status HloInstruction::Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor,
   if (call_finish_visit) {
     TF_RETURN_IF_ERROR(visitor->FinishVisit(this));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Explicit instantiations.
@@ -3816,7 +3816,7 @@ Status HloInstruction::AcceptWithOperandOrder(
     VLOG(3) << "HloInstruction::AcceptWithOperandOrder AFTER FINISH VISIT";
   }
   VLOG(2) << "HloInstruction::AcceptWithOperandOrder EXIT";
-  return Status::OK();
+  return OkStatus();
 }
 
 const Shape& HloInstruction::shape() const { return shape_; }
@@ -3837,7 +3837,7 @@ bool HloInstruction::IsElementwiseBinary() const {
 }
 
 bool HloInstruction::IsElementwise() const {
-  return IsElementwiseImpl(absl::nullopt);
+  return IsElementwiseImpl(std::nullopt);
 }
 
 bool HloInstruction::IsElementwiseOnOperand(int64_t operand_idx) const {
@@ -4270,19 +4270,21 @@ Status HloInstruction::GetBackendConfigInternal(
   proto->Clear();
 
   if (auto* proto_ptr = backend_config_.GetProtoPtr()) {
-    proto->CopyFrom(*proto_ptr);
-    return Status::OK();
+    if (proto_ptr->GetDescriptor() == proto->GetDescriptor()) {
+      proto->CopyFrom(*proto_ptr);
+      return OkStatus();
+    }
   }
 
   auto& raw_string = raw_backend_config_string();
   // Empty string does not parse as valid JSON, but it's a valid backend config,
   // corresponding to the empty proto.
   if (raw_string.empty()) {
-    return Status::OK();
+    return OkStatus();
   }
   TF_RETURN_IF_ERROR(tensorflow::HumanReadableJsonToProto(raw_string, proto));
   backend_config_.SetProto(*proto);
-  return Status::OK();
+  return OkStatus();
 }
 
 const std::string& HloInstruction::BackendConfigRep::GetRawString() const {
@@ -4387,6 +4389,36 @@ void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
 void HloInstruction::set_outer_dimension_partitions(
     const std::vector<int64_t>& outer_dimension_partitions) {
   outer_dimension_partitions_ = outer_dimension_partitions;
+}
+
+void HloInstruction::SortInstructionUsersAndControlLists(
+    const MappedPtrContainerSorter<HloInstruction>::MapPtrFn& map_fn,
+    const HloInstruction& sorted_instruction) {
+  using Sorter = MappedPtrContainerSorter<HloInstruction>;
+  auto status = Sorter::Sort(map_fn, Sorter::IndexAfterMappedElementsFn(),
+                             sorted_instruction.users_, users_);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to sort instruction users for " << name() << "; "
+               << status;
+  }
+  user_map_.clear();
+  for (uint64_t i = 0; i < users_.size(); ++i) {
+    user_map_[users_[i]] = i;
+  }
+  status = Sorter::Sort(map_fn, Sorter::IndexAfterMappedElementsFn(),
+                        sorted_instruction.control_predecessors_,
+                        control_predecessors_);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to sort instruction control predecessors for "
+               << name() << "; " << status;
+  }
+  status =
+      Sorter::Sort(map_fn, Sorter::IndexAfterMappedElementsFn(),
+                   sorted_instruction.control_successors_, control_successors_);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to sort instruction control successors for " << name()
+               << "; " << status;
+  }
 }
 
 // TODO(b/80131774): Remove these temporary methods after transition.
@@ -4573,7 +4605,7 @@ void HloInstruction::set_parameter_replicated_at_leaf_buffers(
           parameter_replicated_at_leaf_buffers);
 }
 
-const absl::optional<std::vector<bool>>&
+const std::optional<std::vector<bool>>&
 HloInstruction::parameter_replicated_at_leaf_buffers() const {
   return Cast<HloParameterInstruction>(this)
       ->parameter_replicated_at_leaf_buffers();
@@ -4629,11 +4661,11 @@ HloInstruction::source_target_pairs() const {
   return Cast<HloCollectivePermuteInstruction>(this)->source_target_pairs();
 }
 
-absl::optional<int64_t> HloInstruction::channel_id() const {
+std::optional<int64_t> HloInstruction::channel_id() const {
   return Cast<HloChannelInstruction>(this)->channel_id();
 }
 
-void HloInstruction::set_channel_id(const absl::optional<int64_t>& channel_id) {
+void HloInstruction::set_channel_id(const std::optional<int64_t>& channel_id) {
   return Cast<HloChannelInstruction>(this)->set_channel_id(channel_id);
 }
 

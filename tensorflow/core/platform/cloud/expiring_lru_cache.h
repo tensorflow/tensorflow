@@ -87,7 +87,7 @@ class ExpiringLRUCache {
     // key if this proves to be a significant performance bottleneck.
     mutex_lock lock(mu_);
     if (LookupLocked(key, value)) {
-      return Status::OK();
+      return OkStatus();
     }
     Status s = compute_func(key, value);
     if (s.ok()) {

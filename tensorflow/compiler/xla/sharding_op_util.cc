@@ -59,7 +59,7 @@ Status ParseAttributes(absl::string_view opaque,
                                    attr_name);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace sharding_op_util

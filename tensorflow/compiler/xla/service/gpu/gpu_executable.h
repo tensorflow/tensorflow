@@ -18,11 +18,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -63,6 +64,9 @@ inline bool IsBefEnabled(const HloModuleConfig& config) {
   return IsBefExecutableEnabled(config) || IsBefThunkEnabled(config);
 }
 
+// Returns whether GpuExecutable runs on TFRT/JitRt.
+bool IsJitRtExecutableEnabled(const HloModuleConfig& config);
+
 // GPU-targeting implementation of the XLA Executable interface.
 //
 // Launches the given GPU kernel via the StreamExecutor.
@@ -80,9 +84,27 @@ class GpuExecutable : public Executable {
 
  public:
   struct BefExecutable;
+  struct JitRtExecutable;
+
+  // Serialized MLIR module prepared for JitRt compilation.
+  struct JitRtProgram {
+    explicit JitRtProgram(std::string entry_point, std::string module,
+                          std::vector<int64_t> buffer_sizes,
+                          DebugOptions debug_options)
+        : entry_point(std::move(entry_point)),
+          module(std::move(module)),
+          buffer_sizes(std::move(buffer_sizes)),
+          debug_options(std::move(debug_options)) {}
+
+    std::string entry_point;
+    std::string module;
+    std::vector<int64_t> buffer_sizes;
+    DebugOptions debug_options;
+  };
 
   typedef std::unique_ptr<const ThunkSchedule> OwnedThunkSchedule;
   typedef std::unique_ptr<uint8_t, BefBufferDeleter> OwnedBefBuffer;
+  typedef std::unique_ptr<JitRtProgram> OwnedJitRtProgram;
   typedef std::unique_ptr<tfrt::gpu::GpuContextCache, GpuContextCacheDeleter>
       OwnedGpuContextCache;
 
@@ -101,16 +123,17 @@ class GpuExecutable : public Executable {
 
     // Whether this output is hinted to alias a parameter (BufferAllocation*
     // would indicate the aliased parameter), and what kind of alias it is.
-    absl::optional<HloInputOutputAliasConfig::Alias> alias_config;
+    std::optional<HloInputOutputAliasConfig::Alias> alias_config;
   };
 
   struct Params {
     std::string asm_text;
     std::vector<uint8_t> binary;
     GpuVersion gpu_version;
-    // The GpuExecutable will either execute Thunks or a whole-program BEF
-    // depending on which is supplied.
-    absl::variant<OwnedThunkSchedule, OwnedBefBuffer> thunks_or_bef;
+    // The GpuExecutable will either execute Thunks, a whole-program BEF or a
+    // JitRt compiled native function depending on which is supplied.
+    std::variant<OwnedThunkSchedule, OwnedBefBuffer, OwnedJitRtProgram>
+        executable;
     xla::EntryFunctionAttributes entry_func_attrs;
     std::vector<ConstantInfo> constants;
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info;
@@ -198,8 +221,8 @@ class GpuExecutable : public Executable {
       absl::Span<const ShapedBuffer* const> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
-  using VariantArguments = absl::variant<absl::Span<const ShapedBuffer* const>,
-                                         absl::Span<ExecutionInput>>;
+  using VariantArguments = std::variant<absl::Span<const ShapedBuffer* const>,
+                                        absl::Span<ExecutionInput>>;
   StatusOr<ExecutionOutput> ExecuteAsyncOnStreamImpl(
       const ServiceExecutableRunOptions* run_options,
       VariantArguments arguments);
@@ -319,6 +342,9 @@ class GpuExecutable : public Executable {
 
   // Data for bef executable mode only, owned.
   BefExecutable* bef_executable_ = nullptr;
+
+  // JitRt executable if the JitRt mode is on, owned.
+  JitRtExecutable* jitrt_executable_ = nullptr;
 
   GpuExecutable(const GpuExecutable&) = delete;
   GpuExecutable& operator=(const GpuExecutable&) = delete;

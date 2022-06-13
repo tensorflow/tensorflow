@@ -60,13 +60,13 @@ class RangeIterator : public TaskIterator {
   Status GetNext(std::vector<Tensor>& element, bool& end_of_sequence) override {
     end_of_sequence = (next_ >= range_);
     if (end_of_sequence) {
-      return Status::OK();
+      return OkStatus();
     }
     element = {Tensor{next_++}};
     if (repeat_) {
       next_ = next_ % range_;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   int64_t Cardinality() const override {
@@ -88,12 +88,12 @@ class ElementOrErrorIterator : public TaskIterator {
   Status GetNext(std::vector<Tensor>& element, bool& end_of_sequence) override {
     end_of_sequence = (next_ >= elements_.size());
     if (end_of_sequence) {
-      return Status::OK();
+      return OkStatus();
     }
     const StatusOr<T>& next_element = elements_[next_++];
     TF_RETURN_IF_ERROR(next_element.status());
     element = {Tensor{*next_element}};
-    return Status::OK();
+    return OkStatus();
   }
 
   int64_t Cardinality() const override { return elements_.size(); }
@@ -162,7 +162,7 @@ Status RunConsumer(int64_t consumer_index, int64_t start_index,
       }
     } while (result.skip);
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 

@@ -282,23 +282,23 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
     }
     return tensorflow::PyoOrThrow(result);
   });
-  m.def("FetchLayout",
-        [](const py::handle& context, const py::handle& dtensor_handle,
-           const py::capsule& device_info) -> py::object {
-          std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-              TF_NewStatus(), TF_DeleteStatus);
+  m.def(
+      "FetchLayout",
+      [](const py::handle& context, const py::handle& dtensor_handle,
+         const py::capsule& device_info) -> py::object {
+        std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+            TF_NewStatus(), TF_DeleteStatus);
 
-          std::string layout_string =
-              FetchLayout(static_cast<TFE_Context*>(
-                              PyCapsule_GetPointer(context.ptr(), nullptr)),
-                          EagerTensor_Handle(dtensor_handle.ptr()), device_info,
-                          status.get());
-          if (tensorflow::MaybeRaiseExceptionFromTFStatus(status.get(),
-                                                          nullptr))
-            return tensorflow::PyoOrThrow(nullptr);
-          return tensorflow::PyoOrThrow(
-              PyUnicode_FromString(layout_string.c_str()));
-        });
+        std::string layout_string =
+            FetchLayout(static_cast<TFE_Context*>(
+                            PyCapsule_GetPointer(context.ptr(), nullptr)),
+                        EagerTensor_Handle(dtensor_handle.ptr()), device_info,
+                        status.get());
+        if (tensorflow::MaybeRaiseExceptionFromTFStatus(status.get(), nullptr))
+          return tensorflow::PyoOrThrow(nullptr);
+        return tensorflow::PyoOrThrow(
+            PyUnicode_FromString(layout_string.c_str()));
+      });
   m.def("IsSparseDTensor", [](const py::handle& context,
                               const py::handle& dtensor_handle,
                               const py::capsule& device_info) {

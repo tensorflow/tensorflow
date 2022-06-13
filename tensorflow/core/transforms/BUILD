@@ -1,4 +1,4 @@
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
@@ -38,6 +38,7 @@ cc_library(
         ":PassIncGen",
         "//tensorflow/core/ir:Dialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -70,6 +71,40 @@ cc_library(
     ],
 )
 
+gentbl_cc_library(
+    name = "PDLLUtilsIncGen",
+    tbl_outs = [
+        (
+            ["-x=cpp"],
+            "utils/pdll/PDLLUtils.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-pdll",
+    td_file = "utils/pdll/utils.pdll",
+    deps = [
+        "//tensorflow/core/ir:Dialect",
+    ],
+)
+
+td_library(
+    name = "PDLLUtilsFiles",
+    srcs = ["utils/pdll/utils.pdll"],
+    includes = ["include"],
+)
+
+cc_library(
+    name = "pdll_utils",
+    srcs = ["utils/pdll/utils.cc"],
+    hdrs = ["utils/pdll/utils.h"],
+    deps = [
+        ":PDLLUtilsIncGen",
+        ":utils",
+        "//tensorflow/core/ir:Dialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
 cc_library(
     name = "op_cat_helper",
     srcs = ["utils/op_cat_helper.cc"],
@@ -77,8 +112,6 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core/ir:Dialect",
-        "//tensorflow/core/platform:str_util",
-        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
@@ -93,15 +126,18 @@ cc_library(
         "//tensorflow/core/transforms/consolidate_attrs:Pass",
         "//tensorflow/core/transforms/const_dedupe_hoist:Pass",
         "//tensorflow/core/transforms/constant_folding:Pass",
+        "//tensorflow/core/transforms/cse:Pass",
         "//tensorflow/core/transforms/drop_unregistered_attribute:Pass",
         "//tensorflow/core/transforms/eliminate_passthrough_iter_args:Pass",
+        "//tensorflow/core/transforms/func_to_graph:Pass",
         "//tensorflow/core/transforms/functional_to_region:Pass",
+        "//tensorflow/core/transforms/graph_compactor:Pass",
         "//tensorflow/core/transforms/graph_to_func:Pass",
+        "//tensorflow/core/transforms/legacy_call:Pass",
         "//tensorflow/core/transforms/region_to_functional:Pass",
         "//tensorflow/core/transforms/remapper:Pass",
         "//tensorflow/core/transforms/shape_inference:Pass",
         "//tensorflow/core/transforms/toposort:Pass",
-        "@llvm-project//mlir:Pass",
     ],
 )
 

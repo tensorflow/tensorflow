@@ -234,7 +234,7 @@ class ShapeTree {
     for (const Node& node : nodes_) {
       TF_RETURN_IF_ERROR(func(node.first, node.second));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status ForEachMutableElementWithStatus(
@@ -242,7 +242,7 @@ class ShapeTree {
     for (Node& node : nodes_) {
       TF_RETURN_IF_ERROR(func(node.first, &node.second));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Maps each element to generate a new tree with the same shape.

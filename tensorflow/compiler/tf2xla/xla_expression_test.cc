@@ -116,18 +116,18 @@ TEST_F(XlaExpressionTest, ResolveConstant) {
                    ->has_value());
 
   TF_ASSERT_OK_AND_ASSIGN(
-      absl::optional<Tensor> op_constant,
+      std::optional<Tensor> op_constant,
       XlaExpression::XlaOp(op_, DT_INT32).ResolveConstant(client_));
   ASSERT_TRUE(op_constant.has_value());
   test::ExpectTensorEqual<int32>(test::AsScalar<int32>(7), *op_constant);
 
-  TF_ASSERT_OK_AND_ASSIGN(absl::optional<Tensor> op_nonconstant,
+  TF_ASSERT_OK_AND_ASSIGN(std::optional<Tensor> op_nonconstant,
                           XlaExpression::XlaOp(non_constant_op_, DT_FLOAT)
                               .ResolveConstant(client_));
   EXPECT_FALSE(op_nonconstant.has_value());
 
   TF_ASSERT_OK_AND_ASSIGN(
-      absl::optional<Tensor> constant_constant,
+      std::optional<Tensor> constant_constant,
       XlaExpression::Constant(constant_).ResolveConstant(client_));
   ASSERT_TRUE(constant_constant.has_value());
   test::ExpectTensorEqual<int32>(constant_, *constant_constant);
@@ -139,7 +139,7 @@ TEST_F(XlaExpressionTest, ResolveConstantOnResource) {
   EXPECT_TRUE(constant_resource.ResolveConstant(client_).ok());
   EXPECT_TRUE(resource_->SetZeroValue(builder_.get()).ok());
   LOG(ERROR) << "Resource is overwritten: " << resource_->IsOverwritten();
-  StatusOr<absl::optional<Tensor>> resolved_constant =
+  StatusOr<std::optional<Tensor>> resolved_constant =
       constant_resource.ResolveConstant(client_);
   EXPECT_TRUE(resolved_constant.ok());
   EXPECT_FALSE(resolved_constant->has_value());

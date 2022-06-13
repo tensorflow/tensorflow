@@ -138,7 +138,7 @@ Status PrintStructure(const GraphDef& graph) {
     }
     std::cout << std::endl;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SummarizeGraph(const GraphDef& graph, const string& graph_path,
@@ -284,7 +284,7 @@ Status SummarizeGraph(const GraphDef& graph, const string& graph_path,
     TF_RETURN_IF_ERROR(PrintStructure(graph));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 int ParseFlagsAndSummarizeGraph(int argc, char* argv[]) {

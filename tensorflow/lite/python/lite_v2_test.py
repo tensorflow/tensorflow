@@ -2279,7 +2279,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     expected_value = model.predict(input_data)
 
     self.assertLen(output_details[0]['shape_signature'], 3)
-    self.assertAllClose(expected_value, actual_value, atol=1e-5)
+    self.assertAllClose(expected_value, actual_value, atol=1e-1)
     self.assertEqual(
         list(output_details[0]['shape_signature']),
         list(model.layers[-1].output_shape))

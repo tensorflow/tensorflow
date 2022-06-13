@@ -18,10 +18,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/backend.h"
 
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -57,12 +56,12 @@ int BackendOptions::intra_op_parallelism_threads() const {
 }
 
 BackendOptions& BackendOptions::set_allowed_devices(
-    const absl::optional<std::set<int>>& allowed_devices) {
+    const std::optional<std::set<int>>& allowed_devices) {
   allowed_devices_ = allowed_devices;
   return *this;
 }
 
-const absl::optional<std::set<int>>& BackendOptions::allowed_devices() const {
+const std::optional<std::set<int>>& BackendOptions::allowed_devices() const {
   return allowed_devices_;
 }
 
@@ -113,7 +112,7 @@ StatusOr<StreamPool::Ptr> Backend::BorrowStream(int device_ordinal) {
 StatusOr<StreamPool::Ptr> Backend::BorrowStream(se::StreamExecutor* executor) {
   absl::MutexLock l(&mu_);
   if (!stream_pools_.contains(executor)) {
-    stream_pools_.emplace(executor, absl::make_unique<StreamPool>());
+    stream_pools_.emplace(executor, std::make_unique<StreamPool>());
   }
   return stream_pools_.at(executor)->BorrowStream(executor);
 }

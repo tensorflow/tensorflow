@@ -229,7 +229,7 @@ tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,
       RunTFXLABridge(module, enable_logging, CreateTPUBridgePipeline);
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       "tpu", "v2", fallback_enabled,
-      status == Status::OK() ? "success" : "failure");
+      status == ::tensorflow::OkStatus() ? "success" : "failure");
   OkOrSetErrorCounterPayload(
       tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_1,
       status);
@@ -241,7 +241,7 @@ tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool enable_logging,
       RunTFXLABridge(module, enable_logging, CreateTPUBridgePipelineV1);
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       "tpu", "v1", fallback_enabled,
-      status == Status::OK() ? "success" : "failure");
+      status == ::tensorflow::OkStatus() ? "success" : "failure");
   return status;
 }
 
@@ -309,14 +309,14 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   // Guarantee all functions have one use, which enables more exact shape
   // inference.
   pm.addPass(TF::CreateTFShapeInferencePass());
+  // Encapsulate PartitionedCall ops within a cluster so that the composite
+  // resource ops can be decomposed.
+  pm.addPass(TFDevice::CreateXlaClusterFormationPass());
   // Running canonicalizer before decomposing resource ops in cluster helps the
   // latter pass to converge faster as it does not have to spend time folding
   // away dead ops.
   pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
-  // Encapsulate StatefulPartitionedCallOp within a cluster so that the
-  // composite resource ops can be decomposed.
-  pm.addPass(TFDevice::CreateXlaClusterFormationPass());
-  // Place DecomposeResourceOpsPass.
+  // Decompose resource ops.
   pm.addPass(TFDevice::CreateDecomposeResourceOpsInClusterPass());
   // Run another shape inference pass because resource decomposition might have
   // created new partial types. Also, after dropping `shape_invariant` attribute
@@ -346,7 +346,7 @@ tensorflow::Status RunTFXLABridge(ModuleOp module, bool enable_logging) {
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       /*device type*/ "cpu/gpu", /*bridge version*/ "tfxla",
       /*fallback_enabled*/ false,
-      /*result*/ status == Status::OK() ? "success" : "failure");
+      /*result*/ status == ::tensorflow::OkStatus() ? "success" : "failure");
   return status;
 }
 

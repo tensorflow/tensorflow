@@ -118,6 +118,7 @@ FRAMEWORK_LIB_HDRS = STABLE_FRAMEWORK_LIB_HDRS + [
     "context.h",
     "core/subgraph.h",
     "graph_info.h",
+    "interpreter_options.h",
     "optional_debug_tools.h",
     "signature_runner.h",
 ]
@@ -431,6 +432,7 @@ cc_library(
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
+        "//tensorflow/lite/profiling:root_profiler",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers//:runtime_cc",
     ],
@@ -471,6 +473,7 @@ cc_library(
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
+        "//tensorflow/lite/profiling:root_profiler",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers//:runtime_cc",
     ],
@@ -507,6 +510,7 @@ cc_library(
     hdrs = [
         "interpreter.h",
         "interpreter_builder.h",
+        "interpreter_options.h",
         "model.h",
         "model_builder.h",
     ],
@@ -546,6 +550,7 @@ cc_library(
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/profiling:platform_profiler",
+        "//tensorflow/lite/profiling:root_profiler",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@flatbuffers//:runtime_cc",
@@ -569,6 +574,7 @@ cc_library(
         "graph_info.h",
         "interpreter.h",
         "interpreter_builder.h",
+        "interpreter_options.h",
         "model.h",
         "model_builder.h",
         "signature_runner.h",
@@ -603,6 +609,7 @@ cc_library(
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
+        "//tensorflow/lite/profiling:root_profiler",
         "//tensorflow/lite/schema:schema_fbs",
     ] + select({
         ":tflite_use_simple_memory_planner": [

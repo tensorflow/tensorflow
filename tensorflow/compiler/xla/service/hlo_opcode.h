@@ -17,9 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_OPCODE_H_
 
 #include <iosfwd>
+#include <optional>
 #include <string>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -35,6 +35,10 @@ namespace xla {
 //
 // Each entry has the format:
 // (enum_name, opcode_name, arity)
+//
+// If you change one of these opcodes, please make the corresponding change to
+// mhlo in tf/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td, to
+// keep both operation sets synchronized.
 //
 // Note: Do not use ':' in opcode names. It is used as a special character
 // in these places:
@@ -190,7 +194,7 @@ bool HloOpcodeIsVariadic(HloOpcode opcode);
 
 // Returns the arity of opcode. If the opcode is variadic,
 // returns nullopt.
-absl::optional<int> HloOpcodeArity(HloOpcode opcode);
+std::optional<int> HloOpcodeArity(HloOpcode opcode);
 
 // Returns true if the given opcode is one of kAsyncStart, kAsyncUpdate, or
 // kAsyncDone.

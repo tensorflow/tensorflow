@@ -39,7 +39,7 @@ class SegmentTest : public ::testing::Test {
       const std::set<string>& node_names) {
     return [node_names](const Node* node) -> Status {
       if (node_names.find(node->name()) != node_names.end()) {
-        return Status::OK();
+        return OkStatus();
       }
       return errors::NotFound("Not a user specified candidate");
     };

@@ -42,7 +42,7 @@ namespace mhlo {
 namespace {
 
 // Calculates the flatten types of a value.
-void FlattenTupleType(Value value, llvm::SmallVectorImpl<Type> &types) {
+void flattenTupleType(Value value, llvm::SmallVectorImpl<Type> &types) {
   if (!value.getType().isa<TupleType>()) {
     types.push_back(value.getType());
     return;
@@ -54,10 +54,10 @@ void FlattenTupleType(Value value, llvm::SmallVectorImpl<Type> &types) {
 }
 
 // Flattens value into flatten_values.
-void FlattenTupleValue(OpBuilder &builder, Location loc, Value value,
-                       llvm::SmallVectorImpl<Value> &flatten_values) {
+void flattenTupleValue(OpBuilder &builder, Location loc, Value value,
+                       llvm::SmallVectorImpl<Value> &flattenValues) {
   if (!value.getType().isa<TupleType>()) {
-    flatten_values.push_back(value);
+    flattenValues.push_back(value);
     return;
   }
 
@@ -67,28 +67,27 @@ void FlattenTupleValue(OpBuilder &builder, Location loc, Value value,
   for (auto childType : tupleType.getTypes()) {
     auto getTupleOp = builder.create<mhlo::GetTupleElementOp>(
         loc, childType, value, builder.getI32IntegerAttr(flattenIdx++));
-    flatten_values.push_back(getTupleOp);
+    flattenValues.push_back(getTupleOp);
   }
 }
 
 // FlattenTupleValue and CreateTupleValue is a pair of functions to create and
 // flatten tuples in the exact same order. CreateTupleValue returns the result
 // of the root TupleOp or given value if the type is not TupleType.
-Value CreateTupleValue(OpBuilder &builder, Location loc,
-                       const llvm::ArrayRef<Value> &flatten_values,
-                       Type tuple_type) {
-  if (!tuple_type.isa<TupleType>()) {
-    assert(flatten_values.size() == 1);
-    return flatten_values[0];
+Value createTupleValue(OpBuilder &builder, Location loc,
+                       const llvm::ArrayRef<Value> &flattenValues,
+                       Type tupleType) {
+  if (!tupleType.isa<TupleType>()) {
+    assert(flattenValues.size() == 1);
+    return flattenValues[0];
   }
 
-  assert(tuple_type.cast<TupleType>().getTypes().size() ==
-         flatten_values.size());
-  return builder.create<mhlo::TupleOp>(loc, flatten_values);
+  assert(tupleType.cast<TupleType>().getTypes().size() == flattenValues.size());
+  return builder.create<mhlo::TupleOp>(loc, flattenValues);
 }
 
 // Flattens the tuples in the region's arguments and returning values.
-void FlattenTupleInRegion(Region &region, PatternRewriter &rewriter) {
+void flattenTupleInRegion(Region &region, PatternRewriter &rewriter) {
   Location loc = region.getLoc();
   OpBuilder regionOpBuilder(region);
 
@@ -101,13 +100,13 @@ void FlattenTupleInRegion(Region &region, PatternRewriter &rewriter) {
     // Adds new arguments to replace the tuple argument.
     llvm::SmallVector<Type, 4> newTypes;
     llvm::SmallVector<Value, 4> newArguments;
-    FlattenTupleType(argument, newTypes);
+    flattenTupleType(argument, newTypes);
     for (auto type : newTypes) {
       newArguments.push_back(region.addArgument(type, loc));
     }
 
     // Replaces uses of the replacing argument.
-    auto tupleValue = CreateTupleValue(regionOpBuilder, loc, newArguments,
+    auto tupleValue = createTupleValue(regionOpBuilder, loc, newArguments,
                                        argument.getType());
     argument.replaceAllUsesWith(tupleValue);
   }
@@ -126,7 +125,7 @@ void FlattenTupleInRegion(Region &region, PatternRewriter &rewriter) {
     OpBuilder builder(returnOp);
     llvm::SmallVector<Value, 4> results;
     for (auto operand : returnOp.getOperands()) {
-      FlattenTupleValue(builder, returnOp.getLoc(), operand, results);
+      flattenTupleValue(builder, returnOp.getLoc(), operand, results);
     }
     builder.create<mhlo::ReturnOp>(loc, results);
     rewriter.eraseOp(returnOp);
@@ -136,7 +135,7 @@ void FlattenTupleInRegion(Region &region, PatternRewriter &rewriter) {
 // Applies tuple flattening patterns to given target. This helper
 // function is used to flatten ops recursively.
 template <typename T>
-void ApplyFlatteningTuplePatterns(T target, MLIRContext *context);
+void applyFlatteningTuplePatterns(T target, MLIRContext *context);
 
 struct FlattenWhileOp : public RewritePattern {
   explicit FlattenWhileOp(MLIRContext *context)
@@ -160,8 +159,8 @@ struct FlattenWhileOp : public RewritePattern {
     llvm::SmallVector<Value, 4> flattenedOperands;
     llvm::SmallVector<Type, 4> flattenedOperandTypes;
     for (auto operand : whileOp->getOperands()) {
-      FlattenTupleType(operand, flattenedOperandTypes);
-      FlattenTupleValue(builder, whileOp.getLoc(), operand, flattenedOperands);
+      flattenTupleType(operand, flattenedOperandTypes);
+      flattenTupleValue(builder, whileOp.getLoc(), operand, flattenedOperands);
     }
 
     // The applyPatternsAndFoldGreedily can't be called on child regions, so
@@ -174,12 +173,12 @@ struct FlattenWhileOp : public RewritePattern {
     whileOp.body().cloneInto(&newBody, mapping);
 
     // Flattens the tuples in child regions.
-    FlattenTupleInRegion(newCond, rewriter);
-    FlattenTupleInRegion(newBody, rewriter);
+    flattenTupleInRegion(newCond, rewriter);
+    flattenTupleInRegion(newBody, rewriter);
 
     // There might be WhileOp in child regions, flattens tuple in them too.
-    ApplyFlatteningTuplePatterns<MutableArrayRef<Region>>(newCond, context);
-    ApplyFlatteningTuplePatterns<MutableArrayRef<Region>>(newBody, context);
+    applyFlatteningTuplePatterns<MutableArrayRef<Region>>(newCond, context);
+    applyFlatteningTuplePatterns<MutableArrayRef<Region>>(newBody, context);
 
     // Creates a new mhlo::WhileOp with no tuples.
     auto newWhile = builder.create<mhlo::WhileOp>(
@@ -191,13 +190,13 @@ struct FlattenWhileOp : public RewritePattern {
     auto newResultIter = newWhile.result_begin();
     for (auto oldResult : whileOp.getResults()) {
       llvm::SmallVector<Type, 4> flattenedTypes;
-      FlattenTupleType(oldResult, flattenedTypes);
+      flattenTupleType(oldResult, flattenedTypes);
       llvm::SmallVector<Value, 4> flattenedResults;
       while (flattenedResults.size() < flattenedTypes.size()) {
         assert(newResultIter != newWhile->result_end());
         flattenedResults.push_back(*newResultIter++);
       }
-      auto tupleValue = CreateTupleValue(builder, whileOp.getLoc(),
+      auto tupleValue = createTupleValue(builder, whileOp.getLoc(),
                                          flattenedResults, oldResult.getType());
       oldResult.replaceAllUsesWith(tupleValue);
     }
@@ -210,7 +209,7 @@ struct FlattenWhileOp : public RewritePattern {
 };
 
 template <typename T>
-void ApplyFlatteningTuplePatterns(T target, MLIRContext *context) {
+void applyFlatteningTuplePatterns(T target, MLIRContext *context) {
   RewritePatternSet patterns(context);
   patterns.add<FlattenWhileOp>(context);
   (void)applyPatternsAndFoldGreedily(target, std::move(patterns));
@@ -220,7 +219,7 @@ class FlattenTuplePass : public FlattenTuplePassBase<FlattenTuplePass> {
  public:
   void runOnOperation() override {
     MLIRContext *ctx = &getContext();
-    ApplyFlatteningTuplePatterns(getOperation(), ctx);
+    applyFlatteningTuplePatterns(getOperation(), ctx);
   }
 };
 }  // end namespace

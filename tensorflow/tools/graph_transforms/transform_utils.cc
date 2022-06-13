@@ -260,7 +260,7 @@ Status SortByExecutionOrder(const GraphDef& input_graph_def,
     }
     return errors::InvalidArgument(num_nodes - processed, " nodes in a cycle");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 string OpTypePattern::DebugString() const {
@@ -302,7 +302,7 @@ Status GraphMatcher::GetOpTypeMatches(const OpTypePattern& pattern,
       matches->push_back(match);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool GraphMatcher::DoesOpTypeMatch(
@@ -471,7 +471,7 @@ Status ReplaceMatchingOpTypes(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RenameNodeInputs(const GraphDef& input_graph_def,
@@ -537,7 +537,7 @@ Status RenameNodeInputs(const GraphDef& input_graph_def,
       *(new_node->mutable_input()->Add()) = new_input_name;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void CopyOriginalMatch(const NodeMatch& match,
@@ -583,7 +583,7 @@ Status IsGraphValid(const GraphDef& graph_def) {
     return errors::Internal(
         "Invalid graph with inputs referring to nonexistent nodes");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetInOutTypes(const NodeDef& node_def, DataTypeVector* inputs,
@@ -591,7 +591,7 @@ Status GetInOutTypes(const NodeDef& node_def, DataTypeVector* inputs,
   const OpDef* op_def;
   TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node_def.op(), &op_def));
   TF_RETURN_IF_ERROR(InOutTypesForNode(node_def, *op_def, inputs, outputs));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TensorShapeFromString(const string& shape_string, TensorShape* result) {
@@ -610,7 +610,7 @@ Status TensorShapeFromString(const string& shape_string, TensorShape* result) {
     }
   }
   *result = TensorShape(dims);
-  return Status::OK();
+  return OkStatus();
 }
 
 int TransformFuncContext::CountParameters(const string& name) const {
@@ -627,10 +627,10 @@ Status TransformFuncContext::GetOneStringParameter(const string& name,
   const int params_count = CountParameters(name);
   if (params_count == 0) {
     *result = default_value;
-    return Status::OK();
+    return OkStatus();
   } else if (params_count == 1) {
     *result = params.at(name).at(0);
-    return Status::OK();
+    return OkStatus();
   } else {
     return errors::InvalidArgument("Expected a single '", name,
                                    "' parameter, but found ", params_count,
@@ -644,7 +644,7 @@ Status TransformFuncContext::GetOneInt32Parameter(const string& name,
   const int params_count = CountParameters(name);
   if (params_count == 0) {
     *result = default_value;
-    return Status::OK();
+    return OkStatus();
   }
   string string_value;
   TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
@@ -652,7 +652,7 @@ Status TransformFuncContext::GetOneInt32Parameter(const string& name,
     return errors::InvalidArgument("Couldn't interpret the ", name,
                                    " argument as a number:", string_value);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TransformFuncContext::GetOneInt64Parameter(const string& name,
@@ -661,7 +661,7 @@ Status TransformFuncContext::GetOneInt64Parameter(const string& name,
   const int params_count = CountParameters(name);
   if (params_count == 0) {
     *result = default_value;
-    return Status::OK();
+    return OkStatus();
   }
   string string_value;
   TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
@@ -669,7 +669,7 @@ Status TransformFuncContext::GetOneInt64Parameter(const string& name,
     return errors::InvalidArgument("Couldn't interpret the ", name,
                                    " argument as a number:", string_value);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TransformFuncContext::GetOneFloatParameter(const string& name,
@@ -678,7 +678,7 @@ Status TransformFuncContext::GetOneFloatParameter(const string& name,
   const int params_count = CountParameters(name);
   if (params_count == 0) {
     *result = default_value;
-    return Status::OK();
+    return OkStatus();
   }
   string string_value;
   TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
@@ -687,7 +687,7 @@ Status TransformFuncContext::GetOneFloatParameter(const string& name,
         "Couldn't interpret the ", name,
         " argument as a float number:", string_value);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TransformFuncContext::GetOneBoolParameter(const string& name,
@@ -696,7 +696,7 @@ Status TransformFuncContext::GetOneBoolParameter(const string& name,
   const int params_count = CountParameters(name);
   if (params_count == 0) {
     *result = default_value;
-    return Status::OK();
+    return OkStatus();
   }
   string string_value;
   TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
@@ -709,7 +709,7 @@ Status TransformFuncContext::GetOneBoolParameter(const string& name,
                                    " argument as a boolean:", string_value,
                                    " (expected true, false, 0 or 1)");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace graph_transforms

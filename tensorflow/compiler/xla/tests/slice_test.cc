@@ -285,7 +285,10 @@ XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_S64)) {
   Run<int64_t>(GetParam());
 }
 
-XLA_TEST_P(SliceR1Test, DoIt_PRED) { Run<bool>(GetParam()); }
+// TODO(b/232452122): Uses `operator++()` on bool, not supported in C++17
+// Note: Clang allows this (but is undefined behavior), only GCC has issues
+// See https://godbolt.org/z/1cEfcf3ad
+// XLA_TEST_P(SliceR1Test, DoIt_PRED) { Run<bool>(GetParam()); }
 
 // Tests for R1 slice ops.
 // The format for each testcase is {input size, start, limit, stride}.

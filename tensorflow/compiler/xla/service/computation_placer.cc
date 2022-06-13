@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -44,7 +44,7 @@ namespace xla {
 
 StatusOr<DeviceAssignment::LogicalID> DeviceAssignment::LogicalIdForDevice(
     GlobalDeviceId device_id) const {
-  absl::optional<DeviceAssignment::LogicalID> logical_id;
+  std::optional<DeviceAssignment::LogicalID> logical_id;
   for (int r = 0; r < replica_count(); ++r) {
     for (int c = 0; c < computation_count(); ++c) {
       if ((*this)(r, c) == device_id.value()) {
@@ -95,7 +95,7 @@ Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
       computation_device->add_replica_device_ids((*this)(replica, computation));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ StatusOr<std::unique_ptr<DeviceAssignment>>
@@ -107,7 +107,7 @@ DeviceAssignment::Deserialize(const DeviceAssignmentProto& proto) {
         "computation_count=%d",
         proto.replica_count(), proto.computation_count());
   }
-  auto assignment = absl::make_unique<DeviceAssignment>(
+  auto assignment = std::make_unique<DeviceAssignment>(
       proto.replica_count(), proto.computation_count());
   for (int computation = 0; computation < proto.computation_count();
        ++computation) {
@@ -200,7 +200,7 @@ ComputationPlacer::GetPlatformComputationPlacers() {
 }  // namespace xla
 
 static std::unique_ptr<xla::ComputationPlacer> CreateComputationPlacer() {
-  return absl::make_unique<xla::ComputationPlacer>();
+  return std::make_unique<xla::ComputationPlacer>();
 }
 
 static bool InitModule() {

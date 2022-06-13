@@ -52,23 +52,23 @@ struct ShapeReificationPattern : public OpRewritePattern<shape::ShapeOfOp> {
   LogicalResult matchAndRewrite(shape::ShapeOfOp op,
                                 PatternRewriter &rewriter) const override {
     // Only reify shape computation if operand allows for it.
-    auto shape_origin = op.getArg().getDefiningOp<InferShapedTypeOpInterface>();
-    if (!shape_origin) return failure();
+    auto shapeOrigin = op.getArg().getDefiningOp<InferShapedTypeOpInterface>();
+    if (!shapeOrigin) return failure();
 
     llvm::SmallVector<Value, 1> reifications;
-    if (failed(shape_origin.reifyReturnTypeShapes(
-            rewriter, shape_origin->getOperands(), reifications)))
+    if (failed(shapeOrigin.reifyReturnTypeShapes(
+            rewriter, shapeOrigin->getOperands(), reifications)))
       return failure();
     assert(reifications.size() == 1);
-    Value reified_shape = reifications.front();
+    Value reifiedShape = reifications.front();
 
     // Insert cast if needed.
-    if (reified_shape.getType() != op.getType()) {
-      reified_shape = rewriter.create<tensor::CastOp>(op.getLoc(), op.getType(),
-                                                      reified_shape);
+    if (reifiedShape.getType() != op.getType()) {
+      reifiedShape = rewriter.create<tensor::CastOp>(op.getLoc(), op.getType(),
+                                                     reifiedShape);
     }
 
-    rewriter.replaceOp(op, reified_shape);
+    rewriter.replaceOp(op, reifiedShape);
     return success();
   }
 };
@@ -80,72 +80,67 @@ struct InlineBroadcastedShapeOperandsPattern : public OpRewritePattern<OpTy> {
   LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
     // Find all the shape operands, direct and indirect.
-    SmallVector<Value, 8> inlined_operands;
+    SmallVector<Value, 8> inlinedOperands;
     for (Value direct : op->getOperands()) {
-      if (auto bcast_op = direct.getDefiningOp<shape::BroadcastOp>()) {
-        for (Value indirect : bcast_op->getOperands())
-          inlined_operands.push_back(indirect);
+      if (auto bcastOp = direct.getDefiningOp<shape::BroadcastOp>()) {
+        for (Value indirect : bcastOp->getOperands())
+          inlinedOperands.push_back(indirect);
       } else {
-        inlined_operands.push_back(direct);
+        inlinedOperands.push_back(direct);
       }
     }
 
     // Only rewrite if it makes a difference.
-    if (inlined_operands.size() == op.getNumOperands()) return failure();
+    if (inlinedOperands.size() == op.getNumOperands()) return failure();
 
     // Inline shape operands.
-    rewriter.replaceOpWithNewOp<OpTy>(op, op->getResultTypes(),
-                                      inlined_operands, op->getAttrs());
+    rewriter.replaceOpWithNewOp<OpTy>(op, op->getResultTypes(), inlinedOperands,
+                                      op->getAttrs());
     return success();
   }
 };
 
-bool IsMovable(Operation *op) {
-  return MemoryEffectOpInterface::hasNoEffect(op) ||
-         llvm::isa<shape::CstrBroadcastableOp>(op);
-}
-
-LogicalResult MoveUpIntoAssumingOpMatchAndRewrite(Operation *op,
+LogicalResult moveUpIntoAssumingOpMatchAndRewrite(Operation *op,
                                                   PatternRewriter &rewriter) {
   // Only implemented for single-result ops.
   if (op->getNumResults() != 1) return failure();
 
   // Find a preceding `assuming` op.
-  auto *the_block = op->getBlock();
+  auto *theBlock = op->getBlock();
   Operation *prev = op->getPrevNode();
   while (prev != nullptr && !llvm::isa<shape::AssumingOp>(prev))
     prev = prev->getPrevNode();
-  auto assuming_op = llvm::dyn_cast_or_null<shape::AssumingOp>(prev);
-  if (!assuming_op) return failure();
-  assert(assuming_op->getBlock() == the_block && op->getBlock() == the_block &&
+  auto assumingOp = llvm::dyn_cast_or_null<shape::AssumingOp>(prev);
+  if (!assumingOp) return failure();
+  assert(assumingOp->getBlock() == theBlock && op->getBlock() == theBlock &&
          "expect assuming op and root op to be in the same block");
 
   // Make sure that all operands will be available after moving.
-  auto is_available = [&](Value v) {
+  auto isAvailable = [&](Value v) {
     Operation *def = v.getDefiningOp();
-    return def == nullptr || def->getBlock() != the_block ||
-           !assuming_op->isBeforeInBlock(def);
+    return def == nullptr || def->getBlock() != theBlock ||
+           !assumingOp->isBeforeInBlock(def);
   };
-  if (!llvm::all_of(op->getOperands(), is_available)) return failure();
+  if (!llvm::all_of(op->getOperands(), isAvailable)) return failure();
 
-  Block *body = assuming_op.getBody();
-  auto yield_op = llvm::cast<shape::AssumingYieldOp>(body->getTerminator());
+  Block *body = assumingOp.getBody();
+  auto yieldOp = llvm::cast<shape::AssumingYieldOp>(body->getTerminator());
 
   // Find the operands to use if the op was within the assuming region. We
   // will later use their copies, as we copy the assuming op and its body.
-  SmallVector<Value, 8> new_operands_unmapped =
+  SmallVector<Value, 8> newOperandsUnmapped =
       llvm::to_vector<8>(llvm::map_range(op->getOperands(), [&](Value v) {
-        for (const auto &result : llvm::enumerate(assuming_op->getResults())) {
-          if (result.value() == v) return yield_op->getOperand(result.index());
+        for (const auto &result : llvm::enumerate(assumingOp->getResults())) {
+          if (result.value() == v) return yieldOp->getOperand(result.index());
         }
         return v;
       }));
 
   // Insert the rewritten assuming op right before the old one.
   OpBuilder::InsertionGuard guard(rewriter);
-  rewriter.setInsertionPoint(assuming_op);
-  auto new_assuming_op = rewriter.create<shape::AssumingOp>(
-      assuming_op.getLoc(), assuming_op.getWitness(),
+  rewriter.setInsertionPoint(assumingOp);
+  auto newAssumingOp = rewriter.create<shape::AssumingOp>(
+      assumingOp.getLoc(), assumingOp.getWitness(),
       [&](OpBuilder &b, Location) {
         // Copy body.
         BlockAndValueMapping mapping;
@@ -153,28 +148,27 @@ LogicalResult MoveUpIntoAssumingOpMatchAndRewrite(Operation *op,
           b.clone(nested, mapping);
 
         // Copy op into the new body and use the mapped operands.
-        for (auto it : llvm::zip(op->getOperands(), new_operands_unmapped)) {
-          Value old_operand, new_operand_unmapped;
-          std::tie(old_operand, new_operand_unmapped) = it;
-          mapping.map(old_operand,
-                      mapping.lookupOrDefault(new_operand_unmapped));
+        for (auto it : llvm::zip(op->getOperands(), newOperandsUnmapped)) {
+          Value oldOperand, newOperandUnmapped;
+          std::tie(oldOperand, newOperandUnmapped) = it;
+          mapping.map(oldOperand, mapping.lookupOrDefault(newOperandUnmapped));
         }
-        Operation *new_op = b.clone(*op, mapping);
+        Operation *newOp = b.clone(*op, mapping);
 
         // Yield the previous results and also the new ones.
-        auto mapped_results = llvm::to_vector<8>(llvm::map_range(
-            yield_op.getOperands(),
+        auto mappedResults = llvm::to_vector<8>(llvm::map_range(
+            yieldOp.getOperands(),
             [&](Value v) { return mapping.lookupOrDefault(v); }));
-        mapped_results.append(new_op->getResults().begin(),
-                              new_op->getResults().end());
-        return mapped_results;
+        mappedResults.append(newOp->getResults().begin(),
+                             newOp->getResults().end());
+        return mappedResults;
       });
 
   // Replace the assuming op and the root op with the corresponding result
   // values.
-  ValueRange new_assuming_op_results = new_assuming_op->getResults();
-  rewriter.replaceOp(assuming_op, new_assuming_op_results.drop_back());
-  rewriter.replaceOp(op, new_assuming_op_results.back());
+  ValueRange newAssumingOpResults = newAssumingOp->getResults();
+  rewriter.replaceOp(assumingOp, newAssumingOpResults.drop_back());
+  rewriter.replaceOp(op, newAssumingOpResults.back());
   return success();
 }
 
@@ -187,7 +181,7 @@ struct MoveUpIntoAssumingOpPattern : public OpRewritePattern<OpTy> {
 
   LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
-    return MoveUpIntoAssumingOpMatchAndRewrite(op.getOperation(), rewriter);
+    return moveUpIntoAssumingOpMatchAndRewrite(op.getOperation(), rewriter);
   }
 };
 
@@ -207,12 +201,12 @@ struct MoveElementwiseOpsUpIntoAssumingOpPattern : public RewritePattern {
     }
     if (!MemoryEffectOpInterface::hasNoEffect(op)) return failure();
 
-    return MoveUpIntoAssumingOpMatchAndRewrite(op, rewriter);
+    return moveUpIntoAssumingOpMatchAndRewrite(op, rewriter);
   }
 };
 
 // Move operation into an assuming region if all uses are within its body.
-LogicalResult MoveDownIntoAssumingOpMatchAndRewrite(Operation *op,
+LogicalResult moveDownIntoAssumingOpMatchAndRewrite(Operation *op,
                                                     PatternRewriter &rewriter) {
   auto users = op->getUsers();
   auto it = users.begin();
@@ -220,24 +214,22 @@ LogicalResult MoveDownIntoAssumingOpMatchAndRewrite(Operation *op,
   if (it == end) return failure();
 
   // Find candidate assuming op.
-  auto assuming_op = (it++)->getParentOfType<shape::AssumingOp>();
-  if (!assuming_op || assuming_op->isProperAncestor(op)) return failure();
+  auto assumingOp = (it++)->getParentOfType<shape::AssumingOp>();
+  if (!assumingOp || assumingOp->isProperAncestor(op)) return failure();
 
   // Make sure all uses are within the unique assuming op's body.
   while (it != end) {
-    auto hopefully_same_assuming_op =
-        (it++)->getParentOfType<shape::AssumingOp>();
-    if (!hopefully_same_assuming_op ||
-        hopefully_same_assuming_op != assuming_op) {
+    auto hopefullySameAssumingOp = (it++)->getParentOfType<shape::AssumingOp>();
+    if (!hopefullySameAssumingOp || hopefullySameAssumingOp != assumingOp) {
       return failure();
     }
   }
 
   // Move op into the assuming region.
   OpBuilder::InsertionGuard guard(rewriter);
-  rewriter.setInsertionPointToStart(assuming_op.getBody());
-  Operation *new_op = rewriter.clone(*op);
-  rewriter.replaceOp(op, new_op->getResults());
+  rewriter.setInsertionPointToStart(assumingOp.getBody());
+  Operation *newOp = rewriter.clone(*op);
+  rewriter.replaceOp(op, newOp->getResults());
   return success();
 }
 
@@ -257,7 +249,7 @@ struct MoveElementwiseOpsDownIntoAssumingOpPattern : public RewritePattern {
     }
     if (!MemoryEffectOpInterface::hasNoEffect(op)) return failure();
 
-    return MoveDownIntoAssumingOpMatchAndRewrite(op, rewriter);
+    return moveDownIntoAssumingOpMatchAndRewrite(op, rewriter);
   }
 };
 
@@ -272,40 +264,39 @@ struct MoveUpOutOfAssumingOpPattern : public OpRewritePattern<OpTy> {
   LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
     // Must be inside of an assuming op.
-    auto assuming_op = op->template getParentOfType<shape::AssumingOp>();
-    if (!assuming_op) return failure();
+    auto assumingOp = op->template getParentOfType<shape::AssumingOp>();
+    if (!assumingOp) return failure();
 
     // Operands must not be defined within the assuming op.
-    Block *body = assuming_op.getBody();
-    auto is_available = [&](Value v) {
+    Block *body = assumingOp.getBody();
+    auto isAvailable = [&](Value v) {
       Operation *def = v.getDefiningOp();
       return def == nullptr || def->getBlock() != body;
     };
-    if (!llvm::all_of(op->getOperands(), is_available)) return failure();
+    if (!llvm::all_of(op->getOperands(), isAvailable)) return failure();
 
     // Move op before the assuming region.
     OpBuilder::InsertionGuard guard(rewriter);
-    rewriter.setInsertionPoint(assuming_op);
-    Operation *new_op = rewriter.clone(*op);
-    rewriter.replaceOp(op, new_op->getResults());
+    rewriter.setInsertionPoint(assumingOp);
+    Operation *newOp = rewriter.clone(*op);
+    rewriter.replaceOp(op, newOp->getResults());
 
     // If the assuming region yields none of the new op's results, these values
     // are exclusively used in the assuming op's body. In these cases there is
     // no need for further rewrites.
-    auto is_new_op_result = [&](Value v) {
-      return llvm::is_contained(new_op->getResults(), v);
+    auto isNewOpResult = [newOp](Value v) {
+      return llvm::is_contained(newOp->getResults(), v);
     };
     auto yield_op = cast<shape::AssumingYieldOp>(body->getTerminator());
-    if (llvm::none_of(yield_op.getOperands(), is_new_op_result))
-      return success();
+    if (llvm::none_of(yield_op.getOperands(), isNewOpResult)) return success();
 
     // If the assuming region yields any of the new op's results, these values
     // can instead bypass the assuming region. There is no need to yield them
     // explicitly as they are assumed to be independent. The assuming op is
     // rewritten accordingly.
-    SmallVector<Value, 2> replacement_values;
-    auto new_assuming_op = rewriter.create<shape::AssumingOp>(
-        assuming_op.getLoc(), assuming_op.getWitness(),
+    SmallVector<Value, 2> replacementValues;
+    auto newAssumingOp = rewriter.create<shape::AssumingOp>(
+        assumingOp.getLoc(), assumingOp.getWitness(),
         [&](OpBuilder &b, Location) {
           // Copy body.
           BlockAndValueMapping mapping;
@@ -314,26 +305,26 @@ struct MoveUpOutOfAssumingOpPattern : public OpRewritePattern<OpTy> {
           }
 
           // Collect new yield operands.
-          SmallVector<Value, 2> new_yield_operands;
+          SmallVector<Value, 2> newYieldOperands;
           for (Value result : yield_op.getOperands()) {
-            if (is_new_op_result(result)) {
-              replacement_values.push_back(result);
+            if (isNewOpResult(result)) {
+              replacementValues.push_back(result);
             } else {
-              new_yield_operands.push_back(mapping.lookupOrDefault(result));
-              replacement_values.push_back(nullptr);
+              newYieldOperands.push_back(mapping.lookupOrDefault(result));
+              replacementValues.push_back(nullptr);
             }
           }
-          return new_yield_operands;
+          return newYieldOperands;
         });
 
     // Use the assuming op's results for the missing replacement values.
-    auto src = new_assuming_op.getResults().begin();
-    for (auto &dst : replacement_values) {
+    auto src = newAssumingOp.getResults().begin();
+    for (auto &dst : replacementValues) {
       if (dst) continue;
       dst = *src++;
     }
 
-    rewriter.replaceOp(assuming_op, replacement_values);
+    rewriter.replaceOp(assumingOp, replacementValues);
     return success();
   }
 };
@@ -346,23 +337,23 @@ struct MergeAssumingOpsPattern : public OpRewritePattern<shape::AssumingOp> {
                                 PatternRewriter &rewriter) const override {
     // Merge assuming op with directly preceding one if both witnesses are
     // availiable.
-    auto preceding_op =
+    auto precedingOp =
         llvm::dyn_cast_or_null<shape::AssumingOp>(op->getPrevNode());
-    if (!preceding_op) return failure();
-    if (op.getWitness().getDefiningOp() == preceding_op) return failure();
+    if (!precedingOp) return failure();
+    if (op.getWitness().getDefiningOp() == precedingOp) return failure();
 
     // Merge witnesses.
     OpBuilder::InsertionGuard guard(rewriter);
-    rewriter.setInsertionPoint(preceding_op);
-    Value new_witness = rewriter.create<shape::AssumingAllOp>(
+    rewriter.setInsertionPoint(precedingOp);
+    Value newWitness = rewriter.create<shape::AssumingAllOp>(
         op.getWitness().getDefiningOp()->getLoc(),
-        ValueRange{preceding_op.getWitness(), op.getWitness()});
+        ValueRange{precedingOp.getWitness(), op.getWitness()});
 
     // Merge assuming ops.
-    Block *body_a = preceding_op.getBody();
+    Block *body_a = precedingOp.getBody();
     Block *body_b = op.getBody();
-    auto new_assuming_op = rewriter.create<shape::AssumingOp>(
-        preceding_op.getLoc(), new_witness, [&](OpBuilder &b, Location) {
+    auto newAssumingOp = rewriter.create<shape::AssumingOp>(
+        precedingOp.getLoc(), newWitness, [&](OpBuilder &b, Location) {
           // Copy preceding op's body.
           BlockAndValueMapping mapping;
           for (auto &nested : body_a->without_terminator()) {
@@ -370,10 +361,10 @@ struct MergeAssumingOpsPattern : public OpRewritePattern<shape::AssumingOp> {
           }
 
           // Map result values of preceding assuming op.
-          auto yield_op_a =
+          auto yieldOpA =
               llvm::dyn_cast<shape::AssumingYieldOp>(body_a->getTerminator());
-          for (auto pair : llvm::zip(preceding_op->getResults(),
-                                     yield_op_a.getOperands())) {
+          for (auto pair :
+               llvm::zip(precedingOp->getResults(), yieldOpA.getOperands())) {
             mapping.map(std::get<0>(pair),
                         mapping.lookupOrDefault(std::get<1>(pair)));
           }
@@ -384,23 +375,23 @@ struct MergeAssumingOpsPattern : public OpRewritePattern<shape::AssumingOp> {
           }
 
           // Collect merged assuming op's results.
-          SmallVector<Value, 4> mapped_results;
-          auto yield_op_b =
+          SmallVector<Value, 4> mappedResults;
+          auto yieldOpB =
               llvm::dyn_cast<shape::AssumingYieldOp>(body_b->getTerminator());
-          for (Value v : yield_op_a.getOperands()) {
-            mapped_results.push_back(mapping.lookupOrDefault(v));
+          for (Value v : yieldOpA.getOperands()) {
+            mappedResults.push_back(mapping.lookupOrDefault(v));
           }
-          for (Value v : yield_op_b.getOperands()) {
-            mapped_results.push_back(mapping.lookupOrDefault(v));
+          for (Value v : yieldOpB.getOperands()) {
+            mappedResults.push_back(mapping.lookupOrDefault(v));
           }
-          return mapped_results;
+          return mappedResults;
         });
 
     // Replace the two assuming ops with the new corresponding results.
-    ValueRange new_results = new_assuming_op->getResults();
-    size_t split_at = preceding_op->getNumResults();
-    rewriter.replaceOp(preceding_op, new_results.take_front(split_at));
-    rewriter.replaceOp(op, new_results.drop_front(split_at));
+    ValueRange newResults = newAssumingOp->getResults();
+    size_t splitAt = precedingOp->getNumResults();
+    rewriter.replaceOp(precedingOp, newResults.take_front(splitAt));
+    rewriter.replaceOp(op, newResults.drop_front(splitAt));
     return success();
   }
 };

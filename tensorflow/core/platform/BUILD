@@ -301,6 +301,7 @@ cc_library(
         ":str_util",
         ":strcat",
         ":types",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -709,7 +710,6 @@ cc_library(
         ":stacktrace",
         ":str_util",
         ":strcat",
-        ":stringpiece",
         ":stringprintf",
         ":types",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
@@ -972,11 +972,11 @@ tf_cc_test(
     srcs = ["retrying_utils_test.cc"],
     deps = [
         ":retrying_utils",
+        ":str_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:str_util",
     ],
 )
 

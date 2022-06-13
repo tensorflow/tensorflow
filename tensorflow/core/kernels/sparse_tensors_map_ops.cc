@@ -68,7 +68,7 @@ class SparseTensorsMap : public ResourceBase {
           gtl::InlinedVector<int64_t, 8>(sp.shape().begin(), sp.shape().end())};
       *handle = unique_st_handle;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status RetrieveAndClearSparseTensors(
@@ -95,7 +95,7 @@ class SparseTensorsMap : public ResourceBase {
       }
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
  protected:
@@ -128,7 +128,7 @@ class SparseTensorAccessingOp : public OpKernel {
 
     if (sparse_tensors_map_) {
       *sparse_tensors_map = sparse_tensors_map_;
-      return Status::OK();
+      return OkStatus();
     }
 
     TF_RETURN_IF_ERROR(cinfo_.Init(ctx->resource_manager(), def(),
@@ -137,7 +137,7 @@ class SparseTensorAccessingOp : public OpKernel {
     CreatorCallback sparse_tensors_map_creator = [this](SparseTensorsMap** c) {
       SparseTensorsMap* map = new SparseTensorsMap(cinfo_.name());
       *c = map;
-      return Status::OK();
+      return OkStatus();
     };
 
     TF_RETURN_IF_ERROR(
@@ -146,7 +146,7 @@ class SparseTensorAccessingOp : public OpKernel {
             sparse_tensors_map_creator));
 
     *sparse_tensors_map = sparse_tensors_map_;
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

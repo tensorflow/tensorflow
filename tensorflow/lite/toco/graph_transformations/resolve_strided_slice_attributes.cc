@@ -44,40 +44,40 @@ int PadAttributeArray(Array* attribute_array, std::vector<int> pad_values,
   const auto slice_it = model->operators.begin() + op_index;
   auto* slice_op = slice_it->get();
   if (slice_op->type != OperatorType::kStridedSlice)
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
 
   auto* op = static_cast<StridedSliceOperator*>(slice_op);
   if (!op->start_indices.empty()) {
     // We have already resolved these attributes
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   CHECK_EQ(op->inputs.size(), 4);
   const auto& input_array = model->GetArray(op->inputs[0]);
   if (!input_array.has_shape()) {
     // We require the dimensionality of the input to pad the indices
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   auto& start_array = model->GetArray(op->inputs[1]);
-  if (!start_array.has_shape()) return ::tensorflow::Status::OK();
+  if (!start_array.has_shape()) return ::tensorflow::OkStatus();
   if (toco::RequiredBufferSizeForShape(start_array.shape()) > 4) {
     // Only 1-4D arrays are supported for now.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   auto& stop_array = model->GetArray(op->inputs[2]);
-  if (!stop_array.has_shape()) return ::tensorflow::Status::OK();
+  if (!stop_array.has_shape()) return ::tensorflow::OkStatus();
 
   auto& stride_array = model->GetArray(op->inputs[3]);
-  if (!stride_array.has_shape()) return ::tensorflow::Status::OK();
+  if (!stride_array.has_shape()) return ::tensorflow::OkStatus();
 
   if (!IsConstantParameterArray(*model, op->inputs[1]))
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   if (!IsConstantParameterArray(*model, op->inputs[2]))
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   if (!IsConstantParameterArray(*model, op->inputs[3]))
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
 
   int num_input_axes = input_array.shape().dimensions_count();
   int start_indices_size = start_array.shape().dims(0);
@@ -120,6 +120,6 @@ int PadAttributeArray(Array* attribute_array, std::vector<int> pad_values,
   op->strides = stride_array.GetBuffer<ArrayDataType::kInt32>().data;
 
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 }  // namespace toco

@@ -532,13 +532,14 @@ cc_library(
 
 tf_cuda_cc_test(
     name = "gpu_unary_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["gpu_unary_ops_test.cc"],
     extra_copts = if_mlir_generated_experimental_kernels_enabled([
         "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
     ]) + if_mlir_generated_gpu_kernels_enabled(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
     ),
+    shard_count = 20,
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # TODO(b/171341759): re-enable.
         "no_cuda",  # TODO(b/196608406): re-enable
@@ -1089,6 +1090,7 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
+    unroll_factors = "16B",
 )
 
 gpu_kernel_library(

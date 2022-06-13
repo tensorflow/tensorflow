@@ -31,7 +31,7 @@ namespace profiler {
 namespace {
 
 inline Status FromGrpcStatus(const ::grpc::Status& s) {
-  return s.ok() ? Status::OK()
+  return s.ok() ? OkStatus()
                 : Status(static_cast<error::Code>(s.error_code()),
                          s.error_message());
 }
@@ -59,7 +59,7 @@ Status ProfileGrpc(const std::string& service_address,
       CreateStub<grpc::ProfilerService>(service_address);
   TF_RETURN_IF_ERROR(
       FromGrpcStatus(stub->Profile(&context, request, response)));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status NewSessionGrpc(const std::string& service_address,
@@ -70,7 +70,7 @@ Status NewSessionGrpc(const std::string& service_address,
       CreateStub<grpc::ProfileAnalysis>(service_address);
   TF_RETURN_IF_ERROR(
       FromGrpcStatus(stub->NewSession(&context, request, response)));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MonitorGrpc(const std::string& service_address,
@@ -80,7 +80,7 @@ Status MonitorGrpc(const std::string& service_address,
       CreateStub<grpc::ProfilerService>(service_address);
   TF_RETURN_IF_ERROR(
       FromGrpcStatus(stub->Monitor(&context, request, response)));
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/ std::unique_ptr<RemoteProfilerSession> RemoteProfilerSession::Create(

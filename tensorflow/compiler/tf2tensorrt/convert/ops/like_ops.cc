@@ -60,38 +60,31 @@ class ConvertLikeOps : public OpConverterBase<ConvertLikeOps<V>> {
   Status Convert() {
     const auto &params = *this->params_;
     const auto &inputs = params.inputs;
-    auto *converter = params.converter;
-    auto *network = converter->network();
+    auto *network = params.converter->network();
 
     const TRT_TensorOrWeights &input = inputs.at(0);
+    nvinfer1::Dims dims(input.GetTrtDims());
 
-    nvinfer1::Dims dims{0};
-
-    nvinfer1::DataType value_type = input.TrtDType();
-
-    std::vector<int> value_input_dims_data = {1};
-    DimsAdapter value_input_dims(value_input_dims_data);
+    const std::vector<int> value_input_dims_data = {1};
+    const DimsAdapter value_input_dims(value_input_dims_data);
     StatusOr<TRT_ShapedWeights> value_weights =
-        params.weight_store->GetTempWeights(value_type, value_input_dims);
+        params.weight_store->GetTempWeights(input.TrtDType(), value_input_dims);
     TF_RETURN_IF_ERROR(value_weights.status());
     TF_RETURN_IF_ERROR(value_weights->SetValues(V));
     TRT_TensorOrWeights value_input(value_weights.ValueOrDie());
 
-    int is_dims_static = true;
+    const auto is_dims_static = HasStaticShape(dims);
+    auto builder = TRTNetworkBuilder::Create(network, params.weight_store);
     ITensorProxyPtr dims_input_tensor;
-    if (!HasStaticShape(input.GetTrtDims())) {
-      is_dims_static = false;
-      auto builder = TRTNetworkBuilder::Create(network, params.weight_store);
+    if (!is_dims_static) {
       StatusOr<nvinfer1::IShapeLayer *> shape_layer =
           builder->Shape(input.tensor()->trt_tensor());
       TF_RETURN_IF_ERROR(shape_layer.status());
       dims_input_tensor = (*shape_layer)->getOutput(0);
-    } else {
-      dims = input.GetTrtDims();
+      dims.nbDims = 0;
     }
 
     TRT_TensorOrWeights dims_input(dims_input_tensor);
-    auto builder = TRTNetworkBuilder::Create(network, params.weight_store);
     StatusOr<nvinfer1::ILayer *> layer =
         builder->AddFill(value_input, dims_input, true, is_dims_static,
                          input.GetTrtDims().nbDims, dims);

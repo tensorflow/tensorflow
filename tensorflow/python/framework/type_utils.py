@@ -14,6 +14,8 @@
 # ==============================================================================
 """Utility functions for types information, incuding full type information."""
 
+from typing import List
+
 from tensorflow.core.framework import full_type_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import type_spec
@@ -45,7 +47,7 @@ _DT_TO_FT = {
 
 
 def _translate_to_fulltype_for_flat_tensors(
-    spec: type_spec.TypeSpec) -> list[full_type_pb2.FullTypeDef]:
+    spec: type_spec.TypeSpec) -> List[full_type_pb2.FullTypeDef]:
   """Convert a TypeSec to a list of FullTypeDef.
 
   The FullTypeDef created corresponds to the encoding used with datasets

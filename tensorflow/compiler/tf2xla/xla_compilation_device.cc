@@ -91,7 +91,7 @@ static void AttachLocationToMetadata(xla::OpMetadata& metadata,
                                      OpKernel* op_kernel, XlaContext& context) {
   if (const AbstractStackTrace* stack_trace =
           context.StackTraceForNodeName(op_kernel->def().name())) {
-    if (absl::optional<StackFrame> frame = stack_trace->LastUserFrame()) {
+    if (std::optional<StackFrame> frame = stack_trace->LastUserFrame()) {
       metadata.set_source_file(frame->file_name);
       metadata.set_source_line(frame->line_number);
     }
@@ -114,13 +114,13 @@ void XlaCompilationDevice::Compute(OpKernel* op_kernel,
       ParseShardingFromDevice(op_kernel->def(), std::numeric_limits<int>::max(),
                               /*add_metadata=*/false);
   OP_REQUIRES_OK(context, sharding_parse_result.status());
-  absl::optional<xla::OpSharding> op_sharding =
+  std::optional<xla::OpSharding> op_sharding =
       sharding_parse_result.ValueOrDie();
 
   auto frontend_attributes_result =
       GetFrontendAttributesFromAttrSlice(AttrSlice(op_kernel->def()));
   OP_REQUIRES_OK(context, frontend_attributes_result.status());
-  absl::optional<xla::FrontendAttributes> attributes =
+  std::optional<xla::FrontendAttributes> attributes =
       frontend_attributes_result.ValueOrDie();
 
   xla::FrontendAttributes merged_attributes = b->frontend_attributes();
@@ -141,7 +141,7 @@ void XlaCompilationDevice::Compute(OpKernel* op_kernel,
   VLOG(4) << "Done";
 }
 
-Status XlaCompilationDevice::Sync() { return Status::OK(); }
+Status XlaCompilationDevice::Sync() { return OkStatus(); }
 
 Status XlaCompilationDevice::MakeTensorFromProto(
     const TensorProto& tensor_proto, const AllocatorAttributes alloc_attrs,

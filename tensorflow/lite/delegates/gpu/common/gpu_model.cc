@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/gpu_model.h"
 
 #include <algorithm>
+#include <any>
+#include <memory>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -88,7 +90,7 @@ flatbuffers::Offset<data::GpuNode> Encode(
 absl::Status Decode(const data::GpuNode* fb_node, GpuNode* node) {
   GPUOperation op;
   RETURN_IF_ERROR(Decode(fb_node->gpu_op(), &op));
-  node->gpu_operation = absl::make_unique<GPUOperation>(std::move(op));
+  node->gpu_operation = std::make_unique<GPUOperation>(std::move(op));
   for (auto in_fb : *fb_node->input_ids()) {
     node->inputs.push_back(in_fb);
   }
@@ -252,9 +254,9 @@ absl::Status ReserveGraphTensors(const CreateGpuModelInfo& create_info,
           storage_type = TensorStorageType::SINGLE_TEXTURE_2D;
         }
       }
-      RETURN_IF_ERROR(SelectBestStorageType(gpu_info, shape, storage_type,
-                                            data_type, layout, &storage_type));
       tensor_desc = TensorDescriptor{data_type, storage_type, layout};
+      RETURN_IF_ERROR(
+          tensor_desc.UpdateToSupportedStorageType(gpu_info, shape));
       if (gpu_info.IsApiMetal() &&
           storage_type == TensorStorageType::TEXTURE_2D) {
         tensor_desc.use_buffer_for_write_only_2d_texture = true;

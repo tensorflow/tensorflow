@@ -12,7 +12,7 @@ tfg.func @else(%arg0: tensor<f32>, %arg2: tensor<f32>) -> (tensor<f32>) {
 
 tfg.func @test(%cond: tensor<i1>, %lhs: tensor<f32>, %rhs: tensor<f32>) -> (tensor<f32>) {
   // CHECK: If
-  // CHECK-SAME: else_branch = #tf_type.func<@else_0, {}>
+  // CHECK-SAME: else_branch = #tf_type.func<@[[ELSE:else_[0-9]+]], {}>
   %If, %ctl = IfRegion %cond then {
     yield(%lhs) : tensor<f32>
   } else {
@@ -23,4 +23,4 @@ tfg.func @test(%cond: tensor<i1>, %lhs: tensor<f32>, %rhs: tensor<f32>) -> (tens
   return(%If) : tensor<f32>
 }
 
-// CHECK: tfg.func @else_0
+// CHECK: tfg.func @[[ELSE]]

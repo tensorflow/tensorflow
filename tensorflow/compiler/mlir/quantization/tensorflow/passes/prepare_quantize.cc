@@ -231,7 +231,7 @@ std::unique_ptr<OpQuantSpec> GetOpQuantSpec(Operation* op) {
   if (auto call_op = dyn_cast<TF::PartitionedCallOp>(op)) {
     StringRef function_name =
         call_op.fAttr().cast<FlatSymbolRefAttr>().getValue();
-    if (!function_name.startswith("fused_")) {
+    if (!function_name.startswith("composite_")) {
       return spec;
     }
     if (function_name.contains("depthwise_conv2d_with_bias")) {

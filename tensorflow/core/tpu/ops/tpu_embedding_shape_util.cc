@@ -56,7 +56,7 @@ using tensorflow::tpu::TPUEmbeddingConfiguration;
   dim0->set_size(num_sharded_ids);
   auto* dim1 = shape->add_dim();
   dim1->set_size(table_dimension);
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ Status TpuEmbeddingShapeUtil::ComputeTableShapes(
@@ -69,7 +69,7 @@ using tensorflow::tpu::TPUEmbeddingConfiguration;
         vocabulary_sizes[i], table_dimensions[i], shard_id, num_shards,
         &(*shapes)[i]));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ Status TpuEmbeddingShapeUtil::ComputeTableShapes(

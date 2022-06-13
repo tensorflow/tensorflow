@@ -76,7 +76,7 @@ using MiscompareCallback = std::function<void(
 // If miscompare_callback is nullptr, Near will return an error on the first
 // detected mismatch.
 Status Near(const LiteralSlice& expected, const LiteralSlice& actual,
-            const ErrorSpec& error, absl::optional<bool> detailed_message,
+            const ErrorSpec& error, std::optional<bool> detailed_message,
             const MiscompareCallback& miscompare_callback);
 
 // Calling ToString on a literal with over 100 million elements takes around

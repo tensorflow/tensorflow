@@ -51,10 +51,7 @@ filegroup(
     srcs = [
         "training/coordinator.h",
     ],
-    visibility = [
-        "//tensorflow/python:__pkg__",
-        "//tensorflow/python/grappler:__pkg__",
-    ],
+    visibility = ["//tensorflow/python/grappler:__pkg__"],
 )
 
 cc_library(

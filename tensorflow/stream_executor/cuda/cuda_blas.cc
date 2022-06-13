@@ -156,7 +156,7 @@ class ScopedCublasPointerMode {
   }
 
  private:
-  cublasHandle_t handle_;  // Handle to the cuBLAS instance of interest.
+  cublasHandle_t handle_;         // Handle to the cuBLAS instance of interest.
   cublasPointerMode_t old_mode_;  // Prior cuBLAS pointer mode, to be restored.
   bool ok_;                       // Whether the change was successful.
 };
@@ -237,7 +237,7 @@ bool CUDABlas::Init() {
   }
 
 #if CUDA_VERSION >= 11000
-  ret = cublasLtCreate(&blasLt_);
+  ret = cublasLtCreate(&blas_lt_);
   if (ret != CUBLAS_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to create cublasLt handle: " << ToString(ret);
     if (ret == CUBLAS_STATUS_NOT_INITIALIZED) {
@@ -255,7 +255,7 @@ CUDABlas::CUDABlas(gpu::GpuExecutor *parent)
       blas_(nullptr)
 #if CUDA_VERSION >= 11000
       ,
-      blasLt_(nullptr)
+      blas_lt_(nullptr)
 #endif
 {
 }
@@ -266,9 +266,9 @@ CUDABlas::~CUDABlas() {
     cublasDestroy(blas_);
   }
 #if CUDA_VERSION >= 11000
-  if (blasLt_ != nullptr) {
+  if (blas_lt_ != nullptr) {
     gpu::ScopedActivateExecutorContext sac{parent_};
-    cublasLtDestroy(blasLt_);
+    cublasLtDestroy(blas_lt_);
   }
 #endif
 }
@@ -578,17 +578,17 @@ port::Status CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
   }
   cublasStatus_t ret = cublas_func(blas_, args...);
   if (ret == CUBLAS_STATUS_SUCCESS) {
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   return port::InternalError(ToString(ret));
 }
 
 // cublas_func may be overloaded, so we need to figure out which one we really
 // need to call based on the args. One way to do it is to wrap it in lambda.
-#define AS_LAMBDA(func)                                                  \
-  [](auto &&... args) -> decltype(                                       \
-                          func(std::forward<decltype(args)>(args)...)) { \
-    return func(std::forward<decltype(args)>(args)...);                  \
+#define AS_LAMBDA(func)                                            \
+  [](auto &&...args) -> decltype(func(                             \
+                         std::forward<decltype(args)>(args)...)) { \
+    return func(std::forward<decltype(args)>(args)...);            \
   }
 
 bool CUDABlas::DoBlasAsum(Stream *stream, uint64_t elem_count,
@@ -2163,7 +2163,7 @@ static port::Status PopulateProfileFromTimer(
     output_profile_result->set_elapsed_time_in_ms(
         timer->GetElapsedMilliseconds());
   }
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::Status CUDABlas::DoBlasGemmWithAlgorithm(
@@ -2192,7 +2192,7 @@ port::Status CUDABlas::DoBlasGemmWithAlgorithm(
       static_cast<cublasGemmAlgo_t>(algorithm)));
   TF_RETURN_IF_ERROR(PopulateProfileFromTimer(timer.get(), algorithm,
                                               output_profile_result, stream));
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
@@ -2245,65 +2245,76 @@ port::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
       static_cast<cublasGemmAlgo_t>(algorithm)));
   TF_RETURN_IF_ERROR(PopulateProfileFromTimer(timer.get(), algorithm,
                                               output_profile_result, stream));
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 bool CUDABlas::GetBlasGemmAlgorithms(
-    std::vector<blas::AlgorithmType> *out_algorithms) {
+    Stream *stream, std::vector<blas::AlgorithmType> *out_algorithms) {
   // cublasGemmAlgo_t (and the function that accepts this type, cublasGemmEx)
   // were first introduced in CUDA 8.
   //
   // Note that when CUDA version and compute capability is not sufficient, we
   // still return the out_algorithms. Caller needs to make sure that in this
   // case, the returned vector is empty.
-  *out_algorithms = {
-    CUBLAS_GEMM_DFALT,
-    CUBLAS_GEMM_ALGO0,
-    CUBLAS_GEMM_ALGO1,
-    CUBLAS_GEMM_ALGO2,
-    CUBLAS_GEMM_ALGO3,
-    CUBLAS_GEMM_ALGO4,
-    CUBLAS_GEMM_ALGO5,
-    CUBLAS_GEMM_ALGO6,
-    CUBLAS_GEMM_ALGO7,
+  if (stream->GetCudaComputeCapability().IsAtLeast(
+          CudaComputeCapability::AMPERE)) {
+    // Note: for NVIDIA Ampere Architecture GPUs and beyond, i.e. SM version >=
+    // 80, the numbered algorithm options are equivalent to CUBLAS_GEMM_DEFAULT
+    // or CUBLAS_GEMM_DEFAULT_TENSOR_OP respectively.
+    *out_algorithms = {
+        CUBLAS_GEMM_DFALT,
+        CUBLAS_GEMM_DFALT_TENSOR_OP,
+    };
+  } else {
+    *out_algorithms = {
+      CUBLAS_GEMM_DFALT,
+      CUBLAS_GEMM_ALGO0,
+      CUBLAS_GEMM_ALGO1,
+      CUBLAS_GEMM_ALGO2,
+      CUBLAS_GEMM_ALGO3,
+      CUBLAS_GEMM_ALGO4,
+      CUBLAS_GEMM_ALGO5,
+      CUBLAS_GEMM_ALGO6,
+      CUBLAS_GEMM_ALGO7,
 #if CUDA_VERSION >= 9000
-    CUBLAS_GEMM_ALGO8,
-    CUBLAS_GEMM_ALGO9,
-    CUBLAS_GEMM_ALGO10,
-    CUBLAS_GEMM_ALGO11,
-    CUBLAS_GEMM_ALGO12,
-    CUBLAS_GEMM_ALGO13,
-    CUBLAS_GEMM_ALGO14,
-    CUBLAS_GEMM_ALGO15,
-    CUBLAS_GEMM_ALGO16,
-    CUBLAS_GEMM_ALGO17,
-    CUBLAS_GEMM_DFALT_TENSOR_OP,
-    CUBLAS_GEMM_ALGO0_TENSOR_OP,
-    CUBLAS_GEMM_ALGO1_TENSOR_OP,
-    CUBLAS_GEMM_ALGO2_TENSOR_OP,
-    CUBLAS_GEMM_ALGO3_TENSOR_OP,
-    CUBLAS_GEMM_ALGO4_TENSOR_OP,
+      CUBLAS_GEMM_ALGO8,
+      CUBLAS_GEMM_ALGO9,
+      CUBLAS_GEMM_ALGO10,
+      CUBLAS_GEMM_ALGO11,
+      CUBLAS_GEMM_ALGO12,
+      CUBLAS_GEMM_ALGO13,
+      CUBLAS_GEMM_ALGO14,
+      CUBLAS_GEMM_ALGO15,
+      CUBLAS_GEMM_ALGO16,
+      CUBLAS_GEMM_ALGO17,
+      CUBLAS_GEMM_DFALT_TENSOR_OP,
+      CUBLAS_GEMM_ALGO0_TENSOR_OP,
+      CUBLAS_GEMM_ALGO1_TENSOR_OP,
+      CUBLAS_GEMM_ALGO2_TENSOR_OP,
+      CUBLAS_GEMM_ALGO3_TENSOR_OP,
+      CUBLAS_GEMM_ALGO4_TENSOR_OP,
 #endif
 #if CUDA_VERSION >= 9020
-    CUBLAS_GEMM_ALGO18,
-    CUBLAS_GEMM_ALGO19,
-    CUBLAS_GEMM_ALGO20,
-    CUBLAS_GEMM_ALGO21,
-    CUBLAS_GEMM_ALGO22,
-    CUBLAS_GEMM_ALGO23,
-    CUBLAS_GEMM_ALGO5_TENSOR_OP,
-    CUBLAS_GEMM_ALGO6_TENSOR_OP,
-    CUBLAS_GEMM_ALGO7_TENSOR_OP,
-    CUBLAS_GEMM_ALGO8_TENSOR_OP,
-    CUBLAS_GEMM_ALGO9_TENSOR_OP,
-    CUBLAS_GEMM_ALGO10_TENSOR_OP,
-    CUBLAS_GEMM_ALGO11_TENSOR_OP,
-    CUBLAS_GEMM_ALGO12_TENSOR_OP,
-    CUBLAS_GEMM_ALGO13_TENSOR_OP,
-    CUBLAS_GEMM_ALGO14_TENSOR_OP,
-    CUBLAS_GEMM_ALGO15_TENSOR_OP,
+      CUBLAS_GEMM_ALGO18,
+      CUBLAS_GEMM_ALGO19,
+      CUBLAS_GEMM_ALGO20,
+      CUBLAS_GEMM_ALGO21,
+      CUBLAS_GEMM_ALGO22,
+      CUBLAS_GEMM_ALGO23,
+      CUBLAS_GEMM_ALGO5_TENSOR_OP,
+      CUBLAS_GEMM_ALGO6_TENSOR_OP,
+      CUBLAS_GEMM_ALGO7_TENSOR_OP,
+      CUBLAS_GEMM_ALGO8_TENSOR_OP,
+      CUBLAS_GEMM_ALGO9_TENSOR_OP,
+      CUBLAS_GEMM_ALGO10_TENSOR_OP,
+      CUBLAS_GEMM_ALGO11_TENSOR_OP,
+      CUBLAS_GEMM_ALGO12_TENSOR_OP,
+      CUBLAS_GEMM_ALGO13_TENSOR_OP,
+      CUBLAS_GEMM_ALGO14_TENSOR_OP,
+      CUBLAS_GEMM_ALGO15_TENSOR_OP,
 #endif
-  };
+    };
+  }
   return true;
 }
 
@@ -2445,7 +2456,7 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
         const_cast<const CUDA_T **>(GpuMemory(b)), ldb, GpuComplex(&cb_beta),
         const_cast<CUDA_T **>(GpuMemory(c)), ldc, batch_count);
     if (ok) {
-      return port::Status::OK();
+      return ::tensorflow::OkStatus();
     }
     return port::Status(port::error::INTERNAL,
                         "failed BLAS call, see log for details");
@@ -2459,7 +2470,7 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
           stream, transa, transb, m, n, k, blas::ToDataType<T>::value, &alpha,
           a_matrix, lda, b_matrix, ldb, &beta, c_matrix, ldc));
     }
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 }
 
@@ -2634,7 +2645,7 @@ port::Status CUDABlas::DoBlasGemmStridedBatched(
             b_matrix, SE_CUDA_DATA_HALF, ldb, static_cast<const float *>(beta),
             c_matrix, SE_CUDA_DATA_HALF, ldc));
       }
-      return port::Status::OK();
+      return ::tensorflow::OkStatus();
     }
     case dnn::kFloat: {
       return DoBlasInternalImpl(
@@ -3504,7 +3515,7 @@ CUDABlas::GetBlasLtMatmulAlgorithmsInternal(const blas::IBlasLtMatmulPlan *plan,
   {
     absl::MutexLock lock(&mu_);
 
-    CHECK(blasLt_ != nullptr);
+    CHECK(blas_lt_ != nullptr);
 
     gpu::ScopedActivateExecutorContext sac{parent_};
 
@@ -3519,7 +3530,7 @@ CUDABlas::GetBlasLtMatmulAlgorithmsInternal(const blas::IBlasLtMatmulPlan *plan,
     const auto &d_desc =
         for_remainder_batch ? cuda_plan.d_remainder_desc() : cuda_plan.d_desc();
     cublasStatus_t status = cublasLtMatmulAlgoGetHeuristic(
-        blasLt_, cuda_plan.op_desc(), a_desc, b_desc, c_desc, d_desc,
+        blas_lt_, cuda_plan.op_desc(), a_desc, b_desc, c_desc, d_desc,
         preference.get(), max_algorithm_count, results.data(),
         &found_algorithm_count);
     if (status != CUBLAS_STATUS_SUCCESS) {
@@ -3649,7 +3660,7 @@ bool CUDABlas::DoBlasLtMatmulInternal(
     }
   }
 
-  CHECK(blasLt_ != nullptr);
+  CHECK(blas_lt_ != nullptr);
 
   gpu::ScopedActivateExecutorContext sac{parent_};
 
@@ -3668,7 +3679,7 @@ bool CUDABlas::DoBlasLtMatmulInternal(
        batch + capped_batch_count <= cuda_plan.params().batch_count;
        batch += capped_batch_count) {
     cublasStatus_t ret = cublasLtMatmul(
-        blasLt_, cuda_plan.op_desc(), alpha_ptr, a_ptr, cuda_plan.a_desc(),
+        blas_lt_, cuda_plan.op_desc(), alpha_ptr, a_ptr, cuda_plan.a_desc(),
         b_ptr, cuda_plan.b_desc(), beta_ptr, c_ptr, cuda_plan.c_desc(), d_ptr,
         cuda_plan.d_desc(), cuda_algo.algo(), workspace,
         cuda_algo.workspace_size(), cuda_stream);
@@ -3703,7 +3714,7 @@ bool CUDABlas::DoBlasLtMatmulInternal(
       }
     }
     cublasStatus_t ret = cublasLtMatmul(
-        blasLt_, cuda_plan.op_desc(), alpha_ptr, a_ptr,
+        blas_lt_, cuda_plan.op_desc(), alpha_ptr, a_ptr,
         cuda_plan.a_remainder_desc(), b_ptr, cuda_plan.b_remainder_desc(),
         beta_ptr, c_ptr, cuda_plan.c_remainder_desc(), d_ptr,
         cuda_plan.d_remainder_desc(), remainder_algo.algo(), workspace,
@@ -3785,7 +3796,7 @@ port::Status CUDABlas::GetVersion(std::string *version) {
     return port::InternalError(ToString(status));
   }
   *version = std::to_string(v);
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace gpu

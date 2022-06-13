@@ -1,0 +1,105 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-input-arrays=p,x,y,z,t -tf-input-data-types="DT_INT32,DT_VARIANT,DT_INT8,DT_DOUBLE,DT_RESOURCE" -tf-output-arrays=p,x,y,z,t -o - | FileCheck %s -check-prefix=CHECK-NO-SUBTYPE
+
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-input-arrays=p,x,y,z,t -tf-input-shapes=10::10:10: -tf-input-data-types="DT_INT32,DT_VARIANT(10:DT_FLOAT),DT_INT8,DT_DOUBLE,DT_RESOURCE(10:DT_INT32)" -tf-output-arrays=p,x,y,z,t -o - | FileCheck %s -check-prefix=CHECK-SUBTYPE
+
+# Test the handling of the input data types. In particular, if the data type
+# for an input graph node is specified via command line options, use it.
+# otherwise, use the data type of the node in the graph.
+
+node {
+  name: "p"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+}
+node {
+  name: "x"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_VARIANT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+}
+node {
+  name: "y"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT8
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+}
+node {
+  name: "z"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_DOUBLE
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+}
+node {
+  name: "t"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_RESOURCE
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+}
+versions {
+  producer: 216
+}
+
+# CHECK-NO-SUBTYPE: func @main(%arg0: tensor<i32>, %arg1: tensor<!tf_type.variant>, %arg2: tensor<i8>, %arg3: tensor<f64>, %arg4: tensor<!tf_type.resource>) -> (tensor<i32>, tensor<!tf_type.variant>, tensor<i8>, tensor<f64>, tensor<!tf_type.resource>)
+
+# CHECK-SUBTYPE: func @main(%arg0: tensor<10xi32>, %arg1: tensor<!tf_type.variant<tensor<10xf32>>>, %arg2: tensor<10xi8>, %arg3: tensor<10xf64>, %arg4: tensor<!tf_type.resource<tensor<10xi32>>>) -> (tensor<10xi32>, tensor<!tf_type.variant<tensor<10xf32>>>, tensor<10xi8>, tensor<10xf64>, tensor<!tf_type.resource<tensor<10xi32>>>)

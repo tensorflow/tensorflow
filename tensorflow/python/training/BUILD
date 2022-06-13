@@ -109,6 +109,8 @@ py_library(
         ":warm_starting_util",
         "//tensorflow/python:learning_rate_decay",
         "//tensorflow/python:sdca_ops",
+        "//tensorflow/python/checkpoint:checkpoint_management",
+        "//tensorflow/python/trackable:base_delegate",
         "//tensorflow/python/training/experimental:loss_scale_optimizer",
         "//tensorflow/python/training/experimental:mixed_precision",
         "//tensorflow/python/training/tracking:base_delegate",
@@ -121,6 +123,9 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":training_lib",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/trackable:python_state",
         "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/training/tracking:python_state",
         "//tensorflow/python/training/tracking:util",
@@ -217,7 +222,6 @@ py_library(
     srcs = ["checkpoint_utils.py"],
     srcs_version = "PY3",
     deps = [
-        ":checkpoint_management",
         ":py_checkpoint_reader",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:io_ops",
@@ -225,6 +229,7 @@ py_library(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/util:tf_export",
@@ -396,7 +401,7 @@ py_library(
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/trackable:base",
         "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
@@ -482,11 +487,11 @@ py_library(
     srcs = ["session_manager.py"],
     srcs_version = "PY3",
     deps = [
-        ":checkpoint_management",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:session",
+        "//tensorflow/python/checkpoint:checkpoint_lib",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
@@ -814,30 +819,9 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/util:tf_export",
-    ],
-)
-
-cuda_py_test(
-    name = "checkpoint_management_test",
-    size = "small",
-    srcs = [
-        "checkpoint_management_test.py",
-    ],
-    python_version = "PY3",
-    deps = [
-        ":checkpoint_management",
-        ":saver",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:lib",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/tracking:util",
     ],
 )
 
@@ -846,7 +830,6 @@ py_library(
     srcs = ["saver.py"],
     srcs_version = "PY3",
     deps = [
-        ":checkpoint_management",
         ":py_checkpoint_reader",
         ":training_util",
         "//tensorflow/python:array_ops",
@@ -863,11 +846,12 @@ py_library(
         "//tensorflow/python:string_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/saved_model:pywrap_saved_model",
+        "//tensorflow/python/trackable:base",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
-        "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
@@ -896,7 +880,6 @@ cuda_py_test(
     tags = ["multi_gpu"],
     deps = [
         ":adam",
-        ":checkpoint_management",
         ":gradient_descent",
         ":py_checkpoint_reader",
         ":queue_runner_impl",
@@ -928,11 +911,12 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/summary",
-        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/trackable:base",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -1036,7 +1020,6 @@ tf_py_test(
     python_version = "PY3",
     tags = ["no_windows"],
     deps = [
-        ":checkpoint_management",
         ":saver",
         ":supervisor",
         ":training",
@@ -1050,6 +1033,7 @@ tf_py_test(
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/summary",
     ],
 )
@@ -1404,7 +1388,6 @@ cuda_py_test(
     main = "session_manager_test.py",
     python_version = "PY3",
     deps = [
-        ":checkpoint_management",
         ":saver",
         ":server_lib",
         ":session_manager",
@@ -1418,6 +1401,7 @@ cuda_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint:checkpoint_management",
     ],
 )
 
@@ -1548,7 +1532,6 @@ tf_py_test(
         "notsan",  # b/67945581
     ],
     deps = [
-        ":checkpoint_management",
         ":monitored_session",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -1561,6 +1544,7 @@ tf_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/saved_model",

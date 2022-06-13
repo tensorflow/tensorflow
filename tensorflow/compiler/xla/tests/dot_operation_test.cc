@@ -1680,7 +1680,7 @@ ENTRY jaxpr_computation__5.33 {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(module_string));
-  EXPECT_TRUE(RunAndCompare(std::move(module), /*error=*/absl::nullopt));
+  EXPECT_TRUE(RunAndCompare(std::move(module), /*error=*/std::nullopt));
 }
 
 XLA_TEST_F(DotOperationTest, ReorderContractingDimsConstLHS_RL) {

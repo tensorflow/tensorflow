@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
@@ -174,6 +175,34 @@ TEST_F(AsyncAllReduceCreatorTest, SplitsSingleCollectivePermuteScheduled) {
   EXPECT_EQ(
       hlo_module->schedule().sequence(hlo_module->entry_computation()).size(),
       original_instr_sequence_size + 1);
+}
+
+TEST_F(AsyncAllReduceCreatorTest, SplitsSingleAllToAll) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[8,16] parameter(0)
+    ROOT ata = f32[8,16] all-to-all(p0), dimensions={0}, replica_groups={{0,1,2,3,4,5,6,7}}
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AsyncCollectiveCreator::CollectiveCreatorConfig config;
+  config.convert_all_to_all = [](const HloInstruction*) { return true; };
+  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  XLA_VLOG_LINES(0, hlo_module->ToString());
+
+  HloComputation* computation = hlo_module->entry_computation();
+  ASSERT_THAT(computation, NotNull());
+  ASSERT_EQ(computation->instruction_count(), 3);
+  const HloInstruction* done = computation->root_instruction();
+  EXPECT_EQ(done->opcode(), HloOpcode::kAsyncDone);
+  ASSERT_THAT(done->operands(), SizeIs(1));
+  const HloInstruction* start = done->operand(0);
+  EXPECT_EQ(start->opcode(), HloOpcode::kAsyncStart);
+  ASSERT_THAT(start->async_wrapped_instruction(), NotNull());
+  EXPECT_THAT(start->async_wrapped_opcode(), HloOpcode::kAllToAll);
 }
 
 }  // namespace

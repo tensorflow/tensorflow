@@ -3607,7 +3607,7 @@ func.func @tensor_scatter_update(%tensor: tensor<4x4x4xf32>, %indices: tensor<i3
 // -----
 
 func.func @tensor_scatter_update(%tensor: tensor<4x4x4xf32>, %indices: tensor<4x2xi32>, %updates: tensor<f32>) -> tensor<4x4x4xf32> {
-  // expected-error @+1 {{op requires updates operand to have at least 1 dimension}}
+  // CHECK: TensorScatterUpdate
   %0 = "tf.TensorScatterUpdate"(%tensor, %indices, %updates) : (tensor<4x4x4xf32>, tensor<4x2xi32>, tensor<f32>) -> tensor<4x4x4xf32>
   func.return %0 : tensor<4x4x4xf32>
 }
@@ -3772,6 +3772,20 @@ func.func @testBatchMatMulV2InvalidBroadcastingBatchDimensionWithHigherYRank(%lh
 func.func @testBatchMatMulV2InvalidOutputBatchDimension(%lhs: tensor<10x2x5x10xf32>, %rhs: tensor<2x10x10xf32>) {
   // expected-error @+1 {{has mismatching input batch dimension 2 and output batch dimension 3}}
   %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<10x2x5x10xf32>, tensor<2x10x10xf32>) -> tensor<10x3x10x10xf32>
+}
+
+// -----
+
+func.func @testBatchMatMulV2DynamicInputBatchDimension(%lhs: tensor<?x2x5x10xf32>, %rhs: tensor<?x10xf32>) -> tensor<5x2x5x10xf32> {
+  %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<?x2x5x10xf32>, tensor<?x10xf32>) -> tensor<5x2x5x10xf32>
+  func.return %0 : tensor<5x2x5x10xf32>
+}
+
+// -----
+
+func.func @testBatchMatMulV2DynamicOutputBatchDimension(%lhs: tensor<1x2x5x10xf32>, %rhs: tensor<1x10xf32>) -> tensor<?x2x5x10xf32> {
+  %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<1x2x5x10xf32>, tensor<1x10xf32>) -> tensor<?x2x5x10xf32>
+  func.return %0 : tensor<?x2x5x10xf32>
 }
 
 // -----

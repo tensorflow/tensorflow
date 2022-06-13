@@ -151,7 +151,7 @@ int main(int argc, char** argv) {
                 .ValueOrDie();
   xla::HloRunner test_runner(test_platform);
   auto reference_runner =
-      reference_platform ? absl::make_unique<xla::HloRunner>(reference_platform)
+      reference_platform ? std::make_unique<xla::HloRunner>(reference_platform)
                          : nullptr;
 
   std::string hlo_filename;

@@ -15,8 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_VALUE_INFERENCE_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_VALUE_INFERENCE_H_
 
+#include <optional>
+
 #include "absl/container/flat_hash_map.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -39,10 +40,10 @@ class OptionalLiteral {
       : value_(std::move(value)), mask_(std::move(mask)) {}
 
   template <typename NativeT>
-  absl::optional<NativeT> Get(absl::Span<const int64_t> element_index,
-                              ShapeIndex shape_index = {}) const {
+  std::optional<NativeT> Get(absl::Span<const int64_t> element_index,
+                             ShapeIndex shape_index = {}) const {
     if (mask_.Get<bool>(element_index, shape_index)) {
-      return absl::nullopt;
+      return std::nullopt;
     } else {
       return value_.Get<NativeT>(element_index, shape_index);
     }
@@ -53,9 +54,9 @@ class OptionalLiteral {
 
   // Get value out of this slice if all values are valid. Otherwise returns
   // nullopt.
-  absl::optional<LiteralSlice> GetValue() {
+  std::optional<LiteralSlice> GetValue() {
     if (!AllValid()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     return LiteralSlice(value_);
   }
@@ -99,7 +100,7 @@ class ValueInference {
 
   // Perform CSE on a given handle, and return an equivalent handle if seen
   // before. Otherwise, returns nullopt.
-  StatusOr<absl::optional<int64_t>> CseOpHandle(int64_t handle);
+  StatusOr<std::optional<int64_t>> CseOpHandle(int64_t handle);
   XlaBuilder* builder_;
   HloEvaluator evaluator_;
   // A map from instruction_hash to handle that helps perform CSE.

@@ -742,9 +742,15 @@ config_setting(
 )
 
 # This flag enables experimental TPU support
+bool_flag(
+    name = "enable_tpu_support",
+    build_setting_default = False,
+)
+
 config_setting(
     name = "with_tpu_support",
     define_values = {"with_tpu_support": "true"},
+    flag_values = {":enable_tpu_support": "True"},
     visibility = ["//visibility:public"],
 )
 
@@ -767,9 +773,15 @@ selects.config_setting_group(
 # TODO(timshen): Currently this option only disables some dependencies.
 # See b/122528503.
 # copybara:uncomment_begin(google-only)
+# bool_flag(
+#     name = "tf_no_prod_deps",
+#     build_setting_default = False,
+# )
+#
 # config_setting(
 #     name = "no_prod_deps",
 #     define_values = {"tf_no_prod_deps": "1"},
+#     flag_values = {":tf_no_prod_deps": "True"},
 # )
 #
 # config_setting(
@@ -997,7 +1009,6 @@ tf_cc_shared_library(
         "//tensorflow:tf_framework_version_script.lds",
         "//tensorflow:tf_private_symbols.lds",
     ],
-    exports_filter = PACKAGE_STATIC_DEPS,
     framework_so = [],
     linkopts = select({
         "//tensorflow:macos": [
@@ -1120,9 +1131,10 @@ tf_cc_shared_library(
         "//tensorflow:tf_private_symbols.lds",
         "//tensorflow:tf_version_script.lds",
     ],
-    dynamic_deps = [
-        "//tensorflow:libtensorflow_framework.so.%s" % VERSION,
-    ],
+    dynamic_deps = select({
+        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+    }),
     framework_so = [],
     linkopts = select({
         "//tensorflow:macos": [

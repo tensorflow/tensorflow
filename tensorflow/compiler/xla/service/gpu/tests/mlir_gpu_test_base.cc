@@ -43,7 +43,7 @@ MlirGpuTestBase::MlirGpuTestBase() {
 StatusOr<std::unique_ptr<Executable>> MlirGpuTestBase::CompileMlirModule(
     mlir::ModuleOp module, se::Stream* stream) {
   llvm::LLVMContext llvm_context;
-  auto llvm_module = absl::make_unique<llvm::Module>("", llvm_context);
+  auto llvm_module = std::make_unique<llvm::Module>("", llvm_context);
 #if TENSORFLOW_USE_ROCM
   llvm_module->setTargetTriple(amdgpu::TargetTriple());
   llvm_module->setDataLayout(amdgpu::DataLayout());

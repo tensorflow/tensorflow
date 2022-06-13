@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_SCHEMA_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_SCHEMA_H_
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 
@@ -206,6 +207,7 @@ enum StatType {
   kIsAsync,
   // Device trace arguments.
   kDeviceId,
+  kDeviceTypeString,
   kContextId,
   kCorrelationId,
   // TODO(b/176137043): These "details" should differentiate between activity
@@ -243,6 +245,7 @@ enum StatType {
   kRawValue,
   kScaledValue,
   kThreadId,
+  kMatrixUnitUtilizationPercent,
   // XLA metadata map related.
   kHloProto,
   // Device capability related.
@@ -252,6 +255,8 @@ enum StatType {
   kDevCapMemorySize,
   kDevCapComputeCapMajor,
   kDevCapComputeCapMinor,
+  kDevCapPeakTeraflopsPerSecond,
+  kDevCapPeakHbmBwGigabytesPerSecond,
   kDevVendor,
   // Batching related.
   kBatchSizeAfterPadding,
@@ -263,6 +268,10 @@ enum StatType {
   kOccupancySuggestedBlockSize,
   kLastStatType = kOccupancySuggestedBlockSize,
 };
+
+inline std::string TpuPlaneName(int32_t device_ordinal) {
+  return absl::StrCat(kTpuPlanePrefix, device_ordinal);
+}
 
 inline std::string GpuPlaneName(int32_t device_ordinal) {
   return absl::StrCat(kGpuPlanePrefix, device_ordinal);
@@ -345,9 +354,14 @@ class XFlow {
     return FlowDirection(encoded_.parts.direction);
   }
 
+  static uint64_t GetUniqueId() {  // unique in current process.
+    return next_flow_id_.fetch_add(1);
+  }
+
  private:
   explicit XFlow(uint64_t encoded) { encoded_.whole = encoded; }
   static constexpr uint64_t kFlowMask = (1ULL << 56) - 1;
+  static std::atomic<uint64_t> next_flow_id_;
 
   union {
     // Encoded representation.

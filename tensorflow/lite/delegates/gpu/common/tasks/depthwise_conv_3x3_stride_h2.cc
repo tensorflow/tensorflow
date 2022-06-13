@@ -231,7 +231,6 @@ DepthWiseConv3x3StrideH2 CreateDepthWiseConv3x3StrideH2(
   desc.code_ = GetKernelDepthWiseConv3x3StrideH2(
       gpu_info, definition, weights_are_buffer, desc.local_mem_uploads_);
   auto src_desc = definition.src_tensors[0];
-  src_desc.SetAddressMode(AddressMode::kZero);
   desc.AddSrcTensor("src_tensor", src_desc);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 

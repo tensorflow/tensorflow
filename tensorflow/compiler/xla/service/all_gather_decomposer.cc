@@ -77,7 +77,7 @@ Status DecomposeAllGather(HloAllGatherInstruction* ag, HloComputation* comp) {
       ag->use_global_device_ids()));
   TF_RETURN_IF_ERROR(ag->ReplaceAllUsesWith(ar));
   TF_RETURN_IF_ERROR(comp->RemoveInstructionAndUnusedOperands(ag));
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<bool> AllGatherDecomposer::Run(HloModule* module) {

@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/call_graph.h"
 
+#include <memory>
 #include <queue>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -281,7 +281,7 @@ void CallGraph::SetNodeDepths() {
 
 /* static */
 std::unique_ptr<CallGraph> CallGraph::Build(const HloModule* module) {
-  // Constructor for CallGraph is private so absl::make_unique can't be used.
+  // Constructor for CallGraph is private so std::make_unique can't be used.
   auto call_graph = absl::WrapUnique<CallGraph>(new CallGraph(module));
 
   VLOG(3) << "Building call graph for:";
@@ -327,7 +327,7 @@ Status CallGraph::VisitNodesInternal(
   auto pair = visited->insert(&node);
   if (!pair.second) {
     // Node was not inserted. Node has already been visited.
-    return Status::OK();
+    return OkStatus();
   }
 
   for (const HloComputation* computation : node.callees()) {
@@ -354,7 +354,7 @@ Status CallGraph::VisitNodes(const VisitorFunction& visitor_func,
         visitor_func, GetNode(module_->entry_computation()), &visited));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 bool CallGraph::IsFlattened() const {

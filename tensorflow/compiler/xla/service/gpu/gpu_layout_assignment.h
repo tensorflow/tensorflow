@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/layout_assignment.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 
 namespace xla {
 namespace gpu {
@@ -45,16 +46,19 @@ class GpuLayoutAssignment : public LayoutAssignment {
   Status AddBackendConstraintsToDnnConvCustomCall(
       HloCustomCallInstruction* instr, LayoutConstraints* constraints);
 
-  Status SetOperandBatchRowsColsLayout(HloInstruction* instruction,
+  Status SetOperandBatchRowsColsLayout(const HloInstruction* instruction,
                                        int64_t operand,
                                        absl::Span<const int64_t> batch_dims,
                                        absl::Span<const int64_t> row_dims,
                                        absl::Span<const int64_t> col_dims);
 
-  Status SetDotOperandLayout(HloInstruction* instruction, int64_t operand,
+  Status SetDotOperandLayout(const HloInstruction* instruction, int64_t operand,
                              absl::Span<const int64_t> batch_dims,
                              absl::Span<const int64_t> row_dims,
                              absl::Span<const int64_t> col_dims);
+
+  Status SetDotLayout(const HloInstruction* instruction,
+                      LayoutConstraints* constraints);
 
   se::StreamExecutor* stream_executor_;
 };

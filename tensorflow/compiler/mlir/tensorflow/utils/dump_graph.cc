@@ -79,7 +79,7 @@ Status DumpTextualIRToFile(const MlirDumpConfig& config, const Graph& graph,
       case MlirDumpConfig::Dialect::kTFG: {
         TF_ASSIGN_OR_RETURN(module,
                             mlir::tfg::ImportGraphAndFunctionsToMlir(
-                                &context, graph, debug_info,
+                                &context, debug_info, graph,
                                 flib_def ? *flib_def : graph.flib_def()));
         break;
       }
@@ -92,7 +92,7 @@ Status DumpTextualIRToFile(const MlirDumpConfig& config, const Graph& graph,
 
   TF_RETURN_IF_ERROR(convert());
   module->print(os, config.op_printing_flags);
-  return Status::OK();
+  return OkStatus();
 }
 
 void UseMlirForGraphDump(const MlirDumpConfig& config) {

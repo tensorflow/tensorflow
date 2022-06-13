@@ -489,8 +489,7 @@ TEST(TFCompileTest, Splits) {
   EXPECT_NEAR(expected[2], fn.result0(1, 0), 1e4);
   EXPECT_NEAR(expected[3], fn.result0(1, 1), 1e4);
 }
-// TODO(b/220696648): Debug the sort op for tf_compile with HloLowering.
-#if !defined(MHLO_LOWERING_TEST)
+
 TEST(TFCompileTest, TopK) {
   Eigen::ThreadPool tp(1);
   Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
@@ -514,7 +513,6 @@ TEST(TFCompileTest, TopK) {
   EXPECT_EQ(expected_indices[0], fn.result1(0));
   EXPECT_EQ(expected_indices[1], fn.result1(1));
 }
-#endif
 
 TEST(TFCompileTest, VariableReadonly) {
   Eigen::ThreadPool tp(1);

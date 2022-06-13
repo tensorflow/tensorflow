@@ -122,6 +122,8 @@ cc_library(
     srcs = [
         "interfaces.cc",
         "ops.cc",
+        "tf_op_names.cc",
+        "tf_op_names.inc",
         "tf_op_wrapper.cc",
         "utility.cc",
     ],
@@ -166,6 +168,7 @@ cc_library(
         "//tensorflow/core/ir/importexport:convert_types",
         "//tensorflow/core/ir/importexport:graphdef_export",
         "//tensorflow/core/ir/types:Dialect",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:DerivedAttributeOpInterface",

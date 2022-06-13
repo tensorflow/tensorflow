@@ -238,7 +238,7 @@ Status GetErrorOptions(OpKernelConstruction* ctx, ErrorOptions* out) {
                                     &(out->replace_control_chars)));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 inline bool ShouldHandleFormatError(const ErrorOptions& error_options,

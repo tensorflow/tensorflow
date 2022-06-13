@@ -270,9 +270,9 @@ with your own model and test data.
 ## Model compatibility requirements
 
 The `ObjectDetector` API expects a TFLite model with mandatory
-[TFLite Model Metadata](../../convert/metadata). See examples of creating
+[TFLite Model Metadata](../../models/convert/metadata). See examples of creating
 metadata for object detectors using the
-[TensorFlow Lite Metadata Writer API](../../convert/metadata_writer_tutorial.ipynb#object_detectors).
+[TensorFlow Lite Metadata Writer API](../../models/convert/metadata_writer_tutorial.ipynb#object_detectors).
 
 The compatible object detector models should meet the following requirements:
 

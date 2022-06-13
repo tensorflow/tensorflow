@@ -21,11 +21,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-StatusOr<absl::optional<xla::FrontendAttributes>>
+StatusOr<std::optional<xla::FrontendAttributes>>
 GetFrontendAttributesFromAttrSlice(const AttrSlice& attrs) {
   const AttrValue* attr = attrs.Find(kXlaFrontendAttributesAttrName);
   if (attr == nullptr) {
-    return StatusOr<absl::optional<xla::FrontendAttributes>>(absl::nullopt);
+    return StatusOr<std::optional<xla::FrontendAttributes>>(std::nullopt);
   }
   xla::FrontendAttributes attributes;
   if (!attributes.ParseFromString(attr->s())) {
@@ -33,7 +33,7 @@ GetFrontendAttributesFromAttrSlice(const AttrSlice& attrs) {
         "Experimental _XlaFrontendAttributes attribute was not a valid encoded "
         "xla::FrontendAttributes proto.");
   }
-  return absl::optional<xla::FrontendAttributes>(attributes);
+  return std::optional<xla::FrontendAttributes>(attributes);
 }
 
 }  // namespace tensorflow

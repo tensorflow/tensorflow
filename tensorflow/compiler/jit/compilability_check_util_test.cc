@@ -90,13 +90,13 @@ class CompilabilityCheckUtilTest : public ::testing::Test {
   }
 
   std::unique_ptr<RecursiveCompilabilityChecker> CreateCompilabilityChecker() {
-    return absl::make_unique<RecursiveCompilabilityChecker>(op_filter_,
+    return std::make_unique<RecursiveCompilabilityChecker>(op_filter_,
                                                             device_type_);
   }
 
   FunctionLibraryRuntime* GetFunctionLibraryRuntime() {
     OptimizerOptions opts;
-    pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
+    pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
         nullptr, Env::Default(), /*config=*/nullptr, TF_GRAPH_DEF_VERSION,
         flib_def_.get(), opts);
 
@@ -106,9 +106,9 @@ class CompilabilityCheckUtilTest : public ::testing::Test {
   RecursiveCompilabilityChecker::OperationFilter op_filter_;
   DeviceType device_type_ = DeviceType(DEVICE_CPU_XLA_JIT);
   std::unique_ptr<FunctionDefLibrary> func_library_ =
-      absl::make_unique<FunctionDefLibrary>();
+      std::make_unique<FunctionDefLibrary>();
   std::unique_ptr<FunctionLibraryDefinition> flib_def_ =
-      absl::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(),
+      std::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(),
                                                    *func_library_);
   std::unique_ptr<RecursiveCompilabilityChecker> checker_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;

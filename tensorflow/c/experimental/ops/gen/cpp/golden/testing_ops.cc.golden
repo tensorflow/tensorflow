@@ -121,5 +121,21 @@ Status VarHandleOp(AbstractContext* ctx, AbstractTensorHandle** resource, DataTy
   return op_ptr->Execute(absl::MakeSpan(resource, 1), &num_retvals);
 }
 
+// Op: RestoreV2()
+// Summary:
+//
+// Description:
+Status RestoreV2(AbstractContext* ctx, AbstractTensorHandle* const prefix, AbstractTensorHandle* const tensor_names, AbstractTensorHandle* const shape_and_slices, absl::Span<AbstractTensorHandle*> tensors, absl::Span<DataType> dtypes, const char* name, const char* raw_device_name) {
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("RestoreV2", raw_device_name));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(prefix));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(tensor_names));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(shape_and_slices));
+  TF_RETURN_IF_ERROR(op_ptr->SetAttrTypeList("dtypes", dtypes.data(), dtypes.length()));
+  int num_retvals = tensors.size();
+  return op_ptr->Execute(tensors, &num_retvals);
+}
+
 }  // namespace ops
 }  // namespace tensorflow

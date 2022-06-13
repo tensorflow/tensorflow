@@ -62,14 +62,14 @@ struct RewriteReshapeTransposeReshape : public OpRewritePattern<TransposeOp> {
   LogicalResult matchAndRewrite(TransposeOp op,
                                 PatternRewriter &rewriter) const override {
     Value result = op.getResult();
-    TensorType result_ty = result.getType().cast<TensorType>();
+    TensorType resultTy = result.getType().cast<TensorType>();
     Value operand = op.operand();
-    TensorType operand_ty = operand.getType().cast<TensorType>();
-    if (!operand_ty.hasStaticShape() || !result_ty.hasStaticShape())
+    TensorType operandTy = operand.getType().cast<TensorType>();
+    if (!operandTy.hasStaticShape() || !resultTy.hasStaticShape())
       return rewriter.notifyMatchFailure(op,
                                          "transpose op has non-static types");
 
-    if (result_ty.getRank() <= kMaxRank)
+    if (resultTy.getRank() <= kMaxRank)
       return rewriter.notifyMatchFailure(op,
                                          "already has right dimensionality");
 
@@ -77,67 +77,67 @@ struct RewriteReshapeTransposeReshape : public OpRewritePattern<TransposeOp> {
       return rewriter.notifyMatchFailure(
           op, "transpose op operand and result have multiple uses");
 
-    auto def_op = operand.getDefiningOp<ReshapeOp>();
-    if (!def_op)
+    auto defOp = operand.getDefiningOp<ReshapeOp>();
+    if (!defOp)
       return rewriter.notifyMatchFailure(
           op, "defining op for operand is not reshape");
 
-    auto user_op = llvm::dyn_cast<ReshapeOp>(result.use_begin().getUser());
-    if (!user_op)
+    auto userOp = llvm::dyn_cast<ReshapeOp>(result.use_begin().getUser());
+    if (!userOp)
       return rewriter.notifyMatchFailure(op,
                                          "user of the result is not reshape");
 
-    Value input = def_op.operand();
-    auto input_ty = input.getType().cast<TensorType>();
-    auto output_ty = user_op.getType();
-    if (!input_ty.hasStaticShape() || !output_ty.hasStaticShape())
+    Value input = defOp.operand();
+    auto inputTy = input.getType().cast<TensorType>();
+    auto outputTy = userOp.getType();
+    if (!inputTy.hasStaticShape() || !outputTy.hasStaticShape())
       return rewriter.notifyMatchFailure(
           op, "reshape op input or output type is not static");
 
-    int64_t input_rank = input_ty.getRank();
-    int64_t output_rank = output_ty.getRank();
-    if (input_rank != output_rank)
+    int64_t inputRank = inputTy.getRank();
+    int64_t outputRank = outputTy.getRank();
+    if (inputRank != outputRank)
       return rewriter.notifyMatchFailure(
           op, "reshape op input and output rank are different");
 
-    int64_t spatial_dims = input_rank - 2;
-    if (spatial_dims < 0 || operand_ty.getRank() != 2 + 2 * spatial_dims)
+    int64_t spatialDims = inputRank - 2;
+    if (spatialDims < 0 || operandTy.getRank() != 2 + 2 * spatialDims)
       return rewriter.notifyMatchFailure(
           op, "transpose op operand isn't expanding spatial dims");
 
-    SmallVector<int64_t, 4> block_sizes;
-    SmallVector<int64_t, 6> expected_perm(operand_ty.getRank());
-    expected_perm[spatial_dims] = 0;
+    SmallVector<int64_t, 4> blockSizes;
+    SmallVector<int64_t, 6> expectedPerm(operandTy.getRank());
+    expectedPerm[spatialDims] = 0;
 
-    if (input_ty.getDimSize(0) != operand_ty.getDimSize(0))
+    if (inputTy.getDimSize(0) != operandTy.getDimSize(0))
       return rewriter.notifyMatchFailure(
           op, "reshape op isn't expanding only spatial dims");
-    for (int64_t dim = 0; dim < spatial_dims; dim++) {
-      int64_t block_size = operand_ty.getDimSize(1 + dim * 2 + 1);
-      if (input_ty.getDimSize(1 + dim) !=
-          operand_ty.getDimSize(1 + dim * 2) * block_size)
+    for (int64_t dim = 0; dim < spatialDims; dim++) {
+      int64_t blockSize = operandTy.getDimSize(1 + dim * 2 + 1);
+      if (inputTy.getDimSize(1 + dim) !=
+          operandTy.getDimSize(1 + dim * 2) * blockSize)
         return rewriter.notifyMatchFailure(
             op, "reshape op isn't only expanding spatial dims");
-      block_sizes.push_back(block_size);
+      blockSizes.push_back(blockSize);
 
-      expected_perm[dim] = 1 + 2 * dim + 1;
-      expected_perm[1 + spatial_dims + dim] = 1 + 2 * dim;
+      expectedPerm[dim] = 1 + 2 * dim + 1;
+      expectedPerm[1 + spatialDims + dim] = 1 + 2 * dim;
     }
-    expected_perm[1 + 2 * spatial_dims] = 1 + 2 * spatial_dims;
+    expectedPerm[1 + 2 * spatialDims] = 1 + 2 * spatialDims;
 
     SmallVector<int64_t, 6> perm(op.permutation().getValues<int64_t>());
-    if (perm != expected_perm)
+    if (perm != expectedPerm)
       return rewriter.notifyMatchFailure(
           op, "reshape op isn't only moving spatial dims");
 
-    SmallVector<int64_t, 4> out_shape;
-    out_shape.push_back(result_ty.getDimSize(0));
-    for (int64_t dim = 0; dim < spatial_dims; dim++) {
-      out_shape[0] *= result_ty.getDimSize(1 + dim);
-      out_shape.push_back(result_ty.getDimSize(1 + spatial_dims + dim));
+    SmallVector<int64_t, 4> outShape;
+    outShape.push_back(resultTy.getDimSize(0));
+    for (int64_t dim = 0; dim < spatialDims; dim++) {
+      outShape[0] *= resultTy.getDimSize(1 + dim);
+      outShape.push_back(resultTy.getDimSize(1 + spatialDims + dim));
     }
-    out_shape.push_back(result_ty.getDimSize(1 + spatial_dims * 2));
-    if (llvm::to_vector<4>(output_ty.getShape()) != out_shape)
+    outShape.push_back(resultTy.getDimSize(1 + spatialDims * 2));
+    if (llvm::to_vector<4>(outputTy.getShape()) != outShape)
       return rewriter.notifyMatchFailure(
           op, "reshape op isn't only combining block dims");
 
@@ -145,27 +145,26 @@ struct RewriteReshapeTransposeReshape : public OpRewritePattern<TransposeOp> {
     // reshape->transpose->reshape for each of the spatial dimensions.  We need
     // to start with the last spatial dimension to preserve the sequence in the
     // first dimension.
-    for (int dim = spatial_dims - 1; dim >= 0; dim--) {
+    for (int dim = spatialDims - 1; dim >= 0; dim--) {
       // 1) Reshape to split the particular spatial dimension.
-      auto input_ty = input.getType().cast<TensorType>();
-      auto intermediate_shape = llvm::to_vector<4>(input_ty.getShape());
-      int64_t dim_idx = 1 + dim;
-      intermediate_shape[dim_idx] /= block_sizes[dim];
-      int64_t block_idx = dim_idx + 1;
-      intermediate_shape.insert(intermediate_shape.begin() + block_idx,
-                                block_sizes[dim]);
-      auto reshaped_ty =
-          RankedTensorType::get(intermediate_shape, input_ty.getElementType());
+      auto inputTy = input.getType().cast<TensorType>();
+      auto intermediateShape = llvm::to_vector<4>(inputTy.getShape());
+      int64_t dimIdx = 1 + dim;
+      intermediateShape[dimIdx] /= blockSizes[dim];
+      int64_t blockIdx = dimIdx + 1;
+      intermediateShape.insert(intermediateShape.begin() + blockIdx,
+                               blockSizes[dim]);
+      auto reshapedTy =
+          RankedTensorType::get(intermediateShape, inputTy.getElementType());
 
-      auto reshape =
-          rewriter.create<ReshapeOp>(op.getLoc(), reshaped_ty, input);
+      auto reshape = rewriter.create<ReshapeOp>(op.getLoc(), reshapedTy, input);
 
       // 2) Transpose to move the block part of the split dimension in the
       // beginning.
       SmallVector<int64_t, 8> perm;
-      perm.push_back(block_idx);
+      perm.push_back(blockIdx);
       perm.push_back(0);
-      for (int i = 1, e = reshaped_ty.getRank(); i != e; i++) {
+      for (int i = 1, e = reshapedTy.getRank(); i != e; i++) {
         if (i != perm[0]) perm.push_back(i);
       }
 
@@ -173,16 +172,16 @@ struct RewriteReshapeTransposeReshape : public OpRewritePattern<TransposeOp> {
           op.getLoc(), reshape, rewriter.getI64TensorAttr(perm));
 
       // 3) Reshape to combine the block dimension with the batch dimension.
-      intermediate_shape = llvm::to_vector<4>(transpose.getType().getShape());
-      intermediate_shape[0] *= intermediate_shape[1];
-      intermediate_shape.erase(intermediate_shape.begin() + 1);
-      reshaped_ty =
-          RankedTensorType::get(intermediate_shape, input_ty.getElementType());
+      intermediateShape = llvm::to_vector<4>(transpose.getType().getShape());
+      intermediateShape[0] *= intermediateShape[1];
+      intermediateShape.erase(intermediateShape.begin() + 1);
+      reshapedTy =
+          RankedTensorType::get(intermediateShape, inputTy.getElementType());
 
-      input = rewriter.create<ReshapeOp>(op.getLoc(), reshaped_ty, transpose);
+      input = rewriter.create<ReshapeOp>(op.getLoc(), reshapedTy, transpose);
     }
 
-    rewriter.replaceOp(user_op, input);
+    rewriter.replaceOp(userOp, input);
     return success();
   }
 };

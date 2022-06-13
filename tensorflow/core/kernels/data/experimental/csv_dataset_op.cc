@@ -200,12 +200,12 @@ class CSVDatasetOp : public DatasetOpKernel {
 
     string DebugString() const override { return "CSVDatasetOp::Dataset"; }
 
-    Status CheckExternalState() const override { return Status::OK(); }
+    Status CheckExternalState() const override { return OkStatus(); }
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->clear();
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
@@ -269,7 +269,7 @@ class CSVDatasetOp : public DatasetOpKernel {
             {std::make_pair(8, record_defaults)},  // Tensor list inputs
             {}, output));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
    private:
@@ -314,7 +314,7 @@ class CSVDatasetOp : public DatasetOpKernel {
           // Iteration ends when there are no more files to process.
           if (current_file_index_ == dataset()->filenames_.size()) {
             *end_of_sequence = true;
-            return Status::OK();
+            return OkStatus();
           }
           TF_RETURN_IF_ERROR(SetupStreamsLocked(ctx->env()));
         } while (true);
@@ -340,7 +340,7 @@ class CSVDatasetOp : public DatasetOpKernel {
           TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("num_buffer_reads"),
                                                  num_buffer_reads_));
         }
-        return Status::OK();
+        return OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -380,7 +380,7 @@ class CSVDatasetOp : public DatasetOpKernel {
           }
           pos_ = size_t(pos);
         }
-        return Status::OK();
+        return OkStatus();
       }
 
      private:
@@ -451,7 +451,7 @@ class CSVDatasetOp : public DatasetOpKernel {
             if (include) {
               return FieldToOutput(ctx, StringPiece(), out_tensors);
             } else {
-              return Status::OK();
+              return OkStatus();
             }
           } else if (!s.ok()) {
             return s;  // Surface other errors back to caller
@@ -575,7 +575,7 @@ class CSVDatasetOp : public DatasetOpKernel {
                                  const std::vector<Piece>& earlier_pieces,
                                  bool include)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        if (!include) return Status::OK();
+        if (!include) return OkStatus();
 
         if (earlier_pieces.empty()) {
           if (field.find('\"', 1) == field.size() - 1) {
@@ -695,7 +695,7 @@ class CSVDatasetOp : public DatasetOpKernel {
 
         if (errors::IsOutOfRange(s) && !result->empty()) {
           // Ignore OutOfRange error when ReadNBytes read < N bytes.
-          return Status::OK();
+          return OkStatus();
         }
         return s;
       }
@@ -798,7 +798,7 @@ class CSVDatasetOp : public DatasetOpKernel {
                                            " not supported in field ",
                                            output_idx);
         }
-        return Status::OK();
+        return OkStatus();
       }
 
       // Records can be delimited by "\r\n" line breaks. When we encounter a
@@ -825,7 +825,7 @@ class CSVDatasetOp : public DatasetOpKernel {
                                    const std::vector<Piece>& earlier_pieces,
                                    bool include)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        if (!include) return Status::OK();
+        if (!include) return OkStatus();
 
         if (earlier_pieces.empty()) {
           return FieldToOutput(ctx, field, out_tensors);
@@ -883,7 +883,7 @@ class CSVDatasetOp : public DatasetOpKernel {
             return errors::InvalidArgument("Can't read header of file");
           }
         }
-        return Status::OK();
+        return OkStatus();
       }
 
       // Resets all reader streams.

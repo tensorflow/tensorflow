@@ -267,6 +267,7 @@ static LogicalResult Verify(OpT op) {
   ArrayRef<int64_t> output_shape = output_ty.getShape();
   for (int i = 0; i < result_batch_shape.size(); ++i) {
     if (output_shape[i] != ShapedType::kDynamicSize &&
+        result_batch_shape[i] != ShapedType::kDynamicSize &&
         output_shape[i] != result_batch_shape[i])
       return op.emitOpError()
              << "has mismatching input batch dimension "

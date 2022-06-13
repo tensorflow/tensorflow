@@ -100,7 +100,14 @@ void AddLinalgTransformations(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(CreateVectorizeTiledOpsPass());
 }
 
-void AddBufferizationPasses(OpPassManager& pm) {
+void AddBufferizationPasses(OpPassManager& pm, bool one_shot_bufferize) {
+  // Rewrite init_tensor ops to alloc_tensor ops.
+  pm.addNestedPass<FuncOp>(mlir::createLinalgInitTensorToAllocTensorPass());
+  // Run One-Shot Bufferize.
+  if (one_shot_bufferize) {
+    pm.addPass(mlir::hlo::CreateOneShotBufferizePass());
+    return;
+  }
   // Now bufferize all the compute operations (hlo + linalg) and func signature.
   pm.addPass(mlir::CreateComputeOpAndFuncBufferizePass());
   pm.addNestedPass<FuncOp>(mlir::gml_st::CreateTiledLoopBufferizePass());
@@ -208,7 +215,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // anything.
   pm.addPass(mlir::createCanonicalizerPass());
 
-  AddBufferizationPasses(pm);
+  AddBufferizationPasses(pm, options.one_shot_bufferize || options.vectorize);
 
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());

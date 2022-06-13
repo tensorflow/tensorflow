@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_SHARDED_DEVICE_ARRAY_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_SHARDED_DEVICE_ARRAY_H_
 
+#include <optional>
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "pybind11/cast.h"
 #include "pybind11/numpy.h"
@@ -103,7 +103,7 @@ H AbslHashValue(H h, const Unstacked& key) {
   return h;
 }
 
-using AvalDimSharding = absl::variant<NoSharding, Chunked, Unstacked>;
+using AvalDimSharding = std::variant<NoSharding, Chunked, Unstacked>;
 
 // Assigns sharded axes to mesh dimensions.
 //
@@ -143,7 +143,7 @@ H AbslHashValue(H h, const Replicated& key) {
   return h;
 }
 
-using MeshDimAssignment = absl::variant<ShardedAxis, Replicated>;
+using MeshDimAssignment = std::variant<ShardedAxis, Replicated>;
 
 // Describes how each axis is sharded (if it is), and how it's mapped to the
 // devices mesh. See Jax pxla.py for the documentation.
@@ -246,16 +246,16 @@ class ShardedDeviceArray {
 
   bool is_deleted() const { return is_deleted_; }
   bool weak_type() const { return weak_type_; }
-  absl::optional<pybind11::list> device_buffers() const {
+  std::optional<pybind11::list> device_buffers() const {
     return device_buffers_;
   }
   pybind11::object aval() const { return aval_; }
   pybind11::object indices() const { return indices_; }
 
-  absl::optional<pybind11::object> npy_value() const { return npy_value_; }
+  std::optional<pybind11::object> npy_value() const { return npy_value_; }
   void set_npy_value(pybind11::object npy_value) { npy_value_ = npy_value; }
 
-  absl::optional<pybind11::object> one_replica_buffer_indices() const {
+  std::optional<pybind11::object> one_replica_buffer_indices() const {
     return one_replica_buffer_indices_;
   }
   void set_one_replica_buffer_indices(pybind11::object obj) {
@@ -325,18 +325,18 @@ class ShardedDeviceArray {
   // The buffers containing the data for this array. Each buffer is the same
   // shape and on a different device. Buffers are in row-major order, with
   // replication treated as an extra innermost dimension.
-  absl::optional<pybind11::list> device_buffers_;
+  std::optional<pybind11::list> device_buffers_;
 
-  absl::optional<pybind11::object> npy_value_ = absl::nullopt;
-  absl::optional<pybind11::object> one_replica_buffer_indices_ = absl::nullopt;
+  std::optional<pybind11::object> npy_value_ = std::nullopt;
+  std::optional<pybind11::object> one_replica_buffer_indices_ = std::nullopt;
 
   // The device_buffers as a C++ object. As this is what we consume from C++
   // and this is also what we generate from C++, cache the result so that
   // we don't have to perform casts.
   // TODO(jblespiau): Make this the default, and have `device_buffers_` the
   // the optional Python value if it's accessed from Python.
-  absl::optional<std::vector<xla::PjRtBuffer*>> cpp_device_buffers_ =
-      absl::nullopt;
+  std::optional<std::vector<xla::PjRtBuffer*>> cpp_device_buffers_ =
+      std::nullopt;
 
   // The weak_type to prevent accessing the "aval_.weak_type" attribute which
   // is significantly slower.

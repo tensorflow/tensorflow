@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_LRU_CACHE_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_LRU_CACHE_H_
 
+#include <optional>
+
 #include "absl/container/node_hash_map.h"
-#include "absl/types/optional.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -101,7 +102,7 @@ class LRUCache {
     // pointer stability for keys.
     const Key* key;
     LRUCache* container;
-    absl::optional<Value> value;
+    std::optional<Value> value;
   };
 
   // We use `node_hash_map` because we want to guarantee pointer stability for

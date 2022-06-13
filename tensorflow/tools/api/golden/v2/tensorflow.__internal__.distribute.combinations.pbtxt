@@ -49,6 +49,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
   }
   member {
+    name: "multi_worker_mirrored_2x1_gpu_noshare"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
     name: "multi_worker_mirrored_2x2_gpu"
     mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
   }
@@ -93,7 +97,15 @@ tf_module {
     mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
   }
   member_method {
+    name: "env"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "generate"
     argspec: "args=[\'combinations\', \'test_combinations\'], varargs=None, keywords=None, defaults=[\'()\'], "
+  }
+  member_method {
+    name: "in_main_process"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
 }

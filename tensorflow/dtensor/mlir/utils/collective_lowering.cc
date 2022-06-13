@@ -16,23 +16,24 @@ limitations under the License.
 #include <atomic>
 #include <string>
 
-#include "mlir/IR/Attributes.h"
-#include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/Operation.h"
-#include "mlir/IR/Types.h"
-#include "mlir/IR/Value.h"
-#include "mlir/Pass/Pass.h"
-#include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -62,14 +63,6 @@ namespace {
 namespace ops_util = ::mlir::TF::collection_ops_util;
 constexpr int32 kUninitializedGroupKey = 0;
 
-// Mininmum number of tensor elements needed to enable PCIE optimization.
-constexpr int32 kPCIEOptimizationThreshold = 5000;
-
-constexpr char device_to_host_key_base[] = "d2h_key_{0}";
-constexpr char host_to_device_key_base[] = "h2d_key_{0}";
-
-constexpr char kCrossReplica[] = "CrossReplica";
-
 // A counter that is used to generate shift base values for TF collective group
 // and instance keys. Every TF collective AllReduce op in a program gets a value
 // from this counter. The value increments according to the position of the
@@ -79,6 +72,39 @@ constexpr char kCrossReplica[] = "CrossReplica";
 // counter value for matching AllReduce ops across hosts.
 static std::atomic<int32> tf_collective_key_base{0};
 
+}  // namespace
+}  // namespace dtensor
+}  // namespace tensorflow
+
+#ifdef PLATFORM_GOOGLE
+// Use the Google internal version of EmitAllReduceForXla.
+#include "collective_lowering_google.inc"
+#else
+namespace tensorflow {
+namespace dtensor {
+namespace {
+constexpr char kCrossReplica[] = "CrossReplica";
+
+mlir::LogicalResult EmitAllReduceForXla(
+    mlir::MLIRContext& context, mlir::OpBuilder& builder,
+    mlir::TF::DTensorAllReduceOp all_reduce,
+    mlir::DenseIntElementsAttr group_assignment_attr, int32 key_base,
+    mlir::Operation** final_op) {
+  // For TPUs, lower to XlaAllReduce straightforwardly.
+  *final_op = builder.create<mlir::TF::XlaAllReduceOp>(
+      all_reduce.getLoc(), all_reduce.getResult().getType(), all_reduce.input(),
+      all_reduce.group_assignment(), all_reduce.reduce_opAttr(),
+      builder.getStringAttr(kCrossReplica));
+  return mlir::success();
+}
+}  // namespace
+}  // namespace dtensor
+}  // namespace tensorflow
+#endif
+
+namespace tensorflow {
+namespace dtensor {
+namespace {
 // Emit a host CollectiveReduce op for the given input.
 // `group_assignment` is used to generate an array of group keys.
 // `device_id` slices into that array to get the key for a device at runtime.
@@ -166,17 +192,16 @@ mlir::LogicalResult LowerAllReduceOpImpl(
 
   // This will become more general when Topology is properly defined.
   const bool is_tpu = all_reduce.device_type().endswith("TPU");
-
   // Use an atomic counter to generate bases for group and instance keys.
   int32 key_base = tf_collective_key_base++;
 
   mlir::Operation* final_op;
   if (is_tpu) {
-    // For TPUs, lower to XlaAllReduce straightforwardly.
-    final_op = builder.create<mlir::TF::XlaAllReduceOp>(
-        loc, all_reduce.getResult().getType(), all_reduce.input(),
-        all_reduce.group_assignment(), all_reduce.reduce_opAttr(),
-        builder.getStringAttr(kCrossReplica));
+    if (mlir::failed(EmitAllReduceForXla(context, builder, all_reduce,
+                                         group_assignment_attr, key_base,
+                                         &final_op))) {
+      return mlir::failure();
+    }
   } else {
     // Generate CPU/GPU collective. CPU/GPU collectives identify groups on
     // the basis of a local group key. We must generate an appropriate group
@@ -197,7 +222,7 @@ mlir::LogicalResult LowerAllReduceOpImpl(
     final_op = EmitCollectiveReduce(
         builder, loc, all_reduce.input(), all_reduce.reduce_op().str(),
         group_assignment_attr, key_base, relative_device_id,
-        group_size);
+        /*host_group_size=*/group_size);
   }
   SetSingleLayoutOnOp(final_op, *output_layout);
   *value = final_op->getResult(0);

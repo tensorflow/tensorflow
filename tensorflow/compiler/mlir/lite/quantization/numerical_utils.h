@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_NUMERICAL_UTILS_H_
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "absl/types/optional.h"
@@ -35,9 +36,9 @@ QuantizedMultiplier QuantizeMultiplier(double double_multiplier);
 // Calculate the effective quantized value range for the scale, zero point. The
 // range is the minimum range defined by [rmin, rmax] and [qmin, qmax].
 QuantizedRange CalculateQuantizedRange(double scale, int32_t zero_point,
-                                       absl::optional<double> rmin,
-                                       absl::optional<double> rmax,
-                                       int32_t qmin, int32_t qmax);
+                                       std::optional<double> rmin,
+                                       std::optional<double> rmax, int32_t qmin,
+                                       int32_t qmax);
 
 }  // namespace quant
 }  // namespace mlir

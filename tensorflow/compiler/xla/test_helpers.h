@@ -53,15 +53,19 @@ inline const Status& GetStatus(const StatusOr<T>& status) {
 
 // Macros for testing the results of functions that return Status or
 // StatusOr<T> (for any type T).
-#define EXPECT_IS_OK(expression) \
-  EXPECT_EQ(Status::OK(), xla::testing::internal_status::GetStatus(expression))
-#define EXPECT_IS_NOT_OK(expression) \
-  EXPECT_NE(Status::OK(), xla::testing::internal_status::GetStatus(expression))
+#define EXPECT_IS_OK(expression)      \
+  EXPECT_EQ(::tensorflow::OkStatus(), \
+            xla::testing::internal_status::GetStatus(expression))
+#define EXPECT_IS_NOT_OK(expression)  \
+  EXPECT_NE(::tensorflow::OkStatus(), \
+            xla::testing::internal_status::GetStatus(expression))
 #undef ASSERT_IS_OK
-#define ASSERT_IS_OK(expression) \
-  ASSERT_EQ(Status::OK(), xla::testing::internal_status::GetStatus(expression))
+#define ASSERT_IS_OK(expression)      \
+  ASSERT_EQ(::tensorflow::OkStatus(), \
+            xla::testing::internal_status::GetStatus(expression))
 #undef ASSERT_IS_NOT_OK
-#define ASSERT_IS_NOT_OK(expression) \
-  ASSERT_NE(Status::OK(), xla::testing::internal_status::GetStatus(expression))
+#define ASSERT_IS_NOT_OK(expression)  \
+  ASSERT_NE(::tensorflow::OkStatus(), \
+            xla::testing::internal_status::GetStatus(expression))
 
 #endif  // TENSORFLOW_COMPILER_XLA_TEST_HELPERS_H_

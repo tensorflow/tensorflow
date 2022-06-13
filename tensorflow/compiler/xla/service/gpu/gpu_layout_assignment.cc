@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace xla {
 namespace gpu {
@@ -94,6 +95,19 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
 
   if (debug_options.xla_gpu_force_conv_nhwc()) {
     VLOG(2) << "Overriding layout to NHWC for " << instr->ToString();
+    return kAllNHWC;
+  }
+
+  // If we're on Ampere with fp32 and tf32 is on and conv2D, we will use NHWC to
+  // better use Tensor Cores.
+  bool valid_tf32 = input_ty == F32 &&
+                    stream_executor->GetDeviceDescription()
+                        .cuda_compute_capability()
+                        .IsAtLeast(se::CudaComputeCapability::AMPERE) &&
+                    tensorflow::tensor_float_32_execution_enabled() &&
+                    instr->shape().tuple_shapes(0).dimensions_size() == 4;
+  if (valid_tf32) {
+    VLOG(2) << "Using NHWC for tf32 conv " << instr->ToString();
     return kAllNHWC;
   }
 
@@ -210,18 +224,34 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
     // The side input layout must match the output layout.
     TF_RETURN_IF_ERROR(SetOperandLayout(*output_shape, instr, 3));
   }
-  return Status::OK();
+  return OkStatus();
 }
+
+namespace {
 
 // Imposes the default layout with first two dimensions swapped on input
 // `shape`.
-static void SetFortranLayout(Shape* shape) {
+void SetFortranLayout(Shape* shape) {
   LayoutUtil::SetToDefaultLayout(shape);
   int n = shape->mutable_layout()->minor_to_major_size();
   CHECK_GE(n, 2);
   std::swap(shape->mutable_layout()->mutable_minor_to_major()->at(0),
             shape->mutable_layout()->mutable_minor_to_major()->at(1));
 }
+
+bool DotCanSupportShapeWithLayout(const HloInstruction* dot,
+                                  const Shape& shape) {
+  const DotDimensionNumbers& dot_dims = dot->dot_dimension_numbers();
+  // If we are able to construct a `MatrixLayout` then the dot can support
+  // this layout.
+  return MatrixLayout::For(shape, dot_dims.lhs_batch_dimensions().size(),
+                           dot_dims.lhs_contracting_dimensions().size(),
+                           dot_dims.rhs_batch_dimensions().size(),
+                           dot_dims.rhs_contracting_dimensions().size())
+      .ok();
+}
+
+}  // namespace
 
 Status GpuLayoutAssignment::AddBackendConstraints(
     LayoutConstraints* constraints) {
@@ -241,7 +271,7 @@ Status GpuLayoutAssignment::AddBackendConstraints(
         << "Gemm rewriting should run after layout assignment";
 
     if (IsMatrixMultiplication(*instruction)) {
-      Shape output_shape = instruction->shape();
+      const Shape& output_shape = instruction->shape();
       const Shape& lhs_shape = instruction->operand(0)->shape();
       const Shape& rhs_shape = instruction->operand(1)->shape();
       const DotDimensionNumbers& dot_dims =
@@ -281,16 +311,31 @@ Status GpuLayoutAssignment::AddBackendConstraints(
             instruction, 0, lhs_batch_dims, lhs_row_dims, lhs_col_dims));
         TF_RETURN_IF_ERROR(SetOperandBatchRowsColsLayout(
             instruction, 1, rhs_batch_dims, rhs_col_dims, rhs_row_dims));
-      } else {
+        TF_RETURN_IF_ERROR(SetDotLayout(instruction, constraints));
+      } else if (!lhs_batch_dims.empty()) {
         TF_RETURN_IF_ERROR(SetDotOperandLayout(instruction, 0, lhs_batch_dims,
                                                lhs_row_dims, lhs_col_dims));
         TF_RETURN_IF_ERROR(SetDotOperandLayout(instruction, 1, rhs_batch_dims,
                                                rhs_row_dims, rhs_col_dims));
+        TF_RETURN_IF_ERROR(SetDotLayout(instruction, constraints));
+      }
+    } else if (instruction->opcode() == HloOpcode::kTranspose) {
+      const HloInstruction* operand = instruction->operand(0);
+      if ((operand->opcode() != HloOpcode::kDot) ||
+          (operand->user_count() > 1)) {
+        continue;
       }
 
-      // Dot output is implicitly ordered (batch dims, row dims, col dims).
-      LayoutUtil::SetToDefaultLayout(&output_shape);
-      TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
+      // If possible, set layout of the dot operation such that the output of
+      // the transpose (as a bitcast) has the default layout.
+      Shape shape = operand->shape();
+      *shape.mutable_layout() =
+          LayoutUtil::MakeLayoutFromMajorToMinor(instruction->dimensions());
+
+      if (DotCanSupportShapeWithLayout(operand, shape)) {
+        TF_RETURN_IF_ERROR(
+            SetOperandLayout(shape, instruction, /*operand_no=*/0));
+      }
     } else if (instruction->opcode() == HloOpcode::kFft) {
       // cuFFT requires a dim0 major layout.
       Shape op0_shape = instruction->operand(0)->shape();
@@ -362,11 +407,11 @@ Status GpuLayoutAssignment::AddBackendConstraints(
           all_to_all));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GpuLayoutAssignment::SetDotOperandLayout(
-    HloInstruction* instruction, int64_t operand,
+    const HloInstruction* instruction, int64_t operand,
     absl::Span<const int64_t> batch_dims, absl::Span<const int64_t> row_dims,
     absl::Span<const int64_t> col_dims) {
   Shape shape = instruction->operand(operand)->shape();
@@ -388,7 +433,7 @@ Status GpuLayoutAssignment::SetDotOperandLayout(
 }
 
 Status GpuLayoutAssignment::SetOperandBatchRowsColsLayout(
-    HloInstruction* instruction, int64_t operand,
+    const HloInstruction* instruction, int64_t operand,
     absl::Span<const int64_t> batch_dims, absl::Span<const int64_t> row_dims,
     absl::Span<const int64_t> col_dims) {
   std::vector<int64_t> major_to_minor;
@@ -402,6 +447,28 @@ Status GpuLayoutAssignment::SetOperandBatchRowsColsLayout(
   *shape.mutable_layout() =
       LayoutUtil::MakeLayoutFromMajorToMinor(major_to_minor);
   return SetOperandLayout(shape, instruction, operand);
+}
+
+Status GpuLayoutAssignment::SetDotLayout(const HloInstruction* instruction,
+                                         LayoutConstraints* constraints) {
+  // If a user has requested a layout that we can support, use that.
+  for (const HloInstruction* user : instruction->users()) {
+    for (int64_t i = 0; i < user->operand_count(); ++i) {
+      if (user->operand(i) != instruction) {
+        continue;
+      }
+
+      const ShapeLayout* constraint = constraints->OperandLayout(user, i);
+      if ((constraint != nullptr) &&
+          DotCanSupportShapeWithLayout(instruction, constraint->shape())) {
+        return SetInstructionLayout(constraint->shape(), instruction);
+      }
+    }
+  }
+
+  // Otherwise, use the default layout.
+  return SetInstructionLayout(
+      LayoutUtil::GetWithDefaultLayout(instruction->shape()), instruction);
 }
 
 }  // namespace gpu

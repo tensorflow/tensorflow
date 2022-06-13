@@ -52,7 +52,7 @@ class TestEagerServiceImpl : public EagerServiceImpl {
     TF_RETURN_IF_ERROR(GetServerContext(context_id, &context));
     core::ScopedUnref context_unref(context);
     *ctx = context->Context();
-    return Status::OK();
+    return OkStatus();
   }
   Status GetTensorHandle(const uint64 context_id,
                          const RemoteTensorHandleInternal& remote_handle,
@@ -120,7 +120,7 @@ class DummyEagerClientCache : public EagerClientCache {
                    core::RefCountPtr<EagerClient>* client) override {
     client->reset(client_.get());
     client_->Ref();
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -131,7 +131,7 @@ class FakeCache : public TestWorkerCache {
   Status GetEagerClientCache(
       std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
     eager_client_cache->reset(new DummyEagerClientCache);
-    return Status::OK();
+    return OkStatus();
   }
 
   void ListWorkers(std::vector<string>* workers) const override {
@@ -149,14 +149,14 @@ class EagerServiceImplTest : public ::testing::Test {
             [](const ServerDef& server_def,
                WorkerCacheInterface** worker_cache) {
               *worker_cache = new FakeCache;
-              return Status::OK();
+              return OkStatus();
             })) {
     worker_env_.env = Env::Default();
 
     worker_env_.rendezvous_mgr = &rendezvous_mgr_;
     worker_env_.session_mgr = session_mgr_.get();
 
-    device_mgr_ = absl::make_unique<StaticDeviceMgr>(
+    device_mgr_ = std::make_unique<StaticDeviceMgr>(
         DeviceFactory::NewDevice("CPU", {}, "/job:localhost/replica:0/task:0"));
     worker_env_.local_devices = device_mgr_->ListDevices();
     worker_env_.device_mgr = device_mgr_.get();
@@ -704,7 +704,7 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
  public:
   FunctionWithRemoteInputsTest()
       : EagerServiceImplTest(), eager_service_impl_(&worker_env_) {
-    remote_device_mgr_ = absl::make_unique<StaticDeviceMgr>(
+    remote_device_mgr_ = std::make_unique<StaticDeviceMgr>(
         DeviceFactory::NewDevice("CPU", {}, "/job:localhost/replica:0/task:1"));
     context_id_ = random::New64();
   }
@@ -772,12 +772,12 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
                                  &remote_enqueue_request);
     TF_EXPECT_OK(eager_service_impl_.Enqueue(nullptr, &remote_enqueue_request,
                                              &remote_enqueue_response));
-    eager_cluster_flr_ = absl::make_unique<EagerClusterFunctionLibraryRuntime>(
+    eager_cluster_flr_ = std::make_unique<EagerClusterFunctionLibraryRuntime>(
         context_id_, ctx, device_mgr_.get());
 
     fdef_ = MatMulFunction();
     TF_ASSERT_OK(func_lib_def_.AddFunctionDef(fdef_));
-    eager_pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
+    eager_pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
         remote_device_mgr_.get(), Env::Default(), /*config=*/
         nullptr, TF_GRAPH_DEF_VERSION, &func_lib_def_, OptimizerOptions(),
         /*thread_pool=*/nullptr, eager_cluster_flr_.get(),
@@ -786,7 +786,7 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
                                    const DeviceMgr* device_mgr,
                                    Rendezvous** r) {
           *r = worker_env_.rendezvous_mgr->Find(step_id);
-          return Status::OK();
+          return OkStatus();
         }});
   }
 
@@ -876,7 +876,7 @@ TEST_F(FunctionWithRemoteInputsTest, EagerPFLRTest) {
       std::move(tensor_args),
       [&inputs](const int i, RemoteTensorHandle* handle) -> Status {
         *handle = inputs.at(i);
-        return Status::OK();
+        return OkStatus();
       });
   eager_pflr_->Run(opts, handle, args, &outputs,
                    [&status, &done](const Status& s) {
@@ -979,7 +979,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
       std::move(input_tensors),
       [&remote_handles](const int index, RemoteTensorHandle* handle) -> Status {
         *handle = remote_handles.at(index);
-        return Status::OK();
+        return OkStatus();
       });
   std::vector<FunctionRet> outputs;
 
@@ -1033,7 +1033,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
       std::move(input_tensors),
       [&remote_handles](const int index, RemoteTensorHandle* handle) -> Status {
         *handle = remote_handles.at(index);
-        return Status::OK();
+        return OkStatus();
       });
   std::vector<FunctionRet> outputs;
 
@@ -1235,7 +1235,7 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
 
   // Set RemoteMgr to ctx.
   auto remote_mgr =
-      absl::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/true, ctx);
+      std::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/true, ctx);
   TF_ASSERT_OK(ctx->InitializeRemoteWorker(
       /*remote_eager_workers=*/nullptr, /*remote_device_mgr=*/nullptr,
       /*remote_contexts=*/{}, context_id, /*context_view_id=*/0,

@@ -1340,7 +1340,7 @@ def _forward_backward_log(state_trans_log_probs, initial_state_log_probs,
         state_log_prob, axis=-1, keepdims=True)
     state_log_prob -= log_prob_sum
 
-    cum_log_sum += array_ops.squeeze(log_prob_sum) * mask
+    cum_log_sum += array_ops.squeeze(log_prob_sum, axis=[-1]) * mask
     batched_mask = array_ops.expand_dims(mask, axis=1)
     out = state_log_prob * batched_mask
     out += final_state_log_probs * (1.0 - batched_mask)

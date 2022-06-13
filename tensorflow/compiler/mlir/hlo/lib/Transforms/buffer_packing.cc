@@ -474,8 +474,8 @@ struct MemoryCountPass : MemoryCountBase<MemoryCountPass> {
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>> createBufferPackingPass(
-    unsigned window_size) {
-  return std::make_unique<BufferPackingPass>(window_size);
+    unsigned windowSize) {
+  return std::make_unique<BufferPackingPass>(windowSize);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> createMemoryCountPass() {

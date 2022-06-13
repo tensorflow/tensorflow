@@ -447,7 +447,7 @@ class TransformUtilsTest : public ::testing::Test {
           *(identity_node.mutable_input()->Add()) = original_copy.name();
           new_nodes->push_back(identity_node);
 
-          return Status::OK();
+          return OkStatus();
         },
         {}, &replaced_graph_def));
 

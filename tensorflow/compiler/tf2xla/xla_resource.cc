@@ -64,7 +64,7 @@ XlaResource::XlaResource(
     xla::XlaOp initial_value, int64_t max_array_size,
     const std::set<string>& tensor_array_gradients,
     bool tensor_array_multiple_writes_aggregate,
-    const absl::optional<ManagedStackTrace>& definition_stack_trace)
+    const std::optional<ManagedStackTrace>& definition_stack_trace)
     : kind_(kind),
       arg_num_(arg_num),
       name_(std::move(name)),
@@ -109,7 +109,7 @@ Status XlaResource::SetTypeAndShape(DataType type, const TensorShape& shape) {
   }
   type_ = type;
   shape_ = shape;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaResource::SetValue(const xla::XlaOp& value) {
@@ -120,7 +120,7 @@ Status XlaResource::SetValue(const xla::XlaOp& value) {
   }
   value_ = value;
   is_overwritten_ = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaResource::SetZeroValue(xla::XlaBuilder* builder) {
@@ -159,7 +159,7 @@ Status XlaResource::SetZeroValue(xla::XlaBuilder* builder) {
     default:
       LOG(FATAL) << "Invalid resource type";
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaResource::GetOrCreateTensorArrayGradient(const string& source,
@@ -183,7 +183,7 @@ Status XlaResource::GetOrCreateTensorArrayGradient(const string& source,
                         /*tensor_array_multiple_writes_aggregate=*/true));
   }
   *gradient_out = gradient.get();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaResource::Pack(xla::XlaOp* pack, xla::XlaBuilder* builder) const {
@@ -198,7 +198,7 @@ Status XlaResource::Pack(xla::XlaOp* pack, xla::XlaBuilder* builder) const {
     }
     *pack = xla::Tuple(builder, elems);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaResource::SetFromPack(const std::set<string>& gradient_sources,
@@ -229,7 +229,7 @@ Status XlaResource::SetFromPack(const std::set<string>& gradient_sources,
       gradient->value_ = v;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

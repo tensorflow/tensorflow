@@ -58,6 +58,8 @@ class XStatVisitor {
 
   uint64 UintValue() const { return stat_->uint64_value(); }
 
+  absl::string_view BytesValue() const { return stat_->bytes_value(); }
+
   uint64 IntOrUintValue() const {
     return ValueCase() == XStat::kUint64Value ? UintValue()
                                               : static_cast<uint64>(IntValue());
@@ -147,6 +149,10 @@ class XEventVisitor : public XStatsOwner<XEvent> {
   // REQUIRED: plane, line and event cannot be nullptr.
   XEventVisitor(const XPlaneVisitor* plane, const XLine* line,
                 const XEvent* event);
+
+  const XPlaneVisitor& Plane() const { return *plane_; }
+
+  const XEvent& RawEvent() const { return *event_; }
 
   int64_t Id() const { return event_->metadata_id(); }
 
@@ -273,6 +279,15 @@ class XPlaneVisitor : public XStatsOwner<XPlane> {
       });
     }
     bundle.JoinAll();
+  }
+
+  template <typename ForEachEventMetadataFunc>
+  void ForEachEventMetadata(
+      ForEachEventMetadataFunc&& for_each_event_metadata) {
+    for (const auto& event : plane_->event_metadata()) {
+      for_each_event_metadata(event.first,
+                              XEventMetadataVisitor(this, &event.second));
+    }
   }
 
   // Returns event metadata given its id. Returns a default value if not found.

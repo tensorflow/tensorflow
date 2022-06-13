@@ -70,7 +70,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
   Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
                                 split_providers) const override {
     TF_ASSIGN_OR_RETURN(*split_providers, GetSplitProviders(this));
-    return Status::OK();
+    return OkStatus();
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -115,7 +115,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     inputs->push_back(to_concatenate_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -132,7 +132,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(
           to_concatenate_->Get(ctx, index - input_cardinality_, out_tensors));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  protected:
@@ -146,7 +146,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
         b->AddInputDataset(ctx, to_concatenate_, &to_concatenate_graph));
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {input_graph, to_concatenate_graph}, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -169,13 +169,13 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       if (!input_impl_) {
         *end_of_sequence = true;
-        return Status::OK();
+        return OkStatus();
       }
       while (i_ < 2) {
         TF_RETURN_IF_ERROR(input_impl_->GetNext(&input_contexts_[i_],
                                                 out_tensors, end_of_sequence));
         if (!*end_of_sequence) {
-          return Status::OK();
+          return OkStatus();
         }
         if (++i_ < 2) {
           TF_RETURN_IF_ERROR(dataset()->to_concatenate_->MakeIterator(
@@ -185,7 +185,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       }
       *end_of_sequence = true;
       input_impl_.reset();
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
@@ -205,7 +205,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name(kInputImplUninitialized), ""));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -214,7 +214,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kIndex), &i_));
       if (reader->Contains(full_name(kInputImplUninitialized))) {
         input_impl_.reset();
-        return Status::OK();
+        return OkStatus();
       }
       if (!TF_PREDICT_TRUE(i_ >= 0 && i_ <= 2))
         return errors::InvalidArgument("i_ must be in range [0, 2].");
@@ -227,7 +227,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       if (input_impl_) {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
    private:

@@ -6,11 +6,9 @@
 /tensorflow/core/kernels/mkl/ @penpornk
 /tensorflow/core/kernels/sparse/ @penpornk
 /tensorflow/core/nccl/ @azaks2 @chsigg
-/tensorflow/core/platform/windows/ @mihaimaruseac
 /tensorflow/python/autograph/ @mdanatg
 /tensorflow/python/debug @caisq
 /tensorflow/python/eager @rohan100jain
-/tensorflow/python/tools/api/generator/ @mihaimaruseac
 /tensorflow/tools/docs/ @markdaoust
 /tensorflow/compiler/mlir/ @aminim
 /tensorflow/core/ir/ @aminim

@@ -23,7 +23,9 @@ namespace mlir {
 namespace tosa {
 
 struct TOSATFTFLLegalizationPipelineOptions
-    : public PassPipelineOptions<TOSATFTFLLegalizationPipelineOptions> {};
+    : public PassPipelineOptions<TOSATFTFLLegalizationPipelineOptions> {
+  bool dequantize_tfl_softmax = false;
+};
 
 // Legalizes TF dialect(s) to Tosa.
 void createTFTFLtoTOSALegalizationPipeline(

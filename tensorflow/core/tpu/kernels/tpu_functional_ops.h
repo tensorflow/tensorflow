@@ -290,7 +290,7 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
     } else {
       *remote_execution = true;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Init once flagas.

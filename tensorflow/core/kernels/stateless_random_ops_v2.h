@@ -38,7 +38,7 @@ inline Status CheckKeyCounterShape(Algorithm const& alg,
         "; got shape: ", counter_shape.DebugString(),
         ". (Note that batched counters are not supported yet.)");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace tensorflow

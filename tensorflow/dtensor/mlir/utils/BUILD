@@ -1,5 +1,6 @@
 # DTensor Internal experimental code.
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.bzl", "if_google", "if_oss")
 
 package(
     default_visibility = [
@@ -12,12 +13,16 @@ cc_library(
     name = "dtensor_mlir_passes_internal",
     srcs = [
         "collective_lowering.cc",
-        "dtensor_embedding_stub.cc",
-        "dtensor_embedding_v2_stub.cc",
         "dtensor_mlir_passes_internal.cc",
         "update_tpu_metadata.cc",
-    ],
+    ] + if_oss(
+        [
+            "dtensor_embedding_stub.cc",
+            "dtensor_embedding_v2_stub.cc",
+        ],
+    ),
     hdrs = ["dtensor_mlir_passes_internal.h"],
+    textual_hdrs = [] + if_google(["collective_lowering_google.inc"]),
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
@@ -42,6 +47,7 @@ cc_library(
         "//tensorflow/dtensor/mlir:value_utils",
         "//tensorflow/dtensor/mlir/dtensor_dialect:ir/dtensor_attributes",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",

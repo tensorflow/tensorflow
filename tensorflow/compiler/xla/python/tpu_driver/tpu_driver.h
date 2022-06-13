@@ -20,13 +20,13 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/platform/external/compat.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.pb.h"
@@ -54,7 +54,7 @@ class Event {
   // Blocks until the event completes and returns the result status.
   virtual xla::Status Await() = 0;
   // Returns an empty result if the wait times out.
-  virtual absl::optional<xla::Status> AwaitWithTimeout(
+  virtual std::optional<xla::Status> AwaitWithTimeout(
       absl::Duration duration) = 0;
 
   // If the event is already done, the callback is called immediately.
@@ -73,7 +73,7 @@ class BufferHandle {
   virtual std::shared_ptr<Event> OnReady() = 0;
 
   virtual int64_t size_in_bytes() = 0;
-  virtual absl::optional<xla::ShapeProto> shape() = 0;
+  virtual std::optional<xla::ShapeProto> shape() = 0;
 };
 
 // Represents a compiled program on the host.

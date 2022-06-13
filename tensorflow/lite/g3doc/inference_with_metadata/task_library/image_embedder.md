@@ -1,4 +1,4 @@
-# Integrate image embedders.
+# Integrate image embedders
 
 Image embedders allow embedding images into a high-dimensional feature vector
 representing the semantic meaning of an image, which can then be compared with
@@ -111,7 +111,7 @@ with your own model and test data.
 
 The `ImageEmbedder` API expects a TFLite model with optional, but strongly
 recommended
-[TFLite Model Metadata](https://www.tensorflow.org/lite/convert/metadata).
+[TFLite Model Metadata](https://www.tensorflow.org/lite/models/convert/metadata).
 
 The compatible image embedder models should meet the following requirements:
 

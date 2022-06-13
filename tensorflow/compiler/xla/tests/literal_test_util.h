@@ -18,11 +18,11 @@ limitations under the License.
 
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <random>
 #include <string>
 
 #include "absl/base/attributes.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
@@ -92,8 +92,7 @@ class LiteralTestUtil {
   static ::testing::AssertionResult Near(
       const LiteralSlice& expected, const LiteralSlice& actual,
       const ErrorSpec& error_spec,
-      absl::optional<bool> detailed_message = absl::nullopt)
-      ABSL_MUST_USE_RESULT;
+      std::optional<bool> detailed_message = std::nullopt) ABSL_MUST_USE_RESULT;
 
   // Asserts the given literal are within the given error bound of the given
   // expected values. Only supported for floating point values.
@@ -146,7 +145,7 @@ class LiteralTestUtil {
   // will be compared recursively.
   static ::testing::AssertionResult NearOrEqual(
       const LiteralSlice& expected, const LiteralSlice& actual,
-      const absl::optional<ErrorSpec>& error) ABSL_MUST_USE_RESULT;
+      const std::optional<ErrorSpec>& error) ABSL_MUST_USE_RESULT;
 
  private:
   LiteralTestUtil(const LiteralTestUtil&) = delete;

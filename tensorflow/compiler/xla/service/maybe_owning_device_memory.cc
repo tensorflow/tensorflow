@@ -22,27 +22,27 @@ namespace xla {
 tensorflow::se::DeviceMemoryBase MaybeOwningDeviceMemory::AsDeviceMemoryBase()
     const {
   if (HasOwnership()) {
-    return *absl::get<tensorflow::se::OwningDeviceMemory>(mem_);
+    return *std::get<tensorflow::se::OwningDeviceMemory>(mem_);
   } else {
-    return absl::get<tensorflow::se::DeviceMemoryBase>(mem_);
+    return std::get<tensorflow::se::DeviceMemoryBase>(mem_);
   }
 }
 
 bool MaybeOwningDeviceMemory::HasOwnership() const {
-  return absl::holds_alternative<tensorflow::se::OwningDeviceMemory>(mem_);
+  return std::holds_alternative<tensorflow::se::OwningDeviceMemory>(mem_);
 }
 
-absl::optional<tensorflow::se::OwningDeviceMemory>
+std::optional<tensorflow::se::OwningDeviceMemory>
 MaybeOwningDeviceMemory::Release() {
   if (!HasOwnership()) {
     return {};
   }
-  return std::move(absl::get<tensorflow::se::OwningDeviceMemory>(mem_));
+  return std::move(std::get<tensorflow::se::OwningDeviceMemory>(mem_));
 }
 
 const tensorflow::se::OwningDeviceMemory*
 MaybeOwningDeviceMemory::AsOwningDeviceMemory() const {
-  return HasOwnership() ? &absl::get<tensorflow::se::OwningDeviceMemory>(mem_)
+  return HasOwnership() ? &std::get<tensorflow::se::OwningDeviceMemory>(mem_)
                         : nullptr;
 }
 

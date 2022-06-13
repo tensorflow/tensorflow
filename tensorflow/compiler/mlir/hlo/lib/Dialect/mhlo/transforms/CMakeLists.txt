@@ -75,6 +75,7 @@ add_mlir_library(MhloPasses
   restrict_max_rank.cc
   shape_reification_pass.cc
   sink_constants_to_control_flow.cc
+  sparse_rewriting.cc
   test_infer_shaped_type_pass.cc
   unfuse_batch_norm.cc
   unfuse_batch_norm_pass.cc
@@ -209,6 +210,7 @@ add_mlir_library(MhloToLinalg
   LmhloDialect
   MhloDialect
   MhloTypeConversion
+  MLIRBufferization
   MLIRComplex
   MLIRIR
   MLIRPass

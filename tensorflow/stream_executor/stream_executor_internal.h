@@ -119,18 +119,11 @@ class StreamInterface {
   virtual ~StreamInterface() {}
 
   // Returns the GPU stream associated with this platform's stream
-  // implementation.
-  //
-  // WARNING: checks that the underlying platform is, in fact, CUDA or ROCm,
-  // causing a fatal error if it is not. This hack is made available solely for
-  // use from distbelief code, which temporarily has strong ties to CUDA or
-  // ROCm as a platform.
+  // implementation, or nullptr otherwise.
   virtual void* GpuStreamHack() { return nullptr; }
 
-  // See the above comment on GpuStreamHack -- this further breaks abstraction
-  // for Eigen within distbelief, which has strong ties to CUDA or ROCm as a
-  // platform, and a historical attachment to a programming model which takes a
-  // stream-slot rather than a stream-value.
+  // Returns a pointer to a GPU stream associated with this platform's stream,
+  // or a nullptr.
   virtual void** GpuStreamMemberHack() { return nullptr; }
 
  private:
@@ -382,8 +375,8 @@ class StreamExecutorInterface {
   virtual void* GpuContextHack() { return nullptr; }
 
   // Return allocator statistics.
-  virtual absl::optional<AllocatorStats> GetAllocatorStats() {
-    return absl::nullopt;
+  virtual std::optional<AllocatorStats> GetAllocatorStats() {
+    return std::nullopt;
   }
 
   // If implemented, clears the internal stats except for the `in_use` fields
@@ -396,7 +389,13 @@ class StreamExecutorInterface {
   // Clears the compilation cache from volatile memory. Returns OK if no
   // compilation cache exists or if clearing the compilation cache is
   // unsupported. Caches in non-volatile storage are unaffected.
-  virtual port::Status FlushCompilationCache() { return port::Status::OK(); }
+  virtual port::Status FlushCompilationCache() {
+    return ::tensorflow::OkStatus();
+  }
+
+  // Returns a stream allocated by this executor, or nullptr if not found.
+  // Performs linear search over alive GPU streams.
+  virtual Stream* FindAllocatedStream(void* /*gpu_stream*/) { return nullptr; }
 
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutorInterface);

@@ -788,29 +788,6 @@ def set_gcc_host_compiler_path(environ_cp):
   write_action_env_to_bazelrc('GCC_HOST_COMPILER_PATH', gcc_host_compiler_path)
 
 
-def reformat_version_sequence(version_str, sequence_count):
-  """Reformat the version string to have the given number of sequences.
-
-  For example:
-  Given (7, 2) -> 7.0
-        (7.0.1, 2) -> 7.0
-        (5, 1) -> 5
-        (5.0.3.2, 1) -> 5
-
-  Args:
-      version_str: String, the version string.
-      sequence_count: int, an integer.
-
-  Returns:
-      string, reformatted version string.
-  """
-  v = version_str.split('.')
-  if len(v) < sequence_count:
-    v = v + (['0'] * (sequence_count - len(v)))
-
-  return '.'.join(v[:sequence_count])
-
-
 def set_tf_cuda_paths(environ_cp):
   """Set TF_CUDA_PATHS."""
   ask_cuda_paths = (
@@ -844,35 +821,6 @@ def set_tf_cudnn_version(environ_cp):
                                                      ask_cudnn_version,
                                                      _DEFAULT_CUDNN_VERSION)
   environ_cp['TF_CUDNN_VERSION'] = tf_cudnn_version
-
-
-def is_cuda_compatible(lib, cuda_ver, cudnn_ver):
-  """Check compatibility between given library and cudnn/cudart libraries."""
-  ldd_bin = which('ldd') or '/usr/bin/ldd'
-  ldd_out = run_shell([ldd_bin, lib], True)
-  ldd_out = ldd_out.split(os.linesep)
-  cudnn_pattern = re.compile('.*libcudnn.so\\.?(.*) =>.*$')
-  cuda_pattern = re.compile('.*libcudart.so\\.?(.*) =>.*$')
-  cudnn = None
-  cudart = None
-  cudnn_ok = True  # assume no cudnn dependency by default
-  cuda_ok = True  # assume no cuda dependency by default
-  for line in ldd_out:
-    if 'libcudnn.so' in line:
-      cudnn = cudnn_pattern.search(line)
-      cudnn_ok = False
-    elif 'libcudart.so' in line:
-      cudart = cuda_pattern.search(line)
-      cuda_ok = False
-  if cudnn and len(cudnn.group(1)):
-    cudnn = convert_version_to_int(cudnn.group(1))
-  if cudart and len(cudart.group(1)):
-    cudart = convert_version_to_int(cudart.group(1))
-  if cudnn is not None:
-    cudnn_ok = (cudnn == cudnn_ver)
-  if cudart is not None:
-    cuda_ok = (cudart == cuda_ver)
-  return cudnn_ok and cuda_ok
 
 
 def set_tf_tensorrt_version(environ_cp):
@@ -1011,40 +959,6 @@ def set_other_cuda_vars(environ_cp):
     write_to_bazelrc('build --config=cuda_clang')
   else:
     write_to_bazelrc('build --config=cuda')
-
-
-def set_host_cxx_compiler(environ_cp):
-  """Set HOST_CXX_COMPILER."""
-  default_cxx_host_compiler = which('g++') or ''
-
-  host_cxx_compiler = prompt_loop_or_load_from_env(
-      environ_cp,
-      var_name='HOST_CXX_COMPILER',
-      var_default=default_cxx_host_compiler,
-      ask_for_var=('Please specify which C++ compiler should be used as the '
-                   'host C++ compiler.'),
-      check_success=os.path.exists,
-      error_msg='Invalid C++ compiler path. %s cannot be found.',
-  )
-
-  write_action_env_to_bazelrc('HOST_CXX_COMPILER', host_cxx_compiler)
-
-
-def set_host_c_compiler(environ_cp):
-  """Set HOST_C_COMPILER."""
-  default_c_host_compiler = which('gcc') or ''
-
-  host_c_compiler = prompt_loop_or_load_from_env(
-      environ_cp,
-      var_name='HOST_C_COMPILER',
-      var_default=default_c_host_compiler,
-      ask_for_var=('Please specify which C compiler should be used as the host '
-                   'C compiler.'),
-      check_success=os.path.exists,
-      error_msg='Invalid C compiler path. %s cannot be found.',
-  )
-
-  write_action_env_to_bazelrc('HOST_C_COMPILER', host_c_compiler)
 
 
 def system_specific_test_config(environ_cp):
@@ -1216,6 +1130,15 @@ def validate_cuda_config(environ_cp):
   return True
 
 
+def get_gcc_compiler(environ_cp):
+  gcc_env = environ_cp.get('CXX') or environ_cp.get('CC') or which('gcc')
+  if gcc_env is not None:
+    gcc_version = run_shell([gcc_env, '--version']).split()
+    if gcc_version[0] in ('gcc', 'g++'):
+      return gcc_env
+  return None
+
+
 def main():
   global _TF_WORKSPACE_ROOT
   global _TF_BAZELRC
@@ -1259,6 +1182,23 @@ def main():
 
   if is_macos():
     environ_cp['TF_NEED_TENSORRT'] = '0'
+
+  if is_ppc64le():
+    # Enable MMA Dynamic Dispatch support if 'gcc' and if linker >= 2.35
+    gcc_env = get_gcc_compiler(environ_cp)
+    if gcc_env is not None:
+
+      # Get the linker version
+      ld_version = run_shell([gcc_env, '-Wl,-version']).split()
+
+      ld_version_int = convert_version_to_int(ld_version[3])
+      if ld_version_int is None:
+        ld_version_int = convert_version_to_int(ld_version[4])
+
+      # Enable if 'ld' version >= 2.35
+      if ld_version_int >= 2035000:
+        write_to_bazelrc(
+            'build --copt="-DEIGEN_ALTIVEC_ENABLE_MMA_DYNAMIC_DISPATCH=1"')
 
   with_xla_support = environ_cp.get('TF_ENABLE_XLA', None)
   if with_xla_support is not None:

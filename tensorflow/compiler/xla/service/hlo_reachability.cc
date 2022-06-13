@@ -98,7 +98,7 @@ std::unique_ptr<HloReachabilityMap> HloReachabilityMap::BuildWithRestrictions(
                            std::vector<HloInstruction*>*)>
         add_dependencies) {
   const auto& all = computation->MakeInstructionPostOrder();
-  auto result = absl::make_unique<HloReachabilityMap>(all);
+  auto result = std::make_unique<HloReachabilityMap>(all);
 
   std::vector<HloInstruction*> inputs;
   for (const HloInstruction* hlo : all) {
@@ -112,7 +112,7 @@ std::unique_ptr<HloReachabilityMap> HloReachabilityMap::BuildWithRestrictions(
 std::unique_ptr<HloReachabilityMap> HloReachabilityMap::Build(
     const HloComputation* computation) {
   const auto& all = computation->MakeInstructionPostOrder();
-  auto result = absl::make_unique<HloReachabilityMap>(all);
+  auto result = std::make_unique<HloReachabilityMap>(all);
   auto channel_group = computation->ComputeChannelDependencies();
 
   std::vector<HloInstruction*> inputs;

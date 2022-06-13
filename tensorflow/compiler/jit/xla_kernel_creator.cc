@@ -75,7 +75,7 @@ static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
                                     input_memory_types, output_memory_types,
                                     flr->graph_def_version(), &s);
 
-  *kernel = absl::make_unique<XlaLocalLaunchBase>(
+  *kernel = std::make_unique<XlaLocalLaunchBase>(
       &construction, constant_arg_indices, resource_arg_indices, function,
       /*has_ref_vars=*/false);
   return s;

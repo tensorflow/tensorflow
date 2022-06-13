@@ -51,7 +51,7 @@ Status BroadcastOpsToSame(xla::XlaOp* lhs, xla::XlaOp* rhs) {
     TF_ASSIGN_OR_RETURN(*lhs, xla::BroadcastTo(*lhs, bcast.output_shape()));
     TF_ASSIGN_OR_RETURN(*rhs, xla::BroadcastTo(*rhs, bcast.output_shape()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

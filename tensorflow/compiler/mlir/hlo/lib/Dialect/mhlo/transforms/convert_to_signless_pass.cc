@@ -20,11 +20,14 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
@@ -41,28 +44,52 @@ namespace {
 // types. Regions are also rewritten.
 class ConvertToSignless : public ConversionPattern {
  public:
-  ConvertToSignless(TypeConverter& type_converter, MLIRContext* context)
-      : ConversionPattern(type_converter, MatchAnyOpTypeTag{}, 0, context) {}
+  ConvertToSignless(TypeConverter& typeConverter, MLIRContext* context)
+      : ConversionPattern(typeConverter, MatchAnyOpTypeTag{}, 0, context) {}
 
   LogicalResult matchAndRewrite(
       Operation* op, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final {
-    SmallVector<Type> result_types;
-    if (failed(typeConverter->convertTypes(op->getResultTypes(), result_types)))
+    SmallVector<Type> resultTypes;
+    if (failed(typeConverter->convertTypes(op->getResultTypes(), resultTypes)))
       return failure();
 
-    auto* new_op = Operation::create(op->getLoc(), op->getName(), result_types,
-                                     operands, op->getAttrs(),
-                                     op->getSuccessors(), op->getNumRegions());
-    for (auto regions : llvm::zip(op->getRegions(), new_op->getRegions())) {
+    auto* newOp = Operation::create(op->getLoc(), op->getName(), resultTypes,
+                                    operands, op->getAttrs(),
+                                    op->getSuccessors(), op->getNumRegions());
+    for (auto regions : llvm::zip(op->getRegions(), newOp->getRegions())) {
       Region& before = std::get<0>(regions);
       Region& parent = std::get<1>(regions);
       rewriter.inlineRegionBefore(before, parent, parent.end());
       if (failed(rewriter.convertRegionTypes(&parent, *typeConverter)))
         return failure();
     }
-    rewriter.insert(new_op);
-    rewriter.replaceOp(op, new_op->getResults());
+    rewriter.insert(newOp);
+    rewriter.replaceOp(op, newOp->getResults());
+    return success();
+  }
+};
+
+// A pattern that converts the type of the attribute used as an operand for
+// arith.constant
+class ConvertConstantToSignless
+    : public OpConversionPattern<arith::ConstantOp> {
+ public:
+  ConvertConstantToSignless(TypeConverter& typeConverter, MLIRContext* context)
+      : OpConversionPattern<arith::ConstantOp>(typeConverter, context) {}
+
+  LogicalResult matchAndRewrite(
+      arith::ConstantOp constantOp, arith::ConstantOpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    // We only care about unsigned integers
+    if (!adaptor.getValue().isa<DenseIntElementsAttr>()) return failure();
+
+    auto values = llvm::to_vector(
+        adaptor.getValue().cast<DenseIntElementsAttr>().getValues<APInt>());
+    auto newValues = DenseIntElementsAttr::get(
+        typeConverter->convertType(constantOp.getType()), values);
+
+    rewriter.replaceOpWithNewOp<arith::ConstantOp>(constantOp, newValues);
     return success();
   }
 };
@@ -82,9 +109,14 @@ struct ConvertToSignlessPass
     target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
       return converter.isSignatureLegal(op.getFunctionType());
     });
+    target.addDynamicallyLegalOp<arith::ConstantOp>([&](arith::ConstantOp op) {
+      return converter.isLegal(op.getType()) &&
+             converter.isLegal(op.getValue().getType());
+    });
 
     RewritePatternSet patterns(&getContext());
-    patterns.add<ConvertToSignless>(converter, &context);
+    patterns.add<ConvertToSignless, ConvertConstantToSignless>(converter,
+                                                               &context);
     // FuncOp is special as it has type encoding via attributes.
     populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
                                                                    converter);

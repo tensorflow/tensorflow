@@ -1,7 +1,7 @@
-// RUN: tfg-transforms-opt -constant-folding %s | FileCheck %s
+// RUN: tfg-transforms-opt -tfg-constant-folding %s | FileCheck %s
 
 module {
-  tfg.graph #tf_type.version<producer = 1010, min_consumer = 0> {
+  tfg.func @test(%ArgWithShape: tensor<2x3xi32> {tfg.name = "ArgWithShape"}, %ArgWithoutShape: tensor<*xi32> {tfg.name = "ArgWithoutShape"}) {
     // CHECK: , %[[CTRL:.*]] = {{.*}} name("v1")
     %VariableV2, %ctl = VariableV2 name("v1") {container = "", dtype = f32, shape = #tf_type.shape<3>, shared_name = ""} : () -> (tensor<3x!tf_type.f32ref>)
     // CHECK: , %[[CTRL1:.*]] = {{.*}} name("v2")
@@ -18,5 +18,18 @@ module {
     %Mul, %ctl_7 = Mul(%Size, %Rank) name("p1") {T = i32} : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
     // CHECK: Const [%[[SHAPE_CTRL]], %[[P1_CTRL]]] name("p2")
     %Mul_8, %ctl_9 = Mul(%Mul, %Shape) name("p2") {T = i32} : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
+    // CHECK: Const [%ArgWithShape.ctl] name("arg_shape") {{.*}} -> (tensor<2xi32>)
+    %ArgShape, %ctl_10 = Shape(%ArgWithShape) name("arg_shape") {T = i32, out_type = i32} : (tensor<2x3xi32>) -> (tensor<*xi32>)
+    // CHECK: Shape{{.*}} name("arg_without_shape")
+    %ArgShape_1, %ctl_11 = Shape(%ArgWithoutShape) name("arg_without_shape") {T = i32, out_type = i32} : (tensor<*xi32>) -> (tensor<*xi32>)
+    // CHECK: Const [%ArgWithShape.ctl] name("arg_size") {{.*}} -> (tensor<i32>)
+    %ArgSize, %ctl_12 = Size(%ArgWithShape) name("arg_size") {T = i32, out_type = i32} : (tensor<2x3xi32>) -> (tensor<*xi32>)
+    // CHECK: Size{{.*}} name("arg_without_size")
+    %ArgSize_1, %ctl_13 = Size(%ArgWithoutShape) name("arg_without_size") {T = i32, out_type = i32} : (tensor<*xi32>) -> (tensor<*xi32>)
+    // CHECK: Const [%ArgWithShape.ctl] name("arg_rank") {{.*}} -> (tensor<i32>)
+    %ArgRank, %ctl_14 = Rank(%ArgWithShape) name("arg_rank") {T=f32} : (tensor<2x3xi32>) -> (tensor<*xi32>)
+    // CHECK: Rank{{.*}} name("arg_without_rank")
+    %ArgRank_1, %ctl_15 = Rank(%ArgWithoutShape) name("arg_without_rank") {T=f32} : (tensor<*xi32>) -> (tensor<*xi32>)
+    tfg.return
   }
 }

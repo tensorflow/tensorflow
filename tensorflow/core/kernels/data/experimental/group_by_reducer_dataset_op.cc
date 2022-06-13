@@ -191,7 +191,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
            {"Tfinalize_func_other_arguments",
             finalize_func_other_arguments_types_attr}},
           output));
-      return Status::OK();
+      return OkStatus();
     }
 
    private:
@@ -211,7 +211,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
             ctx, &instantiated_reduce_func_));
         TF_RETURN_IF_ERROR(dataset()->captured_finalize_func_->Instantiate(
             ctx, &instantiated_finalize_func_));
-        return Status::OK();
+        return OkStatus();
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -272,12 +272,12 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
 
         if (keys_index_ == keys_.size()) {
           *end_of_sequence = true;
-          return Status::OK();
+          return OkStatus();
         }
         TF_RETURN_IF_ERROR(instantiated_finalize_func_->RunWithBorrowedArgs(
             ctx, states_[keys_[keys_index_++]], out_tensors, model_node()));
         *end_of_sequence = false;
-        return Status::OK();
+        return OkStatus();
       }
 
      protected:
@@ -341,7 +341,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
           }
         }
 
-        return Status::OK();
+        return OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -398,7 +398,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
           }
         }
 
-        return Status::OK();
+        return OkStatus();
       }
 
      private:

@@ -8,7 +8,6 @@ package(default_visibility = ["//tensorflow/stream_executor:__subpackages__"])
 cc_library(
     name = "platform",
     textual_hdrs = ["initialize.h"],
-    deps = ["//tensorflow/core:lib"],
 )
 
 cc_library(

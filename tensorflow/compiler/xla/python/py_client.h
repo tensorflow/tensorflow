@@ -17,11 +17,11 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_PY_CLIENT_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -195,13 +195,13 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   StatusOr<XlaOp> EmitPythonCallbackFromDescriptor(
       XlaBuilder& builder, uint64_t descriptor,
       absl::Span<XlaOp const> operands, absl::Span<Shape const> result_shapes,
-      absl::optional<std::vector<Shape>> operand_layouts, bool has_side_effect);
+      std::optional<std::vector<Shape>> operand_layouts, bool has_side_effect);
   // Deprecated; please switch to using `GetEmitPythonCallbackDescriptor`
   // and then emitting a `CustomCall` op instead.
   StatusOr<std::pair<XlaOp, pybind11::object>> EmitPythonCallback(
       pybind11::function callable, XlaBuilder& builder,
       absl::Span<XlaOp const> operands, absl::Span<Shape const> result_shapes,
-      absl::optional<std::vector<Shape>> operand_layouts, bool has_side_effect);
+      std::optional<std::vector<Shape>> operand_layouts, bool has_side_effect);
 
  private:
   friend class PyBuffer;

@@ -12250,6 +12250,13 @@ op {
       s: "AUTO"
     }
   }
+  attr {
+    name: "cross_trainer_cache_options"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -12345,6 +12352,13 @@ op {
     type: "string"
     default_value {
       s: "AUTO"
+    }
+  }
+  attr {
+    name: "cross_trainer_cache_options"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
   is_stateful: true
@@ -12454,6 +12468,13 @@ op {
   attr {
     name: "uncompress_fn"
     type: "func"
+  }
+  attr {
+    name: "cross_trainer_cache_options"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -57475,6 +57496,13 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  attr {
+    name: "tpu_compile_options_proto"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }

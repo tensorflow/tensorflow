@@ -29,38 +29,31 @@ namespace mlir {
 namespace mhlo {
 namespace {
 
-DenseIntElementsAttr Make1DElementsAttr(OpBuilder &b,
-                                        ArrayRef<int64_t> integers) {
-  auto type = RankedTensorType::get({static_cast<int64_t>(integers.size())},
-                                    b.getI64Type());
-  return DenseIntElementsAttr::get(type, integers);
-}
-
 struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
   using OpRewritePattern<EinsumOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(EinsumOp einsum,
                                 PatternRewriter &rewriter) const override {
     StringRef equation = einsum.einsum_config();
-    SmallVector<char> lhs_tokens, rhs_tokens;
-    SmallVector<char> result_tokens;
+    SmallVector<char> lhsTokens, rhsTokens;
+    SmallVector<char> resultTokens;
     size_t index = 0;
     enum EquationVariable { kIsLhs, kIsRhs, kIsResult };
-    EquationVariable current_variable = kIsLhs;
+    EquationVariable currentVariable = kIsLhs;
     while (index < equation.size()) {
       if (std::isalpha(equation[index])) {
-        if (current_variable == kIsLhs) {
-          lhs_tokens.push_back(equation[index]);
-        } else if (current_variable == kIsRhs) {
-          rhs_tokens.push_back(equation[index]);
+        if (currentVariable == kIsLhs) {
+          lhsTokens.push_back(equation[index]);
+        } else if (currentVariable == kIsRhs) {
+          rhsTokens.push_back(equation[index]);
         } else {
-          result_tokens.push_back(equation[index]);
+          resultTokens.push_back(equation[index]);
         }
       } else if (equation.substr(index, 1).contains(",")) {
-        current_variable = kIsRhs;
+        currentVariable = kIsRhs;
       } else if ((index < (equation.size() - 1)) &&
                  (equation.substr(index, 2).contains("->"))) {
-        current_variable = kIsResult;
+        currentVariable = kIsResult;
         index++;
       } else {
         return einsum.emitError("unexpected character ")
@@ -69,107 +62,105 @@ struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
       index++;
     }
 
-    auto lhs_type = einsum.lhs().getType().cast<RankedTensorType>();
-    auto rhs_type = einsum.rhs().getType().cast<RankedTensorType>();
-    assert(static_cast<int64_t>(lhs_tokens.size()) == lhs_type.getRank());
-    assert(static_cast<int64_t>(rhs_tokens.size()) == rhs_type.getRank());
+    auto lhsType = einsum.lhs().getType().cast<RankedTensorType>();
+    auto rhsType = einsum.rhs().getType().cast<RankedTensorType>();
+    assert(static_cast<int64_t>(lhsTokens.size()) == lhsType.getRank());
+    assert(static_cast<int64_t>(rhsTokens.size()) == rhsType.getRank());
 
-    auto collect_operand_dims = [&](RankedTensorType operand_type,
-                                    SmallVector<char> operand_tokens,
-                                    SmallVector<char> others,
-                                    SmallVectorImpl<int64_t> &contracting_dims,
-                                    SmallVectorImpl<int64_t> &batching_dims,
-                                    SmallVector<char> &dot_result_tokens,
-                                    SmallVector<int64_t> &dot_result_shape) {
-      llvm::SmallDenseSet<char> others_set(others.begin(), others.end());
-      llvm::SmallDenseSet<char> result_tokens_set(result_tokens.begin(),
-                                                  result_tokens.end());
-      for (const auto &en : llvm::enumerate(operand_tokens)) {
-        bool is_result_token = result_tokens_set.contains(en.value());
-        bool is_other_token = others_set.contains(en.value());
+    auto collectOperandDims =
+        [resultTokens](
+            RankedTensorType operandType, SmallVector<char> operandTokens,
+            SmallVector<char> others, SmallVectorImpl<int64_t> &contractingDims,
+            SmallVectorImpl<int64_t> &batchingDims,
+            SmallVector<char> &dotResultTokens,
+            SmallVector<int64_t> &dotResultShape) {
+          llvm::SmallDenseSet<char> othersSet(others.begin(), others.end());
+          llvm::SmallDenseSet<char> resultTokensSet(resultTokens.begin(),
+                                                    resultTokens.end());
+          for (const auto &en : llvm::enumerate(operandTokens)) {
+            bool isResultToken = resultTokensSet.contains(en.value());
+            bool isOtherToken = othersSet.contains(en.value());
 
-        if (!is_result_token) {
-          contracting_dims.push_back(en.index());
-        } else if (is_other_token) {
-          batching_dims.push_back(en.index());
-        } else {
-          dot_result_tokens.push_back(en.value());
-          dot_result_shape.push_back(operand_type.getShape()[en.index()]);
-        }
-      }
-    };
+            if (!isResultToken) {
+              contractingDims.push_back(en.index());
+            } else if (isOtherToken) {
+              batchingDims.push_back(en.index());
+            } else {
+              dotResultTokens.push_back(en.value());
+              dotResultShape.push_back(operandType.getShape()[en.index()]);
+            }
+          }
+        };
     // Indices of batch and contracting dims, relative to each operand's
     // dimensions.
-    SmallVector<int64_t> lhs_contracting_dims, lhs_batching_dims,
-        rhs_contracting_dims, rhs_batching_dims;
+    SmallVector<int64_t> lhsContractingDims, lhsBatchingDims,
+        rhsContractingDims, rhsBatchingDims;
     // Tokens representing the natural order of the dot_general op (i.e.
     // the lhs non-contracting followed by rhs non-contracting tokens).
-    SmallVector<char> dot_result_tokens;
-    SmallVector<int64_t> dot_result_shape;
+    SmallVector<char> dotResultTokens;
+    SmallVector<int64_t> dotResultShape;
 
-    collect_operand_dims(lhs_type, lhs_tokens, rhs_tokens, lhs_contracting_dims,
-                         lhs_batching_dims, dot_result_tokens,
-                         dot_result_shape);
-    collect_operand_dims(rhs_type, rhs_tokens, lhs_tokens, rhs_contracting_dims,
-                         rhs_batching_dims, dot_result_tokens,
-                         dot_result_shape);
+    collectOperandDims(lhsType, lhsTokens, rhsTokens, lhsContractingDims,
+                       lhsBatchingDims, dotResultTokens, dotResultShape);
+    collectOperandDims(rhsType, rhsTokens, lhsTokens, rhsContractingDims,
+                       rhsBatchingDims, dotResultTokens, dotResultShape);
 
     // Prepend batch tokens.
-    for (const auto &it : llvm::enumerate(lhs_batching_dims)) {
-      char batching_token = lhs_tokens[it.value()];
-      int64_t batching_shape_dim = lhs_type.getShape()[it.value()];
-      dot_result_tokens.insert(dot_result_tokens.begin() + it.index(),
-                               batching_token);
-      dot_result_shape.insert(dot_result_shape.begin() + it.index(),
-                              batching_shape_dim);
+    for (const auto &it : llvm::enumerate(lhsBatchingDims)) {
+      char batchingToken = lhsTokens[it.value()];
+      int64_t batchingShapeDim = lhsType.getShape()[it.value()];
+      dotResultTokens.insert(dotResultTokens.begin() + it.index(),
+                             batchingToken);
+      dotResultShape.insert(dotResultShape.begin() + it.index(),
+                            batchingShapeDim);
     }
 
     // Lowering to dot_general does not support a mismatch between the number
     // of result dims and the number of non-contracting dims.
-    if (dot_result_tokens.size() != result_tokens.size()) {
+    if (dotResultTokens.size() != resultTokens.size()) {
       return rewriter.notifyMatchFailure(einsum,
                                          "rank reducing einsum not supported");
     }
 
     // Generate a permutation sequence based on result tokens.
-    SmallVector<int64_t> result_perms;
-    bool is_natural_order = true;
-    for (char result_token : result_tokens) {
-      auto *found_it = std::find(dot_result_tokens.begin(),
-                                 dot_result_tokens.end(), result_token);
-      if (found_it == dot_result_tokens.end()) {
+    SmallVector<int64_t> resultPerms;
+    bool isNaturalOrder = true;
+    for (char resultToken : resultTokens) {
+      auto *foundIt = std::find(dotResultTokens.begin(), dotResultTokens.end(),
+                                resultToken);
+      if (foundIt == dotResultTokens.end()) {
         return rewriter.notifyMatchFailure(
             einsum, "result token not found in operands");
       }
-      auto result_index = std::distance(dot_result_tokens.begin(), found_it);
-      if (result_perms.empty()) {
-        if (result_index != 0) {
-          is_natural_order = false;
+      auto resultIndex = std::distance(dotResultTokens.begin(), foundIt);
+      if (resultPerms.empty()) {
+        if (resultIndex != 0) {
+          isNaturalOrder = false;
         }
-      } else if (result_index != (result_perms.back() + 1)) {
-        is_natural_order = false;
+      } else if (resultIndex != (resultPerms.back() + 1)) {
+        isNaturalOrder = false;
       }
-      result_perms.push_back(result_index);
+      resultPerms.push_back(resultIndex);
     }
 
     // Emit the dot_general, using its native result ordering.
-    auto dot_general_result_type = RankedTensorType::get(
-        ArrayRef<int64_t>(dot_result_shape), lhs_type.getElementType());
-    auto dim_numbers = mhlo::DotDimensionNumbersAttr::get(
-        rewriter.getContext(), lhs_batching_dims, rhs_batching_dims,
-        lhs_contracting_dims, rhs_contracting_dims);
-    auto dot_general_op =
-        rewriter.create<DotGeneralOp>(einsum.getLoc(), dot_general_result_type,
-                                      einsum.lhs(), einsum.rhs(), dim_numbers,
+    auto dotGeneralResultType = RankedTensorType::get(
+        ArrayRef<int64_t>(dotResultShape), lhsType.getElementType());
+    auto dimNumbers = mhlo::DotDimensionNumbersAttr::get(
+        rewriter.getContext(), lhsBatchingDims, rhsBatchingDims,
+        lhsContractingDims, rhsContractingDims);
+    auto dotGeneralOp =
+        rewriter.create<DotGeneralOp>(einsum.getLoc(), dotGeneralResultType,
+                                      einsum.lhs(), einsum.rhs(), dimNumbers,
                                       /*precision_config=*/ArrayAttr{});
 
-    if (is_natural_order) {
+    if (isNaturalOrder) {
       // The dot_general is already in an appropriate result order.
-      rewriter.replaceOp(einsum, ValueRange{dot_general_op});
+      rewriter.replaceOp(einsum, ValueRange{dotGeneralOp});
     } else {
       // Generate a transpose.
       rewriter.replaceOpWithNewOp<TransposeOp>(
-          einsum, dot_general_op, rewriter.getI64TensorAttr(result_perms));
+          einsum, dotGeneralOp, rewriter.getI64TensorAttr(resultPerms));
     }
     return success();
   }

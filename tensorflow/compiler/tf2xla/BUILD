@@ -78,6 +78,13 @@ tf_cc_binary(
 )
 
 tf_proto_library(
+    name = "tf2xla_support_proto",
+    srcs = ["support.proto"],
+    cc_api_version = 2,
+    visibility = ["//visibility:public"],
+)
+
+tf_proto_library(
     name = "tf2xla_proto",
     srcs = ["tf2xla.proto"],
     cc_api_version = 2,
@@ -690,7 +697,6 @@ tf_cc_test(
 
 cc_library(
     name = "tf2xla_defs",
-    srcs = ["tf2xla_defs.cc"],
     hdrs = ["tf2xla_defs.h"],
     visibility = [":friends"],
     deps = [
@@ -906,6 +912,7 @@ cuda_py_test(
     xla_enable_strict_auto_jit = False,
     deps = [
         ":test_ops_for_light_outside_compilation",
+        "//tensorflow/compiler/mlir/python/mlir_wrapper:filecheck_wrapper",
     ] + if_google([":light_outside_compilation_kernels_for_test"]),
 )
 

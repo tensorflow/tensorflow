@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/executable.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/dump.h"
@@ -24,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -48,8 +48,8 @@ Status ExecutionInput::SetDynamicShape(Shape dynamic_shape) {
         "Cannot set dynamic shape: ", input_shape.DebugString(), " vs. ",
         dynamic_shape.DebugString());
   }
-  dynamic_shape_ = absl::make_unique<Shape>(std::move(dynamic_shape));
-  return Status::OK();
+  dynamic_shape_ = std::make_unique<Shape>(std::move(dynamic_shape));
+  return OkStatus();
 }
 
 void ExecutionInput::SetUnownedBuffer(const ShapeIndex& index,
@@ -303,7 +303,7 @@ void Executable::MarkToBeReleasedArguments(absl::Span<ExecutionInput> arguments,
                                            ExecutionOutput& result) {
   for (ExecutionInput& argument : arguments) {
     for (auto& index_buffer : *argument.MutableBuffers()) {
-      if (absl::optional<se::OwningDeviceMemory> maybe_owning_buffer =
+      if (std::optional<se::OwningDeviceMemory> maybe_owning_buffer =
               index_buffer.second.Release()) {
         result.AddToBeReleased(std::move(*maybe_owning_buffer));
       }

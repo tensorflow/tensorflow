@@ -594,6 +594,37 @@ TEST_F(RaggedTensorFromVariantKernelTest, RaggedValuesRankMismatch) {
                                "Rank of values must match for all components"));
 }
 
+TEST_F(RaggedTensorFromVariantKernelTest, OutputRaggedRank0) {
+  auto variant_component_1 =
+      CreateVariantFromRagged<int, int64_t>({}, TensorShape({4}), {0, 1, 2, 3});
+  auto variant_component_2 =
+      CreateVariantFromRagged<int, int64_t>({}, TensorShape({4}), {4, 5, 6, 7});
+  int input_ragged_rank = -1;
+  int output_ragged_rank = 0;
+
+  Tensor expected_values(DT_INT32, TensorShape({2, 4}));
+  test::FillValues<int>(&expected_values, {0, 1, 2, 3, 4, 5, 6, 7});
+
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
+      input_ragged_rank, output_ragged_rank, TensorShape({2}),
+      {variant_component_1, variant_component_2});
+  TF_ASSERT_OK(RunOpKernel());
+  test::ExpectTensorEqual<int>(*GetOutput(0), expected_values);
+}
+
+TEST_F(RaggedTensorFromVariantKernelTest, OutputRaggedRank0Empty) {
+  int input_ragged_rank = -1;
+  int output_ragged_rank = 0;
+
+  Tensor expected_values(DT_INT32, TensorShape({0}));
+  test::FillValues<int>(&expected_values, {});
+
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
+      input_ragged_rank, output_ragged_rank, TensorShape({0}), {});
+  TF_ASSERT_OK(RunOpKernel());
+  test::ExpectTensorEqual<int>(*GetOutput(0), expected_values);
+}
+
 TEST_F(RaggedTensorFromVariantKernelTest, ShapeFnTest) {
   ShapeInferenceTestOp op("RaggedTensorFromVariant");
 

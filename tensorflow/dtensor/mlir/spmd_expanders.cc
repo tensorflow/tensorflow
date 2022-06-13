@@ -255,7 +255,8 @@ REGISTER_SPMD(Unpack, TF::UnpackOp, UnpackSPMDExpander);
 REGISTER_SPMD(Reshape, TF::ReshapeOp, ReshapeSPMDExpander);
 REGISTER_SPMD(Transpose, TF::TransposeOp, TransposeSPMDExpander);
 REGISTER_SPMD(InvertPermutation, TF::InvertPermutationOp,
-              InvertPermutationSPMDExpander);
+              ReplicatedOpSPMDExpander,
+              /*relayout_when_sharded=*/true);
 
 // Pad
 REGISTER_SPMD(Pad, TF::PadOp, PadSPMDExpander);
@@ -378,8 +379,8 @@ REGISTER_SPMD(DTensorShardedPrefix, TF::DTensorShardedPrefixOp,
 
 // DTensor Virtual ops
 REGISTER_SPMD(Relayout, TF::RelayoutOp, RelayoutSPMDExpander);
-REGISTER_SPMD(DTensorSe, TF::DTensorSend, DTensorSendSPMDExpander);
-REGISTER_SPMD(DTensorRe, TF::DTensorRecv, DTensorRecvSPMDExpander);
+REGISTER_SPMD(DTensorSend, TF::DTensorSend, DTensorSendSPMDExpander);
+REGISTER_SPMD(DTensorRecv, TF::DTensorRecv, DTensorRecvSPMDExpander);
 
 // TopKV2
 REGISTER_SPMD(TopKV2, TF::TopKV2Op, TopKSPMDExpander);

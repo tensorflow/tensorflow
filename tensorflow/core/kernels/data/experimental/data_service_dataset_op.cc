@@ -15,10 +15,12 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/experimental/data_service_dataset_op.h"
 
 #include <algorithm>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <queue>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -89,6 +91,8 @@ namespace data {
 /* static */ constexpr const char* const DataServiceDatasetOp::kOutputShapes;
 /* static */ constexpr const char* const DataServiceDatasetOp::kUncompress;
 /* static */ constexpr const char* const DataServiceDatasetOp::kUncompressFn;
+/* static */ constexpr const char* const
+    DataServiceDatasetOp::kCrossTrainerCacheOptions;
 
 namespace {
 // Default interval between task list refreshes.
@@ -181,6 +185,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           IterationCounter* iteration_counter, bool owns_resource,
           ResourceHandle iteration_counter_handle,
           std::unique_ptr<CapturedFunction> captured_uncompress_func,
+          const absl::optional<CrossTrainerCacheOptions>&
+              cross_trainer_cache_options,
           const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes)
       : DatasetBase(DatasetContext(ctx)),
@@ -203,6 +209,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         iteration_counter_handle_(iteration_counter_handle),
         resource_mgr_(ctx->resource_manager()),
         captured_uncompress_func_(std::move(captured_uncompress_func)),
+        cross_trainer_cache_options_(cross_trainer_cache_options),
         output_types_(output_types),
         output_shapes_(output_shapes) {}
 
@@ -271,7 +278,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->clear();
-    return Status::OK();
+    return OkStatus();
   }
 
  protected:
@@ -359,36 +366,48 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(captured_uncompress_func_->AddToGraph(
           ctx, b, &uncompress_arguments, &uncompress_arguments_types));
     }
+
+    // Attr: cross_trainer_cache_options
+    AttrValue cross_trainer_cache_options_attr;
+    std::string serialized_cross_trainer_cache_options;
+    if (cross_trainer_cache_options_.has_value()) {
+      serialized_cross_trainer_cache_options =
+          cross_trainer_cache_options_->SerializeAsString();
+    }
+    b->BuildAttrValue(serialized_cross_trainer_cache_options,
+                      &cross_trainer_cache_options_attr);
+    attrs.push_back(
+        {kCrossTrainerCacheOptions, cross_trainer_cache_options_attr});
     return b->AddDataset(this, inputs, attrs, output);
   }
 
  private:
   class Iterator : public DatasetIterator<Dataset> {
    public:
-    explicit Iterator(const Params& params, int64_t iterator_index)
+    explicit Iterator(const Params& params, int64_t repetition)
         : DatasetIterator<Dataset>(params),
-          iterator_index_(iterator_index),
+          repetition_(repetition),
           max_outstanding_requests_(params.dataset->max_outstanding_requests_) {
     }
 
     ~Iterator() override {
-      VLOG(1) << "Destroying data service dataset iterator for job id "
-              << job_client_id_;
+      VLOG(1) << "Destroying data service dataset iterator for iteration id "
+              << iteration_client_id_;
       CancelThreads();
       if (deregister_fn_) deregister_fn_();
       task_thread_manager_.reset();
       if (initialized_) {
-        Status s = dispatcher_->ReleaseJobClient(job_client_id_);
+        Status s = dispatcher_->ReleaseIterationClient(iteration_client_id_);
         if (!s.ok()) {
-          LOG(WARNING) << "Failed to release job client id: " << s;
+          LOG(WARNING) << "Failed to release iteration client id: " << s;
         }
       }
       for (auto& worker_thread : worker_threads_) {
         worker_thread.reset();
       }
       DeleteLocalWorkerTasks();
-      VLOG(1) << "Destroyed data service dataset iterator for job id "
-              << job_client_id_;
+      VLOG(1) << "Destroyed data service dataset iterator for iteration id "
+              << iteration_client_id_;
     }
 
     Status Initialize(IteratorContext* ctx) override {
@@ -401,25 +420,33 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       dispatcher_ = std::make_unique<DataServiceDispatcherClient>(
           dataset()->address_, dataset()->protocol_);
       int64_t deadline_micros = kint64max;
-      absl::optional<JobKeyDef> key;
+      std::optional<std::string> job_name;
       if (!dataset()->job_name_.empty()) {
-        key.emplace();
-        key.value().set_name(std::string(dataset()->job_name_));
-        key.value().set_iteration(iterator_index_);
+        job_name = dataset()->job_name_;
       }
       TF_RETURN_IF_ERROR(grpc_util::Retry(
           [&]() {
             return dispatcher_->GetOrCreateJob(
-                dataset()->dataset_id_, dataset()->processing_mode_, key,
-                dataset()->num_consumers_, dataset()->target_workers_,
-                job_client_id_);
+                dataset()->dataset_id_, dataset()->processing_mode_, job_name,
+                dataset()->num_consumers_,
+                dataset()->cross_trainer_cache_options_.has_value(),
+                dataset()->target_workers_, job_id_);
           },
           /*description=*/
           strings::StrCat("get or create job with dispatcher at ",
                           dataset()->address_),
           deadline_micros));
+      TF_RETURN_IF_ERROR(grpc_util::Retry(
+          [&]() {
+            return dispatcher_->GetOrCreateIteration(job_id_, repetition_,
+                                                     iteration_client_id_);
+          },
+          /*description=*/
+          strings::StrCat("get or create iteration with dispatcher at ",
+                          dataset()->address_),
+          deadline_micros));
       initialized_ = true;
-      return Status::OK();
+      return OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -445,7 +472,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         if (results_.empty()) {
           *end_of_sequence = true;
           VLOG(3) << "Returning from GetNext with end_of_sequence";
-          return Status::OK();
+          return OkStatus();
         }
         result = PopNextResult();
         worker_thread_cv_.notify_one();
@@ -462,7 +489,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         out_tensors->swap(result.element);
       }
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
@@ -568,7 +595,39 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             "Coordinated reads require non-local workers, but `target_workers` "
             "is \"LOCAL\".");
       }
-      return Status::OK();
+      if (dataset()->cross_trainer_cache_options_.has_value()) {
+        TF_RETURN_IF_ERROR(ValidateCrossTrainerCache());
+      }
+      return OkStatus();
+    }
+
+    Status ValidateCrossTrainerCache() const {
+      if (!dataset()->cross_trainer_cache_options_.has_value()) {
+        return OkStatus();
+      }
+      if (dataset()->job_name_.empty()) {
+        return errors::InvalidArgument(
+            "Cross-trainer caching requires named jobs. Got empty `job_name`.");
+      }
+      if (dataset()->metadata_.cardinality() != kInfiniteCardinality) {
+        return errors::InvalidArgument(
+            "Cross-trainer caching requires the input dataset to be infinite. "
+            "Got input with cardinality ",
+            dataset()->metadata_.cardinality());
+      }
+      if (repetition_ > 1) {
+        return errors::InvalidArgument(
+            "Cross-trainer caching requires infinite datasets and disallows "
+            "multiple repetitions of the same dataset. Got repetition ",
+            repetition_);
+      }
+      if (StrictRoundRobin() && dataset()->num_consumers_.has_value()) {
+        return errors::InvalidArgument(
+            "Cross-trainer caching does not support coordinated reads. "
+            "Got number of coordinated consumers: ",
+            dataset()->num_consumers_.value());
+      }
+      return OkStatus();
     }
 
     // Returns whether the iterator has finished and should return.
@@ -578,8 +637,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     // Returns whether the iterator has more data.
     bool ShouldWaitForNext() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      if (should_finish_job_) {
-        return !job_finished_;
+      if (should_finish_iteration_) {
+        return !iteration_finished_;
       }
       return tasks_.empty() || finished_tasks_ < tasks_.size();
     }
@@ -685,11 +744,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       round_robin_round_limit_ = round;
     }
 
-    void UpdateJobFinished(bool job_finished) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      if (!job_finished) {
+    void UpdateIterationFinished(bool iteration_finished)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (!iteration_finished) {
         return;
       }
-      job_finished_ = true;
+      iteration_finished_ = true;
       get_next_cv_.notify_all();
       worker_thread_cv_.notify_all();
     }
@@ -712,12 +772,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           DCHECK_EQ(next_task_index_, 0);
         }
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     void Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
       ClientHeartbeatRequest req;
-      req.set_job_client_id(job_client_id_);
+      req.set_iteration_client_id(iteration_client_id_);
       if (StrictRoundRobin()) {
         mutex_lock l(mu_);
         req.set_current_round(current_round_);
@@ -730,8 +790,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       if (!s.ok()) {
         if (IsPreemptedError(s)) {
           LOG(WARNING)
-              << "Failed to heartbeat to dispatcher from job client id "
-              << job_client_id_
+              << "Failed to heartbeat to dispatcher from iteration client id "
+              << iteration_client_id_
               << ". Dispatcher address: " << dataset()->address_
               << ". Error: " << s;
           return;
@@ -741,7 +801,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         get_next_cv_.notify_all();
       }
       mutex_lock l(mu_);
-      UpdateJobFinished(resp.job_finished());
+      UpdateIterationFinished(resp.iteration_finished());
       if (resp.optional_block_round_case() ==
           ClientHeartbeatResponse::kBlockRound) {
         TryBlockRound(resp.block_round());
@@ -759,7 +819,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       for (auto& task : resp.task_info()) {
         task_id_to_task[task.task_id()] = task;
       }
-      if (job_finished_) {
+      if (iteration_finished_) {
         return;
       }
 
@@ -792,7 +852,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         if (!ShouldReadFromTask(task)) {
           VLOG(3) << "Skipping untargeted worker task " << task.task_id();
-          should_finish_job_ = false;
+          should_finish_iteration_ = false;
           continue;
         }
         Status s = AddTask(it->second);
@@ -1012,6 +1072,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         req.set_round_index(task.round);
         req.set_allow_skip(true);
       }
+      if (dataset()->cross_trainer_cache_options_) {
+        req.set_trainer_id(
+            dataset()->cross_trainer_cache_options_->trainer_id());
+      }
       return task.worker->GetElement(req, result);
     }
 
@@ -1088,11 +1152,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         result.ready = true;
         result.skip = true;
         get_next_cv_.notify_all();
-        return Status::OK();
+        return OkStatus();
       }
       VLOG(1) << "Failed to remove task for worker "
               << task.info.worker_address();
-      return Status::OK();
+      return OkStatus();
     }
 
     Status GetElement(Task* task, int64_t deadline_micros, bool enqueue_result,
@@ -1119,7 +1183,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           TF_RETURN_IF_ERROR(MaybeRemoveTask(*task, deadline_micros, result));
           mutex_lock l(mu_);
           if (result.skip) {
-            return Status::OK();
+            return OkStatus();
           }
         }
         int64_t backoff_until = std::min(
@@ -1133,7 +1197,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
       ProcessGetElementResponse(enqueue_result, get_element_result, result,
                                 *task);
-      return Status::OK();
+      return OkStatus();
     }
 
     bool ResultReady() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -1152,15 +1216,15 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     std::string DebugString() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       return absl::Substitute(
-          "results_ { size: $0 front.ready: $1 } job_finished_: $2 "
+          "results_ { size: $0 front.ready: $1 } iteration_finished_: $2 "
           "tasks { size: $3 } finished_tasks_: $4 "
           "num_running_worker_threads_: $5",
           results_.size(), !results_.empty() && results_.front().ready,
-          job_finished_, tasks_.size(), finished_tasks_,
+          iteration_finished_, tasks_.size(), finished_tasks_,
           num_running_worker_threads_);
     }
 
-    const int64_t iterator_index_;
+    const int64_t repetition_;
 
     mutable mutex mu_;
     condition_variable get_next_cv_ TF_GUARDED_BY(mu_);
@@ -1202,7 +1266,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     // A status to be returned from the next call to `GetNext`. This is set by
     // asynchronous threads when they encounter errors.
-    Status status_ TF_GUARDED_BY(mu_) = Status::OK();
+    Status status_ TF_GUARDED_BY(mu_) = OkStatus();
     // A queue of results for `GetElement` requests to read from. When doing
     // strict round robin reads, the queue will contain placeholder results with
     // their `Result::ready` field false until their data has been retrieved
@@ -1212,12 +1276,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     bool initialized_ = false;
     // Set once in Initialize().
-    int64_t job_client_id_;
+    int64_t job_id_;
+    int64_t iteration_client_id_;
     std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
     int64_t get_next_index_ TF_GUARDED_BY(mu_) = 0;
 
-    bool job_finished_ = false;
-    bool should_finish_job_ TF_GUARDED_BY(mu_) = true;
+    bool iteration_finished_ = false;
+    bool should_finish_iteration_ TF_GUARDED_BY(mu_) = true;
 
     // The set of worker UIDs that we have already recorded metrics for.
     absl::flat_hash_set<int64_t> worker_uids_ TF_GUARDED_BY(mu_);
@@ -1245,6 +1310,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   const ResourceHandle iteration_counter_handle_;
   ResourceMgr* const resource_mgr_;  // Not owned
   const std::unique_ptr<CapturedFunction> captured_uncompress_func_;
+  const absl::optional<CrossTrainerCacheOptions> cross_trainer_cache_options_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
 };
@@ -1294,6 +1360,11 @@ DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
     params.use_inter_op_parallelism = true;
     OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kUncompressFn, params,
                                                  &uncompress_fn_));
+  }
+
+  if (ctx->HasAttr(kCrossTrainerCacheOptions)) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kCrossTrainerCacheOptions,
+                                     &seriazlied_cross_trainer_cache_options_));
   }
 }
 
@@ -1386,7 +1457,7 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
                        container, name, &iteration_counter,
                        [](IterationCounter** counter) {
                          *counter = new IterationCounter();
-                         return Status::OK();
+                         return OkStatus();
                        }));
     iteration_counter_handle =
         MakeResourceHandle<IterationCounter>(ctx, container, name);
@@ -1428,13 +1499,20 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
                                       /*captured_inputs=*/std::vector<Tensor>{},
                                       &captured_uncompress_func));
   }
+
+  absl::optional<CrossTrainerCacheOptions> cross_trainer_cache_options;
+  if (!seriazlied_cross_trainer_cache_options_.empty()) {
+    cross_trainer_cache_options.emplace();
+    cross_trainer_cache_options->ParseFromString(
+        seriazlied_cross_trainer_cache_options_);
+  }
   DatasetBase* dataset = new Dataset(
       ctx, op_version_, dataset_id, processing_mode, address, protocol,
       data_transfer_protocol_, job_name, consumer_index, num_consumers,
       max_outstanding_requests, task_refresh_interval_hint_ms_, target_workers_,
       *metadata, iteration_counter, owns_resource, iteration_counter_handle,
-      std::move(captured_uncompress_func), data_service_output_types,
-      data_service_output_shapes);
+      std::move(captured_uncompress_func), cross_trainer_cache_options,
+      data_service_output_types, data_service_output_shapes);
   if (should_uncompress) {
     VLOG(2) << "Inserting a ParallelMap dataset to uncompress tf.data service "
             << "dataset " << dataset_id << ".";

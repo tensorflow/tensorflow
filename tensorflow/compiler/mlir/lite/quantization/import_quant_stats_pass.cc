@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "absl/memory/memory.h"
 #include "absl/strings/str_split.h"
 #include "llvm/ADT/APFloat.h"
@@ -213,7 +215,7 @@ void ImportQuantStatsPass::runOnOperation() {
 // Creates an instance of the default quant parameters pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateImportQuantStatsPass(
     OperationToName op_to_name, const std::string &stats_str) {
-  auto pass = absl::make_unique<ImportQuantStatsPass>(op_to_name);
+  auto pass = std::make_unique<ImportQuantStatsPass>(op_to_name);
   if (pass->ParseQuantStats(stats_str)) return nullptr;
   return pass;
 }

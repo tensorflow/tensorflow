@@ -63,7 +63,7 @@ Status GrpcSession::Create(const SessionOptions& options,
   }
   session->SetRemoteMaster(std::move(master));
   *out_session = std::move(session);
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -109,7 +109,7 @@ Status GrpcSession::Handle(string* out_handle) {
     return errors::InvalidArgument("A session is not created yet....");
   }
   *out_handle = handle_;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GrpcSession::CreateImpl(CallOptions* call_options, GraphDef graph) {
@@ -281,7 +281,7 @@ Status GrpcSession::RunHelper(
     run_metadata->Swap(resp->mutable_metadata());
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GrpcSession::Run(const RunOptions& run_options,
@@ -335,7 +335,7 @@ Status GrpcSession::PRunSetup(const std::vector<string>& input_names,
   call_options.SetTimeout(options_.config.operation_timeout_in_ms());
   TF_RETURN_IF_ERROR(master_->PartialRunSetup(&call_options, &req, &resp));
   *handle = resp.partial_run_handle();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GrpcSession::PRun(const string& handle,
@@ -353,7 +353,7 @@ Status GrpcSession::Close() {
   {
     mutex_lock l(mu_);
     if (handle_.empty()) {
-      return Status::OK();
+      return OkStatus();
     }
     req.set_session_handle(handle_);
     handle_.clear();
@@ -398,7 +398,7 @@ Status GrpcSession::ListDevices(std::vector<DeviceAttributes>* response) {
   for (const auto& device_attr : resp.remote_device()) {
     response->emplace_back(device_attr);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void GrpcSession::SetRemoteMaster(std::unique_ptr<MasterInterface> master) {
@@ -435,7 +435,7 @@ Status GrpcSession::MakeCallable(const CallableOptions& callable_options,
   call_options.SetTimeout(options_.config.operation_timeout_in_ms());
   TF_RETURN_IF_ERROR(master_->MakeCallable(&call_options, &req, &resp));
   *out_handle = resp.handle();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GrpcSession::RunCallable(CallableHandle handle,
@@ -462,7 +462,7 @@ Status GrpcSession::RunCallable(CallableHandle handle,
     }
     fetch_tensors->push_back(std::move(fetch_tensor));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GrpcSession::ReleaseCallable(CallableHandle handle) {
@@ -486,7 +486,7 @@ class GrpcSessionFactory : public SessionFactory {
     std::unique_ptr<GrpcSession> session;
     TF_RETURN_IF_ERROR(GrpcSession::Create(options, &session));
     *out_session = session.release();
-    return Status::OK();
+    return OkStatus();
   }
 
   // Invokes the session specific static method to reset containers.

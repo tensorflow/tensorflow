@@ -43,7 +43,7 @@ tensorflow::Status ExportMlirToSavedModel(
   *output_saved_model = original_saved_model;
   *(output_saved_model->mutable_meta_graphs(0)) = std::move(meta_graph_def);
 
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace tfg

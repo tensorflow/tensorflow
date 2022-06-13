@@ -208,7 +208,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, AllReduceSliceAccumulate) {
   EXPECT_THAT(hoisted_all_reduces, SizeIs(3));
   ASSERT_THAT(
       hoisted_all_reduces,
-      Each(Pointee(Property(&HloInstruction::channel_id, Ne(absl::nullopt)))));
+      Each(Pointee(Property(&HloInstruction::channel_id, Ne(std::nullopt)))));
   // Check if added all-reduces have distinct channel IDs.
   absl::flat_hash_set<int> unique_channel_ids = {
       hoisted_all_reduces[0]->channel_id().value(),
@@ -405,6 +405,96 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, TypeCastAllReduceAccumulate) {
                      })));
   EXPECT_TRUE(ShapeUtil::Equal(moved_all_reduce->shape(),
                                ShapeUtil::MakeShape(BF16, {1024, 1024})));
+
+  HloInstruction* add_delta_to_old_buffer =
+      *(std::find_if(module->entry_computation()->instructions().begin(),
+                     module->entry_computation()->instructions().end(),
+                     [](HloInstruction* instruction) -> bool {
+                       return Value(instruction, op::Add());
+                     }));
+  ASSERT_THAT(add_delta_to_old_buffer, NotNull());
+  EXPECT_TRUE(ShapeUtil::Equal(add_delta_to_old_buffer->shape(),
+                               ShapeUtil::MakeShape(F32, {1024, 1024})));
+  EXPECT_TRUE(ShapeUtil::Equal(add_delta_to_old_buffer->operand(0)->shape(),
+                               ShapeUtil::MakeShape(F32, {1024, 1024})));
+  EXPECT_TRUE(ShapeUtil::Equal(add_delta_to_old_buffer->operand(1)->shape(),
+                               ShapeUtil::MakeShape(F32, {1024, 1024})));
+}
+
+TEST_F(WhileLoopAllReduceCodeMotionTest, SelectAllReduceAccumulate) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule accumulated_all_reduce
+
+    %reduction {
+      %x = bf16[] parameter(0)
+      %y = bf16[] parameter(1)
+      ROOT %add = bf16[] add(bf16[] %x, bf16[] %y)
+    }
+
+    %while_condition {
+      %param = (s32[], s32[], f32[1024,1024], f32[1024,1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      ROOT result = pred[] compare(%gte.0, %gte.1), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], s32[], f32[1024,1024], f32[1024,1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      %gte.2 = f32[1024,1024] get-tuple-element(%param), index=2
+      %gte.3 = f32[1024,1024] get-tuple-element(%param), index=3
+      %all-reduce = f32[1024,1024] all-reduce(%gte.2), channel_id=1, replica_groups={{0,1,2,3}}, use_global_device_ids=true, to_apply=%reduction
+      %const.0 = f32[] constant(0)
+      %zeros = f32[1024,1024] broadcast(%const.0), dimensions={}
+      %predicates = pred[1024,1024] custom-call(), custom_call_target="something"
+      %select = f32[1024,1024] select(%predicates, %zeros, %all-reduce)
+      %accumulation = f32[1024,1024] add(%select, %gte.3)
+      %constant = s32[] constant(1)
+      %increment_iteration = s32[] add(s32[] %gte.0, s32[] %constant)
+      ROOT %loop_result = (s32[], s32[], f32[1024,1024], f32[1024,1024]) tuple(%increment_iteration, %gte.1, %gte.2, %accumulation)
+    }
+
+    ENTRY accumulated_all_reduce {
+      %param.0 = s32[] parameter(0)
+      %param.1 = f32[1024,1024] parameter(1)
+      %constant.0 = s32[] constant(1)
+      %accumulation_buffer_init = f32[] constant(0)
+      %accumulation_buffer = f32[1024,1024] broadcast(f32[] %accumulation_buffer_init), dimensions={}
+      %while_init = (s32[], s32[], f32[1024, 1024], f32[1024,1024]) tuple(s32[] %constant.0, s32[] %param.0, f32[1024, 1024] %param.1, f32[1024, 1024] %accumulation_buffer)
+      ROOT %while = (s32[], s32[], f32[1024, 1024], f32[1024,1024]) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  ASSERT_TRUE(simplified_loop);
+  TF_ASSERT_OK(
+      HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
+          .Run(module.get())
+          .status());
+  HloInstruction* transformed_while =
+      *(std::find_if(module->entry_computation()->instructions().begin(),
+                     module->entry_computation()->instructions().end(),
+                     [](HloInstruction* instruction) -> bool {
+                       return Value(instruction, op::While());
+                     }));
+
+  ASSERT_THAT(transformed_while, NotNull());
+  EXPECT_THAT(transformed_while->while_body()->instructions(),
+              Each(Not(op::AllReduce())));
+  HloInstruction* accumulation_buffer =
+      transformed_while->mutable_operand(0)->mutable_operand(3);
+  EXPECT_THAT(accumulation_buffer, op::Constant());
+  HloAllReduceInstruction* moved_all_reduce = DynCast<HloAllReduceInstruction>(
+      *(std::find_if(module->entry_computation()->instructions().begin(),
+                     module->entry_computation()->instructions().end(),
+                     [](HloInstruction* instruction) {
+                       return Value(instruction, op::AllReduce());
+                     })));
+  EXPECT_TRUE(ShapeUtil::Equal(moved_all_reduce->shape(),
+                               ShapeUtil::MakeShape(F32, {1024, 1024})));
 
   HloInstruction* add_delta_to_old_buffer =
       *(std::find_if(module->entry_computation()->instructions().begin(),

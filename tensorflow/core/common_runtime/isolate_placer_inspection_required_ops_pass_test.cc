@@ -40,7 +40,7 @@ using FDH = ::tensorflow::FunctionDefHelper;
 // Returns void so that we can call TF_ASSERT_OK inside it.
 static void RunPass(const GraphDef& original, GraphDef* rewritten,
                     FunctionLibraryDefinition* flib_def) {
-  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   GraphConstructorOptions opts;
   opts.add_default_attributes = false;
   TF_ASSERT_OK(ConvertGraphDefToGraph(opts, original, graph.get()));

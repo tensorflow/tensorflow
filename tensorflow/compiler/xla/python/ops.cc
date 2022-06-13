@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/ops.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "pybind11/attr.h"
 #include "pybind11/pybind11.h"
@@ -73,29 +73,29 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def("AllGather", &AllGather, py::arg("operand"),
           py::arg("all_gather_dimension"), py::arg("shard_count"),
           py::arg("replica_groups") = py::list(),
-          py::arg("channel_id") = absl::nullopt,
-          py::arg("shape_with_layout") = absl::nullopt,
-          py::arg("use_global_device_ids") = absl::nullopt);
+          py::arg("channel_id") = std::nullopt,
+          py::arg("shape_with_layout") = std::nullopt,
+          py::arg("use_global_device_ids") = std::nullopt);
   ops.def(
       "AllReduce",
       static_cast<XlaOp (*)(
           XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
-          const absl::optional<ChannelHandle>&, const absl::optional<Shape>&)>(
+          const std::optional<ChannelHandle>&, const std::optional<Shape>&)>(
           &AllReduce),
       py::arg("operand"), py::arg("computation"),
       py::arg("replica_groups") = py::list(),
-      py::arg("channel_id") = absl::nullopt,
-      py::arg("shape_with_layout") = absl::nullopt);
+      py::arg("channel_id") = std::nullopt,
+      py::arg("shape_with_layout") = std::nullopt);
   ops.def("ReduceScatter", &ReduceScatter, py::arg("operand"),
           py::arg("computation"), py::arg("scatter_dimension"),
           py::arg("shard_count"), py::arg("replica_groups") = py::list(),
-          py::arg("channel_id") = absl::nullopt,
-          py::arg("layout") = absl::nullopt,
-          py::arg("use_global_device_ids") = absl::nullopt);
+          py::arg("channel_id") = std::nullopt,
+          py::arg("layout") = std::nullopt,
+          py::arg("use_global_device_ids") = std::nullopt);
   ops.def("AllToAll", &AllToAll, py::arg("operand"), py::arg("split_dimension"),
           py::arg("concat_dimension"), py::arg("split_count"),
           py::arg("replica_groups") = py::list(),
-          py::arg("layout") = absl::nullopt);
+          py::arg("layout") = std::nullopt);
   ops.def("ApproxTopK", &ApproxTopK, py::arg("builder"), py::arg("operands"),
           py::arg("init_values"), py::arg("top_k"), py::arg("reduction_dim"),
           py::arg("comparator"), py::arg("recall_target") = 0.9,
@@ -144,7 +144,8 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("dimension_numbers"), py::arg("feature_group_count") = 1,
           py::arg("batch_group_count") = 1,
           py::arg("precision_config") = nullptr,
-          py::arg("preferred_element_type") = absl::nullopt);
+          py::arg("preferred_element_type") = std::nullopt,
+          py::arg("window_reversal") = std::nullopt);
   ops.def("ConvertElementType", &ConvertElementType, py::arg("operand"),
           py::arg("new_element_type"));
   ops.def("CreateToken", &CreateToken, py::arg("builder"));
@@ -210,10 +211,10 @@ void BuildOpsSubmodule(py::module* m) {
       py::arg("api_version") = CustomCallApiVersion::API_VERSION_ORIGINAL);
   ops.def("Dot", &Dot, py::arg("lhs"), py::arg("rhs"),
           py::arg("precision_config") = nullptr,
-          py::arg("preferred_element_type") = absl::nullopt);
+          py::arg("preferred_element_type") = std::nullopt);
   ops.def("DotGeneral", &DotGeneral, py::arg("lhs"), py::arg("rhs"),
           py::arg("dimension_numbers"), py::arg("precision_config") = nullptr,
-          py::arg("preferred_element_type") = absl::nullopt);
+          py::arg("preferred_element_type") = std::nullopt);
   ops.def("DynamicReshape",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>,
                                 absl::Span<const int64_t>,
@@ -278,6 +279,9 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("builder"), py::arg("parameter_number"), py::arg("shape"),
           py::arg("name") = "",
           py::arg("replicated_at_leaf_buffers") = std::vector<bool>());
+  ops.def("ProductOfElementaryHouseholderReflectors",
+          &ProductOfElementaryHouseholderReflectors, py::arg("a"),
+          py::arg("taus"));
   ops.def(
       "QR",
       [](XlaOp a, bool full_matrices) -> StatusOr<std::pair<XlaOp, XlaOp>> {
@@ -286,6 +290,13 @@ void BuildOpsSubmodule(py::module* m) {
         return std::make_pair(q, r);
       },
       py::arg("operand"), py::arg("full_matrices"));
+  ops.def(
+      "QrDecomposition",
+      [](XlaOp a) -> StatusOr<std::pair<XlaOp, XlaOp>> {
+        QrDecomposition d = Qr(a);
+        return std::make_pair(d.q_and_r, d.taus);
+      },
+      py::arg("operand"));
   ops.def("Reduce",
           static_cast<XlaOp (*)(XlaBuilder*, absl::Span<const XlaOp>,
                                 absl::Span<const XlaOp>, const XlaComputation&,
@@ -334,9 +345,22 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("shape"));
   ops.def("RngUniform", &RngUniform, py::arg("a"), py::arg("b"),
           py::arg("shape"));
-  ops.def("Scatter", &Scatter, py::arg("input"), py::arg("scatter_indices"),
-          py::arg("updates"), py::arg("update_computation"),
-          py::arg("dimension_numbers"), py::arg("indices_are_sorted") = false,
+  ops.def("Scatter",
+          static_cast<XlaOp (*)(XlaOp, XlaOp, XlaOp, const XlaComputation&,
+                                const ScatterDimensionNumbers&, bool, bool)>(
+              &Scatter),
+          py::arg("input"), py::arg("scatter_indices"), py::arg("updates"),
+          py::arg("update_computation"), py::arg("dimension_numbers"),
+          py::arg("indices_are_sorted") = false,
+          py::arg("unique_indices") = false);
+  ops.def("Scatter",
+          static_cast<XlaOp (*)(absl::Span<const XlaOp>, XlaOp,
+                                absl::Span<const XlaOp>, const XlaComputation&,
+                                const ScatterDimensionNumbers&, bool, bool)>(
+              &Scatter),
+          py::arg("inputs"), py::arg("scatter_indices"), py::arg("updates"),
+          py::arg("update_computation"), py::arg("dimension_numbers"),
+          py::arg("indices_are_sorted") = false,
           py::arg("unique_indices") = false);
   ops.def("Select", &Select, py::arg("pred"), py::arg("on_true"),
           py::arg("on_false"));
@@ -354,7 +378,7 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def(
       "Sort",
       [](XlaBuilder* builder, absl::Span<const XlaOp> operands,
-         absl::optional<const XlaComputation*> comparator, int64_t dimension,
+         std::optional<const XlaComputation*> comparator, int64_t dimension,
          bool is_stable) -> XlaOp {
         return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
           std::vector<PrimitiveType> operand_types;
@@ -374,7 +398,7 @@ void BuildOpsSubmodule(py::module* m) {
         });
       },
       py::arg("builder"), py::arg("operands"),
-      py::arg("comparator") = absl::nullopt, py::arg("dimension") = -1,
+      py::arg("comparator") = std::nullopt, py::arg("dimension") = -1,
       py::arg("is_stable") = false);
   ops.def(
       "SVD",
@@ -401,14 +425,14 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("b"), py::arg("x"));
   ops.def("Zeta", &Zeta, py::arg("x"), py::arg("q"));
 
-#define BINARY_OP(op)                                                   \
-  ops.def(                                                              \
-      #op,                                                              \
-      [](XlaOp a, XlaOp b, absl::optional<std::vector<int64_t>> dims) { \
-        return dims ? op(a, b, *dims) : op(a, b);                       \
-      },                                                                \
-      py::arg("lhs"), py::arg("rhs"),                                   \
-      py::arg("broadcast_dimensions") = absl::nullopt)
+#define BINARY_OP(op)                                                  \
+  ops.def(                                                             \
+      #op,                                                             \
+      [](XlaOp a, XlaOp b, std::optional<std::vector<int64_t>> dims) { \
+        return dims ? op(a, b, *dims) : op(a, b);                      \
+      },                                                               \
+      py::arg("lhs"), py::arg("rhs"),                                  \
+      py::arg("broadcast_dimensions") = std::nullopt)
   BINARY_OP(Eq);
   BINARY_OP(Ne);
   BINARY_OP(Ge);

@@ -759,61 +759,15 @@ class ConvertSliceOp : public OpConversionPattern<mhlo::SliceOp> {
   LogicalResult matchAndRewrite(
       mhlo::SliceOp slice_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    // Strides must be 1 otherwise we cannot legalize this `mhlo.slice` op.
-    if (!AreStridesLegal(slice_op)) return failure();
-
-    rewriter.setInsertionPointAfter(slice_op.getOperation());
-    auto start_indices = slice_op.start_indices();
-    auto limit_indices = slice_op.limit_indices();
-    std::vector<int64_t> size_values;
-    for (auto pair : llvm::zip(start_indices.getValues<APInt>(),
-                               limit_indices.getValues<APInt>())) {
-      size_values.emplace_back(std::get<1>(pair).getSExtValue() -
-                               std::get<0>(pair).getSExtValue());
-    }
-
-    RankedTensorType ty =
-        RankedTensorType::get({static_cast<int64_t>(size_values.size())},
-                              rewriter.getIntegerType(64));
-    auto start = rewriter.create<ConstOp>(slice_op.getLoc(), start_indices);
-    auto size = rewriter.create<ConstOp>(
-        slice_op.getLoc(), DenseIntElementsAttr::get(ty, size_values));
-    rewriter.replaceOpWithNewOp<SliceOp>(slice_op, slice_op.getType(),
-                                         slice_op.operand(), start, size);
+    auto begin =
+        rewriter.create<ConstOp>(slice_op.getLoc(), slice_op.start_indices());
+    auto end =
+        rewriter.create<ConstOp>(slice_op.getLoc(), slice_op.limit_indices());
+    auto strides =
+        rewriter.create<ConstOp>(slice_op.getLoc(), slice_op.strides());
+    rewriter.replaceOpWithNewOp<StridedSliceOp>(
+        slice_op, slice_op.getType(), slice_op.operand(), begin, end, strides);
     return success();
-  }
-
- private:
-  // Strides are legal if stride is 1, or equals to the entire input dimension
-  // length and output dimension length is 1.
-  bool AreStridesLegal(mhlo::SliceOp slice_op) const {
-    DenseIntElementsAttr strides = slice_op.strides();
-    if (strides.isSplat() && strides.getSplatValue<APInt>() == 1) {
-      return true;
-    }
-
-    auto input_type = slice_op.operand().getType().cast<ShapedType>();
-    auto output_type = slice_op.getResult().getType().cast<ShapedType>();
-    if (!input_type.hasStaticShape() || !output_type.hasStaticShape()) {
-      return false;
-    }
-
-    for (auto p : llvm::enumerate(strides.getValues<APInt>())) {
-      const int dim = p.index();
-      const int64_t stride = p.value().getSExtValue();
-      if (stride == 1) {
-        continue;
-      }
-
-      if (stride == input_type.getDimSize(dim) &&
-          output_type.getDimSize(dim) == 1) {
-        continue;
-      }
-
-      return false;
-    }
-
-    return true;
   }
 };
 
@@ -2182,7 +2136,9 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
     auto is_splat_int64_ones =
         [&rewriter,
          &operand_type](const ::llvm::Optional<DenseIntElementsAttr> &attr) {
-          if (!attr.hasValue()) return false;
+          // According to the definition, the default value of these attributes
+          // are all ones when unspecified.
+          if (!attr.hasValue()) return true;
           if (attr->getType().getShape()[0] != operand_type.getRank())
             return false;
           if (!attr->isSplat()) return false;
@@ -2214,6 +2170,10 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
       // Potential cumulative axis is not the right size.
       if (window_dimension != operand_type.getShape()[i]) return failure();
       cumulative_axis = i;
+    }
+
+    if (cumulative_axis == -1) {
+      return rewriter.notifyMatchFailure(rw, "no reduced dimension is found.");
     }
 
     // For a cumulative op, padding (expressed as a list of left-padding and
@@ -2945,12 +2905,16 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
   LogicalResult matchAndRewrite(
       mhlo::ScatterOp scatter_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    Value operand = scatter_op.operand();
+    OperandRange operands = scatter_op.operands();
     Value indices = scatter_op.scatter_indices();
-    Value updates = scatter_op.updates();
-    ShapedType operand_type = operand.getType().cast<ShapedType>();
+    OperandRange updates = scatter_op.updates();
+    if (operands.size() != 1 || updates.size() != 1) return failure();
+
+    ShapedType operand_type = operands[0].getType().cast<ShapedType>();
     ShapedType indices_type = indices.getType().cast<ShapedType>();
-    ShapedType updates_type = updates.getType().cast<ShapedType>();
+    ShapedType updates_type = updates[0].getType().cast<ShapedType>();
+
+    Value new_updates = updates[0];
 
     // Can only convert with static shaped scatter.
     if (!operand_type.hasStaticShape() || !indices_type.hasStaticShape() ||
@@ -2977,7 +2941,7 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
     // in the update tensor.
     auto update_window_dims = scatter_dimension_numbers.getUpdateWindowDims();
     if (failed(CanonicalizeScatterUpdates(scatter_op, update_window_dims,
-                                          indices, indices_type, updates,
+                                          indices, indices_type, new_updates,
                                           updates_type, rewriter))) {
       return failure();
     }
@@ -2991,8 +2955,8 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
         IsIotaAttr(scatter_dims_to_operand_dims,
                    indices_type.getShape().back())) {
       rewriter.replaceOpWithNewOp<TfOp>(scatter_op,
-                                        scatter_op.getResult().getType(),
-                                        operand, indices, updates);
+                                        scatter_op.getResult(0).getType(),
+                                        operands[0], indices, new_updates);
       return success();
     }
     // Insert tranposes to support scatter operations generated from
@@ -3024,19 +2988,20 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
 
     Location loc = scatter_op.getLoc();
     auto transposed_operand = rewriter.create<mhlo::TransposeOp>(
-        loc, permutation_and_shape.shape, operand,
+        loc, permutation_and_shape.shape, operands[0],
         permutation_and_shape.permutation);
 
     // Apply TF scatter to update the trailing dimensions of the
     // transposed operand.
-    auto tf_scatter_op = rewriter.create<TfOp>(
-        loc, permutation_and_shape.shape, transposed_operand, indices, updates);
+    auto tf_scatter_op =
+        rewriter.create<TfOp>(loc, permutation_and_shape.shape,
+                              transposed_operand, indices, new_updates);
 
     // Reverse the earlier transpose.
     auto inverse_permutation =
         GetInversePermutation(permutation_array, rewriter);
     rewriter.replaceOpWithNewOp<mhlo::TransposeOp>(
-        scatter_op, scatter_op.getResult().getType(), tf_scatter_op,
+        scatter_op, scatter_op.getResult(0).getType(), tf_scatter_op,
         inverse_permutation);
 
     return success();

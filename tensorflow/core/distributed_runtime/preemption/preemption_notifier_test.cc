@@ -16,11 +16,16 @@ limitations under the License.
 
 #include <csignal>
 #include <functional>
+#include <utility>
 
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -34,7 +39,9 @@ TEST(PreemptNotifierTest, WillBePreemptedAt) {
                          []() { std::raise(SIGTERM); });
 
   // Preempt time should be current timestamp.
-  absl::Time preempt_time = preempt_notifier->WillBePreemptedAt();
+  StatusOr<absl::Time> result = preempt_notifier->WillBePreemptedAt();
+  TF_CHECK_OK(result.status());
+  absl::Time preempt_time = result.ValueOrDie();
 
   // Make sure that preempt time is approximately correct.
   absl::Duration time_diff = preempt_time - start_time;
@@ -57,7 +64,9 @@ TEST(PreemptNotifierTest,
   env->SleepForMicroseconds(absl::ToInt64Microseconds(absl::Seconds(2)));
 
   // Preempt time should be current timestamp.
-  absl::Time preempt_time = preempt_notifier->WillBePreemptedAt();
+  StatusOr<absl::Time> result = preempt_notifier->WillBePreemptedAt();
+  TF_CHECK_OK(result.status());
+  absl::Time preempt_time = result.ValueOrDie();
 
   // Make sure that preempt time is approximately correct.
   absl::Duration time_diff = preempt_time - start_time;
@@ -76,25 +85,27 @@ TEST(PreemptNotifierTest, WillBePreemptedAtAsync_SameResultForAllCallbacks) {
                          []() { std::raise(SIGTERM); });
 
   // Preempt time should be current timestamp.
-  absl::Time preempt_time;
-  absl::Time preempt_time_2;
+  StatusOr<absl::Time> preempt_time;
+  StatusOr<absl::Time> preempt_time_2;
   absl::Notification n;
   absl::Notification n_2;
   preempt_notifier->WillBePreemptedAtAsync(
-      [&preempt_time, &n](absl::Time time) {
-        preempt_time = time;
+      [&preempt_time, &n](StatusOr<absl::Time> result) {
+        preempt_time = result;
         n.Notify();
       });
   preempt_notifier->WillBePreemptedAtAsync(
-      [&preempt_time_2, &n_2](absl::Time time) {
-        preempt_time_2 = time;
+      [&preempt_time_2, &n_2](StatusOr<absl::Time> result) {
+        preempt_time_2 = result;
         n_2.Notify();
       });
   n.WaitForNotification();
   n_2.WaitForNotification();
 
+  TF_CHECK_OK(preempt_time.status());
+  TF_CHECK_OK(preempt_time_2.status());
   // Make sure that the same preempt time is returned for both calls.
-  EXPECT_EQ(preempt_time, preempt_time_2);
+  EXPECT_EQ(preempt_time.ValueOrDie(), preempt_time_2.ValueOrDie());
 }
 
 TEST(PreemptNotifierTest, Reset_TwoDifferentPreemptTimesRecorded) {
@@ -104,17 +115,39 @@ TEST(PreemptNotifierTest, Reset_TwoDifferentPreemptTimesRecorded) {
 
   // Raise first signal.
   std::raise(SIGTERM);
-  absl::Time preempt_time = preempt_notifier->WillBePreemptedAt();
+  StatusOr<absl::Time> result = preempt_notifier->WillBePreemptedAt();
+  TF_CHECK_OK(result.status());
+  absl::Time preempt_time = result.ValueOrDie();
 
   preempt_notifier->Reset();
 
   // Raise second signal.
   std::raise(SIGTERM);
-  absl::Time preempt_time_2 = preempt_notifier->WillBePreemptedAt();
+  absl::Time preempt_time_2 =
+      preempt_notifier->WillBePreemptedAt().ValueOrDie();
 
   // Verify that two different preempt times are recorded.
   EXPECT_NE(preempt_time, preempt_time_2);
 }
 
+TEST(PreemptNotifierTest, DestructorCancelsPendingCalls) {
+  auto env = Env::Default();
+  std::unique_ptr<PreemptionNotifier> preempt_notifier =
+      CreateSigtermNotifier(env);
+  StatusOr<absl::Time> result;
+  absl::Notification n;
+  preempt_notifier->WillBePreemptedAtAsync(
+      [&result, &n](StatusOr<absl::Time> status_or_time) {
+        result = status_or_time;
+        n.Notify();
+      });
+
+  // Invoke dtor.
+  preempt_notifier = nullptr;
+  n.WaitForNotification();
+
+  // Verify that pending callbacks are cancelled.
+  EXPECT_TRUE(errors::IsCancelled(result.status()));
+}
 }  // namespace
 }  // namespace tensorflow

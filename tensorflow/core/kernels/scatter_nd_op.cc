@@ -844,7 +844,7 @@ Status PrepareAndValidateInputs(const TensorShape& params_shape,
   const int64_t safe_slice_dim = (*slice_dim < 1) ? 1 : *slice_dim;
   *num_updates = indices_shape.num_elements() / safe_slice_dim;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Device, typename Index>
@@ -932,7 +932,7 @@ Status DoScatterNdOnCpu(OpKernelContext* c, const Tensor& indices,
   }
   // Block host, since 'host_out' cannot be destructed until the copy is done.
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
-  return Status::OK();
+  return OkStatus();
 }
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -973,7 +973,7 @@ Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
   }
 
   if (shape.num_elements() == 0) {
-    return Status::OK();
+    return OkStatus();
   }
 
   if (allocate) {
@@ -1025,7 +1025,7 @@ Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
             gtl::ArraySlice<Index>(&indices_flat(bad_i, 0), slice_dim), ", "),
         "] does not index into shape ", shape.DebugString());
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace functor
 

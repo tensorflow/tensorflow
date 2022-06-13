@@ -31,7 +31,7 @@ Status AddDefaultAttributes(const GraphDef& input_graph_def,
   // Works in-place, so copy over the original graph.
   *output_graph_def = input_graph_def;
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(output_graph_def, *flib_def, 0));
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("add_default_attributes", AddDefaultAttributes);

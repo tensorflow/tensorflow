@@ -17,11 +17,11 @@ include_directories(BEFORE
     ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(LLVM_OPTIONAL_SOURCES
-  bufferizable_op_interface_impl.cpp
+  bufferizable_op_interface_impl.cc
 )
 
-add_mlir_library(GmlStTilingInterface
-  tiling_interface.cc
+add_mlir_library(GmlStFusionInterface
+  fusion_interface.cc
 
   LINK_LIBS PUBLIC
   MLIRArithmetic
@@ -29,11 +29,21 @@ add_mlir_library(GmlStTilingInterface
   MLIRSupport
 
   DEPENDS
-  MLIRGmlStTilingInterfaceIncGen
+  MLIRGmlStFusionInterfaceIncGen
+)
+
+add_mlir_library(GmlStFusionInterfaceImpl
+  fusion_interface_impl.cc
+
+  LINK_LIBS PUBLIC
+  GmlStFusionInterface
+  MLIRArithmetic
+  MLIRIR
+  MLIRSupport
 )
 
 add_mlir_library(GmlStBufferizableOpInterface
-  bufferizable_op_interface_impl.cpp
+  bufferizable_op_interface_impl.cc
 
   LINK_LIBS PUBLIC
   MLIRBufferization
@@ -44,8 +54,10 @@ add_mlir_library(GmlStBufferizableOpInterface
 
 add_mlir_library(GmlStPasses
   bufferize_tiled_loop.cc
-  greedy_tiling.cc
+  fusion.cc
   gml_st_to_scf.cc
+  legalize_mhlo_to_gml.cc
+  tiling.cc
 
   DEPENDS
   MLIRGmlStPassIncGen
@@ -54,7 +66,8 @@ add_mlir_library(GmlStPasses
   Core
 
   LINK_LIBS PUBLIC
-  GmlStTilingInterface
+  GmlStFusionInterface
+  GmlStFusionInterfaceImpl
   MLIRIR
   MLIRPass
   MLIRSupport

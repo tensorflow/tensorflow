@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/topk_rewriter.h"
 
+#include <optional>
+
 #include "absl/algorithm/container.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -111,13 +112,13 @@ static bool IsNanSafeGt(HloComputation* comp) {
          Match(comp->root_instruction(), m::Gt(match_s32(0), match_s32(1)));
 }
 
-absl::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
+std::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
   HloSortInstruction* sort = DynCast<HloSortInstruction>(inst);
   if (sort == nullptr) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   if (sort->operand_count() != 1 && sort->operand_count() != 2) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   HloInstruction* data = sort->mutable_operand(0);
 
@@ -128,18 +129,18 @@ absl::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
         iota->shape().element_type() != S32 ||
         iota->opcode() != HloOpcode::kIota ||
         iota->iota_dimension() != sort->sort_dimension()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
   if (!IsNanSafeGt(sort->to_apply())) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   const int64_t sort_dim = sort->sort_dimension();
   const int64_t batch_dim = sort_dim == 1 ? 0 : 1;
   const bool has_batch = data->shape().rank() == 2;
 
   bool supported = true;
-  absl::optional<int64_t> k;
+  std::optional<int64_t> k;
   for (HloInstruction* user : sort->users()) {
     const HloInstruction* slice = user;
     if (sort->operand_count() == 2) {
@@ -167,7 +168,7 @@ absl::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
       supported = false;
       break;
     }
-    if (k == absl::nullopt) {
+    if (k == std::nullopt) {
       k = slice->slice_limits(sort_dim);
     } else if (k != slice->slice_limits(sort_dim)) {
       // Different k for the different operands isn't supported.
@@ -175,8 +176,8 @@ absl::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
       break;
     }
   }
-  if (k == absl::nullopt || !supported) {
-    return absl::nullopt;
+  if (k == std::nullopt || !supported) {
+    return std::nullopt;
   }
   return k;
 }
@@ -186,7 +187,7 @@ StatusOr<bool> TopkRewriter::TransformToCustomCall(HloModule* module) {
   for (HloComputation* comp : module->computations()) {
     for (HloInstruction* inst : comp->MakeInstructionPostOrder()) {
       // Check if sort is in TopK.
-      absl::optional<int64_t> k = SortIsInTopK(inst);
+      std::optional<int64_t> k = SortIsInTopK(inst);
       if (!k) {
         continue;
       }

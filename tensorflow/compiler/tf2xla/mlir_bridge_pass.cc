@@ -97,36 +97,6 @@ bool HasTPUDevice(const DeviceSet& device_set) {
   return false;
 }
 
-// Check if the `graph` has parameter serverjobs and resource variable arguments
-// that are on parameter servers
-bool HasPsWithResourceVariable(const Graph& graph) {
-  // Check parameter serverjobs and resource variable arguments that are
-  // on parameter servers.
-  const std::string jobType = "ps";
-  const std::string nodeType = "_Arg";
-  const std::string attrKey = "T";
-  for (const Node* node : graph.nodes()) {
-    if (node->type_string() == nodeType) {
-      auto device_name = node->assigned_device_name();
-      DeviceNameUtils::ParsedName device;
-      if (DeviceNameUtils::ParseFullName(device_name, &device) &&
-          device.has_job && device.job == jobType) {
-        for (const auto& attr : node->attrs()) {
-          auto attr_key = attr.first;
-          auto attr_value = attr.second;
-          if (attr_key == attrKey &&
-              attr_value.value_case() == AttrValue::kType &&
-              attr_value.type() == DT_RESOURCE) {
-            return true;
-            break;
-          }
-        }
-      }
-    }
-  }
-  return false;
-}
-
 // Check that graph has tf.StatefulPartitionedCall op with _XlaMustCompile.
 bool HasQualifiedNonTPUOp(const Graph& graph) {
   const std::string kStatefulPartitionedCallOp = "StatefulPartitionedCall";
@@ -145,9 +115,9 @@ bool HasQualifiedNonTPUOp(const Graph& graph) {
 
 // Check if non TPU pipeline should be used
 bool EnableNonTpuBridge(const Graph& graph) {
-  // Remark that this is staging change. It will be expanded later for further
-  // check based on the requirement.
-  return HasPsWithResourceVariable(graph) && HasQualifiedNonTPUOp(graph);
+  // We enable non tpu bridge on graph which has tf.StatefulPartitionedCall op
+  // with `_XlaMustCompile = true`. This may apply to all nested functions
+  return HasQualifiedNonTPUOp(graph);
 }
 
 }  // namespace
@@ -224,7 +194,7 @@ Status MlirBridgePass::Run(const ConfigProto& config_proto,
       VLOG(1) << " Skipping MLIR TF XLA Bridge,"
               << " no TPU devices or TPU ops found, and this non TPU graph"
               << " is not qualified to run MLIR TF XLA Bridge.";
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -239,7 +209,7 @@ Status MlirBridgePass::Run(const ConfigProto& config_proto,
     // if the pass is disabled.  This logic is here defenseively in case the
     // calling pass logic changes.
     VLOG(1) << "MlirBridgePass is disabled and will not run.";
-    return Status::OK();
+    return OkStatus();
   }
 
   bool fallback_enabled = false;
@@ -297,13 +267,13 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
   absl::call_once(flag, UpdateLogVerbosityIfDefined, "TF_DEBUG_LOG_VERBOSITY");
 
   // Skip function graphs as MlirBridgePass will be used instead.
-  if (options.is_function_graph) return Status::OK();
+  if (options.is_function_graph) return OkStatus();
 
   // Skip MLIR TPU Bridge if no TPU devices or TPU ops found.
   if (!HasTPUDevicesAndOps(module)) {
     VLOG(1) << "Skipping MLIR TPU Bridge V1 Compat, no TPU devices or TPU ops "
                "found";
-    return Status::OK();
+    return OkStatus();
   }
 
   MlirOptimizationPassState pass_state =
@@ -319,7 +289,7 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
     // calling pass logic changes.
     VLOG(1) << "Skipping MLIR TPU Bridge V1 Compat, session flag not enabled";
     mlir_bridge_gauge_v1->GetCell()->Set(false);
-    return Status::OK();
+    return OkStatus();
   }
 
   VLOG(1) << "Running MLIR TPU Bridge V1 Compat";

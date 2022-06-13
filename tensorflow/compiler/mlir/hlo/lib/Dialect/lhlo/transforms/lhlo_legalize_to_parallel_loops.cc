@@ -42,24 +42,24 @@ namespace {
 //
 // inserts necessary alloc and store ops to compute and return result that has
 // `i1` type.
-Value ApplySingleResultLhloCode(Location loc, ValueRange operands,
-                                Block* lhlo_block, OpBuilder* b) {
-  SmallVector<Value, 2> arg_bufs;
-  for (auto arg_type : lhlo_block->getArgumentTypes()) {
-    arg_bufs.push_back(
-        b->create<memref::AllocOp>(loc, arg_type.cast<MemRefType>()));
+Value applySingleResultLhloCode(Location loc, ValueRange operands,
+                                Block* lhloBlock, OpBuilder* b) {
+  SmallVector<Value, 2> argBufs;
+  for (auto argType : lhloBlock->getArgumentTypes()) {
+    argBufs.push_back(
+        b->create<memref::AllocOp>(loc, argType.cast<MemRefType>()));
   }
   for (const auto& operand : llvm::enumerate(operands)) {
-    b->create<memref::StoreOp>(loc, operand.value(), arg_bufs[operand.index()]);
+    b->create<memref::StoreOp>(loc, operand.value(), argBufs[operand.index()]);
   }
   // Clone the ops from `lhlo_block`.
   BlockAndValueMapping mapping;
-  mapping.map(lhlo_block->getArguments(), arg_bufs);
-  for (auto& nested : lhlo_block->without_terminator()) {
+  mapping.map(lhloBlock->getArguments(), argBufs);
+  for (auto& nested : lhloBlock->without_terminator()) {
     auto* clone = b->clone(nested, mapping);
     mapping.map(nested.getResults(), clone->getResults());
   }
-  return b->create<memref::LoadOp>(loc, arg_bufs.back());
+  return b->create<memref::LoadOp>(loc, argBufs.back());
 }
 
 // Converts a block with LHLO ops and with signature:
@@ -67,42 +67,41 @@ Value ApplySingleResultLhloCode(Location loc, ValueRange operands,
 // into a reduction operator of scf.reduce by doing buffer allocation for
 // scalar arguments and the result of `scf.reduce` to make it compatible with
 // LHLO ops.
-void ConvertToReductionOperator(Location loc, scf::ReduceOp reduce_op,
-                                Block* lhlo_block, OpBuilder* b) {
-  Block& loop_reduce_op_body = reduce_op.getReductionOperator().front();
+void convertToReductionOperator(Location loc, scf::ReduceOp reduceOp,
+                                Block* lhloBlock, OpBuilder* b) {
+  Block& loopReduceOpBody = reduceOp.getReductionOperator().front();
   OpBuilder::InsertionGuard guard(*b);
-  b->setInsertionPointToStart(&loop_reduce_op_body);
+  b->setInsertionPointToStart(&loopReduceOpBody);
   b->create<scf::ReduceReturnOp>(
-      loc, ApplySingleResultLhloCode(loc, loop_reduce_op_body.getArguments(),
-                                     lhlo_block, b));
+      loc, applySingleResultLhloCode(loc, loopReduceOpBody.getArguments(),
+                                     lhloBlock, b));
 }
 
 // Returns result of arith::ConstantOp if `dim` is static, otherwise uses DimOp
 // to extract dimension at runtime.
-Value GetStaticOrDynamicDim(mlir::Location loc, Value shaped_value,
-                            size_t dim_index, int64_t dim, OpBuilder* b) {
+Value getStaticOrDynamicDim(mlir::Location loc, Value shapedValue,
+                            size_t dimIndex, int64_t dim, OpBuilder* b) {
   return dim == ShapedType::kDynamicSize
-             ? b->create<memref::DimOp>(loc, shaped_value, dim_index)
-                   .getResult()
+             ? b->create<memref::DimOp>(loc, shapedValue, dimIndex).getResult()
              : b->create<arith::ConstantIndexOp>(loc, dim);
 }
 
 struct MappedIvs {
   // False if the mapped indices are in the padding area, true otherwise.
-  Value in_bounds;
+  Value inBounds;
   // Mapped indices.
   SmallVector<Value, 2> ivs;
 };
 
 template <typename OpTy>
-MappedIvs MapWindowIvsToInput(OpTy op, Value operand, ValueRange ivs,
-                              ValueRange window_ivs, OpBuilder* b) {
-  MappedIvs mapped_ivs;
+MappedIvs mapWindowIvsToInput(OpTy op, Value operand, ValueRange ivs,
+                              ValueRange windowIvs, OpBuilder* b) {
+  MappedIvs mappedIvs;
 
   if (!op.window_strides().hasValue()) {
     op.emitOpError("No window strides specified.");
   }
-  auto window_strides = op.window_strides().getValue();
+  auto windowStrides = op.window_strides().getValue();
 
   if (!op.padding().hasValue()) {
     op.emitOpError("No padding specified.");
@@ -110,50 +109,49 @@ MappedIvs MapWindowIvsToInput(OpTy op, Value operand, ValueRange ivs,
   auto padding = op.padding().getValue();
 
   auto loc = op.getLoc();
-  auto operand_shape = operand.getType().template cast<MemRefType>().getShape();
+  auto operandShape = operand.getType().template cast<MemRefType>().getShape();
 
   // `in_bounds` is false when the mapped indices are in the padding area.
-  mapped_ivs.in_bounds = b->create<mlir::arith::ConstantOp>(
+  mappedIvs.inBounds = b->create<mlir::arith::ConstantOp>(
       loc, b->getI1Type(), b->getIntegerAttr(b->getI1Type(), 1));
   for (unsigned i = 0, e = ivs.size(); i < e; ++i) {
-    auto stride = window_strides.template getValues<llvm::APInt>()[i];
-    auto pad_low = padding.template getValues<llvm::APInt>()[{i, 0}];
+    auto stride = windowStrides.template getValues<llvm::APInt>()[i];
+    auto padLow = padding.template getValues<llvm::APInt>()[{i, 0}];
 
-    Value stride_val =
+    Value strideVal =
         b->create<arith::ConstantIndexOp>(loc, stride.getSExtValue());
-    Value pad_low_val =
-        b->create<arith::ConstantIndexOp>(loc, pad_low.getSExtValue());
+    Value padLowVal =
+        b->create<arith::ConstantIndexOp>(loc, padLow.getSExtValue());
 
-    Value center = b->create<arith::MulIOp>(loc, ivs[i], stride_val);
-    Value offset = b->create<arith::SubIOp>(loc, window_ivs[i], pad_low_val);
+    Value center = b->create<arith::MulIOp>(loc, ivs[i], strideVal);
+    Value offset = b->create<arith::SubIOp>(loc, windowIvs[i], padLowVal);
     Value index = b->create<arith::AddIOp>(loc, center, offset);
-    Value upper_bound =
-        GetStaticOrDynamicDim(loc, operand, i, operand_shape[i], b);
+    Value upperBound =
+        getStaticOrDynamicDim(loc, operand, i, operandShape[i], b);
     // We must check whether 0 <= index_i < shape_i, as otherwise we are in
     // the pad and then we have to use the neutral element for reduction.
     // Equivalently, it can be computed as the unsigned comparison index_i <
     // shape_i, since a negative value wraps to a large positive value.
-    mapped_ivs.in_bounds = b->create<mlir::arith::AndIOp>(
-        loc, mapped_ivs.in_bounds,
+    mappedIvs.inBounds = b->create<mlir::arith::AndIOp>(
+        loc, mappedIvs.inBounds,
         b->create<arith::CmpIOp>(loc, arith::CmpIPredicate::ult, index,
-                                 upper_bound));
-    mapped_ivs.ivs.push_back(index);
+                                 upperBound));
+    mappedIvs.ivs.push_back(index);
   }
-  return mapped_ivs;
+  return mappedIvs;
 }
 
 // Returns scf::Parallel over a shaped value with static or dynamic shape.
-scf::ParallelOp MakeLoopOverShape(Location loc, Value shaped_value,
+scf::ParallelOp makeLoopOverShape(Location loc, Value shapedValue,
                                   OpBuilder* b) {
   Value zero = b->create<arith::ConstantIndexOp>(loc, 0);
   Value one = b->create<arith::ConstantIndexOp>(loc, 1);
 
-  ArrayRef<int64_t> shape =
-      shaped_value.getType().cast<ShapedType>().getShape();
+  ArrayRef<int64_t> shape = shapedValue.getType().cast<ShapedType>().getShape();
   SmallVector<Value, 2> lower, upper, step;
   for (const auto& dim : llvm::enumerate(shape)) {
     upper.push_back(
-        GetStaticOrDynamicDim(loc, shaped_value, dim.index(), dim.value(), b));
+        getStaticOrDynamicDim(loc, shapedValue, dim.index(), dim.value(), b));
     lower.push_back(zero);
     step.push_back(one);
   }
@@ -198,16 +196,16 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
   using OpConversionPattern<lmhlo::ReduceOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      lmhlo::ReduceOp reduce_op, OpAdaptor /*adaptor*/,
+      lmhlo::ReduceOp reduceOp, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter& rewriter) const final {
     // TODO(b/183977252) : Handle variadic ReduceOp/ReduceWindowOp
-    if (reduce_op.out().size() != 1) return failure();
+    if (reduceOp.out().size() != 1) return failure();
 
-    scf::ReduceOp scf_reduce_op =
-        CreateReduceOpInNestedParallelLoops(reduce_op, &rewriter);
-    ConvertToReductionOperator(reduce_op.getLoc(), scf_reduce_op,
-                               &reduce_op.body().front(), &rewriter);
-    rewriter.replaceOp(reduce_op, llvm::None);
+    scf::ReduceOp scfReduceOp =
+        createReduceOpInNestedParallelLoops(reduceOp, &rewriter);
+    convertToReductionOperator(reduceOp.getLoc(), scfReduceOp,
+                               &reduceOp.body().front(), &rewriter);
+    rewriter.replaceOp(reduceOp, llvm::None);
     return success();
   }
 
@@ -231,66 +229,66 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
   //    } : f32
   //    scf.yield
   //  }
-  scf::ReduceOp CreateReduceOpInNestedParallelLoops(
-      lmhlo::ReduceOp reduce_op, ConversionPatternRewriter* rewriter) const {
-    auto loc = reduce_op.getLoc();
-    DenseSet<int> reducing_dims;
-    for (const auto& rdim : reduce_op.dimensions().getValues<APInt>()) {
-      reducing_dims.insert(rdim.getSExtValue());
+  scf::ReduceOp createReduceOpInNestedParallelLoops(
+      lmhlo::ReduceOp reduceOp, ConversionPatternRewriter* rewriter) const {
+    auto loc = reduceOp.getLoc();
+    DenseSet<int> reducingDims;
+    for (const auto& rdim : reduceOp.dimensions().getValues<APInt>()) {
+      reducingDims.insert(rdim.getSExtValue());
     }
 
-    Value operand = reduce_op.inputs().front();
-    Value out = reduce_op.out().front();
-    SmallVector<Value, 2> parallel_lower, parallel_upper, parallel_step;
-    SmallVector<Value, 2> reduce_lower, reduce_upper, reduce_step;
-    auto operand_shape = operand.getType().cast<MemRefType>().getShape();
-    for (const auto& dim : llvm::enumerate(operand_shape)) {
-      const bool is_reducing_dim = reducing_dims.count(dim.index());
+    Value operand = reduceOp.inputs().front();
+    Value out = reduceOp.out().front();
+    SmallVector<Value, 2> parallelLower, parallelUpper, parallelStep;
+    SmallVector<Value, 2> reduceLower, reduceUpper, reduceStep;
+    auto operandShape = operand.getType().cast<MemRefType>().getShape();
+    for (const auto& dim : llvm::enumerate(operandShape)) {
+      const bool isReducingDim = reducingDims.count(dim.index());
 
-      Value ub = GetStaticOrDynamicDim(loc, operand, dim.index(), dim.value(),
+      Value ub = getStaticOrDynamicDim(loc, operand, dim.index(), dim.value(),
                                        rewriter);
       Value lb = rewriter->create<arith::ConstantIndexOp>(loc, 0);
       Value step = rewriter->create<arith::ConstantIndexOp>(loc, 1);
-      (is_reducing_dim ? reduce_lower : parallel_lower).push_back(lb);
-      (is_reducing_dim ? reduce_upper : parallel_upper).push_back(ub);
-      (is_reducing_dim ? reduce_step : parallel_step).push_back(step);
+      (isReducingDim ? reduceLower : parallelLower).push_back(lb);
+      (isReducingDim ? reduceUpper : parallelUpper).push_back(ub);
+      (isReducingDim ? reduceStep : parallelStep).push_back(step);
     }
     // Load initial value from memref<element_type>.
-    SmallVector<Value, 1> init_value = {rewriter->create<memref::LoadOp>(
-        loc, *reduce_op.init_values().begin())};
+    SmallVector<Value, 1> initValue = {
+        rewriter->create<memref::LoadOp>(loc, *reduceOp.init_values().begin())};
     // Outer ParallelOp is not needed if it is a reduction across all dims.
     scf::ParallelOp outer;
-    if (!parallel_lower.empty()) {
-      outer = rewriter->create<scf::ParallelOp>(loc, parallel_lower,
-                                                parallel_upper, parallel_step);
+    if (!parallelLower.empty()) {
+      outer = rewriter->create<scf::ParallelOp>(loc, parallelLower,
+                                                parallelUpper, parallelStep);
       rewriter->setInsertionPointToStart(outer.getBody());
     }
     scf::ParallelOp inner = rewriter->create<scf::ParallelOp>(
-        loc, reduce_lower, reduce_upper, reduce_step, ValueRange(init_value));
-    Value reduction_result = *inner.getResults().begin();
+        loc, reduceLower, reduceUpper, reduceStep, ValueRange(initValue));
+    Value reductionResult = *inner.getResults().begin();
 
-    SmallVector<Value, 1> out_indices;
+    SmallVector<Value, 1> outIndices;
     if (outer != nullptr) {
-      out_indices.reserve(outer.getNumLoops());
+      outIndices.reserve(outer.getNumLoops());
       for (Value iv : outer.getInductionVars()) {
-        out_indices.push_back(iv);
+        outIndices.push_back(iv);
       }
     } else {
-      out_indices.push_back(rewriter->create<arith::ConstantIndexOp>(loc, 0));
+      outIndices.push_back(rewriter->create<arith::ConstantIndexOp>(loc, 0));
     }
 
-    rewriter->create<memref::StoreOp>(loc, reduction_result, out, out_indices);
+    rewriter->create<memref::StoreOp>(loc, reductionResult, out, outIndices);
 
     // Load the element to reduce.
     SmallVector<Value, 2> indices;
-    indices.reserve(operand_shape.size());
+    indices.reserve(operandShape.size());
 
     if (outer) {
-      auto inner_ivs_it = inner.getInductionVars().begin();
-      auto outer_ivs_it = outer.getInductionVars().begin();
-      for (unsigned i = 0, e = operand_shape.size(); i < e; ++i) {
-        indices.push_back(reducing_dims.count(i) ? *inner_ivs_it++
-                                                 : *outer_ivs_it++);
+      auto innerIvsIt = inner.getInductionVars().begin();
+      auto outerIvsIt = outer.getInductionVars().begin();
+      for (unsigned i = 0, e = operandShape.size(); i < e; ++i) {
+        indices.push_back(reducingDims.count(i) ? *innerIvsIt++
+                                                : *outerIvsIt++);
       }
     } else {
       indices = inner.getInductionVars();
@@ -298,7 +296,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
 
     rewriter->setInsertionPointToStart(inner.getBody());
     Value elem = rewriter->create<mlir::memref::LoadOp>(
-        loc, reduce_op.inputs().front(), indices);
+        loc, reduceOp.inputs().front(), indices);
     return rewriter->create<scf::ReduceOp>(loc, elem);
   }
 };
@@ -369,97 +367,95 @@ class ReduceWindowOpConverter
   using OpConversionPattern<lmhlo::ReduceWindowOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      lmhlo::ReduceWindowOp reduce_window_op, OpAdaptor /*adaptor*/,
+      lmhlo::ReduceWindowOp reduceWindowOp, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter& rewriter) const final {
     // TODO(b/183977252) : Handle variadic ReduceOp/ReduceWindowOp
-    if (reduce_window_op.out().size() != 1) return failure();
+    if (reduceWindowOp.out().size() != 1) return failure();
 
-    scf::ParallelOp output_loop, window_loop;
-    std::tie(output_loop, window_loop) =
-        CreateParallelLoopsToTraverseOutputAndWindow(reduce_window_op,
-                                                     &rewriter);
+    scf::ParallelOp outputLoop, windowLoop;
+    std::tie(outputLoop, windowLoop) =
+        createParallelLoopsToTraverseOutputAndWindow(reduceWindowOp, &rewriter);
 
-    scf::ReduceOp reduce_op = CreateReduceOpInNestedParallelLoops(
-        reduce_window_op, output_loop, window_loop, &rewriter);
+    scf::ReduceOp reduceOp = createReduceOpInNestedParallelLoops(
+        reduceWindowOp, outputLoop, windowLoop, &rewriter);
 
-    ConvertToReductionOperator(reduce_window_op.getLoc(), reduce_op,
-                               &reduce_window_op.body().front(), &rewriter);
-    rewriter.replaceOp(reduce_window_op, llvm::None);
+    convertToReductionOperator(reduceWindowOp.getLoc(), reduceOp,
+                               &reduceWindowOp.body().front(), &rewriter);
+    rewriter.replaceOp(reduceWindowOp, llvm::None);
     return success();
   }
 
  private:
   std::pair<scf::ParallelOp, scf::ParallelOp>
-  CreateParallelLoopsToTraverseOutputAndWindow(
-      lmhlo::ReduceWindowOp reduce_window_op,
+  createParallelLoopsToTraverseOutputAndWindow(
+      lmhlo::ReduceWindowOp reduceWindowOp,
       ConversionPatternRewriter* rewriter) const {
-    auto loc = reduce_window_op.getLoc();
-    Value init_value = rewriter->create<memref::LoadOp>(
-        loc, reduce_window_op.init_values()[0]);
+    auto loc = reduceWindowOp.getLoc();
+    Value initValue =
+        rewriter->create<memref::LoadOp>(loc, reduceWindowOp.init_values()[0]);
 
     Value zero = rewriter->create<arith::ConstantIndexOp>(loc, 0);
     Value one = rewriter->create<arith::ConstantIndexOp>(loc, 1);
 
     // Create an outer parallel loop that spans the output of ReduceWindowOp.
-    Value output = reduce_window_op.out()[0];
-    auto output_loop = MakeLoopOverShape(loc, output, rewriter);
+    Value output = reduceWindowOp.out()[0];
+    auto outputLoop = makeLoopOverShape(loc, output, rewriter);
 
     // Create a nested loop that traverses the window.
-    SmallVector<Value, 2> window_lower, window_upper, window_step;
-    rewriter->setInsertionPointToStart(output_loop.getBody());
-    for (const auto& window_dim : reduce_window_op.window_dimensions()) {
-      window_step.push_back(one);
-      window_lower.push_back(zero);
-      window_upper.push_back(rewriter->create<arith::ConstantIndexOp>(
-          loc, window_dim.getSExtValue()));
+    SmallVector<Value, 2> windowLower, windowUpper, windowStep;
+    rewriter->setInsertionPointToStart(outputLoop.getBody());
+    for (const auto& windowDim : reduceWindowOp.window_dimensions()) {
+      windowStep.push_back(one);
+      windowLower.push_back(zero);
+      windowUpper.push_back(rewriter->create<arith::ConstantIndexOp>(
+          loc, windowDim.getSExtValue()));
     }
-    auto window_loop = rewriter->create<scf::ParallelOp>(
-        loc, window_lower, window_upper, window_step, ValueRange(init_value));
+    auto windowLoop = rewriter->create<scf::ParallelOp>(
+        loc, windowLower, windowUpper, windowStep, ValueRange(initValue));
 
-    Value reduction_result = *window_loop.getResults().begin();
-    auto output_ivs = output_loop.getInductionVars();
-    rewriter->create<memref::StoreOp>(loc, reduction_result, output,
-                                      output_ivs);
-    return std::make_pair(output_loop, window_loop);
+    Value reductionResult = *windowLoop.getResults().begin();
+    auto outputIvs = outputLoop.getInductionVars();
+    rewriter->create<memref::StoreOp>(loc, reductionResult, output, outputIvs);
+    return std::make_pair(outputLoop, windowLoop);
   }
 
-  scf::ReduceOp CreateReduceOpInNestedParallelLoops(
-      lmhlo::ReduceWindowOp reduce_window_op, scf::ParallelOp output_loop,
-      scf::ParallelOp window_loop, ConversionPatternRewriter* rewriter) const {
-    rewriter->setInsertionPointToStart(window_loop.getBody());
-    auto loc = reduce_window_op.getLoc();
+  scf::ReduceOp createReduceOpInNestedParallelLoops(
+      lmhlo::ReduceWindowOp reduceWindowOp, scf::ParallelOp outputLoop,
+      scf::ParallelOp windowLoop, ConversionPatternRewriter* rewriter) const {
+    rewriter->setInsertionPointToStart(windowLoop.getBody());
+    auto loc = reduceWindowOp.getLoc();
 
-    if (reduce_window_op.base_dilations().hasValue() ||
-        reduce_window_op.window_dilations().hasValue()) {
-      reduce_window_op.emitRemark(
+    if (reduceWindowOp.base_dilations().hasValue() ||
+        reduceWindowOp.window_dilations().hasValue()) {
+      reduceWindowOp.emitRemark(
           "Lowering to parallel loops does not support `base_dilations` or "
           "`window_dilations` attributes yet. The attributes will be ignored.");
     }
 
-    Value input = reduce_window_op.inputs()[0];
-    auto input_type = input.getType().cast<MemRefType>();
+    Value input = reduceWindowOp.inputs()[0];
+    auto inputType = input.getType().cast<MemRefType>();
 
     // Compute ivs in 'arg' buffer and whether these ivs are in pad area or not.
-    MappedIvs mapped_ivs = MapWindowIvsToInput(
-        reduce_window_op, input, output_loop.getInductionVars(),
-        window_loop.getInductionVars(), rewriter);
+    MappedIvs mappedIvs = mapWindowIvsToInput(
+        reduceWindowOp, input, outputLoop.getInductionVars(),
+        windowLoop.getInductionVars(), rewriter);
 
-    auto elem_or_init = rewriter->create<scf::IfOp>(
-        loc, input_type.getElementType(), mapped_ivs.in_bounds,
+    auto elemOrInit = rewriter->create<scf::IfOp>(
+        loc, inputType.getElementType(), mappedIvs.inBounds,
         /*withElseRegion=*/true);
 
-    OpBuilder then_builder =
-        elem_or_init.getThenBodyBuilder(rewriter->getListener());
+    OpBuilder thenBuilder =
+        elemOrInit.getThenBodyBuilder(rewriter->getListener());
     Value elem =
-        then_builder.create<mlir::memref::LoadOp>(loc, input, mapped_ivs.ivs);
-    then_builder.create<scf::YieldOp>(loc, elem);
+        thenBuilder.create<mlir::memref::LoadOp>(loc, input, mappedIvs.ivs);
+    thenBuilder.create<scf::YieldOp>(loc, elem);
 
-    OpBuilder else_builder =
-        elem_or_init.getElseBodyBuilder(rewriter->getListener());
-    else_builder.create<scf::YieldOp>(loc, *window_loop.getInitVals().begin());
+    OpBuilder elseBuilder =
+        elemOrInit.getElseBodyBuilder(rewriter->getListener());
+    elseBuilder.create<scf::YieldOp>(loc, *windowLoop.getInitVals().begin());
 
     return rewriter->create<scf::ReduceOp>(loc,
-                                           *elem_or_init.getResults().begin());
+                                           *elemOrInit.getResults().begin());
   }
 };
 
@@ -496,89 +492,86 @@ class SelectAndScatterOpConverter
   using OpConversionPattern<lmhlo::SelectAndScatterOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      lmhlo::SelectAndScatterOp s_and_s_op, OpAdaptor /*adaptor*/,
+      lmhlo::SelectAndScatterOp sAndSOp, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter& rewriter) const final {
-    auto loc = s_and_s_op.getLoc();
-    InitializeOutput(s_and_s_op, &rewriter);
-    scf::ParallelOp loop_over_src =
-        MakeLoopOverShape(loc, s_and_s_op.source(), &rewriter);
-    rewriter.setInsertionPointToStart(loop_over_src.getBody());
+    auto loc = sAndSOp.getLoc();
+    initializeOutput(sAndSOp, &rewriter);
+    scf::ParallelOp loopOverSrc =
+        makeLoopOverShape(loc, sAndSOp.source(), &rewriter);
+    rewriter.setInsertionPointToStart(loopOverSrc.getBody());
 
     // Compute indices of the selected element in the window.
-    auto selected_ivs = SelectIvs(s_and_s_op, loop_over_src, &rewriter);
+    auto selectedIvs = selectIvs(sAndSOp, loopOverSrc, &rewriter);
 
     // Load `source[selected_ivs]`.
-    auto src_elem = rewriter.create<memref::LoadOp>(
-        loc, s_and_s_op.source(), loop_over_src.getInductionVars());
+    auto srcElem = rewriter.create<memref::LoadOp>(
+        loc, sAndSOp.source(), loopOverSrc.getInductionVars());
 
     // Compute `out[selected_ivs]` = scatter(out[selected_ivs], src_element)`.
-    auto rmw = rewriter.create<memref::GenericAtomicRMWOp>(
-        loc, s_and_s_op.out(), selected_ivs);
-    OpBuilder rmw_builder = OpBuilder::atBlockEnd(rmw.getBody());
-    auto acc_result =
-        ApplySingleResultLhloCode(loc, {src_elem, rmw.getCurrentValue()},
-                                  &s_and_s_op.scatter().front(), &rmw_builder);
-    rmw_builder.create<memref::AtomicYieldOp>(loc, acc_result);
+    auto rmw = rewriter.create<memref::GenericAtomicRMWOp>(loc, sAndSOp.out(),
+                                                           selectedIvs);
+    OpBuilder rmwBuilder = OpBuilder::atBlockEnd(rmw.getBody());
+    auto accResult =
+        applySingleResultLhloCode(loc, {srcElem, rmw.getCurrentValue()},
+                                  &sAndSOp.scatter().front(), &rmwBuilder);
+    rmwBuilder.create<memref::AtomicYieldOp>(loc, accResult);
 
-    rewriter.replaceOp(s_and_s_op, llvm::None);
+    rewriter.replaceOp(sAndSOp, llvm::None);
     return success();
   }
 
  private:
-  void InitializeOutput(lmhlo::SelectAndScatterOp s_and_s_op,
-                        OpBuilder* b) const {
-    auto loc = s_and_s_op.getLoc();
-    Value init_value = b->create<memref::LoadOp>(loc, s_and_s_op.init_value());
+  void initializeOutput(lmhlo::SelectAndScatterOp sAndSOp, OpBuilder* b) const {
+    auto loc = sAndSOp.getLoc();
+    Value initValue = b->create<memref::LoadOp>(loc, sAndSOp.init_value());
 
-    scf::ParallelOp loop_over_output =
-        MakeLoopOverShape(loc, s_and_s_op.out(), b);
+    scf::ParallelOp loopOverOutput = makeLoopOverShape(loc, sAndSOp.out(), b);
     OpBuilder::InsertionGuard guard(*b);
-    b->setInsertionPointToStart(loop_over_output.getBody());
-    b->create<memref::StoreOp>(loc, init_value, s_and_s_op.out(),
-                               loop_over_output.getInductionVars());
+    b->setInsertionPointToStart(loopOverOutput.getBody());
+    b->create<memref::StoreOp>(loc, initValue, sAndSOp.out(),
+                               loopOverOutput.getInductionVars());
   }
 
   struct WindowLoops {
-    SmallVector<Value, 2> selected_ivs;
-    SmallVector<Value, 2> window_ivs;
-    scf::ForOp inner_loop;
+    SmallVector<Value, 2> selectedIvs;
+    SmallVector<Value, 2> windowIvs;
+    scf::ForOp innerLoop;
   };
-  WindowLoops InsertWindowLoops(lmhlo::SelectAndScatterOp s_and_s_op,
-                                scf::ParallelOp loop_over_src,
+  WindowLoops insertWindowLoops(lmhlo::SelectAndScatterOp sAndSOp,
+                                scf::ParallelOp loopOverSrc,
                                 OpBuilder* b) const {
-    auto loc = s_and_s_op.getLoc();
+    auto loc = sAndSOp.getLoc();
     Value zero = b->create<arith::ConstantIndexOp>(loc, 0);
     Value one = b->create<arith::ConstantIndexOp>(loc, 1);
 
-    auto element_type =
-        s_and_s_op.out().getType().cast<MemRefType>().getElementType();
-    auto rank = loop_over_src.getNumLoops();
+    auto elementType =
+        sAndSOp.out().getType().cast<MemRefType>().getElementType();
+    auto rank = loopOverSrc.getNumLoops();
 
     // `iter_args` = [iv_1, ..., iv_N, selected_value, is_initialized]
-    SmallVector<Value, 4> iter_args(rank, zero);
-    iter_args.push_back(b->create<mlir::arith::ConstantOp>(
-        loc, element_type, b->getFloatAttr(element_type, 0)));
-    iter_args.push_back(b->create<mlir::arith::ConstantOp>(
+    SmallVector<Value, 4> iterArgs(rank, zero);
+    iterArgs.push_back(b->create<mlir::arith::ConstantOp>(
+        loc, elementType, b->getFloatAttr(elementType, 0)));
+    iterArgs.push_back(b->create<mlir::arith::ConstantOp>(
         loc, b->getI1Type(), b->getIntegerAttr(b->getI1Type(), 0)));
 
     // Create a nested loop that traverses the window.
     OpBuilder::InsertPoint ip;
     WindowLoops result;
-    for (const auto& window_dim :
-         s_and_s_op.window_dimensions()->getValues<APInt>()) {
+    for (const auto& windowDim :
+         sAndSOp.window_dimensions()->getValues<APInt>()) {
       Value upper =
-          b->create<arith::ConstantIndexOp>(loc, window_dim.getSExtValue());
-      result.inner_loop =
-          b->create<scf::ForOp>(loc, zero, upper, one, iter_args);
-      if (b->getInsertionBlock() == loop_over_src.getBody()) {
+          b->create<arith::ConstantIndexOp>(loc, windowDim.getSExtValue());
+      result.innerLoop = b->create<scf::ForOp>(loc, zero, upper, one, iterArgs);
+      if (b->getInsertionBlock() == loopOverSrc.getBody()) {
         ip = b->saveInsertionPoint();
-        result.selected_ivs = result.inner_loop.getResults().take_front(rank);
+        result.selectedIvs = result.innerLoop.getResults().take_front(rank);
       } else {
-        b->create<scf::YieldOp>(loc, result.inner_loop.getResults());
+        b->create<scf::YieldOp>(loc, result.innerLoop.getResults());
       }
-      b->setInsertionPointToStart(result.inner_loop.getBody());
-      iter_args = ValueRange{result.inner_loop.getRegionIterArgs()};
-      result.window_ivs.push_back(result.inner_loop.getInductionVar());
+      b->setInsertionPointToStart(result.innerLoop.getBody());
+      iterArgs = ValueRange{result.innerLoop.getRegionIterArgs()};
+      result.windowIvs.push_back(result.innerLoop.getInductionVar());
     }
     b->restoreInsertionPoint(ip);
     return result;
@@ -588,120 +581,115 @@ class SelectAndScatterOpConverter
   // select in a window.
   class IterArgs {
    public:
-    explicit IterArgs(ValueRange ivs_val_flag) : ivs_val_flag_(ivs_val_flag) {}
+    explicit IterArgs(ValueRange ivsValFlag) : ivsValFlag(ivsValFlag) {}
     IterArgs(ValueRange ivs, Value value, Value flag) {
-      ivs_val_flag_ = ivs;
-      ivs_val_flag_.push_back(value);
-      ivs_val_flag_.push_back(flag);
+      ivsValFlag = ivs;
+      ivsValFlag.push_back(value);
+      ivsValFlag.push_back(flag);
     }
 
-    ArrayRef<Value> to_vector() const { return ivs_val_flag_; }
+    ArrayRef<Value> toVector() const { return ivsValFlag; }
 
     // Indices of the currently selected value.
-    ArrayRef<Value> ivs() const { return to_vector().drop_back(2); }
+    ArrayRef<Value> ivs() const { return toVector().drop_back(2); }
     // Currently selected value w.r.t. select() function.
-    Value value() const { return ivs_val_flag_.end()[-2]; }
+    Value value() const { return ivsValFlag.end()[-2]; }
     // i1 flag if value() and ivs() were initialized.
-    Value is_init() const { return ivs_val_flag_.back(); }
+    Value isInit() const { return ivsValFlag.back(); }
 
    private:
     // Vector that stores iv_1, ..., iv_N, value, init.
-    SmallVector<Value, 4> ivs_val_flag_;
+    SmallVector<Value, 4> ivsValFlag;
   };
 
-  SmallVector<Value, 2> SelectIvs(lmhlo::SelectAndScatterOp s_and_s_op,
-                                  scf::ParallelOp loop_over_src,
+  SmallVector<Value, 2> selectIvs(lmhlo::SelectAndScatterOp sAndSOp,
+                                  scf::ParallelOp loopOverSrc,
                                   OpBuilder* b) const {
-    auto loc = s_and_s_op.getLoc();
+    auto loc = sAndSOp.getLoc();
 
-    WindowLoops window_loops = InsertWindowLoops(s_and_s_op, loop_over_src, b);
-    auto inner_loop_b =
-        OpBuilder::atBlockEnd(window_loops.inner_loop.getBody());
+    WindowLoops windowLoops = insertWindowLoops(sAndSOp, loopOverSrc, b);
+    auto innerLoopB = OpBuilder::atBlockEnd(windowLoops.innerLoop.getBody());
 
     // Compute ivs in 'arg' buffer and whether these ivs are in the pad area.
-    MappedIvs mapped_ivs = MapWindowIvsToInput(
-        s_and_s_op, s_and_s_op.operand(), loop_over_src.getInductionVars(),
-        window_loops.window_ivs, &inner_loop_b);
+    MappedIvs mappedIvs = mapWindowIvsToInput(
+        sAndSOp, sAndSOp.operand(), loopOverSrc.getInductionVars(),
+        windowLoops.windowIvs, &innerLoopB);
 
-    IterArgs ivs_val_flag(window_loops.inner_loop.getRegionIterArgs());
+    IterArgs ivsValFlag(windowLoops.innerLoop.getRegionIterArgs());
 
-    auto if_in_bounds = inner_loop_b.create<scf::IfOp>(
-        loc, window_loops.inner_loop.getResultTypes(), mapped_ivs.in_bounds,
+    auto ifInBounds = innerLoopB.create<scf::IfOp>(
+        loc, windowLoops.innerLoop.getResultTypes(), mappedIvs.inBounds,
         /*withElseRegion=*/true);
 
     // Case when we are inside boundaries of 'arg' and not in the pad area.
     {
-      OpBuilder in_bounds_then_b =
-          if_in_bounds.getThenBodyBuilder(b->getListener());
-      auto select_or_init_results = SelectOrInitialize(
-          s_and_s_op, mapped_ivs.ivs, &ivs_val_flag, &in_bounds_then_b);
-      in_bounds_then_b.create<scf::YieldOp>(loc, select_or_init_results);
+      OpBuilder inBoundsThenB = ifInBounds.getThenBodyBuilder(b->getListener());
+      auto selectOrInitResults = selectOrInitialize(
+          sAndSOp, mappedIvs.ivs, &ivsValFlag, &inBoundsThenB);
+      inBoundsThenB.create<scf::YieldOp>(loc, selectOrInitResults);
     }
 
     // Case when we are in the pad.
     {
-      OpBuilder in_bounds_else_b =
-          if_in_bounds.getElseBodyBuilder(b->getListener());
-      in_bounds_else_b.create<scf::YieldOp>(loc, ivs_val_flag.to_vector());
+      OpBuilder inBoundsElseB = ifInBounds.getElseBodyBuilder(b->getListener());
+      inBoundsElseB.create<scf::YieldOp>(loc, ivsValFlag.toVector());
     }
 
-    inner_loop_b.create<scf::YieldOp>(loc, if_in_bounds.getResults());
-    return window_loops.selected_ivs;
+    innerLoopB.create<scf::YieldOp>(loc, ifInBounds.getResults());
+    return windowLoops.selectedIvs;
   }
 
-  SmallVector<Value, 4> SelectOrInitialize(lmhlo::SelectAndScatterOp s_and_s_op,
-                                           ArrayRef<Value> operand_ivs,
-                                           IterArgs* ivs_val_flag,
+  SmallVector<Value, 4> selectOrInitialize(lmhlo::SelectAndScatterOp sAndSOp,
+                                           ArrayRef<Value> operandIvs,
+                                           IterArgs* ivsValFlag,
                                            OpBuilder* b) const {
-    auto loc = s_and_s_op.getLoc();
-    Value true_i1 = b->create<mlir::arith::ConstantOp>(
+    auto loc = sAndSOp.getLoc();
+    Value trueI1 = b->create<mlir::arith::ConstantOp>(
         loc, b->getI1Type(), b->getIntegerAttr(b->getI1Type(), 1));
 
-    TypeRange iter_arg_types{ivs_val_flag->to_vector()};
-    Value operand_elem =
-        b->create<memref::LoadOp>(loc, s_and_s_op.operand(), operand_ivs);
-    auto if_init =
-        b->create<scf::IfOp>(loc, iter_arg_types, ivs_val_flag->is_init(),
-                             /*withElseRegion=*/true);
+    TypeRange iterArgTypes{ivsValFlag->toVector()};
+    Value operandElem =
+        b->create<memref::LoadOp>(loc, sAndSOp.operand(), operandIvs);
+    auto ifInit = b->create<scf::IfOp>(loc, iterArgTypes, ivsValFlag->isInit(),
+                                       /*withElseRegion=*/true);
     // Init == true, i.e. iter args are already initialized with a selected
     // element in boundaries of the operand. Select function has to be computed
     // here.
     {
-      OpBuilder if_init_then_b = if_init.getThenBodyBuilder(b->getListener());
+      OpBuilder ifInitThenB = ifInit.getThenBodyBuilder(b->getListener());
 
-      auto& lhlo_select = s_and_s_op.select().front();
-      Value pred =
-          ApplySingleResultLhloCode(loc, {operand_elem, ivs_val_flag->value()},
-                                    &lhlo_select, &if_init_then_b);
+      auto& lhloSelect = sAndSOp.select().front();
+      Value pred = applySingleResultLhloCode(
+          loc, {operandElem, ivsValFlag->value()}, &lhloSelect, &ifInitThenB);
 
-      auto if_pred = if_init_then_b.create<scf::IfOp>(loc, iter_arg_types, pred,
-                                                      /*withElseRegion=*/true);
+      auto ifPred = ifInitThenB.create<scf::IfOp>(loc, iterArgTypes, pred,
+                                                  /*withElseRegion=*/true);
 
       // Pred == true, therefore pack newly selected ivs, val and init flag back
       // to iter_args and return.
       {
-        OpBuilder if_pred_then_b = if_pred.getThenBodyBuilder(b->getListener());
-        if_pred_then_b.create<scf::YieldOp>(
-            loc, IterArgs{operand_ivs, operand_elem, true_i1}.to_vector());
+        OpBuilder ifPredThenB = ifPred.getThenBodyBuilder(b->getListener());
+        ifPredThenB.create<scf::YieldOp>(
+            loc, IterArgs{operandIvs, operandElem, trueI1}.toVector());
       }
 
       // Pred == false, therefore return old iter_args.
       {
-        OpBuilder if_pred_else_b = if_pred.getElseBodyBuilder(b->getListener());
-        if_pred_else_b.create<scf::YieldOp>(loc, ivs_val_flag->to_vector());
+        OpBuilder ifPredElseB = ifPred.getElseBodyBuilder(b->getListener());
+        ifPredElseB.create<scf::YieldOp>(loc, ivsValFlag->toVector());
       }
 
-      if_init_then_b.create<scf::YieldOp>(loc, if_pred.getResults());
+      ifInitThenB.create<scf::YieldOp>(loc, ifPred.getResults());
     }
     // Init == false, i.e. only pad was visited before and this is the first
     // element in the boundaries of the operand.
     {
-      OpBuilder if_init_else_b = if_init.getElseBodyBuilder(b->getListener());
+      OpBuilder ifInitElseB = ifInit.getElseBodyBuilder(b->getListener());
 
-      if_init_else_b.create<scf::YieldOp>(
-          loc, IterArgs{operand_ivs, operand_elem, true_i1}.to_vector());
+      ifInitElseB.create<scf::YieldOp>(
+          loc, IterArgs{operandIvs, operandElem, trueI1}.toVector());
     }
-    return if_init.getResults();
+    return ifInit.getResults();
   }
 };
 

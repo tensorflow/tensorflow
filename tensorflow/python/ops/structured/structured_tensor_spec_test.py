@@ -17,14 +17,13 @@
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.core.framework import full_type_pb2
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
-from tensorflow.python.framework.type_utils import fulltypes_for_flat_tensors
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import row_partition
@@ -41,6 +40,7 @@ T_1_2_8 = tensor_spec.TensorSpec([1, 2, 8])
 T_1_2_3_4 = tensor_spec.TensorSpec([1, 2, 3, 4])
 T_2_3 = tensor_spec.TensorSpec([2, 3])
 R_1_N = ragged_tensor.RaggedTensorSpec([1, None])
+R_2_N = ragged_tensor.RaggedTensorSpec([2, None])
 R_1_N_N = ragged_tensor.RaggedTensorSpec([1, None, None])
 R_2_1_N = ragged_tensor.RaggedTensorSpec([2, 1, None])
 
@@ -100,7 +100,7 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
       structured_tensor.StructuredTensorSpec(shape, field_specs)
 
   def testValueType(self):
-    spec1 = StructuredTensorSpec([1, 2, 3], dict(a=T_1_2))
+    spec1 = StructuredTensorSpec([1, 2], dict(a=T_1_2))
     self.assertEqual(spec1.value_type, StructuredTensor)
 
   @parameterized.parameters([
@@ -151,8 +151,6 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
     struct = StructuredTensor.from_fields(fields, shape)
     spec = StructuredTensorSpec(shape, field_specs)
     actual_components = spec._to_components(struct)
-    self.assertLen(actual_components, 3)
-    self.assertAllTensorsEqual(actual_components[0], fields)
     rt_reconstructed = spec._from_components(actual_components)
     self.assertAllEqual(struct, rt_reconstructed)
 
@@ -162,7 +160,6 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
     components = spec._to_components(struct)
     rt_reconstructed = spec._from_components(components)
     self.assertAllEqual(struct, rt_reconstructed)
-    self.assertEqual(components, ({}, (), ()))
 
   def testToFromComponentsEmptyTensor(self):
     struct = StructuredTensor.from_fields(fields={}, shape=[1, 2, 3])
@@ -170,15 +167,6 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
     components = spec._to_components(struct)
     rt_reconstructed = spec._from_components(components)
     self.assertAllEqual(struct, rt_reconstructed)
-    self.assertLen(components, 3)
-    fields, nrows, row_partitions = components
-    self.assertEmpty(fields)
-    self.assertAllEqual(nrows, 1)
-    self.assertLen(row_partitions, 2)
-    self.assertIsInstance(row_partitions[0], row_partition.RowPartition)
-    self.assertIsInstance(row_partitions[1], row_partition.RowPartition)
-    self.assertAllEqual(row_partitions[0].row_splits(), [0, 2])
-    self.assertAllEqual(row_partitions[1].row_splits(), [0, 3, 6])
 
   @parameterized.parameters([
       {
@@ -258,39 +246,33 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
           'use_only_batched_spec': True,
       },
   ])  # pyformat: disable
-  def testBatchUnbatchValues(self, unbatched, batch_size, batched,
+  def testBatchUnbatchValues(self,
+                             unbatched,
+                             batch_size,
+                             batched,
                              use_only_batched_spec=False):
     batched = batched()  # Deferred init because it creates tensors.
     unbatched = unbatched()  # Deferred init because it creates tensors.
 
-    # Test batching.
-    if use_only_batched_spec:
-      unbatched_spec = type_spec.type_spec_from_value(batched)._unbatch()
-    else:
-      unbatched_spec = type_spec.type_spec_from_value(unbatched[0])
-    unbatched_tensor_lists = [unbatched_spec._to_tensor_list(st)
-                              for st in unbatched]
-    batched_tensor_list = [array_ops.stack(tensors)
-                           for tensors in zip(*unbatched_tensor_lists)]
-    actual_batched = unbatched_spec._batch(batch_size)._from_tensor_list(
-        batched_tensor_list)
-    self.assertTrue(
-        unbatched_spec._batch(batch_size).is_compatible_with(actual_batched))
-    self.assertAllEqual(actual_batched, batched)
+    def unbatch_gen():
+      for i in unbatched:
+        yield i
 
-    # Test unbatching
-    batched_spec = type_spec.type_spec_from_value(batched)
-    batched_tensor_list = batched_spec._to_batched_tensor_list(batched)
-    unbatched_tensor_lists = zip(
-        *[array_ops.unstack(tensor) for tensor in batched_tensor_list])
-    actual_unbatched = [
-        batched_spec._unbatch()._from_tensor_list(tensor_list)
-        for tensor_list in unbatched_tensor_lists]
-    self.assertLen(actual_unbatched, len(unbatched))
-    for st in actual_unbatched:
-      self.assertTrue(batched_spec._unbatch().is_compatible_with(st))
-    for (actual, expected) in zip(actual_unbatched, unbatched):
-      self.assertAllEqual(actual, expected)
+    ds = dataset_ops.Dataset.from_tensors(batched)
+    ds2 = ds.unbatch()
+    if context.executing_eagerly():
+      v = list(ds2.batch(2))
+      self.assertAllEqual(v[0], batched)
+
+    if not use_only_batched_spec:
+      unbatched_spec = type_spec.type_spec_from_value(unbatched[0])
+
+      dsu = dataset_ops.Dataset.from_generator(
+          unbatch_gen, output_signature=unbatched_spec)
+      dsu2 = dsu.batch(2)
+      if context.executing_eagerly():
+        v = list(dsu2)
+        self.assertAllEqual(v[0], batched)
 
   def _lambda_for_fields(self):
     return lambda: {
@@ -333,94 +315,6 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
             ]]),
     }
 
-  def testFlatTensorSpecs(self):
-    # Note that the batchable tensor list encoding for a StructuredTensor
-    # contains a separate tensor for each leaf field.
-    # In this example, _flat_tensor_specs in class StructuredTensorSpec is
-    # called three times and it returns results with length 2, 3 and 11
-    # for "g", "h" and `struct` respectively.
-    fields = self._lambda_for_fields()
-    rank = 4
-    if callable(fields):
-      fields = fields()  # deferred construction: fields may include tensors.
-
-    struct = StructuredTensor.from_fields_and_rank(fields, rank)
-    spec = type_spec.type_spec_from_value(struct)
-    flat_specs = spec._flat_tensor_specs
-    self.assertEqual(
-        flat_specs,
-        [
-            # a , b
-            tensor_spec.TensorSpec(
-                shape=(1, 2, 3, 1), dtype=dtypes.float64, name=None),
-            tensor_spec.TensorSpec(
-                shape=(1, 2, 3, 1, 5), dtype=dtypes.float64, name=None),
-            # c, d, e, f
-            tensor_spec.TensorSpec(shape=None, dtype=dtypes.variant, name=None),
-            tensor_spec.TensorSpec(shape=None, dtype=dtypes.variant, name=None),
-            tensor_spec.TensorSpec(shape=None, dtype=dtypes.variant, name=None),
-            tensor_spec.TensorSpec(shape=None, dtype=dtypes.variant, name=None),
-            # g
-            tensor_spec.TensorSpec(shape=None, dtype=dtypes.variant, name=None),
-            tensor_spec.TensorSpec(shape=None, dtype=dtypes.variant, name=None),
-            # h
-            tensor_spec.TensorSpec(shape=None, dtype=dtypes.variant, name=None),
-            tensor_spec.TensorSpec(shape=None, dtype=dtypes.variant, name=None),
-            tensor_spec.TensorSpec(shape=None, dtype=dtypes.variant, name=None)
-        ])
-
-  def testFulTypesForFlatTensors(self):
-    # Note that the batchable tensor list encoding for a StructuredTensor
-    # contains a separate tensor for each leaf field.
-    # In this example, _flat_tensor_specs in class StructuredTensorSpec is
-    # called three times and it returns results with length 2, 3 and 11
-    # for "g", "h" and `struct` respectively.
-    fields = self._lambda_for_fields()
-    rank = 4
-    if callable(fields):
-      fields = fields()  # deferred construction: fields may include tensors.
-
-    struct = StructuredTensor.from_fields_and_rank(fields, rank)
-    spec = type_spec.type_spec_from_value(struct)
-    flat_specs = spec._flat_tensor_specs
-    fulltype = fulltypes_for_flat_tensors(spec)
-    expected_ft_list = [
-        # a, b
-        full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_UNSET),
-        full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_UNSET),
-        # c, d, e, f
-        full_type_pb2.FullTypeDef(
-            type_id=full_type_pb2.TFT_RAGGED,
-            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_UINT8)]),
-        full_type_pb2.FullTypeDef(
-            type_id=full_type_pb2.TFT_RAGGED,
-            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_FLOAT)]),
-        full_type_pb2.FullTypeDef(
-            type_id=full_type_pb2.TFT_RAGGED,
-            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_FLOAT)]),
-        full_type_pb2.FullTypeDef(
-            type_id=full_type_pb2.TFT_RAGGED,
-            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_FLOAT)]),
-        # g
-        full_type_pb2.FullTypeDef(
-            type_id=full_type_pb2.TFT_RAGGED,
-            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_INT32)]),
-        full_type_pb2.FullTypeDef(
-            type_id=full_type_pb2.TFT_RAGGED,
-            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_INT32)]),
-        # h
-        full_type_pb2.FullTypeDef(
-            type_id=full_type_pb2.TFT_RAGGED,
-            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_INT32)]),
-        full_type_pb2.FullTypeDef(
-            type_id=full_type_pb2.TFT_RAGGED,
-            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_INT32)]),
-        full_type_pb2.FullTypeDef(
-            type_id=full_type_pb2.TFT_RAGGED,
-            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_INT32)]),
-    ]
-    self.assertEqual(len(expected_ft_list), len(flat_specs))
-    self.assertEqual(fulltype, expected_ft_list)
 
 if __name__ == '__main__':
   googletest.main()

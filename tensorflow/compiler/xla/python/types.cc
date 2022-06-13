@@ -250,7 +250,7 @@ StatusOr<py::object> LiteralToPython(std::shared_ptr<xla::Literal> literal) {
     for (int i = 0; i < elems.size(); ++i) {
       TF_ASSIGN_OR_RETURN(
           arrays[i],
-          LiteralToPython(absl::make_unique<Literal>(std::move(elems[i]))));
+          LiteralToPython(std::make_unique<Literal>(std::move(elems[i]))));
     }
     py::tuple result(elems.size());
     for (int i = 0; i < elems.size(); ++i) {
@@ -316,11 +316,11 @@ pybind11::tuple SpanToTuple(absl::Span<int64_t const> xs) {
   return IntSpanToTupleHelper(xs);
 }
 
-absl::optional<CastToArrayResult> CastToArray(py::handle h) {
+std::optional<CastToArrayResult> CastToArray(py::handle h) {
   py::array array = py::array::ensure(
       h, py::array::c_style | py::detail::npy_api::NPY_ARRAY_ALIGNED_);
   if (!array) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   auto type_or_status = DtypeToPrimitiveType(array.dtype());
   if (!type_or_status.ok()) {

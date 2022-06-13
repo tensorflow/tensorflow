@@ -234,7 +234,7 @@ class CudnnAccess {
 
   // If set, indicates the stream currently active on handle_, to avoid the
   // overhead of re-setting the same stream unnecessarily.
-  absl::optional<CUstream> current_stream_ TF_GUARDED_BY(mutex_);
+  std::optional<CUstream> current_stream_ TF_GUARDED_BY(mutex_);
 
   // cuDNN library handle.
   cudnnHandle_t handle_ TF_GUARDED_BY(mutex_);  // Owned.
@@ -311,7 +311,7 @@ port::StatusOr<int> GetCudnnProperty(libraryPropertyType type) {
   return value;
 }
 
-cudnnRNNAlgo_t ToCudnnRNNAlgo(absl::optional<dnn::AlgorithmDesc> algorithm) {
+cudnnRNNAlgo_t ToCudnnRNNAlgo(std::optional<dnn::AlgorithmDesc> algorithm) {
   if (!algorithm.has_value()) {
     return CUDNN_RNN_ALGO_STANDARD;
   }
@@ -330,7 +330,7 @@ port::Status GetLoadedCudnnVersion(CudnnVersion* version) {
   SE_ASSIGN_OR_RETURN(version->major_version, GetCudnnProperty(MAJOR_VERSION));
   SE_ASSIGN_OR_RETURN(version->minor_version, GetCudnnProperty(MINOR_VERSION));
   SE_ASSIGN_OR_RETURN(version->patch_level, GetCudnnProperty(PATCH_LEVEL));
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 #if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
@@ -382,7 +382,7 @@ port::Status CudnnSupport::Init() {
     cudnn_.reset(new CudnnAccess(cudnn_handle));
 
     LOG(INFO) << "Loaded cuDNN version " << cudnnGetVersion();
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   CHECK_EQ(cudnn_handle, nullptr);
@@ -1456,7 +1456,7 @@ port::Status CheckAndFetchProjectionWeights(
         reinterpret_cast<int64_t>(offset), size};
     weights->push_back(region);
   }
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::StatusOr<CudnnRnnParamsDescriptor> CudnnRnnParamsDescriptor::Create(
@@ -1778,7 +1778,7 @@ port::Status CheckRNNParameterSize(
     return port::Status(port::error::INVALID_ARGUMENT,
                         "Mismatching RNN parameter size");
   }
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::StatusOr<DeviceMemory<uint8>> CreateRnnWorkspace(
@@ -2064,7 +2064,7 @@ port::Status CudnnSupport::DoRnnForwardImpl(
         timer->GetElapsedMilliseconds());
   }
 
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 template <class T>
@@ -2296,7 +2296,7 @@ port::Status CudnnSupport::DoRnnBackwardImpl(
         timer->GetElapsedMilliseconds());
   }
 
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::Status CudnnSupport::DoCtcLossImpl(
@@ -2335,7 +2335,7 @@ port::Status CudnnSupport::DoCtcLossImpl(
                       "CUDNN_VERSION < 7.6.3");
 #endif
 
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
@@ -2961,7 +2961,7 @@ AllocateCudnnConvolutionBackwardFilterWorkspace(
 }
 
 port::StatusOr<bool> UseTensorOps(Stream* stream, dnn::DataType type,
-                                  absl::optional<dnn::AlgorithmDesc> desc) {
+                                  std::optional<dnn::AlgorithmDesc> desc) {
   bool use_tensor_ops;
   if (desc.has_value()) {
     use_tensor_ops = desc->tensor_ops_enabled();
@@ -2986,7 +2986,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const CudnnTensorDescriptor& output_nd, ScratchAllocator* scratch_allocator,
     DeviceMemory<uint8>* scratch) {
-  absl::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
+  std::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
 
   CudnnConvolutionDescriptor conv(
       convolution_descriptor,
@@ -3049,7 +3049,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardDataAlgorithm(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const CudnnTensorDescriptor& output_nd, ScratchAllocator* scratch_allocator,
     DeviceMemory<uint8>* scratch) {
-  absl::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
+  std::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
   CudnnConvolutionDescriptor conv(
       convolution_descriptor,
       ToCudnnDataType(GetConvAccumulatorType(element_type)));
@@ -3110,7 +3110,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardFilterAlgorithm(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const CudnnTensorDescriptor& output_nd, ScratchAllocator* scratch_allocator,
     DeviceMemory<uint8>* scratch) {
-  absl::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
+  std::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
   CudnnConvolutionDescriptor conv(
       convolution_descriptor,
       ToCudnnDataType(GetConvAccumulatorType(element_type)));
@@ -3713,8 +3713,8 @@ GetCudnnFusedOperationGraph(
   absl::InlinedVector<cudnn_frontend::Operation const*, 4> ops = {
       &conv_op, &add_op, &bias_add_op};
 
-  absl::optional<cudnn_frontend::PointWiseDesc_v8> act_desc;
-  absl::optional<cudnn_frontend::Operation_v8> act_op;
+  std::optional<cudnn_frontend::PointWiseDesc_v8> act_desc;
+  std::optional<cudnn_frontend::Operation_v8> act_op;
   switch (activation_mode) {
     case dnn::ActivationMode::kNone:
       break;
@@ -3879,7 +3879,7 @@ port::Status CudnnSupport::DoPrepareForConvolution(
           absl::StrCat("Unexpected convolution kind ", static_cast<int>(kind)));
   }
 
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 class CudnnLegacyConvRunner : public dnn::ConvRunner {
@@ -4006,15 +4006,15 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
 #else
       (void)output_type_;  // To stop clang-tidy saying it's unused.
 #endif
-      return port::Status::OK();
+      return ::tensorflow::OkStatus();
     };
 
     auto get_bwd_data_bugs = [&]() -> port::Status {
-      return port::Status::OK();
+      return ::tensorflow::OkStatus();
     };
 
     const auto get_bwd_filter_bugs = [&]() -> port::Status {
-      return port::Status::OK();
+      return ::tensorflow::OkStatus();
     };
 
     switch (kind_) {
@@ -4081,7 +4081,7 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
       profile_result->set_scratch_size(scratch_memory.size());
     }
 
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
  private:
@@ -4638,7 +4638,7 @@ port::Status CudnnSupport::GetConvolveRunners(
       out_exec_plans->push_back(runner_or.ConsumeValueOrDie());
     }
 
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
@@ -4852,7 +4852,7 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
               << timer->GetElapsedMilliseconds() << "ms";
     }
 
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
  private:
@@ -5081,7 +5081,7 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
       }
       out_exec_plans->push_back(runner_or.ConsumeValueOrDie());
     }
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
@@ -5379,7 +5379,7 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
               "Side input and activation are not supported by cuDNN version: ",
               CUDNN_VERSION));
     } else {
-      return port::Status::OK();
+      return ::tensorflow::OkStatus();
     }
   };
 
@@ -5451,7 +5451,7 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
         scale.opaque(), offset.opaque(), estimated_mean.opaque(), maybe_inv_var,
         epsilon));
   }
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 bool CudnnSupport::DoBatchNormalizationBackward(
@@ -5586,7 +5586,7 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
           "Side input and activation are not supported by cuDNN version: ",
           CUDNN_VERSION));
     } else {
-      return port::Status::OK();
+      return ::tensorflow::OkStatus();
     }
   };
 
@@ -5600,7 +5600,7 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
         mean.opaque(), inv_var.opaque()));
   }
 
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::Status CudnnSupport::DoFusedConvolve(
@@ -5744,13 +5744,13 @@ port::Status CudnnSupport::DoPrepareForCtcLoss(
   // Allocate the workspace.
   if (workspace_size_in_bytes == 0) {
     *scratch_memory = DeviceMemory<uint8>();
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   const auto scratch_or =
       scratch_allocator->AllocateBytes(workspace_size_in_bytes);
   if (scratch_or.ok()) {
     *scratch_memory = scratch_or.ValueOrDie();
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   return port::InternalError(
       "Failed to allocate scratch memory for the CuDNN CTC Loss");
@@ -5799,7 +5799,7 @@ bool CudnnSupport::DoTransformTensor(Stream* stream,
     RETURN_IF_CUDNN_ERROR(cudnnTransformTensor(
         cudnn.handle(), &scale, input_tensor_desc.handle(), input_data.opaque(),
         &beta, output_tensor_desc.handle(), output_data->opaque()));
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }();
   return IsStatusOk(status, /*report_error=*/true);
 }
@@ -5979,7 +5979,7 @@ bool CudnnSupport::DoBiasAdd(Stream* stream,
     RETURN_IF_CUDNN_ERROR(cudnnAddTensor(
         cudnn.handle(), &alpha, bias_descriptor.handle(), biases.opaque(),
         &beta, input_descriptor.handle(), output_data->opaque()));
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }();
   return IsStatusOk(status, /*report_error=*/true);
 }
@@ -6004,7 +6004,7 @@ bool CudnnSupport::DoActivate(Stream* stream,
     RETURN_IF_CUDNN_ERROR(cudnnActivationForward(
         cudnn.handle(), activation_desc.handle(), &alpha, input_nd.handle(),
         input_data.opaque(), &beta, input_nd.handle(), output_data->opaque()));
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }();
   return IsStatusOk(status, /*report_error=*/true);
 }
@@ -6041,7 +6041,7 @@ port::Status CudnnSupport::DoPoolForward(
     RETURN_IF_CUDNN_ERROR(cudnnPoolingForward(
         cudnn.handle(), pooling_desc.handle(), alpha, src_desc.handle(),
         input_data.opaque(), beta, dest_desc.handle(), output_data.opaque()));
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }();
   return status;
 }
@@ -6082,7 +6082,7 @@ port::Status CudnnSupport::DoPoolBackward(
         output_data.opaque(), dest_desc.handle(), input_diff_data.opaque(),
         src_desc.handle(), input_data.opaque(), beta, src_desc.handle(),
         output_diff_data.opaque()));
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }();
   return status;
 }
@@ -6117,7 +6117,7 @@ bool CudnnSupport::DoNormalizeWithDimensions(
         cudnn.handle(), normalize.handle(), CUDNN_LRN_CROSS_CHANNEL_DIM1,
         &alpha, dims.handle(), input_data.opaque(), &beta, dims.handle(),
         output_data->opaque()));
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }();
   return IsStatusOk(status, /*report_error=*/true);
 }
@@ -6152,7 +6152,7 @@ bool CudnnSupport::DoNormalizeBackwardWithDimensions(
         &alpha, dims.handle(), normalized_data.opaque(), dims.handle(),
         normalized_variable_gradient.opaque(), dims.handle(), raw_data.opaque(),
         &beta, dims.handle(), raw_variable_gradient->opaque()));
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }();
   return IsStatusOk(status, /*report_error=*/true);
 }
@@ -6282,7 +6282,7 @@ bool CudnnSupport::DeriveOutputBatchDescriptor(
       output_batch_descriptor->set_spatial_dim(static_cast<dnn::DimIndex>(i),
                                                dims.rbegin()[i]);
     }
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }();
   return IsStatusOk(status, /*report_error=*/true);
 }

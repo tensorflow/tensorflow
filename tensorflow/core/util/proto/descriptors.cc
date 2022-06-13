@@ -35,7 +35,7 @@ Status CreatePoolFromSet(const protobuf::FileDescriptorSet& set,
                                      file.DebugString());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Build a `DescriptorPool` from the named file or URI. The file or URI
@@ -102,7 +102,7 @@ Status GetDescriptorPool(
       GetDescriptorPoolFromFile(env, descriptor_source, owned_desc_pool);
   if (status.ok()) {
     *desc_pool = owned_desc_pool->get();
-    return Status::OK();
+    return OkStatus();
   }
 
   status = GetDescriptorPoolFromBinary(descriptor_source, owned_desc_pool);

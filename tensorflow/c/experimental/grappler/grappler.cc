@@ -59,20 +59,20 @@ tensorflow::Status ValidateTPOptimizerRegistrationParams(
   VALIDATE_STRUCT_SIZE(TP_OptimizerRegistrationParams, params,
                        TP_OPTIMIZER_REGISTRATION_PARAMS_STRUCT_SIZE);
   VALIDATE_MEMBER(TP_OptimizerRegistrationParams, params, device_type);
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::Status ValidateTPOptimizer(const TP_Optimizer& optimizer) {
   VALIDATE_STRUCT_SIZE(TP_Optimizer, optimizer, TP_OPTIMIZER_STRUCT_SIZE);
   VALIDATE_MEMBER(TP_Optimizer, optimizer, optimize_func);
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::Status ValidateTPOptimizerConfigs(
     const TP_OptimizerConfigs& configs) {
   VALIDATE_STRUCT_SIZE(TP_OptimizerConfigs, configs,
                        TP_OPTIMIZER_CONFIGS_STRUCT_SIZE);
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 #undef VALIDATE_MEMBER
@@ -96,7 +96,7 @@ Status CGraphOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   TF_RETURN_IF_ERROR(
       BufferToMessage(optimized_graph_buf.get(), optimized_graph_def));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #define CONFIG_TOGGLE(optimizer)                             \
@@ -173,7 +173,7 @@ tensorflow::Status InitGraphPlugin(TFInitGraphPluginFn init_fn) {
       [=]() { return new CGraphOptimizer(optimizer, params.device_type); },
       optimizer_configs, params.device_type);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace grappler

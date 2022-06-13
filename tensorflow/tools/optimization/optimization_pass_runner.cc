@@ -87,7 +87,7 @@ Status FindPassWithName(absl::string_view name,
 
   return *result == nullptr
              ? errors::Internal("Could not find pass with name ", name)
-             : Status::OK();
+             : OkStatus();
 }
 }  // namespace
 
@@ -126,13 +126,13 @@ Status OptimizationPassRunner::Run(absl::string_view pass_to_run,
   TF_RETURN_IF_ERROR(pass->Run(options));
 
   options.graph->get()->ToGraphDef(result);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OptimizationPassRunner::SetJitLevel(
     OptimizerOptions::GlobalJitLevel jit_level) {
   jit_level_ = jit_level;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OptimizationPassRunner::AddDevices(absl::string_view type, int count) {
@@ -146,6 +146,6 @@ Status OptimizationPassRunner::AddDevices(absl::string_view type, int count) {
         absl::StrCat(type)));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace tensorflow

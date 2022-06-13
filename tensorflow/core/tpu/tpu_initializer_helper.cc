@@ -53,8 +53,11 @@ namespace tpu {
 namespace {
 
 static std::string GetEnvVar(const char* name) {
-  // Constructing a std::string directly from nullptr is undefined behavior.
-  return absl::StrCat(getenv(name));
+  // Constructing a std::string directly from nullptr is undefined behavior so
+  // we can return empty string in that case
+  const char* env_value = getenv(name);
+  if (!env_value) return "";
+  return std::string(env_value);
 }
 
 bool GetEnvBool(const char* name, bool defval) {
@@ -128,10 +131,16 @@ Status TryAcquireTpuLock() {
   static absl::Mutex* mu = new absl::Mutex();
   absl::MutexLock l(mu);
 
-  std::string load_library_override = absl::StrCat(getenv("TPU_LOAD_LIBRARY"));
+  // TODO(skyewm): use `absl::StrCat(getenv(name))` once we build with the
+  // fix for https://github.com/abseil/abseil-cpp/issues/1167.
+  std::string load_library_override;
+  const char* env_value = getenv("TPU_LOAD_LIBRARY");
+  if (env_value != nullptr) {
+    load_library_override = std::string(env_value);
+  }
 
   if (load_library_override == "1") {
-    return Status::OK();
+    return OkStatus();
   } else if (load_library_override == "0") {
     return errors::FailedPrecondition("TPU_LOAD_LIBRARY=0, not loading libtpu");
   }
@@ -172,13 +181,13 @@ Status TryAcquireTpuLock() {
             "libtpu.so in this process.");
       }
     } else {
-      return Status::OK();
+      return OkStatus();
     }
   } else {
     VLOG(1) << "TPU_CHIPS_PER_PROCESS_BOUNDS is not empty or "
                "ALLOW_MULTIPLE_LIBTPU_LOAD is set to True, "
                "therefore allowing multiple libtpu.so loads.";
-    return Status::OK();
+    return OkStatus();
   }
 }
 #if !defined(PLATFORM_GOOGLE)

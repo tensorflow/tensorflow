@@ -22,7 +22,7 @@ namespace tensorflow {
 namespace tensorrt {
 namespace convert {
 
-const unaryOperationMap* UnaryOperationMap() {
+const UnaryOperationMapType* UnaryOperationMap() {
   static auto* const m =
       new std::unordered_map<string, nvinfer1::UnaryOperation>({
         {"Neg", nvinfer1::UnaryOperation::kNEG},
@@ -54,14 +54,14 @@ const unaryOperationMap* UnaryOperationMap() {
   return m;
 }
 
-const unaryOperationMap* UnaryBooleanOperationMap() {
-  static auto* const m = new unaryOperationMap({
+const UnaryOperationMapType* UnaryBooleanOperationMap() {
+  static auto* const m = new UnaryOperationMapType({
       {"LogicalNot", nvinfer1::UnaryOperation::kNOT},
   });
   return m;
 }
 
-const operationMap<nvinfer1::ActivationType>* ActivationTypeMap() {
+const OperationMap<nvinfer1::ActivationType>* ActivationTypeMap() {
   static auto* const m =
       new std::unordered_map<string, nvinfer1::ActivationType>({
           {"LeakyRelu", nvinfer1::ActivationType::kLEAKY_RELU},
@@ -80,7 +80,7 @@ const operationMap<nvinfer1::ActivationType>* ActivationTypeMap() {
 template <typename T>
 class ConvertUnaryImpl {
  protected:
-  ConvertUnaryImpl(const operationMap<T>* pOperMap) : pOperMap_(pOperMap) {}
+  ConvertUnaryImpl(const OperationMap<T>* pOperMap) : pOperMap_(pOperMap) {}
 
   Status ValidateImpl(const OpConverterParams& params,
                       const std::vector<string>& not_supported_ops = {}) {
@@ -129,7 +129,7 @@ class ConvertUnaryImpl {
   }
 
  protected:
-  const operationMap<T>* pOperMap_;
+  const OperationMap<T>* pOperMap_;
 };
 
 class ConvertUnary : public OpConverterBase<ConvertUnary>,

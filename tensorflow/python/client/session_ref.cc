@@ -93,7 +93,8 @@ RunOptions* kEmptyRunOptions() {
 class SessionLogger {
  public:
   SessionLogger() {
-    std::string log_name = getenv("TF_REPLAY_LOG_FILE");
+    const char* log_file_env = getenv("TF_REPLAY_LOG_FILE");
+    std::string log_name = log_file_env ? std::string(log_file_env) : ".";
     LOG(INFO) << "Constructing new session logger for " << log_name;
     TF_CHECK_OK(
         Env::Default()->RecursivelyCreateDir(string(io::Dirname(log_name))));
@@ -393,7 +394,7 @@ SessionRef::~SessionRef() = default;
 Status SessionRef::CheckNotClosed() {
   mutex_lock l(run_lock_);
   if (session_ == nullptr) return errors::Cancelled("Session has been closed.");
-  return ::tensorflow::Status::OK();
+  return OkStatus();
 }
 
 // If logging is active, log the start and end time of the operation along with
@@ -479,7 +480,7 @@ Status SessionRef::ReleaseCallable(CallableHandle handle) {
     mutex_lock l(run_lock_);
     if (session_ == nullptr) {
       // Session already closed. Do nothing.
-      return Status::OK();
+      return OkStatus();
     }
   }
   LOG_AND_RUN_OPERATION(ReleaseCallable, handle);

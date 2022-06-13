@@ -15,53 +15,57 @@ limitations under the License.
 
 #include "tensorflow/core/example/feature_util.h"
 
+#include <string>
+
+#include "absl/strings/string_view.h"
+
 namespace tensorflow {
 
 namespace internal {
-Feature& ExampleFeature(const std::string& name, Example* example) {
+Feature& ExampleFeature(absl::string_view name, Example* example) {
   return *GetFeature(name, example);
 }
 
 }  // namespace internal
 
 template <>
-bool HasFeature<>(const std::string& key, const Features& features) {
-  return (features.feature().find(key) != features.feature().end());
+bool HasFeature<>(absl::string_view key, const Features& features) {
+  return features.feature().contains(std::string(key));
 }
 
 template <>
-bool HasFeature<protobuf_int64>(const std::string& key,
+bool HasFeature<protobuf_int64>(absl::string_view key,
                                 const Features& features) {
-  auto it = features.feature().find(key);
+  auto it = features.feature().find(std::string(key));
   return (it != features.feature().end()) &&
          (it->second.kind_case() == Feature::KindCase::kInt64List);
 }
 
 template <>
-bool HasFeature<float>(const std::string& key, const Features& features) {
-  auto it = features.feature().find(key);
+bool HasFeature<float>(absl::string_view key, const Features& features) {
+  auto it = features.feature().find(std::string(key));
   return (it != features.feature().end()) &&
          (it->second.kind_case() == Feature::KindCase::kFloatList);
 }
 
 template <>
-bool HasFeature<std::string>(const std::string& key, const Features& features) {
-  auto it = features.feature().find(key);
+bool HasFeature<std::string>(absl::string_view key, const Features& features) {
+  auto it = features.feature().find(std::string(key));
   return (it != features.feature().end()) &&
          (it->second.kind_case() == Feature::KindCase::kBytesList);
 }
 
 template <>
-bool HasFeature<tstring>(const std::string& key, const Features& features) {
-  auto it = features.feature().find(key);
+bool HasFeature<tstring>(absl::string_view key, const Features& features) {
+  auto it = features.feature().find(std::string(key));
   return (it != features.feature().end()) &&
          (it->second.kind_case() == Feature::KindCase::kBytesList);
 }
 
-bool HasFeatureList(const std::string& key,
+bool HasFeatureList(absl::string_view key,
                     const SequenceExample& sequence_example) {
-  auto& feature_list = sequence_example.feature_lists().feature_list();
-  return (feature_list.find(key) != feature_list.end());
+  return sequence_example.feature_lists().feature_list().contains(
+      std::string(key));
 }
 
 template <>
@@ -112,14 +116,17 @@ protobuf::RepeatedPtrField<std::string>* GetFeatureValues<std::string>(
 }
 
 const protobuf::RepeatedPtrField<Feature>& GetFeatureList(
-    const std::string& key, const SequenceExample& sequence_example) {
-  return sequence_example.feature_lists().feature_list().at(key).feature();
+    absl::string_view key, const SequenceExample& sequence_example) {
+  return sequence_example.feature_lists()
+      .feature_list()
+      .at(std::string(key))
+      .feature();
 }
 
 protobuf::RepeatedPtrField<Feature>* GetFeatureList(
-    const std::string& feature_list_key, SequenceExample* sequence_example) {
+    absl::string_view feature_list_key, SequenceExample* sequence_example) {
   return (*sequence_example->mutable_feature_lists()
-               ->mutable_feature_list())[feature_list_key]
+               ->mutable_feature_list())[std::string(feature_list_key)]
       .mutable_feature();
 }
 

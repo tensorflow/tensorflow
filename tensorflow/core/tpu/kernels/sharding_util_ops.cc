@@ -99,7 +99,7 @@ Status GetAndValidateAttributes(OpKernelConstruction* ctx,
     paddings.assign(expected_rank, 0);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 absl::string_view kHandle = "handle";
@@ -506,7 +506,7 @@ class XlaSplitNDOp : public XlaSplitNDBaseOp<Device, T, false> {
 
     auto assign_or_copy_value_fn = [&ctx](const Tensor& input) -> Status {
       ctx->set_output(/*index=*/0, input);
-      return Status::OK();
+      return OkStatus();
     };
 
     this->ComputeInternal(ctx, assign_or_copy_value_fn, &input);
@@ -547,7 +547,7 @@ class ReadVariableXlaSplitNDOp : public XlaSplitNDBaseOp<Device, T, true> {
       } else {
         ctx->set_output(/*index=*/0, input);
       }
-      return Status::OK();
+      return OkStatus();
     };
 
     this->ComputeInternal(ctx, assign_or_copy_value_fn, input);
@@ -617,7 +617,7 @@ class XlaConcatNDBaseOp : public OpKernel {
       output_shape.AddDim(max_dim_size - paddings_[i]);
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   void ComputeInternal(
@@ -778,7 +778,7 @@ class XlaConcatNDOp : public XlaConcatNDBaseOp<Device, T, false> {
 
     auto assign_or_copy_value_fn = [&ctx](const Tensor& input) -> Status {
       ctx->set_output(/*index=*/0, input);
-      return Status::OK();
+      return OkStatus();
     };
 
     auto get_output_fn = [&ctx, &output_shape]() -> StatusOr<Tensor*> {
@@ -823,7 +823,7 @@ class AssignVariableXlaConcatNDOp : public XlaConcatNDBaseOp<Device, T, true> {
     OP_REQUIRES_OK(ctx, LookupOrCreateResource<Var>(ctx, handle, &variable,
                                                     [this](Var** ptr) {
                                                       *ptr = new Var(dtype_);
-                                                      return Status::OK();
+                                                      return OkStatus();
                                                     }));
     mutex_lock ml(*variable->mu());
 
@@ -841,7 +841,7 @@ class AssignVariableXlaConcatNDOp : public XlaConcatNDBaseOp<Device, T, true> {
       } else {
         *variable->tensor() = input;
       }
-      return Status::OK();
+      return OkStatus();
     };
 
     auto get_output_fn = [this, &ctx, &output_shape,

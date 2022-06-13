@@ -2034,6 +2034,15 @@ func.func @segmentsum_i64(%arg0: tensor<3x3xf32>, %arg1: tensor<i64>) -> tensor<
   // CHECK: "tfl.segment_sum"
 }
 
+func.func @unsorted_segment_prod(%arg0: tensor<8xf32>, %arg1: tensor<8xi32>) -> tensor<8xf32> {
+  %num_segments = "tf.Const"() {value = dense<8> : tensor<i32>} : () -> tensor<i32>
+  %0 = "tf.UnsortedSegmentProd"(%arg0, %arg1, %num_segments) : (tensor<8xf32>, tensor<8xi32>, tensor<i32>) -> tensor<8xf32>
+  func.return %0 : tensor<8xf32>
+  // CHECK-LABEL: unsorted_segment_prod
+  // CHECK:  [[BCT:%.*]] = "tfl.unsorted_segment_prod"(%arg0, %arg1) {num_segments = 8 : i32} : (tensor<8xf32>, tensor<8xi32>) -> tensor<8xf32>
+  // CHECK:  return [[BCT]] : tensor<8xf32>
+}
+
 func.func @rfft2d(%arg0: tensor<10x20x10x30xf32>, %arg1: tensor<2xi32>) -> tensor<10x20x10x30xcomplex<f32>> {
   %0 = "tf.RFFT2D"(%arg0, %arg1) : (tensor<10x20x10x30xf32>, tensor<2xi32>) -> tensor<10x20x10x30xcomplex<f32>>
   func.return %0 : tensor<10x20x10x30xcomplex<f32>>

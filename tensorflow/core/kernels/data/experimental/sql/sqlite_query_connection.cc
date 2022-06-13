@@ -40,14 +40,14 @@ Status SqliteQueryConnection::Open(const string& data_source_name,
       data_source_name, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, &db_));
   query_ = query;
   output_types_ = output_types;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SqliteQueryConnection::Close() {
   stmt_ = SqliteStatement();
   db_->Unref();
   db_ = nullptr;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SqliteQueryConnection::GetNext(IteratorContext* ctx,
@@ -63,7 +63,7 @@ Status SqliteQueryConnection::GetNext(IteratorContext* ctx,
       FillTensorWithResultSetEntry(dt, i, &out_tensors->back());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SqliteQueryConnection::PrepareQuery() {
@@ -77,7 +77,7 @@ Status SqliteQueryConnection::PrepareQuery() {
         column_count, output_types_.size()));
   }
   column_count_ = column_count;
-  return Status::OK();
+  return OkStatus();
 }
 
 void SqliteQueryConnection::FillTensorWithResultSetEntry(

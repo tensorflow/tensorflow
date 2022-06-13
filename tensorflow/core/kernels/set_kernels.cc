@@ -60,7 +60,7 @@ Status GroupShape(const VarDimArray& input_shape, ShapeArray* grouped_shape) {
   }
   // grouped_shape is input_shape[:-1]
   *grouped_shape = ShapeArray(input_shape.begin(), input_shape.end() - 1);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Build `SparseTensor` from indices, values, and shape in inputs
@@ -418,7 +418,7 @@ Status CheckShapesMatch(VarDimArray shape1, VarDimArray shape2) {
                                    absl::StrJoin(shape1, ","), "] vs [",
                                    absl::StrJoin(shape2, ","), "]");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Validate ranks are the same, and all but last dimension are the same.
@@ -431,7 +431,7 @@ Status GroupShapeFromInputs(VarDimArray shape1, VarDimArray shape2,
   TF_RETURN_IF_ERROR(GroupShape(shape2, &group_shape_2));
   TF_RETURN_IF_ERROR(CheckShapesMatch(group_shape_1, group_shape_2));
   *group_shape = group_shape_1;
-  return Status::OK();
+  return OkStatus();
 }
 
 // Split `flat_group_index` into separate dimensions based on `group_shape`.
