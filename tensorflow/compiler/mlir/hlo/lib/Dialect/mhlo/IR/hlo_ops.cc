@@ -3354,13 +3354,6 @@ LogicalResult ConcatenateOp::inferReturnTypes(
   auto firstType = (*operands.begin()).getType().cast<ShapedType>();
   auto outElement = firstType.getElementType();
 
-  for (auto operand : operands.getTypes()) {
-    auto elementType = getElementTypeOrSelf(operand);
-    if (elementType != outElement) {
-      return failure();
-    }
-  }
-
   // Find the first ranked input to determine the output rank.
   for (auto type : operands.getTypes()) {
     auto shapedType = type.cast<ShapedType>();
@@ -3375,9 +3368,6 @@ LogicalResult ConcatenateOp::inferReturnTypes(
     inferredReturnTypes.push_back(UnrankedTensorType::get(outElement));
     return success();
   }
-
-  if (firstType.getRank() == 0)
-    return emitOptionalError(location, "rank-0 values cannot be concatenated");
 
   auto outShape = llvm::to_vector<6>(firstType.getShape());
 
@@ -3407,8 +3397,8 @@ LogicalResult ConcatenateOp::inferReturnTypes(
 
     // If the dimension is dynamic we know the output dimension is dynamic.
     auto dim = type.getShape()[dimension];
-    if (dim == -1) {
-      outShape[dimension] = -1;
+    if (ShapedType::isDynamic(dim)) {
+      outShape[dimension] = ShapedType::kDynamicSize;
       break;
     }
 
@@ -3497,39 +3487,51 @@ OpFoldResult ConcatenateOp::fold(ArrayRef<Attribute> operands) {
 }
 
 LogicalResult ConcatenateOp::verify() {
-  Type elementType = getElementTypeOrSelf(getOperand(0).getType());
   RankedTensorType firstRankedType;
+  int firstRankedIndex;
   int numOperands = getNumOperands();
+  int64_t concatDimension = static_cast<int64_t>(dimension());
+  if (concatDimension < 0) {
+    return emitOpError(
+        llvm::formatv("dimension {0} is negative", concatDimension));
+  }
   for (int i = 0; i < numOperands; i++) {
     auto secondType = getOperand(i).getType().dyn_cast<ShapedType>();
-    if (secondType.getElementType() != elementType) {
-      return emitOpError(
-          llvm::formatv("operands (0) and ({0}) do not match element type", i));
-    }
-
     if (!secondType.hasRank()) {
       continue;
     }
 
     if (!firstRankedType) {
       firstRankedType = secondType.cast<RankedTensorType>();
+      firstRankedIndex = i;
+      if (firstRankedType.getRank() == 0)
+        return emitOpError(
+            llvm::formatv("rank-0 values cannot be concatenated"));
+      if (concatDimension >= firstRankedType.getRank()) {
+        return emitOpError(
+            llvm::formatv("dimension {0} is out-of-bounds for input rank {1}",
+                          concatDimension, firstRankedType.getRank()));
+      }
       continue;
     }
 
     if (firstRankedType.getRank() != secondType.getRank()) {
-      return emitOpError(
-          llvm::formatv("operands (0) and ({0}) do not match rank", i));
+      return emitOpError(llvm::formatv(
+          "operands ({0}) and ({1}) do not match rank", firstRankedIndex, i));
     }
 
-    auto firstShape = secondType.getShape();
+    auto firstShape = firstRankedType.getShape();
     auto secondShape = secondType.getShape();
     for (int d = 0; d < firstRankedType.getRank(); ++d) {
-      if (firstShape[d] != secondShape[d] && d != dimension()) {
+      if (!ShapedType::isDynamic(firstShape[d]) &&
+          !ShapedType::isDynamic(secondShape[d]) &&
+          firstShape[d] != secondShape[d] && d != concatDimension) {
         return emitOpError(llvm::formatv(
-            "operands (0) and ({0}) non-concat dimensions do not match "
-            "({1}) != ({2})",
-            i, llvm::make_range(firstShape.begin(), firstShape.end()),
-            llvm::make_range(secondShape.begin(), secondShape.end())));
+            "shapes of operand ({0}) and ({1}) do not match at non-concat "
+            "index: ({2}) != ({3}) at non-concat index {4}",
+            firstRankedIndex, i,
+            llvm::make_range(firstShape.begin(), firstShape.end()),
+            llvm::make_range(secondShape.begin(), secondShape.end()), d));
       }
     }
   }

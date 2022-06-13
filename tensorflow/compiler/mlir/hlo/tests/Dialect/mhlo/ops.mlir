@@ -682,6 +682,46 @@ func.func @concat_1D_error(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tenso
 
 // -----
 
+func.func @concat_nagetive_dim(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<3xi32> {
+  // expected-error@+1 {{dimension -1 is negative}}
+  %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = -1 : i64 } : (tensor<1xi32>, tensor<2xi32>) -> tensor<3xi32>
+  func.return %0 : tensor<3xi32>
+}
+
+// -----
+
+func.func @concat_nagetive_dim_with_all_unranked_operands(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>)  -> tensor<*xi32> {
+  // expected-error@+1 {{dimension -1 is negative}}
+  %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = -1 : i64 } : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+  func.return %0 : tensor<*xi32>
+}
+
+// -----
+
+func.func @concat_outofbounds_dim(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<3xi32> {
+  // expected-error@+1 {{dimension 10 is out-of-bounds for input rank 1}}
+  %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 10 : i64 } : (tensor<1xi32>, tensor<2xi32>) -> tensor<3xi32>
+  func.return %0 : tensor<3xi32>
+}
+
+// -----
+
+func.func @concat_mismatch_rank(%arg0: tensor<1xi32>, %arg1: tensor<2x2xi32>)  -> tensor<3xi32> {
+  // expected-error@+1 {{op operands (0) and (1) do not match rank}}
+  %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<2x2xi32>) -> tensor<3xi32>
+  func.return %0 : tensor<3xi32>
+}
+
+// -----
+
+func.func @concat_mismatch_dim(%arg0: tensor<1x3xi32>, %arg1: tensor<2x2xi32>)  -> tensor<3x3xi32> {
+  // expected-error@+1 {{shapes of operand (0) and (1) do not match at non-concat index: (1, 3) != (2, 2) at non-concat index 1}}
+  %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1x3xi32>, tensor<2x2xi32>) -> tensor<3x3xi32>
+  func.return %0 : tensor<3x3xi32>
+}
+
+// -----
+
 // CHECK-LABEL: func @clamp
 func.func @clamp(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   %0 = "mhlo.clamp"(%arg0, %arg0, %arg0) : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
