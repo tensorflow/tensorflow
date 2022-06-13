@@ -20,34 +20,34 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/cl_test.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/tasks/conv_powervr_test_util.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/conv_generic_test_util.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
 
-TEST_F(OpenCLOperationTest, ConvPowerVR1x1SimpleWeights) {
-  const auto status = ConvPowerVR1x1SimpleWeightsTest(&exec_env_);
+TEST_F(OpenCLOperationTest, ConvGeneric1x1SimpleWeights) {
+  const auto status = ConvGeneric1x1SimpleWeightsTest(&exec_env_);
   ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
-TEST_F(OpenCLOperationTest, ConvPowerVR1x1) {
-  const auto status = ConvPowerVR1x1Test(&exec_env_);
+TEST_F(OpenCLOperationTest, ConvGeneric1x1) {
+  const auto status = ConvGeneric1x1Test(&exec_env_);
   ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
-TEST_F(OpenCLOperationTest, ConvPowerVRSimpleWeights) {
-  const auto status = ConvPowerVRSimpleWeightsTest(&exec_env_);
+TEST_F(OpenCLOperationTest, ConvGenericSimpleWeights) {
+  const auto status = ConvGenericSimpleWeightsTest(&exec_env_);
   ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
-TEST_F(OpenCLOperationTest, ConvPowerVR) {
-  const auto status = ConvPowerVRTest(&exec_env_);
+TEST_F(OpenCLOperationTest, ConvGeneric) {
+  const auto status = ConvGenericTest(&exec_env_);
   ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
-TEST_F(OpenCLOperationTest, ConvPowerVRGrouped) {
-  const auto status = ConvPowerVRGroupedTest(&exec_env_);
+TEST_F(OpenCLOperationTest, ConvGenericGrouped) {
+  const auto status = ConvGenericGroupedTest(&exec_env_);
   ASSERT_TRUE(status.ok()) << status.error_message();
 }
 

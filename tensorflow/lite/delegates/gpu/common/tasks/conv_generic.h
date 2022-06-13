@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_POWERVR_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_POWERVR_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_GENERIC_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_GENERIC_H_
 
 #include <cstring>
 #include <string>
@@ -39,9 +39,9 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-class ConvPowerVR : public GPUOperation {
+class ConvGeneric : public GPUOperation {
  public:
-  ConvPowerVR() = default;
+  ConvGeneric() = default;
   void GetPossibleKernelWorkGroups(
       TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info,
@@ -58,10 +58,10 @@ class ConvPowerVR : public GPUOperation {
   }
 
   // Move only
-  ConvPowerVR(ConvPowerVR&& operation);
-  ConvPowerVR& operator=(ConvPowerVR&& operation);
-  ConvPowerVR(const ConvPowerVR&) = delete;
-  ConvPowerVR& operator=(const ConvPowerVR&) = delete;
+  ConvGeneric(ConvGeneric&& operation);
+  ConvGeneric& operator=(ConvGeneric&& operation);
+  ConvGeneric(const ConvGeneric&) = delete;
+  ConvGeneric& operator=(const ConvGeneric&) = delete;
 
  private:
   enum class WeightsUploadType {
@@ -111,17 +111,17 @@ class ConvPowerVR : public GPUOperation {
     }
   };
 
-  ConvPowerVR(const OperationDef& definition,
+  ConvGeneric(const OperationDef& definition,
               const Convolution2DAttributes& attr, const GpuInfo& gpu_info,
               const BHWC* dst_shape = nullptr);
-  ConvPowerVR(const OperationDef& definition,
+  ConvGeneric(const OperationDef& definition,
               const Convolution2DAttributes& attr, const BHWC& weights_shape,
               const GpuInfo& gpu_info, const BHWC* dst_shape = nullptr);
-  ConvPowerVR(const OperationDef& definition,
+  ConvGeneric(const OperationDef& definition,
               const FullyConnectedAttributes& attr, const GpuInfo& gpu_info,
               const BHWC* dst_shape = nullptr);
-  explicit ConvPowerVR(const OperationDef& definition);
-  ConvPowerVR(const OperationDef& definition,
+  explicit ConvGeneric(const OperationDef& definition);
+  ConvGeneric(const OperationDef& definition,
               const Convolution3DAttributes& attr, const GpuInfo& gpu_info,
               const BHWDC* dst_shape = nullptr);
 
@@ -143,26 +143,26 @@ class ConvPowerVR : public GPUOperation {
   template <DataType T>
   void UploadBias(const tflite::gpu::Tensor<Linear, T>& bias);
 
-  friend ConvPowerVR CreateConvPowerVR(const GpuInfo& gpu_info,
+  friend ConvGeneric CreateConvGeneric(const GpuInfo& gpu_info,
                                        const OperationDef& definition,
                                        const Convolution2DAttributes& attr,
                                        const BHWC* dst_shape);
 
-  friend ConvPowerVR CreateConvPowerVR(const GpuInfo& gpu_info,
+  friend ConvGeneric CreateConvGeneric(const GpuInfo& gpu_info,
                                        const OperationDef& definition,
                                        const FullyConnectedAttributes& attr,
                                        const BHWC* dst_shape);
 
-  friend ConvPowerVR CreateConvPowerVRDynamicWeights(
+  friend ConvGeneric CreateConvGenericDynamicWeights(
       const GpuInfo& gpu_info, const OperationDef& definition,
       const Convolution2DAttributes& attr, const BHWC& weights_shape,
       const BHWC* dst_shape);
 
-  friend ConvPowerVR CreateConvPowerVRWino4x4To6x6(
+  friend ConvGeneric CreateConvGenericWino4x4To6x6(
       const GpuInfo& gpu_info, const OperationDef& definition,
       const Convolution2DAttributes& attr, const BHWC* dst_shape);
 
-  friend ConvPowerVR CreateConvPowerVR3D(const GpuInfo& gpu_info,
+  friend ConvGeneric CreateConvGeneric3D(const GpuInfo& gpu_info,
                                          const OperationDef& definition,
                                          const Convolution3DAttributes& attr,
                                          const BHWDC* dst_shape);
@@ -207,14 +207,14 @@ class ConvPowerVR : public GPUOperation {
 };
 
 template <DataType T>
-void ConvPowerVR::UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
+void ConvGeneric::UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
                              const tflite::gpu::Tensor<Linear, T>& biases) {
   UploadWeights(weights);
   UploadBias(biases);
 }
 
 template <DataType T>
-void ConvPowerVR::UploadDataForWinograd4x4To6x6(
+void ConvGeneric::UploadDataForWinograd4x4To6x6(
     const tflite::gpu::Tensor<OHWI, T>& weights) {
   tflite::gpu::Tensor<OHWI, T> wino_weights;
   RearrangeWeightsToWinograd4x4To6x6Weights(weights, &wino_weights);
@@ -226,12 +226,12 @@ void ConvPowerVR::UploadDataForWinograd4x4To6x6(
 }
 
 template <DataType T>
-void ConvPowerVR::UploadBias(const tflite::gpu::Tensor<Linear, T>& bias) {
+void ConvGeneric::UploadBias(const tflite::gpu::Tensor<Linear, T>& bias) {
   BufferDescriptor desc;
   desc.element_type = conv_params_.weights_data_type;
   desc.element_size = 4;
   desc.memory_type = conv_params_.weights_upload_type ==
-                             ConvPowerVR::WeightsUploadType::CONSTANT_MEM
+                             ConvGeneric::WeightsUploadType::CONSTANT_MEM
                          ? MemoryType::CONSTANT
                          : MemoryType::GLOBAL;
   const int float_size = conv_params_.weights_data_type == DataType::FLOAT32
@@ -256,7 +256,7 @@ void ConvPowerVR::UploadBias(const tflite::gpu::Tensor<Linear, T>& bias) {
 }
 
 template <DataType T>
-void ConvPowerVR::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights) {
+void ConvGeneric::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights) {
   const auto weights_desc = GetWeightsDescription();
   const int flt_count =
       GetTotalElementsCountForLayout(weights_desc, weights.shape);
@@ -269,7 +269,7 @@ void ConvPowerVR::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights) {
     desc.element_type = weights_desc.type;
     desc.element_size = 4;
     desc.memory_type = conv_params_.weights_upload_type ==
-                               ConvPowerVR::WeightsUploadType::CONSTANT_MEM
+                               ConvGeneric::WeightsUploadType::CONSTANT_MEM
                            ? MemoryType::CONSTANT
                            : MemoryType::GLOBAL;
     desc.size = weights_data.size();
@@ -293,7 +293,7 @@ void ConvPowerVR::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights) {
 }
 
 template <DataType T>
-void ConvPowerVR::UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights) {
+void ConvGeneric::UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights) {
   const auto weights_desc = GetWeightsDescription();
   const int flt_count =
       GetTotalElementsCountForLayout(weights_desc, weights.shape);
@@ -325,28 +325,28 @@ void ConvPowerVR::UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights) {
   }
 }
 
-ConvPowerVR CreateConvPowerVR(const GpuInfo& gpu_info,
+ConvGeneric CreateConvGeneric(const GpuInfo& gpu_info,
                               const OperationDef& definition,
                               const Convolution2DAttributes& attr,
                               const BHWC* dst_shape = nullptr);
 
-ConvPowerVR CreateConvPowerVR(const GpuInfo& gpu_info,
+ConvGeneric CreateConvGeneric(const GpuInfo& gpu_info,
                               const OperationDef& definition,
                               const FullyConnectedAttributes& attr,
                               const BHWC* dst_shape = nullptr);
 
-ConvPowerVR CreateConvPowerVRDynamicWeights(const GpuInfo& gpu_info,
+ConvGeneric CreateConvGenericDynamicWeights(const GpuInfo& gpu_info,
                                             const OperationDef& definition,
                                             const Convolution2DAttributes& attr,
                                             const BHWC& weights_shape,
                                             const BHWC* dst_shape = nullptr);
 
-ConvPowerVR CreateConvPowerVRWino4x4To6x6(const GpuInfo& gpu_info,
+ConvGeneric CreateConvGenericWino4x4To6x6(const GpuInfo& gpu_info,
                                           const OperationDef& definition,
                                           const Convolution2DAttributes& attr,
                                           const BHWC* dst_shape = nullptr);
 
-ConvPowerVR CreateConvPowerVR3D(const GpuInfo& gpu_info,
+ConvGeneric CreateConvGeneric3D(const GpuInfo& gpu_info,
                                 const OperationDef& definition,
                                 const Convolution3DAttributes& attr,
                                 const BHWDC* dst_shape = nullptr);
@@ -354,4 +354,4 @@ ConvPowerVR CreateConvPowerVR3D(const GpuInfo& gpu_info,
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_POWERVR_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_GENERIC_H_

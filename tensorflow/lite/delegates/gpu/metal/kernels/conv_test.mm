@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_buffer_1x1_test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_constants_test_util.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/conv_generic_test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_metal_simd.h"
-#include "tensorflow/lite/delegates/gpu/common/tasks/conv_powervr_test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/winograd.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -278,7 +278,7 @@ absl::Status Winograd4x4To6x6Test(TestExecutionEnvironment* env) {
       RETURN_IF_ERROR(
           env->ExecuteGPUOperation(src_tensor, std::move(op0_ptr), dst_shape, &output0));
 
-      auto gpu_op1 = CreateWinograd4x4To36(op_def, attr.padding);
+      auto gpu_op1 = CreateWinograd4x4To36(op_def, attr.padding, env->GetGpuInfo());
       std::unique_ptr<GPUOperation> op1_ptr =
           absl::make_unique<Winograd4x4To36>(std::move(gpu_op1));
 
@@ -537,28 +537,28 @@ absl::Status ConvolutionSimdMatrixMultiplyPerfTest() {
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
-- (void)testConvPowerVR1x1SimpleWeights {
-  const auto status = ConvPowerVR1x1SimpleWeightsTest(&exec_env_);
+- (void)testConvGeneric1x1SimpleWeights {
+  const auto status = ConvGeneric1x1SimpleWeightsTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
-- (void)testConvPowerVR1x1 {
-  const auto status = ConvPowerVR1x1Test(&exec_env_);
+- (void)testConvGeneric1x1 {
+  const auto status = ConvGeneric1x1Test(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
-- (void)testConvPowerVRSimpleWeights {
-  const auto status = ConvPowerVRSimpleWeightsTest(&exec_env_);
+- (void)testConvGenericSimpleWeights {
+  const auto status = ConvGenericSimpleWeightsTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
-- (void)testConvPowerVR {
-  const auto status = ConvPowerVRTest(&exec_env_);
+- (void)testConvGeneric {
+  const auto status = ConvGenericTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
-- (void)testConvPowerVRGrouped {
-  const auto status = ConvPowerVRGroupedTest(&exec_env_);
+- (void)testConvGenericGrouped {
+  const auto status = ConvGenericGroupedTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

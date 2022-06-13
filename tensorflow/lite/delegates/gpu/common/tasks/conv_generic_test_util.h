@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_POWERVR_TEST_UTIL_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_POWERVR_TEST_UTIL_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_GENERIC_TEST_UTIL_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_GENERIC_TEST_UTIL_H_
 
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/testing_util.h"
@@ -22,13 +22,13 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-absl::Status ConvPowerVR1x1SimpleWeightsTest(TestExecutionEnvironment* env);
-absl::Status ConvPowerVR1x1Test(TestExecutionEnvironment* env);
-absl::Status ConvPowerVRSimpleWeightsTest(TestExecutionEnvironment* env);
-absl::Status ConvPowerVRTest(TestExecutionEnvironment* env);
-absl::Status ConvPowerVRGroupedTest(TestExecutionEnvironment* env);
+absl::Status ConvGeneric1x1SimpleWeightsTest(TestExecutionEnvironment* env);
+absl::Status ConvGeneric1x1Test(TestExecutionEnvironment* env);
+absl::Status ConvGenericSimpleWeightsTest(TestExecutionEnvironment* env);
+absl::Status ConvGenericTest(TestExecutionEnvironment* env);
+absl::Status ConvGenericGroupedTest(TestExecutionEnvironment* env);
 
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_POWERVR_TEST_UTIL_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_GENERIC_TEST_UTIL_H_

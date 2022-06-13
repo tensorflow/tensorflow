@@ -201,9 +201,9 @@ cc_library(
 )
 
 cc_library(
-    name = "conv_powervr",
-    srcs = ["conv_powervr.cc"],
-    hdrs = ["conv_powervr.h"],
+    name = "conv_generic",
+    srcs = ["conv_generic.cc"],
+    hdrs = ["conv_generic.h"],
     deps = [
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:operations",
@@ -226,12 +226,12 @@ cc_library(
 )
 
 cc_library(
-    name = "conv_powervr_test_util",
+    name = "conv_generic_test_util",
     testonly = 1,
-    srcs = ["conv_powervr_test_util.cc"],
-    hdrs = ["conv_powervr_test_util.h"],
+    srcs = ["conv_generic_test_util.cc"],
+    hdrs = ["conv_generic_test_util.h"],
     deps = [
-        ":conv_powervr",
+        ":conv_generic",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:testing_util",
