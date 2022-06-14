@@ -91,14 +91,14 @@ _gen_mlir_op_rule = rule(
 
 def _gen_mlir_op(op, name, type, platform, output_type):
     _gen_mlir_op_rule(
-        name = "generate_{op}_{name}_{platform}_{type}_{output_type}_mlir".format(
+        name = "generate_{op}_{platform}_{type}_{output_type}_mlir".format(
             op = op,
             name = name,
             platform = platform,
             type = type,
             output_type = output_type,
         ),
-        out = "{op}_{name}_{platform}_{type}_{output_type}.mlir".format(
+        out = "{op}_{platform}_{type}_{output_type}.mlir".format(
             op = op,
             name = name,
             platform = platform,
@@ -346,7 +346,7 @@ def _gen_kernel_library(
                 type = type,
             )
             _gen_kernel_bin_rule(
-                name = "{op}_{name}_{platform}_{type}_{output_type}_kernel_generator".format(
+                name = "{op}_{platform}_{type}_{output_type}_kernel_generator".format(
                     op = op,
                     name = name,
                     platform = platform,
@@ -359,7 +359,7 @@ def _gen_kernel_library(
                 gpu_archs = gpu_archs,
                 jit = jit,
                 max_supported_rank = max_supported_rank,
-                mlir_op = "{op}_{name}_{platform}_{type}_{output_type}.mlir".format(
+                mlir_op = "{op}_{platform}_{type}_{output_type}.mlir".format(
                     op = op,
                     name = name,
                     platform = platform,
@@ -375,7 +375,7 @@ def _gen_kernel_library(
             gpu_arch_option = "sm_70,compute_75" if cuda_gpu_architectures() else ",".join(rocm_gpu_architectures())
             test_args = [
                 "$(location //tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel)",
-                "$(location {op}_{name}_{platform}_{type}_{output_type}.mlir)".format(
+                "$(location {op}_{platform}_{type}_{output_type}.mlir)".format(
                     op = op,
                     name = name,
                     platform = platform,
@@ -390,7 +390,7 @@ def _gen_kernel_library(
             if typed_unroll_factors:
                 test_args.append("--unroll_factors=%s" % typed_unroll_factors)
             native.sh_test(
-                name = "{op}_{name}_{platform}_{type}_{output_type}_gen_test".format(
+                name = "{op}_{platform}_{type}_{output_type}_gen_test".format(
                     op = op,
                     name = name,
                     platform = platform,
@@ -402,7 +402,7 @@ def _gen_kernel_library(
                 args = test_args,
                 size = test_size,
                 data = [
-                    ":{op}_{name}_{platform}_{type}_{output_type}.mlir".format(
+                    ":{op}_{platform}_{type}_{output_type}.mlir".format(
                         op = op,
                         name = name,
                         platform = platform,
@@ -414,7 +414,7 @@ def _gen_kernel_library(
             )
 
     kernel_deps = [
-        ":{op}_{name}_{platform}_{type}_{output_type}_kernel_generator".format(
+        ":{op}_{platform}_{type}_{output_type}_kernel_generator".format(
             op = op,
             name = name,
             platform = platform,
