@@ -424,19 +424,19 @@ GraphExecutor::LoadClientGraph(const GraphExecutor::ClientGraph& client_graph) {
 
   // Step 1: Import the client graph from proto to an MLIR module.
   mlir::MLIRContext context;
-  TF_ASSIGN_OR_RETURN(auto module,
-                      ImportClientGraphToMlirModule(client_graph, &context));
+  ASSIGN_OR_RETURN_IN_IMPORT(
+      auto module, ImportClientGraphToMlirModule(client_graph, &context));
 
   // Step 2: Compile the MLIR module from TF dialect to TFRT dialect (in BEF).
-  TF_ASSIGN_OR_RETURN(loaded_client_graph->bef,
-                      CompileMlirModuleToBef(module.get()));
+  ASSIGN_OR_RETURN_IN_COMPILE(loaded_client_graph->bef,
+                              CompileMlirModuleToBef(module.get()));
 
   // Step 3: Initialize runtime states using special BEF functions.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN_IN_INIT(
       loaded_client_graph->bef_file,
       tfrt::CreateBefFileFromBefBuffer(runtime(), loaded_client_graph->bef));
-  TF_RETURN_IF_ERROR(InitBef(loaded_client_graph->bef_file.get(),
-                             loaded_client_graph->resource_context.get()));
+  RETURN_IF_ERROR_IN_INIT(InitBef(loaded_client_graph->bef_file.get(),
+                                  loaded_client_graph->resource_context.get()));
 
   return loaded_client_graph;
 }
