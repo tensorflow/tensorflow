@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/bufferizable_op_interface_impl.h"
@@ -41,6 +42,60 @@ using bufferization::BufferizableOpInterface;
 using bufferization::BufferizationState;
 using bufferization::BufferRelation;
 using bufferization::replaceOpWithNewBufferizedOp;
+
+struct CustomCallOpInterface
+    : public BufferizableOpInterface::ExternalModel<CustomCallOpInterface,
+                                                    mhlo::CustomCallOp> {
+  bool bufferizesToMemoryRead(Operation *, OpOperand &,
+                              const BufferizationState &) const {
+    return true;
+  }
+
+  bool bufferizesToMemoryWrite(Operation *, OpOperand &,
+                               const BufferizationState &) const {
+    return false;  // Arguments are read-only.
+  }
+
+  SmallVector<OpResult> getAliasingOpResult(Operation *, OpOperand &,
+                                            const BufferizationState &) const {
+    return {};
+  }
+
+  LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
+                          BufferizationState &state) const {
+    auto customCallOp = cast<mhlo::CustomCallOp>(op);
+
+    // Bufferize arguments.
+    SmallVector<Value> bufferArgs;
+    for (OpOperand &operand : customCallOp->getOpOperands()) {
+      if (!operand.get().getType().isa<TensorType>()) return failure();
+      FailureOr<Value> operandBuffer = state.getBuffer(rewriter, operand);
+      if (failed(operandBuffer)) return failure();
+      bufferArgs.push_back(*operandBuffer);
+    }
+
+    // Allocate outputs.
+    for (OpResult result : customCallOp->getOpResults()) {
+      if (!result.getType().isa<TensorType>()) return failure();
+      FailureOr<Value> resultBuffer =
+          state.createAlloc(rewriter, op->getLoc(), result);
+      if (failed(resultBuffer)) return failure();
+      bufferArgs.push_back(*resultBuffer);
+    }
+
+    auto lhloOp = rewriter.create<lmhlo::CustomCallOp>(
+        op->getLoc(), llvm::None, bufferArgs, op->getAttrs());
+    // lmhlo.custom_call uses a segment_size attribute to tell input from output
+    // arguments.
+    lhloOp->setAttr(
+        lhloOp.getOperandSegmentSizeAttr(),
+        rewriter.getI32VectorAttr({static_cast<int32_t>(op->getNumOperands()),
+                                   static_cast<int32_t>(op->getNumResults())}));
+    bufferization::replaceOpWithBufferizedValues(
+        rewriter, op, makeArrayRef(bufferArgs).slice(op->getNumOperands()));
+    return success();
+  }
+};
 
 struct ReshapeOpInterface
     : public BufferizableOpInterface::ExternalModel<ReshapeOpInterface,
@@ -304,7 +359,7 @@ struct HloLegalizeToMemrefPass
     : public HloLegalizeToMemrefPassBase<HloLegalizeToMemrefPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<bufferization::BufferizationDialect, memref::MemRefDialect,
-                    mhlo::MhloDialect>();
+                    mhlo::MhloDialect, lmhlo::LmhloDialect>();
     registerBufferizableOpInterfaceExternalModels(registry);
   }
 
@@ -325,6 +380,7 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToMemrefPass() {
 
 void registerBufferizableOpInterfaceExternalModels(DialectRegistry &registry) {
   registry.addExtension(+[](MLIRContext *ctx, MhloDialect * /*dialect*/) {
+    CustomCallOp::attachInterface<CustomCallOpInterface>(*ctx);
     ReshapeOp::attachInterface<ReshapeOpInterface>(*ctx);
     DynamicReshapeOp::attachInterface<DynamicReshapeOpInterface>(*ctx);
     DynamicBroadcastInDimOp::attachInterface<DynamicBroadcastInDimOpInterface>(

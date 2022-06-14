@@ -1184,6 +1184,7 @@ cc_library(
     ],
     deps = [
         ":hlo",
+        ":lhlo",
         ":mhlo_pass_details",
         ":type_conversion",
         "@llvm-project//llvm:Support",
