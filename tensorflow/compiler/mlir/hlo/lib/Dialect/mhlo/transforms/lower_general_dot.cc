@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -79,7 +80,13 @@ Value transposeReshape(Value arg, Location loc,
   for (auto val : transposePermutation) {
     transposedShape.push_back(argShape[val]);
   }
-  auto transposeType = RankedTensorType::get(transposedShape, elementType);
+
+  // Construct type. Incorporates sparsity, if any, of the
+  // input operand into the output operand to ensure this information
+  // is not lost for subsequent dot operation.
+  auto enc = sparse_tensor::getSparseTensorEncoding(arg.getType());
+  auto transposeType = RankedTensorType::get(transposedShape, elementType, enc);
+
   Value transposeResult = rewriter.create<TransposeOp>(
       loc, transposeType, arg, transposePermutationAttr);
 
