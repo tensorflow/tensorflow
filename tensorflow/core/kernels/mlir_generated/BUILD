@@ -626,7 +626,7 @@ tf_cc_test(
 
 # TODO(b/160731748): Re-enable when it works again.
 # gpu_kernel_library(
-#     name = "gpu_bias_add_kernels",
+#     name = "badd",
 #     op = "bias_add",
 #     tile_size = "16x16",
 #     types = [
@@ -637,7 +637,7 @@ tf_cc_test(
 # )
 
 gpu_kernel_library(
-    name = "gpu_relu_kernels",
+    name = "relu",
     jit_types = [
         "i8",
         "i16",
@@ -658,7 +658,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_elu_kernels",
+    name = "elu",
     op = "elu",
     tile_size = "256",
     types = [
@@ -669,7 +669,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_selu_kernels",
+    name = "selu",
     op = "selu",
     tile_size = "256",
     types = [
@@ -680,7 +680,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_sigmoid_kernels",
+    name = "sig",
     op = "sigmoid",
     tile_size = "256",
     types = [
@@ -692,7 +692,7 @@ gpu_kernel_library(
 
 # TODO(b/25387198): Add an int32 kernel.
 gpu_kernel_library(
-    name = "gpu_abs_kernels",
+    name = "abs",
     jit_types = [
         "i8",
         "i16",
@@ -709,7 +709,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_acos_kernels",
+    name = "acos",
     op = "acos",
     tile_size = "256",
     types = [
@@ -721,7 +721,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_acosh_kernels",
+    name = "acosh",
     op = "acosh",
     tile_size = "256",
     types = [
@@ -734,7 +734,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_angle_kernels",
+    name = "angle",
     op = "angle",
     output_types = [
         "f32",
@@ -749,7 +749,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_asin_kernels",
+    name = "asin",
     op = "asin",
     tile_size = "256",
     types = [
@@ -761,7 +761,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_asinh_kernels",
+    name = "asinh",
     op = "asinh",
     tile_size = "256",
     types = [
@@ -773,7 +773,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_atan_kernels",
+    name = "atan",
     op = "atan",
     tile_size = "256",
     types = [
@@ -785,7 +785,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_atanh_kernels",
+    name = "atanh",
     op = "atanh",
     tile_size = "256",
     types = [
@@ -798,7 +798,7 @@ gpu_kernel_library(
 
 # TODO: enable when supported in the pipeline
 # gpu_kernel_library(
-#     name = "gpu_atanh_kernels_experimental",
+#     name = "atanh",
 #     op = "atanh",
 #     tile_size = "256",
 #     types = [
@@ -810,7 +810,7 @@ gpu_kernel_library(
 # )
 
 gpu_kernel_library(
-    name = "gpu_conj_kernels",
+    name = "conj",
     op = "conj",
     tile_size = "256",
     types = [
@@ -821,7 +821,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_cosh_kernels",
+    name = "cosh",
     jit_types = [
         "c64",
         "c128",
@@ -838,7 +838,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_erf_kernels",
+    name = "erf",
     op = "erf",
     tile_size = "256",
     types = [
@@ -850,7 +850,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_erfc_kernels",
+    name = "erfc",
     op = "erfc",
     tile_size = "256",
     types = [
@@ -862,7 +862,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_imag_kernels",
+    name = "imag",
     op = "imag",
     output_types = [
         "f32",
@@ -876,14 +876,14 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_logical_not_kernels",
+    name = "logicn",
     op = "logical_not",
     tile_size = "256",
     types = ["i1"],
 )
 
 gpu_kernel_library(
-    name = "gpu_real_kernels",
+    name = "real",
     op = "real",
     output_types = [
         "f32",
@@ -897,7 +897,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_reciprocal_kernels",
+    name = "recip",
     op = "reciprocal",
     tile_size = "256",
     types = [
@@ -912,7 +912,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_polygamma_kernels",
+    name = "pgamma",
     op = "polygamma",
     tile_size = "256",
     types = [
@@ -922,7 +922,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_digamma_kernels",
+    name = "digamma",
     op = "digamma",
     tile_size = "256",
     types = [
@@ -933,7 +933,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_lgamma_kernels",
+    name = "lgamma",
     op = "lgamma",
     tile_size = "256",
     types = [
@@ -944,7 +944,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_sign_kernels",
+    name = "sign",
     jit_types = [
         "i8",
         "i16",
@@ -964,7 +964,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_sinh_kernels",
+    name = "sinh",
     jit_types = [
         "c64",
         "c128",
@@ -981,7 +981,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_square_kernels",
+    name = "square",
     jit_types = [
         "i8",
         "i16",
@@ -1002,7 +1002,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_squared_difference_kernels",
+    name = "sqd",
     op = "squared_difference",
     tile_size = "1024",
     types = [
@@ -1015,7 +1015,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_add_v2_kernels",
+    name = "addv2",
     op = "add_v2",
     tile_size = "1024",
     types = [
@@ -1033,7 +1033,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_sub_kernels",
+    name = "sub",
     jit_types = [
         "i8",
         "i16",
@@ -1055,7 +1055,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_complex_kernels",
+    name = "complx",
     op = "complex",
     output_types = [
         "c64",
@@ -1070,7 +1070,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_complex_abs_kernels",
+    name = "cabs",
     op = "complex_abs",
     output_types = [
         "f32",
@@ -1084,7 +1084,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_div_kernels",
+    name = "div",
     jit_types = [
         "i8",
         "ui32",
@@ -1107,7 +1107,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_truncate_div_kernels",
+    name = "tdiv",
     jit_types = [
         "i8",
         "ui32",
@@ -1119,7 +1119,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_mul_kernels",
+    name = "mul",
     op = "mul",
     tile_size = "1024",
     types = [
@@ -1143,7 +1143,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_mul_no_nan_kernels",
+    name = "mulnnan",
     op = "mul_no_nan",
     tile_size = "1024",
     types = [
@@ -1165,7 +1165,7 @@ gpu_kernel_library(
 # Bitwise operations.
 [
     gpu_kernel_library(
-        name = "gpu_" + op + "_kernels",
+        name = "g" + op ,
         op = op,
         tile_size = "1024",
         types = [
@@ -1186,7 +1186,7 @@ gpu_kernel_library(
 ]
 
 gpu_kernel_library(
-    name = "gpu_right_shift_kernels",
+    name = "rshift",
     op = "right_shift",
     tile_size = "1024",
     types = [
@@ -1203,7 +1203,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_atan2_kernels",
+    name = "gatan2",
     op = "atan2",
     tile_size = "256",
     types = [
@@ -1217,7 +1217,7 @@ gpu_kernel_library(
 # Logical operations.
 [
     gpu_kernel_library(
-        name = "gpu_" + op + "_kernels",
+        name = "g" + op,
         op = op,
         tile_size = "1024",
         types = [
@@ -1232,7 +1232,7 @@ gpu_kernel_library(
 
 [
     gpu_kernel_library(
-        name = "gpu_" + op + "_kernels",
+        name = "g" + op,
         op = op,
         output_types = ["i1"] * 10,
         tile_size = "1024",
@@ -1258,7 +1258,7 @@ gpu_kernel_library(
 
 [
     gpu_kernel_library(
-        name = "gpu_" + op + "_kernels",
+        name = "g" + op,
         op = op,
         output_types = ["i1"] * 10,
         tile_size = "1024",
@@ -1286,7 +1286,7 @@ gpu_kernel_library(
 
 [
     gpu_kernel_library(
-        name = "gpu_" + op + "_kernels",
+        name = "g" + op,
         jit_types = [
             "i8",
             "ui16",
@@ -1312,7 +1312,7 @@ gpu_kernel_library(
 ]
 
 gpu_kernel_library(
-    name = "gpu_neg_kernels",
+    name = "neg",
     op = "neg",
     tile_size = "256",
     types = [
@@ -1330,7 +1330,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_floor_div_kernels",
+    name = "fdiv",
     jit_types = [
         "i8",
         "ui32",
@@ -1349,7 +1349,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_floor_mod_kernels",
+    name = "fmod",
     jit_types = [
         "i8",
         "i16",
@@ -1371,7 +1371,7 @@ gpu_kernel_library(
 # Kernels that support all floating-point types.
 [
     gpu_kernel_library(
-        name = "gpu_" + op + "_kernels",
+        name = "g" + op,
         op = op,
         tile_size = "256",
         types = [
@@ -1397,7 +1397,7 @@ gpu_kernel_library(
 ]
 
 gpu_kernel_library(
-    name = "gpu_exp_kernels",
+    name = "gexp",
     op = "exp",
     tile_size = "256",
     types = [
@@ -1413,7 +1413,7 @@ gpu_kernel_library(
 # Kernels that support all floating-point types but have i1 output.
 [
     gpu_kernel_library(
-        name = "gpu_" + op + "_kernels",
+        name = "g" + op,
         op = op,
         output_types = ["i1"] * 3,
         tile_size = "256",
@@ -1434,7 +1434,7 @@ gpu_kernel_library(
 # Kernels that support all floating-point types but cannot be vectorized.
 [
     gpu_kernel_library(
-        name = "gpu_" + op + "_kernels",
+        name = "g" + op,
         jit_types = [
             "c64",
             "c128",
@@ -1455,7 +1455,7 @@ gpu_kernel_library(
 ]
 
 gpu_kernel_library(
-    name = "gpu_cast_kernels",
+    name = "gcast",
     op = "cast",
     # We generate all combinations of input types/output types from the set
     # {i1, i8, i16, i32, i64, ui8, ui16, ui32, ui64, f16, f32, f64} to the set.
@@ -1486,7 +1486,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_pow_kernels",
+    name = "gpow",
     jit_types = [
         "i8",
         "i16",
@@ -1503,7 +1503,7 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     # The zeta kernels needs many registers so tile at 256.
-    name = "gpu_zeta_kernels",
+    name = "gzeta",
     op = "zeta",
     tile_size = "256",
     types = [
@@ -1515,7 +1515,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_select_v2_kernels",
+    name = "gselv2",
     jit_types = [
         "i8",
         "i16",
@@ -1726,7 +1726,7 @@ cpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_xlogy_kernels",
+    name = "gxlogy",
     op = "xlogy",
     tile_size = "1024",
     types = [
@@ -1746,7 +1746,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_xdivy_kernels",
+    name = "gxdivy",
     op = "xdivy",
     tile_size = "1024",
     types = [
@@ -1760,7 +1760,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_xlog1py_kernels",
+    name = "gxlog1py",
     op = "xlog1py",
     tile_size = "1024",
     types = [
@@ -1780,7 +1780,7 @@ gpu_kernel_library(
 )
 
 cpu_kernel_library(
-    name = "cpu_angle_kernels",
+    name = "cang",
     op = "angle",
     output_types = [
         "f32",
@@ -1807,7 +1807,7 @@ cpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_div_no_nan_kernels",
+    name = "divnan",
     op = "div_no_nan",
     tile_size = "1024",
     types = [
@@ -1820,7 +1820,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_rint_kernels",
+    name = "grint",
     jit_types = ["f16"],
     op = "rint",
     tile_size = "1024",
@@ -1831,7 +1831,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_round_kernels",
+    name = "ground",
     op = "round",
     tile_size = "1024",
     types = [
@@ -1844,7 +1844,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_zeros_like_kernels",
+    name = "gzerosl",
     jit_types = [
         "i8",
         "i16",
@@ -1868,7 +1868,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_ones_like_kernels",
+    name = "onesl",
     jit_types = [
         "i8",
         "i16",
@@ -1892,7 +1892,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_next_after_kernels",
+    name = "gnexta",
     op = "next_after",
     tile_size = "1024",
     types = [
