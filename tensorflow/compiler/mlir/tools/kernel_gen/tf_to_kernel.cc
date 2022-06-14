@@ -183,7 +183,7 @@ int main(int argc, char** argv) {
       "tile_sizes", llvm::cl::desc("tile sizes to use"), llvm::cl::ZeroOrMore,
       llvm::cl::CommaSeparated);
   llvm::cl::list<int64_t> unroll_factors(
-      "unrol,
+      "unroll_factors",
       llvm::cl::desc("factors to unroll by, separated by commas"),
       llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated);
   llvm::cl::opt<bool> jit_i64_indexed_for_large_tensors(
