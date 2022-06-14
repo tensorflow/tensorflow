@@ -1444,9 +1444,7 @@ cc_library(
 cc_library(
     name = "unfuse_batch_norm",
     srcs = ["lib/Dialect/mhlo/transforms/unfuse_batch_norm.cc"],
-    hdrs = [
-        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
-    ],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"],
     deps = [
         ":hlo",
         "@llvm-project//llvm:Support",
