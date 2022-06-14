@@ -107,13 +107,13 @@ void createArgs(ArrayRef<OpAsmParser::UnresolvedOperand> operands,
 constexpr int64_t kFoldExpandSplatEltLimit = 16;
 
 // Similarly to the constant above, this is an arbitrary limit into how many
-// elements can be folded by a binary operation folder.
+// elements can be folded by an operation folder.
 // This limit doesn't apply to the following special cases:
 //   1) Adding a zero.
 //   2) Multiplying by one.
 //   3) When both operands are splats.
 // TODO(b/210478841): Define a constant folding policy that generalizes this.
-constexpr int64_t kFoldBinaryOpEltLimit = 65536;
+constexpr int64_t kFoldOpEltLimit = 65536;
 
 // Clamps value to the range [lower, upper].  Requires lower <= upper.
 template <typename T>
@@ -2191,12 +2191,11 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
   if (!resultTy.hasStaticShape()) return {};
 
   // If the operand is constant, we can do the conversion now.
-  if (auto elementsAttr = operands.front().dyn_cast_or_null<ElementsAttr>()) {
-    return hlo::ConvertElementsAttr(elementsAttr,
-                                    getElementTypeOrSelf(getResult()));
-  }
-
-  return {};
+  auto elementsAttr = operands.front().dyn_cast_or_null<ElementsAttr>();
+  if (!elementsAttr) return {};
+  if (elementsAttr.getNumElements() > kFoldOpEltLimit) return {};
+  return hlo::ConvertElementsAttr(elementsAttr,
+                                  getElementTypeOrSelf(getResult()));
 }
 
 namespace {
@@ -5863,7 +5862,7 @@ static Attribute BinaryFolder(Op* op, ArrayRef<Attribute> attrs) {
   }
 
   // Prevent folding if lhs/rhs are too large.
-  if (lhs.getNumElements() > kFoldBinaryOpEltLimit) {
+  if (lhs.getNumElements() > kFoldOpEltLimit) {
     return {};
   }
 
