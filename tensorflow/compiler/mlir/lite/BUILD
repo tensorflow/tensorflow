@@ -88,7 +88,10 @@ gentbl_cc_library(
             "ir/tfl_ops.cc.inc",
         ),
         (
-            ["-gen-dialect-doc"],
+            [
+                "-gen-dialect-doc",
+                "-dialect=tfl",
+            ],
             "g3doc/tfl_ops.md",
         ),
     ],

@@ -18,7 +18,7 @@ documentation for the Question-Answer model
 The following models are compatible with the `BertNLClassifier` API.
 
 *   Models created by
-    [TensorFlow Lite Model Maker for BERT Question Answer](https://www.tensorflow.org/lite/tutorials/model_maker_question_answer).
+    [TensorFlow Lite Model Maker for BERT Question Answer](https://www.tensorflow.org/lite/models/modify/model_maker/question_answer).
 
 *   The
     [pretrained BERT models on TensorFlow Hub](https://tfhub.dev/tensorflow/collections/lite/task-library/bert-question-answerer/1).
@@ -119,7 +119,7 @@ std::vector<QaAnswer> positive_results = answerer->Answer(context_of_question, q
 ```
 
 See the
-[source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/cc/task/text/qa/bert_question_answerer.h)
+[source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/cc/task/text/bert_question_answerer.h)
 for more details.
 
 ## Example results

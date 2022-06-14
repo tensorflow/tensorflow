@@ -186,7 +186,7 @@ Status ClearShardingAttributes(HloModule* module) {
     for (HloInstruction* hlo : computation->instructions()) {
       // Keep sharding annotation on Infeed and entry parameters since they're
       // used by HloReplicationAnalysis later (for ArCrsCombiner).
-      if (hlo->opcode() == HloOpcode::kInfeed) {
+      if (hlo->HasSideEffect()) {
         continue;
       }
       if (hlo->opcode() == HloOpcode::kParameter &&
@@ -1722,7 +1722,7 @@ std::vector<ReplicaGroup> SpmdPartitioningVisitor::CreateReplicaGroups(
 }
 
 Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
-  if (hlo->HasSideEffect()) {
+  if (hlo->HasSideEffect() && !hlo->sharding().HasUniqueDevice()) {
     return Unimplemented("Side-effect ops cannot be replicated: %s",
                          hlo->ToString());
   }
@@ -1743,6 +1743,9 @@ Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
   HloSharding sharding = hlo->sharding().HasUniqueDevice()
                              ? hlo->sharding()
                              : HloSharding::Replicate();
+  if (hlo->opcode() == HloOpcode::kSend || hlo->opcode() == HloOpcode::kRecv) {
+    sharding = sharding.GetSubSharding(hlo->shape(), {0});
+  }
 
   // If the instruction cannot be partitioned, replicate the instruction unless
   // the instruction has side-effect.
@@ -2291,7 +2294,10 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
   absl::optional<HloSharding> desired_operand_sharding =
       hlo_sharding_util::ReshapeSharding(hlo->shape(), hlo->operand(0)->shape(),
                                          hlo->sharding());
-  if (desired_operand_sharding.has_value()) {
+  // Use the desired operand sharding only if the number of tiles returned
+  // matches the number of tiles in the output.
+  if (desired_operand_sharding.has_value() &&
+      hlo->sharding().NumTiles() == desired_operand_sharding->NumTiles()) {
     auto operand_hlo = operand.Reshard(*desired_operand_sharding).hlo();
     SetPartitionedHlo(hlo, [&] {
       return b_.AddInstruction(hlo->CloneWithNewOperands(

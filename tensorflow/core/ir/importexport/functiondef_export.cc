@@ -298,7 +298,7 @@ tensorflow::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
 
   // Finally the dialect attributes (prefixed by `tf.` in general) are converted
   // as-is and stored on the `attr` field of the FunctionDef.
-  llvm::SmallVector<NamedAttribute, 8> funcAttrs(func_op->getDialectAttrs());
+  SmallVector<NamedAttribute, 8> funcAttrs(func_op->getDialectAttrs());
   TF_RETURN_IF_ERROR(ConvertAttributes(funcAttrs, {"tfg.func_attrs"},
                                        /*remove_ref_type=*/false,
                                        fdef.mutable_attr()));

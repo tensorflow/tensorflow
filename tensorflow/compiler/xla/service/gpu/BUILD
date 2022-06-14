@@ -64,6 +64,7 @@ check_deps(
         "//conditions:default": [
             ":xlir_kernels",
             ":xlir_opdefs",
+            ":jitrt_custom_calls",
             "@tf_runtime//:basic_kernels_alwayslink",
             "@tf_runtime//:basic_kernels_opdefs",
             "@tf_runtime//:befexecutor",
@@ -640,6 +641,26 @@ cc_library(
 )
 
 cc_library(
+    name = "jitrt_custom_calls",
+    srcs = ["jitrt_custom_calls.cc"],
+    hdrs = ["jitrt_custom_calls.h"],
+    tags = ["manual"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":matmul_utils",
+        ":stream_executor_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/service:executable",
+        "@llvm-project//llvm:OrcJIT",
+        "@llvm-project//mlir:Support",
+        "@tf_runtime//:dtype",
+        "@tf_runtime//:support",
+        "@tf_runtime//backends/jitrt",
+        "@tf_runtime//backends/jitrt:custom_call",
+    ],
+)
+
+cc_library(
     name = "gpu_executable",
     srcs = [
         "bef_thunk.cc",
@@ -777,6 +798,7 @@ cc_library(
         ":is_xlir_enabled": [
             ":xlir_kernels",
             ":xlir_opdefs",
+            ":jitrt_custom_calls",
             "@llvm-project//llvm:Support",
             "@llvm-project//mlir:GPUTransforms",
             "@llvm-project//mlir:Pass",
@@ -789,6 +811,8 @@ cc_library(
             "@tf_runtime//:basic_kernels_alwayslink",
             "@tf_runtime//:basic_kernels_opdefs",
             "@tf_runtime//:bef",
+            "@tf_runtime//backends/jitrt",
+            "@tf_runtime//backends/jitrt:jitrt_compiler",
             "@tf_runtime//:befexecutor",
             "@tf_runtime//:beftomlir",
             "@tf_runtime//:core_runtime",
@@ -899,26 +923,14 @@ cc_library(
     srcs = ["gemm_thunk.cc"],
     hdrs = ["gemm_thunk.h"],
     deps = [
-        ":buffer_allocations",
         ":matmul_utils",
         ":thunk",
-        "//tensorflow/compiler/xla:comparison_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:buffer_assignment",
-        "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/core/platform:statusor",
-        "//tensorflow/core/platform:stream_executor_no_cuda",
+        "//tensorflow/core/platform:status",
         "//tensorflow/stream_executor:device_memory",
-        "//tensorflow/stream_executor:matmul_util",
-        "//tensorflow/stream_executor:scratch_allocator",
         "//tensorflow/stream_executor:stream_header",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -948,7 +960,7 @@ cc_library(
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:matmul_util",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
-    ]),
+    ]) + [":matmul_utils"],
 )
 
 cc_library(
@@ -966,6 +978,9 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:framework_types_hdr",
+        "//tensorflow/stream_executor:matmul_util",
+        "//tensorflow/stream_executor:scratch_allocator",
         "//tensorflow/stream_executor:stream_header",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
@@ -1802,6 +1817,7 @@ tf_cc_test(
     tags = [
         "gpu",
         "no_rocm",
+        "cuda_only",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false
         # positives in msan.
     ],
@@ -2749,6 +2765,14 @@ test_suite(
         "//tensorflow/compiler/xla/tests:grouped_convolution_test_gpu",
         "//tensorflow/python/kernel_tests/signal:fft_ops_test_xla_gpu",
     ]),
+)
+
+# These tests are intended to be run with --test_env=XLA_FLAGS=--xla_gpu_jitrt_executable
+test_suite(
+    name = "jitrt_executable_tests",
+    tests = [
+        "//tensorflow/compiler/xla/service/gpu/tests:gpu_fusion_test",
+    ],
 )
 
 cc_library(

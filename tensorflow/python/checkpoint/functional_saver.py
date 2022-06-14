@@ -317,7 +317,8 @@ class MultiDeviceSaver(object):
 
     def save_fn():
       saved_prefixes = []
-      # Save with the registered savers.
+      # Save with the registered savers. These run before default savers due to
+      # the API contract.
       for saver_name, (save_fn, _) in self._registered_savers.items():
         maybe_saved_prefixes = save_fn(registered_paths[saver_name])
         if maybe_saved_prefixes is not None:
@@ -326,7 +327,7 @@ class MultiDeviceSaver(object):
               tensor_util.is_tf_type(x) and x.dtype == dtypes.string
               for x in flattened_saved_prefixes):
             raise ValueError(
-                "Registered saver can only return `None` or "
+                "Registered saver must return a (maybe empty) list of "
                 f"string type tensors. Got {maybe_saved_prefixes}.")
           saved_prefixes.extend(flattened_saved_prefixes)
 
@@ -396,6 +397,7 @@ class MultiDeviceSaver(object):
       for device, saver in sorted(self._single_device_savers.items()):
         with ops.device(device):
           restore_ops.update(saver.restore(file_prefix, options))
+      # Run registered restore methods after the default restore ops.
       for _, (_, restore_fn) in self._registered_savers.items():
         restore_fn(file_prefix)
       return restore_ops

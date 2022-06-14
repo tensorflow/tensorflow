@@ -431,7 +431,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
     const std::vector<std::string> coords{x, y, z};
     for (int i = 0; i < axes.size(); ++i) {
       const auto& axis = axes[i];
-      if (src_def.HasAxis(axis) && !src_def.SupportsZeroClamp(axis) &&
+      if (src_def.HasAxis(axis) && !src_def.SupportsZeroClamp(axis, gpu_info) &&
           !is_1[i]) {
         if (!check.empty()) {
           check += " && ";
@@ -701,7 +701,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
       const std::string zck = "zck" + std::to_string(z);
       c += "  int zck" + std::to_string(z) + " = kz * args.dilation_z + zc" +
            std::to_string(z) + ";\n";
-      if (!src_def.SupportsZeroClamp(Axis::DEPTH)) {
+      if (!src_def.SupportsZeroClamp(Axis::DEPTH, gpu_info)) {
         c += "  bool in_z" + std::to_string(z) + " = " + zck + " >= 0 && " +
              zck + " < args.src_tensor.Depth();\n";
         if (!src_def.CanReadOutOfBorder(Axis::DEPTH)) {
@@ -717,7 +717,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
       const std::string yck = "yck" + std::to_string(y);
       c += "  int " + yck + " = ky * args.dilation_y + yc" + std::to_string(y) +
            ";\n";
-      if (!src_def.SupportsZeroClamp(Axis::HEIGHT)) {
+      if (!src_def.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
         c += "  bool in_y" + std::to_string(y) + " = " + yck + " >= 0 && " +
              yck + " < args.src_tensor.Height();\n";
         if (!src_def.CanReadOutOfBorder(Axis::HEIGHT)) {
@@ -733,7 +733,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
       const std::string xck = "xck" + std::to_string(x);
       c += "  int xck" + std::to_string(x) + " = kx * args.dilation_x + xc" +
            std::to_string(x) + ";\n";
-      if (!src_def.SupportsZeroClamp(Axis::WIDTH)) {
+      if (!src_def.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
         c += "  bool in_x" + std::to_string(x) + " = " + xck + " >= 0 && " +
              xck + " < args.src_tensor.Width();\n";
         if (!src_def.CanReadOutOfBorder(Axis::WIDTH)) {
@@ -744,7 +744,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
     }
   }
   const bool need_multiple_slice_strides =
-      src_def.ReturnsZeroForNegOneRead() && !trivial_kernel_size;
+      src_def.ReturnsZeroForNegOneRead(gpu_info) && !trivial_kernel_size;
   for (int z = 0; z < block_size.z; ++z) {
     const std::string zind = std::to_string(z);
     for (int y = 0; y < block_size.y; ++y) {
@@ -819,7 +819,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
             }
             address += ", s";
           }
-          if (src_def.ReturnsZeroForNegOneRead()) {
+          if (src_def.ReturnsZeroForNegOneRead(gpu_info)) {
             c += "    src" + id + " = args.src_tensor.Read<" + cl_type + ">(" +
                  address + ");\n";
             const std::string ds = trivial_kernel_size ? "ds" : "ds" + id;

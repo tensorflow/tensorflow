@@ -134,8 +134,8 @@ Status DispatchGrpcDataServer::NumWorkers(int* num_workers) {
   return Status::OK();
 }
 
-size_t DispatchGrpcDataServer::NumActiveJobs() {
-  return service_->NumActiveJobs();
+size_t DispatchGrpcDataServer::NumActiveIterations() {
+  return service_->NumActiveIterations();
 }
 
 ServerStateExport DispatchGrpcDataServer::ExportState() const {

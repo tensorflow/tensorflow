@@ -30,6 +30,7 @@ from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import functional_saver
 from tensorflow.python.checkpoint import graph_view as graph_view_lib
+from tensorflow.python.checkpoint import util
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -220,7 +221,7 @@ class _CheckpointRestoreCoordinator(object):
   """Holds the status of an object-based checkpoint load."""
 
   def __init__(self, object_graph_proto, save_path, save_path_tensor, reader,
-               restore_op_cache, graph_view, options):
+               restore_op_cache, graph_view, options, saveables_cache):
     """Specify the checkpoint being loaded.
 
     Args:
@@ -239,6 +240,9 @@ class _CheckpointRestoreCoordinator(object):
       graph_view: A graph_view_lib.ObjectGraphView object for the restored
         objects.
       options: A CheckpointOptions object.
+      saveables_cache: An optional cache storing previously created
+        SaveableObjects created for each Trackable. Maps Trackables to a
+        dictionary of attribute names to Trackable.
     """
     self.options = options
     self.object_graph_proto = object_graph_proto
@@ -302,6 +306,8 @@ class _CheckpointRestoreCoordinator(object):
         self.object_graph_proto,
         self.matched_proto_ids,
         self.unused_attributes)
+
+    self.saveables_cache = saveables_cache
 
   @property
   def expect_partial(self):
@@ -557,7 +563,7 @@ def list_objects(root_trackable):
   Returns:
     A flat list of objects.
   """
-  return graph_view_lib.ObjectGraphView(root_trackable).list_objects()
+  return util.list_objects(graph_view_lib.ObjectGraphView(root_trackable))
 
 
 def gather_initializers(root_trackable):
@@ -831,7 +837,7 @@ class CheckpointLoadStatus(_LoadStatus):
           trackable._update_uid < self._checkpoint.restore_uid):  # pylint: disable=protected-access
         raise AssertionError(
             f"Object {node} not assigned a value from checkpoint.")
-    for trackable_object in self._object_graph_view.list_objects():
+    for trackable_object in util.list_objects(self._object_graph_view):
       # Remove data structures that do not contain any variables from
       # restoration checks.
       if (isinstance(trackable_object,
@@ -859,7 +865,7 @@ class CheckpointLoadStatus(_LoadStatus):
 
   def assert_nontrivial_match(self):
     """Raises an exception if only the root object matched."""
-    for trackable_object in self._object_graph_view.list_objects():
+    for trackable_object in util.list_objects(self._object_graph_view):
       self._checkpoint.all_python_objects.add(trackable_object)
     if len(self._checkpoint.object_by_proto_id) <= 1:
       unused_python_objects = (
@@ -906,7 +912,7 @@ class CheckpointLoadStatus(_LoadStatus):
       return  # Initialization and restoration ops are run eagerly
     if session is None:
       session = get_session()
-    all_objects = self._object_graph_view.list_objects()
+    all_objects = util.list_objects(self._object_graph_view)
     already_initialized_objects = object_identity.ObjectIdentitySet(
         self._checkpoint.object_by_proto_id.values())
     initializers_for_non_restored_variables = [
@@ -987,7 +993,7 @@ class InitializationOnlyStatus(_LoadStatus):
       return  # run eagerly
     if session is None:
       session = get_session()
-    trackable_objects = self._object_graph_view.list_objects()
+    trackable_objects = util.list_objects(self._object_graph_view)
     initializers = [
         c.initializer for c in trackable_objects
         if hasattr(c, "initializer") and c.initializer is not None
@@ -1047,7 +1053,7 @@ class NameBasedSaverStatus(_LoadStatus):
       raise AssertionError(
           "Some objects had attributes which were not restored: "
           f"{unused_attribute_strings}")
-    for trackable in self._object_graph_view.list_objects():
+    for trackable in util.list_objects(self._object_graph_view):
       # pylint: disable=protected-access
       trackable._maybe_initialize_trackable()
       if trackable._update_uid < self._checkpoint.restore_uid:
@@ -1073,7 +1079,7 @@ class NameBasedSaverStatus(_LoadStatus):
 
   def _gather_saveable_objects(self):
     """Walk the object graph, using global names for SaveableObjects."""
-    objects = self._object_graph_view.list_objects()
+    objects = util.list_objects(self._object_graph_view)
     saveable_objects = []
     for trackable in objects:
       # pylint: disable=protected-access
@@ -1148,6 +1154,18 @@ class TrackableSaver(object):
       graph_view: An `ObjectGraphView` object containing a description of the
         object graph to save.
     """
+    self._graph_view = graph_view
+
+    # The following attributes are used when graph building.
+
+    # Saveables caching: A dictionary mapping `Trackable` objects ->
+    # attribute names -> SaveableObjects, used to avoid re-creating
+    # SaveableObjects when graph building.
+    if context.executing_eagerly():
+      self._saveables_cache = None
+    else:
+      self._saveables_cache = object_identity.ObjectIdentityWeakKeyDictionary()
+
     # The file prefix placeholder is created lazily when graph building (and not
     # at all when executing eagerly) to avoid creating ops in the constructor
     # (when they may never be necessary).
@@ -1161,12 +1179,12 @@ class TrackableSaver(object):
 
     # Op caching for restore, shared between _CheckpointRestoreCoordinators
     self._restore_op_cache = {}
-    self._graph_view = graph_view
 
   def _gather_saveables(self, object_graph_tensor=None):
     """Wraps _serialize_object_graph to include the object graph proto."""
     named_saveable_objects, graph_proto, feed_additions, registered_savers = (
-        self._graph_view.serialize_object_graph_with_registered_savers())
+        util.serialize_object_graph_with_registered_savers(
+            self._graph_view, self._saveables_cache))
     if object_graph_tensor is None:
       with ops.device("/cpu:0"):
         object_graph_tensor = constant_op.constant(
@@ -1440,7 +1458,7 @@ class TrackableSaver(object):
           save_path=save_path,
           dtype_map=dtype_map)
       if not graph_building:
-        for existing_trackable in self._graph_view.list_objects():
+        for existing_trackable in util.list_objects(self._graph_view):
           # pylint: disable=protected-access
           existing_trackable._maybe_initialize_trackable()
           existing_trackable._name_based_restores.add(restore_coordinator)
@@ -1469,7 +1487,8 @@ class TrackableSaver(object):
         reader=reader,
         restore_op_cache=self._restore_op_cache,
         graph_view=self._graph_view,
-        options=options)
+        options=options,
+        saveables_cache=self._saveables_cache)
     base.CheckpointPosition(
         checkpoint=checkpoint, proto_id=0).restore(self._graph_view.root)
 
@@ -1528,21 +1547,11 @@ def frozen_saver(root_trackable):
     A saver which saves object-based checkpoints for the object graph frozen at
     the time `frozen_saver` was called.
   """
-  named_saveable_objects, registered_savers = graph_view_lib.ObjectGraphView(
-      root_trackable).frozen_saveables_and_savers()
+  named_saveable_objects, registered_savers = (
+      util.frozen_saveables_and_savers(
+          graph_view_lib.ObjectGraphView(root_trackable)))
   return functional_saver.MultiDeviceSaver(named_saveable_objects,
                                            registered_savers)
-
-
-def saver_with_op_caching(obj, attached_dependencies=None):
-  if context.executing_eagerly():
-    saveables_cache = None
-  else:
-    saveables_cache = object_identity.ObjectIdentityWeakKeyDictionary()
-  return TrackableSaver(
-      graph_view_lib.ObjectGraphView(
-          obj, saveables_cache=saveables_cache,
-          attached_dependencies=attached_dependencies))
 
 
 def _assert_trackable(obj, name):
@@ -1713,7 +1722,7 @@ class CheckpointV1(autotrackable.AutoTrackable):
             "TensorFlow Python API and manages state), please open an issue.")
     self._save_counter = None  # Created lazily for restore-on-create.
     self._save_assign_op = None
-    self._saver = saver_with_op_caching(self)
+    self._saver = TrackableSaver(graph_view_lib.ObjectGraphView(self))
 
   def _maybe_create_save_counter(self):
     """Create a save counter if it does not yet exist."""
@@ -2141,8 +2150,10 @@ class Checkpoint(autotrackable.AutoTrackable):
               f"Cannot create a Checkpoint with keyword argument {k} if "
               f"root.{k} already exists.")
 
-    self._saver = saver_with_op_caching(root if root else self,
-                                        attached_dependencies)
+    self._saver = TrackableSaver(
+        graph_view_lib.ObjectGraphView(
+            root if root else self,
+            attached_dependencies=attached_dependencies))
     self._attached_dependencies = data_structures.NoDependency(
         attached_dependencies)
 

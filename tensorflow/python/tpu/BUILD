@@ -582,7 +582,6 @@ pytype_library(
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/tpu/ops",
-        "//tensorflow/python/training/saving:saveable_hook",
         "@six_archive//:six",
     ],
 )
@@ -599,8 +598,8 @@ pytype_library(
         "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/tpu/ops",
-        "//tensorflow/python/training/saving:saveable_hook",
         "@six_archive//:six",
     ],
 )
@@ -613,7 +612,6 @@ pytype_strict_library(
         ":tpu_embedding_v2_utils",
         "//tensorflow/python:variables",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/training/saving:saveable_hook",
         "//tensorflow/python/training/tracking",
         "//tensorflow/python/util",
     ],

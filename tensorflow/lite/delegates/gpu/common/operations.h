@@ -627,6 +627,10 @@ struct SelectV2Attributes {
   bool broadcast_false = false;
 };
 
+struct CumsumAttributes {
+  Axis axis = Axis::UNKNOWN;
+};
+
 }  // namespace gpu
 }  // namespace tflite
 

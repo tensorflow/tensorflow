@@ -128,12 +128,12 @@ auto* tf_data_iterator_lifetime_counter = monitoring::Counter<0>::New(
     "The time (in microseconds) between a tf.data iterator receiving the first "
     "`GetNext()` request and responding to the last `GetNext()` request.");
 
-auto* tf_data_iterator_gap_usec_histogram = monitoring::Sampler<0>::New(
+auto* tf_data_iterator_gap_msec_histogram = monitoring::Sampler<0>::New(
     {"/tensorflow/data/iterator_gap",
-     "The time (in microseconds) between a tf.data iterator responding to a "
+     "The time (in milliseconds) between a tf.data iterator responding to a "
      "`GetNext()` request and receiving the next `GetNext()` request."},
-    // Buckets of 0.1ms, 0.2ms, 0.4ms, ..., 2s.
-    {monitoring::Buckets::Exponential(100, 2, 12)});
+    // Power of 1.5 with bucket count of 20 (from 1 msec to about 2.2 secs).
+    {monitoring::Buckets::Exponential(1, 1.5, 20)});
 
 auto* tf_data_optimization_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/optimization", "tf.data optimization", "name");
@@ -340,9 +340,9 @@ void RecordTFDataIteratorLifetime(uint64 duration_us) {
 }
 
 void RecordTFDataIteratorGap(uint64 duration_us) {
-  static auto* tf_data_iterator_gap_usec_histogram_cell =
-      tf_data_iterator_gap_usec_histogram->GetCell();
-  tf_data_iterator_gap_usec_histogram_cell->Add(duration_us);
+  static auto* tf_data_iterator_gap_msec_histogram_cell =
+      tf_data_iterator_gap_msec_histogram->GetCell();
+  tf_data_iterator_gap_msec_histogram_cell->Add(duration_us * 0.001);
 }
 
 void RecordTFDataOptimization(const string& name, int64_t num_changes) {

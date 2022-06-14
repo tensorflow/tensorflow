@@ -309,14 +309,14 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   // Guarantee all functions have one use, which enables more exact shape
   // inference.
   pm.addPass(TF::CreateTFShapeInferencePass());
+  // Encapsulate PartitionedCall ops within a cluster so that the composite
+  // resource ops can be decomposed.
+  pm.addPass(TFDevice::CreateXlaClusterFormationPass());
   // Running canonicalizer before decomposing resource ops in cluster helps the
   // latter pass to converge faster as it does not have to spend time folding
   // away dead ops.
   pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
-  // Encapsulate StatefulPartitionedCallOp within a cluster so that the
-  // composite resource ops can be decomposed.
-  pm.addPass(TFDevice::CreateXlaClusterFormationPass());
-  // Place DecomposeResourceOpsPass.
+  // Decompose resource ops.
   pm.addPass(TFDevice::CreateDecomposeResourceOpsInClusterPass());
   // Run another shape inference pass because resource decomposition might have
   // created new partial types. Also, after dropping `shape_invariant` attribute

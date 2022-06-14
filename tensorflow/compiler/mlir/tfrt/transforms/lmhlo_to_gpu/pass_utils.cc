@@ -20,6 +20,7 @@
 #include "mlir/Pass/PassManager.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu_binary.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_jitrt.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_tfrt_gpu.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pattern_utils.h"
 #include "tensorflow/core/platform/errors.h"
@@ -55,6 +56,26 @@ Status ConvertLmhloToTfrtGpuWithBinary(mlir::ModuleOp module,
     return errors::Internal(
         "Failed to lower LMHLO to TFRT Dialect with gpu kernels:\n",
         std::move(error_stream.str()));
+  }
+
+  return Status::OK();
+}
+
+Status ConvertLmhloToJitRt(mlir::ModuleOp module,
+                           mlir::StringRef entry_function_name,
+                           llvm::ArrayRef<int64_t> buffer_sizes) {
+  if (!module) {
+    return errors::FailedPrecondition("No MLIR module to lower.");
+  }
+  mlir::PassManager pm(module.getContext(),
+                       mlir::PassManager::Nesting::Implicit);
+
+  tensorflow::applyTensorflowAndCLOptions(pm);
+  populateLmhloToJitRtPasses(pm);
+
+  if (pm.run(module).failed()) {
+    return errors::Internal(
+        "Failed to lower LMHLO to Gpu runtime custom calls.");
   }
 
   return Status::OK();

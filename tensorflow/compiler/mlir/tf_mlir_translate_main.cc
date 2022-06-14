@@ -66,7 +66,7 @@ static llvm::cl::opt<bool> import_saved_model_signature_defs(
 // NOLINTNEXTLINE
 static llvm::cl::opt<bool> import_saved_model_signature_defs_lite(
     "savedmodel-signaturedefs-to-mlir-lite",
-    llvm::cl::desc("Import a saved model's SignatureDefs to to their MLIR "
+    llvm::cl::desc("Import a saved model's SignatureDefs to their MLIR "
                    "representation without any graph transformation"),
     llvm::cl::value_desc("dir"));
 

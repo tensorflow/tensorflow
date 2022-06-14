@@ -378,8 +378,8 @@ REGISTER_SPMD(DTensorShardedPrefix, TF::DTensorShardedPrefixOp,
 
 // DTensor Virtual ops
 REGISTER_SPMD(Relayout, TF::RelayoutOp, RelayoutSPMDExpander);
-REGISTER_SPMD(DTensorSe, TF::DTensorSend, DTensorSendSPMDExpander);
-REGISTER_SPMD(DTensorRe, TF::DTensorRecv, DTensorRecvSPMDExpander);
+REGISTER_SPMD(DTensorSend, TF::DTensorSend, DTensorSendSPMDExpander);
+REGISTER_SPMD(DTensorRecv, TF::DTensorRecv, DTensorRecvSPMDExpander);
 
 // TopKV2
 REGISTER_SPMD(TopKV2, TF::TopKV2Op, TopKSPMDExpander);

@@ -56,6 +56,22 @@ struct GpuEventStats {
   bool is_eager = false;
 };
 
+// Stats for a host-side GPU launch XEvent.
+struct LaunchEventStats {
+  explicit LaunchEventStats(const XEventVisitor* event);
+
+  bool IsLaunch() const {
+    return device_id.has_value() && correlation_id.has_value();
+  }
+
+  // Stats from CUPTI.
+  absl::optional<int64_t> device_id;
+  absl::optional<int64_t> correlation_id;
+
+  // Stat derived by grouping.
+  absl::optional<int64_t> group_id;
+};
+
 }  // namespace profiler
 }  // namespace tensorflow
 

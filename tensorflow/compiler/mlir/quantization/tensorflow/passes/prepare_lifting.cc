@@ -54,20 +54,20 @@ class PrepareLiftingPass
 };
 
 bool HasEqualElementSize(Value filter, Attribute val,
-                         mlir::ArrayRef<unsigned> filter_indicies,
-                         mlir::ArrayRef<unsigned> val_indicies) {
+                         mlir::ArrayRef<unsigned> filter_indices,
+                         mlir::ArrayRef<unsigned> val_indices) {
   int filter_result = 1;
   int val_result = 1;
 
   mlir::ShapedType shaped_filter = filter.getType().cast<ShapedType>();
   mlir::ShapedType shaped_val = val.dyn_cast<DenseElementsAttr>().getType();
 
-  for (auto idx : filter_indicies) {
+  for (auto idx : filter_indices) {
     if (idx >= shaped_filter.getRank()) return false;
     filter_result *= shaped_filter.getDimSize(idx);
   }
 
-  for (auto idx : val_indicies) {
+  for (auto idx : val_indices) {
     if (idx >= shaped_val.getRank()) return false;
     val_result *= shaped_val.getDimSize(idx);
   }

@@ -36,7 +36,7 @@ landing_page:
 
     - classname: tfo-landing-page-card
       description: >
-        <a href="/lite/convert/index"><h3 class="no-link">Need a model for TensorFlow Lite?</h3></a>
+        <a href="#get_models"><h3 class="no-link">Need a model for TensorFlow Lite?</h3></a>
         For guidance on getting models for your use case,
         <a href="#get_models">keep reading</a>.
 

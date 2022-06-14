@@ -76,6 +76,8 @@ class DataServiceDatasetOp : public DatasetOpKernel {
   static constexpr const char* const kOutputShapes = "output_shapes";
   static constexpr const char* const kUncompress = "uncompress";
   static constexpr const char* const kUncompressFn = "uncompress_fn";
+  static constexpr const char* const kCrossTrainerCacheOptions =
+      "cross_trainer_cache_options";
 
   // Note: If a new constant is declared here, it *must* be defined in
   // data_service_dataset_op.cc, otherwise it will not compile in debug mode.
@@ -95,6 +97,7 @@ class DataServiceDatasetOp : public DatasetOpKernel {
   TargetWorkers target_workers_ = TARGET_WORKERS_AUTO;
   bool uncompress_;
   std::shared_ptr<FunctionMetadata> uncompress_fn_ = nullptr;
+  std::string seriazlied_cross_trainer_cache_options_;
 };
 
 }  // namespace data

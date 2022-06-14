@@ -18,6 +18,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/tf2xla/kernels/gpu_tf_kernel_custom_call.h"
+#endif
+
 namespace tensorflow {
 
 class ResizeNearestNeighborOp : public XlaOpKernel {
@@ -53,6 +57,13 @@ class ResizeBilinearGradOp : public XlaOpKernel {
   bool align_corners_;
   bool half_pixel_centers_ = true;
   xla::PrimitiveType output_type_;
+
+ private:
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  // Fallback light outside compilation kernel for the option combination we do
+  // not support.
+  absl::optional<CallTfKernelOp> fallback_tf_kernel_;
+#endif
 };
 
 }  // namespace tensorflow

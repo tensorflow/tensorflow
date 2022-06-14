@@ -13,12 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 """Python API for executing a tf.data.Dataset using a tf.data service."""
+
 import enum
 import functools
 import six
 
 from tensorflow.core.protobuf import data_service_pb2
 from tensorflow.python import tf2
+from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import compression_ops
 from tensorflow.python.data.experimental.service import _pywrap_server_lib
 from tensorflow.python.data.experimental.service import _pywrap_utils
@@ -119,6 +121,47 @@ class ShardingPolicy(enum.IntEnum):
     raise ValueError(f"Unable to convert sharding policy {self!r} to proto.")
 
 
+@tf_export("data.experimental.service.CrossTrainerCache")
+class CrossTrainerCache:
+  """Options related to the tf.data service cross trainer cache.
+
+  This is used to enable cross-trainer cache when distributing a dataset. For
+  example:
+
+  ```
+  dataset = dataset.apply(tf.data.experimental.service.distribute(
+      processing_mode=tf.data.experimental.service.ShardingPolicy.OFF,
+      service=FLAGS.tf_data_service_address,
+      job_name="job",
+      cross_trainer_cache=data_service_ops.CrossTrainerCache(
+          trainer_id=trainer_id())))
+  ```
+
+  For more details, refer to
+  https://www.tensorflow.org/api_docs/python/tf/data/experimental/service#sharing_tfdata_service_with_concurrent_trainers.
+  """
+
+  def __init__(self, trainer_id):
+    """Constructs a CrossTrainerCache.
+
+    Args:
+      trainer_id: Each training job has a unique ID. Once a job has consumed
+      data, the data remains in the cache and is re-used by jobs with different
+      `trainer_id`s. Requests with the same `trainer_id` do not re-use data.
+
+    Raises:
+      ValueError if `trainer_id` is empty.
+    """
+    if not trainer_id:
+      raise ValueError(
+          "tf.data service cross-trainer cache requires a non-empty trainer ID."
+      )
+    self.trainer_id = trainer_id
+
+  def _to_proto(self):
+    return data_service_pb2.CrossTrainerCacheOptions(trainer_id=self.trainer_id)
+
+
 def _get_validated_sharding_policy(processing_mode):
   """Validates `processing_mode` and converts it to ShardingPolicy."""
 
@@ -183,6 +226,7 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
                num_consumers=None,
                max_outstanding_requests=None,
                task_refresh_interval_hint_ms=None,
+               cross_trainer_cache=None,
                target_workers="AUTO"):
     """Constructs a _DataServiceDatasetV2.
 
@@ -222,6 +266,11 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         `element_size` * `max_outstanding_requests` of memory.
       task_refresh_interval_hint_ms: (Optional.) A hint for how often to query
         the dispatcher for task changes.
+      cross_trainer_cache: (Optional.) If a `CrossTrainerCache` object is
+        provided, dataset iteration will be shared across concurrently running
+        trainers. See
+        https://www.tensorflow.org/api_docs/python/tf/data/experimental/service#sharing_tfdata_service_with_concurrent_trainers
+        for details.
       target_workers: (Optional.) Which workers to read from. If `"AUTO"`,
         tf.data runtime decides which workers to read from. If `"ANY"`, reads
         from any tf.data service workers. If `"LOCAL"`, only reads from local
@@ -279,10 +328,15 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         lambda x: compression_ops.uncompress(x, output_spec=element_spec),
         transformation_name="DataServiceDataset.uncompress()",
         input_structure=tensor_spec.TensorSpec(shape=(), dtype=dtypes.variant))
+    cross_trainer_cache_options = (
+        cross_trainer_cache._to_proto().SerializeToString()
+        if cross_trainer_cache else None)
 
     compat_kwargs = {}
     if data_transfer_protocol is not None:
       compat_kwargs["data_transfer_protocol"] = data_transfer_protocol
+    if compat.forward_compatible(2022, 6, 6) or cross_trainer_cache is not None:
+      compat_kwargs["cross_trainer_cache_options"] = cross_trainer_cache_options
 
     # If `uncompress` is `True`, the dataset will query the servers to find
     # out the actual compression used. It is always set to `True` the first
@@ -320,7 +374,8 @@ class _DataServiceDatasetV1(dataset_ops.DatasetV1Adapter):
   def __init__(self, dataset_id, processing_mode, address, element_spec,
                protocol, data_transfer_protocol, job_name, consumer_index,
                num_consumers, max_outstanding_requests,
-               task_refresh_interval_hint_ms, target_workers):
+               task_refresh_interval_hint_ms, cross_trainer_cache,
+               target_workers):
 
     self._wrapped = _DataServiceDatasetV2(
         dataset_id=dataset_id,
@@ -334,6 +389,7 @@ class _DataServiceDatasetV1(dataset_ops.DatasetV1Adapter):
         num_consumers=num_consumers,
         max_outstanding_requests=max_outstanding_requests,
         task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
+        cross_trainer_cache=cross_trainer_cache,
         target_workers=target_workers)
     super(_DataServiceDatasetV1, self).__init__(self._wrapped)
 
@@ -381,6 +437,7 @@ def _distribute(processing_mode,
                 task_refresh_interval_hint_ms=None,
                 data_transfer_protocol=None,
                 compression="AUTO",
+                cross_trainer_cache=None,
                 target_workers="AUTO"):
   """A transformation that moves dataset processing to the tf.data service.
 
@@ -425,6 +482,11 @@ def _distribute(processing_mode,
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
       tf.data service runtime. `None` indicates not to compress.
+    cross_trainer_cache: (Optional.) If a `CrossTrainerCache` object is
+      provided, dataset iteration will be shared across concurrently running
+      trainers. See
+      https://www.tensorflow.org/api_docs/python/tf/data/experimental/service#sharing_tfdata_service_with_concurrent_trainers
+      for details.
     target_workers: (Optional.) Which workers to read from. If `"AUTO"`, tf.data
       runtime decides which workers to read from. If `"ANY"`, reads from any
       tf.data service workers. If `"LOCAL"`, only reads from local in-processs
@@ -455,6 +517,7 @@ def _distribute(processing_mode,
         task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
         data_transfer_protocol=data_transfer_protocol,
         compression=compression,
+        cross_trainer_cache=cross_trainer_cache,
         target_workers=target_workers)
 
   return _apply_fn
@@ -469,6 +532,7 @@ def distribute(processing_mode,
                max_outstanding_requests=None,
                data_transfer_protocol=None,
                compression="AUTO",
+               cross_trainer_cache=None,
                target_workers="AUTO"):
   """A transformation that moves dataset processing to the tf.data service.
 
@@ -676,6 +740,11 @@ def distribute(processing_mode,
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
       tf.data service runtime. `None` indicates not to compress.
+    cross_trainer_cache: (Optional.) If a `CrossTrainerCache` object is
+      provided, dataset iteration will be shared across concurrently running
+      trainers. See
+      https://www.tensorflow.org/api_docs/python/tf/data/experimental/service#sharing_tfdata_service_with_concurrent_trainers
+      for details.
     target_workers: (Optional.) Which workers to read from. If `"AUTO"`, tf.data
       runtime decides which workers to read from. If `"ANY"`, reads from any
       tf.data service workers. If `"LOCAL"`, only reads from local in-processs
@@ -698,6 +767,7 @@ def distribute(processing_mode,
       max_outstanding_requests=max_outstanding_requests,
       data_transfer_protocol=data_transfer_protocol,
       compression=compression,
+      cross_trainer_cache=cross_trainer_cache,
       target_workers=target_workers)
 
 
@@ -815,6 +885,7 @@ def _from_dataset_id(processing_mode,
                      task_refresh_interval_hint_ms=None,
                      data_transfer_protocol=None,
                      compression="AUTO",
+                     cross_trainer_cache=False,
                      target_workers="AUTO"):
   """Creates a dataset which reads data from the tf.data service.
 
@@ -865,6 +936,11 @@ def _from_dataset_id(processing_mode,
       data with the tf.data service. By default, data is transferred using gRPC.
     compression: An indication of how the dataset's elements were compressed, so
       that `from_dataset_id` can uncompress them if necessary.
+    cross_trainer_cache: (Optional.) If a `CrossTrainerCache` object is
+      provided, dataset iteration will be shared across concurrently running
+      trainers. See
+      https://www.tensorflow.org/api_docs/python/tf/data/experimental/service#sharing_tfdata_service_with_concurrent_trainers
+      for details.
     target_workers: (Optional.) Which workers to read from. If `"AUTO"`, tf.data
       runtime decides which workers to read from. If `"ANY"`, reads from any
       tf.data service workers. If `"LOCAL"`, only reads from local in-processs
@@ -938,6 +1014,7 @@ def _from_dataset_id(processing_mode,
       num_consumers=num_consumers,
       max_outstanding_requests=max_outstanding_requests,
       task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
+      cross_trainer_cache=cross_trainer_cache,
       target_workers=target_workers)
 
   # Disable autosharding for shared jobs.

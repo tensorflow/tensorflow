@@ -723,6 +723,7 @@ def tf_cc_shared_object(
             data_extra = tf_binary_additional_data_deps()
 
         cc_binary(
+            exec_properties = if_google({"cpp_link.mem": "16g"}, {}),
             name = name_os_full,
             srcs = srcs + framework_so,
             deps = deps,

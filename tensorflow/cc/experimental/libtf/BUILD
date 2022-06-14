@@ -260,7 +260,7 @@ tf_cc_test(
     name = "variable_test",
     size = "small",
     srcs = ["tests/variable_test.cc"],
-    tags = ["no_oss"],  # TODO(b/193268458): Need to disable TFRT.
+    tags = ["no_oss", "rocm_disable"],  # TODO(b/193268458): Need to disable TFRT.
     deps = [
         ":function",
         ":libtf",

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/util/matmul_autotune.h"
@@ -48,9 +49,9 @@ int64_t GetWorkspaceLimit(int64_t default_value_in_bytes);
 class BatchMatmulParameters {
  public:
   BatchMatmulParameters(bool trans_a, bool trans_b, bool adj_a, bool adj_b,
-                        uint64 m, uint64 n, uint64 k, uint64 batch_count,
-                        bool broadcast_a, bool broadcast_b,
-                        tensorflow::DataType dtype_ab,
+                        uint64_t m, uint64_t n, uint64_t k,
+                        uint64_t batch_count, bool broadcast_a,
+                        bool broadcast_b, tensorflow::DataType dtype_ab,
                         tensorflow::DataType dtype_cd, int device_id,
                         blas::Epilogue epilog = blas::Epilogue::kDefault)
       : trans_a_(trans_a),
@@ -68,6 +69,20 @@ class BatchMatmulParameters {
         device_id_(device_id),
         epilog_(epilog) {
     allow_tf32_ = tensorflow::tensor_float_32_execution_enabled();
+    hash_code_ = trans_a;
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, trans_b);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, adj_a);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, adj_b);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, m);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, n);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, k);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, batch_count);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, broadcast_a);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, broadcast_b);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, dtype_ab);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, dtype_cd);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, allow_tf32_);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, device_id);
   }
 
   bool operator==(const BatchMatmulParameters& other) const {
@@ -77,6 +92,7 @@ class BatchMatmulParameters {
   bool operator!=(const BatchMatmulParameters& other) const {
     return !(*this == other);
   }
+  uint64_t hash() const { return hash_code_; }
 
   std::string ToString() const {
     // clang-format off
@@ -116,10 +132,10 @@ class BatchMatmulParameters {
   bool trans_b_;
   bool adj_a_;
   bool adj_b_;
-  uint64 m_;
-  uint64 n_;
-  uint64 k_;
-  uint64 batch_count_;
+  uint64_t m_;
+  uint64_t n_;
+  uint64_t k_;
+  uint64_t batch_count_;
   bool broadcast_a_;
   bool broadcast_b_;
   tensorflow::DataType dtype_ab_;
@@ -127,6 +143,7 @@ class BatchMatmulParameters {
   bool allow_tf32_;
   int device_id_;
   blas::Epilogue epilog_;
+  uint64_t hash_code_;
 };
 
 // Thread-safe map from matmul parameters to their corresponding plan and
@@ -161,12 +178,16 @@ struct BatchMatmulPlanMapSingleton {
   }
 };
 
+port::StatusOr<blas::ComputationType> GetBlasComputationType(
+    const tensorflow::DataType& dtype);
+
 port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithms(
     Stream* stream, BatchMatmulParameters matmul_parameters, int64_t batch_size,
     int64_t m, int64_t n, int64_t k, tensorflow::DataType dtype,
     blas::MatrixDescriptor lhs_matrix, blas::MatrixDescriptor rhs_matrix,
     blas::MatrixDescriptor output_matrix);
 
-#endif  // TENSORFLOW_STREAM_EXECUTOR_MATMUL_UTIL_H_
 
 }  // namespace stream_executor
+
+#endif  // TENSORFLOW_STREAM_EXECUTOR_MATMUL_UTIL_H_

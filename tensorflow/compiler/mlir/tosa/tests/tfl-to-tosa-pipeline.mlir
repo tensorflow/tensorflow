@@ -1027,6 +1027,18 @@ func.func @test_batch_matmul(%arg0: tensor<1x16x128xf32>, %arg1: tensor<1x128x32
 
 // -----
 
+// CHECK-LABEL: @test_batch_matmul_4d
+func.func @test_batch_matmul_4d(%arg0: tensor<4x5x16x128xf32>, %arg1: tensor<4x5x128x32xf32>) -> (tensor<4x5x16x32xf32> ) {
+  // CHECK: %[[R0:.*]] = "tosa.reshape"(%arg0) {new_shape = [20, 16, 128]}
+  // CHECK: %[[R1:.*]] = "tosa.reshape"(%arg1) {new_shape = [20, 128, 32]}
+  // CHECK: %[[MM:.*]] = "tosa.matmul"(%[[R0]], %[[R1]])
+  // CHECK: "tosa.reshape"(%[[MM]]) {new_shape = [4, 5, 16, 32]}
+  %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<4x5x16x128xf32>, tensor<4x5x128x32xf32>) -> tensor<4x5x16x32xf32>
+  func.return %0 : tensor<4x5x16x32xf32>
+}
+
+// -----
+
 // CHECK-LABEL: @test_batch_matmul_transpose
 func.func @test_batch_matmul_transpose(%arg0: tensor<1x16x128xf32>, %arg1: tensor<1x128x32xf32>) -> (tensor<1x32x16xf32> ) {
   // CHECK-DAG: %[[PERM:.+]] = "tosa.const"() {value = dense<[0, 2, 1]> : tensor<3xi32>}

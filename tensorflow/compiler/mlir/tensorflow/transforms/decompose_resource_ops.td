@@ -348,8 +348,7 @@ def DecomposeResourceGather : Pat<
 // Pattern to decompose tf.ResourceScatterAdd into tf.ReadVariable,
 // tf.TensorScatterAdd, and tf.AssignVariable.
 def DecomposeResourceScatterAdd : Pat<
-  (TF_ResourceScatterAddOp:$src_op
-    $resource, $indices, NonScalarRankedType:$updates),
+  (TF_ResourceScatterAddOp:$src_op $resource, $indices, $updates),
   (TF_AssignVariableOp
     $resource,
     (TF_TensorScatterAddOp

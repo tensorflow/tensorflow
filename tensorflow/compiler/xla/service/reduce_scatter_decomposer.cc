@@ -63,10 +63,11 @@ StatusOr<bool> ReduceScatterDecomposer::Run(HloModule *module) {
           CollectiveOpGroupMode group_mode,
           GetCollectiveOpGroupMode(rs->channel_id().has_value(),
                                    rs->use_global_device_ids()));
-      TF_ASSIGN_OR_RETURN(std::vector<HloInstruction *> start_indices,
-                          CreateStartIndicesForCollectiveDecomposition(
-                              group_mode, rs->replica_groups(), rs->shape(),
-                              rs->scatter_dimension(), computation));
+      TF_ASSIGN_OR_RETURN(
+          std::vector<HloInstruction *> start_indices,
+          CreateStartIndicesForCollectiveDecomposition(
+              group_mode, rs->replica_groups(), rs->shape(),
+              rs->scatter_dimension(), computation, update_layout_));
 
       HloInstruction *ds =
           computation->AddInstruction(HloInstruction::CreateDynamicSlice(

@@ -452,6 +452,10 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
       },
       &buffer_usages);
 
+  if (buffer_usages.empty()) {
+    return absl::OkStatus();
+  }
+
   // From Apple documentation:
   // For buffers in the device address space, align the offset to the data type
   // consumed by the compute function (which is always less than or equal to 16

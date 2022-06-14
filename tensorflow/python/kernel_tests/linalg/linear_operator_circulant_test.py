@@ -111,6 +111,14 @@ class LinearOperatorCirculantTestSelfAdjointOperator(
     # real, the matrix will not be real.
     return [dtypes.complex64, dtypes.complex128]
 
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    return [
+        "operator_matmul_with_same_type",
+        "operator_solve_with_same_type",
+    ]
+
   def operator_and_matrix(self,
                           shape_info,
                           dtype,
@@ -179,6 +187,14 @@ class LinearOperatorCirculantTestHermitianSpectrum(
   def setUp(self):
     self.tf32_keep_ = config.tensor_float_32_execution_enabled()
     config.enable_tensor_float_32_execution(False)
+
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    return [
+        "operator_matmul_with_same_type",
+        "operator_solve_with_same_type",
+    ]
 
   def operator_and_matrix(self,
                           shape_info,
@@ -264,6 +280,14 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
   @staticmethod
   def skip_these_tests():
     return ["cholesky", "eigvalsh"]
+
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    return [
+        "operator_matmul_with_same_type",
+        "operator_solve_with_same_type",
+    ]
 
   def operator_and_matrix(self,
                           shape_info,

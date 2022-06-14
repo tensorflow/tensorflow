@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/status_matchers.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -75,6 +76,8 @@ class ShapeInferenceTest : public ::testing::Test {
   static constexpr int kVersion = 0;  // used for graph-def version.
 };
 
+namespace {
+
 TEST_F(ShapeInferenceTest, InputOutputByName) {
   // Setup test to contain an input tensor list of size 3.
   OpDef op_def = MakeOpDefWithLists();
@@ -91,14 +94,18 @@ TEST_F(ShapeInferenceTest, InputOutputByName) {
   EXPECT_EQ("3", c.DebugString(c.NumElements(c.input(2))));
   // Test getters.
   std::vector<ShapeHandle> shapes;
-  EXPECT_FALSE(c.input("nonexistent", &shapes).ok());
+  EXPECT_THAT(
+      c.input("nonexistent", &shapes),
+      StatusIs(error::INVALID_ARGUMENT, HasSubstr("Unknown input name")));
   TF_EXPECT_OK(c.input("input", &shapes));
   EXPECT_EQ("[1,5]", c.DebugString(shapes[0]));
   EXPECT_EQ("[2,5]", c.DebugString(shapes[1]));
   EXPECT_EQ("[1,3]", c.DebugString(shapes[2]));
 
   // Test setters.
-  EXPECT_FALSE(c.set_output("nonexistent", shapes).ok());
+  EXPECT_THAT(
+      c.set_output("nonexistent", shapes),
+      StatusIs(error::INVALID_ARGUMENT, HasSubstr("Unknown output name")));
   TF_EXPECT_OK(c.set_output("output", shapes));
   EXPECT_EQ("5", c.DebugString(c.NumElements(c.output(0))));
   EXPECT_EQ("10", c.DebugString(c.NumElements(c.output(1))));
@@ -160,7 +167,7 @@ TEST_F(ShapeInferenceTest, Run) {
     // Extra error message is attached when Run fails.
     EXPECT_THAT(
         c.Run(fn),
-        StatusIs(_,
+        StatusIs(error::INVALID_ARGUMENT,
                  AllOf(HasSubstr("Shape must be at most rank 0 but is rank 1"),
                        HasSubstr("node foo"), HasSubstr("foo_op"))));
   }
@@ -184,7 +191,7 @@ TEST_F(ShapeInferenceTest, AttachContext) {
     };
     EXPECT_THAT(
         c.Run(fn),
-        StatusIs(_,
+        StatusIs(error::INVALID_ARGUMENT,
                  AllOf(HasSubstr("Shape must be at most rank 0 but is rank 3"),
                        HasSubstr("node foo"), HasSubstr("foo_op"),
                        HasSubstr("input shapes: [1,2,3]"))));
@@ -198,8 +205,8 @@ TEST_F(ShapeInferenceTest, AttachContext) {
                        {S({1, 2, 3}), S({4, 5})}, {nullptr, &input_t}, {}, {});
     TF_ASSERT_OK(c.construction_status());
     auto fn = [](InferenceContext* c) {
-      c->input_tensor(0);  // get this one, but it's null - won't be in error.
-      c->input_tensor(1);  // get this one, will now be in error.
+      c->input_tensor(0);  // It's null - will not appear in the error message.
+      c->input_tensor(1);  // This will appear in the error message.
       ShapeHandle h;
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 0, &h));
       c->set_output(0, c->input(0));
@@ -207,7 +214,7 @@ TEST_F(ShapeInferenceTest, AttachContext) {
     };
     EXPECT_THAT(
         c.Run(fn),
-        StatusIs(_,
+        StatusIs(error::INVALID_ARGUMENT,
                  AllOf(HasSubstr("Shape must be at most rank 0 but is rank 3"),
                        HasSubstr("node foo"), HasSubstr("foo_op"),
                        HasSubstr("input shapes: [1,2,3], [4,5] and with "
@@ -233,7 +240,7 @@ TEST_F(ShapeInferenceTest, AttachContext) {
     };
     EXPECT_THAT(
         c.Run(fn),
-        StatusIs(_,
+        StatusIs(error::INVALID_ARGUMENT,
                  AllOf(HasSubstr("Shape must be at most rank 0 but is rank 1"),
                        HasSubstr("node foo"), HasSubstr("foo_op"),
                        HasSubstr("with input shapes: [3], [4] and with "
@@ -260,12 +267,13 @@ TEST_F(ShapeInferenceTest, AttachContext) {
     EXPECT_THAT(
         c.Run(fn),
         StatusIs(
-            _, AllOf(HasSubstr("Shape must be at most rank 0 but is rank 1"),
-                     HasSubstr("node foo"), HasSubstr("foo_op"),
-                     HasSubstr("with input shapes: [3], [4] and with computed "
-                               "input tensors: input[1] = <1 2 3 4 5> and with "
-                               "input tensors computed "
-                               "as partial shapes: input[0] = [10,?,5]."))));
+            error::INVALID_ARGUMENT,
+            AllOf(HasSubstr("Shape must be at most rank 0 but is rank 1"),
+                  HasSubstr("node foo"), HasSubstr("foo_op"),
+                  HasSubstr("with input shapes: [3], [4] and with computed "
+                            "input tensors: input[1] = <1 2 3 4 5> and with "
+                            "input tensors computed "
+                            "as partial shapes: input[0] = [10,?,5]."))));
   }
 }
 
@@ -964,10 +972,14 @@ TEST_F(ShapeInferenceTest, ReplaceDim) {
   EXPECT_EQ("?", c.DebugString(replaced));
 
   // out of range indexing.
-  EXPECT_FALSE(c.ReplaceDim(in, 3, c.Dim(in, 1), &replaced).ok());
+  EXPECT_THAT(
+      c.ReplaceDim(in, 3, c.Dim(in, 1), &replaced),
+      StatusIs(error::INVALID_ARGUMENT, HasSubstr("Out of range dim_index")));
   EXPECT_FALSE(IsSet(replaced));
   replaced = in;
-  EXPECT_FALSE(c.ReplaceDim(in, -4, c.Dim(in, 1), &replaced).ok());
+  EXPECT_THAT(
+      c.ReplaceDim(in, -4, c.Dim(in, 1), &replaced),
+      StatusIs(error::INVALID_ARGUMENT, HasSubstr("Out of range dim_index")));
   EXPECT_FALSE(IsSet(replaced));
 }
 
@@ -1045,6 +1057,7 @@ TEST_F(ShapeInferenceTest, Scalar) {
   EXPECT_EQ("[]", c.DebugString(s0));
   auto s1 = c.Scalar();
   EXPECT_EQ("[]", c.DebugString(s1));
+  EXPECT_FALSE(SameHandle(s0, s1));
 }
 
 TEST_F(ShapeInferenceTest, Vector) {
@@ -1082,7 +1095,7 @@ TEST_F(ShapeInferenceTest, Matrix) {
 
   auto s3 = c.Matrix(d1, 100);
   EXPECT_EQ("[?,100]", c.DebugString(s3));
-  EXPECT_TRUE(SameHandle(d1, c.Dim(s2, 0)));
+  EXPECT_TRUE(SameHandle(d1, c.Dim(s3, 0)));
 }
 
 TEST_F(ShapeInferenceTest, MakeShapeFromShapeTensor) {
@@ -1201,7 +1214,7 @@ TEST_F(ShapeInferenceTest, MakeShapeFromShapeProto) {
   proto.add_dim()->set_size(0);
   EXPECT_THAT(
       c.MakeShapeFromShapeProto(proto, &out),
-      StatusIs(_,
+      StatusIs(error::INVALID_ARGUMENT,
                HasSubstr("An unknown shape must not have any dimensions set")));
   EXPECT_FALSE(IsSet(out));
 
@@ -1218,9 +1231,10 @@ TEST_F(ShapeInferenceTest, MakeShapeFromShapeProto) {
   proto.add_dim()->set_size(-2);
   EXPECT_THAT(
       c.MakeShapeFromShapeProto(proto, &out),
-      StatusIs(_, HasSubstr(
-                      "Shape [0,?,1000,-2] has dimensions with values below -1 "
-                      "(where -1 means unknown)")));
+      StatusIs(
+          error::INVALID_ARGUMENT,
+          HasSubstr("Shape [0,?,1000,-2] has dimensions with values below -1 "
+                    "(where -1 means unknown)")));
 
   EXPECT_FALSE(IsSet(out));
 }
@@ -1288,8 +1302,9 @@ TEST_F(ShapeInferenceTest, MakeDimForScalarInput) {
 
   EXPECT_THAT(
       c.MakeDimForScalarInput(1, &d),
-      StatusIs(_, HasSubstr("Dimension size, given by scalar input 1, must be "
-                            "non-negative but is -1")));
+      StatusIs(error::INVALID_ARGUMENT,
+               HasSubstr("Dimension size, given by scalar input 1, must be "
+                         "non-negative but is -1")));
 
   // Same tests, with int64 values.
   t1 = tensorflow::test::AsScalar<int64_t>(20);
@@ -1299,8 +1314,40 @@ TEST_F(ShapeInferenceTest, MakeDimForScalarInput) {
 
   EXPECT_THAT(
       c.MakeDimForScalarInput(1, &d),
-      StatusIs(_, HasSubstr("Dimension size, given by scalar input 1, must be "
-                            "non-negative but is -1")));
+      StatusIs(error::INVALID_ARGUMENT,
+               HasSubstr("Dimension size, given by scalar input 1, must be "
+                         "non-negative but is -1")));
+}
+
+TEST_F(ShapeInferenceTest, MakeDimForScalarInputWithNegativeIndexing) {
+  Tensor t1 = tensorflow::test::AsScalar<int32>(-2);
+  Tensor t2 = tensorflow::test::AsScalar<int32>(3);
+  NodeDef def;
+  InferenceContext c(kVersion, def, MakeOpDef(2, 2), {S({}), S({})}, {&t1, &t2},
+                     {}, {});
+
+  DimensionHandle d;
+
+  // Negative input rank and a negative value in the input tensor results in an
+  // unknown dimension.
+  TF_EXPECT_OK(c.MakeDimForScalarInputWithNegativeIndexing(0, -1, &d));
+  EXPECT_EQ("?", c.DebugString(d));
+
+  TF_EXPECT_OK(c.MakeDimForScalarInputWithNegativeIndexing(0, 4, &d));
+  EXPECT_EQ("2", c.DebugString(d));
+
+  EXPECT_THAT(c.MakeDimForScalarInputWithNegativeIndexing(0, 1, &d),
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Dimension size, given by scalar input -2 "
+                                 "must be in range [-1, 1)")));
+
+  TF_EXPECT_OK(c.MakeDimForScalarInputWithNegativeIndexing(1, 4, &d));
+  EXPECT_EQ("3", c.DebugString(d));
+
+  EXPECT_THAT(c.MakeDimForScalarInputWithNegativeIndexing(1, 2, &d),
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Dimension size, given by scalar input 3 "
+                                 "must be in range [-2, 2)")));
 }
 
 TEST_F(ShapeInferenceTest, GetAttr) {
@@ -1356,16 +1403,19 @@ TEST_F(ShapeInferenceTest, Divide) {
   EXPECT_THAT(
       c.Divide(d_6, 5, evenly_divisible, &out),
       StatusIs(
-          _,
+          error::INVALID_ARGUMENT,
           HasSubstr("Dimension size must be evenly divisible by 5 but is 6")));
 
   EXPECT_THAT(c.Divide(d_6, 0, evenly_divisible, &out),
-              StatusIs(_, HasSubstr("Divisor must be positive but is 0")));
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Divisor must be positive but is 0")));
   EXPECT_THAT(c.Divide(d_6, d_0, evenly_divisible, &out),
-              StatusIs(_, HasSubstr("Divisor must be positive but is 0")));
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Divisor must be positive but is 0")));
 
   EXPECT_THAT(c.Divide(d_6, -1, evenly_divisible, &out),
-              StatusIs(_, HasSubstr("Divisor must be positive but is -1")));
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Divisor must be positive but is -1")));
 
   // Repeat error cases above with evenly_divisible=false.
   evenly_divisible = false;
@@ -1373,10 +1423,12 @@ TEST_F(ShapeInferenceTest, Divide) {
   EXPECT_EQ("1", c.DebugString(out));
 
   EXPECT_THAT(c.Divide(d_6, 0, evenly_divisible, &out),
-              StatusIs(_, HasSubstr("Divisor must be positive but is 0")));
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Divisor must be positive but is 0")));
 
   EXPECT_THAT(c.Divide(d_6, -1, evenly_divisible, &out),
-              StatusIs(_, HasSubstr("Divisor must be positive but is -1")));
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Divisor must be positive but is -1")));
 }
 
 TEST_F(ShapeInferenceTest, Add) {
@@ -1426,8 +1478,9 @@ TEST_F(ShapeInferenceTest, Add) {
   EXPECT_TRUE(SameHandle(out, d_6));
 
   EXPECT_THAT(c.Add(d_6, std::numeric_limits<int64_t>::max() - 5, &out),
-              StatusIs(_, HasSubstr("Dimension size overflow from adding 6 and "
-                                    "9223372036854775802")));
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Dimension size overflow from adding 6 and "
+                                 "9223372036854775802")));
 }
 
 TEST_F(ShapeInferenceTest, Subtract) {
@@ -1478,7 +1531,7 @@ TEST_F(ShapeInferenceTest, Subtract) {
   EXPECT_THAT(
       c.Subtract(d_5, d_6, &out),
       StatusIs(
-          _,
+          error::INVALID_ARGUMENT,
           HasSubstr("Negative dimension size caused by subtracting 6 from 5")));
 }
 
@@ -1533,6 +1586,11 @@ TEST_F(ShapeInferenceTest, Multiply) {
   EXPECT_EQ("12", c.DebugString(out));
   TF_EXPECT_OK(c.Multiply(d_6, c.UnknownDim(), &out));
   EXPECT_EQ("?", c.DebugString(out));
+
+  EXPECT_THAT(
+      c.Multiply(d_6, std::numeric_limits<int64_t>::max() / 2, &out),
+      StatusIs(error::INVALID_ARGUMENT,
+               HasSubstr("Negative dimension size caused by overflow")));
 }
 
 TEST_F(ShapeInferenceTest, FullyDefined) {
@@ -1636,7 +1694,15 @@ TEST_F(ShapeInferenceTest, Max) {
   EXPECT_TRUE(SameHandle(d_2, out));
 }
 
-void ShapeInferenceTest::TestMergeHandles(bool input_not_output) {
+class ShapeInferenceHandlesTest : public ShapeInferenceTest,
+                                  public ::testing::WithParamInterface<bool> {};
+
+INSTANTIATE_TEST_SUITE_P(All, ShapeInferenceHandlesTest,
+                         ::testing::Bool() /* input_not_output */,
+                         ::testing::PrintToStringParamName());
+
+TEST_P(ShapeInferenceHandlesTest, MergeHandles) {
+  bool input_not_output = GetParam();
   NodeDef def;
   InferenceContext c(kVersion, def, MakeOpDef(2, 2), {S({}), S({})}, {}, {},
                      {});
@@ -1739,15 +1805,8 @@ void ShapeInferenceTest::TestMergeHandles(bool input_not_output) {
   ASSERT_FALSE(merge_shapes_and_types_to_context(0, t));
 }
 
-TEST_F(ShapeInferenceTest, MergeInputHandleShapesAndTypes) {
-  TestMergeHandles(true /* input_not_output */);
-}
-
-TEST_F(ShapeInferenceTest, MergeOutputHandleShapesAndTypes) {
-  TestMergeHandles(false /* input_not_output */);
-}
-
-void ShapeInferenceTest::TestRelaxHandles(bool input_not_output) {
+TEST_P(ShapeInferenceHandlesTest, RelaxHandles) {
+  bool input_not_output = GetParam();
   NodeDef def;
   InferenceContext c(kVersion, def, MakeOpDef(2, 2), {S({}), S({})}, {}, {},
                      {});
@@ -1839,13 +1898,6 @@ void ShapeInferenceTest::TestRelaxHandles(bool input_not_output) {
   EXPECT_EQ(t[1].dtype, v[1].dtype);
 }
 
-TEST_F(ShapeInferenceTest, RelaxInputHandleShapesAndTypes) {
-  TestRelaxHandles(true /* input_not_output */);
-}
-
-TEST_F(ShapeInferenceTest, RelaxOutputHandleShapesAndTypes) {
-  TestRelaxHandles(false /* input_not_output */);
-}
-
+}  // namespace
 }  // namespace shape_inference
 }  // namespace tensorflow

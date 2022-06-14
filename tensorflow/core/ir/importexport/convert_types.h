@@ -39,12 +39,12 @@ tensorflow::Status ConvertToDataType(Type type, tensorflow::DataType* dtype);
 
 // Converts an TensorFlow shape to the one used in MLIR.
 void ConvertToMlirShape(const tensorflow::TensorShape& input_shape,
-                        llvm::SmallVectorImpl<int64_t>* shape);
+                        SmallVectorImpl<int64_t>* shape);
 
 // Converts an TensorFlow shape proto to the one used in MLIR.
 tensorflow::Status ConvertToMlirShape(
     const tensorflow::TensorShapeProto& input_shape,
-    llvm::SmallVectorImpl<int64_t>* shape);
+    SmallVectorImpl<int64_t>* shape);
 
 // Given a tensor shape and dtype, get the corresponding MLIR tensor type.
 tensorflow::StatusOr<Type> ConvertToMlirTensorType(

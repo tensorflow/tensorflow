@@ -23,7 +23,6 @@ import abc
 from typing import Any, Iterable, Optional, Sequence, Tuple, Union
 
 import numpy as np
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import extension_type
@@ -88,7 +87,12 @@ class DynamicRaggedShape(extension_type.ExtensionType):
   _inner_shape: ops.Tensor
   _static_inner_shape: tensor_shape.TensorShape
 
-  def __init__(self, row_partitions, inner_shape, dtype=None, validate=False):
+  def __init__(self,
+               row_partitions: Sequence[RowPartition],
+               inner_shape: core.TensorLike,
+               dtype: Optional[dtypes.DType] = None,
+               validate: bool = False,
+               static_inner_shape: ... = None):
     """Core constructor for a DynamicRaggedShape.
 
     Create a DynamicRaggedShape. This can be used to construct a
@@ -112,6 +116,9 @@ class DynamicRaggedShape(extension_type.ExtensionType):
         Otherwise, the shape of the tensor.
       dtype: tf.int64, tf.int32, or None representing the preferred dtype.
       validate: if true, dynamic validation is applied to the shape.
+      static_inner_shape: if len(row_partitions) > 0, the static shape of the
+        flat_values. Otherwise, the static shape of the tensor.
+        Should be convertible to a TensorShape.
     """
     if not isinstance(row_partitions, Iterable):
       raise TypeError(
@@ -138,12 +145,12 @@ class DynamicRaggedShape(extension_type.ExtensionType):
     checks = []
     # Validate shapes.
     if self._row_partitions:
-      for axis, row_partition in enumerate(self._row_partitions):
+      for axis, rp in enumerate(self._row_partitions):
         if axis > 0:
           previous_row_partition = self._row_partitions[axis - 1]
           msg = ("RowPartitions in DynamicRaggedShape do not align "
                  f"between {axis - 1} and {axis}")
-          static_nrows = row_partition.static_nrows
+          static_nrows = rp.static_nrows
           static_nvals = previous_row_partition.static_nvals
           if (static_nrows is not None) and (static_nvals is not None):
             if static_nrows != static_nvals:
@@ -154,12 +161,16 @@ class DynamicRaggedShape(extension_type.ExtensionType):
             checks.append(
                 check_ops.assert_equal(
                     previous_row_partition.nvals(),
-                    row_partition.nrows(),
+                    rp.nrows(),
                     message=msg))
 
     self._inner_shape.shape.assert_has_rank(1)
+
     self._static_inner_shape = tensor_util.constant_value_as_shape(
         self._inner_shape)
+    if static_inner_shape is not None:
+      self._static_inner_shape = self._static_inner_shape.merge_with(
+          static_inner_shape)
 
     if row_partitions:
       last_row_partition = row_partitions[-1]

@@ -37,7 +37,7 @@ ENTRY main {
 
   NVPTXCompiler compiler;
   TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::MultiPlatformManager::PlatformWithName("cuda"));
+                          se::MultiPlatformManager::PlatformWithName("cuda_only"));
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
                           platform->ExecutorForDevice(0));
 

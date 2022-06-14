@@ -34,7 +34,7 @@ The following models are guaranteed to be compatible with the `ImageClassifier`
 API.
 
 *   Models created by
-    [TensorFlow Lite Model Maker for Image Classification](https://www.tensorflow.org/lite/tutorials/model_maker_image_classification).
+    [TensorFlow Lite Model Maker for Image Classification](https://www.tensorflow.org/lite/models/modify/model_maker/image_classification).
 
 *   The
     [pretrained image classification models on TensorFlow Hub](https://tfhub.dev/tensorflow/collections/lite/task-library/image-classifier/1).

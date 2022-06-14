@@ -438,6 +438,32 @@ cc_library(
 )
 
 cc_library(
+    name = "cumsum",
+    srcs = ["cumsum.cc"],
+    hdrs = ["cumsum.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+    ],
+)
+
+cc_library(
+    name = "cumsum_test_util",
+    testonly = 1,
+    srcs = ["cumsum_test_util.cc"],
+    hdrs = ["cumsum_test_util.h"],
+    deps = [
+        ":cumsum",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
     name = "depthwise_conv",
     srcs = ["depthwise_conv.cc"],
     hdrs = ["depthwise_conv.h"],

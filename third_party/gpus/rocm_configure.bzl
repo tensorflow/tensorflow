@@ -29,6 +29,7 @@ load(
     "which",
 )
 
+
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
 _GCC_HOST_COMPILER_PREFIX = "GCC_HOST_COMPILER_PREFIX"
 _ROCM_TOOLKIT_PATH = "ROCM_PATH"
@@ -65,6 +66,13 @@ def verify_build_defines(params):
         )
 
 def find_cc(repository_ctx):
+    rocm_path = get_host_environ(repository_ctx, "ROCM_PATH")
+    if rocm_path == None:
+      rocm_path = "/opt/rocm"
+    rocm_gcc = get_host_environ(repository_ctx, "TF_ROCM_GCC")
+    if rocm_gcc == "0":
+      return rocm_path+"/llvm/bin/clang"
+
     """Find the C++ compiler."""
 
     # Return a dummy value for GCC detection here to avoid error
@@ -714,6 +722,8 @@ def _create_local_rocm_repository(repository_ctx):
     )
 
     verify_build_defines(rocm_defines)
+
+    rocm_defines["%{rocm_toolkit_path}"] = rocm_config.rocm_toolkit_path
 
     # Only expand template variables in the BUILD file
     repository_ctx.template(

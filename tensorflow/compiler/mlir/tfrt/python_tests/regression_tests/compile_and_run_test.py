@@ -48,6 +48,7 @@ jitrt = tf_jitrt.TfJitRtExecutor()
 _STATIC_TYPE_ATTRIBUTE_NAME = 'python_test_attrs.static_type'
 _SHAPE_VALUE_ATTRIBUTE_NAME = 'python_test_attrs.shape_value'
 _ARG_ATTRIBUTES_NAME = 'arg_attrs'
+_FUNCTION_TYPE_NAME = 'function_type'
 
 
 class CompileAndRunTest(test.TestCase):
@@ -98,9 +99,12 @@ class CompileAndRunTest(test.TestCase):
         ctx.allow_unregistered_dialects = True
         module = ir.Module.parse(mlir_function)
         func = module.body.operations[0]
+        function_type = ir.FunctionType(
+            ir.TypeAttr(func.attributes[_FUNCTION_TYPE_NAME]).value)
         function_name = ir.StringAttr(func.attributes['sym_name']).value
         # If the function has arguments, we expect argument attributes.
-        if func.regions[0].blocks[0].arguments:
+        entry_block = func.regions[0].blocks[0]
+        if entry_block.arguments:
           self.assertIn(_ARG_ATTRIBUTES_NAME, func.attributes)
           arg_attrs = ir.ArrayAttr(func.attributes[_ARG_ATTRIBUTES_NAME])
       logging.info(f'processing {filename}')
@@ -144,7 +148,15 @@ class CompileAndRunTest(test.TestCase):
         logging.info(
             f'executed {filename} via tfrt fallback in {end-start:0.4f} seconds'
         )
-        np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
+        if len(function_type.results) > 1:
+          # If there is more than one result, we need to iterate manually,
+          # otherwise np.testing.assert_allclose will complain if not all
+          # results have equal size.
+          self.assertEqual(len(result), len(expected))
+          for res, expect in zip(result, expected):
+            np.testing.assert_allclose(res, expect, rtol=1e-5, atol=1e-5)
+        else:
+          np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
 
 if __name__ == '__main__':
   flags.mark_flag_as_required('compare_with_tensorflow')

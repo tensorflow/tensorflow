@@ -302,10 +302,10 @@ void MergePlanes(const std::vector<const XPlane*>& src_planes,
   }
 }
 
-uint64 GetStartTimestampNs(const XPlane& plane) {
+int64_t GetStartTimestampNs(const XPlane& plane) {
   int64_t plane_timestamp = 0;
   for (const auto& line : plane.lines()) {
-    plane_timestamp = std::min<int64_t>(plane_timestamp, line.timestamp_ns());
+    plane_timestamp = std::min(plane_timestamp, line.timestamp_ns());
   }
   return plane_timestamp;
 }

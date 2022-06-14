@@ -1012,7 +1012,8 @@ def HLO_ReduceScatterOp : HLO_Op<"reduce_scatter",
 }
 
 def HLO_AllToAllOp : HLO_Op<"all_to_all",
-    [NoSideEffect, SameOperandsElementType, SameOperandsShape]> {
+    [NoSideEffect, SameOperandsElementType, SameOperandsShape,
+     InferTensorType]> {
 
   let arguments = (ins
     HLO_Tensor:$operand,
@@ -1022,8 +1023,6 @@ def HLO_AllToAllOp : HLO_Op<"all_to_all",
     I64ElementsAttr:$replica_groups
   );
   let results = (outs HLO_Tensor);
-
-  let hasVerifier = 1;
 }
 
 def HLO_ReduceOp: HLO_ShapedInterfaceOp<"reduce", [
@@ -2021,6 +2020,20 @@ def HLO_ReverseOp: HLO_Op<"reverse",
   let results = (outs HLO_Tensor);
 
   let hasFolder = 1;
+}
+
+def HLO_PartitionIdOp : HLO_Op<"partition_id", []> {
+  let summary = "PartitionId operator";
+  let description = [{
+    Returns the value of the partition id of the currently executing device.
+    XLA supports two mechanisms for parallel execution: replication and
+    partition. A module can be replicated to run on multiple devices
+    (replicas) and a module can also be partitioned to split the work
+    between devices. replica-id and partition-id returns the id values of the
+    current device.
+  }];
+  let results = (outs TensorOf<[UI32]>);
+  let hasCustomHLOConverter = 1;
 }
 
 def HLO_PadOp: HLO_Op<"pad",

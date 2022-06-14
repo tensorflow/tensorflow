@@ -267,6 +267,7 @@ tf_cuda_cc_test(
         "guitar",
         "multi_gpu",
         "no_oss",
+        "cuda_only",
     ],
     deps = [
         "//tensorflow/core:all_kernels",
@@ -444,6 +445,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/base:core_headers",
     ],
 )
@@ -3558,8 +3560,10 @@ tf_kernel_library(
         "//conditions:default": [],
     }) + mkl_deps() + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
+    ]) + if_cuda_or_rocm([
+        ":gpu_utils",
         "//tensorflow/stream_executor:matmul_util",
-    ]) + if_cuda_or_rocm([":gpu_utils"]),
+    ]),
 )
 
 tf_kernel_library(
@@ -4353,7 +4357,10 @@ tf_kernel_library(
         "topk_op_gpu_int8.cu.cc",
         "topk_op_gpu_uint8.cu.cc",
     ],
-    deps = NN_DEPS + [":gpu_prim_hdrs"],
+    deps = NN_DEPS + [
+        ":gpu_prim_hdrs",
+        ":gpu_prim_helpers",
+    ],
 )
 
 tf_kernel_library(

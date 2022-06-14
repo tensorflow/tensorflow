@@ -62,6 +62,9 @@ class HloModule;
 // f(y), f(z)].)
 class HloComputation {
  public:
+  // Used by instructions_.
+  using InstructionList = std::list<std::unique_ptr<HloInstruction>>;
+
   // Builder class for HloComputation.
   class Builder {
    public:
@@ -681,7 +684,6 @@ class HloComputation {
   // Store instructions in std::list as they can be added and removed
   // arbitrarily and we want a stable iteration order. Keep a map from
   // instruction pointer to location in the list for fast lookup.
-  using InstructionList = std::list<std::unique_ptr<HloInstruction>>;
   InstructionList instructions_;
   absl::flat_hash_map<const HloInstruction*, InstructionList::iterator>
       instruction_iterators_;

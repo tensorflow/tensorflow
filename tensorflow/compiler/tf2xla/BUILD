@@ -78,6 +78,13 @@ tf_cc_binary(
 )
 
 tf_proto_library(
+    name = "tf2xla_support_proto",
+    srcs = ["support.proto"],
+    cc_api_version = 2,
+    visibility = ["//visibility:public"],
+)
+
+tf_proto_library(
     name = "tf2xla_proto",
     srcs = ["tf2xla.proto"],
     cc_api_version = 2,

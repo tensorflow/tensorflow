@@ -23,9 +23,15 @@ namespace tflite {
 namespace gpu {
 namespace gl {
 
-GLenum ToTextureFormat(DataType type);
+// From https://www.khronos.org/opengl/wiki/Normalized_Integer
+// A Normalized Integer is an integer which is used to store a decimal floating
+// point number. When formats use such an integer, OpenGL will automatically
+// convert them to/from floating point values as needed. This allows normalized
+// integers to be treated equivalently with floating-point values, acting as a
+// form of compression.
+GLenum ToTextureFormat(DataType type, bool normalized = false);
 
-GLenum ToTextureInternalFormat(DataType type);
+GLenum ToTextureInternalFormat(DataType type, bool normalized = false);
 
 GLenum ToTextureDataType(DataType type);
 

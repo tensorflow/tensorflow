@@ -173,6 +173,9 @@ struct JitRtFlags {
   bool log_query_of_death;
 
   bool vectorize;
+
+  // Enables crash reproducer for JitRt MLIR pass manager.
+  bool enable_crash_reproducer;
 };
 
 // Return a pointer to the DumpGraphFlags struct;

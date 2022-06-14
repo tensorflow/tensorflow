@@ -135,8 +135,8 @@ func.func @two_clusters_mixed(%arg0: tensor<*xf32>) {
 func.func @fuse_in_replicated_input_op(%arg0: tensor<i32>) {
   tf_executor.graph {
 // CHECK: island
-// CHECK-NEXT: = "tf.Const"
 // CHECK-NEXT: = "tf.TPUReplicatedInput"
+// CHECK-NEXT: = "tf.Const"
 // CHECK-NEXT: = "tf.AddV2"
     %outputs, %control = tf_executor.island wraps "tf.TPUReplicatedInput"(%arg0) {N = 1 : i64, T = i32, device = "", index = 0 : i64, is_mirrored_variable = false} : (tensor<i32>) -> tensor<i32>
     %outputs_0, %control_1 = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", value = dense<2> : tensor<i32>} : () -> tensor<i32>
@@ -297,6 +297,46 @@ func.func @fuse_in_special_ops_out_of_order() {
     %partitioned_out:2, %control = tf_executor.island wraps "tf.TPUPartitionedOutput"(%some_out#1) {partition_dim = 0 : i64} : (tensor<4x4xf32>) -> (tensor<2x4xf32>, tensor<2x4xf32>)
     %replicated_out:2, %ireplicated_control = tf_executor.island wraps "tf.TPUReplicatedOutput"(%some_out#0) : (tensor<4x4xf32>) -> (tensor<4x4xf32>, tensor<4x4xf32>)
     tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
+// CHECK-LABEL: func @keep_control_dependency
+func.func @keep_control_dependency(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<f32>) {
+  tf_executor.graph {
+// CHECK: island
+// CHECK-NEXT: = "tf.TPUReplicatedInput"
+// CHECK-NEXT: = "tf.Const"
+// CHECK-NEXT: = "tf.AddV2"
+// CHECK-NEXT: = "tf.OpA"
+// CHECK-NEXT: = "tf.TPUReplicatedOutput"
+    %outputs_1, %control_1 = tf_executor.island wraps "tf.TPUReplicatedInput"(%arg0, %arg1) {device = "", index = -1 : i64, is_mirrored_variable = true, is_packed = false} : (tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %outputs_2, %control_2 = tf_executor.island wraps "tf.Const"() {_replication_info = "cluster", _xla_compile_device_type = "TPU", device = "", value = dense<2.0> : tensor<f32>} : () -> tensor<f32>
+    %outputs_3, %control_3 = tf_executor.island wraps "tf.AddV2"(%outputs_1, %outputs_1) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    %outputs_4, %control_4 = tf_executor.island wraps "tf.OpA"() {_replication_info = "cluster", _xla_compile_device_type = "TPU", device = "", value = dense<3.0> : tensor<f32>} : () -> tensor<f32>
+    %outputs_5, %control_5 = tf_executor.island(%control_4) wraps "tf.TPUReplicatedOutput"(%outputs_3) {device = "", index = -1 : i64, is_mirrored_variable = true, is_packed = false} : (tensor<f32>) -> (tensor<f32>)
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
+// CHECK-LABEL: func @keep_data_dependency
+// CHECK: "tf.Const"
+// CHECK-NEXT: island
+// CHECK-NEXT: "tf.Const"
+// CHECK-NEXT: "tf.AddV2"
+// CHECK-NEXT: yield
+// CHECK: "tf.AddV2"
+func.func @keep_data_dependency() {
+  tf_executor.graph {
+    %outputs_1, %control_1 = tf_executor.island wraps "tf.Const"() {_replication_info = "cluster", _xla_compile_device_type = "TPU", device = "", value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
+    %outputs_2, %control_2 = tf_executor.island wraps "tf.AddV2"(%outputs_1, %outputs_1) {_xla_compile_device_type = "TPU", _replication_info = "cluster2"} : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    %outputs_3, %control_3 = tf_executor.island wraps "tf.Const"() {device = "", value = dense<2.0> : tensor<f32>} : () -> tensor<f32>
+    %outputs_4, %control_4 = tf_executor.island wraps "tf.AddV2"(%outputs_3, %outputs_3) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<f32>, tensor<f32>) -> tensor<f32>
   }
   func.return
 }
