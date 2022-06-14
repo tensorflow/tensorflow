@@ -114,6 +114,28 @@
     * Added `tf.random.experimental.stateless_shuffle`, a stateless version of
       `tf.random.shuffle`.
 
+## Deprecations
+
+*   The C++ `tensorflow::Code` and `tensorflow::Status` will become aliases of
+    respectively `absl::StatusCode` and `absl::Status` in some future release.
+    *   Use `tensorflow::OkStatus()` instead of `tensorflow::Status::OK()`.
+    *   Stop constructing `Status` objects from `tensorflow::error::Code`.
+    *   One MUST NOT access `tensorflow::errors::Code` fields. Accessing
+        `tensorflow::error::Code` fields is fine.
+        *   Use the constructors such as
+            `tensorflow::errors:InvalidArgument` to create status using an error
+            code without accessing it.
+        *   Use the free functions such as
+            `tensorflow::errors::IsInvalidArgument` if needed.
+        *   In the last resort, use e.g.
+            `static_cast<tensorflow::errors::Code>(error::Code::INVALID_ARGUMENT)`
+            or `static_cast<int>(code)` for comparisons.
+*   `tensorflow::StatusOr` will also become in the future alias to
+    `absl::StatusOr`, so use `StatusOr::value` instead of
+    `StatusOr::ConsumeValueOrDie`.
+
+
+
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
