@@ -142,9 +142,9 @@ Status LowerTFToJITInvocation(mlir::ModuleOp module,
           index_64bit, cpu_codegen, jit_i64_indexed_for_large_tensors));
   pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
   pm.addNestedPass<FuncOp>(mlir::createLinalgInitTensorToAllocTensorPass());
-  pm.addPass(mlir::CreateComputeOpAndFuncBufferizePass());
+  pm.addPass(mlir::createComputeOpAndFuncBufferizePass());
 
-  pm.addPass(mlir::CreateFinalBufferizePass(
+  pm.addPass(mlir::createFinalBufferizePass(
       /*alignment=*/64,
       mlir::kernel_gen::transforms::populateExtraBufferizeDialects,
       mlir::kernel_gen::transforms::populateExtraBufferizePatterns));
@@ -181,7 +181,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(mlir::createCSEPass());
   pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
-  pm.addNestedPass<FuncOp>(mlir::CreateShapeSimplification());
+  pm.addNestedPass<FuncOp>(mlir::createShapeSimplification());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createMergeAssumingOpsPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createBroadcastPropagationPass());
   pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
@@ -216,7 +216,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   // in 2 steps: first Linalg, then Hlo. That would need refactoring of
   // BufferizeTypeConverter.
   pm.addNestedPass<FuncOp>(mlir::createLinalgInitTensorToAllocTensorPass());
-  pm.addPass(mlir::CreateComputeOpAndFuncBufferizePass());
+  pm.addPass(mlir::createComputeOpAndFuncBufferizePass());
   pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
   // Remove copies which are introduced by canonicalizing
@@ -235,7 +235,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
         mlir::kernel_gen::transforms::CreateVectorizationPass());
     pm.addNestedPass<FuncOp>(
         mlir::bufferization::createBufferLoopHoistingPass());
-    pm.addNestedPass<FuncOp>(mlir::CreateShapeSimplification());
+    pm.addNestedPass<FuncOp>(mlir::createShapeSimplification());
     pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
     pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
     pm.addNestedPass<FuncOp>(
@@ -256,7 +256,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
     // provide benefits to CPU and tiling is handled by vectorization.
     pm.addNestedPass<FuncOp>(std::make_unique<CollapseParallelLoopsTo1D>());
     pm.addNestedPass<FuncOp>(
-        mlir::CreateTileLoopsPass(tile_sizes, unroll_factors));
+        mlir::createTileLoopsPass(tile_sizes, unroll_factors));
   }
 
   pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
@@ -296,7 +296,7 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
   // Now lower the shape computations, bufferize all remaining ops and insert
   // deallocs.
-  pm.addPass(mlir::CreateFinalBufferizePass(
+  pm.addPass(mlir::createFinalBufferizePass(
       /*alignment=*/64,
       mlir::kernel_gen::transforms::populateExtraBufferizeDialects,
       mlir::kernel_gen::transforms::populateExtraBufferizePatterns));

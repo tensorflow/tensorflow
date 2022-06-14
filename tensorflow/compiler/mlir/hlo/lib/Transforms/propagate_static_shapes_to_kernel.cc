@@ -227,7 +227,7 @@ void PropagateStaticShapesToKernelPass::runOnOperation() {
 }
 
 std::unique_ptr<OperationPass<ModuleOp>>
-CreatePropagateStaticShapesToKernelPass(Type pointerType) {
+createPropagateStaticShapesToKernelPass(Type pointerType) {
   return std::make_unique<PropagateStaticShapesToKernelPass>(pointerType);
 }
 

@@ -46,12 +46,12 @@ void mlir::createHloToGpuPipeline(OpPassManager &pm,
   pm.addNestedPass<FuncOp>(mhlo::createLegalizeHloToLinalgPass());
   pm.addNestedPass<FuncOp>(createLinalgElementwiseOpFusionPass());
   pm.addNestedPass<FuncOp>(createLinalgInitTensorToAllocTensorPass());
-  pm.addPass(CreateComputeOpAndFuncBufferizePass());
+  pm.addPass(createComputeOpAndFuncBufferizePass());
   pm.addNestedPass<FuncOp>(createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(createConvertLinalgToParallelLoopsPass());
   pm.addNestedPass<FuncOp>(bufferization::createBufferDeallocationPass());
   // Loops -> GPU
-  pm.addNestedPass<FuncOp>(CreateTileLoopsPass(tileSizes, unrollFactors));
+  pm.addNestedPass<FuncOp>(createTileLoopsPass(tileSizes, unrollFactors));
   pm.addNestedPass<FuncOp>(createGpuMapParallelLoopsPass());
   pm.addNestedPass<FuncOp>(createLoopInvariantCodeMotionPass());
   pm.addNestedPass<FuncOp>(createParallelLoopToGpuPass());
@@ -65,5 +65,5 @@ void mlir::createHloToGpuPipeline(OpPassManager &pm,
   pm.addNestedPass<GPUModuleOp>(createConvertSCFToCFPass());
   // GPU -> low-level IR
   pm.addNestedPass<GPUModuleOp>(CreateGpuKernelToNvvmPass());
-  pm.addPass(CreatePropagateStaticShapesToKernelPass());
+  pm.addPass(createPropagateStaticShapesToKernelPass());
 }

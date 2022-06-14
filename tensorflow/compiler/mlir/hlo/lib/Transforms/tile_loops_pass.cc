@@ -102,7 +102,7 @@ void TileLoopsPass::runOnOperation() {
     return signalPassFailure();
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateTileLoopsPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createTileLoopsPass(
     ArrayRef<int64_t> tileSizes, ArrayRef<int64_t> unrollFactors) {
   return std::make_unique<TileLoopsPass>(tileSizes, unrollFactors);
 }

@@ -881,11 +881,11 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
       mlir::mhlo::createLegalizeHloToLinalgPass());
 
   // Lower index cast on tensors to tensor.generate.
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::CreateLowerIndexCastPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createLowerIndexCastPass());
 
   // Lower shape dialect to standard to enable linalg canonicalizations (e.g.
   // use linalg inputs instead of outputs for memref.dim operations).
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::CreateShapeSimplification());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createShapeSimplification());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createShapeToShapeLowering());
   pm.addPass(mlir::createConvertShapeToStandardPass());
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -905,7 +905,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   // Always run canonicalizer (which does dead code removal) before
   // bufferizing anything.
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::hlo::CreateOneShotBufferizePass());
+  pm.addPass(mlir::hlo::createOneShotBufferizePass());
 
   // Handle framework specific requirements for buffers and then insert
   // deallocations for temporary buffers.
