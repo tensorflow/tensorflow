@@ -731,7 +731,9 @@ TEST(TestAddDelegateOwnership, AddDelegateDoesNotTakeOwnership) {
       ASSERT_TRUE(model);
       // Now try to build it into an interpreter.
       std::unique_ptr<Interpreter> interpreter;
-      InterpreterBuilder builder(*model, TrivialResolver());
+
+      TrivialResolver resolver;
+      InterpreterBuilder builder(*model, resolver);
       builder.AddDelegate(delegate.get());  // Does not transfer ownership.
       // Loop to check we can construct multiple interpreters from one builder.
       for (int i = 0; i < 3; i++) {
