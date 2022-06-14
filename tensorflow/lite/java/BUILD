@@ -636,7 +636,7 @@ java_test_with_tflite(
     visibility = ["//visibility:private"],
     deps = [
         ":tensorflowlite_javalib",
-        "//third_party/java/mockito",
+        #"//third_party/java/mockito",
         "@com_google_truth",
         "@junit",
     ],
