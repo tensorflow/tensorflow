@@ -662,7 +662,7 @@ absl::Status GPUOperationFromNodePart0(
         channels.push_back(output->tensor.shape.c);
       }
       auto attr = absl::any_cast<SplitAttributes>(node.operation.attributes);
-      SelectSplit(attr, channels, op_def, gpu_op);
+      SelectSplit(attr, gpu_info, channels, op_def, gpu_op);
       return absl::OkStatus();
     }
     case OperationType::TILE: {
