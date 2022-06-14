@@ -126,6 +126,16 @@ class HloTestBase : public ManifestCheckingTest {
 
   ~HloTestBase() override {}
 
+  // Runs pass `hlo_pass` on input HLO module `hlo`, and FileChecks the result
+  // against `expected`.
+  //
+  // If the rewrite has changed the module, also runs `additional_checks` on the
+  // result.
+  void RunAndFilecheckHloRewrite(
+      absl::string_view hlo, HloPassInterface&& hlo_pass,
+      std::optional<absl::string_view> expected,
+      std::function<void(HloModule*)> after_pass_checks = nullptr);
+
   // Populates debug options from command-line flags and adjusts the options for
   // testing. It is recommended to use this when you need to pass in
   // DebugOptions, e.g. when creating a module from a string or a file.

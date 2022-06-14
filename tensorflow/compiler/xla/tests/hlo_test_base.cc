@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
+#include <functional>
 #include <memory>
 #include <set>
 #include <string>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -198,6 +200,27 @@ DebugOptions HloTestBase::GetDebugOptionsForTest() {
   debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
   debug_options.set_xla_hlo_evaluator_use_fast_path(true);
   return debug_options;
+}
+
+void HloTestBase::RunAndFilecheckHloRewrite(
+    absl::string_view hlo, HloPassInterface&& hlo_pass,
+    std::optional<absl::string_view> expected,
+    std::function<void(HloModule*)> after_pass_checks) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&hlo_pass, module.get()));
+  EXPECT_EQ(changed, expected.has_value());
+  if (changed) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool filecheck_matches,
+        RunFileCheck(
+            module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),
+            *expected));
+    EXPECT_TRUE(filecheck_matches);
+    if (after_pass_checks) {
+      after_pass_checks(module.get());
+    }
+  }
 }
 
 StatusOr<Literal> HloTestBase::Execute(std::unique_ptr<HloModule> module,
