@@ -15,9 +15,11 @@
 """Defines TF Quantization API from SavedModel to SavedModel."""
 
 import tempfile
-from typing import Callable, Iterable, List, Mapping, Optional, Set, Tuple, Union
+from typing import Callable, Dict, Iterable, List, Mapping, Optional, Set, Tuple, Union
 import uuid
 import warnings
+
+import numpy as np
 
 # pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
@@ -25,6 +27,7 @@ from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model as quantize_model_wrapper
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import importer
@@ -201,35 +204,45 @@ def _get_signature_key_and_input(
                      'dictionary with input names and values')
 
 
-def _run_graph_for_calibration_eager_mode(
-    root: autotrackable.AutoTrackable, signature_keys: List[str],
-    representative_dataset: _RepresentativeDataset) -> None:
-  """Runs the graph for calibration in eager mode.
+def _create_feed_dict_from_input_data(
+    input_data: Mapping[str, core.Tensor],
+    signature_def: meta_graph_pb2.SignatureDef) -> Dict[str, np.ndarray]:
+  """Constructs a feed_dict from input data.
 
-  This function assumes _eager mode_ (enabled in TF2 by default) when running
-  the graph. This step is used in order to collect the statistics in
-  CustomAggregatorOp for quantization using the representative dataset for the
-  actual data provided for inference.
+  Note: This function should only be used in graph mode.
+
+  This is a helper function that converts an 'input key -> input tensor' mapping
+  to a feed dict. A feed dict is an 'input tensor name -> input data' mapping
+  and can be directly passed to the `feed_dict` argument of `sess.run()`.
 
   Args:
-    root: Root node of the graph.
-    signature_keys: A list of signature keys that identifies a function to run
-      the data samples with.
-    representative_dataset: Representative dataset used for calibration.
+    input_data: Input key -> input tensor mapping. The input keys should match
+      the input keys of `signature_def`.
+    signature_def: A SignatureDef representing the function that `input_data` is
+      an input to.
 
   Raises:
-    ValueError: When the samples in representative dataset is invalid.
-  """
-  for sample in representative_dataset():
-    signature_key, input_data = _get_signature_key_and_input(
-        sample, signature_keys)
+    KeyError: When the input key provided from `input_data` does not exist as
+      one of `signature_def`'s input keys.
 
-    func = root.signatures[signature_key]
-    func(**input_data)
+  Returns:
+    Feed dict, which is intended to be used as input for `sess.run`. It is
+    essentially a mapping: input tensor name -> tensor data.
+  """
+  feed_dict = {}
+  for input_key, input_tensor in input_data.items():
+    if input_key not in signature_def.inputs:
+      raise KeyError(f"Invalid input key '{input_key}'. Available input keys"
+                     f' are: {list(signature_def.inputs.keys())}.')
+
+    input_tensor_name = signature_def.inputs[input_key].name
+    feed_dict[input_tensor_name] = input_tensor.eval()
+
+  return feed_dict
 
 
 def _run_graph_for_calibration_graph_mode(
-    root: autotrackable.AutoTrackable, signature_keys: List[str],
+    model_dir: str, signature_keys: List[str],
     representative_dataset: _RepresentativeDataset) -> None:
   """Runs the graph for calibration in graph mode.
 
@@ -239,7 +252,7 @@ def _run_graph_for_calibration_graph_mode(
   the representative dataset for the actual data provided for inference.
 
   Args:
-    root: Root node of the graph.
+    model_dir: Path to SavedModel directory.
     signature_keys: A list of signature keys that identifies a function to run
       the data samples with.
     representative_dataset: Representative dataset used for calibration.
@@ -248,14 +261,61 @@ def _run_graph_for_calibration_graph_mode(
     ValueError: When the samples in representative dataset is invalid.
   """
   with session.Session() as sess:
-    outputs = []
+    meta_graph: meta_graph_pb2.MetaGraphDef = saved_model_loader.load(
+        sess, tags=[tag_constants.SERVING], export_dir=model_dir)
+
     for sample in representative_dataset():
       signature_key, input_data = _get_signature_key_and_input(
           sample, signature_keys)
 
-      func = root.signatures[signature_key]
-      outputs.append(func(**input_data))
-    sess.run(outputs)
+      sig_def = meta_graph.signature_def[signature_key]
+      output_tensor_names = [
+          output_tensor_info.name
+          for output_tensor_info in sig_def.outputs.values()
+      ]
+
+      # Create a mapping from input tensor name to the input tensor value.
+      # ex) "Placeholder:0" -> [0, 1, 2]
+      try:
+        feed_dict = _create_feed_dict_from_input_data(input_data, sig_def)
+      except KeyError as key_error:
+        raise ValueError(f'Invalid input data for signature: {signature_key}.'
+                        ) from key_error
+
+      sess.run(output_tensor_names, feed_dict=feed_dict)
+
+
+def _run_graph_for_calibration_eager_mode(
+    model_dir: str, signature_keys: List[str],
+    representative_dataset: _RepresentativeDataset) -> None:
+  """Runs the graph for calibration in eager mode.
+
+  This function assumes _eager mode_ (enabled in TF2 by default) when running
+  the graph. This step is used in order to collect the statistics in
+  CustomAggregatorOp for quantization using the representative dataset for the
+  actual data provided for inference.
+
+  Args:
+    model_dir: Path to SavedModel directory.
+    signature_keys: A list of signature keys that identifies a function to run
+      the data samples with.
+    representative_dataset: Representative dataset used for calibration.
+
+  Raises:
+    ValueError: When the samples in representative dataset is invalid.
+  """
+  root: autotrackable.AutoTrackable = saved_model_load(model_dir)
+  for sample in representative_dataset():
+    signature_key, input_data = _get_signature_key_and_input(
+        sample, signature_keys)
+
+    func = root.signatures[signature_key]
+    try:
+      func(**input_data)
+    except Exception as ex:
+      raise ValueError(
+          f'Failed to run the function with signature key: {signature_key}'
+      ) from ex
 
 
 def _static_range_quantize(saved_model_path: str,
@@ -334,17 +394,21 @@ def _static_range_quantize(saved_model_path: str,
 
     v1_builder.save()
 
-    float_model = saved_model_load(float_model_dir)
-
     # Uses the representative dataset to collect statistics for calibration.
     # Handles the graph mode execution separately in case TF2 is disabled or
-    # eager execution is disabled.
-    if context.executing_eagerly():
-      _run_graph_for_calibration_eager_mode(float_model, signature_keys,
-                                            representative_dataset)
-    else:
-      _run_graph_for_calibration_graph_mode(float_model, signature_keys,
-                                            representative_dataset)
+    # eager execution is disabled. The min & max values are stored separately
+    # in a global CalibratorSingleton instance.
+    try:
+      if context.executing_eagerly():
+        _run_graph_for_calibration_eager_mode(float_model_dir, signature_keys,
+                                              representative_dataset)
+      else:
+        _run_graph_for_calibration_graph_mode(float_model_dir, signature_keys,
+                                              representative_dataset)
+    except Exception as ex:
+      raise ValueError(
+          'Failed to run graph for post-training quantization calibration.'
+      ) from ex
 
     for function_def in graph_def.library.function:
       for node_def in function_def.node_def:
