@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_UTILS_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -54,8 +55,9 @@ std::vector<const XPlane*> FindPlanesWithPrefix(const XSpace& space,
 std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
                                                  absl::string_view prefix);
 
-// Returns the plane with the given id or nullptr if not found.
+// Returns the plane with the given id/name or nullptr if not found.
 const XLine* FindLineWithId(const XPlane& plane, int64_t id);
+const XLine* FindLineWithName(const XPlane& plane, absl::string_view name);
 
 XStat* FindOrAddMutableStat(const XStatMetadata& stat_metadata, XEvent* event);
 
@@ -135,6 +137,18 @@ bool IsEmpty(const XSpace& space);
 // GPU kernel events.
 void AddFlowsToXplane(int32_t host_id, bool is_host_plane, bool connect_traceme,
                       XPlane* plane);
+
+// Get a fingerprint of device plane for deduplicating derived lines in similar
+// device planes. The fingerprint is a hash of sorted HLO modules name which
+// were appeared on current plane.
+// Returns 0 when such "Xla Modules" line don't exist.
+uint64_t GetDevicePlaneFingerprint(const XPlane& plane);
+template <typename XPlanePointerIterator>
+void SortPlanesById(XPlanePointerIterator begin, XPlanePointerIterator end) {
+  std::sort(begin, end, [&](const XPlane* a, const XPlane* b) {
+    return a->id() < b->id();  // ascending order of device xplane id.
+  });
+}
 
 }  // namespace profiler
 }  // namespace tensorflow

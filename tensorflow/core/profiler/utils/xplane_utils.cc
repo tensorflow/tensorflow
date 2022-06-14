@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/context_types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
@@ -153,6 +153,12 @@ std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
 const XLine* FindLineWithId(const XPlane& plane, int64_t id) {
   int i =
       Find(plane.lines(), [id](const XLine* line) { return line->id() == id; });
+  return (i != -1) ? &plane.lines(i) : nullptr;
+}
+
+const XLine* FindLineWithName(const XPlane& plane, absl::string_view name) {
+  int i = Find(plane.lines(),
+               [name](const XLine* line) { return line->name() == name; });
   return (i != -1) ? &plane.lines(i) : nullptr;
 }
 
@@ -390,6 +396,24 @@ void AddFlowsToXplane(int32_t host_id, bool is_host_plane, bool connect_traceme,
       }
     });
   });
+}
+
+uint64_t GetDevicePlaneFingerprint(const XPlane& plane) {
+  const XLine* xla_module_line = FindLineWithName(plane, kXlaModuleLineName);
+  if (!xla_module_line) return 0ULL;
+
+  XPlaneVisitor xplane(&plane);
+  XLineVisitor xline(&xplane, xla_module_line);
+  std::set<uint64_t> ordered_module_fps;
+  xline.ForEachEvent([&](const XEventVisitor& xevent) {
+    ordered_module_fps.insert(Fingerprint64(xevent.Name()));
+  });
+  if (ordered_module_fps.empty()) return 0ULL;
+  uint64_t output = 0ULL;
+  for (const auto& fp : ordered_module_fps) {
+    output = FingerprintCat64(output, fp);
+  }
+  return output;
 }
 
 }  // namespace profiler
