@@ -49,6 +49,7 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -430,14 +431,12 @@ class DistributedCollectiveAllReduceStrategyTestWithChief(
         num_gpus=required_gpus)
 
 
-class LocalCollectiveAllReduceStrategy(
-    CollectiveAllReduceStrategyTestBase,
-    strategy_test_lib.DistributionTestBase,
-    strategy_test_lib.TwoDeviceDistributionTestBase,
-    parameterized.TestCase):
+class SingleWorkerCollectiveAllReduceStrategy(
+    CollectiveAllReduceStrategyTestBase, strategy_test_lib.DistributionTestBase,
+    strategy_test_lib.TwoDeviceDistributionTestBase, parameterized.TestCase):
 
   @combinations.generate(
-      combinations.combine(mode=['graph', 'eager'], required_gpus=[2, 4]))
+      combinations.combine(mode=['graph', 'eager'], required_gpus=[0, 1, 2]))
   def testMinimizeLoss(self, required_gpus):
     # Collective ops doesn't support strategy with one device.
     if context.executing_eagerly():
@@ -447,10 +446,22 @@ class LocalCollectiveAllReduceStrategy(
       self._test_minimize_loss_graph(None, None, required_gpus)
 
   @combinations.generate(
-      combinations.combine(mode=['eager'], required_tpus=[2]))
+      combinations.combine(mode=['eager'], required_gpus=[1, 2]))
+  def testNumReplicasInSync(self, required_gpus):
+    strategy, _, _ = self._get_test_object(None, None, required_gpus)
+    self.assertEqual(required_gpus, strategy.num_replicas_in_sync)
+
+  @combinations.generate(
+      combinations.combine(mode=['eager'], required_tpus=[0, 1, 2]))
   def testMinimizeLossTPU(self, required_tpus):
     strategy, _, _ = self._get_test_object(None, None, num_tpus=required_tpus)
     self._test_minimize_loss_eager(strategy)
+
+  @combinations.generate(
+      combinations.combine(mode=['graph', 'eager'], required_gpus=[0, 1, 2]))
+  def testCallAndMergeExceptions(self, required_gpus):
+    strategy, _, _ = self._get_test_object(None, None, num_gpus=required_gpus)
+    self._test_call_and_merge_exceptions(strategy)
 
   @combinations.generate(
       combinations.combine(
@@ -481,6 +492,16 @@ class LocalCollectiveAllReduceStrategy(
         expected_values,
         test_reinitialize=use_dataset,
         ignore_order=not use_dataset)
+
+  @combinations.generate(
+      combinations.combine(mode=['graph', 'eager'], required_gpus=[0, 1, 2]))
+  def testReduceToCpu(self, required_gpus):
+    strategy, _, _ = self._get_test_object(None, None, required_gpus)
+    with strategy.scope():
+      result = strategy.extended.call_for_each_replica(_replica_id_f32)
+      reduced = strategy.reduce(reduce_util.ReduceOp.SUM, result, axis=None)
+      expected = sum(range(strategy.num_replicas_in_sync))
+      self.assertEqual(expected, self.evaluate(reduced))
 
   @combinations.generate(combinations.combine(mode=['graph'], required_gpus=2))
   def testAllReduceSum(self, required_gpus):
@@ -531,10 +552,37 @@ class LocalCollectiveAllReduceStrategy(
     self._test_numpy_dataset(
         strategy, session=self.cached_session(config=config, target=target))
 
+  @combinations.generate(
+      combinations.combine(mode=['eager'], required_gpus=2))
+  def testReplicateDataset(self, required_gpus):
+    strategy, _, _ = self._get_test_object(None, None, num_gpus=required_gpus)
+    dataset_fn = lambda: dataset_ops.Dataset.range(10)
+    expected_values = [[i, i + 1] for i in range(0, 10, 2)]
+    input_fn = self._input_fn_to_test_input_context(
+        dataset_fn,
+        expected_num_replicas_in_sync=required_gpus,
+        expected_num_input_pipelines=1,
+        expected_input_pipeline_id=0)
+    self._test_input_fn_iterable(strategy, input_fn, expected_values)
+
   @combinations.generate(combinations.combine(mode=['graph']))
   def testDeepCopy(self):
     distribution, _, _ = self._get_test_object(None, None)
     copy.deepcopy(distribution)
+
+  @combinations.generate(
+      combinations.combine(mode=['graph', 'eager'], required_gpus=[0, 1, 2]))
+  def testSummaryForReplicaZeroOnly(self, required_gpus):
+    strategy, target, config = self._get_test_object(
+        None, None, num_gpus=required_gpus)
+    with self.cached_session(config=config, target=target):
+      self._test_summary_for_replica_zero_only(strategy)
+
+  @combinations.generate(
+      combinations.combine(mode=['graph', 'eager'], required_gpus=[0, 1, 2]))
+  def testTrainableVariables(self, required_gpus):
+    strategy, _, _ = self._get_test_object(None, None, num_gpus=required_gpus)
+    self._test_trainable_variable(strategy)
 
 
 class LogicalDeviceTest(test.TestCase, parameterized.TestCase):
@@ -625,6 +673,12 @@ class ExperimentalCompatibilityTest(test.TestCase):
                      'CollectiveAllReduceStrategy')
     self.assertEqual(_CollectiveAllReduceStrategyExperimental.__name__,
                      'CollectiveAllReduceStrategy')
+
+
+def _replica_id_f32():
+  return math_ops.cast(
+      distribution_strategy_context.get_replica_context()
+      .replica_id_in_sync_group, dtypes.float32)
 
 
 if __name__ == '__main__':
