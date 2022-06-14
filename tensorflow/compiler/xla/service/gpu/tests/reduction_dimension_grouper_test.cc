@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/service/gpu/reduction_dimension_grouper.h"
+
+#include <optional>
 #include <utility>
 
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
-#include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
@@ -25,21 +26,19 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
-namespace gpu {
 
 namespace {
 
-class ReductionDimensionGrouperTest : public GpuCodegenTest {
-  DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
-    debug_options.add_xla_disable_hlo_passes("reduction-layout-normalizer");
-    debug_options.add_xla_disable_hlo_passes("layout-assignment");
-    return debug_options;
+class ReductionDimensionGrouperTest : public HloTestBase {
+ public:
+  void CheckDimensionGrouper(absl::string_view hlo,
+                             std::optional<absl::string_view> expected) {
+    RunAndFilecheckHloRewrite(hlo, gpu::ReductionDimensionGrouper{}, expected);
   }
 };
 
 TEST_F(ReductionDimensionGrouperTest, ReductionWithGrouping) {
-  const char* hlo_text = R"(
+  const char* hlo = R"(
 HloModule ReductionWithGrouping
 
 add {
@@ -54,19 +53,18 @@ ENTRY main {
 
   ROOT out = f32[100,10]{0,1} reduce(input, zero), dimensions={2,3}, to_apply=add
 }
-
-
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
-  MatchOptimizedHloWithShapes(hlo_text,
-                              R"(
-// CHECK: f32[100,10]{0,1} reduce(f32[100,10,96]{2,1,0} {{.+}}, f32[] {{.+}}), dimensions={2}, to_apply=%add
+  CheckDimensionGrouper(hlo,
+                        R"(
+// CHECK:  [[input_0:%[^ ]+]] = f32[100,10,32,3]{3,2,1,0} parameter(0)
+// CHECK:  [[bitcast_1:%[^ ]+]] = f32[100,10,96]{2,1,0} bitcast([[input_0]])
+// CHECK:  ROOT [[out_1_2:%[^ ]+]] = f32[100,10]{0,1} reduce([[bitcast_1]], [[zero_3:%[^ ]+]]), dimensions={2}, to_apply=[[add_4:%[^ ]+]]
       )");
 }
 
 TEST_F(ReductionDimensionGrouperTest, ReductionWithGroupingVariadic) {
-  const char* hlo_text = R"(
+  const char* hlo = R"(
 HloModule ReductionWithGrouping
 
 argmax {
@@ -94,16 +92,16 @@ ENTRY main {
 
   ROOT out = (f32[100,10]{1,0}, u32[100,10]{1,0}) reduce(input, idxs, zero, zero_idx), dimensions={2,3}, to_apply=argmax
 }
-
-
 )";
 
-  MatchOptimizedHloWithShapes(hlo_text,
-                              R"(
-// CHECK: (f32[100,10]{1,0}, u32[100,10]{1,0}) reduce(f32[100,10,96]{2,1,0} %bitcast.3, u32[100,10,96]{2,1,0} %bitcast.2, f32[] %zero_1, u32[] %zero_idx_1), dimensions={2}
+  CheckDimensionGrouper(hlo, R"(
+// CHECK:  [[input_0:%[^ ]+]] = f32[100,10,32,3]{3,2,1,0} parameter(0)
+// CHECK:  [[bitcast_1:%[^ ]+]] = f32[100,10,96]{2,1,0} bitcast([[input_0]])
+// CHECK:  [[idxs_2:%[^ ]+]] = u32[100,10,32,3]{3,2,1,0} parameter(1)
+// CHECK:  [[bitcast_1_3:%[^ ]+]] = u32[100,10,96]{2,1,0} bitcast([[idxs_2]])
+// CHECK:  ROOT [[out_1_4:%[^ ]+]] = (f32[100,10]{1,0}, u32[100,10]{1,0}) reduce([[bitcast_1]], [[bitcast_1_3]], [[zero_5:%[^ ]+]], [[zero_idx_6:%[^ ]+]]), dimensions={2}, to_apply=[[argmax_7:%[^ ]+]]
 )");
 }
 
 }  // namespace
-}  // namespace gpu
 }  // namespace xla
