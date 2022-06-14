@@ -98,21 +98,9 @@ void createArgs(ArrayRef<OpAsmParser::UnresolvedOperand> operands,
 // Utilities for the canonicalize patterns
 //===----------------------------------------------------------------------===//
 
-// This is an arbitrary limit into how many elements can a splat attribute
-// covers before we prevent folding from happening. Without such limit we can
-// expand a single element splat to a multi-GB large tensor.
-// The limit is arbitrary set low to allow expanding small computations, like
-// shape manipulations for example.
-// TODO(b/210478841): Define a constant folding policy that generalizes this.
-constexpr int64_t kFoldExpandSplatEltLimit = 16;
-
-// Similarly to the constant above, this is an arbitrary limit into how many
-// elements can be folded by an operation folder.
-// This limit doesn't apply to the following special cases:
-//   1) Adding a zero.
-//   2) Multiplying by one.
-//   3) When both operands are splats.
-// TODO(b/210478841): Define a constant folding policy that generalizes this.
+// This is an upper limit on how many elements can be folded by an op folder.
+// This limit doesn't apply to some special cases like adding a zero,
+// multiplying by one, doing many operations with splats.
 constexpr int64_t kFoldOpEltLimit = 65536;
 
 // Clamps value to the range [lower, upper].  Requires lower <= upper.
@@ -2193,6 +2181,8 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
   // If the operand is constant, we can do the conversion now.
   auto elementsAttr = operands.front().dyn_cast_or_null<ElementsAttr>();
   if (!elementsAttr) return {};
+
+  // Prevent folding if the result is too large.
   if (elementsAttr.getNumElements() > kFoldOpEltLimit) return {};
   return hlo::ConvertElementsAttr(elementsAttr,
                                   getElementTypeOrSelf(getResult()));
@@ -3412,10 +3402,8 @@ static Attribute foldConcatenateHelper(ConcatenateOp* op,
     topSize = topSize * shape[i];
   }
 
-  // TODO(b/210478841): Define a constant folding policy that generalizes this.
-  if (type.getNumElements() * op->getNumOperands() > UINT32_MAX) {
-    return {};
-  }
+  // Prevent folding if the result is too large.
+  if (type.getNumElements() > kFoldOpEltLimit) return {};
 
   SmallVector<T, 6> values;
   for (size_t i = 0; i < topSize; i++) {
@@ -5245,6 +5233,9 @@ OpFoldResult padOpFoldHelper(DenseElementsAttr input, DenseElementsAttr padding,
                              DenseIntElementsAttr edgePaddingLow,
                              DenseIntElementsAttr edge_padding_high,
                              DenseIntElementsAttr interiorPadding) {
+  // Prevent folding if the result is too large.
+  if (returnType.getNumElements() > kFoldOpEltLimit) return {};
+
   // Fill the full result tensor with the padding value.
   llvm::SmallVector<T, 4> result(returnType.getNumElements(),
                                  padding.getValues<T>()[0]);
@@ -5610,6 +5601,9 @@ OpFoldResult SqrtOp::fold(ArrayRef<Attribute> operands) {
   auto shapedType = getType().cast<ShapedType>();
   if (!shapedType.hasStaticShape()) return {};
 
+  // Prevent folding if the result is too large.
+  if (val.getNumElements() > kFoldOpEltLimit) return {};
+
   int bitWidth = type.getIntOrFloatBitWidth();
   llvm::SmallVector<APFloat, 4> values;
   values.reserve(val.getNumElements());
@@ -5693,6 +5687,9 @@ static Attribute UnaryFolder(Op* op, ArrayRef<Attribute> attrs) {
   if (!etype.isa<ElementType>()) {
     return {};
   }
+
+  // Prevent folding if the result is too large.
+  if (val.getNumElements() > kFoldOpEltLimit) return {};
 
   SmallVector<ValType, 6> values;
   values.reserve(val.getNumElements());
@@ -5861,10 +5858,8 @@ static Attribute BinaryFolder(Op* op, ArrayRef<Attribute> attrs) {
                              : Attribute();
   }
 
-  // Prevent folding if lhs/rhs are too large.
-  if (lhs.getNumElements() > kFoldOpEltLimit) {
-    return {};
-  }
+  // Prevent folding if the result is too large.
+  if (lhs.getNumElements() > kFoldOpEltLimit) return {};
 
   SmallVector<ValType, 6> values;
   values.reserve(lhs.getNumElements());
@@ -6200,6 +6195,7 @@ static Attribute foldSlice(SliceOp* op, I values) {
   auto limit = llvm::to_vector<6>(op->limit_indices().getValues<int64_t>());
   auto stride = llvm::to_vector<6>(op->strides().getValues<int64_t>());
 
+  // TODO(b/235903849): This should be op->getType().case<ShapedType>().
   auto resultType = op->operand().getType().cast<ShapedType>();
   if (!resultType.hasStaticShape()) return {};
 
@@ -6218,6 +6214,9 @@ static Attribute foldSlice(SliceOp* op, I values) {
     count = count / v;
     sizes.push_back(count);
   }
+
+  // Prevent folding if the result is too large.
+  if (resultType.getNumElements() > kFoldOpEltLimit) return {};
 
   llvm::SmallVector<E, 6> outValues;
   outValues.reserve(resultType.getNumElements());
@@ -6853,6 +6852,9 @@ static Attribute CompareFolder(CompareOp op, ArrayRef<Attribute> attrs) {
     return {};
   }
 
+  // Prevent folding if the result is too large.
+  if (lhs.getNumElements() > kFoldOpEltLimit) return {};
+
   SmallVector<bool, 6> values;
   values.reserve(lhs.getNumElements());
   for (const auto zip :
@@ -7413,10 +7415,6 @@ LogicalResult ScatterOp::fold(
   auto update = args[2].dyn_cast_or_null<DenseElementsAttr>();
   if (!base || !update) return failure();
 
-  // Prevent splat to be expanded if too large.
-  if (base.isSplat() && base.getNumElements() > kFoldExpandSplatEltLimit)
-    return failure();
-
   // Add the virtual trailing dimension of size 1 if indexVectorDim equals to
   // indexType.rank.
   const int64_t indexVectorDim =
@@ -7440,6 +7438,9 @@ LogicalResult ScatterOp::fold(
     }
     return false;
   };
+
+  // Prevent folding if the result is too large.
+  if (base.getNumElements() > kFoldOpEltLimit) return failure();
 
   // Iterate over all elements of the update tensor, then find the corresponding
   // value in the indices tensor to determine which location we have to update
