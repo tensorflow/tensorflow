@@ -1928,6 +1928,9 @@ Status IrEmitter::HandleSendDone(HloInstruction* send_done) {
 }
 
 Status IrEmitter::HandleScatter(HloInstruction* scatter) {
+  // (TODO) this is to prevent the crash untill the porting is complete
+  return Unimplemented("Scatter is not implemented on CPUs.");
+  // ------------
   const HloInstruction* operand = scatter->operand(0);
   const HloInstruction* scatter_indices = scatter->operand(1);
   const HloInstruction* updates = scatter->operand(2);
