@@ -42,6 +42,7 @@ mlir_tf_tools_dirs = [
     'tensorflow/core/transforms/',
     'tensorflow/compiler/mlir',
     'tensorflow/compiler/mlir/hlo',
+    'tensorflow/compiler/mlir/hlo/tosa',
     'tensorflow/compiler/mlir/lite',
     'tensorflow/compiler/mlir/lite/experimental/tac',
     'tensorflow/compiler/mlir/quantization/tensorflow',

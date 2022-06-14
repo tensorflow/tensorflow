@@ -1,5 +1,5 @@
 """Lit configuration to drive test in this repo."""
-# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -25,7 +25,7 @@ import lit.util
 # Configuration file for the 'lit' test runner.
 
 # name: The name of this test suite.
-config.name = 'MLIR_HLO_OPT'
+config.name = 'MHLO_TOSA_OPT'
 
 config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
 
@@ -45,12 +45,8 @@ llvm_config.with_system_environment(['HOME', 'INCLUDE', 'LIB', 'TMP', 'TEMP'])
 
 llvm_config.use_default_substitutions()
 
-# excludes: A list of directories to exclude from the testsuite. The 'Inputs'
-# subdirectories contain auxiliary inputs for various tests in their parent
-# directories.
-config.excludes = [
-    'Inputs', 'Examples', 'tosa', 'CMakeLists.txt', 'README.txt', 'LICENSE.txt'
-]
+# excludes: A list of directories to exclude from the testsuite.
+config.excludes = ['Examples', 'CMakeLists.txt', 'README.txt', 'LICENSE.txt']
 
 # test_source_root: The root path where tests are located.
 config.test_source_root = os.path.dirname(__file__)
@@ -67,12 +63,7 @@ tool_dirs = [
     config.llvm_tools_dir,
 ]
 tools = [
-    'mlir-hlo-opt',
-    'mlir-cpu-runner',
-    ToolSubst(
-        '%mlir_runner_utils_dir',
-        config.mlir_runner_utils_dir,
-        unresolved='ignore'),
+    'mhlo-tosa-opt',
 ]
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)

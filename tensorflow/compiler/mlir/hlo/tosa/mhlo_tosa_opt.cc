@@ -13,21 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mhlo_tosa/Transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/IR/register.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
-#include "mlir-hlo/Transforms/register_passes.h"
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
 #include "mlir/Dialect/Tosa/Transforms/Passes.h"
+#include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
 int main(int argc, char **argv) {
-  mlir::registerTransformsPasses();
-  mlir::tosa::registerTosaOptPasses();
-  mlir::mhlo::registerAllMhloPasses();
+  mlir::registerAllPasses();
+  mlir::tosa::registerTosaLegalizeMhloPassPass();
 
   mlir::DialectRegistry registry;
-  registry.insert<mlir::tosa::TosaDialect>();
+  mlir::registerAllDialects(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
 
   return failed(
