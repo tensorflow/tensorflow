@@ -25,7 +25,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.saved_model import function_serialization
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import signature_constants
-from tensorflow.python.training.tracking import base
+from tensorflow.python.trackable import base
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
