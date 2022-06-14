@@ -100,6 +100,11 @@ class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
     ValueRange getInductionVars() {
       return getBody()->getArguments().take_front(getNumLoops());
     }
+
+    /// Return whether the op has no output tensors.
+    bool hasBufferSemantics() {
+      return this->getOperation()->getNumResults() == 0;
+    }
   }];
 
   let hasCustomAssemblyFormat = 1;

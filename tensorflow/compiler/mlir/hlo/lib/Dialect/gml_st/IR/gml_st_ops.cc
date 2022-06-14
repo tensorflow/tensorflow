@@ -605,8 +605,7 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
                                 static_cast<int32_t>(subsets.size())}));
 
   // Parser result types.
-  if (parser.parseColon() || parser.parseTypeList(result.types))
-    return failure();
+  if (parser.parseOptionalColonTypeList(result.types)) return failure();
 
   return success();
 }

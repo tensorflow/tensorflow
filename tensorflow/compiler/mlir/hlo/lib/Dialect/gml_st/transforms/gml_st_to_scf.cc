@@ -93,11 +93,45 @@ struct LoopToSCFPattern : public OpRewritePattern<LoopOp> {
   }
 };
 
+/// Converts gml_st.parallel or gml_st.for to SCF loop nest.
+template <typename LoopTy>
+struct LoopLikeToSCFPattern : public OpRewritePattern<LoopTy> {
+  using OpRewritePattern<LoopTy>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LoopTy loop,
+                                PatternRewriter &rewriter) const override {
+    // Fail conversion if the loop has not been bufferized.
+    if (!loop.hasBufferSemantics()) return failure();
+
+    auto cloneBody = [&](OpBuilder &builder, Location /*loc*/, ValueRange ivs) {
+      BlockAndValueMapping bvm;
+      bvm.map(loop.getInductionVars(), ivs);
+      bvm.map(loop.getBody()->getArguments().take_back(loop.outputs().size()),
+              loop.outputs());
+
+      for (auto &op : loop.getBody()->without_terminator())
+        builder.clone(op, bvm);
+    };
+
+    Location loc = loop.getLoc();
+    if (std::is_same<LoopTy, ParallelOp>::value) {
+      rewriter.create<scf::ParallelOp>(
+          loc, loop.lowerBound(), loop.upperBound(), loop.step(), cloneBody);
+    } else {
+      scf::buildLoopNest(rewriter, loc, loop.lowerBound(), loop.upperBound(),
+                         loop.step(), cloneBody);
+    }
+    rewriter.eraseOp(loop);
+    return success();
+  }
+};
+
 struct GmlStToScfPass : public GmlStToScfBase<GmlStToScfPass> {
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
-    patterns.add<LoopToSCFPattern>(patterns.getContext());
+    patterns.add<LoopToSCFPattern, LoopLikeToSCFPattern<ForOp>,
+                 LoopLikeToSCFPattern<ParallelOp>>(patterns.getContext());
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
       signalPassFailure();
