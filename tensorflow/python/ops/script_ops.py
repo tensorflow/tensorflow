@@ -487,7 +487,7 @@ def eager_py_func(func, inp, Tout, name=None):
     operation to a device in that server (e.g. using `with tf.device():`).
 
   * Currently `tf.py_function` is not compatible with XLA. Calling
-    `tf.py_function` inside `tf.function(jit_comiple=True)` will raise an
+    `tf.py_function` inside `tf.function(jit_compile=True)` will raise an
     error.
 
   Args:
@@ -732,7 +732,7 @@ def numpy_function(func, inp, Tout, stateful=True, name=None):
     operation to a device in that server (e.g. using `with tf.device():`).
 
   * Currently `tf.numpy_function` is not compatible with XLA. Calling
-    `tf.numpy_function` inside `tf.function(jit_comiple=True)` will raise an
+    `tf.numpy_function` inside `tf.function(jit_compile=True)` will raise an
     error.
 
   * Since the function takes numpy arrays, you cannot take gradients
