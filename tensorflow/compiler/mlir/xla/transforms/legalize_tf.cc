@@ -210,10 +210,10 @@ tensorflow::TensorShape ToTensorShape(
 
 // Returns a limit scalar const op for the given type.
 // Requires FloatType or IntegerType
-static ConstOp GetScalarLimitConstOfType(Type ty, Location loc,
-                                         hlo::ScalarLimit limit,
-                                         OpBuilder *builder) {
-  return builder->create<ConstOp>(loc, hlo::GetScalarLimitOfType(ty, limit));
+static ConstantOp GetScalarLimitConstOfType(Type ty, Location loc,
+                                            hlo::ScalarLimit limit,
+                                            OpBuilder *builder) {
+  return builder->create<ConstantOp>(loc, hlo::GetScalarLimitOfType(ty, limit));
 }
 
 // Creates an mhlo::SliceOp where the major dimensions have full size, and
@@ -472,7 +472,7 @@ Value BatchDot(Location loc, Value lhs, bool transpose_lhs, Value rhs,
 static Value ApplyReduction(Location loc, Value input,
                             DenseIntElementsAttr reduce_dims,
                             OpBuilder *builder) {
-  auto reduce_dims_op = builder->create<ConstOp>(loc, reduce_dims);
+  auto reduce_dims_op = builder->create<ConstantOp>(loc, reduce_dims);
   return builder->create<TF::SumOp>(loc, input, reduce_dims_op,
                                     builder->getBoolAttr(false));
 }
@@ -482,12 +482,12 @@ static Value ApplyReduction(Location loc, Value input,
 static mhlo::RngUniformOp CreateRngUniform32(Location loc, int num_elements,
                                              int lower_limit, int upper_limit,
                                              OpBuilder *builder) {
-  auto shape_tensor = builder->create<mhlo::ConstOp>(
+  auto shape_tensor = builder->create<mhlo::ConstantOp>(
       loc, GetI64ElementsAttr({num_elements}, builder));
 
-  auto lower = builder->create<mhlo::ConstOp>(
+  auto lower = builder->create<mhlo::ConstantOp>(
       loc, builder->getI32IntegerAttr(lower_limit));
-  auto upper = builder->create<mhlo::ConstOp>(
+  auto upper = builder->create<mhlo::ConstantOp>(
       loc, builder->getI32IntegerAttr(upper_limit));
 
   return builder->create<mhlo::RngUniformOp>(loc, lower, upper, shape_tensor);
@@ -530,7 +530,7 @@ static void CreateWhile32(Location loc, int num_iterations,
 
   // The initial value for the loop induction variable is 0.
   init_values_with_loop_iv.push_back(
-      builder->create<mhlo::ConstOp>(loc, builder->getI32IntegerAttr(0)));
+      builder->create<mhlo::ConstantOp>(loc, builder->getI32IntegerAttr(0)));
   init_values_with_loop_iv.append(init_values.begin(), init_values.end());
 
   // Accumulate types of all the init values.
@@ -553,7 +553,7 @@ static void CreateWhile32(Location loc, int num_iterations,
 
     // Get the loop induction variable and compare it against the upper limit.
     auto loop_iv = block->getArgument(0);
-    auto upper_limit = builder->create<mhlo::ConstOp>(
+    auto upper_limit = builder->create<mhlo::ConstantOp>(
         loc, builder->getI32IntegerAttr(num_iterations));
     Value compare = builder->create<mhlo::CompareOp>(loc, loop_iv, upper_limit,
                                                      ComparisonDirection::LT);
@@ -581,7 +581,7 @@ static void CreateWhile32(Location loc, int num_iterations,
 
     // Increment the loop induction variable by one.
     auto one =
-        builder->create<mhlo::ConstOp>(loc, builder->getI32IntegerAttr(1));
+        builder->create<mhlo::ConstantOp>(loc, builder->getI32IntegerAttr(1));
     auto scalar_broadcast_dims = GetI64ElementsAttr({}, builder);
     auto plus_one = builder->create<chlo::BroadcastAddOp>(
         loc, block->getArgument(0), one, scalar_broadcast_dims);
@@ -1438,7 +1438,7 @@ class ConvertPadOpDynamic : public OpRewritePattern<TF::PadV2Op> {
     auto interior_attr = GetI64ElementsAttr(interior_values, &rewriter);
 
     Value interior_padding_tensor =
-        rewriter.create<mhlo::ConstOp>(loc, interior_attr);
+        rewriter.create<mhlo::ConstantOp>(loc, interior_attr);
     Type paddings_elem_ty = paddings_type.getElementType();
     if (!paddings_elem_ty.isInteger(64)) {
       interior_padding_tensor = rewriter.create<mhlo::ConvertOp>(
@@ -1673,7 +1673,7 @@ class ConvertRollOp : public OpRewritePattern<TF::RollOp> {
     // offset = ((offset % axis_size) + axis_size) % axis_size
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     Value offset = op.shift();
-    auto axis_size = b.create<mhlo::ConstOp>(b.getIntegerAttr(
+    auto axis_size = b.create<mhlo::ConstantOp>(b.getIntegerAttr(
         getElementTypeOrSelf(offset.getType()), input_shape[axis]));
     offset = b.create<RemOp>(
         b.create<AddOp>(b.create<RemOp>(offset, axis_size), axis_size),
@@ -1685,7 +1685,7 @@ class ConvertRollOp : public OpRewritePattern<TF::RollOp> {
     // information from input shape.
     auto concat = b.create<ConcatenateOp>(ValueRange{op.input(), op.input()},
                                           b.getI64IntegerAttr(axis));
-    Value zero = b.create<mhlo::ConstOp>(
+    Value zero = b.create<mhlo::ConstantOp>(
         b.getIntegerAttr(getElementTypeOrSelf(offset.getType()), 0));
     SmallVector<Value> slice_begin_indices(input_rank, zero);
     slice_begin_indices[axis] = b.create<SubOp>(axis_size, offset);
@@ -2265,7 +2265,7 @@ class ConvertFusedBatchNormGradBase
 
       // scratch1 = rsqrt(var + epsilon)
       RankedTensorType scalar_float = RankedTensorType::get({}, kernel_type);
-      auto epsilon = rewriter.create<ConstOp>(
+      auto epsilon = rewriter.create<ConstantOp>(
           loc, DenseFPElementsAttr::get(scalar_float, {op.epsilon()}));
       auto add_op = rewriter.create<chlo::BroadcastAddOp>(
           loc, var, epsilon.getResult(), scalar_broadcast_dims);
@@ -2301,7 +2301,7 @@ class ConvertFusedBatchNormGradBase
       // It doesn't matter what values we provide for the last 2 results.
       last_val[0] = last_val[1] = op.x();
     } else {
-      auto const_val = rewriter.create<ConstOp>(
+      auto const_val = rewriter.create<ConstantOp>(
           op.getLoc(),
           DenseElementsAttr::get<float>(
               RankedTensorType::get({0}, getElementTypeOrSelf(op.getResult(3))),
@@ -2395,7 +2395,7 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
       int sample_size_minus_one = std::max(1, sample_size - 1);
       double factor = static_cast<double>(sample_size) /
                       static_cast<double>(sample_size_minus_one);
-      auto factor_const_op = rewriter.create<mhlo::ConstOp>(
+      auto factor_const_op = rewriter.create<mhlo::ConstantOp>(
           op.getLoc(), rewriter.getFloatAttr(scale_element_type, factor));
 
       Value corrected_variance = rewriter.create<chlo::BroadcastMulOp>(
@@ -2410,10 +2410,10 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
       float exponential_avg_factor =
           op.exponential_avg_factor().convertToFloat();
       if (exponential_avg_factor != 1.0f) {
-        auto alpha = rewriter.create<mhlo::ConstOp>(
+        auto alpha = rewriter.create<mhlo::ConstantOp>(
             op.getLoc(), rewriter.getFloatAttr(mean_element_type,
                                                1.0f - exponential_avg_factor));
-        auto beta = rewriter.create<mhlo::ConstOp>(
+        auto beta = rewriter.create<mhlo::ConstantOp>(
             op.getLoc(),
             rewriter.getFloatAttr(mean_element_type, exponential_avg_factor));
 
@@ -2460,7 +2460,7 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
                                : 0;
         auto const_attr_type = RankedTensorType::get(
             {num_elements}, getElementTypeOrSelf(reserve_space_3_type));
-        Value dummy_const = rewriter.create<ConstOp>(
+        Value dummy_const = rewriter.create<ConstantOp>(
             op.getLoc(), DenseElementsAttr::get<float>(const_attr_type, 0.0));
         if (const_attr_type != reserve_space_3_type)
           dummy_const = rewriter.create<tensor::CastOp>(
@@ -2504,7 +2504,7 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
                                : 0;
         auto const_attr_type = RankedTensorType::get(
             {num_elements}, getElementTypeOrSelf(reserve_space_3_type));
-        Value dummy_const = rewriter.create<ConstOp>(
+        Value dummy_const = rewriter.create<ConstantOp>(
             op.getLoc(), DenseElementsAttr::get<float>(const_attr_type, 0.0));
         if (const_attr_type != reserve_space_3_type)
           dummy_const = rewriter.create<tensor::CastOp>(
@@ -2617,7 +2617,7 @@ Operation *AvgPoolDivideByCount(
 
     // Build all-ones tensor of same shape as the original input.
     ElementsAttr splat = hlo::getSplat(&rewriter, orig_input_type, 1);
-    auto all_ones_tensor = rewriter.create<ConstOp>(loc, splat);
+    auto all_ones_tensor = rewriter.create<ConstantOp>(loc, splat);
 
     // Get padding for the input.
     DenseIntElementsAttr input_padding_attr =
@@ -2920,8 +2920,8 @@ class ConvertMaxPoolOp : public OpRewritePattern<OpTy> {
       return failure();
     }
     Location loc = op.getLoc();
-    ConstOp init = GetScalarLimitConstOfType(element_type, loc,
-                                             hlo::kInfinityLowest, &rewriter);
+    ConstantOp init = GetScalarLimitConstOfType(
+        element_type, loc, hlo::kInfinityLowest, &rewriter);
 
     auto input_ty = op.input().getType().template dyn_cast<RankedTensorType>();
     if (!input_ty) return failure();
@@ -3037,7 +3037,7 @@ class ConvertSigmoidOp : public RewritePattern {
   explicit ConvertSigmoidOp(MLIRContext *context)
       : RewritePattern(
             TF::SigmoidOp::getOperationName(), 0, context,
-            {mhlo::ConstOp::getOperationName(),
+            {mhlo::ConstantOp::getOperationName(),
              shape::ShapeOfOp::getOperationName(),
              shape::ToExtentTensorOp::getOperationName(),
              mhlo::DynamicBroadcastInDimOp::getOperationName(),
@@ -3054,7 +3054,7 @@ class ConvertSigmoidOp : public RewritePattern {
     auto operand_ty = operand.getType().cast<TensorType>();
     auto scalar_ty = RankedTensorType::get({}, operand_ty.getElementType());
     ElementsAttr attr = mlir::hlo::getSplat(&rewriter, scalar_ty, 0.5);
-    auto scalar_half = rewriter.create<ConstOp>(loc, attr);
+    auto scalar_half = rewriter.create<ConstantOp>(loc, attr);
     auto half = BroadcastToShapeOf(loc, scalar_half, operand, rewriter);
 
     auto scaled_input = rewriter.create<MulOp>(loc, operand, half);
@@ -5666,7 +5666,7 @@ class ConvertSigmoidGradOpDynamic : public OpRewritePattern<TF::SigmoidGradOp> {
       assert(elem_tp.isa<FloatType>());
       attr = rewriter.getFloatAttr(elem_tp, 1);
     }
-    Value one = rewriter.create<mhlo::ConstOp>(
+    Value one = rewriter.create<mhlo::ConstantOp>(
         loc, DenseElementsAttr::get(RankedTensorType::get({}, elem_tp), attr));
 
     auto v0 = rewriter.create<chlo::BroadcastMulOp>(
@@ -6041,7 +6041,7 @@ class ConvertInplaceUpdateOp : public OpRewritePattern<TF::InplaceUpdateOp> {
                               updates_type.getElementType()));
 
     auto cst =
-        rewriter.create<mhlo::ConstOp>(op.getLoc(), zero_attr).getResult();
+        rewriter.create<mhlo::ConstantOp>(op.getLoc(), zero_attr).getResult();
     auto split_updates = rewriter.create<TF::SplitOp>(
         op.getLoc(), split_updates_type, cst, updates);
 
@@ -6251,7 +6251,7 @@ class ConvertConstOp : public OpRewritePattern<TF::ConstOp> {
       return failure();
 
     Location loc = op.getLoc();
-    Value result = rewriter.create<mhlo::ConstOp>(loc, op.value());
+    Value result = rewriter.create<mhlo::ConstantOp>(loc, op.value());
     if (result.getType() != op.getType())
       result = rewriter.create<tensor::CastOp>(loc, op.getType(), result);
     rewriter.replaceOp(op, result);

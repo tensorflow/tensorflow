@@ -1347,12 +1347,12 @@ struct ConcatenateConverter : public OpConversionPattern<mhlo::ConcatenateOp> {
   }
 };
 
-class ConstConverterTensor : public OpConversionPattern<mhlo::ConstOp> {
+class ConstConverterTensor : public OpConversionPattern<mhlo::ConstantOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::ConstOp constOp, OpAdaptor /*adaptor*/,
+      mhlo::ConstantOp constOp, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter& rewriter) const final {
     auto valueAttr = constOp.value().cast<DenseElementsAttr>();
     auto type =

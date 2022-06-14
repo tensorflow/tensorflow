@@ -498,7 +498,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto attr = CreateDenseElementsAttrFromLiteral(literal, *builder_);
       if (!attr.ok()) return attr.status();
       mlir::Operation* new_operation =
-          func_builder->create<mlir::mhlo::ConstOp>(loc, attr.ValueOrDie());
+          func_builder->create<mlir::mhlo::ConstantOp>(loc, attr.ValueOrDie());
       for (auto attr : attributes) {
         new_operation->setAttr(attr.getName(), attr.getValue());
       }
@@ -1053,7 +1053,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           .getOperation();
     }
     case HloOpcode::kRng: {
-      auto shape = func_builder->create<mlir::mhlo::ConstOp>(
+      auto shape = func_builder->create<mlir::mhlo::ConstantOp>(
           loc, Convert(result_type.cast<RankedTensorType>().getShape()));
       switch (instruction->random_distribution()) {
         case xla::RNG_UNIFORM:
@@ -1342,7 +1342,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       TF_ASSIGN_OR_RETURN(mlir::Type type,
                           ConvertTensorShapeToType<mlir::RankedTensorType>(
                               input_shape, *func_builder));
-      auto zero = func_builder->create<mlir::mhlo::ConstOp>(
+      auto zero = func_builder->create<mlir::mhlo::ConstantOp>(
           loc, func_builder->getZeroAttr(type));
       return {func_builder->create<mlir::mhlo::CompareOp>(
           loc, operands[0], zero, mlir::mhlo::ComparisonDirection::NE)};

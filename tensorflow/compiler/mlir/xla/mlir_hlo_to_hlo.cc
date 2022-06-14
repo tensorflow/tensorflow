@@ -1010,7 +1010,7 @@ mlir::LogicalResult ExportXlaOp(mlir::mhlo::CompareOp op,
   return mlir::success();
 }
 
-LogicalResult ExportXlaOp(ConstOp op, OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(ConstantOp op, OpLoweringContext ctx) {
   return failure();
 }
 

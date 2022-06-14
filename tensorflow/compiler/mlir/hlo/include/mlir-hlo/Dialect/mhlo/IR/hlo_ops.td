@@ -41,7 +41,7 @@ class HLO_ShapedInterfaceOp<string mnemonic, list<Trait> traits> :
 // MHLO nullary op definitions.
 //===----------------------------------------------------------------------===//
 
-def HLO_ConstOp : HLO_Op<"constant",
+def HLO_ConstantOp : HLO_Op<"constant",
     [ConstantLike, NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Constant operator";
   let description = [{

@@ -279,7 +279,7 @@ mlir::mhlo::GatherDimensionNumbersAttr CreateGatherDimensionNumbers(
 StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
   using mlir::isa;
 
-  if (isa<mlir::mhlo::ConstOp, mlir::lmhlo::ConstOp>(op)) {
+  if (isa<mlir::mhlo::ConstantOp, mlir::lmhlo::ConstantOp>(op)) {
     return xla::HloOpcode::kConstant;
   } else if (isa<mlir::mhlo::IotaOp, mlir::lmhlo::IotaOp>(op)) {
     return xla::HloOpcode::kIota;

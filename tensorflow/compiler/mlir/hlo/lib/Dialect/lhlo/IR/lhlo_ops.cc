@@ -155,17 +155,17 @@ LogicalResult CollectivePermuteOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// ConstOp.
+// ConstantOp.
 //===----------------------------------------------------------------------===//
 
 /// An lho.constant on an memref that is locally allocated and with no other
 /// users (other than dealloc's) can be erased.
 // TODO: This can be generalized to an arbitrary op by making use of memory
 // effects (write memory effect).
-struct EraseConstOp : public OpRewritePattern<ConstOp> {
-  using OpRewritePattern<ConstOp>::OpRewritePattern;
+struct EraseConstantOp : public OpRewritePattern<ConstantOp> {
+  using OpRewritePattern<ConstantOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(ConstOp op,
+  LogicalResult matchAndRewrite(ConstantOp op,
                                 PatternRewriter& rewriter) const override {
     Value memref = op.output();
     if (!memref.getDefiningOp<memref::AllocOp>()) {
@@ -181,9 +181,9 @@ struct EraseConstOp : public OpRewritePattern<ConstOp> {
   }
 };
 
-void ConstOp::getCanonicalizationPatterns(RewritePatternSet& results,
-                                          MLIRContext* context) {
-  results.add<EraseConstOp>(context);
+void ConstantOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                             MLIRContext* context) {
+  results.add<EraseConstantOp>(context);
 }
 
 //===----------------------------------------------------------------------===//

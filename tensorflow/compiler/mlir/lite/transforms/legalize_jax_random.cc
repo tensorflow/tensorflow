@@ -100,7 +100,8 @@ void LegalizeJaxRandomPass::runOnOperation() {
     result_shape_i32.push_back(static_cast<int32_t>(element));
   }
   auto result_shape_attr = builder.getI32TensorAttr(result_shape_i32);
-  Value result_shape_tensor = builder.create<mhlo::ConstOp>(result_shape_attr);
+  Value result_shape_tensor =
+      builder.create<mhlo::ConstantOp>(result_shape_attr);
   auto custom_code =
       IsJaxRandomUniform(func) ? "RandomUniform" : "RandomStandardNormal";
 

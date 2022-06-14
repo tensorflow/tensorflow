@@ -2121,7 +2121,7 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
       return failure();
 
     // Ensure that initial_values are as expected.
-    auto const_op = llvm::dyn_cast_or_null<mhlo::ConstOp>(
+    auto const_op = llvm::dyn_cast_or_null<mhlo::ConstantOp>(
         rw.init_values()[0].getDefiningOp());
     if (!const_op) return failure();
     auto const_op_dense_value = const_op.value().cast<DenseElementsAttr>();

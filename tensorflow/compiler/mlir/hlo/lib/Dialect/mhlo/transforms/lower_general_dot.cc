@@ -115,14 +115,14 @@ Value transposeReshape(Value arg, Location loc,
     reshapeDims.push_back(multiplyDynamicDims(leftDims));
   } else {
     reshapeDims.push_back(
-        rewriter.create<ConstOp>(loc, rewriter.getI32TensorAttr(leftSize)));
+        rewriter.create<ConstantOp>(loc, rewriter.getI32TensorAttr(leftSize)));
   }
 
   if (rightSize < 0) {
     reshapeDims.push_back(multiplyDynamicDims(rightDims));
   } else {
     reshapeDims.push_back(
-        rewriter.create<ConstOp>(loc, rewriter.getI32TensorAttr(rightSize)));
+        rewriter.create<ConstantOp>(loc, rewriter.getI32TensorAttr(rightSize)));
   }
 
   Value reshapeDimsTensor = rewriter.create<mhlo::ConcatenateOp>(

@@ -1217,8 +1217,8 @@ std::pair<bool, int> RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
       num_big_inputs += static_cast<int>(rank == out_rank);
       continue;
     } else if (mlir::isa<mlir::memref::TensorStoreOp, mlir::lmhlo::TerminatorOp,
-                         mlir::mhlo::ReturnOp, mlir::mhlo::ConstOp,
-                         mlir::lmhlo::ConstOp>(op)) {
+                         mlir::mhlo::ReturnOp, mlir::mhlo::ConstantOp,
+                         mlir::lmhlo::ConstantOp>(op)) {
       continue;
     }
     HloOpcode opcode = *MhloToHloOpcode(&op);
@@ -1691,7 +1691,7 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
     for (mlir::Operation& op : fusion.region().front()) {
       if (mlir::isa<mlir::bufferization::ToTensorOp,
                     mlir::memref::TensorStoreOp, mlir::lmhlo::TerminatorOp,
-                    mlir::mhlo::ReturnOp, mlir::mhlo::ConstOp>(op)) {
+                    mlir::mhlo::ReturnOp, mlir::mhlo::ConstantOp>(op)) {
         continue;
       }
       HloOpcode opcode = *MhloToHloOpcode(&op);
@@ -3368,7 +3368,7 @@ IrEmitterUnnested::TryBuildConstantInitializerThunk(mlir::Value init_value,
                        .getValue()
                        .cast<mlir::DenseElementsAttr>();
     }
-  } else if (auto constant = mlir::dyn_cast_or_null<mlir::mhlo::ConstOp>(
+  } else if (auto constant = mlir::dyn_cast_or_null<mlir::mhlo::ConstantOp>(
                  init_value.getDefiningOp())) {
     const_init = constant.value().dyn_cast<mlir::DenseElementsAttr>();
   }

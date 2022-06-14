@@ -142,8 +142,8 @@ struct CaseOpPattern : public OpConversionPattern<mhlo::CaseOp> {
     auto constAttr = DenseElementsAttr::get(
         scalarType,
         {outerBuilder.getI32IntegerAttr(currentIdx).cast<mlir::Attribute>()});
-    Value currentIdxVal =
-        outerBuilder.create<mhlo::ConstOp>(loc, idxValue.getType(), constAttr);
+    Value currentIdxVal = outerBuilder.create<mhlo::ConstantOp>(
+        loc, idxValue.getType(), constAttr);
 
     auto scfIf = outerBuilder.create<scf::IfOp>(
         loc, op.getResultTypes(),

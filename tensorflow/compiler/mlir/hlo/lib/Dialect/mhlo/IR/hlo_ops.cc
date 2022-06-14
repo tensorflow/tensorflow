@@ -693,10 +693,10 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(TanhOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(XorOp)
 
 //===----------------------------------------------------------------------===//
-// ConstOp
+// ConstantOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult ConstantOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.empty() && "constant has no operands");
 
   // Return the held attribute value.
@@ -704,8 +704,8 @@ OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
 }
 
 // Builds a constant op with the specified attribute `value`.
-void ConstOp::build(OpBuilder& builder, OperationState& result,
-                    Attribute value) {
+void ConstantOp::build(OpBuilder& /*builder*/, OperationState& result,
+                       Attribute value) {
   Type type;
   if (auto elemAttr = value.dyn_cast<ElementsAttr>()) {
     type = elemAttr.getType();
@@ -724,7 +724,7 @@ void ConstOp::build(OpBuilder& builder, OperationState& result,
   result.addAttribute("value", value);
 }
 
-LogicalResult ConstOp::inferReturnTypes(
+LogicalResult ConstantOp::inferReturnTypes(
     MLIRContext*, Optional<Location>, ValueRange, DictionaryAttr attributes,
     RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
   Type type = attributes.get("value").getType();
@@ -732,7 +732,7 @@ LogicalResult ConstOp::inferReturnTypes(
   return success();
 }
 
-bool ConstOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+bool ConstantOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
   if (l.size() != r.size() || l.size() != 1) return false;
   auto lhsTy = l.front().cast<TensorType>();
   auto rhsTy = r.front().cast<TensorType>();
@@ -746,7 +746,7 @@ bool ConstOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
   return lhsTy == rhsTy;
 }
 
-ParseResult ConstOp::parse(OpAsmParser& parser, OperationState& result) {
+ParseResult ConstantOp::parse(OpAsmParser& parser, OperationState& result) {
   // Parse the generic form.
   if (succeeded(parser.parseOptionalLParen())) {
     if (parser.parseRParen()) return failure();
@@ -779,7 +779,7 @@ ParseResult ConstOp::parse(OpAsmParser& parser, OperationState& result) {
 ///
 /// When the `value` and `output` have different type, it just uses the default
 /// operator assembly format as a fallback.
-void ConstOp::print(::mlir::OpAsmPrinter& p) {
+void ConstantOp::print(::mlir::OpAsmPrinter& p) {
   // If not all types are the same, use generic form.
   if (value().getType() != getType()) {
     p.printGenericOp(getOperation(), /*printOpName=*/false);
@@ -4849,7 +4849,7 @@ struct LowerBoolSplatConstantsIntoRegion : public OpRewritePattern<ReduceOp> {
     for (auto inpAndBarg : llvm::zip(op.getOperands(), bb.getArguments())) {
       Value inp = std::get<0>(inpAndBarg);
       BlockArgument barg = std::get<1>(inpAndBarg);
-      ConstOp cst = inp.getDefiningOp<ConstOp>();
+      ConstantOp cst = inp.getDefiningOp<ConstantOp>();
       if (!cst) return failure();
 
       auto cstAttr = cst.value().dyn_cast_or_null<DenseElementsAttr>();
@@ -4868,7 +4868,7 @@ struct LowerBoolSplatConstantsIntoRegion : public OpRewritePattern<ReduceOp> {
     // Create new splat constants to replace block arguments.
     for (BlockArgument barg : bb.getArguments()) {
       int argIdx = barg.getArgNumber();
-      mhlo::ConstOp newCst = rewriter.create<mhlo::ConstOp>(
+      mhlo::ConstantOp newCst = rewriter.create<mhlo::ConstantOp>(
           bb.front().getLoc(), barg.getType(), bargCstAttrs[argIdx]);
       barg.replaceAllUsesWith(newCst);
     }
@@ -8645,7 +8645,7 @@ Operation* MhloDialect::materializeConstant(OpBuilder& builder, Attribute value,
   // HLO dialect constants only support ElementsAttr unlike standard dialect
   // constant which supports all attributes.
   if (auto elementsAttr = value.dyn_cast<ElementsAttr>())
-    return builder.create<mhlo::ConstOp>(loc, type, elementsAttr);
+    return builder.create<mhlo::ConstantOp>(loc, type, elementsAttr);
   return nullptr;
 }
 

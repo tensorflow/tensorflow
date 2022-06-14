@@ -522,7 +522,7 @@ void populateHloToLhloConversionPattern(
       HloToLhloOpConverter<mhlo::CompareOp>,
       HloToLhloOpConverter<mhlo::ComplexOp>,
       HloToLhloOpConverter<mhlo::ConcatenateOp>,
-      HloToLhloOpConverter<mhlo::ConstOp>,
+      HloToLhloOpConverter<mhlo::ConstantOp>,
       HloToLhloOpConverter<mhlo::ConvOp>,
       HloToLhloOpConverter<mhlo::ConvertOp>,
       HloToLhloOpConverter<mhlo::CopyOp>,

@@ -54,7 +54,7 @@ class LHLO_Op<string mnemonic, list<Trait> traits> :
     !listconcat([MemoryEffects<[MemRead, MemWrite]>,
     LmhloStructuredInterface], traits)>;
 
-def LHLO_ConstOp : LHLO_Op<"constant", []> {
+def LHLO_ConstantOp : LHLO_Op<"constant", []> {
   let summary = "Constant operator";
   let description = [{
     Represents a constant value.

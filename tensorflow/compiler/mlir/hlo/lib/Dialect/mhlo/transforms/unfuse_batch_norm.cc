@@ -90,7 +90,7 @@ Value materializeEpsilon(Operation* op, FloatAttr epsilonAttr, FloatType fpType,
   auto epsilonTensorAttr =
       DenseElementsAttr::get(scalarType, {epsilonAttr.cast<Attribute>()});
   Value epsilon =
-      rewriter.create<mhlo::ConstOp>(op->getLoc(), epsilonTensorAttr);
+      rewriter.create<mhlo::ConstantOp>(op->getLoc(), epsilonTensorAttr);
   auto dimsType = RankedTensorType::get({0}, b.getIntegerType(64));
   auto dims = DenseIntElementsAttr::get(dimsType, SmallVector<int64_t, 1>{});
   if (broadcastToType.hasStaticShape()) {
@@ -252,7 +252,7 @@ Value calculateReduceSize(Operation* op, Value operand,
   if (losesInfo) {
     op->emitWarning("Conversion of reduce_dims_size loses precision");
   }
-  Value reduceSize = rewriter.create<mhlo::ConstOp>(
+  Value reduceSize = rewriter.create<mhlo::ConstantOp>(
       loc, DenseFPElementsAttr::get(scaleType, floatValue));
   return reduceSize;
 }
@@ -284,7 +284,7 @@ class UnfuseBatchNormTrainingPattern
     }
 
     // zero constant
-    Value constZero = rewriter.create<mhlo::ConstOp>(
+    Value constZero = rewriter.create<mhlo::ConstantOp>(
         bnOp.getLoc(),
         DenseFPElementsAttr::get(RankedTensorType::get({}, fpType),
                                  APFloat::getZero(fpType.getFloatSemantics())));
