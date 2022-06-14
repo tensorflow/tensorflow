@@ -84,7 +84,13 @@ def _get_signatures_from_saved_model(saved_model_path: str,
     tags = set([tag_constants.SERVING])
 
   loader = saved_model_loader.SavedModelLoader(saved_model_path)
-  meta_graphdef = loader.get_meta_graph_def_from_tags(tags)
+  try:
+    meta_graphdef = loader.get_meta_graph_def_from_tags(tags)
+  except RuntimeError as runtime_error:
+    raise RuntimeError(
+        f'Failed to retrieve MetaGraphDef with tags {tags}'
+        f' from a SavedModel in {saved_model_path}.') from runtime_error
+
   signatures = {}
   for key, signature_def in meta_graphdef.signature_def.items():
     if key == _INIT_OP_SIGNATURE_KEY:
@@ -242,7 +248,7 @@ def _create_feed_dict_from_input_data(
 
 
 def _run_graph_for_calibration_graph_mode(
-    model_dir: str, signature_keys: List[str],
+    model_dir: str, signature_keys: List[str], tags: Set[str],
     representative_dataset: _RepresentativeDataset) -> None:
   """Runs the graph for calibration in graph mode.
 
@@ -255,6 +261,7 @@ def _run_graph_for_calibration_graph_mode(
     model_dir: Path to SavedModel directory.
     signature_keys: A list of signature keys that identifies a function to run
       the data samples with.
+    tags: Set of tags identifying the MetaGraphDef within the SavedModel.
     representative_dataset: Representative dataset used for calibration.
 
   Raises:
@@ -262,7 +269,7 @@ def _run_graph_for_calibration_graph_mode(
   """
   with session.Session() as sess:
     meta_graph: meta_graph_pb2.MetaGraphDef = saved_model_loader.load(
-        sess, tags=[tag_constants.SERVING], export_dir=model_dir)
+        sess, tags, export_dir=model_dir)
 
     for sample in representative_dataset():
       signature_key, input_data = _get_signature_key_and_input(
@@ -286,7 +293,7 @@ def _run_graph_for_calibration_graph_mode(
 
 
 def _run_graph_for_calibration_eager_mode(
-    model_dir: str, signature_keys: List[str],
+    model_dir: str, signature_keys: List[str], tags: Set[str],
     representative_dataset: _RepresentativeDataset) -> None:
   """Runs the graph for calibration in eager mode.
 
@@ -299,12 +306,13 @@ def _run_graph_for_calibration_eager_mode(
     model_dir: Path to SavedModel directory.
     signature_keys: A list of signature keys that identifies a function to run
       the data samples with.
+    tags: Set of tags identifying the MetaGraphDef within the SavedModel.
     representative_dataset: Representative dataset used for calibration.
 
   Raises:
     ValueError: When the samples in representative dataset is invalid.
   """
-  root: autotrackable.AutoTrackable = saved_model_load(model_dir)
+  root: autotrackable.AutoTrackable = saved_model_load(model_dir, tags)
   for sample in representative_dataset():
     signature_key, input_data = _get_signature_key_and_input(
         sample, signature_keys)
@@ -318,11 +326,12 @@ def _run_graph_for_calibration_eager_mode(
       ) from ex
 
 
-def _static_range_quantize(saved_model_path: str,
-                           signature_keys=None,
-                           tags=None,
-                           output_directory=None,
-                           representative_dataset=None):
+def _static_range_quantize(
+    saved_model_path: str,
+    signature_keys: List[str],
+    tags: Set[str],
+    output_directory: str,
+    representative_dataset: Optional[_RepresentativeDataset] = None) ->...:
   """Quantizes the given SavedModel via static range quantization.
 
   Args:
@@ -345,6 +354,8 @@ def _static_range_quantize(saved_model_path: str,
 
   Raises:
     ValueError: when representative_dataset is not provided for non-QAT model.
+    RuntimeError: When a MetaGraphDef could not be found associated with `tags`
+      in the SavedModel.
   """
   is_qat_saved_model = _is_qat_saved_model(saved_model_path)
   signatures = _get_signatures_from_saved_model(saved_model_path,
@@ -390,7 +401,7 @@ def _static_range_quantize(saved_model_path: str,
             "The input SavedModel doesn't contain a valid signature")
 
       v1_builder.add_meta_graph_and_variables(
-          sess, [tag_constants.SERVING], signature_def_map=signatures)
+          sess, tags, signature_def_map=signatures)
 
     v1_builder.save()
 
@@ -401,10 +412,10 @@ def _static_range_quantize(saved_model_path: str,
     try:
       if context.executing_eagerly():
         _run_graph_for_calibration_eager_mode(float_model_dir, signature_keys,
-                                              representative_dataset)
+                                              tags, representative_dataset)
       else:
         _run_graph_for_calibration_graph_mode(float_model_dir, signature_keys,
-                                              representative_dataset)
+                                              tags, representative_dataset)
     except Exception as ex:
       raise ValueError(
           'Failed to run graph for post-training quantization calibration.'
@@ -435,7 +446,7 @@ def _static_range_quantize(saved_model_path: str,
       graph_def = working_graph.as_graph_def()
 
       v1_builder.add_meta_graph_and_variables(
-          sess, [tag_constants.SERVING], signature_def_map=signatures)
+          sess, tags, signature_def_map=signatures)
 
     v1_builder.save()
     signatures = _get_signatures_from_saved_model(calibrated_model_dir,
@@ -464,7 +475,7 @@ def _static_range_quantize(saved_model_path: str,
       raise ValueError("The input SavedModel doesn't contain a valid signature")
 
     v1_builder.add_meta_graph_and_variables(
-        sess, [tag_constants.SERVING], signature_def_map=signatures)
+        sess, tags, signature_def_map=signatures)
 
   v1_builder.save()
 
@@ -544,8 +555,8 @@ def quantize(
       not provided, this should be a model trained with QAT.
     signature_keys: List of keys identifying SignatureDef containing inputs and
       outputs. If None, ["serving_default"] is used.
-    tags: Set of tags identifying the MetaGraphDef within the SavedModel to
-      analyze. If None, {"serve"} is used.
+    tags: (TF1 SavedModel only) Set of tags identifying the MetaGraphDef within
+      the SavedModel to analyze. If None, {"serve"} is used.
     output_directory: The path to save the output SavedModel (must be an empty
       directory).
     quantization_options: A set of options for quantization.

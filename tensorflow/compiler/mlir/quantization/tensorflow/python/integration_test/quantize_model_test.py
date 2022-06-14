@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for quantize_model."""
-from typing import List, Mapping, Set, Tuple
+from typing import List, Mapping, Sequence, Set, Tuple
 import warnings
 
 from absl.testing import parameterized
@@ -71,7 +71,7 @@ def _contains_op(meta_graphdef, op_name):
 
 def _create_simple_tf1_conv_model(
     use_variable_for_filter=False) -> Tuple[core.Tensor, core.Tensor]:
-  """Create a basic convolution model.
+  """Creates a basic convolution model.
 
   This is intended to be used for TF1 (graph mode) tests.
 
@@ -98,6 +98,31 @@ def _create_simple_tf1_conv_model(
       data_format='NHWC')
 
   return in_placeholder, output_tensor
+
+
+def _create_data_generator(
+    input_key: str,
+    shape: Sequence[int],
+    num_examples=128) -> quantize_model._RepresentativeDataset:
+  """Creates a data generator to be used as representative dataset.
+
+  Supports generating random value input tensors mapped by the `input_key`.
+
+  Args:
+    input_key: The string key that identifies the created tensor as an input.
+    shape: Shape of the tensor data.
+    num_examples: Number of examples in the representative dataset.
+
+  Returns:
+    data_gen: A callable that creates a generator of
+    `quantize_model._RepresentativeSample`.
+  """
+
+  def data_gen():
+    for _ in range(num_examples):
+      yield {input_key: random_ops.random_uniform(shape, minval=-1., maxval=1.)}
+
+  return data_gen
 
 
 def _save_tf1_model(sess: session.Session, saved_model_path: str,
@@ -129,7 +154,7 @@ def _create_and_save_tf1_conv_model(saved_model_path: str,
                                     tags: Set[str],
                                     input_key: str,
                                     output_key: str,
-                                    use_variable=False) -> None:
+                                    use_variable=False) -> core.Tensor:
   """Creates and saves a simple convolution model.
 
   This is intended to be used for TF1 (graph mode) tests.
@@ -143,6 +168,9 @@ def _create_and_save_tf1_conv_model(saved_model_path: str,
     output_key: The key to the output tensor.
     use_variable: Setting this to `True` makes the filter for the conv operation
       a `tf.Variable`.
+
+  Returns:
+    in_placeholder: The placeholder tensor used as an input to the model.
   """
   with ops.Graph().as_default(), session.Session() as sess:
     in_placeholder, output_tensor = _create_simple_tf1_conv_model(
@@ -158,6 +186,8 @@ def _create_and_save_tf1_conv_model(saved_model_path: str,
         tags,
         inputs={input_key: in_placeholder},
         outputs={output_key: output_tensor})
+
+  return in_placeholder
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -734,20 +764,11 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_ptq_model_with_tf1_saved_model_with_variable(self):
-
-    def gen_data():
-      for _ in range(255):
-        yield {
-            'x':
-                random_ops.random_uniform(
-                    shape=(1, 3, 4, 3), minval=-6, maxval=6)
-        }
-
     input_saved_model_path = self.create_tempdir('input').full_path
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     tags = {tag_constants.SERVING}
 
-    _create_and_save_tf1_conv_model(
+    input_placeholder = _create_and_save_tf1_conv_model(
         input_saved_model_path,
         signature_key,
         tags,
@@ -762,13 +783,16 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
 
+    data_gen = _create_data_generator(
+        input_key='x', shape=input_placeholder.shape)
+
     converted_model = quantize_model.quantize(
         input_saved_model_path,
         signature_keys,
         tags,
         output_directory,
         quantization_options,
-        representative_dataset=gen_data)
+        representative_dataset=data_gen)
 
     self.assertIsNotNone(converted_model)
     self.assertEqual(
@@ -780,20 +804,11 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_ptq_model_with_tf1_saved_model(self):
-
-    def gen_data():
-      for _ in range(255):
-        yield {
-            'p':
-                random_ops.random_uniform(
-                    shape=(1, 3, 4, 3), minval=0, maxval=150)
-        }
-
     input_saved_model_path = self.create_tempdir('input').full_path
     tags = {tag_constants.SERVING}
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 
-    _create_and_save_tf1_conv_model(
+    input_placeholder = _create_and_save_tf1_conv_model(
         input_saved_model_path,
         signature_key,
         tags,
@@ -808,13 +823,16 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
 
+    data_gen = _create_data_generator(
+        input_key='p', shape=input_placeholder.shape)
+
     converted_model = quantize_model.quantize(
         input_saved_model_path,
         signature_keys,
         tags,
         output_directory,
         quantization_options,
-        representative_dataset=gen_data)
+        representative_dataset=data_gen)
 
     self.assertIsNotNone(converted_model)
     self.assertEqual(
@@ -827,21 +845,11 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_ptq_model_with_tf1_saved_model_invalid_input_key_raises_value_error(
       self):
-
-    # Representative generator function that yields with an invalid input key.
-    def gen_data():
-      for _ in range(255):
-        yield {
-            'invalid_input_key':
-                random_ops.random_uniform(
-                    shape=(1, 3, 4, 3), minval=-5, maxval=5)
-        }
-
     input_saved_model_path = self.create_tempdir('input').full_path
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     tags = {tag_constants.SERVING}
 
-    _create_and_save_tf1_conv_model(
+    input_placeholder = _create_and_save_tf1_conv_model(
         input_saved_model_path,
         signature_key,
         tags,
@@ -856,6 +864,10 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
 
+    # Representative generator function that yields with an invalid input key.
+    invalid_data_gen = _create_data_generator(
+        input_key='invalid_input_key', shape=input_placeholder.shape)
+
     with self.assertRaisesRegex(
         ValueError,
         'Failed to run graph for post-training quantization calibration'):
@@ -865,7 +877,84 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
           tags,
           output_directory,
           quantization_options,
-          representative_dataset=gen_data)
+          representative_dataset=invalid_data_gen)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_ptq_model_with_non_default_tags(self):
+    input_saved_model_path = self.create_tempdir('input').full_path
+    signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    # Use a different set of tags other than {"serve"}.
+    tags = {tag_constants.TRAINING, tag_constants.GPU}
+
+    # Non-default tags are usually used when saving multiple metagraphs in TF1.
+    input_placeholder = _create_and_save_tf1_conv_model(
+        input_saved_model_path,
+        signature_key,
+        tags,
+        input_key='input',
+        output_key='output',
+        use_variable=True)
+
+    signature_keys = [signature_key]
+    output_directory = self.create_tempdir().full_path
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+
+    data_gen = _create_data_generator(
+        input_key='input', shape=input_placeholder.shape)
+
+    converted_model = quantize_model.quantize(
+        input_saved_model_path,
+        signature_keys,
+        tags,
+        output_directory,
+        quantization_options,
+        representative_dataset=data_gen)
+
+    self.assertIsNotNone(converted_model)
+    self.assertEqual(
+        list(converted_model.signatures._signatures.keys()), signature_keys)
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_ptq_model_with_wrong_tags_raises_error(self):
+    input_saved_model_path = self.create_tempdir('input').full_path
+    signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    save_tags = {tag_constants.TRAINING, tag_constants.GPU}
+
+    input_placeholder = _create_and_save_tf1_conv_model(
+        input_saved_model_path,
+        signature_key,
+        save_tags,
+        input_key='input',
+        output_key='output',
+        use_variable=True)
+
+    signature_keys = [signature_key]
+    output_directory = self.create_tempdir().full_path
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+
+    # Try to use a different set of tags to quantize.
+    tags = {tag_constants.SERVING}
+    data_gen = _create_data_generator(
+        input_key='input', shape=input_placeholder.shape)
+    with self.assertRaisesRegex(RuntimeError,
+                                'Failed to retrieve MetaGraphDef'):
+      quantize_model.quantize(
+          input_saved_model_path,
+          signature_keys,
+          tags,
+          output_directory,
+          quantization_options,
+          representative_dataset=data_gen)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -960,6 +1049,40 @@ class DynamicRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     # Currently conv is not supported.
     self.assertFalse(_contains_quantized_function_call(output_meta_graphdef))
+
+  def test_conv_model_with_wrong_tags_raises_error(self):
+    input_saved_model_path = self.create_tempdir('input').full_path
+    signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    save_tags = {tag_constants.TRAINING, tag_constants.GPU}
+
+    input_placeholder = _create_and_save_tf1_conv_model(
+        input_saved_model_path,
+        signature_key,
+        save_tags,
+        input_key='input',
+        output_key='output',
+        use_variable=True)
+
+    signature_keys = [signature_key]
+    output_directory = self.create_tempdir().full_path
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE))
+
+    # Try to use a different set of tags to quantize.
+    tags = {tag_constants.SERVING}
+    data_gen = _create_data_generator(
+        input_key='input', shape=input_placeholder.shape)
+    with self.assertRaisesRegex(RuntimeError,
+                                'Failed to retrieve MetaGraphDef'):
+      quantize_model.quantize(
+          input_saved_model_path,
+          signature_keys,
+          tags,
+          output_directory,
+          quantization_options,
+          representative_dataset=data_gen)
 
 
 if __name__ == '__main__':
