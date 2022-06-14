@@ -72,17 +72,17 @@ OpsTestBase::OpsTestBase() : device_type_(DEVICE_CPU) {
   auto device = DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0");
   CHECK(device) << "Could not create CPU device";
 
-  thread_pool_ = absl::make_unique<thread::ThreadPool>(
+  thread_pool_ = std::make_unique<thread::ThreadPool>(
       Env::Default(), /*name=*/"default", /*num_threads=*/1);
 
   device_ = device.get();
-  device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(device));
+  device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(device));
 
   allocator_ = device_->GetAllocator(AllocatorAttributes());
 
-  flib_def_ = absl::make_unique<FunctionLibraryDefinition>(
+  flib_def_ = std::make_unique<FunctionLibraryDefinition>(
       OpRegistry::Global(), FunctionDefLibrary{});
-  pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
+  pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_.get(), Env::Default(), /*config=*/nullptr,
       TF_GRAPH_DEF_VERSION, flib_def_.get(), OptimizerOptions());
 }

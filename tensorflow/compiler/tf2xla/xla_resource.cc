@@ -41,7 +41,7 @@ namespace tensorflow {
 
 /*static*/ std::unique_ptr<XlaResource> XlaResource::CreateStack(
     string name, DataType type, int64_t max_size) {
-  return absl::make_unique<XlaResource>(
+  return std::make_unique<XlaResource>(
       XlaResource::kStack, /*arg_num=*/-1, std::move(name), type, TensorShape(),
       /*initial_value=*/xla::XlaOp(),
       /*max_array_size=*/max_size,
@@ -52,7 +52,7 @@ namespace tensorflow {
 /*static*/ std::unique_ptr<XlaResource> XlaResource::CreateTensorArray(
     string name, DataType type, TensorShape shape, xla::XlaOp initial_value,
     int64_t max_array_size) {
-  return absl::make_unique<XlaResource>(
+  return std::make_unique<XlaResource>(
       XlaResource::kTensorArray, /*arg_num=*/-1, std::move(name), type, shape,
       initial_value, max_array_size,
       /*tensor_array_gradients=*/std::set<string>{},

@@ -37,7 +37,7 @@ Status InitializableLookupTable::ImportValues(OpKernelContext* ctx,
                                               const Tensor& keys,
                                               const Tensor& values) {
   lookup::KeyValueTensorIterator iter(&keys, &values);
-  auto serializer = absl::make_unique<InitializerSerializer>(
+  auto serializer = std::make_unique<InitializerSerializer>(
       [keys, values](GraphDefBuilder* builder, Node* table, Node** out) {
         Node* keys_node =
             ops::SourceOp("Const", builder->opts()

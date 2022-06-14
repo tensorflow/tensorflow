@@ -263,7 +263,7 @@ class UnicodeTranscodeOp : public OpKernel {
     // at execution time (and to warm any data caches the converter needs).
     // This instance is not used.
     std::unique_ptr<WrappedConverter> input_encoder =
-        absl::make_unique<WrappedConverter>();
+        std::make_unique<WrappedConverter>();
     input_encoder->init(input_encoding_);
     OP_REQUIRES(ctx, input_encoder->converter_,
                 errors::InvalidArgument(
@@ -363,7 +363,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
     // at execution time (and to warm any data caches the converter needs).
     // This instance is not used.
     std::unique_ptr<WrappedConverter> input_encoder =
-        absl::make_unique<WrappedConverter>();
+        std::make_unique<WrappedConverter>();
     input_encoder->init(input_encoding_);
     OP_REQUIRES(ctx, input_encoder->converter_,
                 errors::InvalidArgument(
@@ -409,7 +409,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
     const auto& input_vec = input_tensor->flat<tstring>();
 
     std::unique_ptr<WrappedConverter> input_encoder =
-        absl::make_unique<WrappedConverter>();
+        std::make_unique<WrappedConverter>();
     input_encoder->init(input_encoding_);
     OP_REQUIRES(ctx, input_encoder->converter_,
                 errors::InvalidArgument(

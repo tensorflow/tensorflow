@@ -528,7 +528,7 @@ Status Conditional::ExtractBodies(Graph* graph) {
   VLOG(2) << "Extracting bodies for " << name();
   for (auto b : {BranchType::kElseBranch, BranchType::kThenBranch}) {
     bodies_[static_cast<int>(b)] =
-        absl::make_unique<Graph>(graph->op_registry());
+        std::make_unique<Graph>(graph->op_registry());
   }
 
   auto find_branch = [&](const Edge* e) {

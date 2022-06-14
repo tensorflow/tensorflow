@@ -327,7 +327,7 @@ TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
   };
 
   TF_EXPECT_OK(se::MultiPlatformManager::RegisterPlatform(
-      absl::make_unique<FakePlatform>()));
+      std::make_unique<FakePlatform>()));
   xla::Compiler::RegisterCompilerFactory(kFakePlatformId, []() {
     return std::unique_ptr<xla::Compiler>(nullptr);
   });

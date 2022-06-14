@@ -133,7 +133,7 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
   // unique_ptr so we can capture the cleanup status in the end.
   xla_context->Ref();
   Status status;
-  auto step_container = absl::make_unique<ScopedStepContainer>(
+  auto step_container = std::make_unique<ScopedStepContainer>(
       step_id, [&status, device](const string& name) {
         status = device->resource_manager()->Cleanup(name);
       });
@@ -1005,7 +1005,7 @@ Status XlaCompiler::BuildArguments(
         // TODO(phawkins): this code assumes that resource arguments do not
         // alias.
         XlaResource* resource =
-            context->AddResource(absl::make_unique<XlaResource>(
+            context->AddResource(std::make_unique<XlaResource>(
                 arg.resource_kind, i, arg.name, arg.type,
                 absl::get<TensorShape>(arg.shape), xla::XlaOp(),
                 /*max_array_size=*/arg.max_array_size,

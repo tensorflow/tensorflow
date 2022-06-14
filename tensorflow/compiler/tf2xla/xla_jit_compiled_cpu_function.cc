@@ -143,7 +143,7 @@ XlaJitCompiledCpuFunction::Compile(
   jit->buffer_infos_ = std::move(buffer_infos);
   jit->arg_index_table_ = std::move(arg_index_table);
   jit->program_shape_ =
-      absl::make_unique<xla::ProgramShapeProto>(program_shape->ToProto());
+      std::make_unique<xla::ProgramShapeProto>(program_shape->ToProto());
   XlaCompiledCpuFunction::set_static_data_raw_function(&jit->static_data_,
                                                        raw_function);
   XlaCompiledCpuFunction::set_static_data_buffer_infos(
