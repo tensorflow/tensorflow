@@ -6360,7 +6360,7 @@ cc_library(
     hdrs = ["compilation_environments.h"],
     deps = [
         "//tensorflow/core:lib",  # fixdeps: keep
-        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
     ],
