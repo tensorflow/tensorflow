@@ -89,16 +89,18 @@ _gen_mlir_op_rule = rule(
     implementation = _gen_mlir_op_impl,
 )
 
-def _gen_mlir_op(op, type, platform, output_type):
+def _gen_mlir_op(op, name, type, platform, output_type):
     _gen_mlir_op_rule(
-        name = "generate_{op}_{platform}_{type}_{output_type}_mlir".format(
+        name = "generate_{op}_{name}_{platform}_{type}_{output_type}_mlir".format(
             op = op,
+            name = name,
             platform = platform,
             type = type,
             output_type = output_type,
         ),
-        out = "{op}_{platform}_{type}_{output_type}.mlir".format(
+        out = "{op}_{name}_{platform}_{type}_{output_type}.mlir".format(
             op = op,
+            name = name,
             platform = platform,
             type = type,
             output_type = output_type,
@@ -157,6 +159,7 @@ def _gen_kernel_bin_impl(ctx):
             "--output=%s" % gpu_bin.path,
             "--enable_ftz=%s" % (ctx.attr.data_type == "f32"),
             "--cpu_codegen=%s" % ctx.attr.cpu_codegen,
+            "--jit_i64_indexed_for_large_tensors=%s" % ctx.attr.jit_i64_indexed_for_large_tensors,
             "--jit=%s" % ctx.attr.jit,
         ],
         use_default_shell_env = True,
@@ -190,6 +193,7 @@ _gen_kernel_bin_rule = rule(
         "gpu_archs": attr.string_list(),
         "jit": attr.bool(),
         "cpu_codegen": attr.bool(),
+        "jit_i64_indexed_for_large_tensors": attr.bool(),
         "extra_args": attr.string_list(),
         # cc_binary seems not to bring its dependencies with it, so do that explicitly here.
         "_tfso": attr.label(
@@ -253,7 +257,9 @@ def _gen_kernel_library(
         unroll_factors_override = {},
         extra_args = [],
         test_tags = [],
-        test_size = "medium"):
+        test_size = "medium",
+        jit_i64_indexed_for_large_tensors_types = [],
+        output_jit_i64_indexed_for_large_tensors_types = []):
     """ Generate a library with GPU or CPU kernels for a specific tensorflow op.
 
     Args:
@@ -284,16 +290,48 @@ def _gen_kernel_library(
       extra_args: Extra arguments to pass to the generator tool.
       test_tags: The tags to pass to the generated test.
       test_size: The "size" argument to pass to the test.
+      jit_i64_indexed_for_large_tensors_types: The input types for which to enable
+                                               JIT compilation of i64-indexed kernels for
+                                               large inputs.
+      output_jit_i64_indexed_for_large_tensors_types: The output types for which to enable JIT
+                                                      compilation of i64-indexed kernels for
+                                                      large inputs.
     """
 
     enable_cpu = bool(platform == "cpu")
+    if not output_types:
+        output_types = types
+    if not output_jit_types:
+        output_jit_types = jit_types
+    if not output_jit_i64_indexed_for_large_tensors_types:
+        output_jit_i64_indexed_for_large_tensors_types = jit_i64_indexed_for_large_tensors_types
 
-    aot_kernels = zip(types, output_types or types, [False for t in types])
-    jit_kernels = zip(jit_types, output_jit_types or jit_types, [True for t in jit_types])
-    all_kernels = aot_kernels + jit_kernels
+    # Fully JIT-compiled kernels
+    true_jits = [True for i in jit_types]
+    false_i64jits = [False for i in jit_types]
+    all_jit_kernels = zip(
+        jit_types,
+        output_jit_types,
+        true_jits,
+        false_i64jits,
+    )
 
+    # Partially JIT-compiled kernels
+    true_i64jits = [True for i in jit_i64_indexed_for_large_tensors_types]
+    false_jits = [True for i in jit_i64_indexed_for_large_tensors_types]
+    all_paratial_jit_kernels = zip(
+        jit_i64_indexed_for_large_tensors_types,
+        output_jit_i64_indexed_for_large_tensors_types,
+        false_jits,
+        true_i64jits,
+    )
+
+    # AOT kernels
+    false_jits = [False for i in types]
+    aot_kernels = zip(types, output_types, false_jits, false_jits)
+    all_kernels = aot_kernels + all_jit_kernels + all_paratial_jit_kernels
     if cuda_gpu_architectures() or rocm_gpu_architectures() or enable_cpu:
-        for (type, output_type, jit) in all_kernels:
+        for (type, output_type, jit, jit_i64_indexed_for_large_tensors) in all_kernels:
             # Disable unrolling for integer types while LLVM does not vectorize these.
             # See b/182343395 for context.
             integer_types = ["i1", "i8", "i16", "i32", "i64", "ui8", "ui16", "ui32", "ui64"]
@@ -302,13 +340,15 @@ def _gen_kernel_library(
             typed_tile_size = _get_shape(tile_size, type, tile_size_override)
             _gen_mlir_op(
                 op = op,
+                name = name,
                 output_type = output_type,
                 platform = platform,
                 type = type,
             )
             _gen_kernel_bin_rule(
-                name = "{op}_{platform}_{type}_{output_type}_kernel_generator".format(
+                name = "{op}_{name}_{platform}_{type}_{output_type}_kernel_generator".format(
                     op = op,
+                    name = name,
                     platform = platform,
                     type = type,
                     output_type = output_type,
@@ -319,35 +359,40 @@ def _gen_kernel_library(
                 gpu_archs = gpu_archs,
                 jit = jit,
                 max_supported_rank = max_supported_rank,
-                mlir_op = "{op}_{platform}_{type}_{output_type}.mlir".format(
+                mlir_op = "{op}_{name}_{platform}_{type}_{output_type}.mlir".format(
                     op = op,
+                    name = name,
                     platform = platform,
                     type = type,
                     output_type = output_type,
                 ),
                 tile_size = typed_tile_size,
                 unroll_factors = typed_unroll_factors,
+                jit_i64_indexed_for_large_tensors = jit_i64_indexed_for_large_tensors,
             )
 
             # We have to use a sh_test instead of build_test because it doesn't properly find the dependent targets.
             gpu_arch_option = "sm_70,compute_75" if cuda_gpu_architectures() else ",".join(rocm_gpu_architectures())
             test_args = [
                 "$(location //tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel)",
-                "$(location {op}_{platform}_{type}_{output_type}.mlir)".format(
+                "$(location {op}_{name}_{platform}_{type}_{output_type}.mlir)".format(
                     op = op,
+                    name = name,
                     platform = platform,
                     type = type,
                     output_type = output_type,
                 ),
                 "--cpu_codegen=true" if enable_cpu else "--arch={}".format(gpu_arch_option),
                 "--tile_sizes=%s" % typed_tile_size,
+                "--jit_i64_indexed_for_large_tensors=%s" % jit_i64_indexed_for_large_tensors,
                 "--enable_ftz=%s" % (type == "f32"),
             ]
             if typed_unroll_factors:
                 test_args.append("--unroll_factors=%s" % typed_unroll_factors)
             native.sh_test(
-                name = "{op}_{platform}_{type}_{output_type}_gen_test".format(
+                name = "{op}_{name}_{platform}_{type}_{output_type}_gen_test".format(
                     op = op,
+                    name = name,
                     platform = platform,
                     type = type,
                     output_type = output_type,
@@ -357,8 +402,9 @@ def _gen_kernel_library(
                 args = test_args,
                 size = test_size,
                 data = [
-                    ":{op}_{platform}_{type}_{output_type}.mlir".format(
+                    ":{op}_{name}_{platform}_{type}_{output_type}.mlir".format(
                         op = op,
+                        name = name,
                         platform = platform,
                         type = type,
                         output_type = output_type,
@@ -368,13 +414,14 @@ def _gen_kernel_library(
             )
 
     kernel_deps = [
-        ":{op}_{platform}_{type}_{output_type}_kernel_generator".format(
+        ":{op}_{name}_{platform}_{type}_{output_type}_kernel_generator".format(
             op = op,
+            name = name,
             platform = platform,
             type = type,
             output_type = output_type,
         )
-        for (type, output_type, jit) in all_kernels
+        for (type, output_type, jit, jit_i64_indexed_for_large_tensors) in all_kernels
     ] + ["//tensorflow/compiler/mlir/tools/kernel_gen:tf_framework_c_interface"]
 
     native.cc_library(

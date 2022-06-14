@@ -796,6 +796,19 @@ gpu_kernel_library(
     unroll_factors = "4",
 )
 
+# TODO: enable when supported in the pipeline
+# gpu_kernel_library(
+#     name = "gpu_atanh_kernels_experimental",
+#     op = "atanh",
+#     tile_size = "256",
+#     types = [
+#         "f32",
+#         "f64",
+#     ],
+#     unroll_factors = "4",
+#     jit_i64_indexed_for_large_tensors_types = ["f16"],
+# )
+
 gpu_kernel_library(
     name = "gpu_conj_kernels",
     op = "conj",
