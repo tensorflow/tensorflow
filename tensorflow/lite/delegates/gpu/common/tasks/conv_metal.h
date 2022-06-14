@@ -29,9 +29,6 @@ namespace gpu {
 class ConvolutionMetal : public GPUOperation {
  public:
   enum class WeightsUploadType {
-    PRIVATE_MEM_SIMD8_BROADCAST,
-    PRIVATE_MEM_SIMD16_BROADCAST,
-    PRIVATE_MEM_SIMD32_BROADCAST,
     LOCAL_MEM_BY_THREADS,
     GLOBAL_MEM,
     CONSTANT_MEM,

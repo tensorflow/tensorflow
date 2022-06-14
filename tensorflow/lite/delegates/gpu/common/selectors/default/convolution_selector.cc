@@ -16,7 +16,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/common/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -24,14 +23,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
-#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_buffer_1x1.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_constants.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_generic.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_metal.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_metal_simd.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_weights_converter.h"
-#include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
 namespace gpu {
@@ -136,7 +133,7 @@ std::unique_ptr<GPUOperation> SelectConvolutionDynamicWeightsMali(
   }
 }
 
-std::unique_ptr<GPUOperation> SelectConvolutionMetal(
+std::unique_ptr<GPUOperation> SelectConvolutionApple(
     const Convolution2DAttributes& attr, const BHWC& dst_shape,
     const GpuInfo& gpu_info, const OperationDef& op_def) {
   if (IsConvolutionMetalSimdSupported(gpu_info, op_def, attr) &&
@@ -162,8 +159,8 @@ std::unique_ptr<GPUOperation> SelectConvolution(
     const Convolution2DAttributes& attr, const BHWC& dst_shape,
     const GpuInfo& gpu_info, const OperationDef& op_def,
     ModelHints hints) {
-  if (gpu_info.IsApiMetal()) {
-    return SelectConvolutionMetal(attr, dst_shape, gpu_info, op_def);
+  if (gpu_info.IsApple()) {
+    return SelectConvolutionApple(attr, dst_shape, gpu_info, op_def);
   } else if (gpu_info.IsAdreno()) {
     return SelectConvolutionAdreno(attr, dst_shape, gpu_info, op_def, hints);
   } else if (gpu_info.IsPowerVR() || gpu_info.IsAMD() || gpu_info.IsIntel() ||
@@ -182,7 +179,7 @@ std::unique_ptr<GPUOperation> SelectConvolutionForWinograd(
     const Convolution2DAttributes& attr, const BHWC& dst_shape,
     const GpuInfo& gpu_info, const OperationDef& op_def,
     ModelHints hints) {
-  if (gpu_info.IsApiMetal() && IsConvolutionMetalSupported(op_def)) {
+  if (gpu_info.IsApple() && IsConvolutionMetalSupported(op_def)) {
     ConvolutionMetal conv =
         CreateConvolutionMetalWino4x4To6x6(op_def, dst_shape, attr, gpu_info);
     return std::make_unique<ConvolutionMetal>(std::move(conv));
@@ -207,7 +204,7 @@ std::unique_ptr<GPUOperation> SelectConvolutionWithDynamicWeights(
     const BHWC& dst_shape, const GpuInfo& gpu_info,
     const OperationDef& op_def, ModelHints hints,
     WeightsDescription* weights_desc) {
-  if (gpu_info.IsApiMetal() && IsConvolutionMetalSupported(op_def)) {
+  if (gpu_info.IsApple() && IsConvolutionMetalSupported(op_def)) {
     Convolution2DAttributes attr_copy = attr;
     attr_copy.weights.shape = OHWI(weights_shape.b, weights_shape.h,
                                    weights_shape.w, weights_shape.c);

@@ -85,7 +85,7 @@ std::unique_ptr<GPUOperation> SelectFullyConnectedMali(
 std::unique_ptr<GPUOperation> SelectFullyConnected(
     const FullyConnectedAttributes& attr, const GpuInfo& gpu_info,
     const OperationDef& op_def, int batch_size) {
-  if (gpu_info.IsApiMetal()) {
+  if (gpu_info.IsApple()) {
     if (op_def.IsBatchSupported() && IsConvolutionMetalSupported(op_def)) {
       BHWC dst_shape = BHWC(batch_size, 1, 1, attr.weights.shape.o);
       Convolution2DAttributes conv_attr;

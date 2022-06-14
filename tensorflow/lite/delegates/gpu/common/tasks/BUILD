@@ -176,7 +176,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:util",
         "//tensorflow/lite/delegates/gpu/common/task:weights_conversion",
         "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
-        "@com_google_absl//absl/strings",
     ],
 )
 
