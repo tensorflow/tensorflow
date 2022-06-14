@@ -72,7 +72,7 @@ Status DecodeLin16WaveAsFloatVector(const std::string& wav_string,
 
 // Handles moving the data index forward, validating the arguments, and avoiding
 // overflow or underflow.
-Status IncrementOffset(int old_offset, size_t increment, size_t max_size,
+Status IncrementOffset(int old_offset, int increment, size_t max_size,
                        int* new_offset);
 
 // This function is only exposed in the header for testing purposes, as a
