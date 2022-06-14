@@ -90,12 +90,12 @@ TensorStorageType OperationDef::GetPrimaryStorageType() const {
 
 bool OperationDef::IsBatchSupported() const {
   for (const auto& src : src_tensors) {
-    if (HasAxis(src.layout, Axis::BATCH)) {
+    if (src.HasAxis(Axis::BATCH)) {
       return true;
     }
   }
   for (const auto& dst : dst_tensors) {
-    if (HasAxis(dst.layout, Axis::BATCH)) {
+    if (dst.HasAxis(Axis::BATCH)) {
       return true;
     }
   }

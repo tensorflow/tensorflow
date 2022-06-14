@@ -133,11 +133,11 @@ TensorDescriptor::TensorDescriptor(TensorDescriptor&& desc)
     : GPUObjectDescriptor(std::move(desc)),
       data_type(desc.data_type),
       storage_type(desc.storage_type),
-      layout(desc.layout),
       use_buffer_for_write_only_2d_texture(
           desc.use_buffer_for_write_only_2d_texture),
       use_buffer_for_write_only_image_buffer(
           desc.use_buffer_for_write_only_image_buffer),
+      layout(desc.layout),
       shape(desc.shape),
       data(std::move(desc.data)) {}
 TensorDescriptor& TensorDescriptor::operator=(TensorDescriptor&& desc) {
@@ -154,6 +154,17 @@ TensorDescriptor& TensorDescriptor::operator=(TensorDescriptor&& desc) {
     GPUObjectDescriptor::operator=(std::move(desc));
   }
   return *this;
+}
+
+void TensorDescriptor::CopyWithoutData(TensorDescriptor* desc) const {
+  desc->data_type = data_type;
+  desc->storage_type = storage_type;
+  desc->layout = layout;
+  desc->use_buffer_for_write_only_2d_texture =
+      use_buffer_for_write_only_2d_texture;
+  desc->use_buffer_for_write_only_image_buffer =
+      use_buffer_for_write_only_image_buffer;
+  desc->shape = shape;
 }
 
 GPUResources TensorDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {

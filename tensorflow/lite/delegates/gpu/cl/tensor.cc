@@ -572,9 +572,7 @@ absl::Status Tensor::WriteData(
 absl::Status Tensor::CreateFromDescriptor(const TensorDescriptor& desc,
                                           CLContext* context) {
   shape_ = desc.GetBHWDCShape();
-  descriptor_.data_type = desc.data_type;
-  descriptor_.storage_type = desc.storage_type;
-  descriptor_.layout = desc.layout;
+  desc.CopyWithoutData(&descriptor_);
   memory_owner_ = true;
   CLMemory memory;
   const uint8_t* data_ptr =

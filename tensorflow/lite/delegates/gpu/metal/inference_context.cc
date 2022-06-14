@@ -603,9 +603,7 @@ absl::Status InferenceContext::AllocateMemoryForStrongShapes(
     TensorDescriptor tensor_desc;
 
     bool operator==(const TensorDescComparator& t) const {
-      return tensor_desc.data_type == t.tensor_desc.data_type &&
-             tensor_desc.storage_type == t.tensor_desc.storage_type &&
-             tensor_desc.layout == t.tensor_desc.layout &&
+      return tensor_desc == t.tensor_desc &&
              tensor_desc.GetBHWDCShape() == t.tensor_desc.GetBHWDCShape();
     }
   };

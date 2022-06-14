@@ -402,9 +402,7 @@ absl::Status MetalSpatialTensor::WriteData(
 absl::Status MetalSpatialTensor::CreateFromDescriptor(
     const TensorDescriptor& desc, id<MTLDevice> device) {
   shape_ = desc.GetBHWDCShape();
-  descriptor_.data_type = desc.data_type;
-  descriptor_.storage_type = desc.storage_type;
-  descriptor_.layout = desc.layout;
+  desc.CopyWithoutData(&descriptor_);
   memory_owner_ = true;
   const uint8_t* data_ptr =
       desc.GetData().empty() ? nullptr : desc.GetData().data();

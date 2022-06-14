@@ -49,6 +49,8 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   TensorDescriptor(TensorDescriptor&& desc);
   TensorDescriptor& operator=(TensorDescriptor&& desc);
 
+  void CopyWithoutData(TensorDescriptor* desc) const;
+
   bool operator==(const TensorDescriptor& d) const {
     return data_type == d.data_type && storage_type == d.storage_type &&
            layout == d.layout;
@@ -117,10 +119,6 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
   DataType data_type = DataType::UNKNOWN;
   TensorStorageType storage_type = TensorStorageType::UNKNOWN;
-  // This field describes logical layout, actual(physical) GPU layout can be
-  // totally different.
-  Layout layout =
-      Layout::UNKNOWN;  // Supported layouts is HWC, BHWC, HWDC, BHWDC
 
   void SetBHWCShape(const BHWC& new_shape) {
     shape = BHWDC(new_shape.b, new_shape.h, new_shape.w, 1, new_shape.c);
@@ -148,6 +146,11 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   bool use_buffer_for_write_only_image_buffer = true;
 
  private:
+  friend flatbuffers::Offset<data::TensorDescriptor> Encode(
+      const TensorDescriptor& desc, flatbuffers::FlatBufferBuilder* builder);
+  friend void Decode(const data::TensorDescriptor* fb_desc,
+                     TensorDescriptor* desc);
+
   absl::Status PerformReadSelector(
       const GpuInfo& gpu_info, const std::vector<std::string>& args,
       const std::vector<std::string>& template_args, std::string* result) const;
@@ -237,6 +240,11 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   void UploadData(const T* src);
   template <typename T>
   void DownloadData(T* dst);
+
+  // This field describes logical layout, actual(physical) GPU layout can be
+  // totally different.
+  Layout layout =
+      Layout::UNKNOWN;  // Supported layouts is HWC, BHWC, HWDC, BHWDC
 
   // optional
   BHWDC shape;

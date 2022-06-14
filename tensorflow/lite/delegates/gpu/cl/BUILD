@@ -423,7 +423,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/types:span",
     ],
 )
 

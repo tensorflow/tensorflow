@@ -141,27 +141,15 @@ absl::Status CheckExternalTensorDescription(const GpuInfo& gpu_info,
         "Global precision and precision of predefined/external tensors must be "
         "synchronized.");
   }
-  const bool tensor_supported_layout = tensor_desc.layout == Layout::HWDC ||
-                                       tensor_desc.layout == Layout::BHWDC ||
-                                       tensor_desc.layout == Layout::HWC ||
-                                       tensor_desc.layout == Layout::BHWC;
-  if (!tensor_supported_layout) {
-    return absl::InvalidArgumentError(
-        "Currently no support of this layouts for spatial tensors.");
-  }
-  const bool has_depth =
-      tensor_desc.layout == Layout::HWDC || tensor_desc.layout == Layout::BHWDC;
-  if (has_depth) {
+  if (tensor_desc.HasAxis(Axis::DEPTH)) {
     return absl::InvalidArgumentError(
         "Currently no support of Depth dimension in predefined/external "
         "tensors.");
   }
-  const bool has_batch =
-      tensor_desc.layout == Layout::BHWC || tensor_desc.layout == Layout::BHWDC;
-  if (has_batch && shape.b == 1) {
+  if (tensor_desc.HasAxis(Axis::BATCH) && shape.b == 1) {
     return absl::InvalidArgumentError("Wrong layout, batch mismatch.");
   }
-  if (!has_batch && shape.b != 1) {
+  if (!tensor_desc.HasAxis(Axis::BATCH) && shape.b != 1) {
     return absl::InvalidArgumentError("Wrong layout, batch mismatch.");
   }
   if (!tensor_desc.CanCreateTensorWithShape(gpu_info, shape).ok()) {
