@@ -17,6 +17,19 @@ fi
 
 ROCM_PATH=$ROCM_INSTALL_DIR
 
+while getopts "h:r" opt; do
+  case ${opt} in
+    h)
+        echo "Options:"
+        echo "-r     Use -r to define bazel resource restriction"
+        exit 0
+        ;;
+    r)
+        restriction=true 
+        ;;
+    esac
+done
+
 # Explicitly delete the old whl packages in the /tmp/tensorflow_pkg dir
 # Doing so comes in handy when the TF version number changes, because
 # it will cause the last line in this script (pip3 install ...) to fail.
@@ -29,6 +42,13 @@ TF_PKG_LOC=/tmp/tensorflow_pkg
 rm -f $TF_PKG_LOC/tf_nightly_rocm*.whl
 
 yes "" | ROCM_PATH=$ROCM_INSTALL_DIR TF_NEED_ROCM=1 PYTHON_BIN_PATH=/usr/bin/python3 ./configure
+# Explicitly define resource constraints on bazel to avoid overload on rocm-ci
+if [[ -n $restriction ]]; then
+    bazel build --local_ram_resources=60000 --local_cpu_resources=35 --jobs=70 --config=opt --config=rocm //tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
+    bazel-bin/tensorflow/tools/pip_package/build_pip_package $TF_PKG_LOC --rocm &&
+    pip3 install --upgrade $TF_PKG_LOC/tensorflow*.whl
+    exit 0
+fi
 bazel build --config=opt --config=rocm //tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
 bazel-bin/tensorflow/tools/pip_package/build_pip_package $TF_PKG_LOC --rocm --nightly_flag &&
 pip3 install --upgrade $TF_PKG_LOC/tf_nightly_rocm*.whl
