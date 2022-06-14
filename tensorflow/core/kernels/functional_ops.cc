@@ -86,7 +86,7 @@ Status ToBool(gtl::ArraySlice<Tensor> t, bool* v) {
   } else {
     *v = t[0].NumElements() > 0;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Sets "rets" to be the output of "ctx". Validates rets' types based
@@ -105,7 +105,7 @@ Status SetOutputs(const OpKernel* kernel, OpKernelContext* ctx,
     }
     ctx->set_output(i, rets[i]);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void SetRunOptions(OpKernelContext* ctx, FunctionLibraryRuntime::Options* opts,
@@ -234,7 +234,7 @@ class IfOp : public AsyncOpKernel {
         handles_[lib] = {*then_handle, *else_handle};
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -457,7 +457,7 @@ class WhileOp : public AsyncOpKernel {
     Status GetArg(int index, const Tensor** val) override {
       if (index < args_->size()) {
         *val = &(*args_)[index];
-        return Status::OK();
+        return OkStatus();
       } else {
         return errors::InvalidArgument("Argument ", index, " is out of range.");
       }
@@ -487,7 +487,7 @@ class WhileOp : public AsyncOpKernel {
                                        DataTypeString(val.dtype()), ".");
       }
       (*retvals_)[index] = val;
-      return Status::OK();
+      return OkStatus();
     }
 
    private:
@@ -564,7 +564,7 @@ class WhileOp : public AsyncOpKernel {
       }
 
       if (!cond) {
-        return Finish(Status::OK());
+        return Finish(OkStatus());
       }
       rets_.clear();
       rets_.resize(args_.size());
@@ -687,7 +687,7 @@ class WhileOp : public AsyncOpKernel {
         handles_[lib] = {*cond_handle, *body_handle};
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 // TODO(drpng): remove these.
@@ -722,7 +722,7 @@ Status GetScalar(OpKernelContext* ctx, int index, int32* value,
                                    t.shape().DebugString());
   }
   *value = t.scalar<int32>()();
-  return Status::OK();
+  return OkStatus();
 }
 
 class ForOp : public AsyncOpKernel {
@@ -795,7 +795,7 @@ class ForOp : public AsyncOpKernel {
           (delta_ < 0 && *iter_ >= limit_) ||
           (delta_ == 0 && *iter_ == limit_)) {
         RunNext();
-        return Status::OK();
+        return OkStatus();
       } else {
         return errors::InvalidArgument("Invalid start/limit/delta: ", *iter_,
                                        " ", limit_, " ", delta_);
@@ -810,7 +810,7 @@ class ForOp : public AsyncOpKernel {
         done_loop = *iter_ <= limit_;
       }
       if (done_loop) {
-        Finish(Status::OK());
+        Finish(OkStatus());
         return;
       }
 

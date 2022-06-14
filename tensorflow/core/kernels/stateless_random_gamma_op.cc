@@ -183,7 +183,7 @@ struct StatelessRandomGammaFunctor<CPUDevice, T> {
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
     Shard(worker_threads.num_threads, worker_threads.workers, num_samples,
           kElementCost, DoWork);
-    return Status::OK();
+    return OkStatus();
   }
 };
 

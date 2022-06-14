@@ -78,7 +78,7 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
     for (int32_t i = 0; i < index_to_bin.size(); i++) {
       out(index_to_bin(i)) += Tout(1);
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 

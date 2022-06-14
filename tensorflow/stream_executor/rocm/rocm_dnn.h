@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "rocm/include/miopen/miopen.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/plugin_registry.h"

@@ -175,7 +175,7 @@ class DTensorDevice {
     }
     Mesh::tpu_core_ids()[mesh_name].assign(tpu_core_ids.begin(),
                                            tpu_core_ids.end());
-    return Status::OK();
+    return OkStatus();
   }
 
   void ClearTPUCoreIDs() { Mesh::tpu_core_ids().clear(); }
@@ -1344,7 +1344,7 @@ Status AddExecutionFunctionDefsToFunctionDefLibrary(
     TF_RETURN_IF_ERROR(tensorflow::unwrap(context)->AddFunctionDef(to_run));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void DTensorDevice::LowerToSPMDFunction(

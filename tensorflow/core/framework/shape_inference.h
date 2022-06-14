@@ -769,12 +769,12 @@ class InferenceContext {
 
   Status ReturnUnknownShape(ShapeHandle* out) {
     *out = UnknownShape();
-    return Status::OK();
+    return OkStatus();
   }
   Status ReturnCreatedShape(const std::vector<DimensionHandle>& dims,
                             ShapeHandle* out) {
     *out = MakeShape(dims);
-    return Status::OK();
+    return OkStatus();
   }
 
   // Adds additional context to the given status.

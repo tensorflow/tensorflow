@@ -2,7 +2,7 @@
 
 # CHECK: If
 # CHECK-SAME: else_branch = #tf_type.func<@XTimesTwo, {}>,
-# CHECK_SAME: then_branch = #tf_type.func<@IfWithWhileThen, {}>
+# CHECK-SAME: then_branch = #tf_type.func<@IfWithWhileThen, {}>
 # CHECK-SAME: -> (tensor<*xi32>)
 
 # CHECK: func generic @XTimesTwo

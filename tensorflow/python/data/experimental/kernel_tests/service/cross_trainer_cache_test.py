@@ -349,7 +349,7 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         "Cross-trainer caching requires infinite datasets and disallows "
-        "multiple iterations of the same dataset."):
+        "multiple repetitions of the same dataset."):
       self.getDatasetOutput(dataset1.take(10))
       self.getDatasetOutput(dataset1.take(10))
       self.getDatasetOutput(dataset1.take(10))

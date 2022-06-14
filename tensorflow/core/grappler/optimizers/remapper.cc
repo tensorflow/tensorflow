@@ -2074,7 +2074,7 @@ Status AddFusedContractionNode(RemapperContext* ctx,
   (*invalidated_nodes)[matched.bias_add] = true;
   (*nodes_to_delete)[matched.contraction] = true;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddFusedContractionNode(
@@ -2127,7 +2127,7 @@ Status AddFusedContractionNode(
   (*nodes_to_delete)[matched.bias_add] = true;
   (*invalidated_nodes)[matched.activation] = true;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddFusedConvNode(RemapperContext* ctx,
@@ -2181,7 +2181,7 @@ Status AddFusedConvNode(RemapperContext* ctx,
   (*invalidated_nodes)[matched.bias_add] = true;
   (*nodes_to_delete)[matched.squeeze] = true;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddFusedConv2DNode(RemapperContext* ctx,
@@ -2219,7 +2219,7 @@ Status AddFusedConv2DNode(RemapperContext* ctx,
   (*invalidated_nodes)[matched.fused_batch_norm] = true;
   (*nodes_to_delete)[matched.contraction] = true;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddFusedConv2DNode(RemapperContext* ctx,
@@ -2263,7 +2263,7 @@ Status AddFusedConv2DNode(RemapperContext* ctx,
   (*nodes_to_delete)[matched.contraction] = true;
   (*nodes_to_delete)[matched.fused_batch_norm] = true;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddFusedContractionNode(RemapperContext* ctx,
@@ -2315,7 +2315,7 @@ Status AddFusedContractionNode(RemapperContext* ctx,
   (*nodes_to_delete)[matched.contraction] = true;
   (*nodes_to_delete)[matched.bias_add] = true;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddFusedConv3DNode(RemapperContext* ctx, const PadWithConv3D& matched,
@@ -2372,7 +2372,7 @@ Status AddFusedConv3DNode(RemapperContext* ctx, const PadWithConv3D& matched,
 
   (*invalidated_nodes)[matched.contraction_idx] = true;
   (*nodes_to_delete)[matched.pad_idx] = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddFusedContractionNode(
@@ -2418,7 +2418,7 @@ Status AddFusedContractionNode(
   (*nodes_to_delete)[matched.bias_add] = true;
   (*nodes_to_delete)[matched.contraction] = true;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddFusedMatMulBiasAddAndGelu(
@@ -2461,7 +2461,7 @@ Status AddFusedMatMulBiasAddAndGelu(
   for (const auto& node_idx : remove_node_indices) {
     (*nodes_to_delete)[node_idx] = true;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddMklLayerNorm(RemapperContext* ctx,
@@ -2497,7 +2497,7 @@ Status AddMklLayerNorm(RemapperContext* ctx,
   for (const auto& node_idx : remove_node_indices) {
     (*nodes_to_delete)[node_idx] = true;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ReplaceSigmoidMulWithSwish(
@@ -2529,7 +2529,7 @@ Status ReplaceSigmoidMulWithSwish(
   for (const auto& node_index : remove_node_indices) {
     (*nodes_to_delete)[node_index] = true;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddFusedBatchNormExNode(RemapperContext* ctx,
@@ -2598,7 +2598,7 @@ Status AddFusedBatchNormExNode(RemapperContext* ctx,
     (*nodes_to_delete)[matched.invalidated] = true;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddFusedBatchNormGradExNode(RemapperContext* ctx,
@@ -2671,7 +2671,7 @@ Status AddFusedBatchNormGradExNode(RemapperContext* ctx,
     (*nodes_to_delete)[matched.activation_grad] = true;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
@@ -2904,7 +2904,7 @@ Status AddTensorToHashBucketNode(RemapperContext* ctx,
   (*invalidated_nodes)[matched.string_to_hash_bucket] = true;
   (*nodes_to_delete)[matched.as_string] = true;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddFusedBatchMatMul(RemapperContext* ctx,
@@ -2943,7 +2943,7 @@ Status AddFusedBatchMatMul(RemapperContext* ctx,
   for (const auto& node_idx : remove_node_indices) {
     (*nodes_to_delete)[node_idx] = true;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // This function supports below patterns that require inferred
@@ -3102,7 +3102,7 @@ Status ReplaceSoftplusTanhAndMulWithMish(
     (*nodes_to_delete)[node_index] = true;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Check if a node is a candidate to one of the patterns that require inferred
@@ -3445,7 +3445,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   *optimized_graph = std::move(mutable_item.graph);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace grappler

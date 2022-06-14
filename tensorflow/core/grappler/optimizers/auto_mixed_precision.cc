@@ -280,7 +280,7 @@ class NodeTypeAttrMap {
     for (const NodeDef& node : graph.node()) {
       TF_RETURN_IF_ERROR(AddNode(node));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   bool is_initialized() const { return graph_ != nullptr; }
@@ -394,7 +394,7 @@ class NodeTypeAttrMap {
         }
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // WARN: `graph_` must outlive this object (node pointers must remain valid).
@@ -610,7 +610,7 @@ Status GraphTypeTopologyView::InitializeFromGraph(
     SortAndRemoveDuplicates(&fanouts_[node_type_idx]);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GraphTypeTopologyView::AddEphemeralEdges(
@@ -660,7 +660,7 @@ Status GraphTypeTopologyView::AddEphemeralEdges(
     SortAndRemoveDuplicates(&fanouts_[node_type_idx]);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 bool GraphTypeTopologyView::HasNode(absl::string_view node_name,
@@ -913,7 +913,7 @@ Status ValidateLists(const gtl::FlatSet<string>& allow_list,
   if (duplicates) {
     return errors::InvalidArgument("Op lists have conflicting entries");
   } else {
-    return Status::OK();
+    return OkStatus();
   }
 }
 
@@ -1134,7 +1134,7 @@ Status AutoMixedPrecisionImpl::PrintDebugLogs(bool preop, size_t timestamp) {
   string prepend_path;
   TF_RETURN_IF_ERROR(ReadStringFromEnvVar(
       "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_LOG_PATH", "", &prepend_path));
-  if (prepend_path.empty()) return Status::OK();
+  if (prepend_path.empty()) return OkStatus();
 
   string suffix =
       strings::StrCat("_", preop ? "preop" : kSuffix, "_", id_, "_", timestamp);
@@ -1181,7 +1181,7 @@ Status AutoMixedPrecisionImpl::PrintDebugLogs(bool preop, size_t timestamp) {
     f.close();
     LOG(INFO) << "Saved paint bucket info to " << fname;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void AutoMixedPrecisionImpl::LogSkippedNode(const NodeDef& node) const {
@@ -1433,7 +1433,7 @@ Status AutoMixedPrecisionImpl::Optimize() {
 
   if (allow_set.empty()) {
     LOG(INFO) << "No allowlist ops found, nothing to do";
-    return Status::OK();
+    return OkStatus();
   }
 
   VLOG(2) << "Beginning pass 2 to propagate deny forwards from denylist ops "
@@ -1485,7 +1485,7 @@ Status AutoMixedPrecisionImpl::Optimize() {
 
   TF_RETURN_IF_ERROR(PrintDebugLogs(/* preop = */ false, timestamp));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // If node is a Tensor List op with a float32 data type attribute then this
@@ -1901,7 +1901,7 @@ Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Forces all of the given Tensor List nodes into the same color set.
@@ -2188,7 +2188,7 @@ Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
             << " nodes to " << type_str << " precision using "
             << num_nonvar_casts_to_f16_ << " cast(s) to " << type_str
             << " (excluding Const and Variable casts)";
-  return Status::OK();
+  return OkStatus();
 }
 
 int GetNumGPUs(const Cluster& cluster) {
@@ -2232,7 +2232,7 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
     // AutoMixedPrecision is currently only tuned for GPU.
     LOG(WARNING) << "No (suitable) GPUs detected, skipping " << name()
                  << " graph optimizer";
-    return Status::OK();
+    return OkStatus();
   }
 
   // Optimize the output graph in-place.

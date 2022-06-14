@@ -84,7 +84,7 @@ __global__ void RangeInitKernel(const T start, const T delta, const T size,
 template <typename T>
 Status RangeInit(const Eigen::GpuDevice& d, const T start, const T delta,
                  const T size, T* out) {
-  if (size == 0) return Status::OK();
+  if (size == 0) return OkStatus();
   GpuLaunchConfig config = GetGpuLaunchConfig(size, d);
   return GpuLaunchKernel(RangeInitKernel<T>, config.block_count,
                          config.thread_per_block, 0, d.stream(), start, delta,
@@ -100,9 +100,8 @@ template <typename Tkey, typename Tindex>
 Status GpuRadixSort(OpKernelContext* context, int size, const Tkey* keys_in,
                     Tkey* keys_out,            // Optional
                     const Tindex* indices_in,  // Optional
-                    Tindex* indices_out, int num_bits = sizeof(Tkey) * 8,
-                    bool descending = false) {
-  if (size == 0) return Status::OK();
+                    Tindex* indices_out, int num_bits = sizeof(Tkey) * 8) {
+  if (size == 0) return OkStatus();
   if (num_bits == 0) {
     // Workaround for CUB failing when begin_bit = end_bit = 0 (e.g., when all
     // keys are 0, so no sorting is needed).
@@ -131,7 +130,7 @@ Status GpuRadixSort(OpKernelContext* context, int size, const Tkey* keys_in,
       TF_RETURN_IF_ERROR(detail::RangeInit(device, Tindex(0), Tindex(1),
                                            Tindex(size), indices_out));
     }
-    return Status::OK();
+    return OkStatus();
   }
   // Allocate temporary inputs/outputs if necessary.
   Tensor tmp_indices_in;
@@ -155,16 +154,9 @@ Status GpuRadixSort(OpKernelContext* context, int size, const Tkey* keys_in,
   Tensor temp_storage;
   size_t temp_storage_bytes = 0;
   const auto& cu_stream = GetGpuStream(context);
-  gpuError_t err;
-  if (descending) {
-    err = gpuprim::DeviceRadixSort::SortPairsDescending(
-        nullptr, temp_storage_bytes, keys_in, keys_out, indices_in, indices_out,
-        size, /*begin_bit=*/0, /*end_bit=*/num_bits, cu_stream);
-  } else {
-    err = gpuprim::DeviceRadixSort::SortPairs(
-        nullptr, temp_storage_bytes, keys_in, keys_out, indices_in, indices_out,
-        size, /*begin_bit=*/0, /*end_bit=*/num_bits, cu_stream);
-  }
+  auto err = gpuprim::DeviceRadixSort::SortPairs(
+      nullptr, temp_storage_bytes, keys_in, keys_out, indices_in, indices_out,
+      size, /*begin_bit=*/0, /*end_bit=*/num_bits, cu_stream);
   if (err != 0) {
     return errors::Internal(
         "Failed to launch gpuprim::DeviceRadixSort::SortPairs to calculate "
@@ -176,24 +168,17 @@ Status GpuRadixSort(OpKernelContext* context, int size, const Tkey* keys_in,
       DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
       &temp_storage));
   // Sort indices by keys.
-  if (descending) {
-    err = gpuprim::DeviceRadixSort::SortPairsDescending(
-        temp_storage.flat<int8>().data(), temp_storage_bytes, keys_in, keys_out,
-        indices_in, indices_out, size, /*begin_bit=*/0, /*end_bit=*/num_bits,
-        cu_stream);
-  } else {
-    err = gpuprim::DeviceRadixSort::SortPairs(
-        temp_storage.flat<int8>().data(), temp_storage_bytes, keys_in, keys_out,
-        indices_in, indices_out, size, /*begin_bit=*/0, /*end_bit=*/num_bits,
-        cu_stream);
-  }
+  err = gpuprim::DeviceRadixSort::SortPairs(
+      temp_storage.flat<int8>().data(), temp_storage_bytes, keys_in, keys_out,
+      indices_in, indices_out, size, /*begin_bit=*/0, /*end_bit=*/num_bits,
+      cu_stream);
   if (err != 0) {
     return errors::Internal(
         "Failed to launch gpuprim::DeviceRadixSort::SortPairs, "
         "temp_storage_bytes: ",
         temp_storage_bytes, "status: ", cudaGetErrorString(err));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename InputIteratorT, typename OutputIteratorT>
@@ -204,7 +189,7 @@ Status GpuInclusivePrefixSum(OpKernelContext* context, int size,
                     bool>::value,
       "GpuInclusivePrefixSum does not work correct with booleans, please use "
       "TransformInputIterator to explicitly cast to an integer.");
-  if (size == 0) return Status::OK();
+  if (size == 0) return OkStatus();
   const auto& cu_stream = GetGpuStream(context);
   size_t temp_storage_bytes;
   auto err = gpuprim::DeviceScan::InclusiveSum(nullptr, temp_storage_bytes,
@@ -228,7 +213,7 @@ Status GpuInclusivePrefixSum(OpKernelContext* context, int size,
         "temp_storage_bytes: ",
         temp_storage_bytes, ", status: ", cudaGetErrorString(err));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Note that this behaves deterministically for repeat calls on the same device.
@@ -240,7 +225,7 @@ Status GpuSegmentedReduce(
     InputIteratorT input,             // [any]
     OffsetIteratorT segment_offsets,  // [num_segments + 1]
     OutputIteratorT output) {         // [num_segments]
-  if (num_segments == 0) return Status::OK();
+  if (num_segments == 0) return OkStatus();
   const auto& cu_stream = GetGpuStream(context);
   size_t temp_storage_bytes;
   auto err = gpuprim::DeviceSegmentedReduce::Reduce(
@@ -266,7 +251,7 @@ Status GpuSegmentedReduce(
         ", temp_storage_bytes: ",
         temp_storage_bytes, ", status: ", cudaGetErrorString(err));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename InputIteratorT, typename FlagIteratorT,
@@ -305,7 +290,7 @@ Status GpuSelectFlagged(OpKernelContext* context, int size,
         "Failed to launch gpuprim::DeviceSelect::Flagged, temp_storage_bytes: ",
         temp_storage_bytes, ", status: ", cudaGetErrorString(err));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

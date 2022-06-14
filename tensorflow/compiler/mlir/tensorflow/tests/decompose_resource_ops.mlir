@@ -224,7 +224,7 @@ func.func @decompose_resource_apply_momentum_nesterov(%arg0: tensor<f32>, %arg1:
 
 // CHECK-LABEL: testResourceApplyFtrl
 func.func @testResourceApplyFtrl(%var: tensor<*x!tf_type.resource>, %accum: tensor<*x!tf_type.resource>, %linear: tensor<*x!tf_type.resource>, %grad: tensor<*xf32>, %lr: tensor<*xf32>, %l1: tensor<*xf32>, %l2: tensor<*xf32>, %lr_power: tensor<*xf32>) -> () {
-  "tf.ResourceApplyFtrl"(%var, %accum, %linear, %grad, %lr, %l1, %l2, %lr_power) {_tpu_replicate = "cluster_train_function", device = "", multiply_linear_by_lr = false, use_locking = true} : (tensor<*x!tf_type.resource>, tensor<*x!tf_type.resource>, tensor<*x!tf_type.resource>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> ()
+  "tf.ResourceApplyFtrl"(%var, %accum, %linear, %grad, %lr, %l1, %l2, %lr_power) {_xla_compile_device_type = "TPU", _replication_info = "cluster_train_function", device = "", multiply_linear_by_lr = false, use_locking = true} : (tensor<*x!tf_type.resource>, tensor<*x!tf_type.resource>, tensor<*x!tf_type.resource>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> ()
   // ALWAYS-DECOMPOSE-NOT: ResourceApplyFtrl
   // CHECK: return
   func.return
@@ -233,7 +233,7 @@ func.func @testResourceApplyFtrl(%var: tensor<*x!tf_type.resource>, %accum: tens
 // CHECK-LABEL: testResourceApplyFtrlV2
 func.func @testResourceApplyFtrlV2(%var: tensor<*x!tf_type.resource>, %accum: tensor<*x!tf_type.resource>, %linear: tensor<*x!tf_type.resource>, %grad: tensor<*xf32>, %lr: tensor<*xf32>, %l1: tensor<*xf32>, %l2: tensor<*xf32>, %lr_power: tensor<*xf32>) -> () {
   %0 = "tf.ZerosLike"(%lr_power) : (tensor<*xf32>) -> tensor<*xf32>
-  "tf.ResourceApplyFtrlV2"(%var, %accum, %linear, %grad, %lr, %l1, %l2, %0, %lr_power) {_tpu_replicate = "cluster_train_function", device = "", multiply_linear_by_lr = false, use_locking = true} : (tensor<*x!tf_type.resource>, tensor<*x!tf_type.resource>, tensor<*x!tf_type.resource>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> ()
+  "tf.ResourceApplyFtrlV2"(%var, %accum, %linear, %grad, %lr, %l1, %l2, %0, %lr_power) {_xla_compile_device_type = "TPU", _replication_info = "cluster_train_function", device = "", multiply_linear_by_lr = false, use_locking = true} : (tensor<*x!tf_type.resource>, tensor<*x!tf_type.resource>, tensor<*x!tf_type.resource>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> ()
   // ALWAYS-DECOMPOSE-NOT: ResourceApplyFtrlV2
   // CHECK: return
   func.return

@@ -113,7 +113,7 @@ StatusOr<Layout> MatMulSPMDExpander::OutputLayoutAndReducedDims(
   Layout batch_layout;
 
   if (!*left || !*right) {
-    if (allow_unknown_layouts) return Status::OK();
+    if (allow_unknown_layouts) return OkStatus();
     return errors::Unimplemented("failed to do SPMD expansion for ", OpName(op),
                                  " operand layouts "
                                  "unknown");
@@ -361,7 +361,7 @@ Status MatMulSPMDExpander::MaybeRelayoutInputs(
   TF_ASSIGN_OR_RETURN(
       right, EmitRelayout(op->getOperand(1), right_layout, new_right_layout));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<llvm::DenseMap<int, Layout>> MatMulSPMDExpander::ComputeLayoutForward(

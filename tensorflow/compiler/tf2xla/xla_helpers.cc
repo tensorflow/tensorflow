@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 
+#include <string>
+
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
@@ -240,6 +242,10 @@ Status ResolveDeviceAssignment(
     }
     gpu_options.set_gpu_global_device_ids(global_device_ids);
   }
+  const std::string& communicator_key =
+      params->group.runtime_details.communicator_key;
+  gpu_options.set_nccl_unique_id_callback(
+      [=](const xla::gpu::NcclCliqueKey& key) { return communicator_key; });
   run_options.set_device_assignment(&device_assignment);
   run_options.set_gpu_executable_run_options(&gpu_options);
   return Status::OK();

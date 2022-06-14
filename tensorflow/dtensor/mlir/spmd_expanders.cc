@@ -255,7 +255,8 @@ REGISTER_SPMD(Unpack, TF::UnpackOp, UnpackSPMDExpander);
 REGISTER_SPMD(Reshape, TF::ReshapeOp, ReshapeSPMDExpander);
 REGISTER_SPMD(Transpose, TF::TransposeOp, TransposeSPMDExpander);
 REGISTER_SPMD(InvertPermutation, TF::InvertPermutationOp,
-              InvertPermutationSPMDExpander);
+              ReplicatedOpSPMDExpander,
+              /*relayout_when_sharded=*/true);
 
 // Pad
 REGISTER_SPMD(Pad, TF::PadOp, PadSPMDExpander);

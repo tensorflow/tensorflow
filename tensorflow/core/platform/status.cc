@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <deque>
 #include <functional>
+#include <memory>
 #include <string>
 
 #include "absl/base/call_once.h"
@@ -101,39 +102,24 @@ static constexpr const char kStackTraceProtoUrl[] =
 
 void SetStackTrace(::tensorflow::Status& status,
                    std::vector<StackFrame> stack_trace) {
-  StackTracePayload payload;
-  for (const StackFrame& frame : stack_trace) {
-    StackTracePayload::StackFrame frame_proto;
-    frame_proto.set_file_name(frame.file_name);
-    frame_proto.set_line_number(frame.line_number);
-    frame_proto.set_function_name(frame.function_name);
-    *payload.add_stack_frames() = frame_proto;
-  }
-  status.SetPayload(kStackTraceProtoUrl, payload.SerializeAsString());
+  status.SetStackTrace(stack_trace);
 }
 
 std::vector<StackFrame> GetStackTrace(const ::tensorflow::Status& status) {
-  std::vector<StackFrame> stack_trace;
-  absl::optional<absl::string_view> maybe_serialized_payload =
-      status.GetPayload(kStackTraceProtoUrl);
-  if (maybe_serialized_payload.has_value()) {
-    StackTracePayload payload;
-    std::string serialized_payload(maybe_serialized_payload.value());
-    payload.ParseFromString(serialized_payload);
-    for (const auto& frame_proto : payload.stack_frames()) {
-      StackFrame frame({frame_proto.file_name(), frame_proto.line_number(),
-                        frame_proto.function_name()});
-      stack_trace.push_back(frame);
-    }
-  }
-  return stack_trace;
+  return status.GetStackTrace();
 }
 
 }  // namespace errors
 
+void Status::SetStackTrace(std::vector<StackFrame> stack_trace) {
+  stack_trace_ = stack_trace;
+}
+
+std::vector<StackFrame> Status::GetStackTrace() const { return stack_trace_; }
+
 Status::Status(tensorflow::error::Code code, absl::string_view msg) {
   assert(code != tensorflow::error::OK);
-  state_ = std::unique_ptr<State>(new State);
+  state_ = std::make_unique<State>();
   state_->code = code;
   state_->msg = std::string(msg);
   VLOG(5) << "Generated non-OK status: \"" << *this << "\". "
@@ -150,11 +136,9 @@ void Status::SlowCopyFrom(const State* src) {
   if (src == nullptr) {
     state_ = nullptr;
   } else {
-    state_ = std::unique_ptr<State>(new State(*src));
+    state_ = std::make_unique<State>(*src);
   }
 }
-
-Status OkStatus() { return Status(); }
 
 const std::string& Status::empty_string() {
   static string* empty = new string;
@@ -277,6 +261,72 @@ void Status::ForEachPayload(
 std::ostream& operator<<(std::ostream& os, const Status& x) {
   os << x.ToString();
   return os;
+}
+
+Status OkStatus() { return Status(); }
+
+bool IsAborted(const Status& status) {
+  return status.code() == tensorflow::errors::Code::ABORTED;
+}
+
+bool IsAlreadyExists(const Status& status) {
+  return status.code() == tensorflow::errors::Code::ALREADY_EXISTS;
+}
+
+bool IsCancelled(const Status& status) {
+  return status.code() == tensorflow::errors::Code::CANCELLED;
+}
+
+bool IsDataLoss(const Status& status) {
+  return status.code() == tensorflow::errors::Code::DATA_LOSS;
+}
+
+bool IsDeadlineExceeded(const Status& status) {
+  return status.code() == tensorflow::errors::Code::DEADLINE_EXCEEDED;
+}
+
+bool IsFailedPrecondition(const Status& status) {
+  return status.code() == tensorflow::errors::Code::FAILED_PRECONDITION;
+}
+
+bool IsInternal(const Status& status) {
+  return status.code() == tensorflow::errors::Code::INTERNAL;
+}
+
+bool IsInvalidArgument(const Status& status) {
+  return status.code() == tensorflow::errors::Code::INVALID_ARGUMENT;
+}
+
+bool IsNotFound(const Status& status) {
+  return status.code() == tensorflow::errors::Code::NOT_FOUND;
+}
+
+bool IsOutOfRange(const Status& status) {
+  return status.code() == tensorflow::errors::Code::OUT_OF_RANGE;
+}
+
+bool IsPermissionDenied(const Status& status) {
+  return status.code() == tensorflow::errors::Code::PERMISSION_DENIED;
+}
+
+bool IsResourceExhausted(const Status& status) {
+  return status.code() == tensorflow::errors::Code::RESOURCE_EXHAUSTED;
+}
+
+bool IsUnauthenticated(const Status& status) {
+  return status.code() == tensorflow::errors::Code::UNAUTHENTICATED;
+}
+
+bool IsUnavailable(const Status& status) {
+  return status.code() == tensorflow::errors::Code::UNAVAILABLE;
+}
+
+bool IsUnimplemented(const Status& status) {
+  return status.code() == tensorflow::errors::Code::UNIMPLEMENTED;
+}
+
+bool IsUnknown(const Status& status) {
+  return status.code() == tensorflow::errors::Code::UNKNOWN;
 }
 
 Status AbortedError(absl::string_view message) {

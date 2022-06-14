@@ -111,7 +111,7 @@ with your own model and test data.
 ## Model compatibility requirements
 
 The `TextEmbedder` API expects a TFLite model with mandatory
-[TFLite Model Metadata](https://www.tensorflow.org/lite/convert/metadata).
+[TFLite Model Metadata](https://www.tensorflow.org/lite/models/convert/metadata).
 
 Three main types of models are supported:
 

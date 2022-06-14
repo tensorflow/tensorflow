@@ -63,7 +63,7 @@ Status CheckState(const Tensor& state) {
     return errors::InvalidArgument(
         "RNG state must have one and only one dimension, not ", state.dims());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CheckPhiloxState(const Tensor& state, int64_t alg_tag_skip = 0) {
@@ -78,7 +78,7 @@ Status CheckPhiloxState(const Tensor& state, int64_t alg_tag_skip = 0) {
         " must be at least ",
         min_size, "; got ", state.NumElements());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Device, typename Distribution>
@@ -117,7 +117,7 @@ Status UpdateVariableAndFill(
     arg.state_tensor = var_tensor;
     functor::UpdateVariableAndFill_Philox<Device, Distribution>()(
         ctx, ctx->eigen_device<Device>(), dist, &arg, output_data);
-    return Status::OK();
+    return OkStatus();
   } else {
     return errors::InvalidArgument("Unsupported algorithm id: ", alg);
   }
@@ -165,7 +165,7 @@ Status GetScalar(const Tensor& tensor, int input_idx, T* result) {
                                    ", not ", DataTypeString(tensor.dtype()));
   }
   *result = tensor.flat<T>()(0);
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename AlgEnumType>
@@ -173,7 +173,7 @@ Status GetAlg(OpKernelContext* ctx, int input_idx, Algorithm* alg) {
   AlgEnumType alg_id;
   TF_RETURN_IF_ERROR(GetScalar(ctx->input(input_idx), input_idx, &alg_id));
   *alg = Algorithm(alg_id);
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Device, class Distribution>

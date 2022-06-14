@@ -2611,7 +2611,7 @@ Status DistributedTPURewritePass::BuildCompileNode(
     std::string str;
     TF_RETURN_IF_ERROR(GetNodeAttr(replicate_node->attrs(),
                                    "tpu_compile_options_proto", &str));
-    proto.ParseFromString(str);
+    TF_RET_CHECK(proto.mutable_compile_options()->ParseFromString(str));
   }
   proto.set_num_replicas(params_info.NumReplicas());
   proto.set_num_cores_per_replica(num_cores_per_replica);

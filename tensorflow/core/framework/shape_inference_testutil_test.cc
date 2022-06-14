@@ -69,25 +69,25 @@ string RunInferShapes(const string& op_name, const string& ins,
 TEST(ShapeInferenceTestutilTest, Failures) {
   auto fn_copy_input_0 = [](InferenceContext* c) {
     c->set_output(0, c->input(0));
-    return Status::OK();
+    return OkStatus();
   };
   auto fn_copy_input_2 = [](InferenceContext* c) {
     c->set_output(0, c->input(2));
-    return Status::OK();
+    return OkStatus();
   };
   auto fn_output_unknown_shapes = [](InferenceContext* c) {
     for (int i = 0; i < c->num_outputs(); ++i) {
       c->set_output(i, c->UnknownShape());
     }
-    return Status::OK();
+    return OkStatus();
   };
   auto fn_output_1_2 = [](InferenceContext* c) {
     c->set_output(0, c->Matrix(1, 2));
-    return Status::OK();
+    return OkStatus();
   };
   auto fn_output_u_2 = [](InferenceContext* c) {
     c->set_output(0, c->Matrix(InferenceContext::kUnknownDim, 2));
-    return Status::OK();
+    return OkStatus();
   };
   const string& op = "OpOneOut";
 
@@ -140,7 +140,7 @@ TEST(ShapeInferenceTestutilTest, Failures) {
   auto fn = [](InferenceContext* c) {
     c->set_output(0, c->MakeShape({c->Dim(c->input(0), 1), c->MakeDim(2),
                                    c->UnknownDim(), c->Dim(c->input(2), 0)}));
-    return Status::OK();
+    return OkStatus();
   };
   const string ins = "[0,1,?];[2];[1]";
   EXPECT_CONTAINS(RunInferShapes(op, ins, "[?,2,?,d2_0]", fn),

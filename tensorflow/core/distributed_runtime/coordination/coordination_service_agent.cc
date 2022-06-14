@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/notification.h"
@@ -84,8 +85,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   StatusOr<std::string> GetKeyValue(const std::string& key) override;
   StatusOr<std::string> GetKeyValue(const std::string& key,
                                     absl::Duration timeout) override;
-  void GetKeyValueAsync(const std::string& key,
-                        StatusOrValueCallback done) override;
+  std::shared_ptr<CallOptions> GetKeyValueAsync(
+      const std::string& key, StatusOrValueCallback done) override;
   StatusOr<std::string> TryGetKeyValue(const std::string& key) override;
   StatusOr<std::vector<KeyValueEntry>> GetKeyValueDir(
       const std::string& key) override;
@@ -106,6 +107,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
                           const std::vector<CoordinatedTask>& tasks,
                           StatusCallback done) override;
   Status CancelBarrier(const std::string& barrier_id) override;
+  void CancelBarrierAsync(const std::string& barrier_id,
+                          StatusCallback done) override;
 
  protected:
   void SetError(const Status& error) override;
@@ -120,7 +123,6 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   const uint64_t incarnation_id_ = random::New64();
   CoordinatedTask task_;
   CoordinationServiceConfig configs_;
-  std::unique_ptr<CoordinationClient> leader_client_;
   StatusCallback error_fn_;
 
   enum class State {
@@ -133,6 +135,10 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   mutable mutex state_mu_;
   State state_ TF_GUARDED_BY(state_mu_) = State::UNINITIALIZED;
   Status status_ TF_GUARDED_BY(state_mu_) = Status::OK();
+  // Note: this set grows without bounds. For now, this is okay as most users
+  // require < 100 barriers. If there is a use case that requires many barriers,
+  // consider using a monotonic sequence number to track instead.
+  absl::flat_hash_set<std::string> used_barrier_ids_ TF_GUARDED_BY(state_mu_);
 
   uint64_t leader_incarnation_ = 0;
   CoordinationServiceDeviceInfo cluster_devices_;
@@ -141,7 +147,10 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   condition_variable heartbeat_thread_cv_;
   bool shutting_down_ TF_GUARDED_BY(heartbeat_thread_shutdown_mu_) = false;
   std::unique_ptr<Thread> heartbeat_thread_;
+  // Must outlive coordination client which may need to access it within
+  // GetKeyValueAsync() callbacks.
   CancellationManager cancellation_manager_;
+  std::unique_ptr<CoordinationClient> leader_client_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CoordinationServiceAgentImpl);
 };
@@ -506,7 +515,7 @@ StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
   return *result;
 }
 
-void CoordinationServiceAgentImpl::GetKeyValueAsync(
+std::shared_ptr<CallOptions> CoordinationServiceAgentImpl::GetKeyValueAsync(
     const std::string& key, StatusOrValueCallback done) {
   auto request = std::make_shared<GetKeyValueRequest>();
   request->set_key(key);
@@ -519,7 +528,7 @@ void CoordinationServiceAgentImpl::GetKeyValueAsync(
       token, [call_opts]() { call_opts->StartCancel(); });
   if (already_cancelled) {
     done(errors::Cancelled("GetKeyValueAsync() was cancelled."));
-    return;
+    return call_opts;
   }
   leader_client_->GetKeyValueAsync(
       call_opts.get(), request.get(), response.get(),
@@ -536,6 +545,7 @@ void CoordinationServiceAgentImpl::GetKeyValueAsync(
           done(response->kv().value());
         }
       });
+  return call_opts;
 }
 
 StatusOr<std::string> CoordinationServiceAgentImpl::TryGetKeyValue(
@@ -680,6 +690,17 @@ void CoordinationServiceAgentImpl::WaitAtBarrierAsync(
     done(agent_running_status);
     return;
   }
+  {
+    mutex_lock l(state_mu_);
+    auto [it, inserted] = used_barrier_ids_.insert(barrier_id);
+    if (!inserted) {
+      done(errors::FailedPrecondition(
+          "WaitAtBarrier() should not be called with the same id more than "
+          "once. Barrier id: ",
+          barrier_id));
+      return;
+    }
+  }
   auto request = std::make_shared<BarrierRequest>();
   auto response = std::make_shared<BarrierResponse>();
   request->set_barrier_id(barrier_id);
@@ -693,23 +714,32 @@ void CoordinationServiceAgentImpl::WaitAtBarrierAsync(
 
 Status CoordinationServiceAgentImpl::CancelBarrier(
     const std::string& barrier_id) {
-  Status agent_running_status = ValidateRunningAgent();
-  if (!agent_running_status.ok()) {
-    return agent_running_status;
-  }
-  CancelBarrierRequest request;
-  CancelBarrierResponse response;
-  request.set_barrier_id(barrier_id);
-  *request.mutable_source_task() = task_;
-
   Status status;
   absl::Notification n;
-  leader_client_->CancelBarrierAsync(&request, &response, [&](const Status& s) {
+  CancelBarrierAsync(barrier_id, [&](const Status& s) {
     status = s;
     n.Notify();
   });
   n.WaitForNotification();
   return status;
+}
+
+void CoordinationServiceAgentImpl::CancelBarrierAsync(
+    const std::string& barrier_id, StatusCallback done) {
+  Status agent_running_status = ValidateRunningAgent();
+  if (!agent_running_status.ok()) {
+    done(agent_running_status);
+    return;
+  }
+  auto request = std::make_shared<CancelBarrierRequest>();
+  auto response = std::make_shared<CancelBarrierResponse>();
+  request->set_barrier_id(barrier_id);
+  *request->mutable_source_task() = task_;
+  leader_client_->CancelBarrierAsync(
+      request.get(), response.get(),
+      [request, response, done = std::move(done)](const Status& s) {
+        done(s);
+      });
 }
 
 // Returns an error if agent is not running.

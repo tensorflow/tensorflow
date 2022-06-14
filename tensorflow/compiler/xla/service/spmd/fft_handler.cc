@@ -428,7 +428,7 @@ Status SpmdPartitioningVisitor::HandleFft(HloInstruction* hlo) {
   auto partitioned_fft =
       PartitionedHlo(result, hlo->shape(), partitioned_input.state());
   SetPartitionedHlo(hlo, partitioned_fft);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace spmd

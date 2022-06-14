@@ -38,31 +38,26 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-namespace {
 
-Status RunAllReduce(const NcclAllReduceConfig& config,
-                    const std::vector<NcclCollectiveThunk::Buffer>& buffers,
-                    const BufferAllocations& buffer_allocations,
-                    se::Stream& stream, ncclComm_t comm) {
+Status RunAllReduce(ReductionKind reduction_kind,
+                    std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
+                    ncclComm_t comm) {
 #if XLA_ENABLE_XCCL
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-reduce from device ordinal: " << device_ordinal;
 
-  ncclRedOp_t reduce_op = ToNcclReduction(config.reduction_kind);
+  ncclRedOp_t reduce_op = ToNcclReduction(reduction_kind);
 
   se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
 
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
   for (size_t i = 0; i < buffers.size(); ++i) {
-    const NcclCollectiveThunk::Buffer& buffer = buffers[i];
-    const void* send_buffer =
-        buffer_allocations.GetDeviceAddress(buffer.source_buffer).opaque();
-    void* recv_buffer =
-        buffer_allocations.GetDeviceAddress(buffer.destination_buffer).opaque();
+    DeviceBufferPair& buffer = buffers[i];
+    const void* send_buffer = buffer.source_buffer.opaque();
+    void* recv_buffer = buffer.destination_buffer.opaque();
 
-    PrimitiveType element_type = config.config.operand_element_type[i];
     TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
-                        ToNcclDataTypeAndCountMultiplier(element_type));
+                        ToNcclDataTypeAndCountMultiplier(buffer.element_type));
     ncclDataType_t dtype = dtype_and_multiplier.first;
     int element_count = buffer.element_count * dtype_and_multiplier.second;
 
@@ -83,6 +78,8 @@ Status RunAllReduce(const NcclAllReduceConfig& config,
       "compiler, which is necessary to build the NCCL source library.");
 #endif  // XLA_ENABLE_XCCL
 }
+
+namespace {
 
 bool IsValidOperand(mlir::Value operand) {
   Shape shape = TypeToShape(operand.getType());
@@ -250,8 +247,12 @@ CollectiveOpGroupMode NcclAllReduceThunk::GetGroupMode(
 Status NcclAllReduceThunk::RunNcclCollective(const ExecuteParams& params,
                                              ncclComm_t comm) {
   se::Stream& stream = *params.stream;
-  TF_RETURN_IF_ERROR(RunAllReduce(config_, buffers_, *params.buffer_allocations,
-                                  stream, comm));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<DeviceBufferPair> device_buffers,
+      ConvertToDeviceBuffers(params, buffers_,
+                             config_.config.operand_element_type));
+  TF_RETURN_IF_ERROR(
+      RunAllReduce(config_.reduction_kind, device_buffers, stream, comm));
 
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Done performing all-reduce for ordinal: " << device_ordinal;
@@ -286,7 +287,11 @@ Status NcclAllReduceStartThunk::RunNcclCollective(const ExecuteParams& params,
   // Wait until compute inputs are ready.
   async_comms_stream.ThenWaitFor(params.stream);
 
-  TF_RETURN_IF_ERROR(RunAllReduce(config_, buffers_, *params.buffer_allocations,
+  TF_ASSIGN_OR_RETURN(
+      std::vector<DeviceBufferPair> device_buffers,
+      ConvertToDeviceBuffers(params, buffers_,
+                             config_.config.operand_element_type));
+  TF_RETURN_IF_ERROR(RunAllReduce(config_.reduction_kind, device_buffers,
                                   async_comms_stream, comm));
 
   // Create an event on the async stream for the completion of the all-reduce.

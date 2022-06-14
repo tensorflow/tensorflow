@@ -956,9 +956,9 @@ void TestOneHybridAsymmLSTM() {
   };
   EXPECT_TRUE(ArrayFloatNear(cell->data.f, expected_cell.data(), 20, 1e-2));
   EXPECT_TRUE(
-      ArrayFloatNear(activation->data.f, expected_activation.data(), 12, 1e-4));
+      ArrayFloatNear(activation->data.f, expected_activation.data(), 12, 2e-4));
   EXPECT_TRUE(
-      ArrayFloatNear(output->data.f, expected_activation.data(), 12, 1e-4));
+      ArrayFloatNear(output->data.f, expected_activation.data(), 12, 2e-4));
 }
 
 TEST(TestOneHybridAsymmLSTM, TestOneHybridAsymmLSTM) {

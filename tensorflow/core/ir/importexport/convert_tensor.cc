@@ -479,7 +479,7 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
       return Unimplemented(absl::StrCat("Unimplemented data type ",
                                         DataTypeString(output_dtype)));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status ConvertToTensor(const ElementsAttr attr, Tensor* output_tensor) {
@@ -488,7 +488,7 @@ Status ConvertToTensor(const ElementsAttr attr, Tensor* output_tensor) {
   if (!output_tensor->FromProto(tensor_proto)) {
     return InvalidArgument("Couldn't convert tensor proto to tensor.");
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace tfg

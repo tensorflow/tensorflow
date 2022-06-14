@@ -82,8 +82,19 @@ ABSL_CONST_INIT thread_local JitState thread_local_state;  // NOLINT
 
 }  // namespace
 
+// `thread_local_state.extra_jit_context` is set from Python. It's done when
+// loading the Python jax modules on the main-thread. For other threads, we
+// need to initialize the field the first time we access `thread_local_state`.
+py::object& initialize_local_state = *new py::object();
+
 JitState& GetGlobalState() { return global_state; }
-JitState& GetLocalState() { return thread_local_state; }
+JitState& GetLocalState() {
+  if (thread_local_state.extra_jit_context == std::nullopt) {
+    CHECK(initialize_local_state.ptr() != nullptr);
+    initialize_local_state();
+  }
+  return thread_local_state;
+}
 
 bool GetDisableJit() {
   CHECK(global_state.disable_jit.has_value());
@@ -303,7 +314,7 @@ xla::Status ParseArguments(py::handle args,
       }
     }
   }
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 namespace {
@@ -683,7 +694,7 @@ xla::Status ComputeSignature(bool jax_enable_x64,
                         xla::PyArgSignatureOfValue(arg, jax_enable_x64));
     arguments.signature.dynamic_arg_signatures.push_back(std::move(sig));
   }
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Copy buffers to device, skipping pruned arguments.
@@ -719,7 +730,7 @@ xla::Status CopyBuffersToDevice(
           std::move(on_device.owning_pybuffer));
     }
   }
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 void CompiledFunction::PopulateCacheEntry(
@@ -1340,6 +1351,8 @@ void BuildJaxjitSubmodule(py::module& m) {
 
   jitlib.def("jit_is_disabled", &GetDisableJit);
   jitlib.def("get_enable_x64", &GetEnableX64);
+  jitlib.def("set_thread_local_state_initialization_callback",
+             [](py::object f) { initialize_local_state = f; });
 
   jitlib.def(
       "jit",
@@ -1425,7 +1438,7 @@ void BuildJaxjitSubmodule(py::module& m) {
       [](py::handle self) -> xla::Status {
         TF_ASSIGN_OR_RETURN(CompiledFunction * fun, AsCompiledFunction(self));
         fun->ClearCache();
-        return xla::Status::OK();
+        return ::tensorflow::OkStatus();
       },
       py::is_method(cfun));
   jitlib.def("_is_float0", &xla::IsFloat0);

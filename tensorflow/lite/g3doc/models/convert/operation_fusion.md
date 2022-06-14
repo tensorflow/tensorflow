@@ -9,11 +9,11 @@ to a corresponding fused operation in TensorFlow Lite.
 
 An example use of this infrastructure is TensorFlow RNN operation fusion to
 TensorFlow Lite, as detailed
-[here](https://www.tensorflow.org/lite/convert/rnn).
+[here](https://www.tensorflow.org/lite/models/convert/rnn).
 
 ### What are fused operations
 
-![drawing](../images/convert/op_fusion_banner.jpg)
+![drawing](../../images/convert/op_fusion_banner.jpg)
 
 TensorFlow operations can either be primitive ops e.g.
 [tf.add](https://www.tensorflow.org/api_docs/python/tf/math/add) or they can be
@@ -71,7 +71,7 @@ As such, conversion of fused operations has proven quite challenging.
 The overall architecture for converting TensorFlow composite operations to
 TensorFlow Lite fused operations is below:
 
-![drawing](../images/convert/op_fusion.png)
+![drawing](../../images/convert/op_fusion.png)
 
 ### Wrap the composite operation in a `tf.function`
 

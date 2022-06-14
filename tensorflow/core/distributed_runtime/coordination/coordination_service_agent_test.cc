@@ -76,6 +76,8 @@ class TestCoordinationClient : public CoordinationClient {
   MOCK_METHOD3(ReportErrorToServiceAsync,
                void(const ReportErrorToServiceRequest*,
                     ReportErrorToServiceResponse*, StatusCallback));
+  MOCK_METHOD3(BarrierAsync,
+               void(const BarrierRequest*, BarrierResponse*, StatusCallback));
 
 #define UNIMPLEMENTED(method)                                         \
   void method##Async(const method##Request* request,                  \
@@ -87,7 +89,6 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(WaitForAllTasks);
   UNIMPLEMENTED(InsertKeyValue);
   UNIMPLEMENTED(DeleteKeyValue);
-  UNIMPLEMENTED(Barrier);
   UNIMPLEMENTED(CancelBarrier);
 #undef UNIMPLEMENTED
   void HeartbeatAsync(CallOptions* call_opts, const HeartbeatRequest* request,
@@ -112,7 +113,9 @@ class CoordinationServiceAgentTest : public ::testing::Test {
         .WillByDefault(InvokeArgument<3>(Status::OK()));
     ON_CALL(*client_, ReportErrorToServiceAsync(_, _, _))
         .WillByDefault(InvokeArgument<2>(Status::OK()));
-    ON_CALL(*GetClient(), ResetTaskAsync(_, _, _))
+    ON_CALL(*client_, ResetTaskAsync(_, _, _))
+        .WillByDefault(InvokeArgument<2>(Status::OK()));
+    ON_CALL(*client_, BarrierAsync(_, _, _))
         .WillByDefault(InvokeArgument<2>(Status::OK()));
   }
 
@@ -268,6 +271,31 @@ TEST_F(CoordinationServiceAgentTest,
   EXPECT_EQ(result.ValueOrDie(), test_value);
 }
 
+TEST_F(CoordinationServiceAgentTest, CancelGetKeyValue_Success) {
+  const std::string test_key = "test_key";
+  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
+      .WillByDefault(
+          WithArgs<0, 3>([](CallOptions* call_opts, StatusCallback done) {
+            // Mock RPC call cancellation.
+            call_opts->SetCancelCallback([callback = std::move(done)]() {
+              callback(errors::Cancelled("RPC call cancelled."));
+            });
+          }));
+  InitializeAgent();
+
+  Status status;
+  std::shared_ptr<CallOptions> get_kv_call_opts = agent_->GetKeyValueAsync(
+      test_key, [&status](const StatusOr<std::string>& result) {
+        status = result.status();
+      });
+  get_kv_call_opts->StartCancel();
+
+  EXPECT_TRUE(errors::IsCancelled(status)) << status;
+  // This is to prevent memory leaks due to how we set this particular cancel
+  // callback. In practice, this should not be necessary.
+  get_kv_call_opts->ClearCancelCallback();
+}
+
 TEST_F(CoordinationServiceAgentTest, TryGetKeyValue_Simple_Success) {
   const std::string& test_key = "test_key";
   const std::string& test_value = "test_value";
@@ -394,5 +422,21 @@ TEST_F(CoordinationServiceAgentTest, GetOwnTask_Uninitialized) {
 
   EXPECT_TRUE(errors::IsFailedPrecondition(result.status()));
 }
+
+TEST_F(CoordinationServiceAgentTest, WaitAtBarrier_SameIdUsedTwice_Fails) {
+  InitializeAgent();
+  const std::string barrier_id = "only_use_once";
+  TF_EXPECT_OK(agent_->Connect());
+  // Wait at barrier for the first time should succeed.
+  TF_EXPECT_OK(
+      agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), /*tasks=*/{}));
+
+  // Subsequent calls should fail.
+  auto result =
+      agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), /*tasks=*/{});
+
+  EXPECT_TRUE(errors::IsFailedPrecondition(result));
+}
+
 }  // namespace
 }  // namespace tensorflow

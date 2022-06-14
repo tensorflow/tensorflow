@@ -985,6 +985,18 @@ func.func @map_mismatch_arguments_and_dimensions(%arg0: tensor<4x5xf32>, %arg1: 
 
 // -----
 
+// CHECK-LABEL: func @map_heterogeneous_inputs
+func.func @map_heterogeneous_inputs(%arg0: tensor<2xf32>, %arg1: tensor<2xi32>) -> tensor<2xf32> {
+  %0 = "mhlo.map"(%arg0, %arg1) ({
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<i32>):
+    "mhlo.return"(%arg2) : (tensor<f32>) -> ()
+  }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<2xf32>, tensor<2xi32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// -----
+
+
 // CHECK-LABEL: func @map_unranked
 func.func @map_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "mhlo.map"(%arg0, %arg1) ({
@@ -1560,7 +1572,7 @@ func.func @constants() -> () {
 // -----
 
 func.func @constant_invalid() -> () {
-  // expected-error@+1 {{op failed to verify that all of {value, output} have same type}}
+  // expected-error@+1 {{'mhlo.constant' op inferred type(s) 'tensor<i32>' are incompatible with return type(s) of operation 'tensor<3xi32>'}}
   %0 = "mhlo.constant"() {value = dense<0> : tensor<i32>} : () -> (tensor<3xi32>)
   func.return
 }
@@ -3521,12 +3533,24 @@ func.func @uniform_dequantize(%arg: tensor<16x16x!quant.uniform<i8:f32, 34.0:16>
 // -----
 
 // CHECK-LABEL: func @quantized_constants
-func.func @quantized_constants() -> (tensor<2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x!quant.uniform<ui8:f32, 34.0:16>>) {
-  %0 = mhlo.constant dense<[10.0, 12.0]> : tensor<2xf32>
-  %1 = mhlo.constant dense<[3.0, 100.0]> : tensor<2xf32>
-  %2 = mhlo.uniform_quantize(%1) : (tensor<2xf32>) -> tensor<2x!quant.uniform<i8:f32, 2.0:15>>
-  %3 = mhlo.uniform_quantize(%0) : (tensor<2xf32>) -> tensor<2x!quant.uniform<ui8:f32, 34.0:16>>
-  func.return %2, %3 : tensor<2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x!quant.uniform<ui8:f32, 34.0:16>>
+func.func @quantized_constants() -> (tensor<2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x!quant.uniform<ui8:f32, 34.0:16>>, tensor<2x!quant.uniform<i8:f32, 2.0:15>>) {
+  %0 = mhlo.constant() {value = dense<[1, 2]> : tensor<2xi8>} : () -> tensor<2x!quant.uniform<i8:f32, 2.000000e+00:15>>
+  %1 = mhlo.constant dense<[10.0, 12.0]> : tensor<2xf32>
+  %2 = mhlo.constant dense<[3.0, 100.0]> : tensor<2xf32>
+  %3 = mhlo.uniform_quantize(%2) : (tensor<2xf32>) -> tensor<2x!quant.uniform<i8:f32, 2.0:15>>
+  %4 = mhlo.uniform_quantize(%1) : (tensor<2xf32>) -> tensor<2x!quant.uniform<ui8:f32, 34.0:16>>
+  func.return %0, %4, %3 : tensor<2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x!quant.uniform<ui8:f32, 34.0:16>>, tensor<2x!quant.uniform<i8:f32, 2.0:15>>
+  // CHECK: mhlo.constant() {value = dense<[1, 2]> : tensor<2xi8>} : () -> tensor<2x!quant.uniform<i8:f32, 2.000000e+00:15>>
+  // CHECK-NEXT: mhlo.constant dense<[1.000000e+01, 1.200000e+01]> : tensor<2xf32>
+  // CHECK-NEXT: mhlo.constant dense<[3.000000e+00, 1.000000e+02]> : tensor<2xf32>
+}
+
+// -----
+
+func.func @quantized_constants_invalid_storage_type() -> () {
+  // expected-error@+1 {{'mhlo.constant' op inferred type(s) 'tensor<2xui8>' are incompatible with return type(s) of operation 'tensor<2x!quant.uniform<i8:f32, 2.000000e+00:15>>}}
+  %0 = "mhlo.constant"() {value = dense<[1, 2]> : tensor<2xui8>} : () -> tensor<2x!quant.uniform<i8:f32, 2.0:15>>
+  func.return
 }
 
 // -----

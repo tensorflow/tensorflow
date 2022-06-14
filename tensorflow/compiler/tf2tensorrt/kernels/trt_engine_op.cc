@@ -82,12 +82,11 @@ class ContextDeviceMemory {
   }
 
   Status AllocateDeviceMemory(nvinfer1::IExecutionContext* execution_context,
-                              TRTBaseAllocator* device_memory_allocator) {
+                              TRTBaseAllocator* device_memory_allocator,
+                              size_t device_memory_size) {
     execution_context_ = execution_context;
     device_memory_allocator_ = device_memory_allocator;
     device_memory_ = nullptr;
-    const size_t device_memory_size =
-        execution_context_->getEngine().getDeviceMemorySize();
     VLOG(2) << "Device memory size for TensorRT engine " << device_memory_size;
     if (device_memory_size > 0) {
       device_memory_ = device_memory_allocator_->allocate(
@@ -874,7 +873,7 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
     }
     return true;
   };
-  if (!engine_context->cuda_engine) {
+  if (!engine_context->GetCudaEngine()) {
     LOG_FIRST_FEW_WARNING_WITH_PREFIX
         << "Engine retrieval for input shapes: "
         << TensorShapeUtils::ShapeListString(input_concrete_shapes)
@@ -912,11 +911,11 @@ Status TRTEngineOp::ExecuteTrtEngine(
       "TRTEngineOp::ExecuteTrtEngine",
       tensorflow::profiler::TraceMeLevel::kInfo);
   VLOG(1) << "Executing TRT engine: " << name();
-  auto& cuda_engine = engine_context->cuda_engine;
+  nvinfer1::ICudaEngine* cuda_engine = engine_context->GetCudaEngine();
 
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "  Network name: " << cuda_engine->getName();
-    VLOG(2) << "  Activation size: " << cuda_engine->getDeviceMemorySize()
+    VLOG(2) << "  Activation size: " << engine_context->GetDeviceMemorySize()
             << " bytes";
 #if !IS_TRT_VERSION_GE(8, 0, 0, 0)
     // getWorkspaceSize() is deprecated as of TRT 8
@@ -951,10 +950,10 @@ Status TRTEngineOp::ExecuteTrtEngine(
       use_implicit_batch_ ? ctx->input(0).shape().dim_size(0) : 0;
 
   TF_RETURN_IF_ERROR(SetTrtEngineInputs(
-      cuda_engine.get(), execution_context, trt_context_idx, buffers,
+      cuda_engine, execution_context, trt_context_idx, buffers,
       use_implicit_batch_, num_batch, profiles, ctx));
 
-  TF_RETURN_IF_ERROR(SetTrtEngineOutputs(cuda_engine.get(), execution_context,
+  TF_RETURN_IF_ERROR(SetTrtEngineOutputs(cuda_engine, execution_context,
                                          trt_context_idx, buffers,
                                          use_implicit_batch_, num_batch, ctx));
 
@@ -971,7 +970,7 @@ Status TRTEngineOp::ExecuteTrtEngine(
     // Allocate device memory for the TensorRT engine execution. The device
     // memory will be released when context_device_memory goes out of scope.
     TF_RETURN_IF_ERROR(context_device_memory.AllocateDeviceMemory(
-        execution_context, allocator));
+        execution_context, allocator, engine_context->GetDeviceMemorySize()));
   }
   // Enqueue the TensorRT engine for execution.
   return TrtEnqueue(execution_context, buffers, *stream, use_implicit_batch_,

@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package tensorflow;
+
+option cc_enable_arenas = true;
+
+// Model quantization method for optimization.
+//
+// Various techniques for model quantization are defined within this message
+// along with a field that specifies a method to be used for a particular
+// quantization request.
+message QuantizationMethod {
+  // Quantization methods that are supported as a stable API.
+  enum Method {
+    // This should never be used. Using this will generally result in an error.
+    METHOD_UNSPECIFIED = 0;  // go/do-include-enum-unspecified
+  }
+
+  // Experimental quantization methods.
+  // These methods are either not implemented or provided with an unstable
+  // behavior.
+  enum ExperimentalMethod {
+    // This should never be used. Using this will generally result in an error.
+    EXPERIMENTAL_METHOD_UNSPECIFIED = 0;  // go/do-include-enum-unspecified
+
+    // Static range quantization. Quantized tensor values' ranges are statically
+    // determined.
+    STATIC_RANGE = 1;
+
+    // Dynamic range quantization. Quantized tensor values' ranges are
+    // determined in the graph executions. The weights are quantized during
+    // conversion.
+    DYNAMIC_RANGE = 2;
+  }
+
+  oneof method_oneof {
+    Method method = 1;
+    ExperimentalMethod experimental_method = 2;
+  }
+}
+
+// Defines various options to specify and control the behavior of the quantizer.
+message QuantizationOptions {
+  QuantizationMethod quantization_method = 1;
+}

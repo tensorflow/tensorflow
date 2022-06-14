@@ -39,6 +39,11 @@ namespace tensorflow {
 class TF_MUST_USE_RESULT Status;
 #endif
 
+namespace errors {
+
+typedef ::tensorflow::error::Code Code;
+
+}  // namespace errors
 /// @ingroup core
 /// Denotes success or failure of a call in Tensorflow.
 class Status {
@@ -162,8 +167,12 @@ class Status {
       const std::function<void(absl::string_view, absl::string_view)>& visitor)
       const;
 
+  void SetStackTrace(std::vector<StackFrame>);
+  std::vector<StackFrame> GetStackTrace() const;
+
  private:
   static const std::string& empty_string();
+  std::vector<StackFrame> stack_trace_;
   struct State {
     tensorflow::error::Code code;
     std::string msg;
@@ -183,7 +192,6 @@ class Status {
 // usage of `OkStatus()` when constructing such an OK status.
 Status OkStatus();
 
-
 // Convenience Status constructors, not having to specify the underlying Code.
 Status AbortedError(absl::string_view message);
 Status AlreadyExistsError(absl::string_view message);
@@ -202,10 +210,27 @@ Status UnavailableError(absl::string_view message);
 Status UnimplementedError(absl::string_view message);
 Status UnknownError(absl::string_view message);
 
+// These convenience functions return `true` if a given status matches the
+// `Code` error code of its associated function.
+bool IsAborted(const Status& status);
+bool IsAlreadyExists(const Status& status);
+bool IsCancelled(const Status& status);
+bool IsDataLoss(const Status& status);
+bool IsDeadlineExceeded(const Status& status);
+bool IsFailedPrecondition(const Status& status);
+bool IsInternal(const Status& status);
+bool IsInvalidArgument(const Status& status);
+bool IsNotFound(const Status& status);
+bool IsOutOfRange(const Status& status);
+bool IsPermissionDenied(const Status& status);
+bool IsResourceExhausted(const Status& status);
+bool IsUnauthenticated(const Status& status);
+bool IsUnavailable(const Status& status);
+bool IsUnimplemented(const Status& status);
+bool IsUnknown(const Status& status);
+
 // TODO(b/197552541) Move this namespace to errors.h.
 namespace errors {
-
-typedef ::tensorflow::error::Code Code;
 
 void SetStackTrace(::tensorflow::Status& status,
                    std::vector<StackFrame> stack_trace);

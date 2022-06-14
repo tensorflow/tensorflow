@@ -27,6 +27,11 @@ absl::StatusOr<tensorflow::GraphDef> QuantizeQATModel(
     absl::string_view saved_model_path, absl::string_view exported_names_str,
     absl::string_view tags);
 
+// Apply post-training dynamic range quantization to the model.
+absl::StatusOr<tensorflow::GraphDef> QuantizePTQDynamicRange(
+    absl::string_view saved_model_path, absl::string_view exported_names_str,
+    absl::string_view tags);
+
 absl::StatusOr<tensorflow::GraphDef> QuantizePTQModelPreCalibration(
     absl::string_view saved_model_path, absl::string_view exported_names_str,
     absl::string_view tags);

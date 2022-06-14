@@ -196,6 +196,7 @@ tf_cc_test(
         ":export_proto_cc",
         ":test_cluster",
         ":test_util",
+        "@com_google_absl//absl/time",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -427,6 +428,7 @@ tf_cc_test(
     name = "grpc_dispatcher_impl_test",
     srcs = ["grpc_dispatcher_impl_test.cc"],
     deps = [
+        ":common",
         ":common_proto_cc",
         ":credentials_factory",
         ":dispatcher_proto_cc",

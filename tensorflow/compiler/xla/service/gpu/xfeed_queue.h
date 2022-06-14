@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/notification.h"
 
 namespace xla {
 namespace gpu {
