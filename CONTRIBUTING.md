@@ -4,7 +4,7 @@
 
 Before sending your pull requests, make sure you do the following:
 
--   Read the [contributing guidelines](CONTRIBUTING.md).
+-   Read the [Contributing Guidelines](CONTRIBUTING.md).
 -   Read the [Code of Conduct](CODE_OF_CONDUCT.md).
 -   Ensure you have signed the
     [Contributor License Agreement (CLA)](https://cla.developers.google.com/).
@@ -26,7 +26,7 @@ Please fill out either the individual or corporate Contributor License Agreement
 
 Follow either of the two links above to access the appropriate CLA and instructions for how to sign and return it. Once we receive it, we'll be able to accept your pull requests.
 
-***NOTE***: Only original source code from you and other people that have signed the CLA can be accepted into the main repository.
+#**NOTE**: Only original source code from you and other people that have signed the CLA can be accepted into the main repository.
 
 ### Contributing code
 
@@ -121,7 +121,8 @@ Use `clang-tidy` to check your C/C++ changes. To install `clang-tidy` on ubuntu:
 apt-get install -y clang-tidy
 ```
 
-You can check a C/C++ file by doing:
+
+#You can check a C/C++ file by doing:
 
 
 ```bash
