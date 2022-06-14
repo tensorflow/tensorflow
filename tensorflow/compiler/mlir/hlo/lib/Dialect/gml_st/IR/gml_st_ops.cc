@@ -53,45 +53,22 @@ ParseResult parseShapeTypeDimensionsList(
   return success();
 }
 
-// TODO(frgossen): Move this to MHLO or even to MLIR.
 ParseResult parseI64ElementsAttr(OpAsmParser &parser,
                                  DenseIntElementsAttr &attr) {
   SmallVector<int64_t> values;
-
-  // Parse opening bracket.
-  if (failed(parser.parseLSquare())) return failure();
-
-  auto tryParseInt = [&]() {
-    int64_t val;
-    auto parsingRes = parser.parseOptionalInteger(val);
-    if (parsingRes.hasValue() && succeeded(*parsingRes)) {
-      values.push_back(val);
-      return true;
-    }
-    return false;
+  auto parseI64Element = [&]() {
+    return parser.parseInteger(values.emplace_back());
   };
-
-  // Parse comma-separated ints.
-  if (tryParseInt()) {
-    while (succeeded(parser.parseOptionalComma())) {
-      int64_t val;
-      if (failed(parser.parseInteger(val))) return failure();
-      values.push_back(val);
-    }
+  if (failed(parser.parseCommaSeparatedList(OpAsmParser::Delimiter::Square,
+                                            parseI64Element))) {
+    return failure();
   }
-
-  // Parse closing bracket.
-  if (failed(parser.parseRSquare())) return failure();
-
-  // Build attribute.
   OpBuilder b(parser.getContext());
   attr = b.getI64TensorAttr(values);
   return success();
 }
 
-// TODO(frgossen): Move this to MHLO or even to MLIR.
-template <class OpTy>
-void printI64ElementsAttr(OpAsmPrinter &printer, OpTy op,
+void printI64ElementsAttr(OpAsmPrinter &printer, Operation *,
                           DenseIntElementsAttr attr) {
   printer << "[";
   llvm::interleave(
