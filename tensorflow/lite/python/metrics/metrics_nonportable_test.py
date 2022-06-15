@@ -44,7 +44,7 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import saved_model
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 
 
 class MetricsNonportableTest(test_util.TensorFlowTestCase):
@@ -181,7 +181,7 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
   def _getIntegerQuantizeModel(self):
     np.random.seed(0)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
 
     @tf.function(
         input_signature=[tf.TensorSpec(shape=[1, 5, 5, 3], dtype=tf.float32)])
