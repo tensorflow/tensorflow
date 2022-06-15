@@ -69,8 +69,10 @@ std::string DumpCrashReproducerToFile(llvm::StringRef name,
 // This will create a file name via prefixing `name` with the value of the
 // TF_DUMP_GRAPH_PREFIX environment variable if `dirname` is empty and
 // suffixing `name` with ".mlir".
+// If `pass_manager` is provided, prints a header with the pass pipeline.
 std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
-                             llvm::StringRef dirname = "");
+                             llvm::StringRef dirname = "",
+                             const mlir::PassManager* pass_manager = nullptr);
 
 // Reads the directory to dump the MLIR module from environment variables.
 // Default is reading from TF_DUMP_GRAPH_PREFIX, and if the string is 'sponge'
