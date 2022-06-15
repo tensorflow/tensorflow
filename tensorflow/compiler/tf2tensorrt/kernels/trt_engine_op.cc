@@ -97,8 +97,11 @@ class ContextDeviceMemory {
             "Out of GPU memory for execution context");
       }
     }
-    execution_context_->setDeviceMemory(device_memory_);
-
+    {
+      tensorflow::profiler::TraceMe activity(
+          "setDeviceMemory", tensorflow::profiler::TraceMeLevel::kInfo);
+      execution_context_->setDeviceMemory(device_memory_);
+    }
     return Status::OK();
   }
 
@@ -967,6 +970,9 @@ Status TRTEngineOp::ExecuteTrtEngine(
 
   ContextDeviceMemory context_device_memory;
   if (!has_device_memory) {
+    tensorflow::profiler::TraceMe activity(
+        "TRTEngineOp::AllocateDeviceMemory",
+        tensorflow::profiler::TraceMeLevel::kInfo);
     // Allocate device memory for the TensorRT engine execution. The device
     // memory will be released when context_device_memory goes out of scope.
     TF_RETURN_IF_ERROR(context_device_memory.AllocateDeviceMemory(
@@ -979,6 +985,9 @@ Status TRTEngineOp::ExecuteTrtEngine(
 
 Status TRTEngineOp::GetEngineCacheResource(OpKernelContext* ctx,
                                            TRTEngineCacheResource** cache_res) {
+  tensorflow::profiler::TraceMe activity(
+      "TRTEngineOp::GetEngineCachResource",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   // Canonicalize the op name by removing the scopes if any. This is mainly
   // because in TFv2, the function graph can be instantiated in various ways and
   // it'll insert scope names to the name of the TRTEngineOps, which will result
@@ -1050,7 +1059,8 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     const std::vector<TensorShape>& input_concrete_shapes, OpKernelContext* ctx,
     TRTEngineCacheResource* cache_res) {
   static EngineContext empty_context;
-
+  tensorflow::profiler::TraceMe activity(
+      "TRTEngineOp::GetEngine", tensorflow::profiler::TraceMeLevel::kInfo);
   mutex_lock lock(engine_mutex_);
   // Using first input to get batch size is reliable - VerifyInputShapes()
   // guarantees that the first input is not a scalar. As such we can always use

@@ -206,6 +206,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/profiler/lib:annotated_traceme",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
@@ -417,6 +418,7 @@ tf_cuda_library(
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core:stream_executor_headers_lib",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
