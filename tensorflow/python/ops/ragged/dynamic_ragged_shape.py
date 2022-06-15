@@ -42,6 +42,110 @@ from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
+class _DynamicRaggedShapeBatchEncoder(extension_type.ExtensionTypeBatchEncoder):
+  """A batch encoder for DynamicRaggedShape below."""
+
+  def batch(self, spec: "DynamicRaggedShape.Spec",
+            batch_size) -> "DynamicRaggedShape.Spec":
+    if spec.num_row_partitions:
+      new_head = _batch_rp_spec_head(spec._row_partitions[0], batch_size)  # pylint:disable=protected-access
+      new_tail = [_batch_rp_spec(rp, batch_size) for rp in spec._row_partitions]  # pylint:disable=protected-access
+      new_rp = [new_head] + new_tail
+      new_static_inner_shape = _batch_static_inner_shape(
+          spec._static_inner_shape, batch_size)  # pylint:disable=protected-access
+
+      return DynamicRaggedShape.Spec(
+          row_partitions=new_rp,
+          static_inner_shape=new_static_inner_shape,
+          dtype=spec.dtype)
+    elif batch_size is None:
+      if spec.inner_rank == 0:
+        return DynamicRaggedShape.Spec._from_tensor_shape([None],  # pylint:disable=protected-access
+                                                          0,
+                                                          dtype=spec.dtype)
+      else:
+        # Might be None
+        new_head = RowPartitionSpec(uniform_row_length=spec._dimension(0),  # pylint:disable=protected-access
+                                    dtype=spec.dtype)
+        new_static_inner_shape = _batch_static_inner_shape(
+            spec._static_inner_shape, batch_size)  # pylint:disable=protected-access
+        return DynamicRaggedShape.Spec(
+            row_partitions=[new_head],
+            static_inner_shape=new_static_inner_shape,
+            dtype=spec.dtype)
+    else:
+
+      return DynamicRaggedShape.Spec(
+          row_partitions=[],
+          static_inner_shape=_batch_tensor_shape(spec._static_inner_shape,  # pylint:disable=protected-access
+                                                 batch_size),
+          dtype=spec.dtype)
+
+  def unbatch(self,
+              spec: "DynamicRaggedShape.Spec") -> "DynamicRaggedShape.Spec":
+    if spec.num_row_partitions:
+      result = []
+      head = spec._row_partitions[0]  # pylint:disable=protected-access
+      scale = None if head.uniform_row_length is None else head.nrows
+
+      for rp in spec._row_partitions[1:]:  # pylint:disable=protected-access
+        if scale is None:
+          result.append(
+              RowPartitionSpec(
+                  nrows=None,
+                  nvals=None,
+                  uniform_row_length=rp.uniform_row_length,
+                  dtype=spec.dtype))
+        else:
+          nrows = None if rp.nrows is None else rp.nrows//scale
+          if rp.uniform_row_length is None:
+            scale = None
+            result.append(RowPartitionSpec(nrows=nrows,
+                                           nvals=None,
+                                           uniform_row_length=None,
+                                           dtype=spec.dtype))
+          else:
+            result.append(
+                RowPartitionSpec(
+                    nrows=nrows,
+                    nvals=rp.nvals // scale,
+                    uniform_row_length=rp.uniform_row_length,
+                    dtype=spec.dtype))
+      return DynamicRaggedShape.Spec(
+          row_partitions=result,
+          static_inner_shape=_unbatch_static_inner_shape(
+              spec._static_inner_shape, scale),  # pylint:disable=protected-access
+          dtype=spec.dtype)
+    else:  # spec.num_row_partitions == 0
+      return DynamicRaggedShape.Spec(
+          row_partitions=[],
+          static_inner_shape=spec._static_inner_shape[1:],  # pylint:disable=protected-access
+          dtype=spec.dtype)
+
+  def decode(self, spec: "DynamicRaggedShape.Spec", encoding
+             ) -> "DynamicRaggedShape":
+    return DynamicRaggedShape.from_tensor(encoding, dtype=spec.dtype)
+
+  def encode(self, spec: "DynamicRaggedShape.Spec", value, minimum_rank=0
+             ) -> Union[ragged_tensor.RaggedTensor, ops.Tensor]:
+    return ones(value, dtype=dtypes.bool)
+
+  def encoding_specs(
+      self,
+      spec: "DynamicRaggedShape.Spec"
+      ) -> Union[ragged_tensor.RaggedTensorSpec, tensor_spec.TensorSpec]:
+    if spec.rank != 0:
+      ragged_rank = spec.num_row_partitions
+    else:
+      # special case: need to unbatch twice to get ragged tensor.
+      ragged_rank = -1
+    return ragged_tensor.RaggedTensorSpec(
+        shape=spec._to_tensor_shape(),  # pylint:disable=protected-access
+        dtype=dtypes.bool,
+        ragged_rank=ragged_rank,
+        row_splits_dtype=spec.dtype)
+
+
 # TODO(martinz): allow inner_shape to be a fully defined TensorShape.
 # A "fully defined TensorShape" means one where the rank and all dimensions are
 # known.
@@ -53,7 +157,7 @@ from tensorflow.python.util.tf_export import tf_export
 # TODO(martinz): unify the impl of the determination of index type across
 #     RowPartition and DynamicRaggedShape.
 @tf_export("experimental.DynamicRaggedShape")
-class DynamicRaggedShape(extension_type.ExtensionType):
+class DynamicRaggedShape(extension_type.BatchableExtensionType):
   """The shape of a ragged or dense tensor.
 
   Ragged shapes are encoded using two fields:
@@ -86,6 +190,7 @@ class DynamicRaggedShape(extension_type.ExtensionType):
   _row_partitions: Tuple[RowPartition, ...]
   _inner_shape: ops.Tensor
   _static_inner_shape: tensor_shape.TensorShape
+  __batch_encoder__ = _DynamicRaggedShapeBatchEncoder()
 
   def __init__(self,
                row_partitions: Sequence[RowPartition],
@@ -3101,3 +3206,85 @@ def _merge_inner_shape(
 
   return (new_internal, new_internal_static)
 
+
+def _batch_rp_spec(rp_spec: RowPartitionSpec,
+                   batch_size: Optional[int]) -> RowPartitionSpec:
+  """Batches a RowPartitionSpec.
+
+  Given a RowPartitionSpec and a batch_size, create a RowPartitionSpec that
+  will be the spec for the concatenation of batch_size RowPartitions.
+
+  A RowPartition can be considered a transformation from a list of a given
+  length to a list of lists. Assume rp_a is a map from list_a to nlist_a,
+  And rp_b is a map from list_b to nlist_b. concat(rp_a, rp_b) is a
+  transform of concat(list_a, list_b) to concat(nlist_a, nlist_b).
+
+  If batch_size is None, then have the spec be able to handle an arbitrary
+  number of RowPartitions.
+
+  Args:
+    rp_spec: a RowPartitionSpec for all the RowPartitions to be concatenated.
+    batch_size: the number of rp_specs to be concatenated.
+  Returns:
+    a batched RowPartitionSpec.
+  """
+  if batch_size is None:
+    return RowPartitionSpec(uniform_row_length=rp_spec.uniform_row_length,
+                            dtype=rp_spec.dtype)
+  nrows = None if rp_spec.nrows is None else rp_spec.nrows * batch_size
+  nvals = None if rp_spec.nvals is None else rp_spec.nvals * batch_size
+  return RowPartitionSpec(
+      nrows=nrows, nvals=nvals, uniform_row_length=rp_spec.uniform_row_length,
+      dtype=rp_spec.dtype)
+
+
+def _batch_rp_spec_head(old_head: RowPartitionSpec,
+                        batch_size: Optional[int]) -> RowPartitionSpec:
+  """Creates a RowPartitionSpec representing the new dimension created."""
+  nvals = None if (old_head.nrows is None or
+                   batch_size is None) else batch_size * old_head.nrows
+  return RowPartitionSpec(
+      nrows=batch_size, nvals=nvals, uniform_row_length=old_head.nrows,
+      dtype=old_head.dtype)
+
+
+def _batch_static_inner_shape(
+    old_shape: tensor_shape.TensorShape,
+    batch_size: Optional[int]) -> tensor_shape.TensorShape:
+  """Returns a copy of old_shape with axis=0 multiplied by batch_size.
+
+  Only use if this is the inner_shape of a DynamicRaggedShape.Spec with one
+  or more row partitions.
+
+  Args:
+    old_shape: the original inner_shape.
+    batch_size: the batch size.
+
+  Returns:
+    a new shape.
+  """
+  head_dim = tensor_shape.dimension_at_index(old_shape, 0) * batch_size
+  return head_dim + old_shape[1:]
+
+
+def _batch_tensor_shape(old_shape: tensor_shape.TensorShape,
+                        batch_size: int) -> tensor_shape.TensorShape:
+  return tensor_shape.TensorShape([batch_size]) + old_shape
+
+
+def _unbatch_static_inner_shape(
+    old_shape: tensor_shape.TensorShape,
+    batch_size: Optional[int]) -> tensor_shape.TensorShape:
+  """Unbatch a static_inner_shape when num_row_partitions > 0."""
+  head_dim = tensor_shape.dimension_at_index(old_shape, 0) // batch_size
+  return head_dim + old_shape[1:]
+
+
+# Copied from ragged_array_ops.py
+def ones(shape: DynamicRaggedShape,
+         dtype=dtypes.float32,
+         name: Optional[str] = None) -> ragged_tensor.RaggedOrDense:
+  """Returns ones shaped like x."""
+  flat_values = array_ops.ones(shape.inner_shape, dtype=dtype, name=name)
+  return ragged_tensor.RaggedTensor._from_nested_row_partitions(  # pylint: disable=protected-access
+      flat_values, shape.row_partitions)
