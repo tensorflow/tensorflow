@@ -68,8 +68,9 @@ std::unique_ptr<GPUOperation> SelectPReLU(const PReLUAttributes& attr,
 }
 
 std::unique_ptr<GPUOperation> SelectPooling(const Pooling2DAttributes& attr,
+                                            const GpuInfo& gpu_info,
                                             const OperationDef& op_def) {
-  return std::make_unique<GPUOperation>(CreatePooling(op_def, attr));
+  return std::make_unique<GPUOperation>(CreatePooling(op_def, gpu_info, attr));
 }
 
 std::unique_ptr<GPUOperation> SelectMaxUnpooling(
