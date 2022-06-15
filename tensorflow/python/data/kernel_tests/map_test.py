@@ -25,6 +25,8 @@ import numpy as np
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_sanitizers
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
@@ -57,8 +59,6 @@ from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
-from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training.tracking import util as trackable_utils
 
 try:
   import attr  # pylint:disable=g-import-not-at-top
