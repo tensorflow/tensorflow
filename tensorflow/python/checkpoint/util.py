@@ -336,10 +336,10 @@ def _fill_object_graph_proto(graph_view,
   return object_graph_proto
 
 
-def _serialize_gathered_objects(graph_view,
-                                object_map=None,
-                                call_with_mapped_captures=None,
-                                saveables_cache=None):
+def serialize_gathered_objects(graph_view,
+                               object_map=None,
+                               call_with_mapped_captures=None,
+                               saveables_cache=None):
   """Create SaveableObjects and protos for gathered objects."""
   trackable_objects, node_paths = graph_view.breadth_first_traversal()
   object_names = object_identity.ObjectIdentityDictionary()
@@ -375,7 +375,7 @@ def _serialize_gathered_objects(graph_view,
 
 def serialize_object_graph_with_registered_savers(graph_view, saveables_cache):
   """Determine checkpoint keys for variables and build a serialized graph."""
-  return _serialize_gathered_objects(
+  return serialize_gathered_objects(
       graph_view, saveables_cache=saveables_cache)
 
 
@@ -391,8 +391,8 @@ def frozen_saveables_and_savers(graph_view,
     target_context = ops.NullContextmanager
   with target_context():
     named_saveable_objects, graph_proto, _, registered_savers = (
-        _serialize_gathered_objects(graph_view, object_map,
-                                    call_with_mapped_captures, saveables_cache))
+        serialize_gathered_objects(graph_view, object_map,
+                                   call_with_mapped_captures, saveables_cache))
     with ops.device("/cpu:0"):
       object_graph_tensor = constant_op.constant(
           graph_proto.SerializeToString(), dtype=dtypes.string)
