@@ -29,9 +29,6 @@ PyObject* Bfloat16Dtype();
 // Returns the id number of the bfloat16 numpy type.
 int Bfloat16NumpyType();
 
-// Returns a pointer to the float8_e4m3b11 dtype object.
-PyObject* Float8_E4M3B11Dtype();
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_LIB_CORE_BFLOAT16_H_
