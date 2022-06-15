@@ -598,15 +598,24 @@ class LogicalDeviceTest(test.TestCase, parameterized.TestCase):
         task_type='worker',
         task_id=0)
     gpus = tf_config.list_physical_devices('GPU')
-    tf_config.set_logical_device_configuration(gpus[-1], [
-        context.LogicalDeviceConfiguration(64),
-        context.LogicalDeviceConfiguration(64),
-    ])
+    logical_gpus = len(gpus) * 2
+    for i, device in enumerate(gpus):
+      n = (i + 1) * logical_gpus // len(gpus) - i * logical_gpus // len(gpus)
+      assert n > 0  # guaranteed if count >= len(devices)
+      configs = []
+      for ordinal in range(n):
+        config = context.LogicalDeviceConfiguration(
+            memory_limit=64,
+            experimental_device_ordinal=ordinal)
+        configs.append(config)
+
+      tf_config.set_logical_device_configuration(device, configs)
+
     collective_all_reduce_strategy.CollectiveAllReduceStrategy(
         cluster_resolver=resolver)
     # Since we create two logical GPUs out of the last GPU, there should be one
     # more logical GPUs than physical GPUs.
-    self.assertLen(tf_config.list_logical_devices('GPU'), len(gpus) + 1)
+    self.assertLen(tf_config.list_logical_devices('GPU'), logical_gpus)
     context._reset_context()  # pylint: disable=protected-access
 
 
