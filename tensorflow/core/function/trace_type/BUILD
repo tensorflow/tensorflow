@@ -1,5 +1,9 @@
 load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
 load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
 
 package(
     licenses = ["notice"],
@@ -77,3 +81,61 @@ py_strict_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+pytype_strict_library(
+    name = "serialization",
+    srcs = [
+        "serialization.py",
+    ],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = ["//tensorflow/core/function/trace_type:serialization_proto_py"],
+)
+
+py_strict_test(
+    name = "serialization_test",
+    srcs = ["serialization_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":serialization",
+        "//tensorflow/core/function/trace_type:serialization_test_proto_py",
+        "//tensorflow/python/platform:client_testlib",
+    ],
+)
+
+tf_proto_library(
+    name = "serialization_proto",
+    srcs = [
+        "serialization.proto",
+    ],
+    cc_api_version = 2,
+    visibility = ["//tensorflow:internal"],
+)
+
+tf_proto_library(
+    name = "serialization_test_proto",
+    srcs = [
+        "serialization_test.proto",
+    ],
+    cc_api_version = 2,
+    protodeps = [
+        ":serialization_proto",
+    ],
+    visibility = ["//tensorflow:internal"],
+)
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "serialization_py_pb2",
+#     api_version = 2,
+#     visibility = ["//tensorflow:internal"],
+#     deps = [":serialization_proto"],
+# )
+#
+# py_proto_library(
+#     name = "serialization_test_py_pb2",
+#     api_version = 2,
+#     visibility = ["//tensorflow:internal"],
+#     deps = [":serialization_test_proto"],
+# )
+# copybara:uncomment_end
