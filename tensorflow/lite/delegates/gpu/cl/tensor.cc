@@ -431,7 +431,7 @@ absl::Status Tensor::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
   } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_2D ||
              descriptor_.storage_type == TensorStorageType::SINGLE_TEXTURE_2D) {
     if (obj_ptr->GetAccess() == AccessType::WRITE &&
-        tensor_desc->use_buffer_for_write_only_2d_texture) {
+        tensor_desc->GetUseBufferForWriteOnlyTexture2d()) {
       resources->ints.push_back(
           {"aligned_texture_width", aligned_texture_width_});
       resources->buffers.push_back({"buffer", memory_});
@@ -445,7 +445,7 @@ absl::Status Tensor::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
     resources->images3d.push_back({"image3d", memory_});
   } else if (descriptor_.storage_type == TensorStorageType::IMAGE_BUFFER) {
     if (obj_ptr->GetAccess() == AccessType::WRITE &&
-        tensor_desc->use_buffer_for_write_only_image_buffer) {
+        tensor_desc->GetUseBufferForWriteOnlyImageBuffer()) {
       resources->buffers.push_back({"buffer", memory_});
     } else {
       resources->image_buffers.push_back(
