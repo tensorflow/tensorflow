@@ -24,6 +24,27 @@ limitations under the License.
 namespace mlir {
 namespace lmhlo {
 
+// TODO(b/236017415): remove when mhlo uses prefix accessor.
+namespace accessor_dispatch {
+template <typename OpT>
+auto getResults(OpT op, int) -> decltype(op.getResults(), ValueRange{}) {
+  return op.getResults();
+}
+template <typename OpT>
+auto getResults(OpT op, char) -> decltype(op.results(), ValueRange{}) {
+  return op.results();
+}
+
+template <typename OpT>
+auto getOperands(OpT op, int) -> decltype(op.getOperands(), ValueRange{}) {
+  return op.getOperands();
+}
+template <typename OpT>
+auto getOperands(OpT op, char) -> decltype(op.operands(), ValueRange{}) {
+  return op.operands();
+}
+}  // namespace accessor_dispatch
+
 template <typename OpT>
 static LogicalResult VerifyAllReduce(OpT op) {
   if (failed(mlir::hlo::VerifyReplicaGroups(op, /*is_uniform_sized=*/false)))
@@ -33,7 +54,8 @@ static LogicalResult VerifyAllReduce(OpT op) {
   // Each member of the operand should have the same type as the corresponding
   // member of the result.
   for (auto it : llvm::enumerate(
-           llvm::zip(op.operands().getTypes(), op.results().getTypes()))) {
+           llvm::zip(accessor_dispatch::getOperands(op, 0).getTypes(),
+                     accessor_dispatch::getResults(op, 0).getTypes()))) {
     Type operandType = std::get<0>(it.value());
     Type resultType = std::get<1>(it.value());
     if (operandType != resultType)

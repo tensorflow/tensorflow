@@ -71,8 +71,8 @@ LmhloDialect::LmhloDialect(MLIRContext* context)
 
 LogicalResult AbsOp::verify() {
   AbsOp op = *this;
-  auto operandType = getElementTypeOrSelf(op.input().getType());
-  auto outputType = getElementTypeOrSelf(op.output().getType());
+  auto operandType = getElementTypeOrSelf(op.getInput().getType());
+  auto outputType = getElementTypeOrSelf(op.getOutput().getType());
   if (auto complexType = operandType.dyn_cast<ComplexType>()) {
     if (complexType.getElementType() != outputType) {
       return op.emitOpError(
@@ -121,8 +121,8 @@ LogicalResult ReduceScatterOp::verify() {
     return failure();
   if (failed(mlir::hlo::VerifyReduceScatter(
           op, /*operand_types=*/op.operands().getTypes(),
-          /*result_types=*/op.results().getTypes(),
-          /*scatter_dimension=*/op.scatter_dimension())))
+          /*result_types=*/op.getResults().getTypes(),
+          /*scatter_dimension=*/op.getScatterDimension())))
     return failure();
   return success();
 }
@@ -136,7 +136,7 @@ void CaseOp::getSuccessorRegions(Optional<unsigned> index,
                                  SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the CaseOp, branch to all other branches.
   if (!index.hasValue()) {
-    for (auto& branch : branches())
+    for (auto& branch : getBranches())
       regions.push_back(RegionSuccessor(&branch, branch.getArguments()));
   }
   // If the predecessor is one of the branches, branch back to the parent
@@ -151,7 +151,7 @@ void CaseOp::getSuccessorRegions(Optional<unsigned> index,
 LogicalResult CollectivePermuteOp::verify() {
   CollectivePermuteOp op = *this;
   return mlir::hlo::VerifyCollectivePermuteSourceTargetPairs(
-      op, op.source_target_pairs());
+      op, op.getSourceTargetPairs());
 }
 
 //===----------------------------------------------------------------------===//
@@ -167,7 +167,7 @@ struct EraseConstantOp : public OpRewritePattern<ConstantOp> {
 
   LogicalResult matchAndRewrite(ConstantOp op,
                                 PatternRewriter& rewriter) const override {
-    Value memref = op.output();
+    Value memref = op.getOutput();
     if (!memref.getDefiningOp<memref::AllocOp>()) {
       return failure();
     }
@@ -192,8 +192,8 @@ void ConstantOp::getCanonicalizationPatterns(RewritePatternSet& results,
 
 LogicalResult CustomCallOp::verify() {
   CustomCallOp op = *this;
-  if (op.target_arg_mapping()) {
-    CustomCallTargetArgMapping mapping = *op.target_arg_mapping();
+  if (op.getTargetArgMapping()) {
+    CustomCallTargetArgMapping mapping = *op.getTargetArgMapping();
     auto verifyMapping = [&](int64_t targetNum, size_t opNum, ArrayAttr mapping,
                              StringRef kind) -> LogicalResult {
       if (targetNum < opNum)
@@ -226,9 +226,10 @@ LogicalResult CustomCallOp::verify() {
       }
       return success();
     };
-    if (failed(verifyMapping(mapping.num_args().getInt(), op.args().size(),
+    if (failed(verifyMapping(mapping.num_args().getInt(), op.getArgs().size(),
                              mapping.args_to_target_args(), "args")) ||
-        failed(verifyMapping(mapping.num_results().getInt(), op.output().size(),
+        failed(verifyMapping(mapping.num_results().getInt(),
+                             op.getOutput().size(),
                              mapping.results_to_target_results(), "results")))
       return failure();
   }
@@ -246,8 +247,8 @@ LogicalResult CustomCallOp::verify() {
 //     configurations are applied to the operand.
 LogicalResult PadOp::verify() {
   PadOp op = *this;
-  auto operandType = op.operand().getType().dyn_cast<ShapedType>();
-  auto outputType = op.output().getType().dyn_cast<ShapedType>();
+  auto operandType = op.getOperand().getType().dyn_cast<ShapedType>();
+  auto outputType = op.getOutput().getType().dyn_cast<ShapedType>();
   if (!(operandType && outputType && operandType.hasRank() &&
         outputType.hasRank())) {
     return success();
@@ -261,9 +262,9 @@ LogicalResult PadOp::verify() {
            << ") is not same as operand's rank(" << rank << ")";
   }
 
-  auto edgePadLowRanges = op.edge_padding_low().getValues<int64_t>();
-  auto edgePadHighRanges = op.edge_padding_high().getValues<int64_t>();
-  auto interiorPadRanges = op.interior_padding().getValues<int64_t>();
+  auto edgePadLowRanges = op.getEdgePaddingLow().getValues<int64_t>();
+  auto edgePadHighRanges = op.getEdgePaddingHigh().getValues<int64_t>();
+  auto interiorPadRanges = op.getInteriorPadding().getValues<int64_t>();
   // Checks if padding configurations are specified for each dimension.
   if (edgePadLowRanges.size() != rank || edgePadHighRanges.size() != rank ||
       interiorPadRanges.size() != rank) {
@@ -309,7 +310,7 @@ struct RemoveCopyInReduceBody : public OpRewritePattern<ReduceOp> {
                                 PatternRewriter& rewriter) const override {
     // Find the only `lmhlo.copy` in the body of `reduce`.
     CopyOp theOnlyCopy;
-    for (auto& op : reduce.body().front()) {
+    for (auto& op : reduce.getBody().front()) {
       if (auto copy = dyn_cast<lmhlo::CopyOp>(op)) {
         if (theOnlyCopy == nullptr) {
           theOnlyCopy = copy;
@@ -322,22 +323,22 @@ struct RemoveCopyInReduceBody : public OpRewritePattern<ReduceOp> {
     if (!theOnlyCopy) return failure();
 
     auto newReduce = rewriter.cloneWithoutRegions(reduce);
-    auto& oldReduceBody = reduce.body().front();
+    auto& oldReduceBody = reduce.getBody().front();
     Block* newBlock = rewriter.createBlock(
-        &newReduce.body(), newReduce.body().end(),
+        &newReduce.getBody(), newReduce.getBody().end(),
         oldReduceBody.getArgumentTypes(),
         SmallVector<Location>(oldReduceBody.getNumArguments(),
                               reduce.getLoc()));
 
     mlir::BlockAndValueMapping bvm;
-    for (auto item : llvm::zip(reduce.body().front().getArguments(),
+    for (auto item : llvm::zip(reduce.getBody().front().getArguments(),
                                newBlock->getArguments())) {
       bvm.map(std::get<0>(item), std::get<1>(item));
     }
-    bvm.map(theOnlyCopy.operand(), bvm.lookup(theOnlyCopy.output()));
+    bvm.map(theOnlyCopy.getOperand(), bvm.lookup(theOnlyCopy.getOutput()));
 
     rewriter.setInsertionPointToStart(newBlock);
-    for (auto& op : reduce.body().front()) {
+    for (auto& op : reduce.getBody().front()) {
       if (llvm::isa<lmhlo::CopyOp>(op) || llvm::isa<memref::DeallocOp>(op) ||
           llvm::isa<memref::AllocOp>(op))
         continue;
@@ -360,7 +361,7 @@ void ReduceOp::getCanonicalizationPatterns(RewritePatternSet& results,
 // For reduce-window, all `inputs` need to have compatible shapes.
 LogicalResult ReduceWindowOp::verify() {
   ReduceWindowOp op = *this;
-  if (failed(verifyCompatibleShapes(op.inputs().getTypes())))
+  if (failed(verifyCompatibleShapes(op.getInputs().getTypes())))
     return op.emitOpError() << "requires same shape for all operands";
   return success();
 }
@@ -375,16 +376,16 @@ void WhileOp::getSuccessorRegions(Optional<unsigned> index,
   // If the predecessor is the WhileOp or the body region, branch into the
   // cond region.
   if (!index.hasValue() || index.getValue() == 1) {
-    regions.push_back(RegionSuccessor(&cond(), cond().getArguments()));
+    regions.push_back(RegionSuccessor(&getCond(), getCond().getArguments()));
     return;
   }
   // If the predecessor is the cond region, we can branch to the body region
   // or back to the parent operation.
-  regions.push_back(RegionSuccessor(&body(), body().getArguments()));
+  regions.push_back(RegionSuccessor(&getBody(), getBody().getArguments()));
   regions.push_back(RegionSuccessor());
 }
 
-Region& WhileOp::getLoopBody() { return body(); }
+Region& WhileOp::getLoopBody() { return getBody(); }
 
 // suppress warning.
 
@@ -418,7 +419,8 @@ void FusionOp::getSuccessorRegions(Optional<unsigned> index,
     regions.push_back(RegionSuccessor());
   } else {
     // If the predecessor is the FusionOp, branch into the region.
-    regions.push_back(RegionSuccessor(&region(), region().getArguments()));
+    regions.push_back(
+        RegionSuccessor(&getRegion(), getRegion().getArguments()));
   }
 }
 

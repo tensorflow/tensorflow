@@ -140,26 +140,26 @@ namespace impl {
 template <typename OpT>
 bool CanImplement(OpT op) {
   return absl::c_all_of(op.operands(), IsValidOperand) &&
-         NcclAllReduceThunkBase::MatchAllReduceComputation(op.computation())
+         NcclAllReduceThunkBase::MatchAllReduceComputation(op.getComputation())
              .has_value();
 }
 
 template <typename OpT>
 NcclAllReduceConfig GetNcclAllReduceConfig(OpT op) {
   std::optional<ReductionKind> reduction_kind =
-      NcclAllReduceThunkBase::MatchAllReduceComputation(op.computation());
+      NcclAllReduceThunkBase::MatchAllReduceComputation(op.getComputation());
   CHECK(reduction_kind.has_value());
 
   NcclAllReduceConfig config;
   config.config =
-      GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids());
+      GetNcclCollectiveConfigForMlir(op, op.getUseGlobalDeviceIds());
   config.reduction_kind = *reduction_kind;
   return config;
 }
 
 template <typename OpT>
 bool IsDegenerate(OpT op, int64_t replica_count, int64_t partition_count) {
-  return GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids())
+  return GetNcclCollectiveConfigForMlir(op, op.getUseGlobalDeviceIds())
       .IsDegenerate(replica_count, partition_count);
 }
 

@@ -364,18 +364,19 @@ bool IsBlasPlansCompatibleType(PrimitiveType type) {
 /*static*/ StatusOr<GemmConfig> GemmConfig::For(mlir::Operation* op,
                                                 bool use_cublaslt) {
   auto get_config = [&](auto op, llvm::APFloat beta) {
-    mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.dot_dimension_numbers();
+    mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
 
     std::optional<int64_t> algorithm;
-    if (op.algorithm()) algorithm = *op.algorithm();
+    if (op.getAlgorithm()) algorithm = *op.getAlgorithm();
 
     return GemmConfig::For(
-        GetShape(op.lhs()), dot_dims.getLhsBatchingDimensions(),
-        dot_dims.getLhsContractingDimensions(), GetShape(op.rhs()),
+        GetShape(op.getLhs()), dot_dims.getLhsBatchingDimensions(),
+        dot_dims.getLhsContractingDimensions(), GetShape(op.getRhs()),
         dot_dims.getRhsBatchingDimensions(),
-        dot_dims.getRhsContractingDimensions(), GetShape(op.output()),
-        op.alpha_real().convertToDouble(), op.alpha_imag().convertToDouble(),
-        beta.convertToDouble(), algorithm, use_cublaslt);
+        dot_dims.getRhsContractingDimensions(), GetShape(op.getOutput()),
+        op.getAlphaReal().convertToDouble(),
+        op.getAlphaImag().convertToDouble(), beta.convertToDouble(), algorithm,
+        use_cublaslt);
   };
 
   if (auto gemm = mlir::dyn_cast<mlir::lmhlo_gpu::GEMMOp>(op))
@@ -383,7 +384,7 @@ bool IsBlasPlansCompatibleType(PrimitiveType type) {
 
   auto gemm = mlir::dyn_cast<mlir::lmhlo_gpu::GEMM_BiasOp>(op);
   TF_RET_CHECK(gemm != nullptr);
-  return get_config(gemm, gemm.beta());
+  return get_config(gemm, gemm.getBeta());
 }
 
 se::blas::MatrixDescriptor GetMatrixDesc(const MatrixLayout& layout,

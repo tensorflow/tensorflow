@@ -40,7 +40,7 @@ namespace gpu {
     mlir::lmhlo::AllGatherOp op) {
   NcclAllGatherConfig config;
   config.config =
-      GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids());
+      GetNcclCollectiveConfigForMlir(op, op.getUseGlobalDeviceIds());
   return config;
 }
 
@@ -49,7 +49,7 @@ namespace gpu {
     Shape shape = GetShape(operand);
     return LayoutUtil::IsDenseArray(shape) &&
            IsTypeSupportedByNccl(shape.element_type()) &&
-           LayoutUtil::MinorToMajor(shape).back() == op.all_gather_dimension();
+           LayoutUtil::MinorToMajor(shape).back() == op.getAllGatherDimension();
   });
 }
 

@@ -178,7 +178,7 @@ class HloToLhloOpConverter<mhlo::DotOp> : public BaseOpConversion<mhlo::DotOp> {
         rewriter.getContext(), /*lhsBatchingDimensions=*/{},
         /*rhsBatchingDimensions=*/{}, /*lhsContractingDimensions=*/{1},
         /*rhsContractingDimensions=*/{0});
-    dotOp.dot_dimension_numbersAttr(dimensionNumbers);
+    dotOp.setDotDimensionNumbersAttr(dimensionNumbers);
     rewriter.replaceOp(
         op, ArrayRef<Value>(bufferArgs).slice(adaptor.getOperands().size()));
     return success();
@@ -273,10 +273,11 @@ struct HloToLhloReduceLikeOpConverter : public BaseOpConversion<HloOpTy> {
         loc, llvm::None, bufferArgs, op->getAttrs());
 
     // Copy over the operations inside the region.
-    rewriter.inlineRegionBefore(hloOp.body(), newOp.body(), newOp.body().end());
+    rewriter.inlineRegionBefore(hloOp.body(), newOp.getBody(),
+                                newOp.getBody().end());
 
     // Convert the region signature to memref and add extra result.
-    auto& entryBlock = newOp.body().front();
+    auto& entryBlock = newOp.getBody().front();
     TypeConverter::SignatureConversion sigConversion(
         adaptor.getOperands().size());
     for (auto arg : entryBlock.getArguments()) {
@@ -306,7 +307,7 @@ struct HloToLhloReduceLikeOpConverter : public BaseOpConversion<HloOpTy> {
                                                  resultType.getElementType())});
       }
     }
-    rewriter.applySignatureConversion(&newOp.body(), sigConversion);
+    rewriter.applySignatureConversion(&newOp.getBody(), sigConversion);
 
     rewriter.replaceOp(
         op, ArrayRef<Value>(bufferArgs).slice(adaptor.getOperands().size()));

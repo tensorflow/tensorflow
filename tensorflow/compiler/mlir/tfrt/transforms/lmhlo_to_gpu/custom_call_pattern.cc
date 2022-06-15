@@ -41,7 +41,7 @@ struct CustomCallRewritePattern
       lmhlo::CustomCallOp op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
     llvm::SmallVector<int32_t, 4> indices;
-    if (auto mapping = op.target_arg_mapping()) {
+    if (auto mapping = op.getTargetArgMapping()) {
       auto num_args = mapping->num_args().getInt();
       auto num_results = mapping->num_results().getInt();
       indices.resize(num_args + num_results, -1);
@@ -50,18 +50,18 @@ struct CustomCallRewritePattern
       }
       for (auto pair : llvm::enumerate(mapping->results_to_target_results())) {
         indices[pair.value().cast<IntegerAttr>().getInt() + num_args] =
-            pair.index() + op.args().size();
+            pair.index() + op.getArgs().size();
       }
     } else {
-      int32_t num_indices = op.args().size() + op.output().size();
+      int32_t num_indices = op.getArgs().size() + op.getOutput().size();
       indices.reserve(num_indices);
       llvm::copy(llvm::seq(0, num_indices), std::back_inserter(indices));
     }
 
     Value result = rewriter.create<xla::gpu::CustomCallOp>(
         op.getLoc(), chain.getType(), stream, adaptor.getOperands(), chain,
-        op.call_target_nameAttr(), rewriter.getI32ArrayAttr(indices),
-        op.backend_configAttr());
+        op.getCallTargetNameAttr(), rewriter.getI32ArrayAttr(indices),
+        op.getBackendConfigAttr());
     rewriter.eraseOp(op);
     return result;
   }
