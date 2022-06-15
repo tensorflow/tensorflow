@@ -89,7 +89,6 @@ objc_library(
     sdk_frameworks = ["XCTest"],
     deps = [
         ":common",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:test_util",
     ],
 )
 
@@ -351,15 +350,11 @@ objc_library(
     ],
     sdk_frameworks = ["XCTest"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/metal:buffer",
         "//tensorflow/lite/delegates/gpu/metal:common",
-        "//tensorflow/lite/delegates/gpu/metal:inference_context",
         "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
         "//tensorflow/lite/delegates/gpu/metal:texture2d",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:test_util",
-        "@com_google_absl//absl/memory",
     ],
 )
 

@@ -172,7 +172,8 @@ std::string GenerateConvolution(const ConvolutionMetal::ConvParams& params,
 
   const bool use_filters_constants =
       !params.need_dst_loop && !params.need_src_loop && params.x_kernel_is_1 &&
-      params.y_kernel_is_1 && !params.groups_support;
+      params.y_kernel_is_1 && !params.groups_support &&
+      !params.different_weights_for_height;
 
   const auto src_storage_type = definition.src_tensors[0].storage_type;
   const auto dst_storage_type = definition.dst_tensors[0].storage_type;
@@ -689,11 +690,13 @@ WorkGroupSizeOption CreateWorkGroupSizeOption(
   return wg;
 }
 
-ConvolutionMetal::ConvParams GetConvParamsForA7A8(
-    const AppleInfo& apple_info, const Convolution2DAttributes& attr,
-    const BHWC& dst_shape) {
+ConvolutionMetal::ConvParams GetConvParamsForA7A8(const AppleInfo& apple_info,
+                                                  bool x_kernel_is_1,
+                                                  bool y_kernel_is_1,
+                                                  int src_channels,
+                                                  const BHWC& dst_shape) {
   const int dst_slices = DivideRoundUp(dst_shape.c, 4);
-  const int src_slices = DivideRoundUp(attr.weights.shape.i, 4);
+  const int src_slices = DivideRoundUp(src_channels, 4);
   int blk_total_size = GetRecommendedBlockSize(apple_info, dst_shape);
   int3 block_size = int3(1, 1, 1);
   if (blk_total_size >= 4 && (dst_slices % 4 == 0 || dst_slices >= 16)) {
@@ -719,8 +722,8 @@ ConvolutionMetal::ConvParams GetConvParamsForA7A8(
   ConvolutionMetal::ConvParams params;
   params.weights_upload_type =
       ConvolutionMetal::WeightsUploadType::LOCAL_MEM_BY_THREADS;
-  params.x_kernel_is_1 = IsKernelXIs1(attr);
-  params.y_kernel_is_1 = IsKernelYIs1(attr);
+  params.x_kernel_is_1 = x_kernel_is_1;
+  params.y_kernel_is_1 = y_kernel_is_1;
   params.src_depth_loop_size = 1;
   params.block_size = block_size;
   params.weights_layout = WeightsLayout::kOSpatialIOGroupO4I4;
@@ -822,10 +825,10 @@ ConvolutionMetal::ConvParams GetConvParamsForA7A8(
 }
 
 ConvolutionMetal::ConvParams GetConvParamsForA9AndHigher(
-    const AppleInfo& apple_info, const Convolution2DAttributes& attr,
-    const BHWC& dst_shape) {
+    const AppleInfo& apple_info, bool x_kernel_is_1, bool y_kernel_is_1,
+    int src_channels, const BHWC& dst_shape) {
   const int dst_slices = DivideRoundUp(dst_shape.c, 4);
-  const int src_slices = DivideRoundUp(attr.weights.shape.i, 4);
+  const int src_slices = DivideRoundUp(src_channels, 4);
   int blk_total_size = GetRecommendedBlockSize(apple_info, dst_shape);
   int3 block_size = int3(1, 1, 1);
   if (blk_total_size >= 2 && apple_info.IsBionic()) {
@@ -850,8 +853,8 @@ ConvolutionMetal::ConvParams GetConvParamsForA9AndHigher(
 
   ConvolutionMetal::ConvParams params;
   params.weights_upload_type = ConvolutionMetal::WeightsUploadType::GLOBAL_MEM;
-  params.x_kernel_is_1 = IsKernelXIs1(attr);
-  params.y_kernel_is_1 = IsKernelYIs1(attr);
+  params.x_kernel_is_1 = x_kernel_is_1;
+  params.y_kernel_is_1 = y_kernel_is_1;
   params.src_depth_loop_size = 1;
   params.block_size = block_size;
   params.linear_wh = false;
@@ -905,14 +908,17 @@ ConvolutionMetal::ConvParams GetConvParamsForA9AndHigher(
 }
 
 ConvolutionMetal::ConvParams GetConvParams(const GpuInfo& gpu_info,
-                                           const Convolution2DAttributes& attr,
-                                           CalculationsPrecision precision,
+                                           bool x_kernel_is_1,
+                                           bool y_kernel_is_1, int src_channels,
                                            const BHWC& dst_shape) {
   if (gpu_info.IsApple()) {
     if (gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
-      return GetConvParamsForA7A8(gpu_info.apple_info, attr, dst_shape);
+      return GetConvParamsForA7A8(gpu_info.apple_info, x_kernel_is_1,
+                                  y_kernel_is_1, src_channels, dst_shape);
     } else {
-      return GetConvParamsForA9AndHigher(gpu_info.apple_info, attr, dst_shape);
+      return GetConvParamsForA9AndHigher(gpu_info.apple_info, x_kernel_is_1,
+                                         y_kernel_is_1, src_channels,
+                                         dst_shape);
     }
   } else {
     ConvolutionMetal::ConvParams params;
@@ -927,14 +933,79 @@ ConvolutionMetal::ConvParams GetConvParams(const GpuInfo& gpu_info,
     params.weights_upload_type =
         ConvolutionMetal::WeightsUploadType::GLOBAL_MEM;
     params.different_weights_for_height = false;
-    params.x_kernel_is_1 = IsKernelXIs1(attr);
-    params.y_kernel_is_1 = IsKernelYIs1(attr);
+    params.x_kernel_is_1 = x_kernel_is_1;
+    params.y_kernel_is_1 = y_kernel_is_1;
     params.weights_layout = WeightsLayout::kOSpatialIOGroupO4I4;
     return params;
   }
 }
 
 }  // namespace
+
+ConvolutionMetal::ConvolutionMetal(const OperationDef& definition,
+                                   const ConvParams& params,
+                                   const Convolution2DAttributes* attr)
+    : GPUOperation(definition), params_(params) {
+  bool stride_correction = false;
+  if (attr) {
+    stride_correction = definition.IsBatchSupported() && attr->strides.w != 1;
+
+    args_.AddInt("kernel_size_x", attr->weights.shape.w);
+    args_.AddInt("kernel_size_y", attr->weights.shape.h);
+    args_.AddInt("dilation_x", attr->dilations.w);
+    args_.AddInt("dilation_y", attr->dilations.h);
+    args_.AddInt("stride_x", attr->strides.w);
+    args_.AddInt("stride_y", attr->strides.h);
+    args_.AddInt("padding_x", -attr->padding.prepended.w);
+    args_.AddInt("padding_y", -attr->padding.prepended.h);
+    padding_ = int2(-attr->padding.prepended.w, -attr->padding.prepended.h);
+    dilation_ = int2(attr->dilations.w, attr->dilations.h);
+  } else {
+    args_.AddInt("kernel_size_x", 1);
+    args_.AddInt("kernel_size_y", 1);
+    args_.AddInt("dilation_x", 1);
+    args_.AddInt("dilation_y", 1);
+    args_.AddInt("stride_x", 1);
+    args_.AddInt("stride_y", 1);
+    args_.AddInt("padding_x", 0);
+    args_.AddInt("padding_y", 0);
+    padding_ = int2(0, 0);
+    dilation_ = int2(1, 1);
+  }
+
+  code_ = GenerateConvolution(params, definition, stride_correction);
+
+  auto src_desc = definition.src_tensors[0];
+  if (definition.IsBatchSupported()) {
+    src_desc.SetStateVar("BatchedWidth", "true");
+  }
+  AddSrcTensor("src_tensor", src_desc);
+  auto dst_desc = definition.dst_tensors[0];
+  if (definition.IsBatchSupported()) {
+    dst_desc.SetStateVar("BatchedWidth", "true");
+  }
+  AddDstTensor("dst_tensor", dst_desc);
+
+  if (params.groups_support) {
+    const int src_slices = DivideRoundUp(attr->weights.shape.i, 4);
+    const int dst_slices = DivideRoundUp(attr->weights.shape.o, 4);
+    args_.AddInt("src_group_size", src_slices);
+    args_.AddInt("dst_group_size", dst_slices / attr->groups);
+  }
+
+  args_.AddInt("task_size_x");
+  args_.AddInt("task_size_y");
+
+  work_group_size_ = params.work_group_size;
+  work_group_launch_order_ = params.work_group_launch_order;
+  if (params.linear_whs) {
+    grid_dimension_ = 1;
+  } else if (params.linear_wh) {
+    grid_dimension_ = 2;
+  } else {
+    grid_dimension_ = 3;
+  }
+}
 
 absl::Status ConvolutionMetal::BindArguments(ArgumentsBinder* args) {
   RETURN_IF_ERROR(args->SetInt("padding_x", padding_.x * src_[0]->Batch()));
@@ -965,19 +1036,45 @@ int3 ConvolutionMetal::GetGridSize() const {
   }
 }
 
+void ConvolutionMetal::UploadWeights(
+    const Tensor<OHWI, DataType::FLOAT32>& weights) {
+  const auto weights_layout_desc = GetWeightsDescription();
+  BufferDescriptor weights_desc;
+  weights_desc.element_type = weights_layout_desc.type;
+  weights_desc.element_size = 4;
+  weights_desc.memory_type = params_.GetMemoryType();
+  weights_desc.data = ReorderWeightsForConv(weights, weights_layout_desc);
+  weights_desc.size = weights_desc.data.size();
+  args_.AddObject("weights",
+                  std::make_unique<BufferDescriptor>(std::move(weights_desc)));
+}
+
+void ConvolutionMetal::UploadBiases(
+    const Tensor<Linear, DataType::FLOAT32>& biases) {
+  const auto weights_layout_desc = GetWeightsDescription();
+  BufferDescriptor bias_desc;
+  bias_desc.element_type = weights_layout_desc.type;
+  bias_desc.element_size = 4;
+  bias_desc.memory_type = params_.GetMemoryType();
+  bias_desc.data =
+      ReorderBiasesForConv(biases, weights_layout_desc.type,
+                           AlignByN(biases.shape.v, params_.block_size.z * 4));
+  bias_desc.size = bias_desc.data.size();
+  args_.AddObject("biases",
+                  std::make_unique<BufferDescriptor>(std::move(bias_desc)));
+}
+
 ConvolutionMetal CreateConvolutionMetal(const OperationDef& definition,
                                         const BHWC& dst_shape,
                                         const Convolution2DAttributes& attr,
                                         const GpuInfo& gpu_info) {
   BHWC new_shape = BHWC(1, dst_shape.h, dst_shape.w * dst_shape.b, dst_shape.c);
   ConvolutionMetal::ConvParams params =
-      GetConvParams(gpu_info, attr, definition.precision, new_shape);
-
-  ConvolutionMetal desc(definition);
-  const int src_slices = DivideRoundUp(attr.weights.shape.i, 4);
-  const int dst_slices = DivideRoundUp(attr.weights.shape.o, 4);
+      GetConvParams(gpu_info, IsKernelXIs1(attr), IsKernelYIs1(attr),
+                    attr.weights.shape.i, new_shape);
   if (attr.groups != 1) {
     params.groups_support = true;
+    const int dst_slices = DivideRoundUp(attr.weights.shape.o, 4);
     const int dst_group_slices = dst_slices / attr.groups;
     if (dst_group_slices % params.block_size.z != 0) {
       if (params.block_size.z == 4 && dst_group_slices % 2 == 0) {
@@ -986,41 +1083,9 @@ ConvolutionMetal CreateConvolutionMetal(const OperationDef& definition,
         params.block_size.z = 1;
       }
     }
-    desc.args_.AddInt("src_group_size", src_slices);
-    desc.args_.AddInt("dst_group_size", dst_slices / attr.groups);
   }
-  desc.params_ = params;
-  const bool stride_correction =
-      definition.IsBatchSupported() && attr.strides.w != 1;
-  desc.code_ = GenerateConvolution(params, definition, stride_correction);
 
-  auto src_desc = definition.src_tensors[0];
-  if (definition.IsBatchSupported()) {
-    src_desc.SetStateVar("BatchedWidth", "true");
-  }
-  desc.AddSrcTensor("src_tensor", src_desc);
-  auto dst_desc = definition.dst_tensors[0];
-  if (definition.IsBatchSupported()) {
-    dst_desc.SetStateVar("BatchedWidth", "true");
-  }
-  desc.AddDstTensor("dst_tensor", dst_desc);
-
-  desc.args_.AddInt("kernel_size_x", attr.weights.shape.w);
-  desc.args_.AddInt("kernel_size_y", attr.weights.shape.h);
-  desc.args_.AddInt("dilation_x", attr.dilations.w);
-  desc.args_.AddInt("dilation_y", attr.dilations.h);
-  desc.args_.AddInt("stride_x", attr.strides.w);
-  desc.args_.AddInt("stride_y", attr.strides.h);
-  desc.args_.AddInt("padding_x", -attr.padding.prepended.w);
-  desc.args_.AddInt("padding_y", -attr.padding.prepended.h);
-  desc.padding_ = int2(-attr.padding.prepended.w, -attr.padding.prepended.h);
-  desc.dilation_ = int2(attr.dilations.w, attr.dilations.h);
-
-  MemoryType mem_type =
-      params.weights_upload_type ==
-              ConvolutionMetal::WeightsUploadType::CONSTANT_MEM
-          ? MemoryType::CONSTANT
-          : MemoryType::GLOBAL;
+  ConvolutionMetal desc(definition, params, &attr);
 
   const auto weights_layout_desc = desc.GetWeightsDescription();
   if (definition.src_tensors.size() == 2) {
@@ -1028,43 +1093,13 @@ ConvolutionMetal CreateConvolutionMetal(const OperationDef& definition,
     BufferDescriptor weights_desc;
     weights_desc.element_type = definition.src_tensors[1].data_type;
     weights_desc.element_size = 4;
-    weights_desc.memory_type = mem_type;
+    weights_desc.memory_type = params.GetMemoryType();
     desc.AddSrcBuffer("weights", weights_desc);
   } else {
-    BufferDescriptor weights_desc;
-    weights_desc.element_type = weights_layout_desc.type;
-    weights_desc.element_size = 4;
-    weights_desc.memory_type = mem_type;
-    weights_desc.data =
-        ReorderWeightsForConv(attr.weights, weights_layout_desc);
-    weights_desc.size = weights_desc.data.size();
-    desc.args_.AddObject(
-        "weights", std::make_unique<BufferDescriptor>(std::move(weights_desc)));
+    desc.UploadWeights(attr.weights);
   }
 
-  BufferDescriptor bias_desc;
-  bias_desc.element_type = weights_layout_desc.type;
-  bias_desc.element_size = 4;
-  bias_desc.memory_type = mem_type;
-  bias_desc.data = ReorderBiasesForConv(
-      attr.bias, weights_layout_desc.type,
-      AlignByN(attr.weights.shape.o, params.block_size.z * 4));
-  bias_desc.size = bias_desc.data.size();
-  desc.args_.AddObject(
-      "biases", std::make_unique<BufferDescriptor>(std::move(bias_desc)));
-
-  desc.args_.AddInt("task_size_x");
-  desc.args_.AddInt("task_size_y");
-
-  desc.work_group_size_ = params.work_group_size;
-  desc.work_group_launch_order_ = params.work_group_launch_order;
-  if (params.linear_whs) {
-    desc.grid_dimension_ = 1;
-  } else if (params.linear_wh) {
-    desc.grid_dimension_ = 2;
-  } else {
-    desc.grid_dimension_ = 3;
-  }
+  desc.UploadBiases(attr.bias);
 
   return desc;
 }
@@ -1072,99 +1107,23 @@ ConvolutionMetal CreateConvolutionMetal(const OperationDef& definition,
 ConvolutionMetal CreateConvolutionMetalWino4x4To6x6(
     const OperationDef& definition, const BHWC& dst_shape,
     const Convolution2DAttributes& attr, const GpuInfo& gpu_info) {
-  ConvolutionMetal::ConvParams params;
-  params.work_group_launch_order = int3(2, 0, 1);
-  params.src_depth_loop_size = 1;
-  params.need_src_loop = true;
-  params.need_dst_loop = true;
-  params.linear_wh = false;
-  params.linear_whs = false;
+  BHWC new_shape = BHWC(1, dst_shape.h, dst_shape.w * dst_shape.b, dst_shape.c);
+  ConvolutionMetal::ConvParams params =
+      GetConvParams(gpu_info, true, true, attr.weights.shape.i, new_shape);
   params.different_weights_for_height = true;
-  params.x_kernel_is_1 = true;
-  params.y_kernel_is_1 = true;
-  if (gpu_info.IsApple()) {
-    params.weights_layout = WeightsLayout::kOSpatialIOGroupO4I4;
-    if (gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
-      params.weights_upload_type =
-          ConvolutionMetal::WeightsUploadType::LOCAL_MEM_BY_THREADS;
-      params.work_group_size = int3(32, 1, 1);
-      params.block_size = int3(4, 1, 4);
-    } else {
-      params.weights_upload_type =
-          ConvolutionMetal::WeightsUploadType::GLOBAL_MEM;
-      params.work_group_size = int3(8, 4, 1);
-      params.block_size = int3(4, 1, 4);
-    }
-  } else {
-    params.weights_layout = WeightsLayout::kOSpatialIOGroupI4O4;
-    params.weights_upload_type =
-        ConvolutionMetal::WeightsUploadType::GLOBAL_MEM;
-    params.work_group_size = int3(32, 1, 1);
-    params.block_size = int3(2, 1, 4);
-  }
+  params.block_size.x *= params.block_size.y;
+  params.block_size.y = 1;
 
-  ConvolutionMetal desc(definition);
-  desc.params_ = params;
-  desc.code_ = GenerateConvolution(params, definition, false);
-  auto src_desc = definition.src_tensors[0];
-  if (definition.IsBatchSupported()) {
-    src_desc.SetStateVar("BatchedWidth", "true");
-  }
-  desc.AddSrcTensor("src_tensor", src_desc);
-  auto dst_desc = definition.dst_tensors[0];
-  if (definition.IsBatchSupported()) {
-    dst_desc.SetStateVar("BatchedWidth", "true");
-  }
-  desc.AddDstTensor("dst_tensor", dst_desc);
+  ConvolutionMetal desc(definition, params, /*attr*/ nullptr);
 
-  desc.args_.AddInt("kernel_size_x", 1);
-  desc.args_.AddInt("kernel_size_y", 1);
-  desc.args_.AddInt("dilation_x", 1);
-  desc.args_.AddInt("dilation_y", 1);
-  desc.args_.AddInt("stride_x", 1);
-  desc.args_.AddInt("stride_y", 1);
-  desc.args_.AddInt("padding_x", 0);
-  desc.args_.AddInt("padding_y", 0);
-  desc.padding_ = int2(0, 0);
-  desc.dilation_ = int2(1, 1);
-
-  tflite::gpu::Tensor<OHWI, DataType::FLOAT32> wino_weights;
-  tflite::gpu::Tensor<Linear, DataType::FLOAT32> wino_biases;
+  Tensor<OHWI, DataType::FLOAT32> wino_weights;
+  Tensor<Linear, DataType::FLOAT32> wino_biases;
   RearrangeWeightsToWinograd4x4To6x6Weights(attr.weights, &wino_weights);
   wino_biases.shape = Linear(attr.weights.shape.o);
   wino_biases.data.resize(attr.weights.shape.o, 0.0f);
 
-  const auto weights_layout_desc = desc.GetWeightsDescription();
-  BufferDescriptor weights_desc;
-  weights_desc.element_type = weights_layout_desc.type;
-  weights_desc.element_size = 4;
-  weights_desc.data = ReorderWeightsForConv(wino_weights, weights_layout_desc);
-  weights_desc.size = weights_desc.data.size();
-  desc.args_.AddObject(
-      "weights", std::make_unique<BufferDescriptor>(std::move(weights_desc)));
-
-  BufferDescriptor bias_desc;
-  bias_desc.element_type = weights_layout_desc.type;
-  bias_desc.element_size = 4;
-  bias_desc.data = ReorderBiasesForConv(
-      wino_biases, weights_layout_desc.type,
-      AlignByN(attr.weights.shape.o, params.block_size.z * 4));
-  bias_desc.size = bias_desc.data.size();
-  desc.args_.AddObject(
-      "biases", std::make_unique<BufferDescriptor>(std::move(bias_desc)));
-
-  desc.args_.AddInt("task_size_x");
-  desc.args_.AddInt("task_size_y");
-
-  desc.work_group_size_ = params.work_group_size;
-  desc.work_group_launch_order_ = params.work_group_launch_order;
-  if (params.linear_whs) {
-    desc.grid_dimension_ = 1;
-  } else if (params.linear_wh) {
-    desc.grid_dimension_ = 2;
-  } else {
-    desc.grid_dimension_ = 3;
-  }
+  desc.UploadWeights(wino_weights);
+  desc.UploadBiases(wino_biases);
 
   return desc;
 }
