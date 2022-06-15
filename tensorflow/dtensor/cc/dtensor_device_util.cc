@@ -773,33 +773,27 @@ void AddDTensorFunctionAttr(FunctionDef& function_def) {
 
 StatusOr<std::vector<parallel_device::ParallelTensor*>> PrepareEmbeddingInputs(
     const std::vector<TensorWithLayout*>& inputs) {
-  absl::flat_hash_map<int64_t, int64_t> table_and_input_index;
+  absl::flat_hash_map<int64_t, std::vector<int64_t>> table_vars_input_index;
   for (int64_t i = 0; i < inputs.size(); ++i) {
     if (inputs[i]->tensor_type() != kResource) continue;
-    auto* resource = dynamic_cast<ResourceHandleWithLayout*>(inputs[i]);
-    if (resource == nullptr) {
-      return errors::Internal("Failed to cast a resource handle");
-    }
 
     const absl::optional<EmbeddingResourceAttrs>& resource_attrs =
-        resource->attrs();
+        inputs[i]->attrs();
     if (resource_attrs.has_value()) {
-      table_and_input_index.insert({resource_attrs->table_id, i});
+      table_vars_input_index[resource_attrs->table_id].push_back(i);
     }
   }
 
   // Check if there is no embedding resource input found.
-  if (table_and_input_index.empty()) {
+  if (table_vars_input_index.empty()) {
     return errors::Internal("There are no TPU embedding resource input found.");
   }
-  const size_t num_tables = table_and_input_index.size();
   std::vector<parallel_device::ParallelTensor*> parallel_inputs;
-  parallel_inputs.reserve(num_tables);
-
   // Assure parallel inputs has numeric order as table ids.
-  for (int64_t table_id = 0; table_id < num_tables; ++table_id) {
-    const int64_t input_index = table_and_input_index[table_id];
-    parallel_inputs.push_back(inputs[input_index]->tensor());
+  for (const auto& [table_id, table_vars_indices] : table_vars_input_index) {
+    for (const int64_t input_index : table_vars_indices) {
+      parallel_inputs.push_back(inputs[input_index]->tensor());
+    }
   }
   return parallel_inputs;
 }
@@ -826,29 +820,30 @@ StatusOr<std::map<int64_t, std::vector<Node*>>> GetTPUEmbeddingInputNodes(
         node->attrs().Find("_tpu_embedding_table_id");
 
     if (embedding_attr == nullptr) continue;
+    EmbeddingResourceAttrs embedding_input_attrs;
 
+    // Add embedding table id.
     const int64_t table_id = embedding_attr->i();
+    embedding_input_attrs.table_id = table_id;
 
     // Add embedding slot id if there is one.
     const AttrValue* embedding_slot_attr =
         node->attrs().Find("_tpu_embedding_slot_id");
-    EmbeddingResourceAttrs embedding_attrs;
-    embedding_attrs.table_id = table_id;
-
     if (embedding_slot_attr != nullptr) {
       const int64_t slot_id = embedding_slot_attr->i();
-      embedding_attrs.slot_id = slot_id;
+      embedding_input_attrs.slot_id = slot_id;
     }
 
+    table_id_node_map[table_id].push_back(node);
+
     // Arg input offset due to device id.
-    non_sparse_inputs[arg_id - 1]->UpdateAttrs(embedding_attrs, s);
+    if (non_sparse_inputs[arg_id - 1]->attrs().has_value()) continue;
+    non_sparse_inputs[arg_id - 1]->UpdateAttrs(embedding_input_attrs, s);
     if (!s->status.ok()) {
       return errors::Internal(
           "Failed to set embedding resource attrs. \n Got error: ",
           s->status.error_message());
     }
-
-    table_id_node_map[table_id].push_back(node);
   }
   return table_id_node_map;
 }
@@ -857,10 +852,8 @@ StatusOr<std::string> ValidateResourceMeshConsistency(
     const std::vector<TensorWithLayout*>& inputs) {
   std::string mesh_str;
   for (TensorWithLayout* inp : inputs) {
-    if (inp->tensor_type() != kResource) continue;
-
-    auto* resource = dynamic_cast<ResourceHandleWithLayout*>(inp);
-    if (!resource || !resource->attrs().has_value()) continue;
+    if ((inp->tensor_type() != kResource) || !inp->attrs().has_value())
+      continue;
     const std::string& input_mesh_str = inp->layout().mesh().ToString();
     if (mesh_str.empty()) {
       mesh_str = input_mesh_str;
