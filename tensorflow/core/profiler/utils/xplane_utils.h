@@ -37,6 +37,30 @@ inline Timespan XEventTimespan(const XEvent& event) {
   return Timespan(event.offset_ps(), event.duration_ps());
 }
 
+// Returns the planes with the given predicate.
+template <typename F>
+std::vector<const XPlane*> FindPlanes(const XSpace& space, const F& predicate) {
+  std::vector<const XPlane*> result;
+  for (const XPlane& plane : space.planes()) {
+    if (predicate(plane)) {
+      result.push_back(&plane);
+    }
+  }
+  return result;
+}
+
+// Returns mutable planes with the given predicate.
+template <typename F>
+std::vector<XPlane*> FindMutablePlanes(XSpace* space, const F& predicate) {
+  std::vector<XPlane*> result;
+  for (XPlane& plane : *space->mutable_planes()) {
+    if (predicate(plane)) {
+      result.push_back(&plane);
+    }
+  }
+  return result;
+}
+
 // Returns the plane with the given name or nullptr if not found.
 const XPlane* FindPlaneWithName(const XSpace& space, absl::string_view name);
 XPlane* FindMutablePlaneWithName(XSpace* space, absl::string_view name);

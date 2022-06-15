@@ -134,20 +134,16 @@ XPlane* FindOrAddMutablePlaneWithName(XSpace* space, absl::string_view name) {
 
 std::vector<const XPlane*> FindPlanesWithPrefix(const XSpace& space,
                                                 absl::string_view prefix) {
-  std::vector<const XPlane*> result;
-  for (const XPlane& plane : space.planes()) {
-    if (absl::StartsWith(plane.name(), prefix)) result.push_back(&plane);
-  }
-  return result;
+  return FindPlanes(space, [&](const XPlane& plane) {
+    return absl::StartsWith(plane.name(), prefix);
+  });
 }
 
 std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
                                                  absl::string_view prefix) {
-  std::vector<XPlane*> result;
-  for (XPlane& plane : *space->mutable_planes()) {
-    if (absl::StartsWith(plane.name(), prefix)) result.push_back(&plane);
-  }
-  return result;
+  return FindMutablePlanes(space, [&](XPlane& plane) {
+    return absl::StartsWith(plane.name(), prefix);
+  });
 }
 
 const XLine* FindLineWithId(const XPlane& plane, int64_t id) {
