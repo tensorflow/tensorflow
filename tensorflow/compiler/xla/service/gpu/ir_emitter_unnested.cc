@@ -1337,15 +1337,14 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
   std::vector<CustomCallThunk::OptionalSlice> results;
   if (custom_call.getTargetArgMapping()) {
     auto values_to_slices_with_token_holes =
-        [&](mlir::ValueRange operands, mlir::ArrayAttr op_to_target_mapping,
-            mlir::IntegerAttr num_target)
+        [&](mlir::ValueRange operands,
+            mlir::ArrayRef<int64_t> op_to_target_mapping, int64_t num_target)
         -> StatusOr<std::vector<CustomCallThunk::OptionalSlice>> {
-      std::vector<CustomCallThunk::OptionalSlice> slices(num_target.getInt());
+      std::vector<CustomCallThunk::OptionalSlice> slices(num_target);
       for (auto index_and_value_it :
            llvm::zip(op_to_target_mapping, operands)) {
-        mlir::Attribute index_attr = std::get<0>(index_and_value_it);
+        int64_t index = std::get<0>(index_and_value_it);
         mlir::Value value = std::get<1>(index_and_value_it);
-        int64_t index = index_attr.cast<mlir::IntegerAttr>().getInt();
         TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                             GetAllocationSlice(value));
         slices[index] = slice;
@@ -1353,16 +1352,16 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
       return slices;
     };
 
-    mlir::lmhlo::CustomCallTargetArgMapping target_mapping =
+    mlir::lmhlo::CustomCallTargetArgMappingAttr target_mapping =
         *custom_call.getTargetArgMapping();
     TF_ASSIGN_OR_RETURN(operands, values_to_slices_with_token_holes(
                                       custom_call.getArgs(),
-                                      target_mapping.args_to_target_args(),
-                                      target_mapping.num_args()));
+                                      target_mapping.getArgsToTargetArgs(),
+                                      target_mapping.getNumArgs()));
     TF_ASSIGN_OR_RETURN(results, values_to_slices_with_token_holes(
                                      custom_call.getOutput(),
-                                     target_mapping.results_to_target_results(),
-                                     target_mapping.num_results()));
+                                     target_mapping.getResultsToTargetResults(),
+                                     target_mapping.getNumResults()));
   } else {
     auto values_to_slices = [&](mlir::ValueRange values)
         -> StatusOr<std::vector<CustomCallThunk::OptionalSlice>> {

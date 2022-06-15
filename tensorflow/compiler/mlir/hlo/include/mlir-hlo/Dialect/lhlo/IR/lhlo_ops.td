@@ -626,7 +626,7 @@ def LHLO_CustomCallOp : LHLO_Op<"custom_call", [AttrSizedOperandSegments]> {
     DefaultValuedAttr<HLO_CustomCallApiVersionAttr,
                       "mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL">:
                       $api_version,
-    OptionalAttr<CustomCallTargetArgMapping>:$target_arg_mapping
+    OptionalAttr<CustomCallTargetArgMappingAttr>:$target_arg_mapping
   );
   let hasVerifier = 1;
 }

@@ -42,15 +42,15 @@ struct CustomCallRewritePattern
       ConversionPatternRewriter& rewriter) const override {
     llvm::SmallVector<int32_t, 4> indices;
     if (auto mapping = op.getTargetArgMapping()) {
-      auto num_args = mapping->num_args().getInt();
-      auto num_results = mapping->num_results().getInt();
+      auto num_args = mapping->getNumArgs();
+      auto num_results = mapping->getNumResults();
       indices.resize(num_args + num_results, -1);
-      for (auto pair : llvm::enumerate(mapping->args_to_target_args())) {
-        indices[pair.value().cast<IntegerAttr>().getInt()] = pair.index();
+      for (const auto& pair : llvm::enumerate(mapping->getArgsToTargetArgs())) {
+        indices[pair.value()] = pair.index();
       }
-      for (auto pair : llvm::enumerate(mapping->results_to_target_results())) {
-        indices[pair.value().cast<IntegerAttr>().getInt() + num_args] =
-            pair.index() + op.getArgs().size();
+      for (const auto& pair :
+           llvm::enumerate(mapping->getResultsToTargetResults())) {
+        indices[pair.value() + num_args] = pair.index() + op.getArgs().size();
       }
     } else {
       int32_t num_indices = op.getArgs().size() + op.getOutput().size();

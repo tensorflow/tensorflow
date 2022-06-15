@@ -52,6 +52,12 @@ class LmhloDialect : public Dialect {
  public:
   explicit LmhloDialect(MLIRContext *context);
   static StringRef getDialectNamespace() { return "lmhlo"; }
+
+  // Parses an attribute registered to this dialect.
+  Attribute parseAttribute(DialectAsmParser &parser, Type type) const override;
+
+  // Prints an attribute registered to this dialect.
+  void printAttribute(Attribute attr, DialectAsmPrinter &os) const override;
 };
 
 }  // namespace lmhlo

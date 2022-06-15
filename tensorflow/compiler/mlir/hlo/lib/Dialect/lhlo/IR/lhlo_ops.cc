@@ -30,8 +30,8 @@ limitations under the License.
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h.inc"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
 #include "mlir-hlo/utils/lhlo_utils.h"
@@ -53,6 +53,9 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 
+#define GET_ATTRDEF_CLASSES
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops_structs.cc.inc"
+
 namespace mlir {
 namespace lmhlo {
 
@@ -63,6 +66,33 @@ LmhloDialect::LmhloDialect(MLIRContext* context)
 #define GET_OP_LIST
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.cc.inc"
       >();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops_structs.cc.inc"
+      >();
+}
+
+// Entry point for Attribute parsing, TableGen generated code will handle the
+// dispatch to the individual classes.
+Attribute LmhloDialect::parseAttribute(DialectAsmParser& parser,
+                                       Type type) const {
+  StringRef attrTag;
+  if (failed(parser.parseKeyword(&attrTag))) return Attribute();
+  {
+    Attribute attr;
+    auto parseResult = generatedAttributeParser(parser, attrTag, type, attr);
+    if (parseResult.hasValue()) return attr;
+  }
+  parser.emitError(parser.getNameLoc(), "unknown mhlo attribute");
+  return Attribute();
+}
+
+// Entry point for Attribute printing, TableGen generated code will handle the
+// dispatch to the individual classes.
+void LmhloDialect::printAttribute(Attribute attr, DialectAsmPrinter& os) const {
+  LogicalResult result = generatedAttributePrinter(attr, os);
+  (void)result;
+  assert(succeeded(result));
 }
 
 //===----------------------------------------------------------------------===//
@@ -193,8 +223,9 @@ void ConstantOp::getCanonicalizationPatterns(RewritePatternSet& results,
 LogicalResult CustomCallOp::verify() {
   CustomCallOp op = *this;
   if (op.getTargetArgMapping()) {
-    CustomCallTargetArgMapping mapping = *op.getTargetArgMapping();
-    auto verifyMapping = [&](int64_t targetNum, size_t opNum, ArrayAttr mapping,
+    CustomCallTargetArgMappingAttr mapping = *op.getTargetArgMapping();
+    auto verifyMapping = [&](int64_t targetNum, size_t opNum,
+                             ArrayRef<int64_t> mapping,
                              StringRef kind) -> LogicalResult {
       if (targetNum < opNum)
         return op.emitOpError("number of target " + kind + " (")
@@ -210,14 +241,13 @@ LogicalResult CustomCallOp::verify() {
       std::unordered_set<int64_t> entries;
       // Each entry in the mapping should be < target_num and an entry cannot
       // appear more than once.
-      for (Attribute entry : mapping) {
-        int64_t intEntry = entry.cast<IntegerAttr>().getInt();
+      for (int64_t entry : mapping) {
         // ODS verification will ensure that these entries are integers.
-        if (!entries.insert(intEntry).second)
+        if (!entries.insert(entry).second)
           return op.emitOpError("entry ")
-                 << intEntry
-                 << " cannot appear more than once in the mapping for " << kind;
-        if (intEntry < 0 || intEntry >= targetNum)
+                 << entry << " cannot appear more than once in the mapping for "
+                 << kind;
+        if (entry < 0 || entry >= targetNum)
           return op.emitOpError(
                      "entries in mapping for " + kind +
                      " must be >= 0 and less than target's number of " + kind +
@@ -226,11 +256,10 @@ LogicalResult CustomCallOp::verify() {
       }
       return success();
     };
-    if (failed(verifyMapping(mapping.num_args().getInt(), op.getArgs().size(),
-                             mapping.args_to_target_args(), "args")) ||
-        failed(verifyMapping(mapping.num_results().getInt(),
-                             op.getOutput().size(),
-                             mapping.results_to_target_results(), "results")))
+    if (failed(verifyMapping(mapping.getNumArgs(), op.getArgs().size(),
+                             mapping.getArgsToTargetArgs(), "args")) ||
+        failed(verifyMapping(mapping.getNumResults(), op.getOutput().size(),
+                             mapping.getResultsToTargetResults(), "results")))
       return failure();
   }
   return success();

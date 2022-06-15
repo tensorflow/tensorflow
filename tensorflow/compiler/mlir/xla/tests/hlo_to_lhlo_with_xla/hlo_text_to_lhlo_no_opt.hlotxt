@@ -659,9 +659,9 @@ HloModule CustomCallWithTokens
 
 // CHECK: func @main
 // CHECK: "lmhlo.custom_call"
-// CHECK-SAME: args_to_target_args = []
 // CHECK-SAME: num_args = 1
 // CHECK-SAME: num_results = 2
+// CHECK-SAME: args_to_target_args = []
 // CHECK-SAME: results_to_target_results = [0]
 ENTRY main {
   %tok = token[] parameter(0)
@@ -675,9 +675,9 @@ HloModule CustomCallWithTokens
 
 // CHECK: func @main
 // CHECK: "lmhlo.custom_call"
-// CHECK-SAME: args_to_target_args = [1]
 // CHECK-SAME: num_args = 3
 // CHECK-SAME: num_results = 3
+// CHECK-SAME: args_to_target_args = [1]
 // CHECK-SAME: results_to_target_results = [0, 2]
 ENTRY main {
   %tok = token[] parameter(0)
@@ -693,9 +693,9 @@ HloModule CustomCallWithTokens
 
 // CHECK: func @main
 // CHECK: "lmhlo.custom_call"
-// CHECK-SAME: args_to_target_args = [1]
 // CHECK-SAME: num_args = 3
 // CHECK-SAME: num_results = 1
+// CHECK-SAME: args_to_target_args = [1]
 // CHECK-SAME: results_to_target_results = [0]
 ENTRY main {
   %tok = token[] parameter(0)
@@ -711,9 +711,9 @@ HloModule CustomCallWithTokens
 
 // CHECK: func @main
 // CHECK: "lmhlo.custom_call"
-// CHECK-SAME: args_to_target_args = [0]
 // CHECK-SAME: num_args = 1
 // CHECK-SAME: num_results = 4
+// CHECK-SAME: args_to_target_args = [0]
 // CHECK-SAME: results_to_target_results = [1]
 ENTRY main {
   %input = f32[5,8,32] parameter(0)

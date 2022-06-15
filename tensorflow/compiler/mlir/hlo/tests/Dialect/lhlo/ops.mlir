@@ -1086,12 +1086,12 @@ func.func @valid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
     call_target_name = "foo",
     has_side_effects = false,
     operand_segment_sizes = dense<2> : vector<2xi32>,
-    target_arg_mapping = {
-      num_args = 4 : i64,
-      num_results = 3 : i64,
+    target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
+      num_args = 4,
+      num_results = 3,
       args_to_target_args = [0,3],
       results_to_target_results = [1,2]
-    }
+    >
   } : (memref<1xf32>, memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
   func.return
 }
@@ -1105,12 +1105,12 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
     call_target_name = "foo",
     has_side_effects = false,
     operand_segment_sizes = dense<2> : vector<2xi32>,
-    target_arg_mapping = {
-      num_args = 4 : i64,
-      num_results = 3 : i64,
+    target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
+      num_args = 4,
+      num_results = 3,
       args_to_target_args = [0],
       results_to_target_results = [1,2]
-    }
+    >
   } : (memref<1xf32>, memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
   func.return
 }
@@ -1124,12 +1124,12 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
     call_target_name = "foo",
     has_side_effects = false,
     operand_segment_sizes = dense<2> : vector<2xi32>,
-    target_arg_mapping = {
-      num_args = 4 : i64,
-      num_results = 3 : i64,
+    target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
+      num_args = 4,
+      num_results = 3,
       args_to_target_args = [0, 3],
       results_to_target_results = [1]
-    }
+    >
   } : (memref<1xf32>, memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
   func.return
 }
@@ -1143,12 +1143,12 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
     call_target_name = "foo",
     has_side_effects = false,
     operand_segment_sizes = dense<2> : vector<2xi32>,
-    target_arg_mapping = {
-      num_args = 4 : i64,
-      num_results = 3 : i64,
+    target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
+      num_args = 4,
+      num_results = 3,
       args_to_target_args = [0, 0],
       results_to_target_results = [1, 2]
-    }
+    >
   } : (memref<1xf32>, memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
   func.return
 }
@@ -1162,12 +1162,12 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
     call_target_name = "foo",
     has_side_effects = false,
     operand_segment_sizes = dense<2> : vector<2xi32>,
-    target_arg_mapping = {
-      num_args = 4 : i64,
-      num_results = 3 : i64,
+    target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
+      num_args = 4,
+      num_results = 3,
       args_to_target_args = [0, 1],
       results_to_target_results = [1, 1]
-    }
+    >
   } : (memref<1xf32>, memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
   func.return
 }
@@ -1181,12 +1181,12 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
     call_target_name = "foo",
     has_side_effects = false,
     operand_segment_sizes = dense<2> : vector<2xi32>,
-    target_arg_mapping = {
-      num_args = 4 : i64,
-      num_results = 3 : i64,
+    target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
+      num_args = 4,
+      num_results = 3,
       args_to_target_args = [0, 6],
       results_to_target_results = [1, 2]
-    }
+    >
   } : (memref<1xf32>, memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
   func.return
 }
@@ -1200,12 +1200,12 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
     call_target_name = "foo",
     has_side_effects = false,
     operand_segment_sizes = dense<2> : vector<2xi32>,
-    target_arg_mapping = {
-      num_args = 4 : i64,
-      num_results = 3 : i64,
+    target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
+      num_args = 4,
+      num_results = 3,
       args_to_target_args = [0, 1],
       results_to_target_results = [1, 3]
-    }
+    >
   } : (memref<1xf32>, memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
   func.return
 }

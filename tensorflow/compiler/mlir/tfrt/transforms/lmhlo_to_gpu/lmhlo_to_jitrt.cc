@@ -790,23 +790,22 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
     // memrefs in place of holes.
     if (op.getTargetArgMapping().hasValue()) {
       auto mapping = *op.getTargetArgMapping();
-      int64_t num_args = mapping.num_args().getInt();
-      int64_t num_results = mapping.num_results().getInt();
+      int64_t num_args = mapping.getNumArgs();
+      int64_t num_results = mapping.getNumResults();
 
       // We represent holes as empty i8 memrefs.
       Value hole = b.create<AllocaOp>(MemRefType::get({0}, b.getI8Type()));
       operands = llvm::SmallVector<Value>(num_args + num_results, hole);
 
       // Update operands to mapped custom call arguments.
-      auto args = mapping.args_to_target_args().getAsRange<IntegerAttr>();
-      for (auto& indexed : llvm::enumerate(args))
-        operands[indexed.value().getInt()] = op.getArgs()[indexed.index()];
+      auto args = mapping.getArgsToTargetArgs();
+      for (const auto& indexed : llvm::enumerate(args))
+        operands[indexed.value()] = op.getArgs()[indexed.index()];
 
       // Update operands to mapped custom call results.
-      auto res = mapping.results_to_target_results().getAsRange<IntegerAttr>();
-      for (auto& indexed : llvm::enumerate(res))
-        operands[num_args + indexed.value().getInt()] =
-            op.getOutput()[indexed.index()];
+      auto res = mapping.getResultsToTargetResults();
+      for (const auto& indexed : llvm::enumerate(res))
+        operands[num_args + indexed.value()] = op.getOutput()[indexed.index()];
     }
 
     // Create a custom call function declaration.

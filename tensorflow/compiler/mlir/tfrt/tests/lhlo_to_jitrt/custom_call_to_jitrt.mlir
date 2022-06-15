@@ -62,11 +62,11 @@ func.func @test_with_mapping(
     backend_config = "",
     call_target_name = "target",
     operand_segment_sizes = dense<[2, 3]> : vector<2xi32>,
-    target_arg_mapping = {
+    target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
+      num_args = 4,
+      num_results = 4,
       args_to_target_args = [0, 2],
-      num_args = 4 : i64,
-      num_results = 4 : i64,
-      results_to_target_results = [0, 1, 3]}
+      results_to_target_results = [0, 1, 3]>
     } : (memref<f32>, memref<f32>, memref<f32>, memref<f32>, memref<f32>) -> ()
 
   return

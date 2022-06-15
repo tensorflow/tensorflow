@@ -218,11 +218,11 @@ gentbl_cc_library(
     strip_include_prefix = "include",
     tbl_outs = [
         (
-            ["-gen-struct-attr-decls"],
+            ["-gen-attrdef-decls"],
             "include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops_structs.h.inc",
         ),
         (
-            ["-gen-struct-attr-defs"],
+            ["-gen-attrdef-defs"],
             "include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops_structs.cc.inc",
         ),
     ],
@@ -599,7 +599,6 @@ cc_library(
     name = "lhlo",
     srcs = [
         "lib/Dialect/lhlo/IR/lhlo_ops.cc",
-        "lib/Dialect/lhlo/IR/lhlo_ops_structs.cc",
     ],
     hdrs = [
         "include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h",

@@ -722,7 +722,7 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
   // of a token in the input or output.
   bool has_token = llvm::any_of(operands, [](Value v) { return !v; });
 
-  lmhlo::CustomCallTargetArgMapping target_mapping;
+  lmhlo::CustomCallTargetArgMappingAttr target_mapping;
   if (has_token) {
     // If there was a token, squeeze all the non-token arguments and results
     // (in-place) and remember the mapping.
@@ -744,12 +744,9 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
     }
 
     // Build the mapping attribute.
-    target_mapping = lmhlo::CustomCallTargetArgMapping::get(
-        builder_.getI64IntegerAttr(num_arguments),
-        builder_.getI64IntegerAttr(num_results),
-        builder_.getI64ArrayAttr(arg_to_target_arg_mapping),
-        builder_.getI64ArrayAttr(result_to_target_result_mapping),
-        builder_.getContext());
+    target_mapping = lmhlo::CustomCallTargetArgMappingAttr::get(
+        builder_.getContext(), num_arguments, num_results,
+        arg_to_target_arg_mapping, result_to_target_result_mapping);
 
     // Drop the remaining operands and adjust num_arguments and num_results
     // for LMHLO creation.
