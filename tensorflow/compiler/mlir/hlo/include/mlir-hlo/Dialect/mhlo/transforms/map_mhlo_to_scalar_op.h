@@ -591,6 +591,15 @@ inline Value MapConvertOpToStdScalarOp(Location loc,
     return b->create<mlir::complex::CreateOp>(loc, target_type, target_real,
                                               target_imag);
   }
+  if (auto sourceComplexType = source_type.dyn_cast<ComplexType>()) {
+    auto sourceElementType = sourceComplexType.getElementType();
+    // When converting from complex to a non-complex type, we take just the real
+    // part of the complex number.
+    Value sourceReal =
+        b->create<mlir::complex::ReOp>(loc, sourceElementType, args.front());
+    return MapConvertOpToStdScalarOp(loc, target_types, result_types,
+                                     sourceElementType, sourceReal, b);
+  }
   return nullptr;
 }
 

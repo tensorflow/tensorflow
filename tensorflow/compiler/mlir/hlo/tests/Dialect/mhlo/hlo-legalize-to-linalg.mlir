@@ -1449,6 +1449,33 @@ func.func @convert_c128_to_c64(%input: tensor<2x2xcomplex<f64>>) -> tensor<2x2xc
 
 // -----
 
+// CHECK-LABEL: func @convert_c64_to_f32
+func.func @convert_c64_to_f32(%input: tensor<2x2xcomplex<f32>>) -> tensor<2x2xf32> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xf32>
+  func.return %result : tensor<2x2xf32>
+}
+// CHECK:      linalg.init_tensor
+// CHECK:      linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: complex<f32>, %{{.*}}: f32):
+// CHECK-DAG:  %[[REAL:.*]] = complex.re %[[OPERAND_IN]]
+// CHECK:      linalg.yield %[[REAL]] : f32
+
+// -----
+
+// CHECK-LABEL: func @convert_c128_to_i32
+func.func @convert_c128_to_i32(%input: tensor<2x2xcomplex<f64>>) -> tensor<2x2xi32> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xcomplex<f64>>) -> tensor<2x2xi32>
+  func.return %result : tensor<2x2xi32>
+}
+// CHECK:      linalg.init_tensor
+// CHECK:      linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: complex<f64>, %{{.*}}: i32):
+// CHECK-DAG:  %[[REAL:.*]] = complex.re %[[OPERAND_IN]]
+// CHECK-NEXT:  %[[RESULT:.*]] = arith.fptosi %[[REAL]] : f64 to i32
+// CHECK-NEXT:  linalg.yield %[[RESULT]] : i32
+
+// -----
+
 // CHECK-LABEL: func @convert_f32_to_c64
 func.func @convert_f32_to_c64(%input: tensor<2x2xf32>) -> tensor<2x2xcomplex<f32>> {
   %result = "mhlo.convert"(%input) : (tensor<2x2xf32>) -> tensor<2x2xcomplex<f32>>
@@ -1458,7 +1485,7 @@ func.func @convert_f32_to_c64(%input: tensor<2x2xf32>) -> tensor<2x2xcomplex<f32
 // CHECK:      linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %{{.*}}: complex<f32>):
 // CHECK-DAG:  %[[IMAG:.*]] = arith.constant 0.000000e+00 : f32
-// CHECK-DAG:  %[[RESULT:.*]] = complex.create %[[OPERAND_IN]], %[[IMAG]] 
+// CHECK-DAG:  %[[RESULT:.*]] = complex.create %[[OPERAND_IN]], %[[IMAG]]
 // CHECK:      linalg.yield %[[RESULT]] : complex<f32>
 
 // -----
@@ -1473,7 +1500,7 @@ func.func @convert_i32_to_c128(%input: tensor<2x2xi32>) -> tensor<2x2xcomplex<f6
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %{{.*}}: complex<f64>):
 // CHECK-DAG:  %[[REAL:.*]] = arith.sitofp %[[OPERAND_IN]] : i32 to f64
 // CHECK-DAG:  %[[IMAG:.*]] = arith.constant 0.000000e+00 : f64
-// CHECK-DAG:  %[[RESULT:.*]] = complex.create %[[REAL]], %[[IMAG]] 
+// CHECK-DAG:  %[[RESULT:.*]] = complex.create %[[REAL]], %[[IMAG]]
 // CHECK:      linalg.yield %[[RESULT]] : complex<f64>
 
 // -----
