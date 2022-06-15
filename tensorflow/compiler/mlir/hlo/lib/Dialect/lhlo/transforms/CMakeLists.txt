@@ -37,6 +37,7 @@ add_mlir_library(LmhloPasses
   MLIRComplex
   MLIRGPUOps
   MLIRLinalg
+  MLIRLinalgAnalysis
   MLIRLinalgTransforms
   MLIRMhloUtils
   MLIRIR

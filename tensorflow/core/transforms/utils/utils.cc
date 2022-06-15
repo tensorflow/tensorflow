@@ -78,20 +78,20 @@ static void UpdateIfPresent(Region &region,
 static void UpdateArgAttrsIfPresent(
     Region &region, function_ref<void(SmallVectorImpl<Attribute> &)> update) {
   UpdateIfPresent(region, [&](RegionAttr attrs) {
-    SmallVector<Attribute> args = llvm::to_vector(attrs.getArg_attrs());
+    SmallVector<Attribute> args = llvm::to_vector(attrs.getArgAttrs());
     update(args);
     return RegionAttr::get(attrs.getAttrs(),
                            ArrayAttr::get(attrs.getContext(), args),
-                           attrs.getRes_attrs());
+                           attrs.getResAttrs());
   });
 }
 
 static void UpdateResultAttrsIfPresent(
     Region &region, function_ref<void(SmallVectorImpl<Attribute> &)> update) {
   UpdateIfPresent(region, [&](RegionAttr attrs) {
-    SmallVector<Attribute> results = llvm::to_vector(attrs.getRes_attrs());
+    SmallVector<Attribute> results = llvm::to_vector(attrs.getResAttrs());
     update(results);
-    return RegionAttr::get(attrs.getAttrs(), attrs.getArg_attrs(),
+    return RegionAttr::get(attrs.getAttrs(), attrs.getArgAttrs(),
                            ArrayAttr::get(attrs.getContext(), results));
   });
 }

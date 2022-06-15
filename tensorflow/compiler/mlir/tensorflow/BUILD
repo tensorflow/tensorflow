@@ -1,9 +1,8 @@
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.google.bzl", "filegroup", "get_compatible_with_cloud")
 
 # buildifier: disable=same-origin-load
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_gen_op_wrapper_py")
@@ -2097,7 +2096,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     "@llvm-project//llvm:Support",
     "@llvm-project//mlir:IR",
     "@llvm-project//mlir:Pass",
-    "@llvm-project//mlir:Shape",
+    "@llvm-project//mlir:ShapeDialect",
     "@llvm-project//mlir:FuncDialect",
     "@llvm-project//mlir:Support",
     "@llvm-project//mlir:TransformUtils",
