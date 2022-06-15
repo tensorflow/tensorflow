@@ -87,6 +87,7 @@ namespace {
 constexpr char kParallelism[] = "parallelism";
 constexpr char kBlockIndex[] = "block_index";
 constexpr char kCycleIndex[] = "cycle_index";
+constexpr char kMaxBufferedElements[] = "max_buffered_elements";
 constexpr char kEndOfInput[] = "end_of_input";
 constexpr char kElementIdCounter[] = "element_id_counter";
 constexpr char kCurrentElements[] = "current_elements";
@@ -137,6 +138,12 @@ int64_t ComputePrefetchInputElements(int64_t configured_prefetch_input_elements,
     return configured_prefetch_input_elements;
   }
   return kDefaultCyclePrefetchFactor * cycle_length;
+}
+
+int64_t ComputeMaxBufferedElements(int64_t prefetch_input_elements,
+                                   int64_t buffer_output_elements,
+                                   int64_t cycle_length) {
+  return (prefetch_input_elements + cycle_length) * buffer_output_elements;
 }
 
 int64_t OpVersionFromOpName(absl::string_view op_name) {
@@ -419,7 +426,12 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
            model::MakeNonTunableParameter(kCycleLength,
                                           dataset()->cycle_length_),
            model::MakeNonTunableParameter(kDeterministic,
-                                          deterministic_ ? 1.0 : 0.0)});
+                                          deterministic_ ? 1.0 : 0.0),
+           model::MakeNonTunableParameter(
+               kMaxBufferedElements,
+               ComputeMaxBufferedElements(dataset()->prefetch_input_elements_,
+                                          dataset()->buffer_output_elements_,
+                                          dataset()->cycle_length_))});
     }
 
     // TODO(aaudibert): Refactor the implementations to avoid the need for

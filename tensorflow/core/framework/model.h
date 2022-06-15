@@ -50,6 +50,7 @@ constexpr char kParallelism[] = "parallelism";
 constexpr char kBufferSize[] = "buffer_size";
 constexpr char kCycleLength[] = "cycle_length";
 constexpr char kDeterministic[] = "deterministic";
+constexpr char kMaxBufferedElements[] = "max_buffered_elements";
 
 // A key used to identify the input time of the model.
 constexpr char kModelInputTimeKey[] = "model_input_time";
