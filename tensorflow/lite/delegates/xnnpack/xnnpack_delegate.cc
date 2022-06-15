@@ -1678,6 +1678,69 @@ class Subgraph {
     return kTfLiteOk;
   }
 
+  static TfLiteStatus CheckTensorsInputOutputScale(
+      TfLiteContext* context, const TfLiteTensor& input_tensor,
+      const TfLiteTensor& output_tensor, float scale_min, float scale_max,
+      int node_index, const char* op_name) {
+    if (input_tensor.type != output_tensor.type) {
+      // No validation needed
+      return kTfLiteOk;
+    }
+
+    if (input_tensor.type == kTfLiteInt8 || input_tensor.type == kTfLiteUInt8) {
+      const float input_scale = static_cast<const TfLiteAffineQuantization*>(
+                                    input_tensor.quantization.params)
+                                    ->scale->data[0];
+      const float output_scale = static_cast<const TfLiteAffineQuantization*>(
+                                     output_tensor.quantization.params)
+                                     ->scale->data[0];
+
+      const float input_output_scale = input_scale / output_scale;
+      if (input_output_scale < scale_min || input_output_scale >= scale_max) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context, "unsupported input-to-output scale in node #%d",
+            node_index);
+        return kTfLiteError;
+      }
+    }
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus CheckTensorsInputProductOutputScale(
+      TfLiteContext* context, const TfLiteTensor& input1_tensor,
+      const TfLiteTensor& input2_tensor, const TfLiteTensor& output_tensor,
+      float scale_min, float scale_max, int node_index, const char* op_name) {
+    if (input1_tensor.type != input2_tensor.type ||
+        input1_tensor.type != output_tensor.type) {
+      // No validation needed
+      return kTfLiteOk;
+    }
+
+    if (input1_tensor.type == kTfLiteInt8 ||
+        input1_tensor.type == kTfLiteUInt8) {
+      const float input1_scale = static_cast<const TfLiteAffineQuantization*>(
+                                     input1_tensor.quantization.params)
+                                     ->scale->data[0];
+      const float input2_scale = static_cast<const TfLiteAffineQuantization*>(
+                                     input2_tensor.quantization.params)
+                                     ->scale->data[0];
+      const float output_scale = static_cast<const TfLiteAffineQuantization*>(
+                                     output_tensor.quantization.params)
+                                     ->scale->data[0];
+
+      const float product_scale = input1_scale * input2_scale;
+      const float product_output_scale = product_scale / output_scale;
+      if (product_output_scale < scale_min ||
+          product_output_scale >= scale_max) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context, "unsupported input-product-to-output scale in node #%d",
+            node_index);
+        return kTfLiteError;
+      }
+    }
+    return kTfLiteOk;
+  }
+
   static TfLiteStatus VisitNode(
       xnn_subgraph_t subgraph, const Delegate& delegate, TfLiteContext* context,
       TfLiteRegistration* registration, TfLiteNode* node, int node_index,
@@ -2012,6 +2075,15 @@ class Subgraph {
                                        node->outputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    const float scale_min = 1.0f / 1024.0f;
+    const float scale_max = 256.0f;
+    TF_LITE_ENSURE_STATUS(CheckTensorsInputOutputScale(
+        logging_context, input1_tensor, output_tensor, scale_min, scale_max,
+        node_index, "ADD"));
+    TF_LITE_ENSURE_STATUS(CheckTensorsInputOutputScale(
+        logging_context, input2_tensor, output_tensor, scale_min, scale_max,
+        node_index, "ADD"));
 
     float output_min = -std::numeric_limits<float>::infinity();
     float output_max = +std::numeric_limits<float>::infinity();
@@ -3547,6 +3619,12 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));
 
+    const float scale_min = 1.0f / 65536.0f;
+    const float scale_max = 256.0f;
+    TF_LITE_ENSURE_STATUS(CheckTensorsInputProductOutputScale(
+        logging_context, input1_tensor, input2_tensor, output_tensor, scale_min,
+        scale_max, node_index, "MUL"));
+
     float output_min = -std::numeric_limits<float>::infinity();
     float output_max = +std::numeric_limits<float>::infinity();
     if (mul_params != nullptr) {
@@ -4216,6 +4294,15 @@ class Subgraph {
                                        node->outputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    const float scale_min = 1.0f / 1024.0f;
+    const float scale_max = 256.0f;
+    TF_LITE_ENSURE_STATUS(CheckTensorsInputOutputScale(
+        logging_context, input1_tensor, output_tensor, scale_min, scale_max,
+        node_index, "SUB"));
+    TF_LITE_ENSURE_STATUS(CheckTensorsInputOutputScale(
+        logging_context, input2_tensor, output_tensor, scale_min, scale_max,
+        node_index, "SUB"));
 
     float output_min = -std::numeric_limits<float>::infinity();
     float output_max = +std::numeric_limits<float>::infinity();
