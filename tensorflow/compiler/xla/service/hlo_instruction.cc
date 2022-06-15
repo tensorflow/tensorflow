@@ -1830,15 +1830,14 @@ bool HloInstruction::HasSideEffect() const {
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCall(
+    const Shape& shape, HloInstruction* called_computation_root) {
+  return std::make_unique<HloCallInstruction>(shape, called_computation_root);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCall(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* computation) {
-  std::unique_ptr<HloInstruction> instruction =
-      absl::WrapUnique(new HloInstruction(HloOpcode::kCall, shape));
-  for (auto operand : operands) {
-    instruction->AppendOperand(operand);
-  }
-  instruction->called_computations_.push_back(computation);
-  return instruction;
+  return std::make_unique<HloCallInstruction>(shape, operands, computation);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
@@ -4505,6 +4504,14 @@ bool HloInstruction::IsConstant() const {
 void HloInstruction::RelayoutConstant(const Layout& new_layout,
                                       const ShapeIndex& shape_index) {
   Cast<HloConstantInstruction>(this)->RelayoutConstant(new_layout, shape_index);
+}
+
+// Delegates to HloCallableInstruction::AppendInstructionIntoCalledComputation.
+HloInstruction* HloInstruction::AppendInstructionIntoCalledComputation(
+    HloInstruction* instruction_to_append, bool add_output) {
+  return Cast<HloCallableInstruction>(this)
+      ->AppendInstructionIntoCalledComputation(instruction_to_append,
+                                               add_output);
 }
 
 HloInstruction* HloInstruction::AddFusionOperand(HloInstruction* new_operand) {

@@ -1087,6 +1087,9 @@ class HloInstruction {
   // Creates a call instruction that applies the given computation on the given
   // operands. "shape" is the resultant shape.
   static std::unique_ptr<HloInstruction> CreateCall(
+      const Shape& shape, HloInstruction* called_computation_root);
+
+  static std::unique_ptr<HloInstruction> CreateCall(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* computation);
 
@@ -1907,6 +1910,11 @@ class HloInstruction {
   // Delegate to HloConstantInstruction::RelayoutConstant.
   void RelayoutConstant(const Layout& new_layout,
                         const ShapeIndex& shape_index = {});
+
+  // Delegates to
+  // HloCallableInstruction::AppendInstructionIntoCalledComputation.
+  HloInstruction* AppendInstructionIntoCalledComputation(
+      HloInstruction* instruction_to_append, bool add_output = false);
 
   // Delegates to HloFusionInstruction::AddFusionOperand.
   HloInstruction* AddFusionOperand(HloInstruction* new_operand);

@@ -924,7 +924,46 @@ class HloConstantInstruction : public HloInstruction {
   std::optional<Literal> literal_;
 };
 
-class HloFusionInstruction : public HloInstruction {
+// Abstract class that represents an HLO instruction that "calls" a computation.
+// Fusion and Call HLOs inherit from this class.
+class HloCallableInstruction : public HloInstruction {
+ public:
+  HloCallableInstruction(HloOpcode opcode, const Shape& shape);
+
+  HloCallableInstruction(HloOpcode opcode, const Shape& shape,
+                         absl::Span<HloInstruction* const> operands,
+                         HloComputation* called_computation);
+
+  ~HloCallableInstruction() override;
+
+  // Adds a new operand to the callable instruction.
+  HloInstruction* AddCallOperand(HloInstruction* new_operand);
+
+  // Appends (fuses) the given instruction into this callable instruction.
+  // instruction_to_append is cloned and the clone is placed in the callable
+  // instruction.  The users of instruction_to_append will be redirected to this
+  // callable instruction. instruction_to_append is unchanged otherwise. When
+  // add_output is true, a clone of the instruction_to_append will be added as
+  // additional output resulting in a multi-output callable instruction.
+  HloInstruction* AppendInstructionIntoCalledComputation(
+      HloInstruction* instruction_to_append, bool add_output = false);
+  // Clones the given instruction_to_append and inserts the clone into this
+  // callable instruction. If add_output is true, a clone of
+  // instruction_to_append will be in the output of the this callable
+  // instruction (part of the tuple of the callable root).
+  HloInstruction* CloneAndAppendInstructionIntoCalledComputation(
+      HloInstruction* instruction_to_append, bool add_output = false);
+
+  HloComputation* called_computation() const;
+
+  HloInstruction* called_computation_root() const;
+
+ protected:
+  // Returns the default called computation name.
+  virtual std::string default_called_computation_name() const = 0;
+};
+
+class HloFusionInstruction : public HloCallableInstruction {
  public:
   explicit HloFusionInstruction(const Shape& shape, FusionKind fusion_kind,
                                 HloInstruction* fused_root);
@@ -970,7 +1009,8 @@ class HloFusionInstruction : public HloInstruction {
   // instruction would violate the single-result invariant of HLO instructions
   // and significantly complicate code generation.
   HloInstruction* FuseInstruction(HloInstruction* instruction_to_fuse) {
-    return FuseInstructionInternal(instruction_to_fuse);
+    CHECK(instruction_to_fuse->IsFusible()) << instruction_to_fuse->ToString();
+    return AppendInstructionIntoCalledComputation(instruction_to_fuse);
   }
 
   // Fuses the given instruction in this fusion instruction and generates a
@@ -980,7 +1020,8 @@ class HloFusionInstruction : public HloInstruction {
   // instruction_to_fuse is unchanged otherwise.
   HloInstruction* FuseInstructionIntoMultiOutput(
       HloInstruction* instruction_to_fuse) {
-    return FuseInstructionInternal(instruction_to_fuse, /* add_output */ true);
+    return AppendInstructionIntoCalledComputation(instruction_to_fuse,
+                                                  /*add_output=*/true);
   }
 
   // Returns the computation for this fused instruction.
@@ -1023,22 +1064,12 @@ class HloFusionInstruction : public HloInstruction {
   // If multiple operands are the same instruction, keeps only one of them.
   Status DeduplicateFusionOperands();
 
- private:
-  // Fuses the given instruction into this fusion instruction.
-  // instruction_to_fuse is cloned and the clone is placed in the fusion
-  // instruction.  The users of instruction_to_fuse will be redirected to this
-  // fusion instruction. instruction_to_fuse is unchanged otherwise. When
-  // add_output is true, a clone of the instruction_to_fuse will be added as
-  // additional output resulting in a multi-output fusion.
-  HloInstruction* FuseInstructionInternal(HloInstruction* instruction_to_fuse,
-                                          bool add_output = false);
-  // Clones the given instruction_to_fuse and insert the clone into this fusion
-  // instruction. If add_output is true, a clone of instruction_to_fuse will
-  // be in the output of the this fusion instruction (part of the tuple of the
-  // fusion root).
-  HloInstruction* CloneAndFuseInternal(HloInstruction* instruction_to_fuse,
-                                       bool add_output = false);
+ protected:
+  std::string default_called_computation_name() const override {
+    return "fused_computation";
+  }
 
+ private:
   bool IsElementwiseImpl(
       const std::optional<int64_t>& operand_idx) const override;
   std::vector<std::string> ExtraAttributesToStringImpl(
@@ -1055,6 +1086,21 @@ class HloFusionInstruction : public HloInstruction {
 
   // The type of the fusion. Used by kFusion only.
   FusionKind fusion_kind_;
+};
+
+class HloCallInstruction : public HloCallableInstruction {
+ public:
+  HloCallInstruction(const Shape& shape,
+                     HloInstruction* called_computation_root);
+
+  HloCallInstruction(const Shape& shape,
+                     absl::Span<HloInstruction* const> operands,
+                     HloComputation* called_computation);
+
+ protected:
+  std::string default_called_computation_name() const override {
+    return "called_computation";
+  }
 };
 
 class HloRngInstruction : public HloInstruction {

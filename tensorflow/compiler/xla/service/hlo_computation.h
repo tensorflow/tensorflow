@@ -326,6 +326,14 @@ class HloComputation {
       absl::Span<HloInstruction* const> instructions_to_fuse,
       HloInstruction::FusionKind fusion_kind);
 
+  // Creates a call instruction containing the given instructions.  Instructions
+  // must be in reverse topological order (root of the called computation
+  // first). Replaces all uses of the original root instruction with the call
+  // instruction. The original instructions are removed if they have no uses
+  // after creating the call (this is necessarily true for at least the root).
+  HloInstruction* CreateCallInstruction(
+      absl::Span<HloInstruction* const> instructions_to_call);
+
   // Creates an async start/done instruction pair where instruction is wrapped
   // inside an asynchronous computation. The context shapes are appended to the
   // output tuple of the asynchronous start which is backend specific. Returns
@@ -627,12 +635,11 @@ class HloComputation {
   bool EqualInternal(const HloComputation& other, bool is_layout_sensitive,
                      bool ignore_channel_id_values) const;
 
-  // Fuses HLOs in instructions_to_fuse into fusion_instruction.
-  //
-  // Pre-condition: fusion_instruction's opcode is kFusion.
-  void FuseInstructionsInto(
-      absl::Span<HloInstruction* const> instructions_to_fuse,
-      HloInstruction* fusion_instruction);
+  // Appends (fuses) HLOs in instructions_to_append into the called computation
+  // of the caller.
+  void AppendInstructionsIntoCalledComputation(
+      absl::Span<HloInstruction* const> instructions_to_append,
+      HloInstruction* caller);
 
   // Internal helper for recursive copying of an instruction. Creates and
   // returns a deep copy of the given instruction.

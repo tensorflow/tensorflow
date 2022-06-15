@@ -710,6 +710,72 @@ TEST_F(HloInstructionTest, PreserveMetadataInFusionAndClone) {
   EXPECT_TRUE(protobuf_util::ProtobufEquals(metadata, fusion->metadata()));
 }
 
+TEST_F(HloInstructionTest, BinaryCallOp) {
+  HloComputation::Builder builder(TestName());
+  // Create a call instruction containing a single binary operation.
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f)));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.1f)));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      r0f32_, HloOpcode::kAdd, constant1, constant2));
+  auto module = CreateNewVerifiedModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
+  auto* call = computation->CreateCallInstruction({add});
+
+  EXPECT_THAT(call->operands(), ElementsAre(constant1, constant2));
+  EXPECT_THAT(constant1->users(), ElementsAre(call));
+  EXPECT_THAT(constant2->users(), ElementsAre(call));
+}
+
+TEST_F(HloInstructionTest, ChainCallOp) {
+  HloComputation::Builder builder(TestName());
+  // Create a chain of called unary ops.
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f)));
+  auto exp1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant));
+  auto exp2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp1));
+  auto exp3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp2));
+
+  auto module = CreateNewVerifiedModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
+  auto* call = computation->CreateCallInstruction({exp3, exp2, exp1});
+
+  EXPECT_THAT(call->operands(), ElementsAre(constant));
+  EXPECT_THAT(constant->users(), ElementsAre(call));
+}
+
+TEST_F(HloInstructionTest, MultiOutputCallOp) {
+  HloComputation::Builder builder(TestName());
+  // Create a chain of called unary ops.
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f)));
+  auto exp1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant));
+  auto exp2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp1));
+  auto exp3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp2));
+  auto exp4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, exp3, exp4));
+
+  auto module = CreateNewVerifiedModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
+  auto* call = computation->CreateCallInstruction({exp3, exp2, exp1});
+  call->AppendInstructionIntoCalledComputation(exp4, /*add_output=*/true);
+
+  EXPECT_THAT(call->operands(), ElementsAre(constant));
+  EXPECT_EQ(add->operand(0)->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_THAT(add->operand(0)->operands(), ElementsAre(call));
+  EXPECT_EQ(add->operand(1)->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_THAT(add->operand(1)->operands(), ElementsAre(call));
+}
+
 TEST_F(HloInstructionTest, AsyncOp) {
   HloComputation::Builder builder(TestName());
   // Create a call instruction containing a single binary operation.

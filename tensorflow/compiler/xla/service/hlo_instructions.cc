@@ -1473,36 +1473,241 @@ std::string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
   }
 }
 
+HloCallableInstruction::HloCallableInstruction(HloOpcode opcode,
+                                               const Shape& shape)
+    : HloInstruction(opcode, shape) {}
+
+HloCallableInstruction::HloCallableInstruction(
+    HloOpcode opcode, const Shape& shape,
+    absl::Span<HloInstruction* const> operands,
+    HloComputation* called_computation)
+    : HloInstruction(opcode, shape) {
+  for (auto operand : operands) {
+    AppendOperand(operand);
+  }
+  SetAndSanitizeName(HloOpcodeString(opcode));
+  AppendComputation(called_computation);
+}
+
+HloCallableInstruction::~HloCallableInstruction() { ClearCalledComputations(); }
+
+HloComputation* HloCallableInstruction::called_computation() const {
+  CHECK(!called_computations().empty());
+  return called_computations().front();
+}
+
+HloInstruction* HloCallableInstruction::called_computation_root() const {
+  return called_computation()->root_instruction();
+}
+
+HloInstruction* HloCallableInstruction::AddCallOperand(
+    HloInstruction* new_operand) {
+  CHECK_EQ(operand_count(),
+           called_computation()->parameter_instructions().size());
+  const int64_t param_no = operand_count();
+  std::string param_name = StrCat("param_", param_no);
+  HloInstruction* called_computation_parameter =
+      called_computation()->AddParameter(HloInstruction::CreateParameter(
+          param_no, new_operand->shape(), param_name));
+  AppendOperand(new_operand);
+  return called_computation_parameter;
+}
+
+HloInstruction* HloCallableInstruction::AppendInstructionIntoCalledComputation(
+    HloInstruction* instruction_to_append, bool add_output) {
+  // When add_output is false, this callable instruction must be a user of
+  // instruction_to_append.
+  if (!add_output) {
+    CHECK(IsUserOf(instruction_to_append));
+  }
+  return CloneAndAppendInstructionIntoCalledComputation(instruction_to_append,
+                                                        add_output);
+}
+
+HloInstruction*
+HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
+    HloInstruction* instruction_to_append, bool add_output) {
+  CHECK(instruction_to_append->IsFusible())
+      << instruction_to_append->ToString();
+  VLOG(3) << "CloneAndAppendInstructionIntoCalledComputation:\n"
+          << instruction_to_append->ToString();
+  HloInstruction* clone = nullptr;
+  if (called_computations().empty()) {
+    // New fusion instruction. It should not be a multioutput instruction.
+    CHECK(!add_output);
+    auto builder = HloComputation::Builder(
+        default_called_computation_name(),
+        opcode() == HloOpcode::kFusion ? this : nullptr);
+    builder.AddInstruction(instruction_to_append->Clone(/*suffix=*/""));
+    AppendComputation(
+        CHECK_NOTNULL(GetModule())->AddEmbeddedComputation(builder.Build()));
+    clone = called_computation_root();
+  } else {
+    // When add_output is false, instruction_to_append is necessarily an operand
+    // of the callable instruction. After appending this will no longer be the
+    // case. Remove the operand from the operand list and remove its
+    // corresponding called computation parameter instruction.
+    bool in_operand_list =
+        absl::c_linear_search(operands(), instruction_to_append);
+    CHECK(add_output || in_operand_list);
+    if (instruction_to_append->opcode() == HloOpcode::kTuple) {
+      // We assume all uses of a kTuple operation are GTE ops. In this case, we
+      // don't need to clone 'instruction_to_append'.
+      CHECK(!in_operand_list);
+      clone = instruction_to_append;
+    } else {
+      clone = called_computation()->AddInstruction(
+          instruction_to_append->Clone(/*suffix=*/""));
+    }
+    const std::vector<HloInstruction*>& called_computation_parameters =
+        called_computation()->parameter_instructions();
+    for (int64_t operand_num = 0; operand_num < operand_count();
+         ++operand_num) {
+      if (instruction_to_append == operand(operand_num)) {
+        // Replace the called computation parameter instruction's uses with the
+        // clone.
+        HloInstruction* called_computation_parameter =
+            called_computation_parameters[operand_num];
+        TF_CHECK_OK(called_computation_parameter->ReplaceAllUsesWith(clone));
+
+        // Remove the corresponding called computation parameter and operand
+        // from their respective vectors.
+        TF_CHECK_OK(called_computation()->RemoveParameter(operand_num));
+        RemoveOperandAt(operand_num);
+        break;
+      }
+    }
+    // We've cloned instruction_to_append into this callable instruction, so
+    // this callable instruction is no longer a use of instruction_to_append.
+    if (in_operand_list) {
+      DetachFrom(instruction_to_append);
+      // When the instruction_to_append does not have other users, we don't need
+      // to generate a multioutput instruction.
+      if (instruction_to_append->user_count() == 0) {
+        add_output = false;
+      }
+    }
+  }
+
+  // Reread the parameters in the computation.
+  const std::vector<HloInstruction*>& called_computation_parameters =
+      called_computation()->parameter_instructions();
+
+  // Add each operand of the clone as an operand of the callable instruction. A
+  // complication is that some clone operands may already be operands of the
+  // callable instruction.
+  for (int64_t operand_num = 0; operand_num < clone->operand_count();
+       ++operand_num) {
+    HloInstruction* operand = clone->mutable_operand(operand_num);
+
+    // See if this operand is already an operand of the callable instruction.
+    CHECK_EQ(operands().size(), called_computation_parameters.size());
+    HloInstruction* called_computation_parameter = nullptr;
+    for (int64_t i = 0; i < operands().size(); ++i) {
+      if (this->operand(i) == operand) {
+        called_computation_parameter = called_computation_parameters[i];
+        break;
+      }
+    }
+
+    if (called_computation_parameter == nullptr) {
+      // Clone's operand was not already an operand of the callable instruction.
+      // Add it as an operand and add a corresponding called computation
+      // parameter instruction.
+      called_computation_parameter = AddCallOperand(operand);
+    }
+    TF_CHECK_OK(
+        clone->ReplaceOperandWith(operand_num, called_computation_parameter));
+  }
+
+  if (add_output) {
+    CHECK_GT(instruction_to_append->user_count(), 0);
+    // If this is already a multioutput instruction, expand the root tuple by 1.
+    HloInstruction* root = called_computation_root();
+    HloInstruction::InstructionVector tuple_elements;
+    bool newly_created_tuple_instr = false;
+    if (root->opcode() == HloOpcode::kTuple) {
+      tuple_elements = root->operands();
+    } else {
+      tuple_elements.push_back(root);
+      newly_created_tuple_instr = true;
+    }
+    if (clone->opcode() == HloOpcode::kTuple) {
+      for (auto inst : clone->operands()) {
+        tuple_elements.push_back(inst);
+      }
+    } else {
+      tuple_elements.push_back(clone);
+    }
+    HloInstruction* new_root = called_computation()->AddInstruction(
+        HloInstruction::CreateTuple(tuple_elements));
+    called_computation()->set_root_instruction(new_root,
+                                               /*accept_different_shape=*/true);
+    *mutable_shape() = new_root->shape();
+    if (root->opcode() == HloOpcode::kTuple) {
+      TF_CHECK_OK(called_computation()->RemoveInstruction(root));
+    }
+
+    // If this is a newly created multioutput instruction, we need to update
+    // the use of the original callable instruction.
+    if (newly_created_tuple_instr) {
+      HloInstruction* new_instr = parent()->AddInstruction(
+          HloInstruction::CreateGetTupleElement(root->shape(), this, 0));
+      TF_CHECK_OK(ReplaceAllUsesWithDifferentShape(new_instr));
+    }
+    int64_t index = tuple_elements.size();
+    if (instruction_to_append->opcode() == HloOpcode::kTuple) {
+      CHECK_EQ(clone, instruction_to_append);
+      index -= clone->operand_count();
+      std::vector<HloInstruction*> to_be_removed;
+      const auto& users = clone->users();
+      to_be_removed.reserve(users.size());
+      for (auto old_gte : users) {
+        CHECK_EQ(old_gte->opcode(), HloOpcode::kGetTupleElement);
+        int64_t old_tuple_index = old_gte->tuple_index();
+        HloInstruction* new_gte =
+            parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
+                old_gte->shape(), this, index + old_tuple_index));
+        TF_CHECK_OK(old_gte->ReplaceAllUsesWith(new_gte));
+        to_be_removed.push_back(old_gte);
+      }
+      for (auto old_gte : to_be_removed) {
+        TF_CHECK_OK(parent()->RemoveInstruction(old_gte));
+      }
+    } else {
+      HloInstruction* new_gte =
+          parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
+              clone->shape(), this, index - 1));
+      TF_CHECK_OK(instruction_to_append->ReplaceAllUsesWith(new_gte));
+    }
+  }
+
+  if (clone != instruction_to_append) {
+    VLOG(2) << "New clone:\n" << clone->ToString();
+  }
+  return clone;
+}
+
 HloFusionInstruction::HloFusionInstruction(const Shape& shape,
                                            FusionKind fusion_kind,
                                            HloInstruction* fused_root)
-    : HloInstruction(HloOpcode::kFusion, shape), fusion_kind_(fusion_kind) {
+    : HloCallableInstruction(HloOpcode::kFusion, shape),
+      fusion_kind_(fusion_kind) {
   CHECK(fused_root != nullptr);
-  std::string fusion_name = [&] {
-    if (fusion_kind == FusionKind::kInput) {
-      return absl::StrCat("input_fusion_",
-                          HloOpcodeString(fused_root->opcode()));
-
-    } else {
-      return std::string("fusion");
-    }
-  }();
-  SetAndSanitizeName(fusion_name);
+  SetAndSanitizeName(HloOpcodeString(opcode()));
   set_parent(fused_root->parent());
   set_metadata(fused_root->metadata());
-  CloneAndFuseInternal(fused_root);
+  CHECK(fused_root->IsFusible()) << fused_root->ToString();
+  CloneAndAppendInstructionIntoCalledComputation(fused_root);
 }
 
 HloFusionInstruction::HloFusionInstruction(
     const Shape& shape, FusionKind fusion_kind,
     absl::Span<HloInstruction* const> operands,
     HloComputation* fusion_computation)
-    : HloInstruction(HloOpcode::kFusion, shape), fusion_kind_(fusion_kind) {
-  for (auto operand : operands) {
-    AppendOperand(operand);
-  }
-  SetAndSanitizeName("fusion");
-  AppendComputation(fusion_computation);
+    : HloCallableInstruction(HloOpcode::kFusion, shape, operands,
+                             fusion_computation),
+      fusion_kind_(fusion_kind) {
   fusion_computation->SetFusionInstruction(this);
 }
 
@@ -1588,16 +1793,7 @@ bool HloFusionInstruction::IsElementwiseImpl(
 
 HloInstruction* HloFusionInstruction::AddFusionOperand(
     HloInstruction* new_operand) {
-  CHECK_EQ(operand_count(),
-           fused_instructions_computation()->parameter_instructions().size());
-  const int64_t param_no = operand_count();
-  std::string param_name = StrCat("param_", param_no);
-  HloInstruction* fused_parameter =
-      fused_instructions_computation()->AddParameter(
-          HloInstruction::CreateParameter(param_no, new_operand->shape(),
-                                          param_name));
-  AppendOperand(new_operand);
-  return fused_parameter;
+  return AddCallOperand(new_operand);
 }
 
 void HloFusionInstruction::MergeFusionInstruction(
@@ -1776,187 +1972,6 @@ int64_t HloFusionInstruction::fused_instruction_count() const {
   return fused_instructions_computation()->instruction_count();
 }
 
-HloInstruction* HloFusionInstruction::FuseInstructionInternal(
-    HloInstruction* instruction_to_fuse, bool add_output) {
-  // When add_output is false, this fusion instruction must be a user of
-  // instruction_to_fuse.
-  if (!add_output) {
-    CHECK(IsUserOf(instruction_to_fuse));
-  }
-  HloInstruction* fused_instruction =
-      CloneAndFuseInternal(instruction_to_fuse, add_output);
-  return fused_instruction;
-}
-
-HloInstruction* HloFusionInstruction::CloneAndFuseInternal(
-    HloInstruction* instruction_to_fuse, bool add_output) {
-  CHECK(instruction_to_fuse->IsFusible()) << instruction_to_fuse->ToString();
-  VLOG(3) << "CloneAndFuseInternal:\n" << instruction_to_fuse->ToString();
-  HloInstruction* clone = nullptr;
-  if (called_computations().empty()) {
-    // New fusion instruction. It should not be a multioutput instruction.
-    CHECK(!add_output);
-    std::string computation_name = [&] {
-      if (fusion_kind_ == FusionKind::kInput) {
-        return absl::StrCat("input_fused_computation_",
-                            HloOpcodeString(instruction_to_fuse->opcode()));
-
-      } else {
-        return std::string("fused_computation");
-      }
-    }();
-    auto builder = HloComputation::Builder(computation_name, this);
-    builder.AddInstruction(instruction_to_fuse->Clone(/*suffix=*/""));
-    AppendComputation(
-        CHECK_NOTNULL(GetModule())->AddEmbeddedComputation(builder.Build()));
-    clone = fused_expression_root();
-  } else {
-    // When add_output is false, instruction_to_fuse is necessarily an operand
-    // of the fusion instruction. After fusion this will no longer be the
-    // case. Remove the operand from the operand list and remove its
-    // corresponding fused parameter instruction. Renumber parameters as
-    // necessary to make parameter numbers consistent with their index in the
-    // fused_parameter_ vector.
-    bool in_operand_list =
-        absl::c_linear_search(operands(), instruction_to_fuse);
-    CHECK(add_output || in_operand_list);
-    if (instruction_to_fuse->opcode() == HloOpcode::kTuple) {
-      // We assume all uses of a kTuple operation are GTE ops, not another
-      // fusion node. In this case, we don't need to clone
-      // 'instruction_to_fuse'.
-      CHECK(!in_operand_list);
-      clone = instruction_to_fuse;
-    } else {
-      clone = fused_instructions_computation()->AddInstruction(
-          instruction_to_fuse->Clone(/*suffix=*/""));
-    }
-    const std::vector<HloInstruction*>& fused_parameters =
-        fused_instructions_computation()->parameter_instructions();
-    for (int64_t operand_num = 0; operand_num < operand_count();
-         ++operand_num) {
-      if (instruction_to_fuse == operand(operand_num)) {
-        // replace the fused parameter instruction's uses with the clone.
-        HloInstruction* fused_parameter = fused_parameters[operand_num];
-        TF_CHECK_OK(fused_parameter->ReplaceAllUsesWith(clone));
-
-        // Remove the corresponding fused parameter and operand from their
-        // respective vectors.
-        TF_CHECK_OK(
-            fused_instructions_computation()->RemoveParameter(operand_num));
-        RemoveOperandAt(operand_num);
-        break;
-      }
-    }
-    // We've cloned instruction_to_fuse into this fusion instruction, so this
-    // fusion instruction is no longer a use of instruction_to_fuse.
-    if (in_operand_list) {
-      DetachFrom(instruction_to_fuse);
-      // When the instruction_to_fuse does not have other users, we don't need
-      // to generate a multioutput fusion instruction.
-      if (instruction_to_fuse->user_count() == 0) {
-        add_output = false;
-      }
-    }
-  }
-
-  // Reread the parameters in the computation.
-  const std::vector<HloInstruction*>& fused_parameters =
-      fused_instructions_computation()->parameter_instructions();
-
-  // Add each operand of the clone as an operand of the fusion instruction. A
-  // complication is that some clone operands may already be operands of the
-  // fusion instruction.
-  for (int64_t operand_num = 0; operand_num < clone->operand_count();
-       ++operand_num) {
-    HloInstruction* operand = clone->mutable_operand(operand_num);
-
-    // See if this operand is already an operand of the fusion node.
-    CHECK_EQ(operands().size(), fused_parameters.size());
-    HloInstruction* fused_param = nullptr;
-    for (int64_t i = 0; i < operands().size(); ++i) {
-      if (this->operand(i) == operand) {
-        fused_param = fused_parameters[i];
-        break;
-      }
-    }
-
-    if (fused_param == nullptr) {
-      // Clone's operand was not already an operand of the fusion
-      // instruction. Add it as an operand and add a corresponding fused
-      // parameter instruction.
-      fused_param = AddFusionOperand(operand);
-    }
-    TF_CHECK_OK(clone->ReplaceOperandWith(operand_num, fused_param));
-  }
-
-  if (add_output) {
-    CHECK_GT(instruction_to_fuse->user_count(), 0);
-    // If this is already a multioutput fusion instruction, expand the root
-    // tuple by 1.
-    HloInstruction* fused_root = fused_expression_root();
-    HloInstruction::InstructionVector tuple_elements;
-    bool newly_created_tuple_instr = false;
-    if (fused_root->opcode() == HloOpcode::kTuple) {
-      tuple_elements = fused_root->operands();
-    } else {
-      tuple_elements.push_back(fused_root);
-      newly_created_tuple_instr = true;
-    }
-    if (clone->opcode() == HloOpcode::kTuple) {
-      for (auto inst : clone->operands()) {
-        tuple_elements.push_back(inst);
-      }
-    } else {
-      tuple_elements.push_back(clone);
-    }
-    HloInstruction* new_root = fused_instructions_computation()->AddInstruction(
-        HloInstruction::CreateTuple(tuple_elements));
-    fused_instructions_computation()->set_root_instruction(new_root);
-    *mutable_shape() = new_root->shape();
-    if (fused_root->opcode() == HloOpcode::kTuple) {
-      TF_CHECK_OK(
-          fused_instructions_computation()->RemoveInstruction(fused_root));
-    }
-
-    // If this is a newly created multioutput instruction, we need to update
-    // the use of the original fusion instruction.
-    if (newly_created_tuple_instr) {
-      HloInstruction* new_instr = parent()->AddInstruction(
-          HloInstruction::CreateGetTupleElement(fused_root->shape(), this, 0));
-      TF_CHECK_OK(ReplaceAllUsesWithDifferentShape(new_instr));
-    }
-    int64_t index = tuple_elements.size();
-    if (instruction_to_fuse->opcode() == HloOpcode::kTuple) {
-      CHECK_EQ(clone, instruction_to_fuse);
-      index -= clone->operand_count();
-      std::vector<HloInstruction*> to_be_removed;
-      const auto& users = clone->users();
-      to_be_removed.reserve(users.size());
-      for (auto old_gte : users) {
-        CHECK_EQ(old_gte->opcode(), HloOpcode::kGetTupleElement);
-        int64_t old_tuple_index = old_gte->tuple_index();
-        HloInstruction* new_gte =
-            parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
-                old_gte->shape(), this, index + old_tuple_index));
-        TF_CHECK_OK(old_gte->ReplaceAllUsesWith(new_gte));
-        to_be_removed.push_back(old_gte);
-      }
-      for (auto old_gte : to_be_removed) {
-        TF_CHECK_OK(parent()->RemoveInstruction(old_gte));
-      }
-    } else {
-      HloInstruction* new_gte =
-          parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
-              clone->shape(), this, index - 1));
-      TF_CHECK_OK(instruction_to_fuse->ReplaceAllUsesWith(new_gte));
-    }
-  }
-
-  if (clone != instruction_to_fuse) {
-    VLOG(2) << "New clone:\n" << clone->ToString();
-  }
-  return clone;
-}
 
 std::vector<std::string> HloFusionInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
@@ -2013,6 +2028,22 @@ Status HloFusionInstruction::DeduplicateFusionOperands() {
   RemoveOperandsAtAscendingIndices(operands_to_remove);
   return OkStatus();
 }
+
+HloCallInstruction::HloCallInstruction(const Shape& shape,
+                                       HloInstruction* called_computation_root)
+    : HloCallableInstruction(HloOpcode::kCall, shape) {
+  CHECK(called_computation_root != nullptr);
+  SetAndSanitizeName(HloOpcodeString(opcode()));
+  set_parent(called_computation_root->parent());
+  set_metadata(called_computation_root->metadata());
+  CloneAndAppendInstructionIntoCalledComputation(called_computation_root);
+}
+
+HloCallInstruction::HloCallInstruction(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* called_computation)
+    : HloCallableInstruction(HloOpcode::kCall, shape, operands,
+                             called_computation) {}
 
 HloRngInstruction::HloRngInstruction(
     const Shape& shape, RandomDistribution distribution,
