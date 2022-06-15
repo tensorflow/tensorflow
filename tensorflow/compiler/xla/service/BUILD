@@ -3235,35 +3235,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "convert_mover",
-    srcs = ["convert_mover.cc"],
-    hdrs = ["convert_mover.h"],
-    deps = [
-        ":hlo",
-        ":hlo_creation_utils",
-        ":hlo_pass",
-        "//tensorflow/compiler/xla/service/graphcycles",
-    ],
-)
-
-tf_cc_test(
-    name = "convert_mover_test",
-    srcs = ["convert_mover_test.cc"],
-    deps = [
-        ":algebraic_simplifier",
-        ":convert_mover",
-        ":hlo_matchers",
-        ":hlo_parser",
-        ":pattern_matcher",
-        ":pattern_matcher_gmock",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:test_utils",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//tensorflow/core:test",
-    ],
-)
-
-cc_library(
     name = "all_to_all_decomposer",
     srcs = ["all_to_all_decomposer.cc"],
     hdrs = ["all_to_all_decomposer.h"],

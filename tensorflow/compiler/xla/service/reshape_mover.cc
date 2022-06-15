@@ -273,9 +273,6 @@ bool IsReshapeMoveCandidate(HloInstruction* instruction) {
     return false;
   }
 
-  // Don't perform reshape-move on convert ops.  convert_mover handles them.
-  if (instruction->opcode() == HloOpcode::kConvert) return false;
-
   // Check whether all operands:
   //    0. Have the same dimensions as the output.
   //
