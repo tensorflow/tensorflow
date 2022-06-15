@@ -27,9 +27,9 @@ add_mlir_dialect_library(GmlStDialect
   MLIRIR
   MLIRInferTypeOpInterface
   MLIRLoopLikeInterface
-  MLIRMemRef
+  MLIRMemRefDialect
   MLIRSideEffectInterfaces
   MLIRSupport
-  MLIRTensor
+  MLIRTensorDialect
   MLIRViewLikeInterface
 )

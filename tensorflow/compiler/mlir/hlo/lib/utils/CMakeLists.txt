@@ -22,12 +22,12 @@ add_mlir_library(MLIRMhloUtils
   hlo_utils.cc
 
   LINK_LIBS PUBLIC
-  MLIRArithmetic
-  MLIRFunc
+  MLIRArithmeticDialect
+  MLIRFuncDialect
   MLIRIR
-  MLIRLLVMIR
-  MLIRMemRef
+  MLIRLLVMDialect
+  MLIRMemRefDialect
   MLIRPass
-  MLIRShape
+  MLIRShapeDialect
   MLIRSupport
   )
