@@ -11,6 +11,10 @@ message OpSupport {
   // Name of the op (in the OpDef).
   string graph_op_name = 1;
 
+  // Is this TF op supported by XLA compilation?
+  // i.e. JIT compiled
+  bool supports_xla_compilation = 7;
+
   // Is this TF op supported by the old bridge?
   bool supports_old_bridge = 2;
 
