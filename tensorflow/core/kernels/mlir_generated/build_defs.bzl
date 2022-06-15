@@ -89,18 +89,16 @@ _gen_mlir_op_rule = rule(
     implementation = _gen_mlir_op_impl,
 )
 
-def _gen_mlir_op(op, name, type, platform, output_type):
+def _gen_mlir_op(op, type, platform, output_type):
     _gen_mlir_op_rule(
         name = "generate_{op}_{platform}_{type}_{output_type}_mlir".format(
             op = op,
-            name = name,
             platform = platform,
             type = type,
             output_type = output_type,
         ),
         out = "{op}_{platform}_{type}_{output_type}.mlir".format(
             op = op,
-            name = name,
             platform = platform,
             type = type,
             output_type = output_type,
@@ -340,7 +338,6 @@ def _gen_kernel_library(
             typed_tile_size = _get_shape(tile_size, type, tile_size_override)
             _gen_mlir_op(
                 op = op,
-                name = name,
                 output_type = output_type,
                 platform = platform,
                 type = type,
@@ -348,7 +345,6 @@ def _gen_kernel_library(
             _gen_kernel_bin_rule(
                 name = "{op}_{platform}_{type}_{output_type}_kernel_generator".format(
                     op = op,
-                    name = name,
                     platform = platform,
                     type = type,
                     output_type = output_type,
@@ -361,7 +357,6 @@ def _gen_kernel_library(
                 max_supported_rank = max_supported_rank,
                 mlir_op = "{op}_{platform}_{type}_{output_type}.mlir".format(
                     op = op,
-                    name = name,
                     platform = platform,
                     type = type,
                     output_type = output_type,
@@ -377,7 +372,6 @@ def _gen_kernel_library(
                 "$(location //tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel)",
                 "$(location {op}_{platform}_{type}_{output_type}.mlir)".format(
                     op = op,
-                    name = name,
                     platform = platform,
                     type = type,
                     output_type = output_type,
@@ -392,7 +386,6 @@ def _gen_kernel_library(
             native.sh_test(
                 name = "{op}_{platform}_{type}_{output_type}_gen_test".format(
                     op = op,
-                    name = name,
                     platform = platform,
                     type = type,
                     output_type = output_type,
@@ -404,7 +397,6 @@ def _gen_kernel_library(
                 data = [
                     ":{op}_{platform}_{type}_{output_type}.mlir".format(
                         op = op,
-                        name = name,
                         platform = platform,
                         type = type,
                         output_type = output_type,
@@ -416,7 +408,6 @@ def _gen_kernel_library(
     kernel_deps = [
         ":{op}_{platform}_{type}_{output_type}_kernel_generator".format(
             op = op,
-            name = name,
             platform = platform,
             type = type,
             output_type = output_type,
