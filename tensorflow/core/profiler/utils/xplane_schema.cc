@@ -45,6 +45,7 @@ const absl::string_view kTensorFlowNameScopeLineName = "TensorFlow Name Scope";
 const absl::string_view kTensorFlowOpLineName = "TensorFlow Ops";
 const absl::string_view kXlaModuleLineName = "XLA Modules";
 const absl::string_view kXlaOpLineName = "XLA Ops";
+const absl::string_view kXlaAsyncOpLineName = "Async XLA Ops";
 const absl::string_view kKernelLaunchLineName = "Launch Stats";
 const absl::string_view kSourceLineName = "Source code";
 
