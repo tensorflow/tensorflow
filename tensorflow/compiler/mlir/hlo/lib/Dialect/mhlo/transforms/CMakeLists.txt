@@ -176,6 +176,7 @@ add_mlir_library(MhloToArithmeticConversion
 
 add_mlir_library(MhloToStandard
   legalize_control_flow.cc
+  legalize_sort.cc
   legalize_to_standard.cc
 
   DEPENDS

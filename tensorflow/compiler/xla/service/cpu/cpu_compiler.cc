@@ -874,6 +874,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
 
   // Transform HLO operations to Linalg.
   pm.addPass(mlir::mhlo::createLegalizeToMemrefPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeSortPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeControlFlowPass());
   pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());

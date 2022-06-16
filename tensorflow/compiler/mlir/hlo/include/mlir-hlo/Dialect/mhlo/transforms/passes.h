@@ -37,8 +37,11 @@ class FusionOp;
 
 namespace mhlo {
 
-/// Lowers HLO control flow ops to the Standard dialect.
+/// Lowers HLO control flow ops to SCF.
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeControlFlowPass();
+
+/// Lowers sort to SCF & arith.
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeSortPass();
 
 /// Lowers from HLO dialect to Standard dialect.
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeToStdPass();

@@ -1199,6 +1199,25 @@ cc_library(
 )
 
 cc_library(
+    name = "legalize_sort",
+    srcs = ["lib/Dialect/mhlo/transforms/legalize_sort.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
+    deps = [
+        ":hlo",
+        ":mhlo_pass_details",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
     name = "legalize_to_standard",
     srcs = ["lib/Dialect/mhlo/transforms/legalize_to_standard.cc"],
     hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
@@ -1594,6 +1613,7 @@ cc_library(
         ":legalize_gather_to_torch_index_select",
         ":legalize_mhlo_to_gml",
         ":legalize_shape_computations",
+        ":legalize_sort",
         ":legalize_to_linalg",
         ":legalize_to_standard",
         ":legalize_to_tensor_op",
