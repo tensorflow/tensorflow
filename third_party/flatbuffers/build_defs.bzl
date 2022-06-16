@@ -440,7 +440,6 @@ def flatbuffer_py_library(
         include_paths = include_paths,
     )
 
-    # TODO(b/235550563): Remove the concatnation rule with 2.0.6 update.
     all_srcs_no_include = "{}_srcs_no_include".format(name)
     _gen_flatbuffer_srcs(
         name = all_srcs_no_include,
@@ -450,17 +449,10 @@ def flatbuffer_py_library(
         no_includes = True,
         include_paths = include_paths,
     )
-    concat_py_srcs = "{}_generated".format(name)
-    _concat_flatbuffer_py_srcs(
-        name = concat_py_srcs,
-        deps = [
-            ":{}".format(all_srcs_no_include),
-        ],
-    )
     native.py_library(
         name = name,
         srcs = [
-            ":{}".format(concat_py_srcs),
+            ":{}_generated.py".format(name),
         ],
         srcs_version = "PY3",
         deps = deps + [
