@@ -110,7 +110,7 @@ constexpr char kParallelInterleaveDatasetV4[] = "ParallelInterleaveDatasetV4";
 // elements that will be prefetched ahead of time. The purpose of prefetching
 // future cycle elements is to overlap expensive initialization (e.g. opening of
 // a remote file) with other computation.
-constexpr double kDefaultCyclePrefetchFactor = 2.0L;
+constexpr int kDefaultCyclePrefetchFactor = 2;
 
 // `kPerIteratorPrefetchFactor * block_length + 1` is the default number of
 // per-iterator results that will be prefetched ahead of time. The `+ 1` is to
@@ -136,6 +136,11 @@ int64_t ComputePrefetchInputElements(int64_t configured_prefetch_input_elements,
                                      int64_t cycle_length) {
   if (configured_prefetch_input_elements != model::kAutotune) {
     return configured_prefetch_input_elements;
+  }
+  if (GetExperiments().contains("reduce_interleave_prefetch")) {
+    return std::min(
+        static_cast<int64_t>(8),
+        static_cast<int64_t>(kDefaultCyclePrefetchFactor * cycle_length));
   }
   return kDefaultCyclePrefetchFactor * cycle_length;
 }
