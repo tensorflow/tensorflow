@@ -185,6 +185,7 @@ build:macos --copt=-DGRPC_BAZEL_BUILD
 
 # Settings for MacOS on ARM CPUs.
 build:macos_arm64 --cpu=darwin_arm64
+build:macos_arm64 --macos_minimum_os=11.0
 
 # iOS configs for each architecture and the fat binary builds.
 build:ios --apple_platform_type=ios
