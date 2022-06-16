@@ -823,6 +823,7 @@ cc_library(
             "@tf_runtime//:basic_kernels_opdefs",
             "@tf_runtime//:bef",
             "@tf_runtime//backends/jitrt",
+            "@tf_runtime//backends/jitrt:diagnostics",
             "@tf_runtime//backends/jitrt:jitrt_compiler",
             "@tf_runtime//:befexecutor",
             "@tf_runtime//:beftomlir",
