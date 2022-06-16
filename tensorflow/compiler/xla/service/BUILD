@@ -30,7 +30,6 @@ load(
     "if_rocm_is_configured",
 )
 load("//tensorflow/stream_executor:build_defs.bzl", "if_gpu_is_configured")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 package(
     default_visibility = [":friends"],
@@ -1225,13 +1224,8 @@ cc_library(
 )
 
 alias(
-    name = "gpu_plugin_noncuda",
-    actual = if_libtpu("gpu_plugin_stub", "gpu_plugin_impl"),
-)
-
-alias(
     name = "gpu_plugin",
-    actual = if_cuda("gpu_plugin_impl", "gpu_plugin_noncuda"),
+    actual = if_libtpu("gpu_plugin_stub", "gpu_plugin_impl"),
 )
 
 cc_library(
