@@ -230,17 +230,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // not found, this will log a fatal error.
   llvm::Value* GetEmittedValueFor(const HloInstruction* hlo);
 
-  // Returns the IrArray which contains the output of hlo.
-  //
-  // consumer is the HLO in which this IrArray is used -- we use this to (try
-  // to) add metadata indicating that the array is invariant within consumer.
-  //
-  // To get the buffer into which hlo should write its own output, call
-  // GetIrArray(hlo, hlo).
-  llvm_ir::IrArray GetIrArray(const HloInstruction& hlo,
-                              const HloInstruction& consumer,
-                              const ShapeIndex& shape_index = {});
-
   // Gets an IrArray representing the given hlo.
   llvm_ir::IrArray GetIrArrayFor(const HloInstruction* hlo);
 
@@ -351,19 +340,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // emitted_value_ table.
   Status EmitMemcpy(const HloInstruction& source,
                     const HloInstruction& destination);
-
-  // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
-  // the process. `scatter` may be fused, scatter indices are taken from
-  // `scatter_indices_gen`, updates from`updates_gen`. The output buffer is
-  // expected to have the operand values in it already. If unique_indices
-  // is false, we will use an atomic update. Using false for unique_indices
-  // is safe only when it is guaranteed that there are no duplicate
-  // indices.
-  // When using unique_indices=true, it is the caller's responsibility to
-  // ensure there is no overlap.
-  Status EmitScatter(HloInstruction* scatter,
-                     const llvm_ir::ElementGenerator& scatter_indices_gen,
-                     const llvm_ir::ElementGenerator& updates_gen);
 
   // Emits IR to compute the target address of the buffer for the given op.
   // After calling this function, you can get a pointer to this buffer by

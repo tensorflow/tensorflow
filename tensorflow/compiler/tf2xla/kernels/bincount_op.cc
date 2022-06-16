@@ -45,13 +45,13 @@ class DenseBincountOp : public XlaOpKernel {
     auto weights_size = weights_shape.dimensions(0);
     auto input_xla_type = ctx->input_xla_type(0);
     xla::PrimitiveType dtype;
-    bool has_weight;
+    bool has_weights;
     if (weights_size){
-      has_weight = true;
+      has_weights = true;
       dtype = ctx->input_xla_type(2);
     }
     else {
-      has_weight = false;
+      has_weights = false;
       dtype = input_xla_type;
     }
     int64_t output_size;
@@ -70,15 +70,46 @@ class DenseBincountOp : public XlaOpKernel {
       output_shape = xla::ShapeUtil::MakeShape(dtype, {size, output_size});
       dim = input_shape.dimensions(1);
     }
+    input = xla::Reshape(input, {size, 1});
+    auto idx = xla::Reshape(input, {size, 1});
+    auto one = xla::One(ctx->builder(), input_xla_type);
+    xla::XlaOp updates, output;
+    if (has_weights) {
+      updates = weights;
+      auto zero = xla::Zero(ctx->builder(), dtype);
+      output = xla::Broadcast(zero, {output_shape.dimensions()});
+    }
+    else  {
+      auto zero = xla::Zero(ctx->builder(), input_xla_type);
+      updates = xla::Broadcast(one, {output_shape.dimensions()});
+      output = xla::Broadcast(zero, {output_shape.dimensions()});
+    }
+    
+    xla::XlaComputation assn_computation = [&] {
+      std::unique_ptr<xla::XlaBuilder> subb =
+      ctx->builder()->CreateSubBuilder("scatter_bincount");
+      xla::Shape param_shape = xla::ShapeUtil::MakeShape(dtype, {});
+      auto p0 = xla::Parameter(subb.get(), 0, param_shape, "p0");
+      auto p1 = xla::Parameter(subb.get(), 1, param_shape, "p1");
+      if (binary_output_) {
+        xla::One(subb.get(), xla::S32);
+      }
+      else {
+        xla::Add(p0, p1);
+      }
+      return subb->BuildAndNoteError();
+    }();
+    xla::ScatterDimensionNumbers scatter_dnums;
+    scatter_dnums.set_index_vector_dim(1);
+    scatter_dnums.add_inserted_window_dims(0);
+    scatter_dnums.add_scatter_dims_to_operand_dims(0);
+    output = xla::Scatter(output, idx, updates, assn_computation, scatter_dnums, false, false);
 
-    auto loop_shape = xla::ShapeUtil::MakeTupleShape(
-        {counter_shape, data_shape, output_shape, weights_shape});
-
-    ctx->SetOutput(0, input);
+    ctx->SetOutput(0, output);
   }
 };
 
-//REGISTER_XLA_OP(Name("DenseBincount").CompileTimeConstantInput("size"), DenseBincountOp);
+REGISTER_XLA_OP(Name("DenseBincount").CompileTimeConstantInput("size"), DenseBincountOp);
 
 }  // namespace
 }  // namespace tensorflow

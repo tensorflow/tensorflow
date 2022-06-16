@@ -634,16 +634,31 @@ class TestCompiledDenseBincount(test.TestCase, parameterized.TestCase):
                        binary_output=False,
                        weights=None,
                        axis=-1):
-    y = bincount_ops.bincount(
-            x,
+
+    @def_function.function(jit_compile=True)
+    def f (x,
             weights=weights,
             minlength=minlength,
             maxlength=maxlength,
             binary_output=binary_output,
-            axis=axis,
-            pseudo_hlo=True
-        )
-    self.assertAllEqual(expected_values, y)
+             axis=axis
+            ):
+        y = bincount_ops.bincount(
+                x,
+                weights=weights,
+                minlength=minlength,
+                maxlength=maxlength,
+                binary_output=binary_output,
+                axis=axis
+            )
+        return y
+    res = f(x,
+            weights=weights,
+            minlength=minlength,
+            maxlength=maxlength,
+            binary_output=binary_output,
+            axis=axis)
+    self.assertAllEqual(expected_values, res)
     
   @parameterized.named_parameters(    
   {
@@ -665,7 +680,7 @@ class TestCompiledDenseBincount(test.TestCase, parameterized.TestCase):
                        weights=None,
                        axis=-1):
 
-    @def_function.function()
+    @def_function.function(jit_compile=True)
     def f_compiled(x,
           weights=weights,
           minlength=minlength,
@@ -678,8 +693,7 @@ class TestCompiledDenseBincount(test.TestCase, parameterized.TestCase):
             minlength=minlength,
             maxlength=maxlength,
             binary_output=binary_output,
-            axis=axis,
-            pseudo_hlo= True
+            axis=axis
         )
       return y
 

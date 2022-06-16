@@ -93,8 +93,7 @@ def bincount(arr,
              dtype=dtypes.int32,
              name=None,
              axis=None,
-             binary_output=False,
-             pseudo_hlo=False):
+             binary_output=False):
   """Counts the number of occurrences of each value in an integer array.
 
   If `minlength` and `maxlength` are not given, returns a vector with length
@@ -266,21 +265,7 @@ def bincount(arr,
           binary_output=binary_output)
     else:
       weights = validate_dense_weights(arr, weights, dtype)
-      if (pseudo_hlo == True):
-        if (len(arr.shape)==1):
-          return dense_bincount_1d(          
-            input_arr=arr,
-            size=output_size,
-            weights=weights,
-            binary_output=binary_output)
-        else:
-          return dense_bincount_2d(          
-            input_arr=arr,
-            size=output_size,
-            weights=weights,
-            binary_output=binary_output)
-      else:
-        return gen_math_ops.dense_bincount(
+      return gen_math_ops.dense_bincount(
           input=arr,
           size=output_size,
           weights=weights,
