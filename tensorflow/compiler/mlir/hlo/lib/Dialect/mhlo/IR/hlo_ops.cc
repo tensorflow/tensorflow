@@ -6587,38 +6587,10 @@ static LogicalResult eliminateBroadcastInDimTranspose(
   return success();
 }
 
-// simplify Transpose: replace Transpose with Reshape if they are equivalent
-static LogicalResult simplifyTranspose(TransposeOp op,
-                                       PatternRewriter& rewriter) {
-  auto operandType = op.operand().getType().dyn_cast<RankedTensorType>();
-  auto resultType = op.getResult().getType().dyn_cast<RankedTensorType>();
-  if (!operandType || !resultType) {
-    return failure();
-  }
-  // Not support dynamic shape a.t.m. BTW, when it's dynamic shape,
-  // maybe Transpose should be replaced by DynamicReshape.
-  if (!operandType.hasStaticShape() || !resultType.hasStaticShape()) {
-    return failure();
-  }
-  auto permutation = op.permutation().getValues<int64_t>();
-  llvm::SmallVector<int64_t> sortedPermutation;
-  for (int64_t i = 0, e = resultType.getRank(); i < e; i++) {
-    if (resultType.getDimSize(i) != 1) {
-      sortedPermutation.push_back(permutation[i]);
-    }
-  }
-  if (llvm::is_sorted(sortedPermutation)) {
-    rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.operand());
-    return success();
-  }
-  return failure();
-}
-
 void TransposeOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                               MLIRContext* /*context*/) {
   results.add(eliminateRedundantTranspse);
   results.add(eliminateBroadcastInDimTranspose);
-  results.add(simplifyTranspose);
 }
 
 LogicalResult TransposeOp::reifyReturnTypeShapes(
