@@ -167,10 +167,12 @@ class HloAsyncInstruction : public HloInstruction {
  public:
   HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
                       absl::Span<HloInstruction* const> operands,
-                      HloComputation* async_computation);
+                      HloComputation* async_computation,
+                      std::optional<int64_t> async_group_id = std::nullopt);
   HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
                       HloInstruction* operand,
-                      HloComputation* async_computation);
+                      HloComputation* async_computation,
+                      std::optional<int64_t> async_group_id = std::nullopt);
 
   ~HloAsyncInstruction() override;
   // When an async instruction is being destructed, remove it from the vector of
@@ -179,6 +181,14 @@ class HloAsyncInstruction : public HloInstruction {
 
   HloInstruction* async_wrapped_instruction() const;
   HloOpcode async_wrapped_opcode() const;
+
+  // Async group id is a unique id given to a group of async operations that
+  // consist of one async start, one async done, and zero or more async update
+  // operations. The async group participates in a single async operation. The
+  // async operation canonicalizer pass assigns async group ids.
+  std::optional<int64_t> async_group_id() const { return async_group_id_; }
+  void set_async_group_id(std::optional<int64_t> async_group_id);
+  HloInstructionProto ToProto() const override;
 
  private:
   std::vector<std::string> ExtraAttributesToStringImpl(
@@ -190,6 +200,7 @@ class HloAsyncInstruction : public HloInstruction {
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
+  std::optional<int64_t> async_group_id_;
 };
 
 class HloCopyStartInstruction : public HloInstruction {

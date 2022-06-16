@@ -623,13 +623,16 @@ class HloInstruction {
   // Creates an asynchronous start, update, and done op.
   static std::unique_ptr<HloInstruction> CreateAsyncStart(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      HloComputation* async_computation);
+      HloComputation* async_computation,
+      std::optional<int64_t> async_group_id = std::nullopt);
   static std::unique_ptr<HloInstruction> CreateAsyncUpdate(
       const Shape& shape, HloInstruction* operand,
-      HloComputation* async_computation);
+      HloComputation* async_computation,
+      std::optional<int64_t> async_group_id = std::nullopt);
   static std::unique_ptr<HloInstruction> CreateAsyncDone(
       const Shape& shape, HloInstruction* operand,
-      HloComputation* async_computation);
+      HloComputation* async_computation,
+      std::optional<int64_t> async_group_id = std::nullopt);
 
   // Creates a copy-start op, indicating whether this is a cross-program
   // prefetch or not.
@@ -2117,6 +2120,12 @@ class HloInstruction {
 
   // Delagates to HloAsyncInstruction::async_wrapped_opcode().
   HloOpcode async_wrapped_opcode() const;
+
+  // Delegates to HloAsyncInstruction::async_group_id().
+  std::optional<int64_t> async_group_id() const;
+
+  // Delegates to HloAsyncInstruction::set_async_group_id().
+  void set_async_group_id(std::optional<int64_t> async_group_id);
 
   // Delegates to HloCopyStartInstruction::is_cross_program_prefetch().
   bool is_cross_program_prefetch() const;

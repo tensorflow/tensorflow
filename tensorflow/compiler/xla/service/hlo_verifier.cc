@@ -1322,8 +1322,9 @@ Status CheckAsyncOpOperand(const HloInstruction* async_op) {
   if (operand->opcode() != HloOpcode::kAsyncStart &&
       operand->opcode() != HloOpcode::kAsyncUpdate) {
     return InternalError(
-        "async-update expects operand to be async-update or async-done, found "
+        "%s expects operand to be async-update or async-done, found "
         "%s.",
+        HloOpcodeString(async_op->opcode()),
         HloOpcodeString(operand->opcode()));
   }
   if (*async_op->async_wrapped_computation() !=
@@ -1334,6 +1335,15 @@ Status CheckAsyncOpOperand(const HloInstruction* async_op) {
         HloOpcodeString(async_op->opcode()),
         async_op->async_wrapped_instruction()->ToString(),
         operand->async_wrapped_instruction()->ToString());
+  }
+  if (async_op->async_group_id() != operand->async_group_id()) {
+    return InternalError(
+        "%s expects its operand to have the same group id (%s vs %s).",
+        HloOpcodeString(async_op->opcode()),
+        async_op->async_group_id() ? absl::StrCat(*async_op->async_group_id())
+                                   : "none",
+        operand->async_group_id() ? absl::StrCat(*operand->async_group_id())
+                                  : "none");
   }
   return OkStatus();
 }

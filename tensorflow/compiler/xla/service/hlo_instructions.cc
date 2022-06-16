@@ -216,8 +216,8 @@ std::unique_ptr<HloInstruction> HloFftInstruction::CloneWithNewOperandsImpl(
 HloAsyncInstruction::HloAsyncInstruction(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands,
-    HloComputation* async_computation)
-    : HloInstruction(opcode, shape) {
+    HloComputation* async_computation, std::optional<int64_t> async_group_id)
+    : HloInstruction(opcode, shape), async_group_id_(async_group_id) {
   CHECK(opcode == HloOpcode::kAsyncStart || operands.size() == 1);
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -230,8 +230,9 @@ HloAsyncInstruction::HloAsyncInstruction(
 
 HloAsyncInstruction::HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
                                          HloInstruction* operand,
-                                         HloComputation* async_computation)
-    : HloInstruction(opcode, shape) {
+                                         HloComputation* async_computation,
+                                         std::optional<int64_t> async_group_id)
+    : HloInstruction(opcode, shape), async_group_id_(async_group_id) {
   AppendOperand(operand);
   AppendComputation(async_computation);
   CHECK(!async_computation->IsCustomCallComputation());
@@ -269,10 +270,16 @@ HloOpcode HloAsyncInstruction::async_wrapped_opcode() const {
 
 std::vector<std::string> HloAsyncInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  if (options.syntax_sugar_async_ops()) {
-    return async_wrapped_instruction()->ExtraAttributesToString(options);
+  std::vector<std::string> result;
+  if (async_group_id_.has_value()) {
+    result.push_back(StrCat("async_group_id=", *async_group_id_));
   }
-  return {};
+  if (options.syntax_sugar_async_ops()) {
+    std::vector<std::string> wrapped_extra_attributes =
+        async_wrapped_instruction()->ExtraAttributesToString(options);
+    absl::c_copy(wrapped_extra_attributes, std::back_inserter(result));
+  }
+  return result;
 }
 
 bool HloAsyncInstruction::IdenticalSlowPath(
@@ -299,6 +306,17 @@ std::unique_ptr<HloInstruction> HloAsyncInstruction::CloneWithNewOperandsImpl(
   }
   return std::make_unique<HloAsyncInstruction>(opcode(), shape, new_operands,
                                                new_wrapped_computation);
+}
+
+void HloAsyncInstruction::set_async_group_id(
+    std::optional<int64_t> async_group_id) {
+  async_group_id_ = async_group_id;
+}
+
+HloInstructionProto HloAsyncInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_async_group_id(async_group_id_.has_value() ? *async_group_id_ : -1);
+  return proto;
 }
 
 HloCopyStartInstruction::HloCopyStartInstruction(const Shape& shape,
