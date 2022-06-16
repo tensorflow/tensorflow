@@ -150,7 +150,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def setUp(self):
     """Setup method."""
-    super(TfTrtIntegrationTestBase, self).setUp()
+    super().setUp()
     warnings.simplefilter("always")
 
     if not is_tensorrt_enabled():
