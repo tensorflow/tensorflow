@@ -261,9 +261,9 @@ Value CreateSendOp(OpBuilder& builder, int64_t& channel_id, Location loc,
                    const Optional<int64_t>& tpu_core, Value token,
                    StringRef host_handler_name) {
   // type 2 == DEVICE_TO_HOST
-  auto channel_handle = ChannelHandle::get(
-      /*handle=*/builder.getI64IntegerAttr(channel_id++),
-      /*type=*/builder.getI64IntegerAttr(2), builder.getContext());
+  auto channel_handle = ChannelHandleAttr::get(builder.getContext(),
+                                               /*handle=*/channel_id++,
+                                               /*type=*/2);
   auto send = builder.create<SendOp>(
       loc, token.getType(), operand, token, channel_handle,
       /*is_host_transfer=*/builder.getBoolAttr(true));
@@ -283,9 +283,9 @@ Value CreateRecvOp(OpBuilder& builder, int64_t& channel_id, Location loc,
                    const Optional<int64_t>& tpu_core, Value token,
                    StringRef host_handler_name) {
   // type 3 == HOST_TO_DEVICE
-  auto channel_handle = ChannelHandle::get(
-      /*handle=*/builder.getI64IntegerAttr(channel_id++),
-      /*type=*/builder.getI64IntegerAttr(3), builder.getContext());
+  auto channel_handle = ChannelHandleAttr::get(builder.getContext(),
+                                               /*handle=*/channel_id++,
+                                               /*type=*/3);
   auto result_type = result.getType();
   SmallVector<Type, 2> recv_result_type = {result_type, token.getType()};
   auto recv =

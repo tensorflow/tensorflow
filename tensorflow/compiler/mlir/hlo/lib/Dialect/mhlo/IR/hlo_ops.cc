@@ -44,7 +44,6 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
 #include "mlir-hlo/utils/convert_op_folder.h"
 #include "mlir-hlo/utils/hlo_utils.h"
@@ -78,6 +77,7 @@ namespace mlir {
 #include "hlo_patterns.cc.inc"
 }  // namespace mlir
 
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.cc.inc"
 #define GET_ATTRDEF_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.cc.inc"
 
@@ -8122,6 +8122,11 @@ void printConvolutionDimensions(AsmPrinter& p, ConvDimensionNumbersAttr dnums) {
   printDim(dnums.getOutputSpatialDimensions(),
            {{dnums.getOutputBatchDimension(), IOBatch},
             {dnums.getOutputFeatureDimension(), IOFeature}});
+}
+
+void printConvolutionDimensions(AsmPrinter& p, Operation*,
+                                ConvDimensionNumbersAttr dnums) {
+  printConvolutionDimensions(p, dnums);
 }
 
 // Custom printer and parser for ConvDimensionNumbersAttr.

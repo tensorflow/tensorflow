@@ -49,7 +49,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
@@ -1060,9 +1059,8 @@ template <typename OpT>
 void SetupChannelIdAttribute(OpT op, const xla::HloChannelInstruction* instr,
                              mlir::Builder builder) {
   if (instr->channel_id().has_value()) {
-    op.setChannelIdAttr(mlir::mhlo::ChannelHandle::get(
-        builder.getI64IntegerAttr(*instr->channel_id()),
-        builder.getI64IntegerAttr(0), builder.getContext()));
+    op.setChannelIdAttr(mlir::mhlo::ChannelHandleAttr::get(
+        builder.getContext(), *instr->channel_id(), 0));
   }
 }
 

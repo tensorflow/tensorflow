@@ -213,7 +213,7 @@ add {
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
   // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
   // CHECK:  }) {
-  // CHECK-SAME:  channel_id = {handle = 1 : i64, type = 0 : i64}
+  // CHECK-SAME:  channel_id = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
   ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2,3}, {4,5,6,7}}, to_apply=add
 }
@@ -264,7 +264,7 @@ add {
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
   // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
   // CHECK:  }) {
-  // CHECK-SAME:  channel_id = {handle = 1 : i64, type = 0 : i64}
+  // CHECK-SAME:  channel_id = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, -1], [3, 4, 5, 6]]> : tensor<2x4xi64>
   ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2}, {3,4,5,6}}, to_apply=add
 }
@@ -291,7 +291,7 @@ add {
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
   // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
   // CHECK:  }) {
-  // CHECK-SAME:  channel_id = {handle = 1 : i64, type = 0 : i64}
+  // CHECK-SAME:  channel_id = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
   // CHECK:  "lmhlo_gpu.all_reduce_done"([[TOKEN]], [[OUTPUT]])
   start = f32[8] all-reduce-start(param0),
@@ -325,7 +325,7 @@ add {
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
   // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
   // CHECK:  }) {
-  // CHECK-SAME:  channel_id = {handle = 1 : i64, type = 0 : i64}
+  // CHECK-SAME:  channel_id = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
   // CHECK:  "lmhlo_gpu.all_reduce_done"([[TOKEN]], [[OUTPUT0]], [[OUTPUT1]])
   start = (f32[8], f32[9]) all-reduce-start(param0, param1),
@@ -601,7 +601,7 @@ ENTRY entry {
 
 // CHECK: func @main
 // CHECK: "lmhlo.collective_permute"
-// CHECK-SAME:  channel_id = {handle = 2 : i64, type = 0 : i64}
+// CHECK-SAME:  channel_id = #mhlo.channel_handle<handle = 2, type = 0>
 // CHECK-SAME{LITERAL}: source_target_pairs = dense<[[0, 1], [1, 2], [2, 0]]> : tensor<3x2xi64>
 HloModule TestCollectivePermute
 ENTRY main {

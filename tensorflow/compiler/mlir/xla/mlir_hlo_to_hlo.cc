@@ -360,16 +360,16 @@ static xla::ConvolutionDimensionNumbers Convert_dimension_numbers(
   return xla::ConvertConvDimensionNumbers(input);
 }
 
-xla::ChannelHandle Convert_channel_handle(mlir::mhlo::ChannelHandle attr) {
+xla::ChannelHandle Convert_channel_handle(mlir::mhlo::ChannelHandleAttr attr) {
   xla::ChannelHandle channel_handle;
-  channel_handle.set_handle(ConvertAPInt(attr.handle().getValue()));
-  channel_handle.set_type(static_cast<xla::ChannelHandle::ChannelType>(
-      ConvertAPInt(attr.type().getValue())));
+  channel_handle.set_handle(attr.getHandle());
+  channel_handle.set_type(
+      static_cast<xla::ChannelHandle::ChannelType>(attr.getType()));
   return channel_handle;
 }
 
 std::optional<xla::ChannelHandle> Convert_channel_handle(
-    llvm::Optional<mlir::mhlo::ChannelHandle> attr) {
+    llvm::Optional<mlir::mhlo::ChannelHandleAttr> attr) {
   if (!attr.hasValue()) return std::nullopt;
   return Convert_channel_handle(attr.getValue());
 }

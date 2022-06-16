@@ -49,7 +49,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -6112,7 +6111,7 @@ class ConvertXlaReduceScatterOp
         loc, op.getType(), op.input(),
         rewriter.getIntegerAttr(rewriter.getIntegerType(64),
                                 scatter_dimension.getSExtValue()),
-        replica_groups, ChannelHandle());
+        replica_groups, ChannelHandleAttr());
     StringRef reduce_op = op.reduce_op();
     if (reduce_op == "Add") {
       BuildReduceBody<AddOp>(element_type, &reduce_scatter.computation(),

@@ -158,24 +158,6 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
-    name = "hlo_ops_base_structs_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
-    tbl_outs = [
-        (
-            ["-gen-struct-attr-decls"],
-            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h.inc",
-        ),
-        (
-            ["-gen-struct-attr-defs"],
-            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.cc.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td",
-    deps = [":hlo_ops_td_files"],
-)
-
-gentbl_cc_library(
     name = "hlo_ops_base_enums_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
@@ -492,46 +474,6 @@ cc_library(
 )
 
 cc_library(
-    name = "hlo_ops_base_structs",
-    srcs = [
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h",
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h",
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h.inc",
-        "lib/Dialect/mhlo/IR/hlo_ops_base_structs.cc",
-    ],
-    hdrs = [
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h",
-    ],
-    includes = ["include"],
-    deps = [
-        ":hlo_ops_base_attrs_inc_gen",
-        ":hlo_ops_base_enums_inc_gen",
-        ":hlo_ops_base_structs_inc_gen",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
-cc_library(
-    name = "hlo_ops_base_enums",
-    srcs = [
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h.inc",
-        "lib/Dialect/mhlo/IR/hlo_ops_base_enums.cc",
-    ],
-    hdrs = [
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h",
-    ],
-    includes = ["include"],
-    deps = [
-        ":hlo_ops_base_enums_inc_gen",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
     name = "convert_op_folder",
     srcs = ["lib/utils/convert_op_folder.cc"],
     hdrs = ["include/mlir-hlo/utils/convert_op_folder.h"],
@@ -549,6 +491,8 @@ cc_library(
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc",
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.cc.inc",
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.cc.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h.inc",
         "lib/Dialect/mhlo/IR/chlo_ops.cc",
         "lib/Dialect/mhlo/IR/hlo_ops.cc",
         "lib/utils/broadcast_utils.cc",
@@ -558,7 +502,6 @@ cc_library(
         "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h",
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h",
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.h",
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h",
         "include/mlir-hlo/utils/broadcast_utils.h",
         "include/mlir-hlo/utils/hlo_utils.h",
     ],
@@ -568,9 +511,7 @@ cc_library(
         ":chlo_ops_inc_gen",
         ":convert_op_folder",
         ":hlo_ops_base_attrs_inc_gen",
-        ":hlo_ops_base_enums",
         ":hlo_ops_base_inc_gen",
-        ":hlo_ops_base_structs",
         ":hlo_ops_common",
         ":hlo_ops_inc_gen",
         ":hlo_ops_pattern_gen",
@@ -608,9 +549,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":hlo",
-        ":hlo_ops_base_enums",
         ":hlo_ops_base_inc_gen",
-        ":hlo_ops_base_structs",
         ":hlo_ops_common",
         ":lhlo_ops_inc_gen",
         ":lhlo_ops_structs_inc_gen",
@@ -648,8 +587,6 @@ cc_library(
     includes = ["include"],
     deps = [
         ":hlo",
-        ":hlo_ops_base_enums",
-        ":hlo_ops_base_structs",
         ":hlo_ops_common",
         ":lhlo",
         ":lhlo_gpu_ops_attrdefs_inc_gen",

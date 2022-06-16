@@ -1653,10 +1653,8 @@ mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(
 mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(
     const xla::ChannelHandle& channel) {
   return builder_->getNamedAttr(
-      "channel_handle",
-      mlir::mhlo::ChannelHandle::get(
-          builder_->getI64IntegerAttr(channel.handle()),
-          builder_->getI64IntegerAttr(channel.type()), context_));
+      "channel_handle", mlir::mhlo::ChannelHandleAttr::get(
+                            context_, channel.handle(), channel.type()));
 }
 
 void HloFunctionImporter::SetLayoutForMlir(mlir::Operation* op,

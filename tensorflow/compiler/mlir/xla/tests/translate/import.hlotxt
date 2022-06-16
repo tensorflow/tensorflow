@@ -47,7 +47,7 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   input = f32[128,32] parameter(0)
   // CHECK-NEXT:  "mhlo.all_gather"([[INPUT]])
   // CHECK-SAME: all_gather_dim = 1 : i64
-  // CHECK-SAME: channel_handle = {handle = 1 : i64, type = 0 : i64}
+  // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
   ROOT ag = f32[128,128] all-gather(input), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, dimensions={1}
 }
@@ -83,7 +83,7 @@ add {
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
   // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
   // CHECK:  }) {
-  // CHECK-SAME:  channel_handle = {handle = 1 : i64, type = 0 : i64}
+  // CHECK-SAME:  channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>
   ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2,3}, {5,6,7,8}}, to_apply=add
 }
@@ -965,7 +965,7 @@ add {
   // CHECK-NEXT:     [[ADD:%.*]] = mhlo.add [[BARG0]], [[BARG1]] : tensor<f32>
   // CHECK-NEXT:     "mhlo.return"([[ADD]])
   // CHECK-NEXT:   }) {
-  // CHECK-SAME:           channel_handle = {handle = 1 : i64, type = 0 : i64}
+  // CHECK-SAME:           channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
   // CHECK-SAME:           scatter_dimension = 1 : i64
   // CHECK-SAME: } : (tensor<4x8xf32>) -> tensor<4x4xf32>

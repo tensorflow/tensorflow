@@ -360,7 +360,6 @@ cc_library(
         ":tf_device_pass_inc_gen",
         ":tf_pass_inc_gen",
         "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:hlo_ops_base_structs",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",

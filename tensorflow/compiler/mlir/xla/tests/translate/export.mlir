@@ -36,10 +36,10 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<5xf32> {
   })
   {
     replica_groups = dense<[[0, 2], [1, 3]]> : tensor<2x2xi64>,
-    channel_handle = {
-      handle = 5 : i64,
-      type = 2 : i64
-    },
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 2
+    >,
     scatter_dimension = 0 : i64
   } : (tensor<10xf32>) -> tensor<5xf32>
   func.return %0 : tensor<5xf32>
@@ -60,7 +60,7 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<5xf32> {
 func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x128xf32> {
   %0 = "mhlo.all_gather"(%arg0) {
     all_gather_dim = 1 : i64,
-    channel_handle = {handle = 1 : i64, type = 0 : i64},
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
     shard_count = 4,
     replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
   } : (tensor<128x32xf32>) -> tensor<128x128xf32>
@@ -86,10 +86,10 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
   })
   {
     replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>,
-    channel_handle = {
-      handle = 5 : i64,
-      type = 2 : i64
-    }
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 2
+    >
   } : (tensor<10xf32>) -> tensor<10xf32>
   func.return %0 : tensor<10xf32>
 }
@@ -115,10 +115,10 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
   })
   {
     replica_groups = dense<[[0, 2, 4, -1], [1, 3, 5, 7]]> : tensor<2x4xi64>,
-    channel_handle = {
-      handle = 5 : i64,
-      type = 2 : i64
-    }
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 2
+    >
   } : (tensor<10xf32>) -> tensor<10xf32>
   func.return %0 : tensor<10xf32>
 }
@@ -143,10 +143,10 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<5xf32> {
   })
   {
     replica_groups = dense<[[0, 2], [1, 3]]> : tensor<2x2xi64>,
-    channel_handle = {
-      handle = 5 : i64,
-      type = 2 : i64
-    },
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 2
+    >,
     scatter_dimension = 0 : i64
   } : (tensor<10xf32>) -> tensor<5xf32>
   func.return %0 : tensor<5xf32>
@@ -878,10 +878,10 @@ func.func @main(%arg: tensor<4x6xf32>, %pad: tensor<f32>) -> tensor<13x19xf32> {
 // CHECK:  HloModule
 func.func @main(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, !mhlo.token> {
   %0:2 = "mhlo.recv"(%token) {
-    channel_handle = {
-      handle = 5 : i64,
-      type = 3 : i64  // Host to device channel
-    },
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 3  // Host to device channel
+    >,
     is_host_transfer = true
   } : (!mhlo.token) -> (tensor<3x4xi32>, !mhlo.token)
   %1 = "mhlo.tuple"(%0#0, %0#1) : (tensor<3x4xi32>, !mhlo.token) -> tuple<tensor<3x4xi32>, !mhlo.token>
@@ -898,10 +898,10 @@ func.func @main(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, !mhlo.token> {
 // CHECK:  HloModule
 func.func @main(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, !mhlo.token> {
   %0:2 = "mhlo.recv"(%token) {
-    channel_handle = {
-      handle = 5 : i64,
-      type = 1 : i64  // Device to device channel
-    },
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 1  // Device to device channel
+    >,
     is_host_transfer = false
   } : (!mhlo.token) -> (tensor<3x4xi32>, !mhlo.token)
   %1 = "mhlo.tuple"(%0#0, %0#1) : (tensor<3x4xi32>, !mhlo.token) -> tuple<tensor<3x4xi32>, !mhlo.token>
@@ -919,10 +919,10 @@ func.func @main(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, !mhlo.token> {
 // CHECK:  HloModule
 func.func @main(%token: !mhlo.token) -> !mhlo.token {
   %0 = "mhlo.recv"(%token) {
-    channel_handle = {
-      handle = 5 : i64,
-      type = 1 : i64  // Device to device channel
-    },
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 1  // Device to device channel
+    >,
     is_host_transfer = false
   } : (!mhlo.token) -> (!mhlo.token)
   func.return %0 : !mhlo.token
@@ -1152,10 +1152,10 @@ func.func @main(%arg0: tensor<10x24x24x64xf32>, %arg1: tensor<10x12x12x64xf32>) 
 // CHECK:  HloModule
 func.func @main(%arg: tensor<3x4xi32>, %token: !mhlo.token) -> !mhlo.token {
   %0 = "mhlo.send"(%arg, %token) {
-    channel_handle = {
-      handle = 5 : i64,
-      type = 2 : i64  // Device to host channel
-    },
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 2  // Device to host channel
+    >,
     is_host_transfer = true
   } : (tensor<3x4xi32>, !mhlo.token) -> !mhlo.token
   func.return %0 : !mhlo.token
@@ -1173,10 +1173,10 @@ func.func @main(%arg: tensor<3x4xi32>, %token: !mhlo.token) -> !mhlo.token {
 // CHECK:  HloModule
 func.func @main(%arg: tensor<3x4xi32>, %token: !mhlo.token) -> !mhlo.token {
   %0 = "mhlo.send"(%arg, %token) {
-    channel_handle = {
-      handle = 5 : i64,
-      type = 1 : i64  // Device to device channel
-    },
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 1  // Device to device channel
+    >,
     is_host_transfer = false
   } : (tensor<3x4xi32>, !mhlo.token) -> !mhlo.token
   func.return %0 : !mhlo.token
@@ -1194,10 +1194,10 @@ func.func @main(%arg: tensor<3x4xi32>, %token: !mhlo.token) -> !mhlo.token {
 // CHECK:  HloModule
 func.func @main(%token: !mhlo.token) -> !mhlo.token {
   %0 = "mhlo.send"(%token) {
-    channel_handle = {
-      handle = 5 : i64,
-      type = 1 : i64
-    },
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 1
+    >,
     is_host_transfer = false
   } : (!mhlo.token) -> !mhlo.token
   func.return %0 : !mhlo.token
@@ -1449,8 +1449,8 @@ func.func @main(%arg0: tensor<4xi32>) -> tensor<*xi32> {
 
 // CHECK:  HloModule
 func.func @main(%arg: tensor<3x4xf32>, %token: !mhlo.token) -> tuple<tensor<3x4xf32>, !mhlo.token> {
-  %0 = "mhlo.send"(%arg, %token) {channel_handle = {handle = 1 : i64, type = 2 : i64}, is_host_transfer = true, mhlo.frontend_attributes = {_xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "channel_dtoh_0"}} : (tensor<3x4xf32>, !mhlo.token) -> !mhlo.token
-  %1:2 = "mhlo.recv"(%0) {channel_handle = {handle = 2 : i64, type = 3 : i64}, is_host_transfer = true, mhlo.frontend_attributes = {_xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "channel_htod_0"}} : (!mhlo.token) -> (tensor<3x4xf32>, !mhlo.token)
+  %0 = "mhlo.send"(%arg, %token) {channel_handle = #mhlo.channel_handle<handle = 1, type = 2>, is_host_transfer = true, mhlo.frontend_attributes = {_xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "channel_dtoh_0"}} : (tensor<3x4xf32>, !mhlo.token) -> !mhlo.token
+  %1:2 = "mhlo.recv"(%0) {channel_handle = #mhlo.channel_handle<handle = 2, type = 3>, is_host_transfer = true, mhlo.frontend_attributes = {_xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "channel_htod_0"}} : (!mhlo.token) -> (tensor<3x4xf32>, !mhlo.token)
   %2 = "mhlo.tuple"(%1#0, %1#1) : (tensor<3x4xf32>, !mhlo.token) -> tuple<tensor<3x4xf32>, !mhlo.token>
   func.return %2 : tuple<tensor<3x4xf32>, !mhlo.token>
 }
@@ -1472,7 +1472,7 @@ func.func @main(%arg: tensor<3x4xf32>, %token: !mhlo.token) -> tuple<tensor<3x4x
 
 // CHECK:  HloModule
 func.func @main(%arg: tensor<3x4xf32>, %token: !mhlo.token) -> !mhlo.token {
-  %0 = "mhlo.send"(%arg, %token) {channel_handle = {handle = 1 : i64, type = 2 : i64}, is_host_transfer = true, mhlo.frontend_attributes = {}} : (tensor<3x4xf32>, !mhlo.token) -> !mhlo.token
+  %0 = "mhlo.send"(%arg, %token) {channel_handle = #mhlo.channel_handle<handle = 1, type = 2>, is_host_transfer = true, mhlo.frontend_attributes = {}} : (tensor<3x4xf32>, !mhlo.token) -> !mhlo.token
   func.return %0 : !mhlo.token
 }
 
@@ -1485,7 +1485,7 @@ func.func @main(%arg: tensor<3x4xf32>, %token: !mhlo.token) -> !mhlo.token {
 
 // CHECK:  HloModule
 func.func @main(%arg: tensor<3x4xf32>, %token: !mhlo.token) -> !mhlo.token {
-  %0 = "mhlo.send"(%arg, %token) {channel_handle = {handle = 1 : i64, type = 2 : i64}, is_host_transfer = true} : (tensor<3x4xf32>, !mhlo.token) -> !mhlo.token
+  %0 = "mhlo.send"(%arg, %token) {channel_handle = #mhlo.channel_handle<handle = 1, type = 2>, is_host_transfer = true} : (tensor<3x4xf32>, !mhlo.token) -> !mhlo.token
   func.return %0 : !mhlo.token
 }
 

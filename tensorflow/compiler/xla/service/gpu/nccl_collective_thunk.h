@@ -64,7 +64,7 @@ template <typename OpT>
 void NcclCollectiveConfig::SetCollectiveOpKindAndID(OpT op) {
   if (op.getChannelId()) {
     collective_op_kind = RendezvousKey::kCrossModule;
-    op_id = static_cast<int64_t>(op.getChannelId()->handle().getInt());
+    op_id = static_cast<int64_t>(op.getChannelId()->getHandle());
   } else {
     collective_op_kind = RendezvousKey::kCrossReplica;
     mlir::ModuleOp parent = op->template getParentOfType<mlir::ModuleOp>();
