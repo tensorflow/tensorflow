@@ -401,7 +401,7 @@ tf_py_test(
 
 tf_py_test(
     name = "group_by_window_test",
-    size = "small",
+    size = "medium",
     srcs = ["group_by_window_test.py"],
     shard_count = 4,
     deps = [
