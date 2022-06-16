@@ -119,6 +119,7 @@ FRAMEWORK_LIB_HDRS = STABLE_FRAMEWORK_LIB_HDRS + [
     "core/subgraph.h",
     "graph_info.h",
     "interpreter_options.h",
+    "logger.h",
     "optional_debug_tools.h",
     "signature_runner.h",
 ]
@@ -505,12 +506,14 @@ cc_library(
         "core/subgraph.h",
         "interpreter.cc",
         "interpreter_builder.cc",
+        "logger.cc",
         "signature_runner.h",
     ],
     hdrs = [
         "interpreter.h",
         "interpreter_builder.h",
         "interpreter_options.h",
+        "logger.h",
         "model.h",
         "model_builder.h",
     ],
@@ -575,6 +578,7 @@ cc_library(
         "interpreter.h",
         "interpreter_builder.h",
         "interpreter_options.h",
+        "logger.h",
         "model.h",
         "model_builder.h",
         "signature_runner.h",
@@ -1161,7 +1165,10 @@ cc_library(
             "minimal_logging_default.cc",
         ],
     }),
-    hdrs = ["minimal_logging.h"],
+    hdrs = [
+        "logger.h",
+        "minimal_logging.h",
+    ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings() + tflite_copts(),
     linkopts = select({
