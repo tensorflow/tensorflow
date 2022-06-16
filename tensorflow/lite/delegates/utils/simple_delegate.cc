@@ -103,7 +103,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context,
                        "%d partitions.\n",
                        delegate->Name(), supported_nodes.size(),
                        helper.num_total_nodes(), helper.num_partitions());
-  TfLiteRegistration delegate_kernel_registration = 
+  TfLiteRegistration delegate_kernel_registration =
       GetDelegateKernelRegistration(delegate);
 
   return context->ReplaceNodeSubsetsWithDelegateKernels(
