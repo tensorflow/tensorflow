@@ -140,7 +140,7 @@ let options = ImageClassifierOptions(modelPath: modelPath)
 // Configure any additional options:
 // options.classificationOptions.maxResults = 3
 
-let classifier = try ImageClassifier.imageClassifier(options: options)
+let classifier = try ImageClassifier.classifier(options: options)
 
 // Convert the input image to MLImage.
 // There are other sources for MLImage. For more details, please see:
@@ -148,7 +148,7 @@ let classifier = try ImageClassifier.imageClassifier(options: options)
 guard let image = UIImage (named: "sparrow.jpg"), let mlImage = MLImage(image: image) else { return }
 
 // Run inference
-let classificationResults = try classifier.classify(gmlImage: mlImage)
+let classificationResults = try classifier.classify(mlImage: mlImage)
 ```
 
 #### Objective C
