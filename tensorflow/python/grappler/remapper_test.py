@@ -77,6 +77,11 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
 
   def _maybe_skip(self, mode):
     if mode == 'cuda':
+      # It seems the windows os cannot correctly query the cuda_version.
+      # TODO(kaixih@nvidia): Remove this when it works.
+      if os.name == "nt":
+        self.skipTest("This test doesn't support Windows")
+
       if not test.is_gpu_available(cuda_only=True):
         self.skipTest('This test requires GPU.')
       cuda_version_str = sysconfig.get_build_info().get('cuda_version', '0.0')
