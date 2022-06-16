@@ -803,6 +803,39 @@ TEST_F(FusionCostAnalysis, NoLayout) {
             sizeof(float) * 2 * 3 * 4 * 5);
 }
 
+TEST_F(FusionCostAnalysis, NonTupleWithTupleParamBytesAccessed) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+fused_computation {
+  param = (f32[3,2]{1,0}, f32[3,2]{1,0}) parameter(0)
+  gte0 = f32[3,2]{1,0} get-tuple-element(param), index=0
+  gte1 = f32[3,2]{1,0} get-tuple-element(param), index=1
+  ROOT add = f32[3,2]{1,0} add(gte0, gte1)
+}
+
+ENTRY entry {
+  param0 = f32[3,2]{1,0} parameter(0)
+  param1 = f32[3,2]{1,0} parameter(1)
+  tuple = (f32[3,2]{1,0}, f32[3,2]{1,0}) tuple(param0, param1)
+  ROOT fusion = f32[3,2]{1,0} fusion(tuple), kind=kLoop, calls=fused_computation
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+
+  HloCostAnalysis fusion_analysis(ShapeSize);
+  ASSERT_IS_OK(fusion->Accept(&fusion_analysis));
+
+  EXPECT_EQ(fusion_analysis.bytes_accessed(*fusion), sizeof(float) * 3 * 2 * 3);
+  EXPECT_EQ(fusion_analysis.operand_bytes_accessed(*fusion, 0),
+            sizeof(float) * 3 * 2 * 2);
+  EXPECT_EQ(fusion_analysis.output_bytes_accessed(*fusion),
+            sizeof(float) * 3 * 2);
+}
+
 TEST_F(FusionCostAnalysis, TupleBytesAccessed) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true

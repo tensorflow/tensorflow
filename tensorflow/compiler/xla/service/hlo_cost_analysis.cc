@@ -949,7 +949,7 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
   for (int64_t i = 0; i < fusion->fused_parameters().size(); ++i) {
     const HloInstruction* operand = fusion->fused_parameter(i);
     int64_t operand_size = 0;
-    if (!fusion->shape().IsTuple()) {
+    if (!operand->shape().IsTuple()) {
       operand_size = FusionParameterReadBytes(operand);
     } else {
       // If the fusion parameter is a tuple type, find the gte for the leaf
