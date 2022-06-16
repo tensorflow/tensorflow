@@ -7,9 +7,9 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_libtpu",
     "tf_cuda_library",
 )
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 package(
     default_visibility = [
@@ -229,9 +229,9 @@ tf_kernel_library(
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/core/util:overflow",
         "//tensorflow/stream_executor/lib",
-    ] + if_libtpu(
-        if_false = [":gpu_tf_kernel_custom_call"],
-        if_true = [],
+    ] + if_cuda(
+        if_false = [],
+        if_true = [":gpu_tf_kernel_custom_call"],
     ),
 )
 
