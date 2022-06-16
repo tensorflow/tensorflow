@@ -843,7 +843,7 @@ cuda_py_test(
 
 tf_py_test(
     name = "shard_test",
-    size = "small",
+    size = "medium",
     srcs = ["shard_test.py"],
     shard_count = 4,
     deps = [
