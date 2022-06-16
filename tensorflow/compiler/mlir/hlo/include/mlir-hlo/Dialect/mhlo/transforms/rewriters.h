@@ -101,9 +101,14 @@ void populateDynamicShapeFusionPatterns(MLIRContext *context,
                                         RewritePatternSet *patterns);
 
 // Populate a collection of conversion patterns for un-fusing
-// batch_norm_inference and batch_norm_training into constituent HLO ops.
-void populateUnfuseBatchNormPatterns(MLIRContext *context,
-                                     RewritePatternSet *patterns);
+// batch_norm_inference into constituent HLO ops.
+void populateUnfuseBatchNormInferencePattern(MLIRContext *context,
+                                             RewritePatternSet *patterns);
+
+// Populate a collection of conversion patterns for un-fusing
+// batch_norm_training into constituent HLO ops.
+void populateUnfuseBatchNormTrainingPattern(MLIRContext *context,
+                                            RewritePatternSet *patterns);
 
 // Populates patterns that translate the trigonometric operations from the
 // standard dialect to approximations that do not use intrinsics.
