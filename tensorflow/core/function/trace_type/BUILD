@@ -136,6 +136,9 @@ tf_proto_library(
         "default_types.proto",
     ],
     cc_api_version = 2,
+    protodeps = [
+        ":serialization_proto",
+    ],
     visibility = ["//tensorflow:internal"],
 )
 
