@@ -173,6 +173,33 @@ std::vector<QaAnswer> results = answerer->Answer(context_of_question, question_t
 Explore more advanced accelerator settings
 [here](https://github.com/tensorflow/tensorflow/blob/1a8e885b864c818198a5b2c0cbbeca5a1e833bc8/tensorflow/lite/experimental/acceleration/configuration/configuration.proto).
 
+### Example usage of Coral Edge TPU in Python
+
+Configure Coral Edge TPU in the base options of the task. For example, you can set
+up Coral Edge TPU in `ImageClassifier` as follows:
+
+```python
+# Imports
+from tflite_support.task import vision
+from tflite_support.task import core
+from tflite_support.task import processor
+
+# Initialize options and turn on Coral Edge TPU delegation.
+base_options = core.BaseOptions(
+    file_name=model_path, use_coral=True, num_threads=num_threads)
+classification_options = processor.ClassificationOptions(
+    max_results=max_results, score_threshold=score_threshold)
+options = vision.ImageClassifierOptions(
+    base_options=base_options, classification_options=classification_options)
+
+# Create ImageClassifier from options.
+classifier = vision.ImageClassifier.create_from_options(options)
+ 
+# Run inference on Coral Edge TPU.
+image = vision.TensorImage.create_from_file(image_path)
+classification_result = classifier.classify(image)
+```
+
 ### Example usage of Coral Edge TPU in C++
 
 Step 1. Depend on the Coral Edge TPU delegate plugin in your bazel build target,
