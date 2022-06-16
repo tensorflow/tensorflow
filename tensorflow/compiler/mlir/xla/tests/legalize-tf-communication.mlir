@@ -3,10 +3,10 @@
 // Test legalization of `tf._XlaHostComputeMlir` expands into individual
 // `mhlo.send` per operand and `mhlo.recv` per result. Channel Id's are uniquely
 // assigned per mhlo communcation op, and frontend attributes (modified keys)
-// and op shardings (based on `tpu_core`) are added. Sink tokens are created
+// and op shardings are added. Sink tokens are created
 // if there are more than one operand or more than one result.
 //
-// The following op sharding is used:
+// The following op sharding assigns full tensors to TPU core 0.
 // Proto debug string:
 //   type: MAXIMAL
 //   tile_assignment_dimensions: 1
@@ -50,35 +50,10 @@ func.func @host_compute(%arg0: tensor<i32>, %arg1: tensor<i64>) -> (tensor<f32>,
   // CHECK-SAME: (!mhlo.token) -> (tensor<f64>, !mhlo.token)
 
   // CHECK:      [[RECV_SINK_TOKEN:%.*]] = "mhlo.after_all"([[RECV_RETVAL0_TUPLE]]#1, [[RECV_RETVAL1_TUPLE]]#1)
-  %0:2 = "tf._XlaHostComputeMlir"(%arg0, %arg1) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<i32>, tensor<i64>) -> (tensor<f32>, tensor<f64>)
+  %0:2 = "tf._XlaHostComputeMlir"(%arg0, %arg1) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", host_mlir_module = ""} : (tensor<i32>, tensor<i64>) -> (tensor<f32>, tensor<f64>)
 
   // CHECK:      return [[RECV_RETVAL0_TUPLE]]#0, [[RECV_RETVAL1_TUPLE]]#0 : tensor<f32>, tensor<f64>
   func.return %0#0, %0#1 : tensor<f32>, tensor<f64>
-}
-
-// -----
-
-// Tests `tf._XlaHostComputeMlir` with `tpu_core` assigns the correct op
-// sharding.
-//
-// The following op sharding is used:
-// Proto debug string:
-//   type: MAXIMAL
-//   tile_assignment_dimensions: 1
-//   tile_assignment_devices: 1
-// Serialized string:
-//   "\08\01\1A\01\01\22\01\01"
-
-// CHECK-LABEL: func @host_compute_sharding
-// CHECK-SAME:  ([[ARG0:%.*]]: tensor<i32>)
-func.func @host_compute_sharding(%arg0: tensor<i32>) -> tensor<i32> {
-  // CHECK:      "mhlo.send"
-  // CHECK-SAME: mhlo.sharding = "\08\01\1A\01\01\22\01\01"
-  // CHECK:      "mhlo.recv"
-  // CHECK-SAME: mhlo.sharding = "\08\01\1A\01\01\22\01\01"
-  // CHECK-NOT:      "mhlo.get_tuple_element"
-  %0 = "tf._XlaHostComputeMlir"(%arg0) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 1 : i64, host_mlir_module = ""} : (tensor<i32>) -> tensor<i32>
-  func.return %0 : tensor<i32>
 }
 
 // -----
@@ -93,7 +68,7 @@ func.func @host_compute_no_operands_one_result() {
   // CHECK-NOT:  "mhlo.send"
   // CHECK-NOT:  "mhlo.after_all"
   // CHECK:      "mhlo.recv"([[INIT_TOKEN]])
-  %0 = "tf._XlaHostComputeMlir"() {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0 : i64, host_mlir_module = ""} : () -> tensor<i32>
+  %0 = "tf._XlaHostComputeMlir"() {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", host_mlir_module = ""} : () -> tensor<i32>
   func.return
 }
 
@@ -109,7 +84,7 @@ func.func @host_compute_one_operand_no_results(%arg0: tensor<i32>) {
 
   // CHECK:      [[SEND_TOKEN:%.*]] = "mhlo.send"([[ARG0]], [[INIT_TOKEN]])
   // CHECK-NOT:  "mhlo.after_all"
-  "tf._XlaHostComputeMlir"(%arg0) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<i32>) -> ()
+  "tf._XlaHostComputeMlir"(%arg0) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", host_mlir_module = ""} : (tensor<i32>) -> ()
 
   // CHECK:      "mhlo.recv"([[SEND_TOKEN]])
   %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf_type.shape<>} : () -> tensor<i32>
@@ -130,7 +105,7 @@ func.func @host_compute_single_operand_result(%arg0: tensor<i32>) {
   // CHECK-NOT:  "mhlo.after_all"
   // CHECK:      "mhlo.recv"([[SEND_TOKEN]])
   // CHECK-NOT:  "mhlo.after_all"
-  %0 = "tf._XlaHostComputeMlir"(%arg0) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<i32>) -> tensor<i32>
+  %0 = "tf._XlaHostComputeMlir"(%arg0) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", host_mlir_module = ""} : (tensor<i32>) -> tensor<i32>
   func.return
 }
 
@@ -147,6 +122,7 @@ func.func @send_to_host(%arg0: tensor<i32>) {
   // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 2>
   // CHECK-SAME: is_host_transfer = true
   // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "s32", _xla_host_transfer_rendezvous = "send_key_dtoh_0"}
+  // CHECK-SAME: mhlo.sharding = "\08\01\1A\01\01\22\01\00"
   // CHECK-SAME: (tensor<i32>, !mhlo.token) -> !mhlo.token
   "tf.XlaSendToHost"(%arg0) {key = "send_key"} : (tensor<i32>) -> ()
   func.return
@@ -164,6 +140,7 @@ func.func @recv_from_host() -> tensor<i32> {
   // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 3>
   // CHECK-SAME: is_host_transfer = true
   // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "s32", _xla_host_transfer_rendezvous = "recv_key_htod_0"}
+  // CHECK-SAME: mhlo.sharding = "\08\01\1A\01\01\22\01\00"
   // CHECK-SAME: (!mhlo.token) -> (tensor<i32>, !mhlo.token)
   %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf_type.shape<>} : () -> tensor<i32>
   // CHECK:      return [[RECV_TUPLE]]#0 : tensor<i32>
@@ -188,7 +165,7 @@ func.func @multiple_consecutive_ops(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 2, type = 3>
   // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "s32", _xla_host_transfer_rendezvous = "recv0_htod_0"}
 
-  %0 = "tf._XlaHostComputeMlir"(%arg0) {recv_key = "recv0", send_key = "send0", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<i32>) -> tensor<i32>
+  %0 = "tf._XlaHostComputeMlir"(%arg0) {recv_key = "recv0", send_key = "send0", host_mlir_module = ""} : (tensor<i32>) -> tensor<i32>
 
   // CHECK:      [[SEND1_ARG0_TOKEN:%.*]] = "mhlo.send"([[RECV0_RETVAL0_TUPLE]]#0, [[RECV0_RETVAL0_TUPLE]]#1)
   // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 3, type = 2>
@@ -198,7 +175,7 @@ func.func @multiple_consecutive_ops(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 4, type = 3>
   // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "s32", _xla_host_transfer_rendezvous = "recv1_htod_0"}
 
-  %1 = "tf._XlaHostComputeMlir"(%0) {recv_key = "recv1", send_key = "send1", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<i32>) -> tensor<i32>
+  %1 = "tf._XlaHostComputeMlir"(%0) {recv_key = "recv1", send_key = "send1", host_mlir_module = ""} : (tensor<i32>) -> tensor<i32>
 
   // CHECK:      return [[RECV1_RETVAL0_TUPLE]]#0 : tensor<i32>
   func.return %1 : tensor<i32>
@@ -229,7 +206,7 @@ func.func private @callee(%arg0: tensor<i32>) -> tensor<i32> {
 
   // CHECK:      [[SEND_ARG0_TOKEN:%.*]] = "mhlo.send"([[CALLEE_ARG0]], [[CALLEE_ARG1]])
   // CHECK:      [[RECV_RETVAL0_TUPLE:%.*]]:2 = "mhlo.recv"([[SEND_ARG0_TOKEN]])
-  %0 = "tf._XlaHostComputeMlir"(%arg0) {recv_key = "recv", send_key = "send", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<i32>) -> tensor<i32>
+  %0 = "tf._XlaHostComputeMlir"(%arg0) {recv_key = "recv", send_key = "send", host_mlir_module = ""} : (tensor<i32>) -> tensor<i32>
 
   // CHECK:      return [[RECV_RETVAL0_TUPLE]]#0, [[RECV_RETVAL0_TUPLE]]#1
   func.return %0 : tensor<i32>
@@ -262,7 +239,7 @@ func.func @callee(%arg0: tensor<i32>) -> tensor<i32> {
 
   // CHECK:      [[SEND_ARG0_TOKEN:%.*]] = "mhlo.send"([[CALLEE_ARG0]], [[CALLEE_TOKEN]])
   // CHECK:      [[RECV_RETVAL0_TUPLE:%.*]]:2 = "mhlo.recv"([[SEND_ARG0_TOKEN]])
-  %0 = "tf._XlaHostComputeMlir"(%arg0) {recv_key = "recv", send_key = "send", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<i32>) -> tensor<i32>
+  %0 = "tf._XlaHostComputeMlir"(%arg0) {recv_key = "recv", send_key = "send", host_mlir_module = ""} : (tensor<i32>) -> tensor<i32>
 
   // CHECK:      return [[RECV_RETVAL0_TUPLE]]#0
   func.return %0 : tensor<i32>
@@ -405,7 +382,7 @@ func.func @if_both_branches(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor
     // CHECK:      [[TRUE_RECV_TUPLE:%.*]]:2 = "mhlo.recv"([[TRUE_SEND_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 2, type = 3>
     // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "recv_if_true_htod_0"}
-    %1 = "tf._XlaHostComputeMlir"(%arg1) {recv_key = "recv_if_true", send_key = "send_if_true", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
+    %1 = "tf._XlaHostComputeMlir"(%arg1) {recv_key = "recv_if_true", send_key = "send_if_true", host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
 
     // CHECK:      "mhlo.return"([[TRUE_RECV_TUPLE]]#0, [[TRUE_RECV_TUPLE]]#1)
     "mhlo.return"(%1) : (tensor<f32>) -> ()
@@ -417,7 +394,7 @@ func.func @if_both_branches(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor
     // CHECK:      [[FALSE_RECV_TUPLE:%.*]]:2 = "mhlo.recv"([[FALSE_SEND_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 4, type = 3>
     // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "recv_if_false_htod_0"}
-    %1 = "tf._XlaHostComputeMlir"(%arg2) {recv_key = "recv_if_false", send_key = "send_if_false", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
+    %1 = "tf._XlaHostComputeMlir"(%arg2) {recv_key = "recv_if_false", send_key = "send_if_false", host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
 
     // CHECK:      "mhlo.return"([[FALSE_RECV_TUPLE]]#0, [[FALSE_RECV_TUPLE]]#1)
     "mhlo.return"(%1) : (tensor<f32>) -> ()
@@ -448,7 +425,7 @@ func.func @if_true_branch(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f
     // CHECK:      [[TRUE_RECV_TUPLE:%.*]]:2 = "mhlo.recv"([[TRUE_SEND_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 2, type = 3>
     // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "recv_if_true_htod_0"}
-    %1 = "tf._XlaHostComputeMlir"(%arg1) {recv_key = "recv_if_true", send_key = "send_if_true", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
+    %1 = "tf._XlaHostComputeMlir"(%arg1) {recv_key = "recv_if_true", send_key = "send_if_true", host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
 
     // CHECK:      "mhlo.return"([[TRUE_RECV_TUPLE]]#0, [[TRUE_RECV_TUPLE]]#1)
     "mhlo.return"(%1) : (tensor<f32>) -> ()
@@ -485,7 +462,7 @@ func.func @if_false_branch(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<
     // CHECK:      [[FALSE_RECV_TUPLE:%.*]]:2 = "mhlo.recv"([[FALSE_SEND_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 2, type = 3>
     // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "recv_if_false_htod_0"}
-    %1 = "tf._XlaHostComputeMlir"(%arg2) {recv_key = "recv_if_false", send_key = "send_if_false", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
+    %1 = "tf._XlaHostComputeMlir"(%arg2) {recv_key = "recv_if_false", send_key = "send_if_false", host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
 
     // CHECK:      "mhlo.return"([[FALSE_RECV_TUPLE]]#0, [[FALSE_RECV_TUPLE]]#1)
     "mhlo.return"(%1) : (tensor<f32>) -> ()
@@ -710,7 +687,7 @@ func.func @while_cond_body(%arg0: tensor<f32>) -> tensor<f32> {
     // CHECK:      [[COND_RECV_TUPLE:%.*]]:2 = "mhlo.recv"([[COND_SEND_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 2, type = 3>
     // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "recv_while_cond_htod_0"}
-    %1 = "tf._XlaHostComputeMlir"(%arg1) {recv_key = "recv_while_cond", send_key = "send_while_cond", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
+    %1 = "tf._XlaHostComputeMlir"(%arg1) {recv_key = "recv_while_cond", send_key = "send_while_cond", host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
 
     // CHECK:      [[COND_COMPARE:%.*]] = "mhlo.compare"([[COND_RECV_TUPLE]]#0, [[COND_RECV_TUPLE]]#0)
     %2 = "mhlo.compare"(%1, %1) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
@@ -726,7 +703,7 @@ func.func @while_cond_body(%arg0: tensor<f32>) -> tensor<f32> {
     // CHECK:      [[BODY_RECV_TUPLE:%.*]]:2 = "mhlo.recv"([[BODY_SEND_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 4, type = 3>
     // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "recv_while_body_htod_0"}
-    %1 = "tf._XlaHostComputeMlir"(%arg1) {recv_key = "recv_while_body", send_key = "send_while_body", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
+    %1 = "tf._XlaHostComputeMlir"(%arg1) {recv_key = "recv_while_body", send_key = "send_while_body", host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
 
     // CHECK:      "mhlo.return"([[BODY_RECV_TUPLE]]#0, [[BODY_RECV_TUPLE]]#1)
     "mhlo.return"(%1) : (tensor<f32>) -> ()
@@ -756,7 +733,7 @@ func.func @while_cond(%arg0: tensor<f32>) -> tensor<f32> {
     // CHECK:      [[COND_RECV_TUPLE:%.*]]:2 = "mhlo.recv"([[COND_SEND_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 2, type = 3>
     // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "recv_while_cond_htod_0"}
-    %1 = "tf._XlaHostComputeMlir"(%arg1) {recv_key = "recv_while_cond", send_key = "send_while_cond", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
+    %1 = "tf._XlaHostComputeMlir"(%arg1) {recv_key = "recv_while_cond", send_key = "send_while_cond", host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
 
     // CHECK:      [[COND_COMPARE:%.*]] = "mhlo.compare"([[COND_RECV_TUPLE]]#0, [[COND_RECV_TUPLE]]#0)
     %2 = "mhlo.compare"(%1, %1) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
@@ -801,7 +778,7 @@ func.func @while_body(%arg0: tensor<f32>) -> tensor<f32> {
     // CHECK:      [[BODY_RECV_TUPLE:%.*]]:2 = "mhlo.recv"([[BODY_SEND_TOKEN]])
     // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 2, type = 3>
     // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "recv_while_body_htod_0"}
-    %1 = "tf._XlaHostComputeMlir"(%arg1) {recv_key = "recv_while_body", send_key = "send_while_body", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
+    %1 = "tf._XlaHostComputeMlir"(%arg1) {recv_key = "recv_while_body", send_key = "send_while_body", host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
 
     // CHECK:      "mhlo.return"([[BODY_RECV_TUPLE]]#0, [[BODY_RECV_TUPLE]]#1)
     "mhlo.return"(%1) : (tensor<f32>) -> ()
@@ -843,7 +820,7 @@ func.func @unsupported_ancestor(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) {
   ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
     // expected-error@+1 {{expects ancestor(s) to be of ['mhlo.if', 'func.func']}}
-    "tf._XlaHostComputeMlir"() {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0 : i64, host_mlir_module = ""} : () -> ()
+    "tf._XlaHostComputeMlir"() {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", host_mlir_module = ""} : () -> ()
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
   func.return
@@ -865,7 +842,7 @@ func.func @unsupported_ancestor(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) {
 }
 
 func.func private @callee() {
-  "tf._XlaHostComputeMlir"() {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0 : i64, host_mlir_module = ""} : () -> ()
+  "tf._XlaHostComputeMlir"() {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", host_mlir_module = ""} : () -> ()
   func.return
 }
 
