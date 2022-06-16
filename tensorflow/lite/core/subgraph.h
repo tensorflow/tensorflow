@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
+#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
@@ -470,12 +471,18 @@ class Subgraph {
   // Add delegate-only functions to 'context_'.
   void SwitchToDelegateContext();
 
+  // Check delegate comes from 'TfLiteRegistration_V1'.
+  bool IsV1Delegate(const TfLiteRegistration& op_reg) {
+    return (op_reg.builtin_code == kTfLiteBuiltinDelegate && 
+	    op_reg.version == 1);
+  }
+
   // Give 'op_reg' a chance to initialize itself using the contents of
   // 'buffer'. If registration_external is valid, use the 'init' callback from
   // that.
   void* OpInit(const TfLiteRegistration& op_reg, const char* buffer,
                size_t length) {
-    if (op_reg.registration_external && op_reg.registration_external->init) {
+    if (!IsV1Delegate(op_reg) && op_reg.registration_external && op_reg.registration_external->init) {
       return op_reg.registration_external->init(
           reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer, length);
     }
@@ -486,7 +493,7 @@ class Subgraph {
   // Let 'op_reg' release any memory it might have allocated via 'OpInit'.
   // If registration_external is valid, use the 'free' callback from that.
   void OpFree(const TfLiteRegistration& op_reg, void* buffer) {
-    if (op_reg.registration_external && op_reg.registration_external->free &&
+    if (!IsV1Delegate(op_reg) && op_reg.registration_external && op_reg.registration_external->free &&
         buffer) {
       return op_reg.registration_external->free(
           reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer);
@@ -502,7 +509,7 @@ class Subgraph {
 
   // Invoke the operator represented by 'node'.
   TfLiteStatus OpInvoke(const TfLiteRegistration& op_reg, TfLiteNode* node) {
-    if (op_reg.registration_external && op_reg.registration_external->invoke) {
+    if (!IsV1Delegate(op_reg) && op_reg.registration_external && op_reg.registration_external->invoke) {
       return op_reg.registration_external->invoke(
           reinterpret_cast<TfLiteOpaqueContext*>(&context_),
           reinterpret_cast<TfLiteOpaqueNode*>(node));
