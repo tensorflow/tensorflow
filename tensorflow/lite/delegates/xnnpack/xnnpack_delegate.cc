@@ -1602,13 +1602,13 @@ class Subgraph {
   static TfLiteStatus CheckAxesTensorShape(TfLiteContext* context,
                                            const TfLiteTensor& tensor,
                                            int tensor_index, int node_index) {
-    if (NumDimensions(&tensor) != 1) {
+    const int num_tensor_dims = NumDimensions(&tensor);
+    if (num_tensor_dims > 1) {
       TF_LITE_MAYBE_KERNEL_LOG(context,
                                "unexpected number of shape dimensions (%d) in "
                                "axes tensor #%d in node #%d: "
                                "expected a 1D tensor",
-                               NumDimensions(&tensor), tensor_index,
-                               node_index);
+                               num_tensor_dims, tensor_index, node_index);
       return kTfLiteError;
     }
     return kTfLiteOk;
@@ -3257,7 +3257,7 @@ class Subgraph {
 
     const int32_t* axes_data =
         reinterpret_cast<const int32_t*>(axes_tensor.data.data);
-    const int num_reduction_axes = SizeOfDimension(&axes_tensor, 0);
+    const int num_reduction_axes = NumElements(&axes_tensor);
     switch (num_reduction_axes) {
       case 1:
         if (axes_data[0] != 2) {
