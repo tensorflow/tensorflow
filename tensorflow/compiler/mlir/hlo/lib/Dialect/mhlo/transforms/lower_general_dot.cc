@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -79,15 +80,25 @@ Value transposeReshape(Value arg, Location loc,
   for (auto val : transposePermutation) {
     transposedShape.push_back(argShape[val]);
   }
-  auto transposeType = RankedTensorType::get(transposedShape, elementType);
-  Value transposeResult = rewriter.create<TransposeOp>(
-      loc, transposeType, arg, transposePermutationAttr);
 
   // If there are only a single pair of contracting dimensions and the output
   // rank is two we can skip a needless reshape.
-  if (transposeType.getRank() == 2 && leftDims.size() == 1 &&
-      rightDims.size() == 1)
-    return transposeResult;
+  bool noReshape = transposedShape.size() == 2 && leftDims.size() == 1 &&
+                   rightDims.size() == 1;
+
+  // Construct type. If no reshape is needed, the sparsity, if any, of the input
+  // operand is propagated to the ouput to ensure this information is not lost
+  // in the dot operation.
+  auto enc = sparse_tensor::getSparseTensorEncoding(arg.getType());
+  auto transposeType =
+      (enc && noReshape)
+          ? RankedTensorType::get(transposedShape, elementType, enc)
+          : RankedTensorType::get(transposedShape, elementType);
+
+  // Construct transpose. If no reshape is needed, we are done.
+  Value transposeResult = rewriter.create<TransposeOp>(
+      loc, transposeType, arg, transposePermutationAttr);
+  if (noReshape) return transposeResult;
 
   // Return the final result.
   auto reshapedType = RankedTensorType::get({leftSize, rightSize}, elementType);
