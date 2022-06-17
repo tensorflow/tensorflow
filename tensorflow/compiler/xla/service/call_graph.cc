@@ -56,10 +56,10 @@ CallContext GetInstructionCallContext(HloOpcode opcode) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kWhile:
-      return CallContext::kControlFlow;
     case HloOpcode::kAsyncStart:
     case HloOpcode::kAsyncUpdate:
     case HloOpcode::kAsyncDone:
+      return CallContext::kControlFlow;
     case HloOpcode::kAllReduce:
     case HloOpcode::kReduceScatter:
     case HloOpcode::kAllReduceStart:
@@ -363,6 +363,7 @@ bool CallGraph::IsFlattened() const {
       return false;
     }
     if (node.context() == CallContext::kControlFlow &&
+        !node.computation()->IsAsyncComputation() &&
         node.caller_callsites().size() > 1) {
       return false;
     }

@@ -3906,10 +3906,12 @@ tf_cc_test(
     name = "hlo_dataflow_analysis_test",
     srcs = ["hlo_dataflow_analysis_test.cc"],
     deps = [
+        ":async_op_canonicalizer",
         ":flatten_call_graph",
         ":hlo",
         ":hlo_creation_utils",
         ":hlo_dataflow_analysis",
+        ":hlo_dce",
         ":hlo_graph_dumper",
         ":hlo_matchers",
         ":hlo_ordering",

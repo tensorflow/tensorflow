@@ -88,13 +88,10 @@ Status FlattenNode(const CallGraphNode& node) {
   for (int i = 0; i < node.caller_callsites().size(); ++i) {
     CallSite call_site = node.caller_callsites()[i];
     // Only consider sequential call contexts.
-    if (call_site.context() == CallContext::kEmbedded &&
-        !computation->IsAsyncComputation()) {
+    if (call_site.context() == CallContext::kEmbedded) {
       continue;
     }
-    if (!computation->IsAsyncComputation()) {
-      CHECK_EQ(call_site.context(), CallContext::kControlFlow);
-    }
+    CHECK_EQ(call_site.context(), CallContext::kControlFlow);
 
     // Skip first element if this computation is only called from a sequential
     // context.
