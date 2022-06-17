@@ -175,8 +175,8 @@ std::string GenerateConvolution(const ConvolutionMetal::ConvParams& params,
       params.y_kernel_is_1 && !params.groups_support &&
       !params.different_weights_for_height;
 
-  const auto src_storage_type = definition.src_tensors[0].storage_type;
-  const auto dst_storage_type = definition.dst_tensors[0].storage_type;
+  const auto src_storage_type = definition.src_tensors[0].GetStorageType();
+  const auto dst_storage_type = definition.dst_tensors[0].GetStorageType();
   const bool src_is_linear =
       src_storage_type == TensorStorageType::BUFFER ||
       src_storage_type == TensorStorageType::IMAGE_BUFFER;
@@ -345,8 +345,7 @@ kernel void ComputeFunction(
       for (int x = 0; x < params.block_size.x; ++x) {
         const std::string s_x = std::to_string(x);
         const std::string s_yx = s_y + s_x;
-        if (definition.src_tensors[0].storage_type ==
-            TensorStorageType::BUFFER) {
+        if (src_storage_type == TensorStorageType::BUFFER) {
           if (params.groups_support) {
             c += "  args.src_tensor.GetAddress(base_addr_" + s_yx + ", c_x" +
                  s_x + ", c_y" + s_y + ", " + src_group_start_slice + ");\n";
@@ -358,8 +357,7 @@ kernel void ComputeFunction(
                  "args.src_tensor.GetWHOffset(c_x" +
                  s_x + ", c_y" + s_y + ");\n";
           }
-        } else if (definition.src_tensors[0].storage_type ==
-                   TensorStorageType::IMAGE_BUFFER) {
+        } else if (src_storage_type == TensorStorageType::IMAGE_BUFFER) {
           if (params.groups_support) {
             c += "  args.src_tensor.GetAddress(src_loc_" + s_yx + ", c_x" +
                  s_x + ", c_y" + s_y + ", " + src_group_start_slice + ");\n";
@@ -399,16 +397,14 @@ kernel void ComputeFunction(
       for (int x = 0; x < params.block_size.x; ++x) {
         const std::string s_yx = std::to_string(y) + std::to_string(x);
         if (src_is_linear) {
-          if (definition.src_tensors[0].storage_type ==
-              TensorStorageType::BUFFER) {
+          if (src_storage_type == TensorStorageType::BUFFER) {
             if (!params.y_kernel_is_1 || !params.x_kernel_is_1) {
               c += "    src" + s_yx + " = *src_loc_" + s_yx + " * m" + s_yx +
                    ";\n";
             } else {
               c += "    src" + s_yx + " = *src_loc_" + s_yx + ";\n";
             }
-          } else if (definition.src_tensors[0].storage_type ==
-                     TensorStorageType::IMAGE_BUFFER) {
+          } else if (src_storage_type == TensorStorageType::IMAGE_BUFFER) {
             if (!params.y_kernel_is_1 || !params.x_kernel_is_1) {
               c += "    src" + s_yx + " = args.src_tensor.Read(src_loc_" +
                    s_yx + ") * m" + s_yx + ";\n";

@@ -89,7 +89,7 @@ std::unique_ptr<GPUOperation> SelectConvolutionPowerVR(
 std::unique_ptr<GPUOperation> SelectConvolutionMali(
     const Convolution2DAttributes& attr, const BHWC& dst_shape,
     const GpuInfo& gpu_info, const OperationDef& op_def) {
-  if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER &&
+  if (op_def.src_tensors[0].GetStorageType() == TensorStorageType::BUFFER &&
       IsConvBuffer1x1Supported(op_def, attr)) {
     ConvBuffer1x1 conv =
         CreateConvBuffer1x1(gpu_info, op_def, attr, &dst_shape);
@@ -103,7 +103,7 @@ std::unique_ptr<GPUOperation> SelectConvolutionMali(
 std::unique_ptr<GPUOperation> SelectConvolutionWinogradMali(
     const Convolution2DAttributes& attr, const BHWC& dst_shape,
     const GpuInfo& gpu_info, const OperationDef& op_def) {
-  if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER) {
+  if (op_def.src_tensors[0].GetStorageType() == TensorStorageType::BUFFER) {
     ConvBuffer1x1 conv =
         CreateConvBuffer1x1Wino4x4To6x6(gpu_info, op_def, attr, &dst_shape);
     return std::make_unique<ConvBuffer1x1>(std::move(conv));
@@ -119,7 +119,7 @@ std::unique_ptr<GPUOperation> SelectConvolutionDynamicWeightsMali(
     const BHWC& dst_shape, const GpuInfo& gpu_info,
     const OperationDef& op_def, ModelHints hints,
     WeightsDescription* weights_desc) {
-  if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER &&
+  if (op_def.src_tensors[0].GetStorageType() == TensorStorageType::BUFFER &&
       IsConvBuffer1x1Supported(op_def, weights_shape, attr)) {
     ConvBuffer1x1 conv = CreateConvBuffer1x1DynamicWeights(
         gpu_info, op_def, attr, weights_shape, &dst_shape);

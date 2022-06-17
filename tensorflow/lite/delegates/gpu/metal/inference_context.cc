@@ -401,7 +401,7 @@ InferenceContext::TensorMemoryType InferenceContext::GetTensorMemoryType(
     return TensorMemoryType::kExternal;
   } else if (const_tensors_.find(id) != const_tensors_.end()) {
     return TensorMemoryType::kConst;
-  } else if (IsBufferBased(tensors_descs_[id].storage_type)) {
+  } else if (IsBufferBased(tensors_descs_[id].GetStorageType())) {
     return TensorMemoryType::kBuffer;
   } else {
     return TensorMemoryType::kStrongShape;
@@ -483,13 +483,13 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
         minimumLinearTextureAlignmentForPixelFormat:DataTypeToRGBAPixelFormat(
                                                         descriptor.data_type,
                                                         false)];
-    if (descriptor.storage_type == TensorStorageType::TEXTURE_2D) {
+    if (descriptor.GetStorageType() == TensorStorageType::TEXTURE_2D) {
       min_common_alignment =
           std::lcm(min_common_alignment, row_bytes_alignment);
       const size_t bytes_per_row = element_size * shape.b * shape.w * 4;
       const size_t height = shape.h * DivideRoundUp(shape.c, 4);
       buffer_size = AlignByN(bytes_per_row, row_bytes_alignment) * height;
-    } else if (descriptor.storage_type ==
+    } else if (descriptor.GetStorageType() ==
                TensorStorageType::SINGLE_TEXTURE_2D) {
       min_common_alignment =
           std::lcm(min_common_alignment, row_bytes_alignment);
@@ -570,8 +570,9 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
         base_buffer = shared_buffers_[buffer_index];
         base_buffer_offset = 0;
       }
-      if (tensor_dummy.storage_type == TensorStorageType::TEXTURE_2D ||
-          tensor_dummy.storage_type == TensorStorageType::SINGLE_TEXTURE_2D) {
+      if (tensor_dummy.GetStorageType() == TensorStorageType::TEXTURE_2D ||
+          tensor_dummy.GetStorageType() ==
+              TensorStorageType::SINGLE_TEXTURE_2D) {
         size_t row_bytes_alignment = [device->device()
             minimumLinearTextureAlignmentForPixelFormat:
                 DataTypeToRGBAPixelFormat(tensor_dummy.data_type, false)];

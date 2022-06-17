@@ -68,7 +68,7 @@ std::unique_ptr<GPUOperation> SelectFullyConnectedMali(
     const FullyConnectedAttributes& attr, const GpuInfo& gpu_info,
     const OperationDef& op_def, int batch_size) {
   if (op_def.IsBatchSupported()) {
-    if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER) {
+    if (op_def.src_tensors[0].GetStorageType() == TensorStorageType::BUFFER) {
       ConvBuffer1x1 conv = CreateConvBuffer1x1(gpu_info, op_def, attr);
       return std::make_unique<ConvBuffer1x1>(std::move(conv));
     } else {

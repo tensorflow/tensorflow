@@ -60,9 +60,6 @@ cc_library(
     srcs = ["dw_convolution_selector.cc"],
     deps = [
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_stride_h2",

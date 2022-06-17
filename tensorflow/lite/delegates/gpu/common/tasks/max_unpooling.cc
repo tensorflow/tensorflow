@@ -71,7 +71,7 @@ std::string GetMaxUnpoolingKernelCode(const OperationDef& op_def,
   std::string src_args = op_def.dst_tensors[0].HasAxis(Axis::DEPTH)
                              ? "src_x, src_y, src_z, S"
                              : "src_x, src_y, S";
-  if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER) {
+  if (op_def.src_tensors[0].GetStorageType() == TensorStorageType::BUFFER) {
     if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
       c += "  bool outside = src_x < 0 || src_y < 0 || src_z < 0 || src_x >= "
            "args.src_tensor.Width() || src_y >= args.src_tensor.Height() || "

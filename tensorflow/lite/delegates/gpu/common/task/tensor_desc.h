@@ -97,6 +97,8 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   bool CanReadOutOfBorder(const Axis& axis) const;
   bool IsLinear() const;
 
+  TensorStorageType GetStorageType() const { return storage_type; }
+
   // applicable only for types that: IsLinear -> true.
   // In this case for address we have 1d component - addr (int)
   // If for addr == -1 this linear storage type returns zero value, this
@@ -118,7 +120,6 @@ struct TensorDescriptor : public GPUObjectDescriptor {
                                             const BHWC& shape);
 
   DataType data_type = DataType::UNKNOWN;
-  TensorStorageType storage_type = TensorStorageType::UNKNOWN;
 
   void SetUseBufferForWriteOnlyTexture2d(bool value) {
     use_buffer_for_write_only_2d_texture = value;
@@ -239,6 +240,8 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   template <typename T>
   void DownloadData(T* dst);
 
+  TensorStorageType storage_type = TensorStorageType::UNKNOWN;
+
   // This field describes logical layout, actual(physical) GPU layout can be
   // totally different.
   Layout layout =
@@ -306,7 +309,8 @@ template <typename FromType, typename ToType>
 void DataFromBHWDC(const FromType* src, const BHWDC& shape,
                    const TensorDescriptor& desc, ToType* dst) {
   const int channels_alignment =
-      desc.storage_type == TensorStorageType::SINGLE_TEXTURE_2D ? shape.c : 4;
+      desc.GetStorageType() == TensorStorageType::SINGLE_TEXTURE_2D ? shape.c
+                                                                    : 4;
   const int slices = DivideRoundUp(shape.c, 4);
   for (int b = 0; b < shape.b; ++b) {
     for (int s = 0; s < slices; ++s) {
@@ -336,7 +340,8 @@ template <typename FromType, typename ToType>
 void DataToBHWDC(const FromType* src, const BHWDC& shape,
                  const TensorDescriptor& desc, ToType* dst) {
   const int channels_alignment =
-      desc.storage_type == TensorStorageType::SINGLE_TEXTURE_2D ? shape.c : 4;
+      desc.GetStorageType() == TensorStorageType::SINGLE_TEXTURE_2D ? shape.c
+                                                                    : 4;
   const int slices = DivideRoundUp(shape.c, 4);
   for (int b = 0; b < shape.b; ++b) {
     for (int s = 0; s < slices; ++s) {

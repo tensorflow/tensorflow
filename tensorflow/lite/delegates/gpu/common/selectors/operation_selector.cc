@@ -355,9 +355,9 @@ absl::Status GPUOperationFromNodePart0(
                                     weights_shape.w, weights_shape.i);
 
       gpu_subgraph->operations.clear();
-      TensorDescriptor transposed_desc = {op_def.src_tensors[1].data_type,
-                                          op_def.src_tensors[1].storage_type,
-                                          Layout::BHWC};
+      TensorDescriptor transposed_desc = {
+          op_def.src_tensors[1].data_type,
+          op_def.src_tensors[1].GetStorageType(), Layout::BHWC};
       RETURN_IF_ERROR(transposed_desc.UpdateToSupportedStorageType(
           gpu_info, weights_shape_bhwc));
       gpu_subgraph->operations.resize(1);
