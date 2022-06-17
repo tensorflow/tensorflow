@@ -143,10 +143,10 @@ class DefaultTypesTest(test.TestCase):
 
   def testNamedTupleSupertype(self):
     named_tuple_type = collections.namedtuple('MyNamedTuple', 'x y z')
-    tuple_a = default_types.NamedTuple(
+    tuple_a = default_types.NamedTuple.from_type_and_attributes(
         named_tuple_type, (MockSupertypes2With3(1), MockSupertypes2With3(2),
                            MockSupertypes2With3(3)))
-    tuple_b = default_types.NamedTuple(
+    tuple_b = default_types.NamedTuple.from_type_and_attributes(
         named_tuple_type, (MockSupertypes2With3(2), MockSupertypes2With3(2),
                            MockSupertypes2With3(2)))
 
@@ -154,7 +154,7 @@ class DefaultTypesTest(test.TestCase):
     self.assertIsNone(tuple_a.most_specific_common_supertype([tuple_b]))
     self.assertEqual(
         tuple_b.most_specific_common_supertype([tuple_a]),
-        default_types.NamedTuple(
+        default_types.NamedTuple.from_type_and_attributes(
             named_tuple_type, (MockSupertypes2With3(3), MockSupertypes2With3(3),
                                MockSupertypes2With3(3))))
 

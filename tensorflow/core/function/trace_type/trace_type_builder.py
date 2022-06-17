@@ -104,17 +104,17 @@ def from_object(obj: Any,
 
   if isinstance(obj, tuple):
     if util.is_namedtuple(obj):
-      return default_types.NamedTuple(
-          type(obj), tuple(from_object(c, context) for c in obj))
+      named_tuple_type = type(obj)
+      return default_types.NamedTuple.from_type_and_attributes(
+          named_tuple_type, tuple(from_object(c, context) for c in obj))
     else:
       return default_types.Tuple(*(from_object(c, context) for c in obj))
 
   if isinstance(obj, collections.abc.Mapping):
-    return default_types.Dict(
-        {k: from_object(obj[k], context) for k in obj})
+    return default_types.Dict({k: from_object(obj[k], context) for k in obj})
 
   if util.is_attrs(obj):
-    return default_types.Attrs(
+    return default_types.Attrs.from_type_and_attributes(
         type(obj),
         tuple(
             from_object(getattr(obj, a.name), context)

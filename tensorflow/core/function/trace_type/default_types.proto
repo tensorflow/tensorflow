@@ -25,6 +25,18 @@ message SerializedList {
   optional SerializedTuple components_tuple = 1;
 }
 
+// Represents a serialized NamedTuple type.
+message SerializedNamedTuple {
+  optional string type_name = 1;
+  repeated string attribute_names = 2;
+  optional SerializedTuple attributes = 3;
+}
+
+// Represents a serialized Attrs type.
+message SerializedAttrs {
+  optional SerializedNamedTuple named_attributes = 1;
+}
+
 // Represents a serialized Dict type.
 message SerializedDict {
   repeated SerializedLiteral keys = 1;

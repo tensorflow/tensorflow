@@ -157,7 +157,7 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testAttrsCacheKeyGeneration(self):
     trace_a = trace_type.from_object(TestAttrsClass(1, 2))
-    expected = default_types.Attrs(
+    expected = default_types.Attrs.from_type_and_attributes(
         TestAttrsClass,
         (default_types.Literal(1), default_types.Literal(2)))
     self.assertEqual(trace_a, expected)
