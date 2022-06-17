@@ -14,6 +14,17 @@ message SerializedLiteral {
   }
 }
 
+// Represents a serialized Tuple type.
+message SerializedTuple {
+  repeated tensorflow.core.function.trace_type.serialization.SerializedTraceType
+      components = 1;
+}
+
+// Represents a serialized List type.
+message SerializedList {
+  optional SerializedTuple components_tuple = 1;
+}
+
 // Represents a serialized Dict type.
 message SerializedDict {
   repeated SerializedLiteral keys = 1;
