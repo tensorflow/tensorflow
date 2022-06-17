@@ -195,6 +195,7 @@ py_library(
     srcs = ["util.py"],
     srcs_version = "PY3",
     deps = [
+        ":saveable_compat",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
