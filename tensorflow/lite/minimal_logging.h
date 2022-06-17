@@ -17,13 +17,15 @@ limitations under the License.
 
 #include <cstdarg>
 
-#include "tensorflow/lite/logger.h"
-
 namespace tflite {
 
-namespace logging_internal {
+enum LogSeverity {
+  TFLITE_LOG_INFO = 0,
+  TFLITE_LOG_WARNING = 1,
+  TFLITE_LOG_ERROR = 2,
+};
 
-using tflite::LogSeverity;
+namespace logging_internal {
 
 // Helper class for simple platform-specific console logging. Note that we
 // explicitly avoid the convenience of ostream-style logging to minimize binary
@@ -37,17 +39,8 @@ class MinimalLogger {
   static void LogFormatted(LogSeverity severity, const char* format,
                            va_list args);
 
-  // Get the minimum severity level for logging. Default is INFO in prod builds
-  // and VERBOSE in debug builds.
-  // Note: Default is always VERBOSE on Android.
-  static LogSeverity GetMinimumLogSeverity();
-
-  // Set the minimum severity level for logging, returning the old severity.
-  static LogSeverity SetMinimumLogSeverity(LogSeverity new_severity);
-
  private:
   static const char* GetSeverityName(LogSeverity severity);
-  static LogSeverity minimum_log_severity_;
 };
 
 }  // namespace logging_internal
@@ -58,12 +51,8 @@ class MinimalLogger {
 // stripped in release optimized builds. In general, prefer the error reporting
 // APIs for developer-facing errors, and only use this for diagnostic output
 // that should always be logged in user builds.
-#define TFLITE_LOG_PROD(severity, format, ...)                            \
-  if (severity >=                                                         \
-      tflite::logging_internal::MinimalLogger::GetMinimumLogSeverity()) { \
-    tflite::logging_internal::MinimalLogger::Log(severity, format,        \
-                                                 ##__VA_ARGS__);          \
-  }
+#define TFLITE_LOG_PROD(severity, format, ...) \
+  tflite::logging_internal::MinimalLogger::Log(severity, format, ##__VA_ARGS__);
 
 // Convenience macro for logging a statement *once* for a given process lifetime
 // in production builds.

@@ -19,6 +19,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = _DEFAULT_VISIBILITY + nnapi_sl_visibility_allowlist(),
     deps = [
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/nnapi:nnapi_lib",
     ],

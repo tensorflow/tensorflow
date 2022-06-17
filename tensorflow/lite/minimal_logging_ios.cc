@@ -26,7 +26,6 @@ namespace {
 
 int GetPlatformSeverity(LogSeverity severity) {
   switch (severity) {
-    case TFLITE_LOG_VERBOSE:
     case TFLITE_LOG_INFO:
       return LOG_INFO;
     case TFLITE_LOG_WARNING:
@@ -39,14 +38,6 @@ int GetPlatformSeverity(LogSeverity severity) {
 }
 
 }  // namespace
-
-#ifndef NDEBUG
-// In debug builds, default is VERBOSE.
-LogSeverity MinimalLogger::minimum_log_severity_ = TFLITE_LOG_VERBOSE;
-#else
-// In prod builds, default is INFO.
-LogSeverity MinimalLogger::minimum_log_severity_ = TFLITE_LOG_INFO;
-#endif
 
 void MinimalLogger::LogFormatted(LogSeverity severity, const char* format,
                                  va_list args) {

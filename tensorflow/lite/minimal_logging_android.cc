@@ -25,7 +25,6 @@ namespace {
 
 int GetPlatformSeverity(LogSeverity severity) {
   switch (severity) {
-    case TFLITE_LOG_VERBOSE:
     case TFLITE_LOG_INFO:
       return ANDROID_LOG_INFO;
     case TFLITE_LOG_WARNING:
@@ -38,8 +37,6 @@ int GetPlatformSeverity(LogSeverity severity) {
 }
 
 }  // namespace
-
-LogSeverity MinimalLogger::minimum_log_severity_ = TFLITE_LOG_VERBOSE;
 
 void MinimalLogger::LogFormatted(LogSeverity severity, const char* format,
                                  va_list args) {
