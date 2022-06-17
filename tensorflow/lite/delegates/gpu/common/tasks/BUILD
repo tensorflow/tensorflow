@@ -247,7 +247,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:util",
         "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
-        "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
     ],
 )
 
