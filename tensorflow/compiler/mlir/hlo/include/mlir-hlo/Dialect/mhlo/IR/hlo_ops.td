@@ -2057,10 +2057,27 @@ def HLO_PadOp: HLO_Op<"pad",
       [NoSideEffect, SameOperandsAndResultElementType, InferTensorType]> {
   let summary = "Pad operator";
   let description = [{
-    Pads the edges of `operand` with the `padding_value` and according to
-    the passed configuration.
+    Pads edges and between the elements of `operand` with the `padding_value`
+    according to the configuration parameters described below.
 
-    See https://www.tensorflow.org/xla/operation_semantics#pad.
+    `edge_padding_low` and `edge_padding_high` specify the amount of padding
+    added at the low-end (next to index 0) and the high-end (next to the
+    highest index) of each dimension respectively. The amount of edge
+    padding can be negative -- the absolute value of negative padding indicates
+    the number of elements to remove from the specified dimension.
+
+    `interior_padding` specifies the amount of padding (non-negative) added
+    between any two elements in each dimension. Interior padding occurs
+    logically before edge padding, so in the case of negative edge padding,
+    elements are removed from the interior-padded operand.
+
+    This operation is a no-op if, for all dimensions, the edge padding pairs are
+    all (0, 0) and the interior padding values are all 0. The figure below shows
+    examples of different `edge_padding` and `interior_padding` values for a
+    two-dimensional array.
+
+    ![Examples](https://www.tensorflow.org/xla/images/ops_pad.png)
+
   }];
   let arguments = (ins
     HLO_Tensor:$operand,
@@ -2071,10 +2088,6 @@ def HLO_PadOp: HLO_Op<"pad",
   );
 
   let results = (outs HLO_Tensor);
-
-  let description = [{
-    Pads the `operand` according to TBD.
-  }];
 
   // TODO(b/129422361): PadOp has a custom constructor for HLO.
   let hasCustomHLOConverter = 1;
