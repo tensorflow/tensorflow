@@ -110,7 +110,7 @@ class DenseBincountOp : public XlaOpKernel {
       auto p0 = xla::Parameter(subb.get(), 0, param_shape, "p0");
       auto p1 = xla::Parameter(subb.get(), 1, param_shape, "p1");
       if (binary_output_) {
-        xla::One(subb.get(), xla::S32);
+        xla::One(subb.get(), dtype);
       }
       else {
         xla::Add(p0, p1);
