@@ -24,12 +24,14 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/async_op_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -2595,6 +2597,67 @@ ENTRY Main {
             GetAllocation(*buffers, param0, {1, 0}));
   EXPECT_EQ(GetAllocation(*buffers, custom_call, {1}),
             GetAllocation(*buffers, param0, {1, 1}));
+}
+
+TEST_F(BufferAssignmentTest, AsyncCall) {
+  const char* hlo_text = R"(
+HloModule AsyncCall, is_scheduled=true
+
+%called_computation (param_0: f32[4096], param_1: f32[4096]) -> f32[4096] {
+  %param_0 = f32[4096]{0} parameter(0)
+  %param_1 = f32[4096]{0} parameter(1)
+  %negate_0 = f32[4096]{0} negate(f32[4096]{0} %param_0)
+  %negate_1 = f32[4096]{0} negate(f32[4096]{0} %param_1)
+  %negate_2 = f32[4096]{0} negate(f32[4096]{0} %negate_1)
+  %negate_3 = f32[4096]{0} negate(f32[4096]{0} %negate_2)
+  ROOT %result.1 = f32[4096]{0} add(f32[4096]{0} %negate_0, f32[4096]{0} %negate_3)
+}
+
+ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
+  %a = f32[4096]{0} parameter(0)
+  %b = f32[4096]{0} parameter(1)
+  %async-start = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) call-start(f32[4096]{0} %a, f32[4096]{0} %b), to_apply=%called_computation
+  %negate_4 = f32[4096]{0} negate(f32[4096]{0} %a)
+  %negate_5 = f32[4096]{0} negate(f32[4096]{0} %b)
+  %negate_6 = f32[4096]{0} negate(f32[4096]{0} %negate_5)
+  %negate_7 = f32[4096]{0} negate(f32[4096]{0} %negate_6)
+  %add_0 = f32[4096]{0} add(f32[4096]{0} %negate_4, f32[4096]{0} %negate_7)
+  %async-done = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start), to_apply=%called_computation
+  ROOT %add_1 = f32[4096]{0} add(f32[4096]{0} %add_0, f32[4096]{0} %async-done)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
+  AsyncOpCanonicalizer async_op_canonicalizer;
+  EXPECT_TRUE(async_op_canonicalizer.Run(m.get()).ok());
+  HloDCE dce;
+  EXPECT_TRUE(dce.Run(m.get()).ok());
+
+  auto buffers = RunBufferAssignmentWithSequentialOrdering(m.get());
+
+  LOG(INFO) << buffers->ToString();
+
+  auto get_slice = [&](std::string_view hlo_name, const ShapeIndex& index) {
+    return buffers->GetUniqueSlice(FindInstruction(m.get(), hlo_name), index)
+        .ValueOrDie();
+  };
+
+  // Make sure the parameters and root of the async called computation has the
+  // same slice as the async call operands/output.
+  EXPECT_EQ(get_slice("param_0", {}), get_slice("a", {}));
+  EXPECT_EQ(get_slice("param_1", {}), get_slice("b", {}));
+  EXPECT_EQ(get_slice("result.1", {}), get_slice("async-done", {}));
+
+  // Make sure the intermediate values in the async called computation have
+  // different allocated slices than the values that overlap it.
+  for (const auto& hlo_name :
+       {"negate_0", "negate_1", "negate_2", "negate_3"}) {
+    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_4", {}));
+    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_5", {}));
+    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_6", {}));
+    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_7", {}));
+    EXPECT_NE(get_slice(hlo_name, {}), get_slice("add_0", {}));
+  }
 }
 
 TEST_F(BufferAssignmentTest, BufferInfoStringTest) {
