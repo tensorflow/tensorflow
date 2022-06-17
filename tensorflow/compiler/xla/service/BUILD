@@ -3378,42 +3378,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "reduce_decomposer",
-    srcs = ["reduce_decomposer.cc"],
-    hdrs = ["reduce_decomposer.h"],
-    deps = [
-        ":hlo",
-        ":hlo_creation_utils",
-        ":hlo_pass",
-        "//tensorflow/compiler/xla:status",
-    ],
-)
-
-tf_cc_test(
-    name = "reduce_decomposer_test",
-    srcs = ["reduce_decomposer_test.cc"],
-    deps = [
-        ":hlo",
-        ":hlo_creation_utils",
-        ":hlo_matchers",
-        ":hlo_parser",
-        ":reduce_decomposer",
-        "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:test_helpers",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/tests:filecheck",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/memory",
-    ],
-)
-
 tf_cc_test(
     name = "reshape_decomposer_test",
     srcs = ["reshape_decomposer_test.cc"],

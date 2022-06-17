@@ -142,7 +142,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/optimization_barrier_expander.h"
 #include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/real_imag_expander.h"
-#include "tensorflow/compiler/xla/service/reduce_decomposer.h"
 #include "tensorflow/compiler/xla/service/reduce_scatter_combiner.h"
 #include "tensorflow/compiler/xla/service/reshape_decomposer.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
@@ -716,15 +715,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
-
-  {
-    HloPassPipeline pipeline("hlo normalization");
-    pipeline.AddPass<ReshapeDecomposer>();
-    pipeline.AddPass<ReduceDecomposer>([&](const HloInstruction* r) {
-      return IsReductionFromOrToContiguousDimensions(*r);
-    });
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-  }
 
   HloPassPipeline pipeline("post-layout_assignment");
   pipeline.AddInvariantCheckerDebug<HloVerifier>(
