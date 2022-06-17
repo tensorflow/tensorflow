@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/selectors/operation_selector.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -389,7 +390,12 @@ absl::Status GPUOperationFromNodePart0(
       return absl::OkStatus();
     case OperationType::CONCAT: {
       auto attr = absl::any_cast<ConcatAttributes>(node.operation.attributes);
-      const int max_inputs = gpu_info.GetMaxImageArguments() - 8;
+      int max_inputs = gpu_info.GetMaxImageArguments() - 8;
+      if (gpu_info.IsMali()) {
+        // Mali can fail clEnqueueNDRangeKernel with "Out of resources" when it
+        // receives too big kernel.
+        max_inputs = std::min(8, max_inputs);
+      }
       if (inputs.size() >= max_inputs) {
         int groups = DivideRoundUp(inputs.size(), max_inputs);
         gpu_subgraph->operations.clear();
@@ -657,6 +663,34 @@ absl::Status GPUOperationFromNodePart0(
         channels.push_back(output->tensor.shape.c);
       }
       auto attr = absl::any_cast<SplitAttributes>(node.operation.attributes);
+      if (gpu_info.IsMali()) {
+        // Mali can fail clEnqueueNDRangeKernel with "Out of resources" when it
+        // receives too big kernel.
+        // Replace single complex split to N with N simple kernels.
+        gpu_subgraph->operations.clear();
+        gpu_subgraph->operations.resize(outputs.size());
+        int split_offset = 0;
+        for (int i = 0; i < outputs.size(); ++i) {
+          auto& op = gpu_subgraph->operations[i];
+          op.input_ids = {static_cast<int>(inputs[0]->id)};
+          op.output_ids = {static_cast<int>(outputs[i]->id)};
+          OperationDef new_def;
+          new_def.precision = op_def.precision;
+          new_def.src_tensors.push_back(op_def.src_tensors[0]);
+          new_def.dst_tensors.push_back(op_def.dst_tensors[i]);
+          SliceAttributes new_attr;
+          new_attr.starts = BHWC(0, 0, 0, 0);
+          new_attr.ends = inputs[0]->tensor.shape;
+          new_attr.strides = BHWC(1, 1, 1, 1);
+          new_attr.starts.set(attr.axis, split_offset);
+          new_attr.ends.set(
+              attr.axis,
+              split_offset + outputs[i]->tensor.shape.get(attr.axis));
+          split_offset += outputs[i]->tensor.shape.get(attr.axis);
+          SelectStridedSlice(new_attr, new_def, &op.operation);
+        }
+        return absl::OkStatus();
+      }
       SelectSplit(attr, gpu_info, channels, op_def, gpu_op);
       return absl::OkStatus();
     }
