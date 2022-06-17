@@ -652,6 +652,13 @@ class TestCompiledDenseBincount(test.TestCase, parameterized.TestCase):
                 axis=axis
             )
         return y
+    #print("CAiooooooooooooooooooooooooooooooooooooooooooo")
+    #print(f.experimental_get_compiler_ir(f(x,
+    #    weights=weights,
+    #    minlength=minlength,
+    #    maxlength=maxlength,
+    #    binary_output=binary_output,
+    #    axis=axis))('hlo'))
     res = f(x,
             weights=weights,
             minlength=minlength,
@@ -672,6 +679,10 @@ class TestCompiledDenseBincount(test.TestCase, parameterized.TestCase):
       "x": np.random.randint(100, size=(1000, 1000), dtype=np.int32)
   })
   @test_util.disable_mlir_bridge('TODO: ?')
+  # TODO: Disable performance test on CPU 
+  # missing scatter emitter for CPU fallback to a serial xla::While
+  # https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/xla/service/cpu/ir_emitter.cc#L1929-L1931
+  @test_util.run_gpu_only
   def test_compiled_dense_perf(self,
                        x,
                        minlength=None,
@@ -731,9 +742,7 @@ class TestCompiledDenseBincount(test.TestCase, parameterized.TestCase):
     lambda_f(); lambda_fc()
     not_compiled = timeit.timeit(lambda_f, number=10)
     compiled = timeit.timeit(lambda_fc, number=10)
-    print("XLA JIT -> compiled: %f | not compiled: %f" % 
-        (compiled , not_compiled))
-    self.assertLess(compiled, not_compiled)
+    self.assertLess(compiled, not_compiled * 1.01)
 
     
 class TestDenseBincount(test.TestCase, parameterized.TestCase):

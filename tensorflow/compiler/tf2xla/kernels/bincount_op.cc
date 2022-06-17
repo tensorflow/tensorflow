@@ -34,7 +34,7 @@ class DenseBincountOp : public XlaOpKernel {
   explicit DenseBincountOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("binary_output", &binary_output_));
   }
-  
+
   void Compile(XlaOpKernelContext* ctx) override {
   // Dumb implementation for the simplest test case
     xla::XlaOp input = ctx->Input(0);
@@ -60,30 +60,48 @@ class DenseBincountOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, input_shape_or.status());
     auto input_shape = input_shape_or.ValueOrDie();
     auto size = input_shape.dimensions(0);
-    auto dim = 1;
     auto rank = input_shape.rank();
-    auto counter_shape = xla::ShapeUtil::MakeShape(xla::S64, {});
-    const xla::Shape data_shape = xla::ShapeUtil::MakeShape(input_xla_type, {input_shape.dimensions()});
 
     xla::Shape output_shape = xla::ShapeUtil::MakeShape(dtype, {output_size});
+    xla::XlaOp idx, updates, output;
+    xla::ScatterDimensionNumbers scatter_dnums;
+    scatter_dnums.set_index_vector_dim(1);
+    scatter_dnums.add_inserted_window_dims(0);
+    scatter_dnums.add_scatter_dims_to_operand_dims(0);    
+    auto one = xla::One(ctx->builder(), input_xla_type);
+    auto zero = xla::Zero(ctx->builder(), input_xla_type);;
+    
     if (rank == 2) {
       output_shape = xla::ShapeUtil::MakeShape(dtype, {size, output_size});
-      dim = input_shape.dimensions(1);
+      scatter_dnums.add_inserted_window_dims(1);
+      scatter_dnums.add_scatter_dims_to_operand_dims(1);
+      auto i_shape = xla::ShapeUtil::MakeShape(input_xla_type, {input_shape.dimensions()});
+      auto i = xla::Iota(ctx->builder(), i_shape, 0);
+      i = xla::Reshape(i, {input_shape.dimensions(0)*input_shape.dimensions(1), 1});
+      auto j = xla::Reshape(input, {input_shape.dimensions(0)*input_shape.dimensions(1), 1});
+      std::vector<xla::XlaOp> iotas_to_concat;
+      iotas_to_concat.push_back(i);
+      iotas_to_concat.push_back(j);
+      idx = xla::ConcatInDim(ctx->builder(), iotas_to_concat, 1);
+      updates = xla::Broadcast(one, {input_shape.dimensions(0)*input_shape.dimensions(1)});
+      if (has_weights) {
+        weights = xla::Reshape(weights, {input_shape.dimensions(0)*input_shape.dimensions(1)});
+        zero = xla::Zero(ctx->builder(), dtype);
+        updates = weights;
+      }
     }
-    input = xla::Reshape(input, {size, 1});
-    auto idx = xla::Reshape(input, {size, 1});
-    auto one = xla::One(ctx->builder(), input_xla_type);
-    xla::XlaOp updates, output;
-    if (has_weights) {
-      updates = weights;
-      auto zero = xla::Zero(ctx->builder(), dtype);
-      output = xla::Broadcast(zero, {output_shape.dimensions()});
+
+    else {
+      input = xla::Reshape(input, {size, 1});
+      idx = xla::Reshape(input, {size, 1});
+      updates = xla::Broadcast(one, {size});
+      if (has_weights) {
+        updates = weights;
+        zero = xla::Zero(ctx->builder(), dtype);
+      }
     }
-    else  {
-      auto zero = xla::Zero(ctx->builder(), input_xla_type);
-      updates = xla::Broadcast(one, {output_shape.dimensions()});
-      output = xla::Broadcast(zero, {output_shape.dimensions()});
-    }
+
+    output = xla::Broadcast(zero, {output_shape.dimensions()});
     
     xla::XlaComputation assn_computation = [&] {
       std::unique_ptr<xla::XlaBuilder> subb =
@@ -99,10 +117,6 @@ class DenseBincountOp : public XlaOpKernel {
       }
       return subb->BuildAndNoteError();
     }();
-    xla::ScatterDimensionNumbers scatter_dnums;
-    scatter_dnums.set_index_vector_dim(1);
-    scatter_dnums.add_inserted_window_dims(0);
-    scatter_dnums.add_scatter_dims_to_operand_dims(0);
     output = xla::Scatter(output, idx, updates, assn_computation, scatter_dnums, false, false);
 
     ctx->SetOutput(0, output);
