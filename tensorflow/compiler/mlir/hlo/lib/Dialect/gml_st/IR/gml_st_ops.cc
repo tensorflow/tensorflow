@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
@@ -1430,13 +1431,7 @@ Value DynamicBroadcastInDimOp::fuse(Location loc, Value subset,
 
   // Materialize operand and result root space.
   auto spaceTy = builder.getType<TileType>(operandTy.getShape());
-  SmallVector<Value> dynamicDims;
-  for (const auto &it : llvm::enumerate(operandTy.getShape())) {
-    if (it.value() == ShapedType::kDynamicSize) {
-      dynamicDims.push_back(
-          builder.create<tensor::DimOp>(loc, operand(), it.index()));
-    }
-  }
+  auto dynamicDims = tensor::createDynamicDimValues(builder, loc, operand());
   auto staticDims = builder.getI64ArrayAttr(operandTy.getShape());
   Value operandSpace =
       builder.create<SpaceOp>(loc, spaceTy, dynamicDims, staticDims);
