@@ -2721,7 +2721,7 @@ func.func @reduce_lexicographic_min_complex(%arg0: tensor<?x3x4xcomplex<f64>>,
    : (tensor<?x3x4xcomplex<f64>>, tensor<complex<f64>>) -> tensor<complex<f64>>
    reducer(%arg3: tensor<complex<f64>>, %arg4: tensor<complex<f64>>)  {
     %1 = mhlo.real(%arg3) : (tensor<complex<f64>>) -> tensor<f64>
-    %2 = mhlo.real(%arg4) : (tensor<complex<f64>>) -> tensor<f64>
+    %2 = mhlo.convert(%arg4) : (tensor<complex<f64>>) -> tensor<f64>
     %3 = "mhlo.compare"(%1, %2)
       {comparison_direction = #mhlo<"comparison_direction EQ">}
       : (tensor<f64>, tensor<f64>) -> tensor<i1>
