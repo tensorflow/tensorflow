@@ -159,7 +159,7 @@ absl::Status AddDynamicConv(ModelHints hints, const GpuInfo& gpu_info,
                             const BHWC& src_shape, const OHWI& weights_shape,
                             const BHWC& dst_shape, int src_id, int weights_id,
                             int dst_id, GPUOperationsSubgraph* gpu_subgraph,
-                            void* attr) {
+                            void* attr = nullptr) {
   gpu_subgraph->operations.reserve(gpu_subgraph->operations.size() + 2);
   gpu_subgraph->operations.push_back({});
   auto& converter_op = gpu_subgraph->operations.back();
@@ -189,11 +189,9 @@ absl::Status AddDynamicConv(ModelHints hints, const GpuInfo& gpu_info,
     conv_op.operation->flops_ =
         GetConvolutionTransposedFlops(src_shape, weights_shape);
   } else if (op_type == OperationType::BATCHED_MATMUL) {
-    Convolution2DAttributes* conv_attr =
-        reinterpret_cast<Convolution2DAttributes*>(attr);
-    conv_op.operation = SelectConvolutionWithDynamicWeights(
-        *conv_attr, weights_shape_bhwc, dst_shape, gpu_info, conv_temp_def,
-        hints, &weights_desc);
+    conv_op.operation =
+        SelectConvolutionBatchedMatMul(weights_shape, dst_shape, gpu_info,
+                                       conv_temp_def, hints, &weights_desc);
     conv_op.name = "mat_mul_as_convolution";
     conv_op.operation->flops_ = GetConvolutionFlops(dst_shape, weights_shape);
   } else {
@@ -343,7 +341,7 @@ absl::Status GPUOperationFromNodePart0(
       // Currently only batch = 1 is supported.
       // Matmul replaced with this sequence:
       //   1) Transpose second tensor(weights). (1xBxHxW)->(Wx1xBxH)
-      //   2) Run cconvolution with runtime weights
+      //   2) Run convolution with runtime weights
       auto second_shape = inputs[1]->tensor.shape;
       auto dst_shape = outputs[0]->tensor.shape;
       if (dst_shape.b != 1) {
@@ -354,13 +352,6 @@ absl::Status GPUOperationFromNodePart0(
                                second_shape.w);
       const BHWC weights_shape_bhwc(weights_shape.o, weights_shape.h,
                                     weights_shape.w, weights_shape.i);
-      Convolution2DAttributes attr;
-      attr.strides = HW(1, 1);
-      attr.dilations = HW(1, 1);
-      attr.padding.appended = HW(0, 0);
-      attr.padding.prepended = HW(0, 0);
-      attr.bias.shape = Linear(weights_shape.o);
-      attr.bias.data.resize(weights_shape.o, 0.0f);
 
       gpu_subgraph->operations.clear();
       TensorDescriptor transposed_desc = {op_def.src_tensors[1].data_type,
@@ -391,7 +382,7 @@ absl::Status GPUOperationFromNodePart0(
       return AddDynamicConv(hints, gpu_info, conv_def, op_type,
                             inputs[0]->tensor.shape, weights_shape, dst_shape,
                             inputs[0]->id, transposed_id, outputs[0]->id,
-                            gpu_subgraph, &attr);
+                            gpu_subgraph);
     }
     case OperationType::CAST:
       SelectCast(op_def, gpu_info, gpu_op);

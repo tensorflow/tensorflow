@@ -228,6 +228,23 @@ std::unique_ptr<GPUOperation> SelectConvolutionWithDynamicWeights(
   }
 }
 
+std::unique_ptr<GPUOperation> SelectConvolutionBatchedMatMul(
+    const OHWI& weights_shape, const BHWC& dst_shape, const GpuInfo& gpu_info,
+    const OperationDef& op_def, ModelHints hints,
+    WeightsDescription* weights_desc) {
+  if (gpu_info.IsApple()) {
+    ConvolutionMetal conv = CreateConvolutionMetalBatchedMatMul(
+        op_def, dst_shape, weights_shape, gpu_info);
+    *weights_desc = conv.GetWeightsDescription();
+    return std::make_unique<ConvolutionMetal>(std::move(conv));
+  } else {
+    ConvGeneric conv = CreateConvGenericBatchedMatMul(
+        gpu_info, op_def, weights_shape, &dst_shape);
+    *weights_desc = conv.GetWeightsDescription();
+    return std::make_unique<ConvGeneric>(std::move(conv));
+  }
+}
+
 std::unique_ptr<GPUOperation> SelectConverterToConvWeights(
     const WeightsDescription& weights_desc, const OperationDef& op_def,
     ModelHints hints) {

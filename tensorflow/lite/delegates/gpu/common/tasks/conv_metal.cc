@@ -1128,6 +1128,33 @@ ConvolutionMetal CreateConvolutionMetalWino4x4To6x6(
   return desc;
 }
 
+ConvolutionMetal CreateConvolutionMetalBatchedMatMul(
+    const OperationDef& definition, const BHWC& dst_shape,
+    const OHWI& weights_shape, const GpuInfo& gpu_info) {
+  BHWC new_shape = BHWC(1, dst_shape.h, dst_shape.w * dst_shape.b, dst_shape.c);
+  ConvolutionMetal::ConvParams params =
+      GetConvParams(gpu_info, true, true, weights_shape.i, new_shape);
+  params.different_weights_for_height = true;
+  params.block_size.x *= params.block_size.y;
+  params.block_size.y = 1;
+
+  ConvolutionMetal desc(definition, params, /*attr*/ nullptr);
+
+  // dynamic weights
+  BufferDescriptor weights_desc;
+  weights_desc.element_type = definition.src_tensors[1].data_type;
+  weights_desc.element_size = 4;
+  weights_desc.memory_type = params.GetMemoryType();
+  desc.AddSrcBuffer("weights", weights_desc);
+
+  tflite::gpu::Tensor<Linear, DataType::FLOAT32> biases;
+  biases.shape = Linear(weights_shape.o);
+  biases.data.resize(weights_shape.o, 0.0f);
+  desc.UploadBiases(biases);
+
+  return desc;
+}
+
 bool IsConvolutionMetalSupported(const OperationDef& definition) {
   return !definition.src_tensors[0].HasAxis(Axis::DEPTH);
 }
