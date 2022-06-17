@@ -178,6 +178,23 @@ tf_cuda_library(
 )
 
 tf_cuda_library(
+    name = "gpu_cudamallocasync_allocator",
+    srcs = [
+        "gpu_cudamallocasync_allocator.cc",
+        ":gpu_runtime_headers",
+    ],
+    hdrs = ["gpu_cudamallocasync_allocator.h"],
+    cuda_deps = [
+        ":gpu_id_impl",
+        ":gpu_init_impl",
+        "//tensorflow/stream_executor/cuda:cuda_platform",
+        "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+    ],
+)
+
+tf_cuda_library(
     name = "gpu_runtime",
     hdrs = [":gpu_runtime_headers"],
     linkstatic = 1,
