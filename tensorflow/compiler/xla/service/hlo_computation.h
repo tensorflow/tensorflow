@@ -544,6 +544,7 @@ class HloComputation {
   // computation.
   HloInstruction* FusionInstruction() const { return fusion_instruction_; }
   void SetFusionInstruction(HloInstruction* fusion_instruction) {
+    CHECK(!IsCustomCallComputation() && !IsAsyncComputation());
     fusion_instruction_ = fusion_instruction;
     is_fusion_computation_ |= (fusion_instruction != nullptr);
   }
@@ -557,6 +558,7 @@ class HloComputation {
     return custom_call_instruction_;
   }
   void SetCustomCallInstruction(HloInstruction* custom_call_instruction) {
+    CHECK(!IsFusionComputation() && !IsAsyncComputation());
     custom_call_instruction_ = custom_call_instruction;
     is_custom_call_computation_ |= (custom_call_instruction != nullptr);
   }
@@ -577,6 +579,10 @@ class HloComputation {
   void AddAsyncInstruction(HloInstruction* async_instruction) {
     CHECK(async_instruction != nullptr)
         << "Nullptr shouldn't be added as commputation's async instruction. ";
+    CHECK(!IsFusionComputation() && !IsCustomCallComputation());
+    CHECK(async_instruction->opcode() == HloOpcode::kAsyncStart ||
+          async_instruction->opcode() == HloOpcode::kAsyncUpdate ||
+          async_instruction->opcode() == HloOpcode::kAsyncDone);
     async_instructions_.push_back(async_instruction);
   }
 

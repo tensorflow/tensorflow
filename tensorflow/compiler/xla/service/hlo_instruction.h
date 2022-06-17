@@ -292,7 +292,7 @@ class HloPrintOptions {
   //   ROOT %async-done = f32[20]{0} custom-call-done(%async-update),
   //                                                    custom_call_target="foo"
   // }
-  HloPrintOptions& set_syntax_sugar_async_op(bool value) {
+  HloPrintOptions& set_syntax_sugar_async_ops(bool value) {
     syntax_sugar_async_ops_ = value;
     return *this;
   }
