@@ -118,13 +118,25 @@ class DispatchServer:
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
   When starting a dedicated tf.data dispatch process, use join() to block
-  indefinitely after starting up the server.
+  after starting up the server, until the server terminates.
 
   ```
-  dispatcher = tf.data.experimental.service.DispatchServer(
-      tf.data.experimental.service.DispatcherConfig(port=5050))
+  config = tf.data.experimental.service.DispatcherConfig(port=5050)
+  dispatcher = tf.data.experimental.service.DispatchServer(config)
   dispatcher.join()
   ```
+
+  Call stop() to gracefully terminate the dispatcher. Alternatively, use
+  the dispatcher in a `with` context to automatically stop it when leaving
+  the context.
+
+  ```
+  config = tf.data.experimental.service.DispatcherConfig(port=5050)
+  with tf.data.experimental.service.DispatchServer(config) as dispatcher:
+      ...
+  ```
+
+  The server automatically stops when all reference to it have been deleted.
 
   To start a `DispatchServer` in fault-tolerant mode, set `work_dir` and
   `fault_tolerant_mode` like below:
@@ -189,8 +201,8 @@ class DispatchServer:
     This is useful when starting a dedicated dispatch process.
 
     ```
-    dispatcher = tf.data.experimental.service.DispatchServer(
-        tf.data.experimental.service.DispatcherConfig(port=5050))
+    config = tf.data.experimental.service.DispatcherConfig(port=5050)
+    dispatcher = tf.data.experimental.service.DispatchServer(config)
     dispatcher.join()
     ```
 
@@ -199,6 +211,15 @@ class DispatchServer:
         joining the server.
     """
     self._server.join()
+
+  def stop(self):
+      """Stops the server.
+
+      Raises:
+        tf.errors.OpError: Or one of its subclasses if an error occurs while
+          stopping the server.
+      """
+      self._stop()
 
   @property
   def target(self):
@@ -226,6 +247,9 @@ class DispatchServer:
 
   def __del__(self):
     self._stop()
+
+  def __exit__(self, exc_type, exc_val, exc_tb):
+      self._stop()
 
   @property
   def _address(self):
@@ -314,13 +338,25 @@ class WorkerServer:
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
   When starting a dedicated tf.data worker process, use join() to block
-  indefinitely after starting up the server.
+  after starting up the worker, until the worker terminates.
 
   ```
   worker = tf.data.experimental.service.WorkerServer(
       port=5051, dispatcher_address="localhost:5050")
   worker.join()
   ```
+
+  Call stop() to gracefully terminate the worker. Alternatively, use
+  the worker in a `with` context to automatically stop it when leaving
+  the context.
+
+  ```
+  with tf.data.experimental.service.WorkerServer(
+      port=5051, dispatcher_address="localhost:5050") as worker:
+      ...
+  ```
+
+  The worker automatically stops when all reference to it have been deleted.
   """
 
   def __init__(self, config, start=True):
@@ -379,6 +415,15 @@ class WorkerServer:
     """
     self._server.join()
 
+  def stop(self):
+    """Stops the server.
+
+    Raises:
+    tf.errors.OpError: Or one of its subclasses if an error occurs while
+    stopping the server.
+    """
+    self._stop()
+
   def _stop(self):
     """Stops the server.
 
@@ -390,6 +435,9 @@ class WorkerServer:
 
   def __del__(self):
     self._stop()
+
+  def __exit__(self, exc_type, exc_val, exc_tb):
+      self._stop()
 
   @property
   def _address(self):
