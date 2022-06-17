@@ -1968,6 +1968,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "BesselI1e",
       "Betainc",
       "BiasAddV1",
+      "Bincount",
       "Bucketize",
       "Case",
       "CheckNumerics",
