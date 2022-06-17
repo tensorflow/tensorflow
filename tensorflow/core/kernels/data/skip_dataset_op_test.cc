@@ -43,7 +43,7 @@ class SkipDatasetParams : public DatasetParams {
     input_names->clear();
     input_names->emplace_back(SkipDatasetOp::kInputDataset);
     input_names->emplace_back(SkipDatasetOp::kCount);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -51,7 +51,7 @@ class SkipDatasetParams : public DatasetParams {
     attr_vector->emplace_back("output_types", output_dtypes_);
     attr_vector->emplace_back("output_shapes", output_shapes_);
     attr_vector->emplace_back("metadata", "");
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override { return SkipDatasetOp::kDatasetType; }

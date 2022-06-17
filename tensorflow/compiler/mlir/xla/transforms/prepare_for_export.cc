@@ -57,15 +57,15 @@ void prepareConstantOp(Operation *op, SplatElementsAttr attr) {
   if (attr.getNumElements() < 32) return;
   ShapedType return_type = op->getResultTypes().front().cast<ShapedType>();
   ImplicitLocOpBuilder b(op->getLoc(), op);
-  ConstOp cst;
+  ConstantOp cst;
   if (auto complexTy = return_type.getElementType().dyn_cast<ComplexType>()) {
     auto tensorType = RankedTensorType::get({}, return_type.getElementType());
     assert(complexTy.getElementType().isa<FloatType>() &&
            "unexpected int complex in MHLO");
     auto complexVal = attr.getSplatValue<std::complex<APFloat>>();
-    cst = b.create<ConstOp>(DenseElementsAttr::get(tensorType, complexVal));
+    cst = b.create<ConstantOp>(DenseElementsAttr::get(tensorType, complexVal));
   } else {
-    cst = b.create<ConstOp>(attr.getSplatValue<Attribute>());
+    cst = b.create<ConstantOp>(attr.getSplatValue<Attribute>());
   }
   auto broadcast =
       b.create<BroadcastInDimOp>(return_type, cst, b.getI64TensorAttr({}));

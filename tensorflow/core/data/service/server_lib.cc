@@ -51,7 +51,7 @@ Status GrpcDataServerBase::Start() {
         "Server cannot be started after it has been stopped.");
   }
   if (started_) {
-    return Status::OK();
+    return OkStatus();
   }
   ::grpc::ServerBuilder builder;
   for (std::unique_ptr<::grpc::ServerBuilderOption>& option : server_options_) {
@@ -78,7 +78,7 @@ Status GrpcDataServerBase::Start() {
   started_ = true;
   LOG(INFO) << "Started tf.data " << server_type_
             << " running at 0.0.0.0:" << BoundPort();
-  return Status::OK();
+  return OkStatus();
 }
 
 void GrpcDataServerBase::Stop() {
@@ -131,7 +131,7 @@ Status DispatchGrpcDataServer::NumWorkers(int* num_workers) {
     return grpc_util::WrapError("Failed to get workers", s);
   }
   *num_workers = resp.workers_size();
-  return Status::OK();
+  return OkStatus();
 }
 
 size_t DispatchGrpcDataServer::NumActiveIterations() {
@@ -181,7 +181,7 @@ Status WorkerGrpcDataServer::StartServiceInternal() {
         /*replace_all=*/false);
   }
   TF_RETURN_IF_ERROR(service_->Start(worker_address, transfer_address));
-  return Status::OK();
+  return OkStatus();
 }
 
 void WorkerGrpcDataServer::StopServiceInternal() { service_->Stop(); }
@@ -195,7 +195,7 @@ Status WorkerGrpcDataServer::NumTasks(int* num_tasks) {
     return grpc_util::WrapError("Failed to get tasks", s);
   }
   *num_tasks = resp.tasks_size();
-  return Status::OK();
+  return OkStatus();
 }
 
 ServerStateExport WorkerGrpcDataServer::ExportState() const {
@@ -207,13 +207,13 @@ ServerStateExport WorkerGrpcDataServer::ExportState() const {
 Status NewDispatchServer(const experimental::DispatcherConfig& config,
                          std::unique_ptr<DispatchGrpcDataServer>& out_server) {
   out_server = absl::make_unique<DispatchGrpcDataServer>(config);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status NewWorkerServer(const experimental::WorkerConfig& config,
                        std::unique_ptr<WorkerGrpcDataServer>& out_server) {
   out_server = absl::make_unique<WorkerGrpcDataServer>(config);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace data

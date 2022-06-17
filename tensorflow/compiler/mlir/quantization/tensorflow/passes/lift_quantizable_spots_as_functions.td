@@ -37,7 +37,7 @@ class IsFusedOpEndsWith<string OpName> : AttrConstraint<
 def LiftConv : Pat<
   (TF_Conv2DOp:$res $input, $filter, $strides, $use_cudnn, $padding,
      $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
-  (LiftAsFunctionCall<"fused_conv2d_fn">
+  (LiftAsFunctionCall<"composite_conv2d_fn">
      (ArgumentList $input, $filter),
      (ResultList $res),
      (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
@@ -46,7 +46,7 @@ def LiftConv : Pat<
 def LiftDepthwiseConv : Pat<
   (TF_DepthwiseConv2dNativeOp:$res $input, $filter, $strides, $padding,
      $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
-  (LiftAsFunctionCall<"fused_depthwise_conv2d_fn">
+  (LiftAsFunctionCall<"composite_depthwise_conv2d_fn">
      (ArgumentList $input, $filter),
      (ResultList $res),
      (AttributeList $strides, $padding, $explicit_padding, $dilations)),
@@ -54,7 +54,7 @@ def LiftDepthwiseConv : Pat<
 
 def LiftMatMul : Pat<
   (TF_MatMulOp:$res $a, $b, $transpose_a, $transpose_b),
-  (LiftAsFunctionCall<"fused_matmul_fn">
+  (LiftAsFunctionCall<"composite_matmul_fn">
      (ArgumentList $a, $b),
      (ResultList $res),
      (AttributeList $transpose_a, $transpose_b)),
@@ -69,7 +69,7 @@ def LiftDepthwiseConv2dNativeWithBias : Pat<
       (TF_DepthwiseConv2dNativeOp $input, $filter, $strides, $padding,
          $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
       $bias, IsDataFormatNHWC:$bias_data_format),
-  (LiftAsFunctionCall<"fused_depthwise_conv2d_with_bias_fn">
+  (LiftAsFunctionCall<"composite_depthwise_conv2d_with_bias_fn">
      (ArgumentList $input, $filter, $bias),
      (ResultList $res),
      (AttributeList $strides, $padding, $explicit_padding, $dilations)),
@@ -80,7 +80,7 @@ def LiftConv2dWithBias : Pat<
       (TF_Conv2DOp $input, $filter, $strides, $use_cudnn, $padding,
          $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
        $bias, IsDataFormatNHWC:$bias_data_format),
-  (LiftAsFunctionCall<"fused_conv2d_with_bias_fn">
+  (LiftAsFunctionCall<"composite_conv2d_with_bias_fn">
      (ArgumentList $input, $filter, $bias),
      (ResultList $res),
      (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
@@ -90,7 +90,7 @@ def LiftMatmulWithBias : Pat<
   (TF_BiasAddOp:$res
       (TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
       $bias, IsDataFormatNHWC:$bias_data_format),
-  (LiftAsFunctionCall<"fused_matmul_with_bias_fn">
+  (LiftAsFunctionCall<"composite_matmul_with_bias_fn">
      (ArgumentList $a, $b, $bias),
      (ResultList $res),
      (AttributeList $transpose_a, $transpose_b)),
@@ -105,7 +105,7 @@ multiclass LiftCompositeOpsWithActivation<Op ActivationOp, string ActivationName
     (ActivationOp:$res
       (TF_Conv2DOp $input, $filter, $strides, $use_cudnn, $padding,
          $explicit_padding, IsDataFormatNHWC:$data_format, $dilations)),
-    (LiftAsFunctionCall<"fused_conv2d_with_"# ActivationName #"_fn">
+    (LiftAsFunctionCall<"composite_conv2d_with_"# ActivationName #"_fn">
        (ArgumentList $input, $filter),
        (ResultList $res),
        (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
@@ -117,7 +117,7 @@ multiclass LiftCompositeOpsWithActivation<Op ActivationOp, string ActivationName
         (TF_Conv2DOp $input, $filter, $strides, $use_cudnn, $padding,
            $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
          $bias, IsDataFormatNHWC:$bias_data_format)),
-    (LiftAsFunctionCall<"fused_conv2d_with_bias_and_"# ActivationName #"_fn">
+    (LiftAsFunctionCall<"composite_conv2d_with_bias_and_"# ActivationName #"_fn">
        (ArgumentList $input, $filter, $bias),
        (ResultList $res),
        (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
@@ -127,7 +127,7 @@ multiclass LiftCompositeOpsWithActivation<Op ActivationOp, string ActivationName
     (ActivationOp:$res
       (TF_DepthwiseConv2dNativeOp $input, $filter, $strides, $padding,
          $explicit_padding, IsDataFormatNHWC:$data_format, $dilations)),
-    (LiftAsFunctionCall<"fused_depthwise_conv2d_with_"# ActivationName #"_fn">
+    (LiftAsFunctionCall<"composite_depthwise_conv2d_with_"# ActivationName #"_fn">
        (ArgumentList $input, $filter),
        (ResultList $res),
        (AttributeList $strides, $padding, $explicit_padding, $dilations)),
@@ -139,7 +139,7 @@ multiclass LiftCompositeOpsWithActivation<Op ActivationOp, string ActivationName
           (TF_DepthwiseConv2dNativeOp $input, $filter, $strides, $padding,
              $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
           $bias, IsDataFormatNHWC:$bias_data_format)),
-      (LiftAsFunctionCall<"fused_depthwise_conv2d_with_bias_and_"# ActivationName #"_fn">
+      (LiftAsFunctionCall<"composite_depthwise_conv2d_with_bias_and_"# ActivationName #"_fn">
          (ArgumentList $input, $filter, $bias),
          (ResultList $res),
          (AttributeList $strides, $padding, $explicit_padding, $dilations)),
@@ -148,7 +148,7 @@ multiclass LiftCompositeOpsWithActivation<Op ActivationOp, string ActivationName
   def LiftMatmulWith#ActivationOp : Pat<
     (ActivationOp:$res
       (TF_MatMulOp $a, $b, $transpose_a, $transpose_b)),
-    (LiftAsFunctionCall<"fused_matmul_with_"# ActivationName #"_fn">
+    (LiftAsFunctionCall<"composite_matmul_with_"# ActivationName #"_fn">
        (ArgumentList $a, $b),
        (ResultList $res),
        (AttributeList $transpose_a, $transpose_b)),
@@ -159,7 +159,7 @@ multiclass LiftCompositeOpsWithActivation<Op ActivationOp, string ActivationName
      (TF_BiasAddOp
         (TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
       $bias, IsDataFormatNHWC:$bias_data_format)),
-    (LiftAsFunctionCall<"fused_matmul_with_bias_and_"# ActivationName #"_fn">
+    (LiftAsFunctionCall<"composite_matmul_with_bias_and_"# ActivationName #"_fn">
        (ArgumentList $a, $b, $bias),
        (ResultList $res),
        (AttributeList $transpose_a, $transpose_b)),

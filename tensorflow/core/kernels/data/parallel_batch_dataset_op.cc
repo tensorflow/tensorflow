@@ -138,7 +138,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -180,7 +180,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
         this,
         {input_graph_node, batch_size, num_parallel_calls, drop_remainder},
         attrs, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -256,7 +256,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
           ProcessBatch(dataset()->batch_size_, result->num_elements,
                        dataset()->drop_remainder_, result->status, ctx,
                        out_tensors, end_of_sequence, &result->output));
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
@@ -283,7 +283,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       for (size_t i = 0; i < batch_results_.size(); ++i) {
         TF_RETURN_IF_ERROR(WriteBatchResult(writer, i));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -297,7 +297,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       for (int i = 0; i < batch_results_size; ++i) {
         TF_RETURN_IF_ERROR(ReadBatchResult(ctx, reader, i));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
@@ -327,7 +327,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       explicit BatchResult()
           : end_of_input(false),
             num_elements(0),
-            status(Status::OK()),
+            status(OkStatus()),
             call_finished(false),
             output_allocated(false),
             uid(tensorflow::EnvTime::NowNanos()) {}
@@ -407,7 +407,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
                   TF_EXCLUSIVE_LOCKS_REQUIRED(&BatchResult::mu) {
                     result->output_allocated = true;
                     RecordBufferEnqueue(ctx.get(), result->output);
-                    return Status::OK();
+                    return OkStatus();
                   };
           status = CopyBatch(CopyBatchParams(ctx.get()), *batch_elements,
                              dataset()->parallel_copy_,
@@ -546,7 +546,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       if (result->output_allocated) {
         RecordBufferEnqueue(ctx, result->output);
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status WriteBatchResult(IteratorStateWriter* writer, size_t index)
@@ -577,7 +577,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(
           WriteStatus(prefix(), strings::StrCat(batch_prefix, "_", kStatus),
                       result->status, writer));
-      return Status::OK();
+      return OkStatus();
     }
 
     // Used for coordination between the main thread and the runner thread.

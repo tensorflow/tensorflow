@@ -60,7 +60,7 @@ from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
-from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
@@ -356,18 +356,19 @@ class _EagerDefinedFunction(object):
         output_names = []
     else:
       output_names = []
-    fn = pywrap_tf_session.TF_GraphToFunction_wrapper(
-        graph._c_graph,  # pylint: disable=protected-access
-        compat.as_str(name),
-        False,
-        [o._c_op for o in operations],  # pylint: disable=protected-access
-        [t._as_tf_output() for t in inputs],  # pylint: disable=protected-access
-        [t._as_tf_output() for t in outputs],  # pylint: disable=protected-access
-        output_names,
-        [o._c_op for o in graph.control_outputs],  # pylint: disable=protected-access
-        [],  # control_output_names
-        None,
-        compat.as_str(""))
+    with graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
+      fn = pywrap_tf_session.TF_GraphToFunction_wrapper(
+          c_graph,
+          compat.as_str(name),
+          False,
+          [o._c_op for o in operations],  # pylint: disable=protected-access
+          [t._as_tf_output() for t in inputs],  # pylint: disable=protected-access
+          [t._as_tf_output() for t in outputs],  # pylint: disable=protected-access
+          output_names,
+          [o._c_op for o in graph.control_outputs],  # pylint: disable=protected-access
+          [],  # control_output_names
+          None,
+          compat.as_str(""))
 
     self._c_func = c_api_util.ScopedTFFunction(fn, name)
 

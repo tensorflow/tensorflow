@@ -26,7 +26,6 @@ include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
 // Base class of all subset types.
 class GMLST_Subset<string name> : TypeDef<GmlSt_Dialect, name> { }
 
-// TODO: Have a type trait for all subset.
 def GMLST_TileType : GMLST_Subset<"Tile"> {
   let mnemonic = "tile";
   let summary = "Type that represents a tile of an index space.";
@@ -41,51 +40,54 @@ def GMLST_PointType : GMLST_Subset<"Point"> {
 }
 
 // Whether a type is a subset type.
-def IsSubsetTypePred : CPred<"$_self.isa<::mlir::gml_st::PointType, ::mlir::gml_st::TileType>()">;
+def IsSubsetTypePred : Or<[GMLST_TileType.predicate, GMLST_PointType.predicate]>;
 
 def AnySubset : Type<IsSubsetTypePred, "subset type">;
 
-def GMLST_SpaceOp : GMLST_Op<"space", []> {
+def GMLST_SpaceOp : GMLST_Op<"space",
+    [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let arguments = (ins Variadic<Index>:$shapes,
                        I64ArrayAttr:$static_shapes);
-  let results = (outs AnySubset:$result);
+  let results = (outs GMLST_TileType:$result);
   let assemblyFormat = [{
-    custom<OperandsOrIntegersOffsetsOrStridesList>($shapes, $static_shapes)
-    attr-dict `:` type($result)
+    custom<OperandsOrIntegersSizesList>($shapes, $static_shapes)
+    attr-dict `:` qualified(type($result))
   }];
-  let hasVerifier = 0;
+  let hasVerifier = 1;
 }
 
 def GMLST_PointOp : GMLST_Op<"point", []> {
   let arguments = (ins AnySubset:$subset,
                        Variadic<Index>:$indices,
                        I64ArrayAttr:$static_indices);
-  let results = (outs AnySubset:$result);
+  let results = (outs GMLST_PointType:$result);
   let assemblyFormat = [{
     $subset
     custom<OperandsOrIntegersOffsetsOrStridesList>($indices, $static_indices)
-    attr-dict `:` type($subset) `to` type($result)
+    attr-dict `:` qualified(type($subset)) `to` qualified(type($result))
   }];
-  let hasVerifier = 0;
+  let hasVerifier = 1;
 }
 
-def GMLST_TileOp : GMLST_Op<"tile", [AttrSizedOperandSegments]> {
-  let arguments = (ins AnySubset:$subset,
+def GMLST_TileOp : GMLST_Op<"tile",
+    [AttrSizedOperandSegments,
+     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let arguments = (ins GMLST_TileType:$subset,
                        Variadic<Index>:$offsets,
                        Variadic<Index>:$sizes,
                        Variadic<Index>:$strides,
                        I64ArrayAttr:$static_offsets,
                        I64ArrayAttr:$static_sizes,
                        I64ArrayAttr:$static_strides);
-  let results = (outs AnySubset:$result);
+  let results = (outs GMLST_TileType:$result);
   let assemblyFormat = [{
     $subset
     custom<OperandsOrIntegersOffsetsOrStridesList>($offsets, $static_offsets)
     custom<OperandsOrIntegersSizesList>($sizes, $static_sizes)
     custom<OperandsOrIntegersOffsetsOrStridesList>($strides, $static_strides)
-    attr-dict `:` type($subset) `to` type($result)
+    attr-dict `:` qualified(type($subset)) `to` qualified(type($result))
   }];
-  let hasVerifier = 0;
+  let hasVerifier = 1;
 }
 
 def GMLST_CollapseTileOp : GMLST_Op<"collapse_tile", [NoSideEffect,
@@ -99,38 +101,12 @@ def GMLST_CollapseTileOp : GMLST_Op<"collapse_tile", [NoSideEffect,
     the root space.
   }];
   let arguments = (ins
-    AnySubset:$arg_tile,
+    GMLST_TileType:$arg_tile,
     I64ElementsAttr:$remaining_dims);
-  let results = (outs AnySubset:$result);
+  let results = (outs GMLST_TileType:$result);
   let assemblyFormat = [{
     $arg_tile `,` custom<I64ElementsAttr>($remaining_dims) attr-dict `:`
-    type($arg_tile) `->` type($result)
-  }];
-  let hasVerifier = 0;
-}
-
-def GMLST_OperandTileForDynamicBroadcastInDimOp : GMLST_Op<
-    "operand_tile_for_dynamic_broadcast_in_dim", []> {
-  let summary = [{
-    Computes the minimal operand tile for `dynamic_broadcast_in_dim`
-  }];
-  let description = [{
-    Based on a subset of interest for the result of a `dynamic_broadcast_in_dim`
-    op, computes the minimal operand subset that is needed to perform the tiled
-    broadcast.
-  }];
-  let arguments = (ins
-    AnySubset:$dst_tile,
-    AnySubset:$src_space,
-    AnySubset:$dst_space,
-    I64ElementsAttr:$broadcast_dimensions,
-    OptionalAttr<I64ElementsAttr>:$known_expanding_dimensions,
-    OptionalAttr<I64ElementsAttr>:$known_nonexpanding_dimensions);
-  let results = (outs AnySubset:$result);
-  let assemblyFormat = [{
-    $dst_tile `,` $src_space `,` $dst_space `,`
-    custom<I64ElementsAttr>($broadcast_dimensions)  attr-dict `:`
-    type($dst_tile) `,` type($src_space) `,` type($dst_space) `->` type($result)
+    qualified(type($arg_tile)) `->` qualified(type($result))
   }];
   let hasVerifier = 0;
 }

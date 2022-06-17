@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
 
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -31,52 +32,32 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
-// NOLINTNEXTLINE
-static llvm::cl::list<std::string> target_ops(
-    "tfl-test-raise-tf-targets", llvm::cl::value_desc("list"),
-    llvm::cl::desc("comma separated list of target op names to be wrapped. Only"
-                   " used in tests"),
-    llvm::cl::CommaSeparated);
-
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
+
 // This transformation pass takes an operation with unknown op properties and
 // wrap it by a TFL::CustomTfOp.
-struct RaiseCustomOpsPass
-    : public PassWrapper<RaiseCustomOpsPass, OperationPass<func::FuncOp>> {
-  void getDependentDialects(DialectRegistry &registry) const final {
-    registry.insert<TensorFlowLiteDialect>();
-  }
-
+struct RaiseCustomOpsPass : public RaiseCustomOpsPassBase<RaiseCustomOpsPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RaiseCustomOpsPass)
 
-  explicit RaiseCustomOpsPass()
-      : target_op_names(target_ops.begin(), target_ops.end()) {}
-  explicit RaiseCustomOpsPass(const std::vector<std::string> &target_ops)
-      : target_op_names(target_ops.begin(), target_ops.end()) {}
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-raise-custom-ops";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Raise custom ops into tflite dialect.";
+  explicit RaiseCustomOpsPass() {}
+  explicit RaiseCustomOpsPass(const std::vector<std::string> &target_ops) {
+    this->target_ops_ = target_ops;
   }
 
   void runOnOperation() override;
-
- private:
-  // If this set is empty, then all the qualified ops will be wrapped.
-  const absl::flat_hash_set<std::string> target_op_names;
 };
 
 void RaiseCustomOpsPass::runOnOperation() {
   auto fn = getOperation();
   OpBuilder builder(fn.getContext());
+
+  absl::flat_hash_set<std::string> target_op_names(target_ops_.begin(),
+                                                   target_ops_.end());
 
   llvm::SmallVector<Operation *, 4> custom_ops;
   fn.walk([&](Operation *op) {
@@ -120,6 +101,10 @@ void RaiseCustomOpsPass::runOnOperation() {
   }
 }
 }  // namespace
+
+std::unique_ptr<OperationPass<func::FuncOp>> CreateRaiseCustomOpsPass() {
+  return std::make_unique<RaiseCustomOpsPass>();
+}
 
 // Creates an instance of the TensorFlow Lite dialect raise custom op pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateRaiseCustomOpsPass(

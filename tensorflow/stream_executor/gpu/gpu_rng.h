@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_RNG_H_
 #define TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_RNG_H_
 
+#include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/gpu/gpu_types.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
@@ -80,7 +80,7 @@ class GpuRng : public rng::RngSupport {
   // This is a stateful operation, as the handle can only have one stream set at
   // a given time, so it is usually performed right before enqueuing work to do
   // with random number generation.
-  bool SetStream(Stream* stream) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  bool SetStream(Stream* stream) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Guards the gpu rng library handle for this device.
   absl::Mutex mu_;
@@ -90,7 +90,7 @@ class GpuRng : public rng::RngSupport {
   GpuExecutor* parent_;
 
   // gpu rng library handle on the device.
-  GpuRngHandle rng_ TF_GUARDED_BY(mu_);
+  GpuRngHandle rng_ ABSL_GUARDED_BY(mu_);
 
   SE_DISALLOW_COPY_AND_ASSIGN(GpuRng);
 };

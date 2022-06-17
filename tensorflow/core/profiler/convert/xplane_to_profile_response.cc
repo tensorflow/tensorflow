@@ -38,7 +38,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
+#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -74,7 +77,7 @@ Status ConvertXSpaceToProfileResponse(const XSpace& xspace,
                                       ProfileResponse* response) {
   absl::flat_hash_set<absl::string_view> tools(req.tools().begin(),
                                                req.tools().end());
-  if (tools.empty()) return Status::OK();
+  if (tools.empty()) return OkStatus();
   if (tools.contains(kXPlanePb)) {
     AddToolData(kXPlanePb, xspace, response);
   }
@@ -83,13 +86,13 @@ Status ConvertXSpaceToProfileResponse(const XSpace& xspace,
     ConvertXSpaceToTraceEvents(xspace, &trace);
     if (trace.trace_events().empty()) {
       response->set_empty_trace(true);
-      return Status::OK();
+      return OkStatus();
     }
     TF_RETURN_IF_ERROR(SaveGzippedToolData(
         req.repository_root(), req.session_id(), req.host_name(),
         ToolName(kTraceViewer), TraceEventsToJson(trace)));
     // Trace viewer is the only tool, skip OpStats conversion.
-    if (tools.size() == 1) return Status::OK();
+    if (tools.size() == 1) return OkStatus();
   }
 
   OpStatsOptions options;
@@ -99,7 +102,8 @@ Status ConvertXSpaceToProfileResponse(const XSpace& xspace,
   options.maybe_drop_incomplete_steps = true;
   OpStats op_stats = ConvertXSpaceToOpStats(xspace, options);
   if (tools.contains(kOverviewPage)) {
-    OverviewPage overview_page_db = ConvertOpStatsToOverviewPage(op_stats);
+    OverviewPage overview_page_db =
+        ConvertOpStatsToOverviewPage(op_stats, xspace);
     AddToolData(ToolName(kOverviewPage), overview_page_db, response);
     if (tools.contains(kInputPipeline)) {
       AddToolData(ToolName(kInputPipeline), overview_page_db.input_analysis(),
@@ -123,7 +127,7 @@ Status ConvertXSpaceToProfileResponse(const XSpace& xspace,
         req.repository_root(), req.session_id(), req.host_name(),
         ToolName(kMemoryProfile), json_output));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace profiler

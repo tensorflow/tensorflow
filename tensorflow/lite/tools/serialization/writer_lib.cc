@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/schema/reflection/schema_generated.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/tools/serialization/enum_mapping.h"
+#include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
@@ -38,8 +39,12 @@ CreateOpCodeTableImpl(flatbuffers::FlatBufferBuilder* fbb,
   std::vector<flatbuffers::Offset<OperatorCode>> codes;
   for (const auto& it : *opcodes) {
     const char* custom_name = it.custom.empty() ? nullptr : it.custom.c_str();
-    codes.push_back(CreateOperatorCodeDirect(
-        *fbb, static_cast<BuiltinOperator>(it.builtin), custom_name));
+    // Use version 0 for builtin op. This is a way to serialize version field to
+    // flatbuffer (since 0 is non default) and it will be corrected later.
+    int32_t op_version = it.builtin != tflite::BuiltinOperator_CUSTOM ? 0 : 1;
+    codes.push_back(
+        CreateOperatorCodeDirect(*fbb, static_cast<BuiltinOperator>(it.builtin),
+                                 custom_name, op_version));
   }
   return fbb->template CreateVector<flatbuffers::Offset<OperatorCode>>(codes);
 }
@@ -299,6 +304,7 @@ TfLiteStatus SubgraphWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
                            builder.CreateVector(subgraphs_as_vector),
                            description, buffers);
   ::tflite::FinishModelBuffer(builder, model);
+  ::tflite::UpdateOpVersion(builder.GetBufferPointer());
   const uint8_t* buffer = builder.GetBufferPointer();
   *size = builder.GetSize();
   (*out).reset(new uint8_t[*size]);
@@ -462,6 +468,7 @@ TfLiteStatus ModelWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
                            builder.CreateVector(subgraphs_as_vector),
                            description, buffers);
   ::tflite::FinishModelBuffer(builder, model);
+  ::tflite::UpdateOpVersion(builder.GetBufferPointer());
   const uint8_t* buffer = builder.GetBufferPointer();
   *size = builder.GetSize();
   (*out).reset(new uint8_t[*size]);

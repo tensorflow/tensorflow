@@ -40,8 +40,10 @@ limitations under the License.
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/internal/signature_def.h"
+#include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
+#include "tensorflow/lite/profiling/root_profiler.h"
 #include "tensorflow/lite/signature_runner.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/string_type.h"
@@ -62,67 +64,6 @@ class TestDelegation;  // Class for friend declarations.
 namespace interpreter_wrapper {
 class InterpreterWrapper;  // Class for friend declarations.
 }  // namespace interpreter_wrapper
-
-/// Options class for `Interpreter`.
-/// WARNING: This is an experimental API and subject to change.
-class InterpreterOptions {
- public:
-  InterpreterOptions()
-      : experimental_preserve_all_tensors_(false),
-        experimental_ensure_dynamic_tensors_are_released_(false),
-        experimental_optimize_memory_for_large_tensors_(0) {}
-
-  /// Preserving all intermediates tensors for debugging.
-  /// WARNING: This is an experimental API and subject to change.
-  void SetPreserveAllTensors(bool value = true) {
-    experimental_preserve_all_tensors_ = value;
-  }
-
-  /// Returns if the `experimental_preserve_all_tensors_` feature is enabled.
-  /// WARNING: This is an experimental API and subject to change.
-  bool GetPreserveAllTensors() { return experimental_preserve_all_tensors_; }
-
-  /// Force all intermediate dynamic tensors to be released once they are not
-  /// used by the model. Please use this configuration with caution, since it
-  /// might reduce the peak memory usage of the model at the cost of a slower
-  /// inference speed.
-  /// WARNING: This is an experimental API and subject to change.
-  void SetEnsureDynamicTensorsAreReleased(bool value = true) {
-    experimental_ensure_dynamic_tensors_are_released_ = value;
-  }
-
-  /// Returns if the `experimental_ensure_dynamic_tensors_are_released_` feature
-  /// is enabled.
-  /// WARNING: This is an experimental API and subject to change.
-  bool GetEnsureDynamicTensorsAreReleased() {
-    return experimental_ensure_dynamic_tensors_are_released_;
-  }
-
-  /// Use dynamic tensor allocation and deallocation method for large tensors
-  /// instead of static memory planner. Dynamic tensors are allocated just
-  /// before when they're needed and released when they're not needed anymore.
-  /// It improves peak memory usage but there could be some latency impact. The
-  /// value (in bytes, and default is 1024 * 1024) is used to determine large
-  /// tensors.
-  /// WARNING: This is an experimental API and subject to change.
-  void OptimizeMemoryForLargeTensors(int value = 1 << 20) {
-    if (value > 0) {
-      experimental_optimize_memory_for_large_tensors_ = value;
-    }
-  }
-
-  /// Returns the size (in bytes) threshold for dynamic tensor allocation
-  /// method. It returns zero if the feature is not enabled.
-  /// WARNING: This is an experimental API and subject to change.
-  int GetDynamicAllocationForLargeTensors() {
-    return experimental_optimize_memory_for_large_tensors_;
-  }
-
- private:
-  bool experimental_preserve_all_tensors_;
-  bool experimental_ensure_dynamic_tensors_are_released_;
-  int experimental_optimize_memory_for_large_tensors_;
-};
 
 /// An interpreter for a graph of nodes that input and output from tensors.
 /// Each node of the graph processes a set of input tensors and produces a
@@ -661,13 +602,25 @@ class Interpreter {
 
   /// Sets the profiler to tracing execution. The caller retains ownership
   /// of the profiler and must ensure its validity.
+  /// Previously registered profilers will be unregistered.
+  /// If `profiler` is nullptr, all previously installed profilers will be
+  /// removed.
   /// WARNING: This is an experimental API and subject to change.
   void SetProfiler(Profiler* profiler);
 
   /// Same as SetProfiler except this interpreter takes ownership
   /// of the provided profiler.
+  /// Previously registered profilers will be unregistered.
+  /// If `profiler` is nullptr, all previously installed profilers will be
+  /// removed.
   /// WARNING: This is an experimental API and subject to change.
   void SetProfiler(std::unique_ptr<Profiler> profiler);
+
+  /// Adds the profiler to tracing execution. The caller retains ownership
+  /// of the profiler and must ensure its validity.
+  /// nullptr `profiler` will be ignored.
+  /// WARNING: This is an experimental API and subject to change.
+  void AddProfiler(Profiler* profiler);
 
   /// Gets the profiler used for op tracing.
   /// WARNING: This is an experimental API and subject to change.
@@ -899,12 +852,9 @@ class Interpreter {
       std::unique_ptr<TfLiteDelegate, std::function<void(TfLiteDelegate*)>>>
       owned_delegates_;
 
-  // Profiler that has been installed and is owned by this interpreter instance.
-  // Useful if client profiler ownership is burdensome.
-  std::unique_ptr<Profiler> owned_profiler_;
-
-  // Points to the installed Profiler instance.
-  Profiler* installed_profiler_ = nullptr;
+  // A root profiler that holds a list of attached profiler implementations.
+  // will be nullptr if there's no child profiler registered.
+  std::unique_ptr<profiling::RootProfiler> root_profiler_;
 
   bool allow_buffer_handle_output_ = false;
 
@@ -952,6 +902,9 @@ class Interpreter {
   // Model metadata stored as mapping of name (key) to buffer (value).
   // Data is mapped from the Metadata in TFLite flatbuffer model.
   std::map<std::string, std::string> metadata_;
+
+  // InterpreterOptions object which is being used.
+  std::unique_ptr<InterpreterOptions> options_;
 };
 
 }  // namespace tflite

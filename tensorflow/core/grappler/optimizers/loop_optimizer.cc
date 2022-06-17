@@ -110,7 +110,7 @@ Status LoopInvariantNodeMotionOptimizer::HandleInvariantEnter(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LoopInvariantNodeMotionOptimizer::HandleConst(NodeDef* node,
@@ -182,7 +182,7 @@ Status LoopInvariantNodeMotionOptimizer::HandleConst(NodeDef* node,
     const_node->add_input(ctrl_dep);
     node_map_->AddOutput(NodeName(ctrl_dep), const_node->name());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LoopInvariantNodeMotionOptimizer::HandleInvariantNode(
@@ -196,7 +196,7 @@ Status LoopInvariantNodeMotionOptimizer::HandleInvariantNode(
     }
   }
   if (num_outputs == 0) {
-    return Status::OK();
+    return OkStatus();
   }
 
   DataTypeVector input_types;
@@ -251,7 +251,7 @@ Status LoopInvariantNodeMotionOptimizer::HandleInvariantNode(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LoopInvariantNodeMotionOptimizer::MoveInvariantNodes(
@@ -269,7 +269,7 @@ Status LoopInvariantNodeMotionOptimizer::MoveInvariantNodes(
           HandleInvariantNode(invariant_node, num_outputs, frame_id));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LoopInvariantNodeMotionOptimizer::RevertInvariantNodes() {
@@ -326,7 +326,7 @@ Status LoopInvariantNodeMotionOptimizer::RevertInvariantNodes() {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LoopInvariantNodeMotionOptimizer::FindInvariantNodes(
@@ -375,7 +375,7 @@ Status LoopInvariantNodeMotionOptimizer::FindInvariantNodes(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LoopInvariantNodeMotionOptimizer::Optimize() {
@@ -449,7 +449,7 @@ Status LoopInvariantNodeMotionOptimizer::Optimize() {
 
     TF_RETURN_IF_ERROR(MoveInvariantNodes(frame_id));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 std::vector<int> GetStackPushNodesToConvert(
@@ -543,7 +543,7 @@ Status RemoveStackOps(const std::unordered_set<string>& nodes_to_preserve,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool IsSimpleBinaryOperator(const NodeDef& node) {
@@ -581,7 +581,7 @@ Status EvaluateBoolOpForConstantOperands(const NodeDef& op_node,
   *value = outputs[0].tensor->scalar<bool>()();
   delete outputs[0].tensor;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // TODO(lyandy): Consolidate with ConstantFolding implementation.
@@ -613,7 +613,7 @@ Status CheckForDeadFanout(const MutableGraphView& view,
     CHECK(selector.FromProto(switch_predicate->attr().at("value").tensor()));
     *has_dead_fanout = true;
     *dead_fanout = selector.scalar<bool>()() ? 0 : 1;
-    return Status::OK();
+    return OkStatus();
   }
 
   GraphView::InputPort switch_input_port(&switch_node, 0);
@@ -624,7 +624,7 @@ Status CheckForDeadFanout(const MutableGraphView& view,
   // operator which returns false for the initialization value.
   // TODO(srjoglekar): Improve to work with arbitrary predicate subgraphs.
   if (!IsMerge(*switch_input) || !IsLoopCond(*switch_predicate)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   VLOG(4) << "Try to find a zero iteration while loop:"
@@ -633,7 +633,7 @@ Status CheckForDeadFanout(const MutableGraphView& view,
   // Find the boolean predicate from a LoopCond node (e.g. Greater).
   NodeDef* switch_ctrl_node = view.GetRegularFanin({switch_predicate, 0}).node;
   if (!switch_ctrl_node || !IsSimpleBinaryOperator(*switch_ctrl_node)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Find the Merge node & the Constant Operand to the condition node, if
@@ -655,7 +655,7 @@ Status CheckForDeadFanout(const MutableGraphView& view,
     }
   }
   if (merge_node == nullptr || constant_ctrl_input == nullptr) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Find the initialization constant (via Enter, if one exists).
@@ -671,7 +671,7 @@ Status CheckForDeadFanout(const MutableGraphView& view,
     }
   }
   if (enter_node != nullptr) {
-    if (constant_init_node != nullptr) return Status::OK();
+    if (constant_init_node != nullptr) return OkStatus();
     for (const auto& input : enter_node->input()) {
       NodeDef* node = node_map.GetNode(input);
       if (IsReallyConstant(*node, feed_nodes)) {
@@ -680,7 +680,7 @@ Status CheckForDeadFanout(const MutableGraphView& view,
     }
   }
   if (constant_init_node == nullptr) {
-    return Status::OK();
+    return OkStatus();
   }
 
   VLOG(4) << "Check if loop will be 0 iterations:"
@@ -711,7 +711,7 @@ Status CheckForDeadFanout(const MutableGraphView& view,
   } else {
     VLOG(4) << "Was not able to prove that loop has 0 iterations.";
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -755,7 +755,7 @@ Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                           feed_nodes, optimized_graph));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LoopOptimizer::RemoveDeadBranches(
@@ -907,14 +907,14 @@ Status LoopOptimizer::RemoveDeadBranches(
       LOG(WARNING)
           << "Skipping loop optimization for Merge node with control input: "
           << merge_node->name();
-      return Status::OK();
+      return OkStatus();
     } else if (dead_inputs.size() != 1 || num_data_inputs != 2) {
       LOG(WARNING) << "Skipping loop optimization for Merge node ("
                    << merge_node->name()
                    << ") with unexpected dead_inputs.size() ("
                    << dead_inputs.size() << " or  num_data_inputs"
                    << num_data_inputs;
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -985,7 +985,7 @@ Status LoopOptimizer::RemoveDeadBranches(
   }
   EraseNodesFromGraph(std::move(nodes_idx_to_delete), optimized_graph);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace grappler

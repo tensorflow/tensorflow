@@ -47,7 +47,7 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   input = f32[128,32] parameter(0)
   // CHECK-NEXT:  "mhlo.all_gather"([[INPUT]])
   // CHECK-SAME: all_gather_dim = 1 : i64
-  // CHECK-SAME: channel_handle = {handle = 1 : i64, type = 0 : i64}
+  // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
   ROOT ag = f32[128,128] all-gather(input), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, dimensions={1}
 }
@@ -83,7 +83,7 @@ add {
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
   // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
   // CHECK:  }) {
-  // CHECK-SAME:  channel_handle = {handle = 1 : i64, type = 0 : i64}
+  // CHECK-SAME:  channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>
   ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2,3}, {5,6,7,8}}, to_apply=add
 }
@@ -273,7 +273,7 @@ add {
 
   // CHECK-NEXT: %[[VAL_4:.*]] = mhlo.convolution(%[[VAL_2]], %[[VAL_3]])
   // CHECK-SAME: dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[f, 0, 1, b]
-  // CHECK-SAME{LITERAL}: window = {stride = [4, 5], pad = [[44, 45], [60, 60]], lhs_dilate = [1, 1], rhs_dilate = [2, 3]}
+  // CHECK-SAME{LITERAL}: window = {stride = [4, 5], pad = [[44, 45], [60, 60]], lhs_dilate = [1, 1], rhs_dilate = [2, 3], reverse = [0, 0]}
   // CHECK-SAME:     feature_group_count = 1 : i64
   // CHECK-SAME:     precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
   // CHECK-SAME:   (tensor<256x32x32x1xf32>, tensor<2x2x1x1xf32>) -> tensor<1x30x30x256xf32>
@@ -295,6 +295,16 @@ add {
   // CHECK:  mhlo.convolution
   // CHECK-SAME{LITERAL}:  pad = [[1, 2]]
   ROOT %convolution = f32[1,5,1] convolution(f32[1,2,1] %input, f32[1,1,1] %filter), feature_group_count=1, dim_labels=b0f_0io->b0f, window={pad=1_2 size=1}
+}
+
+// Test for window_reversal attribute in convolution
+// CHECK-LABEL:  func private @test_convolve1D_reversal
+%test_convolve1D_reversal (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,5,1] {
+  %input = f32[1,2,1] parameter(0)
+  %filter = f32[1,1,1] parameter(1)
+  // CHECK:  mhlo.convolution
+  // CHECK-SAME{LITERAL}:  reverse = [1]
+  ROOT %convolution = f32[1,5,1] convolution(f32[1,2,1] %input, f32[1,1,1] %filter), feature_group_count=1, dim_labels=b0f_0io->b0f, window={pad=1_2 size=1 rhs_reversal=1}
 }
 
 // CHECK-LABEL:  func private @test_convert(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf64>
@@ -666,6 +676,25 @@ add {
   ROOT map = f32[4]{0} map(param0, param1), dimensions={0}, to_apply=%map_computation_returning_tuple
 }
 
+// Test mhlo.map with heterogeneous inputs
+%map_computation_take_left {
+  ROOT %Arg_0.4 = f32[] parameter(0)
+  %Arg_1.5 = s32[] parameter(1)
+}
+
+// CHECK-LABEL: func private @map_heterogeneous
+// CHECK-SAME:  [[ARG_0:%.*]]: tensor<4xf32>, [[ARG_1:%.*]]: tensor<4xi32>) -> tensor<4xf32>
+%map_heterogeneous (Arg_0.1: f32[4], Arg_1.2: s32[4]) -> f32[4] {
+  %Arg_0.1 = f32[4] parameter(0)
+  %Arg_1.2 = s32[4] parameter(1)
+  ROOT %map.6 = f32[4] map(f32[4] %Arg_0.1, s32[4] %Arg_1.2), dimensions={0}, to_apply=%map_computation_take_left
+}
+
+// CHECK:  "mhlo.map"([[ARG_0]], [[ARG_1]]) ({
+// CHECK:    ^bb0([[ARG_2:%.*]]: tensor<f32>, [[ARG_3:%.*]]: tensor<i32>):
+// CHECK:    "mhlo.return"([[ARG_2]]) : (tensor<f32>) -> ()
+// CHECK:  }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<4xf32>, tensor<4xi32>) -> tensor<4xf32>
+
 // CHECK-LABEL:  func private @test_maximum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32>
 %test_maximum (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)
@@ -936,7 +965,7 @@ add {
   // CHECK-NEXT:     [[ADD:%.*]] = mhlo.add [[BARG0]], [[BARG1]] : tensor<f32>
   // CHECK-NEXT:     "mhlo.return"([[ADD]])
   // CHECK-NEXT:   }) {
-  // CHECK-SAME:           channel_handle = {handle = 1 : i64, type = 0 : i64}
+  // CHECK-SAME:           channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
   // CHECK-SAME:           scatter_dimension = 1 : i64
   // CHECK-SAME: } : (tensor<4x8xf32>) -> tensor<4x4xf32>
@@ -958,7 +987,7 @@ add {
   // CHECK-SAME:   window_dilations = dense<[1, 2, 2, 1]> : tensor<4xi64>
   // CHECK-SAME:   window_dimensions = dense<[1, 2, 2, 1]> : tensor<4xi64>
   // CHECK-SAME:   window_strides = dense<[1, 4, 4, 1]> : tensor<4xi64>
-  // CHECK_SAME: }
+  // CHECK-SAME: }
   ROOT %reduce-window.1 = f32[2,5,8,7] reduce-window(f32[2,17,31,7] %Arg_0.1, f32[] %Arg_1.2), window={size=1x2x2x1 stride=1x4x4x1 pad=0_0x2_0x0_2x0_0 rhs_dilate=1x2x2x1}, to_apply=%reduce_helper.3
 }
 
@@ -997,8 +1026,8 @@ add {
   // CHECK-SAME:   window_dilations = dense<1> : tensor<2xi64>
   // CHECK-SAME:   window_dimensions = dense<[1, 2]> : tensor<2xi64>
   // CHECK-SAME:   window_strides = dense<[1, 2]> : tensor<2xi64>
-  // CHECK_SAME: }
-  // CHECK_SAME: : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<f32>, tensor<f32>) -> (tensor<4x3xf32>, tensor<4x3xf32>)
+  // CHECK-SAME: }
+  // CHECK-SAME: : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<f32>, tensor<f32>) -> (tensor<4x3xf32>, tensor<4x3xf32>)
   %reduce-window.15 = (f32[4,3], f32[4,3]) reduce-window(f32[4,6] %Arg1, f32[4,6] %Arg0, f32[] %constant.4, f32[] %constant.5), window={size=1x2 stride=1x2}, to_apply=%reducer_window_helper
   // CHECK: return [[REDUCE_WINDOW]]#1 : tensor<4x3xf32>
   ROOT %get-tuple-element.16 = f32[4,3] get-tuple-element((f32[4,3], f32[4,3]) %reduce-window.15), index=1
@@ -1064,6 +1093,35 @@ add {
 // CHECK:    ^bb0([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
 // CHECK:      [[ADD:%.*]] = mhlo.add [[LHS]], [[RHS]]
 // CHECK:      "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
+// CHECK:    })
+// CHECK-SAME:  indices_are_sorted = false
+// CHECK-SAME:  scatter_dimension_numbers =
+// CHECK-SAME:    update_window_dims = [1]
+// CHECK-SAME:    inserted_window_dims = [0, 1]
+// CHECK-SAME:    scatter_dims_to_operand_dims = [0, 1]
+// CHECK-SAME:    index_vector_dim = 1
+// CHECK-SAME:  unique_indices = false
+
+%wide_update_computation {
+  %lhs = f32[] parameter(0)
+  %lupd = f32[] parameter(1)
+  %rhs = f32[] parameter(2)
+  %rupd = f32[] parameter(3)
+  ROOT %tuple = (f32[], f32[]) tuple(f32[] %lhs, f32[] %rhs)
+}
+
+%test_variadic_scatter {
+  %input_tensor = f32[200,100,300] parameter(0)
+  %scatter_indices = s64[10,2] parameter(1)
+  %updates = f32[10,300] parameter(2)
+  ROOT %scatter = (f32[200,100,300], f32[200,100,300]) scatter(%input_tensor, %input_tensor, s64[10,2] %scatter_indices, %updates, %updates), update_window_dims={1}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=1, to_apply=%wide_update_computation
+}
+
+// CHECK-LABEL:  func.func private @test_variadic_scatter
+// CHECK-SAME:   [[ARG_0:%.*]]: tensor<200x100x300xf32>, [[ARG_1:%.*]]: tensor<10x2xi64>, [[ARG_2:%.*]]: tensor<10x300xf32>) -> tuple<tensor<200x100x300xf32>, tensor<200x100x300xf32>>
+// CHECK:  "mhlo.scatter"([[ARG_0]], [[ARG_0]], [[ARG_1]], [[ARG_2]], [[ARG_2]]) ({
+// CHECK:    ^bb0([[LHS:%.*]]: tensor<f32>, [[UPD:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>, [[UPP:%.*]]: tensor<f32>):
+// CHECK:      "mhlo.return"([[LHS]], [[RHS]]) : (tensor<f32>, tensor<f32>) -> ()
 // CHECK:    })
 // CHECK-SAME:  indices_are_sorted = false
 // CHECK-SAME:  scatter_dimension_numbers =
@@ -1410,6 +1468,14 @@ add {
 %partition_id {
   // CHECK: "mhlo.partition_id"() : () -> tensor<ui32>
   ROOT %pid = u32[] partition-id()
+}
+
+// CHECK-LABEL: func private @round_nearest_even
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<2xf32>)
+%round_nearest_even (Arg_0.1: f32[2]) -> f32[2] {
+  %Arg_0.1 = f32[2] parameter(0)
+  ROOT %round-nearest-even.2 = f32[2] round-nearest-even(f32[2] %Arg_0.1)
+  // CHECK: mhlo.round_nearest_even %[[ARG0]] : tensor<2xf32>
 }
 
 // CHECK-LABEL: func private @add_dependency

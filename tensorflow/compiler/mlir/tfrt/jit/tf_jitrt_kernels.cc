@@ -494,7 +494,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
                 << absl::ToInt64Milliseconds(compile_duration) << " ms):\n"
                 << kernel_info.serialized_operation;
 
-    RecordCompileTime(session_name, kernel_info.name, absl::nullopt,
+    RecordCompileTime(session_name, kernel_info.name, std::nullopt,
                       compile_duration);
 
     // Set the entry async value state to error or concrete.

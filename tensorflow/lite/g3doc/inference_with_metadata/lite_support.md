@@ -81,7 +81,7 @@ tensorImage = imageProcessor.process(tensorImage);
 ```
 
 `DataType` of a tensor can be read through the
-[metadata extractor library](../convert/metadata.md#read-the-metadata-from-models)
+[metadata extractor library](../models/convert/metadata.md#read-the-metadata-from-models)
 as well as other model information.
 
 ### Basic audio data processing
@@ -242,7 +242,7 @@ ImageProcessor imageProcessor =
 ```
 
 See more details
-[here](../convert/metadata.md#normalization-and-quantization-parameters) about
+[here](../models/convert/metadata.md#normalization-and-quantization-parameters) about
 normalization and quantization.
 
 The eventual goal of the support library is to support all
@@ -281,4 +281,4 @@ TensorBuffer dequantizedBuffer = probabilityProcessor.process(probabilityBuffer)
 ```
 
 The quantization parameters of a tensor can be read through the
-[metadata extractor library](../convert/metadata.md#read-the-metadata-from-models).
+[metadata extractor library](../models/convert/metadata.md#read-the-metadata-from-models).

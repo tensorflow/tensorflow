@@ -278,7 +278,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->clear();
-    return Status::OK();
+    return OkStatus();
   }
 
  protected:
@@ -384,9 +384,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
  private:
   class Iterator : public DatasetIterator<Dataset> {
    public:
-    explicit Iterator(const Params& params, int64_t iterator_index)
+    explicit Iterator(const Params& params, int64_t repetition)
         : DatasetIterator<Dataset>(params),
-          iterator_index_(iterator_index),
+          repetition_(repetition),
           max_outstanding_requests_(params.dataset->max_outstanding_requests_) {
     }
 
@@ -420,26 +420,33 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       dispatcher_ = std::make_unique<DataServiceDispatcherClient>(
           dataset()->address_, dataset()->protocol_);
       int64_t deadline_micros = kint64max;
-      absl::optional<IterationKeyDef> key;
+      std::optional<std::string> job_name;
       if (!dataset()->job_name_.empty()) {
-        key.emplace();
-        key.value().set_name(std::string(dataset()->job_name_));
-        key.value().set_iteration(iterator_index_);
+        job_name = dataset()->job_name_;
       }
       TF_RETURN_IF_ERROR(grpc_util::Retry(
           [&]() {
-            return dispatcher_->GetOrCreateIteration(
-                dataset()->dataset_id_, dataset()->processing_mode_, key,
+            return dispatcher_->GetOrCreateJob(
+                dataset()->dataset_id_, dataset()->processing_mode_, job_name,
                 dataset()->num_consumers_,
                 dataset()->cross_trainer_cache_options_.has_value(),
-                dataset()->target_workers_, iteration_client_id_);
+                dataset()->target_workers_, job_id_);
+          },
+          /*description=*/
+          strings::StrCat("get or create job with dispatcher at ",
+                          dataset()->address_),
+          deadline_micros));
+      TF_RETURN_IF_ERROR(grpc_util::Retry(
+          [&]() {
+            return dispatcher_->GetOrCreateIteration(job_id_, repetition_,
+                                                     iteration_client_id_);
           },
           /*description=*/
           strings::StrCat("get or create iteration with dispatcher at ",
                           dataset()->address_),
           deadline_micros));
       initialized_ = true;
-      return Status::OK();
+      return OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -465,7 +472,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         if (results_.empty()) {
           *end_of_sequence = true;
           VLOG(3) << "Returning from GetNext with end_of_sequence";
-          return Status::OK();
+          return OkStatus();
         }
         result = PopNextResult();
         worker_thread_cv_.notify_one();
@@ -482,7 +489,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         out_tensors->swap(result.element);
       }
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
@@ -589,14 +596,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             "is \"LOCAL\".");
       }
       if (dataset()->cross_trainer_cache_options_.has_value()) {
-        TF_RETURN_IF_ERROR(ValidateMultiTrainerCache());
+        TF_RETURN_IF_ERROR(ValidateCrossTrainerCache());
       }
-      return Status::OK();
+      return OkStatus();
     }
 
-    Status ValidateMultiTrainerCache() const {
+    Status ValidateCrossTrainerCache() const {
       if (!dataset()->cross_trainer_cache_options_.has_value()) {
-        return Status::OK();
+        return OkStatus();
       }
       if (dataset()->job_name_.empty()) {
         return errors::InvalidArgument(
@@ -608,11 +615,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             "Got input with cardinality ",
             dataset()->metadata_.cardinality());
       }
-      if (iterator_index_ > 1) {
+      if (repetition_ > 1) {
         return errors::InvalidArgument(
             "Cross-trainer caching requires infinite datasets and disallows "
-            "multiple iterations of the same dataset. Got iteration ",
-            iterator_index_);
+            "multiple repetitions of the same dataset. Got repetition ",
+            repetition_);
       }
       if (StrictRoundRobin() && dataset()->num_consumers_.has_value()) {
         return errors::InvalidArgument(
@@ -620,7 +627,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             "Got number of coordinated consumers: ",
             dataset()->num_consumers_.value());
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     // Returns whether the iterator has finished and should return.
@@ -765,7 +772,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           DCHECK_EQ(next_task_index_, 0);
         }
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     void Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
@@ -1145,11 +1152,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         result.ready = true;
         result.skip = true;
         get_next_cv_.notify_all();
-        return Status::OK();
+        return OkStatus();
       }
       VLOG(1) << "Failed to remove task for worker "
               << task.info.worker_address();
-      return Status::OK();
+      return OkStatus();
     }
 
     Status GetElement(Task* task, int64_t deadline_micros, bool enqueue_result,
@@ -1176,7 +1183,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           TF_RETURN_IF_ERROR(MaybeRemoveTask(*task, deadline_micros, result));
           mutex_lock l(mu_);
           if (result.skip) {
-            return Status::OK();
+            return OkStatus();
           }
         }
         int64_t backoff_until = std::min(
@@ -1190,7 +1197,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
       ProcessGetElementResponse(enqueue_result, get_element_result, result,
                                 *task);
-      return Status::OK();
+      return OkStatus();
     }
 
     bool ResultReady() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -1217,7 +1224,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           num_running_worker_threads_);
     }
 
-    const int64_t iterator_index_;
+    const int64_t repetition_;
 
     mutable mutex mu_;
     condition_variable get_next_cv_ TF_GUARDED_BY(mu_);
@@ -1259,7 +1266,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     // A status to be returned from the next call to `GetNext`. This is set by
     // asynchronous threads when they encounter errors.
-    Status status_ TF_GUARDED_BY(mu_) = Status::OK();
+    Status status_ TF_GUARDED_BY(mu_) = OkStatus();
     // A queue of results for `GetElement` requests to read from. When doing
     // strict round robin reads, the queue will contain placeholder results with
     // their `Result::ready` field false until their data has been retrieved
@@ -1269,6 +1276,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     bool initialized_ = false;
     // Set once in Initialize().
+    int64_t job_id_;
     int64_t iteration_client_id_;
     std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
     int64_t get_next_index_ TF_GUARDED_BY(mu_) = 0;
@@ -1449,7 +1457,7 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
                        container, name, &iteration_counter,
                        [](IterationCounter** counter) {
                          *counter = new IterationCounter();
-                         return Status::OK();
+                         return OkStatus();
                        }));
     iteration_counter_handle =
         MakeResourceHandle<IterationCounter>(ctx, container, name);

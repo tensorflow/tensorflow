@@ -37,6 +37,9 @@ StatusOr<HloInstruction*> MakeUnaryHlo(HloOpcode opcode,
 StatusOr<HloInstruction*> MakeBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
                                         HloInstruction* rhs);
 
+// Creates a kCopy HLO.
+HloInstruction* MakeCopyHlo(HloInstruction* from, const Shape& to);
+
 // Creates a compare HLO instruction and adds it to the computation containing
 // `lhs` and `rhs` (`lhs` and `rhs` must be in the same computation).
 StatusOr<HloInstruction*> MakeCompareHlo(Comparison::Direction direction,
@@ -66,7 +69,7 @@ StatusOr<HloInstruction*> MakeConvolveHlo(
     int64_t batch_group_count, const Window& window,
     const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
-    absl::optional<PrimitiveType> preferred_element_type);
+    std::optional<PrimitiveType> preferred_element_type);
 
 // Creates a transpose HLO instruction and adds it to the computation containing
 // `operand`.
@@ -122,6 +125,9 @@ StatusOr<HloInstruction*> MakeConcatHlo(
 // the given primitive type.
 HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type);
 
+// Creates a Bitcast HLO instruction to the given shape+layout.
+HloInstruction* MakeBitcastHlo(HloInstruction* hlo, const Shape& shape);
+
 // Creates a BitcastConvert HLO instruction.
 HloInstruction* MakeBitcastConvertToHlo(HloInstruction* hlo,
                                         PrimitiveType type);
@@ -138,7 +144,7 @@ StatusOr<HloInstruction*> MakeDotHlo(
     HloInstruction* lhs, HloInstruction* rhs,
     const DotDimensionNumbers& dim_numbers,
     const PrecisionConfig& precision_config,
-    absl::optional<PrimitiveType> preferred_element_type);
+    std::optional<PrimitiveType> preferred_element_type);
 
 // Creates a Map HLO instruction and adds it to the computation containing the
 // operands. All operands must be in the same computation.
@@ -162,6 +168,18 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
                                         HloInstruction* init_value,
                                         HloOpcode binary_opcode,
                                         HloModule* module);
+
+// Generic helper function to create a reduction.
+//
+// Precondition: size of operands is equal to the size of init values and equal
+// to the size of the computation output shape.
+//
+// Creates a non-variadic reduction if the size is singular, and a variadic one
+// otherwise.
+StatusOr<HloInstruction*> MakeReduceHlo(
+    absl::Span<HloInstruction* const> operands,
+    absl::Span<HloInstruction* const> init_values,
+    absl::Span<const int64_t> dimensions, HloComputation* reduce_computation);
 
 // Creates a Reverse HLO instruction and adds it to the computation containing
 // `operand`.

@@ -742,9 +742,29 @@ config_setting(
 )
 
 # This flag enables experimental TPU support
+bool_flag(
+    name = "enable_tpu_support",
+    build_setting_default = False,
+)
+
 config_setting(
-    name = "with_tpu_support",
+    name = "with_tpu_support_define",
     define_values = {"with_tpu_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_tpu_support_flag",
+    flag_values = {":enable_tpu_support": "True"},
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "with_tpu_support",
+    match_any = [
+        ":with_tpu_support_define",
+        ":with_tpu_support_flag",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -767,9 +787,27 @@ selects.config_setting_group(
 # TODO(timshen): Currently this option only disables some dependencies.
 # See b/122528503.
 # copybara:uncomment_begin(google-only)
+# bool_flag(
+#     name = "tf_no_prod_deps",
+#     build_setting_default = False,
+# )
+#
 # config_setting(
-#     name = "no_prod_deps",
+#     name = "no_prod_deps_define",
 #     define_values = {"tf_no_prod_deps": "1"},
+# )
+#
+# config_setting(
+#     name = "no_prod_deps_flag",
+#     flag_values = {":tf_no_prod_deps": "True"},
+# )
+#
+# selects.config_setting_group(
+#     name = "no_prod_deps",
+#     match_any = [
+#         ":no_prod_deps_define",
+#         ":no_prod_deps_flag",
+#     ],
 # )
 #
 # config_setting(
@@ -997,7 +1035,6 @@ tf_cc_shared_library(
         "//tensorflow:tf_framework_version_script.lds",
         "//tensorflow:tf_private_symbols.lds",
     ],
-    exports_filter = PACKAGE_STATIC_DEPS,
     framework_so = [],
     linkopts = select({
         "//tensorflow:macos": [

@@ -33,7 +33,7 @@ declare_mlir_python_extension(MLIRHLOPythonExtensions.Main
   MODULE_NAME _mlirHlo
   ADD_TO_PARENT MLIRHLOPythonExtensions
   SOURCES
-    MlirHloModule.cpp
+    MlirHloModule.cc
   EMBED_CAPI_LINK_LIBS
     MLIRHLOCAPIDialects
   PRIVATE_LINK_LIBS

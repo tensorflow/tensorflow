@@ -318,7 +318,7 @@ template <typename T>
 Status StatusOr<T>::status() && {
   // Note that we copy instead of moving the status here so that
   // ~StatusOrData() can call ok() without invoking UB.
-  return ok() ? Status::OK() : this->status_;
+  return ok() ? OkStatus() : this->status_;
 }
 
 template <typename T>

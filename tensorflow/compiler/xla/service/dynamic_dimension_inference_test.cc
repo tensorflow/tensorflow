@@ -56,8 +56,8 @@ class DynamicDimensionInferenceTest : public HloTestBase {
         DynamicDimensionInference::Run(module_.get(), handler, shape_check_mode,
                                        assertion_generator));
 
-    inference_ = absl::make_unique<DynamicDimensionInference>(inference);
-    return Status::OK();
+    inference_ = std::make_unique<DynamicDimensionInference>(inference);
+    return OkStatus();
   }
 
   HloComputation* GetAdd() {
@@ -1248,7 +1248,7 @@ TEST_F(DynamicDimensionInferenceTest, InfersCustomOp) {
     CHECK(inference != nullptr);
     CHECK(Cast<HloCustomCallInstruction>(hlo) != nullptr);
     handler_called = true;
-    return Status::OK();
+    return OkStatus();
   };
   TF_ASSERT_OK(RunInference(handler));
 

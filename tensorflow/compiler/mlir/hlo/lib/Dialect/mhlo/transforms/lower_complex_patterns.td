@@ -88,7 +88,7 @@ def : Pat<(HLO_SinOp HLO_ComplexTensor:$val),
                   (HLO_AddOp
                     (HLO_ExpOp:$exp (HLO_ImagOp:$imag $val)),
                     (HLO_ExpOp:$nexp (HLO_NegOp $imag)))),
-                 (HLO_ConstOp : $two (ConstantSplat<"2.0"> $real))),
+                 (HLO_ConstantOp : $two (ConstantSplat<"2.0"> $real))),
               (HLO_DivOp
                 (HLO_MulOp
                   (HLO_CosOp $real),
@@ -106,7 +106,7 @@ def : Pat<(HLO_CosOp HLO_ComplexTensor:$val),
                   (HLO_AddOp
                     (HLO_ExpOp:$exp (HLO_ImagOp:$imag $val)),
                     (HLO_ExpOp:$nexp (HLO_NegOp $imag)))),
-                 (HLO_ConstOp : $two (ConstantSplat<"2.0"> $real))),
+                 (HLO_ConstantOp : $two (ConstantSplat<"2.0"> $real))),
               (HLO_DivOp
                 (HLO_MulOp
                   (HLO_SinOp $real),

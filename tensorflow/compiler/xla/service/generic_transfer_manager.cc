@@ -55,7 +55,7 @@ Status GenericTransferManager::WriteSingleTupleIndexTable(
   stream->ThenDoHostCallback([element_pointers{std::move(element_pointers)}]() {
     /* holds reference to element_pointers in closure */
   });
-  return Status::OK();
+  return OkStatus();
 }
 
 void GenericTransferManager::TransferLiteralFromDevice(
@@ -82,9 +82,9 @@ void GenericTransferManager::TransferLiteralFromDevice(
                 GetByteSizeRequirement(
                     ShapeUtil::GetSubshape(literal.shape(), index)));
           }
-          return Status::OK();
+          return OkStatus();
         }));
-    return Status::OK();
+    return OkStatus();
   }();
   if (!status.ok()) {
     done(status);
@@ -139,7 +139,7 @@ Status GenericTransferManager::TransferLiteralToDeviceAsync(
             return stream->BlockHostUntilDone();
           }
         }
-        return Status::OK();
+        return OkStatus();
       });
 }
 

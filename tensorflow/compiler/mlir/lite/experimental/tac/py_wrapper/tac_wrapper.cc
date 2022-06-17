@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/experimental/tac/py_wrapper/tac_wrapper.h"
 
 #include <memory>
+#include <string>
 
 #include "absl/status/status.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/targets.h"

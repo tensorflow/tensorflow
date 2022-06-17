@@ -223,7 +223,7 @@ class DeserializeSparseOp : public OpKernel {
       return errors::InvalidArgument("Could not construct tensor from proto");
     }
     *result = tensor;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAndValidateSparseTensor(
@@ -278,7 +278,7 @@ class DeserializeSparseOp : public OpKernel {
                                      index, "].shape but they do not: ", rank,
                                      " vs. ", output_shape->dim_size(0));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   DataType dtype_;

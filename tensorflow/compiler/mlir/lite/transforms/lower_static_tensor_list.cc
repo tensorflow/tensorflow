@@ -80,10 +80,12 @@ limitations under the License.
 //
 namespace mlir {
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 /// Lower TensorList ops in functions for subsequent legalization.
 struct LowerStaticTensorListPass
-    : public PassWrapper<LowerStaticTensorListPass, OperationPass<ModuleOp>> {
+    : public LowerStaticTensorListPassBase<LowerStaticTensorListPass> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LowerStaticTensorListPass)
 
   LowerStaticTensorListPass() = default;
@@ -91,44 +93,12 @@ struct LowerStaticTensorListPass
   explicit LowerStaticTensorListPass(bool allow_tensorlist_pass_through,
                                      bool default_to_single_batch,
                                      bool enable_dynamic_update_slice) {
-    this->allow_tensorlist_pass_through = allow_tensorlist_pass_through;
-    this->default_to_single_batch = default_to_single_batch;
-    this->enable_dynamic_update_slice = enable_dynamic_update_slice;
-  }
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-lower-static-tensor-list";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Lower TensorList ops within TensorFlow Lite dialect";
+    this->allow_tensorlist_pass_through_ = allow_tensorlist_pass_through;
+    this->default_to_single_batch_ = default_to_single_batch;
+    this->enable_dynamic_update_slice_ = enable_dynamic_update_slice;
   }
 
   void runOnOperation() override;
-
-  Option<bool> allow_tensorlist_pass_through{
-      *this, "allow-tensorlist-pass-through",
-      llvm::cl::desc(
-          "When specified to true, if the tensorlist ops can't be properly "
-          "legalized by this pass, then the IR won't be changed so that "
-          "tensorlist ops can pass through (default false)"),
-      llvm::cl::init(false)};
-
-  Option<bool> default_to_single_batch{
-      *this, "default-to-single-batch",
-      llvm::cl::desc(
-          "When specified to true, if the tensorlist ops has unspecified batch "
-          "size, this pass will assume that the batch size is one to proceed "
-          "tensorlist op lowering (default true)"),
-      llvm::cl::init(false)};
-
-  Option<bool> enable_dynamic_update_slice{
-      *this, "enable-dynamic-update-slice",
-      llvm::cl::desc("When specified to true, lower TensorListSetItem with "
-                     "DynamicUpdateSlice op (default false)"),
-      llvm::cl::init(false)};
 };
 
 Value CreateI32SplatConst(Location loc, PatternRewriter *rewriter,
@@ -1551,12 +1521,14 @@ void LowerStaticTensorListPass::runOnOperation() {
                ConvertTensorListStack, ConvertTensorListResize, ConvertWhile,
                ConvertWhileRegion, ConvertIf, ConvertReturn, ConvertYield>(
       context);
-  patterns.add<ConvertTensorListSetItem>(context, enable_dynamic_update_slice);
+  patterns.add<ConvertTensorListSetItem>(context,
+                                         this->enable_dynamic_update_slice_);
   patterns.add<ConvertEmptyTensorList, ConvertTensorListConcatV2,
-               ConvertTensorListReserve>(context, allow_tensorlist_pass_through,
-                                         default_to_single_batch);
+               ConvertTensorListReserve>(context,
+                                         this->allow_tensorlist_pass_through_,
+                                         this->default_to_single_batch_);
   ModuleOp module = getOperation();
-  if (!allow_tensorlist_pass_through) {
+  if (!this->allow_tensorlist_pass_through_) {
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       module.emitError(
           "Lowering tensor list ops is failed. Please consider using Select TF "
@@ -1591,6 +1563,9 @@ std::unique_ptr<OperationPass<ModuleOp>> TFL::CreateLowerStaticTensorListPass(
       enable_dynamic_update_slice);
 }
 
-static PassRegistration<LowerStaticTensorListPass> pass;
+std::unique_ptr<OperationPass<ModuleOp>>
+TFL::CreateLowerStaticTensorListPass() {
+  return std::make_unique<LowerStaticTensorListPass>();
+}
 
 }  // namespace mlir

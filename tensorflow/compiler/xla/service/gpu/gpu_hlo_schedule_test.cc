@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
 
 #include <algorithm>
+#include <memory>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -49,7 +49,7 @@ class GpuHloScheduleTest : public HloTestBase {
     auto debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_disable_multi_streaming(false);
     config.set_debug_options(debug_options);
-    return absl::make_unique<HloModule>("test_module", config);
+    return std::make_unique<HloModule>("test_module", config);
   }
 
   HloVec RemoveHlo(const HloVec& input,
@@ -448,7 +448,7 @@ TEST_F(GpuHloScheduleTest, AsyncAllReduce) {
       builder.AddInstruction(HloInstruction::CreateAllReduceStart(
           all_reduce_start_shape, {add0}, reduction_computation,
           /*replica_groups=*/{}, /*constrain_layout=*/false,
-          /*channel_id=*/absl::nullopt, /*use_global_device_ids=*/true));
+          /*channel_id=*/std::nullopt, /*use_global_device_ids=*/true));
   // In addition, add control_dependency: add1->nonblocking_call.
   TF_CHECK_OK(add1->AddControlDependencyTo(all_reduce_start));
   // Blocking call, which only add4 depends on.

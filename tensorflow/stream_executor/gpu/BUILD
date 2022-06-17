@@ -115,13 +115,12 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:platform",
-        "//tensorflow/stream_executor:stream_executor_internal",
         "//tensorflow/stream_executor:stream_executor_pimpl_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -150,10 +149,10 @@ cc_library(
     hdrs = if_gpu_is_configured(["gpu_rng.h"]),
     deps = [
         ":gpu_types_header",
-        "//tensorflow/core:lib",
         "//tensorflow/stream_executor:plugin_registry",
         "//tensorflow/stream_executor:rng",
         "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -163,8 +162,8 @@ cc_library(
     hdrs = if_gpu_is_configured(["gpu_stream.h"]),
     deps = [
         ":gpu_driver_header",
-        "//tensorflow/core:lib",
         "//tensorflow/stream_executor:stream_executor_internal",
+        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
@@ -175,11 +174,10 @@ cc_library(
     deps = [
         ":gpu_driver_header",
         ":gpu_executor_header",
-        "//tensorflow/core:lib",
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/stream_executor:stream_header",
         "//tensorflow/stream_executor/lib",
-        "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
@@ -247,9 +245,14 @@ cc_library(
         ":gpu_asm_opts",
         ":gpu_driver_header",
         ":gpu_helpers_header",
-        "//tensorflow/core:lib",
         "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:subprocess",
+        "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:cuda_libdevice_path",
+        "//tensorflow/core/lib/gtl:cleanup",
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",

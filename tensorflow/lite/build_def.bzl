@@ -384,6 +384,10 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "m
                 "no_gpu",  # Executing with TF GPU configurations is redundant.
                 "no_oss",
                 "no_windows",
+                # Disable sanitizer runs as models can be huge and can timeout.
+                "noasan",
+                "nomsan",
+                "notsan",
             ] + tags + coverage_tags,
             deps = [
                 "//third_party/py/tensorflow",

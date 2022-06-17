@@ -51,7 +51,7 @@ REGISTER_OP("_ExecuteTPUEmbeddingPartitioner")
             "TRAINING, or BACKWARD_PASS_ONLY");
       }
       c->set_output(0, c->Scalar());
-      return ::tensorflow::Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 
@@ -85,7 +85,7 @@ REGISTER_OP("_ConfigureTPUEmbeddingMemory")
       ShapeHandle input(c->Scalar());
       TF_RETURN_IF_ERROR(c->Merge(c->input(0), input, &input));
       c->set_output(0, c->Scalar());
-      return ::tensorflow::Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 
@@ -121,7 +121,7 @@ REGISTER_OP("_ConfigureTPUEmbeddingHost")
       ShapeHandle input(c->Scalar());
       TF_RETURN_IF_ERROR(c->Merge(c->input(0), input, &input));
       c->set_output(0, c->Scalar());
-      return ::tensorflow::Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 
@@ -148,7 +148,7 @@ REGISTER_OP("_ConnectInterTPUEmbeddingCommunication")
       for (int i = 0; i < c->num_inputs(); ++i) {
         TF_RETURN_IF_ERROR(c->Merge(c->input(i), input, &input));
       }
-      return ::tensorflow::Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 
@@ -171,7 +171,7 @@ REGISTER_OP("_FinalizeTPUEmbeddingSystemConfiguration")
       for (int i = 0; i < c->num_inputs(); ++i) {
         TF_RETURN_IF_ERROR(c->Merge(c->input(i), input, &input));
       }
-      return ::tensorflow::Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 
@@ -343,7 +343,7 @@ REGISTER_OP("LoadAllTPUEmbeddingParameters")
               c->WithValue(c->NumElements(accumulator_i_shape), 0, &dim));
         }
       }
-      return tensorflow::Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("RetrieveAllTPUEmbeddingParameters")
@@ -400,7 +400,7 @@ REGISTER_OP("RetrieveAllTPUEmbeddingParameters")
               c->set_output(absl::StrCat("auxiliary", i), output_handles));
         }
       }
-      return ::tensorflow::Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("EnqueueTPUEmbeddingBatch")
@@ -421,10 +421,10 @@ REGISTER_OP("EnqueueTPUEmbeddingBatch")
                                        n);
       }
 
-      return Status::OK();
+      return OkStatus();
     });
 
-REGISTER_OP("_RecvTPUEmbeddingActivations")
+REGISTER_OP("XlaRecvTPUEmbeddingActivations")
     .Input("deduplication_data: variant")
     .Output("outputs: num_tables * float32")
     .Attr("num_tables: int >= 1")
@@ -435,7 +435,7 @@ REGISTER_OP("_RecvTPUEmbeddingActivations")
       TF_RETURN_IF_ERROR(c->GetAttr("num_tables", &num_tables));
       if (c->num_outputs() != num_tables) {
         return errors::InvalidArgument(absl::StrFormat(
-            "Number of outputs: %d of the _RecvTPUEmbeddingActivations node "
+            "Number of outputs: %d of the XlaRecvTPUEmbeddingActivations node "
             "does not match the num_tables attribute: %d.",
             c->num_outputs(), num_tables));
       }
@@ -444,7 +444,7 @@ REGISTER_OP("_RecvTPUEmbeddingActivations")
       tpu::TPUEmbeddingConfiguration config;
       if (!config.ParseFromString(config_string)) {
         return errors::InvalidArgument(
-            "Malformed config attribute in the _RecvTPUEmbeddingActivations "
+            "Malformed config attribute in the XlaRecvTPUEmbeddingActivations "
             "node.");
       }
       std::vector<TensorShapeProto> output_shapes;
@@ -456,7 +456,7 @@ REGISTER_OP("_RecvTPUEmbeddingActivations")
       }
       if (c->num_outputs() != output_shapes.size()) {
         return errors::InvalidArgument(absl::StrFormat(
-            "Number of outputs: %d of the _RecvTPUEmbeddingActivations node "
+            "Number of outputs: %d of the XlaRecvTPUEmbeddingActivations node "
             "does not match the number of tables or features in the TPU "
             "embedding config: %d.",
             c->num_outputs(), output_shapes.size()));
@@ -467,31 +467,10 @@ REGISTER_OP("_RecvTPUEmbeddingActivations")
             c->MakeShapeFromShapeProto(output_shapes[i], &output_shape));
         c->set_output(i, output_shape);
       }
-      return Status::OK();
-    })
-    .Doc(R"doc(
-An op that receives embeddng activations on the TPU.
+      return OkStatus();
+    });
 
-The TPU system performs the embedding lookups and aggregations. The results of
-these aggregations are visible to the Tensorflow Graph as the outputs of a
-_RecvTPUEmbeddingActivations Op. This op returns a list containing one
-Tensor of activations per table specified in the model.
-
-deduplication_data: A Tensor with type=DT_VARIANT containing the deduplication
-    data. The tensor is an XLA nested tuple containing N elements (where N is
-    the ratio of the number of embedding to tensor cores per TPU chip). Each
-    element of the nested tuple is a tuple of rank 1 tensors. Each tensor either
-    contains indices (DT_UINT32) for embedding lookup on the TensorCore or
-    weights (DT_FLOAT) to apply to the output of the embedding lookup operation.
-outputs: A TensorList of embedding activations containing one Tensor per
-    embedding table in the model.
-num_tables: The number of output activation tensors. If feature descriptor is
-    present in the tpu embedding config, it is equal to the number of features
-    otherwise equal to number of embedding tables in the model.
-config: Serialized TPUEmbeddingConfiguration proto.
-)doc");
-
-REGISTER_OP("_SendTPUEmbeddingGradients")
+REGISTER_OP("XlaSendTPUEmbeddingGradients")
     .Input("gradients: NumTables * float32")
     .Input("learning_rates: NumLearningRateTags * float32")
     .Input("deduplication_data: variant")
@@ -512,47 +491,13 @@ REGISTER_OP("_SendTPUEmbeddingGradients")
             c->WithRank(learning_rates[i], 0, &learning_rates_shape));
       }
 
-      return Status::OK();
-    })
-    .Doc(R"doc(
-An op that performs gradient updates of embedding tables.
+      return OkStatus();
+    });
 
-The gradients argument is a TensorList having the same length and shapes as the
-return value of _RecvTPUEmbeddingActivations, but contains gradients of the
-model's loss with respect to the embedding activations. The embedding tables are
-updated from these gradients via the optimizer specified in the
-TPUEmbeddingConfiguration proto given to tpu.initialize_system.
-
-gradients: A TensorList of gradients with which to update embedding tables.
-learning_rates: A TensorList of learning rates used for updating the embedding
-    tables via the optimizer. The length of the TensorList must be equal to the
-    number of dynamic learning rate tags specified in the
-    TPUEmbeddingConfiguration proto.
-deduplication_data: A Tensor with type=DT_VARIANT containing the deduplication
-    data. The tensor is an XLA nested tuple containing N elements (where N is
-    the ratio of the number of embedding to tensor cores per TPU chip). Each
-    element of the nested tuple is a tuple of rank 1 tensors. Each tensor either
-    contains indices (DT_UINT32) for embedding lookup on the TensorCore or
-    weights (DT_FLOAT) to apply to the output of the embedding lookup operation.
-config: Serialized TPUEmbeddingConfiguration proto.
-)doc");
-
-REGISTER_OP("_RecvTPUEmbeddingDeduplicationData")
+REGISTER_OP("XlaRecvTPUEmbeddingDeduplicationData")
     .Output("output: variant")
     .Attr("config: string")
     .SetIsStateful()
-    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
-    .Doc(R"doc(
-Receives deduplication data (indices and weights) from the embedding core.
-
-The deduplication data is a Tensor with type=DT_VARIANT. The tensor itself is an
-XLA nested tuple containing N elements (where N is the ratio of the number of
-embedding to tensor cores per TPU chip). Each element of the nested tuple is a
-tuple of rank 1 tensors. Each tensor either contains indices (DT_UINT32) for
-embedding lookup on the TensorCore or weights (DT_FLOAT) to apply to the output
-of the embedding lookup operation.
-
-config: Serialized TPUEmbeddingConfiguration proto.
-)doc");
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
 
 }  // namespace tensorflow

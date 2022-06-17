@@ -91,7 +91,7 @@ Status ReadCheckpointObjectGraph(BundleReader* bundle_reader,
         error::Code::FAILED_PRECONDITION,
         "SavedModel checkpoint object graph could not be deserialized.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -143,14 +143,14 @@ Status SavedModelV2Bundle::Load(const std::string& export_dir,
     TF_RETURN_IF_ERROR(ReadCheckpointObjectGraph(
         bundle->variable_reader_.get(), &bundle->trackable_object_graph_));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SavedModelV2Bundle::VisitObjectsToRestore(
     RestoreObjectsCallback callback) {
   if (saved_object_graph().nodes_size() == 0 ||
       trackable_object_graph().nodes_size() == 0) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Start from root nodes of both the SavedObjectGraph and TrackableObjectGraph
@@ -201,8 +201,7 @@ Status SavedModelV2Bundle::RecurseObjectsToRestore(
     }
     if (trackable_child_node_id < 0 ||
         trackable_child_node_id >= trackable_object_graph().nodes_size()) {
-      return Status(
-          errors::Code::FAILED_PRECONDITION,
+      return errors::FailedPrecondition(
           strings::StrCat("Illegal trackable child node id for ", child_name));
     }
     const auto* trackable_child =
@@ -234,7 +233,7 @@ Status SavedModelV2Bundle::RecurseObjectsToRestore(
         saved_child, saved_child_node_id, trackable_child, child_name,
         seen_trackable_node_ids, callback));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

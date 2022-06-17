@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 
+#include <memory>
 #include <ostream>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -174,7 +174,7 @@ Status TuplePointsToAnalysis::Analyze() {
 
   XLA_VLOG_LINES(3, ToString());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(
@@ -196,7 +196,7 @@ Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(
           }
         });
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::DefaultAction(HloInstruction* hlo_instruction) {
@@ -217,7 +217,7 @@ Status TuplePointsToAnalysis::DefaultAction(HloInstruction* hlo_instruction) {
     points_to_set.add_tuple_source({}, hlo_instruction);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleGetTupleElement(
@@ -249,7 +249,7 @@ Status TuplePointsToAnalysis::HandleGetTupleElement(
         }
       });
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleCopy(HloInstruction* copy) {
@@ -262,7 +262,7 @@ Status TuplePointsToAnalysis::HandleCopy(HloInstruction* copy) {
       logical_buffer_analysis_->GetBuffer(copy, /*index=*/{}),
       /*index=*/{});
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleBitcast(HloInstruction* bitcast) {
@@ -270,7 +270,7 @@ Status TuplePointsToAnalysis::HandleBitcast(HloInstruction* bitcast) {
   // result *is* the buffer of its operand, so just copy the operands points-to
   // set.
   CreateCopiedPointsToSet(bitcast, bitcast->operand(0));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleDomain(HloInstruction* domain) {
@@ -278,14 +278,14 @@ Status TuplePointsToAnalysis::HandleDomain(HloInstruction* domain) {
   // result *is* the buffer of its operand, so just copy the operands points-to
   // set.
   CreateCopiedPointsToSet(domain, domain->operand(0));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleAddDependency(
     HloInstruction* add_dependency) {
   // AddDependency just forwards the value of its zero-th operand.
   CreateCopiedPointsToSet(add_dependency, add_dependency->operand(0));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleRecvDone(HloInstruction* recv_done) {
@@ -315,7 +315,7 @@ Status TuplePointsToAnalysis::HandleRecvDone(HloInstruction* recv_done) {
           points_to_set.add_tuple_source(index, tuple_source);
         }
       });
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleAsyncStart(HloInstruction* async_start) {
@@ -339,7 +339,7 @@ Status TuplePointsToAnalysis::HandleAsyncStart(HloInstruction* async_start) {
         }
       });
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleAsyncUpdate(HloInstruction* async_update) {
@@ -357,7 +357,7 @@ Status TuplePointsToAnalysis::HandleAsyncUpdate(HloInstruction* async_update) {
     }
   });
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleAsyncDone(HloInstruction* async_done) {
@@ -380,7 +380,7 @@ Status TuplePointsToAnalysis::HandleAsyncDone(HloInstruction* async_done) {
         }
       });
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleCopyStart(HloInstruction* copy_start) {
@@ -404,7 +404,7 @@ Status TuplePointsToAnalysis::HandleCopyStart(HloInstruction* copy_start) {
     points_to_set.add_tuple_source(/*index=*/{1}, tuple);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleCopyDone(HloInstruction* copy_done) {
@@ -427,7 +427,7 @@ Status TuplePointsToAnalysis::HandleCopyDone(HloInstruction* copy_done) {
         }
       });
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleSend(HloInstruction* send) {
@@ -466,7 +466,7 @@ Status TuplePointsToAnalysis::HandleSend(HloInstruction* send) {
         }
       });
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
@@ -505,7 +505,7 @@ Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
 
   points_to_set.add_tuple_source({}, tuple);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 
@@ -537,14 +537,14 @@ Status TuplePointsToAnalysis::HandleCustomCall(HloInstruction* custom_call) {
     }
   });
   points_to_set.add_tuple_source({}, custom_call);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleOptimizationBarrier(
     HloInstruction* barrier) {
   // A kOptimizationBarrier instruction is a no-op.
   CreateCopiedPointsToSet(barrier, barrier->operand(0));
-  return Status::OK();
+  return OkStatus();
 }
 
 const PointsToSet& TuplePointsToAnalysis::GetPointsToSet(
@@ -557,7 +557,7 @@ PointsToSet& TuplePointsToAnalysis::CreateEmptyPointsToSet(
   PerInstruction* pi = PerInst(instruction);
   CHECK(pi->points_to_set == nullptr)
       << "instruction should not have been present in the map.";
-  auto set = absl::make_unique<PointsToSet>(&instruction->shape());
+  auto set = std::make_unique<PointsToSet>(&instruction->shape());
   pi->points_to_set = std::move(set);
   // Return *set using the iterator returned by emplace.
   return *pi->points_to_set;
@@ -589,7 +589,7 @@ Status TuplePointsToAnalysis::VerifyBuffer(const LogicalBuffer& buffer) const {
         buffer.ToString(), GetBuffer(buffer.id()).ToString());
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 const LogicalBuffer& TuplePointsToAnalysis::GetBuffer(
@@ -645,7 +645,7 @@ Status TuplePointsToAnalysis::GatherBuffersDefinedByInstruction(
           }
         }
       });
-  return Status::OK();
+  return OkStatus();
 }
 
 PointsToSet& TuplePointsToAnalysis::CreateCopiedPointsToSet(

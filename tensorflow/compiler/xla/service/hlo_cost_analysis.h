@@ -164,7 +164,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleWhile(const HloInstruction* xla_while) override;
   Status HandleConditional(const HloInstruction* conditional) override;
   Status HandleGather(const HloInstruction* gather) override;
-  Status HandleScatter(const HloInstruction* scatter) override;
+  Status HandleScatter(const HloInstruction* hlo) override;
   Status HandleGetDimensionSize(const HloInstruction* get_size) override;
   Status HandleSetDimensionSize(const HloInstruction* set_size) override;
   Status FinishVisit(const HloInstruction* root) override;
@@ -201,10 +201,10 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // the bytes read/written from/to the given memory space only.
   int64_t GetBytesRead(
       const HloInstruction& hlo,
-      absl::optional<int64_t> memory_space = absl::nullopt) const;
+      std::optional<int64_t> memory_space = std::nullopt) const;
   int64_t GetBytesWritten(
       const HloInstruction& hlo,
-      absl::optional<int64_t> memory_space = absl::nullopt) const;
+      std::optional<int64_t> memory_space = std::nullopt) const;
 
   const Properties& properties() const { return properties_sum_; }
   const float property(const std::string& key) const {

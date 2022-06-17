@@ -137,9 +137,6 @@ struct CrashAnalysisCrashReproducerStream
 
 }  // namespace
 
-const char kCrashReproducerStdErr[] = "-";
-const char kCrashReproducerCrashAnalysis[] = "crash_analysis";
-
 Status CreateFileForDumping(llvm::StringRef name,
                             std::unique_ptr<raw_ostream>* os,
                             std::string* filepath, llvm::StringRef dirname) {
@@ -181,6 +178,21 @@ Status CreateFileForDumping(llvm::StringRef name,
   return Status();
 }
 
+// Prints the pass pipeline of `pass_manager` to `os`.
+void PrintPassPipeline(const mlir::PassManager& pass_manager,
+                       mlir::Operation* op, llvm::raw_ostream& os) {
+  std::string str;
+  llvm::raw_string_ostream passOS(str);
+  llvm::interleaveComma(
+      pass_manager.getPasses(), passOS,
+      [&](mlir::Pass& pass) { pass.printAsTextualPipeline(passOS); });
+  os << "// configuration: -pass-pipeline='" << passOS.str() << "'";
+  if (op->getContext()->isMultithreadingEnabled())
+    os << " -mlir-disable-threading";
+  os << " -verify-each";
+  os << "\n\n";
+}
+
 std::string DumpCrashReproducerToFile(llvm::StringRef name,
                                       const mlir::PassManager& pm,
                                       mlir::Operation* op,
@@ -190,16 +202,7 @@ std::string DumpCrashReproducerToFile(llvm::StringRef name,
   Status result = CreateFileForDumping(name, &os, &filepath, dirname);
   if (!result.ok()) return result.error_message();
 
-  std::string str;
-  llvm::raw_string_ostream passOS(str);
-  llvm::interleaveComma(pm.getPasses(), passOS, [&](mlir::Pass& pass) {
-    pass.printAsTextualPipeline(passOS);
-  });
-  *os << "// configuration: -pass-pipeline='" << passOS.str() << "'";
-  if (op->getContext()->isMultithreadingEnabled())
-    *os << " -mlir-disable-threading";
-  *os << " -verify-each";
-  *os << "\n";
+  PrintPassPipeline(pm, op, *os);
   op->print(*os, mlir::OpPrintingFlags().useLocalScope().printGenericOpForm());
   LOG(INFO) << "Dumped MLIR operation '" << op->getName().getStringRef().str()
             << "' to '" << filepath << "'";
@@ -207,12 +210,14 @@ std::string DumpCrashReproducerToFile(llvm::StringRef name,
 }
 
 std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
-                             llvm::StringRef dirname) {
+                             llvm::StringRef dirname,
+                             const mlir::PassManager* pass_manager) {
   std::unique_ptr<raw_ostream> os;
   std::string filepath;
   Status result = CreateFileForDumping(name, &os, &filepath, dirname);
   if (!result.ok()) return result.error_message();
 
+  if (pass_manager) PrintPassPipeline(*pass_manager, op, *os);
   op->print(*os, mlir::OpPrintingFlags().useLocalScope().printGenericOpForm());
   LOG(INFO) << "Dumped MLIR operation '" << op->getName().getStringRef().str()
             << "' to '" << filepath << "'";

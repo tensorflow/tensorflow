@@ -56,7 +56,7 @@ class DataServiceSplitProvider : public SplitProvider {
   const int64_t timeout_ms_;
 
   mutex mu_;
-  int64_t iteration_ = 0;
+  int64_t repetition_ = 0;
   std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
 };
 

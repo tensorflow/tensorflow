@@ -56,11 +56,11 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       // TODO(cheshire): Also enable for integers.
       VLOG(1) << "Not performing tree expansion on min/max-reduction: "
               << hlo->ToString() << " since min/max operations are associative";
-      return Status::OK();
+      return OkStatus();
     }
 
     if (!IsReductionFromOrToContiguousDimensions(*hlo)) {
-      return Status::OK();
+      return OkStatus();
     }
     return RewriteReduction(hlo);
   }
@@ -68,7 +68,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
  private:
   bool IsMinMaxReduction(HloInstruction *hlo) {
     HloComputation *called = hlo->called_computations()[0];
-    if (absl::optional<ReductionKind> reduction_kind =
+    if (std::optional<ReductionKind> reduction_kind =
             MatchReductionComputation(called)) {
       return reduction_kind == ReductionKind::MAX ||
              reduction_kind == ReductionKind::MIN;
@@ -110,7 +110,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     // Base case: everything fits.
     if (ReductionIsRaceFree(reduction_dimensions, reduction_tiling)) {
       VLOG(3) << "Base case: dimensions fit";
-      return Status::OK();
+      return OkStatus();
     }
 
     VLOG(1) << "Input: " << hlo->ToString();

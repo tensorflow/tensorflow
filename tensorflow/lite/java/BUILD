@@ -264,8 +264,17 @@ tflite_flex_android_library(
 # Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
 android_library(
     name = "tensorflowlite_gpu",
-    exports = [
-        ":tensorflowlite_java_gpu",
+    # Note that we need to directly includes all the
+    # required Java source files directly in "srcs" rather than
+    # depending on them via "deps"/"exports"; this is needed when
+    # building the AAR file since the current AAR building process
+    # doesn't include the transitive Java dependencies.
+    srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
+    exports_manifest = 1,
+    manifest = "AndroidManifest.xml",
+    proguard_specs = ["proguard.flags"],
+    deps = [
+        ":tensorflowlite_java",
         ":tensorflowlite_native_gpu",
     ],
 )
@@ -297,7 +306,7 @@ android_library(
 # include the core `tensorflowlite` runtime.
 # Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
 android_library(
-    name = "tensorflowlite_java_gpu",
+    name = "tensorflowlite_gpu_java",
     srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
     exports_manifest = 1,
     manifest = "AndroidManifestGpu.xml",
@@ -611,6 +620,32 @@ java_test_with_tflite(
     visibility = ["//visibility:private"],
     deps = [
         ":tensorflowlite_api_javalib",
+        "@com_google_truth",
+        "@junit",
+    ],
+)
+
+java_test_with_tflite(
+    name = "NnApiDelegateNativeTest",
+    size = "small",
+    srcs = [
+        "src/test/java/org/tensorflow/lite/NnApiDelegateNativeTest.java",
+        "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
+        "src/test/java/org/tensorflow/lite/TestInit.java",
+        "src/test/java/org/tensorflow/lite/TestUtils.java",
+    ],
+    data = [
+        "src/testdata/add.bin",
+    ],
+    tags = ["no_mac"],
+    test_class = "org.tensorflow.lite.NnApiDelegateNativeTest",
+    tflite_jni_binaries = [
+        "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":tensorflowlite_javalib",
+        "//third_party/java/mockito",
         "@com_google_truth",
         "@junit",
     ],

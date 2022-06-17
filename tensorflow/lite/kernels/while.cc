@@ -273,7 +273,7 @@ TfLiteStatus Prepare_impl(TfLiteContext* context, TfLiteNode* node) {
                    context, this_subgraph, TfLiteIntArrayView(node->inputs),
                    body_subgraph, body_subgraph->inputs(), true));
 
-  if (this_subgraph->IsMemoryOptimizationForLargeTensorsEnabled()) {
+  if (this_subgraph->ShouldOptimizeMemoryForLargeTensors()) {
     // The current shallow copy requires to use dynamic tensors which introduces
     // additional overheads. Therefore, use the method only if dynamic
     // allocation is enabled.
@@ -331,7 +331,7 @@ TfLiteStatus Prepare_impl(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   Subgraph* this_subgraph = reinterpret_cast<Subgraph*>(context->impl_);
-  if (this_subgraph->IsMemoryOptimizationForLargeTensorsEnabled()) {
+  if (this_subgraph->ShouldOptimizeMemoryForLargeTensors()) {
     // Apply lazy initialization of WHILE kernel.
     // Just make node output tensors dynamic.
     int num_outputs = node->outputs->size;

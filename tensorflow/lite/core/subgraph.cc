@@ -238,7 +238,7 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
       resources_(resources),
       resource_ids_(resource_ids),
       initialization_status_map_(initialization_status_map),
-      large_tensors_thresholds_in_bytes_(0) {
+      options_(nullptr) {
   context_.impl_ = static_cast<void*>(this);
   context_.ResizeTensor = ResizeTensor;
   context_.ReportError = ReportErrorC;
@@ -411,26 +411,15 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
   PartitionGraphIntoIndependentNodeSubsets(&info, nodes_to_replace,
                                            &node_subsets);
 
-#ifdef __ANDROID__
   // On Android the log message below is used for diagnosing delegation success
-  // also in production builds. Delegation happens sufficiently rarely that the
-  // message isn't spammy.
+  // also in production builds. Use VERBOSE here so that the logging is turned
+  // off in production builds on other platforms.
   TFLITE_LOG_PROD(
-      tflite::TFLITE_LOG_INFO,
+      tflite::TFLITE_LOG_VERBOSE,
       "Replacing %d node(s) with delegate (%s) node, yielding %zu partitions.",
       nodes_to_replace->size,
       registration.custom_name ? registration.custom_name : "unknown",
       node_subsets.size());
-#else   // !__ANDROID__
-  // Server-side, delegation may happen so often as to make logging spammy + we
-  // don't have a clear need for the diagnostic in production builds.
-  TFLITE_LOG(
-      tflite::TFLITE_LOG_INFO,
-      "Replacing %d node(s) with delegate (%s) node, yielding %zu partitions.",
-      nodes_to_replace->size,
-      registration.custom_name ? registration.custom_name : "unknown",
-      node_subsets.size());
-#endif  // __ANDROID__
 
   execution_plan_.clear();
 
@@ -982,7 +971,7 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
       } else {
         ReportError(
             "Encountered unresolved custom op: %s.\nSee instructions: "
-            "https://www.tensorflow.org/lite/guide/ops_custom",
+            "https://www.tensorflow.org/lite/guide/ops_custom ",
             op_reg.custom_name ? op_reg.custom_name : "UnknownOp");
       }
       return kTfLiteUnresolvedOps;
@@ -994,7 +983,7 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
 }
 
 TfLiteStatus Subgraph::MayAllocateOpOutput(TfLiteNode* node) {
-  if (IsMemoryOptimizationForLargeTensorsEnabled()) {
+  if (ShouldOptimizeMemoryForLargeTensors()) {
     for (int i = 0; i < node->outputs->size; ++i) {
       int tensor_index = node->outputs->data[i];
       TfLiteTensor* tensor = &context_.tensors[tensor_index];
@@ -1050,7 +1039,7 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
     memory_planner_.reset(new SimplePlanner(&context_, CreateGraphInfo()));
 #else
     memory_planner_.reset(new ArenaPlanner(&context_, CreateGraphInfo(),
-                                           preserve_all_tensors_,
+                                           ShouldPreserveAllTensors(),
                                            kDefaultTensorAlignment));
 #endif
     memory_planner_->PlanAllocations();
@@ -1519,11 +1508,10 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
 
 void Subgraph::OptimizeMemoryForLargeTensors(
     int large_tensors_thresholds_in_bytes) {
-  large_tensors_thresholds_in_bytes_ = large_tensors_thresholds_in_bytes;
   for (size_t tensor_index = 0; tensor_index < context_.tensors_size;
        tensor_index++) {
     TfLiteTensor* tensor = &context_.tensors[tensor_index];
-    if (tensor->bytes >= large_tensors_thresholds_in_bytes_ &&
+    if (tensor->bytes >= large_tensors_thresholds_in_bytes &&
         tensor->allocation_type == kTfLiteArenaRw &&
         // Skip input tensors since they are handled by ResizeInputTensor().
         std::find(inputs_.begin(), inputs_.end(), tensor_index) ==
@@ -1856,16 +1844,6 @@ void Subgraph::DumpMemoryPlannerDebugInfo() const {
   memory_planner_->DumpDebugInfo(execution_plan());
 }
 
-TfLiteStatus Subgraph::PreserveAllTensorsExperimental() {
-  if (memory_planner_) {
-    ReportError(
-        "PreserveAllTensorsExperimental called after memory was planned. ");
-    return kTfLiteError;
-  }
-  preserve_all_tensors_ = true;
-  return kTfLiteOk;
-}
-
 std::unique_ptr<GraphInfo> Subgraph::CreateGraphInfo() {
   return std::unique_ptr<GraphInfo>(new InterpreterInfo(this));
 }
@@ -1894,7 +1872,7 @@ void Subgraph::InitializeTensorReleaseMap() {
 
 void Subgraph::MaybeReleaseDynamicTensors(const TfLiteNode& node,
                                           size_t node_index) {
-  if (!release_dynamic_tensors_if_unused_) return;
+  if (!ShouldReleaseDynamicTensors()) return;
 
   // Release input tensors if they're neither graph input tensors nor no
   // longer used by remaining graph execution.

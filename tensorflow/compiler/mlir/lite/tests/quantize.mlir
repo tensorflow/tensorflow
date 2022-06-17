@@ -1,6 +1,6 @@
 // RUN: tf-opt %s -tfl-prepare-quantize -tfl-quantize | FileCheck %s
-// RUN: tf-opt %s -tfl-quantize -tfl-legacy-quantize | FileCheck --check-prefix=LEGACY %s
-// RUN: tf-opt %s -tfl-prepare-quantize -tfl-quantize -tfl-ops-blocklist="tfl.fully_connected,tfl.softmax" -tfl-locs-blocklist="Block,NullBlock" | FileCheck --check-prefix=BLOCK %s
+// RUN: tf-opt %s -tfl-quantize="legacy-quantize=true" | FileCheck --check-prefix=LEGACY %s
+// RUN: tf-opt %s -tfl-prepare-quantize -tfl-quantize="ops-blocklist=tfl.fully_connected,tfl.softmax locs-blocklist=Block,NullBlock" | FileCheck --check-prefix=BLOCK %s
 
 // CHECK-LABEL: QuantizeFloatConst
 func.func @QuantizeFloatConst() -> tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>> {

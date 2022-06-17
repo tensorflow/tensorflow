@@ -282,8 +282,10 @@ LogicalResult SetMetadataProtoFromClusterFuncOp(
     tensorflow::tpu::TPUCompileMetadataProto* metadata) {
   if (auto options_attr =
           op->getAttrOfType<StringAttr>("tpu_compile_options_proto")) {
-    metadata->mutable_compile_options()->ParseFromArray(options_attr.data(),
-                                                        options_attr.size());
+    if (!metadata->mutable_compile_options()->ParseFromArray(
+            options_attr.data(), options_attr.size())) {
+      return failure();
+    }
   }
   metadata->set_num_replicas(num_replicas);
   metadata->set_num_cores_per_replica(num_cores_per_replica);
@@ -741,6 +743,42 @@ void EraseClusterFuncs(
   }
 }
 
+LogicalResult CheckTPUPartitionedInputAndOutputAreValid(
+    tf_device::ClusterFuncOp cluster) {
+  for (auto cluster_result : cluster.results()) {
+    for (Operation* user :
+         llvm::make_early_inc_range(cluster_result.getUsers())) {
+      // Check that user has no outputs that are TPUPartitionedOutput
+      for (auto result : user->getResults()) {
+        for (Operation* user : llvm::make_early_inc_range(result.getUsers())) {
+          if (llvm::isa<TF::TPUPartitionedOutputOp>(user)) {
+            user->emitError() << "Input of TPUPartitionedOutput must "
+                              << "be in tpu computation.";
+            return failure();
+          }
+        }
+      }
+    }
+  }
+  for (auto cluster_operand : cluster.operands()) {
+    Operation* def = cluster_operand.getDefiningOp();
+    // This pass assumes that a TPUPartitionedInput is preceeded by
+    // ReadVariable ops, and not vice versa. An earlier pass,
+    // TPUResourceReadsWritesPartitioning, should have ensured this
+    // precondition.
+    if (!def) continue;
+    for (auto operand : def->getOperands()) {
+      Operation* def_of_read = operand.getDefiningOp();
+      if (llvm::isa_and_nonnull<TF::TPUPartitionedInputOp>(def_of_read)) {
+        def_of_read->emitError() << "Output of TPUPartitionedInput must "
+                                 << "be in tpu computation.";
+        return failure();
+      }
+    }
+  }
+  return success();
+}
+
 void TPURewritePass::runOnOperation() {
   mlir::TF::RuntimeDevices devices;
   if (failed(tensorflow::GetDevicesFromOp(getOperation(), &devices)))
@@ -768,6 +806,10 @@ void TPURewritePass::runOnOperation() {
     auto cluster_id = op->getAttrOfType<StringAttr>(TF::kReplicationInfoAttr);
     if (!cluster_id) return WalkResult::advance();
 
+    // check TPUPartitionedInput and TPUPartitionedOutput are in valid pattern
+    if (failed(CheckTPUPartitionedInputAndOutputAreValid(op))) {
+      return WalkResult::interrupt();
+    }
     if (failed(Rewrite(op, devices.device_names(),
                        compilation_results[cluster_id], &builder,
                        tpu_compile_metadata_debug_)))

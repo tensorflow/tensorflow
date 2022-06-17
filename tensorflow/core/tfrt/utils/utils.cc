@@ -64,7 +64,7 @@ tensorflow::Status RunRuntimeInitializer(const tfrt::ExecutionContext& exec_ctx,
 
   auto* func = bef_file->GetFunction(
       {fallback_init_func.data(), fallback_init_func.size()});
-  if (func == nullptr) return tensorflow::Status::OK();
+  if (func == nullptr) return ::tensorflow::OkStatus();
 
   auto ready_chain = GetReadyChain();
 
@@ -82,7 +82,7 @@ tensorflow::Status RunRuntimeInitializer(const tfrt::ExecutionContext& exec_ctx,
     return CreateTfErrorStatus(*error);
   }
 
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 void CreateDummyTfDevices(

@@ -14,6 +14,8 @@
 
 #include "tensorflow/compiler/mlir/lite/experimental/tac/execution_metadata_exporter.h"
 
+#include <string>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers

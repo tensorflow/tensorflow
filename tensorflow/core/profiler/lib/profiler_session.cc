@@ -72,7 +72,7 @@ Status ProfilerSession::CollectDataInternal(profiler::XSpace* space) {
   }
   // Allow another session to start.
   profiler_lock_.ReleaseIfActive();
-  return Status::OK();
+  return OkStatus();
 }
 #endif
 
@@ -82,7 +82,7 @@ Status ProfilerSession::CollectData(profiler::XSpace* space) {
   TF_RETURN_IF_ERROR(CollectDataInternal(space));
   PostProcessSingleHostXSpace(space, start_time_ns_);
 #endif
-  return Status::OK();
+  return OkStatus();
 }
 
 ProfilerSession::ProfilerSession(const ProfileOptions& options)

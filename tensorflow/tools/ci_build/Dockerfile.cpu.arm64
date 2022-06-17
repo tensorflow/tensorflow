@@ -1,7 +1,6 @@
 FROM quay.io/pypa/manylinux2014_aarch64
 
 RUN yum -y check-update || true && \
-    yum install -y epel-release && \
     yum install -y \
         sudo \
         wget \
@@ -13,8 +12,7 @@ RUN yum -y check-update || true && \
         ncurses-devel \
         nss-devel \
         readline-devel \
-        sqlite-devel \
-        hdf5-devel && \
+        sqlite-devel && \
     yum clean all
 
 COPY install/install_bazel.sh /install/
@@ -38,3 +36,9 @@ RUN export PYTHON_VERSION=$(python -c 'import platform; print(platform.python_ve
     ln -s /opt/_internal/cpython-$PYTHON_VERSION/bin/pip /usr/local/bin/pip
 
 RUN pip3 install packaging
+
+ARG is_nightly=0
+ARG tf_project_name='tf_ci_cpu' # PyPI project name passed by CD GitHub workflow
+
+ENV IS_NIGHTLY=${is_nightly}
+ENV TF_PROJECT_NAME=${tf_project_name}

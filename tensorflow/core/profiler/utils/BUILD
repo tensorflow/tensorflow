@@ -429,7 +429,6 @@ cc_library(
         ":xplane_schema",
         ":xplane_utils",
         ":xplane_visitor",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/convert:xla_op_utils",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
@@ -610,5 +609,30 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "tpu_xplane_utils",
+    srcs = ["tpu_xplane_utils.cc"],
+    hdrs = ["tpu_xplane_utils.h"],
+    deps = [
+        ":xplane_schema",
+        ":xplane_utils",
+        "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "tpu_xplane_utils_test",
+    srcs = ["tpu_xplane_utils_test.cc"],
+    deps = [
+        ":tpu_xplane_utils",
+        ":xplane_schema",
+        ":xplane_utils",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
     ],
 )

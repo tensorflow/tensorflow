@@ -20,7 +20,6 @@ cc_library_with_tflite(
     deps = [
         "//tensorflow/lite:error_reporter",
         "//tensorflow/lite/java/jni",
-        "@com_google_absl//absl/base:core_headers",
     ],
 )
 

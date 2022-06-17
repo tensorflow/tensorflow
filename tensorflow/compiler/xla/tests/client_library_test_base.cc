@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -204,7 +203,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
                   absl::StrCat("Test with output layout: ",
                                ShapeUtil::HumanStringWithLayout(layout)));
   } while (std::next_permutation(minor_to_major.begin(), minor_to_major.end()));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
@@ -232,7 +231,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
         TF_RETURN_IF_ERROR(choose(index + 1));
         arguments_with_layout.pop_back();
         layout_strings.pop_back();
-        return Status::OK();
+        return OkStatus();
       }
 
       std::vector<int64_t> minor_to_major(literal.shape().rank());
@@ -250,7 +249,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
         layout_strings.pop_back();
       } while (
           std::next_permutation(minor_to_major.begin(), minor_to_major.end()));
-      return Status::OK();
+      return OkStatus();
     }
 
     // Every argument has an assigned layout.
@@ -264,7 +263,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
       absl::StrAppend(&error_message, str, " ");
     }
     verify_output(actual, error_message);
-    return Status::OK();
+    return OkStatus();
   };
 
   return choose(0);
@@ -352,7 +351,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments,
                                                       shape_with_layout));
   EXPECT_TRUE(LiteralTestUtil::Equal(*expected_ptr, actual));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
@@ -411,7 +410,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments,
                                                       shape_with_layout));
   EXPECT_TRUE(LiteralTestUtil::Near(*expected_ptr, actual, error));
-  return Status::OK();
+  return OkStatus();
 }
 
 void ClientLibraryTestBase::ComputeAndCompareR1U8(
@@ -569,7 +568,7 @@ XlaComputation ClientLibraryTestBase::CreateScalarReluSensitivity() {
 
 std::unique_ptr<Array2D<float>> ClientLibraryTestBase::CreatePatternedMatrix(
     int rows, int cols, float offset) {
-  auto array = absl::make_unique<Array2D<float>>(rows, cols);
+  auto array = std::make_unique<Array2D<float>>(rows, cols);
   for (int64_t row = 0; row < rows; ++row) {
     for (int64_t col = 0; col < cols; ++col) {
       (*array)(row, col) = col + (row * 1000.0f) + offset;
@@ -584,7 +583,7 @@ ClientLibraryTestBase::CreatePatternedMatrixWithZeroPadding(int rows, int cols,
                                                             int cols_padded) {
   CHECK_GE(rows_padded, rows);
   CHECK_GE(cols_padded, cols);
-  auto array = absl::make_unique<Array2D<float>>(rows_padded, cols_padded, 0.0);
+  auto array = std::make_unique<Array2D<float>>(rows_padded, cols_padded, 0.0);
   for (int64_t row = 0; row < rows; ++row) {
     for (int64_t col = 0; col < cols; ++col) {
       (*array)(row, col) = col + (row * 1000.0f);

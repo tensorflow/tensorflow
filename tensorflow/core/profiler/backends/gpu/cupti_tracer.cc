@@ -67,7 +67,7 @@ class CuptiApiTracingDisabler {
 
 Status ToStatus(CUptiResult result) {
   if (result == CUPTI_SUCCESS) {
-    return Status::OK();
+    return OkStatus();
   }
   const char *str = nullptr;
   cuptiGetResultString(result, &str);
@@ -76,7 +76,7 @@ Status ToStatus(CUptiResult result) {
 
 Status ToStatus(CUresult result) {
   if (result == CUDA_SUCCESS) {
-    return Status::OK();
+    return OkStatus();
   }
   const char *str = nullptr;
   cuGetErrorName(result, &str);
@@ -851,14 +851,14 @@ class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
     // Stash away the current Cupti timestamp into cbdata.
     *cbdata->correlationData =
         option_.required_callback_api_events ? CuptiTracer::GetTimestamp() : 0;
-    return Status::OK();
+    return OkStatus();
   }
   Status OnDriverApiExit(int device_id, CUpti_CallbackDomain domain,
                          CUpti_CallbackId cbid,
                          const CUpti_CallbackData *cbdata) override {
     // If we are not collecting CPU events from Callback API, we can return now.
     if (!option_.required_callback_api_events) {
-      return Status::OK();
+      return OkStatus();
     }
 
     // Grab timestamp for API exit. API entry timestamp saved in cbdata.
@@ -879,7 +879,7 @@ class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
         cuCtxPopCurrent(&current);
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -1074,7 +1074,7 @@ class CudaEventRecorder {
 
     TF_RETURN_IF_ERROR(Synchronize());
     end_walltime_us_ = Env::Default()->NowMicros();
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Flush(AnnotationMap *annotation_map) {
@@ -1086,7 +1086,7 @@ class CudaEventRecorder {
     for (const auto &record : memcpy_records) {
       TF_RETURN_IF_ERROR(SaveRecord(record, annotation_map));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   std::vector<KernelRecord> ConsumeKernelRecords() {
@@ -1119,7 +1119,7 @@ class CudaEventRecorder {
       TF_RETURN_IF_ERROR(ToStatus(cuCtxSetCurrent(pair.first)));
       TF_RETURN_IF_ERROR(ToStatus(cuCtxSynchronize()));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Returns element from context_infos_, adding it if not yet present.
@@ -1135,7 +1135,7 @@ class CudaEventRecorder {
     }
 
     *ctx_info_ptr = &it->second;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Adds element to stream_infos_ if not yet present. If present, clear name
@@ -1148,7 +1148,7 @@ class CudaEventRecorder {
       if (it->second.name != name) {
         it->second.name.clear();  // Stream with inconsistent names, clear it.
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     ContextInfo *ctx_info;
@@ -1166,7 +1166,7 @@ class CudaEventRecorder {
     StreamInfo stream_info = {stream_id, static_cast<std::string>(name), index,
                               ctx_info};
     stream_infos_.emplace(key, stream_info);
-    return Status::OK();
+    return OkStatus();
   }
 
   // Returns time in microseconds between events recorded on the GPU.
@@ -1181,7 +1181,7 @@ class CudaEventRecorder {
   Status SaveRecord(const KernelRecord &record,
                     AnnotationMap *annotation_map) const {
     if (!record.start_event || !record.stop_event) {
-      return Status::OK();
+      return OkStatus();
     }
     const auto &stream_info =
         stream_infos_.at(StreamKey(record.context, record.stream));
@@ -1206,13 +1206,13 @@ class CudaEventRecorder {
     event.annotation = info.annotation;
     event.kernel_info = record.details;
     collector_->AddEvent(std::move(event));
-    return Status::OK();
+    return OkStatus();
   }
 
   Status SaveRecord(const MemcpyRecord &record,
                     AnnotationMap *annotation_map) const {
     if (!record.start_event || !record.stop_event) {
-      return Status::OK();
+      return OkStatus();
     }
     const auto &stream_info =
         stream_infos_.at(StreamKey(record.context, record.stream));
@@ -1239,7 +1239,7 @@ class CudaEventRecorder {
     event.memcpy_info.async = record.async;
     // TODO: set src_mem_kind and dst_mem_kind.
     collector_->AddEvent(std::move(event));
-    return Status::OK();
+    return OkStatus();
   }
 
   absl::Mutex mutex_;
@@ -1377,15 +1377,14 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
         VLOG(1) << "Unexpected callback id: " << cbid;
         break;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status OnDriverApiExit(int device_id, CUpti_CallbackDomain domain,
                          CUpti_CallbackId cbid,
                          const CUpti_CallbackData *cbdata) override {
     auto *recorder = cuda_event_recorders_[device_id].get();
-    if (*cbdata->correlationData == static_cast<size_t>(-1))
-      return Status::OK();
+    if (*cbdata->correlationData == static_cast<size_t>(-1)) return OkStatus();
     uint64 start_tsc = 0;
     switch (cbid) {
       case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel:
@@ -1427,11 +1426,11 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
       default:
         VLOG(1) << "Unexpected callback id: " << cbid;
         // TODO: figure out how to get start timestamp in this case.
-        return Status::OK();
+        return OkStatus();
     }
     // If we are not collecting CPU events from Callback API, we can return now.
     if (!option_.required_callback_api_events) {
-      return Status::OK();
+      return OkStatus();
     }
 
     // Grab timestamp for API exit. API entry timestamp saved in cbdata.
@@ -1446,7 +1445,7 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
     for (auto &recorder : cuda_event_recorders_) {
       TF_RETURN_IF_ERROR(recorder->Flush(collector_->annotation_map()));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -1601,7 +1600,7 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
                                  end_tsc);
       break;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
@@ -1707,7 +1706,7 @@ void CuptiTracer::Disable() {
 }
 
 Status CuptiTracer::EnableApiTracing() {
-  if (api_tracing_enabled_) return Status::OK();
+  if (api_tracing_enabled_) return OkStatus();
 
   VLOG(1) << "Enable subscriber";
   // Subscribe can return CUPTI_ERROR_MAX_LIMIT_REACHED.
@@ -1731,11 +1730,11 @@ Status CuptiTracer::EnableApiTracing() {
     RETURN_IF_CUPTI_ERROR(cupti_interface_->EnableDomain(
         1 /* ENABLE */, subscriber_, CUPTI_CB_DOMAIN_NVTX));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CuptiTracer::DisableApiTracing() {
-  if (!api_tracing_enabled_) return Status::OK();
+  if (!api_tracing_enabled_) return OkStatus();
 
   api_tracing_enabled_ = false;
 
@@ -1756,7 +1755,7 @@ Status CuptiTracer::DisableApiTracing() {
 
   VLOG(1) << "Disable subscriber";
   RETURN_IF_CUPTI_ERROR(cupti_interface_->Unsubscribe(subscriber_));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CuptiTracer::EnableActivityTracing() {
@@ -1777,7 +1776,7 @@ Status CuptiTracer::EnableActivityTracing() {
     }
   }
   activity_tracing_enabled_ = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CuptiTracer::DisableActivityTracing() {
@@ -1799,7 +1798,7 @@ Status CuptiTracer::DisableActivityTracing() {
     LOG(INFO) << "CUPTI activity buffer flushed";
   }
   activity_tracing_enabled_ = false;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CuptiTracer::Finalize() {
@@ -1807,7 +1806,7 @@ Status CuptiTracer::Finalize() {
     VLOG(1) << "CuptiFinalize";
     RETURN_IF_CUPTI_ERROR(cupti_interface_->Finalize());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/ uint64 CuptiTracer::GetTimestamp() {
@@ -1837,17 +1836,17 @@ Status CuptiTracer::HandleNVTXCallback(CUpti_CallbackId cbid,
   } else if (cbid == CUPTI_CBID_NVTX_nvtxDomainRangePop) {
     NVTXRangeTracker::ExitRange();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
                                    CUpti_CallbackId cbid,
                                    const CUpti_CallbackData *cbdata) {
-  if (!api_tracing_enabled_) return Status::OK();    // already unsubscribed.
-  if (!cupti_driver_api_hook_) return Status::OK();  // already unsubscribed.
+  if (!api_tracing_enabled_) return OkStatus();    // already unsubscribed.
+  if (!cupti_driver_api_hook_) return OkStatus();  // already unsubscribed.
   if (domain == CUPTI_CB_DOMAIN_NVTX) return HandleNVTXCallback(cbid, cbdata);
-  if (domain != CUPTI_CB_DOMAIN_DRIVER_API) return Status::OK();
-  if (internalCuCall) return Status::OK();
+  if (domain != CUPTI_CB_DOMAIN_DRIVER_API) return OkStatus();
+  if (internalCuCall) return OkStatus();
 
   if (cbdata->context == nullptr) {
     // API callback is called before any CUDA context is created.
@@ -1889,7 +1888,7 @@ Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
     TF_RETURN_IF_ERROR(cupti_driver_api_hook_->OnDriverApiExit(
         device_id, domain, cbid, cbdata));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void CuptiTracer::ConfigureActivityUnifiedMemoryCounter(bool enable) {
@@ -1941,11 +1940,11 @@ Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
   auto buffer_cleanup =
       gtl::MakeCleanup([&]() { buffer_pool_.ReclaimBuffer(buffer); });
   if (size == 0) {
-    return Status::OK();
+    return OkStatus();
   }
   if (!activity_tracing_enabled_) {
     LOG(WARNING) << "CUPTI activity buffer is reclaimed after flush.";
-    return Status::OK();
+    return OkStatus();
   }
   if (cupti_interface_->Disabled()) return errors::Internal("Disabled.");
 
@@ -2010,7 +2009,7 @@ Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
     RETURN_IF_CUPTI_ERROR(cupti_interface_->GetDeviceId(context, &device_id));
     collector_->OnEventsDropped("cupti activity buffer full", dropped);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/ std::string CuptiTracer::ErrorIfAny() {

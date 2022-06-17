@@ -71,8 +71,8 @@ struct FftRewritePattern
   FailureOr<Value> matchAndRewriteOp(
       lmhlo::FftOp op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
-    xla::Shape input_shape = xla::gpu::GetShape(op.operand());
-    xla::Shape output_shape = xla::gpu::GetShape(op.output());
+    xla::Shape input_shape = xla::gpu::GetShape(op.getOperand());
+    xla::Shape output_shape = xla::gpu::GetShape(op.getOutput());
     if (input_shape.is_dynamic() || output_shape.is_dynamic())
       return rewriter.notifyMatchFailure(op, "expected static shapes");
     if (!xla::LayoutUtil::IsMonotonicWithDim0Major(input_shape.layout()) ||
@@ -82,17 +82,17 @@ struct FftRewritePattern
 
     bool double_precision = input_shape.element_type() == xla::F64 ||
                             input_shape.element_type() == xla::C128;
-    auto type = GetFftType(mlir::mhlo::stringifyFftType(adaptor.fft_type()),
+    auto type = GetFftType(mlir::mhlo::stringifyFftType(adaptor.getFftType()),
                            double_precision);
     auto direction =
-        GetFftDirection(mlir::mhlo::stringifyFftType(adaptor.fft_type()));
+        GetFftDirection(mlir::mhlo::stringifyFftType(adaptor.getFftType()));
     if (!type || !direction) {
       auto error = joinErrors(type.takeError(), direction.takeError());
       return rewriter.notifyMatchFailure(op, llvm::toString(std::move(error)));
     }
 
     llvm::SmallVector<int64_t, 3> dimensions;
-    llvm::copy(op.fft_length().getValues<int64_t>(),
+    llvm::copy(op.getFftLength().getValues<int64_t>(),
                std::back_inserter(dimensions));
     int rank = dimensions.size();
 
@@ -132,8 +132,8 @@ struct FftRewritePattern
         loc, allocator, stream, workspace_size, chain);
 
     chain = rewriter.create<tfrt::gpu::FftExecuteOp>(
-        loc, stream, fft_handle, adaptor.operand(), adaptor.output(), workspace,
-        *direction, chain);
+        loc, stream, fft_handle, adaptor.getOperand(), adaptor.getOutput(),
+        workspace, *direction, chain);
 
     rewriter.eraseOp(op);
 
@@ -151,7 +151,7 @@ struct FftRewritePattern
 
     int64_t total_num_elements = elements_per_batch * batch;
     auto mlir_element_type =
-        op.output().getType().cast<mlir::MemRefType>().getElementType();
+        op.getOutput().getType().cast<mlir::MemRefType>().getElementType();
 
     // If the FFT output elements are complex numbers, treat the output as
     // an array of twice as many real numbers so we can save compute by
@@ -174,7 +174,7 @@ struct FftRewritePattern
 
     chain = rewriter.create<tfrt::gpu::BlasScalOp>(
         loc, chain.getType(), blas_handle, stream, n, scaling_factor,
-        blas_element_type, adaptor.output(), blas_element_type, stride,
+        blas_element_type, adaptor.getOutput(), blas_element_type, stride,
         blas_element_type, chain);
 
     return chain;

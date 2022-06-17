@@ -85,7 +85,7 @@ class DeviceFactory {
   // into devices from ListPhysicalDevices.
   virtual Status GetDeviceDetails(int device_index,
                                   std::unordered_map<string, string>* details) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Most clients should call AddDevices() instead.

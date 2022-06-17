@@ -337,7 +337,7 @@ typedef struct TF_FilesystemOps {
   /// function will never be called. There are plans to refactor registration
   /// and fix this.
   ///
-  /// TODO(mihaimaruseac): After all filesystems are converted, revisit note.
+  /// TODO(b/139060984): After all filesystems are converted, revisit note.
   ///
   /// This operation must be provided. See "REQUIRED OPERATIONS" above.
   void (*cleanup)(TF_Filesystem* filesystem);
@@ -483,7 +483,7 @@ typedef struct TF_FilesystemOps {
   /// traversal couldn't start, `*undeleted_files` must be set to 0 and
   /// `*undeleted_dirs` must be set to 1.
   ///
-  /// TODO(mihaimaruseac): After all filesystems are converted, consider
+  /// TODO(b/139060984): After all filesystems are converted, consider
   /// invariant about `*undeleted_files` and `*undeleted_dirs`.
   ///
   /// Plugins:

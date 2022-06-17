@@ -191,7 +191,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:ShapeDialect",
     ],
 )
 
@@ -697,7 +697,6 @@ tf_cc_test(
 
 cc_library(
     name = "tf2xla_defs",
-    srcs = ["tf2xla_defs.cc"],
     hdrs = ["tf2xla_defs.h"],
     visibility = [":friends"],
     deps = [

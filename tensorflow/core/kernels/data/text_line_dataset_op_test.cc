@@ -51,13 +51,13 @@ class TextLineDatasetParams : public DatasetParams {
         TextLineDatasetOp::kCompressionType,
         TextLineDatasetOp::kBufferSize,
     };
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
     attr_vector->clear();
     attr_vector->emplace_back("metadata", "");
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override {
@@ -86,7 +86,7 @@ Status CreateTestFiles(const std::vector<tstring>& filenames,
     TF_RETURN_IF_ERROR(
         WriteDataToFile(filenames[i], contents[i].data(), params));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Test case 1: multiple text files with ZLIB compression.

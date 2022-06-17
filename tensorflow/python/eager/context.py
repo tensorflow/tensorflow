@@ -324,8 +324,9 @@ class LogicalDevice(
 @tf_export("config.LogicalDeviceConfiguration",
            "config.experimental.VirtualDeviceConfiguration")
 class LogicalDeviceConfiguration(
-    collections.namedtuple("LogicalDeviceConfiguration",
-                           ["memory_limit", "experimental_priority"])):
+    collections.namedtuple("LogicalDeviceConfiguration", [
+        "memory_limit", "experimental_priority", "experimental_device_ordinal"
+    ])):
   """Configuration class for a logical devices.
 
   The class specifies the parameters to configure a `tf.config.PhysicalDevice`
@@ -342,11 +343,20 @@ class LogicalDeviceConfiguration(
       Lower values have higher priorities and 0 is the default.
       Within a physical GPU, the GPU scheduler will prioritize ops on virtual
       devices with higher priority. Currently only supported for Nvidia GPUs.
+    experimental_device_ordinal: (optional) Ordinal number to order the virtual
+    device.
+      LogicalDevice with lower ordinal number will receive a lower device id.
+      Physical device id and location in the list is used to break ties.
+      Currently only supported for Nvidia GPUs.
   """
 
-  def __new__(cls, memory_limit=None, experimental_priority=None):
+  def __new__(cls,
+              memory_limit=None,
+              experimental_priority=None,
+              experimental_device_ordinal=0):
     return super(LogicalDeviceConfiguration,
-                 cls).__new__(cls, memory_limit, experimental_priority)
+                 cls).__new__(cls, memory_limit, experimental_priority,
+                              experimental_device_ordinal)
 
 
 @tf_export("config.PhysicalDevice")
@@ -1224,9 +1234,11 @@ class Context(object):
 
       if self._virtual_device_map:
         vdevs = self._virtual_device_map.get(dev, [])
+        device_ordinals = []
         device_limits = []
         priority = []
         for virt_dev in vdevs:
+          device_ordinals.append(virt_dev.experimental_device_ordinal)
           device_limits.append(virt_dev.memory_limit)
           if virt_dev.experimental_priority is not None:
             priority.append(virt_dev.experimental_priority)
@@ -1237,7 +1249,9 @@ class Context(object):
 
         virtual_devices.append(
             config_pb2.GPUOptions.Experimental.VirtualDevices(
-                memory_limit_mb=device_limits, priority=priority))
+                memory_limit_mb=device_limits,
+                priority=priority,
+                device_ordinal=device_ordinals))
 
     # Only compute growth if virtual devices have not been configured and we
     # have GPUs
@@ -1676,6 +1690,9 @@ class Context(object):
                            "currently not supported")
         if vdev.experimental_priority is not None:
           raise ValueError("Setting experimental_priority on CPU virtual "
+                           " devices is currently not supported")
+        if vdev.experimental_device_ordinal != 0:
+          raise ValueError("Setting experimental_device_ordinal on CPU virtual "
                            " devices is currently not supported")
     elif dev.device_type == "GPU":
       for vdev in virtual_devices:

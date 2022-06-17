@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 
+#include <memory>
 #include <random>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/platform/cuda_libdevice_path.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/determinism.h"
@@ -280,20 +279,20 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
 // When D is the set of dimensions in a ConvolutionDimensionNumbers, this finds
 // the dimension number that corresponds to the vectorized-features dimension in
 // the convolution.
-static absl::optional<int64_t> FindVectorizedDim(int64_t rank, int64_t d0,
-                                                 int64_t d1,
-                                                 absl::Span<const int64_t> ds) {
+static std::optional<int64_t> FindVectorizedDim(int64_t rank, int64_t d0,
+                                                int64_t d1,
+                                                absl::Span<const int64_t> ds) {
   for (int64_t i = 0; i < rank; i++) {
     if (i == d0 || i == d1 || absl::c_linear_search(ds, i)) {
       continue;
     }
     return i;
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
-std::tuple<absl::optional<int64_t>, absl::optional<int64_t>,
-           absl::optional<int64_t>>
+std::tuple<std::optional<int64_t>, std::optional<int64_t>,
+           std::optional<int64_t>>
 FindVectorizedFeatureDims(const ConvolutionDimensionNumbers& dnums,
                           const Shape& input, const Shape& filter,
                           const Shape& output) {
@@ -341,7 +340,7 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
         reinterpret_cast<const char*>(cubin_data.data()), kernel_name);
   }
 
-  auto kernel_base = absl::make_unique<se::KernelBase>(stream_exec);
+  auto kernel_base = std::make_unique<se::KernelBase>(stream_exec);
   TF_RETURN_IF_ERROR(stream_exec->GetKernel(loader_spec, kernel_base.get()));
   return std::move(kernel_base);
 }
@@ -349,7 +348,7 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
 template <int n>
 static std::unique_ptr<se::KernelArgsArrayBase> MakeKernelArgs(
     absl::Span<const se::DeviceMemoryBase> args) {
-  auto kernel_args = absl::make_unique<se::KernelArgsArray<n>>();
+  auto kernel_args = std::make_unique<se::KernelArgsArray<n>>();
   for (const se::DeviceMemoryBase& buf : args) {
     kernel_args->add_device_memory_argument(buf);
   }

@@ -41,16 +41,18 @@ func.func @conv_forward(
               reverse = [0, 0]}
     { batch_group_count = 1 : i64, feature_group_count = 1 : i64,
       result_scale = 1.000000e+00 : f64,
-      backend_config = {algorithm = 0 : i64,
-                        knob_ids = [0, 1, 2, 3],
-                        knob_values = [4, 5, 6, 7],
-                        workspace_size = 0,
-                        is_cudnn_frontend = true,
-                        operand_0_layout = [3, 2, 1, 0],
-                        operand_1_layout = [3, 2, 1, 0],
-                        result_layout = [3, 2, 1, 0],
-                        tensor_ops_enabled = false}}
-    : (memref<4x256x3x3xf16>, memref<256x256x2x2xf16>, memref<4x256x2x2xf16>, memref<0xui8>) -> ()
+      backend_config = #lmhlo_gpu.convolution_backend_config<
+        algorithm = 0,
+        knob_ids = [0, 1, 2, 3],
+        knob_values = [4, 5, 6, 7],
+        workspace_size = 0,
+        is_cudnn_frontend = true,
+        operand_0_layout = [3, 2, 1, 0],
+        operand_1_layout = [3, 2, 1, 0],
+        result_layout = [3, 2, 1, 0],
+        tensor_ops_enabled = false
+      >
+    } : (memref<4x256x3x3xf16>, memref<256x256x2x2xf16>, memref<4x256x2x2xf16>, memref<0xui8>) -> ()
 
   // CHECK-NOT: cast
   // CHECK: tfrt.return [[CHAIN]] : !tfrt.chain
@@ -97,16 +99,18 @@ func.func @conv_backwardinput(
               reverse = [0, 0]}
     { batch_group_count = 1 : i64, feature_group_count = 1 : i64,
       result_scale = 1.000000e+00 : f64,
-      backend_config = {algorithm = 0 : i64,
-                        knob_ids = [0, 1, 2, 3],
-                        knob_values = [4, 5, 6, 7],
-                        workspace_size = 0,
-                        is_cudnn_frontend = true,
-                        operand_0_layout = [3, 2, 1, 0],
-                        operand_1_layout = [3, 2, 1, 0],
-                        result_layout = [3, 2, 1, 0],
-                        tensor_ops_enabled = false}}
-    : (memref<4x256x3x3xf16>, memref<256x256x2x2xf16>, memref<4x256x2x2xf16>, memref<0xui8>) -> ()
+      backend_config = #lmhlo_gpu.convolution_backend_config<
+        algorithm = 0,
+        knob_ids = [0, 1, 2, 3],
+        knob_values = [4, 5, 6, 7],
+        workspace_size = 0,
+        is_cudnn_frontend = true,
+        operand_0_layout = [3, 2, 1, 0],
+        operand_1_layout = [3, 2, 1, 0],
+        result_layout = [3, 2, 1, 0],
+        tensor_ops_enabled = false
+      >
+    } : (memref<4x256x3x3xf16>, memref<256x256x2x2xf16>, memref<4x256x2x2xf16>, memref<0xui8>) -> ()
 
   // CHECK-NOT: cast
   // CHECK: tfrt.return [[CHAIN]] : !tfrt.chain
@@ -153,16 +157,18 @@ func.func @conv_backwardfilter(
               reverse = [0, 0]}
     { batch_group_count = 1 : i64, feature_group_count = 1 : i64,
       result_scale = 1.000000e+00 : f64,
-      backend_config = {algorithm = 0 : i64,
-                        knob_ids = [0, 1, 2, 3],
-                        knob_values = [4, 5, 6, 7],
-                        workspace_size = 0,
-                        is_cudnn_frontend = true,
-                        operand_0_layout = [3, 2, 1, 0],
-                        operand_1_layout = [3, 2, 1, 0],
-                        result_layout = [3, 2, 1, 0],
-                        tensor_ops_enabled = false}}
-    : (memref<4x256x3x3xf16>, memref<256x256x2x2xf16>, memref<4x256x2x2xf16>, memref<0xui8>) -> ()
+      backend_config = #lmhlo_gpu.convolution_backend_config<
+        algorithm = 0,
+        knob_ids = [0, 1, 2, 3],
+        knob_values = [4, 5, 6, 7],
+        workspace_size = 0,
+        is_cudnn_frontend = true,
+        operand_0_layout = [3, 2, 1, 0],
+        operand_1_layout = [3, 2, 1, 0],
+        result_layout = [3, 2, 1, 0],
+        tensor_ops_enabled = false
+      >
+    } : (memref<4x256x3x3xf16>, memref<256x256x2x2xf16>, memref<4x256x2x2xf16>, memref<0xui8>) -> ()
 
   // CHECK-NOT: cast
   // CHECK: tfrt.return [[CHAIN]] : !tfrt.chain
@@ -215,16 +221,18 @@ func.func @conv_forward_fused(
     { batch_group_count = 1 : i64, feature_group_count = 1 : i64,
       result_scale = 1.000000e+00 : f64,
       activation_mode = #lmhlo_gpu<"activation Relu">,
-      backend_config = {algorithm = 0 : i64,
-                        knob_ids = [0, 1, 2, 3],
-                        knob_values = [4, 5, 6, 7],
-                        workspace_size = 0,
-                        is_cudnn_frontend = true,
-                        operand_0_layout = [3, 2, 1, 0],
-                        operand_1_layout = [3, 2, 1, 0],
-                        result_layout = [3, 2, 1, 0],
-                        tensor_ops_enabled = false}}
-    : (memref<1x17x9x9xf16>, memref<3x3x17x32xf16>, memref<32xf16>, memref<1x32x9x9xf16>, memref<32xui8>) -> ()
+      backend_config = #lmhlo_gpu.convolution_backend_config<
+        algorithm = 0,
+        knob_ids = [0, 1, 2, 3],
+        knob_values = [4, 5, 6, 7],
+        workspace_size = 0,
+        is_cudnn_frontend = true,
+        operand_0_layout = [3, 2, 1, 0],
+        operand_1_layout = [3, 2, 1, 0],
+        result_layout = [3, 2, 1, 0],
+        tensor_ops_enabled = false
+      >
+    } : (memref<1x17x9x9xf16>, memref<3x3x17x32xf16>, memref<32xf16>, memref<1x32x9x9xf16>, memref<32xui8>) -> ()
 
   // CHECK-NOT: cast
   // CHECK: tfrt.return [[CHAIN]] : !tfrt.chain
@@ -278,16 +286,18 @@ func.func @conv_forward_fused_with_side_input(
     { batch_group_count = 1 : i64, feature_group_count = 1 : i64,
       result_scale = 1.000000e+00 : f64, side_input_scale = 1.000000e+00 : f64,
       activation_mode = #lmhlo_gpu<"activation Relu">,
-      backend_config = {algorithm = 0 : i64,
-                        knob_ids = [0, 1, 2, 3],
-                        knob_values = [4, 5, 6, 7],
-                        workspace_size = 0,
-                        is_cudnn_frontend = true,
-                        operand_0_layout = [3, 2, 1, 0],
-                        operand_1_layout = [3, 2, 1, 0],
-                        result_layout = [3, 2, 1, 0],
-                        tensor_ops_enabled = false}}
-    : (memref<1x17x9x9xf16>, memref<3x3x17x32xf16>, memref<32xf16>, memref<32xf16>, memref<1x32x9x9xf16>, memref<32xui8>) -> ()
+      backend_config = #lmhlo_gpu.convolution_backend_config<
+        algorithm = 0,
+        knob_ids = [0, 1, 2, 3],
+        knob_values = [4, 5, 6, 7],
+        workspace_size = 0,
+        is_cudnn_frontend = true,
+        operand_0_layout = [3, 2, 1, 0],
+        operand_1_layout = [3, 2, 1, 0],
+        result_layout = [3, 2, 1, 0],
+        tensor_ops_enabled = false
+      >
+    } : (memref<1x17x9x9xf16>, memref<3x3x17x32xf16>, memref<32xf16>, memref<32xf16>, memref<1x32x9x9xf16>, memref<32xui8>) -> ()
 
   // CHECK-NOT: cast
   // CHECK: tfrt.return [[CHAIN]] : !tfrt.chain

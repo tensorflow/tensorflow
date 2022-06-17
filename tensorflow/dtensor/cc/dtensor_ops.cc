@@ -66,7 +66,7 @@ REGISTER_OP("DTensorShardedPrefix")
       // We could calculate the exact numbers of output here as well but that's
       // the whole logic of the op itself.
       c->set_output(0, c->Vector(c->UnknownDim()));
-      return Status::OK();
+      return OkStatus();
     });
 
 // DTensorRestoreV2 that is pretty much RestoreV2 but with extra global shapes

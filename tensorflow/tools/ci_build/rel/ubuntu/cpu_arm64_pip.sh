@@ -68,7 +68,11 @@ export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} \
     -//tensorflow/python:nn_grad_test \
     -//tensorflow/python:dequantize_op_test \
     -//tensorflow/python:quantized_ops_test \
+    -//tensorflow/python/client:session_list_devices_test \
     -//tensorflow/python/data/experimental/kernel_tests/service:cross_trainer_cache_test \
+    -//tensorflow/python/data/kernel_tests:iterator_test_cpu \
+    -//tensorflow/python/data/kernel_tests:snapshot_test \
+    -//tensorflow/python/distribute:random_generator_test_cpu \
     -//tensorflow/python/eager:forwardprop_test \
     -//tensorflow/python/framework:node_file_writer_test \
     -//tensorflow/python/grappler:memory_optimizer_test \
@@ -82,13 +86,16 @@ export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} \
     -//tensorflow/python/kernel_tests/nn_ops:conv2d_backprop_filter_grad_test \
     -//tensorflow/python/kernel_tests/nn_ops:conv3d_backprop_filter_v2_grad_test \
     -//tensorflow/python/kernel_tests/nn_ops:atrous_conv2d_test \
-    -//tensorflow/python/ops/parallel_for:math_test"
+    -//tensorflow/python/ops/parallel_for:math_test \
+    -//tensorflow/python/training:server_lib_test"
 export TF_PIP_TESTS="test_pip_virtualenv_clean"
 export TF_TEST_FILTER_TAGS="-no_oss,-oss_serial,-no_oss_py${py_ver},-gpu,-tpu,-benchmark-test,-v1only,-no_aarch64,-requires-gpu"
-export IS_NIGHTLY=0 # Not nightly; uncomment if building from tf repo.
-export TF_PROJECT_NAME="aws_tensorflow_cpu"
 export TF_PIP_TEST_ROOT="pip_test"
 export TF_AUDITWHEEL_TARGET_PLAT="manylinux2014"
+
+if [ ${IS_NIGHTLY} == 1 ]; then
+  ./tensorflow/tools/ci_build/update_version.py --nightly
+fi
 
 source tensorflow/tools/ci_build/builds/pip_new.sh
 

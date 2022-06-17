@@ -11,8 +11,6 @@ tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h:
 tensorflow/core/platform/default/build_config/BUILD:
 tensorflow/core/tfrt/tpu/tpu_resources.h:
 tensorflow/core/tfrt/utils/bridge_graph_analysis.h:
-tensorflow/dtensor/mlir/utils/BUILD:
-tensorflow/dtensor/mlir/utils/collective_lowering.cc:
 tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal.cc:
 tensorflow/dtensor/mlir/utils/update_tpu_metadata.cc:
 tensorflow/examples/custom_ops_doc/multiplex_1/BUILD:
@@ -116,6 +114,7 @@ tensorflow/tools/pip_package/build_pip_package.sh:
 tensorflow/tools/pip_package/check_load_py_test:.py
 tensorflow/tools/pip_package/pip_smoke_test:.py
 tensorflow/tools/pip_package/setup:.py
+tensorflow/tools/pip_package/setup_partner_builds:.py
 tensorflow/tools/pip_package/simple_console:.py
 tensorflow/tools/pip_package/simple_console_for_windows:.py
 tensorflow/tools/pip_package/xla_build/CMakeLists.txt:
@@ -139,6 +138,7 @@ tensorflow/tools/toolchains/win/tf_win_02212022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_04062022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_04112022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_06152021/BUILD:
+tensorflow/tools/toolchains/win/tf_win_06152022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_06212021/BUILD:
 tensorflow/tools/toolchains/win/tf_win_06242021/BUILD:
 tensorflow/tools/toolchains/win/tf_win_08062020/BUILD:

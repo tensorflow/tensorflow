@@ -44,7 +44,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 #include "tensorflow/stream_executor/host/host_stream.h"
 
@@ -207,13 +206,13 @@ Status CpuExecutable::ExecuteComputeFunction(
     }
   }
 
-  absl::optional<absl::string_view> error_message =
+  std::optional<absl::string_view> error_message =
       CustomCallStatusGetMessage(&status);
   if (error_message) {
     return InternalError("CustomCall failed: %s", *error_message);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
@@ -250,7 +249,7 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
     const BufferAllocation::Index buffer_index = slice.index();
 
     // TODO(cheshire): duplication with other backends.
-    absl::optional<HloInputOutputAliasConfig::Alias> alias =
+    std::optional<HloInputOutputAliasConfig::Alias> alias =
         input_output_alias.GetAliasedParameter(index);
     if (alias) {
       CHECK_LT(alias->parameter_number, arguments.size());
@@ -263,7 +262,7 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
             "compile time but not donated at runtime: %s",
             alias->ToString());
       }
-      if (absl::optional<se::OwningDeviceMemory> owning =
+      if (std::optional<se::OwningDeviceMemory> owning =
               maybe_owning_memory->Release()) {
         // If the caller passes the ownership of the device memory, reuse it
         // as the output buffer. It is up to the caller whether or not to
@@ -303,7 +302,7 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
 
     if (result_buffer.is_null()) {
       MaybeOwningDeviceMemory& buffer = buffers[buffer_index];
-      if (absl::optional<se::OwningDeviceMemory> owned_buffer =
+      if (std::optional<se::OwningDeviceMemory> owned_buffer =
               buffer.Release()) {
         result_buffer = owned_buffer->Release();
         buffer = result_buffer;

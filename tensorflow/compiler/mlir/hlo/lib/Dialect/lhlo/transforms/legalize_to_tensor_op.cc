@@ -46,12 +46,11 @@ struct ForwardExtractOp : public OpRewritePattern<ExtractOp> {
 
   LogicalResult matchAndRewrite(ExtractOp extract,
                                 PatternRewriter& rewriter) const override {
-    auto to_tensor =
-        extract.tensor().getDefiningOp<bufferization::ToTensorOp>();
-    if (!to_tensor) return failure();
+    auto toTensor = extract.tensor().getDefiningOp<bufferization::ToTensorOp>();
+    if (!toTensor) return failure();
 
     rewriter.replaceOpWithNewOp<memref::LoadOp>(
-        extract, extract.getType(), to_tensor.memref(), extract.indices());
+        extract, extract.getType(), toTensor.memref(), extract.indices());
     return success();
   }
 };
@@ -63,14 +62,13 @@ struct ForwardExtractOp : public OpRewritePattern<ExtractOp> {
 struct ForwardShapeOfOp : public OpRewritePattern<ShapeOfOp> {
   using OpRewritePattern<ShapeOfOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(ShapeOfOp shape_of,
+  LogicalResult matchAndRewrite(ShapeOfOp shapeOf,
                                 PatternRewriter& rewriter) const override {
-    auto to_tensor =
-        shape_of.getArg().getDefiningOp<bufferization::ToTensorOp>();
-    if (!to_tensor) return failure();
+    auto toTensor = shapeOf.getArg().getDefiningOp<bufferization::ToTensorOp>();
+    if (!toTensor) return failure();
 
-    rewriter.replaceOpWithNewOp<ShapeOfOp>(shape_of, shape_of.getType(),
-                                           to_tensor.memref());
+    rewriter.replaceOpWithNewOp<ShapeOfOp>(shapeOf, shapeOf.getType(),
+                                           toTensor.memref());
     return success();
   }
 };

@@ -77,7 +77,7 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
         break;
       case XlaExpression::Kind::kXlaOp:
         if (arg_must_be_compile_time_constant[i]) {
-          TF_ASSIGN_OR_RETURN(absl::optional<Tensor> value,
+          TF_ASSIGN_OR_RETURN(std::optional<Tensor> value,
                               expressions[i]->ResolveConstant(client));
           if (value.has_value()) {
             arg.kind = XlaCompiler::Argument::kConstant;
@@ -105,7 +105,7 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
         return errors::InvalidArgument("Invalid function argument");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 Status GraphCompiler::Compile() {
@@ -191,7 +191,7 @@ Status GraphCompiler::Compile() {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -208,7 +208,7 @@ Status GetFunctionNameAndAttr(const FunctionLibraryRuntime& flib,
           " does not have 'func' field set");
     }
     *func = attr_value->func();
-    return Status::OK();
+    return OkStatus();
   }
 
   if (flib.GetFunctionLibraryDefinition()->Find(node.def().op())) {
@@ -217,7 +217,7 @@ Status GetFunctionNameAndAttr(const FunctionLibraryRuntime& flib,
     func->set_name(FunctionLibraryDefinition::kGradientOp);
   }
   *func->mutable_attr() = node.def().attr();
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

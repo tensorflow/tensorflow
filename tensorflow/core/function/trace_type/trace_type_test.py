@@ -159,7 +159,7 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
     trace_a = trace_type.from_object(TestAttrsClass(1, 2))
     expected = default_types.Attrs(
         TestAttrsClass,
-        (default_types.Generic(1), default_types.Generic(2)))
+        (default_types.Literal(1), default_types.Literal(2)))
     self.assertEqual(trace_a, expected)
     self.assertTrue(trace_a.is_subtype_of(trace_a))
 

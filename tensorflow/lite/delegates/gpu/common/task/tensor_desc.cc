@@ -78,15 +78,6 @@ std::string GetWriteImageFromDataType(DataType data_type) {
   }
 }
 
-std::string AddressModeToCLSampler(AddressMode address_mode) {
-  switch (address_mode) {
-    case AddressMode::kDontCare:
-      return "smp_none";
-    case AddressMode::kZero:
-      return "smp_zero";
-  }
-}
-
 std::string GetConvertionForImage(const GpuInfo& gpu_info, DataType src_type,
                                   DataType dst_type) {
   DataType interm_type = src_type;
@@ -163,6 +154,17 @@ TensorDescriptor& TensorDescriptor::operator=(TensorDescriptor&& desc) {
     GPUObjectDescriptor::operator=(std::move(desc));
   }
   return *this;
+}
+
+void TensorDescriptor::CopyWithoutData(TensorDescriptor* desc) const {
+  desc->data_type = data_type;
+  desc->storage_type = storage_type;
+  desc->layout = layout;
+  desc->use_buffer_for_write_only_2d_texture =
+      use_buffer_for_write_only_2d_texture;
+  desc->use_buffer_for_write_only_image_buffer =
+      use_buffer_for_write_only_image_buffer;
+  desc->shape = shape;
 }
 
 GPUResources TensorDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
@@ -618,11 +620,9 @@ std::string TensorDescriptor::Read(
     case TensorStorageType::SINGLE_TEXTURE_2D: {
       std::string result;
       if (gpu_info.IsApiOpenCl()) {
-        result =
-            absl::Substitute("$0(image2d, $1, (int2)($2, $3))",
-                             GetReadImageFromDataType(read_as_type),
-                             AddressModeToCLSampler(AddressModeFromState()),
-                             coords[0], coords[1]);
+        result = absl::Substitute("$0(image2d, smp_zero, (int2)($1, $2))",
+                                  GetReadImageFromDataType(read_as_type),
+                                  coords[0], coords[1]);
       } else if (gpu_info.IsApiMetal()) {
         result = absl::Substitute("image2d.read(ushort2($0, $1))", coords[0],
                                   coords[1]);
@@ -641,10 +641,9 @@ std::string TensorDescriptor::Read(
       std::string result;
       if (gpu_info.IsApiOpenCl()) {
         result =
-            absl::Substitute("$0(image3d, $1, (int4)($2, $3, $4, 0))",
-                             GetReadImageFromDataType(read_as_type),
-                             AddressModeToCLSampler(AddressModeFromState()),
-                             coords[0], coords[1], coords[2]);
+            absl::Substitute("$0(image3d, smp_zero, (int4)($1, $2, $3, 0))",
+                             GetReadImageFromDataType(read_as_type), coords[0],
+                             coords[1], coords[2]);
       } else if (gpu_info.IsApiMetal()) {
         result = absl::Substitute("image3d.read(ushort3($0, $1, $2))",
                                   coords[0], coords[1], coords[2]);
@@ -662,11 +661,10 @@ std::string TensorDescriptor::Read(
     case TensorStorageType::TEXTURE_ARRAY: {
       std::string result;
       if (gpu_info.IsApiOpenCl()) {
-        result =
-            absl::Substitute("$0(image2d_array, $1, (int4)($2, $3, $4, 0))",
-                             GetReadImageFromDataType(read_as_type),
-                             AddressModeToCLSampler(AddressModeFromState()),
-                             coords[0], coords[1], coords[2]);
+        result = absl::Substitute(
+            "$0(image2d_array, smp_zero, (int4)($1, $2, $3, 0))",
+            GetReadImageFromDataType(read_as_type), coords[0], coords[1],
+            coords[2]);
       } else if (gpu_info.IsApiMetal()) {
         result = absl::Substitute("image2d_array.read(ushort2($0, $1), $2)",
                                   coords[0], coords[1], coords[2]);
@@ -1169,14 +1167,6 @@ int TensorDescriptor::GetSliceStrideSize(BHWDC shape) const {
   }
 }
 
-void TensorDescriptor::SetAddressMode(AddressMode mode) {
-  if (mode == AddressMode::kZero) {
-    state_vars_["TextureMode"] = "ZERO";
-  } else {
-    state_vars_["TextureMode"] = "DONT_CARE";
-  }
-}
-
 bool TensorDescriptor::ParseCoordsFromArgs(const std::vector<std::string>& args,
                                            int offset, std::string* xc,
                                            std::string* yc, std::string* zc,
@@ -1216,19 +1206,6 @@ bool TensorDescriptor::ParseCoordsFromArgs(const std::vector<std::string>& args,
 bool TensorDescriptor::IsBatchedWidth() const {
   auto it = state_vars_.find("BatchedWidth");
   return it != state_vars_.end() && it->second == "true";
-}
-
-AddressMode TensorDescriptor::AddressModeFromState() const {
-  auto it = state_vars_.find("TextureMode");
-  if (it != state_vars_.end()) {
-    if (it->second == "ZERO") {
-      return AddressMode::kZero;
-    } else {
-      return AddressMode::kDontCare;
-    }
-  } else {
-    return AddressMode::kDontCare;
-  }
 }
 
 size_t TensorDescriptor::GetSizeInBytesForShape(const BHWDC& shape5d) const {
@@ -1475,6 +1452,25 @@ absl::Status TensorDescriptor::CanCreateTensorWithShape(
     const GpuInfo& gpu_info, const BHWC& shape) const {
   const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
   return CanCreateTensorWithShape(gpu_info, shape5D);
+}
+
+absl::Status TensorDescriptor::UpdateToSupportedStorageType(
+    const GpuInfo& gpu_info, const BHWC& shape) {
+  if (CanCreateTensorWithShape(gpu_info, shape).ok()) {
+    return absl::OkStatus();
+  }
+  if (gpu_info.IsApiMetal()) {
+    storage_type = TensorStorageType::BUFFER;
+    return CanCreateTensorWithShape(gpu_info, shape);
+  }
+
+  storage_type = TensorStorageType::IMAGE_BUFFER;
+  if (gpu_info.SupportsImageBuffer() &&
+      CanCreateTensorWithShape(gpu_info, shape).ok()) {
+    return absl::OkStatus();
+  }
+  storage_type = TensorStorageType::BUFFER;
+  return CanCreateTensorWithShape(gpu_info, shape);
 }
 }  // namespace gpu
 }  // namespace tflite

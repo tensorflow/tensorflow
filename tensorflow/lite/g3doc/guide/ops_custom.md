@@ -8,7 +8,7 @@ To allow conversion, users can provide their own custom implementation of an
 unsupported TensorFlow operator in TensorFlow Lite, known as a custom operator.
 *If instead, you wish to combine a series of unsupported (or supported)
 TensorFlow operators into a single fused optimized custom operator, refer to
-[operator fusing](https://www.tensorflow.org/lite/convert/operation_fusion).*
+[operator fusing](https://www.tensorflow.org/lite/models/convert/operation_fusion).*
 
 Using custom operators consists of four steps.
 

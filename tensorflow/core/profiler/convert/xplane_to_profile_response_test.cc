@@ -22,6 +22,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_test_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -60,6 +63,28 @@ void CreateXSpace(XSpace* space) {
   event3.SetDurationNs(10000);
   event3.AddStatValue(*device_plane.GetOrCreateStatMetadata("correlation id"),
                       55);
+}
+
+TEST(ConvertXPlaneToProfileResponse, ExtractTpuMxuUtilizationFromXSpace) {
+  XSpace xspace;
+  GetOrCreateTpuXPlane(&xspace, 0, "TPU V4");
+  auto xplane = FindOrAddMutablePlaneWithName(&xspace, kHostThreadsPlaneName);
+  XPlaneBuilder xplaneBuilder(xplane);
+  xplaneBuilder.AddStatValue(
+      *xplaneBuilder.GetOrCreateStatMetadata(
+          GetStatTypeStr(tensorflow::profiler::kMatrixUnitUtilizationPercent)),
+      20.0);
+  ProfileRequest request;
+  request.add_tools("overview_page");
+  ProfileResponse response;
+  TF_CHECK_OK(ConvertXSpaceToProfileResponse(xspace, request, &response));
+  EXPECT_EQ(1, response.tool_data_size());
+  EXPECT_EQ("overview_page.pb", response.tool_data(0).name());
+  OverviewPage overview_page;
+  ASSERT_TRUE(overview_page.ParseFromString(response.tool_data(0).data()));
+  EXPECT_EQ(overview_page.analysis().mxu_utilization_percent(), 20);
+  EXPECT_EQ(overview_page.run_environment().device_type(), "TPU V4");
+  EXPECT_EQ(overview_page.run_environment().device_core_count(), 1);
 }
 
 TEST(ConvertXPlaneToProfileResponse, TraceViewer) {

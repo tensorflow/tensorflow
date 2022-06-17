@@ -22,13 +22,13 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <initializer_list>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
 
 #include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -548,7 +548,7 @@ class ShapeUtil {
   //   return value = {1, 3}
   //
   // Precondition: input_dim_indices is sorted.
-  static absl::optional<std::vector<int64_t>> ReshapeLeavesDimensionsUnmodified(
+  static std::optional<std::vector<int64_t>> ReshapeLeavesDimensionsUnmodified(
       const Shape& from_shape, const Shape& to_shape,
       absl::Span<const int64_t> input_dim_indices);
 
@@ -574,13 +574,17 @@ class ShapeUtil {
   // layout). The layout of 'input_shape' is kept fixed. Returns
   // 'output_shape_with_layout' if such a layout can be found, and an error
   // otherwise.
-  static absl::optional<Shape> AlignLayouts(const Shape& input_shape,
-                                            const Shape& output_shape);
+  static std::optional<Shape> AlignLayouts(const Shape& input_shape,
+                                           const Shape& output_shape);
 
   // Returns a shape with the given dimension deleted.
   // For example:
   // • `DeleteDimension(1, T[m, n, k]) = T[m, k]`
   static Shape DeleteDimension(int64_t dim_to_delete, Shape shape);
+
+  // Returns a shape with dimensions in `to_drop` dropped.
+  static Shape DeleteDimensions(absl::Span<int64_t const> dims_to_delete,
+                                Shape shape);
 
   // Returns a shape with all the dimensions of the input shape for which `p`
   // returns true.
@@ -716,8 +720,8 @@ class ShapeUtil {
   //
   // If `b` is a 0-2-1 transpose of `a` in 0-1-2, return the dimensions for the
   // normalized shape of `b` or the 0-2-1 shape.
-  static absl::optional<std::vector<int64_t>> FindTranspose021(const Shape& a,
-                                                               const Shape& b);
+  static std::optional<std::vector<int64_t>> FindTranspose021(const Shape& a,
+                                                              const Shape& b);
 
   // Strips device-specific information, namely tiling and memory-space
   // information, from a shape.
@@ -762,7 +766,7 @@ class ShapeUtil {
                                      const FnType& visitor_function,
                                      bool parallel = false) {
     if (ShapeUtil::IsZeroElementArray(shape)) {
-      return Status::OK();
+      return OkStatus();
     }
     CHECK_EQ(shape.rank(), base.size());
     CHECK_EQ(incr.size(), base.size());
@@ -773,7 +777,7 @@ class ShapeUtil {
     int64_t n = -1;
     std::vector<int64_t> indexes(base.begin(), base.end());
     const int kNumThreads = tensorflow::port::MaxParallelism();
-    absl::optional<tensorflow::thread::ThreadPool> pool;
+    std::optional<tensorflow::thread::ThreadPool> pool;
     if (parallel) {
       pool.emplace(tensorflow::Env::Default(), "foreach", kNumThreads);
     }
@@ -782,7 +786,7 @@ class ShapeUtil {
     Status status;  // Guarded by mu
 
     while (n < rank) {
-      if (pool != absl::nullopt) {
+      if (pool != std::nullopt) {
         pool->Schedule([indexes, &visitor_function, &mu, &status, &pool] {
           const int thread_id = pool->CurrentThreadId();
           StatusOr<bool> result = visitor_function(indexes, thread_id);

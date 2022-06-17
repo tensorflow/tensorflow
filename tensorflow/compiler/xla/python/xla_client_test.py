@@ -417,8 +417,8 @@ def TestFactory(xla_backend,
   class PythonCallbackTest(ComputationTest):
 
     def testPythonCallback(self):
-      if self.backend.platform != "cpu":
-        self.skipTest("Test requires cpu platform")
+      if self.backend.platform not in {"cpu", "gpu"}:
+        self.skipTest("Test requires cpu or gpu platform")
       c = self._NewComputation()
 
       f = lambda x, y: (x + y, x - y)
@@ -436,8 +436,8 @@ def TestFactory(xla_backend,
       del out, keepalive
 
     def testPythonCallbackCanHandleExceptions(self):
-      if self.backend.platform != "cpu":
-        self.skipTest("Test requires cpu platform")
+      if self.backend.platform not in {"cpu", "gpu"}:
+        self.skipTest("Test requires cpu or gpu platform")
       c = self._NewComputation()
 
       def _Callback(x):
@@ -455,8 +455,8 @@ def TestFactory(xla_backend,
       del out, keepalive
 
     def testTokens(self):
-      if self.backend.platform != "cpu":
-        self.skipTest("Test requires cpu platform")
+      if self.backend.platform not in {"cpu", "gpu"}:
+        self.skipTest("Test requires cpu or gpu platform")
       c = self._NewComputation()
 
       def _Callback(x, y):
@@ -475,8 +475,8 @@ def TestFactory(xla_backend,
       del out, keepalive
 
     def testStriding(self):
-      if self.backend.platform != "cpu":
-        self.skipTest("Test requires cpu platform")
+      if self.backend.platform not in {"cpu", "gpu"}:
+        self.skipTest("Test requires cpu or gpu platform")
       c = self._NewComputation()
 
       def _Callback(x):
@@ -1056,6 +1056,35 @@ def TestFactory(xla_backend,
           [330., 380., 160.],
           [0., 0., 0.],
           [480., 530., 220.],
+      ]]])
+      self._ExecuteAndCompareClose(c, expected=[result])
+
+    def testConvGeneralDilatedWindowReversalF32(self):
+      c = self._NewComputation()
+      a = lambda *dims: np.arange(np.prod(dims)).reshape(dims).astype("float32")
+      lhs = a(1, 1, 2, 3)
+      rhs = a(1, 1, 1, 2) * 10
+      strides = [1, 1]
+      pads = [(1, 0), (0, 1)]
+      lhs_dilation = (2, 1)
+      rhs_dilation = (1, 1)
+      window_reversal = [False, True]
+      dimension_numbers = xla_client.make_convolution_dimension_numbers(
+          ("NCHW", "OIHW", "NCHW"), 2)
+      ops.ConvGeneralDilated(
+          ops.Constant(c, lhs),
+          ops.Constant(c, rhs),
+          strides,
+          pads,
+          lhs_dilation,
+          rhs_dilation,
+          dimension_numbers,
+          window_reversal=window_reversal)
+      result = np.array([[[
+          [0., 0., 0.],
+          [0., 10., 20.],
+          [0., 0., 0.],
+          [30., 40., 50.],
       ]]])
       self._ExecuteAndCompareClose(c, expected=[result])
 

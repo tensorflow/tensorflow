@@ -34,6 +34,9 @@ class Flags {
   TF_DECLARE_FLAG(
       op_building_optimization, true,
       "Optimize tf.Operation building for faster tf.function tracing.");
+
+  TF_DECLARE_FLAG(saved_model_fingerprinting, false,
+                  "Add fingerprint to SavedModels.");
   // LINT.ThenChange(//tensorflow/core/config/flags_api_wrapper.cc)
 };
 

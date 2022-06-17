@@ -764,7 +764,7 @@ Status BFloat16Propagation::ResolveInconsistentFusions(HloModule* module) {
       fusion_computation->set_root_instruction(copy);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BFloat16Propagation::ResolveConvertedConstants(HloModule* module) {
@@ -794,7 +794,7 @@ Status BFloat16Propagation::ResolveConvertedConstants(HloModule* module) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BFloat16Propagation::SkipNoopConversions(HloModule* module) {
@@ -814,7 +814,7 @@ Status BFloat16Propagation::SkipNoopConversions(HloModule* module) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // The algorithm first does a forward pass (parameters to root) to determine a
@@ -955,7 +955,7 @@ StatusOr<bool> BFloat16Propagation::Run(HloModule* module) {
     TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
     HloDCE dce;
     TF_RETURN_IF_ERROR(dce.Run(module).status());
-    return Status::OK();
+    return OkStatus();
   };
 
   if (!changed_) {

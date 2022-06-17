@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -2451,7 +2450,7 @@ Status ConvolutionVisitor::PropagateOnUsers(HloInstruction* old_conv) {
             << batch_to_space->ToString();
     TF_CHECK_OK(computation_->ReplaceInstruction(old_conv, batch_to_space));
     VLOG(1) << "Replacement successful";
-    return Status::OK();
+    return OkStatus();
   }
 
   int64_t iteration_count = 0;
@@ -2531,7 +2530,7 @@ Status ConvolutionVisitor::PropagateOnUsers(HloInstruction* old_conv) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
@@ -2736,7 +2735,7 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
   instr_to_dim_permute_map_[new_conv] = std::vector<int64_t>(transpose_dims);
 
   convs_to_visit_.erase(convolution);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvolutionVisitor::PropagateOnConcat(HloInstruction* concat) {
@@ -2757,7 +2756,7 @@ Status ConvolutionVisitor::PropagateOnConcat(HloInstruction* concat) {
   instr_to_dim_permute_map_[new_concat] =
       std::vector<int64_t>(instr_to_dim_permute_map_[first_operand]);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvolutionVisitor::PropagateOnReverse(HloInstruction* reverse) {
@@ -2778,7 +2777,7 @@ Status ConvolutionVisitor::PropagateOnReverse(HloInstruction* reverse) {
   instr_to_dim_permute_map_[new_reverse] =
       std::vector<int64_t>(instr_to_dim_permute_map_[first_operand]);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvolutionVisitor::PropagateOnPad(HloInstruction* pad) {
@@ -2807,7 +2806,7 @@ Status ConvolutionVisitor::PropagateOnPad(HloInstruction* pad) {
   instr_to_dim_permute_map_[new_pad] =
       std::vector<int64_t>(instr_to_dim_permute_map_[first_operand]);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<HloInstruction*> ConvolutionVisitor::TransposeAndMergeBatch(
@@ -3453,7 +3452,7 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
   absl::c_iota(trans_dims, 0);
   instr_to_dim_permute_map_[new_conv] = trans_dims;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 HloInstruction*
@@ -3628,7 +3627,7 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
   if (!ConsumeFuel("space-to-batch-converter", [&] {
         return "Skipping space-to-batch propagation because fuel over\n";
       })) {
-    return Status::OK();
+    return OkStatus();
   }
   VLOG(1) << "Handling conv " << convolution->ToString();
 
@@ -3647,7 +3646,7 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
 
   // A very primitive cost model to thwart propagations on tiny shapes.
   if (c.spatial_size < 2 * ctrl_.number_of_splits) {
-    return Status::OK();
+    return OkStatus();
   }
 
   auto original_conv = convolution;
@@ -3840,7 +3839,7 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
 
   changed_ = true;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

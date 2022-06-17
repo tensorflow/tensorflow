@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/resource/initialization_status.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/graph_info.h"
+#include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/util.h"
 
@@ -369,13 +370,20 @@ class Subgraph {
   void DumpMemoryPlannerDebugInfo() const;
 
   // WARNING: This is an experimental API and subject to change.
-  // Force all intermediate dynamic tensors to be released once they are not
-  // used by the model. Please use this configuration with caution, since it
-  // might reduce the peak memory usage of the model at the cost of a slower
-  // inference speed. This API needs to be called before calling
-  // `AllocateTensors`.
-  void EnsureDynamicTensorsAreReleased() {
-    release_dynamic_tensors_if_unused_ = true;
+  // Set the given `InterpreterOptions` object.
+  void SetOptions(InterpreterOptions* options) { options_ = options; }
+
+  // WARNING: This is an experimental API and subject to change.
+  // True if all intermediates tensors should be preserved for debugging.
+  bool ShouldPreserveAllTensors() const {
+    return (options_ && options_->GetPreserveAllTensors());
+  }
+
+  // WARNING: This is an experimental API and subject to change.
+  // True if all intermediate dynamic tensors should be released once they are
+  // not used by the model.
+  bool ShouldReleaseDynamicTensors() const {
+    return (options_ && options_->GetEnsureDynamicTensorsAreReleased());
   }
 
   /// WARNING: This is an experimental API and subject to change.
@@ -390,8 +398,8 @@ class Subgraph {
   // WARNING: This is an experimental API and subject to change.
   // True if dynamic tensor allocation / deallocation method is enabled by
   // `OptimizeMemoryForLargeTensors` API.
-  inline bool IsMemoryOptimizationForLargeTensorsEnabled() {
-    return (large_tensors_thresholds_in_bytes_ > 0);
+  bool ShouldOptimizeMemoryForLargeTensors() {
+    return (options_ && (options_->GetDynamicAllocationForLargeTensors() > 0));
   }
 
   // WARNING: This is an experimental API and subject to change.
@@ -701,9 +709,6 @@ class Subgraph {
   // Returns true if cancellation function returns true.
   bool IsCancelled();
 
-  // Enables preserving intermediates for debugging.
-  TfLiteStatus PreserveAllTensorsExperimental();
-
   // Returns true if 'node' could have side effect (e.g. stateful op).
   // Note that any node that might update other tensors beside op's output
   // are considered to have side effect.
@@ -884,22 +889,15 @@ class Subgraph {
   // Name of the subgraph (analogous to function name).
   std::string name_;
 
-  // Whether memory planner should be instantiated to retain intermediates for
-  // debugging.
-  bool preserve_all_tensors_ = false;
-
   // Model-metadata owned by the Interpreter.
   const std::map<std::string, std::string>* metadata_ = nullptr;
-
-  // Release dynamic tensor's memory once they are not used by the graph.
-  bool release_dynamic_tensors_if_unused_ = false;
 
   // Mapping between tensor index to the last index of the execution plan that
   // uses this tensor.
   std::map<int, int> tensor_to_last_op_index_;
 
-  // Threshold bytes of tensors to apply dymamic allocation.
-  size_t large_tensors_thresholds_in_bytes_;
+  // `InterpreterOptions` object which is being used and owned by Interpreter.
+  InterpreterOptions* options_;
 };
 
 }  // namespace tflite

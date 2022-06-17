@@ -254,7 +254,9 @@ upper_tabs:
 
       - heading: "Convert models"
       - title: "Overview"
-        path: /lite/convert/
+        path: /lite/models/convert/
+      - title: "TensorFlow Lite converter"
+        path: /lite/models/convert/convert_models
       - title: "Model compatibility"
         section:
         - title: "Overview"
@@ -264,14 +266,14 @@ upper_tabs:
         - title: "Custom operators"
           path: /lite/guide/ops_custom
         - title: "Fused operators"
-          path: /lite/convert/operation_fusion
+          path: /lite/models/convert/operation_fusion
         - title: "Operator versions"
           path: /lite/guide/ops_version
           status: experimental
         - title: "Select operators Allowlist"
           path: /lite/guide/op_select_allowlist
         - title: "RNN models"
-          path: /lite/convert/rnn
+          path: /lite/models/convert/rnn
         - title: "TensorFlow Text"
           path: /text/guide/text_tf_lite
           status: external
@@ -304,9 +306,9 @@ upper_tabs:
       - title: "Add model metadata"
         section:
         - title: "Overview"
-          path: /lite/convert/metadata
+          path: /lite/models/convert/metadata
         - title: "Metadata Writer API"
-          path: /lite/convert/metadata_writer_tutorial
+          path: /lite/models/convert/metadata_writer_tutorial
       - title: "Add Signatures"
         path: /lite/guide/signatures
         status: experimental

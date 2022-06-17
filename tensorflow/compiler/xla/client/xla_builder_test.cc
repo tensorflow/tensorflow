@@ -449,6 +449,7 @@ TEST_F(XlaBuilderTest, AllToAll) {
       ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {8, 8})));
 }
 
+// Test the special case where split_dimension is the same as concat_dimension.
 TEST_F(XlaBuilderTest, AllToAllSpecial) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16, 8}), "x");
@@ -461,6 +462,28 @@ TEST_F(XlaBuilderTest, AllToAllSpecial) {
   EXPECT_EQ(root->opcode(), HloOpcode::kAllToAll);
   EXPECT_TRUE(
       ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {4, 16, 8})));
+}
+
+TEST_F(XlaBuilderTest, AllToAllTuple) {
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {2, 4}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {2, 4}), "p1");
+  ReplicaGroup replica_group;
+  replica_group.add_replica_ids(0);
+  replica_group.add_replica_ids(1);
+
+  AllToAllTuple({p0, p1}, {replica_group}, LayoutUtil::MakeAscendingLayout(2));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+
+  // AllToAll is converted into a single all-to-all HloInstruction.
+  EXPECT_EQ(root->opcode(), HloOpcode::kAllToAll);
+  auto expected_shape =
+      ShapeUtil::MakeShapeWithLayout(F32, /* dimensions= */ {2, 4},
+                                     /* minor_to_major= */ {0, 1});
+  EXPECT_THAT(root, op::ShapeWithLayout(ShapeUtil::MakeTupleShape(
+                        {expected_shape, expected_shape})));
+  EXPECT_THAT(root, op::ReplicaGroups({{0, 1}}));
 }
 
 TEST_F(XlaBuilderTest, CollectivePermute) {

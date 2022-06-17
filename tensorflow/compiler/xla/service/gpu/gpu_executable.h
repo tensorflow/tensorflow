@@ -18,12 +18,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -123,7 +123,7 @@ class GpuExecutable : public Executable {
 
     // Whether this output is hinted to alias a parameter (BufferAllocation*
     // would indicate the aliased parameter), and what kind of alias it is.
-    absl::optional<HloInputOutputAliasConfig::Alias> alias_config;
+    std::optional<HloInputOutputAliasConfig::Alias> alias_config;
   };
 
   struct Params {
@@ -132,7 +132,7 @@ class GpuExecutable : public Executable {
     GpuVersion gpu_version;
     // The GpuExecutable will either execute Thunks, a whole-program BEF or a
     // JitRt compiled native function depending on which is supplied.
-    absl::variant<OwnedThunkSchedule, OwnedBefBuffer, OwnedJitRtProgram>
+    std::variant<OwnedThunkSchedule, OwnedBefBuffer, OwnedJitRtProgram>
         executable;
     xla::EntryFunctionAttributes entry_func_attrs;
     std::vector<ConstantInfo> constants;
@@ -221,8 +221,8 @@ class GpuExecutable : public Executable {
       absl::Span<const ShapedBuffer* const> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
-  using VariantArguments = absl::variant<absl::Span<const ShapedBuffer* const>,
-                                         absl::Span<ExecutionInput>>;
+  using VariantArguments = std::variant<absl::Span<const ShapedBuffer* const>,
+                                        absl::Span<ExecutionInput>>;
   StatusOr<ExecutionOutput> ExecuteAsyncOnStreamImpl(
       const ServiceExecutableRunOptions* run_options,
       VariantArguments arguments);

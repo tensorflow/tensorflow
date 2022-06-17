@@ -59,7 +59,7 @@ class RandomDatasetOp::Dataset : public DatasetBase {
     // service with RandomDataset.
     split_providers->push_back(
         absl::make_unique<IndexSplitProvider>(kint64max));
-    return Status::OK();
+    return OkStatus();
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -81,10 +81,10 @@ class RandomDatasetOp::Dataset : public DatasetBase {
   int64_t CardinalityInternal() const override { return kInfiniteCardinality; }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
-    return Status::OK();
+    return OkStatus();
   }
 
-  Status CheckExternalState() const override { return Status::OK(); }
+  Status CheckExternalState() const override { return OkStatus(); }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -95,7 +95,7 @@ class RandomDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddScalar(seeds_.first, &seed));
     TF_RETURN_IF_ERROR(b->AddScalar(seeds_.second, &seed2));
     TF_RETURN_IF_ERROR(b->AddDataset(this, {seed, seed2}, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -115,7 +115,7 @@ class RandomDatasetOp::Dataset : public DatasetBase {
       out_tensors->emplace_back(ctx->allocator({}), DT_INT64, TensorShape({}));
       out_tensors->back().scalar<int64_t>()() = Random();
       *end_of_sequence = false;
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
@@ -129,7 +129,7 @@ class RandomDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("num_random_samples"),
                                              num_random_samples_));
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -141,7 +141,7 @@ class RandomDatasetOp::Dataset : public DatasetBase {
       generator_ =
           random::SingleSampleAdapter<random::PhiloxRandom>(&parent_generator_);
       generator_.Skip(num_random_samples_);
-      return Status::OK();
+      return OkStatus();
     }
 
    private:

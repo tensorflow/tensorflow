@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <numeric>
+#include <optional>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/error_spec.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -34,7 +34,7 @@ XLA_TEST_F(HloTestBase, IotaReshapeR1) {
     ROOT r = s32[4,3,2] reshape(i)
   }
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_text, absl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
 XLA_TEST_F(HloTestBase, IotaReshapeExtraDims) {
@@ -45,7 +45,7 @@ XLA_TEST_F(HloTestBase, IotaReshapeExtraDims) {
     ROOT r = s32[25,3,37,7,6] reshape(i)
   }
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_text, absl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
 template <typename T>

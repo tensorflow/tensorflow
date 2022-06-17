@@ -51,17 +51,13 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 struct ReduceWhileOperandsPass
-    : public PassWrapper<ReduceWhileOperandsPass, OperationPass<func::FuncOp>> {
+    : public ReduceWhileOperandsPassBase<ReduceWhileOperandsPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ReduceWhileOperandsPass)
-
-  StringRef getArgument() const final { return "tfl-reduce-while"; }
-  StringRef getDescription() const final {
-    // TODO(b/200919263): Declare Reduce While Operands Pass in Table-Gen
-    return "Reduce the number of operands and results of a whlieOp.";
-  }
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<TFL::TensorFlowLiteDialect, TF::TensorFlowDialect>();

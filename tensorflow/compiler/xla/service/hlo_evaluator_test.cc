@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -180,7 +179,7 @@ class HloEvaluatorTest : public HloTestBase {
     //  {  8,  9, 10, 11 },
     //  { 12, 13, 14, 15 }
     // }
-    auto arg_array = absl::make_unique<Array2D<float>>(4, 4);
+    auto arg_array = std::make_unique<Array2D<float>>(4, 4);
     arg_array->FillIota(0);
     auto arg_literal = LiteralUtil::CreateR2FromArray2D<float>(*arg_array);
 
@@ -730,7 +729,7 @@ TEST_P(HloEvaluatorBf16Test, Pad4DFloatArrayWithInteriorPadding) {
 
   TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
 
-  auto expected_array = absl::make_unique<Array4D<float>>(8, 5, 1, 1);
+  auto expected_array = std::make_unique<Array4D<float>>(8, 5, 1, 1);
   expected_array->Fill(kPadValue);
   (*expected_array)(1, 0, 0, 0) = 1.0f;
   (*expected_array)(1, 2, 0, 0) = 2.0f;
@@ -754,7 +753,7 @@ TEST_P(HloEvaluatorBf16Test, NegativePadding2D) {
   //  { 9, 10, 11 },
   //  { 13, 14, 15 },
   // }
-  auto input_array = absl::make_unique<Array2D<float>>(4, 3);
+  auto input_array = std::make_unique<Array2D<float>>(4, 3);
   input_array->FillUnique(1.0f);
   auto input = LiteralUtil::CreateR2FromArray2D<float>(*input_array);
   HloInstruction* input_instruction =
@@ -775,7 +774,7 @@ TEST_P(HloEvaluatorBf16Test, NegativePadding2D) {
   TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
 
   // f32[1,5] { 7.0, 2.718, 2.718, 2.718, 2.718 }
-  auto expected_array = absl::make_unique<Array2D<float>>(1, 5);
+  auto expected_array = std::make_unique<Array2D<float>>(1, 5);
   (*expected_array)(0, 0) = 7.0f;
   (*expected_array)(0, 1) = 2.718f;
   (*expected_array)(0, 2) = 2.718f;
@@ -795,7 +794,7 @@ TEST_P(HloEvaluatorBf16Test, NegativeAndInteriorPadding2D) {
   //  { 9, 10, 11 },
   //  { 13, 14, 15 },
   // }
-  auto input_array = absl::make_unique<Array2D<float>>(4, 3);
+  auto input_array = std::make_unique<Array2D<float>>(4, 3);
   input_array->FillUnique(1.0f);
   auto input = LiteralUtil::CreateR2FromArray2D<float>(*input_array);
   HloInstruction* input_instruction =
@@ -819,7 +818,7 @@ TEST_P(HloEvaluatorBf16Test, NegativeAndInteriorPadding2D) {
 
   TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
 
-  auto expected_array = absl::make_unique<Array2D<float>>(0, 9);
+  auto expected_array = std::make_unique<Array2D<float>>(0, 9);
   auto expected = LiteralUtil::CreateR2FromArray2D<float>(*expected_array);
 
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
@@ -835,7 +834,7 @@ TEST_P(HloEvaluatorBf16Test, DotRank2AndRank1) {
   //  { 3 },
   //  { 4 },
   // }
-  auto lhs_array = absl::make_unique<Array2D<float>>(4, 1);
+  auto lhs_array = std::make_unique<Array2D<float>>(4, 1);
   lhs_array->FillUnique(1.0f);
   auto lhs_literal = LiteralUtil::CreateR2FromArray2D<float>(*lhs_array);
   HloInstruction* lhs_instruction =
@@ -887,7 +886,7 @@ TEST_P(HloEvaluatorBf16Test, DotRank1AndRank2) {
   //  { 3, 4 },
   //  { 5, 6 },
   // }
-  auto rhs_array = absl::make_unique<Array2D<float>>(3, 2);
+  auto rhs_array = std::make_unique<Array2D<float>>(3, 2);
   rhs_array->FillUnique(1.0f);
   auto rhs_literal = LiteralUtil::CreateR2FromArray2D<float>(*rhs_array);
   HloInstruction* rhs_instruction =
@@ -919,7 +918,7 @@ TEST_P(HloEvaluatorBf16Test, DotRank2AndRank2) {
   //  { 9, 10, 11 },
   //  { 13, 14, 15 },
   // }
-  auto lhs_array = absl::make_unique<Array2D<float>>(4, 3);
+  auto lhs_array = std::make_unique<Array2D<float>>(4, 3);
   lhs_array->FillUnique(1.0f);
   auto lhs_literal = LiteralUtil::CreateR2FromArray2D<float>(*lhs_array);
   HloInstruction* lhs_instruction =
@@ -931,7 +930,7 @@ TEST_P(HloEvaluatorBf16Test, DotRank2AndRank2) {
   //  { 3, 4 },
   //  { 5, 6 },
   // }
-  auto rhs_array = absl::make_unique<Array2D<float>>(3, 2);
+  auto rhs_array = std::make_unique<Array2D<float>>(3, 2);
   rhs_array->FillUnique(1.0f);
   auto rhs_literal = LiteralUtil::CreateR2FromArray2D<float>(*rhs_array);
   HloInstruction* rhs_instruction =
@@ -962,13 +961,13 @@ TEST_P(HloEvaluatorBf16Test, DotRank2AndRank2) {
 TEST_P(HloEvaluatorBf16Test, DotRank4AndRank4) {
   HloComputation::Builder b(TestName());
 
-  auto lhs_array = absl::make_unique<Array4D<float>>(2, 2, 3, 1);
+  auto lhs_array = std::make_unique<Array4D<float>>(2, 2, 3, 1);
   lhs_array->FillIota(1.0f);
   auto lhs_literal = LiteralUtil::CreateR4FromArray4D<float>(*lhs_array);
   HloInstruction* lhs_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
 
-  auto rhs_array = absl::make_unique<Array4D<float>>(2, 2, 3, 1);
+  auto rhs_array = std::make_unique<Array4D<float>>(2, 2, 3, 1);
   rhs_array->FillIota(2.0f);
   auto rhs_literal = LiteralUtil::CreateR4FromArray4D<float>(*rhs_array);
   HloInstruction* rhs_instruction =
@@ -2630,7 +2629,7 @@ TEST_P(HloEvaluatorBf16Test, ReduceAdd) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto arg_array = absl::make_unique<Array2D<float>>(2, 3);
+  auto arg_array = std::make_unique<Array2D<float>>(2, 3);
   arg_array->FillUnique(1.0f);
   auto arg_literal = LiteralUtil::CreateR2FromArray2D<float>(*arg_array);
 
@@ -2672,7 +2671,7 @@ TEST_P(HloEvaluatorBf16Test, ReduceWindowMax) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto arg_array = absl::make_unique<Array2D<float>>(2, 3);
+  auto arg_array = std::make_unique<Array2D<float>>(2, 3);
   arg_array->FillUnique(1.0f);
   auto arg_literal = LiteralUtil::CreateR2FromArray2D<float>(*arg_array);
 
@@ -2789,7 +2788,7 @@ TEST_P(HloEvaluatorBf16Test, ReduceWindowAdd) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto arg_array = absl::make_unique<Array2D<float>>(2, 3);
+  auto arg_array = std::make_unique<Array2D<float>>(2, 3);
   arg_array->FillUnique(1.0f);
   auto arg_literal = LiteralUtil::CreateR2FromArray2D<float>(*arg_array);
 
@@ -3013,7 +3012,7 @@ TEST_P(HloEvaluatorBf16Test, StridedSlice) {
   //  { 9, 10, 11, 12, 13 },
   //  { 17, 18, 19, 20, 21 },
   // }
-  auto operand_array = absl::make_unique<Array2D<float>>(3, 5);
+  auto operand_array = std::make_unique<Array2D<float>>(3, 5);
   operand_array->FillUnique(1.0f);
   auto operand_literal =
       LiteralUtil::CreateR2FromArray2D<float>(*operand_array);
@@ -3046,7 +3045,7 @@ TEST_P(HloEvaluatorBf16Test, DynamicSlice) {
   //  { 1, 2, 3, 4 },
   //  { 5, 6, 7, 8 },
   // }
-  auto operand_array = absl::make_unique<Array2D<float>>(2, 4);
+  auto operand_array = std::make_unique<Array2D<float>>(2, 4);
   operand_array->FillUnique(1.0f);
   auto operand_literal =
       LiteralUtil::CreateR2FromArray2D<float>(*operand_array);
@@ -3084,7 +3083,7 @@ TEST_P(HloEvaluatorBf16Test, DynamicSliceModSlice) {
   //  { 1, 2, 3, 4 },
   //  { 5, 6, 7, 8 },
   // }
-  auto operand_array = absl::make_unique<Array2D<float>>(2, 4);
+  auto operand_array = std::make_unique<Array2D<float>>(2, 4);
   operand_array->FillUnique(1.0f);
   auto operand_literal =
       LiteralUtil::CreateR2FromArray2D<float>(*operand_array);
@@ -3120,7 +3119,7 @@ TEST_P(HloEvaluatorBf16Test, DynamicSliceUpdate) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto operand_array = absl::make_unique<Array2D<double>>(2, 3);
+  auto operand_array = std::make_unique<Array2D<double>>(2, 3);
   operand_array->FillUnique(1.0);
   auto operand_literal =
       LiteralUtil::CreateR2FromArray2D<double>(*operand_array);
@@ -3159,7 +3158,7 @@ TEST_P(HloEvaluatorBf16Test, SetAndGetTuples) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto operand_array = absl::make_unique<Array2D<double>>(2, 3);
+  auto operand_array = std::make_unique<Array2D<double>>(2, 3);
   operand_array->FillUnique(1.0);
   auto operand_literal2 =
       LiteralUtil::CreateR2FromArray2D<double>(*operand_array);
@@ -3195,7 +3194,7 @@ TEST_P(HloEvaluatorBf16Test, SetAndGetNestedTuples) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto operand_array = absl::make_unique<Array2D<double>>(2, 3);
+  auto operand_array = std::make_unique<Array2D<double>>(2, 3);
   operand_array->FillUnique(1.0);
 
   HloInstruction* operand2 = b.AddInstruction(HloInstruction::CreateConstant(
@@ -4769,7 +4768,7 @@ TEST_F(HloEvaluatorTest, DotUpcast) {
   //  { 9, 10, 11 },
   //  { 13, 14, 15 },
   // }
-  auto lhs_array = absl::make_unique<Array2D<int16_t>>(4, 3);
+  auto lhs_array = std::make_unique<Array2D<int16_t>>(4, 3);
   lhs_array->FillUnique(1);
   auto lhs_literal = LiteralUtil::CreateR2FromArray2D<int16_t>(*lhs_array);
 
@@ -4779,7 +4778,7 @@ TEST_F(HloEvaluatorTest, DotUpcast) {
   //  { 3, 4 },
   //  { 5, 6 },
   // }
-  auto rhs_array = absl::make_unique<Array2D<int8_t>>(3, 2);
+  auto rhs_array = std::make_unique<Array2D<int8_t>>(3, 2);
   rhs_array->FillUnique(1);
   auto rhs_literal = LiteralUtil::CreateR2FromArray2D<int8_t>(*rhs_array);
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
@@ -5004,7 +5003,7 @@ TEST_F(PatternMatchParseWhileLoopTest, LoopBoundDefinedInsideOfCond) {
                           ParseAndReturnVerifiedModule(kHloModule));
   HloInstruction* while_op =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  absl::optional<ParsedWhileLoop> parsed_while_loop =
+  std::optional<ParsedWhileLoop> parsed_while_loop =
       PatternMatchParseWhileLoop(while_op);
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_FALSE(parsed_while_loop->is_dynamic());
@@ -5053,7 +5052,7 @@ TEST_F(PatternMatchParseWhileLoopTest, LoopBoundDefinedOutsideOfCond) {
                           ParseAndReturnVerifiedModule(kHloModule));
   HloInstruction* while_op =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  absl::optional<ParsedWhileLoop> parsed_while_loop =
+  std::optional<ParsedWhileLoop> parsed_while_loop =
       PatternMatchParseWhileLoop(while_op);
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_FALSE(parsed_while_loop->is_dynamic());
@@ -5104,7 +5103,7 @@ TEST_F(PatternMatchParseWhileLoopTest, LoopBoundComputedOutsideOfCond) {
                           ParseAndReturnVerifiedModule(kHloModule));
   HloInstruction* while_op =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  absl::optional<ParsedWhileLoop> parsed_while_loop =
+  std::optional<ParsedWhileLoop> parsed_while_loop =
       PatternMatchParseWhileLoop(while_op);
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_FALSE(parsed_while_loop->is_dynamic());
@@ -5155,7 +5154,7 @@ TEST_F(PatternMatchParseWhileLoopTest, StepSizeNotOne) {
                           ParseAndReturnVerifiedModule(kHloModule));
   HloInstruction* while_op =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  absl::optional<ParsedWhileLoop> parsed_while_loop =
+  std::optional<ParsedWhileLoop> parsed_while_loop =
       PatternMatchParseWhileLoop(while_op);
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_FALSE(parsed_while_loop->is_dynamic());
@@ -5212,7 +5211,7 @@ TEST_F(PatternMatchParseWhileLoopTest, RecursiveCond) {
                           ParseAndReturnVerifiedModule(kHloModule));
   HloInstruction* while_op =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  absl::optional<ParsedWhileLoop> parsed_while_loop =
+  std::optional<ParsedWhileLoop> parsed_while_loop =
       PatternMatchParseWhileLoop(while_op);
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_FALSE(parsed_while_loop->is_dynamic());
@@ -5277,7 +5276,7 @@ TEST_F(PatternMatchParseWhileLoopTest, RecursiveCondGetTupleElement) {
                           ParseAndReturnVerifiedModule(kHloModule));
   HloInstruction* while_op =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  absl::optional<ParsedWhileLoop> parsed_while_loop =
+  std::optional<ParsedWhileLoop> parsed_while_loop =
       PatternMatchParseWhileLoop(while_op);
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_FALSE(parsed_while_loop->is_dynamic());
@@ -5364,7 +5363,7 @@ TEST_F(PatternMatchParseWhileLoopTest, LoopBoundDependsOnAnotherLoop) {
                           ParseAndReturnVerifiedModule(kHloModule));
   HloInstruction* while_op =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  absl::optional<ParsedWhileLoop> parsed_while_loop =
+  std::optional<ParsedWhileLoop> parsed_while_loop =
       PatternMatchParseWhileLoop(while_op);
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_FALSE(parsed_while_loop->is_dynamic());
@@ -5413,7 +5412,7 @@ TEST_F(PatternMatchParseWhileLoopTest, DynamicLoop) {
                           ParseAndReturnVerifiedModule(kHloModule));
   HloInstruction* while_op =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  absl::optional<ParsedWhileLoop> parsed_while_loop =
+  std::optional<ParsedWhileLoop> parsed_while_loop =
       PatternMatchParseWhileLoop(while_op);
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_TRUE(parsed_while_loop->is_dynamic());
@@ -5452,7 +5451,7 @@ TEST_F(PatternMatchParseWhileLoopTest, BooleanCond) {
                           ParseAndReturnVerifiedModule(kHloModule));
   HloInstruction* while_op =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  absl::optional<ParsedWhileLoop> parsed_while_loop =
+  std::optional<ParsedWhileLoop> parsed_while_loop =
       PatternMatchParseWhileLoop(while_op);
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_FALSE(parsed_while_loop->is_dynamic());

@@ -12,9 +12,6 @@ tf_py_test(
     size = "medium",
     srcs = ["auto_shard_test.py"],
     shard_count = 32,
-    tags = [
-        "noasan",  # b/231336996
-    ],
     deps = [
         ":multi_process_cluster",
         ":test_base",
@@ -37,6 +34,9 @@ tf_py_test(
     size = "medium",
     srcs = ["coordinated_read_ft_test.py"],
     shard_count = 16,
+    tags = [
+        "nomsan",  # TODO(b/235140931): Test timing out.
+    ],
     deps = [
         ":test_base",
         "//tensorflow:tensorflow_py",
@@ -237,6 +237,7 @@ py_library(
     deps = [
         ":test_base",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/data/experimental/service:server_lib",
         "//tensorflow/python/distribute:multi_process_lib",
         "//tensorflow/python/platform:test",

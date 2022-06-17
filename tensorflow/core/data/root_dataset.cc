@@ -116,7 +116,7 @@ Status RootDataset::FromOptions(const DatasetBase* input,
   SetRootDatasetParams(input->options(), &params);
   *output = new RootDataset(input, params);
   (*output)->Initialize(/*metadata=*/{});
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RootDataset::FromOptions(core::RefCountPtr<DatasetBase> input,
@@ -125,7 +125,7 @@ Status RootDataset::FromOptions(core::RefCountPtr<DatasetBase> input,
   SetRootDatasetParams(input->options(), &params);
   *output = new RootDataset(std::move(input), params);
   (*output)->Initialize(/*metadata=*/{});
-  return Status::OK();
+  return OkStatus();
 }
 
 class RootDataset::Iterator : public DatasetIterator<RootDataset> {
@@ -176,14 +176,14 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
   Status SaveInternal(SerializationContext* ctx,
                       IteratorStateWriter* writer) override {
     TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-    return Status::OK();
+    return OkStatus();
   }
 
   Status RestoreInternal(IteratorContext* ctx,
                          IteratorStateReader* reader) override {
     TF_RETURN_IF_ERROR(
         RestoreInput(IteratorContext(CreateParams(ctx)), reader, input_impl_));
-    return Status::OK();
+    return OkStatus();
   }
 
   TraceMeMetadata GetTraceMeMetadata() const override {
@@ -202,7 +202,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
         strings::Printf("%lld out of %lld (%.2f%%)",
                         static_cast<long long>(memory_usage / 1.0e6),
                         static_cast<long long>(memory_info.total / 1.0e6),
-                        static_cast<double>(memory_usage) /
+                        static_cast<double>(100 * memory_usage) /
                             static_cast<double>(memory_info.total))));
     if (model_node() != nullptr) {
       traceme_metadata.push_back(std::make_pair(
@@ -248,7 +248,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
         }
       });
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   std::shared_ptr<model::Model> model_ = nullptr;
@@ -321,7 +321,7 @@ Status RootDataset::Get(OpKernelContext* ctx, int64 index,
 Status RootDataset::InputDatasets(
     std::vector<const DatasetBase*>* inputs) const {
   inputs->push_back(input_);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RootDataset::CheckExternalState() const {
@@ -383,7 +383,7 @@ Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
   } else {
     return RootDataset::FromOptions(std::move(rewritten_output), output);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 #else   // !IS_MOBILE_PLATFORM

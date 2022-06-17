@@ -82,7 +82,7 @@ class HloPassInterface {
       run_state->changed_this_iteration.insert(computations.begin(),
                                                computations.end());
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Run the pass on the given HLO module group. Returns whether it modified the

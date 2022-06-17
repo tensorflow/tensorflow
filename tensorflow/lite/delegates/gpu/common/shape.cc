@@ -104,7 +104,9 @@ std::string ToString(Layout layout) {
     case Layout::BHWDC:
       return "bhwdc";
     case Layout::OHWDI:
-      return "ohwi";
+      return "ohwdi";
+    case Layout::HWIO:
+      return "hwio";
     case Layout::UNKNOWN:
       return "unknown";
   }

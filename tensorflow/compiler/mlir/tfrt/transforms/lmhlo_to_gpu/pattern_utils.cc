@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pattern_utils.h"
 
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "tfrt/gpu/wrapper/cublas_wrapper.h"  // from @tf_runtime
 #include "tfrt/gpu/wrapper/cudnn_wrapper.h"  // from @tf_runtime
 #include "tfrt/gpu/wrapper/miopen_wrapper.h"  // from @tf_runtime
@@ -22,6 +23,9 @@ limitations under the License.
 #include "tfrt/basic_kernels/opdefs/basic_kernels.h"  // from @tf_runtime
 
 namespace tensorflow {
+
+using mlir::arith::ConstantFloatOp;
+using mlir::arith::ConstantIntOp;
 
 #if TENSORFLOW_USE_ROCM
 const tfrt::gpu::wrapper::Platform kGpuTargetPlatform =
@@ -258,18 +262,15 @@ mlir::Value MakeScalingFactorConstant(mlir::OpBuilder& builder,
 
 mlir::Value MakeBitPatternConstant(mlir::OpBuilder& builder, mlir::Location loc,
                                    mlir::Type type, uint32_t bit_pattern) {
-  llvm::APInt value(32, bit_pattern);
-  if (type.isSignlessInteger(/*width=*/32)) {
-    return builder.create<tfrt::compiler::ConstantI32Op>(loc,
-                                                         value.getZExtValue());
+  llvm::APInt i32(32, bit_pattern);
+
+  if (type.isInteger(32)) {
+    return builder.create<ConstantIntOp>(loc, i32.getSExtValue(), type);
   }
-  if (type.isUnsignedInteger(/*width=*/32)) {
-    return builder.create<tfrt::compiler::ConstantUI32Op>(loc,
-                                                          value.getZExtValue());
-  }
+
   if (type.isF32()) {
-    llvm::APFloat value_float(value.bitsToFloat());  // Like reinterpret_cast.
-    return builder.create<tfrt::compiler::ConstantF32Op>(loc, value_float);
+    llvm::APFloat f32(i32.bitsToFloat());
+    return builder.create<ConstantFloatOp>(loc, f32, type.cast<FloatType>());
   }
 
   llvm_unreachable("unsupported type");

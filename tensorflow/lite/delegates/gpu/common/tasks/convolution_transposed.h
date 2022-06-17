@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONVOLUTION_TRANSPOSED_H_
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -75,10 +76,10 @@ class ConvolutionTransposed : public GPUOperation {
 
   ConvolutionTransposed(const OperationDef& definition,
                         const ConvolutionTransposedAttributes& attr,
-                        const GpuInfo& gpu_info, bool weights_are_buffer);
+                        const GpuInfo& gpu_info);
   ConvolutionTransposed(const OperationDef& definition,
                         const ConvolutionTransposed3DAttributes& attr,
-                        const GpuInfo& gpu_info, bool weights_are_buffer);
+                        const GpuInfo& gpu_info);
 
   template <DataType T>
   void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
@@ -90,7 +91,6 @@ class ConvolutionTransposed : public GPUOperation {
 
   std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
                                                 const GpuInfo& gpu_info,
-                                                bool weights_are_buffer,
                                                 const int4& block_size);
   int4 stride_;
   int4 block_size_ = int4(1, 1, 1, 1);  // WHDS
@@ -114,7 +114,7 @@ void ConvolutionTransposed::UploadWeights(
     desc.size = weights_data.size();
     desc.data = std::move(weights_data);
     args_.AddObject("weights",
-                    absl::make_unique<BufferDescriptor>(std::move(desc)));
+                    std::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
     uint2 tex_size = Get2dResourceSize(weights_desc, weights.shape);
     int sub_size = SizeOf(weights_desc.type) * 4 * tex_size.x * tex_size.y;
@@ -126,7 +126,7 @@ void ConvolutionTransposed::UploadWeights(
       memcpy(desc.data.data(), weights_data.data() + sub_size * i, sub_size);
       const std::string name = "weights" + std::to_string(i);
       args_.AddObject(name,
-                      absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+                      std::make_unique<Texture2DDescriptor>(std::move(desc)));
     }
   }
 }
@@ -148,7 +148,7 @@ void ConvolutionTransposed::UploadWeights(
     desc.size = weights_data.size();
     desc.data = std::move(weights_data);
     args_.AddObject("weights",
-                    absl::make_unique<BufferDescriptor>(std::move(desc)));
+                    std::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
     uint2 tex_size = Get2dResourceSize(weights_desc, weights.shape);
     int sub_size = SizeOf(weights_desc.type) * 4 * tex_size.x * tex_size.y;
@@ -160,7 +160,7 @@ void ConvolutionTransposed::UploadWeights(
       memcpy(desc.data.data(), weights_data.data() + sub_size * i, sub_size);
       const std::string name = "weights" + std::to_string(i);
       args_.AddObject(name,
-                      absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+                      std::make_unique<Texture2DDescriptor>(std::move(desc)));
     }
   }
 }

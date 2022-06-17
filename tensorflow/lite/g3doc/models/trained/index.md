@@ -94,9 +94,9 @@ development process.
 
 ### TensorFlow models
 
-It is possible to [convert](https://www.tensorflow.org/lite/convert) regular
+It is possible to [convert](https://www.tensorflow.org/lite/models/convert) regular
 TensorFlow models to TensorFlow Lite format. For more information about
 converting models, see the [TensorFlow Lite
-Converter](https://www.tensorflow.org/lite/convert) documentation. You can find
+Converter](https://www.tensorflow.org/lite/models/convert) documentation. You can find
 TensorFlow models on [TensorFlow Hub](https://tfhub.dev/) and in the
 [TensorFlow Model Garden](https://github.com/tensorflow/models).

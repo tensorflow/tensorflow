@@ -18,7 +18,8 @@ import itertools
 
 import uuid
 from absl.testing import parameterized
-
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
+from tensorflow.python.checkpoint import checkpoint_management as ckpt_manager
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
@@ -40,8 +41,6 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.tpu import tpu_strategy_util
-from tensorflow.python.training import checkpoint_management as ckpt_manager
-from tensorflow.python.training.tracking import util as trackable_utils
 
 
 def strategy_and_run_tf_function_combinations():

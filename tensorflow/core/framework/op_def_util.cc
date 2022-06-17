@@ -47,7 +47,7 @@ Status AllowedTypeValue(DataType dt, const OpDef::AttrDef& attr) {
   const AttrValue& allowed_values(attr.allowed_values());
   for (auto allowed : allowed_values.list().type()) {
     if (dt == allowed) {
-      return Status::OK();
+      return OkStatus();
     }
   }
   string allowed_str;
@@ -67,7 +67,7 @@ Status AllowedStringValue(const string& str, const OpDef::AttrDef& attr) {
   const AttrValue& allowed_values(attr.allowed_values());
   for (const auto& allowed : allowed_values.list().s()) {
     if (str == allowed) {
-      return Status::OK();
+      return OkStatus();
     }
   }
   string allowed_str;
@@ -145,7 +145,7 @@ Status ValidateAttrValue(const AttrValue& attr_value,
           "Support for allowed_values not implemented for type ", attr.type());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 const OpDef::AttrDef* FindAttr(StringPiece name, const OpDef& op_def) {
@@ -246,7 +246,7 @@ static Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
              DataTypeString(arg.type()), "'. Use 'Ref(type)' instead", suffix);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 bool IsValidOpName(StringPiece sp) {
@@ -345,7 +345,7 @@ Status ValidateOpDef(const OpDef& op_def) {
     TF_RETURN_IF_ERROR(ValidateArg(arg, op_def, true, &names));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #undef VALIDATE
@@ -374,7 +374,7 @@ Status CheckOpDeprecation(const OpDef& op_def, int graph_def_version) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -686,7 +686,7 @@ Status OpDefCompatible(const OpDef& old_op, const OpDef& new_op) {
              " changed from ref to non-ref");
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
@@ -725,7 +725,7 @@ Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpDefAttrDefaultsUnchanged(const OpDef& old_op, const OpDef& new_op) {
@@ -754,7 +754,7 @@ Status OpDefAttrDefaultsUnchanged(const OpDef& old_op, const OpDef& new_op) {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void RemoveNonDeprecationDescriptionsFromOpDef(OpDef* op_def) {

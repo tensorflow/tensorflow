@@ -270,7 +270,7 @@ Status OpTestBuilder::BuildGraph(const string& name_prefix,
     *test_node_def = test_def;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Test fixture. The fixture manages the random number generator and its seed,
@@ -540,11 +540,11 @@ class TensorGenerator {
   explicit TensorGenerator(OpTest& test) : test_(test) {}
   virtual ~TensorGenerator() {}
   virtual DataType dtype() = 0;
-  virtual void RandomVals(absl::optional<T> lo, absl::optional<T> hi,
+  virtual void RandomVals(std::optional<T> lo, std::optional<T> hi,
                           bool needs_unique_values,
                           absl::FixedArray<T>& vals) = 0;
 
-  Tensor RandomTensor(absl::optional<T> lo, absl::optional<T> hi,
+  Tensor RandomTensor(std::optional<T> lo, std::optional<T> hi,
                       bool needs_unique_values,
                       absl::Span<const int64_t> shape) {
     absl::FixedArray<T> vals(ShapeNumVals(shape));
@@ -577,7 +577,7 @@ class TensorGeneratorFloat : public TensorGenerator<float> {
  public:
   explicit TensorGeneratorFloat(OpTest& test) : TensorGenerator(test) {}
   DataType dtype() override { return DT_FLOAT; }
-  void RandomVals(absl::optional<float> lo, absl::optional<float> hi,
+  void RandomVals(std::optional<float> lo, std::optional<float> hi,
                   bool needs_unique_values,
                   absl::FixedArray<float>& vals) override {
     absl::flat_hash_set<float> already_generated;
@@ -598,7 +598,7 @@ class TensorGeneratorDouble : public TensorGenerator<double> {
  public:
   explicit TensorGeneratorDouble(OpTest& test) : TensorGenerator(test) {}
   DataType dtype() override { return DT_DOUBLE; }
-  void RandomVals(absl::optional<double> lo, absl::optional<double> hi,
+  void RandomVals(std::optional<double> lo, std::optional<double> hi,
                   bool needs_unique_values,
                   absl::FixedArray<double>& vals) override {
     absl::flat_hash_set<double> already_generated;
@@ -619,7 +619,7 @@ class TensorGeneratorComplex64 : public TensorGenerator<complex64> {
  public:
   explicit TensorGeneratorComplex64(OpTest& test) : TensorGenerator(test) {}
   DataType dtype() override { return DT_COMPLEX64; }
-  void RandomVals(absl::optional<complex64> lo, absl::optional<complex64> hi,
+  void RandomVals(std::optional<complex64> lo, std::optional<complex64> hi,
                   bool needs_unique_values,
                   absl::FixedArray<complex64>& vals) override {
     absl::flat_hash_set<std::pair<float, float>> already_generated;
@@ -645,7 +645,7 @@ class TensorGeneratorInt32 : public TensorGenerator<int32> {
  public:
   explicit TensorGeneratorInt32(OpTest& test) : TensorGenerator(test) {}
   DataType dtype() override { return DT_INT32; }
-  void RandomVals(absl::optional<int32> lo, absl::optional<int32> hi,
+  void RandomVals(std::optional<int32> lo, std::optional<int32> hi,
                   bool needs_unique_values,
                   absl::FixedArray<int32>& vals) override {
     absl::flat_hash_set<int32> already_generated;
@@ -666,7 +666,7 @@ class TensorGeneratorInt64 : public TensorGenerator<int64> {
  public:
   explicit TensorGeneratorInt64(OpTest& test) : TensorGenerator(test) {}
   DataType dtype() override { return DT_INT64; }
-  void RandomVals(absl::optional<int64> lo, absl::optional<int64> hi,
+  void RandomVals(std::optional<int64> lo, std::optional<int64> hi,
                   bool needs_unique_values,
                   absl::FixedArray<int64>& vals) override {
     absl::flat_hash_set<int64_t> already_generated;
@@ -687,7 +687,7 @@ class TensorGeneratorBool : public TensorGenerator<bool> {
  public:
   explicit TensorGeneratorBool(OpTest& test) : TensorGenerator(test) {}
   DataType dtype() override { return DT_BOOL; }
-  void RandomVals(absl::optional<bool> lo, absl::optional<bool> hi,
+  void RandomVals(std::optional<bool> lo, std::optional<bool> hi,
                   bool needs_unique_values,
                   absl::FixedArray<bool>& vals) override {
     absl::flat_hash_set<bool> already_generated;
@@ -1381,7 +1381,7 @@ Status TensorsAreCloseImpl(const Tensor& x, const Tensor& y, double atol,
                        " rtol = ", rtol, " tol = ", atol + rtol * Abs(Tx(i))));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T>
@@ -1395,7 +1395,7 @@ Status TensorsAreEqualImpl(const Tensor& x, const Tensor& y) {
           Str(Ty(i)), ". x = ", x.DebugString(), "y = ", y.DebugString()));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TensorsAreEqualImplBfloat16(const Tensor& x, const Tensor& y) {
@@ -1409,7 +1409,7 @@ Status TensorsAreEqualImplBfloat16(const Tensor& x, const Tensor& y) {
           "y = ", y.DebugString()));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Tests if "x" and "y" are tensors of the same type, same shape, and with

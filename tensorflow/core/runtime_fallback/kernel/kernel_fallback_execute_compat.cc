@@ -144,7 +144,7 @@ Status SetUpKernelFallbackCompatRequestContext(
       runner_table, resource_array, user_intra_op_threadpool, model_metadata,
       pflr);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SetUpKernelFallbackCompatRequestContext(
@@ -177,7 +177,7 @@ Status SetUpKernelFallbackCompatRequestContext(
   fallback_request_state.set_log_device_placement(
       eager_context->LogDevicePlacement());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 static llvm::Expected<gtl::InlinedVector<tensorflow::Tensor, 4>>
@@ -218,7 +218,7 @@ static Status ValidateInputTypes(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {

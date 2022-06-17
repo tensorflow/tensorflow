@@ -18,11 +18,18 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+// TODO(skyewm): remove when everything goes through C API
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "tensorflow/core/tpu/pjrt_api.h"
+
 namespace xla {
 
 PjRtCApiClient::PjRtCApiClient(
-    std::vector<std::unique_ptr<PjRtCApiDevice>> devices, PjRtClient* wrapped)
-    : owned_devices_(std::move(devices)), wrapped_(wrapped) {
+    const PJRT_Api* c_api, PJRT_Client* c_client,
+    std::vector<std::unique_ptr<PjRtCApiDevice>> devices)
+    : c_api_(c_api), c_client_(c_client), owned_devices_(std::move(devices)) {
+  wrapped_ = c_client_->client.get();
+
   for (int i = 0; i < owned_devices_.size(); ++i) {
     const std::unique_ptr<PjRtCApiDevice>& device = owned_devices_[i];
     wrapped_device_map_[wrapped_->devices()[i]] = device.get();
@@ -39,9 +46,17 @@ PjRtCApiClient::PjRtCApiClient(
   }
 }
 
-PjRtCApiClient::~PjRtCApiClient() { delete wrapped_; }
+PjRtCApiClient::~PjRtCApiClient() {
+  PJRT_Client_Destroy_Args free_args;
+  free_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
+  free_args.priv = nullptr;
+  free_args.client = c_client_;
+  PJRT_Error* error = c_api_->PJRT_Client_Destroy(&free_args);
+  // TODO(skyewm): handle error
+  CHECK(error == nullptr);
+}
 
-StatusOr<absl::optional<std::string>> PjRtCApiClient::ExecutableFingerprint(
+StatusOr<std::optional<std::string>> PjRtCApiClient::ExecutableFingerprint(
     const PjRtExecutable& executable) const {
   return wrapped_->ExecutableFingerprint(
       *PjRtCApiExecutable::GetWrapped(&executable));
@@ -86,7 +101,7 @@ StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 PjRtCApiExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
-    absl::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
+    std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
   std::vector<std::vector<PjRtBuffer*>> wrapped_args;
   for (const std::vector<PjRtBuffer*>& args : argument_handles) {
     wrapped_args.push_back(PjRtCApiBuffer::GetWrappedVector(args));
@@ -108,7 +123,7 @@ StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtCApiExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
-    absl::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
+    std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
   std::vector<PjRtBuffer*> wrapped_args =
       PjRtCApiBuffer::GetWrappedVector(argument_handles);
 
@@ -127,7 +142,7 @@ StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtCApiExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
-    absl::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
+    std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
   std::vector<PjRtBuffer*> wrapped_args =
       PjRtCApiBuffer::GetWrappedVector(argument_handles);
 
@@ -142,14 +157,27 @@ PjRtCApiExecutable::ExecutePortable(
   return out;
 }
 
-StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(PjRtClient* wrapped) {
+StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient() {
+  const PJRT_Api* c_api = tensorflow::tpu::PjrtApi();
+  // TODO(skyewm): make status
+  CHECK(c_api != nullptr);
+
+  PJRT_Client_Create_Args init_args;
+  init_args.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
+  init_args.priv = nullptr;
+  PJRT_Error* error = c_api->PJRT_Client_Create(&init_args);
+  // TODO(skyewm): handle error
+  CHECK(error == nullptr);
+  PJRT_Client* c_client = init_args.client;
+  PjRtClient* wrapped = c_client->client.get();
+
   std::vector<std::unique_ptr<PjRtCApiDevice>> devices;
   devices.reserve(wrapped->devices().size());
   for (PjRtDevice* device : wrapped->devices()) {
     devices.emplace_back(std::make_unique<PjRtCApiDevice>(device));
   }
   return std::unique_ptr<PjRtClient>(
-      std::make_unique<PjRtCApiClient>(std::move(devices), std::move(wrapped)));
+      std::make_unique<PjRtCApiClient>(c_api, c_client, std::move(devices)));
 }
 
 }  // namespace xla

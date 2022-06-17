@@ -15,13 +15,12 @@
 import os
 
 import numpy as np
-
+from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.trackable import data_structures
-from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
 
 

@@ -34,7 +34,7 @@ class ReplicateHelper {
     }
     std::vector<Node*> replicated_nodes(num_allowed_devices, nullptr);
     replicated_nodes_map_.emplace(node, std::move(replicated_nodes));
-    return Status::OK();
+    return OkStatus();
   }
 
   // Replicate the given node to an allowed device.
@@ -43,7 +43,7 @@ class ReplicateHelper {
                        int allowed_device_index, Graph* graph) {
     auto& replicated_nodes = replicated_nodes_map_.at(node);
     if (replicated_nodes[allowed_device_index] != nullptr) {
-      return Status::OK();
+      return OkStatus();
     }
     const auto& device = allowed_devices.at(allowed_device_index);
     NodeDef node_def = node->def();
@@ -55,7 +55,7 @@ class ReplicateHelper {
       replicated_node->AddAttr("sub_index", allowed_device_index);
     }
     replicated_nodes[allowed_device_index] = replicated_node;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Replace an edge (a regular device -> composite device) with
@@ -101,7 +101,7 @@ class ReplicateHelper {
       graph->AddEdge(src_replicated_nodes.at(i), edge->src_output(), dst,
                      edge->dst_input());
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Data edge: replace an edge (composite device -> a regular device) with
@@ -139,7 +139,7 @@ class ReplicateHelper {
           graph->AddControlEdge(replicated_node, dst,
                                 /*allow_duplicates=*/true);
         }
-        return Status::OK();
+        return OkStatus();
       }
       if (edge->src()->type_string() == "_Arg") {
         // This happens when the dst node runs on a host CPU and
@@ -182,7 +182,7 @@ class ReplicateHelper {
             " assigned to ", dst_device);
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -240,7 +240,7 @@ Status ReplicateNodesAndEdges(const std::vector<string>& allowed_devices,
     cluster_nodes->erase(node);
     graph->RemoveNode(node);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -303,7 +303,7 @@ Status ReplicatePerReplicaNodesInFunctionGraph(
           cluster_nodes.begin()->first->assigned_device_name());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

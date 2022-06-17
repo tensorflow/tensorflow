@@ -54,7 +54,7 @@ class LHLO_Op<string mnemonic, list<Trait> traits> :
     !listconcat([MemoryEffects<[MemRead, MemWrite]>,
     LmhloStructuredInterface], traits)>;
 
-def LHLO_ConstOp : LHLO_Op<"constant", []> {
+def LHLO_ConstantOp : LHLO_Op<"constant", []> {
   let summary = "Constant operator";
   let description = [{
     Represents a constant value.
@@ -626,7 +626,7 @@ def LHLO_CustomCallOp : LHLO_Op<"custom_call", [AttrSizedOperandSegments]> {
     DefaultValuedAttr<HLO_CustomCallApiVersionAttr,
                       "mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL">:
                       $api_version,
-    OptionalAttr<CustomCallTargetArgMapping>:$target_arg_mapping
+    OptionalAttr<CustomCallTargetArgMappingAttr>:$target_arg_mapping
   );
   let hasVerifier = 1;
 }
@@ -867,7 +867,7 @@ def LHLO_ConvOp : LHLO_Op<"convolution", []> {
 
   code extraClassDeclaration = [{
     bool hasWindowReversal() {
-      auto reversal = window_reversalAttr();
+      auto reversal = getWindowReversalAttr();
       return reversal && llvm::any_of(reversal.getValues<bool>(),
                                       [](bool v) { return v; });
     }
@@ -894,8 +894,8 @@ def LHLO_CopyOp: LHLO_Op<"copy", [CopyOpInterface]> {
   );
 
   let extraClassDeclaration = [{
-    Value getSource() { return operand();}
-    Value getTarget() { return output(); }
+    Value getSource() { return getOperand();}
+    Value getTarget() { return getOutput(); }
   }];
 }
 
@@ -1086,7 +1086,7 @@ class LHLO_CollectiveCommunicationOp<string name, list<Trait> traits = []> :
   let hasVerifier = 1;
   let extraClassDeclaration = [{
     // AllGather is cross replica if channel_id is not set.
-    bool IsCrossReplica() { return !channel_id().hasValue(); }
+    bool IsCrossReplica() { return !getChannelId().hasValue(); }
   }];
 }
 
@@ -1364,7 +1364,7 @@ def FusionOp : LHLO_Op<"fusion", [
   let extraClassDeclaration = [{
     SmallVector<Value> getInputBuffers() {
       SmallVector<Value> buffers;
-      for (auto load : region().front().getOps<bufferization::ToTensorOp>()) {
+      for (auto load : getRegion().front().getOps<bufferization::ToTensorOp>()) {
         buffers.push_back(load.memref());
       }
       return buffers;
@@ -1372,7 +1372,7 @@ def FusionOp : LHLO_Op<"fusion", [
 
     SmallVector<Value> getOutputBuffers() {
       SmallVector<Value> buffers;
-      for (auto store : region().front().getOps<memref::TensorStoreOp>()) {
+      for (auto store : getRegion().front().getOps<memref::TensorStoreOp>()) {
         buffers.push_back(store.memref());
       }
       return buffers;
@@ -1380,7 +1380,7 @@ def FusionOp : LHLO_Op<"fusion", [
 
     SmallVector<Value> getFusionParameters() {
       SmallVector<Value> buffers;
-      for (auto load : region().front().getOps<bufferization::ToTensorOp>()) {
+      for (auto load : getRegion().front().getOps<bufferization::ToTensorOp>()) {
         buffers.push_back(load);
       }
       return buffers;
@@ -1388,7 +1388,7 @@ def FusionOp : LHLO_Op<"fusion", [
 
     SmallVector<Value> getFusionResults() {
       SmallVector<Value> buffers;
-      for (auto store : region().front().getOps<memref::TensorStoreOp>()) {
+      for (auto store : getRegion().front().getOps<memref::TensorStoreOp>()) {
         buffers.push_back(store.tensor());
       }
       return buffers;

@@ -154,11 +154,15 @@ port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithms(
     Stream* stream, BatchMatmulParameters matmul_parameters, int64_t batch_size,
     int64_t m, int64_t n, int64_t k, tensorflow::DataType dtype,
     blas::MatrixDescriptor lhs_matrix, blas::MatrixDescriptor rhs_matrix,
-    blas::MatrixDescriptor output_matrix) {
+    blas::MatrixDescriptor output_matrix,
+    std::optional<int> max_algorithm_count) {
   static const int64_t max_scratch_size =
       GetWorkspaceLimit(1LL << 32);  // 4GB by default
   static const int64_t max_autotune_algorithm_count =
       MatmulMaxAutotuneAlgorithmCount();
+
+  if (!max_algorithm_count) max_algorithm_count = max_autotune_algorithm_count;
+
   const blas::PlanAndAlgorithms* plan_and_algorithms =
       BatchMatmulPlanMapSingleton::GetInstance()->Find(matmul_parameters);
   if (!plan_and_algorithms) {
@@ -172,8 +176,7 @@ port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithms(
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>> algorithms,
         stream->parent()->GetBlasLtMatmulAlgorithms(
-            plan.get(), max_scratch_size,
-            /* max_algorithm_count */ max_autotune_algorithm_count));
+            plan.get(), max_scratch_size, *max_algorithm_count));
 
     plan_and_algorithms = BatchMatmulPlanMapSingleton::GetInstance()->Insert(
         matmul_parameters, {std::move(plan), std::move(algorithms)});

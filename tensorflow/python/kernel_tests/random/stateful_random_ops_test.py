@@ -19,7 +19,7 @@ import re
 
 from absl.testing import parameterized
 import numpy as np
-
+from tensorflow.python.checkpoint import checkpoint as tracking_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
@@ -36,7 +36,6 @@ from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import stateful_random_ops as random
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training.tracking import util as tracking_util
 
 
 g_seeded = None

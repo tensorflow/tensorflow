@@ -21,6 +21,7 @@ limitations under the License.
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_subset_ops.td"
+include "mlir-hlo/Dialect/gml_st/IR/gml_st_extension_ops.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_legacy_ops.td"
 
 def GMLST_MaterializeOp : GMLST_Op<"materialize",
@@ -35,28 +36,30 @@ def GMLST_MaterializeOp : GMLST_Op<"materialize",
 
 def GMLST_DimOp : GMLST_Op<"dim", []> {
   let summary = [{Returns the size of a tile in a given dimension}];
-  let arguments = (ins AnySubset:$tile, Index:$dim);
+  let arguments = (ins GMLST_TileType:$tile, Index:$dim);
   let results = (outs Index:$result);
   let assemblyFormat = [{
-    $tile `[` $dim `]` attr-dict `:` type($tile)
+    $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
   }];
   let hasVerifier = 0;
 }
 
-def GMLST_DynamicBroadcastInDimOp : GMLST_Op<"dynamic_broadcast_in_dim", [
-    NoSideEffect]> {
-  let summary = [{Destination-style twin for `mhlo.dynamic_broadcast_in_dim`}];
-  let arguments = (ins
-    AnyTensor:$init,
-    AnyTensor:$operand,
-    I64ElementsAttr:$broadcast_dimensions,
-    OptionalAttr<I64ElementsAttr>:$known_expanding_dimensions,
-    OptionalAttr<I64ElementsAttr>:$known_nonexpanding_dimensions
-  );
-  let results = (outs AnyTensor:$result);
+def GMLST_OffsetOp : GMLST_Op<"offset", []> {
+  let summary = [{Returns the offset of a tile in a given dimension}];
+  let arguments = (ins GMLST_TileType:$tile, Index:$dim);
+  let results = (outs Index:$result);
   let assemblyFormat = [{
-    $init `,` $operand `,` custom<I64ElementsAttr>($broadcast_dimensions)
-    attr-dict `:` type($init) `,` type($operand) `->` type($result)
+    $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
+  }];
+  let hasVerifier = 0;
+}
+
+def GMLST_SizeOp : GMLST_Op<"size", []> {
+  let summary = [{Returns the size of a tile in a given dimension}];
+  let arguments = (ins GMLST_TileType:$tile, Index:$dim);
+  let results = (outs Index:$result);
+  let assemblyFormat = [{
+    $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
   }];
   let hasVerifier = 0;
 }
@@ -71,18 +74,20 @@ class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
   let arguments = (ins Variadic<Index>:$lowerBound,
                        Variadic<Index>:$upperBound,
                        Variadic<Index>:$step,
-                       Variadic<AnyShaped>:$outputs);
+                       Variadic<AnyShaped>:$outputs,
+                       Variadic<AnySubset>:$subsets);
   let results = (outs Variadic<AnyRankedTensor>:$results);
   let regions = (region SizedRegion<1>:$region);
 
   let builders = [
-    OpBuilder<(ins "ValueRange":$lowerBounds, "ValueRange":$upperBounds,
-      "ValueRange":$steps, "ValueRange":$outputs,
+    OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$lowerBounds,
+      "ValueRange":$upperBounds, "ValueRange":$steps, "ValueRange":$outputs,
+      "ValueRange":$subsets,
       CArg<"function_ref<void (OpBuilder &, Location, /*ivs=*/ValueRange,"
         "/*outputs=*/ValueRange)>", "nullptr">:$bodyBuilderFn)>,
   ];
 
-  let extraClassDeclaration = [{
+  code extraBaseClassDeclaration = [{
     /// Number of loops
     unsigned getNumLoops() { return step().size(); }
 
@@ -95,8 +100,10 @@ class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
     ValueRange getInductionVars() {
       return getBody()->getArguments().take_front(getNumLoops());
     }
-    ValueRange getRegionOutputArgs() {
-      return getBody()->getArguments().take_back(outputs().size());
+
+    /// Return whether the op has no output tensors.
+    bool hasBufferSemantics() {
+      return this->getOperation()->getNumResults() == 0;
     }
   }];
 
@@ -120,11 +127,11 @@ def GMLST_ParallelOp : GMLST_LoopLikeOp<"parallel", []> {
     Example:
 
     ```mlir
-    %in_space = gml_st.space [8, 16] : !gml_st.tile<8x16>
+    %space = gml_st.space [8, 16] : !gml_st.tile<8x16>
 
     %result = gml_st.parallel (%i) = (%c0, %c0) to (%c8, %c16) step (%c4, %c4)
-        outs(%out_ = %output: tensor<8x16xf32>) {
-      %tile = gml_st.tile %in_space [%i, %j] [4, 4] [1, 1]
+        outs(%output at %space: tensor<8x16xf32> at !gml_st.tile<8x16>) {
+      %tile = gml_st.tile %space [%i, %j] [4, 4] [1, 1]
         : ! gml_st.tile<8x16> to !gml_st.tile<4x4>
       %lhs_sub = gml_st.materialize %lhs_ at %tile
         : tensor<8x16xf32> at !gml_st.tile<4x4>
@@ -140,6 +147,7 @@ def GMLST_ParallelOp : GMLST_LoopLikeOp<"parallel", []> {
     }
     ```
   }];
+  let extraClassDeclaration = extraBaseClassDeclaration;
 }
 
 def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
@@ -159,10 +167,10 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
     Example:
 
     ```mlir
-    %in_space = gml_st.space [8, 16] : !gml_st.tile<8x16>
+    %space = gml_st.space [8, 16] : !gml_st.tile<8x16>
 
     %result = gml_st.for (%i) = (%c0, %c0) to (%c8, %c16) step (%c4, %c4)
-        outs(%out_ = %output: tensor<8x16xf32>) {
+        outs(%out_ = %output at %space: tensor<8x16xf32> at !gml_st.tile<8x16>)
       %tile = gml_st.tile %in_space [%i, %j] [4, 4] [1, 1]
         : ! gml_st.tile<8x16> to !gml_st.tile<4x4>
       %lhs_sub = gml_st.materialize %lhs_ at %tile
@@ -178,6 +186,12 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
         : tensor<4x4xf32> at !gml_st.tile<4x4>
     }
     ```
+  }];
+
+  let extraClassDeclaration = extraBaseClassDeclaration # [{
+    ValueRange getRegionOutputArgs() {
+      return getBody()->getArguments().take_back(outputs().size());
+    }
   }];
 }
 

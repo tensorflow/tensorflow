@@ -41,7 +41,7 @@ transitive_hdrs(
         "//tensorflow/c/experimental/grappler:grappler_hdrs",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:ops_hdrs",
-        # TODO(mihaimaruseac): Revisit these after cc_shared_library everywhere
+        # TODO(rostam): Revisit these after cc_shared_library everywhere
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:cc_ops",
         # WARNING: None of the C/C++ code under python/ has any API guarantees, and TF team
@@ -102,6 +102,8 @@ COMMON_PIP_DEPS = [
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_hdrs",
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
     "//tensorflow/compiler/mlir/tensorflow:gen_mlir_passthrough_op_py",
+    "//tensorflow/core/function/trace_type:serialization_test_proto_py",
+    "//tensorflow/core/function/trace_type:serialization",
     "//tensorflow/core:protos_all_proto_srcs",
     "//tensorflow/lite/python:tflite_convert",
     "//tensorflow/lite/toco/python:toco_from_protos",

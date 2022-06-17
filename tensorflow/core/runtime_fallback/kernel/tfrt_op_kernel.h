@@ -75,7 +75,7 @@ class TFRTOpKernelConstruction {
                         const DataTypeSlice expected_outputs) {
     // TODO(annarev): Move MatchSignatureHelper out of op_kernel.h
     // and call it here.
-    return Status::OK();
+    return OkStatus();
   }
 
   const llvm::Optional<std::string>& error();
@@ -112,7 +112,7 @@ Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
   if (!success) {
     return MissingAttributeError(attr_name);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // An implementation of OpKernelContext that fetches inputs from a

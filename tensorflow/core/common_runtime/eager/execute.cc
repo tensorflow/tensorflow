@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/execute.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <vector>
 
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -196,7 +198,7 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
 
   *result = result_handle;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // `op_device_name` the name of the device on which the op will run, if any.
@@ -258,7 +260,7 @@ Status ValidateInputTypeAndPlacement(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetOutputDTypes(EagerOperation* op, DataTypeVector* output_dtypes) {
@@ -275,7 +277,7 @@ Status GetOutputDTypes(EagerOperation* op, DataTypeVector* output_dtypes) {
 
   TF_RETURN_IF_ERROR(OutputTypesForNode(node_def, *op_def, output_dtypes));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
@@ -290,7 +292,32 @@ inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
   return {x, tensorflow::FingerprintCat64(a.high64, x)};
 }
 
+const KernelDef* GetKernelDef(const EagerOperation& op, const NodeDef* node_def,
+                              const Device* op_device) {
+  if (node_def == nullptr || op_device == nullptr) return nullptr;
+  const KernelDef* kernel_def = nullptr;
+  Status s = FindKernelDef(DeviceType(op_device->device_type()), *node_def,
+                           &kernel_def,
+                           /*kernel_class_name=*/nullptr);
+  if (!s.ok()) return nullptr;
+  return kernel_def;
+}
+
+bool IsHostMemoryArg(const EagerOperation& op, const NodeDef* node_def,
+                     const Device* op_device, const KernelDef* kernel_def,
+                     const int port_id) {
+  if (op.is_function()) return false;
+  if (node_def == nullptr) return false;
+  if (kernel_def == nullptr || op_device == nullptr) return false;
+  const auto& host_memory_args = kernel_def->host_memory_arg();
+  const OpDef& op_def = OpRegistry::Global()->LookUp(op.Name())->op_def;
+  const int arg_id = OpPortIdToArgId(*node_def, op_def.input_arg(), port_id);
+  return std::find(host_memory_args.begin(), host_memory_args.end(),
+                   op_def.input_arg(arg_id).name()) != host_memory_args.end();
+}
+
 Status GetDeviceForInput(const EagerOperation& op, const EagerContext& ctx,
+                         const bool is_host_memory_arg,
                          TensorHandle* tensor_handle, Device** result) {
   Device* cpu_device = ctx.HostCPU();
   string device_name;
@@ -318,22 +345,25 @@ Status GetDeviceForInput(const EagerOperation& op, const EagerContext& ctx,
     Device* device = tensor_handle->device();
     const bool is_tpu = device != nullptr && device->device_type() == "TPU";
     // int32 return values can be placed on TPUs.
+    // int32 retrun values can be placed on device for eager operations.
     const bool use_host_memory =
-        is_tpu ? MTypeFromDTypeIntsOnDevice(tensor_handle->dtype)
-               : MTypeFromDType(tensor_handle->dtype);
+        is_tpu || (!op.is_function() && device != cpu_device &&
+                   !is_host_memory_arg)
+            ? MTypeFromDTypeIntsOnDevice(tensor_handle->dtype)
+            : MTypeFromDType(tensor_handle->dtype);
     if (use_host_memory) {
       *result = cpu_device;
     } else {
       // Eager ops executing as functions should have their preferred inputs set
       // to the op's device. This allows us to avoid expensive D2H copies if a
       // mirror of the tensor already exists on the op's device.
-      if (!op.is_function() && device != nullptr && device != cpu_device) {
+      if (!op.is_function() && device != cpu_device && !is_host_memory_arg) {
         device = absl::get<Device*>(op.Device());
       }
       *result = (device == nullptr ? cpu_device : device);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Appends a TensorShape object to Fprint128 hash.
@@ -360,7 +390,7 @@ Status GetFuncAttr(const EagerOperation* op, const EagerContext& ctx,
   if (status.ok()) {
     VLOG(2) << "Caller explicitly specifies "
             << (attr_name ? "=true " : "=false, ") << op->DebugString();
-    return Status::OK();
+    return OkStatus();
   }
 
   const FunctionDef* function_def =
@@ -373,7 +403,7 @@ Status GetFuncAttr(const EagerOperation* op, const EagerContext& ctx,
   if (status.ok()) {
     VLOG(2) << "Function definition explicitly specifies "
             << (attr_name ? "=true" : "=false");
-    return Status::OK();
+    return OkStatus();
   }
   return status;
 }
@@ -382,7 +412,7 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
                           bool* compile_with_xla) {
   if (!op->is_function()) {
     *compile_with_xla = false;
-    return Status::OK();
+    return OkStatus();
   }
 
   if (op->eager_func_params().has_value() &&
@@ -390,12 +420,12 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
     // If the op is a component of a multi-device function, don't compile it
     // with XLA.
     *compile_with_xla = false;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status status = GetFuncAttr(op, ctx, kXlaMustCompileAttr, compile_with_xla);
   if (status.ok()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // No explicit requests. Compile for XLA devices by default.
@@ -410,7 +440,7 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
     *compile_with_xla = false;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status VerifyWrappableInCallOp(const OpDef& opdef, EagerOperation* op) {
@@ -425,7 +455,7 @@ Status VerifyWrappableInCallOp(const OpDef& opdef, EagerOperation* op) {
                                    " has a private attr '", attr.first, "'.");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 using ProtoArgListType = protobuf::RepeatedPtrField<OpDef_ArgDef>;
@@ -473,7 +503,7 @@ Status BuildWrappedOpName(EagerOperation* op, const OpDef& opdef,
         (*attr_to_len)[arg.number_attr()] = number_attr;
       }
     }
-    return Status::OK();
+    return OkStatus();
   };
   absl::btree_map<string, int> attr_to_len;
   TF_RETURN_IF_ERROR(FillAttrToLen(opdef.input_arg(), &attr_to_len));
@@ -488,7 +518,7 @@ Status BuildWrappedOpName(EagerOperation* op, const OpDef& opdef,
   // creating extra FunctionDefs.
   absl::StrAppend(&fname, "_device_", op->DeviceName());
   *name = fname;
-  return Status::OK();
+  return OkStatus();
 }
 
 // Validates the node def. This is required when running in eager op as function
@@ -671,7 +701,7 @@ Status BuildWrappedOpSignature(EagerOperation* op, const OpDef& opdef,
         }
       }
     }
-    return Status::OK();
+    return OkStatus();
   };
   absl::flat_hash_set<string> new_attrs;
   TF_RETURN_IF_ERROR(FillSignatureArgs(
@@ -683,7 +713,7 @@ Status BuildWrappedOpSignature(EagerOperation* op, const OpDef& opdef,
     attr_def->set_name(attr_name);
     attr_def->set_type("type");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // For mixed type inputs "list(type)" we create new attributes in the signature
@@ -706,7 +736,7 @@ Status AddMixedTypeListAttrs(EagerOperation* wrapped_op,
             }
           }
         }
-        return Status::OK();
+        return OkStatus();
       };
   absl::flat_hash_map<string, DataType> attrs_to_add;
   TF_RETURN_IF_ERROR(FillAttrsToAdd(opdef.input_arg(), &attrs_to_add));
@@ -716,7 +746,7 @@ Status AddMixedTypeListAttrs(EagerOperation* wrapped_op,
         wrapped_op->SetAttrType(name_type.first.data(), name_type.second));
   }
   // TODO(srbs): Rename all original attributes using EscapeOrigName.
-  return Status::OK();
+  return OkStatus();
 }
 
 // Maps the op's outputs to the function outputs. Mainly useful for variadic
@@ -751,7 +781,7 @@ Status PopulateRetMap(FunctionDef* fdef, const AbstractOpAttrs* op_attrs,
           absl::StrCat(node_name, ":", output_arg.name(), ":0");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 #ifdef INTEL_MKL
@@ -840,17 +870,35 @@ Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
   return AddMixedTypeListAttrs(*wrapped_op, op_attrs, opdef);
 }
 
-bool IntArgsAndRetvalsOnDevice(EagerOperation* op) {
-  // Most TF ops expect and generate int32 tensors on the host (or a TPU/XLA
-  // device). This is not the case with IteratorGetNext since it is possible to
-  // build int32 datasets that produce outputs on device when using
-  // prefetch_to_device.
-  // When running call ops, by default we assume that the int32 outputs are on a
-  // host (except for the XLA/TPU case). So we need to special case
-  // IteratorGetNext such that its eager behavior matches the wrapped one.
-  // TODO(b/208435025): Remove this if we end up deciding that int32 outputs
-  // from IteratorGetNext should indeed live on host.
-  return op->Name() == "IteratorGetNext";
+// Necessary condition to place int args/retvals on device but not sufficient.
+// For eager operations return values can be placed on the device for use
+// by subsequent eager ops. E.g.
+// with tf.device("/GPU:0"):
+//   x = tf.random_uniform(shape=(2, 2), maxval=5, dtype=tf.int32)
+//   y = tf.random_uniform(shape=(2, 2), maxval=5, dtype=tf.int32)
+//   z = tf.bitwise.bitwise_and(x, y)
+// In the above example `z` can use the outputs of `x` and `y` without needing
+// an H2D copy if x and y are left on-device.
+bool IntArgsAndRetvalsOnDevice(EagerOperation* op,
+                               const KernelDef* kernel_def) {
+  // We choose to leave `EagerConsts`
+  // on HOST to avoid `shape` and other arguments that are traditionally pinned
+  // to HostMemory from being placed on-device and then being copied to host via
+  // an expensive D2H transfer.
+  if (op->Name() == "_EagerConst") return false;
+
+  // Check if any of the Op's output_arg(s) are pinned to Host.
+  if (kernel_def == nullptr) return false;
+  const OpDef& op_def = OpRegistry::Global()->LookUp(op->Name())->op_def;
+  for (const string& host_memory_arg : kernel_def->host_memory_arg()) {
+    for (const auto& output_arg : op_def.output_arg()) {
+      if (output_arg.name() == host_memory_arg) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 StatusOr<Fprint128> GetKernelCacheKey(
@@ -926,7 +974,7 @@ Status SetOpDevice(EagerContext& ctx, EagerOperation* op, Device** device) {
   VLOG(4) << "Available kernels for " << op->Name() << " are"
           << KernelsRegisteredForOp(op->Name());
   op->SetDevice(*device);
-  return Status::OK();
+  return OkStatus();
 }
 
 Fprint128 GetDeviceCacheKey(EagerOperation* op, const EagerContext& ctx) {
@@ -941,6 +989,7 @@ Status GetOrCreateKernelAndDevice(
     core::RefCountPtr<KernelAndDevice>* out_kernel) {
   EagerContext& ctx = op->EagerContext();
   Device* device = absl::get<Device*>(op->Device());
+  const KernelDef* kernel_def = nullptr;
 
   // Set the EagerOperation's device prior to extracting the input_dev_ptrs to
   // avoid any redundant H2D/D2H copies.
@@ -974,11 +1023,21 @@ Status GetOrCreateKernelAndDevice(
     input_dev_ptrs.reserve(op->Inputs().size());
     const absl::InlinedVector<TensorHandle*, 4>* inputs;
     TF_RETURN_IF_ERROR(op->TensorHandleInputs(&inputs));
+    Device* op_device = nullptr;
+    const NodeDef* node_def = nullptr;
+    if (!op->is_function()) {
+      op_device = absl::get<Device*>(op->Device());
+      node_def = &op->MutableAttrs()->BuildNodeDef();
+      kernel_def = GetKernelDef(*op, node_def, op_device);
+    }
     for (int i = 0, end = inputs->size(); i < end; ++i) {
       TensorHandle* input = (*inputs)[i];
 
       Device* input_device;
-      TF_RETURN_IF_ERROR(GetDeviceForInput(*op, ctx, input, &input_device));
+      bool is_host_memory_arg =
+          IsHostMemoryArg(*op, node_def, op_device, kernel_def, i);
+      TF_RETURN_IF_ERROR(GetDeviceForInput(*op, ctx, is_host_memory_arg, input,
+                                           &input_device));
       VLOG(1) << op->Name() << ":input:" << i << " " << input_device->name();
       input_dev_ptrs.push_back(input_device);
       CompositeDevice* composite_device = nullptr;
@@ -1093,8 +1152,13 @@ Status GetOrCreateKernelAndDevice(
       allow_small_function_optimizations = true;
       allow_control_flow_sync_execution = true;
       shape_inference_on_tfe_dialect_import = false;
-      int_args_and_retvals_on_device = IntArgsAndRetvalsOnDevice(op);
+      int_args_and_retvals_on_device =
+          IntArgsAndRetvalsOnDevice(op, kernel_def);
       op = wrapped_op;
+      if (int_args_and_retvals_on_device) {
+        op->MutableAttrs()->Set(FunctionLibraryDefinition::kIntsOnDeviceAttr,
+                                true);
+      }
     }
     const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
 
@@ -1180,7 +1244,7 @@ Status GetOrCreateKernelAndDevice(
 
   kernel->Ref();  // Ownership of reference is passed to out_kernel.
   out_kernel->reset(kernel.get());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CreateUnshapedOutput(
@@ -1214,7 +1278,7 @@ Status CreateUnshapedOutput(
                                                    output_dtype, output_device,
                                                    /*is_ready=*/false, ctx);
   }
-  return Status::OK();
+  return OkStatus();
 #endif  // !IS_MOBILE_PLATFORM
 }
 
@@ -1374,7 +1438,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
 Status MaybePackInputTensor(EagerOperation* op) {
   if (op->is_function() || op->EagerContext().RunEagerOpAsFunction()) {
     // Functions could take packed TensorHandles as inputs.
-    return Status::OK();
+    return OkStatus();
   }
   EagerContext& ctx = op->EagerContext();
   const absl::InlinedVector<TensorHandle*, 4>* inputs;
@@ -1401,7 +1465,7 @@ Status MaybePackInputTensor(EagerOperation* op) {
       ret->Unref();
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -1435,7 +1499,7 @@ Status StoreResourceDtypesAndShapes(const eager::Operation& remote_op,
     retvals[0]->SetResourceHandleDtypeAndShape(
         {DtypeAndPartialTensorShape{dtype->type(), shape->shape()}});
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
@@ -1663,7 +1727,7 @@ Status GetKernelOutputs(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void CollectGraphs(EagerContext* ctx) {
@@ -1789,7 +1853,7 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
   if (mirror && h->HasLocalMirror(d)) {
     h->Ref();
     *result = h;
-    return Status::OK();
+    return OkStatus();
   }
 
   bool async = executor->Async();
@@ -1798,7 +1862,7 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
     *result = h;
 
     if (h->HasLocalMirror(d)) {
-      return Status::OK();
+      return OkStatus();
     }
 
     // We don't bother adding an empty local mirror in sync mode since we'll be
@@ -1811,7 +1875,7 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
         // If a mirror was added since we called HasLocalMirror then just return
         // since another thread has already added the mirror.
         if (s.code() == error::Code::ALREADY_EXISTS) {
-          return Status::OK();
+          return OkStatus();
         }
 
         // Remove the previously added reference count since adding the mirror
@@ -1883,7 +1947,7 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
         *result = h;
 
         if (h->HasLocalMirror(d)) {
-          return Status::OK();
+          return OkStatus();
         }
 
         Status s = h->AddEmptyLocalMirror(d);
@@ -1891,7 +1955,7 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
           // If a mirror was added since we called HasLocalMirror then just
           // return since another thread has already added the mirror.
           if (s.code() == error::Code::ALREADY_EXISTS) {
-            return Status::OK();
+            return OkStatus();
           }
 
           // Remove the previously added reference count since adding the mirror
@@ -1910,7 +1974,7 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
         if (h->HasRemoteMirror(device, ctx->GetContextViewId())) {
           h->Ref();
           *result = h;
-          return Status::OK();
+          return OkStatus();
         }
       }
       string remote_task;

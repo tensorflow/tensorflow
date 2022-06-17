@@ -143,7 +143,7 @@ Status ExpandLayoutSensitiveOp(TransposeContext* context,
       TF_RETURN_IF_ERROR(transposer->TransposeNode(context, node_view));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ExpandLayoutAgnosticOp(TransposeContext* context,
@@ -164,7 +164,7 @@ Status ExpandLayoutAgnosticOp(TransposeContext* context,
       TF_RETURN_IF_ERROR(transposer->TransposeNode(context, node_view));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 inline bool IsCancellableConstPermTransposeNodePair(
@@ -398,7 +398,7 @@ Status EraseOutputShapeAttrs(TransposeContext* context) {
     mutation->RemoveNodeAttr(node, kAttrOutputShape);
     TF_RETURN_IF_ERROR(mutation->Apply());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -454,7 +454,7 @@ Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
       default:
         *output = item.graph;
         VLOG(2) << "No layout conversion will take place for CPU.";
-        return Status::OK();
+        return OkStatus();
     }
   }
 
@@ -472,7 +472,7 @@ Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
   TF_RETURN_IF_ERROR(EraseOutputShapeAttrs(&context));
 
   *output = context.graph;
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace grappler

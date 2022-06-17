@@ -32,12 +32,15 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/compilation_environments.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -45,22 +48,19 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace xla {
 
 HloModule::HloModule(const std::string& name, HloModuleConfig config)
-    : name_(NameUniquer::GetSanitizedName(name)),
-      config_(std::move(config)),
-      unique_id_(next_unique_module_id_++),
-      metadata_(tensorflow::Env::Default()) {
-  metadata_.set_canonical_module_id(unique_id_);
-}
+    : HloModule(name, config, std::make_unique<CompilationEnvironments>()) {}
 
 Status HloModule::set_schedule(HloSchedule schedule) {
   TF_RET_CHECK(schedule.module() == this);
   TF_RETURN_IF_ERROR(schedule.Verify());
   schedule_ = std::move(schedule);
-  return Status::OK();
+  return OkStatus();
 }
 
 void HloModule::ReplaceEntryComputation(HloComputation* entry_computation) {
@@ -152,7 +152,7 @@ Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
   TF_RET_CHECK(it != computations_.end());
   TF_RET_CHECK(it->get() == to_remove);
   computations_.erase(it);
-  return Status::OK();
+  return OkStatus();
 }
 
 HloComputation* HloModule::AddEmbeddedComputation(
@@ -345,6 +345,12 @@ HloModuleProto HloModule::ToProto() const {
     profile_info_proto.set_profile_source(profile_info.profile_source());
     profile_info_proto.set_compilation_event(profile_info.compilation_event());
   }
+  if (this->config_.has_static_device_assignment()) {
+    DeviceAssignmentProto device_assignment;
+    TF_CHECK_OK(
+        this->config_.static_device_assignment().Serialize(&device_assignment));
+    (*proto.mutable_device_assignment()) = device_assignment;
+  }
   return proto;
 }
 
@@ -373,7 +379,7 @@ Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions() const {
       instruction_ids.insert(instruction->unique_id());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */
@@ -432,7 +438,7 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   }
   TF_RET_CHECK(entry != nullptr);
 
-  auto module = absl::make_unique<HloModule>(proto.name(), module_config);
+  auto module = std::make_unique<HloModule>(proto.name(), module_config);
 
   // Sort the computations in the proto id's order.
   absl::c_sort(computations, [&](const std::unique_ptr<HloComputation>& a,
@@ -450,9 +456,6 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
                                    /*preserve_entry_layouts=*/false);
   }
   TF_RET_CHECK(module->entry_computation_ != nullptr);
-  if (proto.has_schedule()) {
-    TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
-  }
   TF_ASSIGN_OR_RETURN(
       module->input_output_alias_config_,
       HloInputOutputAliasConfig::CreateFromProto(
@@ -500,6 +503,14 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 
   for (const auto& profile_info : proto.profile_info()) {
     module->add_profile_info(profile_info);
+  }
+  if (proto.has_device_assignment()) {
+    if (!module->config_.has_static_device_assignment()) {
+      TF_ASSIGN_OR_RETURN(
+          std::unique_ptr<DeviceAssignment> device_assignment,
+          DeviceAssignment::Deserialize(proto.device_assignment()));
+      module->config_.set_static_device_assignment(*device_assignment);
+    }
   }
   return std::move(module);
 }
@@ -573,8 +584,19 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
         "No program shape found in the proto");
   }
   ProgramShape program_shape(module.host_program_shape());
-  return CreateModuleConfigFromShape(program_shape, debug_options,
-                                     execution_options);
+  TF_ASSIGN_OR_RETURN(HloModuleConfig config,
+                      CreateModuleConfigFromShape(program_shape, debug_options,
+                                                  execution_options));
+  if (!config.has_static_device_assignment()) {
+    if (module.has_device_assignment()) {
+      // Get the proto from the exeuction options rather than the module proto.
+      TF_ASSIGN_OR_RETURN(
+          std::unique_ptr<DeviceAssignment> device_assignment,
+          DeviceAssignment::Deserialize(module.device_assignment()));
+      config.set_static_device_assignment(*device_assignment);
+    }
+  }
+  return config;
 }
 
 namespace {
@@ -825,8 +847,9 @@ std::unique_ptr<HloModule> HloModule::Clone(const std::string& suffix) const {
 std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
                                             const std::string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
-  auto module = absl::make_unique<HloModule>(
-      absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config);
+  auto module = absl::WrapUnique(new HloModule(
+      absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config,
+      std::make_unique<CompilationEnvironments>(*comp_envs_)));
 
   HloCloneContext context(module.get(), suffix);
   auto cloned_computation = entry_computation_->Clone(suffix, &context);
@@ -879,7 +902,7 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
 
 Status HloModule::RemoveUnusedComputations() {
   std::string suffix = "tmp";
-  auto module = absl::make_unique<HloModule>(
+  auto module = std::make_unique<HloModule>(
       absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config());
   HloCloneContext context(module.get(), suffix);
   entry_computation_->Clone(suffix, &context);
@@ -893,7 +916,7 @@ Status HloModule::RemoveUnusedComputations() {
   for (auto computation : to_remove) {
     TF_RETURN_IF_ERROR(RemoveEmbeddedComputation(computation));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 HloComputation* HloModule::DeepCloneComputation(HloComputation* computation,
@@ -922,6 +945,16 @@ HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
       computations_in_module,
       [&](HloComputation* computation) { return computation->name() == name; });
   return it == computations_in_module.end() ? nullptr : *it;
+}
+
+HloModule::HloModule(const std::string& name, HloModuleConfig config,
+                     std::unique_ptr<CompilationEnvironments> comp_envs)
+    : name_(NameUniquer::GetSanitizedName(name)),
+      config_(std::move(config)),
+      unique_id_(next_unique_module_id_++),
+      metadata_(tensorflow::Env::Default()),
+      comp_envs_(std::move(comp_envs)) {
+  metadata_.set_canonical_module_id(unique_id_);
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);

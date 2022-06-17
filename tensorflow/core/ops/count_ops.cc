@@ -37,7 +37,7 @@ Status DenseCountSparseOutputShapeFn(InferenceContext *c) {
   c->set_output(0, c->Matrix(nvals, rank));  // out.indices
   c->set_output(1, c->Vector(nvals));        // out.values
   c->set_output(2, c->Vector(rank));         // out.dense_shape
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SparseCountSparseOutputShapeFn(InferenceContext *c) {
@@ -48,7 +48,7 @@ Status SparseCountSparseOutputShapeFn(InferenceContext *c) {
   c->set_output(0, c->Matrix(nvals, rank));  // out.indices
   c->set_output(1, c->Vector(nvals));        // out.values
   c->set_output(2, c->Vector(rank));         // out.dense_shape
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RaggedCountSparseOutputShapeFn(InferenceContext *c) {
@@ -60,7 +60,7 @@ Status RaggedCountSparseOutputShapeFn(InferenceContext *c) {
   c->set_output(0, c->Matrix(nvals, rank));  // out.indices
   c->set_output(1, c->Vector(nvals));        // out.values
   c->set_output(2, c->Vector(rank));         // out.dense_shape
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_OP("DenseCountSparseOutput")

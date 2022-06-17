@@ -55,6 +55,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/SCF/Transforms.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
@@ -112,8 +113,8 @@ class CustomBufferizeTypeConverter
       // a memref with a specified layout, i.e. non-empty affine map.
       // TODO(pifon) : Change how target materialization is invoked in dialect
       // conversion.
-      if (auto memref_type = inputs[0].getType().dyn_cast<MemRefType>()) {
-        assert(!memref_type.getLayout().isIdentity());
+      if (auto memrefType = inputs[0].getType().dyn_cast<MemRefType>()) {
+        assert(!memrefType.getLayout().isIdentity());
         return inputs[0];
       }
       assert(inputs[0].getType().isa<TensorType>());
@@ -142,12 +143,12 @@ struct ComputeOpAndFuncBufferizePass
         bufferization::getPartialBufferizationOptions();
     // TODO(springerm): Add dialects to this filter as more and more dialects
     // will be migrated to BufferizableOpInterface-based bufferization.
-    options.allowDialectInFilter<bufferization::BufferizationDialect,
-                                 linalg::LinalgDialect, mhlo::MhloDialect,
-                                 shape::ShapeDialect, tensor::TensorDialect,
-                                 vector::VectorDialect>();
+    options.opFilter.allowDialect<bufferization::BufferizationDialect,
+                                  linalg::LinalgDialect, mhlo::MhloDialect,
+                                  shape::ShapeDialect, tensor::TensorDialect,
+                                  vector::VectorDialect>();
     // Ops inside TiledLoopOps have special handling.
-    options.denyOperationInFilter([](Operation* op) {
+    options.opFilter.denyOperation([](Operation* op) {
       return mlir::isa<gml_st::LoopOp>(op->getParentOp());
     });
 
@@ -227,6 +228,7 @@ struct OneShotBufferizePass
     gml_st::registerBufferizableOpInterfaceExternalModels(registry);
     linalg::registerBufferizableOpInterfaceExternalModels(registry);
     mhlo::registerBufferizableOpInterfaceExternalModels(registry);
+    scf::registerBufferizableOpInterfaceExternalModels(registry);
     shape::registerBufferizableOpInterfaceExternalModels(registry);
     tensor::registerBufferizableOpInterfaceExternalModels(registry);
     vector::registerBufferizableOpInterfaceExternalModels(registry);
@@ -235,7 +237,6 @@ struct OneShotBufferizePass
   void runOnOperation() override {
     bufferization::OneShotBufferizationOptions opts;
     opts.allowReturnAllocs = true;
-    opts.dropEquivalentFuncResults = false;
     opts.bufferizeFunctionBoundaries = true;
     opts.functionBoundaryTypeConversion =
         bufferization::BufferizationOptions::LayoutMapOption::IdentityLayoutMap;
@@ -251,8 +252,8 @@ struct OneShotBufferizePass
 
 struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
  private:
-  BufferizeDialectsCallback dialects_callback;
-  BufferizePatternsCallback patterns_callback;
+  BufferizeDialectsCallback dialectsCallback;
+  BufferizePatternsCallback patternsCallback;
 
  public:
   void getDependentDialects(DialectRegistry& registry) const override {
@@ -266,7 +267,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     shape::registerBufferizableOpInterfaceExternalModels(registry);
     tensor::registerBufferizableOpInterfaceExternalModels(registry);
     vector::registerBufferizableOpInterfaceExternalModels(registry);
-    if (dialects_callback) dialects_callback(registry);
+    if (dialectsCallback) dialectsCallback(registry);
   }
   // Default alignment_ specified in passes.td
   FinalBufferizePass() = default;
@@ -275,8 +276,8 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
 
   void setCallbacks(BufferizeDialectsCallback dc,
                     BufferizePatternsCallback pc) {
-    dialects_callback = dc;
-    patterns_callback = pc;
+    dialectsCallback = std::move(dc);
+    patternsCallback = std::move(pc);
   }
 
   void runOnOperation() override {
@@ -287,7 +288,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     options.bufferAlignment = alignment_;
     // TODO(springerm): Add dialects to this filter as more and more dialects
     // will be migrated to BufferizableOpInterface-based bufferization.
-    options.allowDialectInFilter<
+    options.opFilter.allowDialect<
         arith::ArithmeticDialect, bufferization::BufferizationDialect,
         linalg::LinalgDialect, func::FuncDialect, shape::ShapeDialect,
         tensor::TensorDialect, vector::VectorDialect>();
@@ -334,8 +335,8 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     populateExtraBufferizePatterns(&getContext(), &converter, &patterns);
     scf::populateSCFStructuralTypeConversionsAndLegality(converter, patterns,
                                                          target);
-    if (patterns_callback)
-      patterns_callback(target, &getContext(), &converter, &patterns);
+    if (patternsCallback)
+      patternsCallback(target, &getContext(), &converter, &patterns);
 
     return applyFullConversion(getOperation(), target, std::move(patterns));
   }
@@ -344,24 +345,24 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
 }  // namespace
 
 namespace hlo {
-std::unique_ptr<OperationPass<ModuleOp>> CreateOneShotBufferizePass() {
+std::unique_ptr<OperationPass<ModuleOp>> createOneShotBufferizePass() {
   return std::make_unique<OneShotBufferizePass>();
 }
 }  // namespace hlo
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateComputeOpAndFuncBufferizePass() {
+std::unique_ptr<OperationPass<ModuleOp>> createComputeOpAndFuncBufferizePass() {
   return std::make_unique<ComputeOpAndFuncBufferizePass>();
 }
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass() {
+std::unique_ptr<OperationPass<ModuleOp>> createFinalBufferizePass() {
   return std::make_unique<FinalBufferizePass>();
 }
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass(
+std::unique_ptr<OperationPass<ModuleOp>> createFinalBufferizePass(
     uint64_t alignment, BufferizeDialectsCallback dc,
     BufferizePatternsCallback pc) {
   auto pass = std::make_unique<FinalBufferizePass>(alignment);
-  pass->setCallbacks(dc, pc);
+  pass->setCallbacks(std::move(dc), std::move(pc));
   return pass;
 }
 

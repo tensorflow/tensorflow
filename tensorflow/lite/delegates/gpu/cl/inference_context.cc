@@ -334,6 +334,13 @@ absl::Status InferenceContext::InitFromGpuModel(
   return absl::OkStatus();
 }
 
+absl::Status InferenceContext::AddToCommanBuffer(cl_command_buffer_khr cb) {
+  for (auto& node : nodes_) {
+    RETURN_IF_ERROR(node.cl_operation.AddToCommanBuffer(cb));
+  }
+  return absl::OkStatus();
+}
+
 absl::Status InferenceContext::RestoreDeserialized(
     const absl::Span<const uint8_t> serialized_model, Environment* env,
     CreateGpuModelInfo* create_info) {
@@ -624,9 +631,7 @@ absl::Status InferenceContext::AllocateStrongShapesTensors(
     TensorDescriptor tensor_desc;
 
     bool operator==(const TensorDescComparator& t) const {
-      return tensor_desc.data_type == t.tensor_desc.data_type &&
-             tensor_desc.storage_type == t.tensor_desc.storage_type &&
-             tensor_desc.layout == t.tensor_desc.layout &&
+      return tensor_desc == t.tensor_desc &&
              tensor_desc.GetBHWDCShape() == t.tensor_desc.GetBHWDCShape();
     }
   };

@@ -281,7 +281,7 @@ absl::Status MetalSpatialTensor::GetGPUResources(
     resources->buffers.push_back({"buffer", {memory_, buffer_offset_}});
   } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_2D) {
     if (obj_ptr->GetAccess() == AccessType::WRITE &&
-        tensor_desc->use_buffer_for_write_only_2d_texture) {
+        tensor_desc->GetUseBufferForWriteOnlyTexture2d()) {
       resources->ints.push_back(
           {"aligned_texture_width", aligned_texture_width_});
       resources->buffers.push_back({"buffer", {memory_, buffer_offset_}});
@@ -294,7 +294,7 @@ absl::Status MetalSpatialTensor::GetGPUResources(
     resources->image2d_arrays.push_back({"image2d_array", texture_mem_});
   } else if (descriptor_.storage_type == TensorStorageType::IMAGE_BUFFER) {
     if (obj_ptr->GetAccess() == AccessType::WRITE &&
-        tensor_desc->use_buffer_for_write_only_image_buffer) {
+        tensor_desc->GetUseBufferForWriteOnlyImageBuffer()) {
       resources->buffers.push_back({"buffer", {memory_, buffer_offset_}});
     } else {
       resources->image_buffers.push_back({"image_buffer", texture_mem_});
@@ -402,9 +402,7 @@ absl::Status MetalSpatialTensor::WriteData(
 absl::Status MetalSpatialTensor::CreateFromDescriptor(
     const TensorDescriptor& desc, id<MTLDevice> device) {
   shape_ = desc.GetBHWDCShape();
-  descriptor_.data_type = desc.data_type;
-  descriptor_.storage_type = desc.storage_type;
-  descriptor_.layout = desc.layout;
+  desc.CopyWithoutData(&descriptor_);
   memory_owner_ = true;
   const uint8_t* data_ptr =
       desc.GetData().empty() ? nullptr : desc.GetData().data();

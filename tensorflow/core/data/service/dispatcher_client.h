@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_CLIENT_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -59,9 +60,9 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // definition in `dataset_def`.
   Status GetDatasetDef(int64_t dataset_id, DatasetDef& dataset_def);
 
-  // Gets the next split for the specified iteration id, iteration, and split
+  // Gets the next split for the specified iteration id, repetition, and split
   // provider index.
-  Status GetSplit(int64_t iteration_id, int64_t iteration,
+  Status GetSplit(int64_t iteration_id, int64_t repetition,
                   int64_t split_provider_index, Tensor& split,
                   bool& end_of_splits);
 
@@ -71,15 +72,23 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
                          const DataServiceMetadata& metadata,
                          int64_t& dataset_id);
 
-  // If `iteration_key` is set, looks up an iteration matching `iteration_key`.
-  // If `iteration_key` is absent or no matching iteration is found, creates a
-  // new iteration. The resulting iteration id is stored in
-  // `iteration_client_id`.
-  Status GetOrCreateIteration(
-      int64_t dataset_id, const ProcessingModeDef& processing_mode,
-      const absl::optional<IterationKeyDef>& iteration_key,
-      absl::optional<int64_t> num_consumers, bool use_cross_trainer_cache,
-      TargetWorkers target_workers, int64_t& iteration_client_id);
+  // If `job_name` is set, looks up a job matching `job_name`.
+  // If `job_name` is absent or no matching job is found, creates a
+  // new job. The resulting job id is stored in `job_id`.
+  Status GetOrCreateJob(int64_t dataset_id,
+                        const ProcessingModeDef& processing_mode,
+                        const absl::optional<std::string>& job_name,
+                        std::optional<int64_t> num_consumers,
+                        bool use_cross_trainer_cache,
+                        TargetWorkers target_workers, int64_t& job_id);
+
+  // Looks up an iteration of a job, creating an iteration if one doesn't
+  // already exist. The returned `iteration_client_id` can be used to query
+  // information about the iteration. The client should call
+  // `ReleaseIterationClient` when finished with the iteration, so that
+  // resources can be reclaimed.
+  Status GetOrCreateIteration(int64_t job_id, int64_t repetition,
+                              int64_t& iteration_client_id);
 
   // Releases a iteration client id, indicating that the id will no longer be
   // used to read from the iteration.

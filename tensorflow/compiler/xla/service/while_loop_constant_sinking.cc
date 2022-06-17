@@ -46,7 +46,7 @@ Status ReplaceUsesWhileKeepingLoopInvariance(HloInstruction* old_instr,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 HloInstruction* CloneHelper(const HloInstruction* instruction,

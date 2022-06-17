@@ -28,21 +28,21 @@ struct LhloOpToStdScalarOp {
             typename = std::enable_if_t<
                 !std::is_same<LhloOpTy, lmhlo::CompareOp>::value &&
                 !std::is_same<MhloOpTy, std::false_type>::value>>
-  static Value map(LhloOpTy op, ArrayRef<Type> result_types, ValueRange args,
+  static Value map(LhloOpTy op, ArrayRef<Type> resultTypes, ValueRange args,
                    OpBuilder* b, int /*i*/ = 0) {
     return mlir::mhlo::impl::MapMhloOpToStdScalarOp<MhloOpTy>(
-        op.getLoc(), result_types, llvm::to_vector<4>(op->getOperandTypes()),
+        op.getLoc(), resultTypes, llvm::to_vector<4>(op->getOperandTypes()),
         args, b);
   }
 
   // Implementation for lmhlo::CompareOp.
   template <typename LhloOpTy, typename = std::enable_if_t<std::is_same<
                                    LhloOpTy, lmhlo::CompareOp>::value>>
-  static Value map(lmhlo::CompareOp op, ArrayRef<Type> result_types,
+  static Value map(lmhlo::CompareOp op, ArrayRef<Type> resultTypes,
                    ValueRange args, OpBuilder* b) {
-    auto comparison_direction = op.comparison_direction();
-    return mlir::mhlo::impl::MapCompareOpToStdScalarOp<mhlo::CompareOp>(
-        op.getLoc(), comparison_direction, result_types,
+    auto comparisonDirection = op.getComparisonDirection();
+    return mlir::mhlo::impl::MapCompareOpToStdScalarOp(
+        op.getLoc(), comparisonDirection, resultTypes,
         llvm::to_vector<4>(op->getOperandTypes()), args, b);
   }
 
@@ -51,11 +51,11 @@ struct LhloOpToStdScalarOp {
             typename = std::enable_if_t<
                 !std::is_same<LhloOpTy, lmhlo::CompareOp>::value &&
                 !std::is_same<MhloOpTy, std::false_type>::value>>
-  static Value map(Location loc, ArrayRef<Type> result_types,
-                   ArrayRef<Type> arg_types, ValueRange args, OpBuilder* b,
+  static Value map(Location loc, ArrayRef<Type> resultTypes,
+                   ArrayRef<Type> argTypes, ValueRange args, OpBuilder* b,
                    unsigned /*i*/ = 0) {
     return mlir::mhlo::impl::MapMhloOpToStdScalarOp<MhloOpTy>(
-        loc, result_types, arg_types, args, b);
+        loc, resultTypes, argTypes, args, b);
   }
 };
 

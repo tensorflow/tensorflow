@@ -89,9 +89,12 @@ tf_cc_test(
     srcs = ["buffer_map_test.cc"],
     deps = [
         ":buffer_map",
+        ":buffer_map_util",
+        "//tensorflow/core:framework",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],

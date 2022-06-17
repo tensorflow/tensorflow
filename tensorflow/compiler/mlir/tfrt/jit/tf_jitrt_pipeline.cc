@@ -105,17 +105,17 @@ void AddBufferizationPasses(OpPassManager& pm, bool one_shot_bufferize) {
   pm.addNestedPass<FuncOp>(mlir::createLinalgInitTensorToAllocTensorPass());
   // Run One-Shot Bufferize.
   if (one_shot_bufferize) {
-    pm.addPass(mlir::hlo::CreateOneShotBufferizePass());
+    pm.addPass(mlir::hlo::createOneShotBufferizePass());
     return;
   }
   // Now bufferize all the compute operations (hlo + linalg) and func signature.
-  pm.addPass(mlir::CreateComputeOpAndFuncBufferizePass());
+  pm.addPass(mlir::createComputeOpAndFuncBufferizePass());
   pm.addNestedPass<FuncOp>(mlir::gml_st::CreateTiledLoopBufferizePass());
   // Always run CSE and canonicalizer (which does dead code removal) before
   // bufferizing anything.
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::CreateFinalBufferizePass(/*alignment=*/64));
+  pm.addPass(mlir::createFinalBufferizePass(/*alignment=*/64));
 }
 
 }  // namespace
@@ -180,6 +180,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
 
   // Transform HLO operations to Linalg and Standard.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeControlFlowPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeSortPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass());
   pm.addPass(mlir::mhlo::createLegalizeToArithmeticPass());
   pm.addNestedPass<FuncOp>(
@@ -192,7 +193,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
 
   // Lower shape dialect to standard to enable linalg canonicalizations (e.g.
   // use linalg inputs instead of outputs for memref.dim operations).
-  pm.addNestedPass<FuncOp>(mlir::CreateShapeSimplification());
+  pm.addNestedPass<FuncOp>(mlir::createShapeSimplification());
   pm.addNestedPass<FuncOp>(mlir::createShapeToShapeLowering());
   pm.addPass(mlir::createConvertShapeToStandardPass());
   pm.addNestedPass<FuncOp>(mlir::createConvertShapeConstraintsPass());
@@ -201,7 +202,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
   // Lower index cast on tensors to tensor.generate.
-  pm.addNestedPass<FuncOp>(mlir::CreateLowerIndexCastPass());
+  pm.addNestedPass<FuncOp>(mlir::createLowerIndexCastPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 

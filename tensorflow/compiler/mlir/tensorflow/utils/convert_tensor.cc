@@ -480,7 +480,7 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
       return errors::Unimplemented(absl::StrCat("Unimplemented data type ",
                                                 DataTypeString(output_dtype)));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvertToTensor(const mlir::ElementsAttr attr, Tensor* output_tensor) {
@@ -489,7 +489,7 @@ Status ConvertToTensor(const mlir::ElementsAttr attr, Tensor* output_tensor) {
   if (!output_tensor->FromProto(tensor_proto)) {
     return InvalidArgument("Couldn't convert tensor proto to tensor.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<mlir::ElementsAttr> DecodeOpaqueTensor(

@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2TENSORRT_TRT_CONVERT_H_
 #define TENSORFLOW_COMPILER_TF2TENSORRT_TRT_CONVERT_H_
 
+#include <climits>
 #include <string>
 #include <vector>
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/trt_parameters.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -35,7 +37,11 @@ namespace tensorrt {
 struct TfTrtConversionParams {
   // Corresponds 'workspaceSize' parameter of
   // nvinfer1::IBuilderConfig::setMaxWorkspaceSize.
+#if IS_TRT_VERSION_GE(8, 4, 0, 0)
+  size_t max_workspace_size_bytes = INT_MAX;
+#else
   size_t max_workspace_size_bytes = 1 << 30;
+#endif
 
   // Minimum precision used by the TRT Engine.
   TrtPrecisionMode precision_mode = TrtPrecisionMode::FP32;

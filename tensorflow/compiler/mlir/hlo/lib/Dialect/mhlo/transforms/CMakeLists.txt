@@ -113,12 +113,12 @@ add_mlir_library(MhloToLhloConversion
   LINK_LIBS PUBLIC
   MhloDialect
   LmhloDialect
-  MLIRArithmetic
+  MLIRArithmeticDialect
   MLIRArithmeticTransforms
   MLIRFuncTransforms
   MLIRIR
   MLIRPass
-  MLIRMath
+  MLIRMathDialect
   MLIRShapeOpsTransforms
   MLIRTransformUtils
   MLIRTransforms
@@ -149,7 +149,7 @@ add_mlir_library(MhloToMemrefConversion
   MhloTypeConversion
   MLIRIR
   MLIRPass
-  MLIRMath
+  MLIRMathDialect
   MLIRTransforms
   MLIRTransformUtils
 )
@@ -169,13 +169,14 @@ add_mlir_library(MhloToArithmeticConversion
   MhloTypeConversion
   MLIRIR
   MLIRPass
-  MLIRMath
+  MLIRMathDialect
   MLIRTransforms
   MLIRTransformUtils
 )
 
 add_mlir_library(MhloToStandard
   legalize_control_flow.cc
+  legalize_sort.cc
   legalize_to_standard.cc
 
   DEPENDS
@@ -192,7 +193,7 @@ add_mlir_library(MhloToStandard
   MhloDialect
   MLIRIR
   MLIRPass
-  MLIRTensor
+  MLIRTensorDialect
   MLIRTransformUtils
 )
 
@@ -210,7 +211,8 @@ add_mlir_library(MhloToLinalg
   LmhloDialect
   MhloDialect
   MhloTypeConversion
-  MLIRComplex
+  MLIRBufferizationDialect
+  MLIRComplexDialect
   MLIRIR
   MLIRPass
   MLIRRewrite
@@ -231,7 +233,7 @@ add_mlir_library(MhloShapeOpsToStandard
   LmhloDialect
   MhloDialect
   MhloTypeConversion
-  MLIRComplex
+  MLIRComplexDialect
   MLIRIR
   MLIRPass
   MLIRRewrite

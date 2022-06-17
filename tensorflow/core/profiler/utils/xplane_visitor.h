@@ -130,6 +130,8 @@ class XEventMetadataVisitor : public XStatsOwner<XEventMetadata> {
                         const XEventMetadata* metadata)
       : XStatsOwner(plane, metadata) {}
 
+  int64_t Id() const { return metadata()->id(); }
+
   absl::string_view Name() const { return metadata()->name(); }
 
   bool HasDisplayName() const { return !metadata()->display_name().empty(); }
@@ -149,6 +151,10 @@ class XEventVisitor : public XStatsOwner<XEvent> {
   // REQUIRED: plane, line and event cannot be nullptr.
   XEventVisitor(const XPlaneVisitor* plane, const XLine* line,
                 const XEvent* event);
+
+  const XPlaneVisitor& Plane() const { return *plane_; }
+
+  const XEvent& RawEvent() const { return *event_; }
 
   int64_t Id() const { return event_->metadata_id(); }
 
@@ -280,9 +286,8 @@ class XPlaneVisitor : public XStatsOwner<XPlane> {
   template <typename ForEachEventMetadataFunc>
   void ForEachEventMetadata(
       ForEachEventMetadataFunc&& for_each_event_metadata) {
-    for (const auto& event : plane_->event_metadata()) {
-      for_each_event_metadata(event.first,
-                              XEventMetadataVisitor(this, &event.second));
+    for (const auto& [id, event_metadata] : plane_->event_metadata()) {
+      for_each_event_metadata(XEventMetadataVisitor(this, &event_metadata));
     }
   }
 

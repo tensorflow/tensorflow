@@ -29,11 +29,6 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-enum class AddressMode {
-  kDontCare,
-  kZero,
-};
-
 enum class TensorStorageType {
   UNKNOWN,
   BUFFER,
@@ -53,6 +48,8 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   TensorDescriptor& operator=(const TensorDescriptor&) = default;
   TensorDescriptor(TensorDescriptor&& desc);
   TensorDescriptor& operator=(TensorDescriptor&& desc);
+
+  void CopyWithoutData(TensorDescriptor* desc) const;
 
   bool operator==(const TensorDescriptor& d) const {
     return data_type == d.data_type && storage_type == d.storage_type &&
@@ -78,7 +75,6 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   size_t GetSizeInBytesForShape(const BHWDC& shape5d) const;
 
   bool HasAxis(Axis axis) const;
-  void SetAddressMode(AddressMode mode);
   int GetWidthSize(BHWDC shape) const;
   int GetSliceStrideSize(BHWDC shape) const;
 
@@ -113,12 +109,30 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   absl::Status CanCreateTensorWithShape(const GpuInfo& gpu_info,
                                         const BHWC& shape) const;
 
+  // Can udate storage type if in the current storage type this tensor can not
+  // be allocated with shape on specified device(gpu_info)
+  // Usual scenario is to create new tensor_desc on base of another and may be
+  // update storage type for new tensor_desc shape because it can be unsuported
+  // with old storage type
+  absl::Status UpdateToSupportedStorageType(const GpuInfo& gpu_info,
+                                            const BHWC& shape);
+
   DataType data_type = DataType::UNKNOWN;
   TensorStorageType storage_type = TensorStorageType::UNKNOWN;
-  // This field describes logical layout, actual(physical) GPU layout can be
-  // totally different.
-  Layout layout =
-      Layout::UNKNOWN;  // Supported layouts is HWC, BHWC, HWDC, BHWDC
+
+  void SetUseBufferForWriteOnlyTexture2d(bool value) {
+    use_buffer_for_write_only_2d_texture = value;
+  }
+  bool GetUseBufferForWriteOnlyTexture2d() const {
+    return use_buffer_for_write_only_2d_texture;
+  }
+
+  void SetUseBufferForWriteOnlyImageBuffer(bool value) {
+    use_buffer_for_write_only_image_buffer = value;
+  }
+  bool GetUseBufferForWriteOnlyImageBuffer() const {
+    return use_buffer_for_write_only_image_buffer;
+  }
 
   void SetBHWCShape(const BHWC& new_shape) {
     shape = BHWDC(new_shape.b, new_shape.h, new_shape.w, 1, new_shape.c);
@@ -129,23 +143,12 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   void SetData(std::vector<uint8_t>&& new_data) { data = new_data; }
   const std::vector<uint8_t>& GetData() const { return data; }
 
-  // applicable only for TEXTURE_2D.
-  // When Texture 2d created from buffer, we can use it as texture or as buffer.
-  // This option allows to use texture 2d as buffer when we use it as dst
-  // tensor(write only).
-  // Currently supported only for Metal/OpenCL.
-  // By default false.
-  bool use_buffer_for_write_only_2d_texture = false;
-
-  // applicable only for IMAGE_BUFFER.
-  // We can use image buffer as image or as buffer.
-  // This option allows to use image buffer as buffer when we use it as dst
-  // tensor(write only).
-  // Currently supported only for Metal/OpenCL.
-  // By default true.
-  bool use_buffer_for_write_only_image_buffer = true;
-
  private:
+  friend flatbuffers::Offset<data::TensorDescriptor> Encode(
+      const TensorDescriptor& desc, flatbuffers::FlatBufferBuilder* builder);
+  friend void Decode(const data::TensorDescriptor* fb_desc,
+                     TensorDescriptor* desc);
+
   absl::Status PerformReadSelector(
       const GpuInfo& gpu_info, const std::vector<std::string>& args,
       const std::vector<std::string>& template_args, std::string* result) const;
@@ -196,8 +199,6 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
   bool IsBatchedWidth() const;
 
-  AddressMode AddressModeFromState() const;
-
   absl::Status MaybeGetDataTypeFromTemplateArgs(
       const std::vector<std::string>& template_args, DataType* result) const;
 
@@ -237,6 +238,27 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   void UploadData(const T* src);
   template <typename T>
   void DownloadData(T* dst);
+
+  // This field describes logical layout, actual(physical) GPU layout can be
+  // totally different.
+  Layout layout =
+      Layout::UNKNOWN;  // Supported layouts is HWC, BHWC, HWDC, BHWDC
+
+  // applicable only for TEXTURE_2D.
+  // When Texture 2d created from buffer, we can use it as texture or as buffer.
+  // This option allows to use texture 2d as buffer when we use it as dst
+  // tensor(write only).
+  // Currently supported only for Metal/OpenCL.
+  // By default false.
+  bool use_buffer_for_write_only_2d_texture = false;
+
+  // applicable only for IMAGE_BUFFER.
+  // We can use image buffer as image or as buffer.
+  // This option allows to use image buffer as buffer when we use it as dst
+  // tensor(write only).
+  // Currently supported only for Metal/OpenCL.
+  // By default true.
+  bool use_buffer_for_write_only_image_buffer = true;
 
   // optional
   BHWDC shape;

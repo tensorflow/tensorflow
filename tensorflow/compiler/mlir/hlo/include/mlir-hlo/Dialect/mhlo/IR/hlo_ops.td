@@ -41,7 +41,7 @@ class HLO_ShapedInterfaceOp<string mnemonic, list<Trait> traits> :
 // MHLO nullary op definitions.
 //===----------------------------------------------------------------------===//
 
-def HLO_ConstOp : HLO_Op<"constant",
+def HLO_ConstantOp : HLO_Op<"constant",
     [ConstantLike, NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Constant operator";
   let description = [{
@@ -58,12 +58,12 @@ def HLO_ConstOp : HLO_Op<"constant",
   let builders = [
     OpBuilder<(ins "Attribute":$value)>];
 
-  let assemblyFormat = "attr-dict $value";
-
-  let hasFolder = 1;
+  let hasCustomAssemblyFormat = 1;
 
   // Constant has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
+
+  let hasFolder = 1;
 
   let extraClassDeclaration = [{
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
@@ -160,7 +160,7 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
 def HLO_AbsOp: HLO_UnaryElementwiseOp<"abs",
     [NoSideEffect,
      DeclareOpInterfaceMethods<InferTypeOpInterface>],
-     TensorOf<[HLO_SInt, AnyFloat, HLO_Complex]>> {
+     TensorOf<[HLO_SInt, HLO_Float, HLO_Complex]>> {
   let summary = "Absolute value operator";
   let description = [{
     Returns `abs(operand)` element-wise.
@@ -363,7 +363,7 @@ def HLO_RealOp: HLO_UnaryElementwiseOp<"real",
 
 def HLO_RoundOp: HLO_UnaryElementwiseOp<"round_nearest_afz",
     [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpTensor> {
-  let summary = "Round operator";
+  let summary = "Round operator, ties away from zero";
   let description = [{
     Returns `Round(operand)` element-wise, rounding to nearest integer with
     half-way cases rounding away from zero.
@@ -372,6 +372,18 @@ def HLO_RoundOp: HLO_UnaryElementwiseOp<"round_nearest_afz",
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
   let hasFolder = 1;
+}
+
+def HLO_RoundNearestEvenOp: HLO_UnaryElementwiseOp<"round_nearest_even",
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpTensor> {
+  let summary = "Round operator, ties to even";
+  let description = [{
+    Returns `Round(operand)` element-wise, rounding to nearest integer with
+    half-way cases rounding towards even numbers.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
 }
 
 def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt",
@@ -386,7 +398,7 @@ def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt",
 }
 def HLO_SignOp: HLO_UnaryElementwiseOp<"sign",
     [NoSideEffect, HLO_CompatibleOperandsAndResultType],
-    TensorOf<[HLO_SInt, AnyFloat, HLO_Complex]>> {
+    TensorOf<[HLO_SInt, HLO_Float, HLO_Complex]>> {
   let summary = "Sign operator";
   let description = [{
     Returns `sign(operand)` element-wise, where
@@ -508,14 +520,14 @@ def HLO_Atan2Op : HLO_BinaryElementwiseOp<"atan2",
   }];
 }
 
-def HLO_ComplexOp: HLO_BinaryElementwiseOpNoAssembly<"complex",
-    [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+def HLO_ComplexOp: HLO_BinaryElementwiseOpNoAssembly<"complex", [NoSideEffect, 
+    SameOperandsElementType, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Complex operator";
   let description = [{
     Performs element-wise conversion of a pair of real and imaginary values to
     a complex value.
   }];
-  let arguments = (ins HLO_FpTensor:$lhs, HLO_FpTensor:$rhs);
+  let arguments = (ins HLO_Fp32Or64Tensor:$lhs, HLO_Fp32Or64Tensor:$rhs);
   let results = (outs HLO_ComplexTensor:$result);
   let assemblyFormat = "`(`operands`)` attr-dict `:` `(`type(operands)`)` `->` type($result)";
   let hasFolder = 1;
@@ -950,6 +962,7 @@ def HLO_WhileOp: HLO_Op<"while", [
   let hasCustomHLOConverter = 1;
   let hasCanonicalizer = 1;
   let hasCustomAssemblyFormat = 1;
+  let hasFolder = 1;
   let hasVerifier = 1;
 }
 
@@ -1222,20 +1235,20 @@ def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [NoSideEffect,
   }];
 
   let arguments = (ins
-    RankedTensorOf<[AnyFloat]>:$operand,
-    1DTensorOf<[AnyFloat]>:$scale,
-    1DTensorOf<[AnyFloat]>:$mean,
-    1DTensorOf<[AnyFloat]>:$variance,
-    RankedTensorOf<[AnyFloat]>:$grad_output,
+    RankedTensorOf<[HLO_Float]>:$operand,
+    1DTensorOf<[HLO_Float]>:$scale,
+    1DTensorOf<[HLO_Float]>:$mean,
+    1DTensorOf<[HLO_Float]>:$variance,
+    RankedTensorOf<[HLO_Float]>:$grad_output,
     F32Attr:$epsilon,
     I64Attr:$feature_index
   );
 
   let results = (outs Variadic<HLO_TensorOrToken>);
   let results = (outs
-      RankedTensorOf<[AnyFloat]>:$grad_operand,
-      1DTensorOf<[AnyFloat]>:$grad_scale,
-      1DTensorOf<[AnyFloat]>:$grad_offset);
+      RankedTensorOf<[HLO_Float]>:$grad_operand,
+      1DTensorOf<[HLO_Float]>:$grad_scale,
+      1DTensorOf<[HLO_Float]>:$grad_offset);
 
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
@@ -1252,16 +1265,16 @@ def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference",
   }];
 
   let arguments = (ins
-    RankedTensorOf<[AnyFloat]>:$operand,
-    1DTensorOf<[AnyFloat]>:$scale,
-    1DTensorOf<[AnyFloat]>:$offset,
-    1DTensorOf<[AnyFloat]>:$mean,
-    1DTensorOf<[AnyFloat]>:$variance,
+    RankedTensorOf<[HLO_Float]>:$operand,
+    1DTensorOf<[HLO_Float]>:$scale,
+    1DTensorOf<[HLO_Float]>:$offset,
+    1DTensorOf<[HLO_Float]>:$mean,
+    1DTensorOf<[HLO_Float]>:$variance,
     F32Attr:$epsilon,
     I64Attr:$feature_index
   );
 
-  let results = (outs RankedTensorOf<[AnyFloat]>:$result);
+  let results = (outs RankedTensorOf<[HLO_Float]>:$result);
 
   let hasVerifier = 1;
 }
@@ -1278,17 +1291,17 @@ def HLO_BatchNormTrainingOp : HLO_Op<"batch_norm_training",
   }];
 
   let arguments = (ins
-    RankedTensorOf<[AnyFloat]>:$operand,
-    1DTensorOf<[AnyFloat]>:$scale,
-    1DTensorOf<[AnyFloat]>:$offset,
+    RankedTensorOf<[HLO_Float]>:$operand,
+    1DTensorOf<[HLO_Float]>:$scale,
+    1DTensorOf<[HLO_Float]>:$offset,
     F32Attr:$epsilon,
     I64Attr:$feature_index
   );
 
   let results = (outs
-      RankedTensorOf<[AnyFloat]>:$output,
-      1DTensorOf<[AnyFloat]>:$batch_mean,
-      1DTensorOf<[AnyFloat]>:$batch_var);
+      RankedTensorOf<[HLO_Float]>:$output,
+      1DTensorOf<[HLO_Float]>:$batch_mean,
+      1DTensorOf<[HLO_Float]>:$batch_var);
 
   let hasVerifier = 1;
   let hasCustomHLOConverter = 1;
@@ -1803,9 +1816,9 @@ def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]> {
   let hasVerifier = 1;
 }
 
-def HLO_MapOp: HLO_Op<"map",
-      [RecursiveSideEffects, SameOperandsElementType,
-       SameOperandsAndResultShape, SingleBlockImplicitTerminator<"ReturnOp">]> {
+def HLO_MapOp: HLO_ShapedInterfaceOp<"map",
+      [RecursiveSideEffects, SameOperandsAndResultShape,
+       SingleBlockImplicitTerminator<"ReturnOp">]> {
   let summary = "Map operator";
   let description = [{
   Applies a scalar function over the given operands arrays, producing an array
@@ -1869,7 +1882,7 @@ def HLO_DynamicReshapeOp: HLO_ShapedInterfaceOp<"dynamic_reshape", [NoSideEffect
   let hasVerifier = 1;
 }
 
-def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]> {
+def HLO_ScatterOp: HLO_Op<"scatter", [SameVariadicOperandSize, RecursiveSideEffects]> {
   let summary = "Scatter operator";
   let description = [{
     Generates a result which is the value of the input array `operand`,
@@ -1879,9 +1892,9 @@ def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]> {
     See https://www.tensorflow.org/xla/operation_semantics#scatter.
   }];
   let arguments = (ins
-    HLO_Tensor:$operand,
+    Variadic<HLO_Tensor>:$operands,
     TensorOf<[AnyInteger, Index]>:$scatter_indices,
-    HLO_Tensor:$updates,
+    Variadic<HLO_Tensor>:$updates,
     ScatterDimensionNumbers:$scatter_dimension_numbers,
     DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted,
     DefaultValuedAttr<BoolAttr, "false">:$unique_indices
@@ -1889,7 +1902,7 @@ def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]> {
 
   let regions = (region SizedRegion<1>:$update_computation);
 
-  let results = (outs HLO_Tensor);
+  let results = (outs Variadic<HLO_Tensor>);
 
   let hasCustomHLOConverter = 1;
 
@@ -2270,8 +2283,8 @@ def HLO_RngUniformOp : HLO_Op<"rng_uniform", [InferTensorTypeWithReify, AllEleme
     See https://www.tensorflow.org/xla/operation_semantics#rnguniform.
   }];
   let arguments = (ins
-    0DTensorOf<[HLO_Pred, HLO_Int, AnyFloat]>:$a,
-    0DTensorOf<[HLO_Pred, HLO_Int, AnyFloat]>:$b,
+    0DTensorOf<[HLO_Pred, HLO_Int, HLO_Float]>:$a,
+    0DTensorOf<[HLO_Pred, HLO_Int, HLO_Float]>:$b,
     HLO_DimensionTensor:$shape
   );
 
@@ -2298,8 +2311,8 @@ def HLO_RngNormalOp : HLO_Op<"rng_normal", [InferTensorTypeWithReify, AllElement
     See https://www.tensorflow.org/xla/operation_semantics#rngnormal.
   }];
   let arguments = (ins
-    0DTensorOf<[AnyFloat]>:$mu,
-    0DTensorOf<[AnyFloat]>:$sigma,
+    0DTensorOf<[HLO_Float]>:$mu,
+    0DTensorOf<[HLO_Float]>:$sigma,
     HLO_DimensionTensor:$shape
   );
 
@@ -2435,7 +2448,7 @@ def HLO_BitcastOp : HLO_Op<"bitcast", [NoSideEffect]> {
 }
 
 def HLO_ReducePrecisionOp :
-    HLO_Op<"reduce_precision", [SameOperandsAndResultShape, SameOperandsAndResultElementType]> {
+    HLO_Op<"reduce_precision", [HLO_CompatibleOperandsAndResultType]> {
   let summary = "Reduce precision operator";
   let description = [{
     Models the effect of converting floating - point values to a lower -

@@ -25,6 +25,10 @@ tf_module {
     mtype: "<type \'str\'>"
   }
   member_method {
+    name: "barrier"
+    argspec: "args=[\'mesh\', \'barrier_name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "call_with_layout"
     argspec: "args=[\'fn\', \'layout\'], varargs=args, keywords=kwargs, defaults=None"
   }

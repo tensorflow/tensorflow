@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -73,16 +72,16 @@ class ForwardPassConvolution_3x3x256_256_OutputZ_Iota : public ConvolutionTest {
     const int kKernelSizeY = 2;
     const int kOutputActivationSizeZ = 256;
     const int kMiniBatchSize = 4;
-    auto alhs = absl::make_unique<Array4D<T>>(
+    auto alhs = std::make_unique<Array4D<T>>(
         kMiniBatchSize, kInputActivationSizeZ, kInputActivationSizeY,
         kInputActivationSizeX);
     alhs->FillWithMultiples(static_cast<T>(static_cast<T>(1.0f)));
     ASSERT_EQ(3, alhs->width());
     ASSERT_EQ(3, alhs->height());
 
-    auto arhs = absl::make_unique<Array4D<T>>(kOutputActivationSizeZ,
-                                              kInputActivationSizeZ,
-                                              kKernelSizeY, kKernelSizeX);
+    auto arhs = std::make_unique<Array4D<T>>(kOutputActivationSizeZ,
+                                             kInputActivationSizeZ,
+                                             kKernelSizeY, kKernelSizeX);
     Array2D<T> rhs_raster({
         {static_cast<T>(1.0f), static_cast<T>(0.0f)},  // row 0
         {static_cast<T>(0.0f), static_cast<T>(0.0f)},  // row 1

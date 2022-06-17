@@ -110,15 +110,25 @@ TfLiteStatus Interpreter::GetBufferHandle(int tensor_index,
 }
 
 void Interpreter::SetProfiler(Profiler* profiler) {
-  // Release resources occupied by owned_profiler_ which is replaced by
-  // caller-owned profiler.
-  owned_profiler_.reset(nullptr);
-  installed_profiler_ = profiler;
-  SetSubgraphProfiler();
+  if (profiler == nullptr) {
+    root_profiler_ = nullptr;
+    return;
+  }
+  if (root_profiler_ != nullptr) root_profiler_->RemoveChildProfilers();
+  AddProfiler(profiler);
 }
 
 void Interpreter::SetProfiler(std::unique_ptr<Profiler> profiler) {
   SetProfilerImpl(std::move(profiler));
+}
+
+void Interpreter::AddProfiler(Profiler* profiler) {
+  if (profiler == nullptr) return;
+  if (root_profiler_ == nullptr) {
+    root_profiler_ = std::make_unique<profiling::RootProfiler>();
+  }
+  root_profiler_->AddProfiler(profiler);
+  SetSubgraphProfiler();
 }
 
 Profiler* Interpreter::GetProfiler() {

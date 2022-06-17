@@ -469,7 +469,7 @@ tensorflow::Status TransformWithStatus(const TocoFlags& toco_flags,
     params_count += RequiredBufferSizeForShape(array.shape());
   }
   LOG(INFO) << "Number of parameters: " << params_count;
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::Status Export(const TocoFlags& toco_flags, const Model& model,

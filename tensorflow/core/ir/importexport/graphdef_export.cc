@@ -178,7 +178,7 @@ Status GraphDefExporter::ExportToGraphDef(ModuleOp module, GraphDef *graph) {
     } else {
       TF_ASSIGN_OR_RETURN(gradient, ExportFunction(func, def));
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   // TODO(jeffniu): Don't export functions in parallel if there are too few or
@@ -221,7 +221,7 @@ Status GraphDefExporter::ExportToGraphDef(ModuleOp module, GraphDef *graph) {
     }
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // The only dialect attributes allowed have the "tf." prefix. This is a slightly
@@ -239,7 +239,7 @@ static Status ConvertAttributes(
     StringRef name = attr.getName().strref().drop_front(/*strlen("tf.")=*/3);
     TF_ASSIGN_OR_RETURN((*map)[name.str()], ConvertAttribute(attr.getValue()));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
@@ -440,7 +440,7 @@ Status ConvertToNodeDef(
       node->clear_experimental_debug_info();
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status GraphDefExporter::ConvertOperation(Operation *op, NodeDef *node,
@@ -639,7 +639,7 @@ Status ConvertToFunctionDef(GraphFuncOp func,
       TF_RETURN_IF_ERROR(library.ReplaceGradient(*gradient));
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace tfg

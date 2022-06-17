@@ -24,7 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
@@ -52,56 +52,55 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      ReduceOp reduce_op, OpAdaptor /*adaptor*/,
+      ReduceOp reduceOp, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter& rewriter) const final {
-    auto loc = reduce_op.getLoc();
+    auto loc = reduceOp.getLoc();
     // Only support 1d reductions for now.
     int64_t size = 0;
-    for (auto result : reduce_op.out()) {
-      auto shaped_type = result.getType().dyn_cast<ShapedType>();
-      if (!shaped_type || shaped_type.getRank() != 1) {
+    for (auto result : reduceOp.getOut()) {
+      auto shapedType = result.getType().dyn_cast<ShapedType>();
+      if (!shapedType || shapedType.getRank() != 1) {
         return failure();
       }
-      auto dim_size = shaped_type.getDimSize(0);
-      if (size && size != dim_size) {
+      auto dimSize = shapedType.getDimSize(0);
+      if (size && size != dimSize) {
         return failure();
       }
-      size = dim_size;
+      size = dimSize;
     }
 
-    auto reducing_dimension = *reduce_op.dimensions().value_begin<APInt>();
+    auto reducingDimension = *reduceOp.getDimensions().value_begin<APInt>();
 
     // Require all inputs to have the same shape.
-    int64_t reduce_dim_size = 0;
-    for (auto input : reduce_op.inputs()) {
-      auto shaped_type = input.getType().dyn_cast<ShapedType>();
-      if (!shaped_type || !shaped_type.hasStaticShape()) {
+    int64_t reduceDimSize = 0;
+    for (auto input : reduceOp.getInputs()) {
+      auto shapedType = input.getType().dyn_cast<ShapedType>();
+      if (!shapedType || !shapedType.hasStaticShape()) {
         return failure();
       }
-      reduce_dim_size =
-          shaped_type.getDimSize(reducing_dimension.getSExtValue());
+      reduceDimSize = shapedType.getDimSize(reducingDimension.getSExtValue());
     }
 
     // Create a launch that is parallel in the result dimension.
-    auto block_size_x = rewriter.create<mlir::arith::ConstantOp>(
+    auto blockSizeX = rewriter.create<mlir::arith::ConstantOp>(
         loc, rewriter.getIndexType(),
         rewriter.getIntegerAttr(rewriter.getIndexType(), size));
     auto one = rewriter.create<mlir::arith::ConstantOp>(
         loc, rewriter.getIndexType(),
         rewriter.getIntegerAttr(rewriter.getIndexType(), 1));
-    auto launch_op = rewriter.create<mlir::gpu::LaunchOp>(
-        loc, one, one, one, block_size_x, one, one);
+    auto launchOp = rewriter.create<mlir::gpu::LaunchOp>(loc, one, one, one,
+                                                         blockSizeX, one, one);
     {
       OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPointToEnd(&launch_op.body().front());
-      auto index = launch_op.getThreadIds().x;
+      rewriter.setInsertionPointToEnd(&launchOp.body().front());
+      auto index = launchOp.getThreadIds().x;
 
       // Load the initial value and store it to the output.
-      for (auto pair : llvm::zip(reduce_op.init_values(), reduce_op.out())) {
-        auto init_value =
+      for (auto pair : llvm::zip(reduceOp.getInitValues(), reduceOp.getOut())) {
+        auto initValue =
             rewriter.create<mlir::memref::LoadOp>(loc, std::get<0>(pair));
         rewriter.create<mlir::memref::StoreOp>(
-            loc, init_value, std::get<1>(pair), ArrayRef<Value>{index});
+            loc, initValue, std::get<1>(pair), ArrayRef<Value>{index});
       }
 
       // Insert a loop into the body to compute the reduction. The loop ranges
@@ -112,7 +111,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       // TODO(b/137624192) Use dimOp to make it shape independent.
       auto upper = rewriter.create<mlir::arith::ConstantOp>(
           loc, rewriter.getIndexType(),
-          rewriter.getIntegerAttr(rewriter.getIndexType(), reduce_dim_size));
+          rewriter.getIntegerAttr(rewriter.getIndexType(), reduceDimSize));
       auto step = rewriter.create<mlir::arith::ConstantOp>(
           loc, rewriter.getIndexType(),
           rewriter.getIntegerAttr(rewriter.getIndexType(), 1));
@@ -121,41 +120,40 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       rewriter.setInsertionPointToStart(loop.getBody());
       // Compute memrefs for the value to reduce. This makes it easier to just
       // inline the body.
-      auto output = *reduce_op.out().begin();
+      auto output = *reduceOp.getOut().begin();
       auto resType = MemRefType::get(
           llvm::None, getElementTypeOrSelf(output.getType()),
           makeStridedLinearLayoutMap(llvm::None,
                                      MemRefType::getDynamicStrideOrOffset(),
                                      rewriter.getContext()));
-      OpFoldResult offset = launch_op.getThreadIds().x;
+      OpFoldResult offset = launchOp.getThreadIds().x;
       auto oneAttr = rewriter.getI64IntegerAttr(1);
       OpFoldResult size = oneAttr;
       OpFoldResult stride = oneAttr;
       auto accumulator = rewriter.create<memref::SubViewOp>(
           loc, resType, output, offset, size, stride);
       llvm::SmallVector<Value, 4> indexings;
-      Value input_buffer = reduce_op.inputs().front();
-      auto input_type_rank =
-          input_buffer.getType().cast<MemRefType>().getRank();
+      Value inputBuffer = reduceOp.getInputs().front();
+      auto inputTypeRank = inputBuffer.getType().cast<MemRefType>().getRank();
 
-      Value input = *reduce_op.operand_begin();
+      Value input = *reduceOp.operand_begin();
       SmallVector<OpFoldResult> offsets = llvm::to_vector<4>(llvm::map_range(
-          llvm::seq<int>(0, input_type_rank), [&](int dim) -> OpFoldResult {
-            return dim == reducing_dimension ? loop.getInductionVar()
-                                             : launch_op.getThreadIds().x;
+          llvm::seq<int>(0, inputTypeRank), [&](int dim) -> OpFoldResult {
+            return dim == reducingDimension ? loop.getInductionVar()
+                                            : launchOp.getThreadIds().x;
           }));
-      SmallVector<OpFoldResult> sizes(input_type_rank, oneAttr);
-      SmallVector<OpFoldResult> strides(input_type_rank, oneAttr);
+      SmallVector<OpFoldResult> sizes(inputTypeRank, oneAttr);
+      SmallVector<OpFoldResult> strides(inputTypeRank, oneAttr);
       auto rhs = rewriter.create<memref::SubViewOp>(
           loc, accumulator.getType(), input, offsets, sizes, strides);
 
       // Now copy over the actual body of the reduction, leaving out the
       // terminator.
       BlockAndValueMapping mapping;
-      mapping.map(reduce_op.body().getArgument(0), accumulator);
-      mapping.map(reduce_op.body().getArgument(1), rhs);
-      mapping.map(reduce_op.body().getArgument(2), accumulator);
-      for (auto& nested : reduce_op.body().front().without_terminator()) {
+      mapping.map(reduceOp.getBody().getArgument(0), accumulator);
+      mapping.map(reduceOp.getBody().getArgument(1), rhs);
+      mapping.map(reduceOp.getBody().getArgument(2), accumulator);
+      for (auto& nested : reduceOp.getBody().front().without_terminator()) {
         auto* clone = rewriter.clone(nested, mapping);
         for (auto pair : llvm::zip(nested.getResults(), clone->getResults())) {
           mapping.map(std::get<0>(pair), std::get<1>(pair));
@@ -163,11 +161,11 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       }
 
       // Finally, insert the terminator for the launchOp.
-      rewriter.setInsertionPointToEnd(&launch_op.body().front());
+      rewriter.setInsertionPointToEnd(&launchOp.body().front());
       rewriter.create<mlir::gpu::TerminatorOp>(loc);
     }
 
-    rewriter.eraseOp(reduce_op);
+    rewriter.eraseOp(reduceOp);
     return success();
   };
 };

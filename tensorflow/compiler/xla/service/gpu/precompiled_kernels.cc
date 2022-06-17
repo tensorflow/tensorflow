@@ -176,7 +176,7 @@ Status MakeBatchPointers(se::Stream* stream, const se::GpuAsmOpts& asm_opts,
                          se::BlockDim(CeilOfRatio(n, kThreads), 1, 1), *kernel,
                          base_ptr, stride_bytes, n, ptrs_out));
 #endif
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace gpu

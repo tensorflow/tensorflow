@@ -78,9 +78,11 @@ def ConvDimensionNumbers : AttrDef<HLO_Dialect, "ConvDimensionNumbers"> {
 def ArgResultAlias : AttrDef<HLO_Dialect, "ArgResultAlias"> {
   let cppNamespace = "::mlir::mhlo";
   let mnemonic = "result_alias";
-  let summary = [{
-    Attribute that models the alias relationship of an MHLO main function
-    argument to one of the results (denoted by `resultIndex`). The
+  let summary =
+    "Attribute that models the alias relationship of entry function argument";
+  let description = [{
+    This attribute captures the alias relationship of an MHLO main function
+    argument to one of the results, denoted by `resultIndex`. The
     `argTupleIndices` and `resultTupleIndices` are used to index into nested
     tuples in operand and result respectively. If `isMustAlias` is true then the
     operand-result pair must alias.
@@ -89,9 +91,10 @@ def ArgResultAlias : AttrDef<HLO_Dialect, "ArgResultAlias"> {
     For example, in the following code it expresses that `%arg1` may alias 0-th
     result.
 
-    ```
-    func @main(%arg0: tensor<2xf32>,
-               %arg1: tensor<3xf32> {mhlo.result_alias = mhlo.result_alias<result_index = [2], ...>}) -> tensor<2xf32>, tensor<3xf32> {
+    ```mlir
+    func @main(%arg0: tensor<2xf32>, %arg1: tensor<3xf32> {mhlo.result_alias =
+        mhlo.result_alias<result_index = [2], ...>}
+      ) -> tensor<2xf32>, tensor<3xf32> {
       // function body ...
     }
     ```
@@ -103,6 +106,16 @@ def ArgResultAlias : AttrDef<HLO_Dialect, "ArgResultAlias"> {
     "bool":$isMustAlias
   );
   let hasCustomAssemblyFormat = 1;
+}
+
+// Represents a unique identifier for each Send/Recv instruction pair or
+// optionally for collective instructions (AllReduce, CollectivePermute,
+// AllToAll). Non-positive channel_id handle is equivalent to no channel id.
+def ChannelHandle : AttrDef<HLO_Dialect, "ChannelHandle"> {
+  let mnemonic = "channel_handle";
+  let parameters = (ins "int64_t":$handle, "int64_t":$type);
+  let summary = "two 64-bit integers 'handle' and 'type'";
+  let assemblyFormat = "`<` struct(params) `>`";
 }
 
 #endif // HLO_OPS_BASE_ATTRS

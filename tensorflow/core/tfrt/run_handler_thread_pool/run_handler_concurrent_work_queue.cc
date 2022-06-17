@@ -53,7 +53,7 @@ RunHandlerThreadWorkQueue::RunHandlerThreadWorkQueue(const Options& options)
   pool_options.enable_wake_up = options.enable_wake_up;
   pool_options.wait_if_no_active_request = options.wait_if_no_active_request;
   pool_options.use_adaptive_waiting_time = options.use_adaptive_waiting_time;
-  handler_pool_ = absl::make_unique<RunHandlerPool>(pool_options);
+  handler_pool_ = std::make_unique<RunHandlerPool>(pool_options);
 }
 
 tensorflow::StatusOr<std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface>>

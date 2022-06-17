@@ -50,7 +50,7 @@ class PrefetchDatasetParams : public DatasetParams {
     input_names->clear();
     input_names->emplace_back(PrefetchDatasetOp::kInputDataset);
     input_names->emplace_back(PrefetchDatasetOp::kBufferSize);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -61,7 +61,7 @@ class PrefetchDatasetParams : public DatasetParams {
     attr_vector->emplace_back("legacy_autotune", legacy_autotune_);
     attr_vector->emplace_back("buffer_size_min", buffer_size_min_);
     attr_vector->emplace_back("metadata", "");
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override {

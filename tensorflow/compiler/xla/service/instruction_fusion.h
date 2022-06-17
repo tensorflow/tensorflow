@@ -111,7 +111,7 @@ class FusionDecision {
 
  private:
   // Empty IFF fusion is possible (explanation provided for negative cases).
-  absl::optional<std::string> explanation_;
+  std::optional<std::string> explanation_;
 };
 
 // Helper class: contextually convertible to "no fusion possible" unlike

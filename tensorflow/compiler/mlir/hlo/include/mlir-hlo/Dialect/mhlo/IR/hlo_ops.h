@@ -19,6 +19,7 @@ limitations under the License.
 #define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H
 
 #include "llvm/ADT/StringRef.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/Attributes.h"
@@ -34,12 +35,10 @@ limitations under the License.
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
-// clang-format off
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
-// clang-format on
+// Include order below matters.
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h.inc"
+#define GET_ATTRDEF_CLASSES
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h.inc"
 
 namespace mlir {
 class OpBuilder;
@@ -105,6 +104,12 @@ LogicalResult deriveShapeFromOperand(
 
 // Type derivation function that returns a tensor type with a new element type.
 TensorType getSameShapeTensorType(TensorType tensor_type, Type element_type);
+
+void printConvolutionDimensions(AsmPrinter &p, ConvDimensionNumbersAttr dnums);
+void printConvolutionDimensions(AsmPrinter &p, Operation *,
+                                ConvDimensionNumbersAttr dnums);
+ParseResult parseConvolutionDimensions(AsmParser &parser,
+                                       ConvDimensionNumbersAttr &dnums);
 
 }  // end namespace mhlo
 }  // end namespace mlir

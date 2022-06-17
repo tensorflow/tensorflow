@@ -42,6 +42,9 @@ class BaseTfLiteTensorBuffer : public tensorflow::TensorBuffer {
 
 // A tensor buffer for most data types. Numeric types have exactly the same
 // representation in TFLITE and TF, so we just need use memcpy().
+// For memory efficiency, this TensorBuffer can possibly reuse memory from the
+// TfLiteTensor, hence caller should ensure that the TfLiteTensor always outlive
+// this TensorBuffer.
 class TfLiteTensorBuffer : public BaseTfLiteTensorBuffer {
  public:
   explicit TfLiteTensorBuffer(const TfLiteTensor* tensor);
@@ -50,8 +53,21 @@ class TfLiteTensorBuffer : public BaseTfLiteTensorBuffer {
 
   inline size_t size() const override { return len_; }
 
+  inline bool BufferReusedFromTfLiteTensor() const {
+    return reused_buffer_from_tflite_;
+  }
+
+  // This function will check if the underlying buffer in `tensor` can be
+  // reused by the tensorflow::Tensor. If it can reuse, it will return
+  // `tensor->data.raw`, otherwise it will create new tensor buffer using
+  // tensorflow's CPU allocator.
+  // TODO(b/205153246): Also consider reusing memory to avoid copying from
+  // tensorflow::Tensor to TfLiteTensor.
+  void* MaybeAllocateTensorflowBuffer(const TfLiteTensor* tensor) const;
+
  private:
   size_t len_;
+  bool reused_buffer_from_tflite_;
 };
 
 // A string buffer. TFLITE string tensor format is different than

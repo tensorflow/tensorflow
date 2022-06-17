@@ -20,13 +20,13 @@ limitations under the License.
 namespace mlir {
 namespace mhlo {
 
-ConstOp GetScalarConstOfType(Type ty, Location loc, int64_t raw_value,
-                             OpBuilder* builder) {
-  return builder->create<ConstOp>(loc, hlo::GetScalarOfType(ty, raw_value));
+ConstantOp GetScalarConstOfType(Type ty, Location loc, int64_t raw_value,
+                                OpBuilder* builder) {
+  return builder->create<ConstantOp>(loc, hlo::GetScalarOfType(ty, raw_value));
 }
 
-ConstOp GetScalarNegZeroOfType(Type ty, Location loc, OpBuilder* builder) {
-  return builder->create<ConstOp>(loc, hlo::GetScalarNegZeroOfType(ty));
+ConstantOp GetScalarNegZeroOfType(Type ty, Location loc, OpBuilder* builder) {
+  return builder->create<ConstantOp>(loc, hlo::GetScalarNegZeroOfType(ty));
 }
 
 DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr) {

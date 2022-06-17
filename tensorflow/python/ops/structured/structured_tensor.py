@@ -941,7 +941,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
         fields[key] = cls._from_pyval(target, None, path_so_far + (key,))
     else:
       field_specs = typespec._field_specs  # pylint: disable=protected-access
-      if ((not isinstance(typespec, StructuredTensorSpec)) or
+      if ((not isinstance(typespec, StructuredTensorSpec)) or  # pylint: disable=superfluous-parens
           (set(fields) - set(field_specs))):
         raise ValueError('Value at %r does not match typespec: %r vs %r' %
                          (path_so_far, pyval, typespec))
@@ -1085,7 +1085,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     <StructuredTensor(
       fields={
         "foo": tf.Tensor([12 33 99], shape=(3,), dtype=int32)},
-      shape=(3,))>
+      shape=(None,))>
 
     Args:
       outer_axis: `int`: The first dimension in the range of dimensions to
@@ -1649,10 +1649,7 @@ def _merge_dims(value, outer_axis, inner_axis):
 
     # Build the new shape.
     value_shape = value.shape
-    shape = (
-        value_shape[:outer_axis] +
-        [value_shape[outer_axis:inner_axis].num_elements()] +
-        value_shape[inner_axis + 1:])
+    shape = (value_shape[:outer_axis] + [None] + value_shape[inner_axis + 1:])
 
     # Build the new row_partitions & nrows
     if outer_axis == 0:

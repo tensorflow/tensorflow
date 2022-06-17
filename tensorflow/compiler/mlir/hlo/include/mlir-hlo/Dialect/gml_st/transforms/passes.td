@@ -25,6 +25,15 @@ def FusionPass : Pass<"gml-fusion", "mlir::func::FuncOp"> {
   let constructor = "::mlir::gml_st::createFusionPass()";
 }
 
+def TilingPass : Pass<"gml-tiling", "mlir::func::FuncOp"> {
+  let summary = "Tile operations to produce gml_st.parallel or gml_st.for";
+  let constructor = "::mlir::gml_st::createTilingPass()";
+  let options = [
+    ListOption<"tileSizes", "tile-sizes", "int64_t", "Tile sizes",
+               "llvm::cl::ZeroOrMore">,
+  ];
+}
+
 def GmlStToScf : Pass<"gml-st-to-scf", "mlir::func::FuncOp"> {
   let summary = "Lower `gml_st.loop` to SCF loops and parallel loops";
   let constructor = "::mlir::gml_st::createGmlStToScfPass()";

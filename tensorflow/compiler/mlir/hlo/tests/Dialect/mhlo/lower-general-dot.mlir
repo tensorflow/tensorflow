@@ -143,3 +143,21 @@ func.func @dot_no_rhs_batch(%arg0: tensor<1x512x768xf32>, %arg1: tensor<768x12x6
 // CHECK:          %[[RESHAPER:.+]] = "mhlo.reshape"(%arg1) : (tensor<768x12x64xf32>) -> tensor<768x768xf32>
 // CHECK:          %[[DOT:.+]] = "mhlo.dot"(%[[RESHAPEL]], %[[RESHAPER]]) : (tensor<512x768xf32>, tensor<768x768xf32>) -> tensor<512x768xf32>
 // CHECK:          %[[OUT:.+]] = "mhlo.reshape"(%[[DOT]]) : (tensor<512x768xf32>) -> tensor<1x512x12x64xf32>
+
+// -----
+
+// CHECK-LABEL: @testPrefElem
+func.func @testPrefElem(%arg0: tensor<1x1x2xf32>, %arg1: tensor<2x3xf32>) -> tensor<1x1x3xf64> {
+  // CHECK: "mhlo.dot"({{%.*}}, {{%.*}}) {precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]} : (tensor<1x2xf32>, tensor<2x3xf32>) -> tensor<1x3xf64>
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [0]
+    >,
+   precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+  } : (tensor<1x1x2xf32>, tensor<2x3xf32>) -> tensor<1x1x3xf64>
+
+  func.return %0 : tensor<1x1x3xf64>
+}
+
+// -----

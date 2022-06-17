@@ -24,6 +24,7 @@ on:
 
 jobs:
   build:
+    if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
     runs-on: [self-hosted, linux, ARM64]
     strategy:
       matrix:
@@ -43,12 +44,20 @@ jobs:
       - name: Clean repository
         shell: bash
         run: find /home/ubuntu/actions-runner/_work/tensorflow/tensorflow/. -name . -o -prune -exec sudo rm -rf -- {} + || true
-      - name: Checkout repository
+      - name: Checkout repository for nightly (skipped for releases)
+        if: ${{ github.event_name == 'schedule' }}
+        uses: actions/checkout@v3
+        with:
+          ref: 'nightly'
+      - name: Checkout repository for releases (skipped for nightly)
+        if: ${{ github.event_name == 'push' }}
         uses: actions/checkout@v3
       - name: Build and test pip wheel
         shell: bash
         run: |
-          CI_DOCKER_BUILD_EXTRA_PARAMS='--build-arg py_major_minor_version=${{ matrix.pyver }}' \
+          is_nightly=0 && tf_project_name='tensorflow_cpu_aws' && ${{ github.event_name == 'schedule' }} && is_nightly=1 && tf_project_name='tf_nightly_cpu_aws'
+          echo "PyPI project name:" $tf_project_name
+          CI_DOCKER_BUILD_EXTRA_PARAMS="--build-arg py_major_minor_version=${{ matrix.pyver }} --build-arg is_nightly=${is_nightly} --build-arg tf_project_name=${tf_project_name}" \
           ./tensorflow/tools/ci_build/ci_build.sh cpu.arm64 bash tensorflow/tools/ci_build/rel/ubuntu/cpu_arm64_pip.sh
       - name: Upload pip wheel to PyPI
         shell: bash

@@ -43,8 +43,22 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/util.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/quant_spec.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+
+// NOLINTNEXTLINE
+llvm::cl::opt<mlir::quant::QuantizationMethod> quantization_method_option(
+    "quant-quantize-quantization-method",
+    llvm::cl::init(mlir::quant::QuantizationMethod::kPostTrainingQuantization),
+    llvm::cl::desc("Select quantization method for quantize pass."),
+    llvm::cl::values(
+        clEnumValN(mlir::quant::QuantizationMethod::kPostTrainingQuantization,
+                   "ptq_static_range",
+                   "Post-training static-range quantization"),
+        clEnumValN(mlir::quant::QuantizationMethod::kDynamicRangeQuantization,
+                   "ptq_dynamic_range",
+                   "Post-training dynamic-range quantizaiton")));
 
 namespace mlir {
 namespace quant {
@@ -73,16 +87,18 @@ struct TFQuantizationBase
     return false;
   }
 
-  // Dynamic range quantization is not supported.
+  // All the quantized ops are supported if the quantization method is dynamic
+  // range quantization.
   static bool AllowDynamicRangeQuantizedOperand(
       Operation* quantized_op, const CustomMap& custom_op_map) {
-    return false;
+    return quantization_trait == kDynamicRangeQuantization;
   }
 
-  // Dynamic range quantization is not supported.
+  // All the quantized ops are supported if the quantization method is dynamic
+  // range quantization.
   static bool AllowDynamicRangeQuantizedResult(Operation* quantized_op,
                                                const CustomMap& custom_op_map) {
-    return false;
+    return quantization_trait == kDynamicRangeQuantization;
   }
 
   // Weight-only quantization is not supported.
@@ -111,6 +127,16 @@ struct TFFullQuantizationReverse
                                      const QuantPassSpec& quant_params)
       : TFQuantizationBase<kFullQuantization, TFFullQuantizationReverse,
                            QuantizeCastOp>(ctx, quant_params) {}
+};
+
+// Dynamic range quantization rewrite pattern using DQ as the root op.
+struct TFDynamicRangeQuantization
+    : public TFQuantizationBase<kDynamicRangeQuantization,
+                                TFDynamicRangeQuantization> {
+  explicit TFDynamicRangeQuantization(MLIRContext* ctx,
+                                      const quant::QuantPassSpec& quant_params)
+      : TFQuantizationBase<kDynamicRangeQuantization,
+                           TFDynamicRangeQuantization>(ctx, quant_params) {}
 };
 
 // Removes quantize-dequantize pairs that are not used in the quantization.
@@ -328,7 +354,12 @@ struct QuantizePass
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(QuantizePass)
 
   // Constructor used by the PassRegistration and only used by test.
-  explicit QuantizePass() { quant_specs.inference_type = tensorflow::DT_QINT8; }
+  explicit QuantizePass() {
+    quant_specs.inference_type = tensorflow::DT_QINT8;
+    quant_specs.weight_quantization =
+        (quantization_method_option ==
+         mlir::quant::QuantizationMethod::kDynamicRangeQuantization);
+  }
 
   // Constructor used by manually creating the pass.
   explicit QuantizePass(const QuantizationSpecs& quant_specs)
@@ -360,10 +391,14 @@ void QuantizePass::runOnOperation() {
        quant_specs.whole_model_verify, /*enable_log_if_failed=*/false},
       quant_specs};
 
-  patterns.add<TFFullQuantization, TFFullQuantizationReverse>(ctx,
-                                                              quant_params);
-  patterns.add<QuantizeSameScaleOpsPattern>(ctx, GetTfQuantScaleSpec);
-  patterns.add<QuantizeAvgPoolOpPattern>(ctx);
+  if (quant_specs.weight_quantization) {
+    patterns.add<TFDynamicRangeQuantization>(ctx, quant_params);
+  } else {
+    patterns.add<TFFullQuantization, TFFullQuantizationReverse>(ctx,
+                                                                quant_params);
+    patterns.add<QuantizeSameScaleOpsPattern>(ctx, GetTfQuantScaleSpec);
+    patterns.add<QuantizeAvgPoolOpPattern>(ctx);
+  }
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   RewritePatternSet patterns_2(&getContext());
@@ -375,6 +410,11 @@ void QuantizePass::runOnOperation() {
 // Creates an instance of the TensorFlow dialect Quantize pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass() {
   QuantizationSpecs quant_specs;
+  return std::make_unique<QuantizePass>(quant_specs);
+}
+
+std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
+    QuantizationSpecs quant_specs) {
   return std::make_unique<QuantizePass>(quant_specs);
 }
 

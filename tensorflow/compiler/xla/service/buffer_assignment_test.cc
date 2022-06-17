@@ -22,15 +22,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/async_op_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -62,7 +63,7 @@ class InstructionListVisitor : public DfsHloVisitorWithDefault {
     // operands.
     instructions_.push_back(hlo);
     VLOG(0) << "List instruction " << hlo->ToString();
-    return Status::OK();
+    return OkStatus();
   }
 
   std::vector<const HloInstruction*> GetInstructions() { return instructions_; }
@@ -91,7 +92,7 @@ class BufferAssignmentTest : public HloTestBase {
   std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
                                                         int64_t alignment = 1) {
     return BufferAssigner::Run(
-               module, absl::make_unique<DependencyHloOrdering>(module),
+               module, std::make_unique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true)
@@ -102,7 +103,7 @@ class BufferAssignmentTest : public HloTestBase {
       HloModule* module, int64_t alignment = 1) {
     return BufferAssigner::Run(
                module,
-               absl::make_unique<SequentialHloOrdering>(module->schedule()),
+               std::make_unique<SequentialHloOrdering>(module->schedule()),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true)
@@ -112,7 +113,7 @@ class BufferAssignmentTest : public HloTestBase {
   std::unique_ptr<BufferAssignment> RunBufferAssignmentNoBuffersForConstants(
       HloModule* module, int64_t alignment = 1) {
     return BufferAssigner::Run(
-               module, absl::make_unique<DependencyHloOrdering>(module),
+               module, std::make_unique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/false)
@@ -127,7 +128,7 @@ class BufferAssignmentTest : public HloTestBase {
     };
 
     return BufferAssigner::Run(
-               module, absl::make_unique<DependencyHloOrdering>(module),
+               module, std::make_unique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/false,
@@ -140,7 +141,7 @@ class BufferAssignmentTest : public HloTestBase {
       HloModule* module, BufferAssigner::Colorer colorer,
       int64_t alignment = 1) {
     return BufferAssigner::Run(
-               module, absl::make_unique<DependencyHloOrdering>(module),
+               module, std::make_unique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true, std::move(colorer))
@@ -153,7 +154,7 @@ class BufferAssignmentTest : public HloTestBase {
     HloSchedule schedule(module);
     schedule.set_sequence(module->entry_computation(), instruction_sequence);
     return BufferAssigner::Run(
-               module, absl::make_unique<SequentialHloOrdering>(schedule),
+               module, std::make_unique<SequentialHloOrdering>(schedule),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true)
@@ -164,12 +165,12 @@ class BufferAssignmentTest : public HloTestBase {
       HloModule* module, std::unique_ptr<PresetAssignments> preset_assignments,
       int64_t alignment = 1) {
     return BufferAssigner::Run(
-               module, absl::make_unique<DependencyHloOrdering>(module),
+               module, std::make_unique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true,
                BufferAssigner::DefaultColorer(),
-               /*must_not_live_out=*/absl::nullopt,
+               /*must_not_live_out=*/std::nullopt,
                /*can_share_buffer=*/nullptr, std::move(preset_assignments))
         .ConsumeValueOrDie();
   }
@@ -608,7 +609,7 @@ TEST_F(BufferAssignmentTest, BasicUniquelyColored) {
       auto& value = alias_analysis->dataflow_analysis().GetValue(id);
       value.set_color(BufferValue::Color(color++));
     }
-    return Status::OK();
+    return OkStatus();
   };
 
   auto buffers = RunColoredBufferAssignment(module.get(), colorer);
@@ -682,7 +683,7 @@ TEST_F(BufferAssignmentTest, BasicPartiallyColored) {
         value.set_color(LogicalBuffer::Color(0));
       }
     }
-    return Status::OK();
+    return OkStatus();
   };
 
   auto buffers = RunColoredBufferAssignment(module.get(), colorer);
@@ -745,7 +746,7 @@ TEST_F(BufferAssignmentTest, PresetAssignments) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  auto preset_assignments = absl::make_unique<PresetAssignments>();
+  auto preset_assignments = std::make_unique<PresetAssignments>();
   preset_assignments->add_chunk({mul, {}}, {/*offset=*/100, /*size=*/400});
   preset_assignments->add_chunk({add, {}}, {/*offset=*/550, /*size=*/400});
   preset_assignments->assignment_information_for_space(/*memory_space=*/1)
@@ -852,7 +853,7 @@ TEST_F(BufferAssignmentTest, PresetAssignmentsWhile) {
   module->AddEntryComputation(builder.Build());
 
   // Set only one preset assignment for while data and its aliases.
-  auto preset_assignments = absl::make_unique<PresetAssignments>();
+  auto preset_assignments = std::make_unique<PresetAssignments>();
   preset_assignments->add_chunk({negate, {}}, {/*offset=*/100, /*size=*/40});
   preset_assignments->assignment_information_for_space(/*memory_space=*/1)
       ->size = 140;
@@ -2118,7 +2119,7 @@ class WhileBufferAssignmentTest : public HloTestBase {
     HloSchedule schedule =
         ScheduleModule(module, ByteSizeOf).ConsumeValueOrDie();
     return BufferAssigner::Run(
-               module, absl::make_unique<SequentialHloOrdering>(schedule),
+               module, std::make_unique<SequentialHloOrdering>(schedule),
                ByteSizeOf,
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true)
@@ -2437,7 +2438,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto assignment,
       BufferAssigner::Run(
-          module.get(), absl::make_unique<SequentialHloOrdering>(schedule),
+          module.get(), std::make_unique<SequentialHloOrdering>(schedule),
           backend().compiler()->BufferSizeBytesFunction(),
           [](LogicalBuffer::Color) { return 1; },
           /*allocate_buffers_for_constants=*/true));
@@ -2598,6 +2599,67 @@ ENTRY Main {
             GetAllocation(*buffers, param0, {1, 1}));
 }
 
+TEST_F(BufferAssignmentTest, AsyncCall) {
+  const char* hlo_text = R"(
+HloModule AsyncCall, is_scheduled=true
+
+%called_computation (param_0: f32[4096], param_1: f32[4096]) -> f32[4096] {
+  %param_0 = f32[4096]{0} parameter(0)
+  %param_1 = f32[4096]{0} parameter(1)
+  %negate_0 = f32[4096]{0} negate(f32[4096]{0} %param_0)
+  %negate_1 = f32[4096]{0} negate(f32[4096]{0} %param_1)
+  %negate_2 = f32[4096]{0} negate(f32[4096]{0} %negate_1)
+  %negate_3 = f32[4096]{0} negate(f32[4096]{0} %negate_2)
+  ROOT %result.1 = f32[4096]{0} add(f32[4096]{0} %negate_0, f32[4096]{0} %negate_3)
+}
+
+ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
+  %a = f32[4096]{0} parameter(0)
+  %b = f32[4096]{0} parameter(1)
+  %async-start = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) call-start(f32[4096]{0} %a, f32[4096]{0} %b), to_apply=%called_computation
+  %negate_4 = f32[4096]{0} negate(f32[4096]{0} %a)
+  %negate_5 = f32[4096]{0} negate(f32[4096]{0} %b)
+  %negate_6 = f32[4096]{0} negate(f32[4096]{0} %negate_5)
+  %negate_7 = f32[4096]{0} negate(f32[4096]{0} %negate_6)
+  %add_0 = f32[4096]{0} add(f32[4096]{0} %negate_4, f32[4096]{0} %negate_7)
+  %async-done = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start), to_apply=%called_computation
+  ROOT %add_1 = f32[4096]{0} add(f32[4096]{0} %add_0, f32[4096]{0} %async-done)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
+  AsyncOpCanonicalizer async_op_canonicalizer;
+  EXPECT_TRUE(async_op_canonicalizer.Run(m.get()).ok());
+  HloDCE dce;
+  EXPECT_TRUE(dce.Run(m.get()).ok());
+
+  auto buffers = RunBufferAssignmentWithSequentialOrdering(m.get());
+
+  LOG(INFO) << buffers->ToString();
+
+  auto get_slice = [&](std::string_view hlo_name, const ShapeIndex& index) {
+    return buffers->GetUniqueSlice(FindInstruction(m.get(), hlo_name), index)
+        .ValueOrDie();
+  };
+
+  // Make sure the parameters and root of the async called computation has the
+  // same slice as the async call operands/output.
+  EXPECT_EQ(get_slice("param_0", {}), get_slice("a", {}));
+  EXPECT_EQ(get_slice("param_1", {}), get_slice("b", {}));
+  EXPECT_EQ(get_slice("result.1", {}), get_slice("async-done", {}));
+
+  // Make sure the intermediate values in the async called computation have
+  // different allocated slices than the values that overlap it.
+  for (const auto& hlo_name :
+       {"negate_0", "negate_1", "negate_2", "negate_3"}) {
+    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_4", {}));
+    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_5", {}));
+    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_6", {}));
+    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_7", {}));
+    EXPECT_NE(get_slice(hlo_name, {}), get_slice("add_0", {}));
+  }
+}
+
 TEST_F(BufferAssignmentTest, BufferInfoStringTest) {
   absl::string_view module_str = R"(
 HloModule test_module
@@ -2705,7 +2767,7 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
 
   auto assignment =
       BufferAssigner::Run(
-          module.get(), absl::make_unique<SequentialHloOrdering>(schedule),
+          module.get(), std::make_unique<SequentialHloOrdering>(schedule),
           ByteSizeOf, [](LogicalBuffer::Color) { return 1; },
           /*allocate_buffers_for_constants=*/true)
           .ConsumeValueOrDie();

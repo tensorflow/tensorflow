@@ -1418,11 +1418,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TfLiteIntArray* scratch_buffer_size = TfLiteIntArrayCreate(2);
     scratch_buffer_size->data[0] = n_batch;
     if (use_cifg) {
-      // Reserving space for Cell, Forget, Output gates
-      scratch_buffer_size->data[1] = n_cell * 3;
-    } else {
-      // Reserving space for Input, Cell, Forget, Output gates
+      // Reserving space for Cell, Forget, Output gates and scratch accumulation
+      // buffer and an extra 16 bytes to avoid internal ruy copies.
       scratch_buffer_size->data[1] = n_cell * 4;
+    } else {
+      // Reserving space for Input, Cell, Forget, Output gates and scratch
+      // accumulation buffer and an extra 16 bytes to avoid internal ruy copies.
+      scratch_buffer_size->data[1] = n_cell * 5;
     }
     TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scratch_buffer,
                                                      scratch_buffer_size));
@@ -1925,8 +1927,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           projection_weights, projection_bias, params,
           /*forward_sequence=*/true,
           /*time_major=*/true,
-          /*output_offset=*/0, scratch_buffer, output_state, cell_state,
-          output);
+          /*output_offset=*/0, scratch_buffer, output_state, cell_state, output,
+          CpuBackendContext::GetFromContext(context));
     }
     case kTfLiteUInt8:
     case kTfLiteInt8: {

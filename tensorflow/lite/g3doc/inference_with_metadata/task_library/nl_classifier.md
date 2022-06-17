@@ -154,9 +154,9 @@ with your own model and test data.
 ## Model compatibility requirements
 
 Depending on the use case, the `NLClassifier` API can load a TFLite model with
-or without [TFLite Model Metadata](../../convert/metadata). See examples of
+or without [TFLite Model Metadata](../../models/convert/metadata). See examples of
 creating metadata for natural language classifiers using the
-[TensorFlow Lite Metadata Writer API](../../convert/metadata_writer_tutorial.ipynb#nl_classifiers).
+[TensorFlow Lite Metadata Writer API](../../models/convert/metadata_writer_tutorial.ipynb#nl_classifiers).
 
 The compatible models should meet the following requirements:
 
@@ -165,11 +165,11 @@ The compatible models should meet the following requirements:
     -   Input of the model should be either a kTfLiteString tensor raw input
         string or a kTfLiteInt32 tensor for regex tokenized indices of raw input
         string.
-    -   If input type is kTfLiteString, no [Metadata](../../convert/metadata)
+    -   If input type is kTfLiteString, no [Metadata](../../models/convert/metadata)
         is required for the model.
     -   If input type is kTfLiteInt32, a `RegexTokenizer` needs to be set up in
         the input tensor's
-        [Metadata](https://www.tensorflow.org/lite/convert/metadata_writer_tutorial#natural_language_classifiers).
+        [Metadata](https://www.tensorflow.org/lite/models/convert/metadata_writer_tutorial#natural_language_classifiers).
 
 *   Output score tensor:
     (kTfLiteUInt8/kTfLiteInt8/kTfLiteInt16/kTfLiteFloat32/kTfLiteFloat64)
@@ -180,7 +180,7 @@ The compatible models should meet the following requirements:
         corresponding platforms
 
     -   Can have an optional associated file in the output tensor's
-        corresponding [Metadata](../../convert/metadata) for category labels,
+        corresponding [Metadata](../../models/convert/metadata) for category labels,
         the file should be a plain text file with one label per line, and the
         number of labels should match the number of categories as the model
         outputs. See the

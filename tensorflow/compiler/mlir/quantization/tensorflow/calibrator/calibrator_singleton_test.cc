@@ -21,90 +21,99 @@ namespace calibrator {
 namespace {
 
 TEST(CalibratorSingletonTest, SimpleMinMax) {
-  CalibratorSingleton::ReportMinMax("1", 1.0f, 2.0f);
-  absl::optional<std::pair<float, float>> min_max =
-      CalibratorSingleton::GetMinMax("1");
+  CalibratorSingleton::ReportMinMax(/*id=*/"1", /*min_val=*/1.0f,
+                                    /*max_val=*/2.0f);
+  std::optional<std::pair<float, float>> min_max =
+      CalibratorSingleton::GetMinMax(/*id=*/"1");
   EXPECT_TRUE(min_max.has_value());
-  EXPECT_THAT(1.0f, min_max.value().first);
-  EXPECT_THAT(2.0f, min_max.value().second);
+  EXPECT_EQ(min_max.value().first, 1.0f);
+  EXPECT_EQ(min_max.value().second, 2.0f);
 
-  CalibratorSingleton::ReportMinMax("1", -1.0f, 3.0f);
-  min_max = CalibratorSingleton::GetMinMax("1");
+  CalibratorSingleton::ReportMinMax(/*id=*/"1", /*min_val=*/-1.0f,
+                                    /*max_val=*/3.0f);
+  min_max = CalibratorSingleton::GetMinMax(/*id=*/"1");
   EXPECT_TRUE(min_max.has_value());
-  EXPECT_THAT(-1.0f, min_max.value().first);
-  EXPECT_THAT(3.0f, min_max.value().second);
+  EXPECT_EQ(min_max.value().first, -1.0f);
+  EXPECT_EQ(min_max.value().second, 3.0f);
 
-  CalibratorSingleton::ReportMinMax("1", 3.0f, 5.0f);
+  CalibratorSingleton::ReportMinMax(/*id=*/"1", /*min_val=*/3.0f,
+                                    /*max_val=*/5.0f);
 
-  min_max = CalibratorSingleton::GetMinMax("1");
+  min_max = CalibratorSingleton::GetMinMax(/*id=*/"1");
   EXPECT_TRUE(min_max.has_value());
-  EXPECT_THAT(-1.0f, min_max.value().first);
-  EXPECT_THAT(5.0f, min_max.value().second);
+  EXPECT_EQ(min_max.value().first, -1.0f);
+  EXPECT_EQ(min_max.value().second, 5.0f);
 }
 
 TEST(CalibratorSingletonTest, DifferentSessions) {
-  CalibratorSingleton::ReportMinMax("2", 1.0f, 2.0f);
-  absl::optional<std::pair<float, float>> min_max =
-      CalibratorSingleton::GetMinMax("2");
+  CalibratorSingleton::ReportMinMax(/*id=*/"2", /*min_val=*/1.0f,
+                                    /*max_val=*/2.0f);
+  std::optional<std::pair<float, float>> min_max =
+      CalibratorSingleton::GetMinMax(/*id=*/"2");
   EXPECT_TRUE(min_max.has_value());
-  EXPECT_THAT(1.0f, min_max.value().first);
-  EXPECT_THAT(2.0f, min_max.value().second);
+  EXPECT_EQ(min_max.value().first, 1.0f);
+  EXPECT_EQ(min_max.value().second, 2.0f);
 
-  CalibratorSingleton::ReportMinMax("3", -1.0f, 3.0f);
-  min_max = CalibratorSingleton::GetMinMax("3");
+  CalibratorSingleton::ReportMinMax(/*id=*/"3", /*min_val=*/-1.0f,
+                                    /*max_val=*/3.0f);
+  min_max = CalibratorSingleton::GetMinMax(/*id=*/"3");
   EXPECT_TRUE(min_max.has_value());
-  EXPECT_THAT(-1.0f, min_max.value().first);
-  EXPECT_THAT(3.0f, min_max.value().second);
+  EXPECT_EQ(min_max.value().first, -1.0f);
+  EXPECT_EQ(min_max.value().second, 3.0f);
 
-  CalibratorSingleton::ReportMinMax("2", 3.0f, 5.0f);
-  min_max = CalibratorSingleton::GetMinMax("2");
+  CalibratorSingleton::ReportMinMax(/*id=*/"2", /*min_val=*/3.0f,
+                                    /*max_val=*/5.0f);
+  min_max = CalibratorSingleton::GetMinMax(/*id=*/"2");
   EXPECT_TRUE(min_max.has_value());
-  EXPECT_THAT(1.0f, min_max.value().first);
-  EXPECT_THAT(5.0f, min_max.value().second);
+  EXPECT_EQ(min_max.value().first, 1.0f);
+  EXPECT_EQ(min_max.value().second, 5.0f);
 
-  min_max = CalibratorSingleton::GetMinMax("3");
+  min_max = CalibratorSingleton::GetMinMax(/*id=*/"3");
   EXPECT_TRUE(min_max.has_value());
-  EXPECT_THAT(-1.0f, min_max.value().first);
-  EXPECT_THAT(3.0f, min_max.value().second);
+  EXPECT_EQ(min_max.value().first, -1.0f);
+  EXPECT_EQ(min_max.value().second, 3.0f);
 }
 
 TEST(CalibratorSingletonTest, ClearAndGetEmptyResult) {
-  CalibratorSingleton::ReportMinMax("4", 1.0f, 2.0f);
-  absl::optional<std::pair<float, float>> min_max =
-      CalibratorSingleton::GetMinMax("4");
+  CalibratorSingleton::ReportMinMax(/*id=*/"4", /*min_val=*/1.0f,
+                                    /*max_val=*/2.0f);
+  std::optional<std::pair<float, float>> min_max =
+      CalibratorSingleton::GetMinMax(/*id=*/"4");
   EXPECT_TRUE(min_max.has_value());
-  EXPECT_THAT(1.0f, min_max.value().first);
-  EXPECT_THAT(2.0f, min_max.value().second);
+  EXPECT_EQ(min_max.value().first, 1.0f);
+  EXPECT_EQ(min_max.value().second, 2.0f);
 
   CalibratorSingleton::ClearCollectedInformation();
 
-  min_max = CalibratorSingleton::GetMinMax("4");
+  min_max = CalibratorSingleton::GetMinMax(/*id=*/"4");
   EXPECT_FALSE(min_max.has_value());
 }
 
 TEST(CalibratorSingletonTest, ClearDataAndGetResults) {
-  CalibratorSingleton::ReportMinMax("5", 1.0f, 2.0f);
-  absl::optional<std::pair<float, float>> min_max =
-      CalibratorSingleton::GetMinMax("5");
+  CalibratorSingleton::ReportMinMax(/*id=*/"5", /*min_val=*/1.0f,
+                                    /*max_val=*/2.0f);
+  std::optional<std::pair<float, float>> min_max =
+      CalibratorSingleton::GetMinMax(/*id=*/"5");
   EXPECT_TRUE(min_max.has_value());
-  EXPECT_THAT(min_max.value().first, 1.0f);
-  EXPECT_THAT(min_max.value().second, 2.0f);
+  EXPECT_EQ(min_max.value().first, 1.0f);
+  EXPECT_EQ(min_max.value().second, 2.0f);
 
-  CalibratorSingleton::ReportMinMax("6", 3.0f, 4.0f);
-  min_max = CalibratorSingleton::GetMinMax("6");
+  CalibratorSingleton::ReportMinMax(/*id=*/"6", /*min_val=*/3.0f,
+                                    /*max_val=*/4.0f);
+  min_max = CalibratorSingleton::GetMinMax(/*id=*/"6");
   EXPECT_TRUE(min_max.has_value());
-  EXPECT_THAT(min_max.value().first, 3.0f);
-  EXPECT_THAT(min_max.value().second, 4.0f);
+  EXPECT_EQ(min_max.value().first, 3.0f);
+  EXPECT_EQ(min_max.value().second, 4.0f);
 
-  CalibratorSingleton::ClearData("5");
+  CalibratorSingleton::ClearData(/*id=*/"5");
 
-  min_max = CalibratorSingleton::GetMinMax("5");
+  min_max = CalibratorSingleton::GetMinMax(/*id=*/"5");
   EXPECT_FALSE(min_max.has_value());
 
-  min_max = CalibratorSingleton::GetMinMax("6");
+  min_max = CalibratorSingleton::GetMinMax(/*id=*/"6");
   EXPECT_TRUE(min_max.has_value());
-  EXPECT_THAT(min_max.value().first, 3.0f);
-  EXPECT_THAT(min_max.value().second, 4.0f);
+  EXPECT_EQ(min_max.value().first, 3.0f);
+  EXPECT_EQ(min_max.value().second, 4.0f);
 }
 
 }  // namespace

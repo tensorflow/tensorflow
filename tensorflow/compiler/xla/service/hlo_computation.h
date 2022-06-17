@@ -95,7 +95,7 @@ class HloComputation {
       for (const auto& instruction : instructions_) {
         TF_RETURN_IF_ERROR(func(instruction.get()));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     HloInstruction* last_added_instruction() const {
@@ -326,6 +326,22 @@ class HloComputation {
       absl::Span<HloInstruction* const> instructions_to_fuse,
       HloInstruction::FusionKind fusion_kind);
 
+  // Creates a call instruction containing the given instructions.  Instructions
+  // must be in reverse topological order (root of the called computation
+  // first). Replaces all uses of the original root instruction with the call
+  // instruction. The original instructions are removed if they have no uses
+  // after creating the call (this is necessarily true for at least the root).
+  HloInstruction* CreateCallInstruction(
+      absl::Span<HloInstruction* const> instructions_to_call);
+
+  // Creates an async start/done instruction pair where instruction is wrapped
+  // inside an asynchronous computation. The context shapes are appended to the
+  // output tuple of the asynchronous start which is backend specific. Returns
+  // the async done instruction. The new async start instruction is the operand
+  // of the async done instruction so that can be accessed using that.
+  StatusOr<HloInstruction*> CreateAsyncInstructions(
+      HloInstruction* instruction, absl::Span<const Shape> context_shapes);
+
   // Create a deep copy of the given instruction and return the instruction
   // producing the copied result. All instructions performing the copy are added
   // to the computation. For array-shaped values, this method trivially returns
@@ -451,6 +467,7 @@ class HloComputation {
   // Like Clone(), but if an instruction is present in replacement_map, we use
   // the map's value to replace that instruction in the cloned computation.
   //
+  // If replacements is nullptr, don't perform replacement.
   // If replacements maps a key to nullptr, we remove that instruction from the
   // new computation.  If an element of `replacements` references an instruction
   // that's not already in the computation, it's cloned and added to the new
@@ -462,9 +479,8 @@ class HloComputation {
   // All relevant instructions are cloned, *including* unique_ptr in the
   // `replacements` map.
   std::unique_ptr<HloComputation> CloneWithReplacements(
-      absl::flat_hash_map<const HloInstruction*,
-                          std::unique_ptr<HloInstruction>>
-          replacements,
+      const absl::flat_hash_map<const HloInstruction*,
+                                std::unique_ptr<HloInstruction>>* replacements,
       absl::Span<const HloInstruction* const> extra_parameters = {},
       HloCloneContext* context = nullptr, const std::string& suffix = "clone",
       const HloInstruction* new_root = nullptr);
@@ -528,6 +544,7 @@ class HloComputation {
   // computation.
   HloInstruction* FusionInstruction() const { return fusion_instruction_; }
   void SetFusionInstruction(HloInstruction* fusion_instruction) {
+    CHECK(!IsCustomCallComputation() && !IsAsyncComputation());
     fusion_instruction_ = fusion_instruction;
     is_fusion_computation_ |= (fusion_instruction != nullptr);
   }
@@ -541,6 +558,7 @@ class HloComputation {
     return custom_call_instruction_;
   }
   void SetCustomCallInstruction(HloInstruction* custom_call_instruction) {
+    CHECK(!IsFusionComputation() && !IsAsyncComputation());
     custom_call_instruction_ = custom_call_instruction;
     is_custom_call_computation_ |= (custom_call_instruction != nullptr);
   }
@@ -561,6 +579,10 @@ class HloComputation {
   void AddAsyncInstruction(HloInstruction* async_instruction) {
     CHECK(async_instruction != nullptr)
         << "Nullptr shouldn't be added as commputation's async instruction. ";
+    CHECK(!IsFusionComputation() && !IsCustomCallComputation());
+    CHECK(async_instruction->opcode() == HloOpcode::kAsyncStart ||
+          async_instruction->opcode() == HloOpcode::kAsyncUpdate ||
+          async_instruction->opcode() == HloOpcode::kAsyncDone);
     async_instructions_.push_back(async_instruction);
   }
 
@@ -619,12 +641,11 @@ class HloComputation {
   bool EqualInternal(const HloComputation& other, bool is_layout_sensitive,
                      bool ignore_channel_id_values) const;
 
-  // Fuses HLOs in instructions_to_fuse into fusion_instruction.
-  //
-  // Pre-condition: fusion_instruction's opcode is kFusion.
-  void FuseInstructionsInto(
-      absl::Span<HloInstruction* const> instructions_to_fuse,
-      HloInstruction* fusion_instruction);
+  // Appends (fuses) HLOs in instructions_to_append into the called computation
+  // of the caller.
+  void AppendInstructionsIntoCalledComputation(
+      absl::Span<HloInstruction* const> instructions_to_append,
+      HloInstruction* caller);
 
   // Internal helper for recursive copying of an instruction. Creates and
   // returns a deep copy of the given instruction.
@@ -744,7 +765,7 @@ Status HloComputation::AcceptOrdered(
     visited.insert(instruction);
   }
   TF_RETURN_IF_ERROR(visitor->FinishVisit(root_instruction()));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Explicit instantiations.

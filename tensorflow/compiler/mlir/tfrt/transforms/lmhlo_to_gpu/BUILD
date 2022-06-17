@@ -42,6 +42,7 @@ cc_library(
     tags = ["gpu"],
     deps = [
         "//tensorflow/stream_executor:dnn",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@tf_runtime//:basic_kernels_opdefs",
@@ -179,7 +180,10 @@ cc_library(
         ":lmhlo_to_gpu_binary",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
+        "//tensorflow/compiler/mlir/xla:attribute_exporter",
+        "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
         "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ControlFlowDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:GPUTransforms",

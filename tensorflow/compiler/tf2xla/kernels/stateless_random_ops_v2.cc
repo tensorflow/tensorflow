@@ -183,7 +183,7 @@ Status AlgorithmFromInput(XlaOpKernelContext* ctx, int alg_input_idx,
     alg = DefaultRngAlgForDeviceType(device_type_string);
   }
   *xla_alg = TensorFlowRngAlgToXla(alg);
-  return Status::OK();
+  return OkStatus();
 }
 
 xla::XlaOp MaybeSliceCounter(xla::RandomAlgorithm const& alg,

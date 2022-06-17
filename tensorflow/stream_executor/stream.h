@@ -26,9 +26,8 @@ limitations under the License.
 #include <memory>
 #include <type_traits>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.h"
@@ -1313,7 +1312,7 @@ class Stream {
         output_profile_result);
     if (output_profile_result) {
       // The error is recorded in the profile.
-      return port::Status::OK();
+      return ::tensorflow::OkStatus();
     }
     return st;
   }
@@ -1350,7 +1349,7 @@ class Stream {
         computation_type, algorithm, output_profile_result);
     if (output_profile_result) {
       // The error is recorded in the profile.
-      return port::Status::OK();
+      return ::tensorflow::OkStatus();
     }
     return st;
   }
@@ -2068,7 +2067,7 @@ class Stream {
           " for computation type, expected: ",
           blas::ComputationTypeString(expected_computation_type)));
     }
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   bool InErrorState() const TF_LOCKS_EXCLUDED(mu_) {
@@ -2109,16 +2108,16 @@ class Stream {
   // Whether Init() was successfully called to allocate this stream on the
   // underlying platform. It simply flips from 0 to 1 with a sanity check.
   // See StreamExecutor::AllocateStream.
-  bool allocated_ TF_GUARDED_BY(mu_) = false;
+  bool allocated_ ABSL_GUARDED_BY(mu_);
 
   // The last error (if any) of all method calls.
-  port::Status status_ TF_GUARDED_BY(mu_);
+  port::Status status_ ABSL_GUARDED_BY(mu_);
 
   // Sub-streams that are generated from this stream. Each element has a pointer
   // to sub-stream and a boolean value indicating if this substream is ready to
   // be reused.
   std::vector<std::pair<std::unique_ptr<Stream>, bool>> sub_streams_
-      TF_GUARDED_BY(mu_);
+      ABSL_GUARDED_BY(mu_);
 
   // Streams can allocate temporary memories to help with work they enqueue
   // (e.g. for scratch memory spaces). This member tracks those allocations and
@@ -2128,7 +2127,7 @@ class Stream {
 
   // Callbacks enqueued to be run after the next call to BlockHostUntilDone().
   std::vector<std::function<void()>> after_block_host_until_done_callbacks_
-      TF_GUARDED_BY(mu_);
+      ABSL_GUARDED_BY(mu_);
 
   // Implementation of ThenBlasLtMatmul that is shared by all types.
   template <typename ABType, typename CType>
@@ -2189,7 +2188,7 @@ inline port::Status Stream::ThenLaunch(ThreadDim thread_dims,
   kernel.PackParams(&kernel_args, args...);
   TF_RETURN_IF_ERROR(
       parent_->Launch(this, thread_dims, block_dims, kernel, kernel_args));
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 template <typename T>

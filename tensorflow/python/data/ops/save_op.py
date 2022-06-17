@@ -15,6 +15,8 @@
 """Implementation of SaveDataset in Python."""
 import os
 
+from tensorflow.python.checkpoint import checkpoint as checkpoint_lib
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.util import structure
@@ -23,8 +25,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.platform import gfile
-from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training import tracking as tracking_util
 from tensorflow.python.util import lazy_loader
 
 nested_structure_coder = lazy_loader.LazyLoader(
@@ -47,7 +47,7 @@ def save(self,
           "'Invalid `checkpoint_args`. `checkpoint_args` are not allowed "
           "to include 'checkpoint'."
       )
-    checkpoint = tracking_util.util.Checkpoint(iterator=save_iterator)
+    checkpoint = checkpoint_lib.Checkpoint(iterator=save_iterator)
     checkpoint_args["checkpoint"] = checkpoint
     manager = checkpoint_management.CheckpointManager(**checkpoint_args)
     checkpoint.restore(manager.latest_checkpoint)

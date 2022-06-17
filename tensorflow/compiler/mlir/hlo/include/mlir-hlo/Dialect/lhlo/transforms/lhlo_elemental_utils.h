@@ -21,7 +21,7 @@ limitations under the License.
 namespace mlir {
 namespace func {
 class FuncOp;
-}
+}  // namespace func
 class Value;
 class Location;
 class Operation;

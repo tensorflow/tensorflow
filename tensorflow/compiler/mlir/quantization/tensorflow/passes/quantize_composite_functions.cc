@@ -215,8 +215,39 @@ class ReplaceDequantizePattern
   }
 };
 
-// Determines if all float input/outputs are now quantized.
-bool IsQuantizedCall(TF::PartitionedCallOp call_op) {
+// Checks if input weights are quantized only. For now, weight index is only at
+// the first index(rhs). Later this can be replaced to use a map that has weight
+// index information for each op.
+bool IsQuantizedCallforDynamicRange(TF::PartitionedCallOp call_op) {
+  bool has_quantized_types_for_weights = false;
+  for (int32_t cur_idx = 0; cur_idx < call_op.args().size(); cur_idx++) {
+    // Check if the only the weight index has QuantizeCastOp.
+    auto cur_op = dyn_cast_or_null<QuantizeCastOp>(
+        call_op.args()[cur_idx].getDefiningOp());
+    if ((!cur_op && cur_idx == 1) || (cur_op && cur_idx != 1)) {
+      return false;
+    } else if (cur_op) {
+      // Check if the QuantizeCastOp has element type of quantized type.
+      if (!getElementTypeOrSelf(cur_op.getResult().getType())
+               .isa<QuantizedType>()) {
+        return false;
+      }
+      // Satisfies the input condition.
+      has_quantized_types_for_weights = true;
+    }
+  }
+  for (Value output : call_op.output()) {
+    if (auto type = output.getType().dyn_cast<TensorType>()) {
+      if (type.getElementType().isa<QuantizedType>()) {
+        return false;
+      }
+    }
+  }
+  return has_quantized_types_for_weights;
+}
+
+// Checks if all the inputs are quantized.
+bool IsQuantizedCallforStaticRange(TF::PartitionedCallOp call_op) {
   bool has_quantized_types = false;
   for (Value input : call_op.args()) {
     if (auto type = input.getType().dyn_cast<TensorType>()) {
@@ -305,10 +336,15 @@ LogicalResult TransferAttributes(func::FuncOp float_func,
 class QuantizeFunctionPattern
     : public mlir::OpRewritePattern<TF::PartitionedCallOp> {
  public:
-  explicit QuantizeFunctionPattern(MLIRContext* context)
-      : OpRewritePattern<TF::PartitionedCallOp>(context) {}
+  explicit QuantizeFunctionPattern(MLIRContext* context,
+                                   QuantizationMethod quantization_method)
+      : OpRewritePattern<TF::PartitionedCallOp>(context),
+        quantization_method_(quantization_method) {}
 
  private:
+  QuantizationMethod quantization_method_ =
+      QuantizationMethod::kPostTrainingQuantization;
+
   LogicalResult matchAndRewrite(TF::PartitionedCallOp call_op,
                                 PatternRewriter& rewriter) const override {
     auto f_attr = call_op.fAttr().dyn_cast<FlatSymbolRefAttr>();
@@ -316,12 +352,21 @@ class QuantizeFunctionPattern
     if (!call_op->removeAttr(kQuantTraitAttrName) || !f_attr) {
       return failure();
     }
-    if (!f_attr.getValue().startswith("fused_") || !IsQuantizedCall(call_op)) {
+
+    // Determines if all required float input/outputs are now quantized.
+    bool has_quantized_types = false;
+    if (quantization_method_ == QuantizationMethod::kDynamicRangeQuantization) {
+      has_quantized_types = IsQuantizedCallforDynamicRange(call_op);
+    } else {
+      has_quantized_types = IsQuantizedCallforStaticRange(call_op);
+    }
+
+    if (!f_attr.getValue().startswith("composite_") || !has_quantized_types) {
       return failure();
     }
 
     llvm::Twine quantized_function_name = llvm::Twine(
-        "quantized_", f_attr.getValue().substr(6).rsplit('_').first);
+        "quantized_", f_attr.getValue().substr(10).rsplit('_').first);
 
     SmallVector<Value, 4> args;
     SmallVector<Value, 4> qparam_args;
@@ -494,16 +539,25 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   // This can be removed when the composite call supports quantized types.
   pm.enableVerifier(false);
 
-  pm.addNestedPass<func::FuncOp>(
-      CreatePrepareQuantizePass(quantization_method_));
-  pm.addNestedPass<func::FuncOp>(CreateQuantizePass());
+  QuantizationSpecs quant_specs;
+  if (quantization_method_ == QuantizationMethod::kDynamicRangeQuantization) {
+    quant_specs.weight_quantization = true;
+    quant_specs.inference_type = tensorflow::DT_QINT8;
+    pm.addNestedPass<func::FuncOp>(CreatePrepareQuantizeDRQPass());
+  } else {
+    pm.addNestedPass<func::FuncOp>(
+        CreatePrepareQuantizePass(quantization_method_));
+  }
+  pm.addNestedPass<func::FuncOp>(CreateQuantizePass(quant_specs));
+
   pm.addNestedPass<func::FuncOp>(CreatePostQuantizePass());
   if (failed(pm.run(module))) {
     signalPassFailure();
   }
 
   RewritePatternSet patterns(ctx);
-  patterns.add<QuantizeFunctionPattern>(ctx);
+  patterns.add<QuantizeFunctionPattern>(ctx, quantization_method_);
+
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
     signalPassFailure();
   }

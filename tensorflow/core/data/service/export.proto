@@ -26,10 +26,12 @@ message DispatcherStateExport {
 }
 
 // State of the worker server, exported to improve debuggability.
-// Next tag: 3
+// Next tag: 5
 message WorkerStateExport {
   experimental.WorkerConfig worker_config = 1;
   repeated TaskDef tasks = 2;
+  repeated int64 finished_task_ids = 3;
+  repeated int64 deleted_task_ids = 4;
 }
 
 // State of the tf.data service server, exported to improve debuggability.

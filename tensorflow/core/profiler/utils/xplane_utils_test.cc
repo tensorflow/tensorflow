@@ -320,6 +320,61 @@ TEST(XPlaneUtilsTest, MergeXPlaneTest) {
   }
 }
 
+TEST(XPlaneUtilsTest, FindPlanesWithPrefix) {
+  XSpace xspace;
+  FindOrAddMutablePlaneWithName(&xspace, "test-prefix:0");
+  FindOrAddMutablePlaneWithName(&xspace, "test-prefix:1");
+  FindOrAddMutablePlaneWithName(&xspace, "test-prefix:2");
+  FindOrAddMutablePlaneWithName(&xspace, "test-prefix:3");
+  XPlane* p4 = FindOrAddMutablePlaneWithName(&xspace, "test-do-not-include:0");
+
+  std::vector<const XPlane*> xplanes =
+      FindPlanesWithPrefix(xspace, "test-prefix");
+  ASSERT_EQ(4, xplanes.size());
+  for (const XPlane* plane : xplanes) {
+    ASSERT_NE(p4, plane);
+  }
+}
+
+TEST(XplaneUtilsTest, FindMutablePlanesWithPrefix) {
+  XSpace xspace;
+  FindOrAddMutablePlaneWithName(&xspace, "test-prefix:0");
+  FindOrAddMutablePlaneWithName(&xspace, "test-prefix:1");
+  FindOrAddMutablePlaneWithName(&xspace, "test-prefix:2");
+  FindOrAddMutablePlaneWithName(&xspace, "test-prefix:3");
+  XPlane* p4 = FindOrAddMutablePlaneWithName(&xspace, "test-do-not-include:0");
+
+  std::vector<XPlane*> xplanes =
+      FindMutablePlanesWithPrefix(&xspace, "test-prefix");
+  ASSERT_EQ(4, xplanes.size());
+  for (XPlane* plane : xplanes) {
+    ASSERT_NE(p4, plane);
+  }
+}
+
+TEST(XplaneUtilsTest, FindPlanesWithPredicate) {
+  XSpace xspace;
+  FindOrAddMutablePlaneWithName(&xspace, "test-prefix:0");
+  XPlane* p1 = FindOrAddMutablePlaneWithName(&xspace, "test-prefix:1");
+
+  std::vector<const XPlane*> xplanes = FindPlanes(
+      xspace,
+      [](const XPlane& xplane) { return xplane.name() == "test-prefix:1"; });
+  ASSERT_EQ(1, xplanes.size());
+  ASSERT_EQ(p1, xplanes[0]);
+}
+
+TEST(XplaneUtilsTest, FindMutablePlanesWithPredicate) {
+  XSpace xspace;
+  FindOrAddMutablePlaneWithName(&xspace, "test-prefix:0");
+  XPlane* p1 = FindOrAddMutablePlaneWithName(&xspace, "test-prefix:1");
+
+  std::vector<XPlane*> xplanes = FindMutablePlanes(
+      &xspace, [](XPlane& xplane) { return xplane.name() == "test-prefix:1"; });
+  ASSERT_EQ(1, xplanes.size());
+  ASSERT_EQ(p1, xplanes[0]);
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tensorflow

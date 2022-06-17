@@ -98,6 +98,19 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     return kAllNHWC;
   }
 
+  // If we're on Ampere with fp32 and tf32 is on and conv2D, we will use NHWC to
+  // better use Tensor Cores.
+  bool valid_tf32 = input_ty == F32 &&
+                    stream_executor->GetDeviceDescription()
+                        .cuda_compute_capability()
+                        .IsAtLeast(se::CudaComputeCapability::AMPERE) &&
+                    tensorflow::tensor_float_32_execution_enabled() &&
+                    instr->shape().tuple_shapes(0).dimensions_size() == 4;
+  if (valid_tf32) {
+    VLOG(2) << "Using NHWC for tf32 conv " << instr->ToString();
+    return kAllNHWC;
+  }
+
   // If we're not Volta or not fp16, or not conv2D, the decision is easy: Use
   // NCHW.
   if (input_ty != F16 ||
@@ -211,7 +224,7 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
     // The side input layout must match the output layout.
     TF_RETURN_IF_ERROR(SetOperandLayout(*output_shape, instr, 3));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -298,14 +311,14 @@ Status GpuLayoutAssignment::AddBackendConstraints(
             instruction, 0, lhs_batch_dims, lhs_row_dims, lhs_col_dims));
         TF_RETURN_IF_ERROR(SetOperandBatchRowsColsLayout(
             instruction, 1, rhs_batch_dims, rhs_col_dims, rhs_row_dims));
-      } else {
+        TF_RETURN_IF_ERROR(SetDotLayout(instruction, constraints));
+      } else if (!lhs_batch_dims.empty()) {
         TF_RETURN_IF_ERROR(SetDotOperandLayout(instruction, 0, lhs_batch_dims,
                                                lhs_row_dims, lhs_col_dims));
         TF_RETURN_IF_ERROR(SetDotOperandLayout(instruction, 1, rhs_batch_dims,
                                                rhs_row_dims, rhs_col_dims));
+        TF_RETURN_IF_ERROR(SetDotLayout(instruction, constraints));
       }
-
-      TF_RETURN_IF_ERROR(SetDotLayout(instruction, constraints));
     } else if (instruction->opcode() == HloOpcode::kTranspose) {
       const HloInstruction* operand = instruction->operand(0);
       if ((operand->opcode() != HloOpcode::kDot) ||
@@ -394,7 +407,7 @@ Status GpuLayoutAssignment::AddBackendConstraints(
           all_to_all));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GpuLayoutAssignment::SetDotOperandLayout(

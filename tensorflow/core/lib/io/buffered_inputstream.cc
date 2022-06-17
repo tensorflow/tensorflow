@@ -78,7 +78,7 @@ Status BufferedInputStream::ReadLineHelper(StringType* result,
         result->append(1, c);
       }
       pos_++;
-      return Status::OK();
+      return OkStatus();
     }
     // We don't append '\r' to *result
     if (c == '\r') {
@@ -88,7 +88,7 @@ Status BufferedInputStream::ReadLineHelper(StringType* result,
     pos_++;
   }
   if (errors::IsOutOfRange(s) && !result->empty()) {
-    return Status::OK();
+    return OkStatus();
   }
   return s;
 }
@@ -126,7 +126,7 @@ Status BufferedInputStream::ReadNBytes(int64_t bytes_to_read, tstring* result) {
   // obtained enough data to satisfy the function call. Returning OK then.
   if (errors::IsOutOfRange(s) &&
       (result->size() == static_cast<size_t>(bytes_to_read))) {
-    return Status::OK();
+    return OkStatus();
   }
   return s;
 }
@@ -151,7 +151,7 @@ Status BufferedInputStream::SkipNBytes(int64_t bytes_to_skip) {
     }
     return s;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 int64_t BufferedInputStream::Tell() const {
@@ -175,7 +175,7 @@ Status BufferedInputStream::Seek(int64_t position) {
   if (position < Tell()) {
     // Seek within buffer before 'pos_'
     pos_ -= Tell() - position;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Seek after 'pos_'
@@ -197,7 +197,7 @@ Status BufferedInputStream::ReadAll(T* result) {
 
   if (errors::IsOutOfRange(status)) {
     file_status_ = status;
-    return Status::OK();
+    return OkStatus();
   }
   return status;
 }
@@ -209,8 +209,8 @@ Status BufferedInputStream::Reset() {
   TF_RETURN_IF_ERROR(input_stream_->Reset());
   pos_ = 0;
   limit_ = 0;
-  file_status_ = Status::OK();
-  return Status::OK();
+  file_status_ = OkStatus();
+  return OkStatus();
 }
 
 Status BufferedInputStream::ReadLine(std::string* result) {
@@ -241,11 +241,11 @@ Status BufferedInputStream::SkipLine() {
     char c = buf_[pos_++];
     skipped = true;
     if (c == '\n') {
-      return Status::OK();
+      return OkStatus();
     }
   }
   if (errors::IsOutOfRange(s) && skipped) {
-    return Status::OK();
+    return OkStatus();
   }
   return s;
 }

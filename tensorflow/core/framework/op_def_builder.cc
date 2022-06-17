@@ -687,7 +687,7 @@ Status OpDefBuilder::Finalize(OpRegistrationData* op_reg_data) const {
     TF_RETURN_IF_ERROR(op_reg_data->type_ctor(op_def));
   }
 
-  if (errors.empty()) return Status::OK();
+  if (errors.empty()) return OkStatus();
   return errors::InvalidArgument(absl::StrJoin(errors, "\n"));
 }
 

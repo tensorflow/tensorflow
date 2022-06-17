@@ -749,6 +749,7 @@ void Select(const RuntimeShape& input_condition_shape,
             const T* input_x_data, const RuntimeShape& input_y_shape,
             const T* input_y_data, const RuntimeShape& output_shape,
             T* output_data) {
+  ruy::profiler::ScopeLabel label("Select");
   int64_t flatsize;
   // Allow select operator executions on mixed scalar tensors and one element
   // tensors.
@@ -771,6 +772,7 @@ void RankOneSelect(const RuntimeShape& input_condition_shape,
                    const RuntimeShape& input_x_shape, const T* input_x_data,
                    const RuntimeShape& input_y_shape, const T* input_y_data,
                    const RuntimeShape& output_shape, T* output_data) {
+  ruy::profiler::ScopeLabel label("Select/RankOneSelect");
   const int64_t outer_size = input_condition_shape.FlatSize();
   int64_t inner_size;
   if (input_condition_shape.DimensionsCount() == 0) {
@@ -792,24 +794,26 @@ void RankOneSelect(const RuntimeShape& input_condition_shape,
 }
 
 template <typename D, typename T>
-void BroadcastSelect4DSlow(const RuntimeShape& input_condition_shape,
+void BroadcastSelect5DSlow(const RuntimeShape& input_condition_shape,
                            const D* input_condition_data,
                            const RuntimeShape& input_x_shape,
                            const T* input_x_data,
                            const RuntimeShape& input_y_shape,
                            const T* input_y_data,
                            const RuntimeShape& output_shape, T* output_data) {
-  TFLITE_DCHECK_LE(input_condition_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(input_x_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(input_y_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), 4);
+  ruy::profiler::ScopeLabel label("Select/BroadcastSelectSlow");
+  TFLITE_DCHECK_LE(input_condition_shape.DimensionsCount(), 5);
+  TFLITE_DCHECK_LE(input_x_shape.DimensionsCount(), 5);
+  TFLITE_DCHECK_LE(input_y_shape.DimensionsCount(), 5);
+  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), 5);
 
+  NdArrayDesc<5> desc_condition;
+  NdArrayDesc<5> desc_x;
+  NdArrayDesc<5> desc_y;
+  NdArrayDesc<5> desc_output;
   const RuntimeShape extended_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-
-  NdArrayDesc<4> desc_condition;
-  NdArrayDesc<4> desc_x;
-  NdArrayDesc<4> desc_y;
+      RuntimeShape::ExtendedShape(5, output_shape);
+  CopyDimsToDesc(extended_output_shape, &desc_output);
   NdArrayDescsForElementwiseBroadcast(input_condition_shape, input_x_shape,
                                       input_y_shape, &desc_condition, &desc_x,
                                       &desc_y);
@@ -825,17 +829,35 @@ void BroadcastSelect4DSlow(const RuntimeShape& input_condition_shape,
   // We name our variables by their Tensorflow convention, but generate C code
   // nesting loops such that the innermost loop has the smallest stride for
   // the best cache behavior.
-  for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
-    for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
-      for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
-        for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
-          const int condition_index =
-              SubscriptToIndex(desc_condition, b, y, x, c);
-          const int x_index = SubscriptToIndex(desc_x, b, y, x, c);
-          const int y_index = SubscriptToIndex(desc_y, b, y, x, c);
-          output_data[Offset(extended_output_shape, b, y, x, c)] =
-              input_condition_data[condition_index] ? input_x_data[x_index]
-                                                    : input_y_data[y_index];
+  for (int n = 0; n < desc_output.extents[0]; ++n) {
+    int out_idx_n = desc_output.extents[1] * n;
+    int cond_idx_n = desc_condition.strides[0] * n;
+    int in_idx1_n = desc_x.strides[0] * n;
+    int in_idx2_n = desc_y.strides[0] * n;
+    for (int b = 0; b < desc_output.extents[1]; ++b) {
+      int out_idx_b = (out_idx_n + b) * desc_output.extents[2];
+      int cond_idx_b = cond_idx_n + desc_condition.strides[1] * b;
+      int in_idx1_b = in_idx1_n + desc_x.strides[1] * b;
+      int in_idx2_b = in_idx2_n + desc_y.strides[1] * b;
+      for (int y = 0; y < desc_output.extents[2]; ++y) {
+        int out_idx_y = (out_idx_b + y) * desc_output.extents[3];
+        int cond_idx_y = cond_idx_b + desc_condition.strides[2] * y;
+        int in_idx1_y = in_idx1_b + desc_x.strides[2] * y;
+        int in_idx2_y = in_idx2_b + desc_y.strides[2] * y;
+        for (int x = 0; x < desc_output.extents[3]; ++x) {
+          int out_idx = (out_idx_y + x) * desc_output.extents[4];
+          int cond_idx = cond_idx_y + desc_condition.strides[3] * x;
+          int in_idx1 = in_idx1_y + desc_x.strides[3] * x;
+          int in_idx2 = in_idx2_y + desc_y.strides[3] * x;
+          for (int c = 0; c < desc_output.extents[4]; ++c) {
+            output_data[out_idx] = input_condition_data[cond_idx]
+                                       ? input_x_data[in_idx1]
+                                       : input_y_data[in_idx2];
+            out_idx++;
+            cond_idx += desc_condition.strides[4];
+            in_idx1 += desc_x.strides[4];
+            in_idx2 += desc_y.strides[4];
+          }
         }
       }
     }

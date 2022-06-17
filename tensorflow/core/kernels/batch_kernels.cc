@@ -150,7 +150,7 @@ class BatchResource : public serving::BatchResourceBase {
                                allowed_batch_sizes,
                                enable_large_batch_splitting),
         allowed_batch_sizes));
-    return Status::OK();
+    return OkStatus();
   }
 
   static Status Create(
@@ -170,7 +170,7 @@ class BatchResource : public serving::BatchResourceBase {
             max_batch_size, batch_timeout_micros, max_enqueued_batches,
             true /* enable large batch split */, allowed_batch_sizes),
         allowed_batch_sizes));
-    return Status::OK();
+    return OkStatus();
   }
 
   string DebugString() const final { return "BatchResource"; }
@@ -333,7 +333,7 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
           batch_timeout_micros_, max_enqueued_batches_, allowed_batch_sizes_,
           handle, flib_, &new_resource));
       *r = new_resource.release();
-      return Status::OK();
+      return OkStatus();
     };
   } else {
     creator = [this, handle](BatchResource** r) {
@@ -343,7 +343,7 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
           max_enqueued_batches_, allowed_batch_sizes_, handle, flib_,
           enable_large_batch_splitting_, &new_resource));
       *r = new_resource.release();
-      return Status::OK();
+      return OkStatus();
     };
   }
 
@@ -428,7 +428,7 @@ Status BatchFunctionKernel::GetOrCreateFunctionHandle(
   } else {
     *handle = fhandle_.value();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Validates 'allowed_batch_sizes_'. The entries must increase monotonically.
@@ -437,7 +437,7 @@ Status BatchFunctionKernel::GetOrCreateFunctionHandle(
 // to `max_batch_size_`.
 Status BatchFunctionKernel::ValidateAllowedBatchSizes() const {
   if (allowed_batch_sizes_.empty()) {
-    return Status::OK();
+    return OkStatus();
   }
   int32_t last_size = 0;
   for (size_t i = 0; i < allowed_batch_sizes_.size(); ++i) {
@@ -456,7 +456,7 @@ Status BatchFunctionKernel::ValidateAllowedBatchSizes() const {
 
     last_size = size;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Initialize vars by reading from op-kernel-construction.
@@ -565,7 +565,7 @@ class BatchKernel : public AsyncOpKernel {
           max_enqueued_batches_, allowed_batch_sizes_, kInvalidHandle,
           /*flib=*/nullptr, false, &new_resource));
       *r = new_resource.release();
-      return Status::OK();
+      return OkStatus();
     };
     OP_REQUIRES_OK_ASYNC(c,
                          c->resource_manager()->LookupOrCreate(
@@ -582,7 +582,7 @@ class BatchKernel : public AsyncOpKernel {
   // monotonically, and the last one must equal 'max_batch_size_'.
   Status ValidateAllowedBatchSizes() const {
     if (allowed_batch_sizes_.empty()) {
-      return Status::OK();
+      return OkStatus();
     }
     int32_t last_size = 0;
     for (size_t i = 0; i < allowed_batch_sizes_.size(); ++i) {
@@ -597,7 +597,7 @@ class BatchKernel : public AsyncOpKernel {
       }
       last_size = size;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -685,7 +685,7 @@ class UnbatchResource : public ResourceBase {
         context->set_output(0, tensor_it->second.tensor);
         waiting_tensors_.erase(tensor_it);
         done_callbacks_to_call.push_back(done);
-        return Status::OK();
+        return OkStatus();
       }
 
       const uint64 deadline_micros =
@@ -724,7 +724,7 @@ class UnbatchResource : public ResourceBase {
         }
       }
 
-      return Status::OK();
+      return OkStatus();
     }();
 
     for (const AsyncOpKernel::DoneCallback& done_callback :
@@ -817,7 +817,7 @@ class UnbatchKernel : public AsyncOpKernel {
     std::function<Status(UnbatchResource**)> creator =
         [this](UnbatchResource** r) {
           *r = new UnbatchResource(timeout_micros_);
-          return Status::OK();
+          return OkStatus();
         };
     OP_REQUIRES_OK_ASYNC(c,
                          c->resource_manager()->LookupOrCreate(
@@ -876,7 +876,7 @@ class UnbatchGradResource : public ResourceBase {
         return errors::InvalidArgument("Unsupported data type: ", type);
     }
     done();
-    return Status::OK();
+    return OkStatus();
   }
 
   // Ingests data from one invocation of the op.
@@ -953,7 +953,7 @@ class UnbatchGradResource : public ResourceBase {
         available_batches_.erase(batch_it);
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -1003,7 +1003,7 @@ class UnbatchGradKernel : public AsyncOpKernel {
     std::function<Status(UnbatchGradResource**)> creator =
         [](UnbatchGradResource** r) {
           *r = new UnbatchGradResource();
-          return Status::OK();
+          return OkStatus();
         };
     OP_REQUIRES_OK_ASYNC(c,
                          c->resource_manager()->LookupOrCreate(

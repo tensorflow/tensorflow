@@ -108,6 +108,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateRewriteTPUEmbeddingOpsPass();
 // Performs specific fusion for GPU targets.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateGpuOpFusionPass();
 
+// Creates a pass that decomposes to be compiled ReduceDataset ops into a while
+// loop that iterates the dataset and calls the reduction function.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDecomposeReduceDatasetPass();
+
 // Create a pass that convert ops that copy tensors between devices, e.g.
 // tf.Identity.
 std::unique_ptr<OperationPass<mlir::func::FuncOp>>

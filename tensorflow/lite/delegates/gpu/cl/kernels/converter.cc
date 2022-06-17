@@ -120,19 +120,21 @@ class TensorToTensorConverter : public OpenClConverterImpl {
   absl::Status Init(const TensorObjectDef& input_def,
                     const TensorObjectDef& output_def,
                     Environment* environment) final {
-    src_tensor_descriptor_.layout = Layout::BHWC;
-    src_tensor_descriptor_.storage_type = ToTensorStorageType(
-        input_def.object_def.object_type, input_def.object_def.data_layout);
-    src_tensor_descriptor_.data_type = input_def.object_def.data_type;
+    src_tensor_descriptor_ =
+        TensorDescriptor(input_def.object_def.data_type,
+                         ToTensorStorageType(input_def.object_def.object_type,
+                                             input_def.object_def.data_layout),
+                         Layout::BHWC);
     Arguments args;
     args.AddObjectRef(
         "src_tensor", AccessType::READ,
         absl::make_unique<TensorDescriptor>(src_tensor_descriptor_));
 
-    dst_tensor_descriptor_.layout = Layout::BHWC;
-    dst_tensor_descriptor_.storage_type = ToTensorStorageType(
-        output_def.object_def.object_type, output_def.object_def.data_layout);
-    dst_tensor_descriptor_.data_type = output_def.object_def.data_type;
+    dst_tensor_descriptor_ =
+        TensorDescriptor(output_def.object_def.data_type,
+                         ToTensorStorageType(output_def.object_def.object_type,
+                                             output_def.object_def.data_layout),
+                         Layout::BHWC);
     args.AddObjectRef(
         "dst_tensor", AccessType::WRITE,
         absl::make_unique<TensorDescriptor>(dst_tensor_descriptor_));
@@ -212,9 +214,8 @@ class TensorToBHWCBufferConverter : public OpenClConverterImpl {
                     Environment* environment) final {
     TensorStorageType src_tensor_type = ToTensorStorageType(
         input_def.object_def.object_type, input_def.object_def.data_layout);
-    tensor_descriptor_.layout = Layout::BHWC;
-    tensor_descriptor_.storage_type = src_tensor_type;
-    tensor_descriptor_.data_type = input_def.object_def.data_type;
+    tensor_descriptor_ = TensorDescriptor(input_def.object_def.data_type,
+                                          src_tensor_type, Layout::BHWC);
     Arguments args;
     args.AddObjectRef("tensor", AccessType::READ,
                       absl::make_unique<TensorDescriptor>(tensor_descriptor_));
@@ -312,9 +313,8 @@ class BHWCBufferToTensorConverter : public OpenClConverterImpl {
 
     TensorStorageType dst_tensor_type = ToTensorStorageType(
         output_def.object_def.object_type, output_def.object_def.data_layout);
-    tensor_descriptor_.layout = Layout::BHWC;
-    tensor_descriptor_.storage_type = dst_tensor_type;
-    tensor_descriptor_.data_type = output_def.object_def.data_type;
+    tensor_descriptor_ = TensorDescriptor(output_def.object_def.data_type,
+                                          dst_tensor_type, Layout::BHWC);
     Arguments args;
     args.AddObjectRef("tensor", AccessType::WRITE,
                       absl::make_unique<TensorDescriptor>(tensor_descriptor_));

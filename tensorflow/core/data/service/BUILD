@@ -186,6 +186,47 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "cross_trainer_cache",
+    hdrs = ["cross_trainer_cache.h"],
+    deps = [
+        ":logging_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:thread_annotations",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+tf_cc_test(
+    name = "cross_trainer_cache_test",
+    size = "small",
+    srcs = ["cross_trainer_cache_test.cc"],
+    deps = [
+        ":cross_trainer_cache",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:random",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ],
+)
+
 tf_cc_test(
     name = "data_service_test",
     srcs = ["data_service_test.cc"],
@@ -196,6 +237,7 @@ tf_cc_test(
         ":export_proto_cc",
         ":test_cluster",
         ":test_util",
+        "@com_google_absl//absl/time",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -427,6 +469,7 @@ tf_cc_test(
     name = "grpc_dispatcher_impl_test",
     srcs = ["grpc_dispatcher_impl_test.cc"],
     deps = [
+        ":common",
         ":common_proto_cc",
         ":credentials_factory",
         ":dispatcher_proto_cc",
@@ -572,48 +615,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "multi_trainer_cache",
-    hdrs = ["multi_trainer_cache.h"],
-    deps = [
-        ":logging_utils",
-        "//tensorflow/core:framework",
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:statusor",
-        "//tensorflow/core/platform:thread_annotations",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ],
-)
-
-tf_cc_test(
-    name = "multi_trainer_cache_test",
-    size = "small",
-    srcs = ["multi_trainer_cache_test.cc"],
-    deps = [
-        ":multi_trainer_cache",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/framework:tensor_testutil",
-        "//tensorflow/core/lib/monitoring:cell_reader",
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:random",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:status_matchers",
-        "//tensorflow/core/platform:statusor",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/time",
-    ],
-)
-
-cc_library(
     name = "py_utils",
     srcs = ["py_utils.cc"],
     hdrs = ["py_utils.h"],
@@ -689,9 +690,9 @@ cc_library(
     deps = [
         ":common",
         ":common_proto_cc",
+        ":cross_trainer_cache",
         ":data_transfer",
         ":logging_utils",
-        ":multi_trainer_cache",
         ":thread_safe_buffer",
         ":worker_proto_cc",
         "//tensorflow/core:framework",

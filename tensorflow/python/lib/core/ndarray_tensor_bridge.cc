@@ -189,7 +189,7 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
       return errors::Internal("Tensorflow type ", tf_datatype,
                               " not convertible to numpy dtype.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ArrayFromMemory(int dim_size, npy_intp* dims, void* data, DataType dtype,
@@ -221,7 +221,7 @@ Status ArrayFromMemory(int dim_size, npy_intp* dims, void* data, DataType dtype,
     return errors::Unknown("Python array refused to use memory.");
   }
   *result = reinterpret_cast<PyObject*>(np_array);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

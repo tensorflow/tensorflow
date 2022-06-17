@@ -536,7 +536,7 @@ class AnyOfPattern {
   template <typename ItemType>
   bool MatchImpl(ItemType* item, MatchOption option) const {
     // If we're generating an explanation, buffer it until we know we failed.
-    absl::optional<std::stringstream> explanation;
+    std::optional<std::stringstream> explanation;
     MatchOption new_option = option;
     if (option.explain_os) {
       new_option.explain_os = &explanation.emplace();
@@ -556,7 +556,7 @@ class AnyOfPattern {
     auto new_option = option;
     new_option.capture = false;
 
-    absl::optional<std::stringstream> explanation;
+    std::optional<std::stringstream> explanation;
     if (option.explain_os) {
       new_option.explain_os = &explanation.emplace();
     }
@@ -1788,9 +1788,7 @@ class HloInstructionPatternComparisonDirectionImpl {
 
 class HloInstructionPredicateImpl {
  public:
-  explicit HloInstructionPredicateImpl(
-      std::function<bool(const HloInstruction*)> fn)
-      : fn_(std::move(fn)) {}
+  explicit HloInstructionPredicateImpl(HloPredicate fn) : fn_(std::move(fn)) {}
 
   bool Match(const HloInstruction* inst, MatchOption option) const {
     bool match = fn_(inst);
@@ -1805,7 +1803,7 @@ class HloInstructionPredicateImpl {
   }
 
  private:
-  std::function<bool(const HloInstruction*)> fn_;
+  HloPredicate fn_;
 };
 
 // Matches a constant scalar or effective scalar, optionally with a given value.
@@ -1813,7 +1811,7 @@ template <typename ScalarTy>
 class HloConstantScalarImpl {
  public:
   explicit constexpr HloConstantScalarImpl(bool match_effective_scalar)
-      : val_(absl::nullopt), match_effective_scalar_(match_effective_scalar) {}
+      : val_(std::nullopt), match_effective_scalar_(match_effective_scalar) {}
 
   constexpr HloConstantScalarImpl(ScalarTy val, bool match_effective_scalar)
       : val_(val), match_effective_scalar_(match_effective_scalar) {}
@@ -1870,7 +1868,7 @@ class HloConstantScalarImpl {
     return true;
   }
 
-  absl::optional<ScalarTy> val_;
+  std::optional<ScalarTy> val_;
   bool match_effective_scalar_;
 };
 
@@ -2091,7 +2089,7 @@ class HloInstructionPattern {
     return AppendImpl(HloInstructionPatternComparisonDirectionImpl(direction));
   }
 
-  auto WithPredicate(std::function<bool(const HloInstruction*)> fn) const {
+  auto WithPredicate(HloPredicate fn) const {
     return AppendImpl(HloInstructionPredicateImpl(std::move(fn)));
   }
 

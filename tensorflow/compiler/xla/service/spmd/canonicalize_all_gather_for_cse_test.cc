@@ -46,7 +46,7 @@ class AllGatherCanonicalizeTest : public HloTestBase {
     HloPassPipeline pipeline("all-gather-cse");
     pipeline.AddPass<CanonicalizeAllGatherForCSE>();
     TF_RETURN_IF_ERROR(pipeline.Run(module).status());
-    return Status::OK();
+    return OkStatus();
   }
 };
 

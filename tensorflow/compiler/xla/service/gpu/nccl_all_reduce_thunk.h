@@ -36,7 +36,7 @@ struct NcclAllReduceConfig {
 // GPU-based replicas.
 class NcclAllReduceThunkBase : public NcclCollectiveThunk {
  public:
-  static absl::optional<ReductionKind> MatchAllReduceComputation(
+  static std::optional<ReductionKind> MatchAllReduceComputation(
       mlir::Region& computation);
 
   NcclAllReduceThunkBase(Kind kind, ThunkInfo thunk_info,
@@ -124,6 +124,14 @@ class NcclReduceScatterThunk : public NcclAllReduceThunkBase {
   Status RunNcclCollective(const ExecuteParams& params,
                            ncclComm_t comm) override;
 };
+
+Status RunAllReduce(ReductionKind reduction_kind,
+                    std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
+                    ncclComm_t comm);
+
+Status RunReduceScatter(ReductionKind reduction_kind,
+                        std::vector<DeviceBufferPair>& buffers,
+                        se::Stream& stream, ncclComm_t comm);
 
 }  // namespace gpu
 }  // namespace xla

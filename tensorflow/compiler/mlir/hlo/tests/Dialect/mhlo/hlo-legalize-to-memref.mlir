@@ -99,3 +99,29 @@ func.func @reshape_unsigned(%operand: tensor<*xi32>) -> tensor<4x3xi32> {
 // CHECK: %[[RESHAPED:.*]] = memref.cast %[[OPERAND]] : memref<*xi32> to memref<4x3xi32>
 // CHECK: %[[TRESULT:.*]] = bufferization.to_tensor %[[RESHAPED]] : memref<4x3xi32>
 // CHECK: return %[[TRESULT]]
+
+// -----
+
+// CHECK-LABEL: func @custom_call_multiple_inputs_outputs
+// CHECK-SAME: %[[ARG0:.*]]: tensor<2xf32>
+// CHECK-SAME: %[[ARG1:.*]]: tensor<5xi32>
+func.func @custom_call_multiple_inputs_outputs(%x: tensor<2xf32>,
+    %y: tensor<5xi32>) -> (tensor<2xf32>, tensor<2xf32>) {
+  %0:3 = "mhlo.custom_call"(%x, %y) {
+    backend_config="",
+    call_target_name = "foo",
+    has_side_effect = false
+  } : (tensor<2xf32>, tensor<5xi32>)
+    -> (tensor<2xf32>, tensor<2xf32>, tensor<5xi32>)
+  func.return %0#0, %0#1 : tensor<2xf32>, tensor<2xf32>
+}
+
+// CHECK-DAG: %[[I0:.+]] = bufferization.to_memref %[[ARG0]] : memref<2xf32>
+// CHECK-DAG: %[[I1:.+]] = bufferization.to_memref %[[ARG1]] : memref<5xi32>
+// CHECK-DAG: %[[O0:.*]] = memref.alloc() {alignment = 128 : i64} : memref<2xf32>
+// CHECK-DAG: %[[O1:.*]] = memref.alloc() {alignment = 128 : i64} : memref<2xf32>
+// CHECK-DAG: %[[O2:.*]] = memref.alloc() {alignment = 128 : i64} : memref<5xi32>
+// CHECK: "lmhlo.custom_call"(%[[I0]], %[[I1]], %[[O0]], %[[O1]], %[[O2]]) {backend_config = "", call_target_name = "foo", has_side_effect = false, operand_segment_sizes = dense<[2, 3]> : vector<2xi32>} : (memref<2xf32>, memref<5xi32>, memref<2xf32>, memref<2xf32>, memref<5xi32>) -> ()
+// CHECK-DAG: %[[T0:.+]] = bufferization.to_tensor %[[O0]] : memref<2xf32>
+// CHECK-DAG: %[[T1:.+]] = bufferization.to_tensor %[[O1]] : memref<2xf32>
+// CHECK: return %[[T0]], %[[T1]] : tensor<2xf32>, tensor<2xf32>

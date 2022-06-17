@@ -172,7 +172,7 @@ TftrtAlgorithmSelector::TftrtAlgorithmSelector()
     : fixed_algorithm_idx_(GetFixedAlgorithmID()),
       selector_(AlgorithmSelectorImpl::CompileTimeTRTVersion()) {}
 
-absl::optional<int64_t> TftrtAlgorithmSelector::GetFixedAlgorithmID() {
+std::optional<int64_t> TftrtAlgorithmSelector::GetFixedAlgorithmID() {
   int64_t trt_algorithm_idx = 0;
   constexpr auto null_idx =
       std::numeric_limits<decltype(trt_algorithm_idx)>::min();
@@ -181,12 +181,12 @@ absl::optional<int64_t> TftrtAlgorithmSelector::GetFixedAlgorithmID() {
                                                   &trt_algorithm_idx);
   if (!status.ok()) {
     LOG(ERROR) << status;
-    return absl::nullopt;
+    return std::nullopt;
   }
   if (trt_algorithm_idx != null_idx) {
     return std::max(static_cast<int32_t>(trt_algorithm_idx), 0);
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 bool TftrtAlgorithmSelector::AlgorithmPolicy(

@@ -348,9 +348,16 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
     case kTfLiteBuiltinAveragePool2d:
       return CheckPooling2DGpuDelegateCompatibility(op_sig);
 
-    case kTfLiteBuiltinBatchMatmul:
-      return CheckInputsOutputs(op_sig, /*required_runtime_inputs=*/2,
-                                /*required_outputs=*/1);
+    case kTfLiteBuiltinBatchMatmul: {
+      const int num_inputs = op_sig.inputs.size();
+      const int num_outputs = op_sig.outputs.size();
+      if (!(num_inputs == 2 && num_outputs == 1)) {
+        return absl::InternalError(
+            absl::StrCat("Expected 2 inputs and 1 output, got: ", num_inputs,
+                         " inputs and ", num_outputs, " outputs"));
+      }
+      return absl::OkStatus();
+    }
 
     case kTfLiteBuiltinCast:
       RETURN_IF_ERROR(CheckInputsOutputs(op_sig,

@@ -1607,7 +1607,7 @@ inline Status OpKernelContext::forward_input_or_allocate_output(
       if (forwarded_input != nullptr) {
         *forwarded_input = input_index;
       }
-      return Status::OK();
+      return OkStatus();
     }
   }
   if (forwarded_input != nullptr) {
@@ -1623,7 +1623,7 @@ inline Status OpKernelContext::forward_input_or_allocate_output(
     if (forward_input_to_output_with_shape(input_name, output_name,
                                            output_shape, output)
             .ok()) {
-      return Status::OK();
+      return OkStatus();
     }
   }
   return allocate_output(output_name, output_shape, output);

@@ -29,7 +29,7 @@ using BufferInterval =
 // This function converts sorted_buffer_intervals to order-customized buffer
 // intervals respecting a given memory space assignment autotuning config.
 void CustomizeSortedBufferInterval(
-    absl::optional<std::vector<uint64_t>> memory_space_assignment_config,
+    std::optional<std::vector<uint64_t>> memory_space_assignment_config,
     std::vector<BufferInterval>& sorted_buffer_intervals);
 
 }  // namespace memory_space_assignment

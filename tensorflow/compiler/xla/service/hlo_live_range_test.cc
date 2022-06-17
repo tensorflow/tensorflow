@@ -15,10 +15,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_live_range.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -329,6 +329,43 @@ TEST_F(HloLiveRangeTest, While) {
                          body_data_add, body_data_next, body_out});
   schedule.set_sequence(entry_computation, {iter, data, tuple, while_op});
 
+  Analyze(schedule);
+
+  CheckSchedule();
+}
+
+TEST_F(HloLiveRangeTest, AsyncCall) {
+  std::string hlo_string = R"(
+HloModule AsyncCall, is_scheduled=true, entry_computation_layout={(f32[4096]{0},f32[4096]{0})->f32[4096]{0}}
+
+%called_computation (param_0: f32[4096], param_1: f32[4096]) -> f32[4096] {
+  %param_0 = f32[4096]{0} parameter(0)
+  %param_1 = f32[4096]{0} parameter(1)
+  %negate_0 = f32[4096]{0} negate(f32[4096]{0} %param_0)
+  %negate_1 = f32[4096]{0} negate(f32[4096]{0} %param_1)
+  ROOT %result.1 = f32[4096]{0} add(f32[4096]{0} %negate_0, f32[4096]{0} %negate_1)
+}
+
+%async_wrapped (async_param: f32[4096], async_param.1: f32[4096]) -> f32[4096] {
+  %async_param = f32[4096]{0} parameter(0)
+  %async_param.1 = f32[4096]{0} parameter(1)
+  ROOT %call = f32[4096]{0} call(f32[4096]{0} %async_param, f32[4096]{0} %async_param.1), to_apply=%called_computation
+}
+
+ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
+  %a = f32[4096]{0} parameter(0)
+  %b = f32[4096]{0} parameter(1)
+  %async-start = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) async-start(f32[4096]{0} %a, f32[4096]{0} %b), async_group_id=0, calls=%async_wrapped
+  %negate_2 = f32[4096]{0} negate(f32[4096]{0} %a)
+  %negate_3 = f32[4096]{0} negate(f32[4096]{0} %b)
+  %add_0 = f32[4096]{0} add(f32[4096]{0} %negate_2, f32[4096]{0} %negate_3)
+  %async-done = f32[4096]{0} async-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start), async_group_id=0, calls=%async_wrapped
+  ROOT %add_1 = f32[4096]{0} add(f32[4096]{0} %add_0, f32[4096]{0} %async-done)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  const HloSchedule& schedule = module_->schedule();
   Analyze(schedule);
 
   CheckSchedule();

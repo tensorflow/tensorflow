@@ -325,9 +325,9 @@ if [[ -z "$PYTHON_BIN_PATH" ]]; then
   die "PYTHON_BIN_PATH was not provided. Did you run configure?"
 fi
 
-# TODO(mihaimaruseac): Find a better place for this
-# It seems that now TB is needed to build TF API, so install it.
 ${PYTHON_BIN_PATH} -m pip install tb-nightly
+${PYTHON_BIN_PATH} -m pip uninstall -y protobuf
+${PYTHON_BIN_PATH} -m pip install "protobuf < 4"
 
 # Bazel build the file.
 PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"

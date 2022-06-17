@@ -1130,6 +1130,15 @@ def validate_cuda_config(environ_cp):
   return True
 
 
+def get_gcc_compiler(environ_cp):
+  gcc_env = environ_cp.get('CXX') or environ_cp.get('CC') or which('gcc')
+  if gcc_env is not None:
+    gcc_version = run_shell([gcc_env, '--version']).split()
+    if gcc_version[0] in ('gcc', 'g++'):
+      return gcc_env
+  return None
+
+
 def main():
   global _TF_WORKSPACE_ROOT
   global _TF_BAZELRC
@@ -1173,6 +1182,23 @@ def main():
 
   if is_macos():
     environ_cp['TF_NEED_TENSORRT'] = '0'
+
+  if is_ppc64le():
+    # Enable MMA Dynamic Dispatch support if 'gcc' and if linker >= 2.35
+    gcc_env = get_gcc_compiler(environ_cp)
+    if gcc_env is not None:
+
+      # Get the linker version
+      ld_version = run_shell([gcc_env, '-Wl,-version']).split()
+
+      ld_version_int = convert_version_to_int(ld_version[3])
+      if ld_version_int is None:
+        ld_version_int = convert_version_to_int(ld_version[4])
+
+      # Enable if 'ld' version >= 2.35
+      if ld_version_int >= 2035000:
+        write_to_bazelrc(
+            'build --copt="-DEIGEN_ALTIVEC_ENABLE_MMA_DYNAMIC_DISPATCH=1"')
 
   with_xla_support = environ_cp.get('TF_ENABLE_XLA', None)
   if with_xla_support is not None:

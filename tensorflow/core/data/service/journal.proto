@@ -8,11 +8,12 @@ import "tensorflow/core/protobuf/data_service.proto";
 // Message representing journaled dispatcher metadata updates. When we apply
 // one of these changes to the dispatcher's in-memory state, we also write an
 // Update message to the journal.
-// Next tag: 14
+// Next tag: 15
 message Update {
   oneof update_type {
     RegisterDatasetUpdate register_dataset = 1;
     RegisterWorkerUpdate register_worker = 5;
+    CreateJobUpdate create_job = 14;
     CreateIterationUpdate create_iteration = 2;
     ProduceSplitUpdate produce_split = 8;
     AcquireIterationClientUpdate acquire_iteration_client = 6;
@@ -42,29 +43,35 @@ message RegisterWorkerUpdate {
   int64 worker_uid = 4;
 }
 
-// Next tag: 12
-message CreateIterationUpdate {
-  reserved 3, 5, 6;
-  int64 iteration_id = 1;
-  int64 dataset_id = 2;
-  ProcessingModeDef processing_mode_def = 9;
-  int64 num_split_providers = 8;
-  IterationKeyDef iteration_key = 4;
+// Next tag: 9
+message CreateJobUpdate {
+  int64 job_id = 1;
+  string job_name = 2;
+  int64 dataset_id = 3;
+  ProcessingModeDef processing_mode_def = 4;
   // Optional number of consumers. If set, the iteration's tasks will provide
   // their elements to consumers round-robin.
   oneof optional_num_consumers {
-    int64 num_consumers = 7;
+    int64 num_consumers = 6;
   }
   // Specifies which workers the client of this iteration reads from.
-  TargetWorkers target_workers = 10;
+  TargetWorkers target_workers = 7;
   // True if cross-trainer cache is enabled.
-  bool use_cross_trainer_cache = 11;
+  bool use_cross_trainer_cache = 8;
+}
+
+// Next tag: 5
+message CreateIterationUpdate {
+  int64 iteration_id = 1;
+  int64 job_id = 2;
+  int64 repetition = 3;
+  int64 num_split_providers = 4;
 }
 
 // Next tag: 5
 message ProduceSplitUpdate {
   int64 iteration_id = 1;
-  int64 iteration = 2;
+  int64 repetition = 2;
   int64 split_provider_index = 4;
   // Whether the split provider reached its end.
   bool finished = 3;

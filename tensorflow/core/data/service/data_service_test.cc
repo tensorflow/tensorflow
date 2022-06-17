@@ -12,9 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
 #include <string>
 #include <vector>
 
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
@@ -221,7 +224,7 @@ TEST(DataServiceTest, GcMissingClientsWithSmallTimeout) {
   config.client_timeout_ms = 10;
   TestCluster cluster(config);
   TF_ASSERT_OK(cluster.Initialize());
-  DatasetClient<tstring> dataset_client(cluster);
+  DatasetClient<int64_t> dataset_client(cluster);
   TF_ASSERT_OK_AND_ASSIGN(int64_t iteration_client_id,
                           dataset_client.CreateIteration(RangeDataset(10)));
   Env::Default()->SleepForMicroseconds(1000 * 1000);  // 1 second.
@@ -247,7 +250,7 @@ TEST(DataServiceTest, DontGcMissingClientsWithLargeTimeout) {
   config.client_timeout_ms = 10000000000;
   TestCluster cluster(config);
   TF_ASSERT_OK(cluster.Initialize());
-  DatasetClient<tstring> dataset_client(cluster);
+  DatasetClient<int64_t> dataset_client(cluster);
   TF_ASSERT_OK(dataset_client.CreateIteration(RangeDataset(10)).status());
   Env::Default()->SleepForMicroseconds(1000 * 1000);  // 1 second.
   // Iteration should not be garbage collected, since the client hasn't timed
@@ -267,7 +270,7 @@ TEST(DataServiceTest, GetWorkers) {
 TEST(DataServiceTest, DispatcherStateExport) {
   TestCluster cluster(1);
   TF_ASSERT_OK(cluster.Initialize());
-  DatasetClient<tstring> dataset_client(cluster);
+  DatasetClient<int64_t> dataset_client(cluster);
   TF_ASSERT_OK(dataset_client.CreateIteration(RangeDataset(10)).status());
 
   ServerStateExport server_state_export = cluster.ExportDispatcherState();
@@ -282,7 +285,7 @@ TEST(DataServiceTest, DispatcherStateExport) {
                   .iterations(0)
                   .iteration_key()
                   .name(),
-              HasSubstr("anonymous_iteration"));
+              HasSubstr("anonymous_job"));
   EXPECT_EQ(
       server_state_export.dispatcher_state_export().iterations(0).num_clients(),
       1);
@@ -291,9 +294,12 @@ TEST(DataServiceTest, DispatcherStateExport) {
 }
 
 TEST(DataServiceTest, WorkerStateExport) {
-  TestCluster cluster(1);
+  TestCluster::Config config;
+  config.num_workers = 1;
+  config.worker_heartbeat_interval_ms = 300;
+  TestCluster cluster(config);
   TF_ASSERT_OK(cluster.Initialize());
-  DatasetClient<tstring> dataset_client(cluster);
+  DatasetClient<int64_t> dataset_client(cluster);
   TF_ASSERT_OK(dataset_client.CreateIteration(RangeDataset(10)).status());
 
   ServerStateExport server_state_export = cluster.ExportWorkerState(0);
@@ -304,6 +310,14 @@ TEST(DataServiceTest, WorkerStateExport) {
   ASSERT_THAT(server_state_export.worker_state_export().tasks(), SizeIs(1));
   EXPECT_THAT(server_state_export.worker_state_export().tasks(0).path(),
               HasSubstr("In-memory dataset graphs are omitted for brevity."));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto result, dataset_client.Read(RangeDataset(10), ProcessingModeDef::OFF,
+                                       TARGET_WORKERS_AUTO));
+  absl::SleepFor(absl::Seconds(3));
+  server_state_export = cluster.ExportWorkerState(0);
+  ASSERT_THAT(server_state_export.worker_state_export().finished_task_ids(),
+              SizeIs(1));
 }
 
 }  // namespace

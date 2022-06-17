@@ -19,7 +19,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
@@ -79,9 +78,9 @@ void ShardedDeviceArray::Delete() {
   for (xla::PjRtBuffer* pjrt_buffer : GetPjRtBuffers().ConsumeValueOrDie()) {
     pjrt_buffer->Delete();
   }
-  device_buffers_ = absl::nullopt;
-  cpp_device_buffers_ = absl::nullopt;
-  npy_value_ = absl::nullopt;
+  device_buffers_ = std::nullopt;
+  cpp_device_buffers_ = std::nullopt;
+  npy_value_ = std::nullopt;
   is_deleted_ = true;
 }
 
@@ -273,7 +272,7 @@ py::handle ShardedDeviceArray::AsHandle() {
       [](ShardedDeviceArray::object self) { return self.sda()->is_deleted(); },
       py::is_method(type));
 
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace jax

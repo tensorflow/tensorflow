@@ -26,6 +26,22 @@ limitations under the License.
 namespace tflite {
 namespace flex {
 
+namespace {
+// Returns a boolean to indicate whether we should reuse memory from the
+// TfLiteTensor.
+inline bool ShouldReuseTensorMemory(const TfLiteTensor* tensor) {
+  // TODO(b/205153246): Currently arena-alloated memory could not be reused
+  // since it might be invalid after the original arena grow in size and copied
+  // over to a new memory block.
+  // First check alignment is consistent with Tensorflow.
+  if (EIGEN_MAX_ALIGN_BYTES != 0 &&
+      reinterpret_cast<intptr_t>(tensor->data.raw) % EIGEN_MAX_ALIGN_BYTES) {
+    return false;
+  }
+  return tensor->allocation_type != kTfLiteArenaRw;
+}
+}  // namespace
+
 void BaseTfLiteTensorBuffer::FillAllocationDescription(
     tensorflow::AllocationDescription* proto) const {
   int64_t rb = size();
@@ -50,24 +66,33 @@ void BaseTfLiteTensorBuffer::LogDeallocation() {
   }
 }
 
+void* TfLiteTensorBuffer::MaybeAllocateTensorflowBuffer(
+    const TfLiteTensor* tensor) const {
+  if (ShouldReuseTensorMemory(tensor)) {
+    return tensor->data.raw;
+  }
+  return tensorflow::cpu_allocator()->AllocateRaw(EIGEN_MAX_ALIGN_BYTES,
+                                                  tensor->bytes);
+}
+
 TfLiteTensorBuffer::TfLiteTensorBuffer(const TfLiteTensor* tensor)
-    : BaseTfLiteTensorBuffer(tensorflow::cpu_allocator()->AllocateRaw(
-          EIGEN_MAX_ALIGN_BYTES, tensor->bytes)) {
-  // TODO(ahentz): if we can guarantee that TF Lite allocated tensors with
-  // the same alignment as TensorFlow (EIGEN_MAX_ALIGN_BYTES), then we can
-  // potentially eliminate the copy below.
+    : BaseTfLiteTensorBuffer(MaybeAllocateTensorflowBuffer(tensor)) {
   len_ = tensor->bytes;
+  reused_buffer_from_tflite_ = ShouldReuseTensorMemory(tensor);
 
-  LogAllocation();
-
-  if (data()) {
+  if (data() && !reused_buffer_from_tflite_) {
+    LogAllocation();
     std::memcpy(data(), tensor->data.raw, tensor->bytes);
   }
 }
 
 TfLiteTensorBuffer::~TfLiteTensorBuffer() {
-  LogDeallocation();
-  tensorflow::cpu_allocator()->DeallocateRaw(data());
+  if (!reused_buffer_from_tflite_) {
+    LogDeallocation();
+    // Only deallocate tensor memory if it's allocated via Tensorflow's CPU
+    // allocator.
+    tensorflow::cpu_allocator()->DeallocateRaw(data());
+  }
 }
 
 StringTfLiteTensorBuffer::StringTfLiteTensorBuffer(const TfLiteTensor* tensor)
@@ -117,7 +142,7 @@ tensorflow::Status SetTfTensorFromTfLite(const TfLiteTensor* tensor,
     handle.set_name(TfLiteResourceIdentifier(tensor));
     t.flat<tensorflow::ResourceHandle>()(0) = handle;
     *tf_tensor = t;
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   } else if (IsResourceOrVariant(tensor)) {
     // TODO(b/179094265): This is an experimental implementation, subject to
     // change. This can be re-implemented with life cycle management mechanism
@@ -134,7 +159,7 @@ tensorflow::Status SetTfTensorFromTfLite(const TfLiteTensor* tensor,
     const tensorflow::Tensor** tf_tensor_ptr =
         reinterpret_cast<const tensorflow::Tensor**>(tensor->data.raw);
     *tf_tensor = **tf_tensor_ptr;
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   tensorflow::TensorShape shape;
@@ -157,7 +182,7 @@ tensorflow::Status SetTfTensorFromTfLite(const TfLiteTensor* tensor,
   buf->Unref();
 
   *tf_tensor = std::move(t);
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace flex

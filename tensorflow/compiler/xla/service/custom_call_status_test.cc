@@ -20,14 +20,14 @@ limitations under the License.
 TEST(XlaCustomCallStatusTest, DefaultIsSuccess) {
   XlaCustomCallStatus status;
 
-  ASSERT_EQ(xla::CustomCallStatusGetMessage(&status), absl::nullopt);
+  ASSERT_EQ(xla::CustomCallStatusGetMessage(&status), std::nullopt);
 }
 
 TEST(XlaCustomCallStatusTest, SetSuccess) {
   XlaCustomCallStatus status;
   XlaCustomCallStatusSetSuccess(&status);
 
-  ASSERT_EQ(xla::CustomCallStatusGetMessage(&status), absl::nullopt);
+  ASSERT_EQ(xla::CustomCallStatusGetMessage(&status), std::nullopt);
 }
 
 TEST(XlaCustomCallStatusTest, SetSuccessAfterFailure) {
@@ -35,7 +35,7 @@ TEST(XlaCustomCallStatusTest, SetSuccessAfterFailure) {
   XlaCustomCallStatusSetFailure(&status, "error", 5);
   XlaCustomCallStatusSetSuccess(&status);
 
-  ASSERT_EQ(xla::CustomCallStatusGetMessage(&status), absl::nullopt);
+  ASSERT_EQ(xla::CustomCallStatusGetMessage(&status), std::nullopt);
 }
 
 TEST(XlaCustomCallStatusTest, SetFailure) {
@@ -73,7 +73,7 @@ TEST(XlaCustomCallStatusTest, CSetSuccess) {
   XlaCustomCallStatus status;
   CSetSuccess(&status);
 
-  ASSERT_EQ(xla::CustomCallStatusGetMessage(&status), absl::nullopt);
+  ASSERT_EQ(xla::CustomCallStatusGetMessage(&status), std::nullopt);
 }
 
 TEST(XlaCustomCallStatusTest, CSetFailure) {

@@ -21,6 +21,8 @@ limitations under the License.
 //    "tfl_wrapped_jax_random_normal" with tfl.CustomOp("RandomUniform") and
 //     tfl.CustomOp("RandomStandardNormal"), respectively.
 
+#include <string>
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -52,20 +54,14 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 struct LegalizeJaxRandomPass
-    : public PassWrapper<LegalizeJaxRandomPass, OperationPass<func::FuncOp>> {
+    : public LegalizeJaxRandomPassBase<LegalizeJaxRandomPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeJaxRandomPass)
 
-  StringRef getArgument() const final { return "tfl-legalize-random"; }
-  StringRef getDescription() const final {
-    return "Replace jax.random.uniform/normal with tfl.custom.";
-  }
-
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<TFL::TensorFlowLiteDialect, mhlo::MhloDialect>();
-  }
   void runOnOperation() override;
 };
 
@@ -104,7 +100,8 @@ void LegalizeJaxRandomPass::runOnOperation() {
     result_shape_i32.push_back(static_cast<int32_t>(element));
   }
   auto result_shape_attr = builder.getI32TensorAttr(result_shape_i32);
-  Value result_shape_tensor = builder.create<mhlo::ConstOp>(result_shape_attr);
+  Value result_shape_tensor =
+      builder.create<mhlo::ConstantOp>(result_shape_attr);
   auto custom_code =
       IsJaxRandomUniform(func) ? "RandomUniform" : "RandomStandardNormal";
 
@@ -120,8 +117,6 @@ void LegalizeJaxRandomPass::runOnOperation() {
   Value tulple_result = builder.create<mhlo::TupleOp>(random_result);
   builder.create<mlir::func::ReturnOp>(tulple_result);
 }
-
-static PassRegistration<LegalizeJaxRandomPass> pass;
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeJaxRandomPass() {

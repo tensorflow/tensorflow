@@ -180,7 +180,7 @@ Status ComputeTheoreticalJacobianTranspose(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status EvaluateGraph(ClientSession* session, const OutputList& xs,
@@ -205,7 +205,7 @@ Status EvaluateGraph(ClientSession* session, const OutputList& xs,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename X_T, typename Y_T, typename JAC_T>
@@ -269,7 +269,7 @@ Status ComputeNumericJacobianTranspose(const Scope& scope, const OutputList& xs,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // The Jacobian is always a real-valued matrix.
@@ -363,13 +363,13 @@ Status ComputeGradientErrorInternal(const Scope& scope, const OutputList& xs,
         // (Note that std::max may ignore NaN arguments.)
         if (std::isnan(cur_error)) {
           *max_error = cur_error;
-          return Status::OK();
+          return OkStatus();
         }
         *max_error = std::max(*max_error, cur_error);
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

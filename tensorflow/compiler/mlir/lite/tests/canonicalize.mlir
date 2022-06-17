@@ -1,4 +1,4 @@
-// RUN: tf-opt -pass-pipeline='func.func(canonicalize)' -split-input-file -verify-diagnostics %s | FileCheck %s
+// RUN: tf-opt -pass-pipeline='func.func(canonicalize)' -tfl-runtime-verify -split-input-file -verify-diagnostics %s | FileCheck %s
 
 // CHECK-LABEL: @squeeze_folder
 func.func @squeeze_folder(%arg0 : tensor<?x?xf32>) -> tensor<?x?xf32> {
@@ -298,6 +298,31 @@ func.func @keepCustomFlexOps(%arg0: tensor<1x10xf32>) -> tensor<1x10xf32> {
 func.func @broadcast_to_to_reshape(%arg0: tensor<4x4x4xf32>, %arg1 : tensor<4xi32>) -> tensor<1x4x4x4xf32> {
   %0 = "tfl.broadcast_to"(%arg0, %arg1) : (tensor<4x4x4xf32>, tensor<4xi32>) -> tensor<1x4x4x4xf32>
   // CHECK: "tfl.reshape"
+  // CHECK-SAME: (tensor<4x4x4xf32>, tensor<4xi32>) -> tensor<1x4x4x4xf32>
+  func.return %0 : tensor<1x4x4x4xf32>
+}
+
+// Converts tfl.broadcast_to to tfl.reshape if input and output have the same
+// number of elements.
+// CHECK-LABEL: broadcast_to_to_reshape_i64
+func.func @broadcast_to_to_reshape_i64(%arg0: tensor<4x4x4xf32>, %arg1 : tensor<4xi64>) -> tensor<1x4x4x4xf32> {
+  %0 = "tfl.broadcast_to"(%arg0, %arg1) : (tensor<4x4x4xf32>, tensor<4xi64>) -> tensor<1x4x4x4xf32>
+  // CHECK: "tfl.cast"
+  // CHECK-SAME: (tensor<4xi64>) -> tensor<4xi32>
+  // CHECK-NEXT: "tfl.reshape"
+  // CHECK-SAME: (tensor<4x4x4xf32>, tensor<4xi32>) -> tensor<1x4x4x4xf32>
+  func.return %0 : tensor<1x4x4x4xf32>
+}
+
+
+// Converts tfl.broadcast_to to tfl.reshape if input and output have the same
+// number of elements.
+// CHECK-LABEL: broadcast_to_to_reshape_i64_const
+func.func @broadcast_to_to_reshape_i64_const(%arg0: tensor<4x4x4xf32>) -> tensor<1x4x4x4xf32> {
+  %cst = arith.constant dense<[1, 4, 4, 4]> : tensor<4xi64>
+  %0 = "tfl.broadcast_to"(%arg0, %cst) : (tensor<4x4x4xf32>, tensor<4xi64>) -> tensor<1x4x4x4xf32>
+  // CHECK: arith.constant dense<[1, 4, 4, 4]> : tensor<4xi32>
+  // CHECK-NEXT: "tfl.reshape"
   // CHECK-SAME: (tensor<4x4x4xf32>, tensor<4xi32>) -> tensor<1x4x4x4xf32>
   func.return %0 : tensor<1x4x4x4xf32>
 }

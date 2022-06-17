@@ -71,7 +71,6 @@ std::string GenerateDepthwiseConvolutionCode(
     int channel_multiplier, bool weights_are_buffer, bool dynamic_weights,
     GPUOperation* op) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetAddressMode(AddressMode::kZero);
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/xplane_test_utils.h"
 
+#include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -47,6 +48,17 @@ class XStatValueVisitor {
 
 XPlane* GetOrCreateHostXPlane(XSpace* space) {
   return FindOrAddMutablePlaneWithName(space, kHostThreadsPlaneName);
+}
+
+XPlane* GetOrCreateTpuXPlane(XSpace* space, int32_t device_ordinal,
+                             absl::string_view device_type) {
+  std::string name = TpuPlaneName(device_ordinal);
+  XPlane* xplane = FindOrAddMutablePlaneWithName(space, name);
+  XPlaneBuilder builder(xplane);
+  builder.AddStatValue(
+      *builder.GetOrCreateStatMetadata(GetStatTypeStr(kDeviceTypeString)),
+      device_type);
+  return xplane;
 }
 
 XPlane* GetOrCreateGpuXPlane(XSpace* space, int32_t device_ordinal) {

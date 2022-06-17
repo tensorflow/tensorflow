@@ -23,6 +23,7 @@ import tempfile
 import numpy as np
 import six as _six
 
+from tensorflow.core.framework import variable_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -46,8 +47,9 @@ from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.trackable import asset
+from tensorflow.python.trackable import resource
 from tensorflow.python.training import saver
-from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.lazy_loader import LazyLoader
@@ -106,7 +108,12 @@ class TrtPrecisionMode(object):
 
 # Use a large enough number as the default max_workspace_size for TRT engines,
 # so it can produce reasonable performance results with the default.
-DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30
+# For TRT >= 8.4, the recommendation is MAX_INT.
+if (_pywrap_py_utils.is_tensorrt_enabled() and
+    trt_utils.is_loaded_tensorrt_version_greater_equal(8, 4, 0)):
+  DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = np.iinfo(np.int32).max
+else:
+  DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30
 
 PROFILE_STRATEGY_RANGE = "Range"
 PROFILE_STRATEGY_OPTIMAL = "Optimal"
@@ -838,7 +845,7 @@ def _get_resource_handle(name, device):
     return gen_trt_ops.create_trt_resource_handle(resource_name=name)
 
 
-class _TRTEngineResource(tracking.TrackableResource):
+class _TRTEngineResource(resource.TrackableResource):
   """Class to track the serialized engines resource."""
 
   def __init__(self,
@@ -850,7 +857,7 @@ class _TRTEngineResource(tracking.TrackableResource):
     self._resource_name = resource_name
     # Track the serialized engine file in the SavedModel.
     self._filename = self._track_trackable(
-        tracking.Asset(filename), "_serialized_trt_resource_filename")
+        asset.Asset(filename), "_serialized_trt_resource_filename")
     self._maximum_cached_engines = maximum_cached_engines
 
   def _create_resource(self):
@@ -883,6 +890,69 @@ def _print_row(fields, positions, print_fn):
       line = line[:(end_line_pos - 4)] + " ..."
 
   print_fn(line)
+
+
+def _construct_function_from_graph_def(func, graph_def, frozen_func=None):
+  """Rebuild function from graph_def."""
+  if frozen_func is None:
+    frozen_func = func
+  rebuilt_func = wrap_function.function_from_graph_def(
+      graph_def, [tensor.name for tensor in frozen_func.inputs],
+      [tensor.name for tensor in frozen_func.outputs])
+  rebuilt_func.graph.structured_outputs = nest.pack_sequence_as(
+      func.graph.structured_outputs, rebuilt_func.graph.structured_outputs)
+  # Copy structured input signature from original function (used during
+  # serialization)
+  rebuilt_func.graph.structured_input_signature = (
+      func.structured_input_signature)
+  return rebuilt_func
+
+
+def _apply_inlining(func):
+  """Apply an inlining optimization to the function's graph definition."""
+  graph_def = func.graph.as_graph_def()
+
+  # In some cases, a secondary implementation of the function (e.g. for GPU) is
+  # written to the "api_implements" attribute. (e.g. `tf.keras.layers.LSTM` in
+  # TF2 produces a CuDNN-based RNN for GPU).
+  # This function suppose to inline all functions calls, but "api_implements"
+  # prevents this from happening. Removing the attribute solves the problem.
+  # To learn more about "api_implements", see:
+  #   tensorflow/core/grappler/optimizers/implementation_selector.h
+  for function in graph_def.library.function:
+    if "api_implements" in function.attr:
+      del function.attr["api_implements"]
+
+  meta_graph = saver.export_meta_graph(graph_def=graph_def, graph=func.graph)
+
+  # Clear the initializer_name for the variables collections, since they are not
+  # needed after saved to saved_model.
+  for name in [
+      "variables", "model_variables", "trainable_variables", "local_variables"
+  ]:
+    raw_list = []
+    for raw in meta_graph.collection_def["variables"].bytes_list.value:
+      variable = variable_pb2.VariableDef()
+      variable.ParseFromString(raw)
+      variable.ClearField("initializer_name")
+      raw_list.append(variable.SerializeToString())
+    meta_graph.collection_def[name].bytes_list.value[:] = raw_list
+
+  # Add a collection 'train_op' so that Grappler knows the outputs.
+  fetch_collection = meta_graph_pb2.CollectionDef()
+  for array in func.inputs + func.outputs:
+    fetch_collection.node_list.value.append(array.name)
+  meta_graph.collection_def["train_op"].CopyFrom(fetch_collection)
+
+  # Initialize RewriterConfig with everything disabled except function inlining.
+  config = config_pb2.ConfigProto()
+  rewrite_options = config.graph_options.rewrite_options
+  rewrite_options.min_graph_nodes = -1  # do not skip small graphs
+  rewrite_options.optimizers.append("function")
+
+  new_graph_def = tf_optimizer.OptimizeGraph(config, meta_graph)
+
+  return _construct_function_from_graph_def(func, new_graph_def)
 
 
 def _save_calibration_table(node):
@@ -1093,6 +1163,8 @@ class TrtGraphConverterV2(object):
     self._input_saved_model_signature_key = (
         input_saved_model_signature_key or
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY)
+    self.freeze = not trt_utils.is_experimental_feature_activated(
+        "disable_graph_freezing")
 
     self._need_calibration = ((
         (conversion_params.precision_mode == TrtPrecisionMode.INT8) or
@@ -1160,20 +1232,8 @@ class TrtGraphConverterV2(object):
         if node.op == _TRT_ENGINE_OP_NAME:
           fn(node)
 
-  def _rebuild_func(self, func):
-    """Rebuild function from graph_def."""
-    rebuilt_func = wrap_function.function_from_graph_def(
-        self._converted_graph_def, [tensor.name for tensor in func.inputs],
-        [tensor.name for tensor in func.outputs])
-    rebuilt_func.graph.structured_outputs = nest.pack_sequence_as(
-        func.graph.structured_outputs, rebuilt_func.graph.structured_outputs)
-    # Copy structured input signature from original function (used during
-    # serialization)
-    rebuilt_func.graph.structured_input_signature = (
-        func.structured_input_signature)
-    return rebuilt_func
-
   def _execute_calibration(self, calibration_input_fn):
+    """Run INT8 calibration with the provided input generator function."""
     for inp in calibration_input_fn():
       args, kwargs = _convert_to_tensor(inp)
       self._converted_func(*args, **kwargs)
@@ -1181,7 +1241,8 @@ class TrtGraphConverterV2(object):
     self._for_each_trt_node(self._converted_graph_def, _save_calibration_table)
 
     # Rebuild the function since calibration has changed the graph.
-    self._converted_func = self._rebuild_func(self._converted_func)
+    self._converted_func = _construct_function_from_graph_def(
+        self._converted_func, self._converted_graph_def)
     self._calibrated = True
 
   # TODO(laigd): provide a utility function to optimize a ConcreteFunction and
@@ -1233,7 +1294,10 @@ class TrtGraphConverterV2(object):
     self._saved_model = load.load(self._input_saved_model_dir,
                                   self._input_saved_model_tags)
     func = self._saved_model.signatures[self._input_saved_model_signature_key]
-    frozen_func = convert_to_constants.convert_variables_to_constants_v2(func)
+    if self.freeze:
+      frozen_func = convert_to_constants.convert_variables_to_constants_v2(func)
+    else:
+      frozen_func = _apply_inlining(func)
     frozen_graph_def = frozen_func.graph.as_graph_def()
 
     # Clear any prior device assignments
@@ -1267,19 +1331,9 @@ class TrtGraphConverterV2(object):
         logging.info("Removing original function %s from the context",
                      f.signature.name)
         context.context().remove_function(f.signature.name)
-    # This also adds the converted functions to the context.
-    self._converted_func = wrap_function.function_from_graph_def(
-        self._converted_graph_def,
-        [tensor.name for tensor in frozen_func.inputs],
-        [tensor.name for tensor in frozen_func.outputs])
-    # Reconstruct the output signatures using the ones from original model.
-    self._converted_func.graph.structured_outputs = nest.pack_sequence_as(
-        func.graph.structured_outputs,
-        self._converted_func.graph.structured_outputs)
-    # Copy structured input signature from original function (used during
-    # serialization)
-    self._converted_func.graph.structured_input_signature = (
-        func.structured_input_signature)
+
+    self._converted_func = _construct_function_from_graph_def(
+        func, self._converted_graph_def, frozen_func)
 
     if self._need_calibration:
       # Execute calibration here only if not in dynamic shape mode.
@@ -1348,7 +1402,8 @@ class TrtGraphConverterV2(object):
       # Profile generation is enabled using the _profile_generation_mode
       # attribute of the TRTEngineOps. We need to rebuild the function to
       # change this attribute.
-      func = self._rebuild_func(self._converted_func)
+      func = _construct_function_from_graph_def(self._converted_func,
+                                                self._converted_graph_def)
     else:
       func = self._converted_func
 

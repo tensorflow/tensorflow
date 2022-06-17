@@ -17,6 +17,7 @@
 import collections
 
 from tensorflow.core.protobuf import trackable_object_graph_pb2
+from tensorflow.python.checkpoint import saveable_compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -127,6 +128,9 @@ def get_checkpoint_factories_and_keys(object_names, object_map=None):
       for name, saveable_factory in (
           saveable_object_util.saveable_objects_from_trackable(object_to_save)
           .items()):  # pylint: disable=protected-access
+        # Retrieve the legacy saveable name (for compatibility purposes during
+        # SaveableObject deprecation)
+        name = saveable_compat.get_saveable_name(object_to_save) or name
         checkpoint_key = trackable_utils.checkpoint_key(object_name, name)
         checkpoint_factory_map[trackable].append(_CheckpointFactoryData(
             factory=saveable_factory,
@@ -336,10 +340,10 @@ def _fill_object_graph_proto(graph_view,
   return object_graph_proto
 
 
-def _serialize_gathered_objects(graph_view,
-                                object_map=None,
-                                call_with_mapped_captures=None,
-                                saveables_cache=None):
+def serialize_gathered_objects(graph_view,
+                               object_map=None,
+                               call_with_mapped_captures=None,
+                               saveables_cache=None):
   """Create SaveableObjects and protos for gathered objects."""
   trackable_objects, node_paths = graph_view.breadth_first_traversal()
   object_names = object_identity.ObjectIdentityDictionary()
@@ -375,7 +379,7 @@ def _serialize_gathered_objects(graph_view,
 
 def serialize_object_graph_with_registered_savers(graph_view, saveables_cache):
   """Determine checkpoint keys for variables and build a serialized graph."""
-  return _serialize_gathered_objects(
+  return serialize_gathered_objects(
       graph_view, saveables_cache=saveables_cache)
 
 
@@ -391,8 +395,8 @@ def frozen_saveables_and_savers(graph_view,
     target_context = ops.NullContextmanager
   with target_context():
     named_saveable_objects, graph_proto, _, registered_savers = (
-        _serialize_gathered_objects(graph_view, object_map,
-                                    call_with_mapped_captures, saveables_cache))
+        serialize_gathered_objects(graph_view, object_map,
+                                   call_with_mapped_captures, saveables_cache))
     with ops.device("/cpu:0"):
       object_graph_tensor = constant_op.constant(
           graph_proto.SerializeToString(), dtype=dtypes.string)

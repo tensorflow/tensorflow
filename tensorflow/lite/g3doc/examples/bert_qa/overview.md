@@ -30,7 +30,7 @@ can download our starter question and answer model.
 starter model and vocab</a>
 
 For more information about metadata and associated fields (e.g. `vocab.txt`) see
-<a href="https://www.tensorflow.org/lite/convert/metadata#read_the_metadata_from_models">Read
+<a href="https://www.tensorflow.org/lite/models/convert/metadata#read_the_metadata_from_models">Read
 the metadata from models</a>.
 
 ## How it works

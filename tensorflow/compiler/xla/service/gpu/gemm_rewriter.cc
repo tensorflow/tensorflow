@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 
+#include <utility>
+
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -45,7 +49,58 @@ Status SetName(HloModule *module, HloInstruction *gemm) {
 
   module->SetAndUniquifyInstrName(
       gemm, is_batch_dot ? "cublas-batch-gemm" : "cublas-gemm");
-  return Status::OK();
+  return OkStatus();
+}
+
+// If the bias is a sequence of ops that depend only on broadcasts of
+// constants, materialize the bias if it's small.
+//
+// Normally the constant-folding pass would materialize the bias if it is
+// calculated entirely from constants. But if the bias is a broadcast of a
+// constant, constant-folding won't expand the broadcast, on the theory that
+// folding broadcasts of constants causes us to consume more memory and can
+// actually make things slower (because any op which reads the constant has
+// to read more memory).
+//
+// OTOH in our case, we don't want to run an op that just broadcasts a
+// constant so we can fuse it into this gemm. That would defeat the whole
+// purpose of this fusion, which is to launch fewer kernels.  So if we can,
+// we expand out this constant ourselves.
+//
+// TODO(b/192499646): Even better would be to use cublasLT to fuse the
+// broadcasted bias, if it supports that fusion efficiently.
+HloInstruction *MaybeConstantFoldBias(HloInstruction *bias) {
+  // This limit was not chosen carefully.
+  constexpr int kMaxMaterializeBiasBytes = 8 * 1024 * 1024;
+
+  // Don't fold broadcasts of scalars -- algsimp will just collapse it again.
+  auto is_nonscalar = [](const HloInstruction *instr) {
+    return !ShapeUtil::IsEffectiveScalar(instr->shape());
+  };
+
+  // For now, only fold broadcast(constant) or
+  // reshape/transpose/bitcast(broadcast(constant)). This lets us avoid the
+  // complexity in the constant-folding pass about what is and isn't legal to
+  // fold.
+  auto broadcast_of_nonscalar =
+      m::Broadcast(m::Constant().WithPredicate(is_nonscalar));
+
+  if (ShapeUtil::ByteSizeOf(bias->shape()) <= kMaxMaterializeBiasBytes &&
+      (Match(bias, broadcast_of_nonscalar) ||
+       Match(bias, m::Reshape(broadcast_of_nonscalar)) ||
+       Match(bias, m::Transpose(broadcast_of_nonscalar)) ||
+       Match(bias, m::Bitcast(broadcast_of_nonscalar)))) {
+    HloEvaluator evaluator(/*max_loop_iterations=*/0);
+    Literal result;
+    if (evaluator.TryEvaluate(
+            bias, &result,
+            /*recursively_evaluate_nonconstant_operands=*/true)) {
+      return bias->parent()->AddInstruction(
+          HloInstruction::CreateConstant(std::move(result)));
+    }
+  }
+
+  return bias;
 }
 
 // The rewriting proceeds in a bottom-up way:
@@ -85,7 +140,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       TF_RETURN_IF_ERROR(
           ReplaceWithNewInstruction(instr, std::move(gemm_call)));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status HandleMultiply(HloInstruction *instr) override {
@@ -100,7 +155,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       // Do not fuse alpha into S32 GEMM, as they only support fixed values for
       // alpha/beta.
       if (existing_gemm->shape().element_type() == S32) {
-        return Status::OK();
+        return OkStatus();
       }
 
       if (config.beta() == 0.0 && existing_gemm->user_count() == 1) {
@@ -113,17 +168,47 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         TF_RETURN_IF_ERROR(ReplaceInstruction(instr, existing_gemm));
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status HandleAdd(HloInstruction *instr) override {
     HloInstruction *bias, *existing_gemm;
+
+    // add(bitcast(gemm(a, b)), bias) ->
+    //   bitcast(add(gemm(a, b), bitcast(bias))) ->
+    //   bitcast(gemm(a, b, bitcast(bias))) (later down in this function).
+    //
+    // We see this idiom in models that contain batch-dots, where we cast
+    // between a rank-2 shape for non-batch dots and a higher-rank shape for
+    // batch-dots.
+    //
+    // The last stage of the transform may fail (because of any of the checks in
+    // FuseBiasedGemm), but if so that's okay -- we'll have done a useless
+    // transformation, but it doesn't hurt anything.
+    if (Match(instr, m::AddAnyOrder(
+                         m::Bitcast(m::Op(&existing_gemm)
+                                        .WithCustomCallTarget(kGemmCallTarget)
+                                        .WithOneUser())
+                             .WithOneUser(),
+                         m::Op(&bias)))) {
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * new_add,
+          MakeBinaryHlo(HloOpcode::kAdd, existing_gemm,
+                        MakeBitcastHlo(bias, existing_gemm->shape())));
+      TF_RETURN_IF_ERROR(
+          ReplaceInstruction(instr, MakeBitcastHlo(new_add, instr->shape())));
+
+      // Continue below transforming new_add.
+      instr = new_add;
+    }
+
     if (Match(instr,
               m::AddAnyOrder(
                   m::Op(&existing_gemm).WithCustomCallTarget(kGemmCallTarget),
                   m::Op(&bias)))) {
       return FuseBiasedGemm(instr, bias, existing_gemm);
     }
+
     return Status::OK();
   }
 
@@ -139,7 +224,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                 .WithElementType(BF16))) {
       return FuseBiasedGemm(instr, bias, existing_gemm);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status FuseBiasedGemm(HloInstruction *instr, HloInstruction *bias,
@@ -147,25 +232,29 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // Do not fuse bias into S32 GEMM, as for this datatype cuBLAS only
     // supports fixed values for alpha/beta.
     if (existing_gemm->shape().element_type() == S32) {
-      return Status::OK();
+      return OkStatus();
     }
     auto config =
         existing_gemm->backend_config<GemmBackendConfig>().ValueOrDie();
-    if (config.beta() == 0 && bias->user_count() == 1 &&
-        existing_gemm->user_count() == 1 &&
-        bias->shape() == existing_gemm->shape()) {
-      config.set_beta(1.0);
-      CHECK_EQ(existing_gemm->operand_count(), 2);
-      std::unique_ptr<HloInstruction> gemm_call =
-          existing_gemm->CloneWithNewOperands(
-              instr->shape(), {existing_gemm->mutable_operand(0),
-                               existing_gemm->mutable_operand(1), bias});
-      TF_RETURN_IF_ERROR(gemm_call->set_backend_config(config));
-      TF_RETURN_IF_ERROR(SetName(instr->GetModule(), gemm_call.get()));
-      TF_RETURN_IF_ERROR(
-          ReplaceWithNewInstruction(instr, std::move(gemm_call)));
+    if (config.beta() != 0 || bias->user_count() != 1 ||
+        existing_gemm->user_count() != 1 ||
+        bias->shape() != existing_gemm->shape()) {
+      return OkStatus();
     }
-    return Status::OK();
+
+    config.set_beta(1.0);
+    CHECK_EQ(existing_gemm->operand_count(), 2);
+    std::unique_ptr<HloInstruction> gemm_call =
+        existing_gemm->CloneWithNewOperands(
+            instr->shape(), {
+                                existing_gemm->mutable_operand(0),
+                                existing_gemm->mutable_operand(1),
+                                MaybeConstantFoldBias(bias),
+                            });
+    TF_RETURN_IF_ERROR(gemm_call->set_backend_config(config));
+    TF_RETURN_IF_ERROR(SetName(instr->GetModule(), gemm_call.get()));
+    TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(gemm_call)));
+    return OkStatus();
   }
 };
 
