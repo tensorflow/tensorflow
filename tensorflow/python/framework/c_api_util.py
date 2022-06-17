@@ -35,7 +35,7 @@ class AlreadyGarbageCollectedError(Exception):
 # to protect against deletion during use when the object is attached to
 # an attribute.
 class UniquePtr(object):
-  """Wrapper around C-API objects that handles deletion."""
+  """Wrapper around single-ownership C-API objects that handles deletion."""
 
   __slots__ = ["_obj", "deleter", "name", "type_name"]
 
@@ -53,6 +53,14 @@ class UniquePtr(object):
 
   @contextlib.contextmanager
   def get(self):
+    """Yields the managed C-API Object, guaranteeing aliveness.
+
+    This is a context manager. Inside the context the C-API object is
+    guaranteed to be alive.
+
+    Raises:
+      AlreadyGarbageCollectedError: if the object is already deleted.
+    """
     # Thread-safety: self.__del__ never runs during the call of this function
     # because there is a reference to self from the argument list.
     if self._obj is None:
