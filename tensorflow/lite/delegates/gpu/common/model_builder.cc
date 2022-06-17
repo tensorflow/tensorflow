@@ -156,6 +156,14 @@ absl::Status ParseInputsWithConstTensor(Node* node, ObjectReader* reader,
         Tensor<Linear, DataType::FLOAT32> tensor;
         RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));
         *tensor_or_scalar = std::move(tensor);
+      } else if (constant_dims->size == 2) {
+        Tensor<HW, DataType::FLOAT32> tensor_hw;
+        RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor_hw));
+        Tensor<HWC, DataType::FLOAT32> tensor;
+        tensor.id = tensor_hw.id;
+        tensor.shape = HWC(1, tensor_hw.shape.h, tensor_hw.shape.w);
+        tensor.data = tensor_hw.data;
+        *tensor_or_scalar = std::move(tensor);
       } else {
         Tensor<HWC, DataType::FLOAT32> tensor;
         RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));
