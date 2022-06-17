@@ -1417,7 +1417,7 @@ class OpConverterTest : public ::testing::Test {
     if (num_elements) {
       weights =
           converter_->weight_store_.GetTempWeights(dtype, dims_adap.AsTrtDims())
-              .ConsumeValueOrDie();
+              .value();
 
       if (tf_type == DT_FLOAT) {
         transformWeights<T, float>(values, weights);

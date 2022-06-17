@@ -1257,7 +1257,7 @@ Status BaseGPUDeviceFactory::GetDeviceDetails(
     return desc_status.status();
   }
 
-  auto desc = desc_status.ConsumeValueOrDie();
+  auto desc = std::move(desc_status).value();
   (*details)["device_name"] = desc->name();
 #if GOOGLE_CUDA
   (*details)["compute_capability"] = desc->cuda_compute_capability().ToString();
@@ -1577,7 +1577,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
   if (!desc_status.ok()) {
     return desc_status.status();
   }
-  auto desc = desc_status.ConsumeValueOrDie();
+  auto desc = std::move(desc_status).value();
 
   std::vector<TfDeviceId> peer_gpu_ids;
   peer_gpu_ids.reserve(num_tf_gpus);
@@ -1688,7 +1688,7 @@ Status BaseGPUDeviceFactory::GetDeviceLocalities(
     if (!desc_status.ok()) {
       return desc_status.status();
     }
-    auto desc = desc_status.ConsumeValueOrDie();
+    auto desc = std::move(desc_status).value();
     int numa_node = desc->numa_node();
     if (numa_node < 0) {
       // For some reason the StreamExecutor couldn't get the NUMA
@@ -1763,7 +1763,7 @@ static int GetDefaultMinGPUMultiprocessorCount(
       continue;
     }
 
-    auto description = description_status.ConsumeValueOrDie();
+    auto description = std::move(description_status).value();
     max_count = std::max(max_count, description->core_count());
   }
 
@@ -1897,7 +1897,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
       return description_status.status();
     }
 
-    auto description = description_status.ConsumeValueOrDie();
+    auto description = std::move(description_status).value();
 #if GOOGLE_CUDA
     VLOG(1) << "Found device " << i << " with properties: "
             << "\npciBusID: " << description->pci_bus_id()
@@ -1967,7 +1967,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
       continue;
     }
 
-    auto desc = description_status.ConsumeValueOrDie();
+    auto desc = std::move(description_status).value();
 
 #if GOOGLE_CUDA
     // Only GPUs with no less than the minimum supported compute capability is

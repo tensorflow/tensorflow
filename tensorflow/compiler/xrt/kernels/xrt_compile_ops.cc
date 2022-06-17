@@ -210,7 +210,7 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
   auto cache_or = XRTGenericDeviceAccessor::GetOrCreateCompilationCache(
       ctx, /*max_number_of_entries=*/0);
   OP_REQUIRES_OK(ctx, cache_or.status());
-  auto cache = cache_or.ConsumeValueOrDie();
+  auto cache = std::move(cache_or).value();
 
   int64_t uid;
   OP_REQUIRES_OK(
@@ -265,7 +265,7 @@ void XRTReleaseCompilationRefOp::Compute(OpKernelContext* ctx) {
   auto cache_or = XRTGenericDeviceAccessor::GetOrCreateCompilationCache(
       ctx, /*max_number_of_entries=*/0);
   OP_REQUIRES_OK(ctx, cache_or.status());
-  auto cache = cache_or.ConsumeValueOrDie();
+  auto cache = std::move(cache_or).value();
 
   const Tensor& keys_tensor = ctx->input(0);
   auto flat_keys = keys_tensor.flat<int64_t>();

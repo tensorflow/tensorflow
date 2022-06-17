@@ -22,6 +22,7 @@ limitations under the License.
 #include <list>
 #include <map>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device/device_id.h"
@@ -149,7 +150,7 @@ Status PluggableDeviceFactory::GetDeviceDetails(
     return desc_status.status();
   }
 
-  auto desc = desc_status.ConsumeValueOrDie();
+  auto desc = std::move(desc_status).value();
   (*details)["device_name"] = desc->name();
   return OkStatus();
 }
@@ -242,7 +243,7 @@ Status PluggableDeviceFactory::CreatePluggableDevice(
   if (!desc_status.ok()) {
     return desc_status.status();
   }
-  auto desc = desc_status.ConsumeValueOrDie();
+  auto desc = std::move(desc_status).value();
   PluggableDeviceProcessState* process_state =
       PluggableDeviceProcessState::singleton(device_type_, platform_name_);
   Allocator* device_allocator = process_state->GetPluggableDeviceAllocator(
@@ -293,7 +294,7 @@ Status PluggableDeviceFactory::GetDeviceLocalities(
     if (!desc_status.ok()) {
       return desc_status.status();
     }
-    auto desc = desc_status.ConsumeValueOrDie();
+    auto desc = std::move(desc_status).value();
     int numa_node = desc->numa_node();
     if (numa_node < 0) {
       // For some reason the StreamExecutor couldn't get the NUMA

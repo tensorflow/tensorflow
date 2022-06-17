@@ -419,12 +419,7 @@ Status BuildComputation(
     builder->SetUpAlias(alias.output_index, alias.param_number,
                         alias.param_index);
   }
-
-  StatusOr<xla::XlaComputation> computation_status = builder->Build();
-  if (!computation_status.ok()) {
-    return computation_status.status();
-  }
-  *computation = computation_status.ConsumeValueOrDie();
+  TF_ASSIGN_OR_RETURN(*computation, builder->Build());
 
   TF_ASSIGN_OR_RETURN(auto program_shape, computation->GetProgramShape());
   *output_shape = program_shape.result();
