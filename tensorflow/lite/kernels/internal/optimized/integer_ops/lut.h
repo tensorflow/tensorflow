@@ -21,6 +21,8 @@ limitations under the License.
 #include <arm_neon.h>
 #endif
 
+#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+
 namespace tflite {
 namespace optimized_integer_ops {
 
