@@ -20,7 +20,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
@@ -39,7 +38,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-constexpr int64_t kUnsetSyncCounter = -1;
+constexpr int64_t kPreemptionSyncUnsetCounter = -1;
 constexpr char kPreemptionNoticeKey[] = "RECEIVED_PREEMPTION_NOTICE";
 constexpr char kPreemptionCounterDirKey[] = "PREEMPTION_CURRENT_COUNTER/";
 constexpr char kPreemptionBarrier[] = "PREEMPTION_SYNC_BARRIER";
@@ -66,7 +65,7 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
 #endif
   Status Initialize(CoordinationServiceAgent* agent,
                     std::unique_ptr<PreemptionNotifier> notifier) override;
-  bool ReachedSyncPoint() override;
+  bool ReachedSyncPoint(int step_counter) override;
 
  private:
   // Determine the sync point upon receipt of preemption notice (death time).
@@ -76,10 +75,11 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
   void CancelPreemptionBarrier();
 
   mutex mu_;
-  // Tracks number of calls (ReachedSyncPoint());
+  // Tracks the last step_counter passed into ReachedSyncPoint();
   int64_t call_counter_ TF_GUARDED_BY(mu_) = 0;
   // If set, determines the sync point.
-  int64_t preemption_sync_counter_ TF_GUARDED_BY(mu_) = kUnsetSyncCounter;
+  int64_t preemption_sync_counter_ TF_GUARDED_BY(mu_) =
+      kPreemptionSyncUnsetCounter;
   std::string current_call_counter_key_;
 
   Env* env_;                         // Not owned;
@@ -88,7 +88,7 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
   std::unique_ptr<Thread> sync_protocol_thread_;
   std::unique_ptr<PreemptionNotifier> preemption_notifier_;
   std::shared_ptr<CallOptions> call_opts_;
-};  // namespace
+};
 
 Status PreemptionSyncManagerImpl::Initialize(CoordinationServiceAgent* agent) {
   TF_ASSIGN_OR_RETURN(Env * env, agent->GetEnv());
@@ -239,7 +239,7 @@ void PreemptionSyncManagerImpl::ComputeSyncCallCounter(absl::Time death_time) {
   // Note: Each task should retrieve the same set of call counters and arrive at
   // the same maximum. We have to calculate this max within each task because
   // coordination service does not provide GetMaxKeyValue().
-  int64_t max_counter = kUnsetSyncCounter;
+  int64_t max_counter = kPreemptionSyncUnsetCounter;
   for (const auto& kv : *all_counters) {
     int64_t call_counter;
     if (!absl::SimpleAtoi(kv.value(), &call_counter)) {
@@ -251,7 +251,7 @@ void PreemptionSyncManagerImpl::ComputeSyncCallCounter(absl::Time death_time) {
     max_counter = std::max(max_counter, call_counter);
   }
 
-  if (max_counter == kUnsetSyncCounter) {
+  if (max_counter == kPreemptionSyncUnsetCounter) {
     LOG(ERROR) << "Preemption sync failed - no call counters found.";
     return;
   }
@@ -269,14 +269,14 @@ void PreemptionSyncManagerImpl::CancelPreemptionBarrier() {
   });
 }
 
-bool PreemptionSyncManagerImpl::ReachedSyncPoint() {
+bool PreemptionSyncManagerImpl::ReachedSyncPoint(int step_counter) {
   // Note: if a preemption notice has been received and ComputeSyncCallCounter()
   // is ongoing , this method will be blocked until it acquires the lock. This
   // prevents updates to `call_counter_` while `preemption_sync_counter_` is
   // being computed, which ensures correctness of the preemption sync protocol.
   mutex_lock l(mu_);
   // Track current call.
-  ++call_counter_;
+  call_counter_ = step_counter;
   VLOG(3) << "Current call counter: " << call_counter_
           << ", Preemption sync point: " << preemption_sync_counter_;
 
