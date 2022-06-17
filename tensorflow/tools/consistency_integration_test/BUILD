@@ -90,6 +90,7 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "no_pip",
+        "no_rocm" #seems to be sensitive to keras build
     ],
     deps = [
         ":consistency_test_base",
