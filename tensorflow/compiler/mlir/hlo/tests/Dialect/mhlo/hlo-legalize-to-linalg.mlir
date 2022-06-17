@@ -3542,6 +3542,112 @@ func.func @depthwise_conv_multiplier_1_with_padding(
 
 // -----
 
+func.func @depthwise_conv1d(%arg0: tensor<1x10x8xf32>,
+                            %arg1: tensor<3x1x16xf32>) -> tensor<1x10x16xf32> {
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 0, f]x[0, i, o]->[b, 0, f],
+    window = {
+      stride = [1],
+      pad = [[1, 1]],
+      lhs_dilate = [1],
+      rhs_dilate = [1],
+      reverse = [0]} {
+    batch_group_count = 1 : i64,
+    feature_group_count = 8 : i64,
+    someattr} : (tensor<1x10x8xf32>, tensor<3x1x16xf32>) -> tensor<1x10x16xf32>
+  func.return %0 : tensor<1x10x16xf32>
+}
+
+// CHECK:      func @depthwise_conv1d
+// CHECK-SAME:   %[[IN:[a-zA-Z0-9_]*]]
+// CHECK-SAME:   %[[FILTER:[a-zA-Z0-9_]*]]
+
+// CHECK:       %[[CONV:.+]] = linalg.depthwise_conv_1d_nwc_wcm
+// CHECK:       %[[OUT:.+]] = tensor.collapse_shape %[[CONV]]
+// CHECK:       return %[[OUT]]
+
+// -----
+
+func.func @depthwise_conv1d_m1(%arg0: tensor<1x10x8xf32>,
+                               %arg1: tensor<3x1x8xf32>) -> tensor<1x10x8xf32> {
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 0, f]x[0, i, o]->[b, 0, f],
+    window = {
+      stride = [1],
+      pad = [[1, 1]],
+      lhs_dilate = [1],
+      rhs_dilate = [1],
+      reverse = [0]} {
+    batch_group_count = 1 : i64,
+    feature_group_count = 8 : i64,
+    someattr} : (tensor<1x10x8xf32>, tensor<3x1x8xf32>) -> tensor<1x10x8xf32>
+  func.return %0 : tensor<1x10x8xf32>
+}
+
+// CHECK:      func @depthwise_conv1d
+// CHECK-SAME:   %[[IN:[a-zA-Z0-9_]*]]
+// CHECK-SAME:   %[[FILTER:[a-zA-Z0-9_]*]]
+
+// CHECK:       %[[CONV:.+]] = linalg.depthwise_conv_1d_nwc_wc
+// CHECK:       return %[[CONV]]
+
+// -----
+
+func.func @depthwise_conv3d(%arg0: tensor<2x3x5x4x6xf32>,
+                            %arg1: tensor<2x1x3x1x36xf32>)
+                            -> tensor<2x3x13x4x36xf32> {
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, 0, 1, 2, f],
+    window = {
+      stride = [2, 1, 3],
+      pad = [[1, 2], [5, 3], [3, 5]],
+      lhs_dilate = [1, 1, 1],
+      rhs_dilate = [1, 1, 1],
+      reverse = [0, 0, 0]} {
+    batch_group_count = 1 : i64,
+    feature_group_count = 6 : i64,
+    someattr} : (tensor<2x3x5x4x6xf32>, tensor<2x1x3x1x36xf32>)
+              -> tensor<2x3x13x4x36xf32>
+  func.return %0 : tensor<2x3x13x4x36xf32>
+}
+
+// CHECK:      func @depthwise_conv3d
+// CHECK-SAME:   %[[IN:[a-zA-Z0-9_]*]]
+// CHECK-SAME:   %[[FILTER:[a-zA-Z0-9_]*]]
+
+// CHECK:       %[[CONV:.+]] = linalg.depthwise_conv_3d_ndhwc_dhwcm
+// CHECK:       %[[OUT:.+]] = tensor.collapse_shape %[[CONV]]
+// CHECK:       return %[[OUT]]
+
+// -----
+
+func.func @depthwise_conv3d_m1(%arg0: tensor<2x3x5x4x6xf32>,
+                               %arg1: tensor<2x1x3x1x6xf32>)
+                               -> tensor<2x3x13x4x6xf32> {
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, 0, 1, 2, f],
+    window = {
+      stride = [2, 1, 3],
+      pad = [[1, 2], [5, 3], [3, 5]],
+      lhs_dilate = [1, 1, 1],
+      rhs_dilate = [1, 1, 1],
+      reverse = [0, 0, 0]} {
+    batch_group_count = 1 : i64,
+    feature_group_count = 6 : i64,
+    someattr} : (tensor<2x3x5x4x6xf32>, tensor<2x1x3x1x6xf32>)
+              -> tensor<2x3x13x4x6xf32>
+  func.return %0 : tensor<2x3x13x4x6xf32>
+}
+
+// CHECK:      func @depthwise_conv3d
+// CHECK-SAME:   %[[IN:[a-zA-Z0-9_]*]]
+// CHECK-SAME:   %[[FILTER:[a-zA-Z0-9_]*]]
+
+// CHECK:       %[[CONV:.+]] = linalg.depthwise_conv_3d_ndhwc_dhwc
+// CHECK:       return %[[CONV]]
+
+// -----
+
 func.func @reduce_window_min_nhwc(%arg0: tensor<1x17x17x64xf32>,
                              %arg1: tensor<f32>) -> tensor<1x8x8x64xf32>{
   %0 = "mhlo.reduce_window"(%arg0, %arg1) ({

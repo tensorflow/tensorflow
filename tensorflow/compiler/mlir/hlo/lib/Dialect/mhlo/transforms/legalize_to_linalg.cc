@@ -2177,11 +2177,10 @@ struct DepthwiseConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
 
     const mhlo::ConvDimensionNumbersAttr& dimensionNumbers =
         op.dimension_numbers();
-    // Make sure that this is 2-D convolution.
     const auto spatialRank =
         llvm::size(dimensionNumbers.getInputSpatialDimensions());
-    if (spatialRank != 2) {
-      return rewriter.notifyMatchFailure(op, "only support 2-D cases for now");
+    if (spatialRank == 0 || spatialRank > 3) {
+      return rewriter.notifyMatchFailure(op, "only support up to 3D for now");
     }
 
     // Make sure that this is depthwise convolution.
@@ -2197,18 +2196,22 @@ struct DepthwiseConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
       return rewriter.notifyMatchFailure(op, "does not have canonical form");
     }
 
-    DenseIntElementsAttr windowStrides;
+    Attribute windowStrides;
     if (op.window_strides()) {
       windowStrides = op.window_strides().getValue();
     } else {
-      windowStrides = rewriter.getI64VectorAttr({1, 1});
+      windowStrides = SplatElementsAttr::get(
+          VectorType::get({spatialRank}, rewriter.getI64Type()),
+          rewriter.getI64IntegerAttr(1));
     }
 
-    DenseIntElementsAttr rhsDilation;
+    Attribute rhsDilation;
     if (op.rhs_dilation()) {
       rhsDilation = op.rhs_dilation().getValue();
     } else {
-      rhsDilation = rewriter.getI64VectorAttr({1, 1});
+      rhsDilation = SplatElementsAttr::get(
+          VectorType::get({spatialRank}, rewriter.getI64Type()),
+          rewriter.getI64IntegerAttr(1));
     }
 
     Location loc = op.getLoc();
@@ -2228,8 +2231,12 @@ struct DepthwiseConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
     auto filterDims =
         llvm::to_vector<4>(op.rhs().getType().cast<ShapedType>().getShape());
 
-    auto getIndicesVector = [](int start, int end) {
-      return llvm::to_vector<2>(llvm::seq<int64_t>(start, end));
+    auto getReassociationIndicesToCollapseLastTwoDims = [](Value v) {
+      SmallVector<ReassociationIndices> reassociations;
+      int64_t rank = v.getType().cast<ShapedType>().getRank();
+      for (int64_t i = 0; i < rank - 1; ++i) reassociations.emplace_back(1, i);
+      reassociations.back().push_back(rank - 1);
+      return reassociations;
     };
 
     int64_t kernelInputFeatureDimension =
@@ -2263,11 +2270,11 @@ struct DepthwiseConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
       }
 
       auto outputDims = resultType.getShape();
-      auto channelMultiplier = reshapedFilterDims[3];
+      auto channelMultiplier = reshapedFilterDims.back();
       SmallVector<int64_t> reshapedOutputDims;
       reshapedOutputDims.assign(outputDims.begin(), outputDims.end());
       reshapedOutputDims.push_back(channelMultiplier);
-      reshapedOutputDims[3] /= channelMultiplier;
+      reshapedOutputDims[reshapedOutputDims.size() - 2] /= channelMultiplier;
 
       Value initTensor = rewriter.create<linalg::InitTensorOp>(
           loc, reshapedOutputDims, resultType.getElementType());
@@ -2275,20 +2282,44 @@ struct DepthwiseConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
 
       auto reshapedOutputType = RankedTensorType::get(
           reshapedOutputDims, resultType.getElementType());
-      auto conv = rewriter.create<linalg::DepthwiseConv2DNhwcHwcmOp>(
-          loc, reshapedOutputType, ValueRange{input, reshapedFilter},
-          ValueRange{zeroTensor}, windowStrides, rhsDilation,
-          pruneAttributeList(op));
+      Value conv;
+      switch (spatialRank) {
+        case 1:
+          conv =
+              rewriter
+                  .create<linalg::DepthwiseConv1DNwcWcmOp>(
+                      loc, reshapedOutputType,
+                      ValueRange{input, reshapedFilter}, ValueRange{zeroTensor},
+                      windowStrides, rhsDilation, pruneAttributeList(op))
+                  .getResult(0);
+          break;
+        case 2:
+          conv =
+              rewriter
+                  .create<linalg::DepthwiseConv2DNhwcHwcmOp>(
+                      loc, reshapedOutputType,
+                      ValueRange{input, reshapedFilter}, ValueRange{zeroTensor},
+                      windowStrides, rhsDilation, pruneAttributeList(op))
+                  .getResult(0);
+          break;
+        case 3:
+          conv =
+              rewriter
+                  .create<linalg::DepthwiseConv3DNdhwcDhwcmOp>(
+                      loc, reshapedOutputType,
+                      ValueRange{input, reshapedFilter}, ValueRange{zeroTensor},
+                      windowStrides, rhsDilation, pruneAttributeList(op))
+                  .getResult(0);
+          break;
+      }
 
       // Create a Linalg reshape op that converts the output from 5 dimensions
       // into 4 dimensions (by collapsing the last two dimensions). This is
       // needed because linalg.depthwise_conv_2d_input_nhwc_filter_hwcf returns
       // 5 dimensions for the output.
-      SmallVector<ReassociationIndices, 4> collapsedDimList = {
-          getIndicesVector(0, 1), getIndicesVector(1, 2),
-          getIndicesVector(2, 3), getIndicesVector(3, 5)};
       rewriter.replaceOpWithNewOp<tensor::CollapseShapeOp>(
-          op, resultType, conv.getResult(0), collapsedDimList);
+          op, resultType, conv,
+          getReassociationIndicesToCollapseLastTwoDims(conv));
     } else {
       // For cases where channel multiplier == 1
       Value initTensor = rewriter.create<linalg::InitTensorOp>(
@@ -2300,23 +2331,37 @@ struct DepthwiseConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
       // because linalg.depthwise_conv_2d_input_nhwc_filter_hwc expects 3
       // dimensions for the filter.
 
-      filterDims[2] = static_cast<int64_t>(op.feature_group_count());
+      filterDims[filterDims.size() - 2] =
+          static_cast<int64_t>(op.feature_group_count());
       filterDims.pop_back();
 
       RankedTensorType filterShape =
           RankedTensorType::get(filterDims, op.getType().getElementType());
 
-      SmallVector<ReassociationIndices, 4> collapsedDimList = {
-          getIndicesVector(0, 1), getIndicesVector(1, 2),
-          getIndicesVector(2, 4)};
-
       Value reshapedFilter = rewriter.create<tensor::CollapseShapeOp>(
-          loc, filterShape, filter, collapsedDimList);
+          loc, filterShape, filter,
+          getReassociationIndicesToCollapseLastTwoDims(filter));
 
-      rewriter.replaceOpWithNewOp<linalg::DepthwiseConv2DNhwcHwcOp>(
-          op, resultType, ValueRange{input, reshapedFilter},
-          ValueRange{zeroTensor}, windowStrides, rhsDilation,
-          pruneAttributeList(op));
+      switch (spatialRank) {
+        case 1:
+          rewriter.replaceOpWithNewOp<linalg::DepthwiseConv1DNwcWcOp>(
+              op, resultType, ValueRange{input, reshapedFilter},
+              ValueRange{zeroTensor}, windowStrides, rhsDilation,
+              pruneAttributeList(op));
+          break;
+        case 2:
+          rewriter.replaceOpWithNewOp<linalg::DepthwiseConv2DNhwcHwcOp>(
+              op, resultType, ValueRange{input, reshapedFilter},
+              ValueRange{zeroTensor}, windowStrides, rhsDilation,
+              pruneAttributeList(op));
+          break;
+        case 3:
+          rewriter.replaceOpWithNewOp<linalg::DepthwiseConv3DNdhwcDhwcOp>(
+              op, resultType, ValueRange{input, reshapedFilter},
+              ValueRange{zeroTensor}, windowStrides, rhsDilation,
+              pruneAttributeList(op));
+          break;
+      }
     }
 
     return success();
