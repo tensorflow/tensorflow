@@ -735,7 +735,7 @@ class TestCompiledDenseBincount(test.TestCase, parameterized.TestCase):
     lambda_f(); lambda_fc()
     not_compiled = timeit.timeit(lambda_f, number=10)
     compiled = timeit.timeit(lambda_fc, number=10)
-    self.assertLess(compiled, not_compiled * 1.01)
+    self.assertAlmostEqual(compiled, not_compiled, 2)
 
     
 class TestDenseBincount(test.TestCase, parameterized.TestCase):
