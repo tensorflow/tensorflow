@@ -27,6 +27,7 @@ py_library(
         ":checkpoint_options",
         ":functional_saver",
         ":graph_view",
+        ":saveable_compat",
         ":util",
     ],
 )
@@ -294,5 +295,46 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training:checkpoint_management",
         "//tensorflow/python/training:saver",
+    ],
+)
+
+py_library(
+    name = "saveable_compat",
+    srcs = [
+        "saveable_compat.py",
+    ],
+)
+
+tf_py_test(
+    name = "saveable_compat_test",
+    srcs = [
+        "saveable_compat_test.py",
+    ],
+    data = [
+        "testdata/table_legacy_saveable_object.data-00000-of-00001",
+        "testdata/table_legacy_saveable_object.index",
+    ],
+    tags = ["no_pip"],
+    deps = [
+        ":checkpoint",
+        ":testdata/generate_checkpoint",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+py_binary(
+    name = "testdata/generate_checkpoint",
+    srcs = ["testdata/generate_checkpoint.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:checkpoint",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/module",
+        "@absl_py//absl:app",
     ],
 )
