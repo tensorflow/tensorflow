@@ -3590,6 +3590,8 @@ inline void SoftmaxInt8LUT(const SoftmaxParams& params,
                            const RuntimeShape& input_shape,
                            const In* input_data,
                            const RuntimeShape& output_shape, Out* output_data) {
+  ruy::profiler::ScopeLabel label("SoftmaxInt8LUT");
+
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int excluding_last_dim =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
