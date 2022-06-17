@@ -861,7 +861,7 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
     std::vector<int64_t> minor_to_major(layout.minor_to_major_size());
     absl::c_transform(layout.minor_to_major(), minor_to_major.begin(),
                       [](int64_t x) { return static_cast<int64_t>(x); });
-    return builder_.getI64ArrayAttr(minor_to_major);
+    return minor_to_major;
   };
 
   auto set_common_conv_attributes = [&, this](auto op) -> Operation* {
@@ -919,21 +919,17 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
       knob_values.push_back(entry.second);
     }
 
-    auto config = mlir::lmhlo_gpu::ConvolutionBackendConfig::get(
-        builder_.getI64IntegerAttr(algorithm.algo_id()),
-        builder_.getBoolAttr(
-            algorithm.math_type() ==
-            stream_executor::dnn::AlgorithmProto::TENSOR_OP_MATH),
-        builder_.getI64ArrayAttr(knob_ids),
-        builder_.getI64ArrayAttr(knob_values),
-        builder_.getBoolAttr(algorithm.is_cudnn_frontend()),
-        builder_.getI64IntegerAttr(algorithm.has_workspace_size()
-                                       ? algorithm.workspace_size().value()
-                                       : -1),
+    auto config = mlir::lmhlo_gpu::ConvolutionBackendConfigAttr::get(
+        builder_.getContext(), algorithm.algo_id(),
+
+        algorithm.math_type() ==
+            stream_executor::dnn::AlgorithmProto::TENSOR_OP_MATH,
+        knob_ids, knob_values, algorithm.is_cudnn_frontend(),
+        algorithm.has_workspace_size() ? algorithm.workspace_size().value()
+                                       : -1,
         get_layout_attribute(custom_call->operand(0)->shape().layout()),
         get_layout_attribute(custom_call->operand(1)->shape().layout()),
-        get_layout_attribute(custom_call->shape().tuple_shapes(0).layout()),
-        builder_.getContext());
+        get_layout_attribute(custom_call->shape().tuple_shapes(0).layout()));
     attrs.set(op.getBackendConfigAttrName(), config);
     op->setAttrs(attrs.getDictionary(op->getContext()));
 

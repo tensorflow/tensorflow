@@ -341,11 +341,11 @@ HloModule ConvForward
 // CHECK: lmhlo_gpu.conv_forward
 // CHECK-SAME: dim_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]
 // CHECK-SAME{LITERAL}: window = {stride = [1, 1], pad = [0, 0], lhs_dilate = [1, 1], rhs_dilate = [1, 1], reverse = [1, 1]}
-// CHECK-SAME: algorithm = 2 : i64
+// CHECK-SAME: algorithm = 2
+// CHECK-SAME: tensor_ops_enabled = false
 // CHECK-SAME: operand_0_layout = [3, 2, 1, 0]
 // CKECK-SAME: operand_1_layout = [3, 2, 1, 0]
 // CHECK-SAME: result_layout = [3, 2, 1, 0]
-// CHECK-SAME: tensor_ops_enabled = false
 // CHECK-SAME: batch_group_count = 1 : i64
 // CHECK-SAME: feature_group_count = 1 : i64
 // CHECK-SAME: result_scale = 1.000000e+00 : f64
@@ -366,11 +366,11 @@ ENTRY main {
 // CHECK-SAME: dim_numbers = [b, f, 0, 1]x[0, 1, i, o]->[b, f, 0, 1]
 // CHECK-SAME{LITERAL}: window = {stride = [1, 1], pad = [1, 1], lhs_dilate = [1, 1], rhs_dilate = [1, 1], reverse = [0, 0]}
 // CHECK-SAME: activation_mode = #lmhlo_gpu<"activation Relu">
-// CHECK-SAME: algorithm = 0 : i64
+// CHECK-SAME: algorithm = 0
+// CHECK-SAME: tensor_ops_enabled = false
 // CHECK-SAME: operand_0_layout = [1, 3, 2, 0]
 // CHECK-SAME: operand_1_layout = [2, 1, 0, 3]
 // CHECK-SAME: result_layout = [1, 3, 2, 0]
-// CHECK-SAME: tensor_ops_enabled = false
 // CHECK-SAME: batch_group_count = 1 : i64
 // CHECK-SAME: feature_group_count = 1 : i64
 // CHECK-SAME: precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
@@ -393,11 +393,11 @@ ENTRY main {
 // CHECK-SAME: dim_numbers = [b, f, 0, 1]x[0, 1, i, o]->[b, f, 0, 1]
 // CHECK-SAME{LITERAL}: window = {stride = [1, 1], pad = [1, 1], lhs_dilate = [1, 1], rhs_dilate = [1, 1], reverse = [0, 0]}
 // CHECK-SAME: activation_mode = #lmhlo_gpu<"activation Relu">
-// CHECK-SAME: algorithm = 0 : i64
+// CHECK-SAME: algorithm = 0
+// CHECK-SAME: tensor_ops_enabled = false
 // CHECK-SAME: operand_0_layout = [1, 3, 2, 0]
 // CHECK-SAME: operand_1_layout = [2, 1, 0, 3]
 // CHECK-SAME: result_layout = [1, 3, 2, 0]
-// CHECK-SAME: tensor_ops_enabled = false
 // CHECK-SAME: batch_group_count = 1 : i64
 // CHECK-SAME: feature_group_count = 1 : i64
 // CHECK-SAME: precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]

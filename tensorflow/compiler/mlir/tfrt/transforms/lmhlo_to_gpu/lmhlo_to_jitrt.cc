@@ -105,7 +105,7 @@ using mlir::lmhlo_gpu::ConvBackwardInputOp;
 using mlir::lmhlo_gpu::ConvForwardFusedOp;
 using mlir::lmhlo_gpu::ConvForwardFusedSideInputOp;
 using mlir::lmhlo_gpu::ConvForwardOp;
-using mlir::lmhlo_gpu::ConvolutionBackendConfig;
+using mlir::lmhlo_gpu::ConvolutionBackendConfigAttr;
 using mlir::lmhlo_gpu::GEMM_BiasOp;
 using mlir::lmhlo_gpu::GEMMOp;
 using mlir::memref::AllocaOp;
@@ -531,14 +531,6 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
       set_attr(name, b.getI64TensorAttr(values));
     };
 
-    // Convert array attribute to an i64 vector.
-    auto to_i64s = [](ArrayAttr arr) {
-      auto range = llvm::map_range(arr.getValue(), [](Attribute attr) {
-        return attr.cast<IntegerAttr>().getInt();
-      });
-      return SmallVector<int64_t>(range.begin(), range.end());
-    };
-
     // Copy dimension number attributes.
     ConvDimensionNumbersAttr dims = op.getDimensionNumbers();
 
@@ -562,18 +554,19 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
     set_xi64("padding", op.getPadding());
 
     // Copy backend config.
-    ConvolutionBackendConfig backend = op.getBackendConfig();
+    ConvolutionBackendConfigAttr backend = op.getBackendConfig();
 
-    set_attr("algorithm", backend.algorithm());
-    set_attr("tensor_ops_enabled", backend.tensor_ops_enabled());
-    set_attr("is_cudnn_frontend", backend.is_cudnn_frontend());
-    set_attr("workspace_size", backend.workspace_size());
+    set_i64("algorithm", backend.getAlgorithm());
+    set_attr("tensor_ops_enabled",
+             b.getBoolAttr(backend.getTensorOpsEnabled()));
+    set_attr("is_cudnn_frontend", b.getBoolAttr(backend.getIsCudnnFrontend()));
+    set_i64("workspace_size", backend.getWorkspaceSize());
 
-    set_i64s("knob_ids", to_i64s(backend.knob_ids()));
-    set_i64s("knob_values", to_i64s(backend.knob_values()));
-    set_i64s("operand_0_layout", to_i64s(backend.operand_0_layout()));
-    set_i64s("operand_1_layout", to_i64s(backend.operand_1_layout()));
-    set_i64s("result_layout", to_i64s(backend.result_layout()));
+    set_i64s("knob_ids", backend.getKnobIds());
+    set_i64s("knob_values", backend.getKnobValues());
+    set_i64s("operand_0_layout", backend.getOperand_0Layout());
+    set_i64s("operand_1_layout", backend.getOperand_1Layout());
+    set_i64s("result_layout", backend.getResultLayout());
 
     // Copy remaining attributes.
     set_attr("feature_group_count", op.getFeatureGroupCountAttr());
