@@ -134,7 +134,8 @@ def bincount(arr,
         weights = ops.convert_to_tensor(weights, name="weights")
         return gen_math_ops.unsorted_segment_sum(weights, arr, output_size)
       weights = constant_op.constant([], dtype)
-      #return gen_math_ops.bincount(arr, output_size, weights)
+      arr = array_ops.reshape(arr, [-1])
+      return gen_math_ops.bincount(arr, output_size, weights)
 
     if not isinstance(arr, sparse_tensor.SparseTensor):
       arr = ragged_tensor.convert_to_tensor_or_ragged_tensor(arr, name="arr")

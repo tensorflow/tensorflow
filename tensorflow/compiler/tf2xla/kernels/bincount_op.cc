@@ -28,10 +28,10 @@ namespace {
 
 class DenseBincountOp : public XlaOpKernel {
   private:
-  bool binary_output_;
+  bool binary_output_= false;
  public:
   explicit DenseBincountOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("binary_output", &binary_output_));
+    ctx->GetAttr("binary_output", &binary_output_);
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -122,6 +122,7 @@ class DenseBincountOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("DenseBincount").CompileTimeConstantInput("size"), DenseBincountOp);
+REGISTER_XLA_OP(Name("Bincount").CompileTimeConstantInput("size"), DenseBincountOp);
 
 }  // namespace
 }  // namespace tensorflow
