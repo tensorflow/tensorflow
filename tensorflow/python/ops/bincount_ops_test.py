@@ -627,31 +627,30 @@ class TestCompiledDenseBincount(test.TestCase, parameterized.TestCase):
     })
   @test_util.disable_mlir_bridge('TODO: ?')
   def test_compiled_dense(self,
-                       x,
-                       expected_values,
-                       minlength=None,
-                       maxlength=None,
-                       binary_output=False,
-                       weights=None,
-                       axis=-1):
+                          x,
+                          expected_values,
+                          minlength=None,
+                          maxlength=None,
+                          binary_output=False,
+                          weights=None,
+                          axis=-1):
 
     @def_function.function(jit_compile=True)
     def f (x,
-            weights=weights,
-            minlength=minlength,
-            maxlength=maxlength,
-            binary_output=binary_output,
-             axis=axis
-            ):
-        y = bincount_ops.bincount(
-                x,
-                weights=weights,
-                minlength=minlength,
-                maxlength=maxlength,
-                binary_output=binary_output,
-                axis=axis
-            )
-        return y
+           weights=weights,
+           minlength=minlength,
+           maxlength=maxlength,
+           binary_output=binary_output,
+           axis=axis):
+      y = bincount_ops.bincount(
+                                x,
+                                weights=weights,
+                                minlength=minlength,
+                                maxlength=maxlength,
+                                binary_output=binary_output,
+                                axis=axis)
+      return y
+
     res = f(x,
             weights=weights,
             minlength=minlength,
