@@ -20,7 +20,9 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/status.h"
 
 namespace xla {
@@ -29,38 +31,82 @@ namespace {
 
 class ReduceDecomposerVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit ReduceDecomposerVisitor(
-      std::function<bool(const HloInstruction*)> custom_layout_allowed)
+  explicit ReduceDecomposerVisitor(HloPredicate custom_layout_allowed)
       : custom_layout_allowed_(std::move(custom_layout_allowed)) {}
 
-  Status HandleReduce(HloInstruction* reduce) override {
+  Status HandleReduce(HloInstruction* hlo) override {
+    auto reduce = Cast<HloReduceInstruction>(hlo);
+    auto shape = reduce->shape();
     if (custom_layout_allowed_ && custom_layout_allowed_(reduce)) {
       return OkStatus();
     }
 
-    Shape shape = reduce->shape();
-    HloInstruction* operand = reduce->mutable_operand(0);
-    Shape operand_shape = operand->shape();
-    Shape expected_shape =
-        ShapeUtil::DeleteDimensions(reduce->dimensions(), operand_shape);
-
-    if (expected_shape != shape) {
-      // Decompose it into a reduction to expected_shape and a copy.
-      TF_ASSIGN_OR_RETURN(auto r_prime,
-                          MakeReduceHlo(operand, reduce->mutable_operand(1),
-                                        reduce->dimensions(),
-                                        reduce->called_computations()[0]));
-      TF_RET_CHECK(r_prime->shape() == expected_shape);
-      auto copy = MakeCopyHlo(r_prime, shape);
-      TF_RETURN_IF_ERROR(ReplaceInstruction(reduce, copy));
-      return OkStatus();
+    std::vector<Shape> expected_shapes(reduce->input_count());
+    for (int i = 0; i < reduce->input_count(); i++) {
+      expected_shapes[i] = ExpectedOutputShape(reduce, i);
+      TF_RET_CHECK(reduce->inputs()[i]->shape().layout() ==
+                   reduce->inputs()[0]->shape().layout());
     }
 
+    std::vector<Shape> output_shapes;
+    if (shape.IsTuple()) {
+      for (int i = 0; i < shape.tuple_shapes_size(); i++) {
+        output_shapes.push_back(ShapeUtil::GetTupleElementShape(shape, i));
+        TF_RET_CHECK(output_shapes[i].layout() == output_shapes[0].layout());
+      }
+    } else {
+      output_shapes.push_back(shape);
+    }
+
+    TF_RET_CHECK(!output_shapes.empty());
+    if (ShapeUtil::MakeMaybeTupleShape(expected_shapes) !=
+        ShapeUtil::MakeMaybeTupleShape(output_shapes)) {
+      TF_ASSIGN_OR_RETURN(auto r_prime,
+                          MakeReduceHlo(reduce->inputs(), reduce->init_values(),
+                                        reduce->dimensions(),
+                                        reduce->called_computations()[0]));
+      TF_RET_CHECK(r_prime->shape() ==
+                   ShapeUtil::MakeMaybeTupleShape(expected_shapes));
+
+      if (!shape.IsTuple()) {
+        auto copy = MakeCopyHlo(r_prime, shape);
+        TF_RETURN_IF_ERROR(ReplaceInstruction(reduce, copy));
+        return OkStatus();
+      }
+
+      std::vector<HloInstruction*> copies;
+      for (int i = 0; i < reduce->input_count(); i++) {
+        TF_ASSIGN_OR_RETURN(auto from, GetOutput(r_prime, i));
+        auto copy = MakeCopyHlo(from, output_shapes[i]);
+        copies.push_back(copy);
+      }
+      auto out = MaybeMakeTuple(copies);
+      TF_RETURN_IF_ERROR(ReplaceInstruction(reduce, out));
+    }
     return OkStatus();
   }
 
  private:
-  std::function<bool(const HloInstruction*)> custom_layout_allowed_;
+  StatusOr<HloInstruction*> GetOutput(HloInstruction* instr, int idx) {
+    if (instr->shape().IsTuple()) {
+      return MakeGetTupleElementHlo(instr, idx);
+    } else {
+      TF_RET_CHECK(idx == 0);
+      return instr;
+    }
+  }
+
+  Shape ExpectedOutputShape(HloReduceInstruction* reduce, int input_idx) {
+    Shape reduce_shape = reduce->shape();
+    auto output_shape = reduce_shape.IsTuple()
+                            ? reduce_shape.tuple_shapes(input_idx)
+                            : reduce_shape;
+    auto* operand = reduce->inputs()[input_idx];
+    auto operand_shape = operand->shape();
+    return ShapeUtil::DeleteDimensions(reduce->dimensions(), operand_shape);
+  }
+
+  HloPredicate custom_layout_allowed_;
 };
 
 }  // namespace
