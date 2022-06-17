@@ -86,7 +86,6 @@ limitations under the License.
 namespace xla {
 
 namespace {
-using llvm_ir::IrArray;
 using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
 }  // namespace
