@@ -156,6 +156,7 @@ tf_py_test(
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/saved_model:tag_constants",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",

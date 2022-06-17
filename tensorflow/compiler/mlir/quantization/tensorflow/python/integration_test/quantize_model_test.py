@@ -23,6 +23,7 @@ import tensorflow  # pylint: disable=unused-import
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import quantize_model
 from tensorflow.python.client import session
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -113,16 +114,12 @@ def _create_data_generator(
     shape: Shape of the tensor data.
     num_examples: Number of examples in the representative dataset.
 
-  Returns:
-    data_gen: A callable that creates a generator of
-    `quantize_model._RepresentativeSample`.
+  Yields:
+    data_gen: A `quantize_model._RepresentativeSample` filled with random
+      values.
   """
-
-  def data_gen():
-    for _ in range(num_examples):
-      yield {input_key: random_ops.random_uniform(shape, minval=-1., maxval=1.)}
-
-  return data_gen
+  for _ in range(num_examples):
+    yield {input_key: random_ops.random_uniform(shape, minval=-1., maxval=1.)}
 
 
 def _save_tf1_model(sess: session.Session, saved_model_path: str,
@@ -226,7 +223,7 @@ class QuantizationMethodTest(test.TestCase):
     # Use default QuantizationOptions.
     converted_model = quantize_model.quantize(
         input_saved_model_path,
-        representative_dataset=self._simple_model_data_gen)
+        representative_dataset=self._simple_model_data_gen())
 
     self.assertIsNotNone(converted_model)
     self.assertEqual(
@@ -269,6 +266,28 @@ class QuantizationMethodTest(test.TestCase):
 
 
 class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
+
+  class MatmulModel(module.Module):
+
+    def __init__(self, has_bias=False, activation_fn=None):
+      self.has_bias = has_bias
+      self.activation_fn = activation_fn
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=[1, 4], dtype=dtypes.float32)
+    ])
+    def matmul(self, input_tensor):
+      filters = random_ops.random_uniform(shape=(4, 3), minval=-1.0, maxval=1.0)
+      bias = random_ops.random_uniform(shape=(3,), minval=-1.0, maxval=1.0)
+      out = math_ops.matmul(input_tensor, filters)
+
+      if self.has_bias:
+        out = nn_ops.bias_add(out, bias)
+
+      if self.activation_fn is not None:
+        out = self.activation_fn(out)
+
+      return {'output': out}
 
   def _any_warning_contains(
       self, substring: str,
@@ -408,7 +427,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         tags,
         output_directory,
         quantization_options,
-        representative_dataset=gen_data)
+        representative_dataset=gen_data())
 
     self.assertIsNotNone(converted_model)
     self.assertEqual(
@@ -486,7 +505,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         tags,
         output_directory,
         quantization_options,
-        representative_dataset=data_gen)
+        representative_dataset=data_gen())
     self.assertIsNotNone(converted_model)
     self.assertEqual(
         list(converted_model.signatures._signatures.keys()),
@@ -565,7 +584,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         tags,
         output_directory,
         quantization_options,
-        representative_dataset=data_gen)
+        representative_dataset=data_gen())
     self.assertIsNotNone(converted_model)
     self.assertEqual(
         list(converted_model.signatures._signatures.keys()),
@@ -586,24 +605,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
   )
   @test_util.run_in_graph_and_eager_modes
   def test_matmul_ptq_model(self, activation_fn, has_bias):
-
-    class MatmulModel(module.Module):
-
-      @def_function.function(input_signature=[
-          tensor_spec.TensorSpec(shape=[1, 4], dtype=dtypes.float32)
-      ])
-      def matmul(self, input_tensor):
-        filters = np.random.uniform(
-            low=-1.0, high=1.0, size=(4, 3)).astype('f4')
-        bias = np.random.uniform(low=-1.0, high=1.0, size=(3,)).astype('f4')
-        out = math_ops.matmul(input_tensor, filters)
-        if has_bias:
-          out = nn_ops.bias_add(out, bias)
-        if activation_fn is not None:
-          out = activation_fn(out)
-        return {'output': out}
-
-    model = MatmulModel()
+    model = self.MatmulModel(has_bias, activation_fn)
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
 
@@ -627,7 +629,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         tags,
         output_directory,
         quantization_options,
-        representative_dataset=data_gen)
+        representative_dataset=data_gen())
     self.assertIsNotNone(converted_model)
     self.assertEqual(
         list(converted_model.signatures._signatures.keys()),
@@ -638,22 +640,80 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
 
   @test_util.run_in_graph_and_eager_modes
+  def test_model_use_representative_samples_list(self):
+    model = self.MatmulModel()
+    input_savedmodel_dir = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_savedmodel_dir)
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+    output_savedmodel_dir = self.create_tempdir().full_path
+    tags = {tag_constants.SERVING}
+
+    representative_dataset = [{
+        'input_tensor': random_ops.random_uniform(shape=(1, 4))
+    } for _ in range(128)]
+
+    converted_model = quantize_model.quantize(
+        input_savedmodel_dir, ['serving_default'],
+        output_directory=output_savedmodel_dir,
+        quantization_options=quantization_options,
+        representative_dataset=representative_dataset)
+
+    self.assertIsNotNone(converted_model)
+    self.assertEqual(
+        list(converted_model.signatures._signatures.keys()),
+        ['serving_default'])
+    output_loader = saved_model_loader.SavedModelLoader(output_savedmodel_dir)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    # Model is not quantized because there was no sample data for calibration.
+    self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+
+  # tf.data.Dataset is as an Iterable (thus can be used as representative
+  # dataset) only in TF2 (eager mode).
+  @test_util.run_v2_only
+  def test_model_use_tf_dataset_for_representative_dataset(self):
+    model = self.MatmulModel()
+    input_savedmodel_dir = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_savedmodel_dir)
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+    output_savedmodel_dir = self.create_tempdir().full_path
+    tags = {tag_constants.SERVING}
+
+    representative_samples = [{
+        'input_tensor': random_ops.random_uniform(shape=(1, 4))
+    } for _ in range(128)]
+
+    # Construct a tf.data.Dataset from the representative samples.
+    representative_dataset = dataset_ops.DatasetV2.from_generator(
+        lambda: representative_samples,
+        output_signature={
+            'input_tensor':
+                tensor_spec.TensorSpec(shape=(1, 4), dtype=dtypes.float32),
+        })
+
+    converted_model = quantize_model.quantize(
+        input_savedmodel_dir, ['serving_default'],
+        output_directory=output_savedmodel_dir,
+        quantization_options=quantization_options,
+        representative_dataset=representative_dataset)
+
+    self.assertIsNotNone(converted_model)
+    self.assertEqual(
+        list(converted_model.signatures._signatures.keys()),
+        ['serving_default'])
+    output_loader = saved_model_loader.SavedModelLoader(output_savedmodel_dir)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    # Model is not quantized because there was no sample data for calibration.
+    self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+
+  @test_util.run_in_graph_and_eager_modes
   def test_model_no_representative_sample_shows_warnings(self):
-
-    class SimpleMatmulModel(module.Module):
-
-      @def_function.function(input_signature=[
-          tensor_spec.TensorSpec(shape=[1, 4], dtype=dtypes.float32)
-      ])
-      def matmul(self, input_tensor):
-        filters = random_ops.random_uniform(shape=(4, 3), minval=-1., maxval=1.)
-        bias = random_ops.random_uniform(shape=(3,), minval=-1., maxval=1.)
-
-        out = math_ops.matmul(input_tensor, filters)
-        out = nn_ops.bias_add(out, bias)
-        return {'output': out}
-
-    model = SimpleMatmulModel()
+    model = self.MatmulModel()
     input_savedmodel_dir = self.create_tempdir('input').full_path
     output_savedmodel_dir = self.create_tempdir().full_path
     saved_model_save.save(model, input_savedmodel_dir)
@@ -672,7 +732,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
           quantization_options,
           # Put no sample into the representative dataset to make calibration
           # impossible.
-          representative_dataset=lambda: [])
+          representative_dataset=[])
 
       self.assertNotEmpty(warnings_list)
 
@@ -741,7 +801,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
           tags,
           output_directory,
           quantization_options,
-          representative_dataset=data_gen)
+          representative_dataset=data_gen())
 
       self.assertNotEmpty(warnings_list)
 

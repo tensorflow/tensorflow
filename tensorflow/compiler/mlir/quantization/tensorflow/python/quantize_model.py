@@ -15,7 +15,7 @@
 """Defines TF Quantization API from SavedModel to SavedModel."""
 
 import tempfile
-from typing import Callable, Dict, Iterable, List, Mapping, Optional, Set, Tuple, Union
+from typing import Dict, Iterable, List, Mapping, Optional, Set, Tuple, Union
 import uuid
 import warnings
 
@@ -48,14 +48,15 @@ _INIT_OP_SIGNATURE_KEY = '__saved_model_init_op'
 _Method = quant_opts_pb2.QuantizationMethod.Method
 _ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod
 
-# Types required for representative dataset. A representative dataset should
-# be a callable that returns an iterable of representative samples:
+# Types required for representative dataset. A representative dataset can be
+# any iterable of representative samples:
 # A representative sample should be either:
 # 1. (signature_key, {input_name -> input_tensor}) tuple, or
 # 2. {input_name -> input_tensor} mappings.
+# TODO(b/236218728): Support data types other than Tensor (such as np.ndarrays).
 _RepresentativeSample = Union[Tuple[str, Mapping[str, core.Tensor]],
                               Mapping[str, core.Tensor]]
-_RepresentativeDataset = Callable[[], Iterable[_RepresentativeSample]]
+_RepresentativeDataset = Iterable[_RepresentativeSample]
 
 
 def _legalize_tensor_name(tensor_name: str) -> str:
@@ -271,7 +272,7 @@ def _run_graph_for_calibration_graph_mode(
     meta_graph: meta_graph_pb2.MetaGraphDef = saved_model_loader.load(
         sess, tags, export_dir=model_dir)
 
-    for sample in representative_dataset():
+    for sample in representative_dataset:
       signature_key, input_data = _get_signature_key_and_input(
           sample, signature_keys)
 
@@ -313,7 +314,7 @@ def _run_graph_for_calibration_eager_mode(
     ValueError: When the samples in representative dataset is invalid.
   """
   root: autotrackable.AutoTrackable = saved_model_load(model_dir, tags)
-  for sample in representative_dataset():
+  for sample in representative_dataset:
     signature_key, input_data = _get_signature_key_and_input(
         sample, signature_keys)
 
