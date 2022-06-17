@@ -55,8 +55,8 @@ TEST(DumpMlirModuleTest, Valid) {
   std::string expected_txt_module;
   {
     llvm::raw_string_ostream os(expected_txt_module);
-    module_ref->getOperation()->print(
-        os, mlir::OpPrintingFlags().useLocalScope().printGenericOpForm());
+    module_ref->getOperation()->print(os,
+                                      mlir::OpPrintingFlags().useLocalScope());
     os.flush();
   }
 
@@ -106,8 +106,8 @@ TEST(DumpCrashReproducerTest, Valid) {
     llvm::raw_string_ostream os(expected_txt_module);
     os << "// configuration: -pass-pipeline='' -mlir-disable-threading "
           "-verify-each\n\n";
-    module_ref->getOperation()->print(
-        os, mlir::OpPrintingFlags().useLocalScope().printGenericOpForm());
+    module_ref->getOperation()->print(os,
+                                      mlir::OpPrintingFlags().useLocalScope());
     os.flush();
   }
 
