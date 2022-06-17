@@ -61,6 +61,7 @@ tensorflow/lite/delegates/gpu/cl/serialization_generated.h:
 tensorflow/lite/delegates/gpu/common/gpu_model_generated.h:
 tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h:
 tensorflow/lite/delegates/hexagon/hexagon_nn/BUILD:
+tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h:
 tensorflow/lite/experimental/acceleration/mini_benchmark/libjpeg.h:
 tensorflow/lite/experimental/acceleration/mini_benchmark/special_rules.bzl:
 tensorflow/lite/ios/BUILD:

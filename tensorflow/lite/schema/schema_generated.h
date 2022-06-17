@@ -4052,10 +4052,10 @@ struct QuantizationParameters FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tab
            verifier.VerifyVector(scale()) &&
            VerifyOffset(verifier, VT_ZERO_POINT) &&
            verifier.VerifyVector(zero_point()) &&
-           VerifyField<uint8_t>(verifier, VT_DETAILS_TYPE) &&
+           VerifyField<uint8_t>(verifier, VT_DETAILS_TYPE, 1) &&
            VerifyOffset(verifier, VT_DETAILS) &&
            VerifyQuantizationDetails(verifier, details(), details_type()) &&
-           VerifyField<int32_t>(verifier, VT_QUANTIZED_DIMENSION) &&
+           VerifyField<int32_t>(verifier, VT_QUANTIZED_DIMENSION, 4) &&
            verifier.EndTable();
   }
   QuantizationParametersT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -4396,12 +4396,12 @@ struct DimensionMetadata FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_FORMAT) &&
-           VerifyField<int32_t>(verifier, VT_DENSE_SIZE) &&
-           VerifyField<uint8_t>(verifier, VT_ARRAY_SEGMENTS_TYPE) &&
+           VerifyField<int8_t>(verifier, VT_FORMAT, 1) &&
+           VerifyField<int32_t>(verifier, VT_DENSE_SIZE, 4) &&
+           VerifyField<uint8_t>(verifier, VT_ARRAY_SEGMENTS_TYPE, 1) &&
            VerifyOffset(verifier, VT_ARRAY_SEGMENTS) &&
            VerifySparseIndexVector(verifier, array_segments(), array_segments_type()) &&
-           VerifyField<uint8_t>(verifier, VT_ARRAY_INDICES_TYPE) &&
+           VerifyField<uint8_t>(verifier, VT_ARRAY_INDICES_TYPE, 1) &&
            VerifyOffset(verifier, VT_ARRAY_INDICES) &&
            VerifySparseIndexVector(verifier, array_indices(), array_indices_type()) &&
            verifier.EndTable();
@@ -4493,6 +4493,10 @@ struct SparsityParametersT : public flatbuffers::NativeTable {
   std::vector<int32_t> traversal_order{};
   std::vector<int32_t> block_map{};
   std::vector<std::unique_ptr<tflite::DimensionMetadataT>> dim_metadata{};
+  SparsityParametersT() = default;
+  SparsityParametersT(const SparsityParametersT &o);
+  SparsityParametersT(SparsityParametersT&&) FLATBUFFERS_NOEXCEPT = default;
+  SparsityParametersT &operator=(SparsityParametersT o) FLATBUFFERS_NOEXCEPT;
 };
 
 struct SparsityParameters FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -4591,6 +4595,10 @@ struct TensorT : public flatbuffers::NativeTable {
   bool is_variable = false;
   std::unique_ptr<tflite::SparsityParametersT> sparsity{};
   std::vector<int32_t> shape_signature{};
+  TensorT() = default;
+  TensorT(const TensorT &o);
+  TensorT(TensorT&&) FLATBUFFERS_NOEXCEPT = default;
+  TensorT &operator=(TensorT o) FLATBUFFERS_NOEXCEPT;
 };
 
 struct Tensor FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -4634,13 +4642,13 @@ struct Tensor FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_SHAPE) &&
            verifier.VerifyVector(shape()) &&
-           VerifyField<int8_t>(verifier, VT_TYPE) &&
-           VerifyField<uint32_t>(verifier, VT_BUFFER) &&
+           VerifyField<int8_t>(verifier, VT_TYPE, 1) &&
+           VerifyField<uint32_t>(verifier, VT_BUFFER, 4) &&
            VerifyOffset(verifier, VT_NAME) &&
            verifier.VerifyString(name()) &&
            VerifyOffset(verifier, VT_QUANTIZATION) &&
            verifier.VerifyTable(quantization()) &&
-           VerifyField<uint8_t>(verifier, VT_IS_VARIABLE) &&
+           VerifyField<uint8_t>(verifier, VT_IS_VARIABLE, 1) &&
            VerifyOffset(verifier, VT_SPARSITY) &&
            verifier.VerifyTable(sparsity()) &&
            VerifyOffset(verifier, VT_SHAPE_SIGNATURE) &&
@@ -4781,12 +4789,12 @@ struct Conv2DOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_PADDING) &&
-           VerifyField<int32_t>(verifier, VT_STRIDE_W) &&
-           VerifyField<int32_t>(verifier, VT_STRIDE_H) &&
-           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
-           VerifyField<int32_t>(verifier, VT_DILATION_W_FACTOR) &&
-           VerifyField<int32_t>(verifier, VT_DILATION_H_FACTOR) &&
+           VerifyField<int8_t>(verifier, VT_PADDING, 1) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_W, 4) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_H, 4) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
+           VerifyField<int32_t>(verifier, VT_DILATION_W_FACTOR, 4) &&
+           VerifyField<int32_t>(verifier, VT_DILATION_H_FACTOR, 4) &&
            verifier.EndTable();
   }
   Conv2DOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -4898,14 +4906,14 @@ struct Conv3DOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_PADDING) &&
-           VerifyField<int32_t>(verifier, VT_STRIDE_D) &&
-           VerifyField<int32_t>(verifier, VT_STRIDE_W) &&
-           VerifyField<int32_t>(verifier, VT_STRIDE_H) &&
-           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
-           VerifyField<int32_t>(verifier, VT_DILATION_D_FACTOR) &&
-           VerifyField<int32_t>(verifier, VT_DILATION_W_FACTOR) &&
-           VerifyField<int32_t>(verifier, VT_DILATION_H_FACTOR) &&
+           VerifyField<int8_t>(verifier, VT_PADDING, 1) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_D, 4) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_W, 4) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_H, 4) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
+           VerifyField<int32_t>(verifier, VT_DILATION_D_FACTOR, 4) &&
+           VerifyField<int32_t>(verifier, VT_DILATION_W_FACTOR, 4) &&
+           VerifyField<int32_t>(verifier, VT_DILATION_H_FACTOR, 4) &&
            verifier.EndTable();
   }
   Conv3DOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5017,12 +5025,12 @@ struct Pool2DOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_PADDING) &&
-           VerifyField<int32_t>(verifier, VT_STRIDE_W) &&
-           VerifyField<int32_t>(verifier, VT_STRIDE_H) &&
-           VerifyField<int32_t>(verifier, VT_FILTER_WIDTH) &&
-           VerifyField<int32_t>(verifier, VT_FILTER_HEIGHT) &&
-           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<int8_t>(verifier, VT_PADDING, 1) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_W, 4) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_H, 4) &&
+           VerifyField<int32_t>(verifier, VT_FILTER_WIDTH, 4) &&
+           VerifyField<int32_t>(verifier, VT_FILTER_HEIGHT, 4) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
            verifier.EndTable();
   }
   Pool2DOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5129,13 +5137,13 @@ struct DepthwiseConv2DOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tab
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_PADDING) &&
-           VerifyField<int32_t>(verifier, VT_STRIDE_W) &&
-           VerifyField<int32_t>(verifier, VT_STRIDE_H) &&
-           VerifyField<int32_t>(verifier, VT_DEPTH_MULTIPLIER) &&
-           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
-           VerifyField<int32_t>(verifier, VT_DILATION_W_FACTOR) &&
-           VerifyField<int32_t>(verifier, VT_DILATION_H_FACTOR) &&
+           VerifyField<int8_t>(verifier, VT_PADDING, 1) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_W, 4) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_H, 4) &&
+           VerifyField<int32_t>(verifier, VT_DEPTH_MULTIPLIER, 4) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
+           VerifyField<int32_t>(verifier, VT_DILATION_W_FACTOR, 4) &&
+           VerifyField<int32_t>(verifier, VT_DILATION_H_FACTOR, 4) &&
            verifier.EndTable();
   }
   DepthwiseConv2DOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5227,7 +5235,7 @@ struct ConcatEmbeddingsOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Ta
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_NUM_CHANNELS) &&
+           VerifyField<int32_t>(verifier, VT_NUM_CHANNELS, 4) &&
            VerifyOffset(verifier, VT_NUM_COLUMNS_PER_CHANNEL) &&
            verifier.VerifyVector(num_columns_per_channel()) &&
            VerifyOffset(verifier, VT_EMBEDDING_DIM_PER_CHANNEL) &&
@@ -5307,7 +5315,7 @@ struct LSHProjectionOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_TYPE) &&
+           VerifyField<int8_t>(verifier, VT_TYPE, 1) &&
            verifier.EndTable();
   }
   LSHProjectionOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5369,9 +5377,9 @@ struct SVDFOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_RANK) &&
-           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
-           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS) &&
+           VerifyField<int32_t>(verifier, VT_RANK, 4) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
+           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS, 1) &&
            verifier.EndTable();
   }
   SVDFOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5438,8 +5446,8 @@ struct RNNOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
-           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
+           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS, 1) &&
            verifier.EndTable();
   }
   RNNOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5506,9 +5514,9 @@ struct SequenceRNNOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<uint8_t>(verifier, VT_TIME_MAJOR) &&
-           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
-           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS) &&
+           VerifyField<uint8_t>(verifier, VT_TIME_MAJOR, 1) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
+           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS, 1) &&
            verifier.EndTable();
   }
   SequenceRNNOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5585,10 +5593,10 @@ struct BidirectionalSequenceRNNOptions FLATBUFFERS_FINAL_CLASS : private flatbuf
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<uint8_t>(verifier, VT_TIME_MAJOR) &&
-           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
-           VerifyField<uint8_t>(verifier, VT_MERGE_OUTPUTS) &&
-           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS) &&
+           VerifyField<uint8_t>(verifier, VT_TIME_MAJOR, 1) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
+           VerifyField<uint8_t>(verifier, VT_MERGE_OUTPUTS, 1) &&
+           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS, 1) &&
            verifier.EndTable();
   }
   BidirectionalSequenceRNNOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5670,10 +5678,10 @@ struct FullyConnectedOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tabl
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
-           VerifyField<int8_t>(verifier, VT_WEIGHTS_FORMAT) &&
-           VerifyField<uint8_t>(verifier, VT_KEEP_NUM_DIMS) &&
-           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
+           VerifyField<int8_t>(verifier, VT_WEIGHTS_FORMAT, 1) &&
+           VerifyField<uint8_t>(verifier, VT_KEEP_NUM_DIMS, 1) &&
+           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS, 1) &&
            verifier.EndTable();
   }
   FullyConnectedOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5740,7 +5748,7 @@ struct SoftmaxOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<float>(verifier, VT_BETA) &&
+           VerifyField<float>(verifier, VT_BETA, 4) &&
            verifier.EndTable();
   }
   SoftmaxOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5797,8 +5805,8 @@ struct ConcatenationOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_AXIS) &&
-           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<int32_t>(verifier, VT_AXIS, 4) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
            verifier.EndTable();
   }
   ConcatenationOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5860,8 +5868,8 @@ struct AddOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
-           VerifyField<uint8_t>(verifier, VT_POT_SCALE_INT16) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
+           VerifyField<uint8_t>(verifier, VT_POT_SCALE_INT16, 1) &&
            verifier.EndTable();
   }
   AddOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5918,7 +5926,7 @@ struct MulOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
            verifier.EndTable();
   }
   MulOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5970,7 +5978,7 @@ struct L2NormOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
            verifier.EndTable();
   }
   L2NormOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -6037,10 +6045,10 @@ struct LocalResponseNormalizationOptions FLATBUFFERS_FINAL_CLASS : private flatb
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_RADIUS) &&
-           VerifyField<float>(verifier, VT_BIAS) &&
-           VerifyField<float>(verifier, VT_ALPHA) &&
-           VerifyField<float>(verifier, VT_BETA) &&
+           VerifyField<int32_t>(verifier, VT_RADIUS, 4) &&
+           VerifyField<float>(verifier, VT_BIAS, 4) &&
+           VerifyField<float>(verifier, VT_ALPHA, 4) &&
+           VerifyField<float>(verifier, VT_BETA, 4) &&
            verifier.EndTable();
   }
   LocalResponseNormalizationOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -6127,11 +6135,11 @@ struct LSTMOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
-           VerifyField<float>(verifier, VT_CELL_CLIP) &&
-           VerifyField<float>(verifier, VT_PROJ_CLIP) &&
-           VerifyField<int8_t>(verifier, VT_KERNEL_TYPE) &&
-           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
+           VerifyField<float>(verifier, VT_CELL_CLIP, 4) &&
+           VerifyField<float>(verifier, VT_PROJ_CLIP, 4) &&
+           VerifyField<int8_t>(verifier, VT_KERNEL_TYPE, 1) &&
+           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS, 1) &&
            verifier.EndTable();
   }
   LSTMOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -6223,11 +6231,11 @@ struct UnidirectionalSequenceLSTMOptions FLATBUFFERS_FINAL_CLASS : private flatb
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
-           VerifyField<float>(verifier, VT_CELL_CLIP) &&
-           VerifyField<float>(verifier, VT_PROJ_CLIP) &&
-           VerifyField<uint8_t>(verifier, VT_TIME_MAJOR) &&
-           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
+           VerifyField<float>(verifier, VT_CELL_CLIP, 4) &&
+           VerifyField<float>(verifier, VT_PROJ_CLIP, 4) &&
+           VerifyField<uint8_t>(verifier, VT_TIME_MAJOR, 1) &&
+           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS, 1) &&
            verifier.EndTable();
   }
   UnidirectionalSequenceLSTMOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -6324,12 +6332,12 @@ struct BidirectionalSequenceLSTMOptions FLATBUFFERS_FINAL_CLASS : private flatbu
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
-           VerifyField<float>(verifier, VT_CELL_CLIP) &&
-           VerifyField<float>(verifier, VT_PROJ_CLIP) &&
-           VerifyField<uint8_t>(verifier, VT_MERGE_OUTPUTS) &&
-           VerifyField<uint8_t>(verifier, VT_TIME_MAJOR) &&
-           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
+           VerifyField<float>(verifier, VT_CELL_CLIP, 4) &&
+           VerifyField<float>(verifier, VT_PROJ_CLIP, 4) &&
+           VerifyField<uint8_t>(verifier, VT_MERGE_OUTPUTS, 1) &&
+           VerifyField<uint8_t>(verifier, VT_TIME_MAJOR, 1) &&
+           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS, 1) &&
            verifier.EndTable();
   }
   BidirectionalSequenceLSTMOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -6411,8 +6419,8 @@ struct ResizeBilinearOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tabl
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<uint8_t>(verifier, VT_ALIGN_CORNERS) &&
-           VerifyField<uint8_t>(verifier, VT_HALF_PIXEL_CENTERS) &&
+           VerifyField<uint8_t>(verifier, VT_ALIGN_CORNERS, 1) &&
+           VerifyField<uint8_t>(verifier, VT_HALF_PIXEL_CENTERS, 1) &&
            verifier.EndTable();
   }
   ResizeBilinearOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -6474,8 +6482,8 @@ struct ResizeNearestNeighborOptions FLATBUFFERS_FINAL_CLASS : private flatbuffer
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<uint8_t>(verifier, VT_ALIGN_CORNERS) &&
-           VerifyField<uint8_t>(verifier, VT_HALF_PIXEL_CENTERS) &&
+           VerifyField<uint8_t>(verifier, VT_ALIGN_CORNERS, 1) &&
+           VerifyField<uint8_t>(verifier, VT_HALF_PIXEL_CENTERS, 1) &&
            verifier.EndTable();
   }
   ResizeNearestNeighborOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -6532,7 +6540,7 @@ struct CallOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<uint32_t>(verifier, VT_SUBGRAPH) &&
+           VerifyField<uint32_t>(verifier, VT_SUBGRAPH, 4) &&
            verifier.EndTable();
   }
   CallOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -6812,9 +6820,9 @@ struct SkipGramOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_NGRAM_SIZE) &&
-           VerifyField<int32_t>(verifier, VT_MAX_SKIP_SIZE) &&
-           VerifyField<uint8_t>(verifier, VT_INCLUDE_ALL_NGRAMS) &&
+           VerifyField<int32_t>(verifier, VT_NGRAM_SIZE, 4) &&
+           VerifyField<int32_t>(verifier, VT_MAX_SKIP_SIZE, 4) &&
+           VerifyField<uint8_t>(verifier, VT_INCLUDE_ALL_NGRAMS, 1) &&
            verifier.EndTable();
   }
   SkipGramOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -6876,7 +6884,7 @@ struct SpaceToDepthOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table 
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_BLOCK_SIZE) &&
+           VerifyField<int32_t>(verifier, VT_BLOCK_SIZE, 4) &&
            verifier.EndTable();
   }
   SpaceToDepthOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -6928,7 +6936,7 @@ struct DepthToSpaceOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table 
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_BLOCK_SIZE) &&
+           VerifyField<int32_t>(verifier, VT_BLOCK_SIZE, 4) &&
            verifier.EndTable();
   }
   DepthToSpaceOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -6985,8 +6993,8 @@ struct SubOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
-           VerifyField<uint8_t>(verifier, VT_POT_SCALE_INT16) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
+           VerifyField<uint8_t>(verifier, VT_POT_SCALE_INT16, 1) &&
            verifier.EndTable();
   }
   SubOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -7043,7 +7051,7 @@ struct DivOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
            verifier.EndTable();
   }
   DivOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -7134,7 +7142,7 @@ struct EmbeddingLookupSparseOptions FLATBUFFERS_FINAL_CLASS : private flatbuffer
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_COMBINER) &&
+           VerifyField<int8_t>(verifier, VT_COMBINER, 1) &&
            verifier.EndTable();
   }
   EmbeddingLookupSparseOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -7191,8 +7199,8 @@ struct GatherOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_AXIS) &&
-           VerifyField<int32_t>(verifier, VT_BATCH_DIMS) &&
+           VerifyField<int32_t>(verifier, VT_AXIS, 4) &&
+           VerifyField<int32_t>(verifier, VT_BATCH_DIMS, 4) &&
            verifier.EndTable();
   }
   GatherOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -7366,7 +7374,7 @@ struct ReducerOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<uint8_t>(verifier, VT_KEEP_DIMS) &&
+           VerifyField<uint8_t>(verifier, VT_KEEP_DIMS, 1) &&
            verifier.EndTable();
   }
   ReducerOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -7480,7 +7488,7 @@ struct SplitOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_NUM_SPLITS) &&
+           VerifyField<int32_t>(verifier, VT_NUM_SPLITS, 4) &&
            verifier.EndTable();
   }
   SplitOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -7532,7 +7540,7 @@ struct SplitVOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_NUM_SPLITS) &&
+           VerifyField<int32_t>(verifier, VT_NUM_SPLITS, 4) &&
            verifier.EndTable();
   }
   SplitVOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -7604,11 +7612,11 @@ struct StridedSliceOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table 
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_BEGIN_MASK) &&
-           VerifyField<int32_t>(verifier, VT_END_MASK) &&
-           VerifyField<int32_t>(verifier, VT_ELLIPSIS_MASK) &&
-           VerifyField<int32_t>(verifier, VT_NEW_AXIS_MASK) &&
-           VerifyField<int32_t>(verifier, VT_SHRINK_AXIS_MASK) &&
+           VerifyField<int32_t>(verifier, VT_BEGIN_MASK, 4) &&
+           VerifyField<int32_t>(verifier, VT_END_MASK, 4) &&
+           VerifyField<int32_t>(verifier, VT_ELLIPSIS_MASK, 4) &&
+           VerifyField<int32_t>(verifier, VT_NEW_AXIS_MASK, 4) &&
+           VerifyField<int32_t>(verifier, VT_SHRINK_AXIS_MASK, 4) &&
            verifier.EndTable();
   }
   StridedSliceOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -7724,8 +7732,8 @@ struct CastOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_IN_DATA_TYPE) &&
-           VerifyField<int8_t>(verifier, VT_OUT_DATA_TYPE) &&
+           VerifyField<int8_t>(verifier, VT_IN_DATA_TYPE, 1) &&
+           VerifyField<int8_t>(verifier, VT_OUT_DATA_TYPE, 1) &&
            verifier.EndTable();
   }
   CastOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -7899,7 +7907,7 @@ struct ArgMaxOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_OUTPUT_TYPE) &&
+           VerifyField<int8_t>(verifier, VT_OUTPUT_TYPE, 1) &&
            verifier.EndTable();
   }
   ArgMaxOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -7951,7 +7959,7 @@ struct ArgMinOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_OUTPUT_TYPE) &&
+           VerifyField<int8_t>(verifier, VT_OUTPUT_TYPE, 1) &&
            verifier.EndTable();
   }
   ArgMinOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -8286,9 +8294,9 @@ struct TransposeConvOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_PADDING) &&
-           VerifyField<int32_t>(verifier, VT_STRIDE_W) &&
-           VerifyField<int32_t>(verifier, VT_STRIDE_H) &&
+           VerifyField<int8_t>(verifier, VT_PADDING, 1) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_W, 4) &&
+           VerifyField<int32_t>(verifier, VT_STRIDE_H, 4) &&
            verifier.EndTable();
   }
   TransposeConvOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -8389,7 +8397,7 @@ struct SparseToDenseOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<uint8_t>(verifier, VT_VALIDATE_INDICES) &&
+           VerifyField<uint8_t>(verifier, VT_VALIDATE_INDICES, 1) &&
            verifier.EndTable();
   }
   SparseToDenseOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -8519,7 +8527,7 @@ struct ShapeOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_OUT_TYPE) &&
+           VerifyField<int8_t>(verifier, VT_OUT_TYPE, 1) &&
            verifier.EndTable();
   }
   ShapeOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -8664,10 +8672,10 @@ struct FakeQuantOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<float>(verifier, VT_MIN) &&
-           VerifyField<float>(verifier, VT_MAX) &&
-           VerifyField<int32_t>(verifier, VT_NUM_BITS) &&
-           VerifyField<uint8_t>(verifier, VT_NARROW_RANGE) &&
+           VerifyField<float>(verifier, VT_MIN, 4) &&
+           VerifyField<float>(verifier, VT_MAX, 4) &&
+           VerifyField<int32_t>(verifier, VT_NUM_BITS, 4) &&
+           VerifyField<uint8_t>(verifier, VT_NARROW_RANGE, 1) &&
            verifier.EndTable();
   }
   FakeQuantOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -8739,8 +8747,8 @@ struct PackOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_VALUES_COUNT) &&
-           VerifyField<int32_t>(verifier, VT_AXIS) &&
+           VerifyField<int32_t>(verifier, VT_VALUES_COUNT, 4) &&
+           VerifyField<int32_t>(verifier, VT_AXIS, 4) &&
            verifier.EndTable();
   }
   PackOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -8836,7 +8844,7 @@ struct OneHotOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_AXIS) &&
+           VerifyField<int32_t>(verifier, VT_AXIS, 4) &&
            verifier.EndTable();
   }
   OneHotOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -9049,8 +9057,8 @@ struct UnpackOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_NUM) &&
-           VerifyField<int32_t>(verifier, VT_AXIS) &&
+           VerifyField<int32_t>(verifier, VT_NUM, 4) &&
+           VerifyField<int32_t>(verifier, VT_AXIS, 4) &&
            verifier.EndTable();
   }
   UnpackOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -9341,7 +9349,7 @@ struct LeakyReluOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<float>(verifier, VT_ALPHA) &&
+           VerifyField<float>(verifier, VT_ALPHA, 4) &&
            verifier.EndTable();
   }
   LeakyReluOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -9432,7 +9440,7 @@ struct MirrorPadOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_MODE) &&
+           VerifyField<int8_t>(verifier, VT_MODE, 1) &&
            verifier.EndTable();
   }
   MirrorPadOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -9484,7 +9492,7 @@ struct UniqueOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_IDX_OUT_TYPE) &&
+           VerifyField<int8_t>(verifier, VT_IDX_OUT_TYPE, 1) &&
            verifier.EndTable();
   }
   UniqueOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -9697,8 +9705,8 @@ struct ReverseSequenceOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tab
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_SEQ_DIM) &&
-           VerifyField<int32_t>(verifier, VT_BATCH_DIM) &&
+           VerifyField<int32_t>(verifier, VT_SEQ_DIM, 4) &&
+           VerifyField<int32_t>(verifier, VT_BATCH_DIM, 4) &&
            verifier.EndTable();
   }
   ReverseSequenceOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -9877,8 +9885,8 @@ struct IfOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_THEN_SUBGRAPH_INDEX) &&
-           VerifyField<int32_t>(verifier, VT_ELSE_SUBGRAPH_INDEX) &&
+           VerifyField<int32_t>(verifier, VT_THEN_SUBGRAPH_INDEX, 4) &&
+           VerifyField<int32_t>(verifier, VT_ELSE_SUBGRAPH_INDEX, 4) &&
            verifier.EndTable();
   }
   IfOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -9935,7 +9943,7 @@ struct CallOnceOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_INIT_SUBGRAPH_INDEX) &&
+           VerifyField<int32_t>(verifier, VT_INIT_SUBGRAPH_INDEX, 4) &&
            verifier.EndTable();
   }
   CallOnceOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -9992,8 +10000,8 @@ struct WhileOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_COND_SUBGRAPH_INDEX) &&
-           VerifyField<int32_t>(verifier, VT_BODY_SUBGRAPH_INDEX) &&
+           VerifyField<int32_t>(verifier, VT_COND_SUBGRAPH_INDEX, 4) &&
+           VerifyField<int32_t>(verifier, VT_BODY_SUBGRAPH_INDEX, 4) &&
            verifier.EndTable();
   }
   WhileOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -10294,9 +10302,9 @@ struct BatchMatMulOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<uint8_t>(verifier, VT_ADJ_X) &&
-           VerifyField<uint8_t>(verifier, VT_ADJ_Y) &&
-           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS) &&
+           VerifyField<uint8_t>(verifier, VT_ADJ_X, 1) &&
+           VerifyField<uint8_t>(verifier, VT_ADJ_Y, 1) &&
+           VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS, 1) &&
            verifier.EndTable();
   }
   BatchMatMulOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -10363,8 +10371,8 @@ struct CumsumOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<uint8_t>(verifier, VT_EXCLUSIVE) &&
-           VerifyField<uint8_t>(verifier, VT_REVERSE) &&
+           VerifyField<uint8_t>(verifier, VT_EXCLUSIVE, 1) &&
+           VerifyField<uint8_t>(verifier, VT_REVERSE, 1) &&
            verifier.EndTable();
   }
   CumsumOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -10509,9 +10517,9 @@ struct HashtableOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_TABLE_ID) &&
-           VerifyField<int8_t>(verifier, VT_KEY_DTYPE) &&
-           VerifyField<int8_t>(verifier, VT_VALUE_DTYPE) &&
+           VerifyField<int32_t>(verifier, VT_TABLE_ID, 4) &&
+           VerifyField<int8_t>(verifier, VT_KEY_DTYPE, 1) &&
+           VerifyField<int8_t>(verifier, VT_VALUE_DTYPE, 1) &&
            verifier.EndTable();
   }
   HashtableOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -10850,8 +10858,8 @@ struct RandomOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int64_t>(verifier, VT_SEED) &&
-           VerifyField<int64_t>(verifier, VT_SEED2) &&
+           VerifyField<int64_t>(verifier, VT_SEED, 8) &&
+           VerifyField<int64_t>(verifier, VT_SEED2, 8) &&
            verifier.EndTable();
   }
   RandomOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -10970,7 +10978,7 @@ struct GeluOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<uint8_t>(verifier, VT_APPROXIMATE) &&
+           VerifyField<uint8_t>(verifier, VT_APPROXIMATE, 1) &&
            verifier.EndTable();
   }
   GeluOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -11061,7 +11069,7 @@ struct UnsortedSegmentProdOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers:
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_NUM_SEGMENTS) &&
+           VerifyField<int32_t>(verifier, VT_NUM_SEGMENTS, 4) &&
            verifier.EndTable();
   }
   UnsortedSegmentProdOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -11128,11 +11136,11 @@ struct OperatorCode FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_DEPRECATED_BUILTIN_CODE) &&
+           VerifyField<int8_t>(verifier, VT_DEPRECATED_BUILTIN_CODE, 1) &&
            VerifyOffset(verifier, VT_CUSTOM_CODE) &&
            verifier.VerifyString(custom_code()) &&
-           VerifyField<int32_t>(verifier, VT_VERSION) &&
-           VerifyField<int32_t>(verifier, VT_BUILTIN_CODE) &&
+           VerifyField<int32_t>(verifier, VT_VERSION, 4) &&
+           VerifyField<int32_t>(verifier, VT_BUILTIN_CODE, 4) &&
            verifier.EndTable();
   }
   OperatorCodeT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -11608,17 +11616,17 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<uint32_t>(verifier, VT_OPCODE_INDEX) &&
+           VerifyField<uint32_t>(verifier, VT_OPCODE_INDEX, 4) &&
            VerifyOffset(verifier, VT_INPUTS) &&
            verifier.VerifyVector(inputs()) &&
            VerifyOffset(verifier, VT_OUTPUTS) &&
            verifier.VerifyVector(outputs()) &&
-           VerifyField<uint8_t>(verifier, VT_BUILTIN_OPTIONS_TYPE) &&
+           VerifyField<uint8_t>(verifier, VT_BUILTIN_OPTIONS_TYPE, 1) &&
            VerifyOffset(verifier, VT_BUILTIN_OPTIONS) &&
            VerifyBuiltinOptions(verifier, builtin_options(), builtin_options_type()) &&
            VerifyOffset(verifier, VT_CUSTOM_OPTIONS) &&
            verifier.VerifyVector(custom_options()) &&
-           VerifyField<int8_t>(verifier, VT_CUSTOM_OPTIONS_FORMAT) &&
+           VerifyField<int8_t>(verifier, VT_CUSTOM_OPTIONS_FORMAT, 1) &&
            VerifyOffset(verifier, VT_MUTATING_VARIABLE_INPUTS) &&
            verifier.VerifyVector(mutating_variable_inputs()) &&
            VerifyOffset(verifier, VT_INTERMEDIATES) &&
@@ -12206,6 +12214,10 @@ struct SubGraphT : public flatbuffers::NativeTable {
   std::vector<int32_t> outputs{};
   std::vector<std::unique_ptr<tflite::OperatorT>> operators{};
   std::string name{};
+  SubGraphT() = default;
+  SubGraphT(const SubGraphT &o);
+  SubGraphT(SubGraphT&&) FLATBUFFERS_NOEXCEPT = default;
+  SubGraphT &operator=(SubGraphT o) FLATBUFFERS_NOEXCEPT;
 };
 
 struct SubGraph FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -12409,7 +12421,7 @@ struct Metadata FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_NAME) &&
            verifier.VerifyString(name()) &&
-           VerifyField<uint32_t>(verifier, VT_BUFFER) &&
+           VerifyField<uint32_t>(verifier, VT_BUFFER, 4) &&
            verifier.EndTable();
   }
   MetadataT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -12484,7 +12496,7 @@ struct TensorMap FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_NAME) &&
            verifier.VerifyString(name()) &&
-           VerifyField<uint32_t>(verifier, VT_TENSOR_INDEX) &&
+           VerifyField<uint32_t>(verifier, VT_TENSOR_INDEX, 4) &&
            verifier.EndTable();
   }
   TensorMapT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -12542,6 +12554,10 @@ struct SignatureDefT : public flatbuffers::NativeTable {
   std::vector<std::unique_ptr<tflite::TensorMapT>> outputs{};
   std::string signature_key{};
   uint32_t subgraph_index = 0;
+  SignatureDefT() = default;
+  SignatureDefT(const SignatureDefT &o);
+  SignatureDefT(SignatureDefT&&) FLATBUFFERS_NOEXCEPT = default;
+  SignatureDefT &operator=(SignatureDefT o) FLATBUFFERS_NOEXCEPT;
 };
 
 struct SignatureDef FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -12575,7 +12591,7 @@ struct SignatureDef FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyVectorOfTables(outputs()) &&
            VerifyOffset(verifier, VT_SIGNATURE_KEY) &&
            verifier.VerifyString(signature_key()) &&
-           VerifyField<uint32_t>(verifier, VT_SUBGRAPH_INDEX) &&
+           VerifyField<uint32_t>(verifier, VT_SUBGRAPH_INDEX, 4) &&
            verifier.EndTable();
   }
   SignatureDefT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -12653,6 +12669,10 @@ struct ModelT : public flatbuffers::NativeTable {
   std::vector<int32_t> metadata_buffer{};
   std::vector<std::unique_ptr<tflite::MetadataT>> metadata{};
   std::vector<std::unique_ptr<tflite::SignatureDefT>> signature_defs{};
+  ModelT() = default;
+  ModelT(const ModelT &o);
+  ModelT(ModelT&&) FLATBUFFERS_NOEXCEPT = default;
+  ModelT &operator=(ModelT o) FLATBUFFERS_NOEXCEPT;
 };
 
 struct Model FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -12694,7 +12714,7 @@ struct Model FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<uint32_t>(verifier, VT_VERSION) &&
+           VerifyField<uint32_t>(verifier, VT_VERSION, 4) &&
            VerifyOffset(verifier, VT_OPERATOR_CODES) &&
            verifier.VerifyVector(operator_codes()) &&
            verifier.VerifyVectorOfTables(operator_codes()) &&
@@ -13005,6 +13025,20 @@ inline flatbuffers::Offset<DimensionMetadata> CreateDimensionMetadata(flatbuffer
       _array_indices);
 }
 
+inline SparsityParametersT::SparsityParametersT(const SparsityParametersT &o)
+      : traversal_order(o.traversal_order),
+        block_map(o.block_map) {
+  dim_metadata.reserve(o.dim_metadata.size());
+  for (const auto &v : o.dim_metadata) { dim_metadata.emplace_back((v) ? new tflite::DimensionMetadataT(*v) : nullptr); }
+}
+
+inline SparsityParametersT &SparsityParametersT::operator=(SparsityParametersT o) FLATBUFFERS_NOEXCEPT {
+  std::swap(traversal_order, o.traversal_order);
+  std::swap(block_map, o.block_map);
+  std::swap(dim_metadata, o.dim_metadata);
+  return *this;
+}
+
 inline SparsityParametersT *SparsityParameters::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = std::unique_ptr<SparsityParametersT>(new SparsityParametersT());
   UnPackTo(_o.get(), _resolver);
@@ -13035,6 +13069,29 @@ inline flatbuffers::Offset<SparsityParameters> CreateSparsityParameters(flatbuff
       _traversal_order,
       _block_map,
       _dim_metadata);
+}
+
+inline TensorT::TensorT(const TensorT &o)
+      : shape(o.shape),
+        type(o.type),
+        buffer(o.buffer),
+        name(o.name),
+        quantization((o.quantization) ? new tflite::QuantizationParametersT(*o.quantization) : nullptr),
+        is_variable(o.is_variable),
+        sparsity((o.sparsity) ? new tflite::SparsityParametersT(*o.sparsity) : nullptr),
+        shape_signature(o.shape_signature) {
+}
+
+inline TensorT &TensorT::operator=(TensorT o) FLATBUFFERS_NOEXCEPT {
+  std::swap(shape, o.shape);
+  std::swap(type, o.type);
+  std::swap(buffer, o.buffer);
+  std::swap(name, o.name);
+  std::swap(quantization, o.quantization);
+  std::swap(is_variable, o.is_variable);
+  std::swap(sparsity, o.sparsity);
+  std::swap(shape_signature, o.shape_signature);
+  return *this;
 }
 
 inline TensorT *Tensor::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -16312,6 +16369,25 @@ inline flatbuffers::Offset<Operator> CreateOperator(flatbuffers::FlatBufferBuild
       _intermediates);
 }
 
+inline SubGraphT::SubGraphT(const SubGraphT &o)
+      : inputs(o.inputs),
+        outputs(o.outputs),
+        name(o.name) {
+  tensors.reserve(o.tensors.size());
+  for (const auto &v : o.tensors) { tensors.emplace_back((v) ? new tflite::TensorT(*v) : nullptr); }
+  operators.reserve(o.operators.size());
+  for (const auto &v : o.operators) { operators.emplace_back((v) ? new tflite::OperatorT(*v) : nullptr); }
+}
+
+inline SubGraphT &SubGraphT::operator=(SubGraphT o) FLATBUFFERS_NOEXCEPT {
+  std::swap(tensors, o.tensors);
+  std::swap(inputs, o.inputs);
+  std::swap(outputs, o.outputs);
+  std::swap(operators, o.operators);
+  std::swap(name, o.name);
+  return *this;
+}
+
 inline SubGraphT *SubGraph::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = std::unique_ptr<SubGraphT>(new SubGraphT());
   UnPackTo(_o.get(), _resolver);
@@ -16435,6 +16511,23 @@ inline flatbuffers::Offset<TensorMap> CreateTensorMap(flatbuffers::FlatBufferBui
       _tensor_index);
 }
 
+inline SignatureDefT::SignatureDefT(const SignatureDefT &o)
+      : signature_key(o.signature_key),
+        subgraph_index(o.subgraph_index) {
+  inputs.reserve(o.inputs.size());
+  for (const auto &v : o.inputs) { inputs.emplace_back((v) ? new tflite::TensorMapT(*v) : nullptr); }
+  outputs.reserve(o.outputs.size());
+  for (const auto &v : o.outputs) { outputs.emplace_back((v) ? new tflite::TensorMapT(*v) : nullptr); }
+}
+
+inline SignatureDefT &SignatureDefT::operator=(SignatureDefT o) FLATBUFFERS_NOEXCEPT {
+  std::swap(inputs, o.inputs);
+  std::swap(outputs, o.outputs);
+  std::swap(signature_key, o.signature_key);
+  std::swap(subgraph_index, o.subgraph_index);
+  return *this;
+}
+
 inline SignatureDefT *SignatureDef::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = std::unique_ptr<SignatureDefT>(new SignatureDefT());
   UnPackTo(_o.get(), _resolver);
@@ -16468,6 +16561,34 @@ inline flatbuffers::Offset<SignatureDef> CreateSignatureDef(flatbuffers::FlatBuf
       _outputs,
       _signature_key,
       _subgraph_index);
+}
+
+inline ModelT::ModelT(const ModelT &o)
+      : version(o.version),
+        description(o.description),
+        metadata_buffer(o.metadata_buffer) {
+  operator_codes.reserve(o.operator_codes.size());
+  for (const auto &v : o.operator_codes) { operator_codes.emplace_back((v) ? new tflite::OperatorCodeT(*v) : nullptr); }
+  subgraphs.reserve(o.subgraphs.size());
+  for (const auto &v : o.subgraphs) { subgraphs.emplace_back((v) ? new tflite::SubGraphT(*v) : nullptr); }
+  buffers.reserve(o.buffers.size());
+  for (const auto &v : o.buffers) { buffers.emplace_back((v) ? new tflite::BufferT(*v) : nullptr); }
+  metadata.reserve(o.metadata.size());
+  for (const auto &v : o.metadata) { metadata.emplace_back((v) ? new tflite::MetadataT(*v) : nullptr); }
+  signature_defs.reserve(o.signature_defs.size());
+  for (const auto &v : o.signature_defs) { signature_defs.emplace_back((v) ? new tflite::SignatureDefT(*v) : nullptr); }
+}
+
+inline ModelT &ModelT::operator=(ModelT o) FLATBUFFERS_NOEXCEPT {
+  std::swap(version, o.version);
+  std::swap(operator_codes, o.operator_codes);
+  std::swap(subgraphs, o.subgraphs);
+  std::swap(description, o.description);
+  std::swap(buffers, o.buffers);
+  std::swap(metadata_buffer, o.metadata_buffer);
+  std::swap(metadata, o.metadata);
+  std::swap(signature_defs, o.signature_defs);
+  return *this;
 }
 
 inline ModelT *Model::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -19244,6 +19365,11 @@ inline const char *ModelIdentifier() {
 inline bool ModelBufferHasIdentifier(const void *buf) {
   return flatbuffers::BufferHasIdentifier(
       buf, ModelIdentifier());
+}
+
+inline bool SizePrefixedModelBufferHasIdentifier(const void *buf) {
+  return flatbuffers::BufferHasIdentifier(
+      buf, ModelIdentifier(), true);
 }
 
 inline bool VerifyModelBuffer(
