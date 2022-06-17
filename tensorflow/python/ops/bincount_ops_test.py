@@ -652,13 +652,6 @@ class TestCompiledDenseBincount(test.TestCase, parameterized.TestCase):
                 axis=axis
             )
         return y
-    #print("CAiooooooooooooooooooooooooooooooooooooooooooo")
-    #print(f.experimental_get_compiler_ir(f(x,
-    #    weights=weights,
-    #    minlength=minlength,
-    #    maxlength=maxlength,
-    #    binary_output=binary_output,
-    #    axis=axis))('hlo'))
     res = f(x,
             weights=weights,
             minlength=minlength,
