@@ -72,10 +72,12 @@ tf_py_test(
     ],
 )
 
+# b/234468872
 cuda_py_test(
     name = "collective_ops_test",
     size = "medium",
     srcs = ["collective_ops_test.py"],
+    shard_count = 4,
     tags = [
         "multi_and_single_gpu",
         "no_tfrt",  # TODO(b/185944042)
