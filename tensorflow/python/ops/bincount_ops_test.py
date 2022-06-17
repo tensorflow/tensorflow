@@ -188,7 +188,6 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(expected_values, y.values)
     self.assertAllEqual(expected_shape, y.dense_shape)
 
-
   @parameterized.named_parameters(
       {
           "testcase_name":
@@ -623,7 +622,7 @@ class TestCompiledDenseBincount(test.TestCase, parameterized.TestCase):
        "testcase_name": "_all_axes",
        "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
        "expected_values": [0, 1, 1, 1, 2, 1],
-       "axis": 0 # With None (recursive call) -> Bincount (No registered 'Bincount'
+       "axis": None
     })
   @test_util.disable_mlir_bridge('TODO: ?')
   def test_compiled_dense(self,

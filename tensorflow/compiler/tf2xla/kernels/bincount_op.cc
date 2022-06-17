@@ -26,7 +26,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// TODO: This is only a dummy kernel
 class DenseBincountOp : public XlaOpKernel {
   private:
   bool binary_output_;
@@ -36,7 +35,6 @@ class DenseBincountOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-  // Dumb implementation for the simplest test case
     xla::XlaOp input = ctx->Input(0);
     xla::XlaOp weights = ctx->Input(2);    
     StatusOr<xla::Shape> weights_shape_or = ctx->builder()->GetShape(weights);
