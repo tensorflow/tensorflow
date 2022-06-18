@@ -84,6 +84,14 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
+xla_py_proto_library(
+    name = "tf2xla_support_py_pb2",
+    has_services = False,
+    api_version = 2,
+    visibility = ["//visibility:public"],
+    deps = [":tf2xla_support_proto"],
+)
+
 tf_proto_library(
     name = "tf2xla_proto",
     srcs = ["tf2xla.proto"],
