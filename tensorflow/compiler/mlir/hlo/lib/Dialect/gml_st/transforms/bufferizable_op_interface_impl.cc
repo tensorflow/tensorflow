@@ -19,8 +19,9 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 
+using mlir::bufferization::AnalysisState;
 using mlir::bufferization::BufferizableOpInterface;
-using mlir::bufferization::BufferizationState;
+using mlir::bufferization::BufferizationOptions;
 using mlir::bufferization::BufferRelation;
 using mlir::bufferization::ToMemrefOp;
 using mlir::bufferization::ToTensorOp;
@@ -34,28 +35,24 @@ namespace {
 struct LoopOpInterface
     : public BufferizableOpInterface::ExternalModel<LoopOpInterface, LoopOp> {
   bool bufferizesToMemoryRead(Operation *op, OpOperand &opOperand,
-                              const BufferizationState &state) const {
+                              const AnalysisState &state) const {
     auto loopOp = cast<LoopOp>(op);
 
     // gml_st.loop operands alone do not bufferize to a memory read, but
     // one of the uses of their matching bbArgs may.
-    return state.getAnalysisState().isValueRead(
-        loopOp.getTiedBlockArgument(opOperand));
+    return state.isValueRead(loopOp.getTiedBlockArgument(opOperand));
   }
 
   bool bufferizesToMemoryWrite(Operation *op, OpOperand &opOperand,
-                               const BufferizationState &state) const {
+                               const AnalysisState &state) const {
     // Only operands with an aliasing OpResult (i.e., output operands) bufferize
     // to a memory write.
     auto bufferizableOp = cast<BufferizableOpInterface>(op);
-    return !bufferizableOp
-                .getAliasingOpResult(opOperand, state.getAnalysisState())
-                .empty();
+    return !bufferizableOp.getAliasingOpResult(opOperand, state).empty();
   }
 
-  SmallVector<OpResult> getAliasingOpResult(
-      Operation *op, OpOperand &opOperand,
-      const BufferizationState &state) const {
+  SmallVector<OpResult> getAliasingOpResult(Operation *op, OpOperand &opOperand,
+                                            const AnalysisState &state) const {
     auto loopOp = cast<LoopOp>(op);
 
     // Output operands are tied to their corresponding OpResults.
@@ -65,12 +62,12 @@ struct LoopOpInterface
   }
 
   BufferRelation bufferRelation(Operation *op, OpResult op_result,
-                                const BufferizationState &state) const {
+                                const AnalysisState &state) const {
     return BufferRelation::Equivalent;
   }
 
   bool isWritable(Operation *op, Value value,
-                  const BufferizationState &state) const {
+                  const AnalysisState &state) const {
     // Interestingly, LoopOp's bbArgs can **always** be viewed
     // inplace from the perspective of nested ops:
     //   1. Either the matching iter operand is not bufferized inplace and an
@@ -81,7 +78,7 @@ struct LoopOpInterface
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          BufferizationState &state) const {
+                          const BufferizationOptions &options) const {
     auto loopOp = cast<LoopOp>(op);
 
     // Compute new inputs, outputs and results.
@@ -91,9 +88,7 @@ struct LoopOpInterface
       OpOperand &operand = loopOp->getOpOperand(i);
       Value rewrittenValue = operand.get();
       if (rewrittenValue.getType().isa<TensorType>()) {
-        FailureOr<Value> bufferOrFailure = state.getBuffer(rewriter, operand);
-        if (failed(bufferOrFailure)) return failure();
-        rewrittenValue = *bufferOrFailure;
+        rewrittenValue = getBuffer(rewriter, operand.get(), options);
       }
       if (i < loopOp.getNumControlOperands() + loopOp.getNumInputs()) {
         newInputs.push_back(rewrittenValue);
@@ -162,8 +157,8 @@ struct LoopOpInterface
       Value output = std::get<1>(it);
       Value toMemrefOp = rewriter.create<bufferization::ToMemrefOp>(
           newTerminator.getLoc(), output.getType(), std::get<0>(it));
-      if (failed(state.getOptions().createMemCpy(
-              rewriter, newTerminator.getLoc(), toMemrefOp, output)))
+      if (failed(options.createMemCpy(rewriter, newTerminator.getLoc(),
+                                      toMemrefOp, output)))
         return failure();
     }
 
