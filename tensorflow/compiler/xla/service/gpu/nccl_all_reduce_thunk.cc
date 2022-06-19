@@ -139,7 +139,7 @@ namespace impl {
 
 template <typename OpT>
 bool CanImplement(OpT op) {
-  return absl::c_all_of(op.operands(), IsValidOperand) &&
+  return absl::c_all_of(op.getInputs(), IsValidOperand) &&
          NcclAllReduceThunkBase::MatchAllReduceComputation(op.getComputation())
              .has_value();
 }

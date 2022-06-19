@@ -2973,7 +2973,7 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   // not generate an NcclCollectiveThunk.
   std::vector<NcclCollectiveThunk::Buffer> buffers;
   buffers.reserve(op.getOperands().size());
-  for (auto it : llvm::zip(op.getOperands(), op.getResults())) {
+  for (auto it : llvm::zip(op.getInputs(), op.getOutputs())) {
     mlir::Value operand = std::get<0>(it);
     mlir::Value result = std::get<1>(it);
     const Shape shape = GetShape(operand);
@@ -3119,7 +3119,7 @@ Status IrEmitterUnnested::EmitInfeed(mlir::Operation* op) {
 
 Status IrEmitterUnnested::EmitOutfeed(mlir::Operation* op) {
   mlir::Operation::operand_range operands =
-      mlir::cast<mlir::lmhlo::OutfeedOp>(op).operands();
+      mlir::cast<mlir::lmhlo::OutfeedOp>(op).getInputs();
   std::unique_ptr<Thunk> thunk;
   if (IsBefThunkEnabled(hlo_module_config_)) {
     TF_ASSIGN_OR_RETURN(auto slices, GetSlices(operands));

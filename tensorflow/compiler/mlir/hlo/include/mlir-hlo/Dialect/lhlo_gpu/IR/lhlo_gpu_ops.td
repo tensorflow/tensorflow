@@ -168,8 +168,8 @@ def LHLOGPU_AllReduceStartOp :
     Performs an asynchronous custom reduction across replicas.
   }];
   let arguments = (ins
-    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
-    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$results,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs,
     I64ElementsAttr:$replica_groups,
     DefaultValuedAttr<BoolAttr, "false">:$constrain_layout,
     OptionalAttr<ChannelHandle>:$channel_id,
@@ -185,8 +185,8 @@ def LHLOGPU_AllReduceDoneOp:
   let summary = "AllReduceDone operator";
   let arguments = (ins
     HLO_Token:$token,
-    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
-    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$results
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs
   );
 }
 

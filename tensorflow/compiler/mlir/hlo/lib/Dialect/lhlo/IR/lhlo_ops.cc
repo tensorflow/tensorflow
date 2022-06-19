@@ -150,8 +150,8 @@ LogicalResult ReduceScatterOp::verify() {
   if (failed(mlir::hlo::VerifyReplicaGroups(op, /*is_uniform_sized=*/true)))
     return failure();
   if (failed(mlir::hlo::VerifyReduceScatter(
-          op, /*operand_types=*/op.operands().getTypes(),
-          /*result_types=*/op.getResults().getTypes(),
+          op, /*operand_types=*/op.getInputs().getTypes(),
+          /*result_types=*/op.getOutputs().getTypes(),
           /*scatter_dimension=*/op.getScatterDimension())))
     return failure();
   return success();

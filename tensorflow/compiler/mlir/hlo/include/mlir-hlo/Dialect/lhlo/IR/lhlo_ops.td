@@ -1076,8 +1076,8 @@ def LHLO_ReducePrecisionOp: LHLO_Op<"reduce_precision", [SameTypeOperands]> {
 class LHLO_CollectiveCommunicationOp<string name, list<Trait> traits = []> :
   LHLO_Op<name, !listconcat(traits, [SameVariadicOperandSize])> {
   dag arguments_base = (ins
-    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
-    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$results,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs,
     I64ElementsAttr:$replica_groups,
     DefaultValuedAttr<BoolAttr, "false">:$constrain_layout,
     OptionalAttr<ChannelHandle>:$channel_id,
@@ -1222,7 +1222,7 @@ def LHLO_InfeedOp: LHLO_Op<"infeed", []> {
 
 def LHLO_OutfeedOp: LHLO_Op<"outfeed", []> {
   let arguments = (ins
-    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
     DefaultValuedStrAttr<StrAttr, "">:$config
   );
 }
@@ -1301,7 +1301,7 @@ def LHLO_MapOp: LHLO_Op<"map", [SameOperandsShape]> {
   See https://www.tensorflow.org/xla/operation_semantics#map.
   }];
   let arguments = (ins
-    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
     I64ElementsAttr:$dimensions
   );
@@ -1325,7 +1325,7 @@ def LHLO_SortOp: LHLO_Op<"sort", [SameVariadicOperandSize, SameOperandsShape]> {
     See https://www.tensorflow.org/xla/operation_semantics#sort.
   }];
   let arguments = (ins
-    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
     Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$output,
     DefaultValuedAttr<I64Attr, "-1">:$dimension,
     DefaultValuedAttr<BoolAttr, "false">:$is_stable

@@ -1103,10 +1103,10 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
       return failure();
     }
 
-    for (int64_t i = 0; i < op.operands().size(); i++) {
+    for (int64_t i = 0; i < op.getInputs().size(); i++) {
       rewriter.create<gpu::MemcpyOp>(
           op.getLoc(), TypeRange(),
-          ValueRange({op.getResults()[i], op.getOperands()[i]}));
+          ValueRange({op.getOutputs()[i], op.getOperands()[i]}));
     }
     return success();
   }
