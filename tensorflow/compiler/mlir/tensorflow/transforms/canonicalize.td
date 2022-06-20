@@ -255,7 +255,12 @@ def ReshapeToSelfShape : Pat<(TF_ReshapeOp:$op $x, (TF_ShapeOp $x)),
 // Square op patterns.
 //===----------------------------------------------------------------------===//
 
-def SquareOfSub : Pat<(TF_SquareOp (TF_SubOp $arg0, $arg1)),
+// Restrict the pattern to the types supported by SquaredDifferenceOp.
+def TF_NumberTensorNoSmallInt: TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64,
+    TF_Float16, TF_Float32, TF_Int32, TF_Int64]>;
+
+def SquareOfSub : Pat<(TF_SquareOp (TF_SubOp TF_NumberTensorNoSmallInt:$arg0,
+                                    TF_NumberTensorNoSmallInt:$arg1)),
                       (TF_SquaredDifferenceOp $arg0, $arg1)>;
 
 //===----------------------------------------------------------------------===//
