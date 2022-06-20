@@ -623,7 +623,6 @@ class TestCompiledDenseBincount(test.TestCase, parameterized.TestCase):
        "expected_values": [0, 1, 1, 1, 2, 1],
        "axis": None
     })
-  @test_util.disable_mlir_bridge('TODO: ?')
   def test_compiled_dense(self,
                           x,
                           expected_values,

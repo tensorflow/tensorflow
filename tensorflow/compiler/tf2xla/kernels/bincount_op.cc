@@ -27,13 +27,12 @@ namespace tensorflow {
 namespace {
 
 class DenseBincountOp : public XlaOpKernel {
+  public:
+    explicit DenseBincountOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+      ctx->GetAttr("binary_output", &binary_output_);
+    }
   private:
-  bool binary_output_= false;
- public:
-  explicit DenseBincountOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    ctx->GetAttr("binary_output", &binary_output_);
-  }
-
+    bool binary_output_= false;
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaOp input = ctx->Input(0);
     xla::XlaOp weights = ctx->Input(2);    
