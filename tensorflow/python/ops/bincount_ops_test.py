@@ -670,9 +670,9 @@ class TestCompiledDenseBincount(test.TestCase, parameterized.TestCase):
       "x": np.random.randint(100, size=(1000, 1000), dtype=np.int32)
   })
   @test_util.disable_mlir_bridge('TODO: ?')
-  # TODO: Disable performance test on CPU 
-  # missing scatter emitter for CPU fallback to a serial xla::While
-  # https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/xla/service/cpu/ir_emitter.cc#L1929-L1931
+  # TODO: Disable performance tests on CPU 
+  # missing scatter emitter for CPU fallback to a serial HLO While
+  # https://github.com/tensorflow/tensorflow/issues/56511
   @test_util.run_gpu_only
   def test_compiled_dense_perf(self,
                        x,
