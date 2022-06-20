@@ -87,9 +87,7 @@ class DenseBincountOp : public XlaOpKernel {
         zero = xla::Zero(ctx->builder(), dtype);
         updates = weights;
       }
-    }
-
-    else {
+    } else {
       input = xla::Reshape(input, {size, 1});
       idx = xla::Reshape(input, {size, 1});
       updates = xla::Broadcast(one, {size});

@@ -15,8 +15,6 @@
 """Tests for bincount ops."""
 
 from absl.testing import parameterized
-
-import timeit
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -31,6 +29,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
+
 
 class TestSparseCount(test.TestCase, parameterized.TestCase):
 
@@ -547,195 +546,7 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(expected_values, y.values)
     self.assertAllEqual(expected_shape, y.dense_shape)
 
-class TestCompiledDenseBincount(test.TestCase, parameterized.TestCase):
 
-  @parameterized.named_parameters(
-    {
-        "testcase_name": "_no_maxlength_basic",
-        "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
-        "expected_values": [[0, 1, 1, 1, 0, 0],[0, 0, 0, 0, 2, 1]]
-    }, {
-        "testcase_name": "_maxlength",
-        "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
-        "maxlength": 7,
-        "expected_values": [[0, 1, 1, 1, 0, 0, 0],[1, 0, 0, 0, 2, 0, 0]]
-    }, {
-        "testcase_name": "_minlength",
-        "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
-        "minlength": 9,
-        "expected_values": [[0, 1, 1, 1, 0, 0, 0, 1, 0], 
-                            [1, 0, 0, 0, 2, 0, 0, 1, 0]]
-    }, {
-        "testcase_name": "_minlength_larger_values",
-        "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
-        "minlength": 3,
-        "expected_values": [[0, 1, 1, 1, 0, 0, 0, 1],
-                            [1, 0, 0, 0, 2, 0, 0, 1]]
-    }, {
-        "testcase_name": "_no_maxlength_binary",
-        "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
-        "expected_values": [[0, 1, 1, 1, 0, 0],
-                            [0, 0, 0, 0, 1, 1]],
-        "binary_output": True,
-    }, {
-        "testcase_name": "_maxlength_binary",
-        "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
-        "maxlength": 7,
-        "expected_values": [[0, 1, 1, 1, 0, 0, 0],
-                            [1, 0, 0, 0, 1, 0, 0]],
-        "binary_output": True,
-    }, {
-        "testcase_name": "_minlength_binary",
-        "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
-        "minlength": 9,
-        "expected_values": [[0, 1, 1, 1, 0, 0, 0, 1, 0],
-                            [1, 0, 0, 0, 1, 0, 0, 1, 0]],
-        "binary_output": True,
-    }, {
-        "testcase_name": "_minlength_larger_values_binary",
-        "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
-        "minlength": 3,
-        "expected_values": [[0, 1, 1, 1, 0, 0, 0, 1],
-                            [1, 0, 0, 0, 1, 0, 0, 1]],  
-        "binary_output": True,
-    }, {
-        "testcase_name": "_no_maxlength_weights",
-        "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
-        "expected_values": [[0. , 2. , 1. , 0.5, 0. , 0. ],
-                            [0. , 0. , 0. , 0. , 9. , 3. ]],
-        "weights": [[0.5, 1, 2], [3, 4, 5]]
-    }, {
-        "testcase_name": "_1d_no_maxlenght_base",
-        "x": np.array([3, 2, 1, 1], dtype=np.int32),
-        "expected_values": [0, 2, 1, 1]
-    }, {
-        "testcase_name": "_1d_binary",
-        "x": np.array([3, 2, 1, 1], dtype=np.int32),
-        "expected_values": [0, 1, 1, 1],
-        "binary_output": True
-    }, {
-        "testcase_name": "_1d_no_maxlenght_weights",
-        "x": np.array([3, 2, 1, 5, 4, 4], dtype=np.int32),
-        "weights": [0.5, 1, 2, 3, 4, 5],
-        "expected_values": [0. , 2. , 1. , 0.5, 9. , 3. ]
-    }, {
-       "testcase_name": "_all_axes",
-       "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
-       "expected_values": [0, 1, 1, 1, 2, 1],
-       "axis": None
-    })
-  @test_util.disable_mlir_bridge('TODO: ?')
-  def test_compiled_dense(self,
-                          x,
-                          expected_values,
-                          minlength=None,
-                          maxlength=None,
-                          binary_output=False,
-                          weights=None,
-                          axis=-1):
-
-    @def_function.function(jit_compile=True)
-    def f (x,
-           weights=weights,
-           minlength=minlength,
-           maxlength=maxlength,
-           binary_output=binary_output,
-           axis=axis):
-      y = bincount_ops.bincount(
-                                x,
-                                weights=weights,
-                                minlength=minlength,
-                                maxlength=maxlength,
-                                binary_output=binary_output,
-                                axis=axis)
-      return y
-
-    res = f(x,
-            weights=weights,
-            minlength=minlength,
-            maxlength=maxlength,
-            binary_output=binary_output,
-            axis=axis)
-    self.assertAllEqual(expected_values, res)
-    
-  @parameterized.named_parameters(    
-  {
-      "testcase_name": "_no_maxlength_small",
-      "x": np.random.randint(200, size=(200, 200), dtype=np.int32)
-  }, {
-      "testcase_name": "_no_maxlength_medium",
-      "x": np.random.randint(500, size=(500, 500), dtype=np.int32)
-  }, {
-      "testcase_name": "_no_maxlength_large",
-      "x": np.random.randint(100, size=(1000, 1000), dtype=np.int32)
-  })
-  @test_util.disable_mlir_bridge('TODO: ?')
-  # TODO: Disable performance test on CPU 
-  # missing scatter emitter for CPU fallback to a serial xla::While
-  # https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/xla/service/cpu/ir_emitter.cc#L1929-L1931
-  @test_util.run_gpu_only
-  def test_compiled_dense_perf(self,
-                       x,
-                       minlength=None,
-                       maxlength=None,
-                       binary_output=False,
-                       weights=None,
-                       axis=-1):
-
-    @def_function.function(jit_compile=True)
-    def f_compiled(x,
-          weights=weights,
-          minlength=minlength,
-          maxlength=maxlength,
-          binary_output=binary_output,
-          axis=axis):
-      y = bincount_ops.bincount(
-            x,
-            weights=weights,
-            minlength=minlength,
-            maxlength=maxlength,
-            binary_output=binary_output,
-            axis=axis
-        )
-      return y
-
-    @def_function.function()
-    def f(x,
-          weights=weights,
-          minlength=minlength,
-          maxlength=maxlength,
-          binary_output=binary_output,
-          axis=axis):
-      y = bincount_ops.bincount(
-            x,
-            weights=weights,
-            minlength=minlength,
-            maxlength=maxlength,
-            binary_output=binary_output,
-            axis=axis
-        )
-      return y
-
-    lambda_f = lambda: f(x,           
-                weights=weights,
-                minlength=minlength,
-                maxlength=maxlength,
-                binary_output=binary_output,
-                axis=axis)
-
-    lambda_fc = lambda: f_compiled(x,           
-                        weights=weights,
-                        minlength=minlength,
-                        maxlength=maxlength,
-                        binary_output=binary_output,
-                        axis=axis)
-    # warm-up
-    lambda_f(); lambda_fc()
-    not_compiled = timeit.timeit(lambda_f, number=10)
-    compiled = timeit.timeit(lambda_fc, number=10)
-    self.assertLess(compiled, not_compiled)
-
-    
 class TestDenseBincount(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters([{
