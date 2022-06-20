@@ -656,8 +656,7 @@ class TestCompiledDenseBincount(test.TestCase, parameterized.TestCase):
             binary_output=binary_output,
             axis=axis)
     self.assertAllEqual(expected_values, res)
-    
-  
+
 class TestDenseBincount(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters([{
