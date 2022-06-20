@@ -4069,8 +4069,11 @@ func.func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi3
 // CHECK-DAG:         %[[S0:.+]] = arith.index_cast %[[S0_INT]] : i32 to index
 // CHECK-DAG:         %[[S1_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX0]], %[[IDX1]], %[[C1]]] : tensor<1x8x2xi32>
 // CHECK-DAG:         %[[S1:.+]] = arith.index_cast %[[S1_INT]] : i32 to index
-// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[S0]], %[[C0]] : index
-// CHECK-DAG:         %[[IN1:.+]] = arith.addi %[[S1]], %[[C0]] : index
+// CHECK-DAG:         %[[CLAMP0:.+]] = arith.maxsi %[[C0]], %[[S0]] : index
+// CHECK-DAG:         %[[IN0:.+]] = arith.minsi %[[CLAMP0]], %[[C0]]
+// CHECK-DAG:         %[[C3:.+]] = arith.constant 3 : index
+// CHECK-DAG:         %[[CLAMP1:.+]] = arith.maxsi %[[C0]], %[[S1]] : index
+// CHECK-DAG:         %[[IN1:.+]] = arith.minsi %[[CLAMP1]], %[[C3]] : index
 // CHECK-DAG:         %[[IN2:.+]] = arith.addi %[[C0]], %[[IDX2]] : index
 // CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]], %[[IN2]]] : tensor<1x4x8xi32>
 // CHECK:             linalg.yield %[[Y]] : i32
@@ -4129,8 +4132,13 @@ func.func @gather_no_collapse(%operand : tensor<6x3xi32>, %start_indices : tenso
 // CHECK-DAG:         %[[S0:.+]] = arith.index_cast %[[S0_INT]] : i32 to index
 // CHECK-DAG:         %[[S1_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX0]], %[[C1]]] : tensor<5x2xi32>
 // CHECK-DAG:         %[[S1:.+]] = arith.index_cast %[[S1_INT]] : i32 to index
-// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[S0]], %[[IDX1]] : index
-// CHECK-DAG:         %[[IN1:.+]] = arith.addi %[[S1]], %[[IDX2]] : index
+// CHECK-DAG:         %[[CLAMP0:.+]] = arith.maxsi %[[C0]], %[[S0]] : index
+// CHECK-DAG:         %[[C2:.+]] = arith.constant 2 : index
+// CHECK-DAG:         %[[CLAMP0_1:.+]] = arith.minsi %[[CLAMP0]], %[[C2]] : index
+// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[CLAMP0_1]], %[[IDX1]] : index
+// CHECK-DAG:         %[[CLAMP1:.+]] = arith.maxsi %[[C0]], %[[S1]] : index
+// CHECK-DAG:         %[[CLAMP1_1:.+]] = arith.minsi %[[CLAMP1]], %[[C1]]
+// CHECK-DAG:         %[[IN1:.+]] = arith.addi %[[CLAMP1_1]], %[[IDX2]] : index
 // CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]]] : tensor<6x3xi32>
 // CHECK:             linalg.yield %[[Y]] : i32
 // CHECK:           return %[[RES]]
@@ -4170,8 +4178,17 @@ func.func @gather_max_offset(%operand : tensor<?x?x?xi32>, %start_indices : tens
 // CHECK-DAG:         %[[S0:.+]] = arith.index_cast %[[S0_INT]] : i32 to index
 // CHECK-DAG:         %[[S1_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX3]], %[[C1]]] : tensor<5x2xi32>
 // CHECK-DAG:         %[[S1:.+]] = arith.index_cast %[[S1_INT]] : i32 to index
-// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[S0]], %[[IDX0]] : index
-// CHECK-DAG:         %[[IN1:.+]] = arith.addi %[[S1]], %[[IDX1]] : index
+// CHECK-DAG:         %[[C2:.+]] = arith.constant 2
+// CHECK-DAG:         %[[D0:.+]] = tensor.dim %[[OPERAND]], %[[C0]]
+// CHECK-DAG:         %[[L0:.+]] = arith.subi %[[D0]], %[[C2]]
+// CHECK-DAG:         %[[CLAMP0:.+]] = arith.maxsi %[[C0]], %[[S0]] : index
+// CHECK-DAG:         %[[CLAMP0_1:.+]] = arith.minsi %[[CLAMP0]], %[[L0]] : index
+// CHECK-DAG:         %[[D1:.+]] = tensor.dim %[[OPERAND]], %[[C1]]
+// CHECK-DAG:         %[[L1:.+]] = arith.subi %[[D1]], %[[C3]]
+// CHECK-DAG:         %[[CLAMP1:.+]] = arith.maxsi %[[C0]], %[[S1]] : index
+// CHECK-DAG:         %[[CLAMP1_1:.+]] = arith.minsi %[[CLAMP1]], %[[L1]] : index
+// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[CLAMP0_1]], %[[IDX0]] : index
+// CHECK-DAG:         %[[IN1:.+]] = arith.addi %[[CLAMP1_1]], %[[IDX1]] : index
 // CHECK-DAG:         %[[IN2:.+]] = arith.addi %[[C0]], %[[IDX2]] : index
 // CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]], %[[IN2]]] : tensor<?x?x?xi32>
 // CHECK:             linalg.yield %[[Y]] : i32
@@ -4216,10 +4233,17 @@ func.func @gather_reorder_start_index(%operand : tensor<6x3x2x7xi32>, %start_ind
 // CHECK-DAG:         %[[S2:.+]] = arith.index_cast %[[S2_INT]] : i32 to index
 // CHECK-DAG:         %[[S3_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX0]], %[[C3]]] : tensor<5x4xi32>
 // CHECK-DAG:         %[[S3:.+]] = arith.index_cast %[[S3_INT]] : i32 to index
-// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[S3]], %[[C0]] : index
-// CHECK-DAG:         %[[IN1:.+]] = arith.addi %[[S1]], %[[IDX1]] : index
-// CHECK-DAG:         %[[IN2:.+]] = arith.addi %[[S2]], %[[C0]] : index
-// CHECK-DAG:         %[[IN3:.+]] = arith.addi %[[S0]], %[[IDX2]] : index
+// CHECK-DAG:         %[[C5:.+]] = arith.constant 5
+// CHECK-DAG:         %[[CLAMP0:.+]] = arith.maxsi %[[C0]], %[[S0]] : index
+// CHECK-DAG:         %[[CLAMP0_1:.+]] = arith.minsi %[[CLAMP0]], %[[C3]]
+// CHECK-DAG:         %[[CLAMP1:.+]] = arith.maxsi %[[C0]], %[[S1]] : index
+// CHECK-DAG:         %[[CLAMP1_1:.+]] = arith.minsi %[[CLAMP1]], %[[C1]]
+// CHECK-DAG:         %[[CLAMP2:.+]] = arith.maxsi %[[C0]], %[[S2]] : index
+// CHECK-DAG:         %[[IN2:.+]] = arith.minsi %[[CLAMP2]], %[[C1]]
+// CHECK-DAG:         %[[CLAMP3:.+]] = arith.maxsi %[[C0]], %[[S3]] : index
+// CHECK-DAG:         %[[IN0:.+]] = arith.minsi %[[CLAMP3]], %[[C5]]
+// CHECK-DAG:         %[[IN1:.+]] = arith.addi %[[CLAMP1_1]], %[[IDX1]] : index
+// CHECK-DAG:         %[[IN3:.+]] = arith.addi %[[CLAMP0_1]], %[[IDX2]] : index
 // CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]], %[[IN2]], %[[IN3]]] : tensor<6x3x2x7xi32>
 // CHECK:             linalg.yield %[[Y]] : i32
 // CHECK:           return %[[RES]]
@@ -4255,7 +4279,11 @@ func.func @gather_implicit_trailing_dim(%operand : tensor<?x?xi32>, %start_indic
 // CHECK-DAG:         %[[IDX3:.+]] = linalg.index 3
 // CHECK-DAG:         %[[S0_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX2]], %[[IDX3]]] : tensor<5x2xi32>
 // CHECK-DAG:         %[[S0:.+]] = arith.index_cast %[[S0_INT]] : i32 to index
-// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[S0]], %[[IDX0]] : index
+// CHECK-DAG:         %[[D0:.+]] = tensor.dim %[[OPERAND]], %[[C0]]
+// CHECK-DAG:         %[[L0:.+]] = arith.subi %[[D0]], %[[C3]]
+// CHECK-DAG:         %[[CLAMP0:.+]] = arith.maxsi %[[C0]], %[[S0]] : index
+// CHECK-DAG:         %[[CLAMP0_1:.+]] = arith.minsi %[[CLAMP0]], %[[L0]] : index
+// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[CLAMP0_1]], %[[IDX0]] : index
 // CHECK-DAG:         %[[IN1:.+]] = arith.addi %[[C0]], %[[IDX1]] : index
 // CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]]] : tensor<?x?xi32>
 // CHECK:             linalg.yield %[[Y]] : i32
@@ -4305,7 +4333,11 @@ func.func @gather_non_static(%operand : tensor<?x?xi32>, %start_indices : tensor
 // CHECK-DAG:         %[[IDX2:.+]] = linalg.index 2
 // CHECK-DAG:         %[[S0_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX2]], %[[C0]]] : tensor<?x?xi32>
 // CHECK-DAG:         %[[S0:.+]] = arith.index_cast %[[S0_INT]] : i32 to index
-// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[S0]], %[[IDX0]] : index
+// CHECK-DAG:         %[[D0:.+]] = tensor.dim %[[OPERAND]], %[[C0]]
+// CHECK-DAG:         %[[L0:.+]] = arith.subi %[[D0]], %[[C3]]
+// CHECK-DAG:         %[[CLAMP0:.+]] = arith.maxsi %[[C0]], %[[S0]] : index
+// CHECK-DAG:         %[[CLAMP0_1:.+]] = arith.minsi %[[CLAMP0]], %[[L0]] : index
+// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[CLAMP0_1]], %[[IDX0]] : index
 // CHECK-DAG:         %[[IN1:.+]] = arith.addi %[[C0]], %[[IDX1]] : index
 // CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]]] : tensor<?x?xi32>
 // CHECK:             linalg.yield %[[Y]] : i32
@@ -4360,7 +4392,12 @@ func.func @gather_unranked(%operand : tensor<*xi32>, %start_indices : tensor<?x?
 // CHECK-DAG:         %[[IDX2:.+]] = linalg.index 2
 // CHECK-DAG:         %[[S0_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX2]], %[[C0]]] : tensor<?x?xi32>
 // CHECK-DAG:         %[[S0:.+]] = arith.index_cast %[[S0_INT]] : i32 to index
-// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[S0]], %[[IDX0]] : index
+// CHECK-DAG:         %[[DS0:.+]] = tensor.dim %[[INIT]], %[[C0]]
+// CHECK-DAG:         %[[D0:.+]] = tensor.dim %[[OPERAND]], %[[C0]]
+// CHECK-DAG:         %[[L0:.+]] = arith.subi %[[D0]], %[[DS0]]
+// CHECK-DAG:         %[[CLAMP0:.+]] = arith.maxsi %[[C0]], %[[S0]] : index
+// CHECK-DAG:         %[[CLAMP0_1:.+]] = arith.minsi %[[CLAMP0]], %[[L0]] : index
+// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[CLAMP0_1]], %[[IDX0]] : index
 // CHECK-DAG:         %[[IN1:.+]] = arith.addi %[[C0]], %[[IDX1]] : index
 // CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]]] : tensor<*xi32>
 // CHECK:             linalg.yield %[[Y]] : i32

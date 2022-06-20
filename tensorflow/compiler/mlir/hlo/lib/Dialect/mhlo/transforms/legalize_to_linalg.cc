@@ -2890,9 +2890,10 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
     // We'll need these later and creating them on demand we end up with
     // duplicates, which also makes lit tests really hard to write.
     SmallVector<Value> constants;
-    for (unsigned i = 0; i < std::max(resultRank, operandRank); ++i)
+    for (unsigned i = 0; i < std::max({resultRank, operandRank, 2}); ++i) {
       constants.push_back(
           rewriter.create<arith::ConstantOp>(loc, rewriter.getIndexAttr(i)));
+    }
 
     // Create ops to calculate the dynamic dimensions of the return shape, which
     // are needed for the init tensor.
@@ -2987,6 +2988,33 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
 
     assert(remappedOffsetDims.size() == offsetDims.size());
 
+    // Clamp out of bounds indices.
+    for (unsigned i = 0, operandIndexDim = 0; i < operandRank; ++i) {
+      // Compute the size of the output shape dimension corresponding to this
+      // index dimension. If it's collapsed set it to 1.
+      Value outputDimSize = constants[1];
+      if (!llvm::is_contained(collapsedSliceDims, i)) {
+        outputDimSize = rewriter.createOrFold<tensor::DimOp>(
+            loc, initOp, offsetDims[operandIndexDim++]);
+      }
+
+      // If this is a skipped dimension, we're done and don't have to clamp.
+      if (remappedIndexFromIndices[i] == constants[0]) continue;
+
+      Value operandDimSize =
+          rewriter.createOrFold<tensor::DimOp>(loc, operand, i);
+      Value largestValidIndex = rewriter.createOrFold<arith::SubIOp>(
+          loc, operandDimSize, outputDimSize);
+
+      // Clamp indices to [0, i, operand_dim-output_dim].
+      Value clamp = rewriter.create<arith::MinSIOp>(
+          loc,
+          rewriter.create<arith::MaxSIOp>(loc, constants[0],
+                                          remappedIndexFromIndices[i]),
+          largestValidIndex);
+      remappedIndexFromIndices[i] = clamp;
+    }
+
     // For the (remapped) offset dimensions, the index is the current index in
     // the output. As before this is expanded to a full index into the operand
     // by using zeroe for the missing indices.
@@ -2998,7 +3026,7 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
     // operand.
     SmallVector<Value> combinedIndex;
     for (unsigned i = 0; i < operandRank; ++i)
-      combinedIndex.push_back(rewriter.create<arith::AddIOp>(
+      combinedIndex.push_back(rewriter.createOrFold<arith::AddIOp>(
           loc, rewriter.getIndexType(), remappedIndexFromIndices[i],
           indexFromOffset[i]));
 
