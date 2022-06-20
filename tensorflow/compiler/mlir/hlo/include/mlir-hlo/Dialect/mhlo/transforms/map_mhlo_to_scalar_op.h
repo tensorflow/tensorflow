@@ -134,6 +134,10 @@ struct MhloToScalarOp<mhlo::RsqrtOp> {
   using COp = ::mlir::complex::RsqrtOp;
 };
 template <>
+struct MhloToScalarOp<mhlo::RoundOp> {
+  using FOp = ::mlir::math::RoundOp;
+};
+template <>
 struct MhloToScalarOp<mhlo::SubOp> {
   using FOp = ::mlir::arith::SubFOp;
   using IOp = ::mlir::arith::SubIOp;
@@ -949,28 +953,6 @@ inline Value MapMhloOpToStdScalarOp<mhlo::PowOp>(Location loc,
       if_lhs_is_one);
   return lb.create<::mlir::arith::SelectOp>(rhs_is_negative, if_lhs_is_neg_one,
                                             accum);
-}
-
-template <>
-inline Value MapMhloOpToStdScalarOp<mhlo::RoundOp>(
-    Location loc, ArrayRef<Type> /*result_types*/, ArrayRef<Type> /*arg_types*/,
-    ValueRange args, OpBuilder* b) {
-  mhlo::RoundOp::Adaptor adaptor(args);
-  auto lb = ImplicitLocOpBuilder(loc, *b);
-  auto operand = adaptor.operand();
-  auto operand_ty = operand.getType();
-  auto element_ty = getElementTypeOrSelf(operand_ty);
-
-  if (auto float_type = element_ty.dyn_cast<FloatType>()) {
-    Value half =
-        b->create<arith::ConstantOp>(loc, b->getFloatAttr(float_type, 0.5));
-    auto abs = lb.create<math::AbsOp>(operand_ty, operand);
-    auto add = lb.create<arith::AddFOp>(abs, half);
-    auto floor = lb.create<math::FloorOp>(add);
-    return lb.create<mlir::math::CopySignOp>(floor, operand);
-  }
-
-  return nullptr;
 }
 
 template <>
