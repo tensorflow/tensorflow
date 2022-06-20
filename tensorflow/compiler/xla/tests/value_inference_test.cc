@@ -156,7 +156,7 @@ TEST_F(DynamismInferenceTest, VariadicReduce) {
   Tuple(&reduce_add, {reduce_result, reduce_result});
   auto init = ConstantR0<int32_t>(&b, 0);
   auto variadic_reduce = Reduce(&b, {half_dynamic, half_dynamic}, {init, init},
-                                reduce_add.Build().ConsumeValueOrDie(), {1});
+                                reduce_add.Build().value(), {1});
   auto result = GetTupleElement(variadic_reduce, 0);
 
   // result[0] should be static; result[1] should be dynamic.
