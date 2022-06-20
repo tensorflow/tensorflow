@@ -1585,7 +1585,7 @@ static Status ProcessFusionForConversion(mlir::Region* region,
   std::vector<mlir::memref::TensorStoreOp> stores;
 
   region->walk([&](mlir::bufferization::ToTensorOp load) {
-    if (load.memref().getParentRegion() != region) {
+    if (load.getMemref().getParentRegion() != region) {
       loads.push_back(load);
     }
   });

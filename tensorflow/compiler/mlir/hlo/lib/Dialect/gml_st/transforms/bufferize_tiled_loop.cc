@@ -155,12 +155,12 @@ bool isBlockArgOfTiledLoop(Value value) {
 // tensor that we read and the tile that we write to are the same.
 Value findExistingSubview(Value destMemRef) {
   if (auto toMemref = destMemRef.getDefiningOp<ToMemrefOp>()) {
-    if (auto toTensor = toMemref.tensor().getDefiningOp<ToTensorOp>()) {
-      if (!isBlockArgOfTiledLoop(toTensor.memref())) return Value{};
+    if (auto toTensor = toMemref.getTensor().getDefiningOp<ToTensorOp>()) {
+      if (!isBlockArgOfTiledLoop(toTensor.getMemref())) return Value{};
       // Scan through users of the block argument to find `subview` op.
-      for (Operation *tensorUser : toMemref.tensor().getUsers()) {
+      for (Operation *tensorUser : toMemref.getTensor().getUsers()) {
         if (auto anotherCast = mlir::dyn_cast<ToMemrefOp>(tensorUser)) {
-          for (Operation *memrefUser : anotherCast.memref().getUsers()) {
+          for (Operation *memrefUser : anotherCast.getMemref().getUsers()) {
             if (auto subview = mlir::dyn_cast<SubViewOp>(memrefUser)) {
               if (subview.source() == destMemRef) return subview;
             }
@@ -293,7 +293,7 @@ struct BufferizeLoopOp : public OpConversionPattern<LoopOp> {
       auto toTensor = output.getDefiningOp<bufferization::ToTensorOp>();
       if (!toTensor || toTensor->hasOneUse()) continue;
 
-      auto alloc = toTensor.memref().getDefiningOp<memref::AllocOp>();
+      auto alloc = toTensor.getMemref().getDefiningOp<memref::AllocOp>();
       if (!alloc) continue;
 
       OpBuilder::InsertionGuard g(rewriter);

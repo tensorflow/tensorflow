@@ -50,7 +50,7 @@ struct ForwardExtractOp : public OpRewritePattern<ExtractOp> {
     if (!toTensor) return failure();
 
     rewriter.replaceOpWithNewOp<memref::LoadOp>(
-        extract, extract.getType(), toTensor.memref(), extract.indices());
+        extract, extract.getType(), toTensor.getMemref(), extract.indices());
     return success();
   }
 };
@@ -68,7 +68,7 @@ struct ForwardShapeOfOp : public OpRewritePattern<ShapeOfOp> {
     if (!toTensor) return failure();
 
     rewriter.replaceOpWithNewOp<ShapeOfOp>(shapeOf, shapeOf.getType(),
-                                           toTensor.memref());
+                                           toTensor.getMemref());
     return success();
   }
 };

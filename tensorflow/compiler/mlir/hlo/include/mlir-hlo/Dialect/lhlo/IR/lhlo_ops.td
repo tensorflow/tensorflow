@@ -1365,7 +1365,7 @@ def FusionOp : LHLO_Op<"fusion", [
     SmallVector<Value> getInputBuffers() {
       SmallVector<Value> buffers;
       for (auto load : getRegion().front().getOps<bufferization::ToTensorOp>()) {
-        buffers.push_back(load.memref());
+        buffers.push_back(load.getMemref());
       }
       return buffers;
     }

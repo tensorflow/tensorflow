@@ -52,7 +52,7 @@ struct LoopOpInterface
   }
 
   SmallVector<OpResult> getAliasingOpResult(Operation *op, OpOperand &opOperand,
-                                            const AnalysisState &state) const {
+                                            const AnalysisState &) const {
     auto loopOp = cast<LoopOp>(op);
 
     // Output operands are tied to their corresponding OpResults.
@@ -62,12 +62,11 @@ struct LoopOpInterface
   }
 
   BufferRelation bufferRelation(Operation *op, OpResult op_result,
-                                const AnalysisState &state) const {
+                                const AnalysisState &) const {
     return BufferRelation::Equivalent;
   }
 
-  bool isWritable(Operation *op, Value value,
-                  const AnalysisState &state) const {
+  bool isWritable(Operation *op, Value value, const AnalysisState &) const {
     // Interestingly, LoopOp's bbArgs can **always** be viewed
     // inplace from the perspective of nested ops:
     //   1. Either the matching iter operand is not bufferized inplace and an
