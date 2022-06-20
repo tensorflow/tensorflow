@@ -1,6 +1,6 @@
 from datetime import date
 from google.protobuf import text_format
-from pytablewriter import MarkdownTableWriter
+from pytablewriter import MarkdownTableWriter # https://pypi.org/project/pytablewriter/
 import support_pb2 as Support
 
 
@@ -11,8 +11,8 @@ supported_ops = Support.OpSupports()
 
 
 def parse_supported_ops():
-    with open("./support.pbtxt", 'r') as f:
-        return text_format.Parse(f.read(), supported_ops)
+  with open("./support.pbtxt", 'r') as f:
+    return text_format.Parse(f.read(), supported_ops)
 
 
 supported_ops = parse_supported_ops()
@@ -23,16 +23,16 @@ num_ops = len(supported_ops.support)
 value_matrix = []
 
 for op in supported_ops.support:
-    old_bridge_value = new_bridge_value = ":white_check_mark:"
-    if op.supports_old_bridge:
-        old_bridge += 1
-        old_bridge_value = ":heavy_check_mark:"
-    if op.supports_new_bridge:
-        new_bridge_value = ":heavy_check_mark:"
-        new_bridge += 1
-    if (op.supports_old_bridge and op.supports_new_bridge):
-        all_bridges += 1
-    value_matrix.append([op.graph_op_name, old_bridge_value, new_bridge_value])
+  old_bridge_value = new_bridge_value = ":white_check_mark:"
+  if op.supports_old_bridge:
+    old_bridge += 1
+    old_bridge_value = ":heavy_check_mark:"
+  if op.supports_new_bridge:
+    new_bridge_value = ":heavy_check_mark:"
+    new_bridge += 1
+  if (op.supports_old_bridge and op.supports_new_bridge):
+    all_bridges += 1
+  value_matrix.append([op.graph_op_name, old_bridge_value, new_bridge_value])
 
 writer = MarkdownTableWriter()
 
@@ -57,8 +57,8 @@ writer_ops_list = MarkdownTableWriter(
 )
 
 with open("tf_os_bridges_coverage.md", "w") as f:
-    writer.stream = f
-    writer.from_writer(writer_ops_stats)
-    writer.write_table()
-    writer.from_writer(writer_ops_list)
-    writer.write_table()
+  writer.stream = f
+  writer.from_writer(writer_ops_stats)
+  writer.write_table()
+  writer.from_writer(writer_ops_list)
+  writer.write_table()
