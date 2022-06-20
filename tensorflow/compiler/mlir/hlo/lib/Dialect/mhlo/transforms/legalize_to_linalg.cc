@@ -3330,6 +3330,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
                 ReduceRegionXLAOpConversion<mhlo::OrOp>,
                 ReduceRegionXLAOpConversion<mhlo::RealOp>,
                 ReduceRegionXLAOpConversion<mhlo::SelectOp>,
+                ReduceRegionXLAOpConversion<mhlo::XorOp>,
                 ReduceRegionReturnOpConversion>(context, PatternBenefit(1000));
 }
 
