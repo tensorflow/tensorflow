@@ -91,7 +91,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   auto opcode_or = StringToHloOpcode(proto.opcode());
   std::optional<ComparisonDirection> comparison_direction;
   if (opcode_or.ok()) {
-    opcode = opcode_or.ConsumeValueOrDie();
+    opcode = std::move(opcode_or).value();
   } else {
     // Unknown opcode. Try auto-upgrading deprecated "less-than",
     // "greater-than", etc opcodes, which are now rolled into the kCompare

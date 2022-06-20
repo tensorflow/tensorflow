@@ -64,7 +64,7 @@ class HloCostAnalysisTest : public ::testing::Test {
       Exp(Add(x, half));
       auto computation_status = builder.Build();
       TF_CHECK_OK(computation_status.status());
-      add_and_exp_ = computation_status.ConsumeValueOrDie();
+      add_and_exp_ = std::move(computation_status).value();
     }
 
     // Create a computation for a binary user function: (x, y) => x + y
@@ -75,7 +75,7 @@ class HloCostAnalysisTest : public ::testing::Test {
       Add(x, y);
       auto computation_status = builder.Build();
       TF_CHECK_OK(computation_status.status());
-      add_ = computation_status.ConsumeValueOrDie();
+      add_ = std::move(computation_status).value();
     }
 
     // Create a computation for a sigmoid function: x => 1 / (1 + exp(-x))
@@ -86,7 +86,7 @@ class HloCostAnalysisTest : public ::testing::Test {
       Div(one, Add(one, Exp(Neg(x))));
       auto computation_status = builder.Build();
       TF_CHECK_OK(computation_status.status());
-      sigmoid_ = computation_status.ConsumeValueOrDie();
+      sigmoid_ = std::move(computation_status).value();
     }
 
     // Create a computation for a binary max function: (x, y) => max (x, y)
@@ -97,7 +97,7 @@ class HloCostAnalysisTest : public ::testing::Test {
       Max(x, y);
       auto computation_status = builder.Build();
       TF_CHECK_OK(computation_status.status());
-      max_ = computation_status.ConsumeValueOrDie();
+      max_ = std::move(computation_status).value();
     }
 
     // Create a computation for a binary GT function: (x, y) => x > y
@@ -108,7 +108,7 @@ class HloCostAnalysisTest : public ::testing::Test {
       Gt(x, y);
       auto computation_status = builder.Build();
       TF_CHECK_OK(computation_status.status());
-      gt_ = computation_status.ConsumeValueOrDie();
+      gt_ = std::move(computation_status).value();
     }
   }
 
@@ -116,12 +116,11 @@ class HloCostAnalysisTest : public ::testing::Test {
   std::unique_ptr<HloModule> BuildHloGraph(XlaBuilder* builder) {
     auto computation_status = builder->Build();
     TF_CHECK_OK(computation_status.status());
-    auto computation = computation_status.ConsumeValueOrDie();
+    auto computation = std::move(computation_status).value();
     auto config = HloModule::CreateModuleConfigFromProto(computation.proto(),
                                                          DebugOptions())
-                      .ConsumeValueOrDie();
-    return HloModule::CreateFromProto(computation.proto(), config)
-        .ConsumeValueOrDie();
+                      .value();
+    return HloModule::CreateFromProto(computation.proto(), config).value();
   }
 
   Client* client_;

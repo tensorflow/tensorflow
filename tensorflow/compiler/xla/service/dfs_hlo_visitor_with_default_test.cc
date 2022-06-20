@@ -80,7 +80,7 @@ ENTRY TestComputation {
   ROOT convert = f64[] convert(f32[] arg)
 })";
   std::unique_ptr<HloModule> module =
-      ParseAndReturnVerifiedModule(hlo_string).ConsumeValueOrDie();
+      ParseAndReturnVerifiedModule(hlo_string).value();
   ElementwiseTestVisitor visitor;
   TF_EXPECT_OK(module->entry_computation()->Accept(&visitor));
 }

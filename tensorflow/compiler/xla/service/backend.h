@@ -70,7 +70,7 @@ class BackendOptions {
 //
 // It also offers a pooling API for creation/use of initialized streams:
 //
-//    StreamPool::Ptr stream = backend->BorrowStream().ConsumeValueOrDie();
+//    StreamPool::Ptr stream = backend->BorrowStream().value();
 class Backend {
  public:
   // Creates a new backend.

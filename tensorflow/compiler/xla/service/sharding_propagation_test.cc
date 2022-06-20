@@ -1909,7 +1909,7 @@ ENTRY %entry {
     auto sharding = ParseSharding(
                         "{{replicated metadata={op_name=\"b\"}}, "
                         "{devices=[2,1]0,1 metadata={op_name=\"c\"}}}")
-                        .ConsumeValueOrDie();
+                        .value();
     body_root->set_sharding(sharding);
     while_is_sharded(module.get(), sharding.WithoutMetadata(),
                      {{CreateMetadata("b")}, {CreateMetadata("c")}});
@@ -1921,12 +1921,11 @@ ENTRY %entry {
     auto acc_1 = FindInstruction(module.get(), "acc.1");
     EXPECT_NE(nullptr, acc_1);
     acc_1->set_sharding(
-        ParseSharding("{devices=[2,1]0,1 metadata={op_name=\"b\"}}")
-            .ConsumeValueOrDie());
+        ParseSharding("{devices=[2,1]0,1 metadata={op_name=\"b\"}}").value());
 
     while_is_sharded(
         module.get(),
-        ParseSharding("{{replicated}, {devices=[2,1]0,1}}").ConsumeValueOrDie(),
+        ParseSharding("{{replicated}, {devices=[2,1]0,1}}").value(),
         {{}, {CreateMetadata("b")}});
   }
   {
@@ -1938,17 +1937,17 @@ ENTRY %entry {
     acc_1->set_sharding(
         ParseSharding("{devices=[2,1,2]0,1,2,3 last_tile_dim_replicate "
                       "metadata={op_name=\"b\"}}")
-            .ConsumeValueOrDie());
+            .value());
     auto p0 = FindInstruction(module.get(), "p0");
     p0->set_sharding(
         ParseSharding("{devices=[1,2,2]0,2,1,3 last_tile_dim_replicate "
                       "metadata={op_name=\"c\"}}")
-            .ConsumeValueOrDie());
+            .value());
 
     while_is_sharded(module.get(),
                      ParseSharding("{{replicated}, "
                                    "{devices=[2,2]0,1,2,3}}")
-                         .ConsumeValueOrDie(),
+                         .value(),
                      {{}, {CreateMetadata("c"), CreateMetadata("b")}});
   }
 }
@@ -1995,8 +1994,8 @@ ENTRY %entry {
   // The change happens before the fixpt loop
   EXPECT_EQ(changed,
             !GetParam().propagate_metadata && !GetParam().clear_metadata);
-  auto sharding = ParseSharding("{{maximal device=1}, {maximal device=1}}")
-                      .ConsumeValueOrDie();
+  auto sharding =
+      ParseSharding("{{maximal device=1}, {maximal device=1}}").value();
   auto while_instr = FindInstruction(module.get(), "while");
   ASSERT_NE(nullptr, while_instr);
   std::vector<const HloInstruction*> instructions{

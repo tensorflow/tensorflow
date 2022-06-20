@@ -2981,7 +2981,7 @@ ENTRY entry {
   )";
   auto module = ParseAndReturnVerifiedModule(original);
   TF_ASSERT_OK(module.status());
-  std::unique_ptr<HloModule> parsed_module = module.ConsumeValueOrDie();
+  std::unique_ptr<HloModule> parsed_module = std::move(module).value();
   EXPECT_EQ(parsed_module->input_output_alias_config().GetAliasedOutput(0, {0}),
             ShapeIndex{0});
 
@@ -3008,7 +3008,7 @@ ENTRY entry {
   )";
   auto module = ParseAndReturnVerifiedModule(original);
   TF_ASSERT_OK(module.status());
-  std::unique_ptr<HloModule> parsed_module = module.ConsumeValueOrDie();
+  std::unique_ptr<HloModule> parsed_module = std::move(module).value();
   EXPECT_EQ(parsed_module->input_output_alias_config().GetAliasedOutput(0, {0}),
             ShapeIndex({0, 0}));
   EXPECT_EQ(parsed_module->input_output_alias_config().GetAliasedOutput(0, {1}),

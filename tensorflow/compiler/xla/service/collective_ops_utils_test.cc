@@ -34,7 +34,7 @@ TEST(CollectiveOpsUtilsTest, GetParticipatingIDs_NoReplicaGroups) {
   std::vector<int> actual = GetParticipatingIDs(
                                 /*current_id=*/0, /*total_participant_count=*/3,
                                 /*groups=*/{})
-                                .ConsumeValueOrDie();
+                                .value();
   std::vector<int> expected = {0, 1, 2};
   EXPECT_EQ(actual, expected);
 }
@@ -52,7 +52,7 @@ TEST(CollectiveOpsUtilsTest, GetParticipatingIDs_ReplicaGroups) {
       GetParticipatingIDs(
           /*current_id=*/1, /*total_participant_count=*/std::nullopt,
           replica_groups)
-          .ConsumeValueOrDie();
+          .value();
   std::vector<int> expected = {1, 5};
   EXPECT_EQ(actual, expected);
 }
