@@ -546,7 +546,118 @@ class TestSparseCount(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(expected_values, y.values)
     self.assertAllEqual(expected_shape, y.dense_shape)
 
+class TestCompiledDenseBincount(test.TestCase, parameterized.TestCase):
 
+  @parameterized.named_parameters(
+    {
+        "testcase_name": "_no_maxlength_basic",
+        "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
+        "expected_values": [[0, 1, 1, 1, 0, 0],[0, 0, 0, 0, 2, 1]]
+    }, {
+        "testcase_name": "_maxlength",
+        "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
+        "maxlength": 7,
+        "expected_values": [[0, 1, 1, 1, 0, 0, 0],[1, 0, 0, 0, 2, 0, 0]]
+    }, {
+        "testcase_name": "_minlength",
+        "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
+        "minlength": 9,
+        "expected_values": [[0, 1, 1, 1, 0, 0, 0, 1, 0], 
+                            [1, 0, 0, 0, 2, 0, 0, 1, 0]]
+    }, {
+        "testcase_name": "_minlength_larger_values",
+        "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
+        "minlength": 3,
+        "expected_values": [[0, 1, 1, 1, 0, 0, 0, 1],
+                            [1, 0, 0, 0, 2, 0, 0, 1]]
+    }, {
+        "testcase_name": "_no_maxlength_binary",
+        "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
+        "expected_values": [[0, 1, 1, 1, 0, 0],
+                            [0, 0, 0, 0, 1, 1]],
+        "binary_output": True,
+    }, {
+        "testcase_name": "_maxlength_binary",
+        "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
+        "maxlength": 7,
+        "expected_values": [[0, 1, 1, 1, 0, 0, 0],
+                            [1, 0, 0, 0, 1, 0, 0]],
+        "binary_output": True,
+    }, {
+        "testcase_name": "_minlength_binary",
+        "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
+        "minlength": 9,
+        "expected_values": [[0, 1, 1, 1, 0, 0, 0, 1, 0],
+                            [1, 0, 0, 0, 1, 0, 0, 1, 0]],
+        "binary_output": True,
+    }, {
+        "testcase_name": "_minlength_larger_values_binary",
+        "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
+        "minlength": 3,
+        "expected_values": [[0, 1, 1, 1, 0, 0, 0, 1],
+                            [1, 0, 0, 0, 1, 0, 0, 1]],  
+        "binary_output": True,
+    }, {
+        "testcase_name": "_no_maxlength_weights",
+        "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
+        "expected_values": [[0. , 2. , 1. , 0.5, 0. , 0. ],
+                            [0. , 0. , 0. , 0. , 9. , 3. ]],
+        "weights": [[0.5, 1, 2], [3, 4, 5]]
+    }, {
+        "testcase_name": "_1d_no_maxlenght_base",
+        "x": np.array([3, 2, 1, 1], dtype=np.int32),
+        "expected_values": [0, 2, 1, 1]
+    }, {
+        "testcase_name": "_1d_binary",
+        "x": np.array([3, 2, 1, 1], dtype=np.int32),
+        "expected_values": [0, 1, 1, 1],
+        "binary_output": True
+    }, {
+        "testcase_name": "_1d_no_maxlenght_weights",
+        "x": np.array([3, 2, 1, 5, 4, 4], dtype=np.int32),
+        "weights": [0.5, 1, 2, 3, 4, 5],
+        "expected_values": [0. , 2. , 1. , 0.5, 9. , 3. ]
+    }, {
+       "testcase_name": "_all_axes",
+       "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
+       "expected_values": [0, 1, 1, 1, 2, 1],
+       "axis": None
+    })
+  @test_util.disable_mlir_bridge('TODO: ?')
+  def test_compiled_dense(self,
+                          x,
+                          expected_values,
+                          minlength=None,
+                          maxlength=None,
+                          binary_output=False,
+                          weights=None,
+                          axis=-1):
+
+    @def_function.function(jit_compile=True)
+    def f (x,
+           weights=weights,
+           minlength=minlength,
+           maxlength=maxlength,
+           binary_output=binary_output,
+           axis=axis):
+      y = bincount_ops.bincount(
+                                x,
+                                weights=weights,
+                                minlength=minlength,
+                                maxlength=maxlength,
+                                binary_output=binary_output,
+                                axis=axis)
+      return y
+
+    res = f(x,
+            weights=weights,
+            minlength=minlength,
+            maxlength=maxlength,
+            binary_output=binary_output,
+            axis=axis)
+    self.assertAllEqual(expected_values, res)
+    
+  
 class TestDenseBincount(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters([{
