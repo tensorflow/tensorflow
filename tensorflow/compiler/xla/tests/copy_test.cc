@@ -246,10 +246,10 @@ XLA_TEST_F(CopyOpClientTest, Copy0x0) {
 
   XlaBuilder builder(TestName());
   Parameter(&builder, 0, in_shape, "input");
-  auto input_data = client_->TransferToServer(empty).ConsumeValueOrDie();
+  auto input_data = client_->TransferToServer(empty).value();
 
-  auto actual = ExecuteAndTransfer(&builder, {input_data.get()}, &out_shape)
-                    .ConsumeValueOrDie();
+  auto actual =
+      ExecuteAndTransfer(&builder, {input_data.get()}, &out_shape).value();
   EXPECT_TRUE(LiteralTestUtil::Equal(empty, actual));
 }
 

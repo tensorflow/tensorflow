@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 
 #include <memory>
+#include <utility>
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
@@ -82,7 +83,7 @@ class LLVMCompilerTest : public ::testing::Test {
     StatusOr<std::unique_ptr<Backend>> backend_or_status =
         Backend::CreateBackend(backend_options);
     ASSERT_IS_OK(backend_or_status.status());
-    backend_ = backend_or_status.ConsumeValueOrDie();
+    backend_ = std::move(backend_or_status).value();
   }
 
   ~LLVMCompilerTest() override {}
