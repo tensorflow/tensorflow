@@ -4,14 +4,14 @@
 
 Before sending your pull requests, make sure you do the following:
 
--   Read the [contributing guidelines](CONTRIBUTING.md).
--   Read the [Code of Conduct](CODE_OF_CONDUCT.md).
+-   Read the [contributing guidelines](CONTRIBUTING.md)
+-   Read the [Code of Conduct](CODE_OF_CONDUCT.md)
 -   Ensure you have signed the
-    [Contributor License Agreement (CLA)](https://cla.developers.google.com/).
+    [Contributor License Agreement (CLA)](https://cla.developers.google.com/)
 -   Check if your changes are consistent with the
-    [guidelines](#general-guidelines-and-philosophy-for-contribution).
--   Changes are consistent with the [Coding Style](#c-coding-style).
--   Run the [unit tests](#running-unit-tests).
+    [guidelines](#general-guidelines-and-philosophy-for-contribution)
+-   Changes are consistent with the [Coding Style](#c-coding-style)
+-   Run the [unit tests](#running-unit-tests)
 
 ## How to become a contributor and submit your own code
 
