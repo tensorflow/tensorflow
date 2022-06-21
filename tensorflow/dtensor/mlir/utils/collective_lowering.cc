@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -192,6 +193,7 @@ mlir::LogicalResult LowerAllReduceOpImpl(
 
   // This will become more general when Topology is properly defined.
   const bool is_tpu = all_reduce.device_type().endswith("TPU");
+  const bool is_gpu = all_reduce.device_type().endswith("GPU");
   // Use an atomic counter to generate bases for group and instance keys.
   int32 key_base = tf_collective_key_base++;
 
@@ -219,6 +221,14 @@ mlir::LogicalResult LowerAllReduceOpImpl(
         {(*output_layout).mesh().min_global_device_id()}, builder, loc);
     mlir::Value relative_device_id =
         builder.create<mlir::TF::SubOp>(loc, device_id, start_device_id);
+    if (is_gpu) {
+      const mlir::TensorType input_type =
+          all_reduce.input().getType().dyn_cast<mlir::TensorType>();
+      if (input_type && input_type.getElementType().isInteger(32)) {
+        return mlir::emitError(
+            loc, "On GPU, collective reduce of int32 is not supported.");
+      }
+    }
     final_op = EmitCollectiveReduce(
         builder, loc, all_reduce.input(), all_reduce.reduce_op().str(),
         group_assignment_attr, key_base, relative_device_id,
