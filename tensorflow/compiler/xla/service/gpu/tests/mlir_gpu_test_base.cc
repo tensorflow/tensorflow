@@ -34,10 +34,10 @@ namespace gpu {
 MlirGpuTestBase::MlirGpuTestBase() {
   se::Platform* platform =
       se::MultiPlatformManager::PlatformWithName(tensorflow::GpuPlatformName())
-          .ConsumeValueOrDie();
+          .value();
   BackendOptions options;
   options.set_platform(platform);
-  backend_ = xla::Backend::CreateBackend(options).ConsumeValueOrDie();
+  backend_ = xla::Backend::CreateBackend(options).value();
 }
 
 StatusOr<std::unique_ptr<Executable>> MlirGpuTestBase::CompileMlirModule(
@@ -109,10 +109,10 @@ MlirGpuTestBase::RunMlirModuleWithHostBuffers(
     owning_memory.push_back(
         allocator
             ->Allocate(backend_->default_device_ordinal(), host_buffer.size())
-            .ConsumeValueOrDie());
+            .value());
   }
-  auto stream = backend_->BorrowStream(backend_->default_device_ordinal())
-                    .ConsumeValueOrDie();
+  auto stream =
+      backend_->BorrowStream(backend_->default_device_ordinal()).value();
   std::vector<se::DeviceMemoryBase> args;
   for (int i = 0; i < owning_memory.size(); i++) {
     se::DeviceMemoryBase memory(*owning_memory[i]);
@@ -168,8 +168,8 @@ StatusOr<std::unique_ptr<Executable>> MlirGpuTestBase::CompileMlirText(
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseMlirModule(module_text, context));
-  auto stream = backend_->BorrowStream(backend_->default_device_ordinal())
-                    .ConsumeValueOrDie();
+  auto stream =
+      backend_->BorrowStream(backend_->default_device_ordinal()).value();
   return CompileMlirModule(*module, stream.get());
 }
 

@@ -39,7 +39,7 @@ TEST_F(GemmTest, SimpleCase1) {
   std::vector<float> arg1 = {1, 2, 3, 4};
   auto outputs = RunMlirTextWithHostBuffers(
                      mlir_text, {ToUint8Span(&arg0), ToUint8Span(&arg1)})
-                     .ConsumeValueOrDie();
+                     .value();
   ASSERT_EQ(1, outputs.size());
   EXPECT_THAT(FromUint8Span<float>(outputs[0]),
               ElementsAreArray<float>({11, 16, 19, 28}));
