@@ -1407,6 +1407,26 @@ class SliceAssignTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           f, [array_ops.zeros(shape), array_ops.ones(updates_shape)], delta=1.0)
       self.assertAllClose(theoretical, numerical)
 
+  @parameterized.named_parameters(("_%s" % i, *args) for i, args in enumerate([  # pylint:disable=g-complex-comprehension
+      ([2, 5], [0, 1], [1, 0], [1, 2], [1], 0, 2, 0, 0,
+       1), ([4], [5], [3], [1], [], 1, 0, 0, 0, 0),
+      ([2, 2, 3, 2], [0, 0, 1], [1, 0, 2], [1, 0, 1], [2, 1], 0, 0, 2, 0, 5)
+  ]))
+  @test_util.disable_xla("b/123559667")
+  def testTensorStridedSliceUpdateWithBroadcastingGrad(self, shape, begin, end,
+                                                       strides, updates_shape,
+                                                       *args):
+    with self.cached_session():
+
+      def f(a, b):
+        return gen_array_ops.tensor_strided_slice_update(
+            a, begin, end, strides, b, *args)
+
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          f, [array_ops.zeros(shape),
+              array_ops.ones(updates_shape)], delta=1.0)
+      self.assertAllClose(theoretical, numerical)
+
 
 class ShapeSizeRankTest(test_util.TensorFlowTestCase):
 
