@@ -56,11 +56,11 @@ TEST(NumericalUtils, QuantizeMultiplier) {
 TEST(NumericalUtils, ActivationRange) {
   // zero point = 0
   auto a =
-      CalculateQuantizedRange(1e-6, 0, absl::nullopt, absl::nullopt, -128, 127);
+      CalculateQuantizedRange(1e-6, 0, std::nullopt, std::nullopt, -128, 127);
   ASSERT_EQ(a.first, -128);
   ASSERT_EQ(a.second, 127);
 
-  auto b = CalculateQuantizedRange(1e-6, 0, 0.0, absl::nullopt, -128, 127);
+  auto b = CalculateQuantizedRange(1e-6, 0, 0.0, std::nullopt, -128, 127);
   ASSERT_EQ(b.first, 0);
   ASSERT_EQ(b.second, 127);
 
@@ -73,12 +73,12 @@ TEST(NumericalUtils, ActivationRange) {
   ASSERT_EQ(d.second, 127);
 
   // zero point = 100
-  auto e = CalculateQuantizedRange(1e-6, 100, absl::nullopt, absl::nullopt,
-                                   -128, 127);
+  auto e =
+      CalculateQuantizedRange(1e-6, 100, std::nullopt, std::nullopt, -128, 127);
   ASSERT_EQ(e.first, -128);
   ASSERT_EQ(e.second, 127);
 
-  auto f = CalculateQuantizedRange(1e-6, 100, 0.0, absl::nullopt, -128, 127);
+  auto f = CalculateQuantizedRange(1e-6, 100, 0.0, std::nullopt, -128, 127);
   ASSERT_EQ(f.first, 100);
   ASSERT_EQ(f.second, 127);
 
@@ -91,12 +91,12 @@ TEST(NumericalUtils, ActivationRange) {
   ASSERT_EQ(h.second, 127);
 
   // zero point = -100
-  auto i = CalculateQuantizedRange(1e-6, -100, absl::nullopt, absl::nullopt,
-                                   -128, 127);
+  auto i = CalculateQuantizedRange(1e-6, -100, std::nullopt, std::nullopt, -128,
+                                   127);
   ASSERT_EQ(i.first, -128);
   ASSERT_EQ(i.second, 127);
 
-  auto j = CalculateQuantizedRange(1e-6, -100, 0.0, absl::nullopt, -128, 127);
+  auto j = CalculateQuantizedRange(1e-6, -100, 0.0, std::nullopt, -128, 127);
   ASSERT_EQ(j.first, -100);
   ASSERT_EQ(j.second, 127);
 

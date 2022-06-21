@@ -135,12 +135,12 @@ class MlirHloBuilder : public XlaBuilder {
   StatusOr<XlaOp> CustomCallInternal(
       const std::string& call_target_name, absl::Span<const XlaOp> operands,
       const Shape& shape, const std::string& opaque,
-      absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
+      std::optional<absl::Span<const Shape>> operand_shapes_with_layout,
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
           output_operand_aliasing,
-      const Literal* literal, absl::optional<Window> window,
-      absl::optional<ConvolutionDimensionNumbers> dnums,
+      const Literal* literal, std::optional<Window> window,
+      std::optional<ConvolutionDimensionNumbers> dnums,
       CustomCallSchedule schedule, CustomCallApiVersion api_version) override;
 
   StatusOr<XlaOp> ReduceInternal(

@@ -75,7 +75,7 @@ Status HloModuleGroupMetadata::Build() {
     // of a While.
     const TrackedInstruction* tracked = GetTrackedInstruction(hlo->parent());
     if (tracked == nullptr) {
-      return Status::OK();
+      return OkStatus();
     }
 
     if (IsChannelInstruction(hlo) || hlo->IsCrossModuleAllReduce()) {
@@ -119,7 +119,7 @@ Status HloModuleGroupMetadata::Build() {
       }
     }
 
-    return Status::OK();
+    return OkStatus();
   };
 
   // Visit the computations in postorder so that the companion information grows
@@ -156,7 +156,7 @@ Status HloModuleGroupMetadata::Build() {
     alias_analyses_[module] = std::move(alias_analysis);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloModuleGroupMetadata::VerifyCompanionSets() const {
@@ -193,7 +193,7 @@ Status HloModuleGroupMetadata::VerifyCompanionSets() const {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool HloModuleGroupMetadata::IsChannelInstruction(
@@ -296,14 +296,14 @@ int64_t HloModuleGroupMetadata::GetModuleId(const HloModule* module) const {
   LOG(FATAL) << "unknown module";
 }
 
-absl::optional<int64_t> HloModuleGroupMetadata::GetInstructionDevice(
+std::optional<int64_t> HloModuleGroupMetadata::GetInstructionDevice(
     const HloInstruction& instruction) const {
   // The module group metadata can be created in both "single module, multiple
   // devices" and "multiple modules, no explicit devices" fashions.
   // The API returns an optional even though the current implementation always
   // returns a device, to account for cases where we cannot guess a device.
   // In such cases the VerifyChannelInstructions() will return proper errors.
-  absl::optional<int64_t> device = instruction.sharding_unique_device();
+  std::optional<int64_t> device = instruction.sharding_unique_device();
   if (!device) {
     device = GetModuleId(instruction.parent()->parent());
   }
@@ -339,11 +339,11 @@ Status HloModuleGroupMetadata::RecordInstructions() {
           << " is already used by a send/recv instruction";
       all_reduce_map_[*hlo->channel_id()].push_back(hlo);
       max_channel_id_ = std::max(max_channel_id_, *hlo->channel_id());
-      return Status::OK();
+      return OkStatus();
     }
 
     if (!IsChannelInstruction(hlo)) {
-      return Status::OK();
+      return OkStatus();
     }
 
     TF_RET_CHECK(all_reduce_map_.find(*hlo->channel_id()) ==
@@ -384,7 +384,7 @@ Status HloModuleGroupMetadata::RecordInstructions() {
           << " is used by multiple recv-done instructions";
       channel.recv_done = hlo;
     }
-    return Status::OK();
+    return OkStatus();
   };
 
   for (HloModule* module : modules_) {
@@ -395,7 +395,7 @@ Status HloModuleGroupMetadata::RecordInstructions() {
   }
   VLOG(2) << "Created " << channels_.size() << " channels";
   VLOG(2) << "Created " << all_reduce_map_.size() << " all-reduce groups";
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
@@ -406,7 +406,7 @@ Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
   VLOG(2) << "adding as companions:" << instruction1->ToString() << " and "
           << instruction2->ToString();
   if (instruction1 == instruction2) {
-    return Status::OK();
+    return OkStatus();
   } else if (!ContainsKey(companion_set_index_, instruction1) &&
              !ContainsKey(companion_set_index_, instruction2)) {
     companion_sets_.push_back(
@@ -441,7 +441,7 @@ Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
     // instead.
     companion_sets_[index_to_remove].reset(nullptr);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloModuleGroupMetadata::VerifyChannelInstructions() {
@@ -522,7 +522,7 @@ Status HloModuleGroupMetadata::VerifyChannelInstructions() {
           "Nest companion paths do not match for channel %d", channel.id);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloModuleGroupMetadata::CheckCommunicatingInstruction(
@@ -531,7 +531,7 @@ Status HloModuleGroupMetadata::CheckCommunicatingInstruction(
   const HloModule* module = computation->parent();
   if (module->entry_computation() == computation ||
       tracked_instructions_.contains(computation)) {
-    return Status::OK();
+    return OkStatus();
   }
   return FailedPrecondition("channel is used in disallowed computation");
 }

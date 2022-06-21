@@ -57,3 +57,18 @@ def TosaStripQuantTypesPass : Pass<"tosa-strip-quant-types", "mlir::func::FuncOp
   let constructor = "createStripQuantTypesPass()";
   let dependentDialects = ["TosaDialect"];
 }
+
+def TosaDequantizeTFLSoftmaxPass : Pass<"tosa-dequantize-tfl-softmax", "mlir::func::FuncOp"> {
+  let summary = "Dequantize TFLite Softmax ops.";
+  let description = [{
+    This pass rewrites quantized TFLite Softmax ops as: Dequantize, (float) Softmax, Quantize.
+    It is a work around for current performance issues with quantized Softmax codegen.
+    For instance it is a 20% end-to-end speedup on certain Softmax-heavy BERTs.
+    The compromise here is that this breaks bit-for-bit agreement with the quantized
+    Softmax lowering. But as Softmax isn't currently a TOSA op, this isn't a TOSA
+    spec violation - just breaking an invariant in the TFL-to-TOSA import pipeline.
+    See https://github.com/google/iree/issues/8974.
+  }];
+  let constructor = "createDequantizeTFLSoftmaxPass()";
+  let dependentDialects = ["mlir::TFL::TFLDialect", "quant::QuantizationDialect"];
+}

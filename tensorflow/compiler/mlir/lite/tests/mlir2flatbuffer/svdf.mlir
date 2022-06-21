@@ -15,48 +15,42 @@ func.func @main(tensor<4 x f32>, tensor<4 x f32>, tensor<4 x f32>, tensor<4 x f3
 // CHECK-NEXT:         name: "arg0",
 // CHECK-NEXT:         quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:         },
-// CHECK-NEXT:         has_rank: true
+// CHECK-NEXT:         }
 // CHECK-NEXT:       }, {
 // CHECK-NEXT:         shape: [ 4 ],
 // CHECK-NEXT:         buffer: 2,
 // CHECK-NEXT:         name: "arg1",
 // CHECK-NEXT:         quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:         },
-// CHECK-NEXT:         has_rank: true
+// CHECK-NEXT:         }
 // CHECK-NEXT:       }, {
 // CHECK-NEXT:         shape: [ 4 ],
 // CHECK-NEXT:         buffer: 3,
 // CHECK-NEXT:         name: "arg2",
 // CHECK-NEXT:         quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:         },
-// CHECK-NEXT:         has_rank: true
+// CHECK-NEXT:         }
 // CHECK-NEXT:       }, {
 // CHECK-NEXT:         shape: [ 4 ],
 // CHECK-NEXT:         buffer: 4,
 // CHECK-NEXT:         name: "arg3",
 // CHECK-NEXT:         quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:         },
-// CHECK-NEXT:         has_rank: true
+// CHECK-NEXT:         }
 // CHECK-NEXT:       }, {
 // CHECK-NEXT:         shape: [ 4 ],
 // CHECK-NEXT:         name: "Const",
 // CHECK-NEXT:         quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:         },
-// CHECK-NEXT:         is_variable: true,
-// CHECK-NEXT:         has_rank: true
+// CHECK-NEXT:         is_variable: true
 // CHECK-NEXT:       }, {
 // CHECK-NEXT:         shape: [ 4 ],
 // CHECK-NEXT:         buffer: 6,
 // CHECK-NEXT:         name: "tfl.svdf",
 // CHECK-NEXT:         quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:         },
-// CHECK-NEXT:         has_rank: true
+// CHECK-NEXT:         }
 // CHECK-NEXT:       } ],
 // CHECK-NEXT:       inputs: [ 0, 1, 2, 3 ],
 // CHECK-NEXT:       outputs: [ 5 ],

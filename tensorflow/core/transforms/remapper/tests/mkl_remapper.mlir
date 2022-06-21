@@ -1,4 +1,5 @@
 // RUN: tfg-transforms-opt -tfg-remapper=enable-mkl-patterns %s | FileCheck %s
+// RUN: tfg-transforms-opt -tfg-remapper=verify-pdll-patterns-only %s | FileCheck %s
 
 module {
   // CHECK: %[[ARG0:.*]]: tensor<64x64xf32> {tfg.name = "arg0"}
@@ -16,7 +17,7 @@ module {
     // CHECK: %[[SIGMOID_11:.*]], {{.*}} name("sigmoid4_2")
     %Sigmoid_11, %ctl_12 = Sigmoid(%Sigmoid_9) device("/device:CPU:0") name("sigmoid4_2") {T = f32} : (tensor<*xf32>) -> (tensor<*xf32>)
     // CHECK: _MklSwish(%[[PLACEHOLDER]]) {{.*}} name("mul1")
-    %Mul, %ctl_13 = Mul(%Placeholder_0, %Sigmoid) device("/device:CPU:0") name("mul1") {T = f32} : (tensor<64x64xf32>, tensor<*xf32>) -> (tensor<*xf32>)
+    %Mul, %ctl_13 = Mul(%Placeholder_0, %Sigmoid) [%ctl_12, %ctl_6] device("/device:CPU:0") name("mul1") {T = f32} : (tensor<64x64xf32>, tensor<*xf32>) -> (tensor<*xf32>)
     // CHECK: _MklSwish(%[[PLACEHOLDER]]) {{.*}} name("mul2")
     %Mul_14, %ctl_15 = Mul(%Sigmoid_3, %Placeholder_0) device("/device:CPU:0") name("mul2") {T = f32} : (tensor<*xf32>, tensor<64x64xf32>) -> (tensor<*xf32>)
     // CHECK: _MklSwish(%[[SIGMOID_3]]) {{.*}} name("mul3")

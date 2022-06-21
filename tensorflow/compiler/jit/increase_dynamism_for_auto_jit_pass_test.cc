@@ -94,7 +94,7 @@ Status IncreaseDynamismForAutoJit(const Scope& s,
   IncreaseDynamismForAutoJitPass rewriter;
   TF_RETURN_IF_ERROR(rewriter.Run(options));
   *result = std::move(graph);
-  return Status::OK();
+  return OkStatus();
 }
 
 TEST(SliceToDynamicSliceRewriteTest, Basic) {

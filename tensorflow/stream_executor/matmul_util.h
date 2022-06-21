@@ -12,6 +12,8 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_MATMUL_UTIL_H_
 #define TENSORFLOW_STREAM_EXECUTOR_MATMUL_UTIL_H_
 
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -185,8 +187,8 @@ port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithms(
     Stream* stream, BatchMatmulParameters matmul_parameters, int64_t batch_size,
     int64_t m, int64_t n, int64_t k, tensorflow::DataType dtype,
     blas::MatrixDescriptor lhs_matrix, blas::MatrixDescriptor rhs_matrix,
-    blas::MatrixDescriptor output_matrix);
-
+    blas::MatrixDescriptor output_matrix,
+    std::optional<int> max_algorithm_count = std::nullopt);
 
 }  // namespace stream_executor
 

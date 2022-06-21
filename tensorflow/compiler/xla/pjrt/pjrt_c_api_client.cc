@@ -41,7 +41,7 @@ PjRtCApiClient::PjRtCApiClient(
 
 PjRtCApiClient::~PjRtCApiClient() { delete wrapped_; }
 
-StatusOr<absl::optional<std::string>> PjRtCApiClient::ExecutableFingerprint(
+StatusOr<std::optional<std::string>> PjRtCApiClient::ExecutableFingerprint(
     const PjRtExecutable& executable) const {
   return wrapped_->ExecutableFingerprint(
       *PjRtCApiExecutable::GetWrapped(&executable));
@@ -86,7 +86,7 @@ StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 PjRtCApiExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
-    absl::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
+    std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
   std::vector<std::vector<PjRtBuffer*>> wrapped_args;
   for (const std::vector<PjRtBuffer*>& args : argument_handles) {
     wrapped_args.push_back(PjRtCApiBuffer::GetWrappedVector(args));
@@ -108,7 +108,7 @@ StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtCApiExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
-    absl::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
+    std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
   std::vector<PjRtBuffer*> wrapped_args =
       PjRtCApiBuffer::GetWrappedVector(argument_handles);
 
@@ -127,7 +127,7 @@ StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtCApiExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
-    absl::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
+    std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
   std::vector<PjRtBuffer*> wrapped_args =
       PjRtCApiBuffer::GetWrappedVector(argument_handles);
 

@@ -92,7 +92,7 @@ TEST_F(DispatcherClientTest, GetDataServiceConfig) {
   EXPECT_EQ(config.deployment_mode(), DEPLOYMENT_MODE_COLOCATED);
 }
 
-TEST_F(DispatcherClientTest, EnableMultiTrainerCache) {
+TEST_F(DispatcherClientTest, EnableCrossTrainerCache) {
   DataServiceMetadata metadata;
   metadata.set_element_spec("encoded_element_spec");
   metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);

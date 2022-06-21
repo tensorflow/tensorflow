@@ -64,7 +64,7 @@ Status HloModule::set_schedule(HloSchedule schedule) {
   TF_RET_CHECK(schedule.module() == this);
   TF_RETURN_IF_ERROR(schedule.Verify());
   schedule_ = std::move(schedule);
-  return Status::OK();
+  return OkStatus();
 }
 
 void HloModule::ReplaceEntryComputation(HloComputation* entry_computation) {
@@ -156,7 +156,7 @@ Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
   TF_RET_CHECK(it != computations_.end());
   TF_RET_CHECK(it->get() == to_remove);
   computations_.erase(it);
-  return Status::OK();
+  return OkStatus();
 }
 
 HloComputation* HloModule::AddEmbeddedComputation(
@@ -383,7 +383,7 @@ Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions() const {
       instruction_ids.insert(instruction->unique_id());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */
@@ -596,16 +596,13 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
   TF_ASSIGN_OR_RETURN(HloModuleConfig config,
                       CreateModuleConfigFromShape(program_shape, debug_options,
                                                   execution_options));
-  if (module.has_device_assignment()) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<DeviceAssignment> device_assignment,
-        DeviceAssignment::Deserialize(module.device_assignment()));
-    if (!config.has_static_device_assignment()) {
+  if (!config.has_static_device_assignment()) {
+    if (module.has_device_assignment()) {
+      // Get the proto from the exeuction options rather than the module proto.
+      TF_ASSIGN_OR_RETURN(
+          std::unique_ptr<DeviceAssignment> device_assignment,
+          DeviceAssignment::Deserialize(module.device_assignment()));
       config.set_static_device_assignment(*device_assignment);
-    } else {
-      TF_RET_CHECK(config.static_device_assignment() == *device_assignment)
-          << "Device assignment from execution options and module proto are "
-             "not the same";
     }
   }
   return config;
@@ -927,7 +924,7 @@ Status HloModule::RemoveUnusedComputations() {
   for (auto computation : to_remove) {
     TF_RETURN_IF_ERROR(RemoveEmbeddedComputation(computation));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 HloComputation* HloModule::DeepCloneComputation(HloComputation* computation,

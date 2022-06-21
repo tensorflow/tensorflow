@@ -60,7 +60,7 @@ Status PythonTracer::Start() {
   VLOG(1) << __FUNCTION__;
   recording_ = true;
   PythonHooks::GetSingleton()->Start(options_);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PythonTracer::Stop() {
@@ -70,7 +70,7 @@ Status PythonTracer::Stop() {
   VLOG(1) << __FUNCTION__;
   context_ = PythonHooks::GetSingleton()->Stop();
   recording_ = false;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PythonTracer::CollectData(XSpace* space) {
@@ -79,7 +79,7 @@ Status PythonTracer::CollectData(XSpace* space) {
     context_->Finalize(space);
     context_.reset();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

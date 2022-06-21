@@ -39,7 +39,7 @@ static std::unique_ptr<Device> NewDevice(const string& type,
   class FakeDevice : public Device {
    public:
     explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
-    Status Sync() override { return Status::OK(); }
+    Status Sync() override { return OkStatus(); }
     Allocator* GetAllocator(AllocatorAttributes) override { return nullptr; }
   };
   DeviceAttributes attr;
@@ -83,7 +83,7 @@ class FakeCache : public TestWorkerCache {
     for (const auto& it : resp.device_attributes()) {
       if (it.name() == device) {
         *locality = it.locality();
-        done(Status::OK());
+        done(OkStatus());
         return;
       }
     }
@@ -98,7 +98,7 @@ class FakeNcclCommunicator : public NcclCommunicatorInterface {
 
   void Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
                StatusCallback done) override {
-    done(Status::OK());
+    done(OkStatus());
   }
 
   void StartAbort(const Status& s) override {}

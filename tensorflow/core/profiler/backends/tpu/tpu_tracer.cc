@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/core/tpu/tpu_initializer_helper.h"
 #include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
 
@@ -130,9 +129,7 @@ std::unique_ptr<ProfilerInterface> CreateTpuTracer(
 }
 
 auto register_tpu_tracer_factory = [] {
-  if (tensorflow::tpu::TryAcquireTpuLock().ok()) {
-    RegisterProfilerFactory(&CreateTpuTracer);
-  }
+  RegisterProfilerFactory(&CreateTpuTracer);
   return 0;
 }();
 

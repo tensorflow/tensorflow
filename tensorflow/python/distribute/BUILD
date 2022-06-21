@@ -812,9 +812,9 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/trackable:base",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
-        "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/types",
         "//tensorflow/python/util:tf_export",
     ],
@@ -872,7 +872,7 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute/coordinator:coordinator_context",
         "//tensorflow/python/keras/saving/saved_model:load_context",
-        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/trackable:base",
         "//tensorflow/python/types",
     ],
 )
@@ -928,7 +928,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/saved_model:save_context",
-        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/trackable:base",
     ],
 )
 
@@ -1121,8 +1121,8 @@ distribute_py_test(
     deps = [
         ":combinations",
         ":strategy_combinations",
+        "//tensorflow/python/checkpoint",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/training/tracking:util",
     ],
 )
 
@@ -1286,8 +1286,8 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/saved_model:revived_types",
         "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/trackable:base",
         "//tensorflow/python/training/saving:saveable_object_util",
-        "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
@@ -1316,6 +1316,7 @@ tf_py_test(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/distribute/coordinator:cluster_coordinator",
@@ -1326,9 +1327,8 @@ tf_py_test(
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
+        "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/training:server_lib",
-        "//tensorflow/python/training/tracking",
-        "//tensorflow/python/training/tracking:util",
     ],
 )
 
@@ -1595,7 +1595,6 @@ distribute_py_test(
         ":test_util",
         ":values",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:checkpoint_management",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -1605,6 +1604,7 @@ distribute_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
@@ -1830,12 +1830,12 @@ cuda_py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:save",
-        "//tensorflow/python/training/tracking:util",
     ],
 )
 
@@ -2238,8 +2238,8 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tf_decorator",
         "//tensorflow/python/eager:remote",
+        "//tensorflow/python/trackable:base",
         "//tensorflow/python/training:server_lib",
-        "//tensorflow/python/training/tracking:base",
     ],
 )
 
@@ -2266,15 +2266,15 @@ distribute_py_test(
         "//tensorflow/python:linalg_ops_impl",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/training:server_lib",
-        "//tensorflow/python/training/tracking",
-        "//tensorflow/python/training/tracking:util",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -2334,6 +2334,7 @@ tpu_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:remote",
@@ -2345,7 +2346,6 @@ tpu_py_test(
         "//tensorflow/python/tpu:device_assignment",
         "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/training:checkpoint_management",
-        "//tensorflow/python/training/tracking:util",
     ],
 )
 

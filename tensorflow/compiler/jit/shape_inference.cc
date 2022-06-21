@@ -33,7 +33,7 @@ Status ShapeHandleToTensorShape(shape_inference::InferenceContext* context,
                                 const shape_inference::ShapeHandle& handle,
                                 PartialTensorShape* shape) {
   // The default is already unknown
-  if (!context->RankKnown(handle)) return Status::OK();
+  if (!context->RankKnown(handle)) return OkStatus();
 
   std::vector<int64_t> dims(context->Rank(handle));
   for (int32_t i = 0, end = dims.size(); i < end; ++i) {
@@ -199,7 +199,7 @@ Status PropagateShapes(Graph* graph,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Store the shapes of the output tensors in a map
@@ -235,7 +235,7 @@ Status StoreOutputShapes(const Graph& graph, const ShapeRefiner& shape_refiner,
               << output.handle_shape.DebugString();
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

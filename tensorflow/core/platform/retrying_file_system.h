@@ -250,7 +250,7 @@ Status RetryingFileSystem<Underlying>::NewRandomAccessFile(
       retry_config_));
   result->reset(new retrying_internals::RetryingRandomAccessFile(
       std::move(base_file), retry_config_));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Underlying>
@@ -265,7 +265,7 @@ Status RetryingFileSystem<Underlying>::NewWritableFile(
       retry_config_));
   result->reset(new retrying_internals::RetryingWritableFile(
       std::move(base_file), retry_config_));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Underlying>
@@ -281,7 +281,7 @@ Status RetryingFileSystem<Underlying>::NewAppendableFile(
       retry_config_));
   result->reset(new retrying_internals::RetryingWritableFile(
       std::move(base_file), retry_config_));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Underlying>

@@ -63,10 +63,10 @@ tensorflow::Status RegisterCustomOps(
     tensorflow::OpRegistry::Global()->Register(
         [opdef](tensorflow::OpRegistrationData* op_reg_data) -> Status {
           *op_reg_data = tensorflow::OpRegistrationData(opdef);
-          return Status::OK();
+          return OkStatus();
         });
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -114,11 +114,11 @@ Status ConvertTFOpsToTfjsJSON(mlir::ModuleOp module, bool export_to_mlir,
   if (export_to_mlir) {
     llvm::raw_string_ostream os(*result);
     module.print(os);
-    return Status::OK();
+    return OkStatus();
   }
 
   return tfjs::MlirToJSONTranslateFunction(module, result)
-             ? Status::OK()
+             ? OkStatus()
              : statusHandler.ConsumeStatus();
 }
 

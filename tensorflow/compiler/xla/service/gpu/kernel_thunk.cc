@@ -65,7 +65,7 @@ Status KernelThunk::Initialize(const GpuExecutable& executable,
     kernel_cache_.emplace(executor, std::move(kernel));
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 static void PrintBufferContents(

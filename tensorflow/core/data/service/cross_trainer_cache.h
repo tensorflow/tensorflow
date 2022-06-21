@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_DATA_SERVICE_MULTI_TRAINER_CACHE_H_
-#define TENSORFLOW_CORE_DATA_SERVICE_MULTI_TRAINER_CACHE_H_
+#ifndef TENSORFLOW_CORE_DATA_SERVICE_CROSS_TRAINER_CACHE_H_
+#define TENSORFLOW_CORE_DATA_SERVICE_CROSS_TRAINER_CACHE_H_
 
 #include <cstddef>
 #include <deque>
@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/data/service/logging_utils.h"
 #include "tensorflow/core/framework/metrics.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
@@ -47,7 +46,7 @@ namespace data {
 // collected when the cache becomes full. Consequently, trainers read from a
 // sliding window through the dataset and may not read the full dataset.
 //
-// The `MultiTrainerCache` class is thread-safe.
+// The `CrossTrainerCache` class is thread-safe.
 //
 // Example usage:
 //
@@ -66,7 +65,7 @@ namespace data {
 //     int64_t next_ = 1;
 //   };
 //
-//   MultiTrainerCache<int64_t> cache(
+//   CrossTrainerCache<int64_t> cache(
 //       /*max_cache_size_bytes=*/10 * (size_t{1} << 30),  // 10GB
 //       absl::make_unique<InfiniteRange>());
 //
@@ -94,17 +93,17 @@ class CachableSequence {
 
 // Sliding-window cache shared across concurrent trainers.
 template <class ElementType>
-class MultiTrainerCache {
+class CrossTrainerCache {
  public:
-  // Creates a `MultiTrainerCache` with `max_cache_size_bytes` of memory budget.
+  // Creates a `CrossTrainerCache` with `max_cache_size_bytes` of memory budget.
   // The cache should be able to hold at least one element, i.e.:
   // REQUIRES: `max_cache_size_bytes >= max(GetElementSizeBytes(*))`
-  explicit MultiTrainerCache(
+  explicit CrossTrainerCache(
       size_t max_cache_size_bytes,
       std::unique_ptr<CachableSequence<ElementType>> cachable_sequence);
-  virtual ~MultiTrainerCache() = default;
-  MultiTrainerCache(const MultiTrainerCache&) = delete;
-  MultiTrainerCache& operator=(const MultiTrainerCache&) = delete;
+  virtual ~CrossTrainerCache() = default;
+  CrossTrainerCache(const CrossTrainerCache&) = delete;
+  CrossTrainerCache& operator=(const CrossTrainerCache&) = delete;
 
   // Gets the next element for a trainer. A `trainer_id` identifies the trainer
   // reading from the cache. A trainer reads the next element it hasn't read
@@ -182,20 +181,20 @@ class MultiTrainerCache {
 };
 
 template <class ElementType>
-MultiTrainerCache<ElementType>::MultiTrainerCache(
+CrossTrainerCache<ElementType>::CrossTrainerCache(
     size_t max_cache_size_bytes,
     std::unique_ptr<CachableSequence<ElementType>> cachable_sequence)
     : max_cache_size_bytes_(max_cache_size_bytes),
       cachable_sequence_(std::move(cachable_sequence)) {
   DCHECK_GT(max_cache_size_bytes, 0)
-      << "MultiTrainerCache size must be greater than 0.";
-  VLOG(2) << "Initialized tf.data service multi-trainer cache with "
+      << "CrossTrainerCache size must be greater than 0.";
+  VLOG(2) << "Initialized tf.data service cross-trainer cache with "
           << FormatBytes(max_cache_size_bytes) << " of memory.";
 }
 
 template <class ElementType>
 StatusOr<std::shared_ptr<const ElementType>>
-MultiTrainerCache<ElementType>::Get(const std::string& trainer_id)
+CrossTrainerCache<ElementType>::Get(const std::string& trainer_id)
     TF_LOCKS_EXCLUDED(mu_) {
   if (trainer_id.empty()) {
     return errors::InvalidArgument(
@@ -208,8 +207,8 @@ MultiTrainerCache<ElementType>::Get(const std::string& trainer_id)
 }
 
 template <class ElementType>
-StatusOr<typename MultiTrainerCache<ElementType>::CacheQueryResult>
-MultiTrainerCache<ElementType>::GetCacheQueryResult(
+StatusOr<typename CrossTrainerCache<ElementType>::CacheQueryResult>
+CrossTrainerCache<ElementType>::GetCacheQueryResult(
     const std::string& trainer_id) {
   bool should_extend_cache = false;
   while (true) {
@@ -246,14 +245,14 @@ MultiTrainerCache<ElementType>::GetCacheQueryResult(
 }
 
 template <class ElementType>
-bool MultiTrainerCache<ElementType>::IsElementReady(
+bool CrossTrainerCache<ElementType>::IsElementReady(
     const std::string& trainer_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   return GetElementIndex(trainer_id) < cache_start_index_ + cache_.size();
 }
 
 template <class ElementType>
 StatusOr<std::shared_ptr<const ElementType>>
-MultiTrainerCache<ElementType>::GetElement(const std::string& trainer_id)
+CrossTrainerCache<ElementType>::GetElement(const std::string& trainer_id)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   size_t element_index = GetElementIndex(trainer_id);
   if (element_index >= std::numeric_limits<size_t>::max()) {
@@ -269,7 +268,7 @@ MultiTrainerCache<ElementType>::GetElement(const std::string& trainer_id)
 }
 
 template <class ElementType>
-size_t MultiTrainerCache<ElementType>::GetElementIndex(
+size_t CrossTrainerCache<ElementType>::GetElementIndex(
     const std::string& trainer_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   size_t element_index = trainer_to_element_index_map_[trainer_id];
   if (element_index < cache_start_index_) {
@@ -279,7 +278,7 @@ size_t MultiTrainerCache<ElementType>::GetElementIndex(
 }
 
 template <class ElementType>
-Status MultiTrainerCache<ElementType>::ExtendCache() TF_LOCKS_EXCLUDED(mu_) {
+Status CrossTrainerCache<ElementType>::ExtendCache() TF_LOCKS_EXCLUDED(mu_) {
   TF_ASSIGN_OR_RETURN(ElementType element, cachable_sequence_->GetNext());
   size_t new_element_size_bytes =
       cachable_sequence_->GetElementSizeBytes(element);
@@ -299,7 +298,7 @@ Status MultiTrainerCache<ElementType>::ExtendCache() TF_LOCKS_EXCLUDED(mu_) {
 }
 
 template <class ElementType>
-void MultiTrainerCache<ElementType>::FreeSpace(size_t new_element_size_bytes)
+void CrossTrainerCache<ElementType>::FreeSpace(size_t new_element_size_bytes)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   size_t num_elements_discarded = 0;
   while (!cache_.empty() &&
@@ -313,17 +312,17 @@ void MultiTrainerCache<ElementType>::FreeSpace(size_t new_element_size_bytes)
   }
 
   VLOG(3) << "Freed " << num_elements_discarded << " element(s) from "
-          << "tf.data service multi-trainer cache. Memory usage: "
+          << "tf.data service cross-trainer cache. Memory usage: "
           << FormatBytes(cache_size_bytes_) << ".";
 }
 
 template <class ElementType>
-void MultiTrainerCache<ElementType>::Cancel(Status status)
+void CrossTrainerCache<ElementType>::Cancel(Status status)
     TF_LOCKS_EXCLUDED(mu_) {
   DCHECK(!status.ok())
-      << "Cancelling MultiTrainerCache requires a non-OK status. Got "
+      << "Cancelling CrossTrainerCache requires a non-OK status. Got "
       << status;
-  VLOG(2) << "Cancel tf.data service multi-trainer cache with status "
+  VLOG(2) << "Cancel tf.data service cross-trainer cache with status "
           << status;
   mutex_lock l(mu_);
   status_ = std::move(status);
@@ -331,25 +330,25 @@ void MultiTrainerCache<ElementType>::Cancel(Status status)
 }
 
 template <class ElementType>
-bool MultiTrainerCache<ElementType>::IsCancelled() const
+bool CrossTrainerCache<ElementType>::IsCancelled() const
     TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
   return !status_.ok();
 }
 
 template <class ElementType>
-void MultiTrainerCache<ElementType>::RecordMetrics(
+void CrossTrainerCache<ElementType>::RecordMetrics(
     const CacheQueryResult& result) {
-  metrics::RecordTFDataServiceMultiTrainerCacheQuery(result.cache_hit);
+  metrics::RecordTFDataServiceCrossTrainerCacheQuery(result.cache_hit);
   size_t cache_size_bytes = 0;
   {
     mutex_lock l(mu_);
     cache_size_bytes = cache_size_bytes_;
   }
-  metrics::RecordTFDataServiceMultiTrainerCacheSizeBytes(cache_size_bytes);
+  metrics::RecordTFDataServiceCrossTrainerCacheSizeBytes(cache_size_bytes);
 }
 
 }  // namespace data
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_DATA_SERVICE_MULTI_CLIENT_CACHE_H_
+#endif  // TENSORFLOW_CORE_DATA_SERVICE_CROSS_CLIENT_CACHE_H_

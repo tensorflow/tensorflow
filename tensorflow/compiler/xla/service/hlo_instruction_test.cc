@@ -60,13 +60,13 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
   Status HandleParameter(HloInstruction* parameter) override {
     EXPECT_FALSE(count_.contains(parameter));
     count_[parameter] = GetCountsForNode(parameter);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status HandleConstant(HloInstruction* constant) override {
     EXPECT_FALSE(count_.contains(constant));
     count_[constant] = GetCountsForNode(constant);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status HandleAdd(HloInstruction* add) override {
@@ -76,7 +76,7 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
     EXPECT_TRUE(count_.contains(lhs));
     EXPECT_TRUE(count_.contains(rhs));
     count_[add] = GetCountsForNode(add);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status HandleNegate(HloInstruction* negate) override {
@@ -84,7 +84,7 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
     EXPECT_FALSE(count_.contains(negate));
     EXPECT_TRUE(count_.contains(operand));
     count_[negate] = GetCountsForNode(negate);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status HandleMap(HloInstruction* map) override {
@@ -93,7 +93,7 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
       EXPECT_TRUE(count_.contains(arg));
     }
     count_[map] = GetCountsForNode(map);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status HandleReduce(HloInstruction* reduce) override {
@@ -103,7 +103,7 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
     EXPECT_TRUE(count_.contains(arg));
     EXPECT_TRUE(count_.contains(init_value));
     count_[reduce] = GetCountsForNode(reduce);
-    return Status::OK();
+    return OkStatus();
   }
 
   int64_t NumOperands(const HloInstruction* node) {
@@ -571,12 +571,12 @@ class NodeCollectorAndPostProcessor : public DfsHloVisitorWithDefault {
 
   Status Postprocess(HloInstruction* hlo) override {
     post_processed_nodes_.push_back(hlo);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status DefaultAction(HloInstruction* hlo_instruction) override {
     visited_nodes_.push_back(hlo_instruction);
-    return Status::OK();
+    return OkStatus();
   }
 
   const std::vector<const HloInstruction*>& visited_nodes() {
@@ -1072,7 +1072,7 @@ TEST_F(HloInstructionTest, FunctionVisitor) {
     EXPECT_FALSE(visit_order.contains(inst));
     visit_order[inst] = visit_num;
     visit_num++;
-    return Status::OK();
+    return OkStatus();
   });
   EXPECT_IS_OK(add->Accept(&visitor));
 

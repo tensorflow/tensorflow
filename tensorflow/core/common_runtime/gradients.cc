@@ -401,7 +401,7 @@ Status SymbolicGradientBuilder::Compute() {
     (*x_grad_node_outputs_)[i] = SumGradients(x_node_outputs_[i]);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddSymbolicGradients(gtl::ArraySlice<NodeOut> y_node_outputs,

@@ -64,14 +64,14 @@ struct ParsedStaticWhileLoop {
 // value or the loop bound's value depends on the while's parent computation's
 // parameter.
 struct ParsedWhileLoop {
-  absl::optional<ParsedStaticWhileLoop> static_while_loop;
+  std::optional<ParsedStaticWhileLoop> static_while_loop;
   bool is_dynamic() const { return !static_while_loop.has_value(); }
 };
 constexpr ParsedWhileLoop kParsedDynamicWhileLoop = ParsedWhileLoop();
 
 // Tries to parse a while loop using a set of predefined patterns.
 // Returns the parsing result.
-absl::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
+std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
     HloInstruction* while_op);
 
 // Responsible for evaluating HLO and obtain literal as the evaluation results.

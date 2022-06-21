@@ -333,7 +333,7 @@ Status HeapSimulator::RunComputation(
       Free(value, value->instruction());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 HeapSimulator::HeapSimulator(

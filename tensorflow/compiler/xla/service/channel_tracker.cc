@@ -88,7 +88,7 @@ Status ChannelTracker::RegisterSendInternal(const ChannelHandle& handle) {
         handle.handle());
   }
   channel.has_sender = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ChannelTracker::RegisterRecvInternal(const ChannelHandle& handle) {
@@ -111,7 +111,7 @@ Status ChannelTracker::RegisterRecvInternal(const ChannelHandle& handle) {
         handle.handle());
   }
   channel.receiver_count += 1;
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace xla

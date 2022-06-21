@@ -137,9 +137,6 @@ struct CrashAnalysisCrashReproducerStream
 
 }  // namespace
 
-const char kCrashReproducerStdErr[] = "-";
-const char kCrashReproducerCrashAnalysis[] = "crash_analysis";
-
 Status CreateFileForDumping(llvm::StringRef name,
                             std::unique_ptr<raw_ostream>* os,
                             std::string* filepath, llvm::StringRef dirname) {

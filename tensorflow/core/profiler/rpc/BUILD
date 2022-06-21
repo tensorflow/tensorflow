@@ -47,6 +47,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
+        "//tensorflow/core/profiler:profiler_service_cc_grpc_proto",
         "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:file_system_utils",
@@ -75,7 +76,7 @@ cc_library(
         ":profiler_service_impl",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler:profiler_service_proto_cc",
+        "//tensorflow/core/profiler:profiler_service_cc_grpc_proto",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = True,
 )

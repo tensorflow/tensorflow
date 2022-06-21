@@ -32,7 +32,7 @@ namespace {
 void Register(const std::string& op_name, OpRegistry* registry) {
   registry->Register([op_name](OpRegistrationData* op_reg_data) -> Status {
     op_reg_data->op_def.set_name(op_name);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   });
 }
 

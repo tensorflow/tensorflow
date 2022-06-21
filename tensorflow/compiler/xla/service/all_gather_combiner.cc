@@ -48,7 +48,7 @@ namespace {
 // all_gather_dimension.
 Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine) {
   if (to_combine.size() < 2) {
-    return Status::OK();
+    return OkStatus();
   }
   VLOG(1) << "Combined " << to_combine.size() << " AllGather ops";
 
@@ -98,7 +98,7 @@ Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine) {
     TF_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
         to_combine[i], std::move(replace_with)));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // The group key encapsulates all of the properties which must match for it to
@@ -108,10 +108,10 @@ using GroupKey =
 
 // Returns a key that will be equal for instructions that might be combined, or
 // different if not.
-absl::optional<GroupKey> CombineKey(const HloInstruction* instruction,
-                                    const HloDomainMap& domain_map) {
+std::optional<GroupKey> CombineKey(const HloInstruction* instruction,
+                                   const HloDomainMap& domain_map) {
   if (instruction->opcode() != HloOpcode::kAllGather) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   const auto* ag = Cast<HloAllGatherInstruction>(instruction);

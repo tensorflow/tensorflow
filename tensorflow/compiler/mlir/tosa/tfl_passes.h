@@ -28,6 +28,7 @@ struct TOSATFLLegalizationPipelineOptions
     : public PassPipelineOptions<TOSATFLLegalizationPipelineOptions> {
   ArrayRef<std::string> disabled_patterns;
   ArrayRef<std::string> enabled_patterns;
+  bool dequantize_tfl_softmax = false;
   TOSATFLLegalizationPipelineOptions() {
     disabled_patterns = llvm::None;
     enabled_patterns = llvm::None;

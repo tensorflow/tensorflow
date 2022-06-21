@@ -152,6 +152,8 @@ class XEventVisitor : public XStatsOwner<XEvent> {
 
   const XPlaneVisitor& Plane() const { return *plane_; }
 
+  const XEvent& RawEvent() const { return *event_; }
+
   int64_t Id() const { return event_->metadata_id(); }
 
   absl::string_view Name() const { return metadata_->name(); }

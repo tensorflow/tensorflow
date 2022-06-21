@@ -278,7 +278,7 @@ port::Status ScopedDeviceMemory<ElemT>::Free() {
     TF_RETURN_IF_ERROR(allocator_->Deallocate(device_ordinal_, wrapped_));
   }
   wrapped_ = DeviceMemory<ElemT>{};
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace stream_executor

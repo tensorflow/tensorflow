@@ -157,7 +157,7 @@ class Comparison {
 
   // Gets the inverse of the given comparison if it exists (e.g. >= turns to <).
   // Returns optional value because not all inversions may be supported.
-  absl::optional<Comparison> Inverse() const;
+  std::optional<Comparison> Inverse() const;
 
   // Returns a string version of this comparison, e.g., ".GT.F32.TOTALORDER"
   std::string ToString(std::string prefix1 = ".", std::string prefix2 = ".",

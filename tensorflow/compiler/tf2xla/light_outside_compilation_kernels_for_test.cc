@@ -34,7 +34,7 @@ REGISTER_OP("TestStaticTf")
     .Output("output: float")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
-      return Status::OK();
+      return OkStatus();
     });
 
 class TestStaticTfOp : public OpKernel {
@@ -70,7 +70,7 @@ REGISTER_OP("TestStaticMultipleOutputTf")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
       c->set_output(1, c->input(0));
-      return Status::OK();
+      return OkStatus();
     });
 
 class TestStaticMultipleOutputTfOp : public OpKernel {
@@ -116,7 +116,7 @@ REGISTER_OP("TestDynamicTf")
     .Output("output: float")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->UnknownShapeOfRank(c->Rank(c->input(0))));
-      return Status::OK();
+      return OkStatus();
     });
 
 // Same as TestStaticTfOp, but only copies up to `max_size` attribute.
@@ -182,7 +182,7 @@ REGISTER_OP("DynamicMultidim")
     .Output("output: float")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->UnknownShapeOfRank(5));
-      return Status::OK();
+      return OkStatus();
     });
 
 // Just fill in the data with ones for a given shape.
@@ -244,7 +244,7 @@ REGISTER_OP("DynamicUnranked")
     .Output("output: float")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->UnknownShape());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_XLA_OP(Name("DynamicUnranked").Device(DEVICE_GPU_XLA_JIT),
@@ -257,7 +257,7 @@ REGISTER_OP("TestTfMustBeConstant")
     .Output("output: float")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
-      return Status::OK();
+      return OkStatus();
     });
 
 class TestTfMustBeConstantOp : public OpKernel {

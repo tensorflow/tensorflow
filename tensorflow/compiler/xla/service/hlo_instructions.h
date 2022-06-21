@@ -219,7 +219,7 @@ class HloCompareInstruction : public HloInstruction {
   explicit HloCompareInstruction(const Shape& shape, HloInstruction* lhs,
                                  HloInstruction* rhs,
                                  ComparisonDirection direction,
-                                 absl::optional<Comparison::Type> type);
+                                 std::optional<Comparison::Type> type);
   ComparisonDirection direction() const { return compare_.GetDirection(); }
   ComparisonOrder order() const { return compare_.GetOrder(); }
   Comparison::Type type() const { return compare_.GetType(); }
@@ -302,8 +302,8 @@ class HloChannelInstruction : public HloInstruction {
   // Returns the channel id associated with the instruction. The id is
   // shared between each Send/Recv pair or a group of collective instructions
   // and is globally unique to identify each channel.
-  absl::optional<int64_t> channel_id() const { return channel_id_; }
-  void set_channel_id(const absl::optional<int64_t>& channel_id);
+  std::optional<int64_t> channel_id() const { return channel_id_; }
+  void set_channel_id(const std::optional<int64_t>& channel_id);
 
   // Whether this instruction is identical to `other` except for the values of
   // channel IDs, as long as both have channel IDs or neither has a channel ID.
@@ -316,7 +316,7 @@ class HloChannelInstruction : public HloInstruction {
 
  protected:
   explicit HloChannelInstruction(HloOpcode opcode, const Shape& shape,
-                                 const absl::optional<int64_t>& channel_id);
+                                 const std::optional<int64_t>& channel_id);
 
   HloInstructionProto ToProto() const override;
 
@@ -330,7 +330,7 @@ class HloChannelInstruction : public HloInstruction {
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations) const final;
 
-  absl::optional<int64_t> channel_id_;
+  std::optional<int64_t> channel_id_;
 };
 
 class HloSendRecvInstruction : public HloChannelInstruction {
@@ -430,7 +430,7 @@ class HloCollectiveInstruction : public HloChannelInstruction {
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64_t>& channel_id);
+      const std::optional<int64_t>& channel_id);
 
   HloInstructionProto ToProto() const override;
 
@@ -451,7 +451,7 @@ class HloAllGatherInstruction : public HloCollectiveInstruction {
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands, int64_t all_gather_dimension,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64_t>& channel_id, bool use_global_device_ids);
+      const std::optional<int64_t>& channel_id, bool use_global_device_ids);
   // Same as HloAllReduceInstruction::use_global_device_ids.
   bool use_global_device_ids() const { return use_global_device_ids_; }
 
@@ -491,7 +491,7 @@ class HloAllReduceInstructionBase : public HloCollectiveInstruction {
       absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64_t>& channel_id, bool use_global_device_ids);
+      const std::optional<int64_t>& channel_id, bool use_global_device_ids);
 
   // Returns true if the ids in the ReplicaGroup config represent a global id of
   // (replica_id * partition_count + partition_id) instead of a replica id.
@@ -541,7 +541,7 @@ class HloReduceScatterInstruction : public HloAllReduceInstructionBase {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64_t>& channel_id, bool use_global_device_ids,
+      const std::optional<int64_t>& channel_id, bool use_global_device_ids,
       int64_t scatter_dimension);
 
   // The dimension on which reduced data is scattered to different participants.
@@ -574,8 +574,8 @@ class HloAllToAllInstruction : public HloCollectiveInstruction {
   explicit HloAllToAllInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64_t>& channel_id,
-      const absl::optional<int64_t>& split_dimension);
+      const std::optional<int64_t>& channel_id,
+      const std::optional<int64_t>& split_dimension);
 
   // AllToAll can optionally take a split dimension, which means that this
   // AllToAll takes a single (flattened) array operand and produces an array
@@ -584,7 +584,7 @@ class HloAllToAllInstruction : public HloCollectiveInstruction {
   // split_dimension specifies which dimension in the operand is split across
   // devices in each replica_group, and also means the concatenated dimension
   // on the output (i.e., input and the output shapes are the same).
-  absl::optional<int64_t> split_dimension() const { return split_dimension_; }
+  std::optional<int64_t> split_dimension() const { return split_dimension_; }
   void set_split_dimension(int64_t dim) { split_dimension_ = dim; }
 
  protected:
@@ -603,7 +603,7 @@ class HloAllToAllInstruction : public HloCollectiveInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
 
-  absl::optional<int64_t> split_dimension_;
+  std::optional<int64_t> split_dimension_;
 };
 
 class HloCollectivePermuteInstruction : public HloChannelInstruction {
@@ -611,7 +611,7 @@ class HloCollectivePermuteInstruction : public HloChannelInstruction {
   explicit HloCollectivePermuteInstruction(
       HloOpcode opcode, const Shape& shape, HloInstruction* operand,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-      const absl::optional<int64_t>& channel_id);
+      const std::optional<int64_t>& channel_id);
 
   explicit HloCollectivePermuteInstruction(
       HloOpcode opcode, const Shape& shape, HloInstruction* input,
@@ -619,7 +619,7 @@ class HloCollectivePermuteInstruction : public HloChannelInstruction {
       HloInstruction* output_start_indices,
       absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs,
       absl::Span<const std::vector<int64_t>> slice_sizes,
-      const absl::optional<int64_t>& channel_id);
+      const std::optional<int64_t>& channel_id);
 
   const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs() const {
     return source_target_pairs_;
@@ -822,7 +822,7 @@ class HloMapInstruction : public HloInstruction {
 
  private:
   bool IsElementwiseImpl(
-      const absl::optional<int64_t>& operand_idx) const override;
+      const std::optional<int64_t>& operand_idx) const override;
   std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
@@ -909,7 +909,7 @@ class HloConstantInstruction : public HloInstruction {
 
  private:
   bool IsElementwiseImpl(
-      const absl::optional<int64_t>& operand_idx) const override;
+      const std::optional<int64_t>& operand_idx) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
@@ -921,7 +921,7 @@ class HloConstantInstruction : public HloInstruction {
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
-  absl::optional<Literal> literal_;
+  std::optional<Literal> literal_;
 };
 
 class HloFusionInstruction : public HloInstruction {
@@ -1040,7 +1040,7 @@ class HloFusionInstruction : public HloInstruction {
                                        bool add_output = false);
 
   bool IsElementwiseImpl(
-      const absl::optional<int64_t>& operand_idx) const override;
+      const std::optional<int64_t>& operand_idx) const override;
   std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
@@ -1069,7 +1069,7 @@ class HloRngInstruction : public HloInstruction {
 
  private:
   bool IsElementwiseImpl(
-      const absl::optional<int64_t>& operand_idx) const override;
+      const std::optional<int64_t>& operand_idx) const override;
   std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
@@ -1108,8 +1108,8 @@ class HloParameterInstruction : public HloInstruction {
     parameter_replicated_at_leaf_buffers_ =
         parameter_replicated_at_leaf_buffers;
   }
-  const absl::optional<std::vector<bool>>&
-  parameter_replicated_at_leaf_buffers() const {
+  const std::optional<std::vector<bool>>& parameter_replicated_at_leaf_buffers()
+      const {
     return parameter_replicated_at_leaf_buffers_;
   }
 
@@ -1135,7 +1135,7 @@ class HloParameterInstruction : public HloInstruction {
 
   // Specifies whether each buffer has the same parameter value on all replicas
   // in data parallelism.
-  absl::optional<std::vector<bool>> parameter_replicated_at_leaf_buffers_;
+  std::optional<std::vector<bool>> parameter_replicated_at_leaf_buffers_;
 };
 
 class HloGetTupleElementInstruction : public HloInstruction {
@@ -1620,7 +1620,7 @@ class HloCustomCallInstruction : public HloInstruction {
   // output_to_operand_aliasing().
   std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
       output_to_operand_aliasing_;
-  absl::optional<Literal> literal_;
+  std::optional<Literal> literal_;
   // A custom-call schedule hint.
   CustomCallSchedule custom_call_schedule_;
   // The version of the API used by the custom call function.

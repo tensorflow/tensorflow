@@ -77,7 +77,7 @@ Status HloDomainMap::TryProcessEmptyDomain(HloInstruction* instruction) {
     domain->enter_domains.insert(instruction);
     TF_RETURN_IF_ERROR(InsertDomain(std::move(domain)));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloDomainMap::Populate(HloComputation* computation) {
@@ -103,7 +103,7 @@ Status HloDomainMap::Populate(HloComputation* computation) {
     TF_RETURN_IF_ERROR(InsertDomain(std::move(domain)));
   }
   TF_RETURN_IF_ERROR(PopulateDomainMetadataMap());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloDomainMap::PopulateDomainMetadataMap() {
@@ -139,7 +139,7 @@ Status HloDomainMap::PopulateDomainMetadataMap() {
       domain_metadata_id_[instruction] = domain_metadata_id;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloDomainMap::InsertDomain(
@@ -149,7 +149,7 @@ Status HloDomainMap::InsertDomain(
   for (HloInstruction* instruction : instruction_domains_.back()->reach_set) {
     instruction_to_domain_[instruction] = domain_id;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloDomainMap::ExpandDomain(HloInstruction* instruction,
@@ -190,7 +190,7 @@ Status HloDomainMap::ExpandDomain(HloInstruction* instruction,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::unique_ptr<DomainMetadata::Domain>> HloDomainMap::CreateDomain(

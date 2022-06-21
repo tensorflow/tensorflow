@@ -523,7 +523,8 @@ ConvolutionMetalSimd CreateConvolutionMetalSimd(
 bool IsConvolutionMetalSimdSupported(const GpuInfo& gpu_info,
                                      const OperationDef& definition,
                                      const Convolution2DAttributes& attr) {
-  if (!gpu_info.IsApple() || !gpu_info.apple_info.IsSIMDMatMulSupported()) {
+  if (!gpu_info.IsApple() || !gpu_info.metal_info.IsSIMDMatMulSupported() ||
+      !gpu_info.apple_info.IsSIMDMatMulSupported()) {
     return false;
   }
   const bool genuine_1x1 =

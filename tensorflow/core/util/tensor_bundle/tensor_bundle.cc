@@ -78,7 +78,7 @@ namespace {
 Status ReadStringTensor(io::InputBuffer* buffered_file, size_t num_elements,
                         size_t offset, size_t size, tstring* destination,
                         uint32* actual_crc32c, bool need_to_swap_bytes) {
-  if (size == 0) return Status::OK();
+  if (size == 0) return OkStatus();
   CHECK_GT(size, 0);
 
   // Reads "num_elements" varint64's from "buffered_file".
@@ -143,7 +143,7 @@ Status ReadStringTensor(io::InputBuffer* buffered_file, size_t num_elements,
         buffered_file->ReadNBytes(string_length, &(*buffer)[0], &bytes_read));
     *actual_crc32c = crc32c::Extend(*actual_crc32c, buffer->data(), bytes_read);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ReadVariantTensor(io::InputBuffer* buffered_file, Tensor* ret,
@@ -154,7 +154,7 @@ Status ReadVariantTensor(io::InputBuffer* buffered_file, Tensor* ret,
   //   [varint64 lenN][bytes variantN][4 byte checksum]
   // Var "crc32c" checksums all the lens, variant bytes, individual variant
   // checksums (as uint32, not varint32 bytes).
-  if (size == 0) return Status::OK();
+  if (size == 0) return OkStatus();
   size_t num_elements = ret->NumElements();
 
   // Reads the actual string bytes.
@@ -206,7 +206,7 @@ Status ReadVariantTensor(io::InputBuffer* buffered_file, Tensor* ret,
     ret->flat<Variant>()(i) = std::move(v);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 char* GetBackingBuffer(const Tensor& val) {
@@ -224,7 +224,7 @@ Status ParseEntryProto(StringPiece key, StringPiece value,
   if (!out->ParseFromArray(value.data(), value.size())) {
     return errors::DataLoss("Entry for key ", key, " not parseable.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Serializes the data bytes of the non-string tensor "val".  Discards the
@@ -295,7 +295,7 @@ Status WriteStringTensor(const Tensor& val, FileOutputBuffer* out,
     *bytes_written += string->size();
     *crc32c = crc32c::Extend(*crc32c, string->data(), string->size());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
@@ -347,7 +347,7 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
     *bytes_written += sizeof(uint32);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns whether "slice_spec" is a full slice, with respect to the full shape.
@@ -399,7 +399,7 @@ table::Options TableBuilderOptions() {
 Status PadAlignment(FileOutputBuffer* out, int alignment, int64_t* size) {
   int bytes_over = *size % alignment;
   if (bytes_over == 0) {
-    return Status::OK();
+    return OkStatus();
   }
   int bytes_to_write = alignment - bytes_over;
   Status status = out->Append(string(bytes_to_write, '\0'));
@@ -568,7 +568,7 @@ Status BundleWriter::Finish() {
     if (!status_.ok()) return status_;
   }
   status_ = errors::Internal("BundleWriter is closed");
-  return Status::OK();
+  return OkStatus();
 }
 
 // Merging tensor bundles.
@@ -689,7 +689,7 @@ static Status MergeOneBundle(Env* env, StringPiece prefix,
     to_merge_entry.set_shard_id(result.first->second);
     merge_state->entries[key] = to_merge_entry;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
@@ -839,7 +839,7 @@ Status BundleReader::GetBundleEntryProto(StringPiece key,
   }
 
   entry->Swap(&entry_copy);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
@@ -935,7 +935,7 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
 
   *val = *ret;
   if (ret != val) delete ret;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BundleReader::Lookup(StringPiece key, Tensor* val) {
@@ -979,7 +979,7 @@ Status BundleReader::LookupTensorSlices(StringPiece key,
   for (const auto& slice : entry.slices()) {
     slices->emplace_back(slice);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BundleReader::LookupSlice(StringPiece full_tensor_key,
@@ -1102,7 +1102,7 @@ Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
     }
 #undef HANDLE_COPY
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool BundleReader::Contains(StringPiece key) {
@@ -1116,7 +1116,7 @@ Status BundleReader::LookupDtypeAndShape(StringPiece key, DataType* dtype,
   TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
   *dtype = entry.dtype();
   *shape = TensorShape(entry.shape());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BundleReader::LookupTensorShape(StringPiece key, TensorShape* shape) {
@@ -1183,10 +1183,10 @@ Status FileOutputBuffer::Append(StringPiece data) {
       position_ = nbytes;
       TF_RETURN_IF_ERROR(FlushBuffer(false));
     }
-    return Status::OK();
+    return OkStatus();
   }
   position_ += data.size();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FileOutputBuffer::Close() {
@@ -1204,7 +1204,7 @@ Status FileOutputBuffer::FlushBuffer(bool closing) {
     TF_RETURN_IF_ERROR(file_->Append(buffer));
     position_ = 0;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

@@ -356,9 +356,9 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
            AlgebraicSimplifier* simplifier);
 
   // Compute a function that maps from bitcasted dimensions to the resulting
-  // ones. Returns the function as a vector if successful; absl::optional
+  // ones. Returns the function as a vector if successful; std::optional
   // otherwise.
-  static absl::optional<std::vector<std::vector<int64_t>>> ComputeBitcastDimMap(
+  static std::optional<std::vector<std::vector<int64_t>>> ComputeBitcastDimMap(
       const Shape& bitcast_shape, const Shape& operand_shape);
   // Invert the directions of the given bitcast dimension map.
   static std::vector<std::vector<int64_t>> InvertBitcastDimMap(
@@ -369,8 +369,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // re-shaped result of applying bitcast to the original_shape, by using
   // dim_map to re-shape layout dimensions of original_shape. Returns the
   // result_shape with modified layout if the conversion succeeds; Returns
-  // absl::nullopt if fails.
-  static absl::optional<Shape> ReshapeLayoutDimensions(
+  // std::nullopt if fails.
+  static std::optional<Shape> ReshapeLayoutDimensions(
       const Shape& original_shape, const Shape& result_shape,
       const std::vector<std::vector<int64_t>>& original_map,
       const std::vector<std::vector<int64_t>>& result_map);
@@ -507,9 +507,6 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   // Tries to convert slice(reshape(X)) into reshape(slice(X))
   StatusOr<bool> TryToReorderSliceAndReshape(HloInstruction* slice);
-
-  // Tries to convert slice(reshape(X)) into reshape(slice(X))
-  StatusOr<bool> TryToReorderSliceAndTranspose(HloInstruction* slice);
 
   // Tries to convert slice(reverse(X)) into reverse(slice(X))
   StatusOr<bool> TryToReorderSliceAndReverse(HloInstruction* slice);

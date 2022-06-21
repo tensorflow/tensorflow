@@ -327,7 +327,7 @@ Status CallGraph::VisitNodesInternal(
   auto pair = visited->insert(&node);
   if (!pair.second) {
     // Node was not inserted. Node has already been visited.
-    return Status::OK();
+    return OkStatus();
   }
 
   for (const HloComputation* computation : node.callees()) {
@@ -354,7 +354,7 @@ Status CallGraph::VisitNodes(const VisitorFunction& visitor_func,
         visitor_func, GetNode(module_->entry_computation()), &visited));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 bool CallGraph::IsFlattened() const {

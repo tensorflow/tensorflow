@@ -138,7 +138,7 @@ TEST(Status, ErrorStatusForEachPayloadIteratesOverAll) {
 }
 
 TEST(Status, OkStatusForEachPayloadNoIteration) {
-  Status s = Status::OK();
+  Status s = OkStatus();
   s.SetPayload("key1", "value1");
   s.SetPayload("key2", "value2");
   s.SetPayload("key3", "value3");

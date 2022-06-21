@@ -94,7 +94,7 @@ Status RemoteProfilerSessionManager::Init() {
   }
 
   LOG(INFO) << "Issued Profile gRPC to " << clients_.size() << " clients";
-  return Status::OK();
+  return OkStatus();
 }
 
 std::vector<RemoteProfilerSessionManager::Response>

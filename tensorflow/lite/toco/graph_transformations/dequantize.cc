@@ -195,10 +195,10 @@ bool DequantizeArray(const std::string& array_name,
   if (op->type == OperatorType::kDequantize) {
     auto& input_array = model->GetArray(op->inputs[0]);
     if (input_array.data_type == ArrayDataType::kFloat) {
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     }
     if (input_array.final_data_type != ArrayDataType::kFloat) {
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     }
     input_array.data_type = ArrayDataType::kFloat;
     input_array.quantization_params = nullptr;
@@ -206,7 +206,7 @@ bool DequantizeArray(const std::string& array_name,
     output_array.data_type = ArrayDataType::kFloat;
     output_array.quantization_params = nullptr;
     *modified = RemoveTrivialPassthroughOp(this, model, op_index);
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   std::vector<std::string> arrays;
@@ -224,7 +224,7 @@ bool DequantizeArray(const std::string& array_name,
   }
 
   *modified = changed;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

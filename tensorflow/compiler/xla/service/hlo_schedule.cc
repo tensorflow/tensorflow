@@ -197,7 +197,7 @@ Status HloSchedule::UpdateComputationSchedule(
   }
 
   set_sequence(computation, std::move(new_sequence));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloSchedule::Update() {
@@ -232,7 +232,7 @@ Status HloSchedule::Update() {
   }
 
   TF_RETURN_IF_ERROR(Verify());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloSchedule::Verify() const {
@@ -293,7 +293,7 @@ Status HloSchedule::Verify() const {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {

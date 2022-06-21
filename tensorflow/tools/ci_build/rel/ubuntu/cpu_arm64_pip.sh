@@ -71,6 +71,8 @@ export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} \
     -//tensorflow/python/client:session_list_devices_test \
     -//tensorflow/python/data/experimental/kernel_tests/service:cross_trainer_cache_test \
     -//tensorflow/python/data/kernel_tests:iterator_test_cpu \
+    -//tensorflow/python/data/kernel_tests:snapshot_test \
+    -//tensorflow/python/distribute:random_generator_test_cpu \
     -//tensorflow/python/eager:forwardprop_test \
     -//tensorflow/python/framework:node_file_writer_test \
     -//tensorflow/python/grappler:memory_optimizer_test \

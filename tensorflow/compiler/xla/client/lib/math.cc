@@ -93,7 +93,7 @@ static Status EnsureOperandIsRealFp(absl::string_view op_name, XlaOp operand) {
         "Operands to %s must be real-valued floating-point, but got %s",
         op_name, PrimitiveType_Name(elem_ty));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 XlaOp IsPosInf(XlaOp operand) {

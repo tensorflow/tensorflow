@@ -1077,7 +1077,7 @@ class SavedModelTest(SavedModelTestBase):
       with self.session(graph=ops.Graph()) as sess:
         foo_graph = loader.load(sess, ["foo"], export_dir)
         self._validate_assets(export_dir, foo_graph.asset_file_def, "foo.txt",
-                              "content_bar", "asset_file_tensor:0")
+                              "content_foo", "asset_file_tensor:0")
 
       # Check assets restored for graph with tag "bar".
       with self.session(graph=ops.Graph()) as sess:
@@ -1087,7 +1087,7 @@ class SavedModelTest(SavedModelTestBase):
         # original contents corresponding to `foo` graph since an asset with the
         # same name across multiple graphs is only stored the first time
         self._validate_assets(export_dir, bar_graph.asset_file_def, "foo.txt",
-                              "content_bar", "asset_file_tensor:0")
+                              "content_foo", "asset_file_tensor:0")
 
   def testOp(self):
     export_dir = self._get_export_dir("test_op")

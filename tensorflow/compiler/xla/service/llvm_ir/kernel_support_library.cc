@@ -53,7 +53,7 @@ Status KernelSupportLibrary::ForWithStatus(
                            /*is_first_iteration=*/b_->CreateICmpEQ(
                                loop->GetIndVarValue(), start)));
     llvm_ir::SetToLastInsertPoint(loop->GetExitBasicBlock(), b_);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 }
 
@@ -71,7 +71,7 @@ Status KernelSupportLibrary::IfWithStatus(
     TF_RETURN_IF_ERROR(false_block_generator());
   }
   llvm_ir::SetToLastInsertPoint(if_data.after_block, b_);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 void KernelSupportLibrary::EmitAndCallOutlinedKernel(

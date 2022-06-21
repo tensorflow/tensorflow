@@ -65,7 +65,7 @@ StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       output_shape, [&](const Shape& subshape, const ShapeIndex& index) {
         if (subshape.IsTuple()) {
-          return Status::OK();
+          return OkStatus();
         }
         for (Entry& entry : parameter_entries) {
           if (Shape::Equal()(entry.shape, subshape) && !entry.used) {
@@ -81,7 +81,7 @@ StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
             break;
           }
         }
-        return Status::OK();
+        return OkStatus();
       }));
   return changed;
 }

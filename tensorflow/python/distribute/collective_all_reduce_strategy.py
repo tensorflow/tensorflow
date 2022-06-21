@@ -48,7 +48,7 @@ from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import tpu_strategy_util
-from tensorflow.python.training.tracking import base
+from tensorflow.python.trackable import base
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 

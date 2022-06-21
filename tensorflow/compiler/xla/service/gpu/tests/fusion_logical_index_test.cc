@@ -65,8 +65,8 @@ ENTRY entry {
 ; CHECK:  %[[index_3:.*]] = urem i32 %[[base_1]], 400
 ; CHECK:  %[[base_3:.*]] = udiv i32 %[[base_1]], 400
 ; CHECK:  %[[index_2:.*]] = urem i32 %[[base_3]], 480
-; CHECK:  %[[pointer:.*]] = getelementptr inbounds [1 x [64 x [480 x [400 x float]]]], [1 x [64 x [480 x [400 x float]]]]* %5, i32 0, i32 0, i32 %[[index_1]], i32 %[[index_2]], i32 %[[index_3]]
-; CHECK:  store float %[[result_value:.*]], float* %[[pointer]], align 4
+; CHECK:  %[[pointer:.*]] = getelementptr inbounds [1 x [64 x [480 x [400 x float]]]], ptr %2, i32 0, i32 0, i32 %[[index_1]], i32 %[[index_2]], i32 %[[index_3]]
+; CHECK:  store float %[[result_value:.*]], ptr %[[pointer]], align 4
   )";
 
   CompileAndVerifyIr(hlo_text, expected_ir);

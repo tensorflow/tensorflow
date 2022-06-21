@@ -75,7 +75,7 @@ Status CreateTableTensorSliceBuilder(const string& name,
   Status s = Env::Default()->NewWritableFile(name, &f);
   if (s.ok()) {
     *builder = new TableBuilder(name, f.release());
-    return Status::OK();
+    return OkStatus();
   } else {
     return s;
   }
@@ -191,7 +191,7 @@ Status TensorSliceWriter::SaveData(const tstring* data, int64_t num_elements,
   Fill(data, num_elements, ss->mutable_data());
   DCHECK_GE(ss->ByteSize(), 0);
   DCHECK_LE(ss->ByteSize(), size_bound);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace checkpoint

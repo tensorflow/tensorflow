@@ -317,7 +317,7 @@ TEST(PartiallyDeclusterPassTest, DeclusterMustBeConstantNodes) {
   const Node* n = FindNodeByName(*graph, "shape");
   ASSERT_NE(n, nullptr);
 
-  EXPECT_EQ(GetXlaClusterForNode(*n), absl::nullopt);
+  EXPECT_EQ(GetXlaClusterForNode(*n), std::nullopt);
 }
 
 TEST(PartiallyDeclusterPassTest, DeclusteringStopsAtMetadataOps) {
@@ -451,19 +451,19 @@ TEST(PartiallyDeclusterPassTest, MetadataOpsDontStartClusters) {
 
   Node* n_b = FindNodeByName(*graph, "b");
   ASSERT_NE(n_b, nullptr);
-  EXPECT_EQ(GetXlaClusterForNode(*n_b), absl::nullopt);
+  EXPECT_EQ(GetXlaClusterForNode(*n_b), std::nullopt);
 
   Node* n_c = FindNodeByName(*graph, "c");
   ASSERT_NE(n_c, nullptr);
-  EXPECT_EQ(GetXlaClusterForNode(*n_c), absl::nullopt);
+  EXPECT_EQ(GetXlaClusterForNode(*n_c), std::nullopt);
 
   Node* n_d = FindNodeByName(*graph, "d");
   ASSERT_NE(n_d, nullptr);
-  EXPECT_EQ(GetXlaClusterForNode(*n_d), absl::nullopt);
+  EXPECT_EQ(GetXlaClusterForNode(*n_d), std::nullopt);
 
   Node* n_e = FindNodeByName(*graph, "e");
   ASSERT_NE(n_e, nullptr);
-  EXPECT_EQ(GetXlaClusterForNode(*n_e), absl::nullopt);
+  EXPECT_EQ(GetXlaClusterForNode(*n_e), std::nullopt);
 }
 
 TEST(PartiallyDeclusterPassTest, MetaConsumersArentDeclustered) {
@@ -550,7 +550,7 @@ TEST(PartiallyDeclusterPassTest,
 
   Node* n_b = FindNodeByName(*graph, "b");
   ASSERT_NE(n_b, nullptr);
-  EXPECT_EQ(GetXlaClusterForNode(*n_b), absl::nullopt);
+  EXPECT_EQ(GetXlaClusterForNode(*n_b), std::nullopt);
 
   Node* n_c = FindNodeByName(*graph, "c");
   ASSERT_NE(n_c, nullptr);

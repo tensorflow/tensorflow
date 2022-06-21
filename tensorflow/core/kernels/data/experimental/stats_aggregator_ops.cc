@@ -85,7 +85,7 @@ class StatsAggregatorImpl : public StatsAggregator {
   // in V1.
   Status SetSummaryWriter(
       SummaryWriterInterface* summary_writer_interface) override {
-    return Status::OK();
+    return OkStatus();
   }
 
   void IncrementCounter(const string& name, const string& label,
@@ -123,7 +123,7 @@ class StatsAggregatorHandleOp
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     *ret =
         new StatsAggregatorResource(absl::make_unique<StatsAggregatorImpl>());
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -158,7 +158,7 @@ class StatsAggregatorImplV2 : public StatsAggregator {
     mutex_lock l(mu_);
     if (summary_writer_interface_)
       TF_RETURN_IF_ERROR(summary_writer_interface_->Flush());
-    return Status::OK();
+    return OkStatus();
   }
 
   void IncrementCounter(const string& name, const string& label,
@@ -193,7 +193,7 @@ class StatsAggregatorImplV2 : public StatsAggregator {
     }
     summary_writer_interface_ = summary_writer_interface;
     summary_writer_interface_->Ref();
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -248,7 +248,7 @@ class StatsAggregatorHandleOpV2
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     *ret =
         new StatsAggregatorResource(absl::make_unique<StatsAggregatorImplV2>());
-    return Status::OK();
+    return OkStatus();
   }
 };
 

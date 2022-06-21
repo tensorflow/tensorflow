@@ -295,7 +295,7 @@ class GrpcEagerClientCache : public EagerClientCache {
 
     it->second->Ref();
     client->reset(it->second.get());
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

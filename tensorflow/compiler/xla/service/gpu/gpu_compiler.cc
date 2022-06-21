@@ -686,7 +686,7 @@ Status GpuCompiler::OptimizeHloModule(
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
@@ -810,7 +810,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
@@ -836,10 +836,10 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   return std::move(module);
 }
 
-static absl::optional<bool> DummyCanShareBufferFunction(const HloInstruction*,
-                                                        const HloInstruction*,
-                                                        const ShapeIndex&) {
-  return absl::nullopt;
+static std::optional<bool> DummyCanShareBufferFunction(const HloInstruction*,
+                                                       const HloInstruction*,
+                                                       const ShapeIndex&) {
+  return std::nullopt;
 }
 
 StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
@@ -1107,7 +1107,7 @@ static Status CompileModuleToLlvmIrImpl(
                           GpuExecutable::CreatePreloadedGpuContextCache(
                               bef_array, stream_exec));
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   if (IsJitRtExecutableEnabled(hlo_module->config())) {
@@ -1118,13 +1118,13 @@ static Status CompileModuleToLlvmIrImpl(
     TF_ASSIGN_OR_RETURN(results->executable,
                         LowerToJitRt(*mlir_module, entry_function.getName(),
                                      buffer_sizes, hlo_module));
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 #endif  // XLA_ENABLE_XLIR
 
   results->executable =
       absl::make_unique<ThunkSchedule>(ir_emitter->ConsumeThunkSequence());
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 static void NullDiagnosticHandler(const llvm::DiagnosticInfo& diag_info,
@@ -1148,7 +1148,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   const auto compile_single_module =
       [this, stream_exec, &module_config, debug_module](
           llvm::Module* llvm_module, bool relocatable,
-          absl::optional<int> shard_number) -> StatusOr<BackendCompileResult> {
+          std::optional<int> shard_number) -> StatusOr<BackendCompileResult> {
     {
       XLA_SCOPED_LOGGING_TIMER(
           "GpuCompiler::RunBackend - Running LLVM verifier");
@@ -1227,7 +1227,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   };
 
   tensorflow::thread::ThreadPool* thread_pool;
-  absl::optional<tensorflow::thread::ThreadPool> overriding_thread_pool;
+  std::optional<tensorflow::thread::ThreadPool> overriding_thread_pool;
   switch (
       module_config.debug_options().xla_gpu_force_compilation_parallelism()) {
     case 0:
@@ -1247,14 +1247,14 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
 
   if (!thread_pool) {
     return compile_single_module(llvm_module.get(), /*relocatable=*/false,
-                                 /*shard_number=*/absl::nullopt);
+                                 /*shard_number=*/std::nullopt);
   }
 
   // Test whether LinkModules is supported.
   if (this->LinkModules(stream_exec, {}).status().code() ==
       tensorflow::error::Code::UNIMPLEMENTED) {
     return compile_single_module(llvm_module.get(), /*relocatable=*/false,
-                                 /*shard_number=*/absl::nullopt);
+                                 /*shard_number=*/std::nullopt);
   }
 
   std::vector<std::unique_ptr<llvm::Module>> llvm_modules;

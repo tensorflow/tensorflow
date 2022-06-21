@@ -51,7 +51,7 @@ REGISTER_OP("_ExecuteTPUEmbeddingPartitioner")
             "TRAINING, or BACKWARD_PASS_ONLY");
       }
       c->set_output(0, c->Scalar());
-      return ::tensorflow::Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 
@@ -85,7 +85,7 @@ REGISTER_OP("_ConfigureTPUEmbeddingMemory")
       ShapeHandle input(c->Scalar());
       TF_RETURN_IF_ERROR(c->Merge(c->input(0), input, &input));
       c->set_output(0, c->Scalar());
-      return ::tensorflow::Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 
@@ -121,7 +121,7 @@ REGISTER_OP("_ConfigureTPUEmbeddingHost")
       ShapeHandle input(c->Scalar());
       TF_RETURN_IF_ERROR(c->Merge(c->input(0), input, &input));
       c->set_output(0, c->Scalar());
-      return ::tensorflow::Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 
@@ -148,7 +148,7 @@ REGISTER_OP("_ConnectInterTPUEmbeddingCommunication")
       for (int i = 0; i < c->num_inputs(); ++i) {
         TF_RETURN_IF_ERROR(c->Merge(c->input(i), input, &input));
       }
-      return ::tensorflow::Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 
@@ -171,7 +171,7 @@ REGISTER_OP("_FinalizeTPUEmbeddingSystemConfiguration")
       for (int i = 0; i < c->num_inputs(); ++i) {
         TF_RETURN_IF_ERROR(c->Merge(c->input(i), input, &input));
       }
-      return ::tensorflow::Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 
@@ -343,7 +343,7 @@ REGISTER_OP("LoadAllTPUEmbeddingParameters")
               c->WithValue(c->NumElements(accumulator_i_shape), 0, &dim));
         }
       }
-      return tensorflow::Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("RetrieveAllTPUEmbeddingParameters")
@@ -400,7 +400,7 @@ REGISTER_OP("RetrieveAllTPUEmbeddingParameters")
               c->set_output(absl::StrCat("auxiliary", i), output_handles));
         }
       }
-      return ::tensorflow::Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("EnqueueTPUEmbeddingBatch")
@@ -421,7 +421,7 @@ REGISTER_OP("EnqueueTPUEmbeddingBatch")
                                        n);
       }
 
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_RecvTPUEmbeddingActivations")
@@ -467,7 +467,7 @@ REGISTER_OP("_RecvTPUEmbeddingActivations")
             c->MakeShapeFromShapeProto(output_shapes[i], &output_shape));
         c->set_output(i, output_shape);
       }
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 An op that receives embeddng activations on the TPU.
@@ -512,7 +512,7 @@ REGISTER_OP("_SendTPUEmbeddingGradients")
             c->WithRank(learning_rates[i], 0, &learning_rates_shape));
       }
 
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 An op that performs gradient updates of embedding tables.

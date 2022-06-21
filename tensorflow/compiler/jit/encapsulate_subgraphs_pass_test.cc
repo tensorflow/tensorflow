@@ -60,7 +60,7 @@ Status AddGraphDefToFunctionLibrary(const GraphDefBuilder& graphdef_builder,
       *graph,
       absl::StrCat("_outside_compilation_shape_inference_", name_suffix),
       fdef));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <class Tkey, class Tvalue>
@@ -299,14 +299,14 @@ REGISTER_OP("InputTest")
     .Output("o: float")
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
       c->set_output(0, c->UnknownShape());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("InputTestShaped")
     .Output("o: float")
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
       c->set_output(0, c->Vector(2));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("UnaryTest")
@@ -316,7 +316,7 @@ REGISTER_OP("UnaryTest")
       ::tensorflow::shape_inference::ShapeHandle o;
       TF_RETURN_IF_ERROR(c->Merge(c->UnknownShape(), c->input(0), &o));
       c->set_output(0, o);
-      return Status::OK();
+      return OkStatus();
     });
 REGISTER_OP("BinaryTest")
     .Input("a: float")
@@ -326,7 +326,7 @@ REGISTER_OP("BinaryTest")
       ::tensorflow::shape_inference::ShapeHandle o;
       TF_RETURN_IF_ERROR(c->Merge(c->UnknownShape(), c->input(0), &o));
       c->set_output(0, o);
-      return Status::OK();
+      return OkStatus();
     });
 REGISTER_OP("BinaryTest2")
     .Input("a: float")
@@ -807,7 +807,7 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Simple) {
             EXPECT_FALSE(HasGuaranteeConstAttr(*n));
           }
         }
-        return Status::OK();
+        return OkStatus();
       },
       /*reuse_existing_functions=*/false, &graph_after, &library));
   EXPECT_EQ(2, guaranteed_consts);
@@ -852,7 +852,7 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Add) {
             EXPECT_FALSE(HasGuaranteeConstAttr(*n));
           }
         }
-        return Status::OK();
+        return OkStatus();
       },
       /*reuse_existing_functions=*/false, &graph_after, &library));
   // Only 1 runtime const, which is const_guarantee_add1. Add2 has one const

@@ -163,7 +163,7 @@ static Status TF_MUST_USE_RESULT BuildDenseSpec(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ValidateStridedSliceOp(
@@ -415,7 +415,7 @@ Status ValidateStridedSliceOp(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ValidateStridedSliceOp(
@@ -443,7 +443,7 @@ Status ValidateStridedSliceOp(
                             partial_processing_shape.DebugString(), " and ",
                             partial_final_shape.DebugString());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

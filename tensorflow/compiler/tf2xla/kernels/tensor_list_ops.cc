@@ -117,19 +117,19 @@ Status TryGetElementShapeFromInput(XlaOpKernelContext* ctx, xla::XlaOp input,
   bool is_compile_time_constant = is_compile_time_constant_or.ValueOrDie();
   if (!is_compile_time_constant) {
     *got_shape = false;
-    return Status::OK();
+    return OkStatus();
   }
 
   PartialTensorShape partial_shape;
   TF_RETURN_IF_ERROR(ctx->ConstantInputAsPartialShape(0, &partial_shape));
   if (!partial_shape.IsFullyDefined()) {
     *got_shape = false;
-    return Status::OK();
+    return OkStatus();
   }
 
   *shape = xla::ShapeUtil::MakeShape(dtype, partial_shape.dim_sizes());
   *got_shape = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 class TensorListReserveOp : public XlaOpKernel {

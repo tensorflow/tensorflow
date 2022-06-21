@@ -59,7 +59,7 @@ class MetadataCollector : public ProfilerInterface {
       xla::XlaDebugInfoManager::Get()->StartTracing();
       trace_active_ = true;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Stop() override {
@@ -67,7 +67,7 @@ class MetadataCollector : public ProfilerInterface {
       xla::XlaDebugInfoManager::Get()->StopTracing(&debug_info_);
       trace_active_ = false;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CollectData(XSpace* space) override {
@@ -86,7 +86,7 @@ class MetadataCollector : public ProfilerInterface {
       }
       debug_info_.clear();
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

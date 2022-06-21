@@ -614,6 +614,19 @@ bool OpenClInfo::IsImage2dFromBufferSupported() const {
   return false;
 }
 
+bool MetalInfo::IsSIMDMatMulSupported() const {
+  if (language_version == MetalLanguageVersion::kUnknown ||
+      language_version == MetalLanguageVersion::kMetal1_0 ||
+      language_version == MetalLanguageVersion::kMetal1_1 ||
+      language_version == MetalLanguageVersion::kMetal1_2 ||
+      language_version == MetalLanguageVersion::kMetal2_0 ||
+      language_version == MetalLanguageVersion::kMetal2_1 ||
+      language_version == MetalLanguageVersion::kMetal2_2) {
+    return false;
+  }
+  return true;
+}
+
 bool GpuInfo::IsAdreno() const { return vendor == GpuVendor::kQualcomm; }
 
 bool GpuInfo::IsApple() const { return vendor == GpuVendor::kApple; }

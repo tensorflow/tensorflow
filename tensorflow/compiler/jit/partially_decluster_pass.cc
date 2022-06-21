@@ -47,7 +47,7 @@ Status FindNodesToDecluster(const Graph& graph,
   MemoryTypeVector input_mtypes, output_mtypes;
 
   for (Node* n : post_order) {
-    absl::optional<absl::string_view> from_cluster = GetXlaClusterForNode(*n);
+    std::optional<absl::string_view> from_cluster = GetXlaClusterForNode(*n);
     if (!from_cluster) {
       continue;
     }
@@ -105,15 +105,15 @@ Status FindNodesToDecluster(const Graph& graph,
       // Check if `dst` is in a different cluster, unclustered, or about to be
       // partially declustered (here we rely on the post-order traversal order).
       // If yes, decluster `n` to avoid the device-to-host memcpy.
-      absl::optional<absl::string_view> dst_cluster =
-          result->count(dst) ? absl::nullopt : GetXlaClusterForNode(*dst);
+      std::optional<absl::string_view> dst_cluster =
+          result->count(dst) ? std::nullopt : GetXlaClusterForNode(*dst);
       if (from_cluster != dst_cluster) {
         CHECK(result->insert(n).second);
         break;
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PartiallyDeclusterNode(Graph* graph, Node* n) {
@@ -125,7 +125,7 @@ Status PartiallyDeclusterNode(Graph* graph, Node* n) {
     }
 
     Node* dst = out_edge->dst();
-    absl::optional<absl::string_view> dst_cluster_name =
+    std::optional<absl::string_view> dst_cluster_name =
         GetXlaClusterForNode(*dst);
     if (dst_cluster_name != cluster_name) {
       out_edges_to_clone.push_back(out_edge);
@@ -156,7 +156,7 @@ Status PartiallyDeclusterNode(Graph* graph, Node* n) {
     graph->RemoveNode(n);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Clones nodes to outside their cluster to avoid device-to-host copies.  For
@@ -221,15 +221,15 @@ Status PartiallyDeclusterGraph(Graph* graph) {
       FindNodesToDecluster(*graph, &nodes_to_partially_decluster, post_order));
   CHECK(nodes_to_partially_decluster.empty());
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace reduce_device_to_host_copies
 
 namespace reduce_recompilation {
 bool IsIntraClusterEdge(const Edge& edge) {
-  absl::optional<absl::string_view> src_cluster_name =
+  std::optional<absl::string_view> src_cluster_name =
       GetXlaClusterForNode(*edge.src());
-  absl::optional<absl::string_view> dst_cluster_name =
+  std::optional<absl::string_view> dst_cluster_name =
       GetXlaClusterForNode(*edge.dst());
   return src_cluster_name.has_value() && src_cluster_name == dst_cluster_name;
 }
@@ -251,12 +251,12 @@ Status MustCompileNode(const Node* n, bool* must_compile) {
 
   if (IsMustCompileDevice(device_type)) {
     *must_compile = true;
-    return Status::OK();
+    return OkStatus();
   }
 
   // We must compile `n` if it does not have a TensorFlow kernel.
   *must_compile = !FindKernelDef(device_type, n->def(), nullptr, nullptr).ok();
-  return Status::OK();
+  return OkStatus();
 }
 
 // Declusters nodes to reduce the number of times we think we need to recompile
@@ -312,7 +312,7 @@ Status PartiallyDeclusterGraph(Graph* graph,
     absl::string_view cluster_name = *GetXlaClusterForNode(*n);
     bool node_on_cluster_edge =
         absl::c_all_of(n->in_edges(), [&](const Edge* e) {
-          absl::optional<absl::string_view> incoming_cluster =
+          std::optional<absl::string_view> incoming_cluster =
               GetXlaClusterForNode(*e->src());
           return !incoming_cluster || *incoming_cluster != cluster_name;
         });
@@ -363,7 +363,7 @@ Status PartiallyDeclusterGraph(Graph* graph,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace reduce_recompilation
 
@@ -380,7 +380,7 @@ Status PartiallyDeclusterGraph(Graph* graph) {
       continue;
     }
 
-    absl::optional<absl::string_view> cluster = GetXlaClusterForNode(*n);
+    std::optional<absl::string_view> cluster = GetXlaClusterForNode(*n);
     if (!cluster.has_value()) {
       continue;
     }
@@ -397,7 +397,7 @@ Status PartiallyDeclusterGraph(Graph* graph) {
             << " because it is a root shape consumer";
     RemoveFromXlaCluster(n);
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace decluster_root_shape_consumers
 }  // namespace
@@ -430,6 +430,6 @@ Status PartiallyDeclusterPass::Run(
   TF_RETURN_IF_ERROR(
       decluster_root_shape_consumers::PartiallyDeclusterGraph(graph));
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace tensorflow

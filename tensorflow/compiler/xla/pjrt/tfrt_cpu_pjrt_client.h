@@ -153,7 +153,7 @@ class TfrtCpuClient final : public PjRtClient {
   StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) override;
 
-  StatusOr<absl::optional<std::string>> ExecutableFingerprint(
+  StatusOr<std::optional<std::string>> ExecutableFingerprint(
       const PjRtExecutable& executable) const override;
 
   StatusOr<std::string> SerializeExecutable(
@@ -179,7 +179,7 @@ class TfrtCpuClient final : public PjRtClient {
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-      absl::optional<absl::Span<int64_t const>> byte_strides,
+      std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       std::function<void()> on_done_with_host_buffer,
       PjRtDevice* device) override;
@@ -351,7 +351,7 @@ class TfrtCpuBuffer final : public PjRtBuffer {
         case kUninitialized:
           return InvalidArgument("Buffer has not been initialized");
         case kValid:
-          return Status::OK();
+          return ::tensorflow::OkStatus();
         case kMoved:
           return InvalidArgument("Buffer has been moved.");
         case kConverted:
@@ -506,7 +506,7 @@ class TfrtCpuBuffer final : public PjRtBuffer {
   }
 
   StatusOr<tfrt::AsyncValueRef<Literal>> CopyToHostAsyncInternal(
-      bool discard_cached_copy, absl::optional<xla::Layout> layout);
+      bool discard_cached_copy, std::optional<xla::Layout> layout);
 
   // Requires holds_[kDonation] == 0 (i.e., WaitForOutstandingDonationHolds()
   // must be called first.)
@@ -608,28 +608,28 @@ class TfrtCpuExecutable final : public PjRtExecutable {
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
-      absl::optional<std::vector<PjRtFuture<Status>>>& returned_futures)
+      std::optional<std::vector<PjRtFuture<Status>>>& returned_futures)
       override;
 
   using PjRtExecutable::ExecuteSharded;
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      absl::optional<PjRtFuture<Status>>& returned_future,
+      std::optional<PjRtFuture<Status>>& returned_future,
       bool fill_future) override;
 
   using PjRtExecutable::ExecutePortable;
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      absl::optional<PjRtFuture<Status>>& returned_future,
+      std::optional<PjRtFuture<Status>>& returned_future,
       bool fill_future) override;
 
   void Delete() override;
 
   bool IsDeleted() override;
 
-  StatusOr<absl::optional<std::string>> Fingerprint() const;
+  StatusOr<std::optional<std::string>> Fingerprint() const;
 
  private:
   friend class TfrtCpuClient;

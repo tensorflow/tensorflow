@@ -187,7 +187,7 @@ struct XlaCompilationResult {
   };
 
   // Information of the collectives encountered during the translation.
-  absl::optional<CollectiveInfo> collective_info;
+  std::optional<CollectiveInfo> collective_info;
 };
 
 // Resolves the device assignment based on CollectiveInfo.

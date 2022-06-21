@@ -18,17 +18,24 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "mlir/Dialect/PDL/IR/PDL.h"  // from @llvm-project
+#include "mlir/Dialect/PDLInterp/IR/PDLInterp.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 #include "tensorflow/core/transforms/pass_detail.h"
+#include "tensorflow/core/transforms/utils/pdll/utils.h"
 #include "tensorflow/core/transforms/utils/utils.h"
 
 namespace mlir {
 namespace tfg {
+namespace mkl {
+#include "tensorflow/core/transforms/remapper/pdll/MklPDLLPatterns.h.inc"
+}  // namespace mkl
 
 // Convert Sigmoid+Mul to Swish
 // Mul(x, Sigmoid(x)) --> _MklSwish(x)
@@ -91,9 +98,14 @@ class Remapper : public RemapperBase<Remapper> {
     enable_mkl_patterns_ = enable_mkl_patterns;
   }
 
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<pdl::PDLDialect, pdl_interp::PDLInterpDialect>();
+  }
+
   LogicalResult initialize(MLIRContext *context) override {
     RewritePatternSet patterns(context);
     populateRemapperPatterns(context, patterns);
+    RegisterPDLLUtils(patterns);
     final_patterns_ = std::move(patterns);
     return success();
   }
@@ -103,7 +115,21 @@ class Remapper : public RemapperBase<Remapper> {
  private:
   void populateRemapperPatterns(MLIRContext *context,
                                 RewritePatternSet &patterns) {
-    if (enable_mkl_patterns_) patterns.insert<MatchMulSigmoid>(context);
+    if (verify_pdll_patterns_only_) {
+      populateRemapperPDLLPatterns(patterns);
+      return;
+    }
+    if (enable_mkl_patterns_) {
+      patterns.insert<MatchMulSigmoid>(context);
+      // TODO(chiahungduan): Currently, the only pattern implemented in PDLL is
+      // the same one as `MatchMulSigmoid`. Remove the one of them when there's
+      // a decision that which one is preferred.
+      populateRemapperPDLLPatterns(patterns);
+    }
+  }
+
+  void populateRemapperPDLLPatterns(RewritePatternSet &patterns) {
+    mkl::populateGeneratedPDLLPatterns(patterns);
   }
 
   FrozenRewritePatternSet final_patterns_;

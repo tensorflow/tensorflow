@@ -217,7 +217,7 @@ Status SessionMgr::CreateSession(
         worker_env_->env, server_def, std::move(agent_cache),
         std::move(coordination_error_callback)));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void SessionMgr::ResetDefaultWorkerCache(WorkerCacheInterface* worker_cache) {
@@ -284,7 +284,7 @@ Status SessionMgr::UpdateSession(
   TF_RETURN_IF_ERROR(worker_session->UpdateWorkerCacheAndDevices(
       std::unique_ptr<WorkerCacheInterface>(worker_cache),
       std::move(added_remote_devices), removed_remote_devices));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SessionMgr::DeleteSession(const std::string& session) {
@@ -293,7 +293,7 @@ Status SessionMgr::DeleteSession(const std::string& session) {
   if (it != sessions_.end()) {
     sessions_.erase(it);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SessionMgr::WorkerSessionForSessionLocked(
@@ -316,7 +316,7 @@ Status SessionMgr::WorkerSessionForSessionLocked(
       *out_session = it->second;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SessionMgr::WorkerSessionForSession(

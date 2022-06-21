@@ -523,6 +523,23 @@ def TF_ApplyEmbeddingOptimizerOp : TF_Op<"ApplyEmbeddingOptimizer", []> {
   TF_DerivedOperandSizeAttr num_scalars = TF_DerivedOperandSizeAttr<1>;
 }
 
+
+def TF_ApplyEmbeddingOptimizerV2Op : TF_Op<"ApplyEmbeddingOptimizerV2", []> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_Float32Tensor:$gradient,
+    TF_Float32Tensor:$variable,
+    Variadic<TF_Float32Tensor>:$slot_variables,
+
+    StrAttr:$optimization_parameters
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr num_slots = TF_DerivedOperandSizeAttr<2>;
+}
+
 def TF_EmbeddingDequeueOp : TF_Op<"EmbeddingDequeue", [NoSideEffect]> {
   let summary = "";
 

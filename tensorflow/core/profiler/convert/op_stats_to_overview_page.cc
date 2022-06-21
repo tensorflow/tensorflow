@@ -38,6 +38,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
+#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -386,6 +389,21 @@ OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats) {
               .device_op_time_outside_compilation_percent()),
       overview_page.mutable_recommendation());
   PopulateOverviewDiagnostics(op_stats, overview_page.mutable_diagnostics());
+  return overview_page;
+}
+
+OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
+                                          const XSpace& xspace) {
+  OverviewPage overview_page = ConvertOpStatsToOverviewPage(op_stats);
+  const XPlane* runtimePlane = FindPlaneWithName(xspace, kTpuRuntimePlaneName);
+  if (runtimePlane != nullptr) {
+    auto visitor = CreateTfXPlaneVisitor(runtimePlane);
+    auto stat = visitor.GetStat(StatType::kMatrixUnitUtilizationPercent);
+    if (stat.has_value()) {
+      overview_page.mutable_analysis()->set_mxu_utilization_percent(
+          stat->DoubleValue());
+    }
+  }
   return overview_page;
 }
 

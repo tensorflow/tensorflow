@@ -41,7 +41,7 @@ Status PopulateInfeedLayoutVector(const xla::Shape& shape,
   } else {
     layouts->insert(layouts->end(), shape.rank(), -1);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Populate the output layout unless the minor_to_major array contains all -1
@@ -79,7 +79,7 @@ Status AssignLayout(
     layout = layout_func(*shape);
   }
   *shape->mutable_layout() = layout;
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -96,7 +96,7 @@ Status XLAShapeToTensorShape(const xla::Shape& shape,
   for (int i = 0; i < shape.rank(); ++i) {
     tensor_shape->AddDim(shape.dimensions(i));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Convert a TensorShape into the equivalent XLA Shape proto.
@@ -106,7 +106,7 @@ Status TensorShapeToXLAShape(DataType dtype,
   xla::PrimitiveType type;
   TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(dtype, &type));
   *shape = TensorShapeToXLAShape(type, tensor_shape);
-  return Status::OK();
+  return OkStatus();
 }
 
 xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
@@ -139,7 +139,7 @@ Status TensorShapeToXLAShape(DataType dtype, const TensorShape& tensor_shape,
   xla::PrimitiveType type;
   TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(dtype, &type));
   *shape = TensorShapeToXLAShape(type, tensor_shape);
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<xla::Shape> TensorShapeToXLAShape(DataType dtype,
@@ -221,7 +221,7 @@ Status GetShapeWithLayout(
     VLOG(4) << "Shape[] = "
             << xla::ShapeUtil::HumanStringWithLayout(*output_shape);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

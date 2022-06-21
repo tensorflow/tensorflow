@@ -59,7 +59,7 @@ Status ReadSignatureDefMap(const Model* model, const Metadata* metadata,
     const std::string key = signature_defs.Keys()[i].AsString().c_str();
     (*map)[key] = signature_defs[key].AsString().c_str();
   }
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace
@@ -102,7 +102,7 @@ Status SetSignatureDefMap(const Model* model,
   *model_data_with_signature_def =
       std::string(reinterpret_cast<const char*>(builder.GetBufferPointer()),
                   builder.GetSize());
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 bool HasSignatureDef(const Model* model, const std::string& signature_key) {
@@ -115,7 +115,7 @@ bool HasSignatureDef(const Model* model, const std::string& signature_key) {
   }
   SerializedSignatureDefMap signature_defs;
   if (ReadSignatureDefMap(model, metadata, &signature_defs) !=
-      tensorflow::Status::OK()) {
+      ::tensorflow::OkStatus()) {
     return false;
   }
   return (signature_defs.find(signature_key) != signature_defs.end());
@@ -131,7 +131,7 @@ Status GetSignatureDefMap(const Model* model,
   if (metadata) {
     SerializedSignatureDefMap signature_defs;
     auto status = ReadSignatureDefMap(model, metadata, &signature_defs);
-    if (status != tensorflow::Status::OK()) {
+    if (status != ::tensorflow::OkStatus()) {
       return tensorflow::errors::Internal("Error reading signature def map: ",
                                           status.error_message());
     }
@@ -145,7 +145,7 @@ Status GetSignatureDefMap(const Model* model,
     }
     *signature_def_map = retrieved_signature_def_map;
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status ClearSignatureDefMap(const Model* model, std::string* model_data) {
@@ -169,7 +169,7 @@ Status ClearSignatureDefMap(const Model* model, std::string* model_data) {
   *model_data =
       std::string(reinterpret_cast<const char*>(builder.GetBufferPointer()),
                   builder.GetSize());
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace tflite

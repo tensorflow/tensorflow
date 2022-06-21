@@ -902,7 +902,7 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
 
 // For vector-matrix dot products, it is always profitable to make the Rhs
 // column major.
-absl::optional<int64_t> ProfitableToMakeDotOperandColumnMajor(
+std::optional<int64_t> ProfitableToMakeDotOperandColumnMajor(
     const HloInstruction& hlo) {
   if (hlo.opcode() == HloOpcode::kDot && hlo.shape().dimensions_size() <= 1) {
     if (hlo.operand(0)->shape().rank() != 1 ||

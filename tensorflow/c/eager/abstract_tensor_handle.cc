@@ -33,7 +33,7 @@ std::string AbstractTensorHandle::DebugString() const {
 Status AbstractTensorHandle::TensorHandleStatus() const {
   // Tensor handles in current runtime don't carry error info and this method
   // should always return OK status.
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

@@ -384,7 +384,7 @@ Status BundleReader::SortForSequentialAccess(
       return file_offset_a.shard_id < file_offset_b.shard_id;
     }
   });
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

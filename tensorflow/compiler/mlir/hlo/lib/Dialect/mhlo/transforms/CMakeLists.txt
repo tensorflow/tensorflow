@@ -210,6 +210,7 @@ add_mlir_library(MhloToLinalg
   LmhloDialect
   MhloDialect
   MhloTypeConversion
+  MLIRBufferization
   MLIRComplex
   MLIRIR
   MLIRPass

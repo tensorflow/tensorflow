@@ -80,7 +80,7 @@ void RpcCollectiveExecutorMgr::RefreshStepIdSequenceAsync(
       gks = it->second;
     }
     gks->next_step_id_ = NewRandomStepId();
-    done(Status::OK());
+    done(OkStatus());
   } else {
     WorkerInterface* wi = worker_cache_->GetOrCreateWorker(group_leader_);
     GetStepSequenceRequest* req = new GetStepSequenceRequest;
@@ -124,7 +124,7 @@ void RpcCollectiveExecutorMgr::GetStepSequenceAsync(
       ss->set_graph_key(graph_key);
       ss->set_next_step_id(gks->next_step_id_);
     }
-    done(Status::OK());
+    done(OkStatus());
   }
 }
 
@@ -142,7 +142,7 @@ Status RpcCollectiveExecutorMgr::UpdateStepSequences(
     }
     gks->next_step_id_ = ss.next_step_id();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 int64_t RpcCollectiveExecutorMgr::NextStepId(int64_t graph_key) {

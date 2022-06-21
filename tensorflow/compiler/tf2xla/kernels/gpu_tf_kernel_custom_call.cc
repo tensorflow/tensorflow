@@ -218,7 +218,7 @@ Status CallTfKernelOp::CompileToCustomCallCallingTfKernel(
                    output_shape.IsTuple() ? xla::GetTupleElement(out, i) : out);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -320,7 +320,7 @@ class TfCallbackDevice : public DeviceBase {
         // TODO(cheshire): Pass meaningful scratch
         // buffer.
         /*scratch=*/nullptr);
-    return Status::OK();
+    return OkStatus();
 #else
     LOG(FATAL) << "CUDA-enabled build is required";  // Crash OK
 #endif
@@ -372,7 +372,7 @@ Status PopulateMetadataBufferIfNeeded(OpKernelContext& ctx,
                          num_dimensions * sizeof(int32_t));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CallTfKernel(void* stream_handle, void** buffers, const char* opaque,
@@ -471,7 +471,7 @@ Status CallTfKernel(void* stream_handle, void** buffers, const char* opaque,
   }
 
   TF_RETURN_IF_ERROR(ctx.status());
-  return Status::OK();
+  return OkStatus();
 }
 
 void GenericTfCallback(void* stream_handle, void** buffers, const char* opaque,

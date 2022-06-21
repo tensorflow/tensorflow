@@ -96,10 +96,10 @@ Status RegisterExtraTfOpDefs(absl::Span<const std::string> extra_tf_opdefs) {
     tensorflow::OpRegistry::Global()->Register(
         [opdef](tensorflow::OpRegistrationData* op_reg_data) -> Status {
           *op_reg_data = tensorflow::OpRegistrationData(opdef);
-          return Status::OK();
+          return OkStatus();
         });
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -181,7 +181,7 @@ Status ApplyDynamicRangeQuantizationFromOldQuantizer(
   *result =
       string(reinterpret_cast<const char*>(q_buffer), q_builder.GetSize());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvertTFExecutorToTFLOrFlatbuffer(
@@ -307,7 +307,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   if (mlir::failed(module.verifyInvariants())) {
     return tensorflow::errors::Unknown("Final module is invalid");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(

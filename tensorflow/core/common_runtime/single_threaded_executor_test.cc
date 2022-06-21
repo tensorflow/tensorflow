@@ -98,7 +98,7 @@ class ExecutorTest : public ::testing::Test {
           if ((*kernel)->type_string_view() == "Mock") {
             down_cast<MockOp*>(*kernel)->SetCompute(mock_fn);
           }
-          return Status::OK();
+          return OkStatus();
         };
     params.delete_kernel = [](OpKernel* kernel) {
       DeleteNonCachedKernel(kernel);

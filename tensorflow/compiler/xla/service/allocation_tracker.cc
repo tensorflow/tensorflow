@@ -123,7 +123,7 @@ Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
   for (auto& shaped_buffer : it->second) {
     shaped_buffer.reset();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
@@ -231,7 +231,7 @@ Status AllocationTracker::DecrementRefCount(se::DeviceMemoryBase device_memory,
   } else {
     allocation.ref_count--;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace xla

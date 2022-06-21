@@ -30,7 +30,7 @@ Status LoadDynamicLibrary(const char* library_filename, void** handle) {
     const char* error_msg = dlerror();
     return errors::NotFound(error_msg ? error_msg : "(null error message)");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
@@ -46,7 +46,7 @@ Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
     const char* error_msg = dlerror();
     return errors::NotFound(error_msg ? error_msg : "(null error message)");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 string FormatLibraryFileName(const string& name, const string& version) {

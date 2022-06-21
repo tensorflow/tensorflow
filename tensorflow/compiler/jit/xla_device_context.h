@@ -42,7 +42,7 @@ class XlaDeviceAllocator : public Allocator {
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
-  absl::optional<AllocatorStats> GetStats() override;
+  std::optional<AllocatorStats> GetStats() override;
   bool ClearStats() override;
 
  private:

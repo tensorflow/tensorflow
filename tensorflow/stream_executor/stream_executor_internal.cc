@@ -25,7 +25,7 @@ bool StreamExecutorInterface::HostCallback(Stream* stream,
   return HostCallback(
       stream, std::function<port::Status()>([callback]() -> port::Status {
         callback();
-        return port::Status::OK();
+        return ::tensorflow::OkStatus();
       }));
 }
 

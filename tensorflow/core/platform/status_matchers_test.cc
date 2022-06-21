@@ -137,7 +137,7 @@ TEST(IsOkAndHoldsTest, ExplainNotMatchingContainer) {
 }
 
 TEST(StatusIsTest, MatchesOK) {
-  EXPECT_THAT(Status::OK(), StatusIs(error::OK));
+  EXPECT_THAT(OkStatus(), StatusIs(error::OK));
   StatusOr<std::string> message("Hello, world");
   EXPECT_THAT(message, StatusIs(error::OK));
 }
@@ -236,7 +236,7 @@ TEST(StatusIsTest, ExplainStatusOrHasValue) {
 }
 
 TEST(IsOkTest, MatchesOK) {
-  EXPECT_THAT(Status::OK(), IsOk());
+  EXPECT_THAT(OkStatus(), IsOk());
   StatusOr<std::string> message = std::string("Hello, world");
   EXPECT_THAT(message, IsOk());
 }

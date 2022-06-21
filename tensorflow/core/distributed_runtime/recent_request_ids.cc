@@ -57,7 +57,7 @@ Status RecentRequestIds::TrackUnique(int64_t request_id,
                                      const string& method_name,
                                      const protobuf::Message& request) {
   if (Insert(request_id)) {
-    return Status::OK();
+    return OkStatus();
   } else {
     return errors::Aborted("The same ", method_name,
                            " request was received twice. ",

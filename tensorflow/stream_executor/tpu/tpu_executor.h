@@ -101,7 +101,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   Status EnqueueInfeed(int32_t infeed_queue_index,
                        absl::Span<const uint8> bytes);
 
-  absl::optional<stream_executor::AllocatorStats> GetAllocatorStats() override;
+  std::optional<stream_executor::AllocatorStats> GetAllocatorStats() override;
 
   tpu::TpuCoreLocationExternal GetCoreLocationExternal() const override;
 

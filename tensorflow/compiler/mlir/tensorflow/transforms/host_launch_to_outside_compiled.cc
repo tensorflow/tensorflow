@@ -67,7 +67,7 @@ void HoistOpsAndAnnotateWithOutsideCompilation(tf_device::LaunchOp launch) {
 
 void HostLaunchToOutsideCompiledPass::runOnOperation() {
   auto traverse_op = [&](Operation* op, tf_device::ClusterOp tpu_cluster,
-                         absl::optional<std::string> host_device) {
+                         std::optional<std::string> host_device) {
     // Hoist launch.
     if (tf_device::LaunchOp launch = dyn_cast<tf_device::LaunchOp>(op)) {
       StringAttr device_attr = launch->getAttrOfType<StringAttr>(kDeviceAttr);

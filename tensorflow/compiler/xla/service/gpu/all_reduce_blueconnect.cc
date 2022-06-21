@@ -56,7 +56,7 @@ struct DecomposedReplicaGroups {
   std::vector<ReplicaGroup> new_all_reduce_groups;
 };
 
-StatusOr<absl::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroup(
+StatusOr<std::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroup(
     const ReplicaGroup& replica_group,
     const DeviceAssignment& device_assignment, size_t num_devices_per_host) {
   int group_size = replica_group.replica_ids_size();
@@ -78,7 +78,7 @@ StatusOr<absl::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroup(
       });
 
   if (!same_num_devices_on_each_host) {
-    return {absl::nullopt};
+    return {std::nullopt};
   }
 
   std::vector<int64_t> sorted_replica_group;
@@ -91,7 +91,7 @@ StatusOr<absl::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroup(
   size_t num_scatter_groups = group_size / scatter_group_size;
 
   if ((group_size % scatter_group_size != 0) || (num_scatter_groups < 2)) {
-    return {absl::nullopt};
+    return {std::nullopt};
   }
 
   std::vector<ReplicaGroup> scatter_gather_groups(num_scatter_groups);
@@ -107,7 +107,7 @@ StatusOr<absl::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroup(
                                   std::move(new_all_reduce_groups)}};
 }
 
-StatusOr<absl::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroups(
+StatusOr<std::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroups(
     const HloAllReduceInstruction& all_reduce, size_t num_devices_per_host) {
   const DeviceAssignment& device_assignment =
       all_reduce.parent()->parent()->config().static_device_assignment();
@@ -128,11 +128,11 @@ StatusOr<absl::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroups(
   // Try to find a valid decomposition for each replica group.
   for (const ReplicaGroup& replica_group : replica_groups) {
     TF_ASSIGN_OR_RETURN(
-        absl::optional<DecomposedReplicaGroups> decomposed_groups,
+        std::optional<DecomposedReplicaGroups> decomposed_groups,
         TryDecomposeReplicaGroup(replica_group, device_assignment,
                                  num_devices_per_host));
 
-    if (!decomposed_groups) return {absl::nullopt};
+    if (!decomposed_groups) return {std::nullopt};
 
     int scatter_group_size =
         decomposed_groups->scatter_gather_groups[0].replica_ids_size();
@@ -143,7 +143,7 @@ StatusOr<absl::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroups(
         TF_RET_CHECK(operand->shape().IsArray());
         int64_t num_elements = ShapeUtil::ElementsIn(operand->shape());
         if (num_elements % scatter_group_size != 0) {
-          return {absl::nullopt};
+          return {std::nullopt};
         }
       }
 
@@ -156,7 +156,7 @@ StatusOr<absl::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroups(
     } else if (scatter_group_size !=
                scatter_gather_groups[0].replica_ids_size()) {
       // Reduce-scatter would have different output shapes on different devices.
-      return {absl::nullopt};
+      return {std::nullopt};
     }
 
     absl::c_move(decomposed_groups->scatter_gather_groups,
@@ -192,7 +192,7 @@ StatusOr<bool> TryDecomposeAllReduce(HloAllReduceInstruction* all_reduce,
   PrimitiveType element_type = all_reduce->operand(0)->shape().element_type();
 
   TF_ASSIGN_OR_RETURN(
-      absl::optional<DecomposedReplicaGroups> decomposed_groups,
+      std::optional<DecomposedReplicaGroups> decomposed_groups,
       TryDecomposeReplicaGroups(*all_reduce, num_devices_per_host));
 
   if (!decomposed_groups) return false;

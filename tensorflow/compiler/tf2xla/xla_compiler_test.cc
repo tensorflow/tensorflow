@@ -1867,7 +1867,7 @@ TEST_F(XlaCompilerTest, SetShardingForReturnedTuple) {
   const auto& hlo_module_proto = result.computation->proto();
   ASSERT_EQ(hlo_module_proto.computations_size(), 1);
   const auto& hlo_computation_proto = hlo_module_proto.computations(0);
-  absl::optional<xla::HloInstructionProto> root_instruction_proto;
+  std::optional<xla::HloInstructionProto> root_instruction_proto;
   for (const auto& inst : hlo_computation_proto.instructions()) {
     if (inst.id() == hlo_computation_proto.root_id()) {
       root_instruction_proto = inst;

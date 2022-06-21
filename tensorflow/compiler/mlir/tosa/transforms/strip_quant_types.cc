@@ -49,8 +49,6 @@ limitations under the License.
 namespace mlir {
 namespace tosa {
 namespace {
-#define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
 
 class StripQuantTypes : public TosaStripQuantTypesPassBase<StripQuantTypes> {
  public:

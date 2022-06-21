@@ -438,7 +438,7 @@ Status HloFunctionImporter::ImportInstructions(
 
   CleanUpTupleOps(block, &builder);
 
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<Value> HloFunctionImporter::ImportInstructions(
@@ -1229,6 +1229,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kConvolution: {
       llvm::SmallVector<int64_t, 4> strides, lhs_dilations, rhs_dilations;
+      llvm::SmallVector<bool, 4> reversals;
       llvm::SmallVector<int64_t, 8> paddings;
       for (const auto& dim : instruction->window().dimensions()) {
         strides.push_back(dim.stride());
@@ -1236,6 +1237,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         rhs_dilations.push_back(dim.window_dilation());
         paddings.push_back(dim.padding_low());
         paddings.push_back(dim.padding_high());
+        reversals.push_back(dim.window_reversal());
       }
 
       attributes.push_back(
@@ -1245,6 +1247,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           builder_->getNamedAttr("lhs_dilation", Convert(lhs_dilations)));
       attributes.push_back(
           builder_->getNamedAttr("rhs_dilation", Convert(rhs_dilations)));
+      attributes.push_back(
+          builder_->getNamedAttr("window_reversal", Convert(reversals)));
       attributes.push_back(builder_->getNamedAttr(
           "dimension_numbers",
           ConvertConvDimensionNumbers(
@@ -1527,7 +1531,7 @@ tensorflow::Status HloFunctionImporter::GetMlirTypes(
                                            instruction->shape(), *builder_));
     types->push_back(ret_type);
   }
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<Value> HloFunctionImporter::GetMlirValue(
@@ -1579,6 +1583,12 @@ mlir::DenseIntElementsAttr HloFunctionImporter::Convert(
       elements);
 }
 
+mlir::DenseIntElementsAttr HloFunctionImporter::Convert(
+    llvm::ArrayRef<bool> elements) {
+  return DenseIntElementsAttr::get(
+      RankedTensorType::get(elements.size(), builder_->getI1Type()), elements);
+}
+
 mlir::NamedAttribute HloFunctionImporter::ConvertPadding(
     llvm::ArrayRef<int64_t> padding) {
   auto ty =
@@ -1626,7 +1636,7 @@ mlir::NamedAttribute HloFunctionImporter::ConvertReplicaGroups(
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(
-    absl::optional<int64_t> channel_id) {
+    std::optional<int64_t> channel_id) {
   xla::ChannelHandle channel_handle;
   if (channel_id) channel_handle.set_handle(*channel_id);
   return ConvertChannelHandle(channel_handle);
@@ -1656,7 +1666,7 @@ Status HloFunctionImporter::ConvertShapeToMlirLayout(
     const xla::Shape& shape,
     llvm::SmallVectorImpl<mlir::Attribute>& flattened_attr) {
   if (shape.IsToken()) {
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (shape.IsTuple()) {
     std::vector<mlir::Attribute> tuple_layouts;
@@ -1664,7 +1674,7 @@ Status HloFunctionImporter::ConvertShapeToMlirLayout(
       TF_RETURN_IF_ERROR(
           ConvertShapeToMlirLayout(shape.tuple_shapes(i), flattened_attr));
     }
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (shape.IsArray()) {
     const xla::Layout l = shape.layout();
@@ -1674,7 +1684,7 @@ Status HloFunctionImporter::ConvertShapeToMlirLayout(
     }
     llvm::ArrayRef<mlir::Attribute> array_ref(minor_to_major);
     flattened_attr.push_back(builder_->getArrayAttr(array_ref));
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   return tensorflow::errors::Internal("Couldn't convert layout.");
 }

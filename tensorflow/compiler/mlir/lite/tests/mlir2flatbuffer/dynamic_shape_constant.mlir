@@ -14,8 +14,7 @@ func.func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 // CHECK-NEXT:      name: "tfl.pseudo_const",
 // CHECK-NEXT:      quantization: {
 // CHECK-NEXT:
-// CHECK-NEXT:      },
-// CHECK-NEXT:      has_rank: true
+// CHECK-NEXT:      }
 
 // CHECK:   buffers: [ {
 // CHECK-EMPTY:

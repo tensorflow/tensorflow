@@ -297,13 +297,14 @@ xla::gpu::NcclCollectiveConfig GetNcclCollectiveConfig(lmhlo::AllToAllOp op,
                                                        int /*num_partitions*/) {
   // TODO(b/180174349): LMHLO AllToAll incorrectly has use_global_device_ids
   // attribute and it should be removed.
-  return xla::gpu::GetNcclCollectiveConfigForMlir(op, absl::nullopt);
+  return xla::gpu::GetNcclCollectiveConfigForMlir(op, std::nullopt);
 }
 
 xla::gpu::NcclCollectiveConfig GetNcclCollectiveConfig(
     lmhlo::CollectivePermuteOp op, int replica_count, int num_partitions) {
   return xla::gpu::NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
-      op, replica_count, num_partitions);
+             op, replica_count, num_partitions)
+      .config;
 }
 
 template <class CclOpType>

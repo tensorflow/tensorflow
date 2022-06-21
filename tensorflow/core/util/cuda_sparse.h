@@ -495,7 +495,7 @@ class GpuSparseMatrixDescriptor {
     TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreateMatDescr(&descr_));
 #endif
     initialized_ = true;
-    return Status::OK();
+    return OkStatus();
   }
 
   gpusparseMatDescr_t& descr() {
@@ -558,7 +558,7 @@ class GpuSparseCsrSortingConversionInfo {
     DCHECK(!initialized_);
     TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateCsru2csrInfo(&info_));
     initialized_ = true;
-    return Status::OK();
+    return OkStatus();
   }
 
   csru2csrInfo_t& info() {

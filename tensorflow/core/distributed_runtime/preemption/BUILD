@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")
 
 package(
@@ -14,17 +14,21 @@ cc_library(
     hdrs = ["preemption_sync_manager.h"],
     deps = [
         ":preemption_notifier",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
+        "//tensorflow/core/platform",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-    ],
+    ] + if_google(
+        ["//learning/brain/runtime/preemption:borg_preemption_notifier"],
+        [],
+    ),
 )
 
 cc_library(

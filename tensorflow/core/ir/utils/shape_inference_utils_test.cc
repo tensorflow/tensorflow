@@ -217,7 +217,7 @@ TEST_F(ShapeInferenceTest, TestInferenceFailure) {
   // "value" attribute.
   auto get_empty_attr_values_fn =
       [](Operation *, llvm::StringRef, const tensorflow::OpRegistrationData *,
-         bool, tensorflow::AttrValueMap *) { return tensorflow::Status::OK(); };
+         bool, tensorflow::AttrValueMap *) { return ::tensorflow::OkStatus(); };
 
   for (Operation &op : block.without_terminator()) {
     SmallVector<ShapedTypeComponents> results;

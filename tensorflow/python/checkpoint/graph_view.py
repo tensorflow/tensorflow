@@ -17,15 +17,15 @@ import collections
 import copy
 import weakref
 
+from tensorflow.python.checkpoint import trackable_view
 from tensorflow.python.checkpoint import util
 from tensorflow.python.trackable import base
-from tensorflow.python.trackable import converter
 from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("__internal__.tracking.ObjectGraphView", v1=[])
-class ObjectGraphView(object):
+class ObjectGraphView(trackable_view.TrackableView):
   """Gathers and serializes an object graph."""
 
   def __init__(self, root, attached_dependencies=None):
@@ -38,6 +38,7 @@ class ObjectGraphView(object):
         Used when saving a Checkpoint with a defined root object. To avoid
         reference cycles, this should use the WeakTrackableReference class.
     """
+    trackable_view.TrackableView.__init__(self, root)
     # ObjectGraphView should never contain a strong reference to root, since it
     # may result in a cycle:
     #   root -> deferred dependencies -> CheckpointPosition
@@ -72,13 +73,10 @@ class ObjectGraphView(object):
     Returns:
       List of all children attached to the object.
     """
-    # pylint: disable=protected-access
-    obj._maybe_initialize_trackable()
     children = []
-    for name, ref in obj._trackable_children(save_type, **kwargs).items():
-      ref = converter.convert_to_trackable(ref, parent=obj)
+    for name, ref in super(ObjectGraphView,
+                           self).children(obj, save_type, **kwargs).items():
       children.append(base.TrackableReference(name, ref))
-    # pylint: enable=protected-access
 
     # GraphView objects may define children of the root object that are not
     # actually attached, e.g. a Checkpoint object's save_counter.

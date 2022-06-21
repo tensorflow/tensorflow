@@ -42,8 +42,8 @@ namespace xla {
 
 namespace {
 
-using absl::optional;
 using absl::string_view;
+using std::optional;
 
 constexpr char kInterpreter[] = "interpreter";
 
@@ -377,7 +377,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompare(
-    string_view hlo_string, const absl::optional<ErrorSpec>& error,
+    string_view hlo_string, const std::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   if (!module_or_status.ok()) {
@@ -393,7 +393,7 @@ StatusOr<::testing::AssertionResult>
 HloTestBase::RunAndCompareTwoModulesInternal(
     std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
     const absl::Span<Literal* const> arguments,
-    const absl::optional<ErrorSpec>& error, bool run_hlo_passes) {
+    const std::optional<ErrorSpec>& error, bool run_hlo_passes) {
   TF_RETURN_IF_ERROR(hlo_verifier_->Run(module_0.get()).status());
   TF_RETURN_IF_ERROR(hlo_verifier_->Run(module_1.get()).status());
 
@@ -472,7 +472,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 
 ::testing::AssertionResult HloTestBase::RunAndCompareTwoModules(
     string_view hlo_string_module_0, string_view hlo_string_module_1,
-    const absl::optional<ErrorSpec>& error) {
+    const std::optional<ErrorSpec>& error) {
   auto module_0_or_status = ParseAndReturnVerifiedModule(hlo_string_module_0);
   if (!module_0_or_status.ok()) {
     return ::testing::AssertionFailure()
@@ -634,7 +634,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
     executables[i] = std::move(executable.ValueOrDie());
   }
 
-  absl::optional<Literal> canonical_output;
+  std::optional<Literal> canonical_output;
   for (int i = 0; i < n; ++i) {
     StatusOr<Literal> output = test_runner_.ExecuteWithExecutable(
         executables[i].get(), fake_arguments[i],
@@ -660,7 +660,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareFromFile(
-    const std::string& filename, const absl::optional<ErrorSpec>& error,
+    const std::string& filename, const std::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
       HloRunner::ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest());
@@ -673,7 +673,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareNoHloPasses(
-    string_view hlo_string, const absl::optional<ErrorSpec>& error,
+    string_view hlo_string, const std::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   if (!module_or_status.ok()) {
@@ -686,7 +686,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareNoHloPassesFromFile(
-    const std::string& filename, const absl::optional<ErrorSpec>& error,
+    const std::string& filename, const std::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
       HloRunner::ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest());

@@ -432,6 +432,7 @@ cc_library(
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
+        "//tensorflow/lite/profiling:root_profiler",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers//:runtime_cc",
     ],
@@ -472,6 +473,7 @@ cc_library(
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
+        "//tensorflow/lite/profiling:root_profiler",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers//:runtime_cc",
     ],
@@ -548,6 +550,7 @@ cc_library(
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/profiling:platform_profiler",
+        "//tensorflow/lite/profiling:root_profiler",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@flatbuffers//:runtime_cc",
@@ -606,6 +609,7 @@ cc_library(
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
+        "//tensorflow/lite/profiling:root_profiler",
         "//tensorflow/lite/schema:schema_fbs",
     ] + select({
         ":tflite_use_simple_memory_planner": [

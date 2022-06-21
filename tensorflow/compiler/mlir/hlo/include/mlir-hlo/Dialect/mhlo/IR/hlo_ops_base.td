@@ -42,6 +42,8 @@ def HLO_SInt : SignlessIntOfWidths<[4, 8, 16, 32, 64]>;
 def HLO_UInt : UnsignedIntOfWidths<[4, 8, 16, 32, 64]>;
 def HLO_Int : AnyTypeOf<[HLO_SInt, HLO_UInt]>;
 
+def HLO_Float : AnyTypeOf<[F16, F32, F64, BF16]>;
+
 def HLO_Complex : Complex<AnyTypeOf<[F32, F64]>>;
 
 //===----------------------------------------------------------------------===//
@@ -108,14 +110,14 @@ def HLO_IntTensor : TensorOf<[HLO_Int]>;
 def HLO_ScalarIntTensor : 0DTensorOf<[HLO_Int]>;
 
 // Any floating-point tensor types
-def HLO_FpTensor : TensorOf<[AnyFloat]>;
+def HLO_FpTensor : TensorOf<[HLO_Float]>;
 
 // Any quantized integer tensor types
 def HLO_QuantizedIntTensor : TensorOf<[HLO_QuantizedInt]>;
 
 def HLO_PredTensor : TensorOf<[HLO_Pred]>;
 
-def HLO_Tensor : TensorOf<[AnyFloat, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt]>;
+def HLO_Tensor : TensorOf<[HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt]>;
 
 def HLO_ComplexTensor : TensorOf<[HLO_Complex]>;
 
@@ -135,26 +137,26 @@ def HLO_DimensionTensor : 1DTensorOf<[HLO_DimensionValue]>;
 // In general, static shaped tensor constraints should be avoided unless
 // it is for a legacy op which is only correct with static shapes.
 def HLO_StaticShapeTensor : StaticShapeTensorOf<[
-      AnyFloat, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt]>;
+      HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt]>;
 
 //===----------------------------------------------------------------------===//
 // MHLO on tensors combined type definitions.
 //===----------------------------------------------------------------------===//
 
 // Any integer or floating-point tensor types
-def HLO_IntOrFpTensor : TensorOf<[HLO_Int, AnyFloat]>;
+def HLO_IntOrFpTensor : TensorOf<[HLO_Int, HLO_Float]>;
 
 // Any integer or predicate tensor types
 def HLO_PredOrIntTensor : TensorOf<[HLO_Pred, HLO_Int]>;
 
 // Any floating-point or complex tensor types
-def HLO_FpOrComplexTensor : TensorOf<[AnyFloat, HLO_Complex]>;
+def HLO_FpOrComplexTensor : TensorOf<[HLO_Float, HLO_Complex]>;
 
 // Any int, floating-point or complex tensor types
-def HLO_IntFpOrComplexTensor : TensorOf<[HLO_Int, AnyFloat, HLO_Complex]>;
+def HLO_IntFpOrComplexTensor : TensorOf<[HLO_Int, HLO_Float, HLO_Complex]>;
 
 // Any pred, int or floating-point tensor types
-def HLO_PredIntOrFpTensor : TensorOf<[HLO_Pred, HLO_Int, AnyFloat]>;
+def HLO_PredIntOrFpTensor : TensorOf<[HLO_Pred, HLO_Int, HLO_Float]>;
 
 // A layout attribute (1D tensor of index type)
 def HLO_LayoutAttr : Attr<

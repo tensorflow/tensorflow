@@ -922,14 +922,14 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
       dict(
           testcase_name="NoFieldsRaggedRank1",
           st=lambda: StructuredTensor.from_fields(
-              {}, (1, None),
+              {}, (2, None),
               row_partitions=[
                   row_partition.RowPartition.from_row_lengths([3, 2])]),
           expected=[[{}, {}, {}], [{}, {}]]),
       dict(
           testcase_name="NoFieldsRaggedRank2",
           st=lambda: StructuredTensor.from_fields(
-              {}, (1, None, None),
+              {}, (2, None, None),
               row_partitions=[
                   row_partition.RowPartition.from_row_lengths([2, 1]),
                   row_partition.RowPartition.from_row_lengths([2, 3, 1])]),
@@ -971,13 +971,13 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
            pyval={"a": 1},
            type_spec=structured_tensor.StructuredTensorSpec(
                shape=[1],
-               field_specs={"b": tensor_spec.TensorSpec([], dtypes.int32)}),
+               field_specs={"b": tensor_spec.TensorSpec([1], dtypes.int32)}),
            msg=r"Value at \(\) does not match typespec"),
       dict(testcase_name="TypeSpecMismatch_ListDictKey",
            pyval=[{"a": 1}],
            type_spec=structured_tensor.StructuredTensorSpec(
                shape=[1],
-               field_specs={"b": tensor_spec.TensorSpec([], dtypes.int32)}),
+               field_specs={"b": tensor_spec.TensorSpec([1], dtypes.int32)}),
            msg=r"Value at \(\) does not match typespec"),
       dict(testcase_name="TypeSpecMismatch_RankMismatch",
            pyval=[{"a": 1}],
@@ -1022,7 +1022,7 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
            pyval=[[1]],
            type_spec=structured_tensor.StructuredTensorSpec(
                shape=[1, 1],
-               field_specs={"a": tensor_spec.TensorSpec([], dtypes.int32)}),
+               field_specs={"a": tensor_spec.TensorSpec([1, 1], dtypes.int32)}),
            msg=r"Value at \(\) does not match typespec"),
       dict(testcase_name="InconsistentDictionaryDepth",
            pyval=[{}, [{}]],

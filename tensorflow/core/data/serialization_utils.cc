@@ -51,7 +51,7 @@ Status GetIteratorName(StringPiece key, string* name) {
   string real_key = split_keys[1];
   const int pos = real_key.rfind(kColon);
   *name = real_key.substr(0, pos);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FromGraphDef(FunctionLibraryRuntime* flr, const GraphDef& graph_def,
@@ -69,7 +69,7 @@ Status FromGraphDef(FunctionLibraryRuntime* flr, const GraphDef& graph_def,
   TF_RETURN_IF_ERROR(graph_runner.Run(&graph, cloned_flr, input_list,
                                       {output_node}, &outputs));
   *result = outputs[0];
-  return Status::OK();
+  return OkStatus();
 }
 
 // FindStatefulOps searches `graph_def` for all of its stateful ops storing
@@ -97,7 +97,7 @@ Status FindStatefulOps(const GraphDef& graph_def,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -126,7 +126,7 @@ Status ReadElementsFromCheckpoint(IteratorContext* ctx,
           &element.back()));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status WriteElementsToCheckpoint(
@@ -144,7 +144,7 @@ Status WriteElementsToCheckpoint(
           element_prefix, absl::StrCat(kComponent, "[", j, "]"), element[j]));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 VariantTensorDataReader::VariantTensorDataReader(
@@ -243,7 +243,7 @@ Status VariantTensorDataReader::ReadScalarInternal(StringPiece n,
     return errors::NotFound(key);
   }
   *val = data_.at(name)->tensors(key_it->second).scalar<T>()();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status VariantTensorDataReader::ReadTensorInternal(FunctionLibraryRuntime* flr,
@@ -264,7 +264,7 @@ Status VariantTensorDataReader::ReadTensorInternal(FunctionLibraryRuntime* flr,
     return errors::NotFound(key);
   }
   *val = data_.at(name)->tensors(key_it->second);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status VariantTensorDataReader::ReadDatasetInternal(FunctionLibraryRuntime* flr,
@@ -283,7 +283,7 @@ Status VariantTensorDataReader::ReadDatasetInternal(FunctionLibraryRuntime* flr,
   GraphDef graph_def;
   graph_def.ParseFromString(serialized_graph_def);
   TF_RETURN_IF_ERROR(FromGraphDef(flr, graph_def, {}, output_node, val));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status VariantTensorDataWriter::WriteScalar(StringPiece key,
@@ -393,7 +393,7 @@ Status VariantTensorDataWriter::WriteTensorInternal(StringPiece n,
     data_[name]->set_type_name("tensorflow::Iterator");
   }
   *(data_[name]->add_tensors()) = val;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status VariantTensorDataWriter::WriteDatasetInternal(
@@ -414,7 +414,7 @@ Status VariantTensorDataWriter::WriteDatasetInternal(
   TF_RETURN_IF_ERROR(
       WriteScalar(n, strings::StrCat(key, kOutputNode), output_node));
   TF_RETURN_IF_ERROR(WriteScalar(n, key, result));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AsGraphDefForRewrite(OpKernelContext* ctx, const DatasetBase* input,
@@ -434,7 +434,7 @@ Status AsGraphDefForRewrite(OpKernelContext* ctx, const DatasetBase* input,
       *dataset_node = node.input(0);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AsGraphDef(const DatasetBase* dataset,
@@ -469,7 +469,7 @@ Status AsGraphDef(const DatasetBase* dataset,
                    .WithAttr("T", DT_VARIANT)
                    .WithAttr("index", 0));
   TF_RETURN_IF_ERROR(b.ToGraphDef(graph_def));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace data

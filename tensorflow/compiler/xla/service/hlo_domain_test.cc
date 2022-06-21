@@ -122,7 +122,7 @@ class OpNameDomainCreator {
 Status OpNameDomainNormalizer(const DomainMetadata::Domain& domain,
                               const DomainMetadata* metadata) {
   // Nothing to do for the particular use this test make of the OpName domains.
-  return Status::OK();
+  return OkStatus();
 }
 
 TEST_F(HloDomainTest, CheckDomainWithCallInlining) {

@@ -273,7 +273,7 @@ add {
 
   // CHECK-NEXT: %[[VAL_4:.*]] = mhlo.convolution(%[[VAL_2]], %[[VAL_3]])
   // CHECK-SAME: dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[f, 0, 1, b]
-  // CHECK-SAME{LITERAL}: window = {stride = [4, 5], pad = [[44, 45], [60, 60]], lhs_dilate = [1, 1], rhs_dilate = [2, 3]}
+  // CHECK-SAME{LITERAL}: window = {stride = [4, 5], pad = [[44, 45], [60, 60]], lhs_dilate = [1, 1], rhs_dilate = [2, 3], reverse = [0, 0]}
   // CHECK-SAME:     feature_group_count = 1 : i64
   // CHECK-SAME:     precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
   // CHECK-SAME:   (tensor<256x32x32x1xf32>, tensor<2x2x1x1xf32>) -> tensor<1x30x30x256xf32>
@@ -295,6 +295,16 @@ add {
   // CHECK:  mhlo.convolution
   // CHECK-SAME{LITERAL}:  pad = [[1, 2]]
   ROOT %convolution = f32[1,5,1] convolution(f32[1,2,1] %input, f32[1,1,1] %filter), feature_group_count=1, dim_labels=b0f_0io->b0f, window={pad=1_2 size=1}
+}
+
+// Test for window_reversal attribute in convolution
+// CHECK-LABEL:  func private @test_convolve1D_reversal
+%test_convolve1D_reversal (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,5,1] {
+  %input = f32[1,2,1] parameter(0)
+  %filter = f32[1,1,1] parameter(1)
+  // CHECK:  mhlo.convolution
+  // CHECK-SAME{LITERAL}:  reverse = [1]
+  ROOT %convolution = f32[1,5,1] convolution(f32[1,2,1] %input, f32[1,1,1] %filter), feature_group_count=1, dim_labels=b0f_0io->b0f, window={pad=1_2 size=1 rhs_reversal=1}
 }
 
 // CHECK-LABEL:  func private @test_convert(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf64>
