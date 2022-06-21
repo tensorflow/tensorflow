@@ -80,31 +80,6 @@ std::string GetDeviceInfo<std::string>(cl_device_id id, cl_device_info info) {
 }
 
 namespace {
-template <typename T>
-T GetPlatformInfo(cl_platform_id id, cl_platform_info info) {
-  T result;
-  cl_int error = clGetPlatformInfo(id, info, sizeof(T), &result, nullptr);
-  if (error != CL_SUCCESS) {
-    return -1;
-  }
-  return result;
-}
-
-std::string GetPlatformInfo(cl_platform_id id, cl_platform_info info) {
-  size_t size;
-  cl_int error = clGetPlatformInfo(id, info, 0, nullptr, &size);
-  if (error != CL_SUCCESS) {
-    return "";
-  }
-
-  std::string result(size - 1, 0);
-  error = clGetPlatformInfo(id, info, size, &result[0], nullptr);
-  if (error != CL_SUCCESS) {
-    return "";
-  }
-  return result;
-}
-
 void GetDeviceWorkDimsSizes(cl_device_id id, int3* result) {
   int dims_count =
       GetDeviceInfo<cl_uint>(id, CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS);
@@ -310,7 +285,6 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
   }
   return info;
 }
-
 }  // namespace
 
 CLDevice::CLDevice(cl_device_id id, cl_platform_id platform_id)
@@ -367,41 +341,16 @@ void CLDevice::DisableOneLayerTextureArray() {
 }
 
 absl::Status CreateDefaultGPUDevice(CLDevice* result) {
-  cl_uint num_platforms;
-  cl_int status = clGetPlatformIDs(0, nullptr, &num_platforms);
-  if (status != CL_SUCCESS) {
-    return absl::UnknownError(
-        absl::StrFormat("clGetPlatformIDs returned %d", status));
-  }
-  if (num_platforms == 0) {
-    return absl::UnknownError("No supported OpenCL platform.");
-  }
-  std::vector<cl_platform_id> platforms(num_platforms);
-  status = clGetPlatformIDs(num_platforms, platforms.data(), nullptr);
-  if (status != CL_SUCCESS) {
-    return absl::UnknownError(
-        absl::StrFormat("clGetPlatformIDs returned %d", status));
-  }
+
+  auto [status_platform, platforms] = GetOpenCLPlatforms();
+  if(!status_platform.ok())
+    return status_platform;
 
   cl_platform_id platform_id = platforms[0];
-  cl_uint num_devices;
-  status =
-      clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 0, nullptr, &num_devices);
-  if (status != CL_SUCCESS) {
-    return absl::UnknownError(
-        absl::StrFormat("clGetDeviceIDs returned %d", status));
-  }
-  if (num_devices == 0) {
-    return absl::UnknownError("No GPU on current platform.");
-  }
 
-  std::vector<cl_device_id> devices(num_devices);
-  status = clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, num_devices,
-                          devices.data(), nullptr);
-  if (status != CL_SUCCESS) {
-    return absl::UnknownError(
-        absl::StrFormat("clGetDeviceIDs returned %d", status));
-  }
+  auto [status_device, devices] = GetOpenCLDevicesForPlatform(platform_id);
+  if(!status_device.ok())
+    return status_device;
 
   *result = CLDevice(devices[0], platform_id);
   return absl::OkStatus();

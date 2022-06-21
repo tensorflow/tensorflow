@@ -17,8 +17,9 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_UTIL_H_
 
 #include <string>
-
+#include <utility>
 #include "absl/types/span.h"
+#include "absl/types/optional.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -59,6 +60,22 @@ absl::Status CreateCLSubBuffer(cl_context context, cl_mem parent,
 absl::Status CreateRGBAImage2D(cl_context context, int width, int height,
                                cl_channel_type channel_type, void* data,
                                cl_mem* result);
+
+std::pair<absl::Status, std::vector<cl_platform_id>> GetOpenCLPlatforms();
+std::pair<absl::Status, std::vector<cl_device_id>> GetOpenCLDevicesForPlatform(cl_platform_id);
+
+template <typename T>
+T GetPlatformInfo(cl_platform_id id, cl_platform_info info) {
+  T result;
+  cl_int error = clGetPlatformInfo(id, info, sizeof(T), &result, nullptr);
+  if (error != CL_SUCCESS) {
+    return -1;
+  }
+  return result;
+}
+
+std::string GetPlatformInfo(cl_platform_id id, cl_platform_info info);
+absl::optional<cl_platform_id> FindPlatformByVendor(std::vector<cl_platform_id> const& platform_ids, std::string const& vendor_id);
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

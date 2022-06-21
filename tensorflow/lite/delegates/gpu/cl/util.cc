@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
@@ -176,6 +177,104 @@ int ChannelTypeToSizeInBytes(cl_channel_type type) {
 }
 
 bool OpenCLSupported() { return LoadOpenCL().ok(); }
+
+absl::optional<cl_platform_id> FindPlatformByVendor(std::vector<cl_platform_id> const& platform_ids, std::string const& vendor_id) {
+
+  auto tolower = [](std::string const& original) {
+    std::string str_copy = original;
+    std::transform(str_copy.begin(), str_copy.end(), str_copy.begin(),
+      [](unsigned char c){ return std::tolower(c); });
+    return str_copy;
+  };
+
+  auto get_platform_info = [](std::vector<cl_platform_id> const& platform_ids, cl_platform_info info) {
+    std::vector<std::string> prop(platform_ids.size());
+    std::transform(platform_ids.begin(), platform_ids.end(), prop.begin(), 
+      [info](cl_platform_id id) {
+        return GetPlatformInfo(id, info);
+      }
+    );
+    return prop;
+  };
+
+  auto find_platform_by_vendor = [&](std::vector<std::string> const& candidates) -> absl::optional<cl_platform_id> {
+    auto it = std::find_if(candidates.begin(), candidates.end(), 
+      [&](std::string const& candidate) {
+        if (tolower(candidate).find(vendor_id) == std::string::npos)
+          return false;
+        return true;
+      }
+    );
+    
+    if(it == candidates.end())
+      return {};
+    return platform_ids[std::distance(candidates.begin(), it)];
+  };
+
+  auto platform_id_maybe = find_platform_by_vendor(get_platform_info(platform_ids, CL_PLATFORM_VENDOR));
+  if(platform_id_maybe.has_value())
+    return platform_id_maybe;
+  
+  return find_platform_by_vendor(get_platform_info(platform_ids, CL_PLATFORM_NAME));
+}
+
+std::string GetPlatformInfo(cl_platform_id id, cl_platform_info info) {
+  size_t size;
+  cl_int error = clGetPlatformInfo(id, info, 0, nullptr, &size);
+  if (error != CL_SUCCESS) {
+    return "";
+  }
+
+  std::string result(size - 1, 0);
+  error = clGetPlatformInfo(id, info, size, &result[0], nullptr);
+  if (error != CL_SUCCESS) {
+    return "";
+  }
+  return result;
+}
+
+std::pair<absl::Status, std::vector<cl_platform_id>> GetOpenCLPlatforms() {
+  cl_uint num_platforms;
+  cl_int status = clGetPlatformIDs(0, nullptr, &num_platforms);
+  if (status != CL_SUCCESS) {
+    return {absl::UnknownError(
+        absl::StrFormat("clGetPlatformIDs returned %d", status)), {}};
+  }
+  if (num_platforms == 0) {
+    return {absl::UnknownError("No supported OpenCL platform."), {}};
+  }
+  std::vector<cl_platform_id> platforms(num_platforms);
+  status = clGetPlatformIDs(num_platforms, platforms.data(), nullptr);
+  if (status != CL_SUCCESS) {
+    return {absl::UnknownError(
+        absl::StrFormat("clGetPlatformIDs returned %d", status)), {}};
+  }
+
+  return {absl::OkStatus(), platforms};
+}
+
+std::pair<absl::Status, std::vector<cl_device_id>> GetOpenCLDevicesForPlatform(cl_platform_id platform_id) {
+  cl_uint num_devices;
+  cl_int status =
+      clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 0, nullptr, &num_devices);
+  if (status != CL_SUCCESS) {
+    return {absl::UnknownError(
+        absl::StrFormat("clGetDeviceIDs returned %d", status)),{}};
+  }
+  if (num_devices == 0) {
+    return {absl::UnknownError("No GPU on current platform."), {}};
+  }
+
+  std::vector<cl_device_id> devices(num_devices);
+  status = clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, num_devices,
+                          devices.data(), nullptr);
+  if (status != CL_SUCCESS) {
+    return {absl::UnknownError(
+        absl::StrFormat("clGetDeviceIDs returned %d", status)), {}};
+  }
+
+  return {absl::OkStatus(), devices};
+}
 
 absl::Status CreateCLBuffer(cl_context context, int size_in_bytes,
                             bool read_only, void* data, cl_mem* result) {

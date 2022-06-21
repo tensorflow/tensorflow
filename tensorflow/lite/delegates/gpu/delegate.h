@@ -68,6 +68,16 @@ enum TfLiteGpuExperimentalFlags {
   TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_SERIALIZATION = 1 << 3,
 };
 
+//Used to select which GPU to run inference on.
+//On mobile devices, specify DONTCARE so that the 0th device on 
+//0th OpenCL platform is selected. 
+enum GPUVendor {
+  DONTCARE,
+  NVIDIA,
+  AMD,
+  INTEL
+};
+
 // IMPORTANT: Always use TfLiteGpuDelegateOptionsV2Default() method to create
 // new instance of TfLiteGpuDelegateOptionsV2, otherwise every new added option
 // may break inference.
@@ -131,6 +141,17 @@ typedef struct {
   // Set to nullptr in TfLiteGpuDelegateOptionsV2Default(), which implies the
   // delegate will not try serialization.
   const char* model_token;
+
+  //Used to select which GPU to run inference on.
+  //On mobile devices, specify DONTCARE so that the 0th device on 
+  //0th OpenCL platform is selected. 
+  //On desktop environment, 'vendor' can be used in conjunction with
+  //'gpu_ordinal' if multiple GPUs are present. For example, if the
+  //computer has 3 NVidia GPUs and 3 Intel GPUs, set vendor = INTEL
+  //and gpu_ordinal = 2 (0 indexed) to use the 2nd Intel GPU. 
+  GPUVendor target_vendor = DONTCARE;
+  int32_t target_gpu_ordinal = -1;
+
 } TfLiteGpuDelegateOptionsV2;
 
 // Populates TfLiteGpuDelegateOptionsV2 as follows:
