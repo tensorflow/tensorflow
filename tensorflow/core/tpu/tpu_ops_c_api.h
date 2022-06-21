@@ -210,7 +210,7 @@ TFTPU_CAPI_EXPORT void TfTpuOrdinalSelector_Destroy(
     TfTpuOrdinalSelector* ordinal_selector);
 
 TFTPU_CAPI_EXPORT void TfTpuOrdinalSelector_GetOrdinal(
-    TfTpuOrdinalSelector* ordinal_selector, absl::optional<uint64_t> key,
+    TfTpuOrdinalSelector* ordinal_selector, std::optional<uint64_t> key,
     int64_t* req_id, int64_t* ordinal);
 
 TFTPU_CAPI_EXPORT void TfTpuOrdinalSelector_DequeueFromCoreSelector(
@@ -510,7 +510,7 @@ typedef struct TpuEmbeddingEngine_ExecutePartitioner_Params {
   int32_t struct_size;
   void* priv;
   TpuSerializedProto tpu_embedding_config;
-  const XLA_TpuMeshState* tpu_mesh_state;
+
   // out
   size_t* common_config_size;
   char** common_config;
@@ -525,67 +525,84 @@ typedef struct TpuEmbeddingEngine_ConfigureMemory_Params {
   void* priv;
 
   int num_inputs;
-  size_t common_config_string_size;
-  const char* common_config_string;
-  TpuSerializedProto tpu_embedding_config;
+  size_t common_config_size;
+  const char* common_config;
 
   // out
-  size_t* task_host_config_size;
-  char** task_host_config;
+  size_t* memory_config_size;
+  char** memory_config;
   TF_Status* status;
 } TpuEmbeddingEngine_ConfigureMemory_Params;
 
 TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_ConfigureMemory(
     TpuEmbeddingEngine_ConfigureMemory_Params* params);
 
+typedef struct TpuEmbeddingEngine_CollateMemory_Params {
+  int32_t struct_size;
+  void* priv;
+
+  size_t memory_configs_size;
+  const TpuSerializedProto* memory_configs;
+
+  // out
+  size_t* merged_memory_config_size;
+  char** merged_memory_config;
+  TF_Status* status;
+} TpuEmbeddingEngine_CollateMemory_Params;
+
+TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_CollateMemory(
+    TpuEmbeddingEngine_CollateMemory_Params* params);
+
 typedef struct TpuEmbeddingEngine_ConfigureHost_Params {
   int32_t struct_size;
   void* priv;
 
   int num_inputs;
-  size_t common_config_string_size;
-  const char* common_config_string;
-  size_t task_host_config_size;
-  const TpuSerializedProto* task_host_config;
+  size_t common_config_size;
+  const char* common_config;
+  size_t memory_config_size;
+  const char* memory_config;
   TpuSerializedProto tpu_embedding_config;
 
   // out
-  size_t* host_config_size;
-  char** host_config;
+  size_t* network_config_size;
+  char** network_config;
   TF_Status* status;
 } TpuEmbeddingEngine_ConfigureHost_Params;
 
 TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_ConfigureHost(
     TpuEmbeddingEngine_ConfigureHost_Params* params);
 
-typedef struct TpuEmbeddingEngine_ConfigureCommunication_Params {
+typedef struct TpuEmbeddingEngine_ConnectHosts_Params {
   int32_t struct_size;
   void* priv;
 
-  size_t host_config_size;
-  const TpuSerializedProto* host_config;
+  size_t network_configs_size;
+  const TpuSerializedProto* network_configs;
 
   // out
   TF_Status* status;
-} TpuEmbeddingEngine_ConfigureCommunication_Params;
+} TpuEmbeddingEngine_ConnectHosts_Params;
 
-TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_ConfigureCommunication(
-    TpuEmbeddingEngine_ConfigureCommunication_Params* params);
+TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_ConnectHosts(
+    TpuEmbeddingEngine_ConnectHosts_Params* params);
 
-typedef struct TpuEmbeddingEngine_FinalizeConfiguration_Params {
+typedef struct TpuEmbeddingEngine_Finalize_Params {
   int32_t struct_size;
   void* priv;
   const XLA_TpuMeshState* tpu_mesh_state;
 
-  size_t host_config_size;
-  const TpuSerializedProto* host_config;
+  size_t common_config_size;
+  const char* common_config;
+  size_t memory_config_size;
+  const char* memory_config;
 
   // out
   TF_Status* status;
-} TpuEmbeddingEngine_FinalizeConfiguration_Params;
+} TpuEmbeddingEngine_Finalize_Params;
 
-TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_FinalizeConfiguration(
-    TpuEmbeddingEngine_FinalizeConfiguration_Params* params);
+TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_Finalize(
+    TpuEmbeddingEngine_Finalize_Params* params);
 
 typedef struct TpuEmbeddingEngine_IsInitialized_Params {
   int32_t struct_size;
@@ -779,9 +796,10 @@ struct TfTpu_OpsApiFn {
 
   TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_ExecutePartitioner);
   TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_ConfigureMemory);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_CollateMemory);
   TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_ConfigureHost);
-  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_ConfigureCommunication);
-  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_FinalizeConfiguration);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_ConnectHosts);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_Finalize);
   TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_IsInitialized);
   TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_WriteParameters);
   TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_ReadParameters);

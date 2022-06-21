@@ -21,16 +21,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/device_set.h"
-#include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
-#include "tensorflow/core/framework/node_def_builder.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/graph/graph_node_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_rewrite_helpers.h"
 #include "tensorflow/core/tpu/tpu_embedding_configuration_proto_rewrite.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -41,20 +36,18 @@ namespace {
 
 constexpr char kNoOp[] = "NoOp";
 constexpr char kConfigureOp[] = "ConfigureTPUEmbedding";
-constexpr char kExecuteEmbeddingPartitionerOp[] =
-    "_ExecuteTPUEmbeddingPartitioner";
-constexpr char kConfigureEmbeddingMemoryOp[] = "_ConfigureTPUEmbeddingMemory";
-constexpr char kConfigureEmbeddingOp[] = "_ConfigureTPUEmbeddingHost";
-constexpr char kConnectEmbeddingHostsOp[] =
-    "_ConnectInterTPUEmbeddingCommunication";
-constexpr char kFinalizeEmbeddingOp[] =
-    "_FinalizeTPUEmbeddingSystemConfiguration";
+constexpr char kExecutePartitionerOp[] = "_ExecuteTPUEmbeddingPartitioner";
+constexpr char kConfigureMemoryOp[] = "_ConfigureTPUEmbeddingMemory";
+constexpr char kCollateMemoryOp[] = "_CollateTPUEmbeddingMemory";
+constexpr char kConfigureHostOp[] = "_ConfigureTPUEmbeddingHost";
+constexpr char kConnectHostsOp[] = "_ConnectTPUEmbeddingHosts";
+constexpr char kFinalizeOp[] = "_FinalizeTPUEmbedding";
 constexpr char kEmbeddingConfigurationAttr[] = "config";
 
 Status AddSynchronizationNode(
     const NodeDef& sync_node_def, const string& device_name,
-    const std::vector<Node*>& global_array_id_nodes,
-    const std::vector<DistributedTPURewriteHelpers::OutputDependency>
+    absl::Span<Node* const> end_nodes,
+    absl::Span<const DistributedTPURewriteHelpers::OutputDependency>
         output_dependencies,
     Graph* graph) {
   NodeDef sync_def;
@@ -65,10 +58,12 @@ Status AddSynchronizationNode(
 
   TF_ASSIGN_OR_RETURN(Node * sync_node, graph->AddNode(sync_def));
   sync_node->set_assigned_device_name(device_name);
-  // Add control edges from the global array id nodes.
-  for (auto node : global_array_id_nodes) {
-    graph->AddControlEdge(node, sync_node);
+
+  // Add control edges from the nodes which must complete execution.
+  for (Node* end_node : end_nodes) {
+    graph->AddControlEdge(end_node, sync_node);
   }
+
   // Replace the output edges.
   for (const DistributedTPURewriteHelpers::OutputDependency& dep :
        output_dependencies) {
@@ -81,13 +76,36 @@ Status AddSynchronizationNode(
   return OkStatus();
 }
 
-Status AddPartitionerEmbeddingNode(const string& configuration_device_name,
-                                   const string& config,
-                                   const std::vector<Node*>& input_dependencies,
-                                   Graph* graph, Node** partitioner_node) {
+Status AddSetupPropagationEmbeddingNode(const string& device_name,
+                                        const string& node_name,
+                                        const string& op_name,
+                                        absl::Span<Node* const> input_nodes,
+                                        Graph* graph, Node** node) {
+  NodeDef node_def;
+  node_def.set_name(node_name);
+  node_def.set_op(op_name);
+  node_def.set_device(device_name);
+  AddNodeAttr("N", static_cast<int>(input_nodes.size()), &node_def);
+  if (!input_nodes.empty()) {
+    MergeDebugInfo(NodeDebugInfo(input_nodes[0]->def()), &node_def);
+  }
+
+  TF_ASSIGN_OR_RETURN(*node, graph->AddNode(node_def));
+  (*node)->set_assigned_device_name(device_name);
+  // Add inputs from the embedding nodes.
+  for (int i = 0; i < input_nodes.size(); ++i) {
+    graph->AddEdge(input_nodes[i], 0, *node, i);
+  }
+  return OkStatus();
+}
+
+Status AddExecutePartitionerNode(const string& configuration_device_name,
+                                 const string& config,
+                                 absl::Span<Node* const> input_dependencies,
+                                 Graph* graph, Node** partitioner_node) {
   NodeDef partitioner_def;
   partitioner_def.set_name(graph->NewName("execute_embedding_partitioner"));
-  partitioner_def.set_op(kExecuteEmbeddingPartitionerOp);
+  partitioner_def.set_op(kExecutePartitionerOp);
   partitioner_def.set_device(configuration_device_name);
   AddNodeAttr("config", config, &partitioner_def);
 
@@ -101,15 +119,13 @@ Status AddPartitionerEmbeddingNode(const string& configuration_device_name,
   return OkStatus();
 }
 
-Status AddMemoryConfigurationEmbeddingNode(const string& host_device_name,
-                                           const string& config,
-                                           Node* partitioner_node, Graph* graph,
-                                           Node** embedding_node) {
+Status AddConfigureMemoryNode(const string& host_device_name,
+                              Node* partitioner_node, Graph* graph,
+                              Node** embedding_node) {
   NodeDef embedding_def;
   embedding_def.set_name(graph->NewName("configure_tpu_embedding_memory"));
-  embedding_def.set_op(kConfigureEmbeddingMemoryOp);
+  embedding_def.set_op(kConfigureMemoryOp);
   embedding_def.set_device(host_device_name);
-  AddNodeAttr("config", config, &embedding_def);
 
   TF_ASSIGN_OR_RETURN(*embedding_node, graph->AddNode(embedding_def));
   (*embedding_node)->set_assigned_device_name(host_device_name);
@@ -117,66 +133,62 @@ Status AddMemoryConfigurationEmbeddingNode(const string& host_device_name,
   return OkStatus();
 }
 
-Status AddHostConfigurationEmbeddingNode(const string& host_device_name,
-                                         const string& config,
-                                         Node* partitioner_node,
-                                         const std::vector<Node*>& memory_nodes,
-                                         Graph* graph, Node** embedding_node) {
+Status AddCollateMemoryNode(const string& configuration_device_name,
+                            absl::Span<Node* const> memory_nodes, Graph* graph,
+                            Node** embedding_node) {
+  return AddSetupPropagationEmbeddingNode(
+      /*device_name=*/configuration_device_name,
+      /*node_name=*/graph->NewName("collate_tpu_embedding_memory"),
+      /*op_name=*/kCollateMemoryOp, /*input_nodes=*/memory_nodes,
+      /*graph=*/graph,
+      /*node=*/embedding_node);
+}
+
+Status AddConfigureHostNode(const string& host_device_name,
+                            const string& config, Node* partitioner_node,
+                            Node* memory_node, Graph* graph,
+                            Node** embedding_node) {
   NodeDef embedding_def;
-  embedding_def.set_name(graph->NewName("configure_host_embedding"));
-  embedding_def.set_op(kConfigureEmbeddingOp);
+  embedding_def.set_name(graph->NewName("configure_tpu_embedding_host"));
+  embedding_def.set_op(kConfigureHostOp);
   embedding_def.set_device(host_device_name);
   AddNodeAttr("config", config, &embedding_def);
-  AddNodeAttr("N", static_cast<int>(memory_nodes.size()), &embedding_def);
-  if (!memory_nodes.empty()) {
-    MergeDebugInfo(NodeDebugInfo(memory_nodes[0]->def()), &embedding_def);
-  }
 
   TF_ASSIGN_OR_RETURN(*embedding_node, graph->AddNode(embedding_def));
   (*embedding_node)->set_assigned_device_name(host_device_name);
-  // Add inputs from the partitioner node and all the memory nodes.
+  // Add inputs from the partitioner node and the memory node.
   graph->AddEdge(partitioner_node, 0, *embedding_node, 0);
-  for (int i = 0; i < memory_nodes.size(); ++i) {
-    graph->AddEdge(memory_nodes[i], 0, *embedding_node, i + 1);
-  }
+  graph->AddEdge(memory_node, 0, *embedding_node, 1);
+
   return OkStatus();
 }
 
-Status AddSetupPropagationEmbeddingNode(
-    const string& device_name, const string& node_name, const string& op_name,
-    const std::vector<Node*>& embedding_nodes, Graph* graph, Node** node) {
-  NodeDef node_def;
-  node_def.set_name(node_name);
-  node_def.set_op(op_name);
-  node_def.set_device(device_name);
-  AddNodeAttr("N", static_cast<int>(embedding_nodes.size()), &node_def);
-  if (!embedding_nodes.empty()) {
-    MergeDebugInfo(NodeDebugInfo(embedding_nodes[0]->def()), &node_def);
-  }
+Status AddConnectHostsNode(const string& host_device_name,
+                           absl::Span<Node* const> configure_host_nodes,
+                           Graph* graph, Node** connect_node) {
+  return AddSetupPropagationEmbeddingNode(
+      /*device_name=*/host_device_name,
+      /*node_name=*/graph->NewName("connect_tpu_embedding_hosts"),
+      /*op_name=*/kConnectHostsOp, /*input_nodes=*/configure_host_nodes,
+      /*graph=*/graph,
+      /*node=*/connect_node);
+}
 
-  TF_ASSIGN_OR_RETURN(*node, graph->AddNode(node_def));
-  (*node)->set_assigned_device_name(device_name);
-  // Add inputs from the embedding nodes.
-  for (int i = 0; i < embedding_nodes.size(); ++i) {
-    graph->AddEdge(embedding_nodes[i], 0, *node, i);
-  }
+Status AddFinalizeNode(const string& configuration_device_name,
+                       Node* partitioner_node, Node* memory_node, Graph* graph,
+                       Node** finalize_node) {
+  NodeDef finalize_def;
+  finalize_def.set_name(graph->NewName("finalize_tpu_embedding"));
+  finalize_def.set_op(kFinalizeOp);
+  finalize_def.set_device(configuration_device_name);
+
+  TF_ASSIGN_OR_RETURN(*finalize_node, graph->AddNode(finalize_def));
+  (*finalize_node)->set_assigned_device_name(configuration_device_name);
+  // Add inputs from the partitioner node and the memory node.
+  graph->AddEdge(partitioner_node, 0, *finalize_node, 0);
+  graph->AddEdge(memory_node, 0, *finalize_node, 1);
+
   return OkStatus();
-}
-
-Status AddConnectEmbeddingNode(const string& host_device_name,
-                               const std::vector<Node*>& embedding_nodes,
-                               Graph* graph, Node** connect_node) {
-  return AddSetupPropagationEmbeddingNode(
-      host_device_name, graph->NewName("connect_tpu_embedding_hosts"),
-      kConnectEmbeddingHostsOp, embedding_nodes, graph, connect_node);
-}
-
-Status AddFinalizeEmbeddingNode(const string& configuration_device_name,
-                                const std::vector<Node*>& embedding_nodes,
-                                Graph* graph, Node** finalize_node) {
-  return AddSetupPropagationEmbeddingNode(
-      configuration_device_name, graph->NewName("finalize_host_embedding"),
-      kFinalizeEmbeddingOp, embedding_nodes, graph, finalize_node);
 }
 
 }  // namespace
@@ -227,7 +239,7 @@ Status ConfigureTPUEmbeddingRewritePass::Run(
             const std::string& embedding_attr_string = GetNodeAttrString(
                 AttrSlice(configuration_node_def), kEmbeddingConfigurationAttr);
             if (embedding_attr_string.empty()) {
-              return errors::InvalidArgument("TPU embedding_config is empty.");
+              return errors::InvalidArgument("TPU embedding config is empty.");
             } else {
               // Auto populate the feature descriptor so that we can make use
               // of these fields later.
@@ -240,13 +252,13 @@ Status ConfigureTPUEmbeddingRewritePass::Run(
                   &updated_embedding_attr_string);
 
               // Execute the TPU embedding partitioner if configured to do so.
-              Node* embedding_partitioner_node;
+              Node* partitioner_node;
               TF_ASSIGN_OR_RETURN(
                   const std::string configuration_device_string,
                   get_updated_device_name(configuration_device_name));
-              TF_RETURN_IF_ERROR(AddPartitionerEmbeddingNode(
+              TF_RETURN_IF_ERROR(AddExecutePartitionerNode(
                   configuration_device_string, updated_embedding_attr_string,
-                  input_dependencies, graph, &embedding_partitioner_node));
+                  input_dependencies, graph, &partitioner_node));
 
               // Obtain the device strings for configuring the TPU embedding
               // core on each host.
@@ -258,24 +270,31 @@ Status ConfigureTPUEmbeddingRewritePass::Run(
               }
 
               // Add nodes that configure the HBM memory at each host.
-              std::vector<Node*> tpu_embedding_memory_nodes;
+              std::vector<Node*> memory_nodes;
+              memory_nodes.reserve(host_devices.size());
               for (int i = 0; i < host_devices.size(); ++i) {
-                Node* tpu_embedding_memory_node;
-                TF_RETURN_IF_ERROR(AddMemoryConfigurationEmbeddingNode(
-                    host_device_strings[i], updated_embedding_attr_string,
-                    embedding_partitioner_node, graph,
-                    &tpu_embedding_memory_node));
-                tpu_embedding_memory_nodes.push_back(tpu_embedding_memory_node);
+                Node* memory_node;
+                TF_RETURN_IF_ERROR(AddConfigureMemoryNode(
+                    host_device_strings[i], partitioner_node, graph,
+                    &memory_node));
+                memory_nodes.push_back(memory_node);
               }
+
+              // Add node to merge the HBM memory configurations.
+              Node* merged_memory_node;
+              TF_RETURN_IF_ERROR(AddCollateMemoryNode(
+                  configuration_device_string, memory_nodes, graph,
+                  &merged_memory_node));
 
               // Add the nodes to configure the embeddings at each host.
               std::vector<Node*> host_embedding_nodes;
+              host_embedding_nodes.reserve(host_devices.size());
               for (int i = 0; i < host_devices.size(); ++i) {
                 Node* host_embedding_node;
-                TF_RETURN_IF_ERROR(AddHostConfigurationEmbeddingNode(
+                TF_RETURN_IF_ERROR(AddConfigureHostNode(
                     host_device_strings[i], updated_embedding_attr_string,
-                    embedding_partitioner_node, tpu_embedding_memory_nodes,
-                    graph, &host_embedding_node));
+                    partitioner_node, merged_memory_node, graph,
+                    &host_embedding_node));
                 host_embedding_nodes.push_back(host_embedding_node);
               }
 
@@ -284,9 +303,10 @@ Status ConfigureTPUEmbeddingRewritePass::Run(
               // other TPU workers in the system, so these are all-to-all
               // communication links.
               std::vector<Node*> connect_embedding_nodes;
+              connect_embedding_nodes.reserve(host_devices.size());
               for (int i = 0; i < host_devices.size(); ++i) {
                 Node* connect_embedding_node;
-                TF_RETURN_IF_ERROR(AddConnectEmbeddingNode(
+                TF_RETURN_IF_ERROR(AddConnectHostsNode(
                     host_device_strings[i], host_embedding_nodes, graph,
                     &connect_embedding_node));
                 connect_embedding_nodes.push_back(connect_embedding_node);
@@ -294,18 +314,18 @@ Status ConfigureTPUEmbeddingRewritePass::Run(
 
               // Add the finalize node that checks that the HBM base addresses
               // allocated are the same across all TPU worker tasks.
-              Node* finalize_embedding_node;
-              TF_RETURN_IF_ERROR(AddFinalizeEmbeddingNode(
-                  configuration_device_string, host_embedding_nodes, graph,
-                  &finalize_embedding_node));
+              Node* finalize_node;
+              TF_RETURN_IF_ERROR(
+                  AddFinalizeNode(configuration_device_string, partitioner_node,
+                                  merged_memory_node, graph, &finalize_node));
 
               // Wait for the connect and finalize nodes to complete execution.
-              std::vector<Node*> all_end_nodes(connect_embedding_nodes);
-              all_end_nodes.push_back(finalize_embedding_node);
+              std::vector<Node*> end_nodes(connect_embedding_nodes);
+              end_nodes.push_back(finalize_node);
 
               TF_RETURN_IF_ERROR(AddSynchronizationNode(
                   configuration_node_def, configuration_device_string,
-                  all_end_nodes, output_dependencies, graph));
+                  end_nodes, output_dependencies, graph));
             }
 
             return OkStatus();
