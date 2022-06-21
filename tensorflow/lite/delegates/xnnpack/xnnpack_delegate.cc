@@ -61,7 +61,8 @@ class Delegate {
   friend class Subgraph;
 
  public:
-  explicit Delegate(const TfLiteXNNPackDelegateOptions* options) {
+  explicit Delegate(const TfLiteXNNPackDelegateOptions* options,
+                    xnn_workspace_t workspace) {
 #if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
     if (options != nullptr && options->num_threads > 1) {
       threadpool_.reset(
@@ -73,6 +74,7 @@ class Delegate {
 
     options_ =
         options != nullptr ? *options : TfLiteXNNPackDelegateOptionsDefault();
+    workspace_.reset(workspace);
   }
 
   TfLiteIntArray* PrepareOpsToDelegate(TfLiteContext* context);
@@ -115,6 +117,8 @@ class Delegate {
     }
   }
 
+  xnn_workspace_t workspace() const { return workspace_.get(); }
+
  private:
   TfLiteDelegate delegate_ = {
       reinterpret_cast<void*>(this),  // .data_
@@ -143,6 +147,8 @@ class Delegate {
   std::unique_ptr<pthreadpool, decltype(&pthreadpool_destroy)> threadpool_{
       nullptr, &pthreadpool_destroy};
 #endif
+  std::unique_ptr<xnn_workspace, decltype(&xnn_release_workspace)> workspace_{
+      nullptr, &xnn_release_workspace};
 
   TfLiteXNNPackDelegateOptions options_;
 };
@@ -609,8 +615,9 @@ class Subgraph {
     if (context->profiler) {
       flags |= XNN_FLAG_BASIC_PROFILING;
     }
-    status = xnn_create_runtime_v3(subgraph.get(), delegate.weights_cache(),
-                                   delegate.threadpool(), flags, &runtime_ptr);
+    status = xnn_create_runtime_v4(subgraph.get(), delegate.weights_cache(),
+                                   delegate.workspace(), delegate.threadpool(),
+                                   flags, &runtime_ptr);
     if (status != xnn_status_success) {
       TF_LITE_KERNEL_LOG(context, "failed to create XNNPACK runtime");
       return nullptr;
@@ -5038,7 +5045,12 @@ TfLiteDelegate* TfLiteXNNPackDelegateCreate(
     return nullptr;
   }
 
-  auto* xnnpack_delegate = new ::tflite::xnnpack::Delegate(options);
+  xnn_workspace_t workspace = nullptr;
+  if (xnn_create_workspace(&workspace) != xnn_status_success) {
+    return nullptr;
+  }
+
+  auto* xnnpack_delegate = new ::tflite::xnnpack::Delegate(options, workspace);
   return xnnpack_delegate ? xnnpack_delegate->tflite_delegate() : nullptr;
 }
 
