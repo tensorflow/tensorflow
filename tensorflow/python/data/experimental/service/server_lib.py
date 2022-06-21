@@ -213,13 +213,13 @@ class DispatchServer:
     self._server.join()
 
   def stop(self):
-      """Stops the server.
+    """Stops the server.
 
-      Raises:
-        tf.errors.OpError: Or one of its subclasses if an error occurs while
-          stopping the server.
-      """
-      self._stop()
+    Raises:
+    tf.errors.OpError: Or one of its subclasses if an error occurs while
+      stopping the server.
+    """
+    self._stop()
 
   @property
   def target(self):
@@ -249,7 +249,7 @@ class DispatchServer:
     self._stop()
 
   def __exit__(self, exc_type, exc_val, exc_tb):
-      self._stop()
+    self._stop()
 
   @property
   def _address(self):
@@ -437,7 +437,7 @@ class WorkerServer:
     self._stop()
 
   def __exit__(self, exc_type, exc_val, exc_tb):
-      self._stop()
+    self._stop()
 
   @property
   def _address(self):
