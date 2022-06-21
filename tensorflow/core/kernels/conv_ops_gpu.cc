@@ -271,6 +271,24 @@ template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv<float>(
     se::DeviceMemory<float> bias_ptr, se::DeviceMemory<float> side_input_ptr,
     int64_t scratch_size_limit);
 
+template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>>
+AutotuneFusedConv<Eigen::half>(
+    bool cudnn_use_autotune,
+    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::FusedConvOp>>*
+        autotune_map,
+    const ConvParameters& params, OpKernelContext* ctx,
+    const se::dnn::BatchDescriptor& input_desc,
+    const se::dnn::FilterDescriptor& filter_desc,
+    const se::dnn::BatchDescriptor& bias_desc,
+    const se::dnn::BatchDescriptor& output_desc,
+    const se::dnn::ConvolutionDescriptor& conv_desc,
+    const se::dnn::ActivationMode activation_mode, double conv_scale,
+    double side_input_scale, se::DeviceMemory<Eigen::half> input_ptr,
+    se::DeviceMemory<Eigen::half> filter_ptr,
+    se::DeviceMemory<Eigen::half> output_ptr,
+    se::DeviceMemory<Eigen::half> bias_ptr,
+    se::DeviceMemory<Eigen::half> side_input_ptr, int64_t scratch_size_limit);
+
 template <typename T>
 StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
     bool cudnn_use_autotune,

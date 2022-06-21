@@ -219,6 +219,9 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
     OP_REQUIRES(context, params.data_format == FORMAT_NHWC,
                 errors::Unimplemented("Fused conv implementation only supports "
                                       "NHWC tensor format for now."));
+    OP_REQUIRES(context, DataTypeToEnum<T>::value != DT_HALF,
+                errors::Unimplemented("Fused conv implementation with half "
+                                      "precision is not supported on CPU."));
 
     BiasAddArgs<T> bias_add_args;
     if (BiasAddArgs<T>::IsSupported(fusion)) {
@@ -419,7 +422,10 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
       in_cols = new_in_cols;
     }
 
-    if (params.data_format == FORMAT_NHWC) {
+    const bool compute_in_nhwc = DataTypeToEnum<T>::value == DT_HALF &&
+                                 stream->GetCudaComputeCapability().IsAtLeast(
+                                     se::CudaComputeCapability::VOLTA);
+    if (!compute_in_nhwc && params.data_format == FORMAT_NHWC) {
       // Convert the input tensor from NHWC to NCHW.
       TensorShape nchw_shape =
           ShapeFromFormat(FORMAT_NCHW, in_batch, in_rows, in_cols, in_depths);
@@ -451,23 +457,37 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
         LOG(FATAL) << "Unsupported fusion type";  // Crash OK
     }
 
+    const TensorFormat compute_data_format =
+        compute_in_nhwc ? FORMAT_NHWC : FORMAT_NCHW;
+    constexpr auto kComputeInNHWC =
+        std::make_tuple(se::dnn::DataLayout::kBatchYXDepth,
+                        se::dnn::FilterLayout::kOutputYXInput);
+    constexpr auto kComputeInNCHW =
+        std::make_tuple(se::dnn::DataLayout::kBatchDepthYX,
+                        se::dnn::FilterLayout::kOutputInputYX);
+    se::dnn::DataLayout compute_data_layout;
+    se::dnn::FilterLayout filter_layout;
+    std::tie(compute_data_layout, filter_layout) =
+        compute_in_nhwc ? kComputeInNHWC : kComputeInNCHW;
+
     se::dnn::BatchDescriptor input_desc;
     input_desc.set_count(in_batch)
         .set_feature_map_count(in_depths)
         .set_height(in_rows)
         .set_width(in_cols)
-        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(compute_data_layout);
     se::dnn::FilterDescriptor filter_desc;
     filter_desc.set_input_filter_height(patch_rows)
         .set_input_filter_width(patch_cols)
         .set_input_feature_map_count(patch_depths)
-        .set_output_feature_map_count(filter.dim_size(3));
+        .set_output_feature_map_count(filter.dim_size(3))
+        .set_layout(filter_layout);
     se::dnn::BatchDescriptor bias_desc;
     bias_desc.set_count(1)
         .set_height(1)
         .set_width(1)
         .set_feature_map_count(out_depths)
-        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(compute_data_layout);
     se::dnn::ConvolutionDescriptor conv_desc;
     conv_desc.set_vertical_dilation_rate(dimensions.dilation_rows)
         .set_horizontal_dilation_rate(dimensions.dilation_cols)
@@ -481,22 +501,38 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
         .set_height(out_rows)
         .set_width(out_cols)
         .set_feature_map_count(out_depths)
-        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(compute_data_layout);
 
     Tensor transformed_filter;
-    OP_REQUIRES_OK(context,
-                   context->allocate_temp(
-                       DataTypeToEnum<T>::value,
-                       TensorShape({filter.dim_size(3), filter.dim_size(2),
-                                    filter.dim_size(0), filter.dim_size(1)}),
-                       &transformed_filter));
-    functor::TransformFilter<GPUDevice, T, int, 4>()(
-        context->eigen_device<GPUDevice>(), FORMAT_OIHW,
-        To32Bit(filter.tensor<T, 4>()),
-        To32Bit(transformed_filter.tensor<T, 4>()));
+    const auto transform_filter = [&](FilterTensorFormat dst_format) -> Status {
+      VLOG(4) << "Transform filter tensor from " << ToString(FORMAT_HWIO)
+              << " to " << ToString(dst_format);
+
+      TensorShape dst_shape =
+          dst_format == FORMAT_OIHW
+              ? TensorShape({filter.dim_size(3), filter.dim_size(2),
+                             filter.dim_size(0), filter.dim_size(1)})
+              : TensorShape({filter.dim_size(3), filter.dim_size(0),
+                             filter.dim_size(1), filter.dim_size(2)});
+
+      TF_RETURN_IF_ERROR(context->allocate_temp(
+          DataTypeToEnum<T>::value, dst_shape, &transformed_filter));
+      functor::TransformFilter<GPUDevice, T, int, 4>()(
+          context->eigen_device<GPUDevice>(), dst_format,
+          To32Bit(filter.tensor<T, 4>()),
+          To32Bit(transformed_filter.tensor<T, 4>()));
+
+      return OkStatus();
+    };
+
+    if (compute_in_nhwc) {
+      OP_REQUIRES_OK(context, transform_filter(FORMAT_OHWI));
+    } else {
+      OP_REQUIRES_OK(context, transform_filter(FORMAT_OIHW));
+    }
 
     Tensor transformed_output;
-    if (params.data_format == FORMAT_NHWC) {
+    if (!compute_in_nhwc && params.data_format == FORMAT_NHWC) {
       // Only allocate temporary memory when a layout transformation is needed.
       OP_REQUIRES_OK(context,
                      context->allocate_temp(
@@ -532,7 +568,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
         in_depths,                     // in_depths
         {{in_rows,                     // in_rows
           in_cols}},                   // in_cols
-        FORMAT_NCHW,                   // compute_data_format
+        compute_data_format,           // compute_data_format
         out_depths,                    // out_depths
         {{patch_rows,                  // filter_rows
           patch_cols,                  // filter_cols
@@ -615,7 +651,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     OP_REQUIRES_OK(context, cudnn_launch_status);
 
     // Convert the output tensor back from NCHW to NHWC.
-    if (params.data_format == FORMAT_NHWC) {
+    if (!compute_in_nhwc && params.data_format == FORMAT_NHWC) {
       functor::NCHWToNHWC<GPUDevice, T, 4>()(
           context->eigen_device<GPUDevice>(),
           const_cast<const Tensor&>(transformed_output).tensor<T, 4>(),
