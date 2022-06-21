@@ -148,9 +148,11 @@ TfLiteStatus TransposeConv2dOpBuilder::PopulateSubGraph(
     float bias_min = 0;
     float bias_max = 0;
     if (per_channel_quant_.channel_scales_node != nullptr) {
-      ProcessPerChannelQuantizedBias(
-          data_tensor, bias_tensor, inputs->data[3], context, &bias_min,
-          &bias_max, graph_builder_, &per_channel_quant_, &bias_const);
+      std::vector<int> preprocessed_bias_data;
+      ProcessPerChannelQuantizedBias(data_tensor, bias_tensor, inputs->data[3],
+                                     context, &bias_min, &bias_max,
+                                     graph_builder_, &per_channel_quant_,
+                                     &preprocessed_bias_data, &bias_const);
     } else {
       bias_const =
           graph_builder_->AddConstNodeWithData(inputs->data[3], bias_tensor);
