@@ -54,7 +54,7 @@ TEST_P(MatmulTestWithCublas, InverseAndMatmul) {
     iota.9 = s32[2]{0} iota(), iota_dimension=0
     broadcast.14 = s32[2,2]{1,0} broadcast(iota.9), dimensions={1}
     compare.16 = pred[2,2]{1,0} compare(broadcast.15, broadcast.14), direction=GE
-    broadcast.17 = pred[2,6,2,2]{3,2,1,0} broadcast(compare.16), dimensions={2,3}
+    broadcast.17 = pred[2,6,2,2]{3,2,1,0} broadcast(pred[2,2]{1,0} compare.16), dimensions={2,3}
     constant.18 = f32[] constant(0)
     broadcast.19 = f32[2,6,2,2]{3,2,1,0} broadcast(constant.18), dimensions={}
     arg0.1 = f32[2,6,2,2]{3,2,1,0} parameter(0), parameter_replication={false}
