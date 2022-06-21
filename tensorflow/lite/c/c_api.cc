@@ -241,7 +241,7 @@ namespace internal {
 // forwards the methods to (C ABI) callback functions from a
 // `TfLiteOpResolverCallbacks` struct.
 
-// FindOp for buildin op query.
+// FindOp for builtin op query.
 const TfLiteRegistration* CallbackOpResolver::FindOp(tflite::BuiltinOperator op,
                                                      int version) const {
   // Use Registration V2 API to find op.
