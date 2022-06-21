@@ -94,8 +94,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
 
   opts.set_xla_gpu_shape_checks(DebugOptions::RUNTIME);
-
-  opts.set_xla_cpu_enable_mlir_lowering(false);
   return opts;
 }
 
@@ -749,11 +747,6 @@ static void AllocateFlags() {
       bool_setter_for(&DebugOptions::set_xla_gpu_simplify_all_fp_conversions),
       flag_values->xla_gpu_simplify_all_fp_conversions(),
       "Allows any chain of floating-point conversions to be simplified."));
-  flag_objects->push_back(tensorflow::Flag(
-      "xla_cpu_enable_mlir_lowering",
-      bool_setter_for(&DebugOptions::set_xla_cpu_enable_mlir_lowering),
-      flag_values->xla_cpu_enable_mlir_lowering(),
-      "Enable MLIR-based lowering in XLA:CPU instead of LLVM emitters."));
 
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }  // NOLINT(readability/fn_size)

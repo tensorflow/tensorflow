@@ -31,7 +31,6 @@ limitations under the License.
 #include "llvm/IR/Operator.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Host.h"
-#include "mlir/ExecutionEngine/CRunnerUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/orc_jit_memory_mapper.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d.h"
@@ -54,12 +53,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/logging.h"
-
-// Provided by compiler-rt and MLIR.
-// Converts an F32 value to a BF16.
-extern "C" uint16_t __truncsfbf2(float);
-// Converts an F64 value to a BF16.
-extern "C" uint16_t __truncdfbf2(double);
 
 namespace xla {
 namespace cpu {
@@ -319,10 +312,6 @@ bool RegisterKnownJITSymbols() {
                      "Host");
   registry->Register("__truncdfhf2", reinterpret_cast<void*>(__truncdfhf2),
                      "Host");
-  registry->Register("__truncdfbf2", reinterpret_cast<void*>(__truncdfbf2),
-                     "Host");
-  registry->Register("__truncsfbf2", reinterpret_cast<void*>(__truncsfbf2),
-                     "Host");
   registry->Register("__powisf2", reinterpret_cast<void*>(__powisf2), "Host");
   registry->Register("__powidf2", reinterpret_cast<void*>(__powidf2), "Host");
 
@@ -413,12 +402,6 @@ bool RegisterKnownJITSymbols() {
   registry->Register("memcpy", reinterpret_cast<void*>(memcpy), "Host");
   registry->Register("memmove", reinterpret_cast<void*>(memmove), "Host");
   registry->Register("memset", reinterpret_cast<void*>(memset), "Host");
-
-  // Used by MLIR lowering.
-  registry->Register("malloc", reinterpret_cast<void*>(malloc), "Host");
-  registry->Register("calloc", reinterpret_cast<void*>(calloc), "Host");
-  registry->Register("free", reinterpret_cast<void*>(free), "Host");
-  registry->Register("memrefCopy", reinterpret_cast<void*>(memrefCopy), "Host");
 
 #ifdef __APPLE__
   registry->Register("__bzero", reinterpret_cast<void*>(bzero), "Host");
