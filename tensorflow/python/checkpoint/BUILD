@@ -215,7 +215,6 @@ py_library(
         ":checkpoint_options",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/saved_model/registration",
-        "//tensorflow/python/training/saving:saveable_hook",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
     ],
@@ -232,7 +231,6 @@ cuda_py_test(
         ":functional_saver",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/training/saving:saveable_hook",
     ],
 )
 

@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tfl-unfold-large-splat-constant | FileCheck %s
+// RUN: tf-opt %s -unfold-large-splat-constant | FileCheck %s
 
 // CHECK-LABEL: @unfold_large_constant_splat
 func.func @unfold_large_constant_splat() -> (tensor<10x10xf32>, tensor<1000x1000xf32>) {

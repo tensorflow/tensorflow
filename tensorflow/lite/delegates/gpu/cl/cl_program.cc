@@ -153,8 +153,9 @@ absl::Status CLProgram::GetBinary(std::vector<uint8_t>* result) const {
   RETURN_IF_ERROR(GetBinarySize(program_, &binary_size));
   result->resize(result->size() + binary_size);
   uint8_t* binary_ptr = result->data() + result->size() - binary_size;
-  cl_int error_code = clGetProgramInfo(program_, CL_PROGRAM_BINARIES,
-                                       binary_size, &binary_ptr, nullptr);
+  cl_int error_code =
+      clGetProgramInfo(program_, CL_PROGRAM_BINARIES, sizeof(unsigned char*),
+                       &binary_ptr, nullptr);
   if (error_code != CL_SUCCESS) {
     return absl::UnknownError(absl::StrCat("Failed to get program binary - ",
                                            CLErrorCodeToString(error_code)));

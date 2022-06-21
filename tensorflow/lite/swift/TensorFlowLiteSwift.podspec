@@ -1,10 +1,10 @@
 Pod::Spec.new do |s|
   s.name             = 'TensorFlowLiteSwift'
-  s.version          = '2.9.0'
+  s.version          = '2.9.1'
   s.authors          = 'Google Inc.'
   s.license          = { :type => 'Apache' }
   s.homepage         = 'https://github.com/tensorflow/tensorflow'
-  s.source           = { :git => 'https://github.com/tensorflow/tensorflow.git', :commit => '8a20d54a3c1bfa38c03ea99a2ad3c1b0a45dfa95' }
+  s.source           = { :git => 'https://github.com/tensorflow/tensorflow.git', :commit => 'd8ce9f9c301d021a69953134185ab728c1c248d3' }
   s.summary          = 'TensorFlow Lite for Swift'
   s.description      = <<-DESC
 
@@ -22,14 +22,12 @@ Pod::Spec.new do |s|
   tfl_dir = 'tensorflow/lite/'
   swift_dir = tfl_dir + 'swift/'
 
-  # TODO: Remove this after adding support for arm64 simulator.
   s.pod_target_xcconfig = {
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386 arm64'
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386'
   }
 
-  # TODO: Remove this after adding support for arm64 simulator.
   s.user_target_xcconfig = {
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386 arm64'
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386'
   }
 
   s.default_subspec = 'Core'

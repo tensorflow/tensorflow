@@ -308,7 +308,7 @@ Status FixedUnigramSampler::LoadFromFile(Env* env, const string& vocab_file,
     }
     ++word_id;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void FixedUnigramSampler::LoadFromUnigrams(const std::vector<float>& unigrams,

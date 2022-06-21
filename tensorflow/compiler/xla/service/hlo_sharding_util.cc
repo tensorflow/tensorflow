@@ -1267,13 +1267,12 @@ HloSharding PartiallyReplicateTiledShardingOnDims(
     return sharding;
   }
   int64_t group_count = 1;
+  std::vector<int64_t> valid_dims_to_replicate;
   for (int64_t dim : dims_to_replicate) {
-    if (sharding.ReplicateOnLastTileDim()) {
-      CHECK_LT(dim, sharding.tile_assignment().num_dimensions() - 1);
-    } else {
-      CHECK_LT(dim, sharding.tile_assignment().num_dimensions() -
-                        sharding.subgroup_types().size());
+    if (dim >= sharding.TiledDataRank()) {
+      continue;
     }
+    valid_dims_to_replicate.push_back(dim);
     group_count *= sharding.tile_assignment().dim(dim);
   }
   if (group_count == 1) {
@@ -1285,15 +1284,15 @@ HloSharding PartiallyReplicateTiledShardingOnDims(
   std::vector<int64_t> dim_permutation(sharding.TiledDataRank());
   std::iota(dim_permutation.begin(), dim_permutation.end(), 0);
   absl::c_stable_sort(dim_permutation, [&](const int64_t a, const int64_t b) {
-    return absl::c_linear_search(dims_to_replicate, a) <
-           absl::c_linear_search(dims_to_replicate, b);
+    return absl::c_linear_search(valid_dims_to_replicate, a) <
+           absl::c_linear_search(valid_dims_to_replicate, b);
   });
   auto new_tile =
       TransposeSharding(sharding, dim_permutation).tile_assignment();
   std::vector<int64_t> new_tile_shape(
       sharding.tile_assignment().dimensions().begin(),
       sharding.tile_assignment().dimensions().end());
-  for (int64_t dim : dims_to_replicate) {
+  for (int64_t dim : valid_dims_to_replicate) {
     new_tile_shape[dim] = 1;
   }
   if (sharding.ReplicateOnLastTileDim()) {

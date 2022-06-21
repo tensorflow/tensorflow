@@ -14,7 +14,7 @@ converter:
 Note: In case you encounter any issues during model conversion, create a
 [GitHub issue](https://github.com/tensorflow/tensorflow/issues/new?template=60-tflite-converter-issue.md).
 
-![TFLite converter workflow](../images/convert/convert.png)
+![TFLite converter workflow](../../images/convert/convert.png)
 
 ## Python API <a name="python_api"></a>
 
@@ -144,9 +144,9 @@ with open('model.tflite', 'wb') as f:
 
 ### Other features
 
-*   Apply [optimizations](../performance/model_optimization.md). A common
+*   Apply [optimizations](../../performance/model_optimization.md). A common
     optimization used is
-    [post training quantization](../performance/post_training_quantization.md),
+    [post training quantization](../../performance/post_training_quantization.md),
     which can further reduce your model latency and size with minimal loss in
     accuracy.
 
@@ -164,12 +164,12 @@ The following are common conversion errors and their solutions:
 
     Solution: The error occurs as your model has TF ops that don't have a
     corresponding TFLite implementation. You can resolve this by
-    [using the TF op in the TFLite model](../guide/ops_select.md) (recommended).
+    [using the TF op in the TFLite model](../../guide/ops_select.md) (recommended).
     If you want to generate a model with TFLite ops only, you can either add a
     request for the missing TFLite op in
     [Github issue #21526](https://github.com/tensorflow/tensorflow/issues/21526)
     (leave a comment if your request hasn’t already been mentioned) or
-    [create the TFLite op](../guide/ops_custom#create_and_register_the_operator)
+    [create the TFLite op](../../guide/ops_custom#create_and_register_the_operator)
     yourself.
 
 *   Error: `.. is neither a custom op nor a flex op`
@@ -177,18 +177,18 @@ The following are common conversion errors and their solutions:
     Solution: If this TF op is:
 
     *   Supported in TF: The error occurs because the TF op is missing from the
-        [allowlist](../guide/op_select_allowlist.md) (an exhaustive list of TF
+        [allowlist](../../guide/op_select_allowlist.md) (an exhaustive list of TF
         ops supported by TFLite). You can resolve this as follows:
 
-        1.  [Add missing ops to the allowlist](../guide/op_select_allowlist.md#add_tensorflow_core_operators_to_the_allowed_list).
-        2.  [Convert the TF model to a TFLite model and run inference](../guide/ops_select.md).
+        1.  [Add missing ops to the allowlist](../../guide/op_select_allowlist.md#add_tensorflow_core_operators_to_the_allowed_list).
+        2.  [Convert the TF model to a TFLite model and run inference](../../guide/ops_select.md).
 
     *   Unsupported in TF: The error occurs because TFLite is unaware of the
         custom TF operator defined by you. You can resolve this as follows:
 
         1.  [Create the TF op](https://www.tensorflow.org/guide/create_op).
-        2.  [Convert the TF model to a TFLite model](../guide/op_select_allowlist.md#users_defined_operators).
-        3.  [Create the TFLite op](../guide/ops_custom.md#create_and_register_the_operator)
+        2.  [Convert the TF model to a TFLite model](../../guide/op_select_allowlist.md#users_defined_operators).
+        3.  [Create the TFLite op](../../guide/ops_custom.md#create_and_register_the_operator)
             and run inference by linking it to the TFLite runtime.
 
 ## Command Line Tool <a name="cmdline"></a>
@@ -198,11 +198,7 @@ above instead, if possible.**
 
 If you've
 [installed TensorFlow 2.x from pip](https://www.tensorflow.org/install/pip), use
-the `tflite_convert` command as follows: (*if you've
-[installed TensorFlow 2.x from source](https://www.tensorflow.org/install/source)
-then you can replace '`tflite_convert`' with '`bazel run
-//tensorflow/lite/python:tflite_convert --`' in the following
-sections, and if you've
+the `tflite_convert` command as follows: *(If you've
 [installed TensorFlow 1.x](https://www.tensorflow.org/install/pip#older-versions-of-tensorflow)
 then refer to Github
 ([reference](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/r1/convert/cmdline_reference.md),
@@ -239,5 +235,5 @@ tflite_convert \
 
 ## Next Steps
 
-Use the [TensorFlow Lite interpreter](../guide/inference.md) to run inference on
-a client device (e.g. mobile, embedded).
+Use the [TensorFlow Lite interpreter](../../guide/inference.md) to run an
+inference on a client device (e.g. mobile, embedded).

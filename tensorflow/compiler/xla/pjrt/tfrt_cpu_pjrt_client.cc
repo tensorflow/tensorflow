@@ -109,9 +109,9 @@ static int CpuDeviceCount() {
 }
 
 static StatusOr<std::vector<std::unique_ptr<TfrtCpuDevice>>> GetTfrtCpuDevices(
-    bool asynchronous) {
+    bool asynchronous, int cpu_device_count) {
   std::vector<std::unique_ptr<TfrtCpuDevice>> devices;
-  for (int i = 0; i < CpuDeviceCount(); ++i) {
+  for (int i = 0; i < cpu_device_count; ++i) {
     auto device = std::make_unique<TfrtCpuDevice>(
         /*id=*/i, asynchronous);
     devices.push_back(std::move(device));
@@ -119,11 +119,12 @@ static StatusOr<std::vector<std::unique_ptr<TfrtCpuDevice>>> GetTfrtCpuDevices(
   return std::move(devices);
 }
 
-StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous) {
+StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous,
+                                                       int cpu_device_count) {
   // TODO(zhangqiaorjc): Allow users set the number of threads.
   // `num_blocking_threads=16` is picked arbitrarily for now.
   // Need at least CpuDeviceCount threads to launch one collective.
-  int num_threads = std::max(DefaultThreadPoolSize(), CpuDeviceCount());
+  int num_threads = std::max(DefaultThreadPoolSize(), cpu_device_count);
   auto host_context = std::make_unique<tfrt::HostContext>(
       [](const tfrt::DecodedDiagnostic& diag) {
         LOG(ERROR) << "Encountered runtime error: " << diag.message << "\n";
@@ -134,10 +135,14 @@ StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous) {
           /*num_blocking_threads=*/16));
 
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
-                      GetTfrtCpuDevices(asynchronous));
+                      GetTfrtCpuDevices(asynchronous, cpu_device_count));
 
   return std::unique_ptr<PjRtClient>(std::make_unique<TfrtCpuClient>(
       /*process_index=*/0, std::move(devices), std::move(host_context)));
+}
+
+StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous) {
+  return GetTfrtCpuClient(asynchronous, CpuDeviceCount());
 }
 
 TfrtCpuClient::TfrtCpuClient(

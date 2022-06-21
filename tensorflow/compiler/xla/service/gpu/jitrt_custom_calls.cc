@@ -16,14 +16,27 @@
 
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <utility>
 
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
+#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
+#include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
+#include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/stream_executor/gpu/gpu_types.h"
 #include "tfrt/jitrt/custom_call.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
@@ -41,10 +54,12 @@ namespace xla {
 namespace gpu {
 
 using llvm::ArrayRef;
+using llvm::Optional;
 using llvm::orc::MangleAndInterner;
 using llvm::orc::SymbolMap;
 
 using mlir::failure;
+using mlir::FailureOr;
 using mlir::LogicalResult;
 using mlir::StringRef;
 using mlir::succeeded;
@@ -198,6 +213,58 @@ static StatusOr<GemmConfig> GetGemmConfig(
                          rhs_batch, rhs_contract, ToShape(out), alpha_real,
                          alpha_imag, beta.getValueOr(0.0), algorithm,
                          debug_options->xla_gpu_enable_cublaslt());
+}
+
+// -------------------------------------------------------------------------- //
+
+#if XLA_ENABLE_XCCL
+FailureOr<NcclComm::Lock> GetNcclComm(const NcclExecuteParams& params,
+                                      int64_t group_mode, int64_t op_id,
+                                      ArrayRef<int64_t> replica_group_offsets,
+                                      ArrayRef<int64_t> replica_group_values) {
+  // TODO(b/233930690): Pass the attribute below as a nested array.
+  // Pass an array of arrays using two vectors; one specifying all the values
+  // and another specifying the (ending) offsets of each array in the other
+  // vector. Example: [ [10, 20, 30, 40], [50, 60], [70, 80, 90] ] turns into
+  // offsets=[4, 6, 9] values=[10, 20, 30, 40, 50, 60, 70, 80, 90].
+  std::vector<ReplicaGroup> replica_groups;
+  int i = 0;
+  for (int64_t replica_group_end : replica_group_offsets) {
+    ReplicaGroup replica_group;
+    while (i < replica_group_end)
+      replica_group.add_replica_ids(replica_group_values[i++]);
+    replica_groups.push_back(replica_group);
+  }
+
+  auto comm =
+      LockNcclComm(params, replica_groups,
+                   static_cast<CollectiveOpGroupMode>(group_mode), op_id);
+  if (comm.ok()) return std::move(comm.value());
+  return failure();
+}
+#endif  // XLA_ENABLE_XCCL
+
+FailureOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
+    CustomCall::RemainingArgs& args) {
+  // Add MemRef arguments as buffer arguments.
+  const int buffer_pairs = args.size() / 2;
+  std::vector<DeviceBufferPair> device_buffers;
+  device_buffers.reserve(buffer_pairs);
+  for (int i = 0; i < buffer_pairs; ++i) {
+    auto source = args.get<jitrt::StridedMemrefView>(i);
+    auto destination = args.get<jitrt::StridedMemrefView>(i + buffer_pairs);
+    if (failed(source) || failed(destination)) {
+      // Unsupported argument type.
+      return failure();
+    }
+
+    int element_count = 1;
+    for (int size : source->sizes) element_count *= size;
+    device_buffers.emplace_back(DeviceBufferPair{
+        ToPrimitiveType(source->dtype), element_count,
+        GetDeviceAddress(*source), GetDeviceAddress(*destination)});
+  }
+  return device_buffers;
 }
 
 // -------------------------------------------------------------------------- //
@@ -465,6 +532,475 @@ static bool GemmBias(runtime::KernelContext* ctx, void** args, void** attrs) {
 
 // -------------------------------------------------------------------------- //
 
+// TODO(ezhulenev): We need to find a better way to pass structured attributes
+// to JitRt custom calls.
+
+// TODO(ezhulenev): Add caching layer for convolution configs and runners.
+
+namespace {
+
+struct InputDimensions {
+  int64_t input_batch_dim;
+  int64_t input_feature_dim;
+  ArrayRef<int64_t> input_spatial_dims;
+};
+
+struct KernelDimensions {
+  int64_t kernel_in_feature_dim;
+  int64_t kernel_out_feature_dim;
+  ArrayRef<int64_t> kernel_spatial_dims;
+};
+
+struct OutputDimensions {
+  int64_t output_batch_dim;
+  int64_t output_feature_dim;
+  ArrayRef<int64_t> output_spatial_dims;
+};
+
+struct Window {
+  ArrayRef<int64_t> window_strides;
+  ArrayRef<int64_t> padding;
+  ArrayRef<int64_t> lhs_dilation;
+  ArrayRef<int64_t> rhs_dilation;
+  ArrayRef<int64_t> window_reversal;
+};
+
+struct BackendConfig {
+  int64_t algorithm;
+  bool tensor_ops_enabled;
+  bool is_cudnn_frontend;
+  ArrayRef<int64_t> knob_ids;
+  ArrayRef<int64_t> knob_values;
+  ArrayRef<int64_t> operand_0_layout;
+  ArrayRef<int64_t> operand_1_layout;
+  ArrayRef<int64_t> result_layout;
+  int64_t workspace_size;
+};
+
+struct ConvAttrs {
+  int64_t feature_group_count;
+  double result_scale;
+};
+
+struct FusedConvAttrs {
+  int64_t activation_mode;
+};
+
+struct SideInputAttrs {
+  double side_input_scale;
+};
+
+}  // namespace
+
+static GpuConvDescriptor GetConvDescriptor(
+    CudnnConvKind kind,
+    // Arguments
+    jitrt::StridedMemrefView operand0, jitrt::StridedMemrefView operand1,
+    jitrt::StridedMemrefView output, jitrt::FlatMemrefView scratch,
+    // Attributes
+    InputDimensions i, KernelDimensions k, OutputDimensions o, Window w,
+    BackendConfig b, ConvAttrs attrs,
+    // Conv-specific arguments and attributes
+    Optional<FusedConvAttrs> fused = llvm::None,
+    Optional<SideInputAttrs> side_input = llvm::None) {
+  // Build a convolution descriptor from the attributes.
+  GpuConvDescriptor descriptor;
+  descriptor.kind = kind;
+
+  // Apply backend config layout to the shape.
+  auto apply_layout = [](jitrt::StridedMemrefView& memref,
+                         ArrayRef<int64_t> minor_to_major) {
+    Shape shape = ToShape(memref);
+    return ShapeUtil::MakeShapeWithLayout(shape.element_type(),
+                                          shape.dimensions(), minor_to_major);
+  };
+
+  descriptor.operand0_shape = apply_layout(operand0, b.operand_0_layout);
+  descriptor.operand1_shape = apply_layout(operand1, b.operand_1_layout);
+  descriptor.result_shape = apply_layout(output, b.result_layout);
+
+  // Set up convolution dimensions numbers.
+  ConvolutionDimensionNumbers dns;
+  dns.set_input_batch_dimension(i.input_batch_dim);
+  dns.set_input_feature_dimension(i.input_feature_dim);
+  dns.set_kernel_input_feature_dimension(k.kernel_in_feature_dim);
+  dns.set_kernel_output_feature_dimension(k.kernel_out_feature_dim);
+  dns.set_output_batch_dimension(o.output_batch_dim);
+  dns.set_output_feature_dimension(o.output_feature_dim);
+  for (int64_t d : i.input_spatial_dims) dns.add_input_spatial_dimensions(d);
+  for (int64_t d : k.kernel_spatial_dims) dns.add_kernel_spatial_dimensions(d);
+  for (int64_t d : o.output_spatial_dims) dns.add_output_spatial_dimensions(d);
+  descriptor.dnums = std::move(dns);
+
+  // Put together convolution window config.
+  for (auto index : llvm::seq<int>(0, w.window_strides.size())) {
+    WindowDimension* dim = descriptor.window.add_dimensions();
+    // Window size for a convolution is the same as the kernel size.
+    // Kernel size of the convolution is operand1_shape. We need to look at
+    // the convolution dimension numbers kernel spatial dimensions to get
+    // the window size.
+    int kernel_dim = descriptor.dnums.kernel_spatial_dimensions(index);
+    dim->set_size(descriptor.operand0_shape.dimensions(kernel_dim));
+    dim->set_stride(w.window_strides[index]);
+    dim->set_padding_low(w.padding[index]);
+    dim->set_padding_high(w.padding[index]);
+    dim->set_base_dilation(w.lhs_dilation[index]);
+    dim->set_window_dilation(w.rhs_dilation[index]);
+    dim->set_window_reversal(w.window_reversal[index]);
+  }
+
+  descriptor.scratch_size = scratch.size_in_bytes;
+  descriptor.feature_group_count = attrs.feature_group_count;
+  descriptor.backend_config.set_conv_result_scale(attrs.result_scale);
+
+  // Set up convolution algorigthm.
+  auto* algo = descriptor.backend_config.mutable_algorithm();
+  algo->set_algo_id(b.algorithm);
+  algo->set_math_type(b.tensor_ops_enabled
+                          ? se::dnn::AlgorithmProto::TENSOR_OP_MATH
+                          : se::dnn::AlgorithmProto::DEFAULT_MATH);
+  algo->set_is_cudnn_frontend(b.is_cudnn_frontend);
+
+  if (b.workspace_size >= 0)
+    algo->mutable_workspace_size()->set_value(b.workspace_size);
+
+  for (unsigned i = 0; i < b.knob_ids.size(); ++i) {
+    algo->mutable_tuning_knobs()->insert({b.knob_ids[i], b.knob_values[i]});
+  }
+
+  // Set attributes specific for fused convolutions.
+  if (fused.hasValue())
+    descriptor.backend_config.set_activation_mode(fused->activation_mode);
+
+  // Set attributes specific for convolutions with side input.
+  if (side_input.hasValue())
+    descriptor.backend_config.set_side_input_scale(
+        side_input->side_input_scale);
+
+  return descriptor;
+}
+
+namespace {
+struct Conv {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  LogicalResult operator()(
+      const ServiceExecutableRunOptions* run_options,
+      const DebugOptions* debug_options, jitrt::StridedMemrefView operand0,
+      jitrt::StridedMemrefView operand1, Optional<jitrt::FlatMemrefView> bias,
+      Optional<jitrt::StridedMemrefView> side_input,
+      jitrt::StridedMemrefView output, jitrt::FlatMemrefView scratch,
+      // Convolution input dimensions numbers
+      int64_t input_batch_dim, int64_t input_feature_dim,
+      ArrayRef<int64_t> input_spatial_dims,
+      // Convolution kernel dimensions numbers
+      int64_t kernel_in_feature_dim, int64_t kernel_out_feature_dim,
+      ArrayRef<int64_t> kernel_spatial_dims,
+      // Output dimensions numbers
+      int64_t output_batch_dim, int64_t output_feature_dim,
+      ArrayRef<int64_t> output_spatial_dims,
+      // Window config
+      ArrayRef<int64_t> window_strides, ArrayRef<int64_t> padding,
+      ArrayRef<int64_t> lhs_dilation, ArrayRef<int64_t> rhs_dilation,
+      ArrayRef<int64_t> window_reversal,
+      // Backend config attributes
+      int64_t algorithm, bool tensor_ops_enabled, bool is_cudnn_frontend,
+      ArrayRef<int64_t> knob_ids, ArrayRef<int64_t> knob_values,
+      ArrayRef<int64_t> operand_0_layout, ArrayRef<int64_t> operand_1_layout,
+      ArrayRef<int64_t> result_layout, int64_t workspace_size,
+      // Remaining attributes
+      int64_t feature_group_count, double result_scale,
+      // Optional attributes for fused convolutions.
+      Optional<int64_t> activation_mode = llvm::None,
+      Optional<double> side_input_scale = llvm::None) const {
+    // Build config for optional attributes.
+    Optional<FusedConvAttrs> fused_attrs = llvm::None;
+    if (activation_mode.hasValue()) fused_attrs = {*activation_mode};
+
+    Optional<SideInputAttrs> side_input_attrs = llvm::None;
+    if (side_input_scale.hasValue()) side_input_attrs = {*side_input_scale};
+
+    // Prepare a descriptor for the XLA convolution.
+    GpuConvDescriptor descriptor = GetConvDescriptor(
+        kind, operand0, operand1, output, scratch,
+        {input_batch_dim, input_feature_dim, input_spatial_dims},
+        {kernel_in_feature_dim, kernel_out_feature_dim, kernel_spatial_dims},
+        {output_batch_dim, output_feature_dim, output_spatial_dims},
+        {window_strides, padding, lhs_dilation, rhs_dilation, window_reversal},
+        {algorithm, tensor_ops_enabled, is_cudnn_frontend, knob_ids,
+         knob_values, operand_0_layout, operand_1_layout, result_layout,
+         workspace_size},
+        {feature_group_count, result_scale}, fused_attrs, side_input_attrs);
+
+    // Convert descriptor to the Conv config.
+    StatusOr<GpuConvConfig> config = GetGpuConvConfig(descriptor, "");
+    if (!config.ok()) return failure();
+
+    // Prepare buffer arguments.
+    std::vector<se::DeviceMemoryBase> buffers = {GetDeviceAddress(operand0),
+                                                 GetDeviceAddress(operand1)};
+    if (bias.hasValue()) buffers.push_back(GetDeviceAddress(*bias));
+    if (side_input.hasValue()) buffers.push_back(GetDeviceAddress(*side_input));
+
+    se::DeviceMemoryBase result_buffer = GetDeviceAddress(output);
+    se::DeviceMemoryBase scratch_buffer = GetDeviceAddress(scratch);
+
+    RunConvOptions opts;
+
+    // Create a runner for the given config.
+    MaybeFusedConvRunner runner(*config);
+    opts.runner_cache = &runner;
+
+    // Run the convolution.
+    auto st = RunGpuConv(*config, buffers, result_buffer, scratch_buffer,
+                         run_options->stream(), opts);
+    if (!st.ok() || !run_options->stream()->ok()) return failure();
+
+    return success();
+  }
+
+  static Conv Handler(CudnnConvKind kind) { return Conv{kind}; }
+
+  CudnnConvKind kind;
+};
+
+}  // namespace
+
+// Adds custom call bindings for convolution operations.
+template <typename... Ts>
+static auto BindConvAttributes(jitrt::CustomCallBinding<Ts...> binding) {
+  return std::move(binding)
+      // Convolution dimensions numbers
+      .template Attr<int64_t>("input_batch_dim")
+      .template Attr<int64_t>("input_feature_dim")
+      .template Attr<ArrayRef<int64_t>>("input_spatial_dims")
+      // Convolution kernel dimensions
+      .template Attr<int64_t>("kernel_in_feature_dim")
+      .template Attr<int64_t>("kernel_out_feature_dim")
+      .template Attr<ArrayRef<int64_t>>("kernel_spatial_dims")
+      // Output dimensions
+      .template Attr<int64_t>("output_batch_dim")
+      .template Attr<int64_t>("output_feature_dim")
+      .template Attr<ArrayRef<int64_t>>("output_spatial_dims")
+      // Window config
+      .template Attr<ArrayRef<int64_t>>("window_strides")
+      .template Attr<ArrayRef<int64_t>>("padding")
+      .template Attr<ArrayRef<int64_t>>("lhs_dilation")
+      .template Attr<ArrayRef<int64_t>>("rhs_dilation")
+      .template Attr<ArrayRef<int64_t>>("window_reversal")
+      // Backend config attributes
+      .template Attr<int64_t>("algorithm")
+      .template Attr<bool>("tensor_ops_enabled")
+      .template Attr<bool>("is_cudnn_frontend")
+      .template Attr<ArrayRef<int64_t>>("knob_ids")
+      .template Attr<ArrayRef<int64_t>>("knob_values")
+      .template Attr<ArrayRef<int64_t>>("operand_0_layout")
+      .template Attr<ArrayRef<int64_t>>("operand_1_layout")
+      .template Attr<ArrayRef<int64_t>>("result_layout")
+      .template Attr<int64_t>("workspace_size")
+      // Remaining attributes.
+      .template Attr<int64_t>("feature_group_count")
+      .template Attr<double>("result_scale");
+}
+
+template <CudnnConvKind kind>
+static bool ConvFn(runtime::KernelContext* ctx, void** args, void** attrs) {
+  static auto* handler =
+      BindConvAttributes(CustomCall::Bind("xla.gpu.conv")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .UserData<const DebugOptions*>()
+                             .Arg<jitrt::StridedMemrefView>()  // operand0
+                             .Arg<jitrt::StridedMemrefView>()  // operand1
+                             .Value(CustomCall::None)          // bias
+                             .Value(CustomCall::None)          // side_input
+                             .Arg<jitrt::StridedMemrefView>()  // output
+                             .Arg<jitrt::FlatMemrefView>()     // scratch
+                         )
+          .To(Conv::Handler(kind))
+          .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+template <CudnnConvKind kind>
+static bool ConvFusedFn(runtime::KernelContext* ctx, void** args,
+                        void** attrs) {
+  static auto* handler =
+      BindConvAttributes(CustomCall::Bind("xla.gpu.conv.fused")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .UserData<const DebugOptions*>()
+                             .Arg<jitrt::StridedMemrefView>()  // operand0
+                             .Arg<jitrt::StridedMemrefView>()  // operand1
+                             .Arg<jitrt::FlatMemrefView>()     // bias
+                             .Value(CustomCall::None)          // side_input
+                             .Arg<jitrt::StridedMemrefView>()  // output
+                             .Arg<jitrt::FlatMemrefView>()     // scratch
+                         )
+          .Attr<int64_t>("activation_mode")
+          .To(Conv::Handler(kind))
+          .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+template <CudnnConvKind kind>
+static bool ConvFuseSideInputdFn(runtime::KernelContext* ctx, void** args,
+                                 void** attrs) {
+  static auto* handler =
+      BindConvAttributes(CustomCall::Bind("xla.gpu.conv.fused.side_input")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .UserData<const DebugOptions*>()
+                             .Arg<jitrt::StridedMemrefView>()  // operand0
+                             .Arg<jitrt::StridedMemrefView>()  // operand1
+                             .Arg<jitrt::FlatMemrefView>()     // bias
+                             .Arg<jitrt::StridedMemrefView>()  // side_input
+                             .Arg<jitrt::StridedMemrefView>()  // output
+                             .Arg<jitrt::FlatMemrefView>()     // scratch
+                         )
+          .Attr<int64_t>("activation_mode")
+          .Attr<double>("side_input_scale")
+          .To(Conv::Handler(kind))
+          .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+// -------------------------------------------------------------------------- //
+
+namespace {
+struct Infeed {
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           CustomCall::RemainingArgs args,
+                           StringRef config) const;
+  static Infeed Handler() { return Infeed(); }
+};
+}  // namespace
+
+LogicalResult Infeed::operator()(const ServiceExecutableRunOptions* run_options,
+                                 CustomCall::RemainingArgs args,
+                                 StringRef config) const {
+  VLOG(3) << "Infeeding to GPU";
+
+  se::Stream* stream = run_options->stream();
+  ShapeTree<se::ScopedDeviceMemory<uint8_t>> source_buffers =
+      GetOrCreateInfeedManager(stream->parent())->BlockingGetNextDestination();
+
+  // Check that we have correct number of arguments.
+  if (args.size() != source_buffers.leaf_count()) return failure();
+
+  // TODO(ezhulenev): Report human-readable error messages through errors.
+  size_t index = 0;
+  for (auto& source : source_buffers.leaves()) {
+    // Get the destination buffer.
+    auto dest = args.get<jitrt::StridedMemrefView>(index);
+    if (failed(dest)) return failure();
+
+    // Get the source buffer shape.
+    const Shape& source_shape =
+        ShapeUtil::GetSubshape(source_buffers.shape(), source.first);
+
+    // Check that destination shape matches the source shape.
+    // TODO(ezhulenev): Report human-readable error similar to infeed_thunk.
+    Shape dest_shape = ToShape(*dest);
+    if (!ShapeUtil::Equal(dest_shape, source_shape)) return failure();
+
+    se::DeviceMemoryBase dest_address = GetDeviceAddress(*dest);
+    se::ScopedDeviceMemory<uint8_t>& buffer = source.second;
+    stream->ThenMemcpy(&dest_address, *buffer.ptr(), buffer.ptr()->size());
+
+    ++index;
+  }
+
+  // TODO(ezhulenev): Make this function async?
+  Status block_status = stream->BlockHostUntilDone();
+  if (!block_status.ok()) return failure();
+
+  VLOG(3) << "Infeeding to GPU complete";
+
+  return success();
+}
+
+static bool Infeed(runtime::KernelContext* ctx, void** args, void** attrs) {
+  static auto* handler = CustomCall::Bind("xla.gpu.infeed")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .Arg<CustomCall::RemainingArgs>()  // args
+                             .Attr<StringRef>("config")
+                             .To<RuntimeChecks()>(Infeed::Handler())
+                             .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+// -------------------------------------------------------------------------- //
+
+namespace {
+struct Outfeed {
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           CustomCall::RemainingArgs args,
+                           StringRef config) const;
+  static Outfeed Handler() { return Outfeed(); }
+};
+}  // namespace
+
+LogicalResult Outfeed::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    CustomCall::RemainingArgs args, StringRef config) const {
+  VLOG(3) << "Outfeeding from GPU";
+
+  se::Stream* stream = run_options->stream();
+  OutfeedManager* outfeed_manager = GetOrCreateOutfeedManager(stream->parent());
+  ShapeTree<std::unique_ptr<OutfeedBuffer>>* dest_buffers =
+      outfeed_manager->BlockingGetNextDestination();
+
+  // Check that we have correct number of arguments.
+  if (args.size() != dest_buffers->leaf_count()) return failure();
+
+  size_t index = 0;
+  for (auto& dest : dest_buffers->leaves()) {
+    // Get the source buffer.
+    auto source = args.get<jitrt::StridedMemrefView>(index);
+    if (failed(source)) return failure();
+
+    // Get the source buffer shape.
+    const Shape& dest_shape =
+        ShapeUtil::GetSubshape(dest_buffers->shape(), dest.first);
+
+    // Check that destination shape matches the source shape.
+    // TODO(ezhulenev): Report human-readable error similar to outfeed_thunk.
+    Shape source_shape = ToShape(*source);
+    if (!ShapeUtil::Equal(dest_shape, source_shape)) return failure();
+
+    se::DeviceMemoryBase source_address = GetDeviceAddress(*source);
+    std::unique_ptr<OutfeedBuffer>& buffer = dest.second;
+
+    // Schedule the memory transfer.
+    auto* dest_address = buffer->destination()->untyped_data();
+    stream->ThenMemcpy(dest_address, source_address, buffer->length())
+        .ThenDoHostCallback([&buffer]() { buffer->Done(); });
+
+    ++index;
+  }
+
+  Status block_status = stream->BlockHostUntilDone();
+  if (!block_status.ok()) return failure();
+
+  VLOG(3) << "Outfeeding from GPU complete";
+
+  return success();
+}
+
+static bool Outfeed(runtime::KernelContext* ctx, void** args, void** attrs) {
+  static auto* handler = CustomCall::Bind("xla.gpu.outfeed")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .Arg<CustomCall::RemainingArgs>()  // args
+                             .Attr<StringRef>("config")
+                             .To<RuntimeChecks()>(Outfeed::Handler())
+                             .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+// -------------------------------------------------------------------------- //
+
 namespace {
 
 enum class MemcpyDirection { kDeviceToDevice, kDeviceToHost, kHostToDevice };
@@ -527,6 +1063,305 @@ static bool MemcpyFn(runtime::KernelContext* ctx, void** args, void** attrs) {
 
 // -------------------------------------------------------------------------- //
 
+namespace {
+struct Cholesky {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           const DebugOptions* debug_options,
+                           jitrt::MemrefView operand, jitrt::MemrefView a,
+                           jitrt::MemrefView workspace, jitrt::MemrefView info,
+                           int64_t batch_size, int64_t n, int64_t uplo) const;
+  static Cholesky Handler() { return Cholesky(); }
+};
+}  // namespace
+
+LogicalResult Cholesky::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options, jitrt::MemrefView operand,
+    jitrt::MemrefView a, jitrt::MemrefView workspace, jitrt::MemrefView info,
+    int64_t batch_size, int64_t n, int64_t uplo) const {
+  se::DeviceMemoryBase operand_buffer = GetDeviceAddress(operand);
+  se::DeviceMemoryBase a_buffer = GetDeviceAddress(a);
+  se::DeviceMemoryBase workspace_buffer = GetDeviceAddress(workspace);
+  se::DeviceMemoryBase info_buffer = GetDeviceAddress(info);
+
+  VLOG(3) << "Running Cholesky";
+  se::Stream* stream = run_options->stream();
+
+  // Copy operand to the a buffer if they are different.
+  if (a.data != operand.data)
+    stream->ThenMemcpy(&a_buffer, operand_buffer, operand_buffer.size());
+
+  CholeskyParams params{
+      n,        batch_size,       static_cast<se::blas::UpperLower>(uplo),
+      a_buffer, workspace_buffer, info_buffer};
+  auto executed = RunCholesky(xla::gpu::PtxOptsFromDebugOptions(*debug_options),
+                              ToPrimitiveType(operand.dtype), &params, stream);
+  if (!executed.ok()) return failure();
+
+  return success();
+}
+
+static bool Cholesky(runtime::KernelContext* ctx, void** args, void** attrs) {
+  static auto* handler = CustomCall::Bind("xla.gpu.cholesky")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .UserData<const DebugOptions*>()
+                             .Arg<jitrt::MemrefView>()  // operand
+                             .Arg<jitrt::MemrefView>()  // a
+                             .Arg<jitrt::MemrefView>()  // workspace
+                             .Arg<jitrt::MemrefView>()  // info
+                             .Attr<int64_t>("batch_size")
+                             .Attr<int64_t>("n")
+                             .Attr<int64_t>("uplo")  // se::blas::UpperLower
+                             .To<RuntimeChecks()>(Cholesky::Handler())
+                             .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+// -------------------------------------------------------------------------- //
+// Implements JitRt custom call that forward to the Xla Custom Call handler.
+//
+// Longer term all Xla custom calls probably should be directly implemented as
+// JitRt custom calls. However for smooth migration from Thunks to JitRt we have
+// to seamlessly support all current XLA users.
+namespace {
+struct XlaCustomCall {
+  using Stream = se::gpu::GpuStreamHandle;
+
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           CustomCall::RemainingArgs args,
+                           StringRef call_target_name, int32_t api_version,
+                           StringRef backend_config) const;
+  static XlaCustomCall Handler() { return XlaCustomCall(); }
+};
+}  // namespace
+
+LogicalResult XlaCustomCall::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    CustomCall::RemainingArgs args, StringRef call_target_name,
+    int32_t api_version, StringRef backend_config) const {
+  // Find the Xla custom call handler.
+  auto& platform_name = run_options->stream()->parent()->platform()->Name();
+  void* call_target = CustomCallTargetRegistry::Global()->Lookup(
+      call_target_name.str(), platform_name);
+  if (!call_target) return failure();
+
+  // Prepare pointers to buffers to pass to the Xla custom call handler.
+  llvm::SmallVector<void*> buffers;
+  for (unsigned i = 0; i < args.size(); ++i) {
+    auto memref = args.get<jitrt::FlatMemrefView>(i);
+    if (failed(memref)) return failure();
+
+    // We use zero-sized memrefs to represent holes in custom calls with target
+    // arguments mapping (see `CustomCallTargetArgMapping`).
+    buffers.push_back(memref->size_in_bytes == 0 ? nullptr : memref->data);
+  }
+
+  // Original custom call API version that doesn't support returning status.
+  if (api_version == CustomCallApiVersion::API_VERSION_ORIGINAL) {
+    using XlaCustomCallType = void (*)(Stream, void**, const char*, size_t);
+    auto xla_call_target = reinterpret_cast<XlaCustomCallType>(call_target);
+
+    xla_call_target(se::gpu::AsGpuStreamValue(run_options->stream()),
+                    buffers.data(), backend_config.data(),
+                    backend_config.size());
+
+    return success();
+  }
+
+  // Xla Custom call API returning status.
+  if (api_version == CustomCallApiVersion::API_VERSION_STATUS_RETURNING) {
+    using XlaCustomCallType =
+        void (*)(Stream, void**, const char*, size_t, XlaCustomCallStatus*);
+    auto xla_call_target = reinterpret_cast<XlaCustomCallType>(call_target);
+
+    XlaCustomCallStatus custom_call_status;
+    xla_call_target(se::gpu::AsGpuStreamValue(run_options->stream()),
+                    buffers.data(), backend_config.data(),
+                    backend_config.size(), &custom_call_status);
+
+    if (auto message = CustomCallStatusGetMessage(&custom_call_status)) {
+      return failure();
+    } else {
+      return success();
+    }
+  }
+
+  return failure();
+}
+
+static bool CustomCall(runtime::KernelContext* ctx, void** args, void** attrs) {
+  static auto* handler = CustomCall::Bind("xla.gpu.memcpy")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .Arg<jitrt::CustomCall::RemainingArgs>()  // args
+                             .Attr<StringRef>("call_target_name")
+                             .Attr<int32_t>("api_version")
+                             .Attr<StringRef>("backend_config")
+                             .To<RuntimeChecks()>(XlaCustomCall::Handler())
+                             .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+// ------------------------------------------------------------------------- //
+
+namespace {
+struct AllReduce {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           CustomCall::RemainingArgs args, int64_t group_mode,
+                           int64_t op_id, int64_t reduction_kind,
+                           ArrayRef<int64_t> replica_group_offsets,
+                           ArrayRef<int64_t> replica_group_values) const;
+  static AllReduce Handler() { return AllReduce(); }
+};
+}  // namespace
+
+LogicalResult AllReduce::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
+    int64_t reduction_kind, ArrayRef<int64_t> replica_group_offsets,
+    ArrayRef<int64_t> replica_group_values) const {
+#if XLA_ENABLE_XCCL
+  VLOG(3) << "Running AllReduce";
+  se::Stream* stream = run_options->stream();
+  NcclExecuteParams params(*run_options, stream);
+
+  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
+                          replica_group_values);
+  if (failed(comm)) return comm;
+
+  auto device_buffers = GetDeviceBufferPairs(args);
+  if (failed(device_buffers)) return device_buffers;
+
+  auto executed = RunAllReduce(static_cast<ReductionKind>(reduction_kind),
+                               *device_buffers, *stream, **comm);
+  if (!executed.ok()) return failure();
+
+  return success();
+#else   // XLA_ENABLE_XCCL
+  // NCCL disabled.
+  return failure();
+#endif  // XLA_ENABLE_XCCL
+}
+
+static bool AllReduce(runtime::KernelContext* ctx, void** args, void** attrs) {
+  static auto* handler =
+      CustomCall::Bind("xla.gpu.all_reduce")
+          .UserData<const ServiceExecutableRunOptions*>()
+          .RemainingArgs()              // args
+          .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
+          .Attr<int64_t>("op_id")
+          .Attr<int64_t>("reduction_kind")  // ReductionKind
+          .Attr<ArrayRef<int64_t>>("replica_group_offsets")
+          .Attr<ArrayRef<int64_t>>("replica_group_values")
+          .To<RuntimeChecks()>(AllReduce::Handler())
+          .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+// -------------------------------------------------------------------------- //
+
+namespace {
+struct AllGather {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           CustomCall::RemainingArgs args, int64_t group_mode,
+                           int64_t op_id,
+                           ArrayRef<int64_t> replica_group_offsets,
+                           ArrayRef<int64_t> replica_group_values) const;
+  static AllGather Handler() { return AllGather(); }
+};
+}  // namespace
+
+LogicalResult AllGather::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
+    ArrayRef<int64_t> replica_group_offsets,
+    ArrayRef<int64_t> replica_group_values) const {
+#if XLA_ENABLE_XCCL
+  VLOG(3) << "Running AllGather";
+  se::Stream* stream = run_options->stream();
+  NcclExecuteParams params(*run_options, stream);
+
+  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
+                          replica_group_values);
+  if (failed(comm)) return comm;
+
+  auto device_buffers = GetDeviceBufferPairs(args);
+  if (failed(device_buffers)) return device_buffers;
+
+  auto executed = RunAllGather(*device_buffers, *stream, **comm);
+  if (!executed.ok()) return failure();
+
+  return success();
+#else   // XLA_ENABLE_XCCL
+  // NCCL disabled.
+  return failure();
+#endif  // XLA_ENABLE_XCCL
+}
+
+static bool AllGather(runtime::KernelContext* ctx, void** args, void** attrs) {
+  static auto* handler =
+      CustomCall::Bind("xla.gpu.all_gather")
+          .UserData<const ServiceExecutableRunOptions*>()
+          .RemainingArgs()              // args
+          .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
+          .Attr<int64_t>("op_id")
+          .Attr<ArrayRef<int64_t>>("replica_group_offsets")
+          .Attr<ArrayRef<int64_t>>("replica_group_values")
+          .To<RuntimeChecks()>(AllGather::Handler())
+          .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+// -------------------------------------------------------------------------- //
+
+namespace {
+struct ReplicaId {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           jitrt::FlatMemrefView result) const;
+  static ReplicaId Handler() { return ReplicaId(); }
+};
+}  // namespace
+
+LogicalResult ReplicaId::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    jitrt::FlatMemrefView result) const {
+  VLOG(3) << "Running ReplicaId";
+  se::Stream* stream = run_options->stream();
+  NcclExecuteParams params(*run_options, stream);
+
+  StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
+  if (!global_device_id.ok()) return failure();
+
+  StatusOr<DeviceAssignment::LogicalID> logical_id =
+      params.device_assn->LogicalIdForDevice(global_device_id.value());
+  if (!logical_id.ok()) return failure();
+
+  se::DeviceMemoryBase result_data = GetDeviceAddress(result);
+  params.stream->ThenMemset32(&result_data, logical_id.value().replica_id,
+                              /*size=*/4);
+
+  return success();
+}
+
+static bool ReplicaId(runtime::KernelContext* ctx, void** args, void** attrs) {
+  static auto* handler = CustomCall::Bind("xla.gpu.replica_id")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .Arg<jitrt::FlatMemrefView>()  // result
+                             .To<RuntimeChecks()>(ReplicaId::Handler())
+                             .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+// -------------------------------------------------------------------------- //
+
 SymbolMap JitRtCustomCallsSymbolMap(MangleAndInterner mangle) {
   SymbolMap symbol_map;
 
@@ -535,12 +1370,29 @@ SymbolMap JitRtCustomCallsSymbolMap(MangleAndInterner mangle) {
         llvm::pointerToJITTargetAddress(symbol_ptr), llvm::JITSymbolFlags());
   };
 
+  auto conv = [](StringRef name) { return ("xla.gpu.conv." + name).str(); };
+
+  bind("xla.gpu.all_gather", &xla::gpu::AllGather);
+  bind("xla.gpu.all_reduce", &xla::gpu::AllReduce);
+  bind("xla.gpu.cholesky", &xla::gpu::Cholesky);
   bind("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
   bind("xla.gpu.gemm", &xla::gpu::Gemm);
   bind("xla.gpu.gemm.bias", &xla::gpu::GemmBias);
+
+  bind(conv("forward"), &ConvFn<CudnnConvKind::kForward>);
+  bind(conv("backward.input"), &ConvFn<CudnnConvKind::kBackwardInput>);
+  bind(conv("backward.filter"), &ConvFn<CudnnConvKind::kBackwardFilter>);
+  bind(conv("forward.fused"), &ConvFusedFn<CudnnConvKind::kForwardActivation>);
+  bind(conv("forward.fused.side_input"),
+       &ConvFuseSideInputdFn<CudnnConvKind::kForwardActivation>);
+
   bind("xla.gpu.memcpy.d2d", &MemcpyFn<MemcpyDirection::kDeviceToDevice>);
   bind("xla.gpu.memcpy.h2d", &MemcpyFn<MemcpyDirection::kHostToDevice>);
   bind("xla.gpu.memcpy.d2h", &MemcpyFn<MemcpyDirection::kDeviceToHost>);
+  bind("xla.gpu.infeed", &xla::gpu::Infeed);
+  bind("xla.gpu.outfeed", &xla::gpu::Outfeed);
+  bind("xla.gpu.replica_id", &xla::gpu::ReplicaId);
+  bind("xla.gpu.custom_call", &xla::gpu::CustomCall);
 
   return symbol_map;
 }

@@ -57,6 +57,17 @@ py_library(
 )
 
 py_library(
+    name = "structured_tensor_dynamic",
+    srcs = [
+        "structured_tensor_dynamic.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        ":structured_tensor",
+    ],
+)
+
+py_library(
     name = "structured_array_ops",
     srcs = [
         "structured_array_ops.py",
@@ -90,6 +101,7 @@ py_test(
     deps = [
         ":structured_array_ops",
         ":structured_tensor",
+        ":structured_tensor_dynamic",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",

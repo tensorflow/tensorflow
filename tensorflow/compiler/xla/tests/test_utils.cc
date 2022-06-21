@@ -645,8 +645,8 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
                              : use->scatter_dimension_numbers()
                                    .scatter_dims_to_operand_dims();
         for (const auto dim_in_operand : index_map) {
-          index_bound =
-              std::min(index_bound, operand_shape.dimensions(dim_in_operand));
+          index_bound = std::min(index_bound,
+                                 operand_shape.dimensions(dim_in_operand) - 1);
         }
         if (use->opcode() == HloOpcode::kScatter) {
           needs_sorted_indices |=
@@ -686,7 +686,7 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
     return Unimplemented("Conflicting operand generation constraints.");
   }
   if (index_bound != INT64_MAX) {
-    return MakeFakeLiteralInternalWithBounds(param_shape, engine, -1,
+    return MakeFakeLiteralInternalWithBounds(param_shape, engine, 0,
                                              index_bound, needs_sorted_indices);
   } else if (needs_constant) {
     switch (constant_type) {

@@ -42,7 +42,7 @@ class HLO_ShapedInterfaceOp<string mnemonic, list<Trait> traits> :
 //===----------------------------------------------------------------------===//
 
 def HLO_ConstOp : HLO_Op<"constant",
-    [ConstantLike, NoSideEffect, AllTypesMatch<["value", "output"]>]> {
+    [ConstantLike, NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Constant operator";
   let description = [{
     Represents a constant value.
@@ -58,12 +58,16 @@ def HLO_ConstOp : HLO_Op<"constant",
   let builders = [
     OpBuilder<(ins "Attribute":$value)>];
 
-  let assemblyFormat = "attr-dict $value";
-
-  let hasFolder = 1;
+  let hasCustomAssemblyFormat = 1;
 
   // Constant has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
+
+  let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+  }];
 }
 
 def HLO_IotaOp : HLO_Op<"iota", [NoSideEffect]> {
@@ -1800,8 +1804,8 @@ def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]> {
 }
 
 def HLO_MapOp: HLO_Op<"map",
-      [RecursiveSideEffects, SameOperandsElementType,
-       SameOperandsAndResultShape, SingleBlockImplicitTerminator<"ReturnOp">]> {
+      [RecursiveSideEffects, SameOperandsAndResultShape,
+       SingleBlockImplicitTerminator<"ReturnOp">]> {
   let summary = "Map operator";
   let description = [{
   Applies a scalar function over the given operands arrays, producing an array

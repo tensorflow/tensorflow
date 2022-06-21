@@ -28,8 +28,9 @@ namespace tensorflow {
 namespace {
 
 Status RaggedComponentsFromVariant(
-    const Tensor& encoded_variant, int ragged_rank, DataType value_dtype,
-    DataType split_dtype, std::vector<RaggedTensorVariant>* decoded_ragged) {
+    const Tensor& encoded_variant, int input_ragged_rank,
+    int output_ragged_rank, DataType value_dtype, DataType split_dtype,
+    std::vector<RaggedTensorVariant>* decoded_ragged) {
   const auto& flat_variants = encoded_variant.flat<Variant>();
   decoded_ragged->reserve(flat_variants.size());
 
@@ -45,17 +46,18 @@ Status RaggedComponentsFromVariant(
     decoded_ragged->push_back(*decoded);
     decoded = &decoded_ragged->back();
     // Check ragged rank & types
-    if (decoded->ragged_rank() != ragged_rank) {
+    if (decoded->ragged_rank() != input_ragged_rank) {
       return errors::InvalidArgument(
           "Encoded input RaggedTensorVariant has ragged_rank=",
-          decoded->ragged_rank(), ".  Expected ragged_rank=", ragged_rank, ".");
+          decoded->ragged_rank(), ".  Expected ragged_rank=", input_ragged_rank,
+          ".");
     }
     if (decoded->values().dtype() != value_dtype) {
       return errors::InvalidArgument(
           "Expected values Tensor dtype: ", DataTypeString(value_dtype),
           ", found: ", DataTypeString(decoded->values().dtype()));
     }
-    if (decoded->values().dims() < 1) {
+    if (decoded->values().dims() < 1 && output_ragged_rank != 0) {
       return errors::InvalidArgument(
           "Ragged values must have rank >= 1; encoded scalar element at index ",
           i, " has values Tensor: ", decoded->values().DebugString());
@@ -73,7 +75,7 @@ Status RaggedComponentsFromVariant(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename VALUE_TYPE, typename SPLIT_TYPE>
@@ -204,7 +206,7 @@ Status NestedStackRaggedTensors(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -248,9 +250,10 @@ class RaggedTensorFromVariantOp : public OpKernel {
     const auto value_dtype = DataTypeToEnum<VALUE_TYPE>::v();
     const auto split_dtype = DataTypeToEnum<SPLIT_TYPE>::v();
     std::vector<RaggedTensorVariant> decoded_components;
-    OP_REQUIRES_OK(context, RaggedComponentsFromVariant(
-                                encoded_variant, input_ragged_rank_,
-                                value_dtype, split_dtype, &decoded_components));
+    OP_REQUIRES_OK(context,
+                   RaggedComponentsFromVariant(
+                       encoded_variant, input_ragged_rank_, output_ragged_rank_,
+                       value_dtype, split_dtype, &decoded_components));
 
     // Corner case: input is a scalar.
     if (encoded_variant.dims() == 0) {

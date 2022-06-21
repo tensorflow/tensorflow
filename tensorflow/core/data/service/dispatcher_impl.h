@@ -87,10 +87,9 @@ namespace data {
 // - When we create a pending task, we choose a "target round" to try adding
 //   the task to. The target round is chosen by adding a "target round delta" to
 //   the latest reported round for the iteration.
-// - When a consumer heartbeats for a iteration and there is a pending task for
-// that
-//   iteration, the dispatcher sends a heartbeat response telling the consumer
-//   to block before reading from the target round.
+// - When a consumer heartbeats for an iteration and there is a pending task for
+//   that iteration, the dispatcher sends a heartbeat response telling the
+//   consumer to block before reading from the target round.
 // - When a consumer receives a heartbeat response telling it to block
 //   (before reading) a round, the consumer try to block the round. If the
 //   consumer has already started the round, it will too late to block the
@@ -163,6 +162,8 @@ class DataServiceDispatcherImpl {
                                 GetDataServiceMetadataResponse* response);
   Status GetDataServiceConfig(const GetDataServiceConfigRequest* request,
                               GetDataServiceConfigResponse* response);
+  Status GetOrCreateJob(const GetOrCreateJobRequest* request,
+                        GetOrCreateJobResponse* response);
   Status GetOrCreateIteration(const GetOrCreateIterationRequest* request,
                               GetOrCreateIterationResponse* response);
   Status ReleaseIterationClient(const ReleaseIterationClientRequest* request,
@@ -201,11 +202,15 @@ class DataServiceDispatcherImpl {
   Status GetOrCreateWorkerStub(const std::string& worker_address,
                                WorkerService::Stub*& out_stub)
       TF_LOCKS_EXCLUDED(mu_);
+  // Creates a job and stores it in `job`.
+  Status CreateJob(const std::string& job_name,
+                   const GetOrCreateJobRequest& request,
+                   std::shared_ptr<const DispatcherState::Job>& job)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Creates an iteration and stores it in `iteration`. This method updates the
   // dispatcher state with the new iteration, but does not assign tasks to
   // workers.
   Status CreateIteration(
-      const DispatcherState::IterationKey& iteration_key,
       const GetOrCreateIterationRequest& request,
       std::shared_ptr<const DispatcherState::Iteration>& iteration)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -226,7 +231,7 @@ class DataServiceDispatcherImpl {
       const absl::flat_hash_set<int64_t>& current_tasks,
       std::vector<std::shared_ptr<const DispatcherState::Task>>& assigned_tasks,
       WorkerHeartbeatResponse* response);
-  // Acquires a iteration client id to read from the given iteration and sets
+  // Acquires an iteration client id to read from the given iteration and sets
   // `iteration_client_id`.
   Status AcquireIterationClientId(
       const std::shared_ptr<const DispatcherState::Iteration>& iteration,
@@ -251,7 +256,7 @@ class DataServiceDispatcherImpl {
   Status CreatePendingTask(
       std::shared_ptr<const DispatcherState::Iteration> iteration,
       const std::string& worker_address) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Creates a new active task for a iteration, storing the created task in
+  // Creates a new active task for an iteration, storing the created task in
   // `task`.
   Status CreateActiveTask(
       std::shared_ptr<const DispatcherState::Iteration> iteration,
@@ -265,11 +270,10 @@ class DataServiceDispatcherImpl {
   // Assigns a task to the worker indicated by its `worker_address` field.
   Status AssignTask(std::shared_ptr<const DispatcherState::Task> task)
       TF_LOCKS_EXCLUDED(mu_);
-  // Validates that an existing iteration matches the requested processing mode,
-  // returning an error status describing any difference.
-  Status ValidateMatchingIteration(
-      std::shared_ptr<const DispatcherState::Iteration> iteration,
-      const GetOrCreateIterationRequest& request)
+  // Validates that an existing job matches a given request.
+  // Returns an error status describing any difference.
+  Status ValidateMatchingJob(std::shared_ptr<const DispatcherState::Job> job,
+                             const GetOrCreateJobRequest& request)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Fills out a TaskDef with information about a task.
   Status PopulateTaskDef(std::shared_ptr<const DispatcherState::Task> task,
@@ -278,7 +282,7 @@ class DataServiceDispatcherImpl {
   // Checks that the dispatcher has started, returning UNAVAILABLE if it hasn't.
   Status CheckStarted() TF_LOCKS_EXCLUDED(mu_);
   // Records that a split was produced by a call to `GetSplit`.
-  Status RecordSplitProduced(int64_t iteration_id, int64_t iteration,
+  Status RecordSplitProduced(int64_t iteration_id, int64_t repetition,
                              int64_t split_provider_index, bool finished)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Applies a state update, updating both the journal and the in-memory state.

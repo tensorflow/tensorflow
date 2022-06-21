@@ -116,7 +116,7 @@ class ExpandHloTuplesPass
       }
     }
 
-    if (expanded_return_operands.empty()) return;
+    if (return_op.getOperands() == expanded_return_operands) return;
 
     OpBuilder builder(return_op);
     builder.create<mlir::func::ReturnOp>(return_op.getLoc(),

@@ -251,12 +251,12 @@ struct SortOpPattern : public OpConversionPattern<mhlo::SortOp> {
     auto& src_block = op.comparator().front();
     auto scf_for = b.create<scf::ForOp>(
         loc, zero, ub, one, args,
-        [&](OpBuilder& b, Location loc, Value iv, ValueRange) {
+        [&](OpBuilder& b, Location loc, Value iv, ValueRange args) {
           // Extract and create tensors with relevant values to merge with the
           // expected inputs to the original compare region of the mhlo.sort op.
           SmallVector<Value> indices(ivs);
           Value ivPlusOne = b.create<arith::AddIOp>(loc, iv, one);
-          for (const auto& idx_and_output : llvm::enumerate(results)) {
+          for (const auto& idx_and_output : llvm::enumerate(args)) {
             indices[sort_dim] = iv;
             sort_args.push_back(b.create<tensor::FromElementsOp>(
                 loc, src_block.getArgumentTypes()[2 * idx_and_output.index()],
@@ -314,12 +314,14 @@ struct SortOpPattern : public OpConversionPattern<mhlo::SortOp> {
           Value ivPlusOne =
               b.create<arith::AddIOp>(loc, scf_for.getInductionVar(), one);
           SmallVector<Value> swapped_results;
-          for (int i = 0, e = results.size(); i < e; ++i) {
-            Value v1 = sort_args[i * 2];
-            Value v2 = sort_args[i * 2 + 1];
+          for (const auto& idx_and_output :
+               llvm::enumerate(scf_for.getRegionIterArgs())) {
+            Value v1 = sort_args[idx_and_output.index() * 2];
+            Value v2 = sort_args[idx_and_output.index() * 2 + 1];
             indices[sort_dim] = scf_for.getInductionVar();
             Value after_first_insert = b.create<tensor::InsertOp>(
-                loc, b.create<tensor::ExtractOp>(loc, v2), results[i], indices);
+                loc, b.create<tensor::ExtractOp>(loc, v2),
+                idx_and_output.value(), indices);
             indices[sort_dim] = ivPlusOne;
             swapped_results.push_back(b.create<tensor::InsertOp>(
                 loc, b.create<tensor::ExtractOp>(loc, v1), after_first_insert,

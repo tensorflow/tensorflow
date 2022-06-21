@@ -32,17 +32,17 @@ namespace mlir {
 namespace quant {
 namespace {
 
-class LiftQuantizableSpotsAsFunctionsDynamicRangePass
-    : public PassWrapper<LiftQuantizableSpotsAsFunctionsDynamicRangePass,
+class LiftQuantizableSpotsAsFunctionsDRQPass
+    : public PassWrapper<LiftQuantizableSpotsAsFunctionsDRQPass,
                          OperationPass<ModuleOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
-      LiftQuantizableSpotsAsFunctionsDynamicRangePass)
+      LiftQuantizableSpotsAsFunctionsDRQPass)
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
     // the textual format (on the commandline for example).
-    return "quant-lift-quantizable-spots-as-functions-dynamic-range";
+    return "quant-lift-quantizable-spots-as-functions-drq";
   }
 
   StringRef getDescription() const final {
@@ -58,11 +58,11 @@ class LiftQuantizableSpotsAsFunctionsDynamicRangePass
   void runOnOperation() override;
 };
 
-static PassRegistration<LiftQuantizableSpotsAsFunctionsDynamicRangePass> pass;
+static PassRegistration<LiftQuantizableSpotsAsFunctionsDRQPass> pass;
 
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/lift_quantizable_spots_as_functions_dynamic_range.inc"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/lift_quantizable_spots_as_functions_drq.inc"
 
-void LiftQuantizableSpotsAsFunctionsDynamicRangePass::runOnOperation() {
+void LiftQuantizableSpotsAsFunctionsDRQPass::runOnOperation() {
   MLIRContext *ctx = &getContext();
   RewritePatternSet patterns(ctx);
   ModuleOp module = getOperation();
@@ -72,7 +72,7 @@ void LiftQuantizableSpotsAsFunctionsDynamicRangePass::runOnOperation() {
   for (auto func : module.getOps<func::FuncOp>()) {
     if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
       func.emitError()
-          << "quant-lift-quantizable-spots-as-functions-dynamic-range failed.";
+          << "quant-lift-quantizable-spots-as-functions-drq failed.";
       signalPassFailure();
     }
   }
@@ -81,8 +81,8 @@ void LiftQuantizableSpotsAsFunctionsDynamicRangePass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateLiftQuantizableSpotsAsFunctionsDynamicRangePass() {
-  return std::make_unique<LiftQuantizableSpotsAsFunctionsDynamicRangePass>();
+CreateLiftQuantizableSpotsAsFunctionsDRQPass() {
+  return std::make_unique<LiftQuantizableSpotsAsFunctionsDRQPass>();
 }
 
 }  // namespace quant

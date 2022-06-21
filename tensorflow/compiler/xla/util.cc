@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/numbers.h"

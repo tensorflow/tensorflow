@@ -109,7 +109,7 @@ Status TransferBufferToInfeed(int device_ordinal, int64_t size,
       cpu::runtime::GetXfeedManager(device_ordinal);
   xfeed_manager->infeed()->EnqueueBuffersAtomically({buffer});
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<Shape> TransferBuffersFromOutfeedInternal(
@@ -216,7 +216,7 @@ Status TransferLiteralToInfeedOnCpu(int device_ordinal,
   xfeed_manager->infeed()->EnqueueBuffersAtomically(buffers);
 
   cleanup.release();
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
@@ -240,7 +240,7 @@ Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
     TF_RET_CHECK(size == cpu::runtime::GetByteSizeRequirement(received_shape,
                                                               sizeof(void*)));
     *literal.mutable_shape_do_not_use() = received_shape;
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   if (ShapeUtil::IsNestedTuple(literal.shape())) {
@@ -270,7 +270,7 @@ Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
       cpu::runtime::GetByteSizeRequirement(received_shape, sizeof(void*)));
 
   TF_RET_CHECK(ShapeUtil::Equal(literal.shape(), literal.shape()));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status ReadDynamicShapesOnCpu(
@@ -283,12 +283,12 @@ Status ReadDynamicShapesOnCpu(
         const Shape& buffer_shape =
             ShapeUtil::GetSubshape(*device_shape, index);
         if (buffer_shape.IsTuple()) {
-          return Status::OK();
+          return ::tensorflow::OkStatus();
         }
         Shape& device_sub_shape =
             *ShapeUtil::GetMutableSubshape(device_shape, index);
         if (device_sub_shape.is_static()) {
-          return Status::OK();
+          return ::tensorflow::OkStatus();
         }
         void* memory = buffer->opaque();
 
@@ -306,12 +306,12 @@ Status ReadDynamicShapesOnCpu(
         for (int64_t i = 0; i < device_sub_shape.rank(); ++i) {
           device_sub_shape.mutable_dimensions()[i] = metadata_buffer[i];
         }
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       }));
   device_shape->clear_dynamic_dimensions();
 
   TF_RET_CHECK(ShapeUtil::DynamicShapeIsCompatible(*device_shape,
                                                    original_device_shape));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 }  // namespace xla

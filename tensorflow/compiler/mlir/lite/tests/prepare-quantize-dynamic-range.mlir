@@ -1,8 +1,8 @@
 // RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range | FileCheck %s
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range  --tfl-enable-dynamic-range-per-channel-quantization=false | FileCheck --check-prefix=PerTensor %s
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range  --tfl-enable-float16-quantization | FileCheck --check-prefix=Float16 %s
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range --tfl-enable-custom-op-quantization="CustomTestOp=1-3,CustomTestOp3=3" | FileCheck --check-prefix=CustomOp %s
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range  --tfl-min-elements-for-weights=4000 --tfl-enable-custom-op-quantization="CustomTestOp=1-3,CustomTestOp3=3" | FileCheck --check-prefix=MinElement %s
+// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range="enable-dynamic-range-per-channel-quantization=false" | FileCheck --check-prefix=PerTensor %s
+// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range="enable-float16-quantization" | FileCheck --check-prefix=Float16 %s
+// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range="enable-custom-op-quantization=CustomTestOp=1-3,CustomTestOp3=3" | FileCheck --check-prefix=CustomOp %s
+// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range="min-elements-for-weights=4000 enable-custom-op-quantization=CustomTestOp=1-3,CustomTestOp3=3" | FileCheck --check-prefix=MinElement %s
 
 // CHECK-LABEL: QuantizeConv2D
 // PerTensor-LABEL: QuantizeConv2D

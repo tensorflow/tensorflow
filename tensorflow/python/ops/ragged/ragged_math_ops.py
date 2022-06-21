@@ -1056,7 +1056,8 @@ def softmax(logits: ragged_tensor.Ragged, axis=None, name=None):
     axis = -1
 
   with ops.name_scope(name, 'RaggedSoftmax', [logits]) as name:
-    logits_exp = math_ops.exp(logits)
+    max_input = reduce_max(logits, axis=axis, keepdims=True)
+    logits_exp = math_ops.exp(math_ops.subtract(logits, max_input))
     denominator = reduce_sum(logits_exp, axis=axis, keepdims=True)
     return math_ops.divide(logits_exp, denominator)
 

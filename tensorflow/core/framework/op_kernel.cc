@@ -92,7 +92,7 @@ Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
         " expected: ", DataTypeSliceString(expected_inputs), "->",
         DataTypeSliceString(expected_outputs));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -164,7 +164,7 @@ Status OpKernel::InputRange(StringPiece input_name, int* start,
   } else {
     *start = result->second.first;
     *stop = result->second.second;
-    return Status::OK();
+    return OkStatus();
   }
 }
 
@@ -176,7 +176,7 @@ Status OpKernel::OutputRange(StringPiece output_name, int* start,
   } else {
     *start = result->second.first;
     *stop = result->second.second;
-    return Status::OK();
+    return OkStatus();
   }
 }
 
@@ -270,7 +270,7 @@ Status OpKernelConstruction::allocate_temp(DataType type,
         def().name(), LogMemory::OP_KERNEL_CONSTRUCTION_STEP_ID, new_temp);
   }
   *out_temp = new_temp;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelConstruction::allocate_temp(DataType type,
@@ -295,7 +295,7 @@ Status OpKernelConstruction::allocate_temp(DataType type,
         def().name(), LogMemory::OP_KERNEL_CONSTRUCTION_STEP_ID, new_temp);
   }
   *out_temp = new_temp;
-  return Status::OK();
+  return OkStatus();
 }
 
 // OpKernelContext -----------------------------------------------------------
@@ -379,7 +379,7 @@ Status OpKernelContext::input(StringPiece name, const Tensor** tensor) {
                                    "' when non-ref input was expected");
   }
   *tensor = (*params_->inputs)[index].tensor;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelContext::input_dtype(StringPiece name, DataType* dtype) const {
@@ -387,14 +387,14 @@ Status OpKernelContext::input_dtype(StringPiece name, DataType* dtype) const {
   TF_RETURN_IF_ERROR(get_input_index(name, &index));
   const TensorValue& value((*params_->inputs)[index]);
   *dtype = value.dtype();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelContext::input_ref_mutex(StringPiece name, mutex** out_mutex) {
   int index;
   TF_RETURN_IF_ERROR(get_input_index(name, &index));
   *out_mutex = input_ref_mutex(index);
-  return Status::OK();
+  return OkStatus();
 }
 
 const Tensor& OpKernelContext::input(int index) const {
@@ -473,7 +473,7 @@ Status OpKernelContext::forward_input_to_output_with_shape(
     return errors::FailedPrecondition("OpKernel could not forward input '",
                                       input_name, "' to output '", output_name);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 std::unique_ptr<Tensor> OpKernelContext::forward_input(
@@ -554,7 +554,7 @@ Status OpKernelContext::forward_input_or_allocate_temp(
                       type, shape, DEVICE_MEMORY, allocator_attr);
     if (new_tensor != nullptr) {
       *out_temp = std::move(*new_tensor);
-      return Status::OK();
+      return OkStatus();
     }
   }
   return allocate_temp(type, shape, out_temp, allocator_attr);
@@ -588,7 +588,7 @@ Status OpKernelContext::mutable_input(StringPiece name, Tensor* tensor,
     tf_shared_lock l(*input_ref_mutex(index));
     *tensor = *(*params_->inputs)[index].tensor;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelContext::replace_ref_input(StringPiece name,
@@ -601,14 +601,14 @@ Status OpKernelContext::replace_ref_input(StringPiece name,
                                    "' when ref input was expected");
   }
   replace_ref_input(index, tensor, lock_held);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelContext::input_list(StringPiece name, OpInputList* list) {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
   *list = OpInputList(this, start, stop);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelContext::mutable_input_list(StringPiece name,
@@ -616,14 +616,14 @@ Status OpKernelContext::mutable_input_list(StringPiece name,
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
   *list = OpMutableInputList(this, start, stop);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelContext::output_list(StringPiece name, OpOutputList* list) {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
   *list = OpOutputList(this, start, stop);
-  return Status::OK();
+  return OkStatus();
 }
 
 void OpKernelContext::maybe_initialize_scope_id_set() {
@@ -705,7 +705,7 @@ Status OpKernelContext::allocate_tensor(
                                       params_->step_id, new_tensor);
   }
   *out_tensor = std::move(new_tensor);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
@@ -803,7 +803,7 @@ Status OpKernelContext::get_input_index(StringPiece name,
                                    "expected");
   }
   *out_index = start;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelContext::get_output_index(StringPiece name,
@@ -817,21 +817,21 @@ Status OpKernelContext::get_output_index(StringPiece name,
                                    "expected");
   }
   *out_index = start;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelContext::set_output(StringPiece name, const Tensor& tensor) {
   int index;
   TF_RETURN_IF_ERROR(get_output_index(name, &index));
   set_output(index, tensor);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelContext::set_output(StringPiece name, Tensor&& tensor) {
   int index;
   TF_RETURN_IF_ERROR(get_output_index(name, &index));
   set_output(index, std::move(tensor));
-  return Status::OK();
+  return OkStatus();
 }
 
 bool OpKernelContext::maybe_set_output_by_allocate_and_copy(
@@ -939,14 +939,14 @@ Status OpKernelContext::set_output_ref(StringPiece name, mutex* mu,
   int index;
   TF_RETURN_IF_ERROR(get_output_index(name, &index));
   set_output_ref(index, mu, tensor_for_ref);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelContext::mutable_output(StringPiece name, Tensor** tensor) {
   int index;
   TF_RETURN_IF_ERROR(get_output_index(name, &index));
   *tensor = mutable_output(index);
-  return Status::OK();
+  return OkStatus();
 }
 
 bool OpKernelContext::ValidateInputsAreSameShape(OpKernel* op) {
@@ -1114,7 +1114,7 @@ static Status IsProbablySafeToLoad(const string& path) {
     errmsg.append(absl::StrJoin(missing_features, ", "));
     return Status(errors::Code::FAILED_PRECONDITION, errmsg);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void LoadDynamicKernelsInternal() {
@@ -1361,7 +1361,7 @@ Status FindKernelRegistration(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FindKernelRegistration(const DeviceType& device_type,
@@ -1422,7 +1422,7 @@ Status FindKernelDef(
   }
   if (def != nullptr) *def = &reg->def;
   if (kernel_class_name != nullptr) *kernel_class_name = reg->kernel_class_name;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
@@ -1501,7 +1501,7 @@ Status SupportedDeviceTypesForNode(
       prioritized_device_types->push_back(std::make_pair(device_type, 0));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void LogAllRegisteredKernels() {
@@ -1687,7 +1687,7 @@ Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>

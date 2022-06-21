@@ -31,7 +31,7 @@ namespace tensorflow {
 template <typename Device, typename T>
 Status EnsureSparseVariableAccess(OpKernelContext* ctx, Var* var) {
   if (var->copy_on_read_mode.load()) {
-    return Status::OK();
+    return OkStatus();
   }
   mutex_lock ml(*var->mu());
   // Once copy-on-read mode is True the refcount is guaranteed to be 1. This can
@@ -39,7 +39,7 @@ Status EnsureSparseVariableAccess(OpKernelContext* ctx, Var* var) {
   // copy-on-read mode is false.
   if (var->tensor()->RefCountIsOne()) {
     var->copy_on_read_mode.store(true);
-    return Status::OK();
+    return OkStatus();
   }
   Tensor tmp;
   if (std::is_same<T, Variant>::value) {
@@ -65,7 +65,7 @@ Status EnsureSparseVariableAccess(OpKernelContext* ctx, Var* var) {
   }
   *var->tensor() = tmp;
   var->copy_on_read_mode.store(true);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Utility structure that releases a sequence of borrowed mutexes when it is
@@ -221,7 +221,7 @@ Status PrepareToUpdateVariable(OpKernelContext* ctx, Tensor* tensor,
     }
     *tensor = tmp;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // This gives you `*out`, a tensor you can update, corresponding to a variable
@@ -241,15 +241,15 @@ Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
     if (sparse) {
       TF_RETURN_IF_ERROR(EnsureSparseVariableAccess<Device, T>(ctx, var.get()));
       *out = *var->tensor();
-      return Status::OK();
+      return OkStatus();
     }
     TF_RETURN_IF_ERROR(PrepareToUpdateVariable<Device, T>(
         ctx, var->tensor(), var->copy_on_read_mode.load()));
     *out = *var->tensor();
-    return Status::OK();
+    return OkStatus();
   }
   *out = ctx->mutable_input(input, lock_held);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace tensorflow

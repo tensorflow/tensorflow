@@ -48,6 +48,7 @@ from tensorflow.lite.python.testdata import _pywrap_test_registerer as test_regi
 from tensorflow.lite.python.testdata import double_op
 from tensorflow.lite.python.util import get_conversion_metadata
 from tensorflow.lite.toco import types_pb2 as _types_pb2
+from tensorflow.lite.tools.flatbuffer_utils import convert_bytearray_to_object as _convert_bytearray_to_object
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -2284,12 +2285,12 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
         list(output_details[0]['shape_signature']),
         list(model.layers[-1].output_shape))
 
-  def _createUnknownInputShapeModel(self):
-    """Create a simple SavedModel with unknown input."""
-    saved_model_dir = os.path.join(self.get_temp_dir(), 'unknown_input_shape')
+  def _createModelWithInputShape(self, shape):
+    """Create a simple SavedModel with a certain shape."""
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'input_shape_model')
     with tf.Graph().as_default():
       with tf.compat.v1.Session() as sess:
-        unknown_shape = tf.TensorShape(None)
+        unknown_shape = tf.TensorShape(shape)
         in_tensor = tf.compat.v1.placeholder(
             shape=unknown_shape, dtype=tf.float32, name='input')
         out_tensor = in_tensor + in_tensor
@@ -2301,11 +2302,17 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
   @test_util.run_v2_only
   def testUnknownInputShapeModel(self):
     """Test a SavedModel with an unknown input shape."""
-    saved_model_dir = self._createUnknownInputShapeModel()
+    saved_model_dir = self._createModelWithInputShape(None)
 
     converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
+
+    # Validate that tensors with unknown shape have unknown rank.
+    tflite_model_obj = _convert_bytearray_to_object(tflite_model)
+    for tensor in tflite_model_obj.subgraphs[0].tensors:
+      self.assertEqual(False, tensor.hasRank)
+      self.assertEqual([], tensor.shape.tolist())
 
     # Check values from converted model.
     interpreter = Interpreter(model_content=tflite_model)
@@ -2321,6 +2328,36 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     interpreter.invoke()
     actual_value = interpreter.get_tensor(output_details[0]['index'])
     self.assertEqual([2., 4., 6.], list(actual_value))
+
+  @test_util.run_v2_only
+  def testScalarInputShapeModel(self):
+    """Test a SavedModel with a scalar input."""
+    saved_model_dir = self._createModelWithInputShape([])
+
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Validate that scalar tensors have a rank = 0.
+    tflite_model_obj = _convert_bytearray_to_object(tflite_model)
+    for tensor in tflite_model_obj.subgraphs[0].tensors:
+      self.assertEqual(True, tensor.hasRank)
+      self.assertEqual([], tensor.shape.tolist())
+
+  @test_util.run_v2_only
+  def testMatrixInputShapeModel(self):
+    """Test a SavedModel with a matrix input."""
+    saved_model_dir = self._createModelWithInputShape([2, 3])
+
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Validate that matrix tensors have a rank = 2.
+    tflite_model_obj = _convert_bytearray_to_object(tflite_model)
+    for tensor in tflite_model_obj.subgraphs[0].tensors:
+      self.assertEqual(True, tensor.hasRank)
+      self.assertEqual([2, 3], tensor.shape.tolist())
 
   @parameterized.named_parameters(
       ('_PerChannelQuant', False, False),

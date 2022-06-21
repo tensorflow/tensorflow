@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/device_memory.h"

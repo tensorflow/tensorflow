@@ -398,7 +398,7 @@ absl::Status SinTest(TestExecutionEnvironment* env) {
   for (auto precision : env->GetSupportedPrecisions()) {
     auto data_type = DeduceDataTypeFromPrecision(precision);
     for (auto storage : env->GetSupportedStorages(data_type)) {
-      const float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 5e-3f;
+      const float eps = precision == CalculationsPrecision::F32 ? 2e-5f : 5e-3f;
       OperationDef op_def;
       op_def.precision = precision;
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});

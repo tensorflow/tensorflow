@@ -4308,22 +4308,14 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
         int64_t earliest_computation_start_time = end_time;
         for (const HloComputation* called_computation :
              use_instruction->called_computations()) {
+          int64_t computation_start_time =
+              hlo_live_range->computation_span_times()
+                  .at(called_computation)
+                  .start;
           earliest_computation_start_time =
-              std::min(earliest_computation_start_time,
-                       hlo_live_range->computation_span_times()
-                           .at(called_computation)
-                           .start);
-          int64_t parameter_time = -1;
+              std::min(earliest_computation_start_time, computation_start_time);
           int64_t last_use_time = -1;
           const HloInstruction* last_use_instruction = nullptr;
-          for (const HloPosition& position : value->positions()) {
-            if (position.instruction->opcode() == HloOpcode::kParameter &&
-                position.instruction->parent() == called_computation) {
-              parameter_time = hlo_live_range->instruction_schedule().at(
-                  position.instruction);
-              break;
-            }
-          }
           for (const HloUse& use : value->GetUses()) {
             int64_t use_time =
                 hlo_live_range->instruction_schedule().at(use.instruction);
@@ -4334,21 +4326,20 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
             }
           }
           if (last_use_time != -1) {
-            CHECK_NE(parameter_time, -1);
             VLOG(3) << indent_string
                     << " computation: " << called_computation->name() << ": ("
-                    << parameter_time << ", " << last_use_time << ")";
+                    << computation_start_time << ", " << last_use_time << ")";
             CHECK(last_use_instruction);
             if (last_use_instruction->opcode() == HloOpcode::kConditional) {
               // The last use is another (nested) conditional. Call this
               // function recursively.
               TF_RETURN_IF_ERROR(split_conditional_buffer(
-                  last_use_instruction, parameter_time, last_use_time,
+                  last_use_instruction, computation_start_time, last_use_time,
                   absl::StrCat(indent_string, "  ")));
             } else {
               last_use_time = std::min(last_use_time, end_time);
               TF_RETURN_IF_ERROR(add_allocation_and_verify(
-                  parameter_time, last_use_time, chunk, value));
+                  computation_start_time, last_use_time, chunk, value));
             }
           }
         }

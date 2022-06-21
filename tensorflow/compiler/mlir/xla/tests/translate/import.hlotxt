@@ -666,6 +666,25 @@ add {
   ROOT map = f32[4]{0} map(param0, param1), dimensions={0}, to_apply=%map_computation_returning_tuple
 }
 
+// Test mhlo.map with heterogeneous inputs
+%map_computation_take_left {
+  ROOT %Arg_0.4 = f32[] parameter(0)
+  %Arg_1.5 = s32[] parameter(1)
+}
+
+// CHECK-LABEL: func private @map_heterogeneous
+// CHECK-SAME:  [[ARG_0:%.*]]: tensor<4xf32>, [[ARG_1:%.*]]: tensor<4xi32>) -> tensor<4xf32>
+%map_heterogeneous (Arg_0.1: f32[4], Arg_1.2: s32[4]) -> f32[4] {
+  %Arg_0.1 = f32[4] parameter(0)
+  %Arg_1.2 = s32[4] parameter(1)
+  ROOT %map.6 = f32[4] map(f32[4] %Arg_0.1, s32[4] %Arg_1.2), dimensions={0}, to_apply=%map_computation_take_left
+}
+
+// CHECK:  "mhlo.map"([[ARG_0]], [[ARG_1]]) ({
+// CHECK:    ^bb0([[ARG_2:%.*]]: tensor<f32>, [[ARG_3:%.*]]: tensor<i32>):
+// CHECK:    "mhlo.return"([[ARG_2]]) : (tensor<f32>) -> ()
+// CHECK:  }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<4xf32>, tensor<4xi32>) -> tensor<4xf32>
+
 // CHECK-LABEL:  func private @test_maximum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32>
 %test_maximum (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)

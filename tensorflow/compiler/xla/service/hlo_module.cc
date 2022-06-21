@@ -32,12 +32,14 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -45,7 +47,8 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stacktrace.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace xla {
 
@@ -267,7 +270,6 @@ absl::Cord HloModule::ToCord(const HloPrintOptions& options) const {
     result.Append(", alias_passthrough_params=true");
   }
   if (config_.has_entry_computation_layout()) {
-    LOG(ERROR) << "HAS CONFIG " << this->name();
     result.Append(", entry_computation_layout={");
     result.Append(entry_computation_layout().ToString());
     result.Append("}");
@@ -346,6 +348,12 @@ HloModuleProto HloModule::ToProto() const {
     profile_info_proto.set_relative_speedup(profile_info.relative_speedup());
     profile_info_proto.set_profile_source(profile_info.profile_source());
     profile_info_proto.set_compilation_event(profile_info.compilation_event());
+  }
+  if (this->config_.has_static_device_assignment()) {
+    DeviceAssignmentProto device_assignment;
+    TF_CHECK_OK(
+        this->config_.static_device_assignment().Serialize(&device_assignment));
+    (*proto.mutable_device_assignment()) = device_assignment;
   }
   return proto;
 }
@@ -452,9 +460,6 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
                                    /*preserve_entry_layouts=*/false);
   }
   TF_RET_CHECK(module->entry_computation_ != nullptr);
-  if (proto.has_schedule()) {
-    TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
-  }
   TF_ASSIGN_OR_RETURN(
       module->input_output_alias_config_,
       HloInputOutputAliasConfig::CreateFromProto(
@@ -502,6 +507,19 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 
   for (const auto& profile_info : proto.profile_info()) {
     module->add_profile_info(profile_info);
+  }
+  if (proto.has_device_assignment()) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<DeviceAssignment> device_assignment,
+        DeviceAssignment::Deserialize(proto.device_assignment()));
+    if (module->config_.has_static_device_assignment()) {
+      TF_RET_CHECK(module->config_.static_device_assignment() ==
+                   *device_assignment)
+          << "DeviceAssignment in HloModuleConfig and HloModuleProto are not "
+             "the same.";
+    } else {
+      module->config_.set_static_device_assignment(*device_assignment);
+    }
   }
   return std::move(module);
 }
@@ -575,8 +593,22 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
         "No program shape found in the proto");
   }
   ProgramShape program_shape(module.host_program_shape());
-  return CreateModuleConfigFromShape(program_shape, debug_options,
-                                     execution_options);
+  TF_ASSIGN_OR_RETURN(HloModuleConfig config,
+                      CreateModuleConfigFromShape(program_shape, debug_options,
+                                                  execution_options));
+  if (module.has_device_assignment()) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<DeviceAssignment> device_assignment,
+        DeviceAssignment::Deserialize(module.device_assignment()));
+    if (!config.has_static_device_assignment()) {
+      config.set_static_device_assignment(*device_assignment);
+    } else {
+      TF_RET_CHECK(config.static_device_assignment() == *device_assignment)
+          << "Device assignment from execution options and module proto are "
+             "not the same";
+    }
+  }
+  return config;
 }
 
 namespace {

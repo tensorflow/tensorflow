@@ -142,7 +142,7 @@ with your own model and test data.
 ## Model compatibility requirements
 
 The `BetNLClassifier` API expects a TFLite model with mandatory
-[TFLite Model Metadata](../../convert/metadata.md).
+[TFLite Model Metadata](../../models/convert/metadata.md).
 
 The Metadata should meet the following requirements:
 

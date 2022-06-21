@@ -16,10 +16,12 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/group_events.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <map>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <utility>
@@ -37,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -75,15 +78,94 @@ int64_t GetEventType(bool is_host_plane, const EventNode& event) {
   }
 }
 
-void SetContextGroup(EventNode* event, ContextGroupMap* context_groups) {
-  auto producer = event->GetProducerContext();
-  if (producer.has_value()) {
-    ((*context_groups)[producer->type][producer->id])
+bool IsLegacyProducerEvent(const XEventVisitor& event) {
+  static const auto* const kProducerEvents = new absl::flat_hash_set<int64_t>{
+      HostEventType::kTraceContext, HostEventType::kFunctionRun,
+      HostEventType::kSessionRun, HostEventType::kRunGraph};
+  return event.Type().has_value() && kProducerEvents->contains(*event.Type());
+}
+
+bool IsLegacyConsumerEvent(const XEventVisitor& event) {
+  static const auto* const kConsumerEvents = new absl::flat_hash_set<int64_t>{
+      HostEventType::kExecutorStateProcess,
+      HostEventType::kExecutorDoneCallback, HostEventType::kRunGraphDone};
+  return event.Type().has_value() && kConsumerEvents->contains(*event.Type());
+}
+
+bool IsLegacyRootEvent(const XEventVisitor& event) {
+  static const auto* const kRootEvents = new absl::flat_hash_set<int64_t>{
+      HostEventType::kTraceContext, HostEventType::kFunctionRun,
+      HostEventType::kSessionRun, HostEventType::kRunGraph};
+  return event.Type().has_value() && kRootEvents->contains(*event.Type());
+}
+
+// Stats used in ConnectIntraThread.
+struct GroupingEventStats {
+  explicit GroupingEventStats(const XEventVisitor& event);
+
+  std::optional<int> producer_type;
+  std::optional<uint64_t> producer_id;
+  std::optional<int> consumer_type;
+  std::optional<uint64_t> consumer_id;
+  std::optional<int> root_level;
+  bool is_async = false;
+};
+
+GroupingEventStats::GroupingEventStats(const XEventVisitor& event) {
+  std::optional<int64_t> step_id;
+  event.ForEachStat([&](const XStatVisitor& stat) {
+    if (!stat.Type().has_value()) return;
+    switch (*stat.Type()) {
+      case StatType::kProducerType:
+        producer_type = stat.IntValue();
+        break;
+      case StatType::kProducerId:
+        producer_id = stat.IntOrUintValue();
+        break;
+      case StatType::kConsumerType:
+        consumer_type = stat.IntValue();
+        break;
+      case StatType::kConsumerId:
+        consumer_id = stat.IntOrUintValue();
+        break;
+      case StatType::kIsRoot:
+        root_level = stat.IntValue();
+        break;
+      case StatType::kIsAsync:
+        is_async = stat.BoolValue();
+        break;
+      case StatType::kStepId:
+        step_id = stat.IntValue();
+        break;
+      default:
+        break;
+    }
+  });
+  if (!producer_type.has_value() || !producer_id.has_value()) {
+    if (step_id.has_value() && IsLegacyProducerEvent(event)) {
+      producer_type = static_cast<int>(ContextType::kTfExecutor);
+      producer_id = *step_id;
+    }
+  }
+  if (!consumer_type.has_value() || !consumer_id.has_value()) {
+    if (step_id.has_value() && IsLegacyConsumerEvent(event)) {
+      consumer_type = static_cast<int>(ContextType::kTfExecutor);
+      consumer_id = *step_id;
+    }
+  }
+  if (!root_level.has_value() && IsLegacyRootEvent(event)) {
+    root_level = 1;
+  }
+}
+
+void SetContextGroup(const GroupingEventStats& stats, EventNode* event,
+                     ContextGroupMap* context_groups) {
+  if (stats.producer_type.has_value() && stats.producer_id.has_value()) {
+    ((*context_groups)[*stats.producer_type][*stats.producer_id])
         .producers.push_back(event);
   }
-  auto consumer = event->GetConsumerContext();
-  if (consumer.has_value()) {
-    ((*context_groups)[consumer->type][consumer->id])
+  if (stats.consumer_type.has_value() && stats.consumer_id.has_value()) {
+    ((*context_groups)[*stats.consumer_type][*stats.consumer_id])
         .consumers.push_back(event);
   }
 }
@@ -131,65 +213,6 @@ void ProcessRootEvent(int64_t group_id, EventNode* root_event,
     root_event->AddStepName(group_name);
   }
   (*group_metadata_map)[group_id].name = std::move(group_name);
-}
-
-struct ContextTypeAndId {
-  int type;
-  uint64 id;
-};
-
-absl::optional<ContextTypeAndId> GetLegacyProducerContext(
-    const XEventVisitor& event) {
-  absl::optional<ContextTypeAndId> type_and_id;
-  absl::optional<int64_t> event_type = event.Type();
-  if (event_type.has_value()) {
-    switch (*event_type) {
-      case HostEventType::kTraceContext:
-      case HostEventType::kFunctionRun:
-      case HostEventType::kSessionRun:
-      case HostEventType::kRunGraph: {
-        absl::optional<XStatVisitor> stat = event.GetStat(StatType::kStepId);
-        if (stat.has_value()) {
-          type_and_id = {static_cast<int>(ContextType::kTfExecutor),
-                         static_cast<uint64>(stat->IntValue())};
-        }
-        break;
-      }
-      default:
-        break;
-    }
-  }
-  return type_and_id;
-}
-
-absl::optional<ContextTypeAndId> GetLegacyConsumerContext(
-    const XEventVisitor& event) {
-  absl::optional<ContextTypeAndId> type_and_id;
-  absl::optional<int64_t> event_type = event.Type();
-  if (event_type.has_value()) {
-    switch (*event_type) {
-      case HostEventType::kExecutorStateProcess:
-      case HostEventType::kExecutorDoneCallback:
-      case HostEventType::kRunGraphDone: {
-        absl::optional<XStatVisitor> stat = event.GetStat(StatType::kStepId);
-        if (stat.has_value()) {
-          type_and_id = {static_cast<int>(ContextType::kTfExecutor),
-                         static_cast<uint64>(stat->IntValue())};
-        }
-        break;
-      }
-      default:
-        break;
-    }
-  }
-  return type_and_id;
-}
-
-bool IsLegacyRootEvent(const XEventVisitor& event) {
-  static const auto* const kRootEvents = new absl::flat_hash_set<int64_t>{
-      HostEventType::kTraceContext, HostEventType::kFunctionRun,
-      HostEventType::kSessionRun, HostEventType::kRunGraph};
-  return event.Type().has_value() && kRootEvents->contains(*event.Type());
 }
 
 using Comparator = std::function<bool(const EventNode*)>;
@@ -254,65 +277,8 @@ bool CheckLoopOp(const XSpace& space) {
   return false;
 }
 
-EventNode::EventNode(const XPlaneVisitor* plane, XLine* raw_line,
-                     XEvent* raw_event)
-    : plane_(plane),
-      visitor_(plane, raw_line, raw_event),
-      raw_line_(raw_line),
-      raw_event_(raw_event) {
-  absl::optional<int> producer_type;
-  absl::optional<uint64> producer_id;
-  absl::optional<int> consumer_type;
-  absl::optional<uint64> consumer_id;
-
-  visitor_.ForEachStat([&](const XStatVisitor& stat) {
-    if (!stat.Type().has_value()) return;
-    switch (*stat.Type()) {
-      case StatType::kProducerType:
-        producer_type = stat.IntValue();
-        break;
-      case StatType::kProducerId:
-        producer_id = stat.IntOrUintValue();
-        break;
-      case StatType::kConsumerType:
-        consumer_type = stat.IntValue();
-        break;
-      case StatType::kConsumerId:
-        consumer_id = stat.IntOrUintValue();
-        break;
-      case StatType::kIsRoot:
-        root_level_ = stat.IntValue();
-        break;
-      case StatType::kIsAsync:
-        is_async_ = stat.IntValue();
-        break;
-      default:
-        break;
-    }
-  });
-
-  // Support legacy traces.
-  if (!producer_type.has_value() || !producer_id.has_value()) {
-    if (auto producer_context = GetLegacyProducerContext(visitor_)) {
-      producer_type = producer_context->type;
-      producer_id = producer_context->id;
-    }
-  }
-  if (!consumer_type.has_value() || !consumer_id.has_value()) {
-    if (auto consumer_context = GetLegacyConsumerContext(visitor_)) {
-      consumer_type = consumer_context->type;
-      consumer_id = consumer_context->id;
-    }
-  }
-  root_level_ = root_level_ ? root_level_ : IsLegacyRootEvent(visitor_);
-
-  if (producer_type.has_value() && producer_id.has_value()) {
-    producer_context_ = {*producer_type, *producer_id};
-  }
-  if (consumer_type.has_value() && consumer_id.has_value()) {
-    consumer_context_ = {*consumer_type, *consumer_id};
-  }
-}
+EventNode::EventNode(XEventVisitor visitor, XEvent* raw_event)
+    : visitor_(std::move(visitor)), raw_event_(raw_event) {}
 
 absl::optional<XStatVisitor> EventNode::GetContextStat(
     int64_t stat_type) const {
@@ -354,7 +320,8 @@ std::string EventNode::GetGroupName() const {
 }
 
 XStat* EventNode::FindOrAddStatByType(int64_t stat_type) {
-  const XStatMetadata* stat_metadata = plane_->GetStatMetadataByType(stat_type);
+  const XPlaneVisitor& plane = visitor_.Plane();
+  const XStatMetadata* stat_metadata = plane.GetStatMetadataByType(stat_type);
   DCHECK(stat_metadata != nullptr);
   return FindOrAddMutableStat(*stat_metadata, raw_event_);
 }
@@ -435,11 +402,17 @@ void EventForest::ConnectIntraThread(XPlane* plane, XPlaneVisitor* visitor,
   for (auto& line : *plane->mutable_lines()) {
     std::vector<EventNode*> parent_nodes;
     for (auto& event : *line.mutable_events()) {
-      auto cur_node = absl::make_unique<EventNode>(visitor, &line, &event);
+      XEventVisitor event_visitor(visitor, &line, &event);
+      GroupingEventStats stats(event_visitor);
+      auto cur_node =
+          std::make_unique<EventNode>(std::move(event_visitor), &event);
+      if (stats.root_level.has_value()) {
+        cur_node->SetRootLevel(*stats.root_level);
+      }
       // Update `context_groups` for `ConnectInterThread`.
-      SetContextGroup(cur_node.get(), context_groups);
+      SetContextGroup(stats, cur_node.get(), context_groups);
       // Async events are ignored when processing the nesting relationship.
-      if (cur_node->IsAsync()) continue;
+      if (stats.is_async) continue;
       while (!parent_nodes.empty()) {
         EventNode* parent_node = parent_nodes.back();
         if (parent_node->GetEventVisitor().GetTimespan().Includes(

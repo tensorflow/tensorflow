@@ -158,7 +158,7 @@ Status CpuLayoutAssignment::AddBackendConstraints(
       }
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 }  // namespace cpu
 }  // namespace xla

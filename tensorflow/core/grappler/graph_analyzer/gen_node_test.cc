@@ -79,7 +79,7 @@ TEST(GenNodeTest, ParseNodeNoInputs) {
   map["node1"] = absl::make_unique<GenNode>(&node1);
 
   auto gn1 = map["node1"].get();
-  ASSERT_THAT(gn1->ParseInputs(&map), Eq(Status::OK()));
+  ASSERT_THAT(gn1->ParseInputs(&map), Eq(OkStatus()));
   EXPECT_THAT(DumpLinkMap(gn1->links()), ElementsAre());
 }
 
@@ -101,7 +101,7 @@ TEST(GenNodeTest, ParseNodeWithControl) {
   auto gn1 = map["node1"].get();
   auto gn2 = map["node2"].get();
   auto gn3 = map["node3"].get();
-  ASSERT_THAT(gn3->ParseInputs(&map), Eq(Status::OK()));
+  ASSERT_THAT(gn3->ParseInputs(&map), Eq(OkStatus()));
   // clang-format off
   EXPECT_THAT(DumpLinkMap(gn1->links()), ElementsAre(
       "o0: node3[i0]",
@@ -147,7 +147,7 @@ TEST(GenNodeTest, ParseNodeCommutative) {
   auto gn1 = map["node1"].get();
   auto gn2 = map["node2"].get();
   auto gn3 = map["node3"].get();
-  ASSERT_THAT(gn3->ParseInputs(&map), Eq(Status::OK()));
+  ASSERT_THAT(gn3->ParseInputs(&map), Eq(OkStatus()));
   // clang-format off
   EXPECT_THAT(DumpLinkMap(gn1->links()), ElementsAre(
       "o0: node3[i0]"
@@ -180,7 +180,7 @@ TEST(GenNodeTest, ParseNodeMultiInputCommutative) {
   auto gn1 = map["node1"].get();
   auto gn2 = map["node2"].get();
   auto gn3 = map["node3"].get();
-  ASSERT_THAT(gn3->ParseInputs(&map), Eq(Status::OK()));
+  ASSERT_THAT(gn3->ParseInputs(&map), Eq(OkStatus()));
   // clang-format off
   EXPECT_THAT(DumpLinkMap(gn1->links()), ElementsAre(
       "o0: node3[i0]"
@@ -216,7 +216,7 @@ TEST(GenNodeTest, ParseNodeMultiInputNotCommutative) {
   auto gn1 = map["node1"].get();
   auto gn2 = map["node2"].get();
   auto gn3 = map["node3"].get();
-  ASSERT_THAT(gn3->ParseInputs(&map), Eq(Status::OK()));
+  ASSERT_THAT(gn3->ParseInputs(&map), Eq(OkStatus()));
   // clang-format off
   EXPECT_THAT(DumpLinkMap(gn1->links()), ElementsAre(
       "o0: node3[i0]"
@@ -250,7 +250,7 @@ TEST(GenNodeTest, ParseNodeMultiInputList) {
   auto gn1 = map["node1"].get();
   auto gn2 = map["node2"].get();
   auto gn3 = map["node3"].get();
-  ASSERT_THAT(gn3->ParseInputs(&map), Eq(Status::OK()));
+  ASSERT_THAT(gn3->ParseInputs(&map), Eq(OkStatus()));
   // clang-format off
   EXPECT_THAT(DumpLinkMap(gn1->links()), ElementsAre(
       "o0: node3[i0]"
@@ -293,7 +293,7 @@ TEST(GenNodeTest, ParseNodeMultiMultiInput) {
   auto gn3 = map["node3"].get();
   auto gn4 = map["node4"].get();
   auto gn5 = map["node5"].get();
-  ASSERT_THAT(gn5->ParseInputs(&map), Eq(Status::OK()));
+  ASSERT_THAT(gn5->ParseInputs(&map), Eq(OkStatus()));
   // clang-format off
   EXPECT_THAT(DumpLinkMap(gn1->links()), ElementsAre(
       "o0: node5[i0]"
@@ -337,7 +337,7 @@ TEST(GenNodeTest, ParseNodeMultiOutput) {
   map["node4"] = absl::make_unique<GenNode>(&node4);
 
   auto gn4 = map["node4"].get();
-  ASSERT_THAT(gn4->ParseInputs(&map), Eq(Status::OK()));
+  ASSERT_THAT(gn4->ParseInputs(&map), Eq(OkStatus()));
   // clang-format off
   EXPECT_THAT(DumpLinkMap(gn4->links()), ElementsAre(
       "i0: node3[o1]",
@@ -402,7 +402,7 @@ TEST(GenNodeTest, ParseNodeControlInputsAlwaysOk) {
   map["node1"] = absl::make_unique<GenNode>(&node1);
   node1.add_input("^node1");
   auto gn1 = map["node1"].get();
-  ASSERT_THAT(gn1->ParseInputs(&map), Eq(Status::OK()));
+  ASSERT_THAT(gn1->ParseInputs(&map), Eq(OkStatus()));
   // clang-format off
   EXPECT_THAT(DumpLinkMap(gn1->links()), ElementsAre(
       "iC: node1[oC]",
@@ -433,7 +433,7 @@ TEST(GenNodeTest, BuildGraphInMap) {
       MakeNodeBroadcastGradientArgs("node3", "node1", "node2");
 
   GenNodeMap map;
-  ASSERT_THAT(GenNode::BuildGraphInMap(graph, &map), Eq(Status::OK()));
+  ASSERT_THAT(GenNode::BuildGraphInMap(graph, &map), Eq(OkStatus()));
   ASSERT_THAT(map.find("node1"), Ne(map.end()));
   ASSERT_THAT(map.find("node2"), Ne(map.end()));
   ASSERT_THAT(map.find("node3"), Ne(map.end()));

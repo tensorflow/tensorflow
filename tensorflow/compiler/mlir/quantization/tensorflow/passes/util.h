@@ -24,7 +24,8 @@ bool HasQuantizedTensors(Operation *op);
 
 enum class QuantizationMethod {
   kQuantizationAwareTraining,
-  kPostTrainingQuantization
+  kPostTrainingQuantization,
+  kDynamicRangeQuantization
 };
 
 }  // namespace quant

@@ -391,6 +391,19 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_plugin",
+    hdrs = ["c/experimental/acceleration/configuration/gpu_plugin.h"],
+    copts = tflite_copts_warnings(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/acceleration/configuration/c:gpu_plugin",
+    ],
+)
+
+cc_library(
     name = "nnapi_plugin",
     hdrs = ["c/experimental/acceleration/configuration/nnapi_plugin.h"],
     copts = tflite_copts_warnings(),

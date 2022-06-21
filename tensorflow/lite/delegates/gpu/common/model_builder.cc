@@ -581,6 +581,14 @@ class Conv2DOperationParser : public TFLiteOperationParser {
       RETURN_IF_ERROR(reader->ReadTensor(1, &attr->weights));
       attr->groups = src_shape.c / attr->weights.shape.i;
     } else {
+      const TfLiteTensor* weights_tensor = reader->GetInputTensor(1);
+      if (!weights_tensor) {
+        return absl::InternalError("Expected second runtime tensor.");
+      }
+      BHWC weights_shape;
+      RETURN_IF_ERROR(ExtractTensorShape(*weights_tensor, &weights_shape));
+      attr->weights.shape = OHWI(weights_shape.b, weights_shape.h,
+                                 weights_shape.w, weights_shape.c);
       attr->groups = 1;
     }
     reader->ReadTensor(2, &attr->bias).IgnoreError();  // bias is optional
@@ -743,6 +751,9 @@ class DepthwiseConvolutionOperationParser : public TFLiteOperationParser {
     const int runtime_inputs = reader->GetNumberOfRuntimeInputs();
     if (runtime_inputs == 2) {
       RETURN_IF_ERROR(reader->AddInput(node, 1));
+      auto weights_shape = graph->FindInputs(node->id)[1]->tensor.shape;
+      attr.weights.shape = OHWI(weights_shape.b, weights_shape.h,
+                                weights_shape.w, weights_shape.c);
     } else {  // runtime_inputs == 1;
       RETURN_IF_ERROR(reader->ReadTensor(1, &attr.weights));
     }
@@ -835,26 +846,20 @@ class DequantizeOperationParser : public TFLiteOperationParser {
                      GraphFloat32* graph, ObjectReader* reader) final {
     // 'Dequantize' is rewritten as QuantizeAndDequantize since we are dealing
     // with floating-point versions of the original tensors.
+    const int runtime_inputs = reader->GetNumberOfRuntimeInputs();
+    if (runtime_inputs == 0) {
+      // constant input, can be dequantized here
+      ConstTensorAttributes attr;
+      RETURN_IF_ERROR(reader->ReadTensor(0, &attr.tensor));
+      Node* node = graph->NewNode();
+      node->operation.attributes = attr;
+      node->operation.type = ToString(OperationType::CONSTANT);
+      return reader->AddOutputs(node);
+    }
     Node* node = graph->NewNode();
     node->operation.type = ToString(OperationType::QUANTIZE_AND_DEQUANTIZE);
-    const int runtime_inputs = reader->GetNumberOfRuntimeInputs();
-    if (runtime_inputs == 1) {
-      // Non-constant dequantization.
-      RETURN_IF_ERROR(reader->AddInput(node, 0));
-    } else {
-      // TODO(b/181274192): Optimize out this constant dequantization from the
-      // graph later.
-      TensorFloat32 tensor;
-      RETURN_IF_ERROR(reader->ReadTensor(0, &tensor));
-      Value* value;
-      RETURN_IF_ERROR(NewConstNode(std::move(tensor), graph, &value));
-      // Need to retain the quant params from the original constant input.
-      const TfLiteTensor* tflite_input = reader->GetInputTensor(0);
-      value->quant_params.emplace();
-      RETURN_IF_ERROR(
-          PopulateQuantParams(*tflite_input, &value->quant_params.value()));
-      RETURN_IF_ERROR(graph->AddConsumer(node->id, value->id));
-    }
+    // Non-constant dequantization.
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
     RETURN_IF_ERROR(reader->AddOutputs(node));
 
     // Quantization attributes should already be present in the input tensor.

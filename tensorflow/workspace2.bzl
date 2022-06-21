@@ -57,7 +57,7 @@ def _initialize_third_party():
     FP16()
     absl()
     benchmark()
-    clog()
+    clog()  # Note: needed only by XNNPACK, at some point it should be removed
     cpuinfo()
     dlpack()
     eigen3()

@@ -42,7 +42,7 @@ Value MaterializeSpaceFromTensor(Value val, PatternRewriter& rewriter) {
       static_dims.push_back(d);
     } else {
       auto dyn_dim = rewriter.create<tensor::DimOp>(loc, val, it.index());
-      static_dims.push_back(ShapedType::kDynamicStrideOrOffset);
+      static_dims.push_back(ShapedType::kDynamicSize);
       dynamic_dims.push_back(dyn_dim);
     }
   }

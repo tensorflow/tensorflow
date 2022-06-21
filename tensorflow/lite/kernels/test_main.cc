@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <vector>
 
+#include "testing/base/public/benchmark.h"
 #include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/test_delegate_providers.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -49,6 +50,7 @@ int main(int argc, char** argv) {
   ::tflite::LogToStderr();
   if (InitKernelTest(&argc, argv)) {
     ::testing::InitGoogleTest(&argc, argv);
+    RunSpecifiedBenchmarks();
     return RUN_ALL_TESTS();
   } else {
     return EXIT_FAILURE;

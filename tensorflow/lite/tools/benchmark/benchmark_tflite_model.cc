@@ -681,11 +681,16 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
       << " delegates one after another.";
   for (auto& created_delegate : created_delegates) {
     const auto* delegate_provider = created_delegate.provider;
-    tools::TfLiteDelegatePtr delegate = std::move(created_delegate.delegate);
+    TfLiteDelegate* delegate = created_delegate.delegate.get();
     TFLITE_TOOLS_CHECK(delegate != nullptr)
         << "The created delegate by the delegate provider should not be "
            "nullptr!";
-    if (interpreter_->ModifyGraphWithDelegate(delegate.get()) != kTfLiteOk) {
+    // The interpreter becomes dependent on the delegate once the delegate is
+    // used, so the order of destruction must be interpreter first, delegate
+    // later.
+    // Moving the delegate to a list of owned delegates to guarantee that.
+    owned_delegates_.emplace_back(std::move(created_delegate.delegate));
+    if (interpreter_->ModifyGraphWithDelegate(delegate) != kTfLiteOk) {
       TFLITE_LOG(ERROR) << "Failed to apply " << delegate_provider->GetName()
                         << " delegate.";
       return kTfLiteError;
@@ -735,7 +740,6 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
             << " executed by the delegate.";
       }
     }
-    owned_delegates_.emplace_back(std::move(delegate));
   }
 
   auto interpreter_inputs = interpreter_->inputs();

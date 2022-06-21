@@ -64,7 +64,6 @@ checkpoint_exists = checkpoint_management.checkpoint_exists
 get_checkpoint_mtimes = checkpoint_management.get_checkpoint_mtimes
 remove_checkpoint = checkpoint_management.remove_checkpoint
 
-
 # Captures the timestamp of the first Saver object instantiation or end of a
 # save operation. Can be accessed by multiple Saver instances.
 _END_TIME_OF_LAST_WRITE = None
@@ -87,10 +86,8 @@ def _get_checkpoint_size(prefix):
   # Gather all files beginning with prefix (.index plus sharded data files).
   files = glob.glob("{}*".format(prefix))
   for file in files:
-    logging.info(file)
     # Use TensorFlow's C++ FileSystem API.
     size += metrics.CalculateFileSize(file)
-    logging.info(size)
   return size
 
 
@@ -776,6 +773,7 @@ class Saver(object):
   If you create several savers, you can specify a different filename for the
   protocol buffer file in the call to `save()`.
   """
+
   # pylint: enable=line-too-long
 
   def __init__(self,
@@ -862,8 +860,8 @@ class Saver(object):
       write_version: controls what format to use when saving checkpoints.  It
         also affects certain filepath matching logic.  The V2 format is the
         recommended choice: it is much more optimized than V1 in terms of memory
-          required and latency incurred during restore.  Regardless of this
-          flag, the Saver is able to restore from both V2 and V1 checkpoints.
+        required and latency incurred during restore.  Regardless of this flag,
+        the Saver is able to restore from both V2 and V1 checkpoints.
       pad_step_number: if True, pads the global step number in the checkpoint
         filepaths to some fixed width (8 by default).  This is turned off by
         default.
@@ -1217,9 +1215,9 @@ class Saver(object):
       write_state: `Boolean` indicating whether or not to write the
         `CheckpointStateProto`.
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-        removed from the NodeDefs. For a detailed guide, see
-        [Stripping Default-Valued
-          Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+        removed from the NodeDefs. For a detailed guide, see [Stripping
+        Default-Valued
+        Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
       save_debug_info: If `True`, save the GraphDebugInfo to a separate file,
         which in the same directory of save_path and with `_debug` added before
         the file extension. This is only enabled when `write_meta_graph` is
@@ -1357,9 +1355,9 @@ class Saver(object):
         graph (both Save/Restore ops and SaverDefs) that are not associated with
         this Saver.
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-        removed from the NodeDefs. For a detailed guide, see
-        [Stripping Default-Valued
-          Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+        removed from the NodeDefs. For a detailed guide, see [Stripping
+        Default-Valued
+        Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
       save_debug_info: If `True`, save the GraphDebugInfo to a separate file,
         which in the same directory of filename and with `_debug` added before
         the file extension.
@@ -1679,8 +1677,9 @@ def export_meta_graph(filename=None,
       (both Save/Restore ops and SaverDefs) that are not associated with the
       provided SaverDef.
     strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-      removed from the NodeDefs. For a detailed guide, see
-      [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+      removed from the NodeDefs. For a detailed guide, see [Stripping
+      Default-Valued
+      Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
     save_debug_info: If `True`, save the GraphDebugInfo to a separate file,
       which in the same directory of filename and with `_debug` added before the
       file extend.

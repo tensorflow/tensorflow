@@ -112,6 +112,11 @@ class DistributedRuntimeClient {
       std::string key, absl::Duration timeout) = 0;
 
   virtual xla::Status KeyValueSet(std::string key, std::string value) = 0;
+
+  // Blocks until all nodes are at the barrier or the barrier times out.
+  // `barrier_id` should be unique across barriers.
+  virtual xla::Status WaitAtBarrier(std::string barrier_id,
+                                    absl::Duration timeout) = 0;
 };
 
 // Creates a distributed runtime client.

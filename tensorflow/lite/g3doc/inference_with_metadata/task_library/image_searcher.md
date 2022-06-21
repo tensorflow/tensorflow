@@ -45,7 +45,7 @@ For this you will need:
 After this step, you should have a standalone TFLite searcher model (e.g.
 `mobilenet_v3_searcher.tflite`), which is the original image embedder model with
 the index attached into the
-[TFLite Model Metadata](https://www.tensorflow.org/lite/convert/metadata).
+[TFLite Model Metadata](https://www.tensorflow.org/lite/models/convert/metadata).
 
 ## Run inference in Java
 

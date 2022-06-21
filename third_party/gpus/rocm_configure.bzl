@@ -70,7 +70,7 @@ def find_cc(repository_ctx):
     if rocm_path == None:
       rocm_path = "/opt/rocm"
     rocm_gcc = get_host_environ(repository_ctx, "TF_ROCM_GCC")
-    if rocm_gcc == "0":
+    if rocm_gcc != "1":
       return rocm_path+"/llvm/bin/clang"
 
     """Find the C++ compiler."""

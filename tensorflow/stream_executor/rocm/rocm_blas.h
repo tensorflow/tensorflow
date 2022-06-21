@@ -20,9 +20,9 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_BLAS_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_BLAS_H_
 
+#include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "rocm/include/rocblas.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
@@ -89,7 +89,7 @@ class ROCMBlas : public blas::BlasSupport {
   // rocBLAS is stateful, and only be associated with one stream (in order to
   // enqueue dispatch) at a given time. As a result, this generally must be
   // invoked before calling into rocBLAS.
-  bool SetStream(Stream *stream) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  bool SetStream(Stream *stream) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // A helper function that calls the real rocBLAS function together with error
   // handling.
@@ -198,7 +198,7 @@ class ROCMBlas : public blas::BlasSupport {
   GpuExecutor *parent_;
 
   // rocBLAS library handle on the device.
-  rocblas_handle blas_ TF_GUARDED_BY(mu_);
+  rocblas_handle blas_ ABSL_GUARDED_BY(mu_);
 
   SE_DISALLOW_COPY_AND_ASSIGN(ROCMBlas);
 };

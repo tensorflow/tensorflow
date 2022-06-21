@@ -583,15 +583,16 @@ Status DoGemmLt(int64_t batch_size, int64_t m, int64_t n, int64_t k,
 
   bool trans_x = lhs.transpose == se::blas::Transpose::kTranspose;
   bool trans_y = rhs.transpose == se::blas::Transpose::kTranspose;
-  bool broadcast = batch_size == 1;
+  bool broadcast_lhs = lhs.batch_stride == 0;
+  bool broadcast_rhs = rhs.batch_stride == 0;
   VLOG(2) << "matmul params: trans_x " << trans_x << " trans_y " << trans_y
           << " adj_x " << false << " adj_y " << false << " m " << m << " n "
-          << n << " k " << k << " batch_size " << batch_size << " broadcast "
-          << broadcast << " broadcast " << broadcast << " dtype " << dtype
-          << " device_id " << device_id;
+          << n << " k " << k << " batch_size " << batch_size
+          << " broadcast_lhs " << broadcast_lhs << " broadcast_rhs "
+          << broadcast_rhs << " dtype " << dtype << " device_id " << device_id;
   se::BatchMatmulParameters matmul_parameters(
-      trans_x, trans_y, false, false, m, n, k, batch_size, broadcast, broadcast,
-      dtype, dtype, device_id);
+      trans_x, trans_y, false, false, m, n, k, batch_size, broadcast_lhs,
+      broadcast_rhs, dtype, dtype, device_id);
 
   TF_ASSIGN_OR_RETURN(
       const se::blas::PlanAndAlgorithms* plan_and_algorithms,
@@ -612,8 +613,8 @@ Status DoGemmLt(int64_t batch_size, int64_t m, int64_t n, int64_t k,
     } else {
       VLOG(4) << "Autotuner disabled: Inserting algorithm id 0"
               << " for " << trans_x << " " << trans_y << " " << m << " " << n
-              << " " << k << " " << batch_size << " " << broadcast << " "
-              << broadcast << " " << dtype << " " << device_id;
+              << " " << k << " " << batch_size << " " << broadcast_lhs << " "
+              << broadcast_rhs << " " << dtype << " " << device_id;
       cache.Insert(matmul_parameters, se::blas::AlgorithmConfig(0));
       algorithm = algorithms[0].get();
     }

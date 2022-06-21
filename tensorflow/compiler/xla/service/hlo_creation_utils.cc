@@ -259,6 +259,11 @@ HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type) {
   return hlo;
 }
 
+HloInstruction* MakeBitcastHlo(HloInstruction* hlo, const Shape& shape) {
+  return hlo->parent()->AddInstruction(
+      HloInstruction::CreateBitcast(shape, hlo));
+}
+
 HloInstruction* MakeBitcastConvertToHlo(HloInstruction* hlo,
                                         PrimitiveType type) {
   if (hlo->shape().element_type() == type) {

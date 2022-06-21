@@ -276,8 +276,9 @@ Status Member::EnsureCompatibilityAcrossResourceEdge(
         "connects colocation groups with incompatible assigned devices: ",
         DeviceNameUtils::ParsedNameToString(src_root.assigned_device_name_),
         " vs ", DeviceNameUtils::ParsedNameToString(assigned_device_name_),
-        ". The edge src node is ", src.name(), " , and the dst node is ",
-        dst.name());
+        ". The edge src node is name='", src.name(), "' (op='", src.def().op(),
+        "'), and the dst node is name='", dst.name(), "' (op='", dst.def().op(),
+        "').");
   }
 
   if (!DeviceNameUtils::AreCompatibleDevNames(src_root.resource_device_name_,
@@ -287,8 +288,9 @@ Status Member::EnsureCompatibilityAcrossResourceEdge(
         "connects colocation groups with incompatible resource devices: ",
         DeviceNameUtils::ParsedNameToString(src_root.resource_device_name_),
         " vs ", DeviceNameUtils::ParsedNameToString(resource_device_name_),
-        ". The edge src node is ", src.name(), " , and the dst node is ",
-        dst.name());
+        ". The edge src node is name='", src.name(), "' (op='", src.def().op(),
+        "'), and the dst node is name='", dst.name(), "' (op='", dst.def().op(),
+        "').");
   }
 
   if (DeviceNameUtils::AreCompatibleDevNames(src_root.requested_device_name_,

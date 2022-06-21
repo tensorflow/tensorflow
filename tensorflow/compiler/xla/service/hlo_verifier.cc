@@ -1316,10 +1316,6 @@ Status ShapeVerifier::HandlePad(HloInstruction* pad) {
                                                        pad->padding_config()));
 }
 
-Status ShapeVerifier::HandleAsyncStart(HloInstruction* async_start) {
-  return Status::OK();
-}
-
 namespace {
 Status CheckAsyncOpOperand(const HloInstruction* async_op) {
   const HloInstruction* operand = async_op->operand(0);
@@ -1341,13 +1337,78 @@ Status CheckAsyncOpOperand(const HloInstruction* async_op) {
   }
   return Status::OK();
 }
+
+Status CheckAsyncOpComputationShapes(const HloInstruction* async_op,
+                                     const Shape& async_shape) {
+  if (!async_shape.IsTuple() || async_shape.tuple_shapes_size() < 2) {
+    return InternalError(
+        "The %s expects the async shape to be a tuple of at least two "
+        "elements, found %s.",
+        HloOpcodeString(async_op->opcode()), async_shape.ToString());
+  }
+  ProgramShape computation_shape =
+      async_op->async_wrapped_computation()->ComputeProgramShape();
+  Shape param_shape = ShapeUtil::MakeTupleShape(computation_shape.parameters());
+  if (async_shape.tuple_shapes(0) != param_shape) {
+    return InternalError(
+        "The %s expects the async shape at index {0} to match async "
+        "computation parameter shape (%s vs %s).",
+        HloOpcodeString(async_op->opcode()),
+        async_shape.tuple_shapes(0).ToString(), param_shape.ToString());
+  }
+  if (async_shape.tuple_shapes(1) != computation_shape.result()) {
+    return InternalError(
+        "The %s expects the async shape at index {1} to match the async "
+        "computation root shape (%s vs %s).",
+        HloOpcodeString(async_op->opcode()),
+        async_shape.tuple_shapes(1).ToString(),
+        computation_shape.result().ToString());
+  }
+  return Status::OK();
+}
 }  // namespace
 
+Status ShapeVerifier::HandleAsyncStart(HloInstruction* async_start) {
+  TF_RETURN_IF_ERROR(
+      CheckAsyncOpComputationShapes(async_start, async_start->shape()));
+  const Shape& param_shape = async_start->shape().tuple_shapes(0);
+  for (int i = 0; i < async_start->operand_count(); ++i) {
+    if (param_shape.tuple_shapes(i) != async_start->operand(i)->shape()) {
+      return InternalError(
+          "The %s expects the shape of operand %d to match the async shape at "
+          "index {0} (%s vs %s).",
+          HloOpcodeString(async_start->opcode()), i,
+          async_start->operand(i)->shape().ToString(),
+          param_shape.tuple_shapes(i).ToString());
+    }
+  }
+  return Status::OK();
+}
+
 Status ShapeVerifier::HandleAsyncUpdate(HloInstruction* async_update) {
+  if (async_update->operand(0)->shape() != async_update->shape()) {
+    return InternalError(
+        "The %s expects the shape of operand and output to match (%s vs %s).",
+        HloOpcodeString(async_update->opcode()),
+        async_update->operand(0)->shape().ToString(),
+        async_update->shape().ToString());
+  }
+  TF_RETURN_IF_ERROR(
+      CheckAsyncOpComputationShapes(async_update, async_update->shape()));
   return CheckAsyncOpOperand(async_update);
 }
 
 Status ShapeVerifier::HandleAsyncDone(HloInstruction* async_done) {
+  TF_RETURN_IF_ERROR(CheckAsyncOpComputationShapes(
+      async_done, async_done->operand(0)->shape()));
+  const Shape& root_shape = async_done->operand(0)->shape().tuple_shapes(1);
+  if (root_shape != async_done->shape()) {
+    return InternalError(
+        "The %s expects the shape of output to match the async shape at index "
+        "{1} (%s vs %s).",
+        HloOpcodeString(async_done->opcode()), async_done->shape().ToString(),
+        root_shape.ToString());
+  }
   return CheckAsyncOpOperand(async_done);
 }
 

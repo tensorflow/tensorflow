@@ -19,7 +19,7 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_STATUS_H_
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/stream_executor/lib/error.h"  // IWYU pragma: export
 #include "tensorflow/stream_executor/platform/logging.h"
 

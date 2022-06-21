@@ -37,7 +37,7 @@ Status ValidateCombiners(absl::Span<const std::string> combiners) {
           "\"sqrtn\" are supported.");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetValidatedModeOverride(const string& mode_override,
@@ -52,7 +52,7 @@ Status GetValidatedModeOverride(const string& mode_override,
     return errors::InvalidArgument("Unsupported value ", mode_override,
                                    " specified for mode_override.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {

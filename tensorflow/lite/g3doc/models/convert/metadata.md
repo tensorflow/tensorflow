@@ -7,9 +7,9 @@ input / output information. The metadata consists of both
 *   human readable parts which convey the best practice when using the model,
     and
 *   machine readable parts that can be leveraged by code generators, such as the
-    [TensorFlow Lite Android code generator](../inference_with_metadata/codegen#generate-code-with-tensorflow-lite-android-code-generator)
+    [TensorFlow Lite Android code generator](../../inference_with_metadata/codegen#generate-code-with-tensorflow-lite-android-code-generator)
     and the
-    [Android Studio ML Binding feature](../inference_with_metadata/codegen#generate-code-with-android-studio-ml-model-binding).
+    [Android Studio ML Binding feature](../../inference_with_metadata/codegen#generate-code-with-android-studio-ml-model-binding).
 
 All image models published on
 [TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite) have been populated
@@ -17,7 +17,7 @@ with metadata.
 
 ## Model with metadata format
 
-<center><img src="../images/convert/model_with_metadata.png" alt="model_with_metadata" width="70%"></center>
+<center><img src="../../images/convert/model_with_metadata.png" alt="model_with_metadata" width="70%"></center>
 <center>Figure 1. TFLite model with metadata and associated files.</center>
 
 Model metadata is defined in
@@ -58,7 +58,7 @@ TensorFlow Lite metadata tooling supports Python 3.
 ## Adding metadata using Flatbuffers Python API
 
 Note: to create metadata for the popular ML tasks supported in
-[TensorFlow Lite Task Library](../inference_with_metadata/task_library/overview),
+[TensorFlow Lite Task Library](../../inference_with_metadata/task_library/overview),
 use the high-level API in the
 [TensorFlow Lite Metadata Writer Library](metadata_writer_tutorial.ipynb).
 
@@ -76,9 +76,9 @@ There are three parts to the model metadata in the
     [SubGraphMetadata.output_tensor_metadata](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L599).
 
 Since TensorFlow Lite only supports single subgraph at this point, the
-[TensorFlow Lite code generator](../inference_with_metadata/codegen#generate-code-with-tensorflow-lite-android-code-generator)
+[TensorFlow Lite code generator](../../inference_with_metadata/codegen#generate-code-with-tensorflow-lite-android-code-generator)
 and the
-[Android Studio ML Binding feature](../inference_with_metadata/codegen#generate-code-with-android-studio-ml-model-binding)
+[Android Studio ML Binding feature](../../inference_with_metadata/codegen#generate-code-with-android-studio-ml-model-binding)
 will use `ModelMetadata.name` and `ModelMetadata.description`, instead of
 `SubGraphMetadata.name` and `SubGraphMetadata.description`, when displaying
 metadata and generating code.
@@ -114,7 +114,7 @@ for more details.
 The associated file information can be recorded in the metadata. Depending on
 the file type and where the file is attached to (i.e. `ModelMetadata`,
 `SubGraphMetadata`, and `TensorMetadata`),
-[the TensorFlow Lite Android code generator](../inference_with_metadata/codegen)
+[the TensorFlow Lite Android code generator](../../inference_with_metadata/codegen)
 may apply corresponding pre/post processing automatically to the object. See
 [the \<Codegen usage\> section of each associate file type](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L77-L127)
 in the schema for more details.
@@ -199,7 +199,7 @@ normalization and quantization parameters when applicable.
 
 [TensorFlow Lite Task Library](https://www.tensorflow.org/lite/inference_with_metadata/overview)
 can handle normalization for you if you set up `NormalizationOptions` in
-metadata. Quantization and dequantization processing is always encapluated.
+metadata. Quantization and dequantization processing is always encapsulated.
 
 ### Examples
 

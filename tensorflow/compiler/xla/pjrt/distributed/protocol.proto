@@ -98,6 +98,15 @@ message KeyValueSetRequest {
 
 message KeyValueSetResponse {}
 
+message WaitAtBarrierRequest {
+  uint64 session_id = 1;
+  bytes barrier_id = 2;
+  int32 node_id = 3;
+  int32 timeout_milliseconds = 4;
+}
+
+message WaitAtBarrierResponse {}
+
 message HeartbeatRequest {
   uint64 session_id = 1;
   int32 node_id = 2;
@@ -142,4 +151,7 @@ service DistributedRuntimeService {
 
   // Updates the value associated with a key.
   rpc KeyValueSet(KeyValueSetRequest) returns (KeyValueSetResponse) {}
+
+  // Blocks until all nodes are at the barrier or the barrier times out.
+  rpc WaitAtBarrier(WaitAtBarrierRequest) returns (WaitAtBarrierResponse) {}
 }

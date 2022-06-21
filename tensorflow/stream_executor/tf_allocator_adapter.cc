@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor.h"

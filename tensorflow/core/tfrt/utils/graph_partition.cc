@@ -205,7 +205,7 @@ Status PrepareSubgraphForFunctionConversion(
 
     subgraph->AddEdge(const_node, 0, ret_node, 0);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Converts the subgraph to a function, and builds a PartitionedCallOp

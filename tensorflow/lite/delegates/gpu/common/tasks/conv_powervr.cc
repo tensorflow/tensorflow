@@ -849,6 +849,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
   const bool weights_type_as_accum_type =
       !(op_def.precision == CalculationsPrecision::F32_F16 &&
         conv_params.weights_data_type == DataType::FLOAT16);
+  bool use_fma = gpu_info.IsAMD() && gpu_info.IsApiOpenCl();
   auto conv_core = [&](int shared_offset) {
     const std::string channels[] = {"x", "y", "z", "w"};
     for (int s = 0; s < block_size.w; ++s) {
@@ -912,8 +913,13 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
                     w_val = "f" + weight_id;
                   }
                   if (GetWeightsDescription().IsI4O4()) {
-                    c += "    " + R + " += " + w_val + " * " + S + "." +
-                         channels[ch] + ";\n";
+                    if (use_fma) {
+                      c += "    " + R + " = fma(" + w_val + ", " + S + "." +
+                           channels[ch] + ", " + R + ");\n";
+                    } else {
+                      c += "    " + R + " += " + w_val + " * " + S + "." +
+                           channels[ch] + ";\n";
+                    }
                   } else {
                     c += "    " + R + "." + channels[ch] + " += dot(" + w_val +
                          ", " + S + ");\n";
@@ -1253,21 +1259,9 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
       conv_params.block_size.x = 2;
     }
   } else if (gpu_info.IsAMD()) {
-    if (gpu_info.IsApiOpenCl()) {
-      if (different_weights_for_height) {
-        work_group_size_ = int3(32, 1, 1);
-        work_group_launch_order_ = int3(2, 0, 1);
-        conv_params.fixed_work_group_size = true;
-      } else {
-        work_group_size_ = int3(8, 4, 1);
-        work_group_launch_order_ = int3(2, 0, 1);
-        conv_params.fixed_work_group_size = true;
-      }
-    } else {
-      work_group_size_ = int3(8, 4, 1);
-      work_group_launch_order_ = int3(0, 1, 2);
-      conv_params.fixed_work_group_size = false;
-    }
+    work_group_size_ = int3(8, 4, 1);
+    work_group_launch_order_ = int3(0, 1, 2);
+    conv_params.fixed_work_group_size = false;
 
     if (gpu_info.IsApiOpenCl()) {
       conv_params.weights_upload_type = WeightsUploadType::CONSTANT_MEM;

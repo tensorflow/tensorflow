@@ -57,7 +57,7 @@ Status VerifyConvLayout(const Layout& input_layout, const Layout& filter_layout,
 
   if (input_layout.IsBatchParallel())
     // No further checks needed for replicated case.
-    return Status::OK();
+    return OkStatus();
 
   if (conv_op.padding() == "EXPLICIT")
     return errors::InvalidArgument(
@@ -104,7 +104,7 @@ Status VerifyConvLayout(const Layout& input_layout, const Layout& filter_layout,
           "spatial partitions.");
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 mlir::Value PadInputOnUnshardedDim(mlir::OpBuilder& builder,

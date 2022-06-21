@@ -75,7 +75,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "//tensorflow/core:lib",
     ],
     alwayslink = True,  # Registers itself with the MultiPlatformManager.
 )
@@ -138,6 +137,19 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "stream_search_test",
+    size = "small",
+    srcs = ["stream_search_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor/host:host_platform",
     ],
 )
 
@@ -284,7 +296,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "@local_config_cuda//cuda:cuda_headers",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/stream_executor",
@@ -399,7 +410,6 @@ cc_library(
         "//third_party/eigen3",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cudnn_header",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/core/util:determinism",

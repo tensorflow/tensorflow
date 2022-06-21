@@ -122,16 +122,22 @@ struct EngineContext {
   EngineContext() {}  // Creates an empty context.
   EngineContext(TrtUniquePtrType<nvinfer1::ICudaEngine>&& cuda_engine,
                 ExecutionContext&& execution_context)
-      : cuda_engine(std::move(cuda_engine)) {
+      : cuda_engine_(std::move(cuda_engine)) {
     execution_contexts.push_back(std::move(execution_context));
+    device_memory_size_ =
+        cuda_engine_ ? cuda_engine_->getDeviceMemorySize() : 0;
   }
   EngineContext(TrtUniquePtrType<nvinfer1::ICudaEngine>&& cuda_engine,
                 std::vector<ExecutionContext>&& execution_contexts)
-      : cuda_engine(std::move(cuda_engine)),
-        execution_contexts(std::move(execution_contexts)) {}
+      : cuda_engine_(std::move(cuda_engine)),
+        execution_contexts(std::move(execution_contexts)) {
+    device_memory_size_ =
+        cuda_engine_ ? cuda_engine_->getDeviceMemorySize() : 0;
+  }
 
   mutex mu;
-  TrtUniquePtrType<nvinfer1::ICudaEngine> cuda_engine;
+
+  nvinfer1::ICudaEngine* GetCudaEngine() { return cuda_engine_.get(); }
 
   Status GetExecutionContext(int idx, nvinfer1::IExecutionContext** exec_ctx,
                              bool* has_device_memory)
@@ -151,6 +157,14 @@ struct EngineContext {
     return execution_contexts.size();
   }
 
+  size_t GetDeviceMemorySize() { return device_memory_size_; }
+
+ private:
+  // Note: declaration has to come before execution_contexts, to ensure proper
+  // order of destruction.
+  TrtUniquePtrType<nvinfer1::ICudaEngine> cuda_engine_;
+
+ public:
   // In explicit batch mode, we maintain a vector of contexts for each engine,
   // where each context is created for a specific profile. This is because it is
   // either not possible or non-trivial to change the profile of a context for
@@ -165,6 +179,11 @@ struct EngineContext {
   // Additional discussion about execution context management and thread safety
   // at https://github.com/tensorflow/tensorflow/issues/36959
   std::vector<ExecutionContext> execution_contexts TF_GUARDED_BY(mu);
+
+ private:
+  // Until TRT 8.4 ICudaEngine::getDeviceMemorySize() has a non-negligible
+  // latency. Since its value remains constant, we can cache it.
+  size_t device_memory_size_;
 };
 
 // Contains the context required to build the calibration data.

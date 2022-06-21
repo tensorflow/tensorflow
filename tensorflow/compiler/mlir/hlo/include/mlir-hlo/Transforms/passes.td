@@ -140,4 +140,10 @@ def PropagateStaticShapesToKernelPass : Pass<"propagate-static-shapes", "ModuleO
   ];
 }
 
+def GenericHostToLLVMPass : Pass<"generic-host-to-llvm", "ModuleOp"> {
+  let summary = "Pass to lower common dialects resulting from HLO to LLVM.";
+  let constructor = "hlo::createGenericHostToLLVMPass()";
+  let options = [];
+}
+
 #endif // TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES

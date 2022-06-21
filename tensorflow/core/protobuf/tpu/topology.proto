@@ -24,9 +24,10 @@ message TPUHardwareFeature {
 
 // Describes the geometry of a TPU mesh.
 message TopologyProto {
-  // The dimensions of the TPU topology, in cores. Typically, this is a 3D
-  // topology [x, y, core], where the major dimensions correspond to TPU chips,
-  // and the minor dimension describes the number of cores on a multicore chip.
+  // The dimensions of the TPU topology, in cores. Typically, this is a 4D
+  // topology [x, y, z, core], where the major dimensions correspond to TPU
+  // chips, and the minor dimension describes the number of cores on a multicore
+  // chip.
   repeated int32 mesh_shape = 1;
 
   // Number of TensorFlow tasks in the cluster.

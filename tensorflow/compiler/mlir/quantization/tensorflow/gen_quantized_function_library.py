@@ -23,7 +23,7 @@ from absl import app
 from absl import flags
 
 _OUTPUT_FILE = flags.DEFINE_string('output_file', None, 'output file location')
-_SRC = flags.DEFINE_string('src', None, 'source file location')
+_SRCS = flags.DEFINE_string('src', None, 'source file locations')
 _NAMESPACE = flags.DEFINE_string('namespace', 'mlir::quant',
                                  'namespace in the generated file')
 
@@ -59,19 +59,29 @@ def _substitute_function_template(module: str) -> str:
 
 def main(_: Sequence[str]) -> None:
   namespaces = _NAMESPACE.value.split('::')
+  src_files = _SRCS.value.split(' ')
+  file_prefix = 'quantized_function_library'
+  module_prefix = 'kQuantizedFunctionLibraryInMLIR'
 
-  with open(_SRC.value, 'r') as f:
-    content = f.read()
+  modules = []
 
-    # Skip the copyright in the source file.
-    module_match = re.search(r'(^module\s\{)(.*)(^\})', content,
-                             re.MULTILINE | re.DOTALL)
-    if module_match is None:
-      raise ValueError("Couldn't find module in the function library")
-    module = module_match.group()
+  for src_file in src_files:
+    with open(src_file, 'r') as f:
+      content = f.read()
 
-    # Substitute all the function templates.
-    module = _substitute_function_template(module)
+      # Skip the copyright in the source file.
+      module_match = re.search(r'(^module\s\{)(.*)(^\})', content,
+                               re.MULTILINE | re.DOTALL)
+      if module_match is None:
+        raise ValueError("Couldn't find module in the function library")
+      module = module_match.group()
+
+      # Substitute all the function templates.
+      out = re.split(file_prefix, src_file)
+      if len(out) != 2:
+        raise ValueError('The file name must start with {}'.format(file_prefix))
+      tag = out[1][:-5]  # the last five values = ".mlir"
+      modules.append((tag, _substitute_function_template(module)))
 
   with open(_OUTPUT_FILE.value, 'w') as f:
     f.write("""/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
@@ -96,14 +106,16 @@ limitations under the License.
     for namespace in namespaces:
       f.write('namespace {0} {{\n'.format(namespace))
 
-    f.write('constexpr char kQuantizedFunctionLibraryInMLIR[] =')
+    for tag, module in modules:
+      f.write('constexpr char {0}[] ='.format(module_prefix + tag.upper()))
 
-    for line in module.splitlines():
-      f.write('\n  "')
-      f.write(line.rstrip().replace('"', r'\"'))
-      f.write('\\n"')
+      for line in module.splitlines():
+        f.write('\n  "')
+        f.write(line.rstrip().replace('"', r'\"'))
+        f.write('\\n"')
 
-    f.write(';\n')
+      f.write(';\n')
+
     for namespace in reversed(namespaces):
       f.write('}}  // namespace {0}\n'.format(namespace))
 

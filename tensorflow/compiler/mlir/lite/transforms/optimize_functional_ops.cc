@@ -27,28 +27,22 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // Module pass to optimize TensorFlow functional ops.
 struct OptimizeFunctionalOpsPass
-    : public PassWrapper<OptimizeFunctionalOpsPass, OperationPass<ModuleOp>> {
+    : public OptimizeFunctionalOpsPassBase<OptimizeFunctionalOpsPass> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizeFunctionalOpsPass)
 
   void runOnOperation() override;
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-optimize-functional-ops";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Optimize TensorFlow functional ops";
-  }
 };
 
 // Updates function return type of the given functions to match the terminator
@@ -165,8 +159,6 @@ void OptimizeFunctionalOpsPass::runOnOperation() {
   ModuleOp module = getOperation();
   (void)applyPatternsAndFoldGreedily(module, std::move(patterns));
 }
-
-PassRegistration<OptimizeFunctionalOpsPass> pass;
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeFunctionalOpsPass() {

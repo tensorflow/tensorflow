@@ -288,7 +288,7 @@ Status PlaceInputOutputNodesOnHost(const std::vector<std::string>& inputs,
       output_node->set_assigned_device_name(cpu_device->name());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AdjustDeviceAssignment(const std::vector<std::string>& inputs,
@@ -484,7 +484,7 @@ Status TfrtGraphExecutionState::Extend(const GraphDef& graph) {
       functions_to_optimize_,
       PreprocessGraph(*graph_def, options_.run_placer_grappler_on_functions));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -660,7 +660,7 @@ Status PruneGraphDef(GraphDef& graph_def,
     *graph_def.add_node() = std::move(node);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status EliminateRefVariablesFromV1ControlFlow(tensorflow::GraphDef& graph_def) {
@@ -737,7 +737,7 @@ Status EliminateRefVariablesFromV1ControlFlow(tensorflow::GraphDef& graph_def) {
   }
 
   graph_def.mutable_node()->Swap(updated_graph_def.mutable_node());
-  return Status::OK();
+  return OkStatus();
 }
 
 void RemoveInputShapesInFunctions(tensorflow::GraphDef& graph_def) {
@@ -819,7 +819,7 @@ Status OptimizeFunctions(
 
     fdef = std::move(new_fdef);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

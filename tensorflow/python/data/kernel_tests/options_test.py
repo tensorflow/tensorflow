@@ -147,6 +147,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_optimization.apply_default_optimizations = True
     options.experimental_optimization.filter_fusion = True
     options.experimental_optimization.filter_parallelization = True
+    options.experimental_optimization.inject_prefetch = True
     options.experimental_optimization.map_and_batch_fusion = True
     options.experimental_optimization.map_and_filter_fusion = True
     options.experimental_optimization.map_fusion = True

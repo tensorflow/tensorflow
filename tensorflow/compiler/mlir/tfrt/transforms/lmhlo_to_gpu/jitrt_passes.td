@@ -30,6 +30,12 @@ def ConvertLmhloConstantToArgPass :
   }];
 
   let constructor = "createConvertLmhloConstantToArgPass()";
+
+  let options = [
+    Option<"min_num_elements_", "min-num-elements", "int64_t", /*default=*/"0",
+           "Do not convert `memref.get_global` operation if the number of "
+           "elements is smaller than the given value.">,
+  ];
 }
 
 def ConvertGpuToJitRtPass :

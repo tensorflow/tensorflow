@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
 
 namespace tensorflow {

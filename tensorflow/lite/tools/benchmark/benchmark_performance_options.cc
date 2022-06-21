@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <iomanip>
 #include <memory>
+#include <random>
 #include <sstream>
 #include <utility>
 
@@ -323,7 +324,9 @@ void BenchmarkPerformanceOptions::Run() {
   CreatePerformanceOptions();
 
   if (params_.Get<bool>("random_shuffle_benchmark_runs")) {
-    std::random_shuffle(all_run_params_.begin(), all_run_params_.end());
+    std::random_device rd;
+    std::mt19937 generator(rd());
+    std::shuffle(all_run_params_.begin(), all_run_params_.end(), generator);
   }
 
   // We need to clean *internally* created benchmark listeners, like the

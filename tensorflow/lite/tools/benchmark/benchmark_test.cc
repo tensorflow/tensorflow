@@ -76,7 +76,8 @@ BenchmarkParams CreateStringParams() {
 }
 
 std::string CreateFilePath(const std::string& file_name) {
-  return std::string(getenv("TEST_TMPDIR")) + file_name;
+  const char* tmp_dir = getenv("TEST_TMPDIR");
+  return std::string(tmp_dir ? tmp_dir : "./") + file_name;
 }
 
 void WriteInputLayerValueFile(const std::string& file_path,

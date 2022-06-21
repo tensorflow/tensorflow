@@ -96,10 +96,11 @@ static Value CreateTFCastOpI32(OpBuilder *builder, Location loc, Value x,
 // TODO(hinsu): Add and use TensorFlow dialect ops for the ops created in this
 // pass.
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // Prepare TF operations in functions for subsequent legalization.
-class PrepareTFPass
-    : public PassWrapper<PrepareTFPass, OperationPass<func::FuncOp>> {
+class PrepareTFPass : public PrepareTFPassBase<PrepareTFPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareTFPass)
 
@@ -108,43 +109,13 @@ class PrepareTFPass
   explicit PrepareTFPass(bool unfold_batch_matmul,
                          bool allow_bf16_and_f16_type_legalization,
                          bool use_fake_quant_num_bits = false) {
-    unfold_batch_matmul_ = unfold_batch_matmul;
-    allow_bf16_and_f16_type_legalization_ =
+    this->unfold_batch_matmul_ = unfold_batch_matmul;
+    this->allow_bf16_and_f16_type_legalization_ =
         allow_bf16_and_f16_type_legalization;
-    use_fake_quant_num_bits_ = use_fake_quant_num_bits;
-  }
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-prepare-tf";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Prepare TF for legalization to TensorFlow Lite dialect";
+    this->use_fake_quant_num_bits_ = use_fake_quant_num_bits;
   }
 
   void runOnOperation() override;
-
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mhlo::MhloDialect, quant::QuantizationDialect,
-                    TFL::TensorFlowLiteDialect>();
-  }
-
- private:
-  Option<bool> unfold_batch_matmul_{
-      *this, "tfl-unfold-batch-matmul",
-      llvm::cl::desc("Unfold BatchMatMul into individual MatMul ops."),
-      llvm::cl::init(true)};
-
-  Option<bool> allow_bf16_and_f16_type_legalization_{
-      *this, "tfl-allow-bf16-and-f16-type-legalization",
-      llvm::cl::desc("Allow bf16 type legalization."), llvm::cl::init(false)};
-
-  Option<bool> use_fake_quant_num_bits_{
-      *this, "tfl-use-fake-quant-num-bits",
-      llvm::cl::desc("Use quantization calculated from fake quant attributes."),
-      llvm::cl::init(false)};
 };
 
 // Transient state for preserving data from match to rewrite
@@ -1442,7 +1413,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass(
                                          use_fake_quant_num_bits);
 }
 
-static PassRegistration<PrepareTFPass> pass;
+// Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass() {
+  return std::make_unique<PrepareTFPass>();
+}
 
 }  // namespace TFL
 }  // namespace mlir

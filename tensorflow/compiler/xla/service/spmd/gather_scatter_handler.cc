@@ -840,7 +840,7 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
             .Reshard(hlo->sharding())
             .hlo();
       });
-      return Status::OK();
+      return ::tensorflow::OkStatus();
     }
   }
   // Handle pass through cases if we can use compatible sharding for update.
@@ -857,7 +857,7 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
           .Reshard(hlo->sharding())
           .hlo();
     });
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (should_shard_trivial_operand_slices) {
     // Operand is sharded on trivial slice dims (update slice size 1). We can
@@ -886,7 +886,7 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
           .Reshard(hlo->sharding())
           .hlo();
     });
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   return DefaultAction(hlo);
 }
@@ -913,7 +913,7 @@ Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
   SetPartitionedHlo(
       gather, PartitionedHlo(pgather, gather->shape(), MakePartitioningState())
                   .Reshard(gather->sharding()));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace spmd

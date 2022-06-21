@@ -262,7 +262,7 @@ Status VerifyPaddedDimensionNotSharded(const Layout& layout,
           "Padding over sharded dimension is not allowed.");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -354,7 +354,7 @@ Status VerifyTileOperandLayout(const Layout& operand_layout,
           "tile op with input sharded at dimension where `multiple` > 1 is not "
           "supported.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -955,22 +955,6 @@ TransposeSPMDExpander::ComputeLayoutBackward(
   return input_layouts;
 }
 
-StatusOr<llvm::DenseMap<int, Layout>>
-InvertPermutationSPMDExpander::ComputeLayoutForward(
-    mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts) {
-  TF_ASSIGN_OR_RETURN(const Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
-  return llvm::DenseMap<int, Layout>(
-      {{0, Layout::ReplicatedOnMesh(mesh, /*rank=*/1)}});
-}
-
-StatusOr<llvm::DenseMap<int, Layout>>
-InvertPermutationSPMDExpander::ComputeLayoutBackward(
-    mlir::Operation* op, const llvm::DenseMap<int, Layout>& output_layouts) {
-  TF_ASSIGN_OR_RETURN(const Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
-  return llvm::DenseMap<int, Layout>(
-      {{0, Layout::ReplicatedOnMesh(mesh, /*rank=*/1)}});
-}
-
 namespace {
 
 Status RelayoutOneHotInput(const absl::optional<Layout>& input_layout,
@@ -998,7 +982,7 @@ Status RelayoutOneHotInput(const absl::optional<Layout>& input_layout,
 
   one_hot->setOperand(0, new_input);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

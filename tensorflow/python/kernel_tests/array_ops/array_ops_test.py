@@ -1328,6 +1328,16 @@ class SliceAssignTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       return gen_array_ops.tensor_strided_slice_update(y, [0], [1], [1], [0])
     self.assertAllEqual([0, 1], self.evaluate(assign(array_ops.zeros([2]))))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testTensorStridedSliceUpdateWithInputForwardInt32(self):
+    """Tests tensor_strided_slice_update with int32."""
+    @def_function.function
+    def assign(x):
+      y = x + 1
+      return gen_array_ops.tensor_strided_slice_update(y, [0], [1], [1], [0])
+    self.assertAllEqual(
+        [0, 1], self.evaluate(assign(array_ops.zeros([2], dtype=dtypes.int32))))
+
   @test_util.disable_xla("b/123559667")
   @test_util.run_in_graph_and_eager_modes
   def testTensorStridedSliceUpdateNoInputForward(self):

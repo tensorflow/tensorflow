@@ -1,5 +1,5 @@
-// RUN: tf-opt %s -tfl-prepare-quantize -tfl-test-post-training-quantize -tfl-quantize -tfl-numeric-verify -tfl-log-if-failed | FileCheck --check-prefix=DEBUG %s
-// RUN: tf-opt %s -tfl-prepare-quantize -tfl-test-post-training-quantize -tfl-quantize -tfl-numeric-verify -tfl-whole-model-verify -tfl-log-if-failed | FileCheck --check-prefix=MODEL-DEBUG %s
+// RUN: tf-opt %s -tfl-prepare-quantize="post-training-quantize=true" -tfl-quantize="numeric-verify=true log-if-failed=true" | FileCheck --check-prefix=DEBUG %s
+// RUN: tf-opt %s -tfl-prepare-quantize="post-training-quantize=true" -tfl-quantize="numeric-verify=true log-if-failed=true whole-model-verify=true" | FileCheck --check-prefix=MODEL-DEBUG %s
 
 // DEBUG-LABEL: QuantizeConv2D
 func.func @QuantizeConv2D(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>> {

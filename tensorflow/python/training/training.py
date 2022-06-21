@@ -458,7 +458,7 @@ every `Example`, TensorFlow expects a fixed list of keys, each with a fixed
 """
 
 SequenceExample.__doc__ = """\
-A `SequenceExample` is a format a sequences and some context.
+A `SequenceExample` represents a sequence of features and some context.
 
 It can be thought of as a proto-implementation of the following python type:
 

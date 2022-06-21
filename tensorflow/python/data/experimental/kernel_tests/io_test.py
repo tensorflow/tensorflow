@@ -59,6 +59,17 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
         self._test_dir, dataset.element_spec, compression=compression)
     self.assertDatasetProduces(dataset2, range(42))
 
+  @combinations.generate(
+      combinations.times(
+          test_base.eager_only_combinations(),
+          combinations.combine(pattern=["[1]", "[2", "3]", "?4", "5-6", "^7"])))
+  def testDirContainsPattern(self, pattern):
+    dataset = dataset_ops.Dataset.range(42)
+    path = self._test_dir + "/inner" + pattern
+    io.save(dataset, path)
+    dataset2 = io.load(path, dataset.element_spec)
+    self.assertDatasetProduces(dataset2, range(42))
+
   @combinations.generate(test_base.eager_only_combinations())
   def testCardinality(self):
     dataset = dataset_ops.Dataset.range(42)

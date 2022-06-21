@@ -6,6 +6,7 @@ module  {
     // CHECK: %[[PLACEHOLDER:.*]], {{.*}} = Placeholder {{.*}} name("x")
     %Placeholder, %ctl_0 = Placeholder device("/job:localhost/replica:0/task:0/device:CPU:0") name("x") {dtype = f32, shape = #tf_type.shape<*>} : () -> (tensor<*xf32>)
     // CHECK: PartitionedCall(%[[PLACEHOLDER]]) {{.*}} name("case")
+    // CHECK-SAME: f = #tf_type.func<@NonZero, {T = f32}>
     %Case, %ctl_1 = Case(%Const, %Placeholder) device("/job:localhost/replica:0/task:0/device:CPU:0") name("case") {Tin = [f32], Tout = [f32], branches = [#tf_type.func<@XTimesTwo, {T = f32}>, #tf_type.func<@NonZero, {T = f32}>], output_shapes = [#tf_type.shape<>, #tf_type.shape<*>]} : (tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>)
     %Identity, %ctl_2 = Identity(%Case) device("/job:localhost/replica:0/task:0/device:CPU:0") name("y") {T = f32} : (tensor<*xf32>) -> (tensor<*xf32>)
   }

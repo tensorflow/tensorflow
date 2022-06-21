@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_TEST_CLUSTER_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -48,6 +49,7 @@ class TestCluster {
    public:
     int num_workers = 3;
     int64_t client_timeout_ms = 0;
+    int64_t worker_heartbeat_interval_ms = 0;
     int64_t job_gc_check_interval_ms = 0;
     int64_t job_gc_timeout_ms = 0;
   };
@@ -121,7 +123,7 @@ class DatasetClient {
       const DatasetDef& dataset,
       ProcessingModeDef::ShardingPolicy sharding_policy,
       TargetWorkers target_workers);
-  // Creates a iteration and returns the iteration client ID.
+  // Creates an iteration and returns the iteration client ID.
   StatusOr<int64_t> CreateIteration(const DatasetDef& dataset);
   // Gets the tasks for iteration `iteration_client_id`. The iteration has one
   // task processed by every worker.
@@ -130,7 +132,7 @@ class DatasetClient {
  private:
   // Registers the dataset and returns the dataset ID.
   StatusOr<int64_t> RegisterDataset(const DatasetDef& dataset);
-  // Creates a iteration and returns the iteration client ID.
+  // Creates an iteration and returns the iteration client ID.
   StatusOr<int64_t> CreateIteration(
       int64 dataset_id, ProcessingModeDef::ShardingPolicy sharding_policy,
       TargetWorkers target_workers);
@@ -185,13 +187,16 @@ template <class T>
 StatusOr<int64_t> DatasetClient<T>::CreateIteration(
     const int64 dataset_id, ProcessingModeDef::ShardingPolicy sharding_policy,
     TargetWorkers target_workers) {
-  int64 iteration_client_id = 0;
   ProcessingModeDef processing_mode_def;
   processing_mode_def.set_sharding_policy(sharding_policy);
+  int64_t job_id;
+  TF_RETURN_IF_ERROR(dispatcher_client_->GetOrCreateJob(
+      dataset_id, processing_mode_def, /*job_name=*/std::nullopt,
+      /*num_consumers=*/std::nullopt, /*use_cross_trainer_cache=*/false,
+      target_workers, job_id));
+  int64_t iteration_client_id;
   TF_RETURN_IF_ERROR(dispatcher_client_->GetOrCreateIteration(
-      dataset_id, processing_mode_def, /*iteration_key=*/absl::nullopt,
-      /*num_consumers=*/absl::nullopt, /*use_cross_trainer_cache=*/false,
-      target_workers, iteration_client_id));
+      job_id, /*repetition=*/0, iteration_client_id));
   return iteration_client_id;
 }
 

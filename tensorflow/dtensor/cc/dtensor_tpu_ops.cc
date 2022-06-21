@@ -44,7 +44,7 @@ REGISTER_OP("ConfigureAndInitializeGlobalTPU")
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 0, &input));
       }
       c->set_output(0, c->Vector(c->UnknownDim()));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("ShutdownTPUSystem")

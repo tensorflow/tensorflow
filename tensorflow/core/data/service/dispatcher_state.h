@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_STATE_H_
 
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <utility>
@@ -100,36 +101,36 @@ class DispatcherState {
     const int64_t uid;
   };
 
-  // A key for identifying a iteration. The key contains a iteration name,
-  // as well as a iteration number describing which iteration of the iteration
+  // A key for identifying an iteration. The key contains a job name,
+  // as well as a repetition number describing which repetition of the job
   // we are on.
   struct IterationKey {
-    explicit IterationKey(absl::string_view name, int64_t iteration)
-        : name(name), iteration(iteration) {}
+    explicit IterationKey(absl::string_view name, int64_t repetition)
+        : name(name), repetition(repetition) {}
 
     friend bool operator==(const IterationKey& lhs, const IterationKey& rhs) {
-      return lhs.name == rhs.name && lhs.iteration == rhs.iteration;
+      return lhs.name == rhs.name && lhs.repetition == rhs.repetition;
     }
 
     template <typename H>
     friend H AbslHashValue(H h, const IterationKey& k) {
-      return H::combine(std::move(h), k.name, k.iteration);
+      return H::combine(std::move(h), k.name, k.repetition);
     }
 
     std::string DebugString() const {
-      return absl::StrCat(name, "/", iteration);
+      return absl::StrCat(name, "/", repetition);
     }
 
     const std::string name;
-    const int64_t iteration;
+    const int64_t repetition;
   };
 
   struct DistributedEpochState {
     explicit DistributedEpochState(int64_t num_split_providers)
-        : iterations(num_split_providers), indices(num_split_providers) {}
+        : repetitions(num_split_providers), indices(num_split_providers) {}
 
-    // The current iteration for each split provider.
-    std::vector<int64_t> iterations;
+    // The current repetition for each split provider.
+    std::vector<int64_t> repetitions;
     // Number of splits produced so far by each split provider.
     std::vector<int64_t> indices;
   };
@@ -150,40 +151,48 @@ class DispatcherState {
     int64_t failures = 0;
   };
 
-  // A iteration for processing a dataset.
-  struct Iteration {
-    explicit Iteration(int64_t iteration_id, int64_t dataset_id,
-                       const ProcessingModeDef& processing_mode,
-                       int64_t num_split_providers, IterationKey iteration_key,
-                       absl::optional<int64_t> num_consumers,
-                       bool use_cross_trainer_cache,
-                       TargetWorkers target_workers)
-        : iteration_id(iteration_id),
+  struct Job {
+    explicit Job(int64_t id, int64_t dataset_id,
+                 const ProcessingModeDef& processing_mode, std::string job_name,
+                 std::optional<int64_t> num_consumers,
+                 bool use_cross_trainer_cache, TargetWorkers target_workers)
+        : id(id),
           dataset_id(dataset_id),
           processing_mode(processing_mode),
-          iteration_key(iteration_key),
+          job_name(job_name),
           num_consumers(num_consumers),
           use_cross_trainer_cache(use_cross_trainer_cache),
-          target_workers(target_workers) {
-      if (IsDynamicShard(processing_mode)) {
+          target_workers(target_workers) {}
+
+    const int64_t id;
+    const int64_t dataset_id;
+    const ProcessingModeDef processing_mode;
+    const std::string job_name;
+    const absl::optional<int64_t> num_consumers;
+    const bool use_cross_trainer_cache;
+    const TargetWorkers target_workers;
+  };
+
+  // An iteration for processing a dataset.
+  struct Iteration {
+    explicit Iteration(int64_t iteration_id, IterationKey iteration_key,
+                       int64_t num_split_providers, std::shared_ptr<Job> job)
+        : iteration_id(iteration_id), iteration_key(iteration_key), job(job) {
+      if (IsDynamicShard(job->processing_mode)) {
         distributed_epoch_state = DistributedEpochState(num_split_providers);
       }
     }
 
-    bool IsRoundRobin() const { return num_consumers.has_value(); }
+    bool IsRoundRobin() const { return job->num_consumers.has_value(); }
 
     std::string DebugString() const {
-      return absl::StrCat(iteration_key.name, "_", iteration_key.iteration);
+      return absl::StrCat(iteration_key.name, "_", iteration_key.repetition);
     }
 
     const int64_t iteration_id;
-    const int64_t dataset_id;
-    const ProcessingModeDef processing_mode;
     const IterationKey iteration_key;
+    const std::shared_ptr<Job> job;
     absl::optional<DistributedEpochState> distributed_epoch_state;
-    const absl::optional<int64_t> num_consumers;
-    const bool use_cross_trainer_cache;
-    const TargetWorkers target_workers;
     std::queue<PendingTask> pending_tasks;
     int64_t num_clients = 0;
     int64_t last_client_released_micros = -1;
@@ -233,14 +242,22 @@ class DispatcherState {
   // Lists all workers registered with the dispatcher.
   std::vector<std::shared_ptr<const Worker>> ListWorkers() const;
 
+  // Returns the next available job id.
+  int64_t NextAvailableJobId() const;
+  // Gets a job by id. Returns NOT_FOUND if there is no such job.
+  Status JobFromId(int64_t job_id, std::shared_ptr<const Job>& job) const;
+  // Gets a job by name. Returns NOT_FOUND if there is no such job.
+  Status JobByName(const std::string& job_name,
+                   std::shared_ptr<const Job>& job) const;
+
   // Returns the next available iteration id.
   int64_t NextAvailableIterationId() const;
   // Returns a list of all iterations.
   std::vector<std::shared_ptr<const Iteration>> ListIterations() const;
-  // Gets a iteration by id. Returns NOT_FOUND if there is no such iteration.
+  // Gets an iteration by id. Returns NOT_FOUND if there is no such iteration.
   Status IterationFromId(int64_t id,
                          std::shared_ptr<const Iteration>& iteration) const;
-  // Gets a iteration by key. Returns NOT_FOUND if there is no such iteration.
+  // Gets an iteration by key. Returns NOT_FOUND if there is no such iteration.
   Status IterationByKey(IterationKey key,
                         std::shared_ptr<const Iteration>& iteration) const;
 
@@ -280,6 +297,7 @@ class DispatcherState {
  private:
   void RegisterDataset(const RegisterDatasetUpdate& register_dataset);
   void RegisterWorker(const RegisterWorkerUpdate& register_worker);
+  void CreateJob(const CreateJobUpdate& create_job);
   void CreateIteration(const CreateIterationUpdate& create_iteration);
   void ProduceSplit(const ProduceSplitUpdate& produce_split);
   void AcquireIterationClient(
@@ -307,6 +325,12 @@ class DispatcherState {
   // Assigns an index to each worker according to worker addresses list
   // specified in the dispatcher config.
   WorkerIndexResolver worker_index_resolver_;
+
+  int64_t next_available_job_id_ = 5000;
+  // Jobs, keyed by job ids.
+  absl::flat_hash_map<int64_t, std::shared_ptr<Job>> jobs_by_id_;
+  // Jobs, keyed by job names.
+  absl::flat_hash_map<std::string, std::shared_ptr<Job>> jobs_by_name_;
 
   int64_t next_available_iteration_id_ = 2000;
   // Iterations, keyed by iteration ids.

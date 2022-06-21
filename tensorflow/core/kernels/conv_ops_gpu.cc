@@ -65,7 +65,7 @@ StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneConvImpl(
     Status cudnn_launch_status =
         actually_do_autotune
             ? launch_func(allocator_used, runner, &profile_result)
-            : Status::OK();
+            : OkStatus();
     if (!actually_do_autotune) {
       // Make the result valid according to `is_valid`.
       profile_result.set_algorithm(desc);

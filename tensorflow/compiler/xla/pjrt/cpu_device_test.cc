@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
-#include "tensorflow/core/platform/random.h"
 
 namespace xla {
 namespace {

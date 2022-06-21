@@ -23,6 +23,9 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <functional>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/platform/file_statistics.h"

@@ -5380,8 +5380,8 @@ func.func @avgpool_3d_same_padding(%arg0: tensor<2x4x12x21x7xf32>) -> tensor<2x4
 // CHECK-DAG:       %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
 // CHECK-DAG:       %[[DIVISOR:.*]] = mhlo.constant dense<4.000000e+00> : tensor<f32>
 // CHECK:           %[[OUT_GRAD_DIVIDED:.*]] = chlo.broadcast_divide %[[OUT_GRAD]], %[[DIVISOR]]
-// CHECK_SAME:        broadcast_dimensions = dense<>
-// CHECK_SAME:        -> tensor<10x12x16x64xf32>
+// CHECK-SAME:        broadcast_dimensions = dense<>
+// CHECK-SAME:        -> tensor<10x12x16x64xf32>
 // CHECK:           %[[REDUCE_WINDOW_INPUT:.*]] = "mhlo.pad"(%[[OUT_GRAD_DIVIDED]], %[[ZERO]])
 // CHECK-SAME:        edge_padding_high = dense<[0, 1, 1, 0]>
 // CHECK-SAME:        edge_padding_low = dense<[0, 1, 1, 0]>

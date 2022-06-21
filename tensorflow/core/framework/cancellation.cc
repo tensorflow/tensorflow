@@ -39,7 +39,7 @@ CancellationManager::CancellationManager(CancellationManager* parent)
 void CancellationManager::StartCancel() {
   // An "OK" status will not be logged by a callback registered by
   // RegisterCallbackWithErrorLogging.
-  StartCancelWithStatus(Status::OK());
+  StartCancelWithStatus(OkStatus());
 }
 
 void CancellationManager::StartCancelWithStatus(const Status& status) {
@@ -249,7 +249,7 @@ Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
                "not be registered.";
     *deregister_fn = []() {};
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace tensorflow

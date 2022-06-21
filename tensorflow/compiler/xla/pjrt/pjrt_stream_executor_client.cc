@@ -996,89 +996,79 @@ PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
   return std::unique_ptr<PjRtBuffer>(std::move(py_buffer));
 }
 
-void PjRtStreamExecutorClient::MakeCrossHostReceiveBuffers(
+StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+PjRtStreamExecutorClient::MakeCrossHostReceiveBuffers(
     absl::Span<const Shape> shapes, PjRtDevice* device,
-    PjRtCrossHostRecvNotifier&& notifier) {
+    PjRtCrossHostRecvNotifier notifier) {
   if (shapes.empty()) {
-    notifier(InvalidArgument(
-        "shapes parameter empty in MakeCrossHostReceiveBuffers"));
-    return;
+    return InvalidArgument(
+        "shapes parameter empty in MakeCrossHostReceiveBuffers");
   }
 
-  auto local_device_or =
-      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
-          ->GetLocalDeviceState();
-  if (!local_device_or.ok()) {
-    notifier(local_device_or.status());
-    return;
-  }
-  LocalDeviceState* local_device = local_device_or.ConsumeValueOrDie();
+  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
+                      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+                          ->GetLocalDeviceState());
   std::shared_ptr<BufferSequencingEvent> definition_event =
       std::make_shared<BufferSequencingEvent>();
   std::vector<std::unique_ptr<PjRtBuffer>> buffers;
   buffers.reserve(shapes.size());
   for (const auto& shape : shapes) {
-    StatusOr<std::unique_ptr<PjRtBuffer>> buffer_or = AllocateDestinationBuffer(
-        shape, device, local_device,
-        /*copy_stream=*/nullptr,
-        /*is_uninitialized_create=*/false, this, definition_event);
-    if (!buffer_or.ok()) {
-      notifier(buffer_or.status());
-      return;
-    }
-    buffers.push_back(buffer_or.ConsumeValueOrDie());
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<PjRtBuffer> buffer,
+        AllocateDestinationBuffer(shape, device, local_device,
+                                  /*copy_stream=*/nullptr,
+                                  /*is_uninitialized_create=*/false, this,
+                                  definition_event));
+    buffers.push_back(std::move(buffer));
   }
 
-  EnqueueCrossHostReceive(std::move(buffers), std::move(definition_event),
-                          std::move(notifier), absl::nullopt);
+  TF_RETURN_IF_ERROR(
+      EnqueueCrossHostReceive(buffers, std::move(definition_event),
+                              std::move(notifier), absl::nullopt));
+  return buffers;
 }
-void PjRtStreamExecutorClient::MakeCrossHostReceiveBuffersForGather(
+
+StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+PjRtStreamExecutorClient::MakeCrossHostReceiveBuffersForGather(
     absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
-    PjRtDevice* device, PjRtCrossHostRecvNotifier&& notifier) {
+    PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) {
   VLOG(2) << "Making " << gather_details.size()
           << " cross host receive buffers for gather";
   if (gather_details.empty()) {
-    notifier(
-        InvalidArgument("gather_details parameter empty in "
-                        "MakeCrossHostReceiveBuffersForGather"));
-    return;
+    return InvalidArgument(
+        "gather_details parameter empty in "
+        "MakeCrossHostReceiveBuffersForGather");
   }
 
   if (shapes.size() != gather_details.size()) {
-    notifier(
-        InvalidArgument("gather_details parameter has length %lld but shapes "
-                        "parameter has length %lld in "
-                        "MakeCrossHostReceiveBuffersForGather",
-                        gather_details.size(), shapes.size()));
-    return;
+    return InvalidArgument(
+        "gather_details parameter has length %lld but shapes "
+        "parameter has length %lld in "
+        "MakeCrossHostReceiveBuffersForGather",
+        gather_details.size(), shapes.size());
   }
 
-  auto local_device_or =
-      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
-          ->GetLocalDeviceState();
-  if (!local_device_or.ok()) {
-    notifier(local_device_or.status());
-    return;
-  }
-  LocalDeviceState* local_device = local_device_or.ConsumeValueOrDie();
+  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
+                      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+                          ->GetLocalDeviceState());
   std::shared_ptr<BufferSequencingEvent> definition_event =
       std::make_shared<BufferSequencingEvent>();
   std::vector<std::unique_ptr<PjRtBuffer>> buffers;
   buffers.reserve(shapes.size());
   for (int i = 0; i < shapes.size(); ++i) {
-    StatusOr<std::unique_ptr<PjRtBuffer>> buffer_or = AllocateDestinationBuffer(
-        shapes[i], device, local_device,
-        /*copy_stream=*/nullptr,
-        /*is_uninitialized_create=*/false, this, definition_event);
-    if (!buffer_or.ok()) {
-      notifier(buffer_or.status());
-      return;
-    }
-    buffers.push_back(buffer_or.ConsumeValueOrDie());
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<PjRtBuffer> buffer,
+        AllocateDestinationBuffer(shapes[i], device, local_device,
+                                  /*copy_stream=*/nullptr,
+                                  /*is_uninitialized_create=*/false, this,
+                                  definition_event));
+    buffers.push_back(std::move(buffer));
   }
 
-  EnqueueCrossHostReceive(std::move(buffers), std::move(definition_event),
-                          std::move(notifier), gather_details);
+  TF_RETURN_IF_ERROR(
+      EnqueueCrossHostReceive(buffers, std::move(definition_event),
+                              std::move(notifier), gather_details));
+  return buffers;
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer>>

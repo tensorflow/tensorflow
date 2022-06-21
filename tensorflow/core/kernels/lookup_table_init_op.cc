@@ -178,7 +178,7 @@ class InitializeTableFromTextFileOp : public OpKernel {
                   .WithAttr("delimiter", delimiter_string));
           *out = ops::UnaryOp("Identity", table,
                               builder->opts().WithControlInput(import_table));
-          return Status::OK();
+          return OkStatus();
         });
   }
 

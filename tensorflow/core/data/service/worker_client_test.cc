@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker_client.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -75,11 +76,14 @@ class WorkerClientTest : public ::testing::Test {
   StatusOr<int64_t> CreateIteration(const int64_t dataset_id) {
     ProcessingModeDef processing_mode;
     processing_mode.set_sharding_policy(ProcessingModeDef::OFF);
+    int64_t job_id = 0;
+    TF_RETURN_IF_ERROR(dispatcher_client_->GetOrCreateJob(
+        dataset_id, processing_mode, /*job_name=*/std::nullopt,
+        /*num_consumers=*/std::nullopt, /*use_cross_trainer_cache=*/false,
+        TARGET_WORKERS_AUTO, job_id));
     int64_t iteration_client_id = 0;
     TF_RETURN_IF_ERROR(dispatcher_client_->GetOrCreateIteration(
-        dataset_id, processing_mode, /*iteration_key=*/absl::nullopt,
-        /*num_consumers=*/absl::nullopt, /*use_cross_trainer_cache=*/false,
-        TARGET_WORKERS_AUTO, iteration_client_id));
+        job_id, /*repetition=*/0, iteration_client_id));
     return iteration_client_id;
   }
 

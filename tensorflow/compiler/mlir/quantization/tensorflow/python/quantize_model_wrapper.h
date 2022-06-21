@@ -29,6 +29,10 @@ PyObject* QuantizeQATModel(absl::string_view saved_model_path,
                            absl::string_view exported_names_str,
                            absl::string_view tags);
 
+PyObject* QuantizePTQDynamicRange(absl::string_view saved_model_path,
+                                  absl::string_view exported_names_str,
+                                  absl::string_view tags);
+
 PyObject* QuantizePTQModelPreCalibration(absl::string_view saved_model_path,
                                          absl::string_view exported_names_str,
                                          absl::string_view tags);

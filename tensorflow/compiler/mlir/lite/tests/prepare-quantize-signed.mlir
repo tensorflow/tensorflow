@@ -1,5 +1,5 @@
-// RUN: tf-opt %s -tfl-prepare-quantize -tfl-test-quantize-signed | FileCheck %s
-// RUN: tf-opt %s -tfl-prepare-quantize -tfl-test-quantize-signed -tfl-disable-per-channel | FileCheck --check-prefix=PerTensor %s
+// RUN: tf-opt %s -tfl-prepare-quantize="quantize-signed=true" | FileCheck %s
+// RUN: tf-opt %s -tfl-prepare-quantize="quantize-signed=true disable-per-channel=true" | FileCheck --check-prefix=PerTensor %s
 
 // CHECK-LABEL: uint8_to_int8
 func.func @uint8_to_int8(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {

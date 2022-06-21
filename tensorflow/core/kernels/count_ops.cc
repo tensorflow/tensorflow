@@ -86,7 +86,7 @@ Status OutputSparse(const BatchedMap<T>& per_batch_counts, int64_t num_values,
     dense_shape->flat<int64_t>().data()[1] = num_values;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 int64_t GetOutputSize(int64_t max_seen, int64_t max_length,

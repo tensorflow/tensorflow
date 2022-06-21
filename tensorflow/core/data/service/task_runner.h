@@ -193,7 +193,7 @@ class PrefetchThread {
   // Buffered results for the next round.
   std::vector<std::unique_ptr<Element>> buffer_ TF_GUARDED_BY(mu_);
   // The status if the prefetch thread fails.
-  Status status_ TF_GUARDED_BY(mu_) = Status::OK();
+  Status status_ TF_GUARDED_BY(mu_) = OkStatus();
   // Condition variable notified when elements are added to or removed from
   // `buffer_`, or when `status_` is changed.
   condition_variable cv_;

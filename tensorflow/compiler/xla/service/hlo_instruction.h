@@ -760,11 +760,9 @@ class HloInstruction {
   // operands must be equal to the size of one replica group.  Each replica must
   // appear in exactly one group.
   //
-  // Note that this instruction is different than the all-to-all op in
-  // xla_builder.h.  The version in XlaBuilder takes one input and slices it,
-  // and then concatenates the results into a single array.  This instruction
-  // takes multiple inputs and returns a tuple; it doesn't slice or concatenate.
-  // It is used to implement the higher-level instruction in XlaBuilder.
+  // Note that in addition to supporting this instruction, XlaBuilder also
+  // supports a higher-level instruction which takes one input and slices it,
+  // performs AllToAll and then concatenates the results into a single array.
   static std::unique_ptr<HloInstruction> CreateAllToAll(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,

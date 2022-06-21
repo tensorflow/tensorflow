@@ -269,7 +269,10 @@ def _get_ps_strategy_creator(num_workers,
   return _create_parameter_server
 
 
-def _deferred_pool_runner(has_chief, num_workers, initializer=None):
+def _deferred_pool_runner(has_chief,
+                          num_workers,
+                          initializer=None,
+                          share_gpu=True):
   """Returns a callable that returns the pool runner.
 
   It creates the pool runner only upon first invocation. This avoids creating it
@@ -279,6 +282,7 @@ def _deferred_pool_runner(has_chief, num_workers, initializer=None):
     has_chief: whether there should be a chief.
     num_workers: the number of workers excluding the chief.
     initializer: initializer of each process.
+    share_gpu: whether to share GPU between the workers.
 
   Returns:
     A callable that returns the runner.
@@ -294,7 +298,7 @@ def _deferred_pool_runner(has_chief, num_workers, initializer=None):
           num_ps=0,
           has_eval=False)
       runner = multi_process_runner.MultiProcessPoolRunner(
-          cluster_spec, initializer=initializer)
+          cluster_spec, initializer=initializer, share_gpu=share_gpu)
       container.append(runner)
     return container[0]
 
@@ -307,6 +311,14 @@ _two_worker_pool = _deferred_pool_runner(
     has_chief=True,
     num_workers=1,
     initializer=_get_multi_worker_mirrored_creator(required_gpus=0))
+
+# Two-worker pool where each worker gets it's own GPU. Useful for testing MWMS
+# on a single host.
+_two_worker_pool_noshare = _deferred_pool_runner(
+    has_chief=True,
+    num_workers=1,
+    initializer=_get_multi_worker_mirrored_creator(required_gpus=0),
+    share_gpu=False)
 _four_worker_pool = _deferred_pool_runner(
     has_chief=True,
     num_workers=3,
@@ -413,7 +425,18 @@ multi_worker_mirrored_2x1_gpu = combinations.NamedDistribution(
     num_workers=1,
     required_gpus=1,
     pool_runner_fn=_two_worker_pool,
-    no_xla=True,
+    share_gpu=False,
+)
+
+# Same as above, but not sharing the GPU between the workers.
+multi_worker_mirrored_2x1_gpu_noshare = combinations.NamedDistribution(
+    "MultiWorkerMirrored2x1GPUNoShare",
+    _get_multi_worker_mirrored_creator(required_gpus=1),
+    has_chief=True,
+    num_workers=1,
+    required_gpus=1,
+    pool_runner_fn=_two_worker_pool_noshare,
+    share_gpu=False,
 )
 # chief + 1 worker, with 2 GPU each.
 multi_worker_mirrored_2x2_gpu = combinations.NamedDistribution(
@@ -602,6 +625,9 @@ tf_export(
 tf_export(
     _TF_INTERNAL_API_PREFIX + "multi_worker_mirrored_2x1_gpu",
     v1=[]).export_constant(__name__, "multi_worker_mirrored_2x1_gpu")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "multi_worker_mirrored_2x1_gpu_noshare",
+    v1=[]).export_constant(__name__, "multi_worker_mirrored_2x1_gpu_noshare")
 tf_export(
     _TF_INTERNAL_API_PREFIX + "multi_worker_mirrored_2x2_gpu",
     v1=[]).export_constant(__name__, "multi_worker_mirrored_2x2_gpu")

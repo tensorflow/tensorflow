@@ -222,7 +222,7 @@ Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // static
@@ -231,7 +231,7 @@ Status ShapeInferenceTestutil::MakeShapeFromString(
     ShapeHandle* output) {
   if (spec == "?") {
     *output = manager->UnknownShape();
-    return Status::OK();
+    return OkStatus();
   }
 
   std::vector<DimensionHandle> dims;
@@ -266,7 +266,7 @@ Status ShapeInferenceTestutil::MakeShapeFromString(
   }
   *output = manager->MakeShape(dims);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace shape_inference

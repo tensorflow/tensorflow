@@ -121,7 +121,7 @@ tensorflow::Status InitializeOpHandlers(tfrt::CoreRuntime* corert) {
 
   corert->RegisterOpHandler(default_device, op_handler);
 
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

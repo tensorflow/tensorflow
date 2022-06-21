@@ -1,5 +1,5 @@
-// RUN: tf-opt %s -tfl-prepare-quantize --tfl-test-quantize-allowlist="quantize_float_placeholder_only,not_reset_input" | FileCheck %s
-// RUN: tf-opt %s -tfl-prepare-quantize --tfl-test-disable-set-input-nodes-quantization-params | FileCheck --check-prefix=MixedPrecision %s
+// RUN: tf-opt %s -tfl-prepare-quantize="quantize-allowlist=quantize_float_placeholder_only,not_reset_input" | FileCheck %s
+// RUN: tf-opt %s -tfl-prepare-quantize="disable-set-input-nodes-quantization-params=true" | FileCheck --check-prefix=MixedPrecision %s
 
 // CHECK-LABEL: main
 // Uses `main` function to match the default target function of QuantSpecs and

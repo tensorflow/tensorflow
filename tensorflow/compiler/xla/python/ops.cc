@@ -344,9 +344,22 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("shape"));
   ops.def("RngUniform", &RngUniform, py::arg("a"), py::arg("b"),
           py::arg("shape"));
-  ops.def("Scatter", &Scatter, py::arg("input"), py::arg("scatter_indices"),
-          py::arg("updates"), py::arg("update_computation"),
-          py::arg("dimension_numbers"), py::arg("indices_are_sorted") = false,
+  ops.def("Scatter",
+          static_cast<XlaOp (*)(XlaOp, XlaOp, XlaOp, const XlaComputation&,
+                                const ScatterDimensionNumbers&, bool, bool)>(
+              &Scatter),
+          py::arg("input"), py::arg("scatter_indices"), py::arg("updates"),
+          py::arg("update_computation"), py::arg("dimension_numbers"),
+          py::arg("indices_are_sorted") = false,
+          py::arg("unique_indices") = false);
+  ops.def("Scatter",
+          static_cast<XlaOp (*)(absl::Span<const XlaOp>, XlaOp,
+                                absl::Span<const XlaOp>, const XlaComputation&,
+                                const ScatterDimensionNumbers&, bool, bool)>(
+              &Scatter),
+          py::arg("inputs"), py::arg("scatter_indices"), py::arg("updates"),
+          py::arg("update_computation"), py::arg("dimension_numbers"),
+          py::arg("indices_are_sorted") = false,
           py::arg("unique_indices") = false);
   ops.def("Select", &Select, py::arg("pred"), py::arg("on_true"),
           py::arg("on_false"));

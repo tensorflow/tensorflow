@@ -408,7 +408,7 @@ tensorflow::Status GraphExecutor::Run(
     ++flat_output_iter;
   }
 
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 tensorflow::Status GraphExecutor::Extend(const GraphDef& graph) {
@@ -494,7 +494,7 @@ tensorflow::Status GraphExecutor::InitBef(
   TF_RETURN_IF_ERROR(
       RunRuntimeInitializer(exec_ctx, bef_file, "_tfrt_resource_init"));
 
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::reference_wrapper<const GraphExecutor::LoadedClientGraph>>

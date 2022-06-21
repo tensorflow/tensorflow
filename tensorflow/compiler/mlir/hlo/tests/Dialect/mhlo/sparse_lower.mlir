@@ -100,10 +100,10 @@ func.func @sparse_mul_eltwise(%arg0: tensor<10x20xf32, #CSR>,
 // CHECK:           arith.negf
 // CHECK:         }
 // CHECK:         %[[T4:.*]] = linalg.generic {{{.*}}} ins(%[[T3]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed", "compressed" ], {{.*}} }>>) outs
-// CHECK:           sparse_tensor.unary
+// CHECK:           sparse_tensor.unary %{{.*}} : f64 to f64
 // CHECK:           present = {
 // CHECK:             math.copysign
-// CHECK:             sparse_tensor.yield
+// CHECK:             sparse_tensor.yield %{{.*}} : f64
 // CHECK:           }
 // CHECK:           absent = {
 // CHECK:           }
@@ -142,10 +142,10 @@ func.func @sparse_math(%arg0: tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64,
 // CHECK-LABEL: func @sparse_sign(
 // CHECK-SAME:    %[[A:.*]]: tensor<100xi32, #{{.*}}>) -> tensor<100xi32> {
 // CHECK:         %[[T:.*]] = linalg.generic {{{.*}}} ins(%[[A]] : tensor<100xi32, #{{.*}}>)
-// CHECK:           %[[U:.*]] = sparse_tensor.unary
+// CHECK:           %[[U:.*]] = sparse_tensor.unary %{{.*}} : i32 to i32
 // CHECK:           present = {
 // CHECK:             arith.cmpi eq
-// CHECK:             sparse_tensor.yield
+// CHECK:             sparse_tensor.yield %{{.*}} : i32
 // CHECK:           }
 // CHECK:           absent = {
 // CHECK:           }
@@ -161,12 +161,12 @@ func.func @sparse_sign(%arg0: tensor<100xi32, #SV>) -> tensor<100xi32> {
 // CHECK-LABEL: func @sparse_int_abs(
 // CHECK-SAME:    %[[A:.*]]: tensor<100xi64, #{{.*}}>) -> tensor<100xi64> {
 // CHECK:         %[[T:.*]] = linalg.generic {{{.*}}} ins(%[[A]] : tensor<100xi64, #{{.*}}>)
-// CHECK:           %[[U:.*]] = sparse_tensor.unary
+// CHECK:           %[[U:.*]] = sparse_tensor.unary %{{.*}} : i64 to i64
 // CHECK:           present = {
 // CHECK:             arith.cmpi sge
 // CHECK:             arith.subi
 // CHECK:             arith.select
-// CHECK:             sparse_tensor.yield
+// CHECK:             sparse_tensor.yield %{{.*}} : i64
 // CHECK:           }
 // CHECK:           absent = {
 // CHECK:           }
@@ -177,6 +177,29 @@ func.func @sparse_sign(%arg0: tensor<100xi32, #SV>) -> tensor<100xi32> {
 func.func @sparse_int_abs(%arg0: tensor<100xi64, #SV>) -> tensor<100xi64> {
   %0 = mhlo.abs(%arg0) : (tensor<100xi64, #SV>) -> tensor<100xi64>
   func.return %0 : tensor<100xi64>
+}
+
+// CHECK-LABEL: func @sparse_convert_complex(
+// CHECK-SAME:    %[[A:.*]]: tensor<16xcomplex<f64>, #{{.*}}>) -> tensor<16xcomplex<f32>, #{{.*}}> {
+// CHECK:         %[[T:.*]] = linalg.generic {{{.*}}} ins(%[[A]] : tensor<16xcomplex<f64>, #{{.*}}>) outs(%{{.*}} : tensor<16xcomplex<f32>, #{{.*}}>)
+// CHECK:           %[[U:.*]] = sparse_tensor.unary %{{.*}} : complex<f64> to complex<f32>
+// CHECK:           present = {
+// CHECK:             complex.re
+// CHECK:             arith.truncf
+// CHECK:             complex.im
+// CHECK:             arith.truncf
+// CHECK:             complex.create
+// CHECK:             sparse_tensor.yield %{{.*}} : complex<f32>
+// CHECK:           }
+// CHECK:           absent = {
+// CHECK:           }
+// CHECK:           linalg.yield %[[U]] : complex<f32>
+// CHECK:         } -> tensor<16xcomplex<f32>, #{{.*}}>
+// CHECK:         return %[[T]] : tensor<16xcomplex<f32>, #{{.*}}>
+// CHECK:       }
+func.func @sparse_convert_complex(%arg0: tensor<16xcomplex<f64>, #SV>) -> tensor<16xcomplex<f32>, #SV> {
+  %0 = mhlo.convert(%arg0) : (tensor<16xcomplex<f64>, #SV>) -> tensor<16xcomplex<f32>, #SV>
+  return %0 : tensor<16xcomplex<f32>, #SV>
 }
 
 // CHECK-LABEL: func @sparse_reduce(
