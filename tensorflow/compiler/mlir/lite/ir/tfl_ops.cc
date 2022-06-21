@@ -52,7 +52,6 @@ limitations under the License.
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
 #include "tensorflow/compiler/mlir/lite/utils/arithmetic_count_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
@@ -3811,6 +3810,20 @@ bool NoValueOp::isBuildableWith(Attribute value, Type type) {
 //===----------------------------------------------------------------------===//
 
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_interface.cc.inc"
+
+static FailureOr<SmallVector<int32_t>> parseI32Array(AsmParser &parser) {
+  SmallVector<int32_t> elements;
+  auto elementParser = [&]() {
+    int32_t element;
+    if (failed(parser.parseInteger(element))) return failure();
+    elements.push_back(element);
+    return success();
+  };
+  if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Square,
+                                     elementParser))
+    return failure();
+  return elements;
+}
 
 }  // namespace TFL
 }  // namespace mlir
