@@ -327,7 +327,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
         input_filename, tags, exported_names, context,
         /*unconditionally_use_set_output_shapes=*/true);
     if (!module_or.status().ok()) return module_or.status();
-    return module_or.ConsumeValueOrDie();
+    return std::move(module_or).value();
   } else if (saved_model_version == 1) {
     MLIRImportOptions options;
     options.upgrade_legacy = specs.upgrade_legacy;
@@ -337,7 +337,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
         enable_variable_lifting, saved_model_bundle);
 
     if (!module_or.status().ok()) return module_or.status();
-    return module_or.ConsumeValueOrDie();
+    return std::move(module_or).value();
   } else {
     return tensorflow::errors::InvalidArgument(
         "Should be either saved model v1 or v2");

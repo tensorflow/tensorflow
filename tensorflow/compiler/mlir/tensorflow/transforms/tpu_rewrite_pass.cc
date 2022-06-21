@@ -601,8 +601,7 @@ LogicalResult Rewrite(
   auto status_or_tpu_device_assignment =
       tensorflow::GetTPUCompilationAndExecutionDevices(
           devices, num_replicas, num_cores_per_replica,
-          topology_attr.getValue(),
-          status_or_device_coodinates.ConsumeValueOrDie());
+          topology_attr.getValue(), status_or_device_coodinates.value());
   if (!status_or_tpu_device_assignment.ok())
     return cluster_func.emitError()
            << "error in fetching TPU compilation/execution devices: "

@@ -1684,9 +1684,8 @@ OwningOpRef<mlir::ModuleOp> HloTextToLhloTranslateFunction(
   OwningOpRef<mlir::ModuleOp> module =
       ModuleOp::create(UnknownLoc::get(context));
 
-  TF_CHECK_OK(OptimizeAndConvertHloToLmhlo(maybe_module.ConsumeValueOrDie(),
-                                           module.get(), "Host",
-                                           optimize_xla_hlo));
+  TF_CHECK_OK(OptimizeAndConvertHloToLmhlo(
+      std::move(maybe_module).value(), module.get(), "Host", optimize_xla_hlo));
 
   return module;
 }

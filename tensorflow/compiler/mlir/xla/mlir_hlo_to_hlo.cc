@@ -723,7 +723,7 @@ LogicalResult ExportXlaOp(AddDependencyOp op, OpLoweringContext ctx) {
   xla::XlaOp operand;
   if (failed(GetXlaOp(op.token(), value_map, &token, op))) return failure();
   if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
-  auto operand_shape = ctx.builder->GetShape(operand).ConsumeValueOrDie();
+  auto operand_shape = ctx.builder->GetShape(operand).value();
   value_map[op] = xla::internal::XlaBuilderFriend::BuildAddDependency(
       ctx.builder, operand, token, operand_shape);
   return success();
@@ -1502,8 +1502,7 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
 
   if (op.is_host_transfer()) {
     value_map[op] = xla::SendToHost(
-        operand, token,
-        operand.builder()->GetShape(operand).ConsumeValueOrDie(),
+        operand, token, operand.builder()->GetShape(operand).value(),
         Convert_channel_handle(op.channel_handle()));
     return success();
   }
