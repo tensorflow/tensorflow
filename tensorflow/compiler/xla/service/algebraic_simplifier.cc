@@ -1155,6 +1155,7 @@ std::optional<Shape> AlgebraicSimplifierVisitor::ReshapeLayoutDimensions(
   for (int64_t op_pos = 0; op_pos < original_dimensions.size(); ++op_pos) {
     int64_t op_dim = original_dimensions[op_pos];
     VLOG(3) << "op_pos = " << op_pos << "\n";
+    VLOG(3) << "op_dim = " << op_dim << "\n";
     if (original_map.size() <= op_dim) {
       VLOG(3) << "Skip due to original_map has too few dimensions.\n";
       continue;
@@ -1178,14 +1179,15 @@ std::optional<Shape> AlgebraicSimplifierVisitor::ReshapeLayoutDimensions(
         (*reshaped_dimensions)[bitcast_pos] = bitcast_dim;
       }
       auto op_dims = result_map[bitcast_dim];
-      if (op_dims.size() > 1 && op_pos > 0 && op_dims[0] != op_dim) {
+      if (op_dims.size() > 1 && op_pos > 0) {
         // Check that op dimensions that are combined into bitcast_dim are not
         // non-contiguous or reordered to be different from how they appear in
         // result_map.
         int64_t op_dim_prev = original_dimensions[op_pos - 1];
 
-        if (original_map[op_dim_prev].empty() ||
-            original_map[op_dim_prev][0] != bitcast_dim) {
+        if (op_dims[0] != op_dim &&
+            (original_map[op_dim_prev].empty() ||
+             original_map[op_dim_prev][0] != bitcast_dim)) {
           VLOG(2) << "Abort b/c op dimensions that are combined into "
                      "bitcast_dim are not contiguous in the result. \n ";
           return std::nullopt;
