@@ -873,6 +873,8 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   // Move up broadcasting operations to allow for more fusion opportunities.
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::mhlo::createExpandHloTuplesPass("main"));
+  // TODO(b/233771980): Remove once custom_call doesn't use tuples.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createFlattenTuplePass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeGeneralDotPass());
   pm.addNestedPass<mlir::func::FuncOp>(
