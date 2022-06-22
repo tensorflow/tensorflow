@@ -43,6 +43,12 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_embedding_errors",
+    hdrs = ["tpu_embedding_errors.h"],
+    deps = ["@com_google_absl//absl/strings"],
+)
+
+cc_library(
     name = "tpu_embedding_optimization_parameters_utils",
     srcs = ["tpu_embedding_optimization_parameters_utils.cc"],
     hdrs = ["tpu_embedding_optimization_parameters_utils.h"],
