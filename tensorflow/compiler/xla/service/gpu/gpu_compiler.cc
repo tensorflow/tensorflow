@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/async_collective_creator.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
+#include "tensorflow/compiler/xla/service/bitcast_decomposer.h"
 #include "tensorflow/compiler/xla/service/bitcast_dtypes_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
@@ -339,7 +340,6 @@ Status GpuCompiler::OptimizeHloModule(
           spmd_pipeline.AddPass<HloPassFix<HloPassPipeline>>("spmd-simplify");
 
       AlgebraicSimplifierOptions options;
-      options.set_replace_transpose_with_bitcast(false);
       options.set_enable_conv_operand_swap(false);
       // "slow" minmax means we propagate nan.
       options.set_minmax_propagate_nan(
@@ -494,15 +494,6 @@ Status GpuCompiler::OptimizeHloModule(
       options.set_minmax_propagate_nan(
           !debug_options.xla_gpu_enable_fast_min_max());
 
-      // When transposes appear in a fusion node, we can easily adjust the
-      // multi-dimensional index to create the one needed for the operand.
-      // This is not as easy with bitcasts, because we don't have the
-      // information readily available which dimensions are permuted. In
-      // addition to that, if we have a transpose and a reshape next to each
-      // other, they will both be replaced by a bitcast, and we replace
-      // bitcast(bitcast) with one bitcast. This leads to having to
-      // linearize and then delinearize the index.
-      options.set_replace_transpose_with_bitcast(false);
       const se::Platform* platform = stream_exec->platform();
       if (platform->Name() == "ROCM") {
         // SwapConvOperands does not yet work on ROCM
@@ -557,7 +548,6 @@ Status GpuCompiler::OptimizeHloModule(
     // the reshape is just adding a unit dimension. This will help with the
     // AllGatherBroadcastReorder pass.
     AlgebraicSimplifierOptions options;
-    options.set_replace_transpose_with_bitcast(false);
     options.set_enable_conv_operand_swap(false);
     // "slow" minmax means we propagate nan.
     options.set_minmax_propagate_nan(
@@ -665,7 +655,6 @@ Status GpuCompiler::OptimizeHloModule(
 
     pipeline.AddPass<CollectivesScheduleLinearizer>();
 
-    // Now we allow replacing any transposes outside of fusions with bitcasts.
     AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
     options.set_enable_conv_operand_swap(false);
@@ -674,6 +663,7 @@ Status GpuCompiler::OptimizeHloModule(
         !debug_options.xla_gpu_enable_fast_min_max());
     pipeline.AddPass<AlgebraicSimplifier>(options);
     pipeline.AddPass<OptimizationBarrierExpander>();
+    pipeline.AddPass<BitcastDecomposer>();
     pipeline.AddPass<TupleSimplifier>();
 
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
@@ -745,15 +735,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
-  // When transposes appear in a fusion node, we can easily adjust the
-  // multi-dimensional index to create the one needed for the operand. This
-  // is not as easy with bitcasts, because we don't have the information
-  // readily available which dimensions are permuted. In addition to that,
-  // if we have a transpose and a reshape next to each other, they will both
-  // be replaced by a bitcast, and we replace bitcast(bitcast) with one
-  // bitcast. This leads to having to linearize and then delinearize the
-  // index.
-  options.set_replace_transpose_with_bitcast(false);
   options.set_enable_conv_operand_swap(false);
   // "slow" minmax means we propagate nan.
   options.set_minmax_propagate_nan(
