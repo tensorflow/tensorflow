@@ -145,10 +145,10 @@ typedef struct {
   //Used to select which GPU to run inference on.
   //On mobile devices, specify DONTCARE so that the 0th device on 
   //0th OpenCL platform is selected. 
-  //On desktop environment, 'vendor' can be used in conjunction with
-  //'gpu_ordinal' if multiple GPUs are present. For example, if the
-  //computer has 3 NVidia GPUs and 3 Intel GPUs, set vendor = INTEL
-  //and gpu_ordinal = 2 (0 indexed) to use the 2nd Intel GPU. 
+  //On desktop environment, 'target_vendor' can be used in conjunction with
+  //'target_gpu_ordinal' if multiple GPUs are present. For example, if the
+  //computer has 3 NVidia GPUs and 3 Intel GPUs, set target_vendor = INTEL
+  //and target_gpu_ordinal = 2 (0 indexed) to use the 2nd Intel GPU. 
   TargeCLDeviceVendor target_vendor = DONTCARE;
   int32_t target_gpu_ordinal = -1;
 
