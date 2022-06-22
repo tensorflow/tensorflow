@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <utility>
@@ -177,15 +178,15 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           const ProcessingModeDef& processing_mode, const std::string& address,
           const std::string& protocol,
           const std::string& data_transfer_protocol,
-          const std::string& job_name, absl::optional<int64_t> consumer_index,
-          absl::optional<int64_t> num_consumers,
+          const std::string& job_name, std::optional<int64_t> consumer_index,
+          std::optional<int64_t> num_consumers,
           int64_t max_outstanding_requests, int64_t task_refresh_interval_ms,
           const TargetWorkers target_workers,
           const DataServiceMetadata& metadata,
           IterationCounter* iteration_counter, bool owns_resource,
           ResourceHandle iteration_counter_handle,
           std::unique_ptr<CapturedFunction> captured_uncompress_func,
-          const absl::optional<CrossTrainerCacheOptions>&
+          const std::optional<CrossTrainerCacheOptions>&
               cross_trainer_cache_options,
           const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes)
@@ -806,7 +807,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           ClientHeartbeatResponse::kBlockRound) {
         TryBlockRound(resp.block_round());
       } else {
-        round_robin_round_limit_ = absl::nullopt;
+        round_robin_round_limit_ = std::nullopt;
         worker_thread_cv_.notify_all();
       }
       UpdateTasks(resp);
@@ -1065,7 +1066,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       GetElementRequest req;
       req.set_task_id(task.info.task_id());
       req.set_skipped_previous_round(task.skipped_previous_round);
-      absl::optional<int64_t> round_index;
+      std::optional<int64_t> round_index;
       if (StrictRoundRobin()) {
         round_index = task.round;
         req.set_consumer_index(dataset()->consumer_index_.value());
@@ -1262,7 +1263,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // INVARIANT: current_round_ <= round_robin_round_limit_.
     //            If current_round_ == round_robin_round_limit_,
     //            next_task_index_ must be 0.
-    absl::optional<int64_t> round_robin_round_limit_ TF_GUARDED_BY(mu_);
+    std::optional<int64_t> round_robin_round_limit_ TF_GUARDED_BY(mu_);
 
     // A status to be returned from the next call to `GetNext`. This is set by
     // asynchronous threads when they encounter errors.
@@ -1415,8 +1416,8 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
     data_transfer_protocol_ = kLocalTransferProtocol;
   }
 
-  absl::optional<int64_t> consumer_index;
-  absl::optional<int64_t> num_consumers;
+  std::optional<int64_t> consumer_index;
+  std::optional<int64_t> num_consumers;
   if (op_version_ >= 2) {
     int64_t consumer_index_int;
     OP_REQUIRES_OK(
@@ -1500,7 +1501,7 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
                                       &captured_uncompress_func));
   }
 
-  absl::optional<CrossTrainerCacheOptions> cross_trainer_cache_options;
+  std::optional<CrossTrainerCacheOptions> cross_trainer_cache_options;
   if (!seriazlied_cross_trainer_cache_options_.empty()) {
     cross_trainer_cache_options.emplace();
     cross_trainer_cache_options->ParseFromString(
