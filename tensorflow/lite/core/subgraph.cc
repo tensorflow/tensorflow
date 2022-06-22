@@ -1010,7 +1010,7 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
 // Invoke the operator represented by 'node'.
 TfLiteStatus Subgraph::OpInvoke(const TfLiteRegistration& op_reg,
                                 TfLiteNode* node) {
-  if (op_reg.registration_external && op_reg.registration_external->invoke) {
+  if (!IsV1Delegate(op_reg) && op_reg.registration_external && op_reg.registration_external->invoke) {
     return op_reg.registration_external->invoke(
         reinterpret_cast<TfLiteOpaqueContext*>(&context_),
         reinterpret_cast<TfLiteOpaqueNode*>(node));
@@ -1022,7 +1022,7 @@ TfLiteStatus Subgraph::OpInvoke(const TfLiteRegistration& op_reg,
 // Let 'op_reg' release any memory it might have allocated via 'OpInit'.
 // If registration_external is valid, use the 'free' callback from that.
 void Subgraph::OpFree(const TfLiteRegistration& op_reg, void* buffer) {
-  if (op_reg.registration_external && op_reg.registration_external->free &&
+  if (!IsV1Delegate(op_reg) && op_reg.registration_external && op_reg.registration_external->free &&
       buffer) {
     return op_reg.registration_external->free(
         reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer);
