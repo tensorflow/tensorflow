@@ -257,7 +257,6 @@ cc_library(
     hdrs = ["conv_weights_converter_test_util.h"],
     deps = [
         ":conv_weights_converter",
-        "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:testing_util",
         "//tensorflow/lite/delegates/gpu/common/task:weights_conversion",

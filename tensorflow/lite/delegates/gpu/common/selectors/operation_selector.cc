@@ -231,8 +231,12 @@ absl::Status AddDynamicConv(ModelHints hints, const GpuInfo& gpu_info,
   }
 
   converter_op.input_ids = {weights_id};
-  converter_op.operation =
-      SelectConverterToConvWeights(weights_desc, converter_def, hints);
+  Layout input_layout = Layout::OHWI;
+  if (op_type == OperationType::BATCHED_MATMUL) {
+    input_layout = Layout::HWIO;
+  }
+  converter_op.operation = SelectConverterToConvWeights(
+      weights_desc, converter_def, hints, input_layout);
   converter_op.name = "bhwc_tensor_to_conv_weights";
   return absl::OkStatus();
 }
@@ -354,12 +358,6 @@ absl::Status GPUOperationFromNodePart0(
                                second_shape.w);
       const BHWC weights_shape_bhwc(weights_shape.o, weights_shape.h,
                                     weights_shape.w, weights_shape.i);
-      TensorDescriptor weights_desc = {op_def.src_tensors[1].data_type,
-                                       op_def.src_tensors[1].GetStorageType(),
-                                       Layout::BHWC};
-      RETURN_IF_ERROR(weights_desc.UpdateToSupportedStorageType(
-          gpu_info, weights_shape_bhwc));
-      int weights_id = gpu_subgraph->AddTensor(weights_shape, weights_desc);
       if (dst_shape.b != 1) {
         const BHWC hwc_input_shape(1, first_shape.b * first_shape.h,
                                    first_shape.w, first_shape.c);
@@ -386,26 +384,10 @@ absl::Status GPUOperationFromNodePart0(
         reshape_input_op.output_ids = {src_id};
         reshape_input_op.name = "mat_mul_reshape_input";
       }
-      gpu_subgraph->operations.push_back({});
-      auto& transpose_op = gpu_subgraph->operations.back();
-      OperationDef transpose_weights_def;
-      transpose_weights_def.precision = op_def.precision;
-      transpose_weights_def.src_tensors.push_back(op_def.src_tensors[1]);
-      transpose_weights_def.dst_tensors.push_back(weights_desc);
-
-      transpose_op.input_ids = {static_cast<int>(inputs[1]->id)};
-      TransposeAttributes transpose_attr;
-      transpose_attr.perm = BHWC(3, 0, 1, 2);
-      transpose_op.operation = std::make_unique<GPUOperation>(
-          CreateTranspose(transpose_weights_def, transpose_attr));
-      transpose_op.name = "mat_mul_transpose_weights_tensor";
-      transpose_op.output_ids = {weights_id};
-
       OperationDef conv_def = op_def;
-      conv_def.src_tensors[1] = weights_desc;
-      RETURN_IF_ERROR(AddDynamicConv(hints, gpu_info, conv_def, op_type,
-                                     first_shape, weights_shape, dst_shape,
-                                     src_id, weights_id, dst_id, gpu_subgraph));
+      RETURN_IF_ERROR(AddDynamicConv(
+          hints, gpu_info, conv_def, op_type, first_shape, weights_shape,
+          dst_shape, src_id, inputs[1]->id, dst_id, gpu_subgraph));
       if (dst_shape.b != 1) {
         TensorDescriptor hwc_output_desc = {
             op_def.dst_tensors[0].data_type,

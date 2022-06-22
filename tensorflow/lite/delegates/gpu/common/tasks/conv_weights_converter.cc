@@ -26,8 +26,11 @@ namespace tflite {
 namespace gpu {
 
 ConverterToConvWeights::ConverterToConvWeights(
-    const OperationDef& definition, const WeightsDescription& weights_desc)
-    : GPUOperation(definition), weights_desc_(weights_desc) {
+    const OperationDef& definition, const WeightsDescription& weights_desc,
+    Layout input_layout)
+    : GPUOperation(definition),
+      weights_desc_(weights_desc),
+      input_layout_(input_layout) {
   code_ = GetConverterToConvWeightsCode();
 }
 
@@ -84,28 +87,52 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode() {
   c += "  FLT4 v1 = INIT_FLT4(0.0f);\n";
   c += "  FLT4 v2 = INIT_FLT4(0.0f);\n";
   c += "  FLT4 v3 = INIT_FLT4(0.0f);\n";
-  // OHWI as BHWC: Read(WHSB) - Read(WHIO)
-  c += "  if (O * 4 < args.out_ch) {\n";
-  c += "    v0 = args.src_tensor.Read(W, H, I, O * 4);\n";
-  c += "  }\n";
-  c += "  if (O * 4 + 1 < args.out_ch) {\n";
-  c += "    v1 = args.src_tensor.Read(W, H, I, O * 4 + 1);\n";
-  c += "  }\n";
-  c += "  if (O * 4 + 2 < args.out_ch) {\n";
-  c += "    v2 = args.src_tensor.Read(W, H, I, O * 4 + 2);\n";
-  c += "  }\n";
-  c += "  if (O * 4 + 3 < args.out_ch) {\n";
-  c += "    v3 = args.src_tensor.Read(W, H, I, O * 4 + 3);\n";
-  c += "  }\n";
-  c += "  if (I == args.src_tensor.Slices() - 1) {\n";
-  c += "    FLT4 mask = INIT_FLT4v4(args.mask_x, args.mask_y, args.mask_z, "
-       "args.mask_w);\n";
-  c += "    v0 *= mask;\n";
-  c += "    v1 *= mask;\n";
-  c += "    v2 *= mask;\n";
-  c += "    v3 *= mask;\n";
-  c += "  }\n";
-  const bool need_transpose = weights_desc_.IsI4O4();
+  if (input_layout_ == Layout::OHWI) {
+    c += "  if (O * 4 < args.out_ch) {\n";
+    c += "    v0 = args.src_tensor.Read(W, H, I, O * 4);\n";
+    c += "  }\n";
+    c += "  if (O * 4 + 1 < args.out_ch) {\n";
+    c += "    v1 = args.src_tensor.Read(W, H, I, O * 4 + 1);\n";
+    c += "  }\n";
+    c += "  if (O * 4 + 2 < args.out_ch) {\n";
+    c += "    v2 = args.src_tensor.Read(W, H, I, O * 4 + 2);\n";
+    c += "  }\n";
+    c += "  if (O * 4 + 3 < args.out_ch) {\n";
+    c += "    v3 = args.src_tensor.Read(W, H, I, O * 4 + 3);\n";
+    c += "  }\n";
+    c += "  if (I == args.src_tensor.Slices() - 1) {\n";
+    c += "    FLT4 mask = INIT_FLT4v4(args.mask_x, args.mask_y, args.mask_z, "
+         "args.mask_w);\n";
+    c += "    v0 *= mask;\n";
+    c += "    v1 *= mask;\n";
+    c += "    v2 *= mask;\n";
+    c += "    v3 *= mask;\n";
+    c += "  }\n";
+  } else if (input_layout_ == Layout::HWIO) {
+    c += "  if (I * 4 < args.in_ch && O < args.src_tensor.Slices()) {\n";
+    c += "    v0 = args.src_tensor.Read(I * 4, W, O, H);\n";
+    c += "  }\n";
+    c += "  if (I * 4 + 1 < args.in_ch && O < args.src_tensor.Slices()) {\n";
+    c += "    v1 = args.src_tensor.Read(I * 4 + 1, W, O, H);\n";
+    c += "  }\n";
+    c += "  if (I * 4 + 2 < args.in_ch && O < args.src_tensor.Slices()) {\n";
+    c += "    v2 = args.src_tensor.Read(I * 4 + 2, W, O, H);\n";
+    c += "  }\n";
+    c += "  if (I * 4 + 3 < args.in_ch && O < args.src_tensor.Slices()) {\n";
+    c += "    v3 = args.src_tensor.Read(I * 4 + 3, W, O, H);\n";
+    c += "  }\n";
+    c += "  if (O == args.src_tensor.Slices() - 1) {\n";
+    c += "    FLT4 mask = INIT_FLT4v4(args.mask_x, args.mask_y, args.mask_z, "
+         "args.mask_w);\n";
+    c += "    v0 *= mask;\n";
+    c += "    v1 *= mask;\n";
+    c += "    v2 *= mask;\n";
+    c += "    v3 *= mask;\n";
+    c += "  }\n";
+  }
+  const bool need_transpose =
+      (input_layout_ == Layout::HWIO && weights_desc_.IsO4I4()) ||
+      (input_layout_ == Layout::OHWI && weights_desc_.IsI4O4());
   if (need_transpose) {
     c += "  FLT4 r0 = INIT_FLT4v4(v0.x, v1.x, v2.x, v3.x);\n";
     c += "  FLT4 r1 = INIT_FLT4v4(v0.y, v1.y, v2.y, v3.y);\n";
@@ -162,10 +189,21 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode() {
 }
 
 OHWI ConverterToConvWeights::GetWeightsSize() const {
-  const int output_channels = src_[0]->Batch();
-  const int input_channels = src_[0]->Channels();
-  const int kernel_width = src_[0]->Width();
-  const int kernel_height = src_[0]->Height();
+  int output_channels = 0;
+  int input_channels = 0;
+  int kernel_width = 0;
+  int kernel_height = 0;
+  if (input_layout_ == Layout::HWIO) {
+    output_channels = src_[0]->Channels();
+    input_channels = src_[0]->Width();
+    kernel_width = src_[0]->Height();
+    kernel_height = src_[0]->Batch();
+  } else if (input_layout_ == Layout::OHWI) {
+    output_channels = src_[0]->Batch();
+    input_channels = src_[0]->Channels();
+    kernel_width = src_[0]->Width();
+    kernel_height = src_[0]->Height();
+  }
   return OHWI(output_channels, kernel_height, kernel_width, input_channels);
 }
 
@@ -200,8 +238,9 @@ int3 ConverterToConvWeights::GetGridSize() const {
 }
 
 ConverterToConvWeights CreateConverterToConvWeights(
-    const OperationDef& definition, const WeightsDescription& weights_desc) {
-  return ConverterToConvWeights(definition, weights_desc);
+    const OperationDef& definition, const WeightsDescription& weights_desc,
+    Layout input_layout) {
+  return ConverterToConvWeights(definition, weights_desc, input_layout);
 }
 
 }  // namespace gpu
