@@ -32,8 +32,8 @@ typedef struct TfLiteRegistrationExternal {
   // Custom op name.
   const char* custom_name;
 
-  // The version of the op. The verion should be higher than 0.
-  const int version;
+  // The version of the op. The version should be higher than 0.
+  int version;
 
   // Initializes the op from serialized data.
   void* (*init)(TfLiteOpaqueContext* context, const char* buffer,
