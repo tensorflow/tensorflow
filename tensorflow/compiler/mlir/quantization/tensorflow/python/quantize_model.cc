@@ -124,6 +124,7 @@ absl::StatusOr<GraphDef> QuantizeQATModel(absl::string_view saved_model_path,
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       mlir::quant::QuantizationMethod::kQuantizationAwareTraining));
   pm.addPass(mlir::createSymbolDCEPass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 
   pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -267,6 +268,7 @@ absl::StatusOr<GraphDef> QuantizePTQModelPostCalibration(
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       mlir::quant::QuantizationMethod::kPostTrainingQuantization));
   pm.addPass(mlir::createSymbolDCEPass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
@@ -334,6 +336,7 @@ absl::StatusOr<GraphDef> QuantizePTQDynamicRange(
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       mlir::quant::QuantizationMethod::kDynamicRangeQuantization));
   pm.addPass(mlir::createSymbolDCEPass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());

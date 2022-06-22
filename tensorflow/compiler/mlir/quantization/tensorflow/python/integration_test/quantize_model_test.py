@@ -277,8 +277,8 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         tensor_spec.TensorSpec(shape=[1, 4], dtype=dtypes.float32)
     ])
     def matmul(self, input_tensor):
-      filters = random_ops.random_uniform(shape=(4, 3), minval=-1.0, maxval=1.0)
-      bias = random_ops.random_uniform(shape=(3,), minval=-1.0, maxval=1.0)
+      filters = np.random.uniform(low=-1.0, high=1.0, size=(4, 3))
+      bias = np.random.uniform(low=-1.0, high=1.0, size=(3,))
       out = math_ops.matmul(input_tensor, filters)
 
       if self.has_bias:

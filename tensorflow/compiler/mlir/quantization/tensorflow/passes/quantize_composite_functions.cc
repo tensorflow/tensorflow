@@ -476,6 +476,14 @@ class QuantizeFunctionPattern
     if (new_quantized_func == nullptr) {
       return failure();
     }
+    new_quantized_func.setType(
+        FunctionType::get(getContext(), TypeRange(ArrayRef<Value>(args)),
+                          new_quantized_func.getResultTypes()));
+    for (auto pair : llvm::zip_first(args, new_quantized_func.getArguments())) {
+      auto new_quantized_func_arg = std::get<1>(pair);
+      auto partitioned_call_arg = std::get<0>(pair);
+      new_quantized_func_arg.setType(partitioned_call_arg.getType());
+    }
 
     // Set the attributes for ops with the attr_map attribute.
     if (failed(TransferAttributes(float_func, new_quantized_func))) {
