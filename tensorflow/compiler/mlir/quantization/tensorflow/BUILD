@@ -40,16 +40,20 @@ genrule(
 )
 
 cc_library(
-    name = "pass_util",
+    name = "pass_utils",
     srcs = [
-        "passes/util.cc",
+        "passes/utils.cc",
     ],
     hdrs = [
-        "passes/util.h",
+        "passes/utils.h",
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -215,7 +219,7 @@ cc_library(
         "passes/passes.h",
     ],
     deps = [
-        ":pass_util",
+        ":pass_utils",
         ":tf_quant_ops",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
