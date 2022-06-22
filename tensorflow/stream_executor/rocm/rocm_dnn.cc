@@ -4301,13 +4301,9 @@ port::Status MIOpenSupport::DoPoolBackward(
       // miopen does not use strides and must have 4D tensor.
       // std::vector<int> dims(pooling_dimensions.ndims() + 2);
 
-<<<<<<< HEAD
-      dest2_size = (element_type == dnn::DataType::kFloat) ? sizeof(float) : sizeof(Eigen::half);
-=======
       dest2_size = (element_type == dnn::DataType::kFloat)
                        ? sizeof(float)
                        : sizeof(Eigen::half);
->>>>>>> f925ccb
       for (auto& x : dims64) dest2_size *= x;
 
       if (dest2_size > 0) {

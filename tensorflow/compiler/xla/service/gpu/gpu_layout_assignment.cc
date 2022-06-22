@@ -104,9 +104,6 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     return kAllNHWC;
   }
 
-<<<<<<< HEAD
-  // If we're not Volta/MI100/MI200 or not fp16, or not conv2D, the decision is easy: Use
-=======
   // If we're on Ampere with fp32 and tf32 is on and conv2D, we will use NHWC to
   // better use Tensor Cores.
   bool valid_tf32 = input_ty == F32 &&
@@ -120,9 +117,8 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     return kAllNHWC;
   }
 
-  // If we're not Volta or not fp16, or not conv2D, the decision is easy: Use
->>>>>>> f925ccb
-  // NCHW.
+  // If we're not Volta/MI100/MI200 or not fp16, or not conv2D, the decision
+  // is easy: Use NCHW.
 #if GOOGLE_CUDA
   if (input_ty != F16 ||
       !stream_executor->GetDeviceDescription()
