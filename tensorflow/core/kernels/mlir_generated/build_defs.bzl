@@ -9,7 +9,7 @@ load(
     "//tensorflow/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
 )
-load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
+load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain", "use_cpp_toolchain")
 
 def _lookup_file(filegroup, path):
     """Extracts file at (relative) path in filegroup."""
@@ -206,7 +206,7 @@ _gen_kernel_bin_rule = rule(
     },
     fragments = ["cpp"],
     outputs = {"kernel": "%{name}_kernel.o"},
-    toolchains = ["@bazel_tools//tools/cpp:toolchain_type"],
+    toolchains = use_cpp_toolchain(),
     implementation = _gen_kernel_bin_impl,
 )
 
