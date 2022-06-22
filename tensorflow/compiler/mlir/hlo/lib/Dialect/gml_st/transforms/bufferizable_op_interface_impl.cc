@@ -207,7 +207,7 @@ SmallVector<Value> getPointIndicesValues(OpBuilder &b, PointOp pointOp) {
   unsigned numDynamic = 0;
   for (auto staticIndex : pointOp.static_indices().getAsRange<IntegerAttr>()) {
     if (ShapedType::isDynamicStrideOrOffset(staticIndex.getInt())) {
-      indices.push_back(pointOp.indices()[numDynamic++]);
+      indices.push_back(pointOp.dynamic_indices()[numDynamic++]);
     } else {
       Value indexValue = b.create<arith::ConstantIndexOp>(pointOp.getLoc(),
                                                           staticIndex.getInt());

@@ -105,7 +105,7 @@ func.func @loop_incorrent_block_arg_type(%A: memref<192xf32>) {
 // -----
 
 func.func @space_op_different_rank() -> !gml_st.tile<32x32> {
-  // expected-error@+1 {{expected 2 shapes values}}
+  // expected-error@+1 {{expected 2 size values}} 
   %0 = gml_st.space [64] : !gml_st.tile<32x32>
   func.return %0 : !gml_st.tile<32x32>
 }
@@ -121,8 +121,8 @@ func.func @space_op_dynamic_static_mismatch(%size : index) -> !gml_st.tile<64x32
 // -----
 
 func.func @space_op_mismatch_shapes_and_static_shapes() -> !gml_st.tile<5x?> {
-  // expected-error@+1 {{expected 1 dynamic shapes values}}
-  %0 = "gml_st.space"() {static_shapes = [5, -1]} : () -> !gml_st.tile<5x?>
+  // expected-error@+1 {{expected 1 dynamic size values}}
+  %0 = "gml_st.space"() {static_sizes = [5, -1]} : () -> !gml_st.tile<5x?>
   func.return %0 : !gml_st.tile<5x?>
 }
 
@@ -130,7 +130,7 @@ func.func @space_op_mismatch_shapes_and_static_shapes() -> !gml_st.tile<5x?> {
 
 func.func @point_op_different_rank() -> !gml_st.point {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
-  // expected-error@+1 {{expected 2 indices values}}
+  // expected-error@+1 {{expected 2 index values}}
   %1 = "gml_st.point"(%0) {static_indices = [0]} : (!gml_st.tile<64x32>) -> !gml_st.point
   func.return %1 : !gml_st.point
 }
@@ -159,7 +159,7 @@ func.func @point_op_of_point_op_expected_empty_dynamic_indices(%i: index) -> !gm
 
 func.func @point_op_mismatch_indices_and_static_indices(%i: index) -> !gml_st.point {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
-  // expected-error@+1 {{expected 0 dynamic indices values}}
+  // expected-error@+1 {{expected 0 dynamic index values}}
   %1 = "gml_st.point"(%0, %i) {static_indices = [0, 0]} : (!gml_st.tile<64x32>, index) -> !gml_st.point
   func.return %1 : !gml_st.point
 }

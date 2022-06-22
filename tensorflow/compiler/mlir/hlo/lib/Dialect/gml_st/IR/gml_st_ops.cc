@@ -1230,7 +1230,7 @@ LogicalResult SpaceOp::inferReturnTypes(
     SmallVectorImpl<Type> &inferredReturnTypes) {
   SpaceOp::Adaptor adaptor(operands, attributes, regions);
   SmallVector<int64_t> shape = llvm::to_vector(
-      llvm::map_range(adaptor.static_shapes(), [&](const Attribute &val) {
+      llvm::map_range(adaptor.static_sizes(), [&](const Attribute &val) {
         return val.cast<IntegerAttr>().getValue().getSExtValue();
       }));
   auto resultTy = TileType::get(ctx, shape);
@@ -1241,8 +1241,8 @@ LogicalResult SpaceOp::inferReturnTypes(
 LogicalResult SpaceOp::verify() {
   auto resultTy = getType().cast<TileType>();
   return mlir::verifyListOfOperandsOrIntegers(
-      getOperation(), "shapes", resultTy.getShape().size(), static_shapes(),
-      shapes(), ShapedType::isDynamic);
+      getOperation(), "size", resultTy.getShape().size(), static_sizes(),
+      dynamic_sizes(), ShapedType::isDynamic);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1252,7 +1252,7 @@ LogicalResult SpaceOp::verify() {
 LogicalResult PointOp::verify() {
   auto subsetTy = subset().getType();
   if (subsetTy.isa<PointType>()) {
-    if (!static_indices().empty() || !indices().empty()) {
+    if (!static_indices().empty() || !dynamic_indices().empty()) {
       return emitOpError(
           "expected empty indices and static_indices for a subset of type "
           "PointType");
@@ -1261,8 +1261,8 @@ LogicalResult PointOp::verify() {
     auto tileTy = subsetTy.cast<TileType>();
     auto tileShape = tileTy.getShape();
     if (failed(mlir::verifyListOfOperandsOrIntegers(
-            getOperation(), "indices", tileShape.size(), static_indices(),
-            indices(), ShapedType::isDynamicStrideOrOffset))) {
+            getOperation(), "index", tileShape.size(), static_indices(),
+            dynamic_indices(), ShapedType::isDynamicStrideOrOffset))) {
       return failure();
     }
     // Check whether the known indices are in-bounds of known dimension sizes.
@@ -1311,18 +1311,18 @@ LogicalResult TileOp::inferReturnTypes(
 LogicalResult TileOp::verify() {
   auto subsetTy = subset().getType().cast<TileType>();
   auto rank = subsetTy.getShape().size();
-  if (failed(mlir::verifyListOfOperandsOrIntegers(getOperation(), "sizes", rank,
+  if (failed(mlir::verifyListOfOperandsOrIntegers(getOperation(), "size", rank,
                                                   static_sizes(), sizes(),
                                                   ShapedType::isDynamic))) {
     return failure();
   }
   if (failed(mlir::verifyListOfOperandsOrIntegers(
-          getOperation(), "offsets", rank, static_offsets(), offsets(),
+          getOperation(), "offset", rank, static_offsets(), offsets(),
           ShapedType::isDynamicStrideOrOffset))) {
     return failure();
   }
   if (failed(mlir::verifyListOfOperandsOrIntegers(
-          getOperation(), "strides", rank, static_strides(), strides(),
+          getOperation(), "stride", rank, static_strides(), strides(),
           ShapedType::isDynamicStrideOrOffset))) {
     return failure();
   }
