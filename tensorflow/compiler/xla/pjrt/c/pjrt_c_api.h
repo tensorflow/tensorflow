@@ -87,6 +87,22 @@ const size_t PJRT_Client_Destroy_Args_STRUCT_SIZE =
 // Shuts down and frees `client`. `client` can be nullptr.
 typedef PJRT_Error* PJRT_Client_Destroy(PJRT_Client_Destroy_Args* args);
 
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Client* client;
+  // `platform_name` has the same lifetime as `client`. It is owned by `client`.
+  const char* platform_name;  // out
+  size_t platform_name_size;  // out
+} PJRT_Client_PlatformName_Args;
+
+const size_t PJRT_Client_PlatformName_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Client_PlatformName_Args, platform_name_size);
+
+// Returns a string that identifies the platform (e.g. "cpu", "gpu", "tpu").
+typedef PJRT_Error* PJRT_Client_PlatformName(
+    PJRT_Client_PlatformName_Args* args);
+
 // -------------------------------- API access ---------------------------------
 
 #define PJRT_API_STRUCT_FIELD(fn_type) fn_type* fn_type
@@ -100,6 +116,7 @@ typedef struct {
 
   PJRT_API_STRUCT_FIELD(PJRT_Client_Create);
   PJRT_API_STRUCT_FIELD(PJRT_Client_Destroy);
+  PJRT_API_STRUCT_FIELD(PJRT_Client_PlatformName);
 } PJRT_Api;
 
 const size_t PJRT_Api_STRUCT_SIZE =

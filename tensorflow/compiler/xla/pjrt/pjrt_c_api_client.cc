@@ -46,6 +46,19 @@ PjRtCApiClient::PjRtCApiClient(
   }
 }
 
+absl::string_view PjRtCApiClient::platform_name() const {
+  PJRT_Client_PlatformName_Args args;
+  args.client = c_client_;
+  args.struct_size = PJRT_Client_PlatformName_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  PJRT_Error* error = c_api_->PJRT_Client_PlatformName(&args);
+  // TODO(b/236710439): handle error
+  CHECK(error == nullptr);
+
+  absl::string_view platform_name(args.platform_name, args.platform_name_size);
+  return platform_name;
+}
+
 PjRtCApiClient::~PjRtCApiClient() {
   PJRT_Client_Destroy_Args free_args;
   free_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
