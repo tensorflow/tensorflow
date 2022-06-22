@@ -1436,7 +1436,7 @@ Value DynamicBroadcastInDimOp::fuse(Location loc, Value subset,
   Value operandSpace =
       builder.create<SpaceOp>(loc, spaceTy, dynamicDims, staticDims);
 
-  // Materiaize operand dimensions.
+  // Materialize operand dimensions.
   SmallVector<Value> operandDims;
   int64_t dynamicDimsIdx = 0;
   operandDims.reserve(operandTy.getRank());

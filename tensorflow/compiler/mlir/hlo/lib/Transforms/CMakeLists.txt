@@ -61,3 +61,15 @@ add_mlir_library(MLIRHLOGPUTransforms
   MLIRShapeDialect
   MLIRTransforms
 )
+
+add_mlir_library(MLIRHLOGmlStPipeline
+  gml_st_pipeline.cc
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  GmlStPasses
+  MLIRLinalgTransforms
+  MLIRPass
+)

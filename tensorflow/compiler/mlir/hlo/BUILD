@@ -2184,6 +2184,34 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "gml_st_pipeline",
+    srcs = ["lib/Transforms/gml_st_pipeline.cc"],
+    hdrs = ["include/mlir-hlo/Transforms/gml_st_pipeline.h"],
+    deps = [
+        ":gml_st_tiling",
+        ":legalize_mhlo_to_gml",
+        ":legalize_to_linalg",
+        "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
+    name = "gml_st_passes",
+    hdrs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
+        "include/mlir-hlo/Transforms/register_gml_st_passes.h",
+    ],
+    deps = [
+        ":all_test_passes",
+        ":gml_st_passes_inc_gen",
+        ":gml_st_pipeline",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
 CAPI_HEADERS = [
     "include/mlir-hlo-c/Attributes.h",
     "include/mlir-hlo-c/Dialects.h",
@@ -2237,8 +2265,8 @@ cc_binary(
     srcs = ["tools/mlir-hlo-opt/mlir-hlo-opt.cc"],
     deps = [
         ":all_passes",
-        ":all_test_passes",
         ":gml_st",
+        ":gml_st_passes",
         ":gpu_passes",
         ":hlo_dialect_registration",
         ":lhlo",
