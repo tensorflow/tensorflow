@@ -19,9 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -46,17 +44,6 @@ namespace internal {
 // Returns an error status if any call to 'fs' failed.
 Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
                         std::vector<string>* results);
-
-// Given a file path, determines whether the file exists. This helper simplifies
-// the use of Env::FileExists.
-//
-// Arguments:
-//   env: may not be null.
-//   fname: the file path to look up
-//
-// Returns true if the file exists, false if it does not exist, or an error
-// Status.
-StatusOr<bool> FileExists(Env* env, const string& fname);
 
 }  // namespace internal
 }  // namespace tensorflow

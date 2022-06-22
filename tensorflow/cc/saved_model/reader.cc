@@ -30,8 +30,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/file_system_helper.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap.h"
 
@@ -47,10 +45,7 @@ Status ReadSavedModel(absl::string_view export_dir,
   const std::string saved_model_pb_path =
       io::JoinPath(export_dir, kSavedModelFilenamePb);
 
-  TF_ASSIGN_OR_RETURN(
-      bool saved_model_pb_exists,
-      internal::FileExists(Env::Default(), saved_model_pb_path));
-  if (saved_model_pb_exists) {
+  if (Env::Default()->FileExists(saved_model_pb_path).ok()) {
     Status result =
         ReadBinaryProto(Env::Default(), saved_model_pb_path, saved_model_proto);
     if (result.ok()) {
@@ -61,10 +56,7 @@ Status ReadSavedModel(absl::string_view export_dir,
   }
   const std::string saved_model_pbtxt_path =
       io::JoinPath(export_dir, kSavedModelFilenamePbTxt);
-  TF_ASSIGN_OR_RETURN(
-      bool saved_model_pbtxt_exists,
-      internal::FileExists(Env::Default(), saved_model_pbtxt_path));
-  if (saved_model_pbtxt_exists) {
+  if (Env::Default()->FileExists(saved_model_pbtxt_path).ok()) {
     Status result = ReadTextProto(Env::Default(), saved_model_pbtxt_path,
                                   saved_model_proto);
     if (result.ok()) {
@@ -132,9 +124,7 @@ Status ReadSavedModelDebugInfoIfPresent(
 
   const string debug_info_pb_path =
       io::JoinPath(export_dir, "debug", "saved_model_debug_info.pb");
-  TF_ASSIGN_OR_RETURN(bool debug_info_pb_exists,
-                      internal::FileExists(Env::Default(), debug_info_pb_path));
-  if (debug_info_pb_exists) {
+  if (Env::Default()->FileExists(debug_info_pb_path).ok()) {
     GraphDebugInfo debug_info;
     TF_RETURN_IF_ERROR(
         ReadBinaryProto(Env::Default(), debug_info_pb_path, &debug_info));
