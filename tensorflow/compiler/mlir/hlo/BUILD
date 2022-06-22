@@ -1609,6 +1609,7 @@ cc_library(
         "include/mlir-hlo/Transforms/register_gpu_passes.h",
     ],
     deps = [
+        ":gpu_fusion_rewrite",
         ":gpu_kernel_lowering_passes",
         ":gpu_transforms_pass_inc_gen",
         ":hlo_to_gpu_pipeline",
@@ -1862,9 +1863,11 @@ cc_library(
 
 cc_library(
     name = "gpu_kernel_lowering_passes",
-    srcs = ["lib/Transforms/gpu_kernel_lowering_passes.cc"],
-    hdrs = [
+    srcs = [
         "include/mlir-hlo/Transforms/GPUPassDetail.h",
+        "lib/Transforms/gpu_kernel_lowering_passes.cc",
+    ],
+    hdrs = [
         "include/mlir-hlo/Transforms/gpu_passes.h",
     ],
     deps = [
@@ -2146,6 +2149,37 @@ cc_library(
         "@llvm-project//mlir:SCFToControlFlow",
         "@llvm-project//mlir:SCFToGPU",
         "@llvm-project//mlir:ShapeToStandard",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "gpu_fusion_rewrite",
+    srcs = [
+        "include/mlir-hlo/Transforms/GPUPassDetail.h",
+        "lib/Transforms/gpu_fusion_rewrite.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Transforms/gpu_passes.h",
+    ],
+    deps = [
+        ":gpu_transforms_pass_inc_gen",
+        ":hlo",
+        ":hlo_to_gpu_pipeline",
+        ":lhlo",
+        ":transforms_pass_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineDialect",
+        "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:GPUDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:NVVMDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ROCDLDialect",
+        "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:Transforms",
     ],
 )
