@@ -104,7 +104,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd",
         "//tensorflow/lite/delegates/gpu/metal:compute_task",
         "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
-        "//third_party/apple_frameworks:XCTest",
+        #"//third_party/apple_frameworks:XCTest",
     ],
 )
 
@@ -912,7 +912,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd_test_util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task",
         "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
-        "//third_party/apple_frameworks:XCTest",
+        #"//third_party/apple_frameworks:XCTest",
     ],
 )
 
