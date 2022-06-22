@@ -380,7 +380,7 @@ bool GpuConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
   Shape slice_shape =
       ShapeInference::InferSliceShape(new_backward_conv->shape(), start_indices,
                                       limit_indices, strides)
-          .ConsumeValueOrDie();
+          .value();
   CHECK(ShapeUtil::Compatible(slice_shape, backward_conv_shape))
       << ShapeUtil::HumanString(slice_shape) << " vs "
       << ShapeUtil::HumanString(backward_conv_shape);

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 
 #include <memory>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
@@ -136,7 +137,7 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   if (auto* dnn = stream_executor->AsDnn()) {
     auto version_status = dnn->GetVersion();
     if (version_status.ok()) {
-      auto version = version_status.ConsumeValueOrDie();
+      auto version = std::move(version_status).value();
       if (std::make_tuple(version.major_version(), version.minor_version()) <=
               std::make_tuple(7, 3) &&
           instr->custom_call_target() == kCudnnConvBackwardInputCallTarget &&
