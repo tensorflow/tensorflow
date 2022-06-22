@@ -161,9 +161,9 @@ DataServiceDispatcherImpl::DataServiceDispatcherImpl(
       env_(Env::Default()),
       state_(config_) {
   if (config_.work_dir().empty()) {
-    dataset_store_ = absl::make_unique<MemoryDatasetStore>();
+    dataset_store_ = std::make_unique<MemoryDatasetStore>();
   } else {
-    dataset_store_ = absl::make_unique<FileSystemDatasetStore>(
+    dataset_store_ = std::make_unique<FileSystemDatasetStore>(
         DatasetsDir(config_.work_dir()));
   }
 }
@@ -198,8 +198,8 @@ Status DataServiceDispatcherImpl::Start() {
     started_ = true;
     return OkStatus();
   }
-  journal_writer_ = absl::make_unique<FileJournalWriter>(
-      env_, JournalDir(config_.work_dir()));
+  journal_writer_ =
+      std::make_unique<FileJournalWriter>(env_, JournalDir(config_.work_dir()));
   LOG(INFO) << "Attempting to restore dispatcher state from journal in "
             << JournalDir(config_.work_dir());
   Update update;

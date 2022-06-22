@@ -68,7 +68,7 @@ Status FileJournalWriter::EnsureInitialized() {
   std::string journal_file =
       DataServiceJournalFile(journal_dir_, latest_sequence_number + 1);
   TF_RETURN_IF_ERROR(env_->NewAppendableFile(journal_file, &file_));
-  writer_ = absl::make_unique<io::RecordWriter>(file_.get());
+  writer_ = std::make_unique<io::RecordWriter>(file_.get());
   VLOG(1) << "Created journal writer to write to " << journal_file;
   return OkStatus();
 }
@@ -134,7 +134,7 @@ Status FileJournalReader::UpdateFile(const std::string& filename) {
   TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(filename, &file_));
   io::RecordReaderOptions opts;
   opts.buffer_size = 2 << 20;  // 2MB
-  reader_ = absl::make_unique<io::SequentialRecordReader>(file_.get(), opts);
+  reader_ = std::make_unique<io::SequentialRecordReader>(file_.get(), opts);
   return OkStatus();
 }
 
