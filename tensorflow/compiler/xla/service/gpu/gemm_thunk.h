@@ -16,16 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GEMM_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GEMM_THUNK_H_
 
-#include <optional>
-
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
-#include "tensorflow/compiler/xla/status.h"
-
-#if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_blas_lt.h"
-#endif  // GOOGLE_CUDA
+#include "tensorflow/core/lib/core/status.h"
 
 namespace xla {
 namespace gpu {
@@ -50,9 +44,6 @@ class GemmThunk : public Thunk {
   const BufferAllocation::Slice lhs_buffer_;
   const BufferAllocation::Slice rhs_buffer_;
   const BufferAllocation::Slice output_buffer_;
-#if GOOGLE_CUDA
-  std::optional<se::cuda::BlasLt::MatmulPlan> matmul_plan_;
-#endif  // GOOGLE_CUDA
 };
 
 }  // namespace gpu

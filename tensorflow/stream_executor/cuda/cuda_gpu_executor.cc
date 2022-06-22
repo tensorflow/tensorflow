@@ -903,6 +903,14 @@ bool FillBlockDimLimit(GpuDeviceHandle device, BlockDim* block_dim_limit) {
   return true;
 }
 
+bool GpuExecutor::SupportsBlasPlans() const {
+#if CUDA_VERSION >= 11000
+  return true;
+#else
+  return false;
+#endif
+}
+
 bool GpuExecutor::SupportsBlas() const { return true; }
 
 bool GpuExecutor::SupportsFft() const { return true; }
