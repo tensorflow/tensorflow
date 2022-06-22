@@ -136,6 +136,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
+#include "tensorflow/compiler/xla/service/layout_normalization.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/logistic_expander.h"
 #include "tensorflow/compiler/xla/service/loop_schedule_linearizer.h"
@@ -710,9 +711,13 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   {
     HloPassPipeline pipeline("hlo normalization");
     pipeline.AddPass<ReshapeDecomposer>();
-    pipeline.AddPass<ReduceDecomposer>([&](const HloInstruction* r) {
-      return IsReductionFromOrToContiguousDimensions(*r);
-    });
+    pipeline.AddPass<ReduceDecomposer>(
+        /*custom_layout_allowed=*/[&](const HloInstruction* r) {
+          return IsReductionFromOrToContiguousDimensions(*r);
+        });
+    if (hlo_module->config().debug_options().xla_gpu_normalize_layouts()) {
+      pipeline.AddPass<LayoutNormalization>();
+    }
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
