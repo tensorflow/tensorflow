@@ -264,8 +264,17 @@ tflite_flex_android_library(
 # Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
 android_library(
     name = "tensorflowlite_gpu",
-    exports = [
-        ":tensorflowlite_java_gpu",
+    # Note that we need to directly includes all the
+    # required Java source files directly in "srcs" rather than
+    # depending on them via "deps"/"exports"; this is needed when
+    # building the AAR file since the current AAR building process
+    # doesn't include the transitive Java dependencies.
+    srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
+    exports_manifest = 1,
+    manifest = "AndroidManifest.xml",
+    proguard_specs = ["proguard.flags"],
+    deps = [
+        ":tensorflowlite_java",
         ":tensorflowlite_native_gpu",
     ],
 )
@@ -297,7 +306,7 @@ android_library(
 # include the core `tensorflowlite` runtime.
 # Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
 android_library(
-    name = "tensorflowlite_java_gpu",
+    name = "tensorflowlite_gpu_java",
     srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
     exports_manifest = 1,
     manifest = "AndroidManifestGpu.xml",

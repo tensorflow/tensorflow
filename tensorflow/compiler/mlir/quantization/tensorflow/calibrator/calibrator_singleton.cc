@@ -61,7 +61,7 @@ void CalibratorSingleton::ReportMinMax(absl::string_view id, float min,
   }
 }
 
-absl::optional<std::pair<float, float>> CalibratorSingleton::GetMinMax(
+std::optional<std::pair<float, float>> CalibratorSingleton::GetMinMax(
     absl::string_view id) {
   absl::MutexLock lock(&lock_);
 
@@ -69,7 +69,7 @@ absl::optional<std::pair<float, float>> CalibratorSingleton::GetMinMax(
 
   if (instance.id_to_min_.count(id) == 0 ||
       instance.id_to_max_.count(id) == 0) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   return std::pair<float, float>(instance.id_to_min_[id],

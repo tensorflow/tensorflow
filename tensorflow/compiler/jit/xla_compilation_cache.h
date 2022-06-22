@@ -256,9 +256,9 @@ class XlaCompilationCache : public ResourceBase {
   Status SaveSerializedEntry(const XlaSerializedCacheEntry& entry);
 
   // Tries to load a cache entry given a `key` by searching the file directory
-  // supplied during the construction of this class. Returns absl::nullopt if no
+  // supplied during the construction of this class. Returns std::nullopt if no
   // cache entry is found.
-  StatusOr<absl::optional<XlaSerializedCacheEntry>> TryLoadSerializedEntry(
+  StatusOr<std::optional<XlaSerializedCacheEntry>> TryLoadSerializedEntry(
       const XlaSerializedCacheKey& key);
 
   mutex compile_cache_mu_;

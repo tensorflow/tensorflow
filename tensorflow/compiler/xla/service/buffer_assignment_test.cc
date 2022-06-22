@@ -62,7 +62,7 @@ class InstructionListVisitor : public DfsHloVisitorWithDefault {
     // operands.
     instructions_.push_back(hlo);
     VLOG(0) << "List instruction " << hlo->ToString();
-    return Status::OK();
+    return OkStatus();
   }
 
   std::vector<const HloInstruction*> GetInstructions() { return instructions_; }
@@ -169,7 +169,7 @@ class BufferAssignmentTest : public HloTestBase {
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true,
                BufferAssigner::DefaultColorer(),
-               /*must_not_live_out=*/absl::nullopt,
+               /*must_not_live_out=*/std::nullopt,
                /*can_share_buffer=*/nullptr, std::move(preset_assignments))
         .ConsumeValueOrDie();
   }
@@ -608,7 +608,7 @@ TEST_F(BufferAssignmentTest, BasicUniquelyColored) {
       auto& value = alias_analysis->dataflow_analysis().GetValue(id);
       value.set_color(BufferValue::Color(color++));
     }
-    return Status::OK();
+    return OkStatus();
   };
 
   auto buffers = RunColoredBufferAssignment(module.get(), colorer);
@@ -682,7 +682,7 @@ TEST_F(BufferAssignmentTest, BasicPartiallyColored) {
         value.set_color(LogicalBuffer::Color(0));
       }
     }
-    return Status::OK();
+    return OkStatus();
   };
 
   auto buffers = RunColoredBufferAssignment(module.get(), colorer);

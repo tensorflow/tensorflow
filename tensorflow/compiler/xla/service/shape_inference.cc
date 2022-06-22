@@ -57,7 +57,7 @@ Status ExpectArray(const Shape& shape, absl::string_view op_type) {
     return InvalidArgument("Expected array argument for %s, but got %s.",
                            std::string(op_type), ShapeUtil::HumanString(shape));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status VerifyReducerShape(const ProgramShape& reducer_shape,
@@ -156,7 +156,7 @@ Status VerifyReducerShape(const ProgramShape& reducer_shape,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
@@ -209,7 +209,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
 
 StatusOr<PrimitiveType> MaybeUpcast(
     PrimitiveType from_type,
-    absl::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type) {
   if (!preferred_element_type.has_value() ||
       *preferred_element_type == from_type) {
     return from_type;
@@ -645,7 +645,7 @@ Status ValidateDotDimensionNumbers(
                            dimension_numbers.DebugString());
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -653,7 +653,7 @@ Status ValidateDotDimensionNumbers(
 /* static */ StatusOr<Shape> ShapeInference::InferDotOpShape(
     const Shape& lhs, const Shape& rhs,
     const DotDimensionNumbers& dimension_numbers,
-    absl::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type) {
   TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of dot"));
   TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of dot"));
 
@@ -1225,11 +1225,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       ExpectArray(scale_shape, "scale input of batch norm training"));
 
   TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape) ==
-               Status::OK());
+               OkStatus());
   TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(offset_shape) ==
-               Status::OK());
+               OkStatus());
   TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(scale_shape) ==
-               Status::OK());
+               OkStatus());
 
   if (feature_index >= operand_shape.rank()) {
     return InvalidArgument(
@@ -1623,7 +1623,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     const Shape& lhs, const Shape& rhs, int64_t feature_group_count,
     int64_t batch_group_count, const Window& window,
     const ConvolutionDimensionNumbers& dnums,
-    absl::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type) {
   TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of convolution"));
   TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of convolution"));
 
@@ -2465,10 +2465,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     absl::Span<const int64_t> window_strides,
     absl::Span<const std::pair<int64_t, int64_t>> padding,
     absl::Span<const int64_t> lhs_dilation,
-    absl::Span<const int64_t> rhs_dilation) {
+    absl::Span<const int64_t> rhs_dilation,
+    std::optional<std::vector<bool>> window_reversal) {
   const auto verify_size = [&](const size_t x, const char* x_name) {
     if (x == 0 || x == window_dimensions.size()) {
-      return Status::OK();
+      return OkStatus();
     } else {
       return InvalidArgument(
           "%s", absl::StrCat(
@@ -2482,6 +2483,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   TF_RETURN_IF_ERROR(verify_size(padding.size(), "padding entries"));
   TF_RETURN_IF_ERROR(verify_size(lhs_dilation.size(), "lhs dilation factors"));
   TF_RETURN_IF_ERROR(verify_size(rhs_dilation.size(), "rhs dilation factors"));
+  if (window_reversal.has_value()) {
+    TF_RETURN_IF_ERROR(verify_size(window_reversal->size(), "window reversal"));
+  }
 
   Window window;
   for (size_t i = 0; i < window_dimensions.size(); i++) {
@@ -2509,7 +2513,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     } else {
       dim->set_window_dilation(1);
     }
-    dim->set_window_reversal(false);
+    if (window_reversal.has_value() && !window_reversal->empty()) {
+      dim->set_window_reversal(window_reversal->at(i));
+    } else {
+      dim->set_window_reversal(false);
+    }
   }
   return window;
 }
@@ -3415,7 +3423,7 @@ static Status ValidateGatherDimensionNumbers(
         StrJoin(dim_numbers.collapsed_slice_dims(), ", "));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/ StatusOr<Shape> ShapeInference::InferGatherShape(
@@ -3649,7 +3657,7 @@ Status ValidateScatterDimensionNumbers(
         StrJoin(dim_numbers.scatter_dims_to_operand_dims(), ", "));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

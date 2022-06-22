@@ -86,7 +86,7 @@ int SingleOpModel::AddInput(const TensorData& t) {
   if (t.per_channel_quantization) {
     id = AddTensorPerChannelQuant(t);
   } else {
-    id = AddTensor<float>(t, {});
+    id = AddTensor<float>(t, nullptr, 0);
   }
   inputs_.push_back(id);
   return id;
@@ -97,7 +97,7 @@ int SingleOpModel::AddVariableInput(const TensorData& t) {
   if (t.per_channel_quantization) {
     id = AddTensorPerChannelQuant(t);
   } else {
-    id = AddTensor<float>(t, {}, true);
+    id = AddTensor<float>(t, nullptr, 0, true);
   }
   inputs_.push_back(id);
   return id;
@@ -131,7 +131,7 @@ int SingleOpModel::AddOutput(const TensorData& t) {
   if (t.per_channel_quantization) {
     id = AddTensorPerChannelQuant(t);
   } else {
-    id = AddTensor<float>(t, {});
+    id = AddTensor<float>(t, nullptr, 0);
   }
   outputs_.push_back(id);
   return id;

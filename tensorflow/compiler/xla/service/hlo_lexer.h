@@ -161,7 +161,7 @@ class HloLexer {
   TokKind LexNumberOrPattern();
   TokKind LexString();
 
-  absl::optional<int64_t> LexNanPayload(absl::string_view& consumable);
+  std::optional<int64_t> LexNanPayload(absl::string_view& consumable);
 
   absl::string_view buf_;
   const char* current_ptr_;

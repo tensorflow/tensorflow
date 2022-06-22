@@ -108,7 +108,7 @@ Status SingleVirtualDeviceMemoryLimit(const string& platform_name,
     allocated_memory = total_memory * per_process_device_memory_fraction;
   }
   *memory_limit = allocated_memory;
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -128,7 +128,7 @@ Status PluggableDeviceFactory::ListPhysicalDevices(
     devices->push_back(device_name);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PluggableDeviceFactory::GetDeviceDetails(
@@ -136,7 +136,7 @@ Status PluggableDeviceFactory::GetDeviceDetails(
   TF_RETURN_IF_ERROR(ValidatePluggableDeviceMachineManager(platform_name_));
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
   if (platform == nullptr) {
-    return Status::OK();
+    return OkStatus();
   }
 
   int device_count = platform->VisibleDeviceCount();
@@ -151,7 +151,7 @@ Status PluggableDeviceFactory::GetDeviceDetails(
 
   auto desc = desc_status.ConsumeValueOrDie();
   (*details)["device_name"] = desc->name();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PluggableDeviceFactory::CreateDevices(
@@ -160,11 +160,11 @@ Status PluggableDeviceFactory::CreateDevices(
   TF_RETURN_IF_ERROR(ValidatePluggableDeviceMachineManager(platform_name_));
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
   if (platform == nullptr) {
-    return Status::OK();
+    return OkStatus();
   }
 
   if (platform->VisibleDeviceCount() <= 0) {
-    return Status::OK();
+    return OkStatus();
   }
 
   size_t num_tf_devices = INT_MAX;
@@ -211,7 +211,7 @@ Status PluggableDeviceFactory::CreateDevices(
                                              bytes, device_localities[di],
                                              devices));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 static string GetShortDeviceDescription(PlatformDeviceId platform_device_id,
@@ -274,7 +274,7 @@ Status PluggableDeviceFactory::CreatePluggableDevice(
             << GetShortDeviceDescription(platform_device_id, *desc) << ")";
   TF_RETURN_IF_ERROR(pluggable_device->Init(options));
   devices->push_back(std::move(pluggable_device));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PluggableDeviceFactory::GetDeviceLocalities(
@@ -317,7 +317,7 @@ Status PluggableDeviceFactory::GetDeviceLocalities(
             << dev_locality.bus_id() << " numa: " << numa_node
             << "DeviceLocality: " << dev_locality.DebugString();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

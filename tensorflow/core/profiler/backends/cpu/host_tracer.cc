@@ -80,7 +80,7 @@ Status HostTracer::Start() {
   if (!recording_) {
     return errors::Internal("Failed to start TraceMeRecorder");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HostTracer::Stop() {
@@ -89,7 +89,7 @@ Status HostTracer::Stop() {
   }
   events_ = TraceMeRecorder::Stop();
   recording_ = false;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HostTracer::CollectData(XSpace* space) {
@@ -98,12 +98,12 @@ Status HostTracer::CollectData(XSpace* space) {
     return errors::Internal("TraceMeRecorder not stopped");
   }
   if (events_.empty()) {
-    return Status::OK();
+    return OkStatus();
   }
   XPlane* plane = FindOrAddMutablePlaneWithName(space, kHostThreadsPlaneName);
   ConvertCompleteEventsToXPlane(start_timestamp_ns_, std::exchange(events_, {}),
                                 plane);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

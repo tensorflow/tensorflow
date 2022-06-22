@@ -53,9 +53,9 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using absl::optional;
 using se::DeviceMemoryBase;
 using se::dnn::AlgorithmDesc;
+using std::optional;
 using tensorflow::AutotuneResult;
 
 class ScratchAllocator : public se::ScratchAllocator {
@@ -431,7 +431,7 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
     MaybeFusedConvRunner* const runner,
     absl::Span<const DeviceMemoryBase> operand_buffers,
     DeviceMemoryBase result_buffer,
-    absl::optional<ReferenceResult>* reference_result,
+    std::optional<ReferenceResult>* reference_result,
     absl::Span<const AlgorithmDesc> disabled_algos) {
   auto alg = runner->ToAlgorithmDesc();
 
@@ -452,7 +452,7 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
     return result;
   };
 
-  AlgorithmDesc alg_key(alg.algo_id(), alg.tensor_ops_enabled(), absl::nullopt);
+  AlgorithmDesc alg_key(alg.algo_id(), alg.tensor_ops_enabled(), std::nullopt);
 
   if (absl::c_linear_search(disabled_algos, alg_key)) {
     LOG(INFO) << "Omitted potentially buggy algorithm " << alg.ToString()
@@ -493,7 +493,7 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   VLOG(3) << "Trying algorithm " << alg.ToString() << " for "
           << instr->ToString();
 
-  absl::optional<size_t> workspace_size =
+  std::optional<size_t> workspace_size =
       runner->ToAlgorithmDesc().workspace_size();
   if (!workspace_size) {
     return make_failure(AutotuneResult::UNKNOWN,
@@ -705,7 +705,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   // Use the first algorithm that's supported as reference. There isn't a
   // particular reason to use it, as any algorithm suffices. It doesn't make
   // this algorithm considered correct, though.
-  absl::optional<ReferenceResult> reference_result;
+  std::optional<ReferenceResult> reference_result;
 
   TF_ASSIGN_OR_RETURN(std::vector<MaybeFusedConvRunner> runners,
                       GetAlgorithms(config, stream, cudnn_frontend_enabled,

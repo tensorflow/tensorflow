@@ -469,7 +469,7 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
       ShapeInference::InferConvolveShape(
           lhs_literal.shape(), rhs_literal.shape(),
           /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
-          /*preferred_element_type=*/absl::nullopt)
+          /*preferred_element_type=*/std::nullopt)
           .ConsumeValueOrDie();
 
   HloInstruction* lhs_instruction =

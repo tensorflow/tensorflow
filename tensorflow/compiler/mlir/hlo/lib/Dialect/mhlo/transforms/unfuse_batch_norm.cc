@@ -190,7 +190,7 @@ Value CreateReduce(Location loc, Value operand, Value zero,
       RankedTensorType::get({}, operand_type.getElementType());
   block.addArgument(block_argument_type, loc);
   block.addArgument(block_argument_type, loc);
-  auto first_argument = block.args_begin();
+  auto* first_argument = block.args_begin();
   auto second_argument = block.args_rbegin();
   {
     OpBuilder::InsertionGuard guard(rewriter);

@@ -43,7 +43,7 @@ const char kRetvalOp[] = "_Retval";
 const int kMaxCallDepth = 100;
 
 Status AnalyzeResourceUsage(
-    const Graph* graph, const absl::optional<std::string>& function_name,
+    const Graph* graph, const std::optional<std::string>& function_name,
     const int call_depth, const absl::flat_hash_set<int>& resource_arg_indices,
     FunctionLibraryRuntime* lib_runtime,
     absl::flat_hash_map<ResourceUsageAnalysis::NodeInfo,
@@ -82,7 +82,7 @@ bool IsStackOrTensorArraySource(const Node& n) {
 }
 
 void PropagateFromStackOrTensorArraySourceOp(
-    const Node& n, const absl::optional<std::string>& function_name,
+    const Node& n, const std::optional<std::string>& function_name,
     absl::flat_hash_map<const Edge*, ResourceUsageAnalysis::NodeInfo>*
         user_to_source) {
   ResourceUsageAnalysis::NodeInfo src_node_info(function_name, n.name(),
@@ -97,7 +97,7 @@ void PropagateFromStackOrTensorArraySourceOp(
 }
 
 Status PropagateFromArgOp(
-    const Node& n, const absl::optional<std::string>& function_name,
+    const Node& n, const std::optional<std::string>& function_name,
     const absl::flat_hash_set<int>& resource_arg_indices,
     absl::flat_hash_map<const Edge*, ResourceUsageAnalysis::NodeInfo>*
         user_to_source) {
@@ -105,7 +105,7 @@ Status PropagateFromArgOp(
 
   int index;
   TF_RETURN_IF_ERROR(GetNodeAttr(n.attrs(), "index", &index));
-  if (!resource_arg_indices.contains(index)) return Status::OK();
+  if (!resource_arg_indices.contains(index)) return OkStatus();
 
   TF_RET_CHECK(function_name.has_value())
       << "ResourceUsageAnalysis does not support analyzing _Arg nodes "
@@ -123,12 +123,12 @@ Status PropagateFromArgOp(
     (*user_to_source)[o] = src_node_info;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status UpdateResourceUsageFromFunctionBodyAnalysis(
     const Node& call_node,
-    const absl::optional<absl::string_view>& caller_function_name,
+    const std::optional<absl::string_view>& caller_function_name,
     const FunctionBody& fbody,
     const absl::flat_hash_map<
         ResourceUsageAnalysis::NodeInfo,
@@ -177,11 +177,11 @@ Status UpdateResourceUsageFromFunctionBodyAnalysis(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PropagateThroughCallOp(
-    const Node& n, const absl::optional<std::string>& function_name,
+    const Node& n, const std::optional<std::string>& function_name,
     const int call_depth, FunctionLibraryRuntime* lib_runtime,
     absl::flat_hash_map<const Edge*, ResourceUsageAnalysis::NodeInfo>*
         user_to_source,
@@ -220,7 +220,7 @@ Status PropagateThroughCallOp(
   TF_RETURN_IF_ERROR(UpdateResourceUsageFromFunctionBodyAnalysis(
       n, function_name, *fbody, called_function_source_to_path, user_to_source,
       source_to_path));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Analyzes pass through values for Identity and IdentityN ops.
@@ -247,11 +247,11 @@ Status PropagateThroughIdentityOp(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AnalyzeResourceUsage(
-    const Graph* graph, const absl::optional<std::string>& function_name,
+    const Graph* graph, const std::optional<std::string>& function_name,
     const int call_depth, const absl::flat_hash_set<int>& resource_arg_indices,
     FunctionLibraryRuntime* lib_runtime,
     absl::flat_hash_map<ResourceUsageAnalysis::NodeInfo,
@@ -314,7 +314,7 @@ Status AnalyzeResourceUsage(
                                          it.first->dst()->type_string());
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // anonymous namespace

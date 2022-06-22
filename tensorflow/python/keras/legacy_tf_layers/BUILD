@@ -33,7 +33,7 @@ py_library(
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras/engine:base_layer",
         "//tensorflow/python/keras/mixed_precision:policy",
-        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/trackable:base",
     ],
 )
 

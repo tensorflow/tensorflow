@@ -38,7 +38,7 @@ namespace {
 
 se::port::StatusOr<bool> HasInputsWithMismatchingDeadness(
     const DeadnessAnalysis& deadness_analysis, const Node& n) {
-  absl::optional<DeadnessAnalysis::DeadnessPredicate> pred;
+  std::optional<DeadnessAnalysis::DeadnessPredicate> pred;
   for (const Edge* edge : n.in_edges()) {
     TF_ASSIGN_OR_RETURN(
         DeadnessAnalysis::DeadnessPredicate this_pred,

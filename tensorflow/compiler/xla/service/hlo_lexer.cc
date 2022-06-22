@@ -224,10 +224,10 @@ TokKind HloLexer::LexToken() {
   }
 }
 
-absl::optional<int64_t> HloLexer::LexNanPayload(absl::string_view& consumable) {
+std::optional<int64_t> HloLexer::LexNanPayload(absl::string_view& consumable) {
   static LazyRE2 payload_pattern = {R"(\(0x[0-9a-fA-F]+\))"};
   if (!RE2::Consume(&consumable, *payload_pattern)) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   auto slice = StringViewFromPointers(current_ptr_, consumable.data());
   current_ptr_ = consumable.data();
@@ -239,11 +239,11 @@ absl::optional<int64_t> HloLexer::LexNanPayload(absl::string_view& consumable) {
   if (tensorflow::strings::HexStringToUint64(slice, &payload_value)) {
     if (payload_value <= 0 || payload_value > NanPayloadBitMask<double>()) {
       LOG(ERROR) << "NaN payload out of range: " << payload_value;
-      return absl::nullopt;
+      return std::nullopt;
     }
     return payload_value;
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 // Lex a shape, name, keyword, attribute name, the dim labels pattern, and
@@ -289,7 +289,7 @@ TokKind HloLexer::LexIdentifier() {
   }
 
   if (identifier == "nan") {
-    absl::optional<int64_t> payload;
+    std::optional<int64_t> payload;
     if (PeekCurrentChar() == '(') {
       absl::string_view consumable =
           StringViewFromPointers(current_ptr_, buf_.data() + buf_.size());
@@ -429,7 +429,7 @@ TokKind HloLexer::LexNumberOrPattern() {
   if (RE2::Consume(&consumable, *neg_nan)) {
     current_ptr_ = consumable.data();
 
-    absl::optional<int64_t> payload;
+    std::optional<int64_t> payload;
     if (PeekCurrentChar() == '(') {
       payload = LexNanPayload(consumable);
       if (!payload.has_value()) {

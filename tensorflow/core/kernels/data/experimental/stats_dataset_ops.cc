@@ -83,7 +83,7 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
-      return Status::OK();
+      return OkStatus();
     }
 
     Status CheckExternalState() const override {
@@ -99,7 +99,7 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
       Node* tag_node;
       TF_RETURN_IF_ERROR(b->AddScalar(tag_, &tag_node));
       TF_RETURN_IF_ERROR(b->AddDataset(this, {input_node, tag_node}, output));
-      return Status::OK();
+      return OkStatus();
     }
 
    private:
@@ -140,14 +140,14 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
                           IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-        return Status::OK();
+        return OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-        return Status::OK();
+        return OkStatus();
       }
 
      private:
@@ -218,7 +218,7 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
       Node* tag_node;
       TF_RETURN_IF_ERROR(b->AddScalar(tag_, &tag_node));
       TF_RETURN_IF_ERROR(b->AddDataset(this, {input_node, tag_node}, output));
-      return Status::OK();
+      return OkStatus();
     }
 
    private:
@@ -261,14 +261,14 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
                           IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-        return Status::OK();
+        return OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-        return Status::OK();
+        return OkStatus();
       }
 
      private:

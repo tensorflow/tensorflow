@@ -79,14 +79,14 @@ class PreemptionSyncManagerTest : public ::testing::Test {
     // Create preempt sync manager for task 1.
     auto preempt_notifier = std::make_unique<FakePreemptionNotifier>();
     preempt_notifier_ = preempt_notifier.get();
-    TF_CHECK_OK(preempt_sync_mgr_->Initialize(
-        Env::Default(), coord_agent_.get(), std::move(preempt_notifier)));
+    TF_CHECK_OK(preempt_sync_mgr_->Initialize(coord_agent_.get(),
+                                              std::move(preempt_notifier)));
 
     // Create preempt sync manager for task 2.
     auto preempt_notifier2 = std::make_unique<FakePreemptionNotifier>();
     preempt_notifier2_ = preempt_notifier2.get();
-    TF_CHECK_OK(preempt_sync_mgr2_->Initialize(
-        Env::Default(), coord_agent2_.get(), std::move(preempt_notifier2)));
+    TF_CHECK_OK(preempt_sync_mgr2_->Initialize(coord_agent2_.get(),
+                                               std::move(preempt_notifier2)));
   }
   ~PreemptionSyncManagerTest() override {
     // Tear down coordination service objects in order.

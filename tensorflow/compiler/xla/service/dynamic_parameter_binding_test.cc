@@ -64,7 +64,7 @@ ENTRY main {
                    DynamicParameterBinding::DynamicDimension{1, {}, 0}));
 
   auto test = [&](const DynamicParameterBinding& binding) {
-    absl::optional<DynamicParameterBinding::DynamicParameter> param =
+    std::optional<DynamicParameterBinding::DynamicParameter> param =
         binding.GetBinding(
             DynamicParameterBinding::DynamicDimension{/*parameter_num=*/1,
                                                       /*parameter_index=*/{},
@@ -102,7 +102,7 @@ ENTRY main {
                    DynamicParameterBinding::DynamicDimension{0, {1}, 0}));
 
   auto test = [&](const DynamicParameterBinding& binding) {
-    absl::optional<DynamicParameterBinding::DynamicParameter> param =
+    std::optional<DynamicParameterBinding::DynamicParameter> param =
         binding.GetBinding(
             DynamicParameterBinding::DynamicDimension{/*parameter_num=*/0,
                                                       /*parameter_index=*/{1},
@@ -145,7 +145,7 @@ ENTRY main {
                    DynamicParameterBinding::DynamicDimension{0, {1}, 1}));
 
   auto test = [&](const DynamicParameterBinding& binding) {
-    absl::optional<DynamicParameterBinding::DynamicParameter> param =
+    std::optional<DynamicParameterBinding::DynamicParameter> param =
         binding.GetBinding(
             DynamicParameterBinding::DynamicDimension{/*parameter_num=*/0,
                                                       /*parameter_index=*/{1},
@@ -155,7 +155,7 @@ ENTRY main {
     EXPECT_EQ(param->parameter_num, 0);
     EXPECT_EQ(param->parameter_index, ShapeIndex({0}));
 
-    absl::optional<DynamicParameterBinding::DynamicParameter> param2 =
+    std::optional<DynamicParameterBinding::DynamicParameter> param2 =
 
         binding.GetBinding(
             DynamicParameterBinding::DynamicDimension{/*parameter_num=*/0,

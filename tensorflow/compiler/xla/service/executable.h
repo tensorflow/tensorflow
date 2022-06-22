@@ -308,7 +308,7 @@ class Executable {
   virtual Status PopulateExecutionProfile(
       ExecutionProfile* execution_profile,
       HloExecutionProfile* hlo_execution_profile, se::Stream* stream) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Convenience wrapper for calling Executable::ExecuteOnStream. Sets up a

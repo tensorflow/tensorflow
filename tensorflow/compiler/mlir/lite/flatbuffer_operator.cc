@@ -329,7 +329,7 @@ Status mlir::CustomOptionsToAttributes(
       OpaqueElementsAttr::get(builder.getContext()->getLoadedDialect("tfl"),
                               type, content)));
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Pull in FlatBuffer writers for TFLite generated using TableGen

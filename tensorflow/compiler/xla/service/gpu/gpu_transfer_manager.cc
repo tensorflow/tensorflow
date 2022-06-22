@@ -102,12 +102,12 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
         const Shape& buffer_shape =
             ShapeUtil::GetSubshape(*device_shape, index);
         if (buffer_shape.IsTuple()) {
-          return Status::OK();
+          return ::tensorflow::OkStatus();
         }
         Shape& device_sub_shape =
             *ShapeUtil::GetMutableSubshape(device_shape, index);
         if (device_sub_shape.is_static()) {
-          return Status::OK();
+          return ::tensorflow::OkStatus();
         }
 
         // Read the dynamic shape metadata from the device stream.  The dynamic
@@ -124,7 +124,7 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
             stream->parent()->GetSubBuffer(&buffer_8, offset, metadata_size);
         copies.push_back(std::make_pair(metadata_buffer, &device_sub_shape));
 
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       }));
 
   // Check out pinned memory for each buffer we want to copy.  If there aren't
@@ -184,7 +184,7 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
   device_shape->clear_dynamic_dimensions();
   TF_RET_CHECK(ShapeUtil::DynamicShapeIsCompatible(*device_shape,
                                                    original_device_shape));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace gpu

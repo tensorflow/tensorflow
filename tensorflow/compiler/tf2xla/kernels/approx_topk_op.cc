@@ -149,7 +149,8 @@ class FallbackApproxTopKOp : public ApproxTopKOpBase {
 
 // Register for TPU
 REGISTER_XLA_OP(Name("ApproxTopK")
-                    .Device({DEVICE_TPU, DEVICE_TPU_XLA_JIT})
+                    .Device(absl::Span<const absl::string_view>{
+                        DEVICE_TPU, DEVICE_TPU_XLA_JIT})
                     .TypeConstraint("T", {DT_FLOAT, DT_HALF, DT_BFLOAT16}),
                 TpuApproxTopKOp);
 

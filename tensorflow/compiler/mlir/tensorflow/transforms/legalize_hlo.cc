@@ -2905,12 +2905,16 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
   LogicalResult matchAndRewrite(
       mhlo::ScatterOp scatter_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    Value operand = scatter_op.operand();
+    OperandRange operands = scatter_op.operands();
     Value indices = scatter_op.scatter_indices();
-    Value updates = scatter_op.updates();
-    ShapedType operand_type = operand.getType().cast<ShapedType>();
+    OperandRange updates = scatter_op.updates();
+    if (operands.size() != 1 || updates.size() != 1) return failure();
+
+    ShapedType operand_type = operands[0].getType().cast<ShapedType>();
     ShapedType indices_type = indices.getType().cast<ShapedType>();
-    ShapedType updates_type = updates.getType().cast<ShapedType>();
+    ShapedType updates_type = updates[0].getType().cast<ShapedType>();
+
+    Value new_updates = updates[0];
 
     // Can only convert with static shaped scatter.
     if (!operand_type.hasStaticShape() || !indices_type.hasStaticShape() ||
@@ -2937,7 +2941,7 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
     // in the update tensor.
     auto update_window_dims = scatter_dimension_numbers.getUpdateWindowDims();
     if (failed(CanonicalizeScatterUpdates(scatter_op, update_window_dims,
-                                          indices, indices_type, updates,
+                                          indices, indices_type, new_updates,
                                           updates_type, rewriter))) {
       return failure();
     }
@@ -2951,8 +2955,8 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
         IsIotaAttr(scatter_dims_to_operand_dims,
                    indices_type.getShape().back())) {
       rewriter.replaceOpWithNewOp<TfOp>(scatter_op,
-                                        scatter_op.getResult().getType(),
-                                        operand, indices, updates);
+                                        scatter_op.getResult(0).getType(),
+                                        operands[0], indices, new_updates);
       return success();
     }
     // Insert tranposes to support scatter operations generated from
@@ -2984,19 +2988,20 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
 
     Location loc = scatter_op.getLoc();
     auto transposed_operand = rewriter.create<mhlo::TransposeOp>(
-        loc, permutation_and_shape.shape, operand,
+        loc, permutation_and_shape.shape, operands[0],
         permutation_and_shape.permutation);
 
     // Apply TF scatter to update the trailing dimensions of the
     // transposed operand.
-    auto tf_scatter_op = rewriter.create<TfOp>(
-        loc, permutation_and_shape.shape, transposed_operand, indices, updates);
+    auto tf_scatter_op =
+        rewriter.create<TfOp>(loc, permutation_and_shape.shape,
+                              transposed_operand, indices, new_updates);
 
     // Reverse the earlier transpose.
     auto inverse_permutation =
         GetInversePermutation(permutation_array, rewriter);
     rewriter.replaceOpWithNewOp<mhlo::TransposeOp>(
-        scatter_op, scatter_op.getResult().getType(), tf_scatter_op,
+        scatter_op, scatter_op.getResult(0).getType(), tf_scatter_op,
         inverse_permutation);
 
     return success();

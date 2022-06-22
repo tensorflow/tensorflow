@@ -88,7 +88,7 @@ Status XLATypeToCpp(xla::PrimitiveType type, string* str) {
       return errors::Unimplemented("XLA type ", xla::PrimitiveType_Name(type),
                                    " has no equivalent in C++");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns the sum of the size of each buffer in `buffer_infos`.
@@ -150,7 +150,7 @@ Status AddRewritesForShape(int i, const xla::Shape& shape,
   rewrites->push_back({"{{DIM_SIZES}}", dim_sizes});
   rewrites->push_back({"{{INDICES}}", indices});
   rewrites->push_back({"{{COUNT}}", absl::StrCat(count)});
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns code rewritten by replacing all rewrite pairs, with an extra rewrite
@@ -214,7 +214,7 @@ Status GenArgMethods(const tf2xla::Config& config,
       *methods += RewriteWithName("_" + config.feed(i).name(), code, rewrites);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Generate methods for results (outputs).
@@ -268,7 +268,7 @@ Status GenResultMethods(const tf2xla::Config& config,
       *methods += RewriteWithName("_" + config.fetch(i).name(), code, rewrites);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Generate methods for variables.
@@ -309,7 +309,7 @@ Status GenVariableMethods(const tf2xla::Config& config,
     *methods += RewriteWithName(
         var.name().empty() ? var.node_name() : var.name(), code, rewrites);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Generates code implementing {Arg,Result}Names(), where T is one of
@@ -366,7 +366,7 @@ Status ValidateFeedFetchCppNames(const tf2xla::Config& config) {
           ValidateCppIdent(variable.node_name(), "variable name"));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns a list of C++ expressions that, when executed, will construct the
@@ -728,7 +728,7 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
       {"{{BUFFER_INFOS_AS_STRING}}",
        absl::StrJoin(buffer_infos_as_strings, ",\n")}};
   absl::StrReplaceAll(rewrites, header);
-  return Status::OK();
+  return OkStatus();
 }
 
 static string CreateUniqueIdentifier(const CodegenOpts& opts,
@@ -785,7 +785,7 @@ Status GenerateMetadata(const CodegenOpts& opts,
       std::move(embedded_protobufs.cpp_shims[1].variable_decl));
   metadata_result->object_file_data =
       std::move(embedded_protobufs.object_file_data);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseCppClass(const string& cpp_class, string* class_name,
@@ -811,7 +811,7 @@ Status ParseCppClass(const string& cpp_class, string* class_name,
       *class_name = parts[i];
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ValidateCppIdent(absl::string_view ident, absl::string_view msg) {
@@ -835,7 +835,7 @@ Status ValidateCppIdent(absl::string_view ident, absl::string_view msg) {
       return errors::InvalidArgument("illegal char: ", msg);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tfcompile

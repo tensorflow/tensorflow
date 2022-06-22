@@ -90,7 +90,7 @@ class DynamicParameterBinding {
   // dimension `dim_num` of parameter `param_num` at `param_index`.
   //
   // Returns nullopt if the binding is not set.
-  absl::optional<DynamicParameter> GetBinding(
+  std::optional<DynamicParameter> GetBinding(
       const DynamicDimension& dynamic_dimension) const;
 
   using BindingFn =

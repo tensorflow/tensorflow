@@ -218,7 +218,7 @@ TfLiteStatus Interpreter::ResizeInputTensorStrict(
 }
 
 TfLiteStatus Interpreter::Invoke() {
-  ScopedRuntimeInstrumentationProfile scoped_runtime_event(installed_profiler_,
+  ScopedRuntimeInstrumentationProfile scoped_runtime_event(root_profiler_.get(),
                                                            "invoke");
 
   // Denormal floating point numbers could cause significant slowdown on
@@ -425,15 +425,24 @@ bool Interpreter::IsFullyDelegated() const {
 }
 
 void Interpreter::SetProfilerImpl(std::unique_ptr<Profiler> profiler) {
-  owned_profiler_ = std::move(profiler);
-  installed_profiler_ = owned_profiler_.get();
+  if (profiler == nullptr) {
+    root_profiler_ = nullptr;
+    return;
+  }
+  if (root_profiler_ == nullptr) {
+    root_profiler_ = std::make_unique<profiling::RootProfiler>();
+  } else {
+    // Removes all previously registered profilers.
+    root_profiler_->RemoveChildProfilers();
+  }
+  root_profiler_->AddProfiler(std::move(profiler));
   SetSubgraphProfiler();
 }
 
 void Interpreter::SetSubgraphProfiler() {
   for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
        ++subgraph_index) {
-    subgraphs_[subgraph_index]->SetProfiler(installed_profiler_,
+    subgraphs_[subgraph_index]->SetProfiler(root_profiler_.get(),
                                             subgraph_index);
   }
 }

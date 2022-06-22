@@ -253,6 +253,9 @@ class CoordinationServiceAgent {
   virtual void CancelBarrierAsync(const std::string& barrier_id,
                                   StatusCallback done) = 0;
 
+  // Get unowned Env* that the agent was initialized with.
+  virtual StatusOr<Env*> GetEnv() = 0;
+
  protected:
   // Set the service agent to error status and invoke the error callback.
   // Note: different from ReportError, this does not report the error status to

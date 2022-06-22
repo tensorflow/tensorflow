@@ -147,13 +147,13 @@ class MultiProcessCluster(object):
     return [worker.worker_address() for worker in self._local_workers]
 
   def remote_worker_addresses(self):
-    return [worker[0] for worker in self._remote_workers]
+    return [worker_address for (worker_address, _) in self._remote_workers]
 
   def _stop(self):
     for worker in self._local_workers:
       worker.stop()
-    for worker in self._remote_workers:
-      worker[1].terminate()
+    for (_, worker_process) in self._remote_workers:
+      worker_process.kill()
     self._dispatcher._stop()
 
   def __del__(self):

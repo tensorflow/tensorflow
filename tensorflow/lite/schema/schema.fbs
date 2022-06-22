@@ -220,10 +220,6 @@ table Tensor {
   // Encodes `shape` with unknown dimensions. Unknown dimensions are
   // represented with -1.
   shape_signature:[int]; // Optional.
-
-  // If false, the rank or the number of tensor dimensions is unknown.
-  // If false, "shape" must be [].
-  has_rank: bool = false;
 }
 
 // A list of builtin operators. Builtin operators are slightly faster than custom

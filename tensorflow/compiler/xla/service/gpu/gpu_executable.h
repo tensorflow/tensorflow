@@ -123,7 +123,7 @@ class GpuExecutable : public Executable {
 
     // Whether this output is hinted to alias a parameter (BufferAllocation*
     // would indicate the aliased parameter), and what kind of alias it is.
-    absl::optional<HloInputOutputAliasConfig::Alias> alias_config;
+    std::optional<HloInputOutputAliasConfig::Alias> alias_config;
   };
 
   struct Params {

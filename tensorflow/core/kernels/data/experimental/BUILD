@@ -376,7 +376,6 @@ tf_kernel_library(
         "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/core/framework:op_requires",
         "//tensorflow/core/kernels/data:iterator_ops",
-        "@com_google_absl//absl/strings",
     ],
 )
 

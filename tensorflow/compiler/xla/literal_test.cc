@@ -1517,7 +1517,7 @@ TEST_F(LiteralUtilTest, BitcastConvertBetweenInvalidTypes) {
   Status status =
       literal.BitcastConvert(ShapeUtil::ChangeElementType(literal.shape(), F64))
           .status();
-  EXPECT_NE(Status::OK(), status);
+  EXPECT_NE(::tensorflow::OkStatus(), status);
   EXPECT_TRUE(absl::StrContains(status.error_message(),
                                 "to a shape of different size"));
 }

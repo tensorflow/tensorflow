@@ -900,35 +900,20 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addPass(mlir::createConvertTensorToLinalgPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::createLinalgInitTensorToAllocTensorPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::bufferization::createBufferizationBufferizePass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::createLinalgBufferizePass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::createConvertLinalgToLoopsPass());
 
-  // Bufferize Linalg on tensors program.
   // Always run canonicalizer (which does dead code removal) before
   // bufferizing anything.
   pm.addPass(mlir::createCanonicalizerPass());
-  // Now bufferize all the compute operations (hlo + linalg) and func
-  // signature.
-  pm.addPass(mlir::CreateComputeOpAndFuncBufferizePass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::gml_st::CreateTiledLoopBufferizePass());
-  // Turn tensor constants into global memrefs.
-  // TODO(kramerb): Expose the patterns and add them to the bufferize passes.
-  // pm.addPass(mlir::createTensorConstantBufferizePass());
-  // Always run canonicalizer (which does dead code removal) before
-  // bufferizing anything.
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::CreateFinalBufferizePass(
-      /*alignment=*/xla::cpu_function_runtime::Align()));
+  pm.addPass(mlir::hlo::CreateOneShotBufferizePass());
+
+  // Handle framework specific requirements for buffers and then insert
+  // deallocations for temporary buffers.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createConvertLinalgToLoopsPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::bufferization::createBufferResultsToOutParamsPass());
   pm.addPass(mlir::mhlo::CreateOutlineWithXLAFrameworkPass());
   pm.addPass(mlir::createInlinerPass());
-
-  // Deallocate all temporary buffers.
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createBufferDeallocationPass());
 
@@ -965,20 +950,23 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   return ::tensorflow::OkStatus();
 }
 
-StatusOr<mlir::ModuleOp> createMLIRModule(HloModule* module,
-                                          mlir::MLIRContext& mlir_context,
-                                          BufferAssignment* assignment) {
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> createMLIRModule(
+    HloModule* module, mlir::MLIRContext& mlir_context,
+    BufferAssignment* assignment) {
   LoadMLIRDialects(mlir_context);
   mlir::OpBuilder builder(&mlir_context);
   auto mlir_module = builder.create<mlir::ModuleOp>(builder.getUnknownLoc());
   TF_RETURN_IF_ERROR(ConvertHloToMlirHlo(mlir_module, module));
 
-  // Add buffer mappings
-  llvm::SmallVector<mlir::Attribute> operand_mapping;
+  // Add buffer mappings. The first attribute is the index of the slice, the
+  // second is a boolean attribute on whether the allocation is writeable.
+  llvm::SmallVector<std::pair<mlir::Attribute, mlir::Attribute>>
+      operand_mapping;
   for (auto i : module->entry_computation()->parameter_instructions()) {
     auto slice = assignment->GetUniqueTopLevelSlice(i);
-    operand_mapping.push_back(
-        builder.getI32IntegerAttr(static_cast<int32_t>(slice->index())));
+    operand_mapping.emplace_back(
+        builder.getI32IntegerAttr(static_cast<int32_t>(slice->index())),
+        builder.getBoolAttr(!slice->allocation()->is_readonly()));
   }
 
   auto root_instr = module->entry_computation()->root_instruction();
@@ -999,7 +987,10 @@ StatusOr<mlir::ModuleOp> createMLIRModule(HloModule* module,
   mlir_module->walk([&](mlir::func::FuncOp f) {
     if (f.getSymName() == "main") {
       for (auto& p : llvm::enumerate(operand_mapping)) {
-        f.setArgAttr(p.index(), "xla_framework.input_mapping", p.value());
+        f.setArgAttr(p.index(), "xla_framework.input_mapping", p.value().first);
+        // Mark argument as (non-)writeable for bufferization. This ensures that
+        // entry parameters are not overwritten.
+        f.setArgAttr(p.index(), "bufferization.writable", p.value().second);
       }
       f->setAttr("xla_framework.result_mapping", result_mapping);
     }
@@ -1009,7 +1000,7 @@ StatusOr<mlir::ModuleOp> createMLIRModule(HloModule* module,
                  mlir::ArrayAttr::get(f.getContext(), result_inner_mapping));
     }
   });
-  return mlir_module;
+  return {mlir_module};
 }
 
 struct ComputationToEmit {
@@ -1389,13 +1380,13 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       TF_ASSIGN_OR_RETURN(
           auto mlir_module,
           createMLIRModule(module, mlir_context, assignment.get()));
-      TF_RETURN_IF_ERROR(LowerMLIRModule(mlir_module, mlir_context));
+      TF_RETURN_IF_ERROR(LowerMLIRModule(*mlir_module, mlir_context));
 
       llvm::cast<mlir::LLVM::LLVMFuncOp>(
-          mlir_module.lookupSymbol("main_xla_framework"))
+          mlir_module->lookupSymbol("main_xla_framework"))
           .setName(options.entry_point_name());
 
-      llvm_module = mlir::translateModuleToLLVMIR(mlir_module, llvm_context);
+      llvm_module = mlir::translateModuleToLLVMIR(*mlir_module, llvm_context);
       // Set missing information
       llvm_module->setDataLayout(target_machine->createDataLayout());
       llvm_module->setTargetTriple(triple.getTriple());

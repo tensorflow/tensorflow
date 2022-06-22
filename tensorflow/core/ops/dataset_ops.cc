@@ -1223,6 +1223,7 @@ REGISTER_OP("MultiDeviceIteratorGetNextFromShard")
 REGISTER_OP("MultiDeviceIteratorToStringHandle")
     .Input("multi_device_iterator: resource")
     .Output("string_handle: string")
+    .SetForwardTypeFn(full_type::Encode(TFT_STRING, 0))
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("MultiDeviceIteratorFromStringHandle")
@@ -1230,6 +1231,7 @@ REGISTER_OP("MultiDeviceIteratorFromStringHandle")
     .Output("multi_device_iterator: resource")
     .Attr("output_types: list(type) >= 0 = []")
     .Attr("output_shapes: list(shape) >= 0 = []")
+    .SetForwardTypeFn(full_type::Decode(TFT_STRING, 0))
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("OptionsDataset")

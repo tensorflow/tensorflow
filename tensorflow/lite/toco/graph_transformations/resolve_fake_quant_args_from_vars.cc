@@ -32,13 +32,13 @@ namespace toco {
   const auto fakequant_it = model->operators.begin() + op_index;
   auto* fakequant_base_op = fakequant_it->get();
   if (fakequant_base_op->type != OperatorType::kFakeQuant) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   auto* fakequant_op = static_cast<FakeQuantOperator*>(fakequant_base_op);
 
   if (fakequant_op->minmax) {
     // Already resolved.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   CHECK_EQ(fakequant_op->inputs.size(), 3);
@@ -46,7 +46,7 @@ namespace toco {
   // resolved to constant arrays.
   for (int i = 1; i <= 2; i++) {
     if (!IsConstantParameterArray(*model, fakequant_op->inputs[i])) {
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     }
   }
 
@@ -79,7 +79,7 @@ namespace toco {
   }
   fakequant_op->inputs.resize(1);
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

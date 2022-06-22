@@ -84,7 +84,7 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
       Rendezvous::Factory{
           [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
             *r = new IntraProcessRendezvous(device_mgr);
-            return Status::OK();
+            return OkStatus();
           }});
 
   string fetch_node = "";
@@ -119,7 +119,7 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
   *result = WrapUnique(new Dataset(
       finalized_dataset, dataset, device_mgr.release(), pflr.release(),
       flib_def.release(), pool.release(), std::move(runner)));
-  return Status::OK();
+  return OkStatus();
 }  // static
 
 Status Dataset::MakeIterator(
@@ -150,7 +150,7 @@ Status Dataset::MakeIterator(
       ctx.get(), /*parent=*/nullptr, "Iterator", &iterator));
   *result = WrapUnique(new Iterator(iterator.release(), ctx.release()));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Dataset::MakeIterator(std::unique_ptr<Iterator>* result) {

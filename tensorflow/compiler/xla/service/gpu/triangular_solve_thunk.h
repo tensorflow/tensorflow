@@ -19,7 +19,6 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -71,6 +70,16 @@ class TriangularSolveThunk : public Thunk {
   const int64_t a_batch_stride_;
   const int64_t b_batch_stride_;
 };
+
+Status RunTriangulatSolve(se::DeviceMemoryBase a_data,
+                          se::DeviceMemoryBase b_data,
+                          se::DeviceMemoryBase temp_data,
+                          se::GpuAsmOpts asm_opts, se::blas::UpperLower uplo,
+                          se::blas::Side side, se::blas::Diagonal unit_diagonal,
+                          se::blas::Transpose transpose_a, PrimitiveType type,
+                          int64_t batch_size, int64_t m, int64_t n,
+                          int64_t a_batch_stride, int64_t b_batch_stride,
+                          se::Stream* stream);
 
 }  // namespace gpu
 }  // namespace xla

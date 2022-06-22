@@ -90,7 +90,7 @@ class CopyRemoval : bufferization::BufferPlacementTransformationBase {
       // dealloc, as it ended the original source range. If we do the reuse,
       // we have to remove that dealloc to extend the liferange of the original
       // value.
-      auto lastOp = userange_.getOperation(intersect.back().end);
+      auto *lastOp = userange_.getOperation(intersect.back().end);
       if (!isDeallocOperationFor(lastOp, copySource)) continue;
       toErase.insert(lastOp);
 
@@ -138,7 +138,7 @@ class CopyRemoval : bufferization::BufferPlacementTransformationBase {
         // Remember the alias.
         alias_to_alloc_map_.insert({alias, allocValue});
         // If any of the uses are a copy, we have a canidate.
-        for (auto user : alias.getUsers()) {
+        for (auto *user : alias.getUsers()) {
           auto copyOp = dyn_cast<CopyOpInterface>(user);
           if (!copyOp) continue;
           if (copyOp.getSource() != alias) continue;

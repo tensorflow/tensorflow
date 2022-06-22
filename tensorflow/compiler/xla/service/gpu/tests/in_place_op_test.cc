@@ -43,7 +43,7 @@ TEST_F(InPlaceOpTest, DynamicUpdateSliceWithMultipleConsumers) {
     }
   )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, absl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
 }  // namespace

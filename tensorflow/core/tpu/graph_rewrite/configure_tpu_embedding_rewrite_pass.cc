@@ -78,7 +78,7 @@ Status AddSynchronizationNode(
       graph->AddEdge(sync_node, dep.src_output, dep.dst, dep.dst_input);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddPartitionerEmbeddingNode(const string& configuration_device_name,
@@ -98,7 +98,7 @@ Status AddPartitionerEmbeddingNode(const string& configuration_device_name,
     graph->AddControlEdge(src_node, *partitioner_node);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddMemoryConfigurationEmbeddingNode(const string& host_device_name,
@@ -114,7 +114,7 @@ Status AddMemoryConfigurationEmbeddingNode(const string& host_device_name,
   TF_ASSIGN_OR_RETURN(*embedding_node, graph->AddNode(embedding_def));
   (*embedding_node)->set_assigned_device_name(host_device_name);
   graph->AddEdge(partitioner_node, 0, *embedding_node, 0);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddHostConfigurationEmbeddingNode(const string& host_device_name,
@@ -139,7 +139,7 @@ Status AddHostConfigurationEmbeddingNode(const string& host_device_name,
   for (int i = 0; i < memory_nodes.size(); ++i) {
     graph->AddEdge(memory_nodes[i], 0, *embedding_node, i + 1);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddSetupPropagationEmbeddingNode(
@@ -160,7 +160,7 @@ Status AddSetupPropagationEmbeddingNode(
   for (int i = 0; i < embedding_nodes.size(); ++i) {
     graph->AddEdge(embedding_nodes[i], 0, *node, i);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddConnectEmbeddingNode(const string& host_device_name,
@@ -308,7 +308,7 @@ Status ConfigureTPUEmbeddingRewritePass::Run(
                   all_end_nodes, output_dependencies, graph));
             }
 
-            return Status::OK();
+            return OkStatus();
           }));
 
   if (VLOG_IS_ON(1)) {
@@ -316,7 +316,7 @@ Status ConfigureTPUEmbeddingRewritePass::Run(
   }
 
   VLOG(1) << "ConfigureTPUEmbeddingRewritePass::Run() finished";
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

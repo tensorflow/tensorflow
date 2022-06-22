@@ -38,7 +38,7 @@ py::bytes WrappedSetSignatureDefMap(
     signature_def_map[entry.first] = signature_def;
   }
   auto status = tflite::SetSignatureDefMap(model, signature_def_map, &data);
-  if (status != tensorflow::Status::OK()) {
+  if (status != ::tensorflow::OkStatus()) {
     throw std::invalid_argument(status.error_message());
   }
   return py::bytes(data);
@@ -55,7 +55,7 @@ std::map<std::string, py::bytes> WrappedGetSignatureDefMap(
   std::string content;
   std::map<std::string, tensorflow::SignatureDef> signature_def_map;
   auto status = tflite::GetSignatureDefMap(model, &signature_def_map);
-  if (status != tensorflow::Status::OK()) {
+  if (status != ::tensorflow::OkStatus()) {
     throw std::invalid_argument("Cannot parse signature def");
   }
   std::map<std::string, py::bytes> serialized_signature_def_map;
@@ -75,7 +75,7 @@ py::bytes WrappedClearSignatureDefs(const std::vector<uint8_t>& model_buffer) {
   }
   std::string content;
   auto status = tflite::ClearSignatureDefMap(model, &content);
-  if (status != tensorflow::Status::OK()) {
+  if (status != ::tensorflow::OkStatus()) {
     throw std::invalid_argument("An unknown error occurred");
   }
   return py::bytes(content);

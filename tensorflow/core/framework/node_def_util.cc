@@ -597,6 +597,39 @@ Status NumOutputsForNode(const NodeDef& node_def, const OpDef& op_def,
   return OkStatus();
 }
 
+int OpPortIdToArgId(const NodeDef& node,
+                    const protobuf::RepeatedPtrField<OpDef::ArgDef>& args,
+                    int port_id) {
+  for (int arg_id = 0; arg_id < args.size(); ++arg_id) {
+    if (port_id < 0) {
+      return -1;
+    } else if (port_id == 0) {
+      return arg_id;
+    }
+
+    // Default is 1 port per arg.
+    int n = 1;
+
+    const auto& arg = args.Get(arg_id);
+    if (!arg.number_attr().empty()) {
+      n = node.attr().at(arg.number_attr()).i();
+    } else if (!arg.type_list_attr().empty()) {
+      n = node.attr().at(arg.type_list_attr()).list().type_size();
+    }
+
+    if (n < 0) {
+      // This should never happen.
+      DCHECK_GE(n, 0);
+      return -1;
+    } else if (port_id < n) {
+      return arg_id;
+    }
+    port_id -= n;
+  }
+
+  return -1;
+}
+
 Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
   if (node_def.op() != op_def.name()) {
     return errors::InvalidArgument(

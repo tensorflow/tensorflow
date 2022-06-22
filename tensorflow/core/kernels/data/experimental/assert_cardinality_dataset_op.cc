@@ -70,7 +70,7 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -87,7 +87,7 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddScalar(cardinality_, &cardinality_node));
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {input_graph_node, cardinality_node}, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -121,7 +121,7 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
             ElementString(dataset()->cardinality_), " but contained at least ",
             ElementString(num_elements_), ".");
       }
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
@@ -136,7 +136,7 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(full_name("num_elements"), num_elements_));
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -144,7 +144,7 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(full_name("num_elements"), &num_elements_));
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-      return Status::OK();
+      return OkStatus();
     }
 
    private:

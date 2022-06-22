@@ -44,7 +44,7 @@ namespace xla {
 
 StatusOr<DeviceAssignment::LogicalID> DeviceAssignment::LogicalIdForDevice(
     GlobalDeviceId device_id) const {
-  absl::optional<DeviceAssignment::LogicalID> logical_id;
+  std::optional<DeviceAssignment::LogicalID> logical_id;
   for (int r = 0; r < replica_count(); ++r) {
     for (int c = 0; c < computation_count(); ++c) {
       if ((*this)(r, c) == device_id.value()) {
@@ -95,7 +95,7 @@ Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
       computation_device->add_replica_device_ids((*this)(replica, computation));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ StatusOr<std::unique_ptr<DeviceAssignment>>

@@ -86,13 +86,13 @@ bool XlaInterpreterExecutor::Memcpy(Stream *stream, DeviceMemoryBase *dev_dst,
 port::Status XlaInterpreterExecutor::SynchronousMemcpy(
     DeviceMemoryBase *dev_dst, const void *host_src, uint64_t size) {
   memcpy(dev_dst->opaque(), host_src, size);
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::Status XlaInterpreterExecutor::SynchronousMemcpy(
     void *host_dst, const DeviceMemoryBase &dev_src, uint64_t size) {
   memcpy(host_dst, dev_src.opaque(), size);
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 bool XlaInterpreterExecutor::HostCallback(

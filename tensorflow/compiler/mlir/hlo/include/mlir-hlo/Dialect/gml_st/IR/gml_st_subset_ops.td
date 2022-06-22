@@ -69,7 +69,9 @@ def GMLST_PointOp : GMLST_Op<"point", []> {
   let hasVerifier = 1;
 }
 
-def GMLST_TileOp : GMLST_Op<"tile", [AttrSizedOperandSegments]> {
+def GMLST_TileOp : GMLST_Op<"tile",
+    [AttrSizedOperandSegments,
+     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let arguments = (ins GMLST_TileType:$subset,
                        Variadic<Index>:$offsets,
                        Variadic<Index>:$sizes,
@@ -77,7 +79,7 @@ def GMLST_TileOp : GMLST_Op<"tile", [AttrSizedOperandSegments]> {
                        I64ArrayAttr:$static_offsets,
                        I64ArrayAttr:$static_sizes,
                        I64ArrayAttr:$static_strides);
-  let results = (outs AnySubset:$result);
+  let results = (outs GMLST_TileType:$result);
   let assemblyFormat = [{
     $subset
     custom<OperandsOrIntegersOffsetsOrStridesList>($offsets, $static_offsets)
@@ -85,7 +87,7 @@ def GMLST_TileOp : GMLST_Op<"tile", [AttrSizedOperandSegments]> {
     custom<OperandsOrIntegersOffsetsOrStridesList>($strides, $static_strides)
     attr-dict `:` qualified(type($subset)) `to` qualified(type($result))
   }];
-  let hasVerifier = 0;
+  let hasVerifier = 1;
 }
 
 def GMLST_CollapseTileOp : GMLST_Op<"collapse_tile", [NoSideEffect,
@@ -99,12 +101,12 @@ def GMLST_CollapseTileOp : GMLST_Op<"collapse_tile", [NoSideEffect,
     the root space.
   }];
   let arguments = (ins
-    AnySubset:$arg_tile,
+    GMLST_TileType:$arg_tile,
     I64ElementsAttr:$remaining_dims);
-  let results = (outs AnySubset:$result);
+  let results = (outs GMLST_TileType:$result);
   let assemblyFormat = [{
     $arg_tile `,` custom<I64ElementsAttr>($remaining_dims) attr-dict `:`
-    type($arg_tile) `->` type($result)
+    qualified(type($arg_tile)) `->` qualified(type($result))
   }];
   let hasVerifier = 0;
 }

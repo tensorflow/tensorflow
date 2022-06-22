@@ -463,7 +463,7 @@ TEST_F(ShapeInferenceTest, Convolve) {
   dim1->set_base_dilation(1);
   auto inferred_status = ShapeInference::InferConvolveShape(
       lhs_shape, rhs_shape, /*feature_group_count=*/1, /*batch_group_count=*/1,
-      window, dnums, /*preferred_element_type=*/absl::nullopt);
+      window, dnums, /*preferred_element_type=*/std::nullopt);
   ASSERT_IS_OK(inferred_status.status());
   Shape inferred_shape = inferred_status.ValueOrDie();
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {10, 12, 2, 3}),
@@ -509,7 +509,7 @@ TEST_F(ShapeInferenceTest, ConvolveWithWindowDilation) {
   dim1->set_base_dilation(1);
   auto inferred_status = ShapeInference::InferConvolveShape(
       lhs_shape, rhs_shape, /*feature_group_count=*/1, /*batch_group_count=*/1,
-      window, dnums, /*preferred_element_type=*/absl::nullopt);
+      window, dnums, /*preferred_element_type=*/std::nullopt);
   ASSERT_IS_OK(inferred_status.status());
   Shape inferred_shape = inferred_status.ValueOrDie();
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {10, 12, 31, 5}),
@@ -555,7 +555,7 @@ TEST_F(ShapeInferenceTest, ConvolveWithBaseDilation) {
   dim1->set_base_dilation(2);
   auto inferred_status = ShapeInference::InferConvolveShape(
       lhs_shape, rhs_shape, /*feature_group_count=*/1, /*batch_group_count=*/1,
-      window, dnums, /*preferred_element_type=*/absl::nullopt);
+      window, dnums, /*preferred_element_type=*/std::nullopt);
   ASSERT_IS_OK(inferred_status.status());
   Shape inferred_shape = inferred_status.ValueOrDie();
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {10, 12, 4, 9}),
@@ -594,7 +594,7 @@ TEST_F(ShapeInferenceTest, ConvolveDimensionNumbersOverlapError) {
   dim1->set_padding_high(1);
   auto inferred_status = ShapeInference::InferConvolveShape(
       lhs_shape, rhs_shape, /*feature_group_count=*/1, /*batch_group_count=*/1,
-      window, dnums, /*preferred_element_type=*/absl::nullopt);
+      window, dnums, /*preferred_element_type=*/std::nullopt);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
               HasSubstr("each dimension exactly once"));
@@ -631,7 +631,7 @@ TEST_F(ShapeInferenceTest, ConvolveBatchGroupCountUnequalOutputFeature) {
   dim1->set_window_dilation(2);
   auto inferred_status = ShapeInference::InferConvolveShape(
       lhs_shape, rhs_shape, /*feature_group_count=*/1, /*batch_group_count=*/6,
-      window, dnums, /*preferred_element_type=*/absl::nullopt);
+      window, dnums, /*preferred_element_type=*/std::nullopt);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
               HasSubstr("to be a multiple of batch group count"));
@@ -690,7 +690,7 @@ TEST_F(ShapeInferenceTest, ConvolveWithBF16_F16) {
       ShapeInference::InferConvolveShape(
           args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
           /*batch_group_count=*/1, args.window, args.dnums,
-          /*preferred_element_type=*/absl::nullopt))
+          /*preferred_element_type=*/std::nullopt))
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(BF16, {10, 12, 2, 3}),
                                inferred_shape));
 }
@@ -702,7 +702,7 @@ TEST_F(ShapeInferenceTest, ConvolveWithF16_BF16) {
       ShapeInference::InferConvolveShape(
           args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
           /*batch_group_count=*/1, args.window, args.dnums,
-          /*preferred_element_type=*/absl::nullopt))
+          /*preferred_element_type=*/std::nullopt))
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(BF16, {10, 12, 2, 3}),
                                inferred_shape));
 }
@@ -714,7 +714,7 @@ TEST_F(ShapeInferenceTest, ConvolveWithS32_U32) {
       ShapeInference::InferConvolveShape(
           args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
           /*batch_group_count=*/1, args.window, args.dnums,
-          /*preferred_element_type=*/absl::nullopt))
+          /*preferred_element_type=*/std::nullopt))
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(S32, {10, 12, 2, 3}),
                                inferred_shape));
 }
@@ -726,7 +726,7 @@ TEST_F(ShapeInferenceTest, ConvolveWithU32_S32) {
       ShapeInference::InferConvolveShape(
           args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
           /*batch_group_count=*/1, args.window, args.dnums,
-          /*preferred_element_type=*/absl::nullopt))
+          /*preferred_element_type=*/std::nullopt))
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(S32, {10, 12, 2, 3}),
                                inferred_shape));
 }
@@ -1504,7 +1504,7 @@ TEST_F(ShapeInferenceTest, BroadcastScalar) {
 TEST_F(ShapeInferenceTest, ScalarDotVector) {
   DotDimensionNumbers dot_dnums;
   auto inferred_status = ShapeInference::InferDotOpShape(
-      f32_, vector_32_, dot_dnums, /*preferred_element_type=*/absl::nullopt);
+      f32_, vector_32_, dot_dnums, /*preferred_element_type=*/std::nullopt);
   EXPECT_TRUE(inferred_status.ok());
   EXPECT_EQ(inferred_status.ValueOrDie(), vector_32_);
 }
@@ -1516,7 +1516,7 @@ TEST_F(ShapeInferenceTest, DotWithRankHigherThanTwo) {
   dot_dnums.add_rhs_contracting_dimensions(0);
   auto inferred_status = ShapeInference::InferDotOpShape(
       ShapeUtil::MakeShape(F32, {32, 32, 32}), matrix_32_64_, dot_dnums,
-      /*preferred_element_type=*/absl::nullopt);
+      /*preferred_element_type=*/std::nullopt);
   EXPECT_TRUE(inferred_status.ok());
   EXPECT_TRUE(ShapeUtil::Equal(inferred_status.ValueOrDie(),
                                ShapeUtil::MakeShape(F32, {32, 32, 64})));
@@ -1529,12 +1529,12 @@ TEST_F(ShapeInferenceTest, VectorDotVector) {
   dot_dnums.add_rhs_contracting_dimensions(0);
   auto inferred_status =
       ShapeInference::InferDotOpShape(vector_64_, vector_64_, dot_dnums,
-                                      /*preferred_element_type=*/absl::nullopt);
+                                      /*preferred_element_type=*/std::nullopt);
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(f32_, inferred_status.ValueOrDie()));
   auto inferred_status_mismatch =
       ShapeInference::InferDotOpShape(vector_64_, vector_32_, dot_dnums,
-                                      /*preferred_element_type=*/absl::nullopt);
+                                      /*preferred_element_type=*/std::nullopt);
   ASSERT_FALSE(inferred_status_mismatch.ok());
 }
 
@@ -1545,12 +1545,12 @@ TEST_F(ShapeInferenceTest, MatrixDotVector) {
   dot_dnums.add_rhs_contracting_dimensions(0);
   auto inferred_status =
       ShapeInference::InferDotOpShape(matrix_32_64_, vector_64_, dot_dnums,
-                                      /*preferred_element_type=*/absl::nullopt);
+                                      /*preferred_element_type=*/std::nullopt);
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(inferred_status.ValueOrDie(), vector_32_));
   auto inferred_status_mismatch =
       ShapeInference::InferDotOpShape(matrix_32_64_, vector_32_, dot_dnums,
-                                      /*preferred_element_type=*/absl::nullopt);
+                                      /*preferred_element_type=*/std::nullopt);
   ASSERT_FALSE(inferred_status_mismatch.ok());
 }
 
@@ -1561,12 +1561,12 @@ TEST_F(ShapeInferenceTest, VectorDotMatrix) {
   dot_dnums.add_rhs_contracting_dimensions(0);
   auto inferred_status =
       ShapeInference::InferDotOpShape(vector_32_, matrix_32_64_, dot_dnums,
-                                      /*preferred_element_type=*/absl::nullopt);
+                                      /*preferred_element_type=*/std::nullopt);
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(inferred_status.ValueOrDie(), vector_64_));
   auto inferred_status_mismatch =
       ShapeInference::InferDotOpShape(vector_64_, matrix_32_64_, dot_dnums,
-                                      /*preferred_element_type=*/absl::nullopt);
+                                      /*preferred_element_type=*/std::nullopt);
   ASSERT_FALSE(inferred_status_mismatch.ok());
 }
 
@@ -1577,7 +1577,7 @@ TEST_F(ShapeInferenceTest, MatrixDotMatrix) {
   dot_dnums.add_rhs_contracting_dimensions(0);
   auto inferred_status_match =
       ShapeInference::InferDotOpShape(matrix_32_64_, matrix_64_48_, dot_dnums,
-                                      /*preferred_element_type=*/absl::nullopt);
+                                      /*preferred_element_type=*/std::nullopt);
   ASSERT_IS_OK(inferred_status_match.status());
   ASSERT_TRUE(
       ShapeUtil::Equal(inferred_status_match.ValueOrDie(), matrix_32_48_))
@@ -1586,7 +1586,7 @@ TEST_F(ShapeInferenceTest, MatrixDotMatrix) {
       << " expected: " << ShapeUtil::HumanString(matrix_64_48_);
   auto inferred_status_mismatch =
       ShapeInference::InferDotOpShape(matrix_32_64_, matrix_32_64_, dot_dnums,
-                                      /*preferred_element_type=*/absl::nullopt);
+                                      /*preferred_element_type=*/std::nullopt);
   ASSERT_FALSE(inferred_status_mismatch.ok());
 }
 
@@ -1607,7 +1607,7 @@ TEST_F(ShapeInferenceTest, DotGeneral) {
 
   auto inferred_status_match =
       ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums,
-                                      /*preferred_element_type=*/absl::nullopt);
+                                      /*preferred_element_type=*/std::nullopt);
   ASSERT_IS_OK(inferred_status_match.status());
   ASSERT_TRUE(
       ShapeUtil::Equal(inferred_status_match.ValueOrDie(), output_shape))
@@ -1631,7 +1631,7 @@ TEST_F(ShapeInferenceTest, DotWithTwoContractingDimsFails) {
 
   auto inferred_status =
       ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums,
-                                      /*preferred_element_type=*/absl::nullopt);
+                                      /*preferred_element_type=*/std::nullopt);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
               HasSubstr("Must specify the same number of contracting "
@@ -1654,7 +1654,7 @@ TEST_F(ShapeInferenceTest, DotWithTwoContractingDimsPasses) {
 
   auto inferred_status =
       ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums,
-                                      /*preferred_element_type=*/absl::nullopt);
+                                      /*preferred_element_type=*/std::nullopt);
   EXPECT_TRUE(inferred_status.ok());
   EXPECT_TRUE(ShapeUtil::Equal(inferred_status.ValueOrDie(), output_shape));
 }
@@ -1695,7 +1695,7 @@ TEST_F(ShapeInferenceTest, DotWithMismatchedBatchDimSizesFails) {
 
   auto inferred_status =
       ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums,
-                                      /*preferred_element_type=*/absl::nullopt);
+                                      /*preferred_element_type=*/std::nullopt);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
               HasSubstr("Batch dimension sizes must match"));
@@ -1715,7 +1715,7 @@ TEST_F(ShapeInferenceTest, DotWithMismatchedBatchDimNumbersPasses) {
 
   auto inferred_status =
       ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums,
-                                      /*preferred_element_type=*/absl::nullopt);
+                                      /*preferred_element_type=*/std::nullopt);
   ASSERT_TRUE(inferred_status.ok());
   ASSERT_TRUE(ShapeUtil::Equal(inferred_status.ValueOrDie(),
                                ShapeUtil::MakeShape(F32, {2, 11, 14})));
@@ -1735,7 +1735,7 @@ TEST_F(ShapeInferenceTest, DotWithContractingDimNumberOutOfRange) {
 
   auto inferred_status =
       ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums,
-                                      /*preferred_element_type=*/absl::nullopt);
+                                      /*preferred_element_type=*/std::nullopt);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
               HasSubstr("A dimension number is out of range"));
@@ -1755,7 +1755,7 @@ TEST_F(ShapeInferenceTest, DotWithContractingNonUniqueDimNumber) {
 
   auto inferred_status =
       ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums,
-                                      /*preferred_element_type=*/absl::nullopt);
+                                      /*preferred_element_type=*/std::nullopt);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
               HasSubstr("A dimension number is not unique"));

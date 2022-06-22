@@ -25,16 +25,14 @@
 // CHECK-NEXT:       name: "arg0",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 1 ],
 // CHECK-NEXT:       buffer: 2,
 // CHECK-NEXT:       name: "arg1",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [  ],
 // CHECK-NEXT:       type: INT32,
@@ -42,16 +40,14 @@
 // CHECK-NEXT:       name: "WhileOp",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 1 ],
 // CHECK-NEXT:       buffer: 4,
 // CHECK-NEXT:       name: "WhileOp1",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     } ],
 // CHECK-NEXT:     inputs: [ 0, 1 ],
 // CHECK-NEXT:     outputs: [ 3 ],
@@ -88,8 +84,7 @@
 // CHECK-NEXT:       name: "Const",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [  ],
 // CHECK-NEXT:       type: BOOL,
@@ -97,8 +92,7 @@
 // CHECK-NEXT:       name: "tfl.greater",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     } ],
 // CHECK-NEXT:     inputs: [ 0, 1 ],
 // CHECK-NEXT:     outputs: [ 3 ],
@@ -131,8 +125,7 @@
 // CHECK-NEXT:       name: "Const1",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [  ],
 // CHECK-NEXT:       type: INT32,

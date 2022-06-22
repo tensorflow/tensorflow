@@ -101,7 +101,7 @@ class LRUCache {
     // pointer stability for keys.
     const Key* key;
     LRUCache* container;
-    absl::optional<Value> value;
+    std::optional<Value> value;
   };
 
   // We use `node_hash_map` because we want to guarantee pointer stability for

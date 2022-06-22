@@ -202,8 +202,10 @@ class StridedSliceOp : public XlaOpKernel {
           end_index = xla::Select(index_negative, wrapped_index, end_index);
         }
       }
-      slice_sizes_dynamic.push_back(
-          xla::Max(xla::Sub(end_index, begin_index), zero));
+      // This is safe to downcast as set dimension size  makes sure that the dim
+      // in the input doesn't exceed INT32 max.
+      xla::XlaOp size = xla::Max(xla::Sub(end_index, begin_index), zero);
+      slice_sizes_dynamic.push_back(xla::ConvertElementType(size, xla::S32));
     }
 
     slice =

@@ -250,7 +250,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
             return;
           }
         }
-        done(Status::OK());
+        done(OkStatus());
       });
 }
 

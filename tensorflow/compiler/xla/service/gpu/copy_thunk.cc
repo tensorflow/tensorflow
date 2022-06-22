@@ -34,7 +34,7 @@ Status DeviceToDeviceCopyThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::DeviceMemoryBase source_data =
       params.buffer_allocations->GetDeviceAddress(source_buffer_);
   params.stream->ThenMemcpy(&destination_data, source_data, mem_size_);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 }  // namespace gpu
 }  // namespace xla

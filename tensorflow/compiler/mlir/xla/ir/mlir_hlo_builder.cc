@@ -137,12 +137,12 @@ StatusOr<XlaOp> MlirHloBuilder::FftInternal(
 StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
     const std::string& call_target_name, absl::Span<const XlaOp> operands,
     const Shape& shape, const std::string& opaque,
-    absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
+    std::optional<absl::Span<const Shape>> operand_shapes_with_layout,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
         output_operand_aliasing,
-    const Literal* literal, absl::optional<Window> window,
-    absl::optional<ConvolutionDimensionNumbers> dnums,
+    const Literal* literal, std::optional<Window> window,
+    std::optional<ConvolutionDimensionNumbers> dnums,
     CustomCallSchedule schedule, CustomCallApiVersion api_version) {
   TF_RET_CHECK(output_operand_aliasing.empty())
       << "MLIR CustomCallOp does not support output_operand_aliasing yet";
@@ -384,7 +384,7 @@ StatusOr<XlaOp> MlirHloBuilder::ScatterInternal(
 
   TF_RETURN_IF_ERROR(
       ImportComputation(update_computation.proto(), &op.update_computation()));
-  return MakeXlaOp(op);
+  return MakeXlaOp(op.getResult(0));
 }
 
 StatusOr<XlaOp> MlirHloBuilder::SetDimensionSizeInternal(const Shape& shape,

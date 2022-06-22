@@ -44,8 +44,8 @@ from tensorflow.python.saved_model import save_context
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_embedding_v2_utils
 from tensorflow.python.tpu.ops import tpu_ops
-from tensorflow.python.training.tracking import base
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
+from tensorflow.python.trackable import base
 from tensorflow.python.types import internal as internal_types
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
@@ -70,7 +70,7 @@ def _add_key_attr(op, name):
 
 
 @tf_export("tpu.experimental.embedding.TPUEmbedding")
-class TPUEmbedding(tracking.AutoTrackable):
+class TPUEmbedding(autotrackable.AutoTrackable):
   """The TPUEmbedding mid level API.
 
   NOTE: When instantiated under a TPUStrategy, this class can only be created

@@ -72,7 +72,7 @@ class RandomAccessFileFromMemmapped : public RandomAccessFile {
     *result =
         StringPiece(reinterpret_cast<const char*>(data_) + offset, region_left);
     return (region_left == to_read)
-               ? Status::OK()
+               ? OkStatus()
                : Status(error::OUT_OF_RANGE, "Read less bytes than requested");
   }
 
@@ -93,7 +93,7 @@ Status MemmappedFileSystem::FileExists(const string& fname,
   }
   const auto dir_element = directory_.find(fname);
   if (dir_element != directory_.end()) {
-    return Status::OK();
+    return OkStatus();
   }
   return errors::NotFound(fname, " not found");
 }
@@ -111,7 +111,7 @@ Status MemmappedFileSystem::NewRandomAccessFile(
   result->reset(new RandomAccessFileFromMemmapped(
       GetMemoryWithOffset(dir_element->second.offset),
       dir_element->second.length));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MemmappedFileSystem::NewReadOnlyMemoryRegionFromFile(
@@ -127,7 +127,7 @@ Status MemmappedFileSystem::NewReadOnlyMemoryRegionFromFile(
   result->reset(new ReadOnlyMemoryRegionFromMemmapped(
       GetMemoryWithOffset(dir_element->second.offset),
       dir_element->second.length));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MemmappedFileSystem::GetFileSize(const string& filename,
@@ -140,7 +140,7 @@ Status MemmappedFileSystem::GetFileSize(const string& filename,
     return errors::NotFound("Region ", filename, " is not found");
   }
   *size = dir_element->second.length;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MemmappedFileSystem::Stat(const string& fname, TransactionToken* token,
@@ -251,7 +251,7 @@ Status MemmappedFileSystem::InitializeFromFile(Env* env,
     }
     prev_element_offset = element_iter->offset();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool MemmappedFileSystem::IsMemmappedPackageFilename(const string& filename) {
@@ -290,7 +290,7 @@ Status MemmappedEnv::GetFileSystemForFile(const string& fname,
           "MemmappedEnv is not initialized from a file.");
     }
     *result = memmapped_file_system_.get();
-    return Status::OK();
+    return OkStatus();
   }
   return EnvWrapper::GetFileSystemForFile(fname, result);
 }

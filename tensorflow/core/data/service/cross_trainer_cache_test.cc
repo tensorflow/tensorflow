@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/data/service/multi_trainer_cache.h"
+#include "tensorflow/core/data/service/cross_trainer_cache.h"
 
 #include <cstdint>
 #include <memory>
@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -139,20 +138,20 @@ bool SequenceIsIncreasing(const std::vector<int64_t> sequence) {
   return true;
 }
 
-TEST(MultiTrainerCacheTest, GetFromOneTrainer) {
+TEST(CrossTrainerCacheTest, GetFromOneTrainer) {
   const size_t num_elements = 10;
-  MultiTrainerCache<int64_t> cache(
+  CrossTrainerCache<int64_t> cache(
       /*max_cache_size_bytes=*/1024, absl::make_unique<InfiniteRange>());
   for (size_t i = 0; i < num_elements; ++i) {
     EXPECT_THAT(cache.Get("Trainer ID"), IsOkAndHolds(Pointee(i)));
   }
 }
 
-TEST(MultiTrainerCacheTest, GetFromMultipleTrainers) {
+TEST(CrossTrainerCacheTest, GetFromMultipleTrainers) {
   const size_t num_elements = 10;
   const size_t num_trainers = 10;
 
-  MultiTrainerCache<int64_t> cache(
+  CrossTrainerCache<int64_t> cache(
       /*max_cache_size_bytes=*/1024, absl::make_unique<InfiniteRange>());
   for (size_t i = 0; i < num_elements; ++i) {
     // All the readers get the same element in one step.
@@ -163,8 +162,8 @@ TEST(MultiTrainerCacheTest, GetFromMultipleTrainers) {
   }
 }
 
-TEST(MultiTrainerCacheTest, SlowTrainersSkipData) {
-  MultiTrainerCache<int64_t> cache(
+TEST(CrossTrainerCacheTest, SlowTrainersSkipData) {
+  CrossTrainerCache<int64_t> cache(
       /*max_cache_size_bytes=*/5 * sizeof(int64_t),
       absl::make_unique<InfiniteRange>());
   EXPECT_THAT(cache.Get("Fast trainer 1"), IsOkAndHolds(Pointee(0)));
@@ -191,8 +190,8 @@ TEST(MultiTrainerCacheTest, SlowTrainersSkipData) {
   EXPECT_THAT(cache.Get("Slow trainer 2"), IsOkAndHolds(Pointee(Gt(94))));
 }
 
-TEST(MultiTrainerCacheTest, NewTrainersStartLate) {
-  MultiTrainerCache<int64_t> cache(
+TEST(CrossTrainerCacheTest, NewTrainersStartLate) {
+  CrossTrainerCache<int64_t> cache(
       /*max_cache_size_bytes=*/5 * sizeof(int64_t),
       absl::make_unique<InfiniteRange>());
   for (int i = 0; i < 100; ++i) {
@@ -206,9 +205,9 @@ TEST(MultiTrainerCacheTest, NewTrainersStartLate) {
   }
 }
 
-TEST(MultiTrainerCacheTest, AlternateTrainerExtendsCache) {
+TEST(CrossTrainerCacheTest, AlternateTrainerExtendsCache) {
   // The cache size is smaller than one int64_t.
-  MultiTrainerCache<int64_t> cache(
+  CrossTrainerCache<int64_t> cache(
       /*max_cache_size_bytes=*/sizeof(int64_t),
       absl::make_unique<InfiniteRange>());
   EXPECT_THAT(cache.Get("Trainer 1"), IsOkAndHolds(Pointee(0)));
@@ -236,16 +235,16 @@ TEST(MultiTrainerCacheTest, AlternateTrainerExtendsCache) {
   EXPECT_THAT(cache.Get("Trainer 3"), IsOkAndHolds(Pointee(Gt(5))));
 }
 
-TEST(MultiTrainerCacheTest, CacheHitMetrics) {
+TEST(CrossTrainerCacheTest, CacheHitMetrics) {
   CellReader<int64_t> cell_reader(
-      "/tensorflow/data/service/multi_trainer_cache_queries");
+      "/tensorflow/data/service/cross_trainer_cache_queries");
   EXPECT_EQ(cell_reader.Delta("true"), 0);
   EXPECT_EQ(cell_reader.Delta("false"), 0);
   EXPECT_EQ(cell_reader.Read("true"), 0);
   EXPECT_EQ(cell_reader.Read("false"), 0);
 
   const size_t num_elements = 10;
-  MultiTrainerCache<int64_t> cache(
+  CrossTrainerCache<int64_t> cache(
       /*max_cache_size_bytes=*/1024, absl::make_unique<InfiniteRange>());
   for (size_t i = 0; i < num_elements; ++i) {
     EXPECT_THAT(cache.Get("Trainer 1"), IsOkAndHolds(Pointee(i)));
@@ -264,12 +263,12 @@ TEST(MultiTrainerCacheTest, CacheHitMetrics) {
   EXPECT_EQ(cell_reader.Read("false"), 10);
 }
 
-TEST(MultiTrainerCacheTest, CacheSizeMetrics) {
+TEST(CrossTrainerCacheTest, CacheSizeMetrics) {
   CellReader<int64_t> cell_reader(
-      "/tensorflow/data/service/multi_trainer_cache_size_bytes");
+      "/tensorflow/data/service/cross_trainer_cache_size_bytes");
 
   const size_t num_elements = 5;
-  MultiTrainerCache<int64_t> cache(
+  CrossTrainerCache<int64_t> cache(
       /*max_cache_size_bytes=*/num_elements * sizeof(int64_t),
       std::make_unique<InfiniteRange>());
 
@@ -286,10 +285,10 @@ TEST(MultiTrainerCacheTest, CacheSizeMetrics) {
   }
 }
 
-TEST(MultiTrainerCacheTest, ConcurrentReaders) {
+TEST(CrossTrainerCacheTest, ConcurrentReaders) {
   size_t num_trainers = 10;
   size_t num_elements_to_read = 200;
-  MultiTrainerCache<int64_t> cache(
+  CrossTrainerCache<int64_t> cache(
       /*max_cache_size_bytes=*/3 * sizeof(int64_t),
       absl::make_unique<InfiniteRange>());
 
@@ -323,10 +322,10 @@ TEST(MultiTrainerCacheTest, ConcurrentReaders) {
   }
 }
 
-TEST(MultiTrainerCacheTest, ConcurrentReadersFromOneTrainer) {
+TEST(CrossTrainerCacheTest, ConcurrentReadersFromOneTrainer) {
   size_t num_trainers = 10;
   size_t num_elements_to_read = 100;
-  MultiTrainerCache<int64_t> cache(
+  CrossTrainerCache<int64_t> cache(
       /*max_cache_size_bytes=*/3 * sizeof(int64_t),
       absl::make_unique<InfiniteRange>());
 
@@ -356,9 +355,9 @@ TEST(MultiTrainerCacheTest, ConcurrentReadersFromOneTrainer) {
   EXPECT_THAT(results, UnorderedElementsAreArray(GetRange(1000)));
 }
 
-TEST(MultiTrainerCacheTest, Cancel) {
+TEST(CrossTrainerCacheTest, Cancel) {
   size_t num_trainers = 10;
-  MultiTrainerCache<Tensor> cache(
+  CrossTrainerCache<Tensor> cache(
       /*max_cache_size_bytes=*/1000, absl::make_unique<TensorDataset>());
   EXPECT_FALSE(cache.IsCancelled());
 
@@ -394,7 +393,7 @@ TEST(MultiTrainerCacheTest, Cancel) {
   EXPECT_TRUE(cache.IsCancelled());
 }
 
-TEST(MultiTrainerCacheTest, Errors) {
+TEST(CrossTrainerCacheTest, Errors) {
   auto elements = absl::make_unique<ElementOrErrorDataset<std::string>>(
       std::vector<StatusOr<std::string>>{
           std::string("First element"),
@@ -404,7 +403,7 @@ TEST(MultiTrainerCacheTest, Errors) {
           std::string("Third element"),
           errors::Unavailable("Unavailable"),
       });
-  MultiTrainerCache<std::string> cache(
+  CrossTrainerCache<std::string> cache(
       /*max_cache_size_bytes=*/1000, std::move(elements));
 
   EXPECT_THAT(cache.Get("Trainer ID"),
@@ -426,9 +425,9 @@ TEST(MultiTrainerCacheTest, Errors) {
               IsOkAndHolds(Pointee(std::string("Third element"))));
 }
 
-TEST(MultiTrainerCacheTest, CacheSizeIsTooSmall) {
+TEST(CrossTrainerCacheTest, CacheSizeIsTooSmall) {
   // The cache size is smaller than one int64_t.
-  MultiTrainerCache<Tensor> cache(
+  CrossTrainerCache<Tensor> cache(
       /*max_cache_size_bytes=*/1, absl::make_unique<TensorDataset>());
   EXPECT_THAT(cache.Get("Trainer ID"),
               StatusIs(error::INVALID_ARGUMENT,
@@ -436,8 +435,8 @@ TEST(MultiTrainerCacheTest, CacheSizeIsTooSmall) {
                                  "cache size in bytes.")));
 }
 
-TEST(MultiTrainerCacheTest, TrainerIDMustBeNonEmpty) {
-  MultiTrainerCache<Tensor> cache(
+TEST(CrossTrainerCacheTest, TrainerIDMustBeNonEmpty) {
+  CrossTrainerCache<Tensor> cache(
       /*max_cache_size_bytes=*/1000, absl::make_unique<TensorDataset>());
   EXPECT_THAT(cache.Get(""), StatusIs(error::INVALID_ARGUMENT,
                                       "tf.data service cross-trainer cache "

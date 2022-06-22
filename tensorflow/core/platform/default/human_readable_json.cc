@@ -38,13 +38,13 @@ Status ProtoToHumanReadableJson(const protobuf::Message& proto, string* result,
         strings::StrCat("Could not convert proto to JSON string: ",
                         StringPiece(error_msg.data(), error_msg.length())));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ProtoToHumanReadableJson(const protobuf::MessageLite& proto,
                                 string* result, bool ignore_accuracy_loss) {
   *result = "[human readable output not available for lite protos]";
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HumanReadableJsonToProto(const string& str, protobuf::Message* proto) {
@@ -58,7 +58,7 @@ Status HumanReadableJsonToProto(const string& str, protobuf::Message* proto) {
         strings::StrCat("Could not convert JSON string to proto: ",
                         StringPiece(error_msg.data(), error_msg.length())));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HumanReadableJsonToProto(const string& str,

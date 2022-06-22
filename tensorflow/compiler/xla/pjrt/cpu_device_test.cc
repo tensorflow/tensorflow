@@ -30,7 +30,7 @@ TEST(CpuStreamDeviceTest, BlocksDeviceToHostStream) {  // b/214236179
   auto client = *GetCpuClient(true);
   auto* device = client->devices()[0];
   auto buffer = *client->BufferFromHostBuffer(
-      &data, PrimitiveType::F32, {4}, absl::nullopt,
+      &data, PrimitiveType::F32, {4}, std::nullopt,
       PjRtClient::HostBufferSemantics::kZeroCopy, {}, device);
   auto literal = *buffer->ToLiteralSync();
 }

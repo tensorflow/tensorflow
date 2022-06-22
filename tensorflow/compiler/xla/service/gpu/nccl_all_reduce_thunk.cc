@@ -146,7 +146,7 @@ bool CanImplement(OpT op) {
 
 template <typename OpT>
 NcclAllReduceConfig GetNcclAllReduceConfig(OpT op) {
-  absl::optional<ReductionKind> reduction_kind =
+  std::optional<ReductionKind> reduction_kind =
       NcclAllReduceThunkBase::MatchAllReduceComputation(op.computation());
   CHECK(reduction_kind.has_value());
 
@@ -170,13 +170,13 @@ CollectiveOpGroupMode GetGroupMode(OpT op) {
 
 }  // namespace impl
 
-absl::optional<ReductionKind> NcclAllReduceThunkBase::MatchAllReduceComputation(
+std::optional<ReductionKind> NcclAllReduceThunkBase::MatchAllReduceComputation(
     mlir::Region& computation) {
   mlir::Block& block = computation.front();
   StatusOr<mlir::Operation*> reduction_op = FindReductionOp(block);
-  if (!reduction_op.ok()) return absl::nullopt;
+  if (!reduction_op.ok()) return std::nullopt;
   StatusOr<HloOpcode> opcode = MhloToHloOpcode(*reduction_op);
-  if (!opcode.ok()) return absl::nullopt;
+  if (!opcode.ok()) return std::nullopt;
   // Match the operation to a reduction kind. We can represent and/or of pred as
   // min/max. This works because pred is stored as an 8-bit int of value 0 or 1.
   PrimitiveType type =
@@ -188,14 +188,14 @@ absl::optional<ReductionKind> NcclAllReduceThunkBase::MatchAllReduceComputation(
       case HloOpcode::kOr:
         return ReductionKind::MAX;
       default:
-        return absl::nullopt;
+        return std::nullopt;
     }
   } else if (primitive_util::IsComplexType(type)) {
     // Only addition is supported for complex types.
     if (*opcode == HloOpcode::kAdd) {
       return ReductionKind::SUM;
     } else {
-      return absl::nullopt;
+      return std::nullopt;
     }
   } else {
     switch (*opcode) {
@@ -208,7 +208,7 @@ absl::optional<ReductionKind> NcclAllReduceThunkBase::MatchAllReduceComputation(
       case HloOpcode::kMinimum:
         return ReductionKind::MIN;
       default:
-        return absl::nullopt;
+        return std::nullopt;
     }
   }
 }
@@ -256,7 +256,7 @@ Status NcclAllReduceThunk::RunNcclCollective(const ExecuteParams& params,
 
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Done performing all-reduce for ordinal: " << device_ordinal;
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 NcclAllReduceStartThunk::NcclAllReduceStartThunk(
@@ -308,7 +308,7 @@ Status NcclAllReduceStartThunk::RunNcclCollective(const ExecuteParams& params,
   }
 
   VLOG(3) << "Done performing all-reduce-start for ordinal: " << device_ordinal;
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<se::Event> NcclAllReduceStartThunk::TakeDoneEvent(int device_ordinal) {
@@ -330,7 +330,7 @@ Status NcclAllReduceDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(se::Event done_event,
                       start_thunk_.TakeDoneEvent(device_ordinal));
   params.stream->ThenWaitFor(&done_event);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 NcclReduceScatterThunk::NcclReduceScatterThunk(
@@ -358,32 +358,37 @@ NcclReduceScatterThunk::NcclReduceScatterThunk(
 
 Status NcclReduceScatterThunk::RunNcclCollective(const ExecuteParams& params,
                                                  ncclComm_t comm) {
+  TF_ASSIGN_OR_RETURN(
+      std::vector<DeviceBufferPair> device_buffers,
+      ConvertToDeviceBuffers(params, buffers_,
+                             config_.config.operand_element_type));
+  return RunReduceScatter(config_.reduction_kind, device_buffers,
+                          *params.stream, comm);
+}
+
+Status RunReduceScatter(ReductionKind reduction_kind,
+                        std::vector<DeviceBufferPair>& buffers,
+                        se::Stream& stream, ncclComm_t comm) {
 #if XLA_ENABLE_XCCL
-  int device_ordinal = params.stream->parent()->device_ordinal();
+  int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing reduce-scatter from device ordinal: "
           << device_ordinal;
 
-  ncclRedOp_t reduce_op = ToNcclReduction(config_.reduction_kind);
+  ncclRedOp_t reduce_op = ToNcclReduction(reduction_kind);
 
-  se::gpu::GpuStreamHandle gpu_stream =
-      se::gpu::AsGpuStreamValue(params.stream);
+  se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
 
   int num_participants = 0;
   XLA_CUDA_RETURN_IF_ERROR(ncclCommCount(comm, &num_participants));
 
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
-  for (size_t i = 0; i < buffers_.size(); ++i) {
-    const Buffer& buffer = buffers_[i];
-    const void* send_buffer =
-        params.buffer_allocations->GetDeviceAddress(buffer.source_buffer)
-            .opaque();
-    void* recv_buffer =
-        params.buffer_allocations->GetDeviceAddress(buffer.destination_buffer)
-            .opaque();
+  for (size_t i = 0; i < buffers.size(); ++i) {
+    DeviceBufferPair& buffer = buffers[i];
+    const void* send_buffer = buffer.source_buffer.opaque();
+    void* recv_buffer = buffer.destination_buffer.opaque();
 
-    PrimitiveType element_type = config_.config.operand_element_type[i];
     TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
-                        ToNcclDataTypeAndCountMultiplier(element_type));
+                        ToNcclDataTypeAndCountMultiplier(buffer.element_type));
     ncclDataType_t dtype = dtype_and_multiplier.first;
     int element_count = buffer.element_count * dtype_and_multiplier.second;
 
@@ -407,7 +412,7 @@ Status NcclReduceScatterThunk::RunNcclCollective(const ExecuteParams& params,
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 
   VLOG(3) << "Done performing reduce-scatter for ordinal: " << device_ordinal;
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "

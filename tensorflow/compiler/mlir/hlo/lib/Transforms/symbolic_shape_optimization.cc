@@ -429,7 +429,7 @@ SymbolicProduct EliminateCommonFactors(SymbolicProduct &a, SymbolicProduct &b) {
   // Eliminate common symbolic factors.
   int64_t i = 0;
   while (i < a.symbolic.size()) {
-    auto it = llvm::find(b.symbolic, a.symbolic[i]);
+    auto *it = llvm::find(b.symbolic, a.symbolic[i]);
     if (it != b.symbolic.end()) {
       gcd.symbolic.push_back(*it);
       std::swap(a.symbolic[i], a.symbolic.back());
@@ -486,10 +486,10 @@ LogicalResult FindExpandingAndCollapsingDimensionGroups(
     ArrayRef<SymbolicExpr> result_shape_info,
     SmallVector<DimensionGroup> *dimension_groups,
     SmallVector<int64_t> *expanded_interm_shape) {
-  auto operand_shape_it = operand_shape_info.begin();
-  auto operand_shape_end = operand_shape_info.end();
-  auto result_shape_it = result_shape_info.begin();
-  auto result_shape_end = result_shape_info.end();
+  const auto *operand_shape_it = operand_shape_info.begin();
+  const auto *operand_shape_end = operand_shape_info.end();
+  const auto *result_shape_it = result_shape_info.begin();
+  const auto *result_shape_end = result_shape_info.end();
 
   // Crucial iteration state.
   SymbolicProduct remaining_operand_shape_factors;

@@ -93,7 +93,7 @@ class BefThunk : public Thunk {
   // The module data will be set in the execution context for kernel thunk to
   // use during execution. The resource contexts cache the loaded modules.
   absl::Mutex mutex_;
-  absl::optional<GpuModuleData> gpu_module_data_ ABSL_GUARDED_BY(mutex_);
+  std::optional<GpuModuleData> gpu_module_data_ ABSL_GUARDED_BY(mutex_);
   tfrt::gpu::GpuContextCache gpu_context_cache_ ABSL_GUARDED_BY(mutex_);
 };
 
@@ -139,7 +139,7 @@ static Status RunLmhloGpuToTfrtConversionPipeline(mlir::ModuleOp module) {
   tensorflow::populateLmhloToTfrtGpuPasses(pass_manager);
   if (failed(pass_manager.run(module)))
     return tensorflow::errors::Internal("Failed to run pass pipeline.");
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Converts `module` to BEF.
@@ -405,7 +405,7 @@ static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
 }
 
 static Status InsertKernelRequestContext(
-    absl::optional<GpuModuleData> gpu_module_data,
+    std::optional<GpuModuleData> gpu_module_data,
     tfrt::RequestContextBuilder* request_context_builder) {
   if (!gpu_module_data.has_value()) {
     return tensorflow::errors::Internal(
@@ -413,7 +413,7 @@ static Status InsertKernelRequestContext(
   }
   request_context_builder->context_data().emplace<GpuModuleData>(
       *gpu_module_data);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status BefThunk::Initialize(const GpuExecutable& executable,
@@ -434,7 +434,7 @@ Status BefThunk::Initialize(const GpuExecutable& executable,
       gpu_module_data_ = module_data;
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -510,7 +510,7 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (auto* error = result->GetErrorIfPresent())
     return tensorflow::errors::Internal(tfrt::StrCat(*error));
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace gpu

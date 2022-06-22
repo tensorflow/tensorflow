@@ -316,7 +316,7 @@ struct HloLegalizeToMemrefPass
   void runOnOperation() override {
     bufferization::BufferizationOptions options =
         bufferization::getPartialBufferizationOptions();
-    options.allowDialectInFilter<mhlo::MhloDialect>();
+    options.opFilter.allowDialect<mhlo::MhloDialect>();
     if (failed(bufferizeOp(getOperation(), options))) signalPassFailure();
   }
 };

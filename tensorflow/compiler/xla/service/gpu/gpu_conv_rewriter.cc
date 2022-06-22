@@ -584,7 +584,7 @@ HloInstruction* CreateGpuConv(absl::string_view call_target, const Shape& shape,
   custom_call->set_metadata(metadata);
 
   // Give the customcall a user-friendly name.
-  absl::optional<std::string> name;
+  std::optional<std::string> name;
   if (call_target == kCudnnConvForwardCallTarget) {
     name = "cudnn-conv";
   } else if (call_target == kCudnnConvBackwardInputCallTarget) {

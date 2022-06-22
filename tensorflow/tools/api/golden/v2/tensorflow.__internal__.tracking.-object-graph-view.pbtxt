@@ -1,6 +1,7 @@
 path: "tensorflow.__internal__.tracking.ObjectGraphView"
 tf_class {
   is_instance: "<class \'tensorflow.python.checkpoint.graph_view.ObjectGraphView\'>"
+  is_instance: "<class \'tensorflow.python.checkpoint.trackable_view.TrackableView\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "attached_dependencies"
@@ -17,6 +18,10 @@ tf_class {
   member_method {
     name: "breadth_first_traversal"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "children"
+    argspec: "args=[\'self\', \'obj\', \'save_type\'], varargs=None, keywords=kwargs, defaults=[\'SaveType.CHECKPOINT\'], "
   }
   member_method {
     name: "frozen_saveable_objects"

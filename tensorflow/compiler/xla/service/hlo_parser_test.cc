@@ -2335,14 +2335,14 @@ class HloParserTest : public ::testing::Test {
 TEST_F(HloParserTest, Empty) {
   const std::string original = "";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, Garbage) {
   const std::string original =
       "HloModule thi$ str1ng makes# N0 sen$e @all!*&^%$";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, WrongOpcode) {
@@ -2356,7 +2356,7 @@ ENTRY %blabla (x: f32[], y: f32[]) -> f32[] {
 
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, MetadataWithCholesky) {
@@ -2367,7 +2367,7 @@ ENTRY %blabla (a: f32[1,291,291]) -> f32[1,291,291] {
 }
 )";
   auto result = ParseAndReturnVerifiedModule(original);
-  EXPECT_EQ(Status::OK(), result.status());
+  EXPECT_EQ(OkStatus(), result.status());
   EXPECT_EQ("Cholesky", result.ValueOrDie()
                             ->entry_computation()
                             ->root_instruction()
@@ -2395,7 +2395,7 @@ ENTRY %blabla (x: g32[]) -> g32[] {
 
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, WrongOperandsSize) {
@@ -2408,7 +2408,7 @@ ENTRY %blabla (x: f32[]) -> pred[] {
 
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, OperandNotFound) {
@@ -2419,7 +2419,7 @@ ENTRY %blabla (x: f32[]) -> pred[] {
 }
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, MoreConstants) {
@@ -2461,7 +2461,7 @@ ENTRY %some_2 () -> f32[2] {
 
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
   ExpectHasSubstr(result.status().error_message(),
                   "expects nested array in rank 1, but sees larger");
 }
@@ -2475,7 +2475,7 @@ ENTRY %some_2x3 () -> f32[2,3] {
 
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
   ExpectHasSubstr(result.status().error_message(),
                   "expects nested array in rank 2, but sees 1");
 }
@@ -2489,7 +2489,7 @@ ENTRY %some_2x3x2 () -> f32[2,3,2] {
 
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
   ExpectHasSubstr(result.status().error_message(),
                   "expects 3 elements in the [0]th element");
 }
@@ -2504,7 +2504,7 @@ ENTRY %ConstantF16Overflow.v4 () -> f16[] {
 
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
   ExpectHasSubstr(result.status().error_message(),
                   "is out of range for literal's primitive type F16");
 }
@@ -2516,7 +2516,7 @@ TEST_F(HloParserTest, ConstantBf16NoOverflow) {
   ENTRY test {
     ROOT c = bf16[] constant(-65505)
   })";
-  EXPECT_EQ(Status::OK(), ParseAndReturnVerifiedModule(original).status());
+  EXPECT_EQ(OkStatus(), ParseAndReturnVerifiedModule(original).status());
 }
 
 TEST_F(HloParserTest, ConstantBf16Overflow) {
@@ -2538,7 +2538,7 @@ TEST_F(HloParserTest, ConstantUnsignedUnderflow) {
         ROOT %constant = u64[] constant(-1)
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_EQ(Status::OK(), result.status());
+  EXPECT_EQ(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, ConstantUnsignedOverflow) {
@@ -2548,7 +2548,7 @@ TEST_F(HloParserTest, ConstantUnsignedOverflow) {
         ROOT %constant = u32[] constant(4294967296)
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
   ExpectHasSubstr(result.status().error_message(),
                   "is out of range for literal's primitive type U32");
 }
@@ -2560,7 +2560,7 @@ TEST_F(HloParserTest, ConstantUnsignedInt64Overflow) {
         ROOT %constant = u64[] constant(9223372036854775808)
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_EQ(Status::OK(), result.status());
+  EXPECT_EQ(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, ConstantC64Overflow) {
@@ -2570,7 +2570,7 @@ TEST_F(HloParserTest, ConstantC64Overflow) {
         ROOT c = c64[] constant((1e100, 0))
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, ConstantC64Underflow) {
@@ -2580,7 +2580,7 @@ TEST_F(HloParserTest, ConstantC64Underflow) {
         ROOT c = c64[] constant((0, -1e100))
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, ConstantF64Overflow) {
@@ -2590,7 +2590,7 @@ TEST_F(HloParserTest, ConstantF64Overflow) {
         ROOT c = f64[] constant(1.8e308)
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, ConstantF64Underflow) {
@@ -2600,7 +2600,7 @@ TEST_F(HloParserTest, ConstantF64Underflow) {
         ROOT c = f64[] constant(-1.8e308)
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
 }
 
 TEST_F(HloParserTest, ConstantWithExp) {
@@ -2642,7 +2642,7 @@ ENTRY %NegativeNan () -> bf16[2] {
 
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_EQ(Status::OK(), result.status());
+  EXPECT_EQ(OkStatus(), result.status());
   EXPECT_EQ(result.ValueOrDie()->ToString(HloPrintOptions()), original);
 }
 
@@ -2656,7 +2656,7 @@ ENTRY %NanPayload () -> bf16[2] {
 
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_EQ(Status::OK(), result.status());
+  EXPECT_EQ(OkStatus(), result.status());
   EXPECT_EQ(result.ValueOrDie()->ToString(HloPrintOptions()), original);
 }
 
@@ -3836,7 +3836,7 @@ TEST_F(HloParserTest, CheckIndexedConditionalDimension) {
   }
   )";
   auto result = ParseAndReturnUnverifiedModule(hlo_string);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
   EXPECT_THAT(result.status().error_message(),
               HasSubstr("The first operand must be a scalar"));
 }
@@ -3863,7 +3863,7 @@ TEST_F(HloParserTest, CheckIndexedConditionalElementType) {
   }
   )";
   auto result = ParseAndReturnUnverifiedModule(hlo_string);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
   EXPECT_THAT(result.status().error_message(),
               HasSubstr("The first operand must be a scalar of PRED or S32"));
 }
@@ -3891,7 +3891,7 @@ TEST_F(HloParserTest,
   }
   )";
   auto result = ParseAndReturnUnverifiedModule(hlo_string);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
   EXPECT_THAT(result.status().error_message(),
               HasSubstr("unexpected attribute \"branch_computations\""));
 }
@@ -4014,7 +4014,7 @@ ENTRY test {
 }
 )";
   auto result = ParseAndReturnVerifiedModule(hlo_string);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_NE(OkStatus(), result.status());
   EXPECT_THAT(result.status().error_message(), HasSubstr("dimensions"));
 }
 

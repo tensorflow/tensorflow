@@ -967,9 +967,16 @@ struct ConvertBroadcastToReshape : public OpRewritePattern<BroadcastToOp> {
         input_type.getNumElements() != output_type.getNumElements()) {
       return failure();
     }
+    // Reshape op supports only new shape as I32. Add a cast op to I32 always
+    // to make sure the introduced Reshape Op is a valid one.
+    auto result_type = RankedTensorType::get(
+        op.shape().getType().cast<RankedTensorType>().getShape(),
+        rewriter.getI32Type());
+    auto cast_op =
+        rewriter.create<TFL::CastOp>(op->getLoc(), result_type, op.shape());
 
     rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.input(),
-                                           op.shape());
+                                           cast_op);
     return success();
   }
 };

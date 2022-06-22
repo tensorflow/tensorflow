@@ -45,10 +45,11 @@ py_library(
     srcs = ["saveable_object_util.py"],
     srcs_version = "PY3",
     deps = [
+        ":saveable_object",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
-        "//tensorflow/python/training/tracking:base",
-        "//tensorflow/python/training/tracking:trackable_utils",
+        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/trackable:trackable_utils",
         "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],

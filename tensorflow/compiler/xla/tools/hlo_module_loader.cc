@@ -42,7 +42,7 @@ Status OverrideConfig(const hlo_module_loader_details::Config& ovr_config,
                       HloModuleConfig* config) {
   config->set_replica_count(ovr_config.num_replicas);
   config->set_num_partitions(ovr_config.num_partitions);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace

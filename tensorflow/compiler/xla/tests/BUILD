@@ -2057,7 +2057,7 @@ xla_test(
             "multi_gpu",
             "no_oss",
             "notap",
-            "tfrt_befthunk",
+            "jitrt_executable",
         ],
         "cpu": [
             "notsan",
@@ -2827,6 +2827,7 @@ xla_test(
     real_hardware_only = True,
     tags = [
         "optonly",
+        "no_rocm", # broken since 220530 (SWDEV-342540)
     ],
     deps = [
         ":test_macros_header",

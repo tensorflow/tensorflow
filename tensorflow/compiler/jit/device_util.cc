@@ -93,10 +93,10 @@ Status DeviceNameToDeviceType(const string& device, DeviceType* device_type) {
     return errors::Internal("Malformed assigned device '", device, "'");
   }
   *device_type = DeviceType(parsed.type);
-  return Status::OK();
+  return OkStatus();
 }
 
-StatusOr<absl::optional<jit::DeviceId>> PickDeviceForXlaImpl(
+StatusOr<std::optional<jit::DeviceId>> PickDeviceForXlaImpl(
     const jit::DeviceInfoCache& device_info_cache,
     const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu,
     bool failure_to_pick_is_error) {
@@ -105,13 +105,13 @@ StatusOr<absl::optional<jit::DeviceId>> PickDeviceForXlaImpl(
     if (failure_to_pick_is_error) {           \
       return failing_status;                  \
     } else {                                  \
-      return {absl::nullopt};                 \
+      return {std::nullopt};                  \
     }                                         \
   } while (false)
 
-  absl::optional<jit::DeviceId> maybe_gpu_device;
-  absl::optional<jit::DeviceId> maybe_cpu_device;
-  absl::optional<jit::DeviceId> maybe_unknown_device;
+  std::optional<jit::DeviceId> maybe_gpu_device;
+  std::optional<jit::DeviceId> maybe_cpu_device;
+  std::optional<jit::DeviceId> maybe_unknown_device;
 
   bool multiple_cpu_devices = false;
   bool multiple_gpu_devices = false;
@@ -121,7 +121,7 @@ StatusOr<absl::optional<jit::DeviceId>> PickDeviceForXlaImpl(
   // compatible, update d1 with a more specific one.
   // TODO(sanjoy): Cache DeviceNameUtils::ParsedName inside device_info_cache.
   const auto is_multiple_devices =
-      [&](const jit::DeviceId& d0, absl::optional<jit::DeviceId>* d1) -> bool {
+      [&](const jit::DeviceId& d0, std::optional<jit::DeviceId>* d1) -> bool {
     const absl::string_view name0 = device_info_cache.GetNameFor(d0);
     const absl::string_view name1 = device_info_cache.GetNameFor(d1->value());
 
@@ -217,14 +217,14 @@ StatusOr<absl::optional<jit::DeviceId>> PickDeviceForXlaImpl(
 StatusOr<jit::DeviceId> PickDeviceForXla(
     const jit::DeviceInfoCache& device_info_cache,
     const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu) {
-  TF_ASSIGN_OR_RETURN(absl::optional<jit::DeviceId> device_id,
+  TF_ASSIGN_OR_RETURN(std::optional<jit::DeviceId> device_id,
                       PickDeviceForXlaImpl(device_info_cache, devices,
                                            allow_mixing_unknown_and_cpu,
                                            /*failure_to_pick_is_error=*/true));
   return *device_id;
 }
 
-StatusOr<absl::optional<jit::DeviceId>> MaybePickDeviceForXla(
+StatusOr<std::optional<jit::DeviceId>> MaybePickDeviceForXla(
     const jit::DeviceInfoCache& device_info_cache,
     const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu) {
   return PickDeviceForXlaImpl(device_info_cache, devices,

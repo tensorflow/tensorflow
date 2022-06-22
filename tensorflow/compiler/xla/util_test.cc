@@ -55,7 +55,8 @@ TEST(UtilTest, VectorString) {
   std::vector<float> float_vector = {5.5};
   EXPECT_EQ(VectorString(float_vector), "(5.5)");
 
-  std::set<const char*> string_set = {"a", "b"};
+  std::set<std::string_view> string_set = {std::string_view("a"),
+                                           std::string_view("b")};
   EXPECT_EQ(VectorString(string_set), "(a, b)");
 
   EXPECT_EQ(VectorString({}), "()");

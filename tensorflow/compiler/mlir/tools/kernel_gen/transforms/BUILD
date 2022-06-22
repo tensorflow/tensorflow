@@ -99,7 +99,6 @@ cc_library(
     name = "gpu_passes",
     srcs = [
         "gpu_kernel_to_blob_pass.cc",
-        "map_parallel_loops_to_gpu.cc",
         "tf_kernel_to_llvm_pass.cc",
     ],
     hdrs = ["passes.h"],

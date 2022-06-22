@@ -31,18 +31,18 @@ class JitCompilationListener : public XlaActivityListener {
  public:
   Status Listen(
       const XlaAutoClusteringActivity& auto_clustering_activity) override {
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Listen(
       const XlaJitCompilationActivity& jit_compilation_activity) override {
     used_persistent_cache_.push_back(
         jit_compilation_activity.used_persistent_cache());
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Listen(const XlaOptimizationRemark& optimization_remark) override {
-    return Status::OK();
+    return OkStatus();
   }
 
   ~JitCompilationListener() override {}
@@ -53,7 +53,7 @@ class JitCompilationListener : public XlaActivityListener {
         return errors::FailedPrecondition("Unexpected listener history.");
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   void ClearListenerHistory() { used_persistent_cache_.clear(); }

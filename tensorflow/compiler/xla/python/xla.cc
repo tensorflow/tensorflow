@@ -427,7 +427,7 @@ PYBIND11_MODULE(xla_extension, m) {
 
   m.def(
       "get_distributed_runtime_service",
-      [](std::string address, int num_nodes,
+      [](std::string address, int num_nodes, bool use_coordination_service,
          absl::optional<int> heartbeat_interval,
          absl::optional<int> max_missing_heartbeats,
          absl::optional<int> enumerate_devices_timeout,
@@ -449,10 +449,12 @@ PYBIND11_MODULE(xla_extension, m) {
           options.shutdown_timeout = absl::Seconds(*shutdown_timeout);
         }
         TF_ASSIGN_OR_RETURN(std::unique_ptr<DistributedRuntimeService> service,
-                            GetDistributedRuntimeService(address, options));
+                            GetDistributedRuntimeService(
+                                address, options, use_coordination_service));
         return service;
       },
-      py::arg("address"), py::arg("num_nodes"), py::kw_only(),
+      py::arg("address"), py::arg("num_nodes"),
+      py::arg("use_coordination_service"), py::kw_only(),
       py::arg("heartbeat_interval") = absl::nullopt,
       py::arg("max_missing_heartbeats") = absl::nullopt,
       py::arg("enumerate_devices_timeout") = absl::nullopt,
@@ -460,8 +462,9 @@ PYBIND11_MODULE(xla_extension, m) {
 
   m.def(
       "get_distributed_runtime_client",
-      [](std::string address, int node_id, absl::optional<int> rpc_timeout,
-         absl::optional<int> init_timeout, absl::optional<int> shutdown_timeout,
+      [](std::string address, int node_id, bool use_coordination_service,
+         absl::optional<int> rpc_timeout, absl::optional<int> init_timeout,
+         absl::optional<int> shutdown_timeout,
          absl::optional<int> heartbeat_interval,
          absl::optional<int> max_missing_heartbeats,
          absl::optional<std::function<void(xla::Status,
@@ -493,9 +496,11 @@ PYBIND11_MODULE(xla_extension, m) {
         if (shutdown_on_destruction.has_value()) {
           options.shutdown_on_destruction = *shutdown_on_destruction;
         }
-        return GetDistributedRuntimeClient(address, options);
+        return GetDistributedRuntimeClient(address, options,
+                                           use_coordination_service);
       },
-      py::arg("address"), py::arg("node_id"), py::kw_only(),
+      py::arg("address"), py::arg("node_id"),
+      py::arg("use_coordination_service"), py::kw_only(),
       py::arg("rpc_timeout") = absl::nullopt,
       py::arg("init_timeout") = absl::nullopt,
       py::arg("shutdown_timeout") = absl::nullopt,

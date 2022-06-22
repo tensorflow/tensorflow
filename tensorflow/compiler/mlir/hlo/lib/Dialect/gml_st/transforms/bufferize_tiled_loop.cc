@@ -298,7 +298,7 @@ struct BufferizeLoopOp : public OpConversionPattern<LoopOp> {
 
       OpBuilder::InsertionGuard g(rewriter);
       rewriter.setInsertionPoint(op);
-      auto new_alloc = rewriter.clone(*alloc.getOperation());
+      auto *new_alloc = rewriter.clone(*alloc.getOperation());
       operands[op.getNumControlOperands() + op.getNumInputs() + en.index()] =
           new_alloc->getResult(0);
     }
@@ -377,7 +377,7 @@ struct TiledLoopBufferizePass
         mlir::bufferization::getPartialBufferizationOptions();
     // TODO(springerm): Add dialects to this filter as more and more dialects
     // will be migrated to BufferizableOpInterface-based bufferization.
-    options.allowDialectInFilter<shape::ShapeDialect>();
+    options.opFilter.allowDialect<shape::ShapeDialect>();
     if (failed(mlir::bufferization::bufferizeOp(getOperation(), options))) {
       signalPassFailure();
       return;

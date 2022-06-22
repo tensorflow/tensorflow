@@ -46,6 +46,7 @@ tf_py_test(
     deps = [
         ":failure_handling_lib",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",
@@ -60,7 +61,6 @@ tf_py_test(
         "//tensorflow/python/module",
         "//tensorflow/python/platform",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training/tracking:util",
         "@absl_py//absl/testing:parameterized",
     ],
 )

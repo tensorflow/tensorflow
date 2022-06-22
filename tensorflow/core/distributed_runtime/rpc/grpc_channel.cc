@@ -49,7 +49,7 @@ string MakeAddress(const string& job, int task) {
 Status ValidateHostPortPair(const string& host_port) {
   string bns_prefix = "/bns/";
   if (host_port.substr(0, bns_prefix.length()) == bns_prefix) {
-    return Status::OK();
+    return OkStatus();
   }
   uint32 port;
   auto colon_index = host_port.find_last_of(':');
@@ -58,7 +58,7 @@ Status ValidateHostPortPair(const string& host_port) {
     return errors::InvalidArgument("Could not interpret \"", host_port,
                                    "\" as a host-port pair.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 ::grpc::ChannelArguments* CreateDefaultChannelArguments() {
@@ -146,7 +146,7 @@ Status NewHostPortGrpcChannel(const string& target,
   ::grpc::ChannelArguments args = GetChannelArguments(rpc_options);
   *channel_pointer = ::grpc::CreateCustomChannel(
       "dns:///" + target, ::grpc::InsecureChannelCredentials(), args);
-  return Status::OK();
+  return OkStatus();
 }
 
 ChannelCreationFunction ConvertToChannelCreationFunction(
@@ -182,7 +182,7 @@ Status GrpcChannelSpec::AddHostPortsJob(
     TF_RETURN_IF_ERROR(ValidateHostPortPair(id_host_port.second));
   }
   host_ports_jobs_.emplace_back(job_id, host_ports);
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {

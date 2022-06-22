@@ -213,12 +213,12 @@ Status TransferManager::ReadDynamicShapes(se::Stream* stream,
         const Shape& buffer_shape =
             ShapeUtil::GetSubshape(*device_shape, index);
         if (buffer_shape.IsTuple()) {
-          return Status::OK();
+          return OkStatus();
         }
         Shape& device_sub_shape =
             *ShapeUtil::GetMutableSubshape(device_shape, index);
         if (device_sub_shape.is_static()) {
-          return Status::OK();
+          return OkStatus();
         }
 
         // Read the dynamic shape metadata from the device stream.  The dynamic
@@ -244,13 +244,13 @@ Status TransferManager::ReadDynamicShapes(se::Stream* stream,
         for (int64_t i = 0; i < metadata.element_count(); ++i) {
           device_sub_shape.mutable_dimensions()[i] = metadata.Get<int32_t>({i});
         }
-        return Status::OK();
+        return OkStatus();
       }));
   device_shape->clear_dynamic_dimensions();
 
   TF_RET_CHECK(ShapeUtil::DynamicShapeIsCompatible(*device_shape,
                                                    original_device_shape));
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ void TransferManager::RegisterTransferManager(
@@ -314,7 +314,7 @@ Status TransferManager::WriteTupleIndexTablesAsync(
                                             &device_memory);
         }
 
-        return Status::OK();
+        return OkStatus();
       });
 }
 
@@ -322,7 +322,7 @@ Status TransferManager::WriteRootTupleIndexTable(
     se::Stream* stream, const ShapedBuffer& device_buffer) {
   TF_RET_CHECK(device_buffer.on_device_shape().IsTuple());
   if (ShapeUtil::TupleElementCount(device_buffer.on_device_shape()) == 0) {
-    return Status::OK();
+    return OkStatus();
   }
   se::DeviceMemoryBase device_memory = device_buffer.buffer({});
   TF_RET_CHECK(GetByteSizeRequirement(device_buffer.on_device_shape()) ==
@@ -341,7 +341,7 @@ Status TransferManager::WriteRootTupleIndexTable(
     se::Stream* stream, const ShapeTree<MaybeOwningDeviceMemory>& buffer_tree) {
   TF_RET_CHECK(buffer_tree.shape().IsTuple());
   if (ShapeUtil::TupleElementCount(buffer_tree.shape()) == 0) {
-    return Status::OK();
+    return OkStatus();
   }
   se::DeviceMemoryBase device_memory =
       buffer_tree.element({}).AsDeviceMemoryBase();
@@ -367,7 +367,7 @@ Status TransferManager::TransferBufferFromDevice(
         source.size(), size);
   }
   stream->ThenMemcpy(destination, source, size);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TransferManager::TransferBufferToDevice(
@@ -380,7 +380,7 @@ Status TransferManager::TransferBufferToDevice(
         destination->size(), size);
   }
   stream->ThenMemcpy(destination, source, size);
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(

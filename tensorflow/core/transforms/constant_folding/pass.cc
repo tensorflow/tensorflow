@@ -46,7 +46,6 @@ limitations under the License.
 namespace mlir {
 namespace tfg {
 
-// TODO(chiahungduan): Some cases we may need to support ComplexType.
 template <typename T>
 static std::enable_if_t<std::is_integral<T>::value, ElementsAttr>
 CreateElementsAttrOfTypeValues(Type element_type, ArrayRef<int64_t> shape,
@@ -122,17 +121,9 @@ static FailureOr<TFOp> CreateConstantTensorOp(
       "dtype", TypeAttr::get(
                    tensor_value.getType().cast<ShapedType>().getElementType()));
   state.attributes.set("value", tensor_value);
-
-  // TODO(chiahungduan): In general, the creation of the Const operation is used
-  // to replace an operation but it may be ideal to check the uniqueness of the
-  // name.
-  if (!state.attributes.get(TFGraphDialect::getNameAttrKey())) {
-    // If the new constant op has no designed name, attach one to it so that it
-    // can be translated back to NodeDef while evaluation.
-    state.attributes.set(
-        TFGraphDialect::getNameAttrKey(),
-        builder.getStringAttr(Twine(name_prefix, "/const_folded")));
-  }
+  state.attributes.set(
+      TFGraphDialect::getNameAttrKey(),
+      builder.getStringAttr(Twine(name_prefix, "/const_folded")));
 
   state.addOperands(control_operands);
   return TFOp(builder.create(state));
@@ -329,8 +320,9 @@ bool OpPropertyHelper::ModifiesInputsInPlace(TFOp op) {
       op_name == "AssignSubVariableOp" || op_name == "ResourceScatterUpdate" ||
       op_name == "ResourceScatterAdd" || op_name == "ResourceScatterSub" ||
       op_name == "ResourceScatterMul" || op_name == "ResourceScatterDiv" ||
-      op_name == "ResourceScatterMin" || op_name == "ResourceScatterMax")
+      op_name == "ResourceScatterMin" || op_name == "ResourceScatterMax") {
     return false;
+  }
 
   std::string lower_op_name = op_name.str();
   std::transform(lower_op_name.begin(), lower_op_name.end(),
@@ -464,8 +456,9 @@ bool OpPropertyHelper::IsFoldableUncached(TFOp op) {
   if (is_merge && !merge_has_constant_input) return false;
   if (DisableCompressedTensorOptimization() &&
       (dialect_->IsFill(op) || dialect_->IsZerosLike(op) ||
-       dialect_->IsOnesLike(op)))
+       dialect_->IsOnesLike(op))) {
     return false;
+  }
 
   // If we know the output shapes, make sure that the outputs are small enough
   // to materialize.
@@ -586,8 +579,9 @@ class EvaluateConstant : public FolderPatternBase {
 
     SmallVector<Attribute> result;
     if (failed(util::EvaluateOperation(cpu_device_.get(), resource_mgr_.get(),
-                                       op, const_operands, result)))
+                                       op, const_operands, result))) {
       return failure();
+    }
 
     StringAttr name_attr = static_cast<TFGraphDialect *>(op->getDialect())
                                ->getNameAttrIdentifier();
@@ -609,20 +603,9 @@ class EvaluateConstant : public FolderPatternBase {
       if (failed(const_op)) return failure();
       if (device_attr) (*const_op).setRequestedDevice(device_attr);
       const_values.emplace_back(*((*const_op)->result_begin()));
-      // TODO(chiahungduan): Review the following comments.
-      // Create an empty NodeDef to identify dead outputs (e.g. the
-      // output of a
-      // switch that's not selected by the switch predicate).
-      // if (output_tensors[i].tensor)
-      //   outputs->at(i) = NodeDef();
     }
 
-    // Replace the control edge to one of the constant value.
-    // TODO(chiahungduan): In grappler, it adds the edge to the last const
-    // value and I think that's just implemention defined behavior.
-    Operation *control_repl = const_values[0].getDefiningOp();
-    const_values.push_back(control_repl->getResults().back());
-
+    const_values.push_back(LookupControlDependency(const_values[0]));
     rewriter.replaceOp(op, const_values);
 
     return success();
@@ -846,8 +829,9 @@ class MaterializeBroadcastGradientArgsOp : public FolderPatternBase {
         auto attr = op->getAttrOfType<ElementsAttr>("value");
         if (!attr) return false;
         if (!attr.getElementType().isInteger(32) &&
-            !attr.getElementType().isInteger(64))
+            !attr.getElementType().isInteger(64)) {
           return false;
+        }
         shape = attr.getType().cast<ShapedType>().getShape();
       }
       return true;
@@ -857,13 +841,15 @@ class MaterializeBroadcastGradientArgsOp : public FolderPatternBase {
     ArrayRef<int64_t> s1_shape;
     if (!getShape(s0, s0_shape) || !getShape(s1, s1_shape)) return failure();
 
-    // TODO(chiahungduan): The Dim::size of TensorShapeProto is supposed to be
-    // greater than or equal to -1, but in Grappler, it seems that the shape
-    // inference will fill some values less than -1. Check that then fix the
-    // logic here.
     const int common_dims = std::min(s0_shape.size(), s1_shape.size());
     for (int i = 0; i < common_dims; ++i) {
       if (s0_shape[i] >= 0 && s1_shape[i] >= 0) continue;
+
+      // TODO(chiahungduan): Check if two dims are symbolically equal. Grappler
+      // stores the symbolic shape information with dim < -1 which is not a
+      // convention in TFG. Use symbolic shape information instead.
+
+      // Return failure if two dims are symbolically unequal.
       return failure();
     }
     for (int i = common_dims; i < s0_shape.size(); ++i)
@@ -871,7 +857,6 @@ class MaterializeBroadcastGradientArgsOp : public FolderPatternBase {
     for (int i = common_dims; i < s1_shape.size(); ++i)
       if (s1_shape[i] < 0) return failure();
 
-    // TODO(chiahungduan): Refactor the computation down below.
     tensorflow::BCast::Vec s0_vec(s0_shape.begin(), s0_shape.end());
     tensorflow::BCast::Vec s1_vec(s1_shape.begin(), s1_shape.end());
     tensorflow::BCast bcast(s0_vec, s1_vec);
@@ -895,7 +880,7 @@ class MaterializeBroadcastGradientArgsOp : public FolderPatternBase {
           rewriter, op->getLoc(), TFOp(op).name(), *(op->result_type_begin()),
           TFOp(op).controlRet(), const_attr);
       if (failed(const_op)) return failure();
-      (*const_op).setName(Twine(TFOp(op).name(), "-bcastargs-") +
+      (*const_op).setName(Twine(TFOp(op).name(), "/bcastargs_") +
                           std::to_string(j));
       const_values.push_back((*const_op)->getResult(0));
     }
@@ -1893,17 +1878,17 @@ class SimplifyReductionOp : public FolderPatternBase {
   Operation *ReplaceReductionWithIdentity(OpBuilder &builder,
                                           Operation *op) const {
     OperationState state(op->getLoc(), "tfg.Identity");
+    Type t_attr_type;
     if (auto T_attr = op->getAttrOfType<TypeAttr>("T"))
-      state.addTypes(T_attr.getValue());
+      t_attr_type = T_attr.getValue();
     else if (dialect_->IsAny(op) || dialect_->IsAll(op))
-      state.addTypes(builder.getI1Type());
+      t_attr_type = builder.getI1Type();
     else
       return nullptr;
-    state.addTypes(ControlType::get(builder.getContext()));
-
     state.attributes = op->getAttrDictionary();
     util::EraseRegularNodeAttributes(state.attributes);
-    state.addAttribute("T", TypeAttr::get(state.types[0]));
+    state.addAttribute("T", TypeAttr::get(t_attr_type));
+    state.addTypes(op->getResultTypes());
 
     state.addOperands(
         {op->getOperand(0), LookupControlDependency(op->getOperand(1))});
@@ -1929,9 +1914,9 @@ class SimplifyReshapeOp : public FolderPatternBase {
     if (!shape_op || !dialect_->IsConstant(shape_op)) return failure();
 
     auto shape_attr = shape_op->getAttrOfType<ElementsAttr>("value");
-    if (shape_attr.getNumElements() != input_shape.getRank()) return failure();
-
     SmallVector<int32_t> new_shape(shape_attr.getValues<int32_t>());
+
+    if (input_shape.getRank() != new_shape.size()) return failure();
     for (const auto &it : llvm::zip(input_shape.getShape(), new_shape)) {
       int32_t dim_0 = std::get<0>(it);
       int32_t dim_1 = std::get<1>(it);
@@ -2388,14 +2373,15 @@ class ConstantPushDown : public FolderPatternBase {
 // This implementation is mapped with
 // ConstantFolding::PartialConstPropThroughIdentityN in
 // grappler/optimizers/constant_folding.cc
-// In grappler's constant folding, it propagates the values from IdentityN. But
-// here it grabs the constant value from the definingOp which is IdentityN.
 class PartialConstPropThroughIdentityN : public FolderPatternBase {
  public:
   explicit PartialConstPropThroughIdentityN(OpPropertyHelper &helper)
       : FolderPatternBase(MatchAnyOpTypeTag(), helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
+    // In grappler's constant folding, it propagates the values from IdentityN.
+    // At here, we check the operand which is defined by Identity/IdentityN.
+
     SmallVector<Value> control_operands;
     for (OpOperand &operand : op->getOpOperands()) {
       Value v = operand.get();
@@ -2403,27 +2389,39 @@ class PartialConstPropThroughIdentityN : public FolderPatternBase {
 
       Operation *v_op = v.getDefiningOp();
       if (!v_op || !dialect_->IsIdentityN(v_op) ||
-          dialect_->IsIdentityNSingleInput(v_op))
+          dialect_->IsIdentityNSingleInput(v_op)) {
         continue;
+      }
 
       int res_index = v.cast<OpResult>().getResultNumber();
       Value value_to_forward = v_op->getOperand(res_index);
       if (!value_to_forward.getDefiningOp() ||
-          !dialect_->IsConstant(value_to_forward.getDefiningOp()))
+          !dialect_->IsConstant(value_to_forward.getDefiningOp())) {
         continue;
-      operand.set(value_to_forward);
-      if (llvm::none_of(control_operands, [&](Value v) {
-            return v == TFOp(v_op).controlRet();
-          })) {
-        control_operands.push_back(TFOp(v_op).controlRet());
       }
+
+      rewriter.startRootUpdate(op);
+      operand.set(value_to_forward);
+      rewriter.finalizeRootUpdate(op);
+
+      // Add the control dependency to the Identity/IdentityN. Note that it's
+      // possible to have multiple operands defined by the same
+      // Identity/IdentityN. Given the number is small and this propagation is
+      // usually done on an operation one time, do a linear scan before
+      // insertion.
+      Value control = TFOp(v_op).controlRet();
+      if (!llvm::is_contained(control_operands, control))
+        control_operands.push_back(control);
     }
 
+    // No new control operands implies that we didn't find constants that can be
+    // propagated through Identity/IdentityN.
     if (control_operands.empty()) return failure();
 
-    OperationState state(op->getLoc(), op->getName().getStringRef());
+    OperationState state(op->getLoc(), op->getName());
     state.attributes = op->getAttrDictionary();
     state.addOperands(op->getOperands());
+    // Append the newly added control operands from Identity/IdentityN.
     state.addOperands(control_operands);
     state.addTypes(op->getResultTypes());
 
@@ -2450,27 +2448,22 @@ class PartialAssocOpConstFolding : public FolderPatternBase {
     // addition is commutative.
     if (!helper_.IsAggregate(op) || !helper_.IsCommutative(op))
       return failure();
+
     SmallVector<Value> const_inputs;
     SmallVector<Value> non_const_inputs;
 
     auto [non_control_operands, control_operands] = TFOp(op).splitOperands();
     int non_control_inputs_size = non_control_operands.size();
-    int control_inputs_size = control_operands.size();
 
     for (Value operand : non_control_operands) {
       Operation *may_const_op = operand.getDefiningOp();
-      if (!may_const_op) return failure();
-      if (may_const_op->getName().stripDialect() == "Const")
+      if (may_const_op && dialect_->IsConstant(may_const_op))
         const_inputs.push_back(operand);
       else
         non_const_inputs.push_back(operand);
     }
 
-    for (Value operand : TFOp(op).getControlOperands())
-      non_const_inputs.push_back(operand);
-
     if (const_inputs.size() == non_control_inputs_size &&
-        // TODO(chiahungduan): Do we have this operation tfg.AccumulateNV2?
         op->getName().stripDialect() == "AccumulateNV2") {
       OperationState state(op->getLoc(), "tfg.AddN");
       state.addTypes(op->getResultTypes());
@@ -2482,10 +2475,7 @@ class PartialAssocOpConstFolding : public FolderPatternBase {
       return success();
     }
 
-    // TODO(chiahungduan): Check if this optimization is applid
-    if (const_inputs.size() <= 1 ||
-        const_inputs.size() >= non_control_inputs_size)
-      return failure();
+    if (const_inputs.size() <= 1) return failure();
 
     OperationState state(op->getLoc(), "tfg.AddN");
     state.addOperands(const_inputs);
@@ -2495,20 +2485,20 @@ class PartialAssocOpConstFolding : public FolderPatternBase {
     state.attributes.set("N", IntegerAttr::get(rewriter.getIntegerType(32),
                                                const_inputs.size()));
     Operation *add_n = rewriter.create(state);
+    TFOp(add_n).setName(Twine(TFOp(op).name(), "/_partial_split_") +
+                        std::to_string(const_inputs.size()));
 
-    OperationState new_op_state(op->getLoc(), op->getName().getStringRef());
-    for (Value v : op->getOperands()) {
-      if (v == const_inputs[0])
-        new_op_state.addOperands(add_n->getResult(0));
-      else
-        new_op_state.addOperands(v);
-    }
+    OperationState new_op_state(op->getLoc(), op->getName());
+    // Note that in grappler, it puts the AddOp at the position of the first
+    // const operand. Here we always put the AddOp at begin.
+    new_op_state.addOperands(add_n->getResult(0));
     new_op_state.addOperands(non_const_inputs);
+    new_op_state.addOperands(control_operands);
     new_op_state.addTypes(op->getResultTypes());
     new_op_state.attributes = op->getAttrDictionary();
-    new_op_state.attributes.set(
-        "N", IntegerAttr::get(rewriter.getIntegerType(32),
-                              non_const_inputs.size() - control_inputs_size));
+    new_op_state.attributes.set("N",
+                                IntegerAttr::get(rewriter.getIntegerType(32),
+                                                 non_const_inputs.size() + 1));
 
     Operation *new_op = rewriter.create(new_op_state);
     rewriter.replaceOp(op, new_op->getResults());
@@ -2539,13 +2529,6 @@ class MergeConcatOp : public FolderPatternBase {
     if (!axis_op || !dialect_->IsConstant(axis_op)) return failure();
     int axis = getAxis(axis_op);
 
-    // If all inputs are constant, don't merge and let folding take case of it.
-    if (llvm::all_of(non_control_operands.drop_back(), [&](Value v) {
-          return v.getDefiningOp() && dialect_->IsConstant(v.getDefiningOp());
-        })) {
-      return failure();
-    }
-
     // In grappler, it checks the first user of the ConcatV2 to see if it's also
     // a ConcatV2. At here, we check the user's operand. Another difference is
     // that grappler only checks the first user and we check all the operands.
@@ -2569,6 +2552,14 @@ class MergeConcatOp : public FolderPatternBase {
     }
     if (axis != getAxis(concat_operand_axis_op)) return failure();
 
+    // If all inputs are constant, don't merge and let EvaluateConstant take
+    // case of it.
+    if (llvm::all_of(concat_non_control_operands.drop_back(), [&](Value v) {
+          return v.getDefiningOp() && dialect_->IsConstant(v.getDefiningOp());
+        })) {
+      return failure();
+    }
+
     // Make a pass over the parent inputs to see if any of them have explicit
     // device() fields set, and if different inputs are on different tasks.  If
     // so, this concat of concats may have been carefully constructed to be a
@@ -2589,7 +2580,6 @@ class MergeConcatOp : public FolderPatternBase {
     }
 
     OperationState state(op->getLoc(), "tfg.ConcatV2");
-
     for (Value operand : non_control_operands) {
       if (operand == concat_operand->getResult(0)) {
         // Inline the non-control operands of concat_operand.
@@ -2601,14 +2591,11 @@ class MergeConcatOp : public FolderPatternBase {
     // Copy the control operands.
     state.addOperands(control_operands);
     state.addOperands(concat_control_operands);
-
     state.addTypes(op->getResultTypes());
-
     state.attributes = op->getAttrDictionary();
     state.attributes.set("N", IntegerAttr::get(rewriter.getIntegerType(32),
                                                state.operands.size() - 1));
     Operation *concat_op = rewriter.create(state);
-
     rewriter.replaceOp(op, concat_op->getResults());
 
     return success();
@@ -2785,22 +2772,25 @@ class PartialConcatConstFolding : public FolderPatternBase {
     // we have to preserve order and can only push consecutive runs of constant
     // inputs into sub-nodes.
     if (!dialect_->IsConcat(op)) return failure();
-    if (op->getName().getStringRef().rfind("_partial_split_") !=
-        StringRef::npos)
+    if (TFOp(op).name().rfind("_partial_split_") != StringRef::npos) {
       return failure();
+    }
 
-    const int num_non_control_inputs = TFOp(op).getNonControlOperands().size();
+    auto [non_control_operands, control_operands] = TFOp(op).splitOperands();
+    const int num_non_control_inputs = non_control_operands.size();
     if (num_non_control_inputs <= 3) return failure();
 
     int axis_arg = -1;
     int begin = 0;
     int end = num_non_control_inputs;
-    if (dialect_->IsConcat(op)) {
-      begin = 1;
-      axis_arg = 0;
-    } else if (dialect_->IsConcatV2(op)) {
+    // Note that IsConcat includes both Concat and ConcatV2 so that we need to
+    // check ConcatV2 first.
+    if (dialect_->IsConcatV2(op)) {
       end = num_non_control_inputs - 1;
       axis_arg = num_non_control_inputs - 1;
+    } else if (dialect_->IsConcat(op)) {
+      begin = 1;
+      axis_arg = 0;
     } else {
       return failure();
     }
@@ -2811,49 +2801,54 @@ class PartialConcatConstFolding : public FolderPatternBase {
     int first = begin;
     int last = begin;
     while (last < end) {
-      while (first < end &&
-             !(op->getOperand(first).getDefiningOp() &&
-               dialect_->IsConstant(op->getOperand(first).getDefiningOp())))
+      while (first < end) {
+        Operation *v_op = op->getOperand(first).getDefiningOp();
+        if (v_op && dialect_->IsConstant(v_op)) break;
         ++first;
+      }
 
       // Invariant: node[first] is constant || first >= end.
       last = first + 1;
-      while (last < end &&
-             !(op->getOperand(last).getDefiningOp() &&
-               dialect_->IsConstant(op->getOperand(last).getDefiningOp())))
+      while (last < end) {
+        Operation *v_op = op->getOperand(last).getDefiningOp();
+        if (!v_op || !dialect_->IsConstant(v_op)) break;
         ++last;
+      }
 
       // Invariant: node[last] is not constant || last >= end
       // Discard intervals shorter than 2 elements.
-      if (first < end && (last - first) > 1) {
+      if (first < end && (last - first) > 1)
         constant_input_runs.emplace_back(first, last);
-      }
       first = last;
     }
 
     // Skip if all inputs are constant, and let constant folding take over.
     if (constant_input_runs.empty() || (constant_input_runs.size() == 1 &&
                                         constant_input_runs[0].first == begin &&
-                                        constant_input_runs[0].second == end))
+                                        constant_input_runs[0].second == end)) {
       return failure();
+    }
 
     DenseSet<int> inputs_to_delete;
     for (auto interval : constant_input_runs) {
       // Push the constant inputs in the interval to a child node than can be
       // constant folded.
       OperationState state(op->getLoc(), "tfg.ConcatV2");
-      state.addTypes(op->getResultTypes());
-
-      for (auto i : llvm::seq<int>(interval.first, interval.second)) {
+      state.addOperands(op->getOperand(interval.first));
+      for (auto i : llvm::seq<int>(interval.first + 1, interval.second)) {
         state.addOperands(op->getOperand(i));
-        if (i != interval.first) inputs_to_delete.insert(i);
+        inputs_to_delete.insert(i);
       }
       state.addOperands(op->getOperand(axis_arg));
       state.attributes = op->getAttrDictionary();
       state.attributes.set("N",
                            IntegerAttr::get(rewriter.getI32Type(),
                                             interval.second - interval.first));
+      state.addTypes(op->getResultTypes());
+
       Operation *new_op = rewriter.create(state);
+      TFOp(new_op).setName(Twine(TFOp(op).name(), "/_partial_split_") +
+                           std::to_string(interval.first));
 
       // Overwrite the first constant input with the result of the added
       // child node.
@@ -2861,19 +2856,26 @@ class PartialConcatConstFolding : public FolderPatternBase {
       op->setOperand(interval.first, new_op->getResult(0));
       rewriter.finalizeRootUpdate(op);
     }
+
     if (!inputs_to_delete.empty()) {
-      OperationState state(op->getLoc(), op->getName().getStringRef());
-      state.addTypes(op->getResultTypes());
-      for (int i = 0; i < op->getNumOperands(); ++i)
-        if (inputs_to_delete.find(i) == inputs_to_delete.end())
-          state.addOperands(op->getOperand(i));
+      OperationState state(op->getLoc(), op->getName());
+      for (auto &it : llvm::enumerate(non_control_operands)) {
+        if (inputs_to_delete.contains(it.index())) continue;
+        state.addOperands(it.value());
+      }
+      assert(state.operands.size() != non_control_operands.size());
+      state.addOperands(control_operands);
 
       state.attributes = op->getAttrDictionary();
-      state.attributes.set("N", IntegerAttr::get(rewriter.getI32Type(),
-                                                 state.operands.size() - 1));
+      state.attributes.set(
+          "N", IntegerAttr::get(
+                   rewriter.getI32Type(),
+                   state.operands.size() - control_operands.size() - 1));
+      state.addTypes(op->getResultTypes());
       Operation *new_op = rewriter.create(state);
       rewriter.replaceOp(op, new_op->getResults());
     }
+
     return success();
   }
 };
@@ -2918,9 +2920,8 @@ class ConstantPushDownBiasAdd : public FolderPatternBase {
     if (!dialect_->IsBiasAdd(op)) return failure();
 
     Operation *add_child = op->getOperand(0).getDefiningOp();
-    Operation *const_child = op->getOperand(1).getDefiningOp();
-
-    if (!add_child || !const_child) return failure();
+    Value const_child = op->getOperand(1);
+    if (!add_child) return failure();
     if (helper_.ShouldPreserveOp(add_child)) return failure();
 
     // Special case for BiasAdd: Since the left argument to BiasAdd must be rank
@@ -2936,44 +2937,45 @@ class ConstantPushDownBiasAdd : public FolderPatternBase {
 
     if (!hasRank(op->getOperand(0)) || !hasRank(op->getOperand(1)) ||
         !hasRank(add_child->getOperand(0)) ||
-        !hasRank(add_child->getOperand(0)))
+        !hasRank(add_child->getOperand(0))) {
       return failure();
+    }
 
+    // Now get the ranks and types of the 3 leaf nodes.
     const int left_leaf_rank =
         add_child->getOperand(0).getType().cast<ShapedType>().getRank();
     const int right_leaf_rank =
         add_child->getOperand(1).getType().cast<ShapedType>().getRank();
 
+    // At least one leaf must be a vector.
     if (left_leaf_rank != 1 && right_leaf_rank != 1) return failure();
 
     const int vector_idx = left_leaf_rank == 1 ? 0 : 1;
-
-    ShapedType vector_type =
+    auto vector_type =
         add_child->getOperand(vector_idx).getType().cast<ShapedType>();
     Type vector_d_type = vector_type.getElementType();
 
-    ShapedType const_type =
-        const_child->getResult(0).getType().cast<ShapedType>();
+    auto const_type = const_child.getType().cast<ShapedType>();
     const int const_rank = const_type.getRank();
     Type const_d_type = const_type.getElementType();
 
-    int input_to_swap = -1;
+    if (const_rank != 1 || const_d_type != vector_d_type) return failure();
 
-    if (const_rank == 1 && const_d_type == vector_d_type) {
-      // Case 1, 3, and, 4:
-      input_to_swap = vector_idx;
-    } else {
+    // This is case #1, #3, and #4:
+    int input_to_swap = vector_idx;
+
+    Value leaf_to_swap = add_child->getOperand(input_to_swap);
+    if (leaf_to_swap.getDefiningOp() &&
+        dialect_->IsConstant(leaf_to_swap.getDefiningOp())) {
       return failure();
     }
 
-    Operation *leaf_to_swap =
-        add_child->getOperand(input_to_swap).getDefiningOp();
-    if (!leaf_to_swap || dialect_->IsConstant(leaf_to_swap)) return failure();
-
     rewriter.startRootUpdate(op);
-    op->setOperand(1, leaf_to_swap->getResult(0));
+    op->setOperand(1, leaf_to_swap);
     rewriter.finalizeRootUpdate(op);
-    add_child->setOperand(input_to_swap, const_child->getResult(0));
+    rewriter.startRootUpdate(add_child);
+    add_child->setOperand(input_to_swap, const_child);
+    rewriter.finalizeRootUpdate(add_child);
 
     return success();
   }
@@ -3034,14 +3036,16 @@ class ConstantPushDownAdd : public FolderPatternBase {
 
     if (!hasRank(op->getOperand(0)) || !hasRank(op->getOperand(1)) ||
         !hasRank(add_child->getOperand(0)) ||
-        !hasRank(add_child->getOperand(1)))
+        !hasRank(add_child->getOperand(1))) {
       return failure();
+    }
 
+    // Now get the ranks and types of the 3 leaf nodes.
     const int left_leaf_rank =
         add_child->getOperand(0).getType().cast<ShapedType>().getRank();
     const int right_leaf_rank =
         add_child->getOperand(1).getType().cast<ShapedType>().getRank();
-
+    // At least one leaf must be a vector.
     if (left_leaf_rank != 1 && right_leaf_rank != 1) return failure();
 
     const int vector_idx = left_leaf_rank == 1 ? 0 : 1;
@@ -3056,6 +3060,8 @@ class ConstantPushDownAdd : public FolderPatternBase {
     const int matrix_rank = matrix_type.getRank();
     Type matrix_d_type = matrix_type.getElementType();
 
+    const int const_index =
+        op->getOperand(0).getDefiningOp() == const_child ? 0 : 1;
     ShapedType const_type =
         const_child->getResult(0).getType().cast<ShapedType>();
     const int const_rank = const_type.getRank();
@@ -3074,17 +3080,18 @@ class ConstantPushDownAdd : public FolderPatternBase {
       return failure();
     }
 
-    Operation *leaf_to_swap =
-        add_child->getOperand(input_to_swap).getDefiningOp();
-    if (!leaf_to_swap || dialect_->IsConstant(leaf_to_swap)) return failure();
+    Value leaf_to_swap = add_child->getOperand(input_to_swap);
+    if (leaf_to_swap.getDefiningOp() &&
+        dialect_->IsConstant(leaf_to_swap.getDefiningOp())) {
+      return failure();
+    }
 
     rewriter.startRootUpdate(op);
-    if (op->getOperand(0).getDefiningOp() == add_child)
-      op->setOperand(1, leaf_to_swap->getResult(0));
-    else
-      op->setOperand(0, leaf_to_swap->getResult(0));
+    op->setOperand(const_index, leaf_to_swap);
     rewriter.finalizeRootUpdate(op);
+    rewriter.startRootUpdate(add_child);
     add_child->setOperand(input_to_swap, const_child->getResult(0));
+    rewriter.finalizeRootUpdate(add_child);
 
     return success();
   }
@@ -3237,7 +3244,7 @@ void ConstantFolding::populateConstantPropagationPatterns(
 
 void ConstantFolding::populateConstantFoldingPatterns(
     MLIRContext &context, ::mlir::RewritePatternSet &patterns) {
-  // This is a No-Op in MLIR (see comments in the pattern), comment it out here
+  // This is a No-Op in TFG (see comments in the pattern), comment it out here
   // as a reminder that this is the mapping of MaterializeOutputValue in
   // grappler.
   // patterns.insert<MaterializeOutputValue>(&context, *helper_);

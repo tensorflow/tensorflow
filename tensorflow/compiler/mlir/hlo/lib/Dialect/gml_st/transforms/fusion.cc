@@ -132,7 +132,7 @@ struct TilingPattern : public OpRewritePattern<gml_st::MaterializeOp> {
 
   LogicalResult matchAndRewrite(gml_st::MaterializeOp op,
                                 PatternRewriter& rewriter) const override {
-    auto def = op.source().getDefiningOp();
+    auto* def = op.source().getDefiningOp();
 
     // TODO(frgossen): The below cases should eventually be replaced by the use
     // of a common tiling interface.

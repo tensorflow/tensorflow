@@ -142,7 +142,7 @@ void SetMinMaxForConcatenedArray(GraphTransformation* transformation,
   const auto concat_it = model->operators.begin() + op_index;
   const auto* concat_base_op = concat_it->get();
   if (concat_base_op->type != OperatorType::kConcatenation) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   const auto* concat_op =
       static_cast<const ConcatenationOperator*>(concat_base_op);
@@ -152,15 +152,15 @@ void SetMinMaxForConcatenedArray(GraphTransformation* transformation,
     // We  also make sure the shapes of the input arrays are known and they are
     // all discardable.
     const Operator* input_op = GetOpWithOutput(*model, input_name);
-    if (input_op) return ::tensorflow::Status::OK();
+    if (input_op) return ::tensorflow::OkStatus();
     if (!IsConstantParameterArray(*model, input_name))
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     if (!model->GetArray(input_name).has_shape())
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     if (model->GetArray(input_name).quantization_params)
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     if (!IsDiscardableArray(*model, input_name))
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
   }
 
   const int concatenation_axis = concat_op->axis;
@@ -208,7 +208,7 @@ void SetMinMaxForConcatenedArray(GraphTransformation* transformation,
 
   DeleteOpAndArrays(model, concat_op);
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

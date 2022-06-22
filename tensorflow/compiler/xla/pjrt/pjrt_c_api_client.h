@@ -155,7 +155,7 @@ class PjRtCApiClient : public PjRtClient {
     return WrapExecutable(wrapped_->Compile(module, options));
   }
 
-  StatusOr<absl::optional<std::string>> ExecutableFingerprint(
+  StatusOr<std::optional<std::string>> ExecutableFingerprint(
       const PjRtExecutable& executable) const override;
 
   StatusOr<std::string> SerializeExecutable(
@@ -181,7 +181,7 @@ class PjRtCApiClient : public PjRtClient {
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-      absl::optional<absl::Span<int64_t const>> byte_strides,
+      std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       std::function<void()> on_done_with_host_buffer,
       PjRtDevice* device) override {
@@ -394,19 +394,19 @@ class PjRtCApiExecutable : public PjRtExecutable {
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
-      absl::optional<std::vector<PjRtFuture<Status>>>& returned_futures)
+      std::optional<std::vector<PjRtFuture<Status>>>& returned_futures)
       override;
 
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      absl::optional<PjRtFuture<Status>>& returned_future,
+      std::optional<PjRtFuture<Status>>& returned_future,
       bool fill_future) override;
 
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      absl::optional<PjRtFuture<Status>>& returned_future,
+      std::optional<PjRtFuture<Status>>& returned_future,
       bool fill_future) override;
 
   void Delete() override { return wrapped_->Delete(); }

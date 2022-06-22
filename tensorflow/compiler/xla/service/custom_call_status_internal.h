@@ -22,7 +22,7 @@ limitations under the License.
 
 struct XlaCustomCallStatus_ {
   // The message being present means "failure". Otherwise means "success".
-  absl::optional<std::string> message;
+  std::optional<std::string> message;
 };
 
 namespace xla {
@@ -30,7 +30,7 @@ namespace xla {
 // Get a view of the internal error message of the XlaCustomCallStatus. Only
 // lives as long as the XlaCustomCallStatus. Returns an empty optional if the
 // result was "success".
-absl::optional<absl::string_view> CustomCallStatusGetMessage(
+std::optional<absl::string_view> CustomCallStatusGetMessage(
     const XlaCustomCallStatus* status);
 
 }  // namespace xla

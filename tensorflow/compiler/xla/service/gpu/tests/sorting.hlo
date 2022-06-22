@@ -8,11 +8,10 @@ compare {
   ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
-// CHECK:     define void @sort(i8* noalias align 128 dereferenceable(24) %[[VAL_0:.*]]) {
+// CHECK:     define void @sort(ptr noalias align 128 dereferenceable(24) %[[VAL_0:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_1:.*]] = alloca i8, align 1
-// CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
-// CHECK:         %[[VAL_3:.*]] = bitcast i8* %[[VAL_2]] to [2 x [3 x float]]*
+// CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, ptr %[[VAL_0]], i64 0
 // CHECK:         %[[VAL_4:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !6
 // CHECK:         %[[VAL_5:.*]] = zext i32 %[[VAL_4]] to i64
 // CHECK:         %[[VAL_6:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !7
@@ -38,42 +37,41 @@ compare {
 // CHECK:       smaller_comparison_index-after:                   ; preds = %[[VAL_25:.*]], %[[VAL_15]]
 // CHECK:         br label %[[VAL_16]]
 // CHECK:       smaller_comparison_index-true:                    ; preds = %[[VAL_15]]
-// CHECK:         %[[VAL_26:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_3]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_20]]
-// CHECK:         %[[VAL_27:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_3]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_19]]
-// CHECK:         call void @region_0_4(float* %[[VAL_26]], float* %[[VAL_27]], i8* %[[VAL_1]])
-// CHECK:         %[[VAL_28:.*]] = load i8, i8* %[[VAL_1]], align 1
+// CHECK:         %[[VAL_26:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_2]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_20]]
+// CHECK:         %[[VAL_27:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_2]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_19]]
+// CHECK:         call void @region_0_4(ptr %[[VAL_26]], ptr %[[VAL_27]], ptr %[[VAL_1]])
+// CHECK:         %[[VAL_28:.*]] = load i8, ptr %[[VAL_1]], align 1
 // CHECK:         %[[VAL_29:.*]] = icmp ne i8 %[[VAL_28]], 0
 // CHECK:         br i1 %[[VAL_29]], label %[[VAL_30:.*]], label %[[VAL_25]]
 // CHECK:       is_smaller_than-after:                            ; preds = %[[VAL_30]], %[[VAL_24]]
 // CHECK:         br label %[[VAL_17]]
 // CHECK:       is_smaller_than-true:                             ; preds = %[[VAL_24]]
-// CHECK:         %[[VAL_31:.*]] = load float, float* %[[VAL_26]], align 4
-// CHECK:         %[[VAL_32:.*]] = load float, float* %[[VAL_27]], align 4
-// CHECK:         %[[VAL_33:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_3]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_19]]
-// CHECK:         store float %[[VAL_31]], float* %[[VAL_33]], align 4
-// CHECK:         %[[VAL_34:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_3]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_20]]
-// CHECK:         store float %[[VAL_32]], float* %[[VAL_34]], align 4
+// CHECK:         %[[VAL_31:.*]] = load float, ptr %[[VAL_26]], align 4
+// CHECK:         %[[VAL_32:.*]] = load float, ptr %[[VAL_27]], align 4
+// CHECK:         %[[VAL_33:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_2]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_19]]
+// CHECK:         store float %[[VAL_31]], ptr %[[VAL_33]], align 4
+// CHECK:         %[[VAL_34:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_2]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_20]]
+// CHECK:         store float %[[VAL_32]], ptr %[[VAL_34]], align 4
 // CHECK:         br label %[[VAL_25]]
 // CHECK:       }
 
-// CHECK:     define internal void @region_0_4(float* dereferenceable(4) %[[VAL_0:.*]], float* dereferenceable(4) %[[VAL_1:.*]], i8* dereferenceable(1) %[[VAL_2:.*]]) {
+// CHECK:     define internal void @region_0_4(ptr dereferenceable(4) %[[VAL_0:.*]], ptr dereferenceable(4) %[[VAL_1:.*]], ptr dereferenceable(1) %[[VAL_2:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_3:.*]] = alloca i8, align 1
-// CHECK:         %[[VAL_4:.*]] = load float, float* %[[VAL_0]], align 4
-// CHECK:         %[[VAL_5:.*]] = load float, float* %[[VAL_1]], align 4
+// CHECK:         %[[VAL_4:.*]] = load float, ptr %[[VAL_0]], align 4
+// CHECK:         %[[VAL_5:.*]] = load float, ptr %[[VAL_1]], align 4
 // CHECK:         %[[VAL_6:.*]] = fcmp olt float %[[VAL_4]], %[[VAL_5]]
 // CHECK:         %[[VAL_7:.*]] = zext i1 %[[VAL_6]] to i8
-// CHECK:         store i8 %[[VAL_7]], i8* %[[VAL_3]], align 1
-// CHECK:         %[[VAL_8:.*]] = load i8, i8* %[[VAL_3]], align 1
-// CHECK:         store i8 %[[VAL_8]], i8* %[[VAL_2]], align 1
+// CHECK:         store i8 %[[VAL_7]], ptr %[[VAL_3]], align 1
+// CHECK:         %[[VAL_8:.*]] = load i8, ptr %[[VAL_3]], align 1
+// CHECK:         store i8 %[[VAL_8]], ptr %[[VAL_2]], align 1
 // CHECK:         ret void
 // CHECK:       }
 
-// CHECK:     define void @sort__1(i8* noalias align 128 dereferenceable(24) %[[VAL_0:.*]]) {
+// CHECK:     define void @sort__1(ptr noalias align 128 dereferenceable(24) %[[VAL_0:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_1:.*]] = alloca i8, align 1
-// CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
-// CHECK:         %[[VAL_3:.*]] = bitcast i8* %[[VAL_2]] to [2 x [3 x float]]*
+// CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, ptr %[[VAL_0]], i64 0
 // CHECK:         %[[VAL_4:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !6
 // CHECK:         %[[VAL_5:.*]] = zext i32 %[[VAL_4]] to i64
 // CHECK:         %[[VAL_6:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !7
@@ -98,29 +96,28 @@ compare {
 // CHECK:       smaller_comparison_index-after:                   ; preds = %[[VAL_24:.*]], %[[VAL_15]]
 // CHECK:         br label %[[VAL_16]]
 // CHECK:       smaller_comparison_index-true:                    ; preds = %[[VAL_15]]
-// CHECK:         %[[VAL_25:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_3]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_19]]
-// CHECK:         %[[VAL_26:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_3]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_12]]
-// CHECK:         call void @region_0_4(float* %[[VAL_25]], float* %[[VAL_26]], i8* %[[VAL_1]])
-// CHECK:         %[[VAL_27:.*]] = load i8, i8* %[[VAL_1]], align 1
+// CHECK:         %[[VAL_25:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_2]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_19]]
+// CHECK:         %[[VAL_26:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_2]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_12]]
+// CHECK:         call void @region_0_4(ptr %[[VAL_25]], ptr %[[VAL_26]], ptr %[[VAL_1]])
+// CHECK:         %[[VAL_27:.*]] = load i8, ptr %[[VAL_1]], align 1
 // CHECK:         %[[VAL_28:.*]] = icmp ne i8 %[[VAL_27]], 0
 // CHECK:         br i1 %[[VAL_28]], label %[[VAL_29:.*]], label %[[VAL_24]]
 // CHECK:       is_smaller_than-after:                            ; preds = %[[VAL_29]], %[[VAL_23]]
 // CHECK:         br label %[[VAL_17]]
 // CHECK:       is_smaller_than-true:                             ; preds = %[[VAL_23]]
-// CHECK:         %[[VAL_30:.*]] = load float, float* %[[VAL_25]], align 4
-// CHECK:         %[[VAL_31:.*]] = load float, float* %[[VAL_26]], align 4
-// CHECK:         %[[VAL_32:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_3]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_12]]
-// CHECK:         store float %[[VAL_30]], float* %[[VAL_32]], align 4
-// CHECK:         %[[VAL_33:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_3]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_19]]
-// CHECK:         store float %[[VAL_31]], float* %[[VAL_33]], align 4
+// CHECK:         %[[VAL_30:.*]] = load float, ptr %[[VAL_25]], align 4
+// CHECK:         %[[VAL_31:.*]] = load float, ptr %[[VAL_26]], align 4
+// CHECK:         %[[VAL_32:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_2]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_12]]
+// CHECK:         store float %[[VAL_30]], ptr %[[VAL_32]], align 4
+// CHECK:         %[[VAL_33:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_2]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_19]]
+// CHECK:         store float %[[VAL_31]], ptr %[[VAL_33]], align 4
 // CHECK:         br label %[[VAL_24]]
 // CHECK:       }
 
-// CHECK:     define void @sort__2(i8* noalias align 128 dereferenceable(24) %[[VAL_0:.*]]) {
+// CHECK:     define void @sort__2(ptr noalias align 128 dereferenceable(24) %[[VAL_0:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_1:.*]] = alloca i8, align 1
-// CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
-// CHECK:         %[[VAL_3:.*]] = bitcast i8* %[[VAL_2]] to [2 x [3 x float]]*
+// CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, ptr %[[VAL_0]], i64 0
 // CHECK:         %[[VAL_4:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !6
 // CHECK:         %[[VAL_5:.*]] = zext i32 %[[VAL_4]] to i64
 // CHECK:         %[[VAL_6:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !7
@@ -146,21 +143,21 @@ compare {
 // CHECK:       smaller_comparison_index-after:                   ; preds = %[[VAL_25:.*]], %[[VAL_15]]
 // CHECK:         br label %[[VAL_16]]
 // CHECK:       smaller_comparison_index-true:                    ; preds = %[[VAL_15]]
-// CHECK:         %[[VAL_26:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_3]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_20]]
-// CHECK:         %[[VAL_27:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_3]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_19]]
-// CHECK:         call void @region_0_4(float* %[[VAL_26]], float* %[[VAL_27]], i8* %[[VAL_1]])
-// CHECK:         %[[VAL_28:.*]] = load i8, i8* %[[VAL_1]], align 1
+// CHECK:         %[[VAL_26:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_2]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_20]]
+// CHECK:         %[[VAL_27:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_2]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_19]]
+// CHECK:         call void @region_0_4(ptr %[[VAL_26]], ptr %[[VAL_27]], ptr %[[VAL_1]])
+// CHECK:         %[[VAL_28:.*]] = load i8, ptr %[[VAL_1]], align 1
 // CHECK:         %[[VAL_29:.*]] = icmp ne i8 %[[VAL_28]], 0
 // CHECK:         br i1 %[[VAL_29]], label %[[VAL_30:.*]], label %[[VAL_25]]
 // CHECK:       is_smaller_than-after:                            ; preds = %[[VAL_30]], %[[VAL_24]]
 // CHECK:         br label %[[VAL_17]]
 // CHECK:       is_smaller_than-true:                             ; preds = %[[VAL_24]]
-// CHECK:         %[[VAL_31:.*]] = load float, float* %[[VAL_26]], align 4
-// CHECK:         %[[VAL_32:.*]] = load float, float* %[[VAL_27]], align 4
-// CHECK:         %[[VAL_33:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_3]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_19]]
-// CHECK:         store float %[[VAL_31]], float* %[[VAL_33]], align 4
-// CHECK:         %[[VAL_34:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_3]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_20]]
-// CHECK:         store float %[[VAL_32]], float* %[[VAL_34]], align 4
+// CHECK:         %[[VAL_31:.*]] = load float, ptr %[[VAL_26]], align 4
+// CHECK:         %[[VAL_32:.*]] = load float, ptr %[[VAL_27]], align 4
+// CHECK:         %[[VAL_33:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_2]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_19]]
+// CHECK:         store float %[[VAL_31]], ptr %[[VAL_33]], align 4
+// CHECK:         %[[VAL_34:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_2]], i64 0, i64 %[[VAL_13]], i64 %[[VAL_20]]
+// CHECK:         store float %[[VAL_32]], ptr %[[VAL_34]], align 4
 // CHECK:         br label %[[VAL_25]]
 // CHECK:       }
 
@@ -181,13 +178,11 @@ compare {
   ROOT lt = pred[] compare(p.1.lhs, p.1.rhs), direction=LT
 }
 
-// CHECK:     define void @sort(i8* noalias align 128 dereferenceable(24) %[[VAL_0:.*]], i8* noalias align 128 dereferenceable(24) %[[VAL_1:.*]]) {
+// CHECK:     define void @sort(ptr noalias align 128 dereferenceable(24) %[[VAL_0:.*]], ptr noalias align 128 dereferenceable(24) %[[VAL_1:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_3:.*]] = alloca i8, align 1
-// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
-// CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_4]] to [2 x [3 x i32]]*
-// CHECK:         %[[VAL_6:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
-// CHECK:         %[[VAL_7:.*]] = bitcast i8* %[[VAL_6]] to [2 x [3 x float]]*
+// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, ptr %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_6:.*]] = getelementptr inbounds i8, ptr %[[VAL_1]], i64 0
 // CHECK:         %[[VAL_10:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !6
 // CHECK:         %[[VAL_11:.*]] = zext i32 %[[VAL_10]] to i64
 // CHECK:         %[[VAL_12:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !7
@@ -213,52 +208,50 @@ compare {
 // CHECK:       smaller_comparison_index-after:                   ; preds = %[[VAL_31:.*]], %[[VAL_21]]
 // CHECK:         br label %[[VAL_22]]
 // CHECK:       smaller_comparison_index-true:                    ; preds = %[[VAL_21]]
-// CHECK:         %[[VAL_32:.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* %[[VAL_5]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_26]]
-// CHECK:         %[[VAL_33:.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* %[[VAL_5]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
-// CHECK:         %[[VAL_34:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_7]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_26]]
-// CHECK:         %[[VAL_35:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_7]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
-// CHECK:         call void @region_0_6(i32* %[[VAL_32]], i32* %[[VAL_33]], float* %[[VAL_34]], float* %[[VAL_35]], i8* %[[VAL_3]])
-// CHECK:         %[[VAL_36:.*]] = load i8, i8* %[[VAL_3]], align 1
+// CHECK:         %[[VAL_32:.*]] = getelementptr inbounds [2 x [3 x i32]], ptr %[[VAL_4]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_26]]
+// CHECK:         %[[VAL_33:.*]] = getelementptr inbounds [2 x [3 x i32]], ptr %[[VAL_4]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
+// CHECK:         %[[VAL_34:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_6]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_26]]
+// CHECK:         %[[VAL_35:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_6]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
+// CHECK:         call void @region_0_6(ptr %[[VAL_32]], ptr %[[VAL_33]], ptr %[[VAL_34]], ptr %[[VAL_35]], ptr %[[VAL_3]])
+// CHECK:         %[[VAL_36:.*]] = load i8, ptr %[[VAL_3]], align 1
 // CHECK:         %[[VAL_37:.*]] = icmp ne i8 %[[VAL_36]], 0
 // CHECK:         br i1 %[[VAL_37]], label %[[VAL_38:.*]], label %[[VAL_31]]
 // CHECK:       is_smaller_than-after:                            ; preds = %[[VAL_38]], %[[VAL_30]]
 // CHECK:         br label %[[VAL_23]]
 // CHECK:       is_smaller_than-true:                             ; preds = %[[VAL_30]]
-// CHECK:         %[[VAL_39:.*]] = load i32, i32* %[[VAL_32]], align 4
-// CHECK:         %[[VAL_40:.*]] = load i32, i32* %[[VAL_33]], align 4
-// CHECK:         %[[VAL_41:.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* %[[VAL_5]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
-// CHECK:         store i32 %[[VAL_39]], i32* %[[VAL_41]], align 4
-// CHECK:         %[[VAL_42:.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* %[[VAL_5]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_26]]
-// CHECK:         store i32 %[[VAL_40]], i32* %[[VAL_42]], align 4
-// CHECK:         %[[VAL_43:.*]] = load float, float* %[[VAL_34]], align 4
-// CHECK:         %[[VAL_44:.*]] = load float, float* %[[VAL_35]], align 4
-// CHECK:         %[[VAL_45:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_7]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
-// CHECK:         store float %[[VAL_43]], float* %[[VAL_45]], align 4
-// CHECK:         %[[VAL_46:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_7]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_26]]
-// CHECK:         store float %[[VAL_44]], float* %[[VAL_46]], align 4
+// CHECK:         %[[VAL_39:.*]] = load i32, ptr %[[VAL_32]], align 4
+// CHECK:         %[[VAL_40:.*]] = load i32, ptr %[[VAL_33]], align 4
+// CHECK:         %[[VAL_41:.*]] = getelementptr inbounds [2 x [3 x i32]], ptr %[[VAL_4]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
+// CHECK:         store i32 %[[VAL_39]], ptr %[[VAL_41]], align 4
+// CHECK:         %[[VAL_42:.*]] = getelementptr inbounds [2 x [3 x i32]], ptr %[[VAL_4]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_26]]
+// CHECK:         store i32 %[[VAL_40]], ptr %[[VAL_42]], align 4
+// CHECK:         %[[VAL_43:.*]] = load float, ptr %[[VAL_34]], align 4
+// CHECK:         %[[VAL_44:.*]] = load float, ptr %[[VAL_35]], align 4
+// CHECK:         %[[VAL_45:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_6]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
+// CHECK:         store float %[[VAL_43]], ptr %[[VAL_45]], align 4
+// CHECK:         %[[VAL_46:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_6]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_26]]
+// CHECK:         store float %[[VAL_44]], ptr %[[VAL_46]], align 4
 // CHECK:         br label %[[VAL_31]]
 // CHECK:       }
 
-// CHECK:     define internal void @region_0_6(i32* dereferenceable(4) %[[VAL_0:.*]], i32* dereferenceable(4) %[[VAL_1:.*]], float* dereferenceable(4) %[[VAL_2:.*]], float* dereferenceable(4) %[[VAL_3:.*]], i8* dereferenceable(1) %[[VAL_4:.*]]) {
+// CHECK:     define internal void @region_0_6(ptr dereferenceable(4) %[[VAL_0:.*]], ptr dereferenceable(4) %[[VAL_1:.*]], ptr dereferenceable(4) %[[VAL_2:.*]], ptr dereferenceable(4) %[[VAL_3:.*]], ptr dereferenceable(1) %[[VAL_4:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_5:.*]] = alloca i8, align 1
-// CHECK:         %[[VAL_6:.*]] = load float, float* %[[VAL_2]], align 4
-// CHECK:         %[[VAL_7:.*]] = load float, float* %[[VAL_3]], align 4
+// CHECK:         %[[VAL_6:.*]] = load float, ptr %[[VAL_2]], align 4
+// CHECK:         %[[VAL_7:.*]] = load float, ptr %[[VAL_3]], align 4
 // CHECK:         %[[VAL_8:.*]] = fcmp olt float %[[VAL_6]], %[[VAL_7]]
 // CHECK:         %[[VAL_9:.*]] = zext i1 %[[VAL_8]] to i8
-// CHECK:         store i8 %[[VAL_9]], i8* %[[VAL_5]], align 1
-// CHECK:         %[[VAL_10:.*]] = load i8, i8* %[[VAL_5]], align 1
-// CHECK:         store i8 %[[VAL_10]], i8* %[[VAL_4]], align 1
+// CHECK:         store i8 %[[VAL_9]], ptr %[[VAL_5]], align 1
+// CHECK:         %[[VAL_10:.*]] = load i8, ptr %[[VAL_5]], align 1
+// CHECK:         store i8 %[[VAL_10]], ptr %[[VAL_4]], align 1
 // CHECK:         ret void
 // CHECK:       }
 
-// CHECK:     define void @sort__1(i8* noalias align 128 dereferenceable(24) %[[VAL_0:.*]], i8* noalias align 128 dereferenceable(24) %[[VAL_1:.*]]) {
+// CHECK:     define void @sort__1(ptr noalias align 128 dereferenceable(24) %[[VAL_0:.*]], ptr noalias align 128 dereferenceable(24) %[[VAL_1:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_3:.*]] = alloca i8, align 1
-// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
-// CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_4]] to [2 x [3 x i32]]*
-// CHECK:         %[[VAL_6:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
-// CHECK:         %[[VAL_7:.*]] = bitcast i8* %[[VAL_6]] to [2 x [3 x float]]*
+// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, ptr %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_6:.*]] = getelementptr inbounds i8, ptr %[[VAL_1]], i64 0
 // CHECK:         %[[VAL_10:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !6
 // CHECK:         %[[VAL_11:.*]] = zext i32 %[[VAL_10]] to i64
 // CHECK:         %[[VAL_12:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !7
@@ -283,39 +276,37 @@ compare {
 // CHECK:       smaller_comparison_index-after:                   ; preds = %[[VAL_30:.*]], %[[VAL_21]]
 // CHECK:         br label %[[VAL_22]]
 // CHECK:       smaller_comparison_index-true:                    ; preds = %[[VAL_21]]
-// CHECK:         %[[VAL_31:.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* %[[VAL_5]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
-// CHECK:         %[[VAL_32:.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* %[[VAL_5]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_18]]
-// CHECK:         %[[VAL_33:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_7]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
-// CHECK:         %[[VAL_34:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_7]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_18]]
-// CHECK:         call void @region_0_6(i32* %[[VAL_31]], i32* %[[VAL_32]], float* %[[VAL_33]], float* %[[VAL_34]], i8* %[[VAL_3]])
-// CHECK:         %[[VAL_35:.*]] = load i8, i8* %[[VAL_3]], align 1
+// CHECK:         %[[VAL_31:.*]] = getelementptr inbounds [2 x [3 x i32]], ptr %[[VAL_4]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
+// CHECK:         %[[VAL_32:.*]] = getelementptr inbounds [2 x [3 x i32]], ptr %[[VAL_4]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_18]]
+// CHECK:         %[[VAL_33:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_6]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
+// CHECK:         %[[VAL_34:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_6]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_18]]
+// CHECK:         call void @region_0_6(ptr %[[VAL_31]], ptr %[[VAL_32]], ptr %[[VAL_33]], ptr %[[VAL_34]], ptr %[[VAL_3]])
+// CHECK:         %[[VAL_35:.*]] = load i8, ptr %[[VAL_3]], align 1
 // CHECK:         %[[VAL_36:.*]] = icmp ne i8 %[[VAL_35]], 0
 // CHECK:         br i1 %[[VAL_36]], label %[[VAL_37:.*]], label %[[VAL_30]]
 // CHECK:       is_smaller_than-after:                            ; preds = %[[VAL_37]], %[[VAL_29]]
 // CHECK:         br label %[[VAL_23]]
 // CHECK:       is_smaller_than-true:                             ; preds = %[[VAL_29]]
-// CHECK:         %[[VAL_38:.*]] = load i32, i32* %[[VAL_31]], align 4
-// CHECK:         %[[VAL_39:.*]] = load i32, i32* %[[VAL_32]], align 4
-// CHECK:         %[[VAL_40:.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* %[[VAL_5]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_18]]
-// CHECK:         store i32 %[[VAL_38]], i32* %[[VAL_40]], align 4
-// CHECK:         %[[VAL_41:.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* %[[VAL_5]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
-// CHECK:         store i32 %[[VAL_39]], i32* %[[VAL_41]], align 4
-// CHECK:         %[[VAL_42:.*]] = load float, float* %[[VAL_33]], align 4
-// CHECK:         %[[VAL_43:.*]] = load float, float* %[[VAL_34]], align 4
-// CHECK:         %[[VAL_44:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_7]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_18]]
-// CHECK:         store float %[[VAL_42]], float* %[[VAL_44]], align 4
-// CHECK:         %[[VAL_45:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_7]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
-// CHECK:         store float %[[VAL_43]], float* %[[VAL_45]], align 4
+// CHECK:         %[[VAL_38:.*]] = load i32, ptr %[[VAL_31]], align 4
+// CHECK:         %[[VAL_39:.*]] = load i32, ptr %[[VAL_32]], align 4
+// CHECK:         %[[VAL_40:.*]] = getelementptr inbounds [2 x [3 x i32]], ptr %[[VAL_4]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_18]]
+// CHECK:         store i32 %[[VAL_38]], ptr %[[VAL_40]], align 4
+// CHECK:         %[[VAL_41:.*]] = getelementptr inbounds [2 x [3 x i32]], ptr %[[VAL_4]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
+// CHECK:         store i32 %[[VAL_39]], ptr %[[VAL_41]], align 4
+// CHECK:         %[[VAL_42:.*]] = load float, ptr %[[VAL_33]], align 4
+// CHECK:         %[[VAL_43:.*]] = load float, ptr %[[VAL_34]], align 4
+// CHECK:         %[[VAL_44:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_6]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_18]]
+// CHECK:         store float %[[VAL_42]], ptr %[[VAL_44]], align 4
+// CHECK:         %[[VAL_45:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_6]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
+// CHECK:         store float %[[VAL_43]], ptr %[[VAL_45]], align 4
 // CHECK:         br label %[[VAL_30]]
 // CHECK:       }
 
-// CHECK:     define void @sort__2(i8* noalias align 128 dereferenceable(24) %[[VAL_0:.*]], i8* noalias align 128 dereferenceable(24) %[[VAL_1:.*]]) {
+// CHECK:     define void @sort__2(ptr noalias align 128 dereferenceable(24) %[[VAL_0:.*]], ptr noalias align 128 dereferenceable(24) %[[VAL_1:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_3:.*]] = alloca i8, align 1
-// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
-// CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_4]] to [2 x [3 x i32]]*
-// CHECK:         %[[VAL_6:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
-// CHECK:         %[[VAL_7:.*]] = bitcast i8* %[[VAL_6]] to [2 x [3 x float]]*
+// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, ptr %[[VAL_0]], i64 0
+// CHECK:         %[[VAL_6:.*]] = getelementptr inbounds i8, ptr %[[VAL_1]], i64 0
 // CHECK:         %[[VAL_10:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !6
 // CHECK:         %[[VAL_11:.*]] = zext i32 %[[VAL_10]] to i64
 // CHECK:         %[[VAL_12:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !7
@@ -341,29 +332,29 @@ compare {
 // CHECK:       smaller_comparison_index-after:                   ; preds = %[[VAL_31:.*]], %[[VAL_21]]
 // CHECK:         br label %[[VAL_22]]
 // CHECK:       smaller_comparison_index-true:                    ; preds = %[[VAL_21]]
-// CHECK:         %[[VAL_32:.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* %[[VAL_5]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_26]]
-// CHECK:         %[[VAL_33:.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* %[[VAL_5]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
-// CHECK:         %[[VAL_34:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_7]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_26]]
-// CHECK:         %[[VAL_35:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_7]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
-// CHECK:         call void @region_0_6(i32* %[[VAL_32]], i32* %[[VAL_33]], float* %[[VAL_34]], float* %[[VAL_35]], i8* %[[VAL_3]])
-// CHECK:         %[[VAL_36:.*]] = load i8, i8* %[[VAL_3]], align 1
+// CHECK:         %[[VAL_32:.*]] = getelementptr inbounds [2 x [3 x i32]], ptr %[[VAL_4]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_26]]
+// CHECK:         %[[VAL_33:.*]] = getelementptr inbounds [2 x [3 x i32]], ptr %[[VAL_4]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
+// CHECK:         %[[VAL_34:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_6]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_26]]
+// CHECK:         %[[VAL_35:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_6]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
+// CHECK:         call void @region_0_6(ptr %[[VAL_32]], ptr %[[VAL_33]], ptr %[[VAL_34]], ptr %[[VAL_35]], ptr %[[VAL_3]])
+// CHECK:         %[[VAL_36:.*]] = load i8, ptr %[[VAL_3]], align 1
 // CHECK:         %[[VAL_37:.*]] = icmp ne i8 %[[VAL_36]], 0
 // CHECK:         br i1 %[[VAL_37]], label %[[VAL_38:.*]], label %[[VAL_31]]
 // CHECK:       is_smaller_than-after:                            ; preds = %[[VAL_38]], %[[VAL_30]]
 // CHECK:         br label %[[VAL_23]]
 // CHECK:       is_smaller_than-true:                             ; preds = %[[VAL_30]]
-// CHECK:         %[[VAL_39:.*]] = load i32, i32* %[[VAL_32]], align 4
-// CHECK:         %[[VAL_40:.*]] = load i32, i32* %[[VAL_33]], align 4
-// CHECK:         %[[VAL_41:.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* %[[VAL_5]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
-// CHECK:         store i32 %[[VAL_39]], i32* %[[VAL_41]], align 4
-// CHECK:         %[[VAL_42:.*]] = getelementptr inbounds [2 x [3 x i32]], [2 x [3 x i32]]* %[[VAL_5]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_26]]
-// CHECK:         store i32 %[[VAL_40]], i32* %[[VAL_42]], align 4
-// CHECK:         %[[VAL_43:.*]] = load float, float* %[[VAL_34]], align 4
-// CHECK:         %[[VAL_44:.*]] = load float, float* %[[VAL_35]], align 4
-// CHECK:         %[[VAL_45:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_7]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
-// CHECK:         store float %[[VAL_43]], float* %[[VAL_45]], align 4
-// CHECK:         %[[VAL_46:.*]] = getelementptr inbounds [2 x [3 x float]], [2 x [3 x float]]* %[[VAL_7]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_26]]
-// CHECK:         store float %[[VAL_44]], float* %[[VAL_46]], align 4
+// CHECK:         %[[VAL_39:.*]] = load i32, ptr %[[VAL_32]], align 4
+// CHECK:         %[[VAL_40:.*]] = load i32, ptr %[[VAL_33]], align 4
+// CHECK:         %[[VAL_41:.*]] = getelementptr inbounds [2 x [3 x i32]], ptr %[[VAL_4]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
+// CHECK:         store i32 %[[VAL_39]], ptr %[[VAL_41]], align 4
+// CHECK:         %[[VAL_42:.*]] = getelementptr inbounds [2 x [3 x i32]], ptr %[[VAL_4]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_26]]
+// CHECK:         store i32 %[[VAL_40]], ptr %[[VAL_42]], align 4
+// CHECK:         %[[VAL_43:.*]] = load float, ptr %[[VAL_34]], align 4
+// CHECK:         %[[VAL_44:.*]] = load float, ptr %[[VAL_35]], align 4
+// CHECK:         %[[VAL_45:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_6]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_25]]
+// CHECK:         store float %[[VAL_43]], ptr %[[VAL_45]], align 4
+// CHECK:         %[[VAL_46:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_6]], i64 0, i64 %[[VAL_19]], i64 %[[VAL_26]]
+// CHECK:         store float %[[VAL_44]], ptr %[[VAL_46]], align 4
 // CHECK:         br label %[[VAL_31]]
 // CHECK:       }
 

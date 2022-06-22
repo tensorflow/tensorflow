@@ -152,7 +152,7 @@ Status LowerTFToJITInvocation(mlir::ModuleOp module,
     return tensorflow::errors::Internal(
         "Lowering TF to JIT invocation failed.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
@@ -263,7 +263,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   if (failed(pm.run(module))) {
     return tensorflow::errors::Internal("Lowering TF to loops failed.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
@@ -273,8 +273,7 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
 
   if (!cpu_codegen) {
     // Greedily map the remaining loop to GPU hardware dimensions.
-    pm.addNestedPass<FuncOp>(
-        mlir::kernel_gen::transforms::CreateMapParallelLoopsPass());
+    pm.addNestedPass<FuncOp>(mlir::createGpuMapParallelLoopsPass());
   }
 
   // Expand memref_reshape to its ranked form so that we can propagate
@@ -343,7 +342,7 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   if (failed(pm.run(module))) {
     return tensorflow::errors::Internal("Lowering to GPU kernels failed.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
@@ -387,7 +386,7 @@ Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
         "Lowering to low-level device IR failed.");
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AmendKernelLLVMIRWithStaticKnowledge(mlir::ModuleOp module,
@@ -403,7 +402,7 @@ Status AmendKernelLLVMIRWithStaticKnowledge(mlir::ModuleOp module,
   return failed(pm.run(module))
              ? tensorflow::errors::Internal(
                    "Amending LLVMIR with static knowledge failed.")
-             : Status::OK();
+             : OkStatus();
 }
 
 Status GenerateDeviceCode(mlir::ModuleOp module,
@@ -424,7 +423,7 @@ Status GenerateDeviceCode(mlir::ModuleOp module,
 
   return failed(pm.run(module))
              ? tensorflow::errors::Internal("Generating device code failed.")
-             : Status::OK();
+             : OkStatus();
 }
 
 Status LowerHostSideToFinalForm(mlir::ModuleOp module, bool apply_cl_options) {
@@ -439,7 +438,7 @@ Status LowerHostSideToFinalForm(mlir::ModuleOp module, bool apply_cl_options) {
 
   return failed(pm.run(module)) ? tensorflow::errors::Internal(
                                       "Final lowering of host side failed.")
-                                : Status::OK();
+                                : OkStatus();
 }
 
 }  // namespace

@@ -35,7 +35,7 @@ class BufRendezvousTest : public ::testing::Test {
      public:
       explicit FakeDevice(const DeviceAttributes& attrs)
           : Device(nullptr, attrs) {}
-      Status Sync() override { return Status::OK(); }
+      Status Sync() override { return OkStatus(); }
       Allocator* GetAllocator(AllocatorAttributes) override { return nullptr; }
     };
     DeviceAttributes attrs;

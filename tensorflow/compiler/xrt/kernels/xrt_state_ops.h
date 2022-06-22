@@ -62,7 +62,7 @@ class XRTStateHelpers {
   static Status MakeLiteral(const xla::LiteralProto& proto,
                             xla::Literal* literal) {
     TF_ASSIGN_OR_RETURN(*literal, xla::Literal::CreateFromProto(proto));
-    return Status::OK();
+    return OkStatus();
   }
 
   // ParseTupleNode is the recursive function used to parse a recursive
@@ -112,7 +112,7 @@ class XRTStateHelpers {
         input.release_allocation_after_use = release_this_input;
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Parses a xrt::XLATupleNode proto recursively and returns the corresponding
@@ -158,7 +158,7 @@ class XRTStateHelpers {
             *device_ordinal = (*element).allocation->device_ordinal();
           }
         });
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -579,7 +579,7 @@ class XRTReadToTensorOp : public OpKernel {
     Status status = xla::ShapeUtil::ForEachMutableSubshapeWithStatus(
         &shape,
         [&](xla::Shape* subshape, const xla::ShapeIndex& index) -> Status {
-          if (subshape->IsTuple()) return Status::OK();
+          if (subshape->IsTuple()) return OkStatus();
 
           xla::PrimitiveType xla_type;
           TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(
@@ -611,7 +611,7 @@ class XRTReadToTensorOp : public OpKernel {
           TF_RETURN_IF_ERROR(sub->ToLiteral(device_ref.backend(), &literal));
 
           ++output;
-          return Status::OK();
+          return OkStatus();
         });
     OP_REQUIRES_OK(ctx, status);
   }
@@ -773,7 +773,7 @@ class XRTMemoryInfoOp : public OpKernel {
       Tensor output(DT_STRING, TensorShape({}));
       output.scalar<tstring>()() = mem_info.SerializeAsString();
       ctx->set_output(0, output);
-      return Status::OK();
+      return OkStatus();
     };
     OP_REQUIRES_OK(ctx, kernel_fn());
   }

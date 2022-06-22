@@ -123,11 +123,11 @@ void RecordTFDataServiceClientIterators(
     const tensorflow::data::ProcessingModeDef& processing_mode,
     bool is_coordinated_read);
 
-// Records tf.data service multi-trainer cache queries.
-void RecordTFDataServiceMultiTrainerCacheQuery(bool cache_hit);
+// Records tf.data service cross-trainer cache queries.
+void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit);
 
-// Records tf.data service multi-trainer cache memory usage in bytes.
-void RecordTFDataServiceMultiTrainerCacheSizeBytes(size_t bytes);
+// Records tf.data service cross-trainer cache memory usage in bytes.
+void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes);
 
 // Records the file name read by a tf.data Dataset.
 //

@@ -55,7 +55,7 @@ class MaybeOwningDeviceMemory {
   // moves the ownership of the memory buffer from the object to the caller.
   //
   // A nullopt is returned if the HasOwnership() == false;
-  absl::optional<tensorflow::se::OwningDeviceMemory> Release();
+  std::optional<tensorflow::se::OwningDeviceMemory> Release();
 
   // If the device memory is owned, returns a pointer to the internal
   // OwningDeviceMemory, otherwise nullptr is returned.

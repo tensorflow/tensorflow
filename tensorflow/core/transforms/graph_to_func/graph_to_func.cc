@@ -111,7 +111,7 @@ tensorflow::Status GraphToFunc(GraphOp graph, ArrayRef<Value> feeds,
   func_op.setAllResultAttrs(args_rets_attrs);
 
   graph.erase();
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status GraphToFunc(GraphOp graph, ArrayRef<std::string> feeds_names,

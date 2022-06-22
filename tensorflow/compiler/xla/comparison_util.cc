@@ -290,12 +290,12 @@ Comparison Comparison::Converse() const {
   return Comparison(xla::Converse(dir_), primitive_type_, order_);
 }
 
-absl::optional<Comparison> Comparison::Inverse() const {
+std::optional<Comparison> Comparison::Inverse() const {
   if (IsPartialOrder()) {
     // We assume comparisons don't have inverses unless they are total order,
     // e.g., a partial order floating point comparison can return true if one
     // operand is NaN.
-    return absl::nullopt;
+    return std::nullopt;
   }
   switch (primitive_type_) {
     case F16:
@@ -320,7 +320,7 @@ absl::optional<Comparison> Comparison::Inverse() const {
     case PRIMITIVE_TYPE_INVALID:
     case PrimitiveType_INT_MAX_SENTINEL_DO_NOT_USE_:
     case PrimitiveType_INT_MIN_SENTINEL_DO_NOT_USE_:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 

@@ -244,6 +244,7 @@ enum StatType {
   kRawValue,
   kScaledValue,
   kThreadId,
+  kMatrixUnitUtilizationPercent,
   // XLA metadata map related.
   kHloProto,
   // Device capability related.
@@ -253,6 +254,8 @@ enum StatType {
   kDevCapMemorySize,
   kDevCapComputeCapMajor,
   kDevCapComputeCapMinor,
+  kDevCapPeakTeraflopsPerSecond,
+  kDevCapPeakHbmBwGigabytesPerSecond,
   kDevVendor,
   // Batching related.
   kBatchSizeAfterPadding,

@@ -89,14 +89,14 @@ struct GemmConfig {
       absl::Span<const int64_t> rhs_batch_dims,
       absl::Span<const int64_t> rhs_contracting_dims, const Shape& output_shape,
       double alpha_real, double alpha_imag, double beta,
-      absl::optional<int64_t> algorithm, bool use_cublaslt);
+      std::optional<int64_t> algorithm, bool use_cublaslt);
 
   MatrixLayout lhs_layout;
   MatrixLayout rhs_layout;
   MatrixLayout output_layout;
   complex128 alpha;
   double beta;
-  absl::optional<int64_t> algorithm;
+  std::optional<int64_t> algorithm;
   bool use_cublaslt;
 };
 
@@ -112,12 +112,11 @@ void MakeBlasGemmCompatible(int64_t& m, int64_t& n,
 // in `gemm_config` and the passed buffers.
 //
 // If `algorithm` is provided, it overrides the one specified in `config`.
-Status RunGemm(
-    const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
-    se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
-    se::Stream* stream,
-    absl::optional<se::blas::AlgorithmType> algorithm = absl::nullopt,
-    se::blas::ProfileResult* profile_result = nullptr);
+Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
+               se::DeviceMemoryBase rhs_buffer,
+               se::DeviceMemoryBase output_buffer, se::Stream* stream,
+               std::optional<se::blas::AlgorithmType> algorithm = std::nullopt,
+               se::blas::ProfileResult* profile_result = nullptr);
 
 Status RunBlasLtMatmul(
     const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,

@@ -81,7 +81,7 @@ class ParallelInterleaveDatasetParams : public DatasetParams {
     input_names->emplace_back(
         ParallelInterleaveDatasetOp::kPrefetchInputElements);
     input_names->emplace_back(ParallelInterleaveDatasetOp::kNumParallelCalls);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -91,7 +91,7 @@ class ParallelInterleaveDatasetParams : public DatasetParams {
                     {"output_shapes", output_shapes_},
                     {"output_types", output_dtypes_},
                     {"metadata", ""}};
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override {

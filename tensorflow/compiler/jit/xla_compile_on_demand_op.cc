@@ -102,7 +102,7 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
       ctx, result, execution_output.ConsumeResult(),
       /*missing_ctx_input_prefix=*/0, absl::MakeSpan(*variable_infos),
       input_output_alias, snapshot_ptrs));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaCompileOnDemandOp::Compile(

@@ -81,9 +81,9 @@ class CompatibleOperandsAndResultType
   }
 
   static LogicalResult inferReturnTypes(
-      MLIRContext *context, Optional<Location> location, ValueRange operands,
-      DictionaryAttr attributes, RegionRange regions,
-      SmallVectorImpl<Type> &inferredReturnTypes) {
+      MLIRContext * /*context*/, Optional<Location> location,
+      ValueRange operands, DictionaryAttr /*attributes*/,
+      RegionRange /*regions*/, SmallVectorImpl<Type> &inferredReturnTypes) {
     // TODO(b/231358795): Review the use of InferTypeOpInterface for ops that
     // support quantization or sparsity.
     if (operands.empty())

@@ -48,7 +48,7 @@ bool IsNcclLaunchModeParallel() {
 Status ToStatus(ncclResult_t s, const char* file, int64_t line,
                 const char* expr) {
   if (s == ncclSuccess) {
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   return tensorflow::errors::Internal(
       absl::StrFormat("%s:%d: NCCL operation %s failed: %s", file, line, expr,

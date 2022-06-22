@@ -128,7 +128,7 @@ Status GpuLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
     return errors::Internal(hipGetErrorString(result));
   }
 #endif
-  return Status::OK();
+  return OkStatus();
 }
 
 // Perfect forwarding to make CudaLaunchKernel available to both ROCm and CUDA

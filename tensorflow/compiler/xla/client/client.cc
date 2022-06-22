@@ -111,7 +111,7 @@ Status Client::TransferToInfeed(const LiteralSlice& literal, int64_t replica_id,
     return s;
   }
   VLOG(3) << "TransferToInfeedResponse: {" << response.DebugString() << "}";
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<Literal> Client::TransferFromOutfeed(
@@ -159,7 +159,7 @@ Status Client::ResetDevice() {
     return s;
   }
   VLOG(3) << "ResetDeviceResponse: {" << response.DebugString() << "}";
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<Literal> Client::ExecuteAndTransfer(
@@ -170,7 +170,7 @@ StatusOr<Literal> Client::ExecuteAndTransfer(
       std::unique_ptr<GlobalData> data,
       Execute(computation, arguments, execution_options, execution_profile));
 
-  absl::optional<Shape> shape_with_output_layout;
+  std::optional<Shape> shape_with_output_layout;
   if (execution_options && execution_options->has_shape_with_output_layout()) {
     shape_with_output_layout =
         Shape(execution_options->shape_with_output_layout());
@@ -278,7 +278,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
     const ExecutionOptions* execution_options,
     ExecutionProfile* execution_profile) {
   // Create an ExecutionOptions if necessary, or set its DeviceHandles.
-  absl::optional<ExecutionOptions> options_storage;
+  std::optional<ExecutionOptions> options_storage;
   if (!execution_options || execution_options->device_handles().empty()) {
     if (execution_options) {
       options_storage.emplace(*execution_options);

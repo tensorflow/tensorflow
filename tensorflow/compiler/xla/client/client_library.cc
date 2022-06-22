@@ -29,7 +29,7 @@ namespace xla {
 LocalClientOptions::LocalClientOptions(
     se::Platform* platform, int number_of_replicas,
     int intra_op_parallelism_threads,
-    const absl::optional<std::set<int>>& allowed_devices)
+    const std::optional<std::set<int>>& allowed_devices)
     : platform_(platform),
       number_of_replicas_(number_of_replicas),
       intra_op_parallelism_threads_(intra_op_parallelism_threads),
@@ -63,12 +63,12 @@ int LocalClientOptions::intra_op_parallelism_threads() const {
 }
 
 LocalClientOptions& LocalClientOptions::set_allowed_devices(
-    const absl::optional<std::set<int>>& allowed_devices) {
+    const std::optional<std::set<int>>& allowed_devices) {
   allowed_devices_ = allowed_devices;
   return *this;
 }
 
-const absl::optional<std::set<int>>& LocalClientOptions::allowed_devices()
+const std::optional<std::set<int>>& LocalClientOptions::allowed_devices()
     const {
   return allowed_devices_;
 }
@@ -82,7 +82,7 @@ ClientLibrary::ClientLibrary() = default;
 ClientLibrary::~ClientLibrary() = default;
 
 /* static */ StatusOr<LocalClient*> ClientLibrary::GetOrCreateLocalClient(
-    se::Platform* platform, const absl::optional<std::set<int>>& device_set) {
+    se::Platform* platform, const std::optional<std::set<int>>& device_set) {
   LocalClientOptions default_options;
   default_options.set_platform(platform);
   default_options.set_allowed_devices(device_set);

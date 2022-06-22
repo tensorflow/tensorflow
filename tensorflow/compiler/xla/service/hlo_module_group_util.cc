@@ -306,7 +306,7 @@ Status HloModuleGroupUtil::VisitTopologicalOrder(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloModuleGroupUtil::VerifyComputations(
@@ -314,7 +314,7 @@ Status HloModuleGroupUtil::VerifyComputations(
   auto visit_function =
       [&](HloInstruction* instruction,
           const std::vector<HloInstruction*>& instruction_group) {
-        return Status::OK();
+        return OkStatus();
       };
   int64_t instructions_count = 0;
   VisitStates visit_states;
@@ -336,7 +336,7 @@ Status HloModuleGroupUtil::VerifyComputations(
     TF_RET_CHECK(state.second == VisitState::kVisited);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::unique_ptr<HloReachabilityMap>>
@@ -348,7 +348,7 @@ HloModuleGroupUtil::ComputeReachability(
           const std::vector<HloInstruction*>& instruction_group) {
         post_order.insert(post_order.end(), instruction_group.begin(),
                           instruction_group.end());
-        return Status::OK();
+        return OkStatus();
       };
   HloModuleGroupUtil::VisitStates visit_states;
   for (HloInstruction* root : RootInstructions(computations)) {
