@@ -27,8 +27,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/stream_executor/blas.h"
-#include "tensorflow/stream_executor/matmul_util.h"
+
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/cuda/cuda_blas_lt.h"
 #include "tensorflow/stream_executor/scratch_allocator.h"
+#endif  // GOOGLE_CUDA
 
 namespace xla {
 namespace gpu {
@@ -62,6 +65,8 @@ struct MatrixLayout {
                                     size_t lhs_num_row_dims,
                                     size_t rhs_num_batch_dims,
                                     size_t rhs_num_col_dims);
+
+  void Transpose();
 
   PrimitiveType dtype;
   // `num_rows` / `num_cols` are for the "logical" matrix shape:
@@ -100,14 +105,6 @@ struct GemmConfig {
   bool use_cublaslt;
 };
 
-se::blas::MatrixDescriptor GetMatrixDesc(const MatrixLayout& layout,
-                                         se::DeviceMemoryBase data);
-
-void MakeBlasGemmCompatible(int64_t& m, int64_t& n,
-                            se::blas::MatrixDescriptor& lhs,
-                            se::blas::MatrixDescriptor& rhs,
-                            se::blas::MatrixDescriptor& output);
-
 // Run the given GEMM instruction `gemm` subject to the configuration
 // in `gemm_config` and the passed buffers.
 //
@@ -118,11 +115,23 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
                std::optional<se::blas::AlgorithmType> algorithm = std::nullopt,
                se::blas::ProfileResult* profile_result = nullptr);
 
+#if GOOGLE_CUDA
+
+constexpr size_t kBlasLtMaxWorkspaceSize = 1ll << 32;  // 4GB
+
+struct MatmulPlanParams {
+  se::cuda::BlasLt::MatmulPlanParams params;
+  bool must_swap_operands;
+};
+
+StatusOr<MatmulPlanParams> GetBlasLtMatmulPlanParams(const GemmConfig& config);
+
 Status RunBlasLtMatmul(
-    const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
-    se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
-    se::Stream* stream, se::ScratchAllocator& scratch_allocator,
-    const se::blas::IBlasLtMatmulAlgorithm* algorithm = nullptr,
+    const se::cuda::BlasLt::MatmulPlan& plan, complex128 alpha,
+    se::DeviceMemoryBase lhs_buffer, se::DeviceMemoryBase rhs_buffer,
+    double beta, se::DeviceMemoryBase output_buffer, se::Stream* stream,
+    se::ScratchAllocator& scratch_allocator,
+    const se::cuda::BlasLt::MatmulAlgorithm* algorithm = nullptr,
     se::blas::ProfileResult* profile_result = nullptr);
 
 class BlasPlansAutotuneCache {
@@ -130,17 +139,20 @@ class BlasPlansAutotuneCache {
   BlasPlansAutotuneCache() = default;
 
   std::optional<se::blas::AlgorithmConfig> Find(
-      const se::BatchMatmulParameters& params) const;
-  void Insert(se::BatchMatmulParameters params,
+      const se::cuda::BlasLt::MatmulPlanParams& params) const;
+  void Insert(se::cuda::BlasLt::MatmulPlanParams params,
               se::blas::AlgorithmConfig config);
 
  private:
   mutable absl::Mutex mu_;
-  absl::flat_hash_map<se::BatchMatmulParameters, se::blas::AlgorithmConfig>
+  absl::flat_hash_map<se::cuda::BlasLt::MatmulPlanParams,
+                      se::blas::AlgorithmConfig>
       blas_plans_algorithms_map_ ABSL_GUARDED_BY(mu_);
 };
 
 BlasPlansAutotuneCache& GetBlasPlansAutotuneCache();
+
+#endif  // GOOGLE_CUDA
 
 }  // namespace gpu
 }  // namespace xla

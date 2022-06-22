@@ -458,15 +458,28 @@ LogicalResult Gemm::operator()(
     config = configs->Set(uid, std::move(*cfg));
   }
 
-  Status executed;
-  if (config->use_cublaslt && stream->parent()->SupportsBlasPlans()) {
-    se::OwningScratchAllocator<> scratch_allocator(
-        run_options->device_ordinal(), run_options->allocator());
-    executed = RunBlasLtMatmul(*config, lhs_data, rhs_data, output_data, stream,
-                               scratch_allocator);
-  } else {
-    executed = RunGemm(*config, lhs_data, rhs_data, output_data, stream);
-  }
+  Status executed = [&] {
+    if (config->use_cublaslt) {
+      TF_ASSIGN_OR_RETURN(MatmulPlanParams matmul_plan_params,
+                          GetBlasLtMatmulPlanParams(*config));
+
+      // TODO(cjfj): Cache the plan.
+      se::cuda::BlasLt::MatmulPlan matmul_plan;
+      TF_RETURN_IF_ERROR(matmul_plan.init(matmul_plan_params.params));
+
+      if (matmul_plan_params.must_swap_operands) {
+        std::swap(lhs_data, rhs_data);
+      }
+
+      se::OwningScratchAllocator<> scratch_allocator(
+          run_options->device_ordinal(), run_options->allocator());
+
+      return RunBlasLtMatmul(matmul_plan, {alpha_real, alpha_imag}, lhs_data,
+                             rhs_data, /*beta=*/0., output_data, stream,
+                             scratch_allocator);
+    }
+    return RunGemm(*config, lhs_data, rhs_data, output_data, stream);
+  }();
 
   if (!executed.ok()) return failure();
 
@@ -545,15 +558,28 @@ LogicalResult GemmBias::operator()(
   if (out.data != bias.data)
     stream->ThenMemcpy(&output_data, bias_data, bias_data.size());
 
-  Status executed;
-  if (config->use_cublaslt && stream->parent()->SupportsBlasPlans()) {
-    se::OwningScratchAllocator<> scratch_allocator(
-        run_options->device_ordinal(), run_options->allocator());
-    executed = RunBlasLtMatmul(*config, lhs_data, rhs_data, output_data, stream,
-                               scratch_allocator);
-  } else {
-    executed = RunGemm(*config, lhs_data, rhs_data, output_data, stream);
-  }
+  Status executed = [&] {
+    if (config->use_cublaslt) {
+      TF_ASSIGN_OR_RETURN(MatmulPlanParams matmul_plan_params,
+                          GetBlasLtMatmulPlanParams(*config));
+
+      // TODO(cjfj): Cache the plan.
+      se::cuda::BlasLt::MatmulPlan matmul_plan;
+      TF_RETURN_IF_ERROR(matmul_plan.init(matmul_plan_params.params));
+
+      if (matmul_plan_params.must_swap_operands) {
+        std::swap(lhs_data, rhs_data);
+      }
+
+      se::OwningScratchAllocator<> scratch_allocator(
+          run_options->device_ordinal(), run_options->allocator());
+
+      return RunBlasLtMatmul(matmul_plan, {alpha_real, alpha_imag}, lhs_data,
+                             rhs_data, beta, output_data, stream,
+                             scratch_allocator);
+    }
+    return RunGemm(*config, lhs_data, rhs_data, output_data, stream);
+  }();
 
   if (!executed.ok()) return failure();
 
