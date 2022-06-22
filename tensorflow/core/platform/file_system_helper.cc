@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
@@ -263,6 +264,15 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
   }
 
   return OkStatus();
+}
+
+StatusOr<bool> FileExists(Env* env, const string& fname) {
+  Status status = env->FileExists(fname);
+  if (errors::IsNotFound(status)) {
+    return false;
+  }
+  TF_RETURN_IF_ERROR(status);
+  return true;
 }
 
 }  // namespace internal
