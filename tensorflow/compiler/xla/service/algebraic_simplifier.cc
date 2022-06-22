@@ -1184,7 +1184,8 @@ std::optional<Shape> AlgebraicSimplifierVisitor::ReshapeLayoutDimensions(
         // non-contiguous or reordered to be different from how they appear in
         // result_map.
         int64_t op_dim_prev = original_dimensions[op_pos - 1];
-
+        // If the current dimension is not the first being combined into
+        // bitcast_dim, or is not contiguous with the previous dimension, abort.
         if (op_dims[0] != op_dim &&
             (original_map[op_dim_prev].empty() ||
              original_map[op_dim_prev][0] != bitcast_dim)) {
@@ -1192,6 +1193,7 @@ std::optional<Shape> AlgebraicSimplifierVisitor::ReshapeLayoutDimensions(
                      "bitcast_dim are not contiguous in the result. \n ";
           return std::nullopt;
         }
+        // Now perform the dimension re-ordering check in the bitcast.
         for (int i = 0; i < op_dims.size(); ++i) {
           if (op_dims[i] == op_dim_prev) {
             if (i == op_dims.size() - 1 || op_dims[i + 1] != op_dim) {

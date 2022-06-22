@@ -8436,9 +8436,35 @@ TEST_F(AlgebraicSimplifierTest, BitcastCopyChain) {
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier(options);
   auto result = simplifier.Run(m.get()).ValueOrDie();
-  VLOG(3) << "Module " << m->ToString();
+  SCOPED_TRACE(m->ToString());
   ASSERT_TRUE(result);
   EXPECT_NE(FindInstruction(m.get(), "copy.3"), nullptr);
+}
+
+// Make sure that the following copy-bitcast-copy is not transformed via
+// SwapCopyBitcastCopy function. If SwapCopyBitcastCopy does not fire, in this
+// case, the last copy will be turned into a bitcast by HandleCopy.
+TEST_F(AlgebraicSimplifierTest, BitcastCopyChainSmall) {
+  const char* kModuleStr = R"(
+   HloModule m
+   ENTRY %main (para.0: f32[4,1,1,32,32]) -> f32[1024,4,1,1] {
+    %para.0 = f32[4,1,1,32,32]{3,4,0,1,2} parameter(0)
+    %copy.0 = f32[4,1,1,32,32]{4,3,0,2,1} copy(%para.0)
+    %bitcast.0 = f32[1024,4,1,1]{0,3,2,1} bitcast(%copy.0)
+    ROOT %copy.1 = f32[1024,4,1,1]{0,1,3,2} copy(%bitcast.0)
+  }
+
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  SCOPED_TRACE(m->ToString());
+  auto result = simplifier.Run(m.get()).ValueOrDie();
+  SCOPED_TRACE(m->ToString());
+  ASSERT_TRUE(result);
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Bitcast(m::Bitcast(m::Copy(m::Parameter(0))))));
 }
 
 }  // namespace
