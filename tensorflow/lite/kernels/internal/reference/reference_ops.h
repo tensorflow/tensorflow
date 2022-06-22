@@ -749,6 +749,7 @@ void Select(const RuntimeShape& input_condition_shape,
             const T* input_x_data, const RuntimeShape& input_y_shape,
             const T* input_y_data, const RuntimeShape& output_shape,
             T* output_data) {
+  ruy::profiler::ScopeLabel label("Select");
   int64_t flatsize;
   // Allow select operator executions on mixed scalar tensors and one element
   // tensors.
@@ -771,6 +772,7 @@ void RankOneSelect(const RuntimeShape& input_condition_shape,
                    const RuntimeShape& input_x_shape, const T* input_x_data,
                    const RuntimeShape& input_y_shape, const T* input_y_data,
                    const RuntimeShape& output_shape, T* output_data) {
+  ruy::profiler::ScopeLabel label("Select/RankOneSelect");
   const int64_t outer_size = input_condition_shape.FlatSize();
   int64_t inner_size;
   if (input_condition_shape.DimensionsCount() == 0) {
@@ -799,6 +801,7 @@ void BroadcastSelectSlow(const RuntimeShape& input_condition_shape,
                          const RuntimeShape& input_y_shape,
                          const T* input_y_data,
                          const RuntimeShape& output_shape, T* output_data) {
+  ruy::profiler::ScopeLabel label("Select/BroadcastSelectSlow");
   TFLITE_DCHECK_LE(input_condition_shape.DimensionsCount(), N);
   TFLITE_DCHECK_LE(input_x_shape.DimensionsCount(), N);
   TFLITE_DCHECK_LE(input_y_shape.DimensionsCount(), N);

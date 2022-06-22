@@ -20,6 +20,7 @@ from absl.testing import parameterized
 
 from google.protobuf import text_format
 
+from tensorflow.core.config import flags
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.python.client import session as session_lib
@@ -1117,6 +1118,14 @@ class ExportMetaGraphTests(test.TestCase):
       _run_signature(session, meta_graph_def, {"y": 2}, "update")
       out = _run_signature(session, meta_graph_def, {"x": 4}, "multiply_var")
       self.assertAllEqual(out, {"output_0": 12})
+
+
+class FingerprintingTests(test.TestCase):
+
+  def test_toggle_flag(self):
+    self.assertFalse(flags.config().saved_model_fingerprinting.value())
+    flags.config().saved_model_fingerprinting.reset(True)
+    self.assertTrue(flags.config().saved_model_fingerprinting.value())
 
 
 if __name__ == "__main__":

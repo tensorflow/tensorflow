@@ -16,6 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <string>
+#include <utility>
 
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project

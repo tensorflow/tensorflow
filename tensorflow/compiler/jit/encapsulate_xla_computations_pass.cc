@@ -212,7 +212,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
     }
   }
 
-  auto output = absl::make_unique<Graph>((*graph)->op_registry());
+  auto output = std::make_unique<Graph>((*graph)->op_registry());
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       EncapsulateSubgraphsInFunctions(
           kXlaClusterIdAttr, **graph, RewriteSubgraph,

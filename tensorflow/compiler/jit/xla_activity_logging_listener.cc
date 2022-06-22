@@ -95,7 +95,7 @@ class XlaActivityLoggingListener final : public XlaActivityListener {
 };
 
 bool Register() {
-  RegisterXlaActivityListener(absl::make_unique<XlaActivityLoggingListener>());
+  RegisterXlaActivityListener(std::make_unique<XlaActivityLoggingListener>());
   return false;
 }
 

@@ -404,7 +404,7 @@ string TensorPropertiesToString(
 // TODO(bixia): investigate the use of symbolic shape analysis to improve
 //   segmentation, such as by requiring the dynamic dimensions to have the same
 //   negative value.
-absl::optional<const TensorShapeProto*> FindLeadingShape(
+std::optional<const TensorShapeProto*> FindLeadingShape(
     absl::Span<const OpInfo::TensorProperties> properties) {
   DCHECK(!properties.empty());
   const TensorShapeProto* result;
@@ -453,7 +453,7 @@ absl::optional<const TensorShapeProto*> FindLeadingShape(
     if (max_batch_dim_value <= 1) {
       return result;
     } else {
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
 
@@ -533,7 +533,7 @@ bool OperationCanBeTranslatedToImplicitBatch(
     return false;
   }
 
-  absl::optional<const TensorShapeProto*> leading_shape =
+  std::optional<const TensorShapeProto*> leading_shape =
       FindLeadingShape(input_properties);
   return leading_shape.has_value() && leading_shape.value()->dim_size() >= 2;
 }
@@ -660,7 +660,7 @@ ClusterBatchSize GetClusterBatchSizeForNode(
 
   const std::vector<OpInfo::TensorProperties>& input_properties =
       graph_properties->GetInputProperties(node->name());
-  absl::optional<const TensorShapeProto*> optional_leading_shape =
+  std::optional<const TensorShapeProto*> optional_leading_shape =
       FindLeadingShape(GetInputsToDeterminateBatchSize(node, input_properties));
   DCHECK(optional_leading_shape.has_value());
   const TensorShapeProto* leading_shape = optional_leading_shape.value();
@@ -908,7 +908,7 @@ Status SegmentGraph(const Graph* tf_graph,
       nonconverted_ops_map[node_op_type][string(reason)]++;
       node = nullptr;
     };
-    absl::optional<DeviceNameUtils::ParsedName> device_name =
+    std::optional<DeviceNameUtils::ParsedName> device_name =
         GetDeviceParsedName(node->tf_node());
     // GetDeviceParseName capitalizes the device type.
     if (!device_name.has_value() ||
@@ -1017,7 +1017,7 @@ Status SegmentGraph(const Graph* tf_graph,
 
         const DeviceNameUtils::ParsedName& out_device_name =
             out_cluster->Property().DeviceName();
-        absl::optional<DeviceNameUtils::ParsedName> merged_device_name =
+        std::optional<DeviceNameUtils::ParsedName> merged_device_name =
             MergeIfCompatible(expected_device_name, out_device_name);
         if (!merged_device_name.has_value()) {
           VLOG(3) << "... ... incompatible device names "

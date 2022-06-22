@@ -199,7 +199,7 @@ Status RunAndCompare(
 
   if (reference_module == nullptr) {
     std::cerr << "Skipping reference runner\n";
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   Literal reference_result =

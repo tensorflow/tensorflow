@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -3217,14 +3216,14 @@ bool HloParserImpl::ParseDomain(DomainData* domain) {
     return false;
   }
   if (*kind == ShardingMetadata::KindName()) {
-    auto entry_sharding_ptr = absl::make_unique<HloSharding>(
+    auto entry_sharding_ptr = std::make_unique<HloSharding>(
         HloSharding::FromProto(*entry_sharding).ValueOrDie());
-    auto exit_sharding_ptr = absl::make_unique<HloSharding>(
+    auto exit_sharding_ptr = std::make_unique<HloSharding>(
         HloSharding::FromProto(*exit_sharding).ValueOrDie());
     domain->entry_metadata =
-        absl::make_unique<ShardingMetadata>(std::move(entry_sharding_ptr));
+        std::make_unique<ShardingMetadata>(std::move(entry_sharding_ptr));
     domain->exit_metadata =
-        absl::make_unique<ShardingMetadata>(std::move(exit_sharding_ptr));
+        std::make_unique<ShardingMetadata>(std::move(exit_sharding_ptr));
   } else {
     return TokenError(StrCat("unsupported domain kind: ", *kind));
   }
@@ -5870,7 +5869,7 @@ bool HloParserImpl::ParseSingleInstruction(HloModule* module) {
 
 StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
     absl::string_view str, const HloModuleConfig& config) {
-  auto module = absl::make_unique<HloModule>(/*name=*/"_", config);
+  auto module = std::make_unique<HloModule>(/*name=*/"_", config);
   HloParserImpl parser(str);
   TF_RETURN_IF_ERROR(parser.Run(module.get()));
   return std::move(module);
@@ -5925,7 +5924,7 @@ StatusOr<Shape> ParseShape(absl::string_view str) {
 
 std::unique_ptr<HloParser> HloParser::CreateHloParserForTests(
     absl::string_view str) {
-  return absl::make_unique<HloParserImpl>(str);
+  return std::make_unique<HloParserImpl>(str);
 }
 
 }  // namespace xla

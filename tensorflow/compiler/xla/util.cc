@@ -20,6 +20,7 @@ limitations under the License.
 #include <cmath>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <string>
 
 #include "absl/algorithm/container.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/math/math_util.h"

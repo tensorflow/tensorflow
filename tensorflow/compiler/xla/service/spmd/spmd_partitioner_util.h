@@ -17,9 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_SPMD_PARTITIONER_UTIL_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -180,13 +180,13 @@ class OffsetCalculation {
                     const MultiplyAddDivideOffsetCalculation& lhs,
                     const MultiplyAddDivideOffsetCalculation& rhs)
       : opcode_(opcode),
-        lhs_(absl::make_unique<OffsetCalculation>(lhs)),
-        rhs_(absl::make_unique<OffsetCalculation>(rhs)) {}
+        lhs_(std::make_unique<OffsetCalculation>(lhs)),
+        rhs_(std::make_unique<OffsetCalculation>(rhs)) {}
   OffsetCalculation(HloOpcode opcode, const OffsetCalculation& lhs,
                     const OffsetCalculation& rhs)
       : opcode_(opcode),
-        lhs_(absl::make_unique<OffsetCalculation>(lhs)),
-        rhs_(absl::make_unique<OffsetCalculation>(rhs)) {}
+        lhs_(std::make_unique<OffsetCalculation>(lhs)),
+        rhs_(std::make_unique<OffsetCalculation>(rhs)) {}
 
   OffsetCalculation& operator=(const OffsetCalculation& other);
 

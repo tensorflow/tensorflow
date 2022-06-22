@@ -17,6 +17,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace activity_watcher {
+void MaybeEnableMultiWorkersWatching(CoordinationServiceAgent* agent) {}
+
 namespace internal {
 
 std::atomic<bool> g_watcher_enabled(false);

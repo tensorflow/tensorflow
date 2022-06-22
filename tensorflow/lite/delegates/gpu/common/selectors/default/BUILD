@@ -18,9 +18,9 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_buffer_1x1",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_constants",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_generic",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal_simd",
-        "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_weights_converter",
         "@com_google_absl//absl/memory",
     ],
@@ -79,11 +79,9 @@ cc_library(
     deps = [
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_buffer_1x1",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_generic",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal",
-        "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr",
         "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected",
-        "@com_google_absl//absl/memory",
     ],
 )

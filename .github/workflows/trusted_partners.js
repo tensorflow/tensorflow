@@ -52,12 +52,14 @@ const get_email_domain = async ({github, username}) => {
 const intel_action = async ({github, context}) => {
   const labels = ['kokoro:force-run', 'ready to pull'];
 
-  // Assign to individual teams. Defaults to devinfra members
-  const onednn_assignees = ['penpornk'];
-  let assignees = ['nitins17', 'learning-to-play'];
+  let assignees = [];
   const title = context.payload.pull_request && context.payload.pull_request.title;
+  const onednn_assignees = ['penpornk'];
   if (title && title.toLowerCase().includes("onednn"))
     assignees = onednn_assignees;
+  const intel_windows_assignees = ['nitins17', 'learning-to-play'];
+  if (title && title.toLowerCase().includes("intel") && title.toLowerCase().includes("windows"))
+    assignees = intel_windows_assignees;
 
   const resp_label = await github.rest.issues.addLabels({
     issue_number: context.issue.number,
@@ -69,15 +71,17 @@ const intel_action = async ({github, context}) => {
     console.log(resp_label);
     throw "Error adding labels to PR";
   }
-  const resp_assign = await github.rest.issues.addAssignees({
-    issue_number: context.issue.number,
-    owner: context.repo.owner,
-    repo: context.repo.repo,
-    assignees: assignees
-  });
-  if (resp_assign.status >= 400) {
-    console.log(resp_assign);
-    throw "Error adding assignee to PR";
+  if (assignees.length > 0) {
+    const resp_assign = await github.rest.issues.addAssignees({
+      issue_number: context.issue.number,
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      assignees: assignees
+    });
+    if (resp_assign.status >= 400) {
+      console.log(resp_assign);
+      throw "Error adding assignee to PR";
+    }
   }
   return `PR Updated successfully with Labels: ${labels} with Assignees: ${assignees}`;
 };

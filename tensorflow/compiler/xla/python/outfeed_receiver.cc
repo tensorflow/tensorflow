@@ -22,7 +22,6 @@ limitations under the License.
 #include <sstream>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -251,7 +250,7 @@ void OutfeedReceiverImpl::Start() {
   }
 
   int num_threads = 2 * devices_.size();
-  threads_ = absl::make_unique<tensorflow::thread::ThreadPool>(
+  threads_ = std::make_unique<tensorflow::thread::ThreadPool>(
       tensorflow::Env::Default(), "outfeed_receiver", num_threads);
   for (int device_idx = 0; device_idx < devices_.size(); ++device_idx) {
     threads_->Schedule(
@@ -309,7 +308,7 @@ void OutfeedReceiverImpl::DeviceListenerThreadLoop(int device_idx) {
       }
       shape = registered_shape->second;
     }
-    auto received = absl::make_unique<OutfeedData>(device, consumer_id, shape);
+    auto received = std::make_unique<OutfeedData>(device, consumer_id, shape);
     VLOG(2) << "Listener received header " << received->DebugString();
     if (consumer_id == kOutfeedCidShutdown) {
       VLOG(2) << "[" << device->DebugString()
@@ -419,7 +418,7 @@ Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
   TF_ASSIGN_OR_RETURN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers,
       executable->Execute({{}}, execute_options));
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 StatusOr<XlaOp> OutfeedReceiverImpl::AddOutfeedToBuilder(
@@ -468,7 +467,7 @@ StatusOr<XlaOp> OutfeedReceiverImpl::AddOutfeedToBuilder(
 OutfeedReceiver::OutfeedReceiver(Callback callback,
                                  absl::Span<PjRtClient* const> clients,
                                  ssize_t max_callback_queue_size_bytes) {
-  p_impl_ = absl::make_unique<OutfeedReceiverImpl>(
+  p_impl_ = std::make_unique<OutfeedReceiverImpl>(
       callback, clients, max_callback_queue_size_bytes);
 }
 

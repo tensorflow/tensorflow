@@ -94,7 +94,7 @@ Status XlaCpuDeviceFactory::CreateDevices(
   XlaShapeLayoutHelpers::ShapeDeterminationFns shape_representation_fns{
       UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
   options.shape_determination_fns = {shape_representation_fns};
-  auto device = absl::make_unique<XlaDevice>(session_options, options);
+  auto device = std::make_unique<XlaDevice>(session_options, options);
 
   // Setting AcceleratorDeviceInfo because eager runtime relies on the device
   // context in tensorflow_accelerator_device_info(). Also,

@@ -899,7 +899,7 @@ bool StreamExecutor::UnregisterTraceListener(TraceListener* listener) {
   return true;
 }
 
-absl::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
+std::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
   return implementation_->GetAllocatorStats();
 }
 

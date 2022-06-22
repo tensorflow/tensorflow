@@ -3261,6 +3261,7 @@ class TensorFlowTestCase(googletest.TestCase):
       self.assertAllEqual(a, b)
     except AssertionError:
       return
+    msg = msg or ""
     raise AssertionError("The two values are equal at all elements. %s" % msg)
 
   @py_func_if_in_function

@@ -94,7 +94,6 @@ cc_library(
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:stream",
         "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 

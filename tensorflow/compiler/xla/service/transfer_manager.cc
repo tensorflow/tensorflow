@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"

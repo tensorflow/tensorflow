@@ -26,60 +26,58 @@ namespace mlir {
 namespace hlo {
 
 mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
-                                       mlir::Type new_type) {
-  auto old_type = getElementTypeOrSelf(elements);
+                                       mlir::Type newType) {
+  auto oldType = getElementTypeOrSelf(elements);
   // TODO(kramerb): Add support when MLIR can represent const complex tensors.
-  if (old_type.isa<mlir::ComplexType>() || new_type.isa<mlir::ComplexType>()) {
+  if (oldType.isa<mlir::ComplexType>() || newType.isa<mlir::ComplexType>()) {
     return {};
   }
 
-  size_t bit_width = new_type.isBF16() ? 64 : new_type.getIntOrFloatBitWidth();
+  size_t bitWidth = newType.isBF16() ? 64 : newType.getIntOrFloatBitWidth();
   // Treat signless integers except i1 as signed.
-  bool is_old_type_unsigned =
-      old_type.isInteger(1) || old_type.isUnsignedInteger();
-  bool is_new_type_unsigned =
-      new_type.isInteger(1) || new_type.isUnsignedInteger();
+  bool isOldTypeUnsigned = oldType.isInteger(1) || oldType.isUnsignedInteger();
+  bool isNewTypeUnsigned = newType.isInteger(1) || newType.isUnsignedInteger();
 
-  if (old_type.isa<mlir::FloatType>()) {
-    if (auto newFloatType = new_type.dyn_cast<mlir::FloatType>()) {
+  if (oldType.isa<mlir::FloatType>()) {
+    if (auto newFloatType = newType.dyn_cast<mlir::FloatType>()) {
       // Float -> Float
       return elements.cast<DenseIntOrFPElementsAttr>().mapValues(
-          new_type, [&](const APFloat& float_val) -> APInt {
-            APFloat converted_float = float_val;
-            bool loses_info = false;
-            converted_float.convert(newFloatType.getFloatSemantics(),
-                                    APFloat::rmNearestTiesToEven, &loses_info);
-            return converted_float.bitcastToAPInt();
+          newType, [&](const APFloat& floatVal) -> APInt {
+            APFloat convertedFloat = floatVal;
+            bool losesInfo = false;
+            convertedFloat.convert(newFloatType.getFloatSemantics(),
+                                   APFloat::rmNearestTiesToEven, &losesInfo);
+            return convertedFloat.bitcastToAPInt();
           });
     }
     // Float -> Int
     return elements.cast<DenseIntOrFPElementsAttr>().mapValues(
-        new_type, [&](const APFloat& float_val) -> APInt {
+        newType, [&](const APFloat& floatVal) -> APInt {
           bool ignored;
-          APSInt int_val(bit_width, is_new_type_unsigned);
-          float_val.convertToInteger(int_val, APFloat::rmTowardZero, &ignored);
-          return int_val;
+          APSInt intVal(bitWidth, isNewTypeUnsigned);
+          floatVal.convertToInteger(intVal, APFloat::rmTowardZero, &ignored);
+          return intVal;
         });
   }
 
   // old_type is Integer
-  if (auto newFloatType = new_type.dyn_cast<mlir::FloatType>()) {
+  if (auto newFloatType = newType.dyn_cast<mlir::FloatType>()) {
     // Int -> Float
     return elements.cast<DenseIntOrFPElementsAttr>().mapValues(
-        new_type, [&](const APInt& int_val) -> APInt {
-          APFloat float_val(newFloatType.getFloatSemantics(),
-                            APInt::getZero(newFloatType.getWidth()));
-          float_val.convertFromAPInt(int_val,
-                                     /*isSigned=*/!is_old_type_unsigned,
-                                     APFloat::rmNearestTiesToEven);
-          return float_val.bitcastToAPInt();
+        newType, [&](const APInt& intVal) -> APInt {
+          APFloat floatVal(newFloatType.getFloatSemantics(),
+                           APInt::getZero(newFloatType.getWidth()));
+          floatVal.convertFromAPInt(intVal,
+                                    /*isSigned=*/!isOldTypeUnsigned,
+                                    APFloat::rmNearestTiesToEven);
+          return floatVal.bitcastToAPInt();
         });
   }
   // new_type is Integer
   // Int -> Int
   return elements.cast<DenseIntOrFPElementsAttr>().mapValues(
-      new_type, [&](const APInt& int_val) -> APInt {
-        return APSInt(int_val, is_old_type_unsigned).extOrTrunc(bit_width);
+      newType, [&](const APInt& intVal) -> APInt {
+        return APSInt(intVal, isOldTypeUnsigned).extOrTrunc(bitWidth);
       });
 }
 

@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/device_target.h"
 
 #include <algorithm>
+#include <functional>
+#include <optional>
 
 #include "absl/types/optional.h"
 #include "llvm/ADT/SmallVector.h"

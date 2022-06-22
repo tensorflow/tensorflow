@@ -95,7 +95,7 @@ class DTensorDevice {
   explicit DTensorDevice(absl::string_view name)
       : name_(name),
         same_shape_policy_enabled_(false),
-        cancellation_manager_(absl::make_unique<CancellationManager>()) {}
+        cancellation_manager_(std::make_unique<CancellationManager>()) {}
 
   void AddMesh(std::unique_ptr<MeshWithParallelDevice> mesh,
                bool is_host_mesh) {
@@ -280,7 +280,7 @@ class DTensorDevice {
     // Reset the cancellation manager on (potential) failure so we don't cancel
     // future ops. This is only safe because we have just cleared pending async
     // nodes, which may have had a reference to he cancellation manager.
-    cancellation_manager_ = absl::make_unique<CancellationManager>();
+    cancellation_manager_ = std::make_unique<CancellationManager>();
   }
 
   TFE_TensorHandle* Pack(TFE_Context* context, int num_inputs,
@@ -1203,7 +1203,7 @@ tensorflow::Fprint128 CacheKeyForGraph(
 StatusOr<std::unique_ptr<Graph>> SelectGraphToExecute(
     const TranslatedFunction& function, const Graph& graph,
     std::string* stateful_partitioned_call_name) {
-  auto new_graph = absl::make_unique<Graph>(graph.flib_def());
+  auto new_graph = std::make_unique<Graph>(graph.flib_def());
   CopyGraph(graph, new_graph.get());
   std::vector<Node*> arg_nodes;
   std::vector<Node*> retval_nodes;
@@ -1357,7 +1357,7 @@ void DTensorDevice::LowerToSPMDFunction(
       profiler::TraceMeLevel::kInfo);
   FunctionLibraryDefinition* flib_def =
       tensorflow::unwrap(context)->FuncLibDef();
-  auto graph(absl::make_unique<tensorflow::Graph>(flib_def));
+  auto graph(std::make_unique<tensorflow::Graph>(flib_def));
   NameAttrList eager_attributes;
   ASSIGN_OR_RETURN_C_STATUS(eager_attributes, FetchAttributes(attributes),
                             status);
@@ -2096,7 +2096,7 @@ void AddMesh(const std::string& serialized_mesh, void* device_info,
         absl::StripPrefix(mesh_config.name(), kPipelineMeshNamePrefix));
   }
 
-  auto mesh = absl::make_unique<MeshWithParallelDevice>(
+  auto mesh = std::make_unique<MeshWithParallelDevice>(
       std::move(mesh_config), std::move(parallel), composite_device_name);
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
   device->AddMesh(std::move(mesh), is_host_mesh);

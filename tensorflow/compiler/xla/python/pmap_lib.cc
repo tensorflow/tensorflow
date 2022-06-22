@@ -284,9 +284,21 @@ class PmapFunction {
       arguments.signature.dynamic_arg_signatures.push_back(
           std::move(signature_or_error).ValueOrDie());
     }
-    arguments.signature.global_extra_jit_context =
-        global_state.extra_jit_context;
-    arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;
+    try {
+      py::object pxla_module = py::module::import("jax").attr("config");
+      py::object sda = py::getattr(pxla_module, "_trace_context", py::none());
+      if (!sda.is_none()) {
+        arguments.signature.thread_local_extra_jit_context = sda();
+      }
+    } catch (const py::error_already_set& e) {
+      // Ignore; jax may not be present.
+    }
+    if (!arguments.signature.thread_local_extra_jit_context.has_value()) {
+      arguments.signature.thread_local_extra_jit_context =
+          tls.extra_jit_context;
+      arguments.signature.global_extra_jit_context =
+          global_state.extra_jit_context;
+    }
     return xla::Status();
   }
 
@@ -421,7 +433,7 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
       it;
   bool inserted;
   std::tie(it, inserted) = executables_.try_emplace(
-      arguments.signature, absl::make_unique<PmapCacheEntry>());
+      arguments.signature, std::make_unique<PmapCacheEntry>());
   PmapCacheEntry& cache_entry = *(it->second);
 
   if (!cache_entry.compilation_complete.HasBeenNotified()) {
@@ -542,7 +554,7 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
       cache_entry.out_pytree_def.Unflatten(flat_sharded_device_arrays);
 
   // If there is a post-hook function, call it with the inputs and the outputs.
-  absl::optional<py::object> post_hook = GetPostHook();
+  std::optional<py::object> post_hook = GetPostHook();
   if (post_hook) {
     (*post_hook)(this->AsPyHandle(), args, kwargs, out);
   }

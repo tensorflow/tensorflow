@@ -13,10 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import collections
 import weakref
 
 from tensorflow.python.trackable import base
 from tensorflow.python.trackable import converter
+from tensorflow.python.util import object_identity
 
 
 class TrackableView(object):
@@ -54,3 +56,33 @@ class TrackableView(object):
       ref = converter.convert_to_trackable(ref, parent=obj)
       children[name] = ref
     return children
+
+  @property
+  def root(self):
+    if isinstance(self._root_ref, weakref.ref):
+      derefed = self._root_ref()
+      assert derefed is not None
+      return derefed
+    else:
+      return self._root_ref
+
+  def all_nodes(self):
+    """Returns a list of all nodes from self.root using a breadth first traversal."""
+    return self._all_nodes_with_paths()[0]
+
+  def _all_nodes_with_paths(self):
+    """Returns a list of all nodes and its paths from self.root using a breadth first traversal."""
+    bfs_sorted = []
+    to_visit = collections.deque([self.root])
+    node_paths = object_identity.ObjectIdentityDictionary()
+    node_paths[self.root] = ()
+    while to_visit:
+      current_trackable = to_visit.popleft()
+      bfs_sorted.append(current_trackable)
+      for name, dependency in self.children(current_trackable).items():
+        if dependency not in node_paths:
+          node_paths[dependency] = (
+              node_paths[current_trackable] +
+              (base.TrackableReference(name, dependency),))
+          to_visit.append(dependency)
+    return bfs_sorted, node_paths

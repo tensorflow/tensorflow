@@ -13,14 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-import collections
 import copy
 import weakref
 
 from tensorflow.python.checkpoint import trackable_view
 from tensorflow.python.checkpoint import util
 from tensorflow.python.trackable import base
-from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -63,7 +61,7 @@ class ObjectGraphView(trackable_view.TrackableView):
     return copied
 
   def list_children(self, obj, save_type=base.SaveType.CHECKPOINT, **kwargs):
-    """Returns all child trackables attached to obj.
+    """Returns list of all child trackables attached to obj.
 
     Args:
       obj: A `Trackable` object.
@@ -82,6 +80,22 @@ class ObjectGraphView(trackable_view.TrackableView):
     # actually attached, e.g. a Checkpoint object's save_counter.
     if obj is self.root and self._attached_dependencies:
       children.extend(self._attached_dependencies)
+    return children
+
+  def children(self, obj, save_type=base.SaveType.CHECKPOINT, **kwargs):
+    """Returns all child trackables attached to obj.
+
+    Args:
+      obj: A `Trackable` object.
+      save_type: A string, can be 'savedmodel' or 'checkpoint'.
+      **kwargs: kwargs to use when retrieving the object's children.
+
+    Returns:
+      Dictionary of all children attached to the object with name to trackable.
+    """
+    children = {}
+    for name, ref in self.list_children(obj, **kwargs):
+      children[name] = ref
     return children
 
   @property
@@ -111,20 +125,7 @@ class ObjectGraphView(trackable_view.TrackableView):
 
   def _breadth_first_traversal(self):
     """Find shortest paths to all dependencies of self.root."""
-    bfs_sorted = []
-    to_visit = collections.deque([self.root])
-    node_paths = object_identity.ObjectIdentityDictionary()
-    node_paths[self.root] = ()
-    while to_visit:
-      current_trackable = to_visit.popleft()
-      bfs_sorted.append(current_trackable)
-      for name, dependency in self.list_children(current_trackable):
-        if dependency not in node_paths:
-          node_paths[dependency] = (
-              node_paths[current_trackable] + (
-                  base.TrackableReference(name, dependency),))
-          to_visit.append(dependency)
-    return bfs_sorted, node_paths
+    return super(ObjectGraphView, self)._all_nodes_with_paths()
 
   def serialize_object_graph(self, saveables_cache=None):
     """Determine checkpoint keys for variables and build a serialized graph.

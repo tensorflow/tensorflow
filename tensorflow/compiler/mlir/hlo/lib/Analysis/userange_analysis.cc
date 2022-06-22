@@ -35,9 +35,9 @@ struct UserangeInfoBuilder {
  public:
   /// Constructs an Userange builder.
   UserangeInfoBuilder(Liveness liveness, ValueSetT values,
-                      OperationListT op_list)
+                      OperationListT opList)
       : values(std::move(values)),
-        op_list(std::move(op_list)),
+        opList(std::move(opList)),
         liveness(std::move(liveness)) {}
 
   /// Computes the userange of the current value by iterating over all of its
@@ -45,7 +45,7 @@ struct UserangeInfoBuilder {
   Liveness::OperationListT computeUserange() {
     Region *topRegion = findTopRegion();
     // Iterate over all associated uses.
-    for (Operation *use : op_list) {
+    for (Operation *use : opList) {
       // If one of the parents implements a LoopLikeOpInterface we need to add
       // all operations inside of its regions to the userange.
       Operation *loopParent = use->getParentOfType<LoopLikeOpInterface>();
@@ -54,13 +54,13 @@ struct UserangeInfoBuilder {
 
       // Check if the parent block has already been processed.
       Block *useBlock = findTopLiveBlock(use);
-      if (!start_blocks.insert(useBlock).second || visited.contains(useBlock))
+      if (!startBlocks.insert(useBlock).second || visited.contains(useBlock))
         continue;
 
       // Add all operations inside the block that are within the userange.
       findOperationsInUse(useBlock);
     }
-    return current_userange;
+    return currentUserange;
   }
 
  private:
@@ -93,13 +93,13 @@ struct UserangeInfoBuilder {
   /// it are included as well. If includeEnd is false the end operation is not
   /// added.
   void addAllOperationsBetween(Operation *start, Operation *end) {
-    current_userange.push_back(start);
+    currentUserange.push_back(start);
     addAllOperationsInRegion(start);
 
     while (start != end) {
       start = start->getNextNode();
       addAllOperationsInRegion(start);
-      current_userange.push_back(start);
+      currentUserange.push_back(start);
     }
   }
 
@@ -164,7 +164,7 @@ struct UserangeInfoBuilder {
       for (Block &block : region) {
         // If the blocks have been used as a startBlock before, we need to add
         // all operations between the block front and the startOp of the value.
-        if (start_blocks.contains(&block)) {
+        if (startBlocks.contains(&block)) {
           Operation *start = &block.front();
           Operation *end = getStartOperation(&block);
           if (start != end) addAllOperationsBetween(start, end->getPrevNode());
@@ -174,7 +174,7 @@ struct UserangeInfoBuilder {
         } else if (visited.insert(&block).second) {
           for (Operation &op : block) {
             addAllOperationsInRegion(&op);
-            current_userange.push_back(&op);
+            currentUserange.push_back(&op);
           }
           continue;
         }
@@ -191,7 +191,7 @@ struct UserangeInfoBuilder {
   /// Find the start operation of the current value inside the given block.
   Operation *getStartOperation(Block *block) {
     Operation *startOperation = &block->back();
-    for (Operation *useOp : op_list) {
+    for (Operation *useOp : opList) {
       // Find the associated operation in the current block (if any).
       useOp = block->findAncestorOpInBlock(*useOp);
       // Check whether the use is in our block and after the current end
@@ -209,7 +209,7 @@ struct UserangeInfoBuilder {
       return &block->back();
 
     Operation *endOperation = &block->front();
-    for (Operation *useOp : op_list) {
+    for (Operation *useOp : opList) {
       // Find the associated operation in the current block (if any).
       useOp = block->findAncestorOpInBlock(*useOp);
       // Check whether the use is in our block and after the current end
@@ -223,16 +223,16 @@ struct UserangeInfoBuilder {
   ValueSetT values;
 
   /// The list of all operations used by the values.
-  OperationListT op_list;
+  OperationListT opList;
 
   /// The result list of the userange computation.
-  OperationListT current_userange;
+  OperationListT currentUserange;
 
   /// The set of visited blocks during the userange computation.
   SmallPtrSet<Block *, 32> visited;
 
   /// The set of blocks that the userange computation started from.
-  SmallPtrSet<Block *, 8> start_blocks;
+  SmallPtrSet<Block *, 8> startBlocks;
 
   /// The current liveness info.
   Liveness liveness;

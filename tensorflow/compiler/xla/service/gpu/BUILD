@@ -130,7 +130,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -334,7 +333,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
@@ -524,7 +522,6 @@ tf_cuda_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -597,7 +594,7 @@ gentbl_cc_library(
     visibility = ["//visibility:private"],
     deps = [
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
-        "@llvm-project//mlir:SideEffectTdFiles",
+        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
         "@tf_runtime//:OpBaseTdFiles",
         "@tf_runtime//backends/gpu:GpuOpBaseTdFile",
     ],
@@ -792,7 +789,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "//tensorflow/stream_executor:scratch_allocator",
@@ -917,13 +913,17 @@ cc_library(
 # TODO(ezhulenev): Extract `RunCholesky` into a separate library.
 cc_library(
     name = "cholesky_thunk",
-    srcs = ["cholesky_thunk.cc"],
-    hdrs = ["cholesky_thunk.h"],
-    deps = [
+    srcs = if_gpu_is_configured(["cholesky_thunk.cc"]),
+    hdrs = if_gpu_is_configured(["cholesky_thunk.h"]),
+    deps = if_gpu_is_configured([
         ":buffer_allocations",
         ":cusolver_context",
         ":precompiled_kernels",
         ":thunk",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -935,23 +935,23 @@ cc_library(
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:stream_header",
         "//tensorflow/stream_executor/gpu:gpu_asm_opts",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
-    ],
+    ]),
 )
 
 # TODO(ezhulenev): Extract `RunTriangularSolve` into a separate library.
 cc_library(
     name = "triangular_solve_thunk",
-    srcs = ["triangular_solve_thunk.cc"],
-    hdrs = ["triangular_solve_thunk.h"],
-    deps = [
+    srcs = if_gpu_is_configured(["triangular_solve_thunk.cc"]),
+    hdrs = if_gpu_is_configured(["triangular_solve_thunk.h"]),
+    deps = if_gpu_is_configured([
         ":buffer_allocations",
         ":cusolver_context",
         ":precompiled_kernels",
         ":thunk",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -963,11 +963,7 @@ cc_library(
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:stream_header",
         "//tensorflow/stream_executor/gpu:gpu_asm_opts",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
-    ],
+    ]),
 )
 
 cc_library(
@@ -1017,7 +1013,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -1049,7 +1044,6 @@ cc_library(
         ":gpu_conv_runner",
         ":ir_emission_utils",
         ":stream_executor_util",
-        "@com_google_absl//absl/types:optional",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo",
@@ -1122,7 +1116,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:optional",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
@@ -1164,7 +1157,6 @@ cc_library(
         "//tensorflow/stream_executor:dnn",
         "//tensorflow/stream_executor:lazy_op_runner",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -1235,7 +1227,6 @@ cc_library(
     deps = if_gpu_is_configured([
         ":cusolver_context",
         ":ir_emission_utils",
-        "@com_google_absl//absl/types:optional",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:util",
@@ -1791,6 +1782,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:qr_expander",
         "//tensorflow/compiler/xla/service:real_imag_expander",
         "//tensorflow/compiler/xla/service:reduce_scatter_combiner",
+        "//tensorflow/compiler/xla/service:reshape_decomposer",
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:result_caster",
         "//tensorflow/compiler/xla/service:rng_bit_generator_expander",
@@ -1880,7 +1872,6 @@ cc_library(
         ":triangular_solve_rewriter",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/types:optional",
         "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:Support",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
@@ -2023,7 +2014,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_query",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -2096,6 +2086,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:layout_assignment",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor_no_cuda",
+        "//tensorflow/core/platform:tensor_float_32_hdr_lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
     ],
@@ -2572,7 +2563,6 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -2592,7 +2582,6 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -2639,7 +2628,6 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -2679,7 +2667,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -2834,8 +2821,6 @@ test_suite(
         "//tensorflow/compiler/xla/tests:query_inferred_shape_test_gpu",
         "//tensorflow/compiler/xla/tests:reduce_hlo_test_gpu",
         "//tensorflow/compiler/xla/tests:reduce_precision_test_gpu",
-        "//tensorflow/compiler/xla/tests:reduce_test_gpu",
-        "//tensorflow/compiler/xla/tests:reduce_window_test_gpu",
         "//tensorflow/compiler/xla/tests:replay_test_gpu",
         "//tensorflow/compiler/xla/tests:reshape_motion_test_gpu",
         "//tensorflow/compiler/xla/tests:reshape_test_gpu",
@@ -2845,7 +2830,6 @@ test_suite(
         "//tensorflow/compiler/xla/tests:sample_text_test_gpu",
         "//tensorflow/compiler/xla/tests:scalar_computations_test_gpu",
         "//tensorflow/compiler/xla/tests:scatter_test_gpu",
-        "//tensorflow/compiler/xla/tests:select_and_scatter_test_gpu",
         "//tensorflow/compiler/xla/tests:select_test_gpu",
         "//tensorflow/compiler/xla/tests:slice_test_gpu",
         "//tensorflow/compiler/xla/tests:transfer_manager_test_gpu",
@@ -2968,7 +2952,6 @@ test_suite(
         "//tensorflow/compiler/xla/tests:deconstruct_tuple_test_gpu",
         "//tensorflow/compiler/xla/tests:deep_graph_test_gpu",
         "//tensorflow/compiler/xla/tests:dot_operation_single_threaded_runtime_test_gpu",
-        "//tensorflow/compiler/xla/tests:dot_operation_test_autotune_disabled_gpu",
         "//tensorflow/compiler/xla/tests:dot_operation_test_gpu",
         "//tensorflow/compiler/xla/tests:dynamic_ops_test_gpu",
         "//tensorflow/compiler/xla/tests:execution_profile_test_gpu",
@@ -3000,8 +2983,6 @@ test_suite(
         "//tensorflow/compiler/xla/tests:query_inferred_shape_test_gpu",
         "//tensorflow/compiler/xla/tests:reduce_hlo_test_gpu",
         "//tensorflow/compiler/xla/tests:reduce_precision_test_gpu",
-        "//tensorflow/compiler/xla/tests:reduce_test_gpu",
-        "//tensorflow/compiler/xla/tests:reduce_window_test_gpu",
         "//tensorflow/compiler/xla/tests:replay_test_gpu",
         "//tensorflow/compiler/xla/tests:reshape_motion_test_gpu",
         "//tensorflow/compiler/xla/tests:reshape_test_gpu",
@@ -3011,7 +2992,6 @@ test_suite(
         "//tensorflow/compiler/xla/tests:sample_text_test_gpu",
         "//tensorflow/compiler/xla/tests:scalar_computations_test_gpu",
         "//tensorflow/compiler/xla/tests:scatter_test_gpu",
-        "//tensorflow/compiler/xla/tests:select_and_scatter_test_gpu",
         "//tensorflow/compiler/xla/tests:select_test_gpu",
         "//tensorflow/compiler/xla/tests:slice_test_gpu",
         "//tensorflow/compiler/xla/tests:transfer_manager_test_gpu",

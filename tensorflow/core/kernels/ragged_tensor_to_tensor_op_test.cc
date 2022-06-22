@@ -501,7 +501,7 @@ TEST_F(RaggedTensorToTensorOpTest, ShapeWrongDimensions) {
        createVector<int32>({1, 1, 1, 2})}  // row_partition_tensors
   );
   // Fails with an invalid argument.
-  EXPECT_EQ(RunOpKernel().code(), errors::Code::INVALID_ARGUMENT);
+  EXPECT_EQ(errors::IsInvalidArgument(RunOpKernel()), true);
 }
 
 class RaggedTensorToTensorOpUnknownShapeTest

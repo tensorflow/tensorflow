@@ -97,7 +97,8 @@ TensorViewOr TfLiteInvokeContext::GetOutput(const int idx,
   if (tflite_tensor == nullptr)
     return absl::InternalError(
         absl::StrCat("output tensor is null during invocation. idx: ", idx));
-  if (tflite_tensor->data.raw == nullptr) {
+  if (tflite_tensor->data.raw == nullptr ||
+      tflite_tensor->allocation_type == kTfLiteDynamic) {
     TfLiteIntArray* output_shape_array =
         ShapeToTfLiteShape(output_shape.value());
     context_->ResizeTensor(context_, tflite_tensor, output_shape_array);

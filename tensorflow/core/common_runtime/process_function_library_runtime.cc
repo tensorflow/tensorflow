@@ -279,7 +279,7 @@ FunctionLibraryRuntime::Handle ProcessFunctionLibraryRuntime::AddHandleLocked(
     FunctionLibraryRuntime::LocalHandle local_handle) {
   auto h = next_handle_;
   function_data_[h] =
-      absl::make_unique<FunctionData>(device_name, local_handle, function_key);
+      std::make_unique<FunctionData>(device_name, local_handle, function_key);
   table_[function_key] = h;
   next_handle_++;
   return h;
@@ -845,7 +845,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       ret_nodes, lib_def_,
       options.config_proto.allow_soft_placement() ? default_device : nullptr));
 
-  auto data = absl::make_unique<MultiDeviceFunctionData>(
+  auto data = std::make_unique<MultiDeviceFunctionData>(
       function_name, function_key, ret_node_names.size(),
       std::move(reachable_lib_def), std::move(ret_types));
 
@@ -1706,7 +1706,7 @@ Status ProcessFunctionLibraryRuntime::GetComponentArgs(
       eager::RemoteTensorHandle remote_handle;
       TF_RETURN_IF_ERROR(args.GetRemoteArg(index, &remote_handle));
       comp_args->remote_args.emplace_back(
-          absl::make_unique<eager::RemoteTensorHandle>(
+          std::make_unique<eager::RemoteTensorHandle>(
               std::move(remote_handle)));
       comp_args->args.push_back(comp_args->remote_args.back().get());
     }
@@ -1843,7 +1843,7 @@ void ProcessFunctionLibraryRuntime::RunInternal(
     return;
   }
   if (parent_ != nullptr) {
-    auto cleanup_item = absl::make_unique<CleanUpItem>();
+    auto cleanup_item = std::make_unique<CleanUpItem>();
     cleanup_item->device = target_device;
     cleanup_item->step_id = opts.step_id;
     cleanup_item->local_handle = local_handle;
@@ -2034,12 +2034,12 @@ Status ProcessFunctionLibraryRuntime::Clone(
     std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
     bool skip_flib_def) const {
   if (skip_flib_def) {
-    *out_lib_def = absl::make_unique<FunctionLibraryDefinition>(
+    *out_lib_def = std::make_unique<FunctionLibraryDefinition>(
         lib_def_->default_registry(), FunctionDefLibrary{});
   } else {
-    *out_lib_def = absl::make_unique<FunctionLibraryDefinition>(*lib_def_);
+    *out_lib_def = std::make_unique<FunctionLibraryDefinition>(*lib_def_);
   }
-  *out_pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
+  *out_pflr = std::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_, env, config_ ? &(*config_) : nullptr, graph_def_version,
       out_lib_def->get(), optimizer_options, default_thread_pool_, parent_,
       session_metadata_, rendezvous_factory_);

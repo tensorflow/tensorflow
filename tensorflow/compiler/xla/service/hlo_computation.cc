@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -1162,7 +1161,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
     const HloInstruction* new_root) {
   std::unique_ptr<HloCloneContext> context_ptr;
   if (context == nullptr) {
-    context_ptr = absl::make_unique<HloCloneContext>(parent(), suffix);
+    context_ptr = std::make_unique<HloCloneContext>(parent(), suffix);
     context = context_ptr.get();
   }
   if (new_root == nullptr) {

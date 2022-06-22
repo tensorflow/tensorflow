@@ -40,23 +40,23 @@ struct DynamicBroadcastInDimOpPattern
   LogicalResult matchAndRewrite(mhlo::DynamicBroadcastInDimOp op,
                                 PatternRewriter& rewriter) const override {
     auto loc = op.getLoc();
-    Value output_dimensions = op.output_dimensions();
-    auto result_ty = op.getType().cast<RankedTensorType>();
+    Value outputDimensions = op.output_dimensions();
+    auto resultTy = op.getType().cast<RankedTensorType>();
 
     // Create init tensor as none of the operands are reusable/updatable.
-    SmallVector<Value> dynamic_dims;
-    SmallVector<int64_t> static_shape_info;
-    for (int i = 0; i < result_ty.getRank(); i++) {
-      auto i_cst = rewriter.create<arith::ConstantIndexOp>(loc, i);
-      dynamic_dims.push_back(rewriter.create<tensor::ExtractOp>(
-          loc, output_dimensions, ValueRange{i_cst}));
-      static_shape_info.push_back(ShapedType::kDynamicSize);
+    SmallVector<Value> dynamicDims;
+    SmallVector<int64_t> staticShapeInfo;
+    for (int i = 0; i < resultTy.getRank(); i++) {
+      auto iCst = rewriter.create<arith::ConstantIndexOp>(loc, i);
+      dynamicDims.push_back(rewriter.create<tensor::ExtractOp>(
+          loc, outputDimensions, ValueRange{iCst}));
+      staticShapeInfo.push_back(ShapedType::kDynamicSize);
     }
-    auto init_tensor = rewriter.create<linalg::InitTensorOp>(
-        loc, dynamic_dims, static_shape_info, result_ty.getElementType());
+    auto initTensor = rewriter.create<linalg::InitTensorOp>(
+        loc, dynamicDims, staticShapeInfo, resultTy.getElementType());
 
     rewriter.replaceOpWithNewOp<gml_st::DynamicBroadcastInDimOp>(
-        op, result_ty, init_tensor, op.operand(), op.broadcast_dimensions(),
+        op, resultTy, initTensor, op.operand(), op.broadcast_dimensions(),
         op.known_expanding_dimensionsAttr(),
         op.known_nonexpanding_dimensionsAttr());
     return success();

@@ -20,7 +20,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -289,14 +288,14 @@ class HeapSimulatorTracker {
       const std::vector<HloInstruction*>& must_alias_set = {},
       const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr) {
     HloModuleConfig config;
-    module_ = absl::make_unique<HloModule>(name, config);
+    module_ = std::make_unique<HloModule>(name, config);
     module_->AddEntryComputation(std::move(entry_computation));
     Init(instruction_sequence, can_share_buffer);
   }
 
   explicit HeapSimulatorTracker(const std::string& name) {
     HloModuleConfig config;
-    module_ = absl::make_unique<HloModule>(name, config);
+    module_ = std::make_unique<HloModule>(name, config);
   }
 
   // Similar to the single entry computation constructor above, but runs the
@@ -322,7 +321,7 @@ class HeapSimulatorTracker {
     auto size_fn = [&reverse_position](const BufferValue& buffer) {
       return reverse_position[buffer.instruction()];
     };
-    auto algorithm = absl::make_unique<HeapCallRecorder>(&actual_calls_);
+    auto algorithm = std::make_unique<HeapCallRecorder>(&actual_calls_);
     result_ = HeapSimulator::Run(std::move(algorithm), *module_, schedule,
                                  *alias_analysis_, size_fn)
                   .ConsumeValueOrDie();
@@ -384,7 +383,7 @@ class HeapSimulatorTracker {
     // the secondary sorting criteria of DecreasingSizeRunsHeap to sort calls
     // by buffer id, for determinism in the tests.
     auto zero_size = [](const BufferValue& buffer) { return 0; };
-    auto algorithm = absl::make_unique<HeapCallRecorder>(&actual_calls_);
+    auto algorithm = std::make_unique<HeapCallRecorder>(&actual_calls_);
 
     alias_analysis_ =
         HloAliasAnalysis::Run(module_.get(), can_share_buffer).ValueOrDie();
@@ -508,7 +507,7 @@ TEST_F(HeapSimulatorTest, FusionOutputsOnlyShareOnce) {
   };
 
   HloModuleConfig config;
-  auto module = absl::make_unique<HloModule>(TestName(), config);
+  auto module = std::make_unique<HloModule>(TestName(), config);
 
   auto builder = HloComputation::Builder(TestName());
   auto paramA = builder.AddInstruction(
@@ -582,7 +581,7 @@ TEST_F(HeapSimulatorTest, FusionOutputsOnlyShareOnceOutputShortLived) {
   };
 
   HloModuleConfig config;
-  auto module = absl::make_unique<HloModule>(TestName(), config);
+  auto module = std::make_unique<HloModule>(TestName(), config);
 
   auto builder = HloComputation::Builder(TestName());
   auto paramA = builder.AddInstruction(
@@ -969,8 +968,7 @@ class HeapAlgorithmTestBase : public ::testing::Test {
     const HloValue::Id id = buffers_.size();
     auto const0 = builder_.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-    buffers_.emplace_back(
-        absl::make_unique<HloValue>(id, const0, ShapeIndex{}));
+    buffers_.emplace_back(std::make_unique<HloValue>(id, const0, ShapeIndex{}));
     return buffers_.back().get();
   }
 

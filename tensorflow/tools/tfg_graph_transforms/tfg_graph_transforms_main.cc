@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/ir/importexport/savedmodel_export.h"
 #include "tensorflow/core/ir/importexport/savedmodel_import.h"
 #include "tensorflow/core/ir/ops.h"
+#include "tensorflow/core/ir/tf_op_registry.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/transforms/pass_registration.h"
@@ -93,6 +94,12 @@ bool CheckCLParams() {
 void RegisterDialects(mlir::DialectRegistry& registry) {
   // This potentially could be limited, for now keep all TF.
   mlir::RegisterAllTensorFlowDialects(registry);
+
+  // Register the TF op registry interface so that passes can query it.
+  registry.addExtension(
+      +[](mlir::MLIRContext* ctx, mlir::tfg::TFGraphDialect* dialect) {
+        dialect->addInterfaces<mlir::tfg::TensorFlowOpRegistryInterface>();
+      });
 }
 
 tensorflow::Status RunOptimizationPasses(

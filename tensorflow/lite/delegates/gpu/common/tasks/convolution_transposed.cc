@@ -132,9 +132,7 @@ ConvolutionTransposed::ConvolutionTransposed(
 std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
     const OperationDef& op_def, const GpuInfo& gpu_info,
     const int4& block_size) {
-  auto src_desc = op_def.src_tensors[0];
-  src_desc.SetAddressMode(AddressMode::kZero);
-  AddSrcTensor("src_tensor", src_desc);
+  AddSrcTensor("src_tensor", op_def.src_tensors[0]);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
   if (op_def.src_tensors.size() != 1) {

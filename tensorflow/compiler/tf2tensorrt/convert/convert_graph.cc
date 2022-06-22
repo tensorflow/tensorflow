@@ -870,7 +870,7 @@ Status ConvertGraph(const TRTOptimizationPass::ConversionParams& params,
 
   // Save the cuda device since we may need to switch to another cuda device to
   // build static engines.
-  absl::optional<int> old_cuda_device = absl::nullopt;
+  std::optional<int> old_cuda_device = std::nullopt;
   if (!params.is_dynamic_op) {
     int cuda_device_id;
     cudaError_t cuda_error = cudaGetDevice(&cuda_device_id);

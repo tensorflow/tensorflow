@@ -265,7 +265,7 @@ Status PyBuffer::CopyToHostAsync() {
                          host_value->ready.Notify();
                        });
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 StatusOr<pybind11::object> PyBuffer::AsNumPyArray(py::handle this_obj) {
@@ -423,7 +423,7 @@ int PyBuffer_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
         external_reference_hold->OpaqueDeviceMemoryDataPointer();
     view->buf = const_cast<void*>(root_ptr);
     auto extra =
-        absl::make_unique<ExtraBufferInfo>(std::move(external_reference_hold));
+        std::make_unique<ExtraBufferInfo>(std::move(external_reference_hold));
     view->itemsize = ShapeUtil::ByteSizeOfPrimitiveType(shape->element_type());
     view->len = ShapeUtil::ByteSizeOf(*shape);
     view->readonly = 1;
@@ -447,7 +447,7 @@ int PyBuffer_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
     }
     TF_RETURN_IF_ERROR(buffer.BlockHostUntilReady());
     view->internal = extra.release();
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }();
   if (!status.ok()) {
     // numpy.asarray(...) silents the PyExc_BufferError. Adding a log here helps
@@ -573,10 +573,10 @@ Status PyBuffer::RegisterTypes(py::module& m) {
         return self.buf()->SetAval(std::move(aval));
       });
   type.attr("weak_type") = property(
-      [](PyBuffer::object self) -> absl::optional<bool> {
+      [](PyBuffer::object self) -> std::optional<bool> {
         return self.buf()->weak_type();
       },
-      [](PyBuffer::object self, absl::optional<bool> weak_type) {
+      [](PyBuffer::object self, std::optional<bool> weak_type) {
         return self.buf()->set_weak_type(weak_type);
       });
   type.attr("device_buffer") =
@@ -678,7 +678,7 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       [](PyBuffer::object self) { return self.buf()->Clone(); },
       py::is_method(type));
   type.attr("__module__") = m.attr("__name__");
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace xla

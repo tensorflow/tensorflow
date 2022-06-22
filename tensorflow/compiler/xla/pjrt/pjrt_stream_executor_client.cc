@@ -69,6 +69,7 @@ limitations under the License.
 #include <cstdlib>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -76,11 +77,9 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -262,7 +261,7 @@ StatusOr<DeviceAssignment> PjRtStreamExecutorClient::GetDefaultDeviceAssignment(
 
 StatusOr<std::unique_ptr<HloCostAnalysis>>
 PjRtStreamExecutorClient::GetHloCostAnalysis() {
-  return absl::make_unique<HloCostAnalysis>(
+  return std::make_unique<HloCostAnalysis>(
       client_->backend().compiler()->ShapeSizeBytesFunction());
 }
 
@@ -463,7 +462,7 @@ StatusOr<std::unique_ptr<PjRtStreamExecutorBuffer>> AllocateDestinationBuffer(
       TrackedDeviceBuffer::FromScopedShapedBuffer(&dst_buffer,
                                                   definition_events);
 
-  auto py_buffer = absl::make_unique<PjRtStreamExecutorBuffer>(
+  auto py_buffer = std::make_unique<PjRtStreamExecutorBuffer>(
       on_device_shape, std::move(dst_device_buffer), client, device);
 
   if (on_device_shape.IsTuple()) {
@@ -508,7 +507,7 @@ Status AddDestinationBufferSynchronization(
   RecordUsage(std::move(device_buffer), local_device, local_device,
               definition_event, copy_stream,
               /*prefer_to_retain_reference=*/false);
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace
@@ -1604,11 +1603,11 @@ PjRtFuture<Status> PjRtStreamExecutorBuffer::GetReadyFuture() {
           [definition_promise, stream_ptr, local_device_state]() mutable {
             local_device_state->ReturnStreamToPool(
                 std::unique_ptr<se::Stream>(stream_ptr));
-            definition_promise.Set(::tensorflow::OkStatus());
+            definition_promise.Set(OkStatus());
           });
     } else {
       // All events are already complete.
-      definition_promise.Set(::tensorflow::OkStatus());
+      definition_promise.Set(OkStatus());
     }
   }
 
@@ -1667,7 +1666,7 @@ Status CheckCompatibleShapes(bool strict_shape_checking,
           ShapeUtil::HumanStringWithLayout(buffer_shape));
     }
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 // Makes a tuple from the arguments to an execution.
@@ -1749,7 +1748,7 @@ std::unique_ptr<PjRtBuffer> OutputBufferHelper(
   std::shared_ptr<TrackedDeviceBuffer> out_buffer =
       TrackedDeviceBuffer::FromScopedShapedBuffer(result_buffer,
                                                   {definition_event});
-  auto pjrt_buffer = absl::make_unique<PjRtStreamExecutorBuffer>(
+  auto pjrt_buffer = std::make_unique<PjRtStreamExecutorBuffer>(
       result_buffer->on_device_shape(), std::move(out_buffer), client, device);
   RecordUsage(pjrt_buffer->GetBufferWithUsageHold(), local_device, local_device,
               definition_event, local_device->compute_stream(),
@@ -1821,7 +1820,7 @@ Status PjRtStreamExecutorExecutable::SetUpDonation(bool tuple_inputs) {
     parameters_that_must_be_donated_.emplace_back(
         std::move(parameters_to_donate));
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 absl::string_view PjRtStreamExecutorExecutable::name() const {
@@ -2176,9 +2175,8 @@ StatusOr<PjRtExecutable::Result> PjRtStreamExecutorExecutable::ExecuteHelper(
   if (fill_future) {
     auto promise = PjRtFuture<Status>::CreatePromise();
     future = PjRtFuture<Status>(promise);
-    compute_callbacks.push_back([promise = std::move(promise)]() mutable {
-      promise.Set(::tensorflow::OkStatus());
-    });
+    compute_callbacks.push_back(
+        [promise = std::move(promise)]() mutable { promise.Set(OkStatus()); });
   }
   device_state->ThenExecuteCallback(
       stream, [callbacks{std::move(compute_callbacks)},
@@ -2473,7 +2471,7 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtStreamExecutorClient::Compile(
       client()->Compile(computation, argument_layout_pointers,
                         options.executable_build_options));
 
-  auto executable = absl::make_unique<PjRtStreamExecutorExecutable>(
+  auto executable = std::make_unique<PjRtStreamExecutorExecutable>(
       std::move(local_executables), options.parameter_is_tupled_arguments,
       std::move(device_assignment), std::move(addressable_device_logical_ids),
       std::move(addressable_devices), this);

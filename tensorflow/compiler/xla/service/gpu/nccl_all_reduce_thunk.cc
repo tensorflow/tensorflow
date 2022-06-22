@@ -256,7 +256,7 @@ Status NcclAllReduceThunk::RunNcclCollective(const ExecuteParams& params,
 
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Done performing all-reduce for ordinal: " << device_ordinal;
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 NcclAllReduceStartThunk::NcclAllReduceStartThunk(
@@ -308,7 +308,7 @@ Status NcclAllReduceStartThunk::RunNcclCollective(const ExecuteParams& params,
   }
 
   VLOG(3) << "Done performing all-reduce-start for ordinal: " << device_ordinal;
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 StatusOr<se::Event> NcclAllReduceStartThunk::TakeDoneEvent(int device_ordinal) {
@@ -330,7 +330,7 @@ Status NcclAllReduceDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(se::Event done_event,
                       start_thunk_.TakeDoneEvent(device_ordinal));
   params.stream->ThenWaitFor(&done_event);
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 NcclReduceScatterThunk::NcclReduceScatterThunk(
@@ -412,7 +412,7 @@ Status RunReduceScatter(ReductionKind reduction_kind,
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 
   VLOG(3) << "Done performing reduce-scatter for ordinal: " << device_ordinal;
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "

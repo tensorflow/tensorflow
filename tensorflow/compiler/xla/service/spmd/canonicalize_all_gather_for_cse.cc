@@ -76,7 +76,7 @@ StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
         new_ag_dim,
         all_gather_participants * new_ag_shape.dimensions(new_ag_dim));
     std::optional<int64_t> new_channel_id =
-        ag->channel_id() ? absl::make_optional(this->NextChannelId())
+        ag->channel_id() ? std::make_optional(this->NextChannelId())
                          : std::nullopt;
     HloInstruction* new_ag =
         comp->AddInstruction(HloInstruction::CreateAllGather(

@@ -113,8 +113,8 @@ class CustomBufferizeTypeConverter
       // a memref with a specified layout, i.e. non-empty affine map.
       // TODO(pifon) : Change how target materialization is invoked in dialect
       // conversion.
-      if (auto memref_type = inputs[0].getType().dyn_cast<MemRefType>()) {
-        assert(!memref_type.getLayout().isIdentity());
+      if (auto memrefType = inputs[0].getType().dyn_cast<MemRefType>()) {
+        assert(!memrefType.getLayout().isIdentity());
         return inputs[0];
       }
       assert(inputs[0].getType().isa<TensorType>());
@@ -237,7 +237,6 @@ struct OneShotBufferizePass
   void runOnOperation() override {
     bufferization::OneShotBufferizationOptions opts;
     opts.allowReturnAllocs = true;
-    opts.dropEquivalentFuncResults = false;
     opts.bufferizeFunctionBoundaries = true;
     opts.functionBoundaryTypeConversion =
         bufferization::BufferizationOptions::LayoutMapOption::IdentityLayoutMap;
@@ -253,8 +252,8 @@ struct OneShotBufferizePass
 
 struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
  private:
-  BufferizeDialectsCallback dialects_callback;
-  BufferizePatternsCallback patterns_callback;
+  BufferizeDialectsCallback dialectsCallback;
+  BufferizePatternsCallback patternsCallback;
 
  public:
   void getDependentDialects(DialectRegistry& registry) const override {
@@ -268,7 +267,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     shape::registerBufferizableOpInterfaceExternalModels(registry);
     tensor::registerBufferizableOpInterfaceExternalModels(registry);
     vector::registerBufferizableOpInterfaceExternalModels(registry);
-    if (dialects_callback) dialects_callback(registry);
+    if (dialectsCallback) dialectsCallback(registry);
   }
   // Default alignment_ specified in passes.td
   FinalBufferizePass() = default;
@@ -277,8 +276,8 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
 
   void setCallbacks(BufferizeDialectsCallback dc,
                     BufferizePatternsCallback pc) {
-    dialects_callback = std::move(dc);
-    patterns_callback = std::move(pc);
+    dialectsCallback = std::move(dc);
+    patternsCallback = std::move(pc);
   }
 
   void runOnOperation() override {
@@ -336,8 +335,8 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     populateExtraBufferizePatterns(&getContext(), &converter, &patterns);
     scf::populateSCFStructuralTypeConversionsAndLegality(converter, patterns,
                                                          target);
-    if (patterns_callback)
-      patterns_callback(target, &getContext(), &converter, &patterns);
+    if (patternsCallback)
+      patternsCallback(target, &getContext(), &converter, &patterns);
 
     return applyFullConversion(getOperation(), target, std::move(patterns));
   }

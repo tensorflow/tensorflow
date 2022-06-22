@@ -184,12 +184,12 @@ def MergeAssumingOpsPass : Pass<"mhlo-merge-assuming-ops", "func::FuncOp"> {
 
 def ShapeReificationPass : Pass<"shape-reification", "func::FuncOp"> {
   let summary = "Iteratively reify all shape computations.";
-  let constructor = "CreateShapeReificationPass()";
+  let constructor = "createShapeReificationPass()";
 }
 
 def ConstraintFusionPass : Pass<"constraint-fusion", "func::FuncOp"> {
   let summary = "Fuse shape constraints and merge all assuming regions.";
-  let constructor = "CreateConstraintFusionPass()";
+  let constructor = "createConstraintFusionPass()";
 }
 
 def GroupReductionDimensionsPass
@@ -213,7 +213,7 @@ def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "func::FuncOp"
 
 def ExpandHloTuplesPass : Pass<"expand-hlo-tuples", "ModuleOp"> {
   let summary = "Expand HLO tuple for the entry function of the module.";
-  let constructor = "CreateExpandHloTuplesPass()";
+  let constructor = "createExpandHloTuplesPass()";
   let options = [
     Option<"entry_function_name_", "entry-function", "std::string",
            /*default=*/"", "the name of entry function of the module">,

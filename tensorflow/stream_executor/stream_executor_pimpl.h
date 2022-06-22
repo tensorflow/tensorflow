@@ -545,7 +545,7 @@ class StreamExecutor {
   bool UnregisterTraceListener(TraceListener* listener);
 
   // Return allocator statistics.
-  absl::optional<AllocatorStats> GetAllocatorStats();
+  std::optional<AllocatorStats> GetAllocatorStats();
 
   // Clears the internal stats except for the `in_use` fields
   // and sets the `peak_bytes_in_use` to be equal to the `bytes_in_use`.

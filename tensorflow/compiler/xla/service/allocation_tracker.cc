@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/allocation_tracker.h"
 
+#include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
@@ -84,7 +84,7 @@ StatusOr<GlobalDataHandle> AllocationTracker::RegisterInternal(
     // into a regular ShapedBuffer, which is stored in
     // handle_to_shaped_buffers_.
     handle_to_shaped_buffers_[handle].emplace_back(
-        absl::make_unique<ShapedBuffer>(
+        std::make_unique<ShapedBuffer>(
             ReleaseIfScopedShapedBuffer(std::move(shaped_buffer))));
   }
 

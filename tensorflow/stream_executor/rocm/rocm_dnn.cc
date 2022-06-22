@@ -2964,7 +2964,7 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
     const dnn::AlgorithmConfig& algorithm_config,
     ScratchAllocator* scratch_allocator, dnn::AlgorithmDesc* algorithm_desc,
     DeviceMemory<uint8>* scratch_memory) {
-  absl::optional<dnn::AlgorithmDesc> input_algo_desc =
+  std::optional<dnn::AlgorithmDesc> input_algo_desc =
       algorithm_config.algorithm();
 
   assert(input_algo_desc.has_value());
@@ -4301,7 +4301,13 @@ port::Status MIOpenSupport::DoPoolBackward(
       // miopen does not use strides and must have 4D tensor.
       // std::vector<int> dims(pooling_dimensions.ndims() + 2);
 
+<<<<<<< HEAD
       dest2_size = (element_type == dnn::DataType::kFloat) ? sizeof(float) : sizeof(Eigen::half);
+=======
+      dest2_size = (element_type == dnn::DataType::kFloat)
+                       ? sizeof(float)
+                       : sizeof(Eigen::half);
+>>>>>>> f925ccb
       for (auto& x : dims64) dest2_size *= x;
 
       if (dest2_size > 0) {

@@ -296,7 +296,7 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* gemm,
 
   BlasPlansAutotuneCache& cache = GetBlasPlansAutotuneCache();
   if (cache.Find(matmul_parameters)) {
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -327,7 +327,7 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* gemm,
     cache.Insert(std::move(matmul_parameters),
                  se::blas::AlgorithmConfig(*best_algorithm_idx));
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 static StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(

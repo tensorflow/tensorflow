@@ -25,7 +25,6 @@ limitations under the License.
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
@@ -184,7 +183,7 @@ struct GpuExecutable::BefExecutable {
       return InternalError("Failed to get '%s' function", func_name);
     }
 
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
  public:
@@ -223,7 +222,7 @@ class GpuExecutable::JitRtExecutable {
     opts.register_dialects = jitrt::RegisterDefaultJitRtDialects;
 
     // Register JitRt Gpu runtime custom calls with the linker.
-    opts.runtime_symbol_map = JitRtCustomCallsSymbolMap;
+    opts.runtime_symbol_map = GetSymbolsBinding(JitRtGpuCustomCalls());
 
     // We just use the default compilation pipeline provided by the JitRt.
     // Alternatively instead of having a separate JitRtProgram (LMHLO lowered to
@@ -251,6 +250,7 @@ class GpuExecutable::JitRtExecutable {
   jitrt::Executable& default_executable() { return *default_executable_; }
   JitRtKernelsCache& kernels_cache() { return kernels_cache_; }
   JitRtGemmConfigCache& gemm_configs_cache() { return gemm_configs_cache_; }
+  JitRtCollectiveSupport& collectives() { return collectives_; }
 
   // We pass a pointer to the buffer size to the compiled function, so we return
   // a reference to a stable memory location.
@@ -279,6 +279,9 @@ class GpuExecutable::JitRtExecutable {
 
   // Keep a cache of gemm configs for all gemm operation in the program.
   JitRtGemmConfigCache gemm_configs_cache_;
+
+  // Support for running collective operations.
+  JitRtCollectiveSupport collectives_;
 };
 #endif  // XLA_ENABLE_XLIR
 
@@ -287,22 +290,22 @@ StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(Params params) {
   auto gpu_ctx_cache = std::move(params.gpu_ctx_cache);
   std::unique_ptr<GpuExecutable> result(new GpuExecutable(std::move(params)));
 
-  if (absl::holds_alternative<OwnedThunkSchedule>(executable)) {
-    result->thunks_ = std::move(absl::get<OwnedThunkSchedule>(executable));
+  if (std::holds_alternative<OwnedThunkSchedule>(executable)) {
+    result->thunks_ = std::move(std::get<OwnedThunkSchedule>(executable));
     return result;
   }
 
 #if XLA_ENABLE_XLIR
-  if (absl::holds_alternative<OwnedBefBuffer>(executable)) {
-    auto& bef_buffer = absl::get<OwnedBefBuffer>(executable);
+  if (std::holds_alternative<OwnedBefBuffer>(executable)) {
+    auto& bef_buffer = std::get<OwnedBefBuffer>(executable);
     TF_ASSIGN_OR_RETURN(
         result->bef_executable_,
         BefExecutable::Create(std::move(bef_buffer), std::move(gpu_ctx_cache)));
     return result;
   }
 
-  if (absl::holds_alternative<OwnedJitRtProgram>(executable)) {
-    auto& program = absl::get<OwnedJitRtProgram>(executable);
+  if (std::holds_alternative<OwnedJitRtProgram>(executable)) {
+    auto& program = std::get<OwnedJitRtProgram>(executable);
     TF_ASSIGN_OR_RETURN(result->jitrt_executable_,
                         JitRtExecutable::Create(std::move(program)));
     return result;
@@ -398,23 +401,23 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
     auto cc = main_stream->GetRocmComputeCapability();
     std::string stream_arch = cc.gcn_arch_name();
     std::string gpu_exec_arch =
-        absl::get<se::RocmComputeCapability>(gpu_version_).gcn_arch_name();
+        std::get<se::RocmComputeCapability>(gpu_version_).gcn_arch_name();
     TF_RET_CHECK(stream_arch == gpu_exec_arch)
         << "AMDGPU GCN ISA version mismatch; expected {" << gpu_exec_arch
         << ", but was " << stream_arch;
   } else if (platform_kind == stream_executor::PlatformKind::kCuda) {
     GpuVersion cc = main_stream->GetCudaComputeCapability();
-    TF_RET_CHECK(absl::get<se::CudaComputeCapability>(cc) ==
-                 absl::get<se::CudaComputeCapability>(gpu_version_))
+    TF_RET_CHECK(std::get<se::CudaComputeCapability>(cc) ==
+                 std::get<se::CudaComputeCapability>(gpu_version_))
         << "Compute capability mismatch; expected {"
-        << absl::get<se::CudaComputeCapability>(gpu_version_).ToString()
-        << "}, but was {" << absl::get<se::CudaComputeCapability>(cc).ToString()
+        << std::get<se::CudaComputeCapability>(gpu_version_).ToString()
+        << "}, but was {" << std::get<se::CudaComputeCapability>(cc).ToString()
         << "}";
   } else {
     return InternalError("Unknown platform: %d", platform_kind);
   }
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 namespace {
@@ -478,7 +481,7 @@ Status ExecuteThunks(const std::string& module_name,
         async_comms_stream.ok() ? async_comms_stream->get() : nullptr};
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
     if (thunk_schedule.Depended(thunk.get())) {
-      auto finish_event = absl::make_unique<se::Event>(main_stream->parent());
+      auto finish_event = std::make_unique<se::Event>(main_stream->parent());
       finish_event->Init();
       stream->ThenRecordEvent(finish_event.get());
       thunk_to_finish_event[thunk.get()] = std::move(finish_event);
@@ -517,7 +520,7 @@ Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
     profile->set_compute_time_ns(std::max(nanoseconds, 1.0));
   }
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace
@@ -606,11 +609,11 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
     int64_t param_no = allocation.parameter_number();
     se::DeviceMemoryBase registered_buffer = [&] {
       if (auto unowned_shapedbuffers =
-              absl::get_if<absl::Span<const ShapedBuffer* const>>(&arguments)) {
+              std::get_if<absl::Span<const ShapedBuffer* const>>(&arguments)) {
         return (*unowned_shapedbuffers)[param_no]->buffers().element(
             allocation.param_shape_index());
       } else {
-        return absl::get<absl::Span<ExecutionInput>>(arguments)[param_no]
+        return std::get<absl::Span<ExecutionInput>>(arguments)[param_no]
             .Buffer(allocation.param_shape_index())
             .AsDeviceMemoryBase();
       }
@@ -666,7 +669,7 @@ static Status CheckAlignment(const BufferAllocation& allocation,
         "was %p",
         arg_idx, expected_alignment, buffer.opaque());
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
@@ -888,11 +891,24 @@ static Status ExecuteJitRt(const std::string& module_name,
   opts.async_task_runner =
       reinterpret_cast<jitrt::AsyncTaskRunner*>(0XDEADBEEF);
 
+  // Get the async communications stream for async collectives.
+  int device_ordinal = run_options->stream()->parent()->device_ordinal();
+  StatusOr<StreamPool::Ptr> async_comms_stream =
+      run_options->BorrowStream(device_ordinal);
+
+  // Async collective support instantiated for each Gpu executable run, so that
+  // concurrent executions can run independenty using a separate set of events
+  // for communication.
+  JitRtAsyncCollectiveSupport async_collectives(
+      async_comms_stream.ok() ? async_comms_stream->get() : nullptr);
+
   // Pass auxiliary data to the custom call handlers.
   jitrt::CustomCall::UserData user_data;
-  user_data.insert_all(run_options, &jitrt_executable->debug_options(),
-                       &jitrt_executable->kernels_cache(),
-                       &jitrt_executable->gemm_configs_cache());
+  user_data.insert_all(
+      run_options, &jitrt_executable->debug_options(),
+      &jitrt_executable->kernels_cache(),
+      &jitrt_executable->gemm_configs_cache(), &jitrt_executable->collectives(),
+      async_collectives.async_comm_stream() ? &async_collectives : nullptr);
   opts.custom_call_data = &user_data;
 
   // Get the default executable. We do not support specialization because
@@ -979,12 +995,12 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
           [&]() -> xla::MaybeOwningDeviceMemory* {
         // ScopedBuffer is never an owned buffer.
         if (auto* unowned_shapedbuffers =
-                absl::get_if<absl::Span<const ShapedBuffer* const>>(
+                std::get_if<absl::Span<const ShapedBuffer* const>>(
                     &arguments)) {
           return nullptr;
         } else {
           auto unowned_execution_input =
-              absl::get<absl::Span<ExecutionInput>>(arguments);
+              std::get<absl::Span<ExecutionInput>>(arguments);
           ExecutionInput& input =
               unowned_execution_input[allocation->parameter_number()];
           return input.MutableBuffer(allocation->param_shape_index());
@@ -1066,7 +1082,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
       buffer_allocations.TearDown(buffers_in_result, allocations_));
 
   // Free allocations for arguments.
-  if (auto args = absl::get_if<absl::Span<ExecutionInput>>(&arguments)) {
+  if (auto args = std::get_if<absl::Span<ExecutionInput>>(&arguments)) {
     MarkToBeReleasedArguments(*args, result);
   }
   return std::move(result);
@@ -1196,7 +1212,7 @@ Status GpuExecutable::SetUpMlirAllocation(
                      .getValue()
                      .str()));
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 #if XLA_ENABLE_XLIR
@@ -1377,7 +1393,7 @@ GetOutputInfo(const HloModule& hlo_module, const BufferAssignment& assignment) {
         output[index].alias_config =
             hlo_module.input_output_alias_config().GetAliasedParameter(index);
 
-        return ::tensorflow::OkStatus();
+        return OkStatus();
       }));
   return output;
 }

@@ -28,7 +28,7 @@ namespace py = pybind11;
 PyExecutable::PyExecutable(std::shared_ptr<PyClient> client,
                            std::unique_ptr<PjRtExecutable> executable,
                            std::shared_ptr<Traceback> traceback,
-                           absl::optional<std::string> fingerprint)
+                           std::optional<std::string> fingerprint)
     : client_(std::move(client)),
       executable_(std::move(executable)),
       traceback_(std::move(traceback)),

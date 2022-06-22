@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_SHARDING_UTIL_H_
 
 #include <map>
+#include <optional>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -172,7 +172,8 @@ std::optional<HloSharding> ScatterOutputShardingFromUpdate(
 // Returns an update operand sharding of scatter by passing through the output's
 // sharding.
 std::optional<HloSharding> ScatterUpdateShardingFromOutput(
-    const HloSharding& output_sharding, const HloScatterInstruction& scatter);
+    const HloSharding& per_output_sharding,
+    const HloScatterInstruction& scatter);
 
 // Returns an identity value and an HloOpcode for reduce computation of scatter
 // instruction.

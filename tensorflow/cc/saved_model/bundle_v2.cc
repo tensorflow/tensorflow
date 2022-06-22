@@ -201,8 +201,7 @@ Status SavedModelV2Bundle::RecurseObjectsToRestore(
     }
     if (trackable_child_node_id < 0 ||
         trackable_child_node_id >= trackable_object_graph().nodes_size()) {
-      return Status(
-          errors::Code::FAILED_PRECONDITION,
+      return errors::FailedPrecondition(
           strings::StrCat("Illegal trackable child node id for ", child_name));
     }
     const auto* trackable_child =

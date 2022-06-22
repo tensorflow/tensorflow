@@ -44,22 +44,22 @@ class SinkConstantsToControlFlowPass
           SinkConstantsToControlFlowPass> {
   void runOnOperation() override {
     getOperation().walk([](Operation* op) {
-      for (Region& region : op->getRegions()) SinkToRegion(&region);
+      for (Region& region : op->getRegions()) sinkToRegion(&region);
     });
   }
 
  private:
   // Performs constant sinking into a region.
-  static void SinkToRegion(Region* region) {
-    llvm::DenseMap<Value, Operation*> sunk_constant;
+  static void sinkToRegion(Region* region) {
+    llvm::DenseMap<Value, Operation*> sunkConstant;
     visitUsedValuesDefinedAbove({*region}, [&](OpOperand* use) {
       Value constant = use->get();
       auto* op = constant.getDefiningOp();
       if (!op || !op->hasTrait<mlir::OpTrait::ConstantLike>()) return;
-      auto map_entry = sunk_constant.try_emplace(constant, nullptr);
-      if (!map_entry.second) {
+      auto mapEntry = sunkConstant.try_emplace(constant, nullptr);
+      if (!mapEntry.second) {
         // This constant has already been cloned into the region, reuse it.
-        use->set(map_entry.first->getSecond()->getResult(0));
+        use->set(mapEntry.first->getSecond()->getResult(0));
         if (op->use_empty()) op->erase();
         return;
       }
@@ -67,10 +67,10 @@ class SinkConstantsToControlFlowPass
         op->moveBefore(&region->front().front());
         return;
       }
-      map_entry.first->getSecond() = op->clone();
+      mapEntry.first->getSecond() = op->clone();
       region->front().getOperations().insert(region->front().begin(),
-                                             map_entry.first->getSecond());
-      use->set(map_entry.first->getSecond()->getResult(0));
+                                             mapEntry.first->getSecond());
+      use->set(mapEntry.first->getSecond()->getResult(0));
     });
   }
 };
