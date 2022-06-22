@@ -629,7 +629,7 @@ TEST_F(HloCostAnalysisTest, MatmulAndConvolutionCanBeTheSameComputation) {
 using FusionCostAnalysis = HloTestBase;
 
 TEST_F(FusionCostAnalysis, LoopFusionDynUpdateSlice) {
-  // Test for b/234935631
+  // Test for b/234935631.
   // DynamicUpdateSlice within a loop fusion needs to respect operand-output
   // aliasing.
   const char* hlo_fusion_module_str = R"(
@@ -686,10 +686,6 @@ TEST_F(FusionCostAnalysis, LoopFusionDynUpdateSlice) {
   EXPECT_EQ(fusion_analysis.output_bytes_accessed(*fusion),
             dus_analysis.output_bytes_accessed(*dus));
 }
-
-/*
-TEST_F(FusionCostAnalysis, DedupFusionWhenInputsShared)
-*/
 
 TEST_F(FusionCostAnalysis, LoopFusion) {
   // Do this 4 times with different per-second rates to test the computation of
