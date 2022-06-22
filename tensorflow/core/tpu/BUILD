@@ -44,8 +44,26 @@ cc_library(
 
 cc_library(
     name = "tpu_embedding_errors",
+    srcs = ["tpu_embedding_errors.cc"],
     hdrs = ["tpu_embedding_errors.h"],
-    deps = ["@com_google_absl//absl/strings"],
+    deps = [
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "tpu_embedding_errors_test",
+    srcs = ["tpu_embedding_errors_test.cc"],
+    deps = [
+        ":tpu_embedding_errors",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(
