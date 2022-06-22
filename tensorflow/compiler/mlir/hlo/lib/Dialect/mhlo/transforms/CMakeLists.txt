@@ -176,6 +176,7 @@ add_mlir_library(MhloToArithmeticConversion
 
 add_mlir_library(MhloToStandard
   legalize_control_flow.cc
+  legalize_sort.cc
   legalize_to_standard.cc
 
   DEPENDS
@@ -249,4 +250,13 @@ target_link_libraries(AllMhloPasses INTERFACE
   MhloToStandard
   MhloToLinalg
   MhloShapeOpsToStandard
+)
+
+add_library(AllGmlStPasses INTERFACE)
+target_link_libraries(AllGmlStPasses INTERFACE
+  GmlStPasses
+  GmlStTestPasses
+  MLIRHLOGmlStPipeline
+  MLIRFuncDialect
+  MLIRPass
 )

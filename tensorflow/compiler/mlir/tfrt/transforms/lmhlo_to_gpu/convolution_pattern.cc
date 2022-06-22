@@ -39,23 +39,19 @@ template <class ConvolutionOpType>
 void FillConvDescriptor(ConvolutionOpType op, Value result,
                         xla::gpu::GpuConvDescriptor& descriptor) {
   auto apply_layout = [](const xla::Shape& shape,
-                         mlir::ArrayAttr layout_attrib) {
-    mlir::SmallVector<int64_t, 4> minor_to_major = llvm::to_vector<4>(
-        llvm::map_range(layout_attrib, [](mlir::Attribute a) -> int64_t {
-          return static_cast<int64_t>(a.cast<mlir::IntegerAttr>().getInt());
-        }));
+                         mlir::ArrayRef<int64_t> minor_to_major) {
     return xla::ShapeUtil::MakeShapeWithLayout(
         shape.element_type(), shape.dimensions(), minor_to_major);
   };
 
   descriptor.operand0_shape =
       apply_layout(xla::gpu::GetShape(op->getOperand(0)),
-                   op.getBackendConfig().operand_0_layout());
+                   op.getBackendConfig().getOperand_0Layout());
   descriptor.operand1_shape =
       apply_layout(xla::gpu::GetShape(op->getOperand(1)),
-                   op.getBackendConfig().operand_1_layout());
-  descriptor.result_shape = apply_layout(xla::gpu::GetShape(result),
-                                         op.getBackendConfig().result_layout());
+                   op.getBackendConfig().getOperand_1Layout());
+  descriptor.result_shape = apply_layout(
+      xla::gpu::GetShape(result), op.getBackendConfig().getResultLayout());
   descriptor.dnums = xla::ConvertConvDimensionNumbers(op.getDimensionNumbers());
   descriptor.scratch_size = 0;  // Not used for op lowering.
   mlir::DenseIntElementsAttr window_strides = op.getWindowStrides().getValue();
@@ -83,27 +79,20 @@ void FillConvDescriptor(ConvolutionOpType op, Value result,
   descriptor.feature_group_count = op.getFeatureGroupCount();
   {
     auto* algorithm = descriptor.backend_config.mutable_algorithm();
-    algorithm->set_algo_id(op.getBackendConfig().algorithm().getInt());
-    algorithm->set_math_type(
-        op.getBackendConfig().tensor_ops_enabled().getValue()
-            ? se::dnn::AlgorithmProto::TENSOR_OP_MATH
-            : se::dnn::AlgorithmProto::DEFAULT_MATH);
-    for (int i = 0; i < op.getBackendConfig().knob_ids().size(); ++i) {
+    algorithm->set_algo_id(op.getBackendConfig().getAlgorithm());
+    algorithm->set_math_type(op.getBackendConfig().getTensorOpsEnabled()
+                                 ? se::dnn::AlgorithmProto::TENSOR_OP_MATH
+                                 : se::dnn::AlgorithmProto::DEFAULT_MATH);
+    for (int i = 0; i < op.getBackendConfig().getKnobIds().size(); ++i) {
       // N.B. tuning_knobs is a map rather than a repeated field, so this
       // doesn't require reserving space up front.
-      auto knob_id = op.getBackendConfig()
-                         .knob_ids()[i]
-                         .template cast<mlir::IntegerAttr>()
-                         .getInt();
-      auto knob_value = op.getBackendConfig()
-                            .knob_values()[i]
-                            .template cast<mlir::IntegerAttr>()
-                            .getInt();
+      auto knob_id = op.getBackendConfig().getKnobIds()[i];
+      auto knob_value = op.getBackendConfig().getKnobValues()[i];
       (*algorithm->mutable_tuning_knobs())[knob_id] = knob_value;
     }
     algorithm->set_is_cudnn_frontend(
-        op.getBackendConfig().is_cudnn_frontend().getValue());
-    auto workspace_size = op.getBackendConfig().workspace_size().getInt();
+        op.getBackendConfig().getIsCudnnFrontend());
+    auto workspace_size = op.getBackendConfig().getWorkspaceSize();
     if (workspace_size >= 0) {
       algorithm->mutable_workspace_size()->set_value(workspace_size);
     }

@@ -17,6 +17,7 @@
 import collections
 
 from tensorflow.core.protobuf import trackable_object_graph_pb2
+from tensorflow.python.checkpoint import saveable_compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -127,6 +128,9 @@ def get_checkpoint_factories_and_keys(object_names, object_map=None):
       for name, saveable_factory in (
           saveable_object_util.saveable_objects_from_trackable(object_to_save)
           .items()):  # pylint: disable=protected-access
+        # Retrieve the legacy saveable name (for compatibility purposes during
+        # SaveableObject deprecation)
+        name = saveable_compat.get_saveable_name(object_to_save) or name
         checkpoint_key = trackable_utils.checkpoint_key(object_name, name)
         checkpoint_factory_map[trackable].append(_CheckpointFactoryData(
             factory=saveable_factory,

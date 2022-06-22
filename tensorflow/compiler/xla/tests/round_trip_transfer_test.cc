@@ -37,8 +37,8 @@ class RoundTripTransferTest : public ClientLibraryTestBase {
  protected:
   void RoundTripTest(const Literal& original) {
     std::unique_ptr<GlobalData> data =
-        client_->TransferToServer(original).ConsumeValueOrDie();
-    Literal result = client_->Transfer(*data).ConsumeValueOrDie();
+        client_->TransferToServer(original).value();
+    Literal result = client_->Transfer(*data).value();
     EXPECT_TRUE(LiteralTestUtil::Equal(original, result));
   }
 };

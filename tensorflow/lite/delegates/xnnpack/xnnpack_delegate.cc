@@ -61,7 +61,8 @@ class Delegate {
   friend class Subgraph;
 
  public:
-  explicit Delegate(const TfLiteXNNPackDelegateOptions* options) {
+  explicit Delegate(const TfLiteXNNPackDelegateOptions* options,
+                    xnn_workspace_t workspace) {
 #if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
     if (options != nullptr && options->num_threads > 1) {
       threadpool_.reset(
@@ -73,6 +74,7 @@ class Delegate {
 
     options_ =
         options != nullptr ? *options : TfLiteXNNPackDelegateOptionsDefault();
+    workspace_.reset(workspace);
   }
 
   TfLiteIntArray* PrepareOpsToDelegate(TfLiteContext* context);
@@ -115,6 +117,8 @@ class Delegate {
     }
   }
 
+  xnn_workspace_t workspace() const { return workspace_.get(); }
+
  private:
   TfLiteDelegate delegate_ = {
       reinterpret_cast<void*>(this),  // .data_
@@ -143,6 +147,8 @@ class Delegate {
   std::unique_ptr<pthreadpool, decltype(&pthreadpool_destroy)> threadpool_{
       nullptr, &pthreadpool_destroy};
 #endif
+  std::unique_ptr<xnn_workspace, decltype(&xnn_release_workspace)> workspace_{
+      nullptr, &xnn_release_workspace};
 
   TfLiteXNNPackDelegateOptions options_;
 };
@@ -609,8 +615,9 @@ class Subgraph {
     if (context->profiler) {
       flags |= XNN_FLAG_BASIC_PROFILING;
     }
-    status = xnn_create_runtime_v3(subgraph.get(), delegate.weights_cache(),
-                                   delegate.threadpool(), flags, &runtime_ptr);
+    status = xnn_create_runtime_v4(subgraph.get(), delegate.weights_cache(),
+                                   delegate.workspace(), delegate.threadpool(),
+                                   flags, &runtime_ptr);
     if (status != xnn_status_success) {
       TF_LITE_KERNEL_LOG(context, "failed to create XNNPACK runtime");
       return nullptr;
@@ -1602,13 +1609,13 @@ class Subgraph {
   static TfLiteStatus CheckAxesTensorShape(TfLiteContext* context,
                                            const TfLiteTensor& tensor,
                                            int tensor_index, int node_index) {
-    if (NumDimensions(&tensor) != 1) {
+    const int num_tensor_dims = NumDimensions(&tensor);
+    if (num_tensor_dims > 1) {
       TF_LITE_MAYBE_KERNEL_LOG(context,
                                "unexpected number of shape dimensions (%d) in "
                                "axes tensor #%d in node #%d: "
                                "expected a 1D tensor",
-                               NumDimensions(&tensor), tensor_index,
-                               node_index);
+                               num_tensor_dims, tensor_index, node_index);
       return kTfLiteError;
     }
     return kTfLiteOk;
@@ -3255,32 +3262,48 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
         logging_context, axes_tensor, node->inputs->data[1], node_index));
 
-    if (SizeOfDimension(&axes_tensor, 0) != 2) {
-      TF_LITE_MAYBE_KERNEL_LOG(
-          logging_context,
-          "unsupported MEAN reduction along %d axes in node %d",
-          SizeOfDimension(&axes_tensor, 0), node_index);
-      return kTfLiteError;
-    }
-
     const int32_t* axes_data =
         reinterpret_cast<const int32_t*>(axes_tensor.data.data);
-    if (std::min(axes_data[0], axes_data[1]) != 1 ||
-        std::max(axes_data[0], axes_data[1]) != 2) {
-      TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                               "unsupported MEAN reduction along non-spatial "
-                               "axes %d and %d in node %d",
-                               std::min(axes_data[0], axes_data[1]),
-                               std::max(axes_data[0], axes_data[1]),
-                               node_index);
-      return kTfLiteError;
+    const int num_reduction_axes = NumElements(&axes_tensor);
+    switch (num_reduction_axes) {
+      case 1:
+        if (axes_data[0] != 2) {
+          TF_LITE_MAYBE_KERNEL_LOG(
+              logging_context,
+              "unsupported MEAN reduction along non-spatial "
+              "axis %d in node %d",
+              axes_data[0], node_index);
+          return kTfLiteError;
+        }
+        break;
+      case 2:
+        if (std::min(axes_data[0], axes_data[1]) != 1 ||
+            std::max(axes_data[0], axes_data[1]) != 2) {
+          TF_LITE_MAYBE_KERNEL_LOG(
+              logging_context,
+              "unsupported MEAN reduction along non-spatial "
+              "axes %d and %d in node %d",
+              std::min(axes_data[0], axes_data[1]),
+              std::max(axes_data[0], axes_data[1]), node_index);
+          return kTfLiteError;
+        }
+        break;
+      default:
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "unsupported MEAN reduction along %d axes in node %d",
+            SizeOfDimension(&axes_tensor, 0), node_index);
+        return kTfLiteError;
     }
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
     TF_LITE_ENSURE_STATUS(
         CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
                                        node->outputs->data[0], node_index));
-    const int expected_output_dims = reducer_params->keep_dims ? 4 : 2;
+    int expected_output_dims = 4;
+    if (!reducer_params->keep_dims) {
+      expected_output_dims -= num_reduction_axes;
+    }
     TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor,
                                            expected_output_dims,
                                            node->outputs->data[0]));
@@ -3288,12 +3311,29 @@ class Subgraph {
         logging_context, output_tensor, node->outputs->data[0], node_index));
 
     if (subgraph != nullptr) {
-      const xnn_status status = xnn_define_global_average_pooling_2d(
-          subgraph,
-          /*output_min=*/-std::numeric_limits<float>::infinity(),
-          /*output_max=*/+std::numeric_limits<float>::infinity(),
-          /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
-          /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
+      xnn_status status = xnn_status_success;
+      switch (num_reduction_axes) {
+        case 1:
+          status = xnn_define_global_average_pooling_1d(
+              subgraph,
+              /*output_min=*/-std::numeric_limits<float>::infinity(),
+              /*output_max=*/+std::numeric_limits<float>::infinity(),
+              /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
+              /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
+              /*flags=*/0);
+          break;
+        case 2:
+          status = xnn_define_global_average_pooling_2d(
+              subgraph,
+              /*output_min=*/-std::numeric_limits<float>::infinity(),
+              /*output_max=*/+std::numeric_limits<float>::infinity(),
+              /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
+              /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
+              /*flags=*/0);
+          break;
+        default:
+          break;
+      }
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context, "failed to delegate MEAN node #%d",
                            node_index);
@@ -5005,7 +5045,12 @@ TfLiteDelegate* TfLiteXNNPackDelegateCreate(
     return nullptr;
   }
 
-  auto* xnnpack_delegate = new ::tflite::xnnpack::Delegate(options);
+  xnn_workspace_t workspace = nullptr;
+  if (xnn_create_workspace(&workspace) != xnn_status_success) {
+    return nullptr;
+  }
+
+  auto* xnnpack_delegate = new ::tflite::xnnpack::Delegate(options, workspace);
   return xnnpack_delegate ? xnnpack_delegate->tflite_delegate() : nullptr;
 }
 

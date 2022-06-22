@@ -445,4 +445,16 @@ def TFType_VersionAttr : TFType_Attr<"Version"> {
   let hasCustomAssemblyFormat = 1;
 }
 
+//===----------------------------------------------------------------------===//
+// Tensorflow devices metadata
+
+// Tensorflow GPU device metadata.
+def TFType_GpuDeviceMetadata : TFType_Attr<"GpuDeviceMetadata"> {
+  let mnemonic = "gpu_device_metadata";
+  let summary = "Attribute that specifies a GPU's compute capability";
+  let parameters = (ins "int32_t":$cc_major, "int32_t":$cc_minor);
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+
 #endif

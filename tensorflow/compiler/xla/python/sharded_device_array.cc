@@ -75,7 +75,7 @@ void ShardedDeviceArray::Delete() {
   if (is_deleted_) {
     return;
   }
-  for (xla::PjRtBuffer* pjrt_buffer : GetPjRtBuffers().ConsumeValueOrDie()) {
+  for (xla::PjRtBuffer* pjrt_buffer : GetPjRtBuffers().value()) {
     pjrt_buffer->Delete();
   }
   device_buffers_ = std::nullopt;

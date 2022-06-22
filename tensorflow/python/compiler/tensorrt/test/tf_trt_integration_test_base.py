@@ -54,6 +54,8 @@ from tensorflow.python.trackable import autotrackable
 from tensorflow.python.trackable import resource
 from tensorflow.python.util import nest
 
+logging.get_logger().propagate = False
+
 TfTrtIntegrationTestParams = collections.namedtuple(
     "TfTrtIntegrationTestParams",
     [

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,6 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_structs.h"
+#ifndef TENSORFLOW_CORE_TPU_TPU_EMBEDDING_CONFIGURATION_ERRORS_H_
+#define TENSORFLOW_CORE_TPU_TPU_EMBEDDING_CONFIGURATION_ERRORS_H_
 
-#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_structs.cc.inc"
+#include "absl/strings/string_view.h"
+
+namespace tensorflow::tpu {
+
+// The payload URL for TPU embedding initialization permanent errors.
+constexpr absl::string_view kTpuEmbeddingErrorUrl =
+    "type.googleapis.com/tensorflow.tpu.TPUEmbeddingError";
+
+}  // namespace tensorflow::tpu
+
+#endif  // TENSORFLOW_CORE_TPU_TPU_EMBEDDING_CONFIGURATION_ERRORS_H_

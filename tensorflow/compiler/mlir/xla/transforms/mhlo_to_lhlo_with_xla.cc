@@ -49,7 +49,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
@@ -862,7 +861,7 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
     std::vector<int64_t> minor_to_major(layout.minor_to_major_size());
     absl::c_transform(layout.minor_to_major(), minor_to_major.begin(),
                       [](int64_t x) { return static_cast<int64_t>(x); });
-    return builder_.getI64ArrayAttr(minor_to_major);
+    return minor_to_major;
   };
 
   auto set_common_conv_attributes = [&, this](auto op) -> Operation* {
@@ -920,21 +919,17 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
       knob_values.push_back(entry.second);
     }
 
-    auto config = mlir::lmhlo_gpu::ConvolutionBackendConfig::get(
-        builder_.getI64IntegerAttr(algorithm.algo_id()),
-        builder_.getBoolAttr(
-            algorithm.math_type() ==
-            stream_executor::dnn::AlgorithmProto::TENSOR_OP_MATH),
-        builder_.getI64ArrayAttr(knob_ids),
-        builder_.getI64ArrayAttr(knob_values),
-        builder_.getBoolAttr(algorithm.is_cudnn_frontend()),
-        builder_.getI64IntegerAttr(algorithm.has_workspace_size()
-                                       ? algorithm.workspace_size().value()
-                                       : -1),
+    auto config = mlir::lmhlo_gpu::ConvolutionBackendConfigAttr::get(
+        builder_.getContext(), algorithm.algo_id(),
+
+        algorithm.math_type() ==
+            stream_executor::dnn::AlgorithmProto::TENSOR_OP_MATH,
+        knob_ids, knob_values, algorithm.is_cudnn_frontend(),
+        algorithm.has_workspace_size() ? algorithm.workspace_size().value()
+                                       : -1,
         get_layout_attribute(custom_call->operand(0)->shape().layout()),
         get_layout_attribute(custom_call->operand(1)->shape().layout()),
-        get_layout_attribute(custom_call->shape().tuple_shapes(0).layout()),
-        builder_.getContext());
+        get_layout_attribute(custom_call->shape().tuple_shapes(0).layout()));
     attrs.set(op.getBackendConfigAttrName(), config);
     op->setAttrs(attrs.getDictionary(op->getContext()));
 
@@ -1060,9 +1055,8 @@ template <typename OpT>
 void SetupChannelIdAttribute(OpT op, const xla::HloChannelInstruction* instr,
                              mlir::Builder builder) {
   if (instr->channel_id().has_value()) {
-    op.setChannelIdAttr(mlir::mhlo::ChannelHandle::get(
-        builder.getI64IntegerAttr(*instr->channel_id()),
-        builder.getI64IntegerAttr(0), builder.getContext()));
+    op.setChannelIdAttr(mlir::mhlo::ChannelHandleAttr::get(
+        builder.getContext(), *instr->channel_id(), 0));
   }
 }
 
@@ -1690,9 +1684,8 @@ OwningOpRef<mlir::ModuleOp> HloTextToLhloTranslateFunction(
   OwningOpRef<mlir::ModuleOp> module =
       ModuleOp::create(UnknownLoc::get(context));
 
-  TF_CHECK_OK(OptimizeAndConvertHloToLmhlo(maybe_module.ConsumeValueOrDie(),
-                                           module.get(), "Host",
-                                           optimize_xla_hlo));
+  TF_CHECK_OK(OptimizeAndConvertHloToLmhlo(
+      std::move(maybe_module).value(), module.get(), "Host", optimize_xla_hlo));
 
   return module;
 }

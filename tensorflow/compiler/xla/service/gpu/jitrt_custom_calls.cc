@@ -412,7 +412,7 @@ static bool LaunchFunc(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .To<RuntimeChecks()>(LaunchFunc::Handler())
                              .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -493,7 +493,7 @@ static bool Gemm(runtime::KernelContext* ctx, void** args, void** attrs) {
           .To<RuntimeChecks()>(Gemm::Handler())
           .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -582,7 +582,7 @@ static bool GemmBias(runtime::KernelContext* ctx, void** args, void** attrs) {
           .To<RuntimeChecks()>(GemmBias::Handler())
           .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -873,7 +873,7 @@ static bool ConvFn(runtime::KernelContext* ctx, void** args, void** attrs) {
           .To(Conv::Handler(kind))
           .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 template <CudnnConvKind kind>
@@ -894,7 +894,7 @@ static bool ConvFusedFn(runtime::KernelContext* ctx, void** args,
           .To(Conv::Handler(kind))
           .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 template <CudnnConvKind kind>
@@ -916,7 +916,7 @@ static bool ConvFuseSideInputdFn(runtime::KernelContext* ctx, void** args,
           .To(Conv::Handler(kind))
           .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -982,7 +982,7 @@ static bool Infeed(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .To<RuntimeChecks()>(Infeed::Handler())
                              .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1051,7 +1051,7 @@ static bool Outfeed(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .To<RuntimeChecks()>(Outfeed::Handler())
                              .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1113,7 +1113,7 @@ static bool MemcpyFn(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .To<RuntimeChecks()>(Memcpy<direction>::Handler())
                              .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1186,7 +1186,7 @@ static bool Fft(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .To<RuntimeChecks()>(Fft::Handler())
                              .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1248,7 +1248,7 @@ static bool Cholesky(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .To<RuntimeChecks()>(Cholesky::Handler())
                              .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1466,7 +1466,7 @@ static bool CustomCall(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .To<RuntimeChecks()>(XlaCustomCall::Handler())
                              .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // ------------------------------------------------------------------------- //
@@ -1533,7 +1533,7 @@ static bool AllReduce(runtime::KernelContext* ctx, void** args, void** attrs) {
           .To<RuntimeChecks()>(AllReduce::Handler())
           .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // ------------------------------------------------------------------------- //
@@ -1609,7 +1609,7 @@ static bool AllReduceStart(runtime::KernelContext* ctx, void** args,
           .To<RuntimeChecks()>(AllReduceStart::Handler())
           .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // ------------------------------------------------------------------------- //
@@ -1660,7 +1660,7 @@ static bool AllReduceDone(runtime::KernelContext* ctx, void** args,
                              .To<RuntimeChecks()>(AllReduceDone::Handler())
                              .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1728,7 +1728,7 @@ static bool ReduceScatter(runtime::KernelContext* ctx, void** args,
           .To<RuntimeChecks()>(ReduceScatter::Handler())
           .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1791,7 +1791,7 @@ static bool AllGather(runtime::KernelContext* ctx, void** args, void** attrs) {
           .To<RuntimeChecks()>(AllGather::Handler())
           .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1857,7 +1857,7 @@ static bool AllToAll(runtime::KernelContext* ctx, void** args, void** attrs) {
           .To<RuntimeChecks()>(AllToAll::Handler())
           .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1954,7 +1954,7 @@ static bool CollectivePermute(runtime::KernelContext* ctx, void** args,
           .To<RuntimeChecks()>(CollectivePermute::Handler())
           .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1996,7 +1996,7 @@ static bool ReplicaId(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .To<RuntimeChecks()>(ReplicaId::Handler())
                              .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -2039,7 +2039,7 @@ static bool PartitionId(runtime::KernelContext* ctx, void** args,
                              .To<RuntimeChecks()>(PartitionId::Handler())
                              .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //

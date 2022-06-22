@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <iterator>
 #include <memory>
@@ -995,11 +996,8 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
     return OkStatus();
   }
 
-  auto apply_layout = [](const Shape& shape, mlir::ArrayAttr layout_attrib) {
-    mlir::SmallVector<int64_t, 4> minor_to_major = llvm::to_vector<4>(
-        llvm::map_range(layout_attrib, [](mlir::Attribute a) -> int64_t {
-          return static_cast<int64_t>(a.cast<mlir::IntegerAttr>().getInt());
-        }));
+  auto apply_layout = [](const Shape& shape,
+                         mlir::ArrayRef<int64_t> minor_to_major) {
     return ShapeUtil::MakeShapeWithLayout(shape.element_type(),
                                           shape.dimensions(), minor_to_major);
   };
@@ -1007,12 +1005,14 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
   GpuConvDescriptor descriptor;
 
   auto fill_conv_descriptor = [&](auto op) {
-    descriptor.operand0_shape = apply_layout(
-        GetShape(op->getOperand(0)), op.getBackendConfig().operand_0_layout());
-    descriptor.operand1_shape = apply_layout(
-        GetShape(op->getOperand(1)), op.getBackendConfig().operand_1_layout());
+    descriptor.operand0_shape =
+        apply_layout(GetShape(op->getOperand(0)),
+                     op.getBackendConfig().getOperand_0Layout());
+    descriptor.operand1_shape =
+        apply_layout(GetShape(op->getOperand(1)),
+                     op.getBackendConfig().getOperand_1Layout());
     descriptor.result_shape = apply_layout(
-        GetShape(conv_result), op.getBackendConfig().result_layout());
+        GetShape(conv_result), op.getBackendConfig().getResultLayout());
     descriptor.dnums = ConvertConvDimensionNumbers(op.getDimensionNumbers());
     descriptor.scratch_size = scratch_slice.size();
     mlir::DenseIntElementsAttr window_strides =
@@ -1039,27 +1039,20 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
     descriptor.feature_group_count = op.getFeatureGroupCount();
     {
       auto* algorithm = descriptor.backend_config.mutable_algorithm();
-      algorithm->set_algo_id(op.getBackendConfig().algorithm().getInt());
-      algorithm->set_math_type(
-          op.getBackendConfig().tensor_ops_enabled().getValue()
-              ? se::dnn::AlgorithmProto::TENSOR_OP_MATH
-              : se::dnn::AlgorithmProto::DEFAULT_MATH);
-      for (int i = 0; i < op.getBackendConfig().knob_ids().size(); ++i) {
+      algorithm->set_algo_id(op.getBackendConfig().getAlgorithm());
+      algorithm->set_math_type(op.getBackendConfig().getTensorOpsEnabled()
+                                   ? se::dnn::AlgorithmProto::TENSOR_OP_MATH
+                                   : se::dnn::AlgorithmProto::DEFAULT_MATH);
+      for (int i = 0; i < op.getBackendConfig().getKnobIds().size(); ++i) {
         // N.B. tuning_knobs is a map rather than a repeated field, so this
         // doesn't require reserving space up front.
         (*algorithm
-              ->mutable_tuning_knobs())[op.getBackendConfig()
-                                            .knob_ids()[i]
-                                            .template cast<mlir::IntegerAttr>()
-                                            .getInt()] =
-            op.getBackendConfig()
-                .knob_values()[i]
-                .template cast<mlir::IntegerAttr>()
-                .getInt();
+              ->mutable_tuning_knobs())[op.getBackendConfig().getKnobIds()[i]] =
+            op.getBackendConfig().getKnobValues()[i];
       }
       algorithm->set_is_cudnn_frontend(
-          op.getBackendConfig().is_cudnn_frontend().getValue());
-      auto workspace_size = op.getBackendConfig().workspace_size().getInt();
+          op.getBackendConfig().getIsCudnnFrontend());
+      auto workspace_size = op.getBackendConfig().getWorkspaceSize();
       if (workspace_size >= 0) {
         algorithm->mutable_workspace_size()->set_value(workspace_size);
       }
@@ -1592,7 +1585,7 @@ static Status ProcessFusionForConversion(mlir::Region* region,
   std::vector<mlir::memref::TensorStoreOp> stores;
 
   region->walk([&](mlir::bufferization::ToTensorOp load) {
-    if (load.memref().getParentRegion() != region) {
+    if (load.getMemref().getParentRegion() != region) {
       loads.push_back(load);
     }
   });
@@ -2980,7 +2973,7 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   // not generate an NcclCollectiveThunk.
   std::vector<NcclCollectiveThunk::Buffer> buffers;
   buffers.reserve(op.getOperands().size());
-  for (auto it : llvm::zip(op.getOperands(), op.getResults())) {
+  for (auto it : llvm::zip(op.getInputs(), op.getOutputs())) {
     mlir::Value operand = std::get<0>(it);
     mlir::Value result = std::get<1>(it);
     const Shape shape = GetShape(operand);
@@ -3126,7 +3119,7 @@ Status IrEmitterUnnested::EmitInfeed(mlir::Operation* op) {
 
 Status IrEmitterUnnested::EmitOutfeed(mlir::Operation* op) {
   mlir::Operation::operand_range operands =
-      mlir::cast<mlir::lmhlo::OutfeedOp>(op).operands();
+      mlir::cast<mlir::lmhlo::OutfeedOp>(op).getInputs();
   std::unique_ptr<Thunk> thunk;
   if (IsBefThunkEnabled(hlo_module_config_)) {
     TF_ASSIGN_OR_RETURN(auto slices, GetSlices(operands));

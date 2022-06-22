@@ -66,4 +66,7 @@ void mlir::createHloToGpuPipeline(OpPassManager &pm,
   // GPU -> low-level IR
   pm.addNestedPass<GPUModuleOp>(CreateGpuKernelToNvvmPass());
   pm.addPass(createPropagateStaticShapesToKernelPass());
+  // Some instructions crash ptxas down the line if they have debug info
+  // attached.
+  pm.addNestedPass<GPUModuleOp>(createStripDebugInfoPass());
 }

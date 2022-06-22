@@ -520,3 +520,4 @@ tensorflow::dtensor::Unpack
 tensorflow::dtensor::FetchLayout
 tensorflow::dtensor::SparsePack
 tensorflow::dtensor::IsSparseDTensor
+tensorflow::dtensor::GetFunctionCacheHitAndMissCount

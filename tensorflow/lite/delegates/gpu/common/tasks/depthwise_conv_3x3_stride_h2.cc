@@ -28,7 +28,7 @@ std::string GetKernelDepthWiseConv3x3StrideH2(const GpuInfo& gpu_info,
                                               const OperationDef& definition,
                                               bool weights_are_buffer,
                                               bool local_mem_uploads) {
-  const auto src_tensor_type = definition.src_tensors[0].storage_type;
+  const auto src_tensor_type = definition.src_tensors[0].GetStorageType();
 
   std::string c = "MAIN_FUNCTION($0) {\n";
   if (definition.dst_tensors[0].HasAxis(Axis::BATCH)) {

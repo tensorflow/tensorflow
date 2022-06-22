@@ -30,7 +30,7 @@ T ValueOrThrow(StatusOr<T> v) {
   if (!v.ok()) {
     throw xla::XlaRuntimeError(v.status());
   }
-  return v.ConsumeValueOrDie();
+  return std::move(v).value();
 }
 
 }  // namespace xla

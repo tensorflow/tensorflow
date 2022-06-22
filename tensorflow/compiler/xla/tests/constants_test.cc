@@ -165,7 +165,7 @@ TEST_F(ConstantsTest, DISABLED_TupleConstant) {
                                 {LiteralUtil::CreateR2<float>({{1.0}, {2.0}}),
                                  LiteralUtil::CreateR1<float>({2.0, 42})}));
 
-  Literal result = ExecuteAndTransfer(&builder, {}).ConsumeValueOrDie();
+  Literal result = ExecuteAndTransfer(&builder, {}).value();
 
   LiteralTestUtil::ExpectR2Near<float>({{1.0}, {2.0}},
                                        LiteralSlice(result, {0}), error_spec_);

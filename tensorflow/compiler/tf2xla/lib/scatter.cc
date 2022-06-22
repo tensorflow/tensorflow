@@ -182,7 +182,7 @@ StatusOr<xla::XlaOp> XlaScatter(
     if (combiner) {
       combiner(p0, p1, &cb);
     }
-    combiner_computation = cb.Build().ConsumeValueOrDie();
+    combiner_computation = cb.Build().value();
   }
 
   VLOG(3) << "Scatter op:";

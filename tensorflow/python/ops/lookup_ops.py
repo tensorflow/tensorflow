@@ -18,6 +18,7 @@ import collections
 import functools
 import uuid
 
+from tensorflow.python.checkpoint import saveable_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -2038,10 +2039,11 @@ class MutableHashTable(LookupInterface):
             self.resource_handle, self._key_dtype, self._value_dtype)
     return exported_keys, exported_values
 
+  @saveable_compat.legacy_saveable_name("table")
   def _serialize_to_tensors(self):
     """Implements checkpointing protocols for `Trackable`."""
     tensors = self.export()
-    return {"table-keys": tensors[0], "table-values": tensors[1]}
+    return {"-keys": tensors[0], "-values": tensors[1]}
 
   def _restore_from_tensors(self, restored_tensors):
     """Implements checkpointing protocols for `Trackable`."""
@@ -2049,8 +2051,8 @@ class MutableHashTable(LookupInterface):
       with ops.colocate_with(self.resource_handle):
         return gen_lookup_ops.lookup_table_import_v2(
             self.resource_handle,
-            restored_tensors["table-keys"],
-            restored_tensors["table-values"])
+            restored_tensors["-keys"],
+            restored_tensors["-values"])
 
     # This class is needed for `MutableHashTable(checkpoint=True)`.
   class _Saveable(BaseSaverBuilder.SaveableObject):
@@ -2372,10 +2374,11 @@ class DenseHashTable(LookupInterface):
 
     return exported_keys, exported_values
 
+  @saveable_compat.legacy_saveable_name("table")
   def _serialize_to_tensors(self):
     """Implements checkpointing interface in `Trackable`."""
     tensors = self.export()
-    return {"table-keys": tensors[0], "table-values": tensors[1]}
+    return {"-keys": tensors[0], "-values": tensors[1]}
 
   def _restore_from_tensors(self, restored_tensors):
     """Implements checkpointing interface in `Trackable`."""
@@ -2383,8 +2386,8 @@ class DenseHashTable(LookupInterface):
       with ops.colocate_with(self.resource_handle):
         return gen_lookup_ops.lookup_table_import_v2(
             self.resource_handle,
-            restored_tensors["table-keys"],
-            restored_tensors["table-values"])
+            restored_tensors["-keys"],
+            restored_tensors["-values"])
 
   # This class is needed for `DenseHashTable(checkpoint=True)`.
   class _Saveable(BaseSaverBuilder.SaveableObject):

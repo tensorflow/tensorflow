@@ -38,8 +38,9 @@ namespace mlir {
 namespace mhlo {
 namespace {
 
+using bufferization::AnalysisState;
 using bufferization::BufferizableOpInterface;
-using bufferization::BufferizationState;
+using bufferization::BufferizationOptions;
 using bufferization::BufferRelation;
 using bufferization::replaceOpWithNewBufferizedOp;
 
@@ -47,40 +48,46 @@ struct CustomCallOpInterface
     : public BufferizableOpInterface::ExternalModel<CustomCallOpInterface,
                                                     mhlo::CustomCallOp> {
   bool bufferizesToMemoryRead(Operation *, OpOperand &,
-                              const BufferizationState &) const {
+                              const AnalysisState &) const {
     return true;
   }
 
   bool bufferizesToMemoryWrite(Operation *, OpOperand &,
-                               const BufferizationState &) const {
+                               const AnalysisState &) const {
     return false;  // Arguments are read-only.
   }
 
   SmallVector<OpResult> getAliasingOpResult(Operation *, OpOperand &,
-                                            const BufferizationState &) const {
+                                            const AnalysisState &) const {
     return {};
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          BufferizationState &state) const {
+                          const BufferizationOptions &options) const {
     auto customCallOp = cast<mhlo::CustomCallOp>(op);
 
     // Bufferize arguments.
     SmallVector<Value> bufferArgs;
     for (OpOperand &operand : customCallOp->getOpOperands()) {
       if (!operand.get().getType().isa<TensorType>()) return failure();
-      FailureOr<Value> operandBuffer = state.getBuffer(rewriter, operand);
-      if (failed(operandBuffer)) return failure();
-      bufferArgs.push_back(*operandBuffer);
+      Value operandBuffer = getBuffer(rewriter, operand.get(), options);
+      bufferArgs.push_back(operandBuffer);
     }
 
     // Allocate outputs.
     for (OpResult result : customCallOp->getOpResults()) {
-      if (!result.getType().isa<TensorType>()) return failure();
-      FailureOr<Value> resultBuffer =
-          state.createAlloc(rewriter, op->getLoc(), result);
-      if (failed(resultBuffer)) return failure();
-      bufferArgs.push_back(*resultBuffer);
+      auto tensorType = result.getType().cast<RankedTensorType>();
+      if (!tensorType) return failure();
+      // TODO(springerm): Create alloc_tensor ops during TensorCopyInsertion.
+      AnalysisState analysisState(options);
+      Value tensorAlloc = bufferization::allocateTensorForShapedValue(
+          rewriter, op->getLoc(), result,
+          analysisState.isTensorYielded(result));
+      auto memrefType =
+          MemRefType::get(tensorType.getShape(), tensorType.getElementType());
+      Value resultBuffer = rewriter.create<bufferization::ToMemrefOp>(
+          op->getLoc(), memrefType, tensorAlloc);
+      bufferArgs.push_back(resultBuffer);
     }
 
     auto lhloOp = rewriter.create<lmhlo::CustomCallOp>(
@@ -100,44 +107,42 @@ struct CustomCallOpInterface
 struct ReshapeOpInterface
     : public BufferizableOpInterface::ExternalModel<ReshapeOpInterface,
                                                     mhlo::ReshapeOp> {
-  bool bufferizesToMemoryRead(Operation *op, OpOperand &opOperand,
-                              const BufferizationState &state) const {
+  bool bufferizesToMemoryRead(Operation * /*op*/, OpOperand & /*opOperand*/,
+                              const AnalysisState & /*state*/) const {
     return false;
   }
 
-  bool bufferizesToMemoryWrite(Operation *op, OpOperand &opOperand,
-                               const BufferizationState &state) const {
+  bool bufferizesToMemoryWrite(Operation * /*op*/, OpOperand & /*opOperand*/,
+                               const AnalysisState & /*state*/) const {
     return false;
   }
 
   SmallVector<OpResult> getAliasingOpResult(
-      Operation *op, OpOperand &opOperand,
-      const BufferizationState &state) const {
+      Operation *op, OpOperand & /*opOperand*/,
+      const AnalysisState & /*state*/) const {
     return {op->getResult(0)};
   }
 
-  BufferRelation bufferRelation(Operation *op, OpResult opResult,
-                                const BufferizationState &state) const {
+  BufferRelation bufferRelation(Operation * /*op*/, OpResult /*opResult*/,
+                                const AnalysisState & /*state*/) const {
     return BufferRelation::Equivalent;
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          BufferizationState &state) const {
+                          const BufferizationOptions &options) const {
     auto reshapeOp = cast<mhlo::ReshapeOp>(op);
     auto unrankedOperandType =
         reshapeOp.operand().getType().dyn_cast<UnrankedTensorType>();
     if (unrankedOperandType == nullptr) return success();
 
     // The buffer still has the old (pre-reshape) type.
-    FailureOr<Value> operandBuffer =
-        state.getBuffer(rewriter, reshapeOp->getOpOperand(0) /*operand*/);
-    if (failed(operandBuffer)) return failure();
+    Value operandBuffer = getBuffer(rewriter, reshapeOp.operand(), options);
 
     auto resultType = reshapeOp.getType().cast<RankedTensorType>();
     auto destType =
         MemRefType::get(resultType.getShape(), resultType.getElementType());
     replaceOpWithNewBufferizedOp<memref::CastOp>(rewriter, op, destType,
-                                                 *operandBuffer);
+                                                 operandBuffer);
     return success();
   }
 };
@@ -145,38 +150,35 @@ struct ReshapeOpInterface
 struct DynamicReshapeOpInterface
     : public BufferizableOpInterface::ExternalModel<DynamicReshapeOpInterface,
                                                     mhlo::DynamicReshapeOp> {
-  bool bufferizesToMemoryRead(Operation *op, OpOperand &opOperand,
-                              const BufferizationState &state) const {
+  bool bufferizesToMemoryRead(Operation * /*op*/, OpOperand & /*opOperand*/,
+                              const AnalysisState & /*state*/) const {
     return false;
   }
 
-  bool bufferizesToMemoryWrite(Operation *op, OpOperand &opOperand,
-                               const BufferizationState &state) const {
+  bool bufferizesToMemoryWrite(Operation * /*op*/, OpOperand & /*opOperand*/,
+                               const AnalysisState & /*state*/) const {
     return false;
   }
 
   SmallVector<OpResult> getAliasingOpResult(
-      Operation *op, OpOperand &opOperand,
-      const BufferizationState &state) const {
+      Operation *op, OpOperand & /*opOperand*/,
+      const AnalysisState & /*state*/) const {
     return {op->getResult(0)};
   }
 
-  BufferRelation bufferRelation(Operation *op, OpResult opResult,
-                                const BufferizationState &state) const {
+  BufferRelation bufferRelation(Operation * /*op*/, OpResult /*opResult*/,
+                                const AnalysisState & /*state*/) const {
     return BufferRelation::Equivalent;
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          BufferizationState &state) const {
+                          const BufferizationOptions &options) const {
     auto reshapeOp = cast<mhlo::DynamicReshapeOp>(op);
 
     // The buffer still has the old (pre-reshape) type.
-    FailureOr<Value> operandBuffer =
-        state.getBuffer(rewriter, reshapeOp->getOpOperand(0) /*operand*/);
-    if (failed(operandBuffer)) return failure();
-    FailureOr<Value> outputShapeBuffer =
-        state.getBuffer(rewriter, reshapeOp->getOpOperand(1) /*output_shape*/);
-    if (failed(outputShapeBuffer)) return failure();
+    Value operandBuffer = getBuffer(rewriter, reshapeOp.operand(), options);
+    Value outputShapeBuffer =
+        getBuffer(rewriter, reshapeOp.output_shape(), options);
 
     ShapedType resultType;
     TensorType opResultType = reshapeOp.getType();
@@ -187,28 +189,22 @@ struct DynamicReshapeOpInterface
                    opResultType.dyn_cast<UnrankedTensorType>()) {
       resultType = UnrankedMemRefType::get(unrankedType.getElementType(), 0);
     }
-    auto operand = *operandBuffer;
+    auto operand = operandBuffer;
     // If the operand has a non-identity affine map, we will have to add a copy.
-    if (operandBuffer->getType().isa<MemRefType>() &&
-        !operandBuffer->getType().cast<MemRefType>().getLayout().isIdentity()) {
-      // Do not deallocate the buffer if it may be yielded from the enclosing
-      // block.
-      // Note: Unless OneShotAnalysis was run, `dealloc_buffer` is currently
-      // always `false` and we delegate all buffer deallocations to the
-      // BufferDeallocation pass.
-      bool deallocBuffer =
-          !state.getAnalysisState().isTensorYielded(reshapeOp.result());
-      FailureOr<Value> alloc = state.createAlloc(
-          rewriter, op->getLoc(), *operandBuffer, /*dealloc=*/deallocBuffer);
-      if (failed(alloc)) return failure();
-
-      operand = *alloc;
-      auto copyStatus = state.getOptions().createMemCpy(
-          rewriter, op->getLoc(), *operandBuffer, operand);
-      if (failed(copyStatus)) return failure();
+    auto bufferType = operandBuffer.getType().dyn_cast<MemRefType>();
+    if (bufferType && !bufferType.getLayout().isIdentity()) {
+      // TODO(springerm): Create alloc_tensor ops during TensorCopyInsertion.
+      AnalysisState analysisState(options);
+      Value tensorAlloc = bufferization::allocateTensorForShapedValue(
+          rewriter, op->getLoc(), operandBuffer,
+          analysisState.isTensorYielded(reshapeOp.getResult()));
+      auto memrefType =
+          MemRefType::get(bufferType.getShape(), bufferType.getElementType());
+      operand = rewriter.create<bufferization::ToMemrefOp>(
+          op->getLoc(), memrefType, tensorAlloc);
     }
     bufferization::replaceOpWithNewBufferizedOp<memref::ReshapeOp>(
-        rewriter, op, resultType, operand, *outputShapeBuffer);
+        rewriter, op, resultType, operand, outputShapeBuffer);
     return success();
   }
 };
@@ -218,7 +214,7 @@ struct DynamicReshapeOpInterface
 // necessary.
 memref::ReinterpretCastOp insertDynamicMemrefCastOp(
     mhlo::DynamicBroadcastInDimOp op, Value operand, RewriterBase &rewriter,
-    const bufferization::BufferizationOptions &options) {
+    const BufferizationOptions &options) {
   auto loc = op.getLoc();
   auto operandType = operand.getType().cast<MemRefType>();
   auto operandShape = operandType.getShape();
@@ -262,7 +258,7 @@ memref::ReinterpretCastOp insertDynamicMemrefCastOp(
   for (int i = 0; i < resultRank; ++i) {
     Value iVal = rewriter.create<arith::ConstantIndexOp>(loc, i);
     Value outputDimsBuffer =
-        bufferization::lookupBuffer(rewriter, op.output_dimensions(), options);
+        getBuffer(rewriter, op.output_dimensions(), options);
     Value resultDimSize =
         rewriter.create<memref::LoadOp>(loc, outputDimsBuffer, iVal);
     if (!resultDimSize.getType().isIndex()) {
@@ -314,41 +310,39 @@ memref::ReinterpretCastOp insertDynamicMemrefCastOp(
 struct DynamicBroadcastInDimOpInterface
     : public BufferizableOpInterface::ExternalModel<
           DynamicBroadcastInDimOpInterface, mhlo::DynamicBroadcastInDimOp> {
-  bool bufferizesToMemoryRead(Operation *op, OpOperand &opOperand,
-                              const BufferizationState &state) const {
+  bool bufferizesToMemoryRead(Operation * /*op*/, OpOperand & /*opOperand*/,
+                              const AnalysisState & /*state*/) const {
     return true;
   }
 
-  bool bufferizesToMemoryWrite(Operation *op, OpOperand &opOperand,
-                               const BufferizationState &state) const {
+  bool bufferizesToMemoryWrite(Operation * /*op*/, OpOperand & /*opOperand*/,
+                               const AnalysisState & /*state*/) const {
     return false;
   }
 
   SmallVector<OpResult> getAliasingOpResult(
-      Operation *op, OpOperand &opOperand,
-      const BufferizationState &state) const {
+      Operation *op, OpOperand & /*opOperand*/,
+      const AnalysisState & /*state*/) const {
     return {op->getResult(0)};
   }
 
-  BufferRelation bufferRelation(Operation *op, OpResult opResult,
-                                const BufferizationState &state) const {
+  BufferRelation bufferRelation(Operation * /*op*/, OpResult /*opResult*/,
+                                const AnalysisState & /*state*/) const {
     // The op may allocate.
     return BufferRelation::None;
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          BufferizationState &state) const {
+                          const BufferizationOptions &options) const {
     auto broadcastInDimOp = cast<mhlo::DynamicBroadcastInDimOp>(op);
     auto resultType = broadcastInDimOp.getType().dyn_cast<RankedTensorType>();
     if (!resultType) return success();
 
     // The buffer still has the old (pre-reshape) type.
-    FailureOr<Value> operandBuffer = state.getBuffer(
-        rewriter, broadcastInDimOp->getOpOperand(0) /*operand*/);
-    if (failed(operandBuffer)) return failure();
-
-    Value result = insertDynamicMemrefCastOp(broadcastInDimOp, *operandBuffer,
-                                             rewriter, state.getOptions());
+    Value operandBuffer =
+        getBuffer(rewriter, broadcastInDimOp.operand(), options);
+    Value result = insertDynamicMemrefCastOp(broadcastInDimOp, operandBuffer,
+                                             rewriter, options);
 
     bufferization::replaceOpWithBufferizedValues(rewriter, op, result);
     return success();

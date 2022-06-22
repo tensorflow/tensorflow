@@ -5,14 +5,12 @@ func.func private @some_use(memref<?xf32>)
 
 #TILE_MAP = affine_map<(d0)[s0] -> (3, -d0 + s0)>
 
-//  CHECK-DAG: #[[$DYN_0D_MAP:.*]] = affine_map<()[s0] -> (s0)>
-//  CHECK-DAG: #[[$DYN_1D_MAP:.*]] = affine_map<(d0)[s0, s1] -> (d0 * s1 + s0)>
 //  CHECK-DAG: #[[$TILE_MAP:.*]] = affine_map<(d0)[s0] -> (-d0 + s0, 3)>
 
 //      CHECK:  func @tiled_dot(
-// CHECK-SAME:    %[[A:[a-zA-Z0-9]*]]: memref<?xf32, #[[$DYN_1D_MAP]]>
-// CHECK-SAME:    %[[B:[a-zA-Z0-9]*]]: memref<?xf32, #[[$DYN_1D_MAP]]>
-// CHECK-SAME:    %[[c:[a-zA-Z0-9]*]]: memref<f32, #[[$DYN_0D_MAP]]>
+// CHECK-SAME:    %[[A:[a-zA-Z0-9]*]]: memref<?xf32>
+// CHECK-SAME:    %[[B:[a-zA-Z0-9]*]]: memref<?xf32>
+// CHECK-SAME:    %[[c:[a-zA-Z0-9]*]]: memref<f32>
 func.func @tiled_dot(%A: tensor<?xf32> {bufferization.writeable = false},
                 %B: tensor<?xf32> {bufferization.writeable = false},
                 %c: tensor<f32> {bufferization.writeable = true},
@@ -20,7 +18,7 @@ func.func @tiled_dot(%A: tensor<?xf32> {bufferization.writeable = false},
   %c3 = arith.constant 3 : index
   %c0 = arith.constant 0 : index
 
-  //     CHECK: %[[M:.*]] = memref.dim %[[A]], {{.*}} : memref<?xf32, #[[$DYN_1D_MAP:.*]]>
+  //     CHECK: %[[M:.*]] = memref.dim %[[A]], {{.*}} : memref<?xf32>
   %0 = tensor.dim %A, %c0 : tensor<?xf32>
 
   //     CHECK: gml_st.loop {{.*}} to (%[[M]]) {{.*}} %[[A]]{{.*}}%[[B]]{{.*}}outs{{.*}}%[[c]]
@@ -44,7 +42,7 @@ func.func @tiled_dot(%A: tensor<?xf32> {bufferization.writeable = false},
     //     CHECK:   %[[SV_B:.*]] = memref.subview {{.*}}
     %7 = tensor.extract_slice %arg5[%arg3] [%6] [1] : tensor<?xf32> to tensor<?xf32>
 
-    //     CHECK:   linalg.dot ins(%[[SV_A]], %[[SV_B]] : memref<?xf32, #[[$DYN_1D_MAP:.*]]>, memref<?xf32, #[[$DYN_1D_MAP:.*]]>) outs(%{{.*}} : memref<f32, #[[$DYN_0D_MAP]]>)
+    //     CHECK:   linalg.dot ins(%[[SV_A]], %[[SV_B]] : memref<?xf32, #map{{[0-9]}}>, memref<?xf32, #map{{[0-9]}}>) outs(%{{.*}} : memref<f32>)
     %8 = linalg.dot ins(%4, %7 : tensor<?xf32>, tensor<?xf32>)
                     outs(%arg6 : tensor<f32>) -> tensor<f32>
 
@@ -65,16 +63,14 @@ func.func @tiled_dot(%A: tensor<?xf32> {bufferization.writeable = false},
 
 #TILE_MAP = affine_map<(d0)[s0] -> (3, -d0 + s0)>
 
-//  CHECK-DAG: #[[$DYN_MAP:.*]] = affine_map<(d0)[s0, s1] -> (d0 * s1 + s0)>
-
 //      CHECK:  func @tiled_fill(
-// CHECK-SAME:    %[[A:[a-zA-Z0-9]*]]: memref<?xf32, #[[$DYN_MAP]]>
+// CHECK-SAME:    %[[A:[a-zA-Z0-9]*]]: memref<?xf32>
 func.func @tiled_fill(%A: tensor<?xf32> {bufferization.writeable = true}) -> tensor<?xf32> {
   %c3 = arith.constant 3 : index
   %c0 = arith.constant 0 : index
   %f0 = arith.constant 0.0 : f32
 
-  //     CHECK: %[[M:.*]] = memref.dim %[[A]], {{.*}} : memref<?xf32, #[[$DYN_MAP:.*]]>
+  //     CHECK: %[[M:.*]] = memref.dim %[[A]], {{.*}} : memref<?xf32>
   %0 = tensor.dim %A, %c0 : tensor<?xf32>
 
   //     CHECK: gml_st.loop {{.*}} to (%[[M]]) {{.*}} outs{{.*}}%[[A]]
@@ -88,7 +84,7 @@ func.func @tiled_fill(%A: tensor<?xf32> {bufferization.writeable = true}) -> ten
     //     CHECK:   %[[SV_A:.*]] = memref.subview {{.*}}
     %4 = tensor.extract_slice %arg1[%arg3] [%3] [1] : tensor<?xf32> to tensor<?xf32>
 
-    //     CHECK:   linalg.fill ins(%{{.*}}: f32) outs(%[[SV_A]] : memref<?xf32, #[[$DYN_MAP:.*]]>)
+    //     CHECK:   linalg.fill ins(%{{.*}}: f32) outs(%[[SV_A]] : memref<?xf32, #map{{[0-9]}}>)
     %5 = linalg.fill ins(%f0: f32) outs(%4: tensor<?xf32>)
       -> tensor<?xf32>
     %6 = tensor.insert_slice %5 into %arg1[%arg3] [%3] [1] : tensor<?xf32> into tensor<?xf32>
@@ -105,11 +101,9 @@ func.func @tiled_fill(%A: tensor<?xf32> {bufferization.writeable = true}) -> ten
 
 // -----
 
-//  CHECK-DAG: #[[$TILE_MAP:.*]] = affine_map<(d0)[s0, s1] -> (d0 * s1 + s0)>
-
 //      CHECK:  func @tiled_loop_yield_out_of_place(
-// CHECK-SAME:    %[[A:[a-zA-Z0-9]*]]: memref<?xf32, #[[$TILE_MAP]]>
-// CHECK-SAME:    %[[B:[a-zA-Z0-9]*]]: memref<?xf32, #[[$TILE_MAP]]>
+// CHECK-SAME:    %[[A:[a-zA-Z0-9]*]]: memref<?xf32>
+// CHECK-SAME:    %[[B:[a-zA-Z0-9]*]]: memref<?xf32>
 func.func @tiled_loop_yield_out_of_place(
     %A: tensor<?xf32> {bufferization.writeable = true},
     %B: tensor<?xf32> {bufferization.writeable = true}) -> tensor<?xf32> {
@@ -117,7 +111,7 @@ func.func @tiled_loop_yield_out_of_place(
   %c0 = arith.constant 0 : index
   %f0 = arith.constant 0.0 : f32
 
-  //     CHECK: %[[M:.*]] = memref.dim %[[A]], {{.*}} : memref<?xf32, #[[$DYN_MAP:.*]]>
+  //     CHECK: %[[M:.*]] = memref.dim %[[A]], {{.*}} : memref<?xf32>
   %0 = tensor.dim %A, %c0 : tensor<?xf32>
 
   //     CHECK: gml_st.loop {{.*}} to (%[[M]]) {{.*}} outs{{.*}}%[[A]]

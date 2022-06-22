@@ -26,7 +26,7 @@ func.func @all_gather(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %r
   "lmhlo.all_gather"(%operand0, %operand1, %result0, %result1) {
       all_gather_dimension = 0 : i64,
       replica_groups = dense<0> : tensor<1x1xi64>,
-      channel_id = { handle = 5 : i64, type = 2 : i64 },
+      channel_id = #mhlo.channel_handle<handle = 5, type = 2>,
       constrain_layout = false,
       use_global_device_ids = false
   } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
@@ -63,7 +63,7 @@ func.func @all_reduce(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %r
           "mhlo.return"(%0) : (tensor<f32>) -> ()
       }) {
           replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>,
-          channel_id = { handle = 5 : i64, type = 2 : i64 },
+          channel_id = #mhlo.channel_handle<handle = 5, type = 2>,
           constrain_layout = true,
           use_global_device_ids = true
       } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
@@ -100,7 +100,7 @@ func.func @reduce_scatter(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>
           "mhlo.return"(%0) : (tensor<f32>) -> ()
       }) {
           replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
-          channel_id = { handle = 5 : i64, type = 2 : i64 },
+          channel_id = #mhlo.channel_handle<handle = 5, type = 2>,
           scatter_dimension = 1 : i64
       } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 
@@ -138,7 +138,7 @@ func.func @all_to_all(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %r
 
   "lmhlo.all_to_all"(%operand0, %operand1, %result0, %result1) {
       replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>,
-      channel_id = {handle = 1 : i64, type = 0 : i64},
+      channel_id = #mhlo.channel_handle<handle = 1, type = 0>,
       constrain_layout = false,
       use_global_device_ids = false
   } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
@@ -171,7 +171,7 @@ func.func @all_to_all_split_dimension(%operand0: memref<2x2xf32>, %operand1: mem
 
   "lmhlo.all_to_all"(%operand0, %operand1, %result0, %result1) {
       replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>,
-      channel_id = {handle = 1 : i64, type = 0 : i64},
+      channel_id = #mhlo.channel_handle<handle = 1, type = 0>,
       constrain_layout = false,
       use_global_device_ids = false,
       split_dimension = 0
@@ -202,7 +202,7 @@ func.func @collective_permute(%operand: memref<2x2xf32>, %result: memref<2x2xf32
 
   "lmhlo.collective_permute"(%operand, %result) {
       source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>,
-      channel_id = { handle = 5 : i64, type = 2 : i64 }
+      channel_id = #mhlo.channel_handle<handle = 5, type = 2>
   } : (memref<2x2xf32>, memref<2x2xf32>) -> ()
 
   // CHECK-NOT: cast

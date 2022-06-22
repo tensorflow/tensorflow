@@ -1180,6 +1180,8 @@ Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
       case F16:
       case F32:
       case F64:
+      case C64:
+      case C128:
         return true;
       default:
         return false;
@@ -2517,9 +2519,9 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
         auto check = [this](const HloInstruction* a, const HloInstruction* b,
                             const ShapeIndex& index) {
           const BufferAllocation::Slice slice_a =
-              assignment_.GetUniqueSlice(a, index).ConsumeValueOrDie();
+              assignment_.GetUniqueSlice(a, index).value();
           const BufferAllocation::Slice slice_b =
-              assignment_.GetUniqueSlice(b, index).ConsumeValueOrDie();
+              assignment_.GetUniqueSlice(b, index).value();
           if (slice_a != slice_b) {
             return InternalError(
                 "instruction %s %s does not share slice with "

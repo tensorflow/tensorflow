@@ -203,7 +203,7 @@ std::string DumpCrashReproducerToFile(llvm::StringRef name,
   if (!result.ok()) return result.error_message();
 
   PrintPassPipeline(pm, op, *os);
-  op->print(*os, mlir::OpPrintingFlags().useLocalScope().printGenericOpForm());
+  op->print(*os, mlir::OpPrintingFlags().useLocalScope());
   LOG(INFO) << "Dumped MLIR operation '" << op->getName().getStringRef().str()
             << "' to '" << filepath << "'";
   return filepath;
@@ -218,7 +218,7 @@ std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
   if (!result.ok()) return result.error_message();
 
   if (pass_manager) PrintPassPipeline(*pass_manager, op, *os);
-  op->print(*os, mlir::OpPrintingFlags().useLocalScope().printGenericOpForm());
+  op->print(*os, mlir::OpPrintingFlags().useLocalScope());
   LOG(INFO) << "Dumped MLIR operation '" << op->getName().getStringRef().str()
             << "' to '" << filepath << "'";
   return filepath;

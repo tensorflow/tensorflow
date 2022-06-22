@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/transforms/bufferizable_op_interface_impl.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Bufferization/Transforms/OneShotAnalysis.h"
 #include "mlir/Dialect/Bufferization/Transforms/OneShotModuleBufferize.h"
 #include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"
@@ -172,6 +173,8 @@ struct TestGmlStLoopTilingPass
 struct TestGmlStBufferizationPass
     : public TestGmlStBufferizationBase<TestGmlStBufferizationPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
+    registry
+        .insert<bufferization::BufferizationDialect, memref::MemRefDialect>();
     linalg::registerBufferizableOpInterfaceExternalModels(registry);
     gml_st::registerBufferizableOpInterfaceExternalModels(registry);
   }
@@ -179,6 +182,8 @@ struct TestGmlStBufferizationPass
   void runOnOperation() override {
     bufferization::OneShotBufferizationOptions opts;
     opts.bufferizeFunctionBoundaries = true;
+    opts.functionBoundaryTypeConversion =
+        bufferization::BufferizationOptions::LayoutMapOption::IdentityLayoutMap;
 
     ModuleOp module = getOperation();
     if (failed(bufferization::runOneShotModuleBufferize(module, opts))) {

@@ -88,6 +88,10 @@ class ConvolutionMetal : public GPUOperation {
       const OperationDef& definition, const BHWC& dst_shape,
       const Convolution2DAttributes& attr, const GpuInfo& gpu_info);
 
+  friend ConvolutionMetal CreateConvolutionMetalBatchedMatMul(
+      const OperationDef& definition, const BHWC& dst_shape,
+      const OHWI& weights_shape, const GpuInfo& gpu_info);
+
   friend ConvolutionMetal CreateConvolutionMetalWino4x4To6x6(
       const OperationDef& definition, const BHWC& dst_shape,
       const Convolution2DAttributes& attr, const GpuInfo& gpu_info);
@@ -104,6 +108,10 @@ ConvolutionMetal CreateConvolutionMetal(const OperationDef& definition,
                                         const BHWC& dst_shape,
                                         const Convolution2DAttributes& attr,
                                         const GpuInfo& gpu_info);
+
+ConvolutionMetal CreateConvolutionMetalBatchedMatMul(
+    const OperationDef& definition, const BHWC& dst_shape,
+    const OHWI& weights_shape, const GpuInfo& gpu_info);
 
 ConvolutionMetal CreateConvolutionMetalWino4x4To6x6(
     const OperationDef& definition, const BHWC& dst_shape,

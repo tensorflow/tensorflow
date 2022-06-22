@@ -36,7 +36,7 @@ class HloLivenessAnalysisTest : public HloTestBase {
   // Run liveness analysis on the member module. For convenience returns a
   // reference to the generated analysis stored in analysis_.
   const HloLivenessAnalysis& RunLiveness(HloModule* module) {
-    liveness_ = HloLivenessAnalysis::Run(*module).ConsumeValueOrDie();
+    liveness_ = HloLivenessAnalysis::Run(*module).value();
     return *liveness_;
   }
 

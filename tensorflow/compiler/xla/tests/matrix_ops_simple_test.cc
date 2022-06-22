@@ -16,6 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -79,7 +80,7 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
     Add(x_value, half);
     auto computation_status = builder.Build();
     ASSERT_IS_OK(computation_status.status());
-    add_half = computation_status.ConsumeValueOrDie();
+    add_half = std::move(computation_status).value();
   }
 
   XlaBuilder builder("map_2x2");

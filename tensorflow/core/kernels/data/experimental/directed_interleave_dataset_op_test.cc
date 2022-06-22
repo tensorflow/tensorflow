@@ -34,10 +34,10 @@ class DirectedInterleaveDatasetParams : public DatasetParams {
         stop_on_empty_dataset_(stop_on_empty_dataset),
         num_input_datasets_(input_dataset_params_vec.size()) {
     input_dataset_params_.push_back(
-        absl::make_unique<S>(selector_input_dataset_params));
+        std::make_unique<S>(selector_input_dataset_params));
     for (auto input_dataset_params : input_dataset_params_vec) {
       input_dataset_params_.push_back(
-          absl::make_unique<T>(input_dataset_params));
+          std::make_unique<T>(input_dataset_params));
     }
 
     if (!input_dataset_params_vec.empty()) {

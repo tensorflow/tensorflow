@@ -17,6 +17,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/hexagon/builders/tests/hexagon_delegate_op_model.h"
+#include "tensorflow/lite/kernels/internal/test_util.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
@@ -122,11 +123,23 @@ class QuantizedConvolutionOpModel : public SingleOpModelWithHexagon {
     QuantizeAndPopulate<int8_t>(input_, data);
   }
 
+  void SetInt8Input(const std::vector<float>& data) {
+    QuantizeAndPopulate<int8_t>(input_, data);
+  }
+
   void SetPerChannelQuantizedFilter(std::initializer_list<float> data) {
     PerChannelSymmetricQuantizeAndPopulate(filter_, data);
   }
 
+  void SetPerChannelQuantizedFilter(const std::vector<float>& data) {
+    PerChannelSymmetricQuantizeAndPopulate(filter_, data);
+  }
+
   void SetPerChannelQuantizedBias(std::initializer_list<float> data) {
+    PerChannelQuantizeBias(bias_, data);
+  }
+
+  void SetPerChannelQuantizedBias(const std::vector<float>& data) {
     PerChannelQuantizeBias(bias_, data);
   }
 
@@ -717,6 +730,62 @@ TEST(QuantizedConvolutionOpModel,
                       4, 8,  0, 0, 21, 24, 0, 0,
                   },
                   0.6f)));
+}
+
+TEST(QuantizedConvolutionOpModel,
+     DepthwiseConvPerChannel_5x5Filt2x2Stride64Chan) {
+  std::vector<float> per_channel_quantization_scales = {
+      0.00053629, 0.00052256, 0.00051463, 0.00050993, 0.00050885, 0.00052403,
+      0.00053925, 0.00053854, 0.00053962, 0.00048332, 0.00053551, 0.00052817,
+      0.00052771, 0.00051854, 0.00053823, 0.000531,   0.000521,   0.00053908,
+      0.00053849, 0.0005063,  0.00052631, 0.00050862, 0.00050484, 0.00053353,
+      0.0005352,  0.00051084, 0.00052429, 0.00052653, 0.00051875, 0.0005391,
+      0.00050941, 0.00053934, 0.00049698, 0.00050956, 0.00053204, 0.00051116,
+      0.00052303, 0.00053624, 0.00053452, 0.00050418, 0.00048261, 0.00053418,
+      0.00053058, 0.0005359,  0.0005324,  0.00053648, 0.00053957, 0.00052388,
+      0.00053638, 0.00052164, 0.00052303, 0.00053624, 0.00053452, 0.00050418,
+      0.00048261, 0.00053418, 0.00053058, 0.0005359,  0.0005324,  0.00053648,
+      0.00053957, 0.00052388, 0.00053638, 0.00052164};
+  std::vector<int64_t> per_channel_quantization_offsets(64, 0);
+  QuantizedConvolutionOpModel m(
+      BuiltinOperator_DEPTHWISE_CONV_2D,
+      {TensorType_INT8, {1, 5, 5, 64}, 0, 0, 1.8942945003509521, -6},
+      {TensorType_INT8,
+       {1, 5, 5, 64},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/per_channel_quantization_scales,
+       /*per_channel_quantization_offsets=*/per_channel_quantization_offsets,
+       /*channel_index=*/3},
+      {TensorType_INT8, {}, 0, 0, 0.2960677146911621, 7}, Padding_VALID,
+      /* dilation_factor = */ 1,
+      /* stride_length = */ 2);
+
+  std::vector<float> inputs;
+  std::vector<float> filter;
+  for (auto i = 0; i < 5 * 5 * 64; i++) {
+    inputs.push_back(UniformRandomFloat(-248, 234));
+    filter.push_back(UniformRandomFloat(-0.06, 0.06));
+  }
+  m.SetInt8Input(inputs);
+  m.SetPerChannelQuantizedFilter(filter);
+
+  std::vector<float> bias(64);
+  m.SetPerChannelQuantizedBias(bias);
+
+  m.Invoke();
+
+  auto interpreter_result = m.GetDequantizedOutput<int8_t>();
+
+  m.ApplyDelegateAndInvoke();
+
+  auto delegate_result = m.GetDequantizedOutput<int8_t>();
+
+  EXPECT_THAT(delegate_result,
+              ElementsAreArray(ArrayFloatNear(interpreter_result, 0.6f)));
 }
 
 }  // namespace tflite

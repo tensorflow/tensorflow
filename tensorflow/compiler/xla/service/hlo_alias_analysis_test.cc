@@ -49,7 +49,7 @@ class HloAliasAnalysisTest : public HloTestBase {
   HloAliasAnalysis& RunAnalysis() {
     analysis_ = HloAliasAnalysis::Run(module_.get(),
                                       /*can_share_buffer=*/nullptr)
-                    .ConsumeValueOrDie();
+                    .value();
     return *analysis_;
   }
 

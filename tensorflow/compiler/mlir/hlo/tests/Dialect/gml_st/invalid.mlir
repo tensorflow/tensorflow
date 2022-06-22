@@ -104,154 +104,154 @@ func.func @loop_incorrent_block_arg_type(%A: memref<192xf32>) {
 
 // -----
 
-func.func @space_op_different_rank() {
+func.func @space_op_different_rank() -> !gml_st.tile<32x32> {
   // expected-error@+1 {{expected 2 shapes values}}
   %0 = gml_st.space [64] : !gml_st.tile<32x32>
-  func.return
+  func.return %0 : !gml_st.tile<32x32>
 }
 
 // -----
 
-func.func @space_op_dynamic_static_mismatch(%size : index) {
+func.func @space_op_dynamic_static_mismatch(%size : index) -> !gml_st.tile<64x32> {
   // expected-error@+1 {{'gml_st.space' op inferred type(s) '!gml_st.tile<64x?>' are incompatible with return type(s) of operation '!gml_st.tile<64x32>'}}
   %0 = gml_st.space [64, %size] : !gml_st.tile<64x32>
-  func.return
+  func.return %0 : !gml_st.tile<64x32>
 }
 
 // -----
 
-func.func @space_op_mismatch_shapes_and_static_shapes() {
+func.func @space_op_mismatch_shapes_and_static_shapes() -> !gml_st.tile<5x?> {
   // expected-error@+1 {{expected 1 dynamic shapes values}}
   %0 = "gml_st.space"() {static_shapes = [5, -1]} : () -> !gml_st.tile<5x?>
-  func.return
+  func.return %0 : !gml_st.tile<5x?>
 }
 
 // -----
 
-func.func @point_op_different_rank() {
+func.func @point_op_different_rank() -> !gml_st.point {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{expected 2 indices values}}
   %1 = "gml_st.point"(%0) {static_indices = [0]} : (!gml_st.tile<64x32>) -> !gml_st.point
-  func.return
+  func.return %1 : !gml_st.point
 }
 
 // -----
 
-func.func @point_op_of_point_op_expected_empty_static_indices() {
+func.func @point_op_of_point_op_expected_empty_static_indices() -> !gml_st.point {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   %1 = gml_st.point %0 [0, 0] : !gml_st.tile<64x32> to !gml_st.point
   // expected-error@+1 {{'gml_st.point' op expected empty indices and static_indices for a subset of type PointType}}
   %2 = gml_st.point %1 [0, 0] : !gml_st.point to !gml_st.point
-  func.return
+  func.return %2 : !gml_st.point
 }
 
 // -----
 
-func.func @point_op_of_point_op_expected_empty_dynamic_indices(%i: index) {
+func.func @point_op_of_point_op_expected_empty_dynamic_indices(%i: index) -> !gml_st.point {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   %1 = gml_st.point %0 [%i, %i] : !gml_st.tile<64x32> to !gml_st.point
   // expected-error@+1 {{'gml_st.point' op expected empty indices and static_indices for a subset of type PointType}}
   %2 = gml_st.point %1 [%i, %i] : !gml_st.point to !gml_st.point
-  func.return
+  func.return %2 : !gml_st.point
 }
 
 // -----
 
-func.func @point_op_mismatch_indices_and_static_indices(%i: index) {
+func.func @point_op_mismatch_indices_and_static_indices(%i: index) -> !gml_st.point {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{expected 0 dynamic indices values}}
   %1 = "gml_st.point"(%0, %i) {static_indices = [0, 0]} : (!gml_st.tile<64x32>, index) -> !gml_st.point
-  func.return
+  func.return %1 : !gml_st.point
 }
 
 // -----
 
-func.func @point_op_static_indices_out_of_bounds() {
+func.func @point_op_static_indices_out_of_bounds() -> !gml_st.point {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{'gml_st.point' op expected index = 32 to be between 0 and 31}}
   %1 = gml_st.point %0 [5, 32] : !gml_st.tile<64x32> to !gml_st.point
-  func.return
+  func.return %1 : !gml_st.point
 }
 
 // -----
 
-func.func @point_op_negative_static_indices(%size: index, %i: index) {
+func.func @point_op_negative_static_indices(%size: index, %i: index) -> !gml_st.point {
   %0 = gml_st.space [%size, 32] : !gml_st.tile<?x32>
   // expected-error@+1 {{'gml_st.point' op expected index = -2 to be non-negative}}
   %1 = gml_st.point %0 [-2, %i] : !gml_st.tile<?x32> to !gml_st.point
-  func.return
+  func.return %1 : !gml_st.point
 }
 
 // -----
 
 func.func @tile_op_mismatch_sizes_and_static_sizes(%i: index) {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
-  // expected-error@+1 {{expected 2 dynamic sizes values}}
-  %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, 0], static_sizes = [-1, -1], static_strides = [1, 1], operand_segment_sizes = dense<[1, 0, 1, 0]>: tensor<4xi32>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<?x?>
+  // expected-error@+1 {{expected 0 dynamic size values}}
+  %1 = "gml_st.tile"(%0, %i) { static_offsets = [0, 0], static_sizes = [1, 1], static_strides = [1, 1], operand_segment_sizes = dense<[1, 0, 1, 0]>: tensor<4xi32> } : (!gml_st.tile<64x32>, index) -> !gml_st.tile<?x?>
   func.return
 }
 
 // -----
 
-func.func @tile_op_mismatch_offsets_and_static_offsets(%i: index) {
+func.func @tile_op_mismatch_offsets_and_static_offsets(%i: index) -> !gml_st.tile<8x8> {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
-  // expected-error@+1 {{expected 0 dynamic offsets values}}
+  // expected-error@+1 {{expected 0 dynamic offset values}}
   %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, 0], static_sizes = [8, 8], static_strides = [1, 1], operand_segment_sizes = dense<[1, 1, 0, 0]>: tensor<4xi32>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<8x8>
-  func.return
+  func.return %1 : !gml_st.tile<8x8>
 }
 
 // -----
 
-func.func @tile_op_mismatch_strides_and_static_strides(%i: index) {
+func.func @tile_op_mismatch_strides_and_static_strides(%i: index)  -> !gml_st.tile<8x8> {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
-  // expected-error@+1 {{expected 0 dynamic strides values}}
+  // expected-error@+1 {{expected 0 dynamic stride values}}
   %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, 0], static_sizes = [8, 8], static_strides = [1, 1], operand_segment_sizes = dense<[1, 0, 0, 1]>: tensor<4xi32>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<8x8>
-  func.return
+  func.return %1 : !gml_st.tile<8x8>
 }
 
 // -----
 
-func.func @tile_op_negative_static_size(%i: index) {
+func.func @tile_op_negative_static_size(%i: index)  -> !gml_st.tile<?x?> {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{'gml_st.tile' op expected size = -2 to be non-negative}}
   %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, 0], static_sizes = [-1, -2], static_strides = [1, 1], operand_segment_sizes = dense<[1, 0, 1, 0]>: tensor<4xi32>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<?x?>
-  func.return
+  func.return %1 : !gml_st.tile<?x?>
 }
 
 // -----
 
-func.func @tile_op_negative_static_stride(%i: index) {
+func.func @tile_op_negative_static_stride(%i: index)  -> !gml_st.tile<?x8> {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{'gml_st.tile' op expected stride = -2 to be non-negative}}
   %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, 0], static_sizes = [-1, 8], static_strides = [1, -2], operand_segment_sizes = dense<[1, 0, 1, 0]>: tensor<4xi32>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<?x8>
-  func.return
+  func.return %1 : !gml_st.tile<?x8>
 }
 
 // -----
 
-func.func @tile_op_negative_static_offset(%i: index) {
+func.func @tile_op_negative_static_offset(%i: index)  -> !gml_st.tile<?x8> {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{'gml_st.tile' op expected offset = -2 to be non-negative}}
   %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, -2], static_sizes = [-1, 8], static_strides = [1, 1], operand_segment_sizes = dense<[1, 0, 1, 0]>: tensor<4xi32>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<?x8>
-  func.return
+  func.return %1 : !gml_st.tile<?x8>
 }
 
 // -----
 
-func.func @tile_op_offset_out_of_bounds(%i: index) {
+func.func @tile_op_offset_out_of_bounds(%i: index) -> !gml_st.tile<?x?> {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{'gml_st.tile' op offset = 32 is out of bounds for argument dimension size = 32}}
   %1 = "gml_st.tile"(%0, %i, %i) {static_offsets = [0, 32], static_sizes = [-1, -1], static_strides = [1, 1], operand_segment_sizes = dense<[1, 0, 2, 0]>: tensor<4xi32>} : (!gml_st.tile<64x32>, index, index) -> !gml_st.tile<?x?>
-  func.return
+  func.return %1 : !gml_st.tile<?x?>
 }
 
 // -----
 
-func.func @tile_op_offset_out_of_bounds_considering_size_and_stride() {
+func.func @tile_op_offset_out_of_bounds_considering_size_and_stride() -> !gml_st.tile<8x8> {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{'gml_st.tile' op offset = 25 size = 8 stride = 1 causes access out of bounds at 32 for argument dimension size = 32}}
-  gml_st.tile %0 [56, 25] [8, 8] [1, 1] : !gml_st.tile<64x32> to !gml_st.tile<8x8>
-  func.return
+  %1 = gml_st.tile %0 [56, 25] [8, 8] [1, 1] : !gml_st.tile<64x32> to !gml_st.tile<8x8>
+  func.return %1 : !gml_st.tile<8x8>
 }
 
 // -----
@@ -259,6 +259,6 @@ func.func @tile_op_offset_out_of_bounds_considering_size_and_stride() {
 func.func @tile_op_offset_out_of_bounds_considering_size_and_stride(%i: index) {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{'gml_st.tile' op size = 9 stride = 4 causes access out of bounds for argument dimension size = 32}}
-  gml_st.tile %0 [%i, %i] [8, 9] [8, 4] : !gml_st.tile<64x32> to !gml_st.tile<8x9>
-  func.return
+  %1 = gml_st.tile %0 [%i, %i] [8, 9] [8, 4] : !gml_st.tile<64x32> to !gml_st.tile<8x9>
+  func.return %1 : !gml_st.tile<8x9>
 }

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/SCF/Utils/AffineCanonicalizationUtils.h"
+#include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 
@@ -263,26 +264,6 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
       res, loops, outermostLoop ? outermostLoop->getResults() : tensorResults};
 }
 
-std::pair<SmallVector<Value>, SmallVector<int64_t>> getDynamicAndStaticDims(
-    OpBuilder &b, Value tensor) {
-  auto tensorType = tensor.getType().cast<RankedTensorType>();
-  auto loc = tensor.getLoc();
-
-  // Collect dimension info and materialize `dim` ops for dynamic dimensions.
-  SmallVector<int64_t> staticDims;
-  SmallVector<Value> dynamicDims;
-  for (const auto &it : llvm::enumerate(tensorType.getShape())) {
-    int64_t d = it.value();
-    if (d != ShapedType::kDynamicSize) {
-      staticDims.push_back(d);
-    } else {
-      dynamicDims.push_back(b.create<tensor::DimOp>(loc, tensor, it.index()));
-      staticDims.push_back(ShapedType::kDynamicSize);
-    }
-  }
-  return std::make_pair(dynamicDims, staticDims);
-}
-
 }  // namespace
 
 LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
@@ -374,12 +355,11 @@ FailureOr<TilingResult> tileToTiles(RewriterBase &b, linalg::LinalgOp linalgOp,
   Value output = linalgOp.getOutputOperand(0)->get();
   auto outputType = output.getType().cast<RankedTensorType>();
 
-  SmallVector<Value> dynamicDims;
-  SmallVector<int64_t> staticDims;
-  std::tie(dynamicDims, staticDims) = getDynamicAndStaticDims(b, output);
+  SmallVector<Value> dynamicDims =
+      tensor::createDynamicDimValues(b, loc, output);
   auto spaceType = b.getType<TileType>(outputType.getShape());
   auto space = b.create<SpaceOp>(loc, spaceType, dynamicDims,
-                                 b.getI64ArrayAttr(staticDims));
+                                 b.getI64ArrayAttr(outputType.getShape()));
 
   SmallVector<Value> steps;
   steps.reserve(outputType.getRank());
@@ -392,11 +372,11 @@ FailureOr<TilingResult> tileToTiles(RewriterBase &b, linalg::LinalgOp linalgOp,
 
   SmallVector<Value> upperBounds;
   for (int i = 0; i < outputType.getRank(); ++i) {
-    if (staticDims[i] == ShapedType::kDynamicSize) {
+    if (outputType.isDynamicDim(i)) {
       upperBounds.push_back(b.create<tensor::DimOp>(loc, output, i));
     } else {
       upperBounds.push_back(
-          b.create<arith::ConstantIndexOp>(loc, staticDims[i]));
+          b.create<arith::ConstantIndexOp>(loc, outputType.getDimSize(i)));
     }
   }
   LinalgOp result;
@@ -406,7 +386,7 @@ FailureOr<TilingResult> tileToTiles(RewriterBase &b, linalg::LinalgOp linalgOp,
       [&](OpBuilder &b, Location nestedLoc, ValueRange ivs,
           ValueRange /*outputs*/) {
         auto operandTile = createTile(b, nestedLoc, ivs, upperBounds, steps,
-                                      staticDims, tileSizes, space);
+                                      outputType.getShape(), tileSizes, space);
         auto tiledResultTy = RankedTensorType::get(
             operandTile.getType().getShape(), outputType.getElementType());
         SmallVector<Value> tiledOperands;
@@ -438,12 +418,11 @@ FailureOr<TilingResult> tileToPoints(RewriterBase &b,
   auto output = linalgOp.getOutputOperand(0)->get();
   auto outputType = output.getType().cast<RankedTensorType>();
 
-  SmallVector<Value> dynamicDims;
-  SmallVector<int64_t> staticDims;
-  std::tie(dynamicDims, staticDims) = getDynamicAndStaticDims(b, output);
+  SmallVector<Value> dynamicDims =
+      tensor::createDynamicDimValues(b, loc, output);
   auto spaceType = b.getType<TileType>(outputType.getShape());
   Value space = b.create<SpaceOp>(loc, spaceType, dynamicDims,
-                                  b.getI64ArrayAttr(staticDims));
+                                  b.getI64ArrayAttr(outputType.getShape()));
 
   Value one = b.create<arith::ConstantIndexOp>(loc, 1);
   SmallVector<Value> steps(outputType.getRank(), one);
@@ -453,11 +432,11 @@ FailureOr<TilingResult> tileToPoints(RewriterBase &b,
 
   SmallVector<Value> upperBounds;
   for (int i = 0; i < outputType.getRank(); ++i) {
-    if (staticDims[i] == ShapedType::kDynamicSize) {
+    if (outputType.isDynamicDim(i)) {
       upperBounds.push_back(b.create<tensor::DimOp>(loc, output, i));
     } else {
       upperBounds.push_back(
-          b.create<arith::ConstantIndexOp>(loc, staticDims[i]));
+          b.create<arith::ConstantIndexOp>(loc, outputType.getDimSize(i)));
     }
   }
   auto loop = b.create<ParallelOp>(

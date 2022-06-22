@@ -1752,7 +1752,7 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 }
 
 )";
-  auto options = HloPrintOptions().set_syntax_sugar_async_op(false);
+  auto options = HloPrintOptions().set_syntax_sugar_async_ops(false);
   EXPECT_EQ(module->ToString(options), expected_without_syntax_sugar);
 }
 

@@ -544,6 +544,12 @@ mlir::LogicalResult MergeProducerLayouts(
     candidate_layouts.emplace_back(it->second);
   }
 
+  if (candidate_layouts.empty()) {
+    return mlir::emitError(
+        location,
+        llvm::formatv(
+            "candidate_layouts is empty while merging producer layouts."));
+  }
   if (mlir::failed(GetMostShardedLayout(candidate_layouts, location, &layout)))
     return mlir::failure();
 

@@ -27,7 +27,7 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -97,7 +97,7 @@ absl::StatusOr<GraphDef> QuantizeQATModel(absl::string_view saved_model_path,
                                module.status().error_message());
   }
 
-  mlir::OwningOpRef<mlir::ModuleOp> module_ref = module.ConsumeValueOrDie();
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
   mlir::PassManager pm(&context);
 
@@ -124,6 +124,7 @@ absl::StatusOr<GraphDef> QuantizeQATModel(absl::string_view saved_model_path,
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       mlir::quant::QuantizationMethod::kQuantizationAwareTraining));
   pm.addPass(mlir::createSymbolDCEPass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 
   pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -146,7 +147,7 @@ absl::StatusOr<GraphDef> QuantizeQATModel(absl::string_view saved_model_path,
                                graph.status().error_message());
   }
 
-  return *graph.ConsumeValueOrDie();
+  return *std::move(graph).value();
 }
 
 absl::StatusOr<GraphDef> QuantizePTQModelPreCalibration(
@@ -181,7 +182,7 @@ absl::StatusOr<GraphDef> QuantizePTQModelPreCalibration(
                                module.status().error_message());
   }
 
-  mlir::OwningOpRef<mlir::ModuleOp> module_ref = module.ConsumeValueOrDie();
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
   mlir::PassManager pm(&context);
 
@@ -220,7 +221,7 @@ absl::StatusOr<GraphDef> QuantizePTQModelPreCalibration(
                                graph.status().error_message());
   }
 
-  return *graph.ConsumeValueOrDie();
+  return *std::move(graph).value();
 }
 
 absl::StatusOr<GraphDef> QuantizePTQModelPostCalibration(
@@ -255,7 +256,7 @@ absl::StatusOr<GraphDef> QuantizePTQModelPostCalibration(
                                module.status().error_message());
   }
 
-  mlir::OwningOpRef<mlir::ModuleOp> module_ref = module.ConsumeValueOrDie();
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
   mlir::PassManager pm(&context);
 
@@ -267,6 +268,7 @@ absl::StatusOr<GraphDef> QuantizePTQModelPostCalibration(
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       mlir::quant::QuantizationMethod::kPostTrainingQuantization));
   pm.addPass(mlir::createSymbolDCEPass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
@@ -288,7 +290,7 @@ absl::StatusOr<GraphDef> QuantizePTQModelPostCalibration(
                                graph.status().error_message());
   }
 
-  return *graph.ConsumeValueOrDie();
+  return *std::move(graph).value();
 }
 
 absl::StatusOr<GraphDef> QuantizePTQDynamicRange(
@@ -323,7 +325,7 @@ absl::StatusOr<GraphDef> QuantizePTQDynamicRange(
                                module.status().error_message());
   }
 
-  mlir::OwningOpRef<mlir::ModuleOp> module_ref = module.ConsumeValueOrDie();
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
   mlir::PassManager pm(&context);
   pm.addPass(mlir::createCanonicalizerPass());
@@ -334,6 +336,7 @@ absl::StatusOr<GraphDef> QuantizePTQDynamicRange(
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       mlir::quant::QuantizationMethod::kDynamicRangeQuantization));
   pm.addPass(mlir::createSymbolDCEPass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
@@ -355,7 +358,7 @@ absl::StatusOr<GraphDef> QuantizePTQDynamicRange(
                                graph.status().error_message());
   }
 
-  return *graph.ConsumeValueOrDie();
+  return *std::move(graph).value();
 }
 
 }  // namespace internal

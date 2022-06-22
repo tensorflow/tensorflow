@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common_internal.h"
 #include "tensorflow/lite/create_op_resolver.h"
 #include "tensorflow/lite/delegates/interpreter_utils.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
@@ -241,7 +242,7 @@ namespace internal {
 // forwards the methods to (C ABI) callback functions from a
 // `TfLiteOpResolverCallbacks` struct.
 
-// FindOp for buildin op query.
+// FindOp for builtin op query.
 const TfLiteRegistration* CallbackOpResolver::FindOp(tflite::BuiltinOperator op,
                                                      int version) const {
   // Use Registration V2 API to find op.

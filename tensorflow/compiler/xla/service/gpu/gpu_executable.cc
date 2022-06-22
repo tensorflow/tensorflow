@@ -63,6 +63,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
 #include "tfrt/gpu/gpu_executor.h"  // from @tf_runtime
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
+#include "tfrt/jitrt/diagnostics.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
@@ -900,6 +901,11 @@ static Status ExecuteJitRt(const std::string& module_name,
       &jitrt_executable->gemm_configs_cache(), &jitrt_executable->collectives(),
       async_collectives.async_comm_stream() ? &async_collectives : nullptr);
   opts.custom_call_data = &user_data;
+
+  // TODO(b/233902617): Collect diagnostic messages and report them back to the
+  // caller through errors.
+  jitrt::DiagnosticEngine diagnostic_engine;
+  opts.diagnostic_engine = &diagnostic_engine;
 
   // Get the default executable. We do not support specialization because
   // all shapes are static. Default executable is guaranteed to be available.

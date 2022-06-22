@@ -97,7 +97,7 @@ tf_proto_library(
         "//tensorflow/core/util/autotune_maps:conv_parameters_proto",
         "//tensorflow/stream_executor:dnn_proto",
     ],
-    visibility = ["//waymo/ml/deploy/onboard/autotuning:__subpackages__"],
+    visibility = ["//waymo/ml/deploy/system/autotuning:__subpackages__"],
 )
 
 # copybara:uncomment_begin(google-only)
@@ -105,7 +105,7 @@ tf_proto_library(
 #     name = "autotune_map_py_pb2",
 #     has_services = 0,
 #     api_version = 2,
-#     visibility = ["//waymo/ml/deploy/onboard/autotuning:__subpackages__"],
+#     visibility = ["//waymo/ml/deploy/system/autotuning:__subpackages__"],
 #     deps = [":autotune_map_proto"],
 # )
 # copybara:uncomment_end

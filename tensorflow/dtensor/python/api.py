@@ -535,11 +535,15 @@ def heartbeat_enabled() -> bool:
 # Private methods.
 
 
-def _dtensor_device() -> dtensor_device.DTensorDevice:
+def _set_dtensor_device(device: dtensor_device.DTensorDevice) -> None:
   global _dtensor_singleton
+  _dtensor_singleton = device
+
+
+def _dtensor_device() -> dtensor_device.DTensorDevice:
   with _dtensor_singleton_lock:
     if _dtensor_singleton is None:
-      _dtensor_singleton = dtensor_device.DTensorDevice(meshes=[])
+      _set_dtensor_device(dtensor_device.DTensorDevice(meshes=[]))
   return _dtensor_singleton
 
 

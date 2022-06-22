@@ -18,8 +18,9 @@ limitations under the License.
 #ifndef TFL_OP_ENUMS
 #define TFL_OP_ENUMS
 
-include "mlir/IR/OpBase.td"
+include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
+include "mlir/IR/OpBase.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
 
 // A string attribute whose value are one of the values in `cases`.
@@ -116,5 +117,36 @@ def TFL_LSTMKernelType : I32EnumAttr<"LSTMKernelType", "lstm_kernel_type",
 }
 def TFL_LSTMKernelTypeAttr : EnumAttr<TFL_Dialect, TFL_LSTMKernelType,
     "lstm_kernel_type_attr">;
+
+def I32ArrayParameter :
+    AttrOrTypeParameter<"::llvm::ArrayRef<int32_t>", ""> {
+  let allocator = [{$_dst = $_allocator.copyInto($_self);}];
+  let cppStorageType = "::llvm::SmallVector<int32_t>";
+  let parser = "::mlir::TFL::parseI32Array($_parser)";
+  let printer = "$_printer << '[' << $_self << ']'";
+}
+
+def DimensionMetadataAttr : AttrDef<TFL_Dialect, "DimensionMetadata"> {
+  let mnemonic = "dimension_metadata";
+  let parameters = (ins
+      TFL_DimensionTypeAttr:$format,
+      "int32_t":$dense_size,
+      I32ArrayParameter:$segments,
+      I32ArrayParameter:$indices
+  );
+  let summary = "Dimension metadata.";
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def SparsityParameterAttr : AttrDef<TFL_Dialect, "SparsityParameter"> {
+  let mnemonic = "sparsity_parameter";
+  let parameters = (ins
+      I32ArrayParameter:$traversal_order,
+      I32ArrayParameter:$block_map,
+      ArrayRefParameter<"DimensionMetadataAttr">:$dim_metadata
+  );
+  let summary = "Sparsity parameter.";
+  let assemblyFormat = "`<` struct(params) `>`";
+}
 
 #endif // TFL_OP_ENUMS

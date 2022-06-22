@@ -204,7 +204,7 @@ ENTRY main {
 )";
   auto status = ParseAndReturnVerifiedModule(hlo_string);
   TF_ASSERT_OK(status.status());
-  std::unique_ptr<HloModule> module = status.ConsumeValueOrDie();
+  std::unique_ptr<HloModule> module = std::move(status).value();
   HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
   TF_ASSERT_OK(v.Run(module.get()).status());
   EXPECT_TRUE(ConditionalSimplifier().Run(module.get()).ValueOrDie());
@@ -263,7 +263,7 @@ TEST_F(ConditionalSimplifierTest,
     })";
   auto status = ParseAndReturnVerifiedModule(hlo_string);
   TF_ASSERT_OK(status.status());
-  std::unique_ptr<HloModule> module = status.ConsumeValueOrDie();
+  std::unique_ptr<HloModule> module = std::move(status).value();
   HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
   TF_ASSERT_OK(v.Run(module.get()).status());
 

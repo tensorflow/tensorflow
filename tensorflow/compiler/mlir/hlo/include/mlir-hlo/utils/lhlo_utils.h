@@ -27,20 +27,20 @@ namespace lmhlo {
 // TODO(b/236017415): remove when mhlo uses prefix accessor.
 namespace accessor_dispatch {
 template <typename OpT>
-auto getResults(OpT op, int) -> decltype(op.getResults(), ValueRange{}) {
-  return op.getResults();
+auto getOutputs(OpT op, int) -> decltype(op.getOutputs(), ValueRange{}) {
+  return op.getOutputs();
 }
 template <typename OpT>
-auto getResults(OpT op, char) -> decltype(op.results(), ValueRange{}) {
+auto getOutputs(OpT op, char) -> decltype(op.results(), ValueRange{}) {
   return op.results();
 }
 
 template <typename OpT>
-auto getOperands(OpT op, int) -> decltype(op.getOperands(), ValueRange{}) {
-  return op.getOperands();
+auto getInputs(OpT op, int) -> decltype(op.getInputs(), ValueRange{}) {
+  return op.getInputs();
 }
 template <typename OpT>
-auto getOperands(OpT op, char) -> decltype(op.operands(), ValueRange{}) {
+auto getInputs(OpT op, char) -> decltype(op.operands(), ValueRange{}) {
   return op.operands();
 }
 }  // namespace accessor_dispatch
@@ -54,8 +54,8 @@ static LogicalResult VerifyAllReduce(OpT op) {
   // Each member of the operand should have the same type as the corresponding
   // member of the result.
   for (auto it : llvm::enumerate(
-           llvm::zip(accessor_dispatch::getOperands(op, 0).getTypes(),
-                     accessor_dispatch::getResults(op, 0).getTypes()))) {
+           llvm::zip(accessor_dispatch::getInputs(op, 0).getTypes(),
+                     accessor_dispatch::getOutputs(op, 0).getTypes()))) {
     Type operandType = std::get<0>(it.value());
     Type resultType = std::get<1>(it.value());
     if (operandType != resultType)

@@ -157,9 +157,13 @@ Status GatherComputationsByAllocationType(
           case HloOpcode::kCall:
           case HloOpcode::kConditional:
           case HloOpcode::kWhile:
-            // Call and while must be called from a computation with global
-            // allocations as they may return references to buffers inside the
-            // called computation which cannot be thread-local.
+          case HloOpcode::kAsyncStart:
+          case HloOpcode::kAsyncUpdate:
+          case HloOpcode::kAsyncDone:
+            // Call, conditional, while, and async operations must be called
+            // from a computation with global allocations as they may return
+            // references to buffers inside the called computation which cannot
+            // be thread-local.
             if (is_thread_local) {
               return InvalidArgument(
                   "computation %s cannot contain call/while op because it "
@@ -180,8 +184,6 @@ Status GatherComputationsByAllocationType(
           case HloOpcode::kSelectAndScatter:
           case HloOpcode::kSort:
           case HloOpcode::kFusion:
-          case HloOpcode::kAsyncStart:
-          case HloOpcode::kAsyncDone:
             // Map/reduce etc computations are always thread-local.
             worklist.push_back(std::make_pair(subcomputation,
                                               true));  // Thread local.
@@ -488,8 +490,8 @@ StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueTopLevelSlice(
 bool BufferAssignment::SharesSliceAtIndex(
     const HloInstruction* hlo_a, const ShapeIndex& shape_index_a,
     const HloInstruction* hlo_b, const ShapeIndex& shape_index_b) const {
-  return GetUniqueSlice(hlo_a, shape_index_a).ConsumeValueOrDie() ==
-         GetUniqueSlice(hlo_b, shape_index_b).ConsumeValueOrDie();
+  return GetUniqueSlice(hlo_a, shape_index_a).value() ==
+         GetUniqueSlice(hlo_b, shape_index_b).value();
 }
 
 bool BufferAssignment::HaveDisjointSlices(const HloInstruction* hlo_a,
@@ -976,11 +978,11 @@ bool BufferAssigner::LiveRangeInterferes(const HloValue* buffer1,
 
   auto live_range_it1 = buffer_live_ranges.find(buffer1);
   CHECK(live_range_it1 != buffer_live_ranges.end())
-      << "Buffer doesn't have a proper live range:" << buffer1;
+      << "Buffer doesn't have a proper live range:" << buffer1->ToString();
 
   auto live_range_it2 = buffer_live_ranges.find(buffer2);
   CHECK(live_range_it2 != buffer_live_ranges.end())
-      << "Buffer doesn't have a proper live range:" << buffer2;
+      << "Buffer doesn't have a proper live range:" << buffer2->ToString();
 
   // Check if a user value can share the same buffer as its operand.
   auto can_share_as_operand =

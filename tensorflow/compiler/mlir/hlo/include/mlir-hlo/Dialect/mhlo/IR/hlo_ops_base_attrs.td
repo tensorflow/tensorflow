@@ -108,4 +108,14 @@ def ArgResultAlias : AttrDef<HLO_Dialect, "ArgResultAlias"> {
   let hasCustomAssemblyFormat = 1;
 }
 
+// Represents a unique identifier for each Send/Recv instruction pair or
+// optionally for collective instructions (AllReduce, CollectivePermute,
+// AllToAll). Non-positive channel_id handle is equivalent to no channel id.
+def ChannelHandle : AttrDef<HLO_Dialect, "ChannelHandle"> {
+  let mnemonic = "channel_handle";
+  let parameters = (ins "int64_t":$handle, "int64_t":$type);
+  let summary = "two 64-bit integers 'handle' and 'type'";
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
 #endif // HLO_OPS_BASE_ATTRS

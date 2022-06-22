@@ -69,14 +69,6 @@ gentbl_cc_library(
             ["-gen-dialect-doc"],
             "g3doc/tf_ops.md",
         ),
-        (
-            ["-gen-struct-attr-decls"],
-            "ir/tf_structs.h.inc",
-        ),
-        (
-            ["-gen-struct-attr-defs"],
-            "ir/tf_structs.cc.inc",
-        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_ops.td",
@@ -360,7 +352,6 @@ cc_library(
         ":tf_device_pass_inc_gen",
         ":tf_pass_inc_gen",
         "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:hlo_ops_base_structs",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",
@@ -627,12 +618,9 @@ cc_library(
     hdrs = [
         "ir/tf_structs.h",
     ],
-    textual_hdrs = [
-        "ir/tf_structs.h.inc",
-    ],
     deps = [
-        ":tensorflow_struct_doc_gen",
         "//tensorflow/core:framework",
+        "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
@@ -704,6 +692,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:logging",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
@@ -2329,6 +2318,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

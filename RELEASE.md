@@ -74,6 +74,15 @@
         behavior, set `inject_prefetch=True` in
         `tf.data.experimental.OptimizationOptions`.
 
+*   `tf.distribute`:
+
+    *   Added [`tf.distribute.experimental.PreemptionCheckpointHandler`](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/PreemptionCheckpointHandler)
+        to handle worker preemption/maintenance and cluster-wise consistent
+        error reporting for `tf.distribute.MultiWorkerMirroredStrategy`.
+        Specifically, for the type of interruption with advance notice, it
+        automatically saves a checkpoint, exits the program without raising an
+        unrecoverable error, and restores the progress when training restarts.
+
 *   `tf.math`:
 
     *   Added `tf.math.approx_max_k` and `tf.math.approx_min_k` which are the

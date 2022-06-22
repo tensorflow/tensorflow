@@ -572,10 +572,8 @@ xla::StatusOr<std::unique_ptr<TpuDriver>> RegisterRecordingTpuDriver(
 
   auto driver_status = TpuDriverRegistry::Open(worker_config);
   if (!driver_status.ok()) return driver_status.status();
-  auto driver = driver_status.ConsumeValueOrDie();
-
   return std::unique_ptr<TpuDriver>(
-      new RecordingTpuDriver(std::move(driver), file, flush));
+      new RecordingTpuDriver(std::move(driver_status).value(), file, flush));
 }
 
 // To record a sequence of operations, set the worker configuration string to

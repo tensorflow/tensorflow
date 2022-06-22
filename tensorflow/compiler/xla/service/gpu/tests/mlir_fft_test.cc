@@ -43,8 +43,8 @@ TEST_F(FftTest, SimpleCase1) {
         }
       })";
   std::vector<float> arg0 = {1, 0, 1, 0};
-  auto outputs = RunMlirTextWithHostBuffers(mlir_text, {ToUint8Span(&arg0)})
-                     .ConsumeValueOrDie();
+  auto outputs =
+      RunMlirTextWithHostBuffers(mlir_text, {ToUint8Span(&arg0)}).value();
   ASSERT_EQ(1, outputs.size());
   EXPECT_THAT(FromUint8Span<float>(outputs[0]),
               ElementsAreArray<float>({2, 0, 0, 0, 2, 0}));

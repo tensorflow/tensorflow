@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 
+#include <complex>
 #include <cstdarg>
 #include <cstddef>
 #include <cstring>
@@ -22,6 +23,7 @@ limitations under the License.
 #include <limits>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include "absl/base/dynamic_annotations.h"
@@ -45,6 +47,13 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor.h"
 
 namespace se = ::stream_executor;
+
+namespace {
+template <class T>
+struct is_complex : std::false_type {};
+template <class T>
+struct is_complex<std::complex<T>> : std::true_type {};
+}  // namespace
 
 namespace xla {
 namespace cpu {
@@ -507,6 +516,12 @@ class CpuAllReduceRendezvous
         case xla::F64:
           DoAllReduce<xla::F64>(participant);
           break;
+        case xla::C64:
+          DoAllReduce<xla::C64>(participant);
+          break;
+        case xla::C128:
+          DoAllReduce<xla::C128>(participant);
+          break;
         default:
           LOG(FATAL) << "Unexpected datatype;";
       }
@@ -604,7 +619,8 @@ class CpuAllReduceRendezvous
     using type = typename std::make_unsigned_t<T>;
   };
 
-  template <typename T>
+  template <typename T,
+            typename std::enable_if<!is_complex<T>::value>::type* = nullptr>
   T PerformReductionStep(xla::ReductionKind reduction_kind, T a, T b) {
     using SumProductType = typename SumProductTypeForReductionStep<
         T, std::is_integral<T>::value && std::is_signed<T>::value>::type;
@@ -621,6 +637,26 @@ class CpuAllReduceRendezvous
         return std::min(a, b);
       case xla::ReductionKind::MAX:
         return std::max(a, b);
+    }
+  }
+
+  template <typename T,
+            typename std::enable_if<is_complex<T>::value>::type* = nullptr>
+  T PerformReductionStep(xla::ReductionKind reduction_kind, T a, T b) {
+    using SumProductType = typename SumProductTypeForReductionStep<
+        T, std::is_integral<T>::value && std::is_signed<T>::value>::type;
+    switch (reduction_kind) {
+      case xla::ReductionKind::SUM:
+        return absl::bit_cast<T>(
+            static_cast<SumProductType>(absl::bit_cast<SumProductType>(a) +
+                                        absl::bit_cast<SumProductType>(b)));
+      case xla::ReductionKind::PRODUCT:
+        return absl::bit_cast<T>(
+            static_cast<SumProductType>(absl::bit_cast<SumProductType>(a) *
+                                        absl::bit_cast<SumProductType>(b)));
+      case xla::ReductionKind::MIN:
+      case xla::ReductionKind::MAX:
+        LOG(FATAL) << "min/max not valid for complex types";
     }
   }
 };

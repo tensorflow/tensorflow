@@ -131,7 +131,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     params.op_version = op_version_;
     bool deterministic =
         deterministic_.IsDeterministic() || deterministic_.IsDefault();
-    return absl::make_unique<Iterator>(
+    return std::make_unique<Iterator>(
         Iterator::Params{
             this, name_utils::IteratorPrefix(kDatasetType, prefix, params)},
         deterministic);
@@ -291,7 +291,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // TODO(jsimsa): Register cancellation callback once the implementation is
     // refactored not to hold mu_ while calling `GetNext` on the input.
     Status Initialize(IteratorContext* ctx) override {
-      cancellation_manager_ = absl::make_unique<CancellationManager>();
+      cancellation_manager_ = std::make_unique<CancellationManager>();
       IteratorContext::Params params(ctx);
       params.cancellation_manager = cancellation_manager_.get();
       TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(

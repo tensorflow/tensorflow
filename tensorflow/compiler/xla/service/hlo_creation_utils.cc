@@ -329,6 +329,13 @@ StatusOr<HloInstruction*> MakeMapHlo(absl::Span<HloInstruction* const> operands,
       HloInstruction::CreateMap(map_shape, operands, map_computation));
 }
 
+HloInstruction* MakeReducePrecisionHlo(HloInstruction* operand,
+                                       int exponent_bits, int mantissa_bits) {
+  return operand->parent()->AddInstruction(
+      HloInstruction::CreateReducePrecision(operand->shape(), operand,
+                                            exponent_bits, mantissa_bits));
+}
+
 StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
                                         HloInstruction* init_value,
                                         absl::Span<const int64_t> dimensions,

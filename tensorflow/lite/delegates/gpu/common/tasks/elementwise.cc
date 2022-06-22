@@ -217,9 +217,6 @@ GPUOperation CreateElementwiseTwoInput(
   const BHWC shape = BHWC(1, 1, 1, constant_tensor.shape.v);
   TensorDescriptor const_tensor_desc = definition.src_tensors[0];
   auto status = const_tensor_desc.UpdateToSupportedStorageType(gpu_info, shape);
-  if (!status.ok()) {
-    const_tensor_desc.storage_type = TensorStorageType::BUFFER;
-  }
   const_tensor_desc.UploadData(constant_tensor);
 
   GPUOperation result(definition);
@@ -251,9 +248,6 @@ GPUOperation CreateElementwiseTwoInput(
                           constant_tensor.shape.c);
   TensorDescriptor const_tensor_desc = definition.src_tensors[0];
   auto status = const_tensor_desc.UpdateToSupportedStorageType(gpu_info, shape);
-  if (!status.ok()) {
-    const_tensor_desc.storage_type = TensorStorageType::BUFFER;
-  }
   const_tensor_desc.UploadData(constant_tensor);
 
   GPUOperation result(definition);

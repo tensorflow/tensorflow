@@ -61,6 +61,7 @@ module {
 // CHECK-SAME: %[[in_scale]], %[[in_zp]], %[[w_scale]], %[[w_zp]],
 // CHECK-SAME: %[[b_scale]], %[[w_zp]], %[[out_scale]], %[[out_zp]])
 // CHECK-SAME: f = @quantized_conv2d_with_bias_and_relu6_fn_0
+// CHECK-SAME: (tensor<1x2x2x3xi8>, tensor<2x2x3x2xi8>, tensor<2xi32>, tensor<f32>, tensor<i32>, tensor<2xf32>, tensor<2xi32>, tensor<2xf32>, tensor<2xi32>, tensor<f32>, tensor<i32>) -> tensor<*xi8>
 // CHECK: %[[dequantize:.*]] = "tf.PartitionedCall"(%[[conv_quant]], %[[out_scale]], %[[out_zp]])
 // CHECK-SAME: f = @dequantize_i8
 
@@ -76,6 +77,7 @@ module {
 // CHECK:      %[[RELU6_0:.*]] = "tf.Relu6"
 
 // CHECK-LABEL: func private @quantized_conv2d_with_bias_and_relu6_fn_0
+// CHECK-SAME: (%arg0: tensor<1x2x2x3xi8>, %arg1: tensor<2x2x3x2xi8>, %arg2: tensor<2xi32>, %arg3: tensor<f32>, %arg4: tensor<i32>, %arg5: tensor<2xf32>, %arg6: tensor<2xi32>, %arg7: tensor<2xf32>, %arg8: tensor<2xi32>, %arg9: tensor<f32>, %arg10: tensor<i32>) -> tensor<*xi8>
 // CHECK:      %[[CONV2D_0:.*]] = "tf.Conv2D"
 // CHECK-SAME: {dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true}
 }
@@ -108,11 +110,13 @@ module {
 // CHECK-SAME: f = @quantize_i8
 // CHECK: %[[conv_quant:.*]] = "tf.PartitionedCall"(%[[quantize]]
 // CHECK-SAME: f = @quantized_conv2d_with_bias_and_relu6_fn_0
+// CHECK-SAME: (tensor<1x2x2x3xi8>, tensor<2x2x3x2xi8>, tensor<2xi32>, tensor<f32>, tensor<i32>, tensor<2xf32>, tensor<2xi32>, tensor<2xf32>, tensor<2xi32>, tensor<f32>, tensor<i32>) -> tensor<*xi8>
 // CHECK: %[[dequantize:.*]] = "tf.PartitionedCall"(%[[conv_quant]]
 // CHECK-SAME: f = @dequantize_i8
 // CHECK: return %[[dequantize]]
 
 // CHECK-LABEL: func private @quantized_conv2d_with_bias_and_relu6_fn_0
+// CHECK-SAME: (%arg0: tensor<1x2x2x3xi8>, %arg1: tensor<2x2x3x2xi8>, %arg2: tensor<2xi32>, %arg3: tensor<f32>, %arg4: tensor<i32>, %arg5: tensor<2xf32>, %arg6: tensor<2xi32>, %arg7: tensor<2xf32>, %arg8: tensor<2xi32>, %arg9: tensor<f32>, %arg10: tensor<i32>) -> tensor<*xi8>
 // CHECK:      %[[CONV2D_0:.*]] = "tf.Conv2D"
 // CHECK-SAME: {dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true}
 }

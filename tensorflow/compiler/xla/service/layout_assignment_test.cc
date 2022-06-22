@@ -643,7 +643,7 @@ TEST_F(LayoutAssignmentTest, TransposeWithinFusionDoesNotCrash) {
           .compiler()
           ->RunHloPasses(m->Clone(), backend().default_stream_executor(),
                          /*device_allocator=*/nullptr)
-          .ConsumeValueOrDie();
+          .value();
 
   EXPECT_EQ(OkStatus(), backend()
                             .compiler()
@@ -929,7 +929,7 @@ TEST_F(LayoutAssignmentTest, CopySliceOperandToAvoidImplicitLayoutChange) {
           .compiler()
           ->RunHloPasses(m->Clone(), backend().default_stream_executor(),
                          /*device_allocator=*/nullptr)
-          .ConsumeValueOrDie();
+          .value();
   HloInstruction* root =
       compiled_module->entry_computation()->root_instruction();
   Shape shape_copy = ShapeUtil::MakeShapeWithLayout(F32, {4, 5}, {1, 0});
@@ -961,7 +961,7 @@ TEST_F(LayoutAssignmentTest, CopyDSliceOperandToAvoidImplicitLayoutChange) {
           .compiler()
           ->RunHloPasses(m->Clone(), backend().default_stream_executor(),
                          /*device_allocator=*/nullptr)
-          .ConsumeValueOrDie();
+          .value();
   HloInstruction* root =
       compiled_module->entry_computation()->root_instruction();
   Shape shape_copy = ShapeUtil::MakeShapeWithLayout(F32, {4, 5}, {1, 0});
@@ -994,7 +994,7 @@ TEST_F(LayoutAssignmentTest, CopyConcatOperandToAvoidImplicitLayoutChange) {
           .compiler()
           ->RunHloPasses(m->Clone(), backend().default_stream_executor(),
                          /*device_allocator=*/nullptr)
-          .ConsumeValueOrDie();
+          .value();
   HloInstruction* root =
       compiled_module->entry_computation()->root_instruction();
   Shape shape_copy = ShapeUtil::MakeShapeWithLayout(F32, {3, 5}, {1, 0});
@@ -1027,7 +1027,7 @@ TEST_F(LayoutAssignmentTest,
           .compiler()
           ->RunHloPasses(m->Clone(), backend().default_stream_executor(),
                          /*device_allocator=*/nullptr)
-          .ConsumeValueOrDie();
+          .value();
   HloInstruction* root =
       compiled_module->entry_computation()->root_instruction();
   EXPECT_THAT(root,
@@ -1051,7 +1051,7 @@ TEST_F(LayoutAssignmentTest, PropagatingLayoutFromResultToOperand) {
           .compiler()
           ->RunHloPasses(m->Clone(), backend().default_stream_executor(),
                          /*device_allocator=*/nullptr)
-          .ConsumeValueOrDie();
+          .value();
   HloInstruction* root =
       compiled_module->entry_computation()->root_instruction();
   Shape shape_copy = ShapeUtil::MakeShapeWithLayout(F32, {4, 5}, {0, 1});

@@ -50,7 +50,7 @@ std::unique_ptr<GPUOperation> SelectDWConvolutionPowerVR(
 std::unique_ptr<GPUOperation> SelectDWConvolutionMali(
     const DepthwiseConvolution2DAttributes& attr, const GpuInfo& gpu_info,
     const OperationDef& op_def) {
-  const auto storage_type = op_def.src_tensors[0].storage_type;
+  const auto storage_type = op_def.src_tensors[0].GetStorageType();
   bool buffer_type = storage_type == TensorStorageType::BUFFER ||
                      storage_type == TensorStorageType::IMAGE_BUFFER;
   const MaliInfo mali_info = gpu_info.mali_info;

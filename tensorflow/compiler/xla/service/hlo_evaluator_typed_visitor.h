@@ -1549,8 +1549,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           }
 
           Literal computed_result =
-              embedded_evaluator.Evaluate(*computation, arg_literals)
-                  .ConsumeValueOrDie();
+              embedded_evaluator.Evaluate(*computation, arg_literals).value();
           // Clear visit states so that the we can use the evaluate again on
           // the same computation.
           embedded_evaluator.ResetVisitStates();
@@ -1707,7 +1706,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                 embedded_evaluator
                     .Evaluate(*select,
                               {&selected_val_literal, &curr_val_literal})
-                    .ConsumeValueOrDie();
+                    .value();
             bool selected = !computed_result.Get<bool>({});
             if (selected) {
               selected_val = curr_val;
@@ -1730,7 +1729,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                   embedded_evaluator
                       .Evaluate(*scatter,
                                 {&source_literal_scatter, &scattered_literal})
-                      .ConsumeValueOrDie();
+                      .value();
               result.Set(operand_index, computed_result.Get<ReturnT>({}));
               // Clear visit states so that the we can use the evaluator again
               // on the same computation.
@@ -1828,8 +1827,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                       << "\n";
               args.push_back(&curr_val_literal_vec.back());
             }
-            computed_result[0] = embedded_evaluator.Evaluate(*function, args)
-                                     .ConsumeValueOrDie();
+            computed_result[0] =
+                embedded_evaluator.Evaluate(*function, args).value();
             VLOG(2) << "Computed result:" << computed_result[0].ToString()
                     << "\n";
             // Clear visit states so that the we can use the evaluate again

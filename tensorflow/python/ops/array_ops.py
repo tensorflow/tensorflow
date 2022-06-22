@@ -18,13 +18,10 @@
 import numbers
 import numpy as np
 
-from tensorflow.python.client import pywrap_tf_session
-from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import composite_tensor
-from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -35,7 +32,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 # 'Constant' gets imported in the module 'array_ops'.
 from tensorflow.python.framework.constant_op import constant
-from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 # go/tf-wildcard-import
@@ -6764,10 +6760,11 @@ def repeat_with_axis(data, repeats, axis, name=None):
          [3, 3, 4, 4, 4]], dtype=int32)>
 
   """
-  # Whether the execution happens on the XLA path.
-  on_xla_path = (
-      control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()) or
-      config.get_optimizer_jit() or pywrap_tf_session.TF_GetXlaAutoJitEnabled())
+  # Whether the execution uses the optimized non-XLA implementation below.
+  # TODO(b/236387200): Separate the implementations at a lower level, so that
+  # non-XLA path gets the performance benefits and the XLA path is not broken
+  # after loading a saved model with the optimization.
+  use_optimized_non_xla_implementation = False
 
   if not isinstance(axis, int):
     raise TypeError("Argument `axis` must be an int. "
@@ -6778,7 +6775,7 @@ def repeat_with_axis(data, repeats, axis, name=None):
     # Note: We want to pass dtype=None to convert_to_int_tensor so that the
     # existing type is maintained instead of force-casting to int32. However,
     # this is not compatible with the implementation used on the XLA path.
-    if (on_xla_path or not forward_compat.forward_compatible(2022, 3, 30)):
+    if not use_optimized_non_xla_implementation:
       repeats = convert_to_int_tensor(repeats, name="repeats")
     else:
       repeats = convert_to_int_tensor(repeats, name="repeats", dtype=None)
@@ -6803,7 +6800,6 @@ def repeat_with_axis(data, repeats, axis, name=None):
                             axis=0)
       return reshape(tiled, result_shape)
 
-
     # Check data Tensor shapes.
     if repeats.shape.ndims == 1:
       data.shape.dims[axis].assert_is_compatible_with(repeats.shape[0])
@@ -6813,7 +6809,7 @@ def repeat_with_axis(data, repeats, axis, name=None):
     # The implementation on the else branch has better performance. However, it
     # does not work on the XLA path since it relies on the range op with a
     # shape that is not a compile-time constant.
-    if (on_xla_path or not forward_compat.forward_compatible(2022, 3, 30)):
+    if not use_optimized_non_xla_implementation:
       repeats_original = repeats
 
       # Broadcast the `repeats` tensor so rank(repeats) == axis + 1.

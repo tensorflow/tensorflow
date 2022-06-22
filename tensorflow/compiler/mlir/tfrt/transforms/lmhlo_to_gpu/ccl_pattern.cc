@@ -97,8 +97,8 @@ FailureOr<Value> CclOpConversionRewrite(
     lmhlo::AllGatherOp srcOp, Value chain, Value handle,
     xla::gpu::NcclCollectiveConfig& /*config*/,
     mlir::BlockAndValueMapping& mapping, ConversionPatternRewriter& rewriter) {
-  const auto& operands = srcOp.getOperands();
-  const auto& results = srcOp.getResults();
+  const auto& operands = srcOp.getInputs();
+  const auto& results = srcOp.getOutputs();
 
   for (int i = 0; i < operands.size(); i++) {
     xla::Shape shape = xla::TypeToShape(operands[i].getType());
@@ -122,8 +122,8 @@ FailureOr<Value> CclOpConversionRewrite(
     lmhlo::AllReduceOp srcOp, Value chain, Value handle,
     xla::gpu::NcclCollectiveConfig& /*config*/,
     mlir::BlockAndValueMapping& mapping, ConversionPatternRewriter& rewriter) {
-  const auto& operands = srcOp.getOperands();
-  const auto& results = srcOp.getResults();
+  const auto& operands = srcOp.getInputs();
+  const auto& results = srcOp.getOutputs();
 
   auto reduction_kind =
       xla::gpu::NcclAllReduceThunkBase::MatchAllReduceComputation(
@@ -158,8 +158,8 @@ FailureOr<Value> CclOpConversionRewrite(
     lmhlo::ReduceScatterOp srcOp, Value chain, Value handle,
     xla::gpu::NcclCollectiveConfig& /*config*/,
     mlir::BlockAndValueMapping& mapping, ConversionPatternRewriter& rewriter) {
-  const auto& operands = srcOp.getOperands();
-  const auto& results = srcOp.getResults();
+  const auto& operands = srcOp.getInputs();
+  const auto& results = srcOp.getOutputs();
 
   auto reduction_kind =
       xla::gpu::NcclAllReduceThunkBase::MatchAllReduceComputation(
@@ -194,8 +194,8 @@ FailureOr<Value> CclOpConversionRewrite(
     lmhlo::AllToAllOp srcOp, Value chain, Value handle,
     xla::gpu::NcclCollectiveConfig& /*config*/,
     mlir::BlockAndValueMapping& mapping, ConversionPatternRewriter& rewriter) {
-  const auto& operands = srcOp.getOperands();
-  const auto& results = srcOp.getResults();
+  const auto& operands = srcOp.getInputs();
+  const auto& results = srcOp.getOutputs();
 
   for (int i = 0; i < operands.size(); i++) {
     xla::Shape shape = xla::TypeToShape(operands[i].getType());
@@ -272,7 +272,7 @@ FailureOr<Value> CclOpConversionRewrite(lmhlo::CollectivePermuteOp srcOp,
 template <class CclOpType>
 LogicalResult BufferOperandsEqualsOpArguments(CclOpType op,
                                               ValueRange operands) {
-  if (operands.size() != op.getOperands().size() + op.getResults().size()) {
+  if (operands.size() != op.getInputs().size() + op.getOutputs().size()) {
     return mlir::failure();
   }
   return mlir::success();
@@ -316,8 +316,8 @@ FailureOr<Value> TryDegenerateToMemCopy(CclOpType op, Value chain, Value stream,
   if (!config.IsDegenerate(replica_count, num_partitions)) return failure();
 
   for (int i = 0; i < op.getOperands().size(); i++) {
-    Value dst = mapping.lookup(op.getResults()[i]);
-    Value src = mapping.lookup(op.getOperands()[i]);
+    Value dst = mapping.lookup(op.getOutputs()[i]);
+    Value src = mapping.lookup(op.getInputs()[i]);
     chain =
         rewriter
             .create<tfrt::gpu::MemCopyOp>(op.getLoc(), dst, src, stream, chain)

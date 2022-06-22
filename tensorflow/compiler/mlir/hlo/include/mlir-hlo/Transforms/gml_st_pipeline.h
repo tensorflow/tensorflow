@@ -12,22 +12,25 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 
-#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_UTIL_H_
-#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_UTIL_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_TRANSFORMS_GML_ST_PIPELINE_H_
+#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_TRANSFORMS_GML_ST_PIPELINE_H_
+
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Pass/PassOptions.h"
+#include "mlir/Pass/PassRegistry.h"
+
 namespace mlir {
-namespace quant {
-
-// Returns true if the op has any quantized tensors as input or output.
-bool HasQuantizedTensors(Operation *op);
-
-enum class QuantizationMethod {
-  kQuantizationAwareTraining,
-  kPostTrainingQuantization,
-  kDynamicRangeQuantization
+struct GmlStPipelineOptions
+    : public mlir::PassPipelineOptions<GmlStPipelineOptions> {
+  ListOption<int64_t> tileSizes{
+      *this, "tile-sizes",
+      llvm::cl::desc("tile-sizes option for the tiling pass")};
 };
 
-}  // namespace quant
+void createGmlStPipeline(mlir::OpPassManager& pm,
+                         const GmlStPipelineOptions& options);
+
 }  // namespace mlir
-#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_UTIL_H_
+
+#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_TRANSFORMS_GML_ST_PIPELINE_H_

@@ -57,9 +57,9 @@ constexpr const char kProtocol[] = "grpc";
 class WorkerClientTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    test_cluster_ = absl::make_unique<TestCluster>(/*num_workers=*/1);
+    test_cluster_ = std::make_unique<TestCluster>(/*num_workers=*/1);
     TF_ASSERT_OK(test_cluster_->Initialize());
-    dispatcher_client_ = absl::make_unique<DataServiceDispatcherClient>(
+    dispatcher_client_ = std::make_unique<DataServiceDispatcherClient>(
         test_cluster_->DispatcherAddress(), kProtocol);
   }
 

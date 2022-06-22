@@ -20,14 +20,13 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringSwitch.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Operation.h"
@@ -79,34 +78,44 @@ Value transposeReshape(Value arg, Location loc,
   for (auto val : transposePermutation) {
     transposedShape.push_back(argShape[val]);
   }
-  auto transposeType = RankedTensorType::get(transposedShape, elementType);
-  Value transposeResult = rewriter.create<TransposeOp>(
-      loc, transposeType, arg, transposePermutationAttr);
 
   // If there are only a single pair of contracting dimensions and the output
   // rank is two we can skip a needless reshape.
-  if (transposeType.getRank() == 2 && leftDims.size() == 1 &&
-      rightDims.size() == 1)
-    return transposeResult;
+  bool noReshape = transposedShape.size() == 2 && leftDims.size() == 1 &&
+                   rightDims.size() == 1;
+
+  // Construct type. If no reshape is needed, the sparsity, if any, of the input
+  // operand is propagated to the ouput to ensure this information is not lost
+  // in the dot operation.
+  auto enc = sparse_tensor::getSparseTensorEncoding(arg.getType());
+  auto transposeType =
+      (enc && noReshape)
+          ? RankedTensorType::get(transposedShape, elementType, enc)
+          : RankedTensorType::get(transposedShape, elementType);
+
+  // Construct transpose. If no reshape is needed, we are done.
+  Value transposeResult = rewriter.create<TransposeOp>(
+      loc, transposeType, arg, transposePermutationAttr);
+  if (noReshape) return transposeResult;
 
   // Return the final result.
   auto reshapedType = RankedTensorType::get({leftSize, rightSize}, elementType);
 
   if (reshapedType.hasStaticShape()) {
-    return rewriter.create<mhlo::ReshapeOp>(loc, reshapedType, transposeResult);
+    return rewriter.create<ReshapeOp>(loc, reshapedType, transposeResult);
   }
 
   SmallVector<Value> reshapeDims;
   auto multiplyDynamicDims = [&](llvm::ArrayRef<int64_t> dims) -> Value {
-    Value dynamicSize = rewriter.create<mhlo::GetDimensionSizeOp>(
+    Value dynamicSize = rewriter.create<GetDimensionSizeOp>(
         loc, RankedTensorType::get({1}, rewriter.getI32Type()), arg,
         rewriter.getI64IntegerAttr(dims.front()));
 
     for (auto idx : dims.drop_front()) {
-      Value dim = rewriter.create<mhlo::GetDimensionSizeOp>(
+      Value dim = rewriter.create<GetDimensionSizeOp>(
           loc, RankedTensorType::get({1}, rewriter.getI32Type()), arg,
           rewriter.getI64IntegerAttr(idx));
-      dynamicSize = rewriter.create<mhlo::MulOp>(loc, dynamicSize, dim);
+      dynamicSize = rewriter.create<MulOp>(loc, dynamicSize, dim);
     }
     return dynamicSize;
   };
@@ -125,7 +134,7 @@ Value transposeReshape(Value arg, Location loc,
         rewriter.create<ConstantOp>(loc, rewriter.getI32TensorAttr(rightSize)));
   }
 
-  Value reshapeDimsTensor = rewriter.create<mhlo::ConcatenateOp>(
+  Value reshapeDimsTensor = rewriter.create<ConcatenateOp>(
       loc, RankedTensorType::get({2}, rewriter.getI32Type()), reshapeDims,
       rewriter.getI64IntegerAttr(0));
 
@@ -209,19 +218,27 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
 
     ArrayAttr precisionConfig;
     if (op.precision_config()) precisionConfig = *op.precision_config();
+    SmallVector<Type, 1> results;
+    LogicalResult res =
+        DotOp::inferReturnTypes(rewriter.getContext(), None, {lhs, rhs},
+                                op->getAttrDictionary(), {}, results);
+    (void)res;
+    assert(succeeded(res) && "invalid input to dot");
+
+    ShapedType resultTy = op.getType().cast<ShapedType>();
+    ShapedType newTy =
+        results.front().cast<ShapedType>().clone(resultTy.getElementType());
     Value newDotOp =
-        rewriter.create<DotOp>(op.getLoc(), lhs, rhs, precisionConfig);
+        rewriter.create<DotOp>(op.getLoc(), newTy, lhs, rhs, precisionConfig);
     if (lhsContractingDims.size() == (lhsTy.getRank() - 1) &&
         rhsContractingDims.size() == (rhsTy.getRank() - 1)) {
       rewriter.replaceOp(op, newDotOp);
       return success();
     }
 
-    ShapedType resultTy = op.getType().cast<ShapedType>();
-
     // We can avoid all the computation below if we know the static shape.
     if (resultTy.hasStaticShape()) {
-      rewriter.replaceOpWithNewOp<mhlo::ReshapeOp>(op, resultTy, newDotOp);
+      rewriter.replaceOpWithNewOp<ReshapeOp>(op, resultTy, newDotOp);
       return success();
     }
 
@@ -235,7 +252,7 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
       for (auto contractingDim : contractingDims) {
         for (; index < contractingDim; index++) {
           staticDims.push_back(ty.getDimSize(index));
-          dynDims.push_back(rewriter.create<mhlo::GetDimensionSizeOp>(
+          dynDims.push_back(rewriter.create<GetDimensionSizeOp>(
               loc, RankedTensorType::get({1}, rewriter.getI32Type()), arg,
               rewriter.getI64IntegerAttr(index)));
         }
@@ -244,7 +261,7 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
 
       for (; index < ty.getRank(); index++) {
         staticDims.push_back(ty.getDimSize(index));
-        dynDims.push_back(rewriter.create<mhlo::GetDimensionSizeOp>(
+        dynDims.push_back(rewriter.create<GetDimensionSizeOp>(
             loc, RankedTensorType::get({1}, rewriter.getI32Type()), arg,
             rewriter.getI64IntegerAttr(index)));
       }
@@ -253,7 +270,7 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
     getDynamicDims(op.lhs(), lhsContractingDims);
     getDynamicDims(op.rhs(), rhsContractingDims);
 
-    Value reshapeDimsTensor = rewriter.create<mhlo::ConcatenateOp>(
+    Value reshapeDimsTensor = rewriter.create<ConcatenateOp>(
         loc,
         RankedTensorType::get({static_cast<int64_t>(dynDims.size())},
                               rewriter.getI32Type()),

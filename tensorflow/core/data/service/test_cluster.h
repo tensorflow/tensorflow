@@ -151,13 +151,13 @@ class DatasetClient {
 template <class T>
 DatasetClient<T>::DatasetClient(const TestCluster& cluster)
     : cluster_(cluster) {
-  dispatcher_client_ = absl::make_unique<DataServiceDispatcherClient>(
+  dispatcher_client_ = std::make_unique<DataServiceDispatcherClient>(
       cluster_.DispatcherAddress(), "grpc");
 
   for (size_t i = 0; i < cluster.NumWorkers(); ++i) {
     worker_clients_[cluster_.WorkerAddress(i)] =
-        absl::make_unique<DataServiceWorkerClient>(cluster_.WorkerAddress(i),
-                                                   "grpc", "grpc");
+        std::make_unique<DataServiceWorkerClient>(cluster_.WorkerAddress(i),
+                                                  "grpc", "grpc");
   }
 }
 

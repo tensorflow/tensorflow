@@ -195,13 +195,7 @@ TensorStorageType GetFastestStorageType(const GpuInfo& gpu_info) {
   } else if (gpu_info.IsPowerVR()) {
     return TensorStorageType::TEXTURE_2D;
   } else if (gpu_info.IsMali()) {
-    const MaliInfo mali_info = gpu_info.mali_info;
-    if (mali_info.IsMaliT8xx() || mali_info.IsBifrostGen3() ||
-        mali_info.IsValhall()) {
-      return TensorStorageType::TEXTURE_2D;
-    } else {
-      return TensorStorageType::BUFFER;
-    }
+    return TensorStorageType::TEXTURE_2D;
   } else if (gpu_info.IsNvidia()) {
     return gpu_info.SupportsImageBuffer() ? TensorStorageType::IMAGE_BUFFER
                                           : TensorStorageType::BUFFER;
@@ -235,15 +229,9 @@ TensorStorageType GetStorageTypeWithMinimalMemoryConsumption(
       return TensorStorageType::BUFFER;
     }
   } else if (gpu_info.IsMali()) {
-    const MaliInfo mali_info = gpu_info.mali_info;
-    if (mali_info.IsMaliT8xx() || mali_info.IsBifrostGen3() ||
-        mali_info.IsValhall()) {
-      if (gpu_info.opencl_info.IsImage2dFromBufferSupported() &&
-          CanUseSubBufferForImage2d(gpu_info)) {
-        return TensorStorageType::TEXTURE_2D;
-      } else {
-        return TensorStorageType::BUFFER;
-      }
+    if (gpu_info.opencl_info.IsImage2dFromBufferSupported() &&
+        CanUseSubBufferForImage2d(gpu_info)) {
+      return TensorStorageType::TEXTURE_2D;
     } else {
       return TensorStorageType::BUFFER;
     }

@@ -64,7 +64,7 @@ template <typename OpT>
 void NcclCollectiveConfig::SetCollectiveOpKindAndID(OpT op) {
   if (op.getChannelId()) {
     collective_op_kind = RendezvousKey::kCrossModule;
-    op_id = static_cast<int64_t>(op.getChannelId()->handle().getInt());
+    op_id = static_cast<int64_t>(op.getChannelId()->getHandle());
   } else {
     collective_op_kind = RendezvousKey::kCrossReplica;
     mlir::ModuleOp parent = op->template getParentOfType<mlir::ModuleOp>();
@@ -78,10 +78,10 @@ template <typename OpT>
 NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
     OpT op, std::optional<bool> use_global_device_ids) {
   NcclCollectiveConfig config;
-  config.operand_count = op.operands().size();
+  config.operand_count = op.getInputs().size();
   config.operand_element_type.reserve(config.operand_count);
   for (int i = 0; i < config.operand_count; i++) {
-    const Shape shape = GetShape(op.operands()[i]);
+    const Shape shape = GetShape(op.getInputs()[i]);
     config.operand_element_type.push_back(shape.element_type());
   }
   config.replica_groups =

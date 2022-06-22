@@ -134,9 +134,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "cd17728e6373a799e074788c38fc6ac72c31c5d0bbcb01117f22997521023ae5",
-        strip_prefix = "XNNPACK-fbcc7c30b422eb530906b2f94edfc308eca97271",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/fbcc7c30b422eb530906b2f94edfc308eca97271.zip"),
+        sha256 = "49edc5ee62f91436d28281fceb818362f016592c465161723d0d9f0befc09f42",
+        strip_prefix = "XNNPACK-55775ab7afc3a89ed93491e6600bb9afa4dca148",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/55775ab7afc3a89ed93491e6600bb9afa4dca148.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -584,9 +584,9 @@ def _tf_repositories():
         name = "nccl_archive",
         build_file = "//third_party:nccl/archive.BUILD",
         patch_file = ["//third_party/nccl:archive.patch"],
-        sha256 = "3ae89ddb2956fff081e406a94ff54ae5e52359f5d645ce977c7eba09b3b782e6",
-        strip_prefix = "nccl-2.8.3-1",
-        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.8.3-1.tar.gz"),
+        sha256 = "49b4fbfeebf1f62f6ceb69e72504045d8d1b4e7609e3c2477906f3004c7e2d82",
+        strip_prefix = "nccl-2.12.12-1",
+        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.12.12-1.tar.gz"),
     )
 
     java_import_external(
