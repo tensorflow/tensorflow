@@ -460,7 +460,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
       computation_layout.add_parameter_layout(xla::ShapeLayout(shape));
       input_shapes.push_back(std::move(shape));
     }
-    module = absl::make_unique<xla::HloModule>(
+    module = std::make_unique<xla::HloModule>(
         "TpuExecutableModule",
         xla::HloModuleConfig(std::move(computation_layout)));
   }
@@ -482,7 +482,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   TF_RETURN_IF_ERROR(UpdateDynamicInputs(stream, backend->memory_allocator(),
                                          &arguments, input_shapes));
 
-  auto tpu_executable = absl::make_unique<TpuOpExecutable>(
+  auto tpu_executable = std::make_unique<TpuOpExecutable>(
       tpu_program, std::move(module), /*host_command_handler=*/handler);
 
   const int32_t device_ordinal = node_context->device_ordinal();

@@ -56,7 +56,7 @@ class CustomOperator : public BaseOperator {
   std::unique_ptr<Operator> Deserialize(
       const BuiltinOptions* builtin_options,
       const CustomOptions* custom_options) const override {
-    auto op = absl::make_unique<TocoOperator>();
+    auto op = std::make_unique<TocoOperator>();
     if (custom_options) {
       auto flexbuffer_map =
           flexbuffers::GetRoot(custom_options->data(), custom_options->size())

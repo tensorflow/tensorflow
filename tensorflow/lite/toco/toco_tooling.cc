@@ -353,8 +353,7 @@ tensorflow::Status TransformWithStatus(const TocoFlags& toco_flags,
     // that didn't either have a min/max specified or get one set via
     // HardcodeMinMax or PropagateFakeQuantNumBits. This may require running
     // HardcodeMinMax to move changes through the graph as we make changes.
-    auto propagate_default_min_max =
-        absl::make_unique<PropagateDefaultMinMax>();
+    auto propagate_default_min_max = std::make_unique<PropagateDefaultMinMax>();
     bool has_default_ranges_flag = (toco_flags.has_default_ranges_min() &&
                                     toco_flags.has_default_ranges_max());
     if (has_default_ranges_flag) {

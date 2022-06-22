@@ -59,7 +59,7 @@ class BuiltinOperator : public BaseOperator {
   std::unique_ptr<Operator> Deserialize(
       const BuiltinOptions* builtin_options,
       const CustomOptions* custom_options) const override {
-    auto op = absl::make_unique<TocoOperator>();
+    auto op = std::make_unique<TocoOperator>();
     auto* options = static_cast<const TfLiteOptions*>(builtin_options);
     if (options) {
       ReadOptions(*options, op.get());

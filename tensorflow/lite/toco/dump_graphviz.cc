@@ -693,7 +693,7 @@ void InsertNode(const Model& model, const std::string& array_id, Node* node,
     prefixes.pop_back();
     if (node->children.count(prefix) == 0) {
       // Create a new node if this prefix is unseen.
-      node->children[prefix] = absl::make_unique<Node>();
+      node->children[prefix] = std::make_unique<Node>();
     }
     InsertNode(model, array_id, node->children[prefix].get(), prefixes,
                math_ops);

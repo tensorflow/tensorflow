@@ -1063,7 +1063,7 @@ tensorflow::Status ConvertRandomUniform(
   TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
 
   CHECK_EQ(GetDataTypeAttr(node, "T"), DT_INT32);
-  auto op = absl::make_unique<RandomUniformOperator>();
+  auto op = std::make_unique<RandomUniformOperator>();
   op->inputs.push_back(node.input(0));
   op->outputs.push_back(node.name());
   op->dtype = ConvertDataType(GetDataTypeAttr(node, "dtype"));
@@ -2078,7 +2078,7 @@ tensorflow::Status ConvertPackOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     const ModelFlags& model_flags, Model* model) {
   CHECK_EQ(node.op(), "Pack");
-  auto op = absl::make_unique<PackOperator>();
+  auto op = std::make_unique<PackOperator>();
   const int num_inputs = GetInputsCount(node, tf_import_flags);
   QCHECK_GE(num_inputs, 1)
       << node.op()
@@ -2100,7 +2100,7 @@ tensorflow::Status ConvertUnpackOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     const ModelFlags& model_flags, Model* model) {
   CHECK_EQ(node.op(), "Unpack");
-  auto op = absl::make_unique<UnpackOperator>();
+  auto op = std::make_unique<UnpackOperator>();
   const int num_inputs = GetInputsCount(node, tf_import_flags);
   QCHECK_EQ(num_inputs, 1);
   op->inputs.push_back(node.input(0));
@@ -2153,7 +2153,7 @@ tensorflow::Status ConvertShapeOperator(
   const auto out_type =
       HasAttr(node, "out_type") ? GetDataTypeAttr(node, "out_type") : DT_INT32;
   CHECK(out_type == DT_INT64 || out_type == DT_INT32);
-  auto op = absl::make_unique<TensorFlowShapeOperator>();
+  auto op = std::make_unique<TensorFlowShapeOperator>();
   op->output_data_type = ConvertDataType(out_type);
   op->inputs.push_back(node.input(0));
   op->outputs.push_back(node.name());
@@ -2166,7 +2166,7 @@ tensorflow::Status ConvertReverseSequenceOperator(
     const ModelFlags& model_flags, Model* model) {
   CHECK_EQ(node.op(), "ReverseSequence");
   TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
-  auto op = absl::make_unique<ReverseSequenceOperator>();
+  auto op = std::make_unique<ReverseSequenceOperator>();
   if (HasAttr(node, "seq_dim")) {
     op->seq_dim = GetIntAttr(node, "seq_dim");
   }
@@ -2332,7 +2332,7 @@ tensorflow::Status ConvertTopKV2Operator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     const ModelFlags& model_flags, Model* model) {
   CHECK((node.op() == "TopK") || (node.op() == "TopKV2"));
-  auto op = absl::make_unique<TopKV2Operator>();
+  auto op = std::make_unique<TopKV2Operator>();
   op->inputs.push_back(node.input(0));
   // K can be encoded as attr (TopK) convert it to a const.
   if (HasAttr(node, "k")) {
@@ -2353,7 +2353,7 @@ tensorflow::Status ConvertTopKV2Operator(
 tensorflow::Status ConvertDynamicPartitionOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     const ModelFlags& model_flags, Model* model) {
-  auto op = absl::make_unique<DynamicPartitionOperator>();
+  auto op = std::make_unique<DynamicPartitionOperator>();
   CHECK(HasAttr(node, "num_partitions"));
   op->num_partitions = GetIntAttr(node, "num_partitions");
   TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
@@ -2374,7 +2374,7 @@ tensorflow::Status ConvertDynamicStitchOperator(
   // The parallel and non-parallel variants are the same besides whether they
   // have a parallel loop; there are no behavioral differences.
   CHECK(node.op() == "DynamicStitch" || node.op() == "ParallelDynamicStitch");
-  auto op = absl::make_unique<DynamicStitchOperator>();
+  auto op = std::make_unique<DynamicStitchOperator>();
   CHECK(HasAttr(node, "N"));
   op->num_partitions = GetIntAttr(node, "N");
   // Expect all ID partitions + all value partitions.
@@ -2417,7 +2417,7 @@ tensorflow::Status ConvertOneHotOperator(
   CHECK(dtype == DT_INT32 || dtype == DT_INT64 || dtype == DT_FLOAT ||
         dtype == DT_BOOL);
 
-  auto op = absl::make_unique<OneHotOperator>();
+  auto op = std::make_unique<OneHotOperator>();
   op->axis = HasAttr(node, "axis") ? GetIntAttr(node, "axis") : -1;
   for (const std::string& input : node.input()) {
     op->inputs.push_back(input);

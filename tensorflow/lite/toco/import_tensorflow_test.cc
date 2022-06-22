@@ -463,7 +463,7 @@ class TensorContentTest : public ::testing::Test {
     SetAttrValue(dtype, &dtype_attr);
     (*node->mutable_attr())["dtype"] = dtype_attr;
 
-    auto allocated_content = absl::make_unique<T[]>(num_elements);
+    auto allocated_content = std::make_unique<T[]>(num_elements);
 
     // An attribute describing the content of this const node.
     tensorflow::TensorProto t;
