@@ -71,7 +71,7 @@ enum TfLiteGpuExperimentalFlags {
 //Used to select which GPU to run inference on.
 //On mobile devices, specify DONTCARE so that the 0th device on 
 //0th OpenCL platform is selected. 
-enum GPUVendor {
+enum TargeCLDeviceVendor {
   DONTCARE,
   NVIDIA,
   AMD,
@@ -149,7 +149,7 @@ typedef struct {
   //'gpu_ordinal' if multiple GPUs are present. For example, if the
   //computer has 3 NVidia GPUs and 3 Intel GPUs, set vendor = INTEL
   //and gpu_ordinal = 2 (0 indexed) to use the 2nd Intel GPU. 
-  GPUVendor target_vendor = DONTCARE;
+  TargeCLDeviceVendor target_vendor = DONTCARE;
   int32_t target_gpu_ordinal = -1;
 
 } TfLiteGpuDelegateOptionsV2;

@@ -336,7 +336,7 @@ class DelegateKernel {
     return absl::OkStatus();
   }
 
-  static std::pair<absl::Status, cl_device_id> GetDeviceFor(GPUVendor vendor_enum, int32_t device_ordinal) {
+  static std::pair<absl::Status, cl_device_id> GetDeviceFor(TargeCLDeviceVendor vendor_enum, int32_t device_ordinal) {
       std::string vendor_string = [](auto vendor_enum) {
         switch(vendor_enum) {
           case NVIDIA:
