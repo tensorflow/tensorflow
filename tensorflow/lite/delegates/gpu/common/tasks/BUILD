@@ -92,41 +92,6 @@ cc_library(
 )
 
 cc_library(
-    name = "conv_buffer_1x1",
-    srcs = ["conv_buffer_1x1.cc"],
-    hdrs = ["conv_buffer_1x1.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:data_type",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:tensor",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:winograd_util",
-        "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
-        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "//tensorflow/lite/delegates/gpu/common/task:tensor_linear_desc",
-        "//tensorflow/lite/delegates/gpu/common/task:util",
-        "//tensorflow/lite/delegates/gpu/common/task:weights_conversion",
-        "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
-        "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
-    ],
-)
-
-cc_library(
-    name = "conv_buffer_1x1_test_util",
-    testonly = 1,
-    srcs = ["conv_buffer_1x1_test_util.cc"],
-    hdrs = ["conv_buffer_1x1_test_util.h"],
-    deps = [
-        ":conv_buffer_1x1",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
-    ],
-)
-
-cc_library(
     name = "conv_constants",
     srcs = ["conv_constants.cc"],
     hdrs = ["conv_constants.h"],

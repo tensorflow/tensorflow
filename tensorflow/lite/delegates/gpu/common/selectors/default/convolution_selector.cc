@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
-#include "tensorflow/lite/delegates/gpu/common/tasks/conv_buffer_1x1.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_constants.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_generic.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_metal.h"
@@ -86,53 +85,6 @@ std::unique_ptr<GPUOperation> SelectConvolutionPowerVR(
   return std::make_unique<ConvGeneric>(std::move(conv));
 }
 
-std::unique_ptr<GPUOperation> SelectConvolutionMali(
-    const Convolution2DAttributes& attr, const BHWC& dst_shape,
-    const GpuInfo& gpu_info, const OperationDef& op_def) {
-  if (op_def.src_tensors[0].GetStorageType() == TensorStorageType::BUFFER &&
-      IsConvBuffer1x1Supported(op_def, attr)) {
-    ConvBuffer1x1 conv =
-        CreateConvBuffer1x1(gpu_info, op_def, attr, &dst_shape);
-    return std::make_unique<ConvBuffer1x1>(std::move(conv));
-  } else {
-    ConvGeneric conv = CreateConvGeneric(gpu_info, op_def, attr, &dst_shape);
-    return std::make_unique<ConvGeneric>(std::move(conv));
-  }
-}
-
-std::unique_ptr<GPUOperation> SelectConvolutionWinogradMali(
-    const Convolution2DAttributes& attr, const BHWC& dst_shape,
-    const GpuInfo& gpu_info, const OperationDef& op_def) {
-  if (op_def.src_tensors[0].GetStorageType() == TensorStorageType::BUFFER) {
-    ConvBuffer1x1 conv =
-        CreateConvBuffer1x1Wino4x4To6x6(gpu_info, op_def, attr, &dst_shape);
-    return std::make_unique<ConvBuffer1x1>(std::move(conv));
-  } else {
-    ConvGeneric conv =
-        CreateConvGenericWino4x4To6x6(gpu_info, op_def, attr, &dst_shape);
-    return std::make_unique<ConvGeneric>(std::move(conv));
-  }
-}
-
-std::unique_ptr<GPUOperation> SelectConvolutionDynamicWeightsMali(
-    const Convolution2DAttributes& attr, const BHWC& weights_shape,
-    const BHWC& dst_shape, const GpuInfo& gpu_info,
-    const OperationDef& op_def, ModelHints hints,
-    WeightsDescription* weights_desc) {
-  if (op_def.src_tensors[0].GetStorageType() == TensorStorageType::BUFFER &&
-      IsConvBuffer1x1Supported(op_def, weights_shape, attr)) {
-    ConvBuffer1x1 conv = CreateConvBuffer1x1DynamicWeights(
-        gpu_info, op_def, attr, weights_shape, &dst_shape);
-    *weights_desc = conv.GetWeightsDescription();
-    return std::make_unique<ConvBuffer1x1>(std::move(conv));
-  } else {
-    ConvGeneric conv = CreateConvGenericDynamicWeights(
-        gpu_info, op_def, attr, weights_shape, &dst_shape);
-    *weights_desc = conv.GetWeightsDescription();
-    return std::make_unique<ConvGeneric>(std::move(conv));
-  }
-}
-
 std::unique_ptr<GPUOperation> SelectConvolutionApple(
     const Convolution2DAttributes& attr, const BHWC& dst_shape,
     const GpuInfo& gpu_info, const OperationDef& op_def) {
@@ -164,12 +116,10 @@ std::unique_ptr<GPUOperation> SelectConvolution(
   } else if (gpu_info.IsAdreno()) {
     return SelectConvolutionAdreno(attr, dst_shape, gpu_info, op_def, hints);
   } else if (gpu_info.IsPowerVR() || gpu_info.IsAMD() || gpu_info.IsIntel() ||
-             gpu_info.IsApple()) {
+             gpu_info.IsApple() || gpu_info.IsMali()) {
     return SelectConvolutionPowerVR(attr, gpu_info, op_def, dst_shape);
   } else if (gpu_info.IsNvidia()) {
     return SelectConvolutionNVidia(attr, dst_shape, gpu_info, op_def);
-  } else if (gpu_info.IsMali()) {
-    return SelectConvolutionMali(attr, dst_shape, gpu_info, op_def);
   } else {
     return SelectConvolutionAdreno(attr, dst_shape, gpu_info, op_def, hints);
   }
@@ -187,12 +137,10 @@ std::unique_ptr<GPUOperation> SelectConvolutionForWinograd(
     return SelectConvolutionWinogradAdreno(attr, dst_shape, gpu_info, op_def,
                                            hints);
   } else if (gpu_info.IsPowerVR() || gpu_info.IsAMD() || gpu_info.IsNvidia() ||
-             gpu_info.IsIntel() || gpu_info.IsApple()) {
+             gpu_info.IsIntel() || gpu_info.IsApple() || gpu_info.IsMali()) {
     ConvGeneric conv =
         CreateConvGenericWino4x4To6x6(gpu_info, op_def, attr, &dst_shape);
     return std::make_unique<ConvGeneric>(std::move(conv));
-  } else if (gpu_info.IsMali()) {
-    return SelectConvolutionWinogradMali(attr, dst_shape, gpu_info, op_def);
   } else {
     return SelectConvolutionWinogradAdreno(attr, dst_shape, gpu_info, op_def,
                                            hints);
@@ -216,10 +164,6 @@ std::unique_ptr<GPUOperation> SelectConvolutionWithDynamicWeights(
     return SelectConvolutionDynamicWeightsAdreno(attr, weights_shape, dst_shape,
                                                  gpu_info, op_def, hints,
                                                  weights_desc);
-  } else if (gpu_info.IsMali()) {
-    return SelectConvolutionDynamicWeightsMali(attr, weights_shape, dst_shape,
-                                               gpu_info, op_def, hints,
-                                               weights_desc);
   } else {
     ConvGeneric conv = CreateConvGenericDynamicWeights(
         gpu_info, op_def, attr, weights_shape, &dst_shape);
