@@ -61,7 +61,7 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return absl::make_unique<Iterator>(
+      return std::make_unique<Iterator>(
           Iterator::Params{this, strings::StrCat(prefix, "::LatencyStats")});
     }
 
@@ -186,7 +186,7 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return absl::make_unique<Iterator>(Iterator::Params{
+      return std::make_unique<Iterator>(Iterator::Params{
           this, strings::StrCat(prefix, "::BytesProducedStats")});
     }
 
