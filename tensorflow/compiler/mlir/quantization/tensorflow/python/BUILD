@@ -125,6 +125,7 @@ pytype_strict_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pywrap_quantize_model",
+        ":representative_dataset",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
@@ -174,5 +175,16 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/saved_model:tag_constants",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+pytype_strict_library(
+    name = "representative_dataset",
+    srcs = [
+        "representative_dataset.py",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/python/types",
     ],
 )

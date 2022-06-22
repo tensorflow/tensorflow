@@ -22,6 +22,7 @@ import tensorflow  # pylint: disable=unused-import
 
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import quantize_model
+from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
@@ -104,7 +105,7 @@ def _create_simple_tf1_conv_model(
 def _create_data_generator(
     input_key: str,
     shape: Sequence[int],
-    num_examples=128) -> quantize_model._RepresentativeDataset:
+    num_examples=128) -> repr_dataset.RepresentativeDataset:
   """Creates a data generator to be used as representative dataset.
 
   Supports generating random value input tensors mapped by the `input_key`.
