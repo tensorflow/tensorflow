@@ -75,7 +75,7 @@ class MMAPAllocation : public Allocation {
   MMAPAllocation(int fd, size_t offset, size_t length,
                  ErrorReporter* error_reporter);
 
-  virtual ~MMAPAllocation();
+  ~MMAPAllocation() override;
   const void* base() const override;
   size_t bytes() const override;
   bool valid() const override;
@@ -106,7 +106,7 @@ class FileCopyAllocation : public Allocation {
  public:
   // Loads the provided file into a heap memory region.
   FileCopyAllocation(const char* filename, ErrorReporter* error_reporter);
-  virtual ~FileCopyAllocation();
+  ~FileCopyAllocation() override;
   const void* base() const override;
   size_t bytes() const override;
   bool valid() const override;
@@ -123,7 +123,7 @@ class MemoryAllocation : public Allocation {
   // valid for the lifetime of the class instance.
   MemoryAllocation(const void* ptr, size_t num_bytes,
                    ErrorReporter* error_reporter);
-  virtual ~MemoryAllocation();
+  ~MemoryAllocation() override;
   const void* base() const override;
   size_t bytes() const override;
   bool valid() const override;

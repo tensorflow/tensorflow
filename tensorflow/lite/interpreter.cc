@@ -110,7 +110,8 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
 
   // This operation is cheap because we allocate the CPU context resources (i.e.
   // threads) lazily.
-  own_external_cpu_backend_context_.reset(new ExternalCpuBackendContext());
+  own_external_cpu_backend_context_ =
+      std::make_unique<ExternalCpuBackendContext>();
   external_contexts_[kTfLiteCpuBackendContext] =
       own_external_cpu_backend_context_.get();
 }
