@@ -17,10 +17,14 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PJRT_PJRT_C_API_CLIENT_H_
 
 #include <functional>
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/platform/casts.h"
 
@@ -91,8 +95,6 @@ class PjRtCApiClient : public PjRtClient {
  public:
   PjRtCApiClient(const PJRT_Api* c_api, PJRT_Client* c_client,
                  std::vector<std::unique_ptr<PjRtCApiDevice>> devices);
-
-  ~PjRtCApiClient() override;
 
   int process_index() const override;
 
@@ -249,7 +251,7 @@ class PjRtCApiClient : public PjRtClient {
 
  private:
   const PJRT_Api* c_api_;
-  PJRT_Client* c_client_;
+  std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter> c_client_;
 
   std::vector<std::unique_ptr<PjRtCApiDevice>> owned_devices_;
   std::vector<PjRtDevice*> devices_;

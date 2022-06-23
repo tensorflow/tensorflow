@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_c_api_client.h"
 
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 // TODO(skyewm): remove when everything goes through C API
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
@@ -27,7 +30,10 @@ namespace xla {
 PjRtCApiClient::PjRtCApiClient(
     const PJRT_Api* c_api, PJRT_Client* c_client,
     std::vector<std::unique_ptr<PjRtCApiDevice>> devices)
-    : c_api_(c_api), c_client_(c_client), owned_devices_(std::move(devices)) {
+    : c_api_(c_api),
+      c_client_(std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter>(
+          c_client, ::pjrt::MakeClientDeleter(c_api))),
+      owned_devices_(std::move(devices)) {
   wrapped_ = c_client_->client.get();
 
   for (int i = 0; i < owned_devices_.size(); ++i) {
@@ -48,7 +54,7 @@ PjRtCApiClient::PjRtCApiClient(
 
 absl::string_view PjRtCApiClient::platform_name() const {
   PJRT_Client_PlatformName_Args args;
-  args.client = c_client_;
+  args.client = c_client_.get();
   args.struct_size = PJRT_Client_PlatformName_Args_STRUCT_SIZE;
   args.priv = nullptr;
   PJRT_Error* error = c_api_->PJRT_Client_PlatformName(&args);
@@ -59,21 +65,11 @@ absl::string_view PjRtCApiClient::platform_name() const {
   return platform_name;
 }
 
-PjRtCApiClient::~PjRtCApiClient() {
-  PJRT_Client_Destroy_Args free_args;
-  free_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
-  free_args.priv = nullptr;
-  free_args.client = c_client_;
-  PJRT_Error* error = c_api_->PJRT_Client_Destroy(&free_args);
-  // TODO(skyewm): handle error
-  CHECK(error == nullptr);
-}
-
 int PjRtCApiClient::process_index() const {
   PJRT_Client_Process_Index_Args process_index_args;
   process_index_args.struct_size = PJRT_Client_Process_Index_Args_STRUCT_SIZE;
   process_index_args.priv = nullptr;
-  process_index_args.client = c_client_;
+  process_index_args.client = c_client_.get();
   PJRT_Error* error = c_api_->PJRT_Client_Process_Index(&process_index_args);
 
   // TODO(b/236710439)
@@ -86,7 +82,7 @@ absl::string_view PjRtCApiClient::platform_version() const {
   PJRT_Client_PlatformVersion_Args args;
   args.struct_size = PJRT_Client_PlatformVersion_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.client = c_client_;
+  args.client = c_client_.get();
   PJRT_Error* error = c_api_->PJRT_Client_PlatformVersion(&args);
   // TODO(b/236710439)
   CHECK(error == nullptr);
