@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements the TensorFlow Lite's broadcast gradient argument
 // operator.
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 
