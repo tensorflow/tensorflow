@@ -69,6 +69,19 @@ PjRtCApiClient::~PjRtCApiClient() {
   CHECK(error == nullptr);
 }
 
+int PjRtCApiClient::process_index() const {
+  PJRT_Client_Process_Index_Args process_index_args;
+  process_index_args.struct_size = PJRT_Client_Process_Index_Args_STRUCT_SIZE;
+  process_index_args.priv = nullptr;
+  process_index_args.client = c_client_;
+  PJRT_Error* error = c_api_->PJRT_Client_Process_Index(&process_index_args);
+
+  // TODO(b/236710439)
+  CHECK(error == nullptr);
+
+  return process_index_args.process_index;
+}
+
 StatusOr<std::optional<std::string>> PjRtCApiClient::ExecutableFingerprint(
     const PjRtExecutable& executable) const {
   return wrapped_->ExecutableFingerprint(

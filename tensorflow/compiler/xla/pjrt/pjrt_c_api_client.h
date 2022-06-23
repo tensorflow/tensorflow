@@ -94,7 +94,7 @@ class PjRtCApiClient : public PjRtClient {
 
   ~PjRtCApiClient() override;
 
-  int process_index() const override { return wrapped_->process_index(); }
+  int process_index() const override;
 
   int device_count() const override { return wrapped_->device_count(); }
 
