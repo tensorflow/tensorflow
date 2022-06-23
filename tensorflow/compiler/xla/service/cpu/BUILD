@@ -7,6 +7,11 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "mkl_deps",
 )
+load("//tensorflow:tensorflow.bzl", "tf_xla_acl_copts")
+load(
+    "//third_party/compute_library:build_defs.bzl",
+    "acl_deps",
+)
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
@@ -343,6 +348,7 @@ cc_library(
         "windows_compatibility.h",
     ],
     hdrs = ["simple_orc_jit.h"],
+    copts = tf_xla_acl_copts(),
     deps = [
         ":compiler_functor",
         ":cpu_runtime",
@@ -363,6 +369,7 @@ cc_library(
         ":runtime_single_threaded_conv3d",
         ":runtime_single_threaded_fft",
         ":runtime_single_threaded_matmul",
+        ":runtime_matmul_acl",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:Core",
@@ -592,6 +599,7 @@ cc_library(
     hdrs = [
         "dot_op_emitter.h",
     ],
+    copts = tf_xla_acl_copts(),
     deps = [
         ":cpu_options",
         ":cpu_runtime",
@@ -847,6 +855,23 @@ cc_library(
         "//tensorflow/compiler/xla:executable_run_options",
         "//third_party/eigen3",
     ] + mkl_deps(),
+)
+
+cc_library(
+    name = "runtime_matmul_acl",
+    srcs = ["runtime_matmul_acl.cc"],
+    hdrs = ["runtime_matmul_acl.h"],
+    copts = tf_xla_acl_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":runtime_lightweight_check",
+        ":runtime_matmul",
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/core/platform:types",
+        "//third_party/eigen3",
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:logging",
+    ] + acl_deps(),
 )
 
 cc_library(

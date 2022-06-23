@@ -418,7 +418,10 @@ message DebugOptions {
   // instructions.
   bool xla_gpu_normalize_layouts = 172;
 
-  // Next id: 173
+  // Generate calls to Arm Compute Library in the CPU backend.
+  bool xla_cpu_use_acl = 173;
+
+  // Next id: 174
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

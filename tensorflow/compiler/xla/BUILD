@@ -4,6 +4,7 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_xla_acl_copts")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
@@ -962,6 +963,7 @@ cc_library(
     ],
     hdrs = ["debug_options_flags.h"],
     visibility = [":friends"],
+    copts = tf_xla_acl_copts(),
     deps =
         [
             ":parse_flags_from_env",
