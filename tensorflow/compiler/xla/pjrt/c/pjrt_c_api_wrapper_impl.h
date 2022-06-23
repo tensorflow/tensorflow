@@ -29,6 +29,11 @@ struct PJRT_Client {
   std::unique_ptr<xla::PjRtClient> client;
 };
 
+struct PJRT_Device {
+  // The device is owned by the corresponding xla::PjRtClient
+  xla::PjRtDevice* device;
+};
+
 namespace pjrt {
 
 // C API definitions
@@ -40,6 +45,8 @@ PJRT_Error* PJRT_Client_Destroy(PJRT_Client_Destroy_Args* args);
 PJRT_Error* PJRT_Client_PlatformName(PJRT_Client_PlatformName_Args* args);
 PJRT_Error* PJRT_Client_Process_Index(PJRT_Client_Process_Index_Args* args);
 PJRT_Error* PJRT_Client_PlatformVersion(PJRT_Client_PlatformVersion_Args* args);
+
+PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args);
 
 // Helper macros and functions
 

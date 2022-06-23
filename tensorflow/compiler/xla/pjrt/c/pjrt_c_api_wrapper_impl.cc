@@ -98,4 +98,13 @@ PJRT_Error* PJRT_Client_PlatformVersion(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes("PJRT_Device_Id_Args",
+                                                PJRT_Device_Id_Args_STRUCT_SIZE,
+                                                args->struct_size));
+
+  args->id = args->device->device->id();
+  return nullptr;
+}
+
 }  // namespace pjrt

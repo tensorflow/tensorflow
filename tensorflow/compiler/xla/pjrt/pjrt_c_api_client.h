@@ -30,21 +30,24 @@ limitations under the License.
 
 namespace xla {
 
+class PjRtCApiClient;
+
 class PjRtCApiDevice : public PjRtDevice {
  public:
-  explicit PjRtCApiDevice(PjRtDevice* wrapped) : wrapped_(wrapped) {}
+  explicit PjRtCApiDevice(PJRT_Device* device);
+  ~PjRtCApiDevice() override;
 
   // Must set client exactly once.
-  void SetClient(PjRtClient* client) {
+  void SetClient(PjRtCApiClient* client) {
     CHECK(client_ == nullptr) << ToString();
     client_ = client;
   }
 
-  PjRtClient* client() const override { return client_; }
+  PjRtClient* client() const override;
 
   bool IsAddressable() const override { return wrapped_->IsAddressable(); }
 
-  int id() const override { return wrapped_->id(); }
+  int id() const override;
 
   int process_index() const override { return wrapped_->process_index(); }
 
@@ -87,7 +90,11 @@ class PjRtCApiDevice : public PjRtDevice {
   }
 
  private:
-  PjRtClient* client_ = nullptr;
+  PjRtCApiClient* client_ = nullptr;
+  PJRT_Device* device_;
+  // TODO(shahrokhi): wrapped_ is a non-C API pointer that was used to bypass
+  // the C API calls until all the C API's got implemented. Remove it when it's
+  // usage is reduced to zero.
   PjRtDevice* wrapped_;
 };
 
@@ -248,6 +255,8 @@ class PjRtCApiClient : public PjRtClient {
 
   StatusOr<std::unique_ptr<PjRtBuffer>> WrapBuffer(
       StatusOr<std::unique_ptr<PjRtBuffer>> to_wrap);
+
+  const PJRT_Api* pjrt_c_api() const;
 
  private:
   const PJRT_Api* c_api_;

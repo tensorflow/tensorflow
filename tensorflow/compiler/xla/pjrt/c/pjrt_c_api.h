@@ -134,6 +134,24 @@ const size_t PJRT_Client_PlatformVersion_Args_STRUCT_SIZE =
 typedef PJRT_Error* PJRT_Client_PlatformVersion(
     PJRT_Client_PlatformVersion_Args* args);
 
+// --------------------------------- Devices -----------------------------------
+
+typedef struct PJRT_Device PJRT_Device;
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Device* device;
+  int id;  // out
+} PJRT_Device_Id_Args;
+const size_t PJRT_Device_Id_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Device_Id_Args, id);
+
+// The ID of this device. IDs are unique among devices of this type
+// (e.g. CPUs, GPUs). On multi-host platforms, this will be unique across all
+// hosts' devices.
+typedef PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args);
+
 // -------------------------------- API access ---------------------------------
 
 #define PJRT_API_STRUCT_FIELD(fn_type) fn_type* fn_type
@@ -150,6 +168,8 @@ typedef struct {
   PJRT_API_STRUCT_FIELD(PJRT_Client_PlatformName);
   PJRT_API_STRUCT_FIELD(PJRT_Client_Process_Index);
   PJRT_API_STRUCT_FIELD(PJRT_Client_PlatformVersion);
+
+  PJRT_API_STRUCT_FIELD(PJRT_Device_Id);
 } PJRT_Api;
 
 const size_t PJRT_Api_STRUCT_SIZE =

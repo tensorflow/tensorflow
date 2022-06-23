@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 // TODO(skyewm): remove when everything goes through C API
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "tensorflow/core/tpu/pjrt_api.h"
@@ -124,6 +125,8 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::WrapBuffer(
       std::make_unique<PjRtCApiBuffer>(this, std::move(buffer)));
 }
 
+const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }
+
 PjRtCApiExecutable::PjRtCApiExecutable(PjRtCApiClient* client,
                                        std::unique_ptr<PjRtExecutable> wrapped)
     : client_(client), wrapped_(std::move(wrapped)) {
@@ -210,10 +213,30 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient() {
   std::vector<std::unique_ptr<PjRtCApiDevice>> devices;
   devices.reserve(wrapped->devices().size());
   for (PjRtDevice* device : wrapped->devices()) {
-    devices.emplace_back(std::make_unique<PjRtCApiDevice>(device));
+    devices.emplace_back(
+        std::make_unique<PjRtCApiDevice>(new PJRT_Device{device}));
   }
   return std::unique_ptr<PjRtClient>(
       std::make_unique<PjRtCApiClient>(c_api, c_client, std::move(devices)));
+}
+
+PjRtCApiDevice::PjRtCApiDevice(PJRT_Device* device) : device_(device) {
+  wrapped_ = device_->device;
+}
+
+PjRtCApiDevice::~PjRtCApiDevice() { delete device_; }
+
+PjRtClient* PjRtCApiDevice::client() const { return client_; }
+
+int PjRtCApiDevice::id() const {
+  PJRT_Device_Id_Args args;
+  args.struct_size = PJRT_Device_Id_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device_;
+  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Device_Id(&args);
+  // TODO(shahrokhi): handle error better after (b/236710439) is resolved
+  CHECK(error == nullptr);
+  return args.id;
 }
 
 }  // namespace xla
