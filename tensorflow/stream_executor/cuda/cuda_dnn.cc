@@ -6010,19 +6010,23 @@ bool CudnnSupport::DoActivate(Stream* stream,
 }
 
 namespace {
+
 // Cudnn legacy API only supports int32 indexing and can handle a maximum of
 // 2^31-1 elements. For pooling operations, we split the big tensor along the
-// batch axis if necessary and call cudnn API sequentially.
-// This function will return a vector of tuples, representing how to split the
-// tensors: (batch number of each split, offset in bytes of the input, offset in
-// bytes of the output).
-port::StatusOr<std::vector<std::tuple<int64_t, int64_t, int64_t>>>
-GetTensorSplits(const dnn::BatchDescriptor& input_descriptor,
-                const dnn::BatchDescriptor& output_descriptor,
-                dnn::DataType element_type) {
-  std::vector<std::tuple<int64_t, int64_t, int64_t>> out;
+// batch axis into multiple small tensors when possible and then call cudnn API
+// sequentially.
+struct PoolingSplitsSpec {
+  int64_t num_batches;
+  int64_t input_offset_in_bytes;
+  int64_t output_offset_in_bytes;
+};
+
+port::StatusOr<std::vector<PoolingSplitsSpec>> GetTensorSplits(
+    const dnn::BatchDescriptor& input_descriptor,
+    const dnn::BatchDescriptor& output_descriptor, dnn::DataType element_type) {
+  std::vector<PoolingSplitsSpec> out;
   if (element_type == dnn::DataType::kInt8) {
-    out.push_back(std::make_tuple(input_descriptor.count(), 0, 0));
+    out.push_back({input_descriptor.count(), 0, 0});
     return out;
   }
 
@@ -6059,8 +6063,7 @@ GetTensorSplits(const dnn::BatchDescriptor& input_descriptor,
                            CudnnDataTypeToByteSize(cudnn_input_type);
     int64_t offset_output = processed_batches * elements_per_batch_output *
                             CudnnDataTypeToByteSize(cudnn_output_type);
-    out.push_back(
-        std::make_tuple(num_batches_per_split, offset_input, offset_output));
+    out.push_back({num_batches_per_split, offset_input, offset_output});
     processed_batches += num_batches_per_split;
   }
   return out;
@@ -6115,14 +6118,15 @@ port::Status CudnnSupport::DoPoolForward(
     // It is safe to cap the batch dimension, since it is the leading
     // dimension and will have no effect on the computation of strides in both
     // kBatchYXDepth and kBatchDepthYX formats.
-    input_split.set_count(std::get<0>(splits[i]));
-    output_split.set_count(std::get<0>(splits[i]));
+    input_split.set_count(splits[i].num_batches);
+    output_split.set_count(splits[i].num_batches);
     CudnnTensorDescriptor src_desc(input_split, cudnn_input_type);
     CudnnTensorDescriptor dest_desc(output_split, cudnn_output_type);
 
-    const auto status = cudnn_launcher(
-        src_desc, dest_desc, input_data.opaque() + std::get<1>(splits[i]),
-        output_data.opaque() + std::get<2>(splits[i]));
+    const auto status =
+        cudnn_launcher(src_desc, dest_desc,
+                       input_data.opaque() + splits[i].input_offset_in_bytes,
+                       output_data.opaque() + splits[i].output_offset_in_bytes);
     if (!IsStatusOk(status, /*report_error=*/true)) {
       return status;
     }
@@ -6181,16 +6185,17 @@ port::Status CudnnSupport::DoPoolBackward(
     // It is safe to cap the batch dimension, since it is the leading
     // dimension and will have no effect on the computation of strides in both
     // kBatchYXDepth and kBatchDepthYX formats.
-    input_split.set_count(std::get<0>(splits[i]));
-    output_split.set_count(std::get<0>(splits[i]));
+    input_split.set_count(splits[i].num_batches);
+    output_split.set_count(splits[i].num_batches);
     CudnnTensorDescriptor src_desc(input_split, cudnn_input_type);
     CudnnTensorDescriptor dest_desc(output_split, cudnn_output_type);
 
     const auto status = cudnn_launcher(
-        src_desc, dest_desc, output_data.opaque() + std::get<2>(splits[i]),
-        input_diff_data.opaque() + std::get<2>(splits[i]),
-        input_data.opaque() + std::get<1>(splits[i]),
-        output_diff_data.opaque() + std::get<1>(splits[i]));
+        src_desc, dest_desc,
+        output_data.opaque() + splits[i].output_offset_in_bytes,
+        input_diff_data.opaque() + splits[i].output_offset_in_bytes,
+        input_data.opaque() + splits[i].input_offset_in_bytes,
+        output_diff_data.opaque() + splits[i].input_offset_in_bytes);
     if (!IsStatusOk(status, /*report_error=*/true)) {
       return status;
     }
