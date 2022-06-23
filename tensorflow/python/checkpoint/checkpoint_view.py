@@ -59,3 +59,11 @@ class CheckpointView(object):
         child.local_name: child.node_id
         for child in self._object_graph_proto.nodes[node_id].children
     }
+
+  def descendants(self):
+    """Returns a list of all node_ids from ObjectGraphProto."""
+    all_nodes = []
+    for node in list(self._object_graph_proto.nodes):
+      for child in list(node.children):
+        all_nodes.append(child.node_id)
+    return all_nodes
