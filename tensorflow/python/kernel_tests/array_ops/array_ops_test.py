@@ -1595,6 +1595,13 @@ class IdentityTest(test_util.TensorFlowTestCase):
         e = array_ops.identity(d)
         _test(d, e, "gpu")
 
+  def testIdentityVariable(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+    self.evaluate(v.initializer)
+    result = array_ops.identity(v)
+    self.assertIsInstance(result, ops.Tensor)
+    self.assertAllEqual(result, v)
+
 
 class PadTest(test_util.TensorFlowTestCase):
 
@@ -2393,7 +2400,7 @@ class TileVariantTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(t, tiled_tensor_1)
 
 
-class StopGradientTest(test_util.TensorFlowTestCase):
+class StopGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testStopGradient(self):
     x = array_ops.zeros(3)
@@ -2419,6 +2426,24 @@ class StopGradientTest(test_util.TensorFlowTestCase):
 
     self.assertIsNone(tape.gradient(y, x))
 
+  @parameterized.named_parameters([
+      ("TFFunction", def_function.function),
+      ("PythonFunction", lambda f: f),
+  ])
+  def test_stop_gradient_resource_variable(self, decorator):
+    x = resource_variable_ops.ResourceVariable([1.0])
+    self.evaluate(x.initializer)
+
+    @decorator
+    def stop_gradient_f(x):
+      return array_ops.stop_gradient(x)
+
+    with backprop.GradientTape() as tape:
+      y = stop_gradient_f(x)
+    self.assertIsNone(tape.gradient(y, x))
+    # stop_gradient converts ResourceVariable to Tensor
+    self.assertIsInstance(y, ops.Tensor)
+    self.assertAllEqual(y, x)
 
 if __name__ == "__main__":
   test_lib.main()
