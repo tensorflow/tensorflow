@@ -239,13 +239,13 @@ std::string CUDAPointersToCanAccessString(CUdeviceptr from, CUdeviceptr to) {
   if (!from_context.ok()) {
     LOG(ERROR) << "could not retrieve source pointer's context: "
                << from_context.status();
-    return "error";
+    return "source ptr error";
   }
   auto to_context = GpuDriver::GetPointerContext(to);
   if (!to_context.ok()) {
     LOG(ERROR) << "could not retrieve destination pointer's context: "
                << to_context.status();
-    return "error";
+    return "destination ptr error";
   }
   return GpuDriver::CanEnablePeerAccess(from_context.ValueOrDie(),
                                         to_context.ValueOrDie())
@@ -1303,8 +1303,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
     if (context == nullptr) {
       return port::Status(
           port::error::UNAVAILABLE,
-          absl::StrCat("failed to query context for device pointer: ",
-                       ToString(result)));
+          "Empty context returned while querying context for device pointer");
     }
     return context;
   }
