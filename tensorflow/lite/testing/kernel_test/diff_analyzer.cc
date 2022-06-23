@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/testing/kernel_test/diff_analyzer.h"
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <string>

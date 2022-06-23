@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_PYTHON_OPTIMIZE_CALIBRATION_WRAPPER_H_
 #define TENSORFLOW_LITE_PYTHON_OPTIMIZE_CALIBRATION_WRAPPER_H_
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
