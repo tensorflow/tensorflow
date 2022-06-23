@@ -18,6 +18,7 @@ limitations under the License.
 #include <fstream>
 #include <map>
 #include <sstream>
+#include <string>
 #include <tuple>
 #include <utility>
 

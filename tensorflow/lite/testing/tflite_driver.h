@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <string>
 
 #include "tensorflow/lite/c/common.h"
 #if !defined(__APPLE__)
