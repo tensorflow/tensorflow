@@ -116,6 +116,24 @@ const size_t PJRT_Client_Process_Index_Args_STRUCT_SIZE =
 typedef PJRT_Error* PJRT_Client_Process_Index(
     PJRT_Client_Process_Index_Args* args);
 
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Client* client;
+  // `platform_version` has the same lifetime as `client`. It's owned by
+  // `client`.
+  const char* platform_version;  // out
+  size_t platform_version_size;  // out
+} PJRT_Client_PlatformVersion_Args;
+
+const size_t PJRT_Client_PlatformVersion_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Client_PlatformVersion_Args, platform_version_size);
+
+// Returns a string containing human-readable, platform-specific version info
+// (e.g. the CUDA version on GPU or libtpu version on Cloud TPU).
+typedef PJRT_Error* PJRT_Client_PlatformVersion(
+    PJRT_Client_PlatformVersion_Args* args);
+
 // -------------------------------- API access ---------------------------------
 
 #define PJRT_API_STRUCT_FIELD(fn_type) fn_type* fn_type
@@ -131,6 +149,7 @@ typedef struct {
   PJRT_API_STRUCT_FIELD(PJRT_Client_Destroy);
   PJRT_API_STRUCT_FIELD(PJRT_Client_PlatformName);
   PJRT_API_STRUCT_FIELD(PJRT_Client_Process_Index);
+  PJRT_API_STRUCT_FIELD(PJRT_Client_PlatformVersion);
 } PJRT_Api;
 
 const size_t PJRT_Api_STRUCT_SIZE =

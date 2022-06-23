@@ -82,6 +82,20 @@ int PjRtCApiClient::process_index() const {
   return process_index_args.process_index;
 }
 
+absl::string_view PjRtCApiClient::platform_version() const {
+  PJRT_Client_PlatformVersion_Args args;
+  args.struct_size = PJRT_Client_PlatformVersion_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.client = c_client_;
+  PJRT_Error* error = c_api_->PJRT_Client_PlatformVersion(&args);
+  // TODO(b/236710439)
+  CHECK(error == nullptr);
+
+  absl::string_view platform_version(args.platform_version,
+                                     args.platform_version_size);
+  return platform_version;
+}
+
 StatusOr<std::optional<std::string>> PjRtCApiClient::ExecutableFingerprint(
     const PjRtExecutable& executable) const {
   return wrapped_->ExecutableFingerprint(

@@ -87,4 +87,15 @@ PJRT_Error* PJRT_Client_PlatformName(PJRT_Client_PlatformName_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Client_PlatformVersion(
+    PJRT_Client_PlatformVersion_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_CLient_PlatformVersion_Args",
+      PJRT_Client_PlatformVersion_Args_STRUCT_SIZE, args->struct_size));
+  absl::string_view platform_version = args->client->client->platform_version();
+  args->platform_version = platform_version.data();
+  args->platform_version_size = platform_version.size();
+  return nullptr;
+}
+
 }  // namespace pjrt

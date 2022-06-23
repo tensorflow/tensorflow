@@ -127,9 +127,7 @@ class PjRtCApiClient : public PjRtClient {
 
   absl::string_view platform_name() const override;
 
-  absl::string_view platform_version() const override {
-    return wrapped_->platform_version();
-  }
+  absl::string_view platform_version() const override;
 
   PjRtRuntimeType runtime_type() const override {
     return wrapped_->runtime_type();
