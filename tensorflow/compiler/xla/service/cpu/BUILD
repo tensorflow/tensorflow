@@ -370,6 +370,7 @@ cc_library(
         ":runtime_single_threaded_fft",
         ":runtime_single_threaded_matmul",
         ":runtime_matmul_acl",
+        ":runtime_conv2d_acl",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:Core",
@@ -871,6 +872,26 @@ cc_library(
         "//third_party/eigen3",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:logging",
+    ] + acl_deps(),
+)
+
+cc_library(
+    name = "runtime_conv2d_acl",
+    srcs = [
+        "runtime_conv2d_acl.cc",
+    ],
+    hdrs = ["runtime_conv2d_acl.h"],
+    copts = tf_xla_acl_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":runtime_conv2d",
+        ":runtime_single_threaded_conv2d",
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:types",
+        "//tensorflow/core/kernels:eigen_helpers",
+        "//third_party/eigen3",
+	"//tensorflow/core/platform:logging",
     ] + acl_deps(),
 )
 
