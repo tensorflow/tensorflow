@@ -20,7 +20,7 @@ from tensorflow.core.framework import full_type_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensorSpec
-from tensorflow.python.ops.structured.structured_tensor import StructuredTensor
+from tensorflow.python.ops.structured.structured_tensor import StructuredTensorSpec
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
@@ -114,7 +114,7 @@ def _specs_for_flat_tensors(element_spec):
     datasets and map_fn for ELEMENT_SPEC. The items
     in this list correspond to the items in `_flat_tensor_specs`.
   """
-  if isinstance(element_spec, StructuredTensor.Spec):
+  if isinstance(element_spec, StructuredTensorSpec):
     specs = []
     for _, field_spec in sorted(
         element_spec._field_specs.items(), key=lambda t: t[0]):  # pylint: disable=protected-access

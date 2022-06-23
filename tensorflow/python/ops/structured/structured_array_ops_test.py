@@ -28,7 +28,6 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import row_partition
-from tensorflow.python.ops.ragged.dynamic_ragged_shape import DynamicRaggedShape
 from tensorflow.python.ops.structured import structured_array_ops
 from tensorflow.python.ops.structured import structured_tensor
 from tensorflow.python.ops.structured.structured_tensor import StructuredTensor
@@ -920,19 +919,14 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
     result = structured_array_ops._structured_tensor_like(foo)
     self.assertAllEqual([{}, {}, {}, {}], result)
 
-  # Note that we have to be careful about whether the indices are int32
-  # or int64.
   def testStructuredTensorArrayRankOneUnknownShape(self):
     """Fully test structured_tensor_array_like."""
     @def_function.function
     def my_fun(my_shape):
       my_zeros = array_ops.zeros(my_shape)
       return structured_array_ops._structured_tensor_like(my_zeros)
-
     result = my_fun(array_ops.constant(4))
-    shape = DynamicRaggedShape._from_inner_shape([4], dtype=dtypes.int32)
-    expected = StructuredTensor.from_shape(shape)
-    self.assertAllEqual(expected, result)
+    self.assertAllEqual([{}, {}, {}, {}], result)
 
   def testStructuredTensorArrayRankTwoUnknownShape(self):
     """Fully test structured_tensor_array_like."""
