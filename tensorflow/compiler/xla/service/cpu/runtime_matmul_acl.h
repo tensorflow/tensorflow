@@ -53,6 +53,11 @@ extern void __xla_cpu_runtime_ACLMatMulF32(
     float* lhs, float* rhs, int64_t m, int64_t n, int64_t k,
     int32_t transpose_lhs, int32_t transpose_rhs);
 
+extern void __xla_cpu_runtime_ACLBatchMatMulF32(
+    const void* /* xla::ExecutableRunOptions* */ run_options_ptr, float* out,
+    float* lhs, float* rhs, int64_t m, int64_t n, int64_t k,
+    int64_t batch_size, int32_t transpose_lhs, int32_t transpose_rhs);
+
 #else
 extern void __xla_cpu_runtime_ACLMatMulF32(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, float* out,
@@ -62,5 +67,15 @@ extern void __xla_cpu_runtime_ACLMatMulF32(
                "XLA_CPU_USE_ACL. Add --config=build_with_acl to build with ACL.";
   exit(1);
 }
+
+extern void __xla_cpu_runtime_ACLBatchMatMulF32(
+    const void* /* xla::ExecutableRunOptions* */ run_options_ptr, float* out,
+    float* lhs, float* rhs, int64_t m, int64_t n, int64_t k,
+    int64_t batch_size, int32_t transpose_lhs, int32_t transpose_rhs) {
+  std::cerr << "Attempt to call ACL MatMul runtime library without defining "
+               "XLA_CPU_USE_ACL. Add --config=build_with_acl to build with ACL.";
+  exit(1);
+}
+
 #endif  // XLA_CPU_USE_ACL
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_MATMUL_ACL_H_

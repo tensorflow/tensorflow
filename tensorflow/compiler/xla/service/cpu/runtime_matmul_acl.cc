@@ -32,7 +32,7 @@ namespace {
 // Since XLA MatMul does not use alpha, beta, we set them to 1.0 and 0.0.
 // Matrix lhs, rhs and out are all column-major.
 int32_t MatMulF32(const void* run_options_ptr, float* out, float* lhs, float* rhs,
-                  int64_t m, int64_t n, int64_t k, int32_t transpose_lhs,
+                  int64_t m, int64_t n, int64_t k, int64_t batch_size, int32_t transpose_lhs,
                   int32_t transpose_rhs) {
   const float alpha = 1.0f, beta = 0.0f;
 
@@ -47,19 +47,19 @@ int32_t MatMulF32(const void* run_options_ptr, float* out, float* lhs, float* rh
   acl_conf.is_trans_rhs = (bool) transpose_rhs;
 
   if (acl_conf.is_trans_lhs) {
-     acl_conf.lhs_acc_info = arm_compute::TensorInfo(arm_compute::TensorShape(k, m, 1),
+     acl_conf.lhs_acc_info = arm_compute::TensorInfo(arm_compute::TensorShape(k, m, batch_size),
                                                      1, arm_compute::DataType::F32);
   }
   if (acl_conf.is_trans_rhs) {
-     acl_conf.rhs_acc_info = arm_compute::TensorInfo(arm_compute::TensorShape(n, k, 1, 1),
+     acl_conf.rhs_acc_info = arm_compute::TensorInfo(arm_compute::TensorShape(n, k, 1, batch_size),
 		                                     1, arm_compute::DataType::F32);
   }
 
-  acl_conf.lhs_info = arm_compute::TensorInfo(arm_compute::TensorShape(m, k, 1), 1,
+  acl_conf.lhs_info = arm_compute::TensorInfo(arm_compute::TensorShape(m, k, batch_size), 1,
                                               arm_compute::DataType::F32);
-  acl_conf.rhs_info = arm_compute::TensorInfo(arm_compute::TensorShape(k, n, 1, 1),
+  acl_conf.rhs_info = arm_compute::TensorInfo(arm_compute::TensorShape(k, n, 1, batch_size),
                                               1, arm_compute::DataType::F32);
-  acl_conf.out_info = arm_compute::TensorInfo(arm_compute::TensorShape(m, n, 1, 1),
+  acl_conf.out_info = arm_compute::TensorInfo(arm_compute::TensorShape(m, n, 1, batch_size),
                                               1, arm_compute::DataType::F32);
 
   /* TODO: add TF_XLA_* flag for runtime control of fast math mode*/
@@ -174,9 +174,20 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ACLMatMulF32(
     const void* run_options_ptr, float* out, float* lhs, float* rhs, int64_t m,
     int64_t n, int64_t k, int32_t transpose_lhs, int32_t transpose_rhs) {
 
-  if (MatMulF32(run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs, transpose_rhs) < 0) {
+  if (MatMulF32(run_options_ptr, out, lhs, rhs, m, n, k, 1/*batch_size*/, transpose_lhs, transpose_rhs) < 0) {
      VLOG(1) << "ACL matmul failed, fallback to Eigen matmul";
      __xla_cpu_runtime_EigenMatMulF32(run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs, transpose_rhs);
+  }
+}
+
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ACLBatchMatMulF32(
+    const void* run_options_ptr, float* out, float* lhs, float* rhs, int64_t m,
+    int64_t n, int64_t k, int64_t batch_size, int32_t transpose_lhs, int32_t transpose_rhs) {
+
+  if (MatMulF32(run_options_ptr, out, lhs, rhs, m, n, k, batch_size, transpose_lhs, transpose_rhs) < 0) {
+     VLOG(1) << "ACL batch matmul failed, fallback to Eigen batch matmul";
+     __xla_cpu_runtime_EigenBatchMatMulF32(run_options_ptr, out, lhs, rhs, m, n, k,
+		                      batch_size, transpose_lhs, transpose_rhs);
   }
 }
 

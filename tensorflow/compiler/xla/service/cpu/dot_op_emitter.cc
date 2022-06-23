@@ -919,13 +919,16 @@ Status DotOpEmitter::EmitCallToBatchRuntime() {
   // to avoid target-dependent calling convention details.
 
   PrimitiveType type = target_array_.GetShape().element_type();
+  bool use_acl = hlo_module_config_.debug_options().xla_cpu_use_acl();
   llvm::Function* function = b_->GetInsertBlock()->getParent();
   llvm::Module* module = function->getParent();
   llvm::Type* float_type;
   const char* fn_name;
   switch (type) {
     case F32:
-      fn_name = runtime::kEigenBatchMatMulF32SymbolName;
+      fn_name = use_acl ? runtime::kACLBatchMatMulF32SymbolName
+	                : runtime::kEigenBatchMatMulF32SymbolName;
+
       float_type = b_->getFloatTy();
       break;
     default:

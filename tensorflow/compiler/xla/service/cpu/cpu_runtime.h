@@ -54,6 +54,7 @@ extern const char* const kMKLConv2DF32SymbolName;
 extern const char* const kMKLMatMulF32SymbolName;
 extern const char* const kMKLMatMulF64SymbolName;
 extern const char* const kACLMatMulF32SymbolName;
+extern const char* const kACLBatchMatMulF32SymbolName;
 extern const char* const kMKLSingleThreadedMatMulF32SymbolName;
 extern const char* const kMKLSingleThreadedMatMulF64SymbolName;
 extern const char* const kEigenConv2DF16SymbolName;
