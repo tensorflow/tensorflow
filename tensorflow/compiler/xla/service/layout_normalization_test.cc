@@ -88,5 +88,27 @@ ENTRY main {
 )");
 }
 
+TEST_F(LayoutNormalizationTest, TestBinary) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[5,4]{0,1} parameter(0)
+  b = f32[5,4]{0,1} parameter(1)
+  c = add(a, b)
+  ROOT out = sqrt(c)
+}
+)";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK:  [[a_0:%[^ ]+]] = f32[5,4]{0,1} parameter(0)
+// CHECK:  [[bitcast_1:%[^ ]+]] = f32[4,5]{1,0} bitcast([[a_0]])
+// CHECK:  [[b_2:%[^ ]+]] = f32[5,4]{0,1} parameter(1)
+// CHECK:  [[bitcast_2_3:%[^ ]+]] = f32[4,5]{1,0} bitcast([[b_2]])
+// CHECK:  [[add_4:%[^ ]+]] = f32[4,5]{1,0} add([[bitcast_1]], [[bitcast_2_3]])
+// CHECK:  [[sqrt_5:%[^ ]+]] = f32[4,5]{1,0} sqrt([[add_4]])
+// CHECK:  ROOT [[bitcast_5_6:%[^ ]+]] = f32[5,4]{0,1} bitcast([[sqrt_5]])
+)");
+}
+
 }  // namespace
 }  // namespace xla

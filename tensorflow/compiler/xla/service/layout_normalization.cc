@@ -118,6 +118,41 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
+  // Pushes down the bitcast across the binary. Converts:
+  //
+  //  A1{I} -> bitcast{L}
+  //            \
+  //            B{L}
+  //            /
+  //  A2{I} -> bitcast{L}
+  //
+  // Into:
+  //
+  //  A1{I}
+  //        \
+  //         B{I} - bitcast{L}
+  //        /
+  //  A2{I}
+  Status HandleElementwiseBinary(HloInstruction* hlo) override {
+    auto s = hlo->shape();
+    auto a = hlo->mutable_operand(0);
+    auto b = hlo->mutable_operand(1);
+    TF_RET_CHECK(a->shape().layout() == s.layout());
+    TF_ASSIGN_OR_RETURN(auto a0, GetNormalizedInput(a));
+    TF_ASSIGN_OR_RETURN(auto b0, GetNormalizedInput(b));
+
+    HloInstruction* new_binary;
+    if (hlo->opcode() == HloOpcode::kCompare) {
+      TF_ASSIGN_OR_RETURN(new_binary,
+                          MakeCompareHlo(hlo->comparison_direction(), a0, b0));
+    } else {
+      TF_ASSIGN_OR_RETURN(new_binary, MakeBinaryHlo(hlo->opcode(), a0, b0));
+    }
+    auto bc_to_orig = MakeBitcastHlo(new_binary, s);
+    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
+    return OkStatus();
+  }
+
  private:
   // Due to Local Precondition we have, the input to all processed ops should
   // be HLO in descending layout piped through bitcast.
