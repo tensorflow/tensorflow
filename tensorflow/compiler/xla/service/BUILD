@@ -682,6 +682,7 @@ cc_library(
         "sharding_propagation.h",
     ],
     deps = [
+        ":custom_call_sharding_helper",
         ":dot_as_convolution_util",
         ":hlo",
         ":hlo_graph_dumper",
@@ -6497,6 +6498,13 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
     ],
+)
+
+cc_library(
+    name = "custom_call_sharding_helper",
+    srcs = ["custom_call_sharding_helper.cc"],
+    hdrs = ["custom_call_sharding_helper.h"],
+    deps = [":hlo"],
 )
 
 tf_proto_library(
