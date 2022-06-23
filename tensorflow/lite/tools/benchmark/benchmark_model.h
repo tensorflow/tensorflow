@@ -22,6 +22,7 @@ limitations under the License.
 #include <ostream>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/util/stats_calculator.h"
