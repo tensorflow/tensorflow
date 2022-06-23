@@ -54,18 +54,6 @@ cc_library(
     ],
 )
 
-tf_cc_test(
-    name = "tpu_embedding_errors_test",
-    srcs = ["tpu_embedding_errors_test.cc"],
-    deps = [
-        ":tpu_embedding_errors",
-        "//tensorflow/core:test",
-        "//tensorflow/core/platform:errors",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 cc_library(
     name = "tpu_embedding_optimization_parameters_utils",
     srcs = ["tpu_embedding_optimization_parameters_utils.cc"],
