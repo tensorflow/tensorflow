@@ -25,10 +25,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/cast.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/concat_xy.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/concat_z.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/cumsum.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/gather.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/lstm.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/max_unpooling.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/one_hot.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/padding.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/pooling.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/prelu.h"
@@ -39,6 +41,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/reshape.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/reshapex4.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/resize.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/select_v2.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/softmax.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/softmax1x1.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/space_to_depth.h"
@@ -249,6 +252,24 @@ std::unique_ptr<GPUOperation> SelectQuantizeAndDequantize(
 void SelectCast(const OperationDef& op_def, const GpuInfo& gpu_info,
                 std::unique_ptr<GPUOperation>* ptr) {
   GPUOperation operation = CreateCast(op_def, gpu_info);
+  *ptr = std::make_unique<GPUOperation>(std::move(operation));
+}
+
+void SelectCumsum(const OperationDef& op_def, const CumsumAttributes& attr,
+                  std::unique_ptr<GPUOperation>* ptr) {
+  GPUOperation operation = CreateCumsum(op_def, attr);
+  *ptr = std::make_unique<GPUOperation>(std::move(operation));
+}
+
+void SelectOneHot(const OperationDef& op_def, const OneHotAttributes& attr,
+                  std::unique_ptr<GPUOperation>* ptr) {
+  GPUOperation operation = CreateOneHot(op_def, attr);
+  *ptr = std::make_unique<GPUOperation>(std::move(operation));
+}
+
+void SelectSelectV2(const OperationDef& op_def, const SelectV2Attributes& attr,
+                    std::unique_ptr<GPUOperation>* ptr) {
+  GPUOperation operation = CreateSelectV2(op_def, attr);
   *ptr = std::make_unique<GPUOperation>(std::move(operation));
 }
 

@@ -574,6 +574,11 @@ absl::Status GPUOperationFromNodePart0(
       }
       return absl::OkStatus();
     }
+    case OperationType::CUMSUM: {
+      auto attr = absl::any_cast<CumsumAttributes>(node.operation.attributes);
+      SelectCumsum(op_def, attr, gpu_op);
+      return absl::OkStatus();
+    }
     case OperationType::DEPTH_TO_SPACE: {
       auto attr =
           absl::any_cast<SpaceToDepthAttributes>(node.operation.attributes);
@@ -620,6 +625,11 @@ absl::Status GPUOperationFromNodePart0(
       MeanStdDevNormalization operation = CreateMeanStdDevNormalization(
           op_def, gpu_info, (inputs[0]->tensor.shape.c + 3) / 4);
       *gpu_op = std::make_unique<MeanStdDevNormalization>(std::move(operation));
+      return absl::OkStatus();
+    }
+    case OperationType::ONE_HOT: {
+      auto attr = absl::any_cast<OneHotAttributes>(node.operation.attributes);
+      SelectOneHot(op_def, attr, gpu_op);
       return absl::OkStatus();
     }
     case OperationType::PAD: {
@@ -781,6 +791,11 @@ absl::Status GPUOperationFromNodePart0(
       auto attr = absl::any_cast<ReduceAttributes>(node.operation.attributes);
       *gpu_op = SelectReduce(attr.dims, inputs[0]->tensor.shape, op_type,
                              op_def, gpu_info);
+      return absl::OkStatus();
+    }
+    case OperationType::SELECT_V2: {
+      auto attr = absl::any_cast<SelectV2Attributes>(node.operation.attributes);
+      SelectSelectV2(op_def, attr, gpu_op);
       return absl::OkStatus();
     }
     default:

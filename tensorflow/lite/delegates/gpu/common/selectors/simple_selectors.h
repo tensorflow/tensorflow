@@ -119,6 +119,15 @@ std::unique_ptr<GPUOperation> SelectQuantizeAndDequantize(
 void SelectCast(const OperationDef& op_def, const GpuInfo& gpu_info,
                 std::unique_ptr<GPUOperation>* ptr);
 
+void SelectCumsum(const OperationDef& op_def, const CumsumAttributes& attr,
+                  std::unique_ptr<GPUOperation>* ptr);
+
+void SelectOneHot(const OperationDef& op_def, const OneHotAttributes& attr,
+                  std::unique_ptr<GPUOperation>* ptr);
+
+void SelectSelectV2(const OperationDef& op_def, const SelectV2Attributes& attr,
+                    std::unique_ptr<GPUOperation>* ptr);
+
 }  // namespace gpu
 }  // namespace tflite
 

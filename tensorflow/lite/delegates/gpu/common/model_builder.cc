@@ -748,6 +748,36 @@ class Conv2DOperationParser : public TFLiteOperationParser {
   }
 };
 
+class CumsumOperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    CumsumAttributes attr;
+    const TfLiteTensor* input_tensor = reader->GetInputTensor(0);
+    const TfLiteTensor* axis_tensor = reader->GetInputTensor(1);
+    const TfLiteIntArray* shape = input_tensor->dims;
+    const int tflite_axis = GetTensorData<int32_t>(axis_tensor)[0];
+    const Axis axes[4] = {Axis::BATCH, Axis::WIDTH, Axis::HEIGHT,
+                          Axis::CHANNELS};
+    attr.axis = axes[tflite_axis + 4 - shape->size];
+    node->operation.type = ToString(OperationType::CUMSUM);
+    Tensor<BHWC, DataType::FLOAT32> inputs;
+    node->operation.attributes = std::move(attr);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+    return absl::OkStatus();
+  }
+};
+
 // Doesn't have a kernel implementation.
 class DensifyOperationParser : public TFLiteOperationParser {
  public:
@@ -1389,6 +1419,32 @@ class LSTMOperationParser : public TFLiteOperationParser {
   absl::flat_hash_map<int, ValueId> new_variable_input_value_map_;
 };
 
+class OneHotOperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    OneHotAttributes attr;
+    const TfLiteTensor* on_tensor = reader->GetInputTensor(2);
+    const TfLiteTensor* off_tensor = reader->GetInputTensor(3);
+    attr.on_value = GetTensorData<float>(on_tensor)[0];
+    attr.off_value = GetTensorData<float>(off_tensor)[0];
+    node->operation.type = ToString(OperationType::ONE_HOT);
+    node->operation.attributes = std::move(attr);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+    return absl::OkStatus();
+  }
+};
+
 class PackOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
@@ -1839,6 +1895,84 @@ class Resize2DOperationParser : public TFLiteOperationParser {
   }
 
   SamplingType sampling_type_ = SamplingType::UNKNOWN;
+};
+
+class SelectV2OperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    SelectV2Attributes attr;
+    const TfLiteTensor* cond_tensor = reader->GetInputTensor(0);
+    const TfLiteTensor* true_tensor = reader->GetInputTensor(1);
+    const TfLiteTensor* false_tensor = reader->GetInputTensor(2);
+    const bool is_if_constant = true_tensor->allocation_type == kTfLiteMmapRo;
+    const bool is_else_constant =
+        false_tensor->allocation_type == kTfLiteMmapRo;
+    BHWC cond_shape, true_shape, false_shape;
+    RETURN_IF_ERROR(ExtractTensorShape(*cond_tensor, &cond_shape));
+    if (true_tensor->dims->size == 0) {
+      attr.broadcast_true = true;
+    } else {
+      RETURN_IF_ERROR(ExtractTensorShape(*true_tensor, &true_shape));
+      attr.broadcast_true = true_shape.DimensionsProduct() == 1;
+    }
+    if (false_tensor->dims->size == 0) {
+      attr.broadcast_false = true;
+    } else {
+      RETURN_IF_ERROR(ExtractTensorShape(*false_tensor, &false_shape));
+      attr.broadcast_false = false_shape.DimensionsProduct() == 1;
+    }
+    node->operation.type = ToString(OperationType::SELECT_V2);
+    Value* if_value;
+    Value* else_value;
+    Tensor<BHWC, DataType::FLOAT32> if_tensor;
+    Tensor<BHWC, DataType::FLOAT32> else_tensor;
+    if (!attr.broadcast_true) {
+      if (is_if_constant) {
+        RETURN_IF_ERROR(reader->ReadTensor(1, &if_tensor));
+      }
+    } else {
+      Tensor<Scalar, DataType::FLOAT32> if_scalar_tensor;
+      RETURN_IF_ERROR(reader->ReadTensor(1, &if_scalar_tensor));
+      if_tensor.shape = BHWC(1, 1, 1, 1);
+      if_tensor.data.push_back(if_scalar_tensor.data[0]);
+    }
+    if (!attr.broadcast_false) {
+      if (is_else_constant) {
+        RETURN_IF_ERROR(reader->ReadTensor(2, &else_tensor));
+      }
+    } else {
+      Tensor<Scalar, DataType::FLOAT32> else_scalar_tensor;
+      RETURN_IF_ERROR(reader->ReadTensor(2, &else_scalar_tensor));
+      else_tensor.shape = BHWC(1, 1, 1, 1);
+      else_tensor.data.push_back(else_scalar_tensor.data[0]);
+    }
+    node->operation.attributes = std::move(attr);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    if (is_if_constant) {
+      RETURN_IF_ERROR(NewConstNode(if_tensor, graph, &if_value));
+      RETURN_IF_ERROR(graph->AddConsumer(node->id, if_value->id));
+    } else {
+      RETURN_IF_ERROR(reader->AddInput(node, 1));
+    }
+    if (is_else_constant) {
+      RETURN_IF_ERROR(NewConstNode(else_tensor, graph, &else_value));
+      RETURN_IF_ERROR(graph->AddConsumer(node->id, else_value->id));
+    } else {
+      RETURN_IF_ERROR(reader->AddInput(node, 2));
+    }
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+    return absl::OkStatus();
+  }
 };
 
 class SliceOperationParser : public TFLiteOperationParser {
@@ -2676,6 +2810,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<Conv2DOperationParser>();
     case kTfLiteBuiltinCos:
       return std::make_unique<ElementwiseOperationParser>(OperationType::COS);
+    case kTfLiteBuiltinCumsum:
+      return std::make_unique<CumsumOperationParser>();
     case kTfLiteBuiltinDensify:
       return std::make_unique<DensifyOperationParser>();
     case kTfLiteBuiltinDepthwiseConv2d:
@@ -2744,6 +2880,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
     case kTfLiteBuiltinNotEqual:
       return std::make_unique<ElementwiseOperationParser>(
           OperationType::NOT_EQUAL);
+    case kTfLiteBuiltinOneHot:
+      return std::make_unique<OneHotOperationParser>();
     case kTfLiteBuiltinPack:
       return std::make_unique<PackOperationParser>();
     case kTfLiteBuiltinPad:
@@ -2782,6 +2920,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<Resize2DOperationParser>(SamplingType::NEAREST);
     case kTfLiteBuiltinRsqrt:
       return std::make_unique<ElementwiseOperationParser>(OperationType::RSQRT);
+    case kTfLiteBuiltinSelectV2:
+      return std::make_unique<SelectV2OperationParser>();
     case kTfLiteBuiltinSin:
       return std::make_unique<ElementwiseOperationParser>(OperationType::SIN);
     case kTfLiteBuiltinSlice:
@@ -2873,6 +3013,9 @@ TfLiteIntArray* GetOpsToReplace(
       allowed_in_types.push_back(kTfLiteInt32);
       allowed_out_types.push_back(kTfLiteFloat32);
       allowed_out_types.push_back(kTfLiteInt32);
+    }
+    if (registration->builtin_code == kTfLiteBuiltinOneHot) {
+      allowed_in_types.push_back(kTfLiteInt32);
     }
     if (!IsAllAllowedTensors(context, node->inputs, allowed_in_types) ||
         !IsAllAllowedTensors(context, node->outputs, allowed_out_types)) {
