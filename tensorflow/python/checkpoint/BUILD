@@ -155,6 +155,32 @@ py_library(
 )
 
 py_library(
+    name = "checkpoint_view",
+    srcs = ["checkpoint_view.py"],
+    srcs_version = "PY3",
+    tags = ["no_pip"],
+    deps = [
+        ":util",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/trackable:converter",
+    ],
+)
+
+tf_py_test(
+    name = "checkpoint_view_test",
+    srcs = ["checkpoint_view_test.py"],
+    tags = ["no_pip"],
+    deps = [
+        ":checkpoint_view",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/trackable:base",
+    ],
+)
+
+py_library(
     name = "graph_view",
     srcs = ["graph_view.py"],
     srcs_version = "PY3",
