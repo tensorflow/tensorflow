@@ -1638,6 +1638,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:stream_header",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Core",
     ],

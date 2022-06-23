@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "llvm/IR/DataLayout.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
@@ -135,11 +135,11 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
   std::vector<std::unique_ptr<char[]>> fallback_buffers;
 
   // Return checked-out buffers at the end of this function.
-  auto cleanup = tensorflow::gtl::MakeCleanup([&] {
+  absl::Cleanup cleanup = [&] {
     absl::MutexLock lock(&mu_);
     pinned_buffers_.insert(pinned_buffers_.end(), checked_out_buffers.begin(),
                            checked_out_buffers.end());
-  });
+  };
 
   {
     absl::MutexLock lock(&mu_);
