@@ -994,8 +994,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
           hlo_module_config_.debug_options().xla_cpu_use_mkl_dnn() &&
           convolution->feature_group_count() == 1;
       bool use_acl =
-          hlo_module_config_.debug_options().xla_cpu_use_acl() &&
-          convolution->feature_group_count() == 1;
+          hlo_module_config_.debug_options().xla_cpu_use_acl();
 
       auto valid_num_dims = [](absl::Span<const int64_t> xs) {
         return xs.size() >= 2 && xs.size() <= 3;

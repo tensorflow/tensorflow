@@ -24,9 +24,19 @@ limitations under the License.
 #include "utils/Utils.h"
 
 extern "C" {
+struct acl_depthwise_conv_obj_t {
+    arm_compute::NEDepthwiseConvolutionLayer depthwise_conv;
+    arm_compute::NEArithmeticAddition add;
+    arm_compute::NEActivationLayer act;
+    arm_compute::Tensor input_tensor;
+    arm_compute::Tensor kernel_tensor;
+    arm_compute::Tensor bia_tensor;
+    arm_compute::Tensor output_tensor;
+    arm_compute::Tensor output_acc_tensor;
+};
 
-struct acl_conv_obj_t {
-    arm_compute::NEGEMMConvolutionLayer conv;
+struct acl_gemm_conv_obj_t {
+    arm_compute::NEGEMMConvolutionLayer gemm_conv;
     arm_compute::NEArithmeticAddition add;
     arm_compute::NEActivationLayer act;
     arm_compute::Tensor input_tensor;
