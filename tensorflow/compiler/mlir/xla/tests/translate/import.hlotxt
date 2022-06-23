@@ -1478,6 +1478,14 @@ add {
   // CHECK: mhlo.round_nearest_even %[[ARG0]] : tensor<2xf32>
 }
 
+// CHECK-LABEL : func private domain
+%domain (Arg_0.1: u32[]) -> u32[] {
+  // CHECK: "mhlo.domain"(
+  // CHECK-SAME: {entry_metadata = "\08\01\1A\01\01\22\01\01", exit_metadata = "\08\02", kind = #mhlo<"kind sharding">}
+  %Arg_0.1 = u32[] parameter(0)
+  ROOT %domain.2 = u32[] domain(u32[] %Arg_0.1), domain={kind="sharding", entry={maximal device=1}, exit={}}
+}
+
 // CHECK-LABEL: func private @add_dependency
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<4x4xf32>)
 %add_dependency (Arg_0.1: f32[4,4]) -> f32[4,4] {

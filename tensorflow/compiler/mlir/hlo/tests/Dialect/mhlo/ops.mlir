@@ -3714,6 +3714,14 @@ func.func @part_id() -> tensor<ui32> {
 
 // -----
 
+// CHECK-LABEL: func @domain
+func.func @domain(%arg0: tensor<ui32>) -> tensor<ui32> {
+  %1 = "mhlo.domain"(%arg0) {kind = #mhlo<"kind sharding">, entry_metadata = "", exit_metadata = ""} : (tensor<ui32>) -> tensor<ui32>
+  return %1 : tensor<ui32>
+}
+
+// -----
+
 // CHECK-LABEL: func @conv_i4
 func.func @conv_i4(%arg0: tensor<64x8x8x8xi4>, %arg1: tensor<4x4x8x32xi4>) -> tensor<64x3x3x32xi8> {
   // Note: This has been lowered and adapted from:

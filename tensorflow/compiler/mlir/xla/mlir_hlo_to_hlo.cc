@@ -838,6 +838,23 @@ LogicalResult ExportXlaOp(DotGeneralOp op, OpLoweringContext ctx) {
   return mlir::success();
 }
 
+LogicalResult ExportXlaOp(DomainOp op, OpLoweringContext ctx) {
+  auto& valueMap = *ctx.values;
+
+  xla::Shape shape = xla::TypeToShape(op.getResult().getType());
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.operand(), valueMap, &operand, op))) return failure();
+
+  auto entry = CreateOpShardingFromStringRef(op.entry_metadata());
+  if (!entry) return failure();
+  auto exit = CreateOpShardingFromStringRef(op.exit_metadata());
+  if (!exit) return failure();
+
+  valueMap[op] = xla::internal::XlaBuilderFriend::BuildDomain(
+      ctx.builder, operand, *exit, *entry, shape);
+  return success();
+}
+
 LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
   // This op has no expression in the legacy export format.
   return failure();

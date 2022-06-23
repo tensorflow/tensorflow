@@ -1562,6 +1562,16 @@ func.func private @main() -> tensor<ui32> {
 // -----
 
 // CHECK:  HloModule
+func.func private @main(%arg0: tensor<ui32>) -> tensor<ui32> {
+  // CHECK: u32[] domain(
+  // CHECK-SAME: domain={kind="sharding", entry={maximal device=1}, exit={}}
+  %1 = "mhlo.domain"(%arg0) {entry_metadata = "\08\01\1A\01\01\22\01\01", exit_metadata = "\08\02", kind = #mhlo<"kind sharding">} : (tensor<ui32>) -> tensor<ui32>
+  return %1 : tensor<ui32>
+}
+
+// -----
+
+// CHECK:  HloModule
 func.func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<3x4xf32>) -> tensor<3x4xf32> {
 // CHECK: %[[ARG0:.*]] = f32[4,4] parameter(0)
 // CHECK: %[[ARG1:.*]] = f32[3,4] parameter(1)

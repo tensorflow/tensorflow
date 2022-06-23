@@ -134,6 +134,19 @@ XlaOp XlaBuilderFriend::BuildBitcast(XlaBuilder* builder, XlaOp operand,
   });
 }
 
+XlaOp XlaBuilderFriend::BuildDomain(XlaBuilder* builder, XlaOp operand,
+                                    const OpSharding entry,
+                                    const OpSharding exit, const Shape& shape) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_domain_entry_sharding() = entry;
+    *instr.mutable_domain_exit_sharding() = exit;
+    *instr.mutable_shape() = shape.ToProto();
+    return builder->AddInstruction(std::move(instr), HloOpcode::kDomain,
+                                   {operand});
+  });
+}
+
 XlaOp XlaBuilderFriend::BuildPartitionId(XlaBuilder* builder,
                                          const Shape& shape) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
