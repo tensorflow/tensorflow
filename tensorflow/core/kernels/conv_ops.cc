@@ -783,8 +783,7 @@ int64_t GetDnnWorkspaceLimit(const string& envvar_in_mb,
 
 int64_t GetDnnWorkspaceLimitOrDefault() {
   return GetDnnWorkspaceLimit("TF_CUDNN_WORKSPACE_LIMIT_IN_MB",
-                              1LL << 33  // 8GB
-  );
+                              1LL << 33);  // 8GB by default
 }
 
 template <typename T>
