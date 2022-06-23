@@ -56,8 +56,6 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
     if (!s.ok()) {
       LOG(ERROR) << "Coordination agent shutdown failed with status: " << s;
     }
-    // Cancel all pending GetKeyValue() RPC calls.
-    cancellation_manager_.StartCancel();
   }
   Status Initialize(Env* env, const ServerDef& server_def,
                     std::unique_ptr<CoordinationClientCache> client_cache,
@@ -452,6 +450,9 @@ Status CoordinationServiceAgentImpl::Shutdown() {
     }
     state_ = State::SHUTDOWN;
   }
+
+  // Cancel all pending GetKeyValue() RPC calls.
+  cancellation_manager_.StartCancel();
   return status;
 }
 
