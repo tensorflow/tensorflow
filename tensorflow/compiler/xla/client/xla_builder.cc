@@ -476,7 +476,7 @@ XlaComputation XlaBuilder::BuildAndNoteError() {
         AddStatus(build_status.status(), absl::StrCat("error from: ", name_)));
     return {};
   }
-  return build_status.ConsumeValueOrDie();
+  return std::move(build_status).value();
 }
 
 Status XlaBuilder::GetCurrentStatus() const {
