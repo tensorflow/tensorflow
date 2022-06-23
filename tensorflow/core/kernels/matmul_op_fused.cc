@@ -33,6 +33,7 @@ limitations under the License.
 #endif  // GOOGLE_CUDA
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/bounds_check.h"
@@ -303,8 +304,7 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
         se::GetPlanAndAlgorithms(stream, matmul_params, 1, n, m, k, dtype,
                                  lhs_matrix, rhs_matrix, output_matrix);
     OP_REQUIRES_OK(context, plan_and_algorithms_or.status());
-    const auto* plan_and_algorithms =
-        plan_and_algorithms_or.ConsumeValueOrDie();
+    const auto* plan_and_algorithms = std::move(plan_and_algorithms_or).value();
 
     const auto& plan = plan_and_algorithms->plan;
     const auto& algorithms = plan_and_algorithms->algorithms;

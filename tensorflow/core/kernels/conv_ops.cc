@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <atomic>
 #include <map>
+#include <utility>
 #include <vector>
 
 #include "absl/synchronization/blocking_counter.h"
@@ -1115,7 +1116,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       se::dnn::ConvolutionKind::FORWARD, input_desc, input_ptr, filter_desc,
       filter_ptr, conv_desc, output_desc, output_ptr, ConvolveScratchSize);
   OP_REQUIRES_OK(ctx, entry_or.status());
-  auto autotune_entry = entry_or.ConsumeValueOrDie();
+  auto autotune_entry = std::move(entry_or).value();
 
   DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
   Status cudnn_launch_status = LaunchAutotunedConv(

@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/conv_grad_input_ops.h"
 
+#include <utility>
+
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -379,7 +381,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       filter_desc, filter_ptr, conv_desc, output_desc, out_backprop_ptr,
       ConvolveBackwardDataScratchSize);
   OP_REQUIRES_OK(ctx, entry_or.status());
-  auto autotune_entry = entry_or.ConsumeValueOrDie();
+  auto autotune_entry = std::move(entry_or).value();
 
   DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize, ctx);
   Status cudnn_launch_status =

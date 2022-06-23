@@ -39,6 +39,7 @@ limitations under the License.
 #endif  // GOOGLE_CUDA
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -559,7 +560,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
         kSideInputScale, input_ptr, filter_ptr, output_ptr, bias_ptr,
         side_input_ptr, ConvolveScratchSize());
     OP_REQUIRES_OK(context, entry_or.status());
-    auto autotune_entry = entry_or.ConsumeValueOrDie();
+    auto autotune_entry = std::move(entry_or).value();
 
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize(), context);
     Status cudnn_launch_status;
@@ -593,7 +594,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
           AllocateScratchOrFallback<se::dnn::FusedConvOp::Signature>(
               &scratch_allocator, primary, no_scratch_fallback);
       OP_REQUIRES_OK(context, runner_and_scratch_or.status());
-      auto runner_and_scratch = runner_and_scratch_or.ConsumeValueOrDie();
+      auto runner_and_scratch = std::move(runner_and_scratch_or).value();
       auto& runner =
           *std::get<const se::dnn::FusedConvRunner*>(runner_and_scratch);
       cudnn_launch_status = runner(

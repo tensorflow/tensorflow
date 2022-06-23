@@ -16,6 +16,8 @@ limitations under the License.
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
+#include <utility>
+
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -1520,7 +1522,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         input_desc, in_backprop_ptr, filter_desc, filter_ptr, conv_desc,
         output_desc, out_backprop_ptr, ConvolveBackwardDataScratchSize);
     OP_REQUIRES_OK(context, entry_or.status());
-    auto autotune_entry = entry_or.ConsumeValueOrDie();
+    auto autotune_entry = std::move(entry_or).value();
 
     DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                           context);
@@ -1917,7 +1919,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         input_desc, input_ptr, filter_desc, filter_backprop_ptr, conv_desc,
         output_desc, out_backprop_ptr, ConvolveBackwardFilterScratchSize);
     OP_REQUIRES_OK(context, entry_or.status());
-    auto autotune_entry = entry_or.ConsumeValueOrDie();
+    auto autotune_entry = std::move(entry_or).value();
 
     DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                           context);

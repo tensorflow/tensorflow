@@ -16,6 +16,8 @@ limitations under the License.
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
+#include <utility>
+
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -504,7 +506,7 @@ struct LaunchConvOp<GPUDevice, T> {
         se::dnn::ConvolutionKind::FORWARD, input_desc, input_ptr, filter_desc,
         filter_ptr, conv_desc, output_desc, output_ptr, ConvolveScratchSize);
     OP_REQUIRES_OK(ctx, config_or.status());
-    auto autotune_entry = config_or.ConsumeValueOrDie();
+    auto autotune_entry = std::move(config_or).value();
 
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
     Status cudnn_launch_status = LaunchAutotunedConv(

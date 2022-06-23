@@ -19,6 +19,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <algorithm>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/kernel_shape_util.h"
@@ -989,7 +990,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       filter_desc, filter_backprop_ptr, conv_desc, output_desc,
       out_backprop_ptr, ConvolveBackwardFilterScratchSize);
   OP_REQUIRES_OK(ctx, entry_or.status());
-  auto autotune_entry = entry_or.ConsumeValueOrDie();
+  auto autotune_entry = std::move(entry_or).value();
 
   DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize, ctx);
   Status cudnn_launch_status = LaunchAutotunedConv(
