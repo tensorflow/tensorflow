@@ -76,12 +76,6 @@ namespace gpu {
 
 namespace {
 
-bool UseCudaMallocAsyncAllocator() {
-  static const char* debug_allocator_str = std::getenv("TF_GPU_ALLOCATOR");
-  return debug_allocator_str != nullptr &&
-         std::strcmp(debug_allocator_str, "cuda_malloc_async") == 0;
-}
-
 // Returns the current context and checks that it is in the set of CUDA contexts
 // created by StreamExecutor (to ensure that the CUDA runtime didn't create a
 // context behind our backs).
@@ -1115,7 +1109,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   CUresult result;
   // CreatedContexts::GetAnyContext() doesn't works when ptr == 0.
   // This happens when the size is 0.
-  if (gpu_dst == 0 || gpu_src == 0 || !UseCudaMallocAsyncAllocator()) {
+  if (gpu_dst == 0 || gpu_src == 0) {
     result = cuMemcpyDtoD(gpu_dst, gpu_src, size);
   } else {
     // Any context work here.
@@ -1200,7 +1194,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   CUresult result;
   // CreatedContexts::GetAnyContext() doesn't works when ptr == 0.
   // This happens when the size is 0.
-  if (gpu_dst == 0 || gpu_src == 0 || !UseCudaMallocAsyncAllocator()) {
+  if (gpu_dst == 0 || gpu_src == 0) {
     result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
   } else {
     // Any context work here.
