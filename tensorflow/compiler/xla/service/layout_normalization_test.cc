@@ -99,6 +99,7 @@ ENTRY main {
   ROOT out = sqrt(c)
 }
 )";
+
   CheckLayoutNormalization(hlo, R"(
 // CHECK:  [[a_0:%[^ ]+]] = f32[5,4]{0,1} parameter(0)
 // CHECK:  [[bitcast_1:%[^ ]+]] = f32[4,5]{1,0} bitcast([[a_0]])
@@ -107,6 +108,23 @@ ENTRY main {
 // CHECK:  [[add_4:%[^ ]+]] = f32[4,5]{1,0} add([[bitcast_1]], [[bitcast_2_3]])
 // CHECK:  [[sqrt_5:%[^ ]+]] = f32[4,5]{1,0} sqrt([[add_4]])
 // CHECK:  ROOT [[bitcast_5_6:%[^ ]+]] = f32[5,4]{0,1} bitcast([[sqrt_5]])
+)");
+}
+
+TEST_F(LayoutNormalizationTest, Reshape) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[5,4]{0,1} parameter(0)
+  ROOT b = f32[5,2,2]{0,2,1} reshape(a)
+})";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK:  [[a_0:%[^ ]+]] = f32[5,4]{0,1} parameter(0)
+// CHECK:  [[bitcast_1:%[^ ]+]] = f32[4,5]{1,0} bitcast([[a_0]])
+// CHECK:  [[reshape_2:%[^ ]+]] = f32[2,2,5]{2,1,0} reshape([[bitcast_1]])
+// CHECK:  ROOT [[bitcast_2_3:%[^ ]+]] = f32[5,2,2]{0,2,1} bitcast([[reshape_2]])
 )");
 }
 

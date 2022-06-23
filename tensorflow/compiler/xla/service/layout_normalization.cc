@@ -47,6 +47,12 @@ namespace {
 //
 // Local precondition for every call:
 //    -> Input is a bitcast from a normalized layout.
+//
+// Local postcondition:
+//    -> Input and output of a processed operation have descending layout*
+//
+// *: For current fusion limitations this is currently not applicable to
+// unnested reductions only.
 class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
  public:
   // Default action: ensure local postcondition that any input is always a
@@ -153,11 +159,34 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
+  // The ReshapeDecomposer already gives us a precondition that a reshape is
+  // bitcast. Converts:
+  //
+  // A{I} -> bitcast [S0]{L1} -> R [S]{L2}
+  //
+  // Into:
+  //
+  // A{I} -> R [S']{I} -> bitcast[S]{L2}
+  //
+  Status HandleReshape(HloInstruction* hlo) override {
+    auto s = hlo->shape();
+    auto operand = hlo->mutable_operand(0);
+    TF_RET_CHECK(ShapeUtil::ReshapeIsBitcast(s, operand->shape()));
+    TF_ASSIGN_OR_RETURN(auto a0, GetNormalizedInput(operand));
+    auto normalized_reshape_s = Normalize(s);
+    TF_ASSIGN_OR_RETURN(auto new_reshape,
+                        MakeReshapeHlo(normalized_reshape_s, a0));
+    auto bc_to_orig = MakeBitcastHlo(new_reshape, s);
+    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
+    return OkStatus();
+  }
+
  private:
   // Due to Local Precondition we have, the input to all processed ops should
   // be HLO in descending layout piped through bitcast.
   StatusOr<HloInstruction*> GetNormalizedInput(HloInstruction* hlo) {
-    TF_RET_CHECK(hlo->opcode() == HloOpcode::kBitcast);
+    TF_RET_CHECK(hlo->opcode() == HloOpcode::kBitcast)
+        << "Unexpected HLO input: " << hlo->ToString();
     auto input = hlo->mutable_operand(0);
     auto input_shape = input->shape();
     TF_RET_CHECK(input_shape.layout() ==
