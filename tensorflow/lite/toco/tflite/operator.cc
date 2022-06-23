@@ -15,6 +15,9 @@ limitations under the License.
 #include "tensorflow/lite/toco/tflite/operator.h"
 
 #include <map>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
