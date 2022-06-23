@@ -6123,10 +6123,12 @@ port::Status CudnnSupport::DoPoolForward(
     CudnnTensorDescriptor src_desc(input_split, cudnn_input_type);
     CudnnTensorDescriptor dest_desc(output_split, cudnn_output_type);
 
+    void* input_data_ptr = static_cast<char*>(input_data.opaque()) +
+                           splits[i].input_offset_in_bytes;
+    void* output_data_ptr = static_cast<char*>(output_data.opaque()) +
+                            splits[i].output_offset_in_bytes;
     const auto status =
-        cudnn_launcher(src_desc, dest_desc,
-                       input_data.opaque() + splits[i].input_offset_in_bytes,
-                       output_data.opaque() + splits[i].output_offset_in_bytes);
+        cudnn_launcher(src_desc, dest_desc, input_data_ptr, output_data_ptr);
     if (!IsStatusOk(status, /*report_error=*/true)) {
       return status;
     }
@@ -6190,12 +6192,17 @@ port::Status CudnnSupport::DoPoolBackward(
     CudnnTensorDescriptor src_desc(input_split, cudnn_input_type);
     CudnnTensorDescriptor dest_desc(output_split, cudnn_output_type);
 
-    const auto status = cudnn_launcher(
-        src_desc, dest_desc,
-        output_data.opaque() + splits[i].output_offset_in_bytes,
-        input_diff_data.opaque() + splits[i].output_offset_in_bytes,
-        input_data.opaque() + splits[i].input_offset_in_bytes,
-        output_diff_data.opaque() + splits[i].input_offset_in_bytes);
+    void* output_data_ptr = static_cast<char*>(output_data.opaque()) +
+                            splits[i].output_offset_in_bytes;
+    void* input_diff_data_ptr = static_cast<char*>(input_diff_data.opaque()) +
+                                splits[i].output_offset_in_bytes;
+    void* input_data_ptr = static_cast<char*>(input_data.opaque()) +
+                           splits[i].input_offset_in_bytes;
+    void* output_diff_data_ptr = static_cast<char*>(output_diff_data.opaque()) +
+                                 splits[i].input_offset_in_bytes;
+    const auto status = cudnn_launcher(src_desc, dest_desc, output_data_ptr,
+                                       input_diff_data_ptr, input_data_ptr,
+                                       output_diff_data_ptr);
     if (!IsStatusOk(status, /*report_error=*/true)) {
       return status;
     }
