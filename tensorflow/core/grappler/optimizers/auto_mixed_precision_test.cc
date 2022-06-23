@@ -1529,8 +1529,8 @@ TEST_F(AutoMixedPrecisionMklTest, TensorListSetGet) {
 }
 
 TEST_F(AutoMixedPrecisionMklTest, InferFollowUpStreamAllow) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Test only applicable to MKL auto-mixed precision.";
+  if (!IsOneDNNEnabled())
+    GTEST_SKIP() << "Test only applicable to oneDNN auto-mixed precision.";
   tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(
       "/job:localhost/replica:0/task:0/device:CPU:0");
   Output input1 = ops::Const(s.WithOpName("input1"), 1.f / 32, {8, 56, 56, 16});
@@ -1572,7 +1572,7 @@ TEST_F(AutoMixedPrecisionMklTest, InferFollowUpStreamAllow) {
 }
 
 TEST_F(AutoMixedPrecisionMklTest, InferFollowUpStreamDeny) {
-  if (!IsMKLEnabled())
+  if (!IsOneDNNEnabled())
     GTEST_SKIP() << "Test only applicable to MKL auto-mixed precision.";
   tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(
       "/job:localhost/replica:0/task:0/device:CPU:0");

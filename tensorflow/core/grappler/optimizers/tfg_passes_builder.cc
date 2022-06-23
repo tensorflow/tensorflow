@@ -60,8 +60,8 @@ void RemapperPassBuilder(PassManager& manager) {
   manager.addPass(CreateConsolidateAttributesPass());
   manager.addPass(CreateTopoSortPass());
   manager.addPass(CreateShapeInferencePass());
-  manager.addPass(
-      CreateRemapperPass(/*enable_mkl_patterns=*/tensorflow::IsMKLEnabled()));
+  manager.addPass(CreateRemapperPass(
+      /*enable_mkl_patterns=*/tensorflow::IsOneDNNEnabled()));
   manager.addPass(CreatePrepareAttributesForExportPass());
 }
 

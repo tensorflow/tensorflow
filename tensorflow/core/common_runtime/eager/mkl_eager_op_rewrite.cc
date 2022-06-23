@@ -168,8 +168,8 @@ Status MklEagerOpRewrite::CreateGenericMklOp(
 }
 
 bool MklEagerOpRewrite::ShouldRewriteOp(EagerOperation* op) {
-  // Don't rewrite the op if MKL use is disabled at runtime.
-  if (!IsMKLEnabled()) {
+  // Don't rewrite the op if oneDNN use is disabled at runtime.
+  if (!IsOneDNNEnabled()) {
     return false;
   }
   DataType data_type;

@@ -221,7 +221,7 @@ TEST_F(RemapperTest, FuseBatchNormWithRelu) {
 
 #if defined(GOOGLE_CUDA) && CUDNN_VERSION >= 7402
 TEST_F(RemapperTest, FuseBatchNormGradWithReluGrad) {
-  if (IsMKLEnabled()) GTEST_SKIP() << "Fusion not available with oneDNN.";
+  if (IsOneDNNEnabled()) GTEST_SKIP() << "Fusion not available with oneDNN.";
   using ::tensorflow::ops::Placeholder;
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   bool is_training = true;
@@ -458,7 +458,7 @@ TEST_F(RemapperTest, FuseBatchNormWithAddAndRelu) {
 
 #if defined(GOOGLE_CUDA) && CUDNN_VERSION >= 7402
 TEST_F(RemapperTest, FuseBatchNormGradWithAddAndReluGrad) {
-  if (IsMKLEnabled()) GTEST_SKIP() << "Fusion not available with oneDNN.";
+  if (IsOneDNNEnabled()) GTEST_SKIP() << "Fusion not available with oneDNN.";
   using ::tensorflow::ops::Placeholder;
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   bool is_training = true;
@@ -644,7 +644,7 @@ class RemapperFuseConvWithBias : public RemapperTest {
     auto bias_t = GenerateTensorWithSetRandom<DTYPE>({128});
 
     if (dim == 3) {
-      if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
+      if (!IsOneDNNEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
       input_shape = ops::Placeholder::Shape({8, 4, 32, 32, 3});
       filter_shape = ops::Placeholder::Shape({1, 1, 1, 3, 128});
       bias_shape = ops::Placeholder::Shape({128});
@@ -721,15 +721,17 @@ class RemapperFuseConvWithBias : public RemapperTest {
 TEST_F(RemapperFuseConvWithBias, Conv2D_F32) { RunTest<2, DT_FLOAT>(); }
 TEST_F(RemapperFuseConvWithBias, Conv3D_F32) { RunTest<3, DT_FLOAT>(); }
 TEST_F(RemapperFuseConvWithBias, Conv2D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
-                    "FuseConv2DWithBias with bfloat16.";
+  if (!IsOneDNNEnabled())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "FuseConv2DWithBias with bfloat16.";
   RunTest<2, DT_BFLOAT16>();
 }
 TEST_F(RemapperFuseConvWithBias, Conv3D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
-                    "FuseConv3DWithBias with bfloat16.";
+  if (!IsOneDNNEnabled())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "FuseConv3DWithBias with bfloat16.";
   RunTest<3, DT_BFLOAT16>();
 }
 
@@ -751,7 +753,8 @@ class RemapperFuseConvWithBiasAndActivation : public RemapperTest {
       auto bias_t = GenerateTensorWithSetRandom<DTYPE>({128});
 
       if (dim == 3) {
-        if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
+        if (!IsOneDNNEnabled())
+          GTEST_SKIP() << "Test only applicable to oneDNN.";
         input_shape = Placeholder::Shape({8, 4, 32, 32, 3});
         filter_shape = Placeholder::Shape({1, 1, 1, 3, 128});
         bias_shape = Placeholder::Shape({128});
@@ -876,15 +879,17 @@ TEST_F(RemapperFuseConvWithBiasAndActivation, Conv3D_F32) {
   RunTest<3, DT_FLOAT>();
 }
 TEST_F(RemapperFuseConvWithBiasAndActivation, Conv2D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
-                    "FuseConv2DWithBiasAndActivation with bfloat16.";
+  if (!IsOneDNNEnabled())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "FuseConv2DWithBiasAndActivation with bfloat16.";
   RunTest<2, DT_BFLOAT16>();
 }
 TEST_F(RemapperFuseConvWithBiasAndActivation, Conv3D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
-                    "FuseConv3DWithBiasAndActivation with bfloat16.";
+  if (!IsOneDNNEnabled())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "FuseConv3DWithBiasAndActivation with bfloat16.";
   RunTest<3, DT_BFLOAT16>();
 }
 
@@ -905,7 +910,7 @@ class RemapperFuseConvWithSqueezeAndBias : public RemapperTest {
     auto bias_t = GenerateTensorWithSetRandom<DTYPE>({128});
 
     if (dim == 3) {
-      if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
+      if (!IsOneDNNEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
       input_shape = ops::Placeholder::Shape({8, 4, 32, 1, 3});
       filter_shape = ops::Placeholder::Shape({1, 1, 1, 3, 128});
       bias_shape = ops::Placeholder::Shape({128});
@@ -1000,21 +1005,23 @@ TEST_F(RemapperFuseConvWithSqueezeAndBias, Conv3D_FP32) {
   RunTest<3, DT_FLOAT>();
 }
 TEST_F(RemapperFuseConvWithSqueezeAndBias, Conv2D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
-                    "FuseConvWithSqueezeAndBias with bfloat16.";
+  if (!IsOneDNNEnabled())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "FuseConvWithSqueezeAndBias with bfloat16.";
   RunTest<2, DT_BFLOAT16>();
 }
 TEST_F(RemapperFuseConvWithSqueezeAndBias, Conv3D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
-                    "FuseConvWithSqueezeAndBias with bfloat16.";
+  if (!IsOneDNNEnabled())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "FuseConvWithSqueezeAndBias with bfloat16.";
   RunTest<3, DT_BFLOAT16>();
 }
 
 #ifdef INTEL_MKL
 TEST_F(RemapperTest, FuseConv3DWithBias) {
-  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
+  if (!IsOneDNNEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
   using ::tensorflow::ops::Placeholder;
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
@@ -1079,7 +1086,7 @@ TEST_F(RemapperTest, FuseConv3DWithBias) {
 
 // Fuse conv3d + add {1,1,1,1,C}
 TEST_F(RemapperTest, FuseConv3DWithAdd) {
-  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
+  if (!IsOneDNNEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
   using ::tensorflow::ops::Placeholder;
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
@@ -1145,7 +1152,7 @@ TEST_F(RemapperTest, FuseConv3DWithAdd) {
 
 // Fuse conv2d + add {1,1,C}
 TEST_F(RemapperTest, FuseConv2DWithAdd) {
-  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
+  if (!IsOneDNNEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
   using ::tensorflow::ops::Placeholder;
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
@@ -1275,11 +1282,11 @@ class RemapperFuseSoftplusTanhMul : public RemapperTest {
 };
 
 TEST_F(RemapperFuseSoftplusTanhMul, FP32) {
-  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
+  if (!IsOneDNNEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
   RunTest<DT_FLOAT>();
 }
 TEST_F(RemapperFuseSoftplusTanhMul, BF16) {
-  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
+  if (!IsOneDNNEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
   RunTest<DT_BFLOAT16>();
 }
 #endif
@@ -1441,7 +1448,7 @@ TEST_F(RemapperFuseMatMulWithBiasTest, F32) { RunTest<DT_FLOAT>(); }
 
 TEST_F(RemapperFuseMatMulWithBiasTest, Bf16) {
 #if !defined(ENABLE_MKL)
-  GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
+  GTEST_SKIP() << "Intel oneDNN with bfloat16 support is not enabled, skipping "
                   "FuseMatMulWithBias with bfloat16.";
 #endif
   RunTest<DT_BFLOAT16>();  // NOLINT
@@ -1651,7 +1658,7 @@ TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, F32) {
 
 TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, Bf16) {
 #if !defined(ENABLE_MKL)
-  GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
+  GTEST_SKIP() << "Intel oneDNN with bfloat16 support is not enabled, skipping "
                   "FuseMatMulWithBiasAndActivation with bfloat16.";
 #endif
   RunTest<DT_BFLOAT16>();  // NOLINT
@@ -1842,7 +1849,7 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
 
 #ifdef INTEL_MKL
 TEST_F(RemapperTest, FuseConv3DWithBiasAndAddN) {
-  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
+  if (!IsOneDNNEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
   using ::tensorflow::ops::Placeholder;
 
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -1914,7 +1921,7 @@ TEST_F(RemapperTest, FuseConv3DWithBiasAndAddN) {
 }
 
 TEST_F(RemapperTest, FuseConv3DWithBiasAndAdd) {
-  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
+  if (!IsOneDNNEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
   using ::tensorflow::ops::Placeholder;
 
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -1985,7 +1992,7 @@ TEST_F(RemapperTest, FuseConv3DWithBiasAndAdd) {
 }
 
 TEST_F(RemapperTest, FuseConv3DWithBiasAndAddActivation) {
-  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
+  if (!IsOneDNNEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
   using ::tensorflow::ops::Placeholder;
 
   for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
@@ -2082,7 +2089,7 @@ TEST_F(RemapperTest, FuseConv3DWithBiasAndAddActivation) {
 
 // Conv2D + Add {6,} + Conv2D + Biasadd fusion.
 TEST_F(RemapperTest, FuseConv2DWithSemanticAdd) {
-  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
+  if (!IsOneDNNEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
   using ::tensorflow::ops::Placeholder;
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
@@ -2182,7 +2189,7 @@ class RemapperFusePadConv3D : public RemapperTest {
  public:
   template <DataType DTYPE>
   void RunTest() {
-    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
+    if (!IsOneDNNEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
     using ::tensorflow::ops::Placeholder;
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
@@ -2242,16 +2249,17 @@ class RemapperFusePadConv3D : public RemapperTest {
 };
 
 TEST_F(RemapperFusePadConv3D, Conv3D_FP32) {
-  if (!IsMKLEnabled())
+  if (!IsOneDNNEnabled())
     GTEST_SKIP()
         << "Pad fusion with Conv3D is only enabled with oneDNN, skipping "
            "RemapperFusePadConv3D with FP32.";
   RunTest<DT_FLOAT>();
 }
 TEST_F(RemapperFusePadConv3D, Conv3D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
-                    "RemapperFusePadConv3D with bfloat16.";
+  if (!IsOneDNNEnabled())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "RemapperFusePadConv3D with bfloat16.";
   RunTest<DT_BFLOAT16>();
 }
 
@@ -2259,10 +2267,10 @@ class RemapperFusePadWithFusedConv3D : public RemapperTest {
  public:
   template <DataType DTYPE>
   void RunTest() {
-    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
+    if (!IsOneDNNEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
     using ::tensorflow::ops::Placeholder;
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
+    if (!IsOneDNNEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
     auto input_shape = ops::Placeholder::Shape({8, 4, 32, 32, 3});
     auto filter_shape = ops::Placeholder::Shape({1, 1, 1, 3, 128});
     auto bias_shape = ops::Placeholder::Shape({128});
@@ -2330,16 +2338,17 @@ class RemapperFusePadWithFusedConv3D : public RemapperTest {
 };
 
 TEST_F(RemapperFusePadWithFusedConv3D, FusedConv3D_FP32) {
-  if (!IsMKLEnabled())
+  if (!IsOneDNNEnabled())
     GTEST_SKIP()
         << "Pad fusion with FusedConv3D is only enabled with oneDNN, skipping "
            "RemapperFusePadWithFusedConv3D with FP32.";
   RunTest<DT_FLOAT>();
 }
 TEST_F(RemapperFusePadWithFusedConv3D, FusedConv3D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
-                    "RemapperFusePadWithFusedConv3D with bfloat16.";
+  if (!IsOneDNNEnabled())
+    GTEST_SKIP()
+        << "Intel oneDNN with bfloat16 support is not enabled, skipping "
+           "RemapperFusePadWithFusedConv3D with bfloat16.";
   RunTest<DT_BFLOAT16>();
 }
 #endif

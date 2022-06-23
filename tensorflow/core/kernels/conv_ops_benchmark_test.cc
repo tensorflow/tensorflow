@@ -98,7 +98,7 @@ static Conv2DGraph Conv2D(int batch, int height, int width, int in_depth,
   Node* filter = test::graph::Constant(graph, filter_t, "filter");
 
   Node* conv2d;
-  auto builder = IsMKLEnabled()
+  auto builder = IsOneDNNEnabled()
                      ? NodeBuilder(graph->NewName("conv"), "_MklNativeConv2D")
                            .Attr("_kernel", MKL_OP_LABEL)
                      : NodeBuilder(graph->NewName("conv"), "Conv2D");
@@ -249,7 +249,7 @@ static Graph* FusedConv2DWithBias(int batch, int height, int width,
 
   Node* conv;
   auto builder =
-      IsMKLEnabled()
+      IsOneDNNEnabled()
           ? NodeBuilder(graph->NewName("conv"), "_MklNativeFusedConv2D")
                 .Attr("_kernel", MKL_OP_LABEL)
           : NodeBuilder(graph->NewName("conv"), "_FusedConv2D");
@@ -298,7 +298,7 @@ static Graph* FusedConv2DWithBatchNorm(
 
   Node* conv;
   auto builder =
-      IsMKLEnabled()
+      IsOneDNNEnabled()
           ? NodeBuilder(graph->NewName("conv"), "_MklNativeFusedConv2D")
                 .Attr("_kernel", MKL_OP_LABEL)
           : NodeBuilder(graph->NewName("conv"), "_FusedConv2D");

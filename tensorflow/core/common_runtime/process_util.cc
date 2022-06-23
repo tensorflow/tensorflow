@@ -129,8 +129,8 @@ int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
   if (env_inter_op > 0) return env_inter_op;
 
 #if defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_MKL)
-  if (IsMKLEnabled()) {
-    // MKL library executes ops in parallel using OMP threads.
+  if (IsOneDNNEnabled()) {
+    // oneDNN library executes ops in parallel using OMP threads.
     // Setting inter_op conservatively to avoid thread oversubscription that
     // could lead to severe perf degradations and OMP resource exhaustion.
     // Inter ops are set such that mkl_inter_op * mkl_intra_op <= NumCores.

@@ -41,9 +41,10 @@ bool IsBuiltWithNvcc();
 //
 bool GpuSupportsHalfMatMulAndConv();
 
-// Returns true if INTEL_MKL is defined
+// Returns true if oneDNN is enabled .
+// This method should be only internally invocated from Python to C++ backend.
 bool IsMklEnabled();
 
-}  // end namespace tensorflow
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_PORT_H_

@@ -286,8 +286,8 @@ bool HasDataType(const NodeDef* node, const DataType& expected,
 bool IsCpuCompatibleDataType(const NodeDef* contraction,
                              const string& type_attr = "T") {
   DataType dtype = GetDataTypeFromAttr(*contraction, type_attr);
-  // Stock TF without oneDNN build will always be `false`.
-  bool is_one_dnn_enabled = IsMKLEnabled();
+  // Stock TensorFlow is built with oneDNN enabled as default.
+  bool is_one_dnn_enabled = IsOneDNNEnabled();
 
   if (is_one_dnn_enabled) {
     return (IsConv2D(*contraction) || IsDepthwiseConv2dNative(*contraction) ||
@@ -320,11 +320,13 @@ bool IsCpuCompatibleDataFormat(const RemapperContext& ctx,
                                const NodeDef* conv_node) {
   const string& data_format = conv_node->attr().at(kDataFormat).s();
   if (IsConv2D(*conv_node)) {
-    return data_format == "NHWC" || (IsMKLEnabled() && data_format == "NCHW") ||
+    return data_format == "NHWC" ||
+           (IsOneDNNEnabled() && data_format == "NCHW") ||
            (ctx.cpu_layout_conversion == RewriterConfig::NHWC_TO_NCHW &&
             data_format == "NCHW");
   } else if (IsConv3D(*conv_node)) {
-    return data_format == "NDHWC" || (IsMKLEnabled() && data_format == "NCDHW");
+    return data_format == "NDHWC" ||
+           (IsOneDNNEnabled() && data_format == "NCDHW");
   } else {
     return false;
   }
@@ -389,11 +391,11 @@ bool IsCpuCompatible(const RemapperContext& ctx, const Pattern& matched) {
   if (IsConv2D(node)) {
     return IsCpuCompatibleConv2D(ctx, &node);
   } else if (IsDepthwiseConv2dNative(node)) {
-    return (IsMKLEnabled() && IsCpuCompatibleDepthwiseConv2dNative(&node));
+    return (IsOneDNNEnabled() && IsCpuCompatibleDepthwiseConv2dNative(&node));
   } else if (IsMatMul(node)) {
     return IsCpuCompatibleMatMul(ctx, &node);
   } else if (IsConv3D(node)) {
-    return (IsMKLEnabled() && IsCpuCompatibleConv3D(ctx, &node));
+    return (IsOneDNNEnabled() && IsCpuCompatibleConv3D(ctx, &node));
   } else {
     return false;
   }
@@ -476,7 +478,7 @@ bool IsDeviceCompatible(const RemapperContext& ctx, Pattern& matched) {
 bool IsSupportedActivation(const NodeDef& node) {
   bool is_default_supported =
       IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node);
-  bool is_mkl_specific = IsMKLEnabled() && (IsTanh(node) || IsSigmoid(node));
+  bool is_mkl_specific = IsOneDNNEnabled() && (IsTanh(node) || IsSigmoid(node));
   return (is_default_supported || is_mkl_specific);
 }
 
@@ -511,7 +513,7 @@ bool IsConvOrMatMul(const NodeDef& node) {
 bool IsBiasSemanticAdd(const RemapperContext& ctx,
                        const utils::MutableNodeView& node_view,
                        int& bias_port) {
-  if (!IsMKLEnabled()) return false;
+  if (!IsOneDNNEnabled()) return false;
 
   const auto* node_def = node_view.node();
   if (!NodeIsOnCpu(node_def)) return false;
@@ -628,10 +630,11 @@ bool FindContractionWithBias(const RemapperContext& ctx, int node_index,
   const auto* contraction_node_def = contraction_node_view->node();
 
   // Conv2D/3D, MatMul or DepthwiseConv2D
-  bool is_contraction = IsConv2D(*contraction_node_def) ||
-                        (IsConv3D(*contraction_node_def) && IsMKLEnabled()) ||
-                        IsMatMul(*contraction_node_def) ||
-                        IsDepthwiseConv2dNative(*contraction_node_def);
+  bool is_contraction =
+      IsConv2D(*contraction_node_def) ||
+      (IsConv3D(*contraction_node_def) && IsOneDNNEnabled()) ||
+      IsMatMul(*contraction_node_def) ||
+      IsDepthwiseConv2dNative(*contraction_node_def);
 
   if (!is_contraction || !HaveSameDataType(node_def, contraction_node_def) ||
       HasControlFaninOrFanout(*contraction_node_view) ||
@@ -688,7 +691,7 @@ bool FindContractionWithBiasAndActivation(
 
   // Currently, only (conv | matmul) + bias + leakyrelu is enabled
   if (!(IsConv2D(*contraction_node_def) || IsMatMul(*contraction_node_def) ||
-        (IsConv3D(*contraction_node_def) && IsMKLEnabled())) &&
+        (IsConv3D(*contraction_node_def) && IsOneDNNEnabled())) &&
       IsLeakyRelu(*node_def))
     return false;
 
@@ -733,7 +736,7 @@ bool FindConvWithSqueezeAndBias(const RemapperContext& ctx, int node_index,
   const auto* conv_node_def = conv_node_view->node();
 
   if (!(IsConv2D(*conv_node_def) ||
-        (IsConv3D(*conv_node_def) && IsMKLEnabled())) ||
+        (IsConv3D(*conv_node_def) && IsOneDNNEnabled())) ||
       !HaveSameDataType(node_def, conv_node_def, "T") ||
       HasControlFaninOrFanout(*conv_node_view) ||
       !HasAtMostOneFanoutAtPort0(*conv_node_view) ||
@@ -892,7 +895,7 @@ bool IsAddWithNoBroadcast(const RemapperContext& ctx, const NodeDef& node) {
 
 bool FindPadWithConv3D(const RemapperContext& ctx, int node_index,
                        PadWithConv3D* matched) {
-  if (!IsMKLEnabled()) return false;
+  if (!IsOneDNNEnabled()) return false;
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   const auto* node_def = node_view->node();
   // The optimization is only for CPU
@@ -1018,7 +1021,7 @@ bool FindContractionWithBiasAndAddActivation(
       IsLeakyRelu(*node_def))
     return false;
   // Conv3D fusion is available with oneDNN enabled
-  if (IsConv3D(*contraction_node_def) && !IsMKLEnabled()) return false;
+  if (IsConv3D(*contraction_node_def) && !IsOneDNNEnabled()) return false;
 
   // We successfully found a Conv2D+BiasAdd+AddN+activation pattern
   // or Conv3D+BiasAdd+AddN+activation pattern
@@ -1067,7 +1070,7 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
                               std::set<int>* remove_node_indices,
                               bool* is_gelu_approximate) {
   // Gelu fusion is enabled only with oneDNN library.
-  if (!IsMKLEnabled()) return false;
+  if (!IsOneDNNEnabled()) return false;
 
   using utils::MatchingDirection;
   using utils::NodeStatus;
@@ -1228,7 +1231,7 @@ bool FindSigmoidAndMul(RemapperContext* ctx, int node_index,
                        std::map<string, int>* matched_nodes_map,
                        std::set<int>* remove_node_indices) {
   // Gelu fusion is enabled only with oneDNN library.
-  if (!IsMKLEnabled()) return false;
+  if (!IsOneDNNEnabled()) return false;
 
   using utils::MatchingDirection;
   using utils::NodeStatus;
@@ -1275,7 +1278,7 @@ bool FindSigmoidAndMul(RemapperContext* ctx, int node_index,
 bool FindMklLayerNorm(RemapperContext* ctx, int node_index,
                       std::map<string, int>* matched_nodes_map,
                       std::set<int>* remove_node_indices) {
-  if (!IsMKLEnabled()) return false;
+  if (!IsOneDNNEnabled()) return false;
 
   // The following pattern will be searched in the graph with additional
   // contraints. Here * means any type of op.
@@ -1484,20 +1487,20 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
     if (!IsFusedBatchNorm(*fused_batch_norm_node_def)) return false;
 
     // We fuse FusedBatchNorm on GPU or oneDNN CPU.
-    if (!IsMKLEnabled() && !NodeIsOnGpu(fused_batch_norm_node_def))
+    if (!IsOneDNNEnabled() && !NodeIsOnGpu(fused_batch_norm_node_def))
       return false;
 
     DataType t_dtype = GetDataTypeFromAttr(*fused_batch_norm_node_def, "T");
 
     if (NodeIsOnGpu(fused_batch_norm_node_def)) {
       // GPU supports float and half.
-      // Put this condition before check `IsMKLEnabled()` because this node
+      // Put this condition before check `IsOneDNNEnabled()` because this node
       // should be processed when it's on GPU and oneDNN CPU is enabled.
       if (t_dtype != DT_FLOAT && t_dtype != DT_HALF) return false;
     } else {
       // Bfloat16 is available only with oneDNN.
       // Half is not available with oneDNN.
-      if (IsMKLEnabled() && t_dtype != DT_FLOAT && t_dtype != DT_BFLOAT16)
+      if (IsOneDNNEnabled() && t_dtype != DT_FLOAT && t_dtype != DT_BFLOAT16)
         return false;
     }
 
@@ -1565,7 +1568,7 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
   if (IsAdd(*relu_fanin_0_node_def)) {
     // Currently no CPU implementation for "FusedBatchNorm + SideInput +
     // <Activation>""
-    if (IsMKLEnabled() && !NodeIsOnGpu(node_def)) return false;
+    if (IsOneDNNEnabled() && !NodeIsOnGpu(node_def)) return false;
 
     // Check that only Relu node consumes the output of an Add node.
     if (HasControlFaninOrFanout(*relu_fanin_0_node_view) ||
@@ -1797,7 +1800,7 @@ bool FindTensorToHashBucket(const RemapperContext& ctx, int node_index,
 bool FindFusedBatchMatMul(RemapperContext* ctx, int node_index,
                           std::map<string, int>* matched_nodes_map,
                           std::set<int>* remove_node_indices) {
-  if (!IsMKLEnabled()) return false;
+  if (!IsOneDNNEnabled()) return false;
 
   using utils::MatchingDirection;
   using utils::NodeStatus;
@@ -1965,7 +1968,7 @@ void CopyFusedBatchNormAttributes(const NodeDef& fused_batch_norm,
   if (fused_batch_norm.op() != "FusedBatchNorm") {
     SetAttrValue(src_attr.at("U"), &(*attr)["U"]);
   } else {
-    if (!IsMKLEnabled())
+    if (!IsOneDNNEnabled())
       SetAttrValue(src_attr.at("T"), &(*attr)["U"]);
     else
       SetAttrValue(DT_FLOAT, &(*attr)["U"]);
@@ -3002,7 +3005,7 @@ bool FindSoftplusAndTanhAndMul(RemapperContext* ctx, int node_index,
                                std::map<string, int>* matched_nodes_map,
                                std::set<int>* remove_node_indices) {
   // Mish fusion is enabled only with oneDNN library.
-  if (!IsMKLEnabled()) return false;
+  if (!IsOneDNNEnabled()) return false;
 
   using utils::MatchingDirection;
   using utils::NodeStatus;
@@ -3201,7 +3204,7 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     return false;
   };
 
-  if (IsMKLEnabled())
+  if (IsOneDNNEnabled())
     return is_batch_norm_candidate() || is_batch_norm_fusion_candidate() ||
            IsContractionWithAdd(ctx, node_index) ||
            is_relu_biasadd_conv_candidate();
@@ -3255,7 +3258,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     ContractionWithBiasAddAndAdd contract_with_bias_and_add;
     ContractionWithBiasAndAddActivation contract_with_bias_and_add_activation;
 
-    if (IsMKLEnabled()) {
+    if (IsOneDNNEnabled()) {
       // Remap Conv2D+BiasAdd+Add+relu into the _FusedConv2D.
       // or Remap Conv3D+BiasAdd+Add+relu into _FusedConv3D
       if (FindContractionWithBiasAndAddActivation(

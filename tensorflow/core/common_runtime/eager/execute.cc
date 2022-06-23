@@ -841,7 +841,7 @@ Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
     ndef->set_device(op->DeviceName());
 
 #ifdef INTEL_MKL
-    if (IsMKLEnabled() &&
+    if (IsOneDNNEnabled() &&
         absl::StartsWith(op->Name(), mkl_op_registry::kMklOpPrefix)) {
       GetMKLNodeDef(ndef);
     }
@@ -960,7 +960,7 @@ Status SetOpDevice(EagerContext& ctx, EagerOperation* op, Device** device) {
   // forcing a H2D copy of the dataset variant which is not supported.
   auto ndef = op->MutableAttrs()->BuildNodeDef();
 #ifdef INTEL_MKL
-  if (IsMKLEnabled() &&
+  if (IsOneDNNEnabled() &&
       absl::StartsWith(op->Name(), mkl_op_registry::kMklOpPrefix)) {
     GetMKLNodeDef(&ndef);
   }
@@ -1255,7 +1255,7 @@ Status CreateUnshapedOutput(
 #if defined(IS_MOBILE_PLATFORM)
   return errors::Unimplemented(
       "Remote outputs are not available on mobile devices.");
-#else  // !IS_MOBILE_PLATFORM
+#else   // !IS_MOBILE_PLATFORM
   int64_t op_id;
   if (eager_func_params.has_value()) {
     op_id = eager_func_params.value().op_id;
@@ -1293,12 +1293,12 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
   const int num_outputs = kernel->num_outputs();
   absl::optional<EagerFunctionParams> eager_func_params =
       op->eager_func_params();
+  // Create an eager op id for a cross-process function if not exist.
   if (kernel->IsCrossProcess() && !eager_func_params.has_value()) {
-    // Create an eager op id for a cross-process function if not exist.
 #if defined(IS_MOBILE_PLATFORM)
     return errors::Unimplemented(
         "Cross-process functions are not supported on mobile devices.");
-#else  // !IS_MOBILE_PLATFORM
+#else   // !IS_MOBILE_PLATFORM
     const int64_t op_id = ctx.RemoteMgr()->NextOpId();
     eager_func_params = EagerFunctionParams{op_id, /*step_id=*/absl::nullopt};
 #endif  // !IS_MOBILE_PLATFORM
@@ -1383,7 +1383,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
   auto status = GetOrCreateKernelAndDevice(op, retvals, num_retvals, &kernel);
 
 #ifdef INTEL_MKL
-  if (IsMKLEnabled() && kernel != nullptr &&
+  if (IsOneDNNEnabled() && kernel != nullptr &&
       op->Device() == kVariantDeviceNull) {
     // oneDNN optimization pass relies on the op's assigned device to determine
     // whether it can be rewritten.
@@ -1719,7 +1719,7 @@ Status GetKernelOutputs(
 #if defined(IS_MOBILE_PLATFORM)
         return errors::Unimplemented(
             "Remote outputs are not available on mobile devices.");
-#else  // !IS_MOBILE_PLATFORM
+#else   // !IS_MOBILE_PLATFORM
         TF_RETURN_IF_ERROR(retvals[i]->SetRemoteShape(
             absl::get<TensorShape>(ret), retvals[i]->device(),
             ctx->GetContextViewId()));
@@ -2037,10 +2037,10 @@ void EagerKernelExecuteAsync(
   kernel->Ref();  // Ownership of reference is transferred to the callback
   kernel->RunAsync(
       ctx->StepContainer(), *inputs, outputs.get(), cancellation_manager,
-      eager_func_params, coord_agent,
-      [retvals, inputs, outputs, num_outputs, ctx, graph_collector,
-       eager_func_params, kernel_raw = kernel.get(),
-       done = std::move(done)](const Status& s) {
+      eager_func_params, coord_agent, [
+        retvals, inputs, outputs, num_outputs, ctx, graph_collector,
+        eager_func_params, kernel_raw = kernel.get(), done = std::move(done)
+      ](const Status& s) {
         auto wrapped_done = [&](const Status& s) {
           kernel_raw->Unref();
           done(s);
@@ -2126,7 +2126,7 @@ void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
   EagerKernelExecuteAsync(
       &ctx, *inputs, op->eager_func_params(), std::move(kernel),
       graph_collector, op->GetCancellationManager(), retvals, num_outputs,
-      [op, num_outputs, retvals, done = std::move(done)](const Status& s) {
+      [ op, num_outputs, retvals, done = std::move(done) ](const Status& s) {
         op->Clear();
         // Since the operation failed, we need to Unref any outputs if they were
         // allocated.

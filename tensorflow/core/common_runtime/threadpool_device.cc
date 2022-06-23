@@ -73,8 +73,8 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
   }
 
 #if defined(ENABLE_ONEDNN_OPENMP) && defined(INTEL_MKL)
-  // Early return when MKL is disabled
-  if (!IsMKLEnabled()) return;
+  // Early return when oneDNN is disabled
+  if (!IsOneDNNEnabled()) return;
 #ifdef _OPENMP
   const char* user_omp_threads = getenv("OMP_NUM_THREADS");
   static absl::once_flag num_threads_setting_flag;
@@ -264,7 +264,7 @@ class MklCPUAllocatorFactory : public AllocatorFactory {
   }
 };
 
-REGISTER_MEM_ALLOCATOR("MklCPUAllocator", (IsMKLEnabled() ? 200 : 50),
+REGISTER_MEM_ALLOCATOR("MklCPUAllocator", (IsOneDNNEnabled() ? 200 : 50),
                        MklCPUAllocatorFactory);
 
 }  // namespace

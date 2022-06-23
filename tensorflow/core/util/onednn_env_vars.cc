@@ -13,15 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef INTEL_MKL
-
 #include "tensorflow/core/util/onednn_env_vars.h"
-
 #include "absl/base/call_once.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
+#ifdef INTEL_MKL
 bool AreWeightsFrozen() {
   static bool weights_const = false;
   static absl::once_flag once;
@@ -41,6 +40,53 @@ bool UseSystemAlloc() {
   });
   return use_sys_alloc;
 }
+#endif  // INTEL_MKL
+
+bool IsOneDNNEnabled() {
+  // For platforms which oneDNN does support, always return false.
+#ifndef INTEL_MKL
+  return false;
+#endif  // !INTEL_MKL
+
+  // When build with --config=mkl option, oneDNN is always enabled.
+#ifdef ENABLE_MKL
+  return true;
+#endif  // ENABLE_MKL
+
+  // Stock TensorFlow
+  // Linux: Turn oneDNN on by default for CPUs with neural network features.
+  // Windows: oneDNN is off by default.
+  // No need to guard for other platforms because INTEL_MKL is only defined
+  // for non-mobile Linux or Windows.
+  static absl::once_flag once;
+  static bool oneDNN_enabled =
+#ifdef __linux__
+      port::TestCPUFeature(port::CPUFeature::AVX512_VNNI) ||
+      port::TestCPUFeature(port::CPUFeature::AVX512_BF16) ||
+      port::TestCPUFeature(port::CPUFeature::AVX_VNNI) ||
+      port::TestCPUFeature(port::CPUFeature::AMX_TILE) ||
+      port::TestCPUFeature(port::CPUFeature::AMX_INT8) ||
+      port::TestCPUFeature(port::CPUFeature::AMX_BF16);
+#else
+      false;
+#endif  // __linux__
+  absl::call_once(once, [&] {
+    auto status = ReadBoolFromEnvVar("TF_ENABLE_ONEDNN_OPTS", oneDNN_enabled,
+                                     &oneDNN_enabled);
+    if (!status.ok()) {
+      LOG(WARNING) << "TF_ENABLE_ONEDNN_OPTS is not set to either '0', 'false',"
+                   << " '1', or 'true'. Using the default setting: "
+                   << oneDNN_enabled;
+    }
+    if (oneDNN_enabled) {
+      LOG(INFO) << "oneDNN custom operations are on. "
+                << "You may see slightly different numerical results due to "
+                << "floating-point round-off errors from different computation "
+                << "orders. To turn them off, set the environment variable "
+                << "`TF_ENABLE_ONEDNN_OPTS=0`.";
+    }
+  });
+  return oneDNN_enabled;
+}
 
 }  // namespace tensorflow
-#endif  // INTEL_MKL

@@ -425,8 +425,8 @@ Status MklToTfConversionPass::Run(const GraphOptimizationPassOptions& options) {
   if (options.graph == nullptr && options.partition_graphs == nullptr) {
     return Status::OK();
   }
-  if (!IsMKLEnabled()) {
-    VLOG(2) << "TF-MKL: MKL is not enabled";
+  if (!IsOneDNNEnabled()) {
+    VLOG(2) << "TF-MKL: oneDNN is not enabled";
     return Status::OK();
   }
   if (NativeFormatEnabled()) {

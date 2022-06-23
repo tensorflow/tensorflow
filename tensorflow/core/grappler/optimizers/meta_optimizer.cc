@@ -227,7 +227,7 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("auto_mixed_precision", "auto_mixed_precision",
          new AutoMixedPrecision(AutoMixedPrecisionMode::CUDA));
 #ifdef INTEL_MKL
-  if (IsMKLEnabled()) {
+  if (IsOneDNNEnabled()) {
     MK_OPT("auto_mixed_precision_mkl", "auto_mixed_precision_mkl",
            new AutoMixedPrecision(AutoMixedPrecisionMode::MKL));
   }
@@ -372,7 +372,7 @@ Status MetaOptimizer::InitializeOptimizers(
   if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_mkl()) &&
       AutoMixedPrecisionEnabled(
           plugin_configs.toggle_config["auto_mixed_precision_mkl"]) &&
-      IsMKLEnabled()) {
+      IsOneDNNEnabled()) {
     optimizers->push_back(
         MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::MKL));
   }

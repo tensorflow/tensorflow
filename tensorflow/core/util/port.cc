@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/util/port.h"
-
+#include "tensorflow/core/util/onednn_env_vars.h"
 
 namespace tensorflow {
 
@@ -66,4 +66,4 @@ bool IsMklEnabled() {
   return false;
 #endif  // INTEL_MKL && ENABLE_MKL
 }
-}  // end namespace tensorflow
+}  // namespace tensorflow
