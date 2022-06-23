@@ -182,7 +182,6 @@ def _get_signature_key_and_input(
     ValueError: When the format of `representative_sample` is invalid, or when
     the length of `signature_keys` not 1 when `representative_sample` is `dict`.
   """
-  # TODO(b/214311251): Add a test case with multiple signatures.
   if isinstance(representative_sample, tuple):
     if (not isinstance(representative_sample[1], dict) or
         len(representative_sample) != 2):

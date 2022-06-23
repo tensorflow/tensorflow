@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for quantize_model."""
-from typing import List, Mapping, Sequence, Set, Tuple
+from typing import List, Mapping, Optional, Sequence, Set, Tuple
 import warnings
 
 from absl.testing import parameterized
@@ -23,6 +23,7 @@ import tensorflow  # pylint: disable=unused-import
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import quantize_model
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
@@ -50,16 +51,33 @@ _Method = quant_opts_pb2.QuantizationMethod.Method
 _ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod
 
 
-def _contains_quantized_function_call(meta_graphdef):
-  """Returns true if the graph def has quantized function call."""
+def _contains_quantized_function_call(
+    meta_graphdef: meta_graph_pb2.MetaGraphDef) -> bool:
+  """Determines if the graph def has quantized function call.
+
+  Args:
+    meta_graphdef: A MetaGraphDef object.
+
+  Returns:
+    True if and only if the graph def contains a quantized function call.
+  """
   for func in meta_graphdef.graph_def.library.function:
     if func.signature.name.startswith('quantized_'):
       return True
   return False
 
 
-def _contains_op(meta_graphdef, op_name):
-  """Returns true if the graph def contains the given op."""
+def _contains_op(meta_graphdef: meta_graph_pb2.MetaGraphDef,
+                 op_name: str) -> bool:
+  """Determines if the graph def contains the given op.
+
+  Args:
+    meta_graphdef: A MetaGraphDef object.
+    op_name: Name of the operation to find within the graph.
+
+  Returns:
+    True if and only if the graph def contains an op named `op_name`.
+  """
   # Check the main graph
   if any(node.op == op_name for node in meta_graphdef.graph_def.node):
     return True
@@ -188,6 +206,101 @@ def _create_and_save_tf1_conv_model(saved_model_path: str,
   return in_placeholder
 
 
+class MatmulModel(module.Module):
+  """A simple model with a single matmul.
+
+  Bias and activation function are optional.
+  """
+
+  def __init__(self,
+               has_bias: bool = False,
+               activation_fn: Optional[ops.Operation] = None) -> None:
+    """Initializes a MatmulModel.
+
+    Args:
+      has_bias: If True, creates and adds a bias term.
+      activation_fn: The activation function to be used. No activation function
+        if None.
+    """
+    self.has_bias = has_bias
+    self.activation_fn = activation_fn
+
+  @def_function.function(input_signature=[
+      tensor_spec.TensorSpec(shape=[1, 4], dtype=dtypes.float32)
+  ])
+  def matmul(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
+    """Performs a matrix multiplication.
+
+    Depending on self.has_bias and self.activation_fn, it may add a bias term or
+    go through the activaction function.
+
+    Args:
+      input_tensor: Input tensor to matmul with the filter.
+
+    Returns:
+      A map of: output key -> output result.
+    """
+    filters = np.random.uniform(low=-1.0, high=1.0, size=(4, 3))
+    bias = np.random.uniform(low=-1.0, high=1.0, size=(3,))
+    out = math_ops.matmul(input_tensor, filters)
+
+    if self.has_bias:
+      out = nn_ops.bias_add(out, bias)
+
+    if self.activation_fn is not None:
+      out = self.activation_fn(out)
+
+    return {'output': out}
+
+
+class MultipleSignatureModel(module.Module):
+  """A model with 2 signatures.
+
+  Used to test where the quantizer has to handle multiple signatures.
+  """
+
+  @def_function.function(input_signature=[
+      tensor_spec.TensorSpec(shape=[1, 4], dtype=dtypes.float32)
+  ])
+  def matmul(self, matmul_input: core.Tensor) -> Mapping[str, core.Tensor]:
+    """Performs a matrix multiplication.
+
+    Args:
+      matmul_input: Input tensor to matmul with the filter.
+
+    Returns:
+      A map of: output key -> output result.
+    """
+    filters = random_ops.random_uniform(shape=(4, 3), minval=-1.0, maxval=1.0)
+    out = math_ops.matmul(matmul_input, filters)
+
+    return {'output': out}
+
+  @def_function.function(input_signature=[
+      tensor_spec.TensorSpec(shape=(1, 3, 4, 3), dtype=dtypes.float32)
+  ])
+  def conv(self, conv_input: core.Tensor) -> Mapping[str, core.Tensor]:
+    """Performs a 2D convolution operation.
+
+    Args:
+      conv_input: Input tensor to perform convolution on.
+
+    Returns:
+      A map of: output key -> output result.
+    """
+    filters = np.random.uniform(
+        low=-10, high=10, size=(2, 3, 3, 2)).astype('f4')
+    out = nn_ops.conv2d(
+        conv_input,
+        filters,
+        strides=[1, 1, 2, 1],
+        dilations=[1, 1, 1, 1],
+        padding='SAME',
+        data_format='NHWC')
+
+    return {'output': out}
+
+
 @test_util.run_all_in_graph_and_eager_modes
 class QuantizationMethodTest(test.TestCase):
   """Test cases regarding the use of QuantizationMethod proto.
@@ -201,13 +314,27 @@ class QuantizationMethodTest(test.TestCase):
     @def_function.function(input_signature=[
         tensor_spec.TensorSpec(shape=[1, 4], dtype=dtypes.float32)
     ])
-    def __call__(self, input_tensor):
+    def __call__(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
+      """Performs a matrix multiplication.
+
+      Args:
+        input_tensor: Input tensor to matmul with the filter.
+
+      Returns:
+        A map of: output key -> output result.
+      """
       filters = np.random.uniform(low=-1.0, high=1.0, size=(4, 3)).astype('f4')
 
       out = math_ops.matmul(input_tensor, filters)
       return {'output': out}
 
-  def _simple_model_data_gen(self):
+  def _simple_model_data_gen(self) -> repr_dataset.RepresentativeDataset:
+    """Creates an interable of representative samples.
+
+    Yields:
+      Representative samples, which is basically a mapping of: input key ->
+      input value.
+    """
     for _ in range(255):
       yield {
           'input_tensor':
@@ -227,9 +354,8 @@ class QuantizationMethodTest(test.TestCase):
         representative_dataset=self._simple_model_data_gen())
 
     self.assertIsNotNone(converted_model)
-    self.assertEqual(
-        list(converted_model.signatures._signatures.keys()),
-        ['serving_default'])
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
 
     # Indirectly prove that it is performing a static-range quantization
     # by checking that it complains about representative_dataset when it is
@@ -268,32 +394,20 @@ class QuantizationMethodTest(test.TestCase):
 
 class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
 
-  class MatmulModel(module.Module):
-
-    def __init__(self, has_bias=False, activation_fn=None):
-      self.has_bias = has_bias
-      self.activation_fn = activation_fn
-
-    @def_function.function(input_signature=[
-        tensor_spec.TensorSpec(shape=[1, 4], dtype=dtypes.float32)
-    ])
-    def matmul(self, input_tensor):
-      filters = np.random.uniform(low=-1.0, high=1.0, size=(4, 3))
-      bias = np.random.uniform(low=-1.0, high=1.0, size=(3,))
-      out = math_ops.matmul(input_tensor, filters)
-
-      if self.has_bias:
-        out = nn_ops.bias_add(out, bias)
-
-      if self.activation_fn is not None:
-        out = self.activation_fn(out)
-
-      return {'output': out}
-
   def _any_warning_contains(
       self, substring: str,
       warnings_list: List[warnings.WarningMessage]) -> bool:
-    """Returns True if any of the warnings contains a given substring."""
+    """Returns True if any of the warnings contains a given substring.
+
+    Args:
+      substring: A piece of string to check whether it exists in the warning
+        message.
+      warnings_list: A list of `WarningMessage`s.
+
+    Returns:
+      True if and only if the substring exists in any of the warnings in
+      `warnings_list`.
+    """
     return any(
         map(lambda warning: substring in str(warning.message), warnings_list))
 
@@ -306,7 +420,8 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
       ('with_bias_and_relu6', nn_ops.relu6, True),
   )
   @test_util.run_in_graph_and_eager_modes
-  def test_qat_conv_model(self, activation_fn, has_bias):
+  def test_qat_conv_model(self, activation_fn: Optional[ops.Operation],
+                          has_bias: bool):
 
     class ConvModel(module.Module):
 
@@ -316,7 +431,17 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
           tensor_spec.TensorSpec(
               name='filter', shape=[2, 3, 3, 2], dtype=dtypes.float32),
       ])
-      def conv(self, input_tensor, filter_tensor):
+      def conv(self, input_tensor: core.Tensor,
+               filter_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
+        """Performs a 2D convolution operation.
+
+        Args:
+          input_tensor: Input tensor to perform convolution on.
+          filter_tensor: Filter tensor to perform convolution with.
+
+        Returns:
+          A map of: output key -> output result.
+        """
         q_input = array_ops.fake_quant_with_min_max_args(
             input_tensor, min=-0.1, max=0.2, num_bits=8, narrow_range=False)
         q_filters = array_ops.fake_quant_with_min_max_args(
@@ -354,8 +479,8 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
                                               output_directory,
                                               quantization_options)
     self.assertIsNotNone(converted_model)
-    self.assertEqual(
-        list(converted_model.signatures._signatures.keys()), [signature_key])
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {signature_key})
 
     input_data = np.random.uniform(
         low=-0.1, high=0.2, size=(1, 3, 4, 3)).astype('f4')
@@ -383,7 +508,8 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
       It keeps the filter as a tf.Variable.
       """
 
-      def __init__(self):
+      def __init__(self) -> None:
+        """Initializes the filter variable."""
         self.filters = variables.Variable(
             random_ops.random_uniform(
                 shape=(2, 3, 3, 2), minval=-1., maxval=1.))
@@ -392,7 +518,15 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
           tensor_spec.TensorSpec(
               name='input', shape=(1, 3, 4, 3), dtype=dtypes.float32),
       ])
-      def __call__(self, x):
+      def __call__(self, x: core.Tensor) -> Mapping[str, core.Tensor]:
+        """Performs a 2D convolution operation.
+
+        Args:
+          x: Input tensor to perform convolution on.
+
+        Returns:
+          A map of: output key -> output result.
+        """
         out = nn_ops.conv2d(
             x,
             self.filters,
@@ -402,7 +536,13 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
             data_format='NHWC')
         return {'output': out}
 
-    def gen_data():
+    def gen_data() -> repr_dataset.RepresentativeDataset:
+      """Creates an interable of representative samples.
+
+      Yields:
+        Representative samples, which is basically a mapping of: input key ->
+        input value.
+      """
       for _ in range(255):
         yield {
             'input':
@@ -431,8 +571,8 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         representative_dataset=gen_data())
 
     self.assertIsNotNone(converted_model)
-    self.assertEqual(
-        list(converted_model.signatures._signatures.keys()), signature_keys)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          signature_keys)
 
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
@@ -451,14 +591,23 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
       ('with_bias_and_relu6', nn_ops.relu6, True, False),
   )
   @test_util.run_in_graph_and_eager_modes
-  def test_conv_ptq_model(self, activation_fn, has_bias, has_bn):
+  def test_conv_ptq_model(self, activation_fn: Optional[ops.Operation],
+                          has_bias: bool, has_bn: bool):
 
     class ConvModel(module.Module):
 
       @def_function.function(input_signature=[
           tensor_spec.TensorSpec(shape=[1, 3, 4, 3], dtype=dtypes.float32)
       ])
-      def conv(self, input_tensor):
+      def conv(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
+        """Performs a 2D convolution operation.
+
+        Args:
+          input_tensor: Input tensor to perform convolution on.
+
+        Returns:
+          A map of: output key -> output result.
+        """
         filters = np.random.uniform(
             low=-10, high=10, size=(2, 3, 3, 2)).astype('f4')
         bias = np.random.uniform(low=0, high=10, size=(2)).astype('f4')
@@ -485,7 +634,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
 
-    def data_gen():
+    def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(255):
         yield {
             'input_tensor':
@@ -508,9 +657,8 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         quantization_options,
         representative_dataset=data_gen())
     self.assertIsNotNone(converted_model)
-    self.assertEqual(
-        list(converted_model.signatures._signatures.keys()),
-        ['serving_default'])
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
 
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
@@ -530,14 +678,24 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
       ('with_bias_and_relu6', nn_ops.relu6, True, False),
   )
   @test_util.run_in_graph_and_eager_modes
-  def test_depthwise_conv_ptq_model(self, activation_fn, has_bias, has_bn):
+  def test_depthwise_conv_ptq_model(self,
+                                    activation_fn: Optional[ops.Operation],
+                                    has_bias: bool, has_bn: bool):
 
     class DepthwiseConvModel(module.Module):
 
       @def_function.function(input_signature=[
           tensor_spec.TensorSpec(shape=[1, 3, 4, 3], dtype=dtypes.float32)
       ])
-      def conv(self, input_tensor):
+      def conv(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
+        """Performs a 2D convolution operation.
+
+        Args:
+          input_tensor: Input tensor to perform convolution on.
+
+        Returns:
+          A map of: output key -> output result.
+        """
         filters = np.random.uniform(
             low=-10, high=10, size=(2, 3, 3, 1)).astype('f4')
         bias = np.random.uniform(low=0, high=10, size=(3)).astype('f4')
@@ -564,7 +722,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
 
-    def data_gen():
+    def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(255):
         yield {
             'input_tensor':
@@ -587,9 +745,8 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         quantization_options,
         representative_dataset=data_gen())
     self.assertIsNotNone(converted_model)
-    self.assertEqual(
-        list(converted_model.signatures._signatures.keys()),
-        ['serving_default'])
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
 
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
@@ -605,12 +762,13 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
       ('with_bias_and_relu6', nn_ops.relu6, True),
   )
   @test_util.run_in_graph_and_eager_modes
-  def test_matmul_ptq_model(self, activation_fn, has_bias):
-    model = self.MatmulModel(has_bias, activation_fn)
+  def test_matmul_ptq_model(self, activation_fn: Optional[ops.Operation],
+                            has_bias: bool):
+    model = MatmulModel(has_bias, activation_fn)
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
 
-    def data_gen():
+    def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(255):
         yield {
             'input_tensor':
@@ -632,9 +790,8 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         quantization_options,
         representative_dataset=data_gen())
     self.assertIsNotNone(converted_model)
-    self.assertEqual(
-        list(converted_model.signatures._signatures.keys()),
-        ['serving_default'])
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
 
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
@@ -642,7 +799,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_model_use_representative_samples_list(self):
-    model = self.MatmulModel()
+    model = MatmulModel()
     input_savedmodel_dir = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_savedmodel_dir)
 
@@ -652,8 +809,8 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     output_savedmodel_dir = self.create_tempdir().full_path
     tags = {tag_constants.SERVING}
 
-    representative_dataset = [{
-        'input_tensor': random_ops.random_uniform(shape=(1, 4))
+    representative_dataset: repr_dataset.RepresentativeDataset = [{
+        'input_tensor': random_ops.random_uniform(shape=(1, 4)),
     } for _ in range(128)]
 
     converted_model = quantize_model.quantize(
@@ -663,9 +820,8 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         representative_dataset=representative_dataset)
 
     self.assertIsNotNone(converted_model)
-    self.assertEqual(
-        list(converted_model.signatures._signatures.keys()),
-        ['serving_default'])
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
     output_loader = saved_model_loader.SavedModelLoader(output_savedmodel_dir)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     # Model is not quantized because there was no sample data for calibration.
@@ -675,7 +831,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
   # dataset) only in TF2 (eager mode).
   @test_util.run_v2_only
   def test_model_use_tf_dataset_for_representative_dataset(self):
-    model = self.MatmulModel()
+    model = MatmulModel()
     input_savedmodel_dir = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_savedmodel_dir)
 
@@ -686,7 +842,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     tags = {tag_constants.SERVING}
 
     representative_samples = [{
-        'input_tensor': random_ops.random_uniform(shape=(1, 4))
+        'input_tensor': random_ops.random_uniform(shape=(1, 4)),
     } for _ in range(128)]
 
     # Construct a tf.data.Dataset from the representative samples.
@@ -704,9 +860,8 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         representative_dataset=representative_dataset)
 
     self.assertIsNotNone(converted_model)
-    self.assertEqual(
-        list(converted_model.signatures._signatures.keys()),
-        ['serving_default'])
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
     output_loader = saved_model_loader.SavedModelLoader(output_savedmodel_dir)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     # Model is not quantized because there was no sample data for calibration.
@@ -714,7 +869,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_model_no_representative_sample_shows_warnings(self):
-    model = self.MatmulModel()
+    model = MatmulModel()
     input_savedmodel_dir = self.create_tempdir('input').full_path
     output_savedmodel_dir = self.create_tempdir().full_path
     saved_model_save.save(model, input_savedmodel_dir)
@@ -744,9 +899,8 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
                                      warnings_list))
 
     self.assertIsNotNone(converted_model)
-    self.assertEqual(
-        list(converted_model.signatures._signatures.keys()),
-        ['serving_default'])
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
     output_loader = saved_model_loader.SavedModelLoader(output_savedmodel_dir)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     # Model is not quantized because there was no sample data for calibration.
@@ -756,11 +910,23 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
   def test_model_with_uncalibrated_subgraph(self):
 
     class IfModel(module.Module):
+      """A model that contains a branching op."""
 
       @def_function.function(input_signature=[
           tensor_spec.TensorSpec(shape=[1, 4], dtype=dtypes.float32)
       ])
-      def model_fn(self, x):
+      def model_fn(self, x: core.Tensor) -> Mapping[str, core.Tensor]:
+        """Runs the input tensor to a branched operations.
+
+        The graph is branched by a condition whether the sum of elements of `x`
+        is greater than 10.
+
+        Args:
+          x: Input tensor.
+
+        Returns:
+          A map of: output key -> output result.
+        """
         if math_ops.reduce_sum(x) > 10.0:
           filters = np.random.uniform(
               low=-1.0, high=1.0, size=(4, 3)).astype('f4')
@@ -780,7 +946,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
 
-    def data_gen():
+    def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(10):
         yield {
             'x':
@@ -816,12 +982,110 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
                                      warnings_list))
 
     self.assertIsNotNone(converted_model)
-    self.assertEqual(
-        list(converted_model.signatures._signatures.keys()),
-        ['serving_default'])
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+
+  # Run this test only with the eager mode.
+  @test_util.run_v2_only
+  def test_ptq_model_with_multiple_signatures(self):
+    # Create and save a model having 2 signatures.
+    model = MultipleSignatureModel()
+
+    signatures = {
+        'sig1':
+            model.matmul.get_concrete_function(
+                tensor_spec.TensorSpec(shape=(1, 4), dtype=dtypes.float32)),
+        'sig2':
+            model.conv.get_concrete_function(
+                tensor_spec.TensorSpec(
+                    shape=(1, 3, 4, 3), dtype=dtypes.float32)),
+    }
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path, signatures=signatures)
+
+    output_directory = self.create_tempdir().full_path
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      """Generates tuple-style samples.
+
+      The first element of the tuple identifies the signature key the input data
+      is for.
+
+      Yields:
+        Tuple-style representative samples for signatures 'sig1' and 'sig2'.
+      """
+      for _ in range(16):
+        # Input for signature: 'sig1'.
+        yield ('sig1', {
+            'matmul_input': random_ops.random_uniform(shape=(1, 4)),
+        })
+        # Input for signature: 'sig2'.
+        yield ('sig2', {
+            'conv_input': random_ops.random_uniform(shape=(1, 3, 4, 3)),
+        })
+
+    tags = {tag_constants.SERVING}
+    converted_model = quantize_model.quantize(
+        input_saved_model_path,
+        signature_keys=['sig1', 'sig2'],
+        tags=tags,
+        output_directory=output_directory,
+        quantization_options=quantization_options,
+        representative_dataset=data_gen())
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'sig1', 'sig2'})
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+
+  # Run this test only with the eager mode.
+  @test_util.run_v2_only
+  def test_ptq_multiple_signatures_invalid_dataset_raises_value_error(self):
+    # Create and save a model having 2 signatures.
+    model = MultipleSignatureModel()
+
+    signatures = {
+        'sig1':
+            model.matmul.get_concrete_function(
+                tensor_spec.TensorSpec(shape=(1, 4), dtype=dtypes.float32)),
+        'sig2':
+            model.conv.get_concrete_function(
+                tensor_spec.TensorSpec(
+                    shape=(1, 3, 4, 3), dtype=dtypes.float32)),
+    }
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path, signatures=signatures)
+
+    output_directory = self.create_tempdir().full_path
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+
+    # Use a dict-style samples instead of tuple-style samples. This is invalid
+    # because for a model multiple signatures one must use tuple-style samples.
+    invalid_dataset: repr_dataset.RepresentativeDataset = [{
+        'matmul_input': random_ops.random_uniform(shape=(1, 4))
+    } for _ in range(16)]
+
+    with self.assertRaisesRegex(
+        ValueError,
+        'Failed to run graph for post-training quantization calibration'):
+      quantize_model.quantize(
+          input_saved_model_path,
+          signature_keys=['sig1', 'sig2'],
+          tags={tag_constants.SERVING},
+          output_directory=output_directory,
+          quantization_options=quantization_options,
+          representative_dataset=invalid_dataset)
 
   @test_util.run_in_graph_and_eager_modes
   def test_ptq_model_with_tf1_saved_model_with_variable(self):
@@ -856,8 +1120,8 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         representative_dataset=data_gen)
 
     self.assertIsNotNone(converted_model)
-    self.assertEqual(
-        list(converted_model.signatures._signatures.keys()), signature_keys)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          signature_keys)
 
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
@@ -896,8 +1160,73 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         representative_dataset=data_gen)
 
     self.assertIsNotNone(converted_model)
-    self.assertEqual(
-        list(converted_model.signatures._signatures.keys()), signature_keys)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          signature_keys)
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_ptq_model_with_tf1_saved_model_multiple_signatures(self):
+    input_saved_model_path = self.create_tempdir('input').full_path
+    tags = {tag_constants.SERVING}
+
+    # Create two models and add them to a same SavedModel under different
+    # signature keys.
+    with ops.Graph().as_default(), session.Session() as sess:
+      in_placeholder_1, output_tensor_1 = _create_simple_tf1_conv_model()
+      sig_def_1 = signature_def_utils_impl.predict_signature_def(
+          inputs={'x1': in_placeholder_1}, outputs={'output1': output_tensor_1})
+
+      in_placeholder_2, output_tensor_2 = _create_simple_tf1_conv_model()
+      sig_def_2 = signature_def_utils_impl.predict_signature_def(
+          inputs={'x2': in_placeholder_2}, outputs={'output2': output_tensor_2})
+
+      v1_builder = builder.SavedModelBuilder(input_saved_model_path)
+      v1_builder.add_meta_graph_and_variables(
+          sess, tags, signature_def_map={
+              'sig1': sig_def_1,
+              'sig2': sig_def_2,
+          })
+
+      v1_builder.save()
+
+    output_directory = self.create_tempdir().full_path
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      """Generates tuple-style samples.
+
+      The first element of the tuple identifies the signature key the input data
+      is for.
+
+      Yields:
+        Tuple-style representative samples for signatures 'sig1' and 'sig2'.
+      """
+      for _ in range(16):
+        # Input for signature: 'sig1'.
+        yield ('sig1', {
+            'x1': random_ops.random_uniform(shape=in_placeholder_1.shape),
+        })
+        # Input for signature: 'sig2'.
+        yield ('sig2', {
+            'x2': random_ops.random_uniform(shape=in_placeholder_2.shape),
+        })
+
+    converted_model = quantize_model.quantize(
+        input_saved_model_path,
+        signature_keys=['sig1', 'sig2'],
+        tags=tags,
+        output_directory=output_directory,
+        quantization_options=quantization_options,
+        representative_dataset=data_gen())
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'sig1', 'sig2'})
 
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
@@ -975,8 +1304,8 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         representative_dataset=data_gen)
 
     self.assertIsNotNone(converted_model)
-    self.assertEqual(
-        list(converted_model.signatures._signatures.keys()), signature_keys)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          signature_keys)
 
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
@@ -1028,18 +1357,26 @@ class DynamicRangeQuantizationTest(test.TestCase, parameterized.TestCase):
 
   def test_matmul_model(self):
 
-    class MatmulModel(module.Module):
+    class SimpleMatmulModel(module.Module):
 
       @def_function.function(input_signature=[
           tensor_spec.TensorSpec(shape=[1, 4], dtype=dtypes.float32)
       ])
-      def matmul(self, input_tensor):
+      def matmul(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
+        """Performs a matrix multiplication.
+
+        Args:
+          input_tensor: Input tensor to matmul with the filter.
+
+        Returns:
+          A map of: output key -> output result.
+        """
         filters = np.random.uniform(
             low=-1.0, high=1.0, size=(4, 3)).astype('f4')
         out = math_ops.matmul(input_tensor, filters)
         return {'output': out}
 
-    model = MatmulModel()
+    model = SimpleMatmulModel()
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
 
@@ -1055,9 +1392,8 @@ class DynamicRangeQuantizationTest(test.TestCase, parameterized.TestCase):
                                               output_directory,
                                               quantization_options)
     self.assertIsNotNone(converted_model)
-    self.assertEqual(
-        list(converted_model.signatures._signatures.keys()),
-        ['serving_default'])
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
 
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
@@ -1070,7 +1406,15 @@ class DynamicRangeQuantizationTest(test.TestCase, parameterized.TestCase):
       @def_function.function(input_signature=[
           tensor_spec.TensorSpec(shape=[1, 3, 4, 3], dtype=dtypes.float32)
       ])
-      def conv(self, input_tensor):
+      def conv(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
+        """Performs a 2D convolution operation.
+
+        Args:
+          input_tensor: Input tensor to perform convolution on.
+
+        Returns:
+          A map of: output key -> output result.
+        """
         filters = np.random.uniform(
             low=-10, high=10, size=(2, 3, 3, 2)).astype('f4')
         bias = np.random.uniform(low=0, high=10, size=(2)).astype('f4')
@@ -1102,9 +1446,8 @@ class DynamicRangeQuantizationTest(test.TestCase, parameterized.TestCase):
                                               quantization_options)
 
     self.assertIsNotNone(converted_model)
-    self.assertEqual(
-        list(converted_model.signatures._signatures.keys()),
-        ['serving_default'])
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
 
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
