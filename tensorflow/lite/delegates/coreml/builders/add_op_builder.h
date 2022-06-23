@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_COREML_BUILDERS_ADD_OP_BUILDER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_COREML_BUILDERS_ADD_OP_BUILDER_H_
 
+#include <string>
+
 #include "tensorflow/lite/delegates/coreml/builders/op_builder.h"
 
 namespace tflite {
