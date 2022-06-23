@@ -213,6 +213,12 @@ class TrtNodeValidator {
                                const std::vector<TRT_TensorOrWeights>& inputs,
                                TRT_TensorOrWeights* output);
 
+  // Convert a VariableV2 node to a TRT_TensorOrWeights.
+  Status ConvertVariableToWeights(
+      const NodeDef& const_node_def,
+      const std::vector<TRT_TensorOrWeights>& inputs,
+      TRT_TensorOrWeights* output);
+
   // Convert the output tensor at 'output_port' of 'node_def' to a
   // TRT_TensorOrWeights which will be later used as an input to other nodes and
   // passed to ValidateNode() below.
@@ -273,6 +279,10 @@ class Converter {
   // 'batch_size'.
   Status AddInputTensor(const string& name, nvinfer1::DataType dtype,
                         const nvinfer1::Dims& dims, int batch_size);
+
+  // Store the ResourceHandle as a TRT_TensorOrWeights object. This can be
+  // later used as input to other nodes.
+  Status AddInputResource(const string& name, const ResourceHandle& resource);
 
   // Mark the tensors with names specified by source_tensor_name as output of
   // the TRT network, and set their names in the TRT network as dest_node_name.

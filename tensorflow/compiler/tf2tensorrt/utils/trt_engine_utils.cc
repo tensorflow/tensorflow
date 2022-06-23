@@ -124,6 +124,14 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
   int n_inputs = ctx ? ctx->num_inputs() : (input_vec ? input_vec->size() : 0);
   // Setup engine inputs.
   for (int i = 0; i < n_inputs; i++) {
+    const Tensor& input_tensor = ctx ? ctx->input(i) : input_vec->at(i).tensor;
+    const TensorShape& input_shape = input_tensor.shape();
+
+    // Skip resource inputs.
+    if (input_tensor.dtype() == DataType::DT_RESOURCE) {
+      continue;
+    }
+
     const string input_name =
         ctx ? StrCat(IONamePrefixes::kInputPHName, i) : input_vec->at(i).name;
     int binding_index;
@@ -138,8 +146,6 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
       VLOG(2) << "Skipping pruned input " << input_name;
       continue;
     }
-    const Tensor& input_tensor = ctx ? ctx->input(i) : input_vec->at(i).tensor;
-    const TensorShape& input_shape = input_tensor.shape();
 
     if (use_implicit_batch && ctx) {
       // Ensure all inputs have the same batch size
