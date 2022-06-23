@@ -29,7 +29,8 @@ namespace {
 class DenseBincountOp : public XlaOpKernel {
  public:
   explicit DenseBincountOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    ctx->GetAttr("binary_output", &binary_output_);
+    // It is optional for Bincount and required for DenseBincount
+    (void) ctx->GetAttr("binary_output", &binary_output_);
   }
 
  private:
@@ -52,7 +53,7 @@ class DenseBincountOp : public XlaOpKernel {
       dtype = input_xla_type;
     }
     int64_t output_size;
-    ctx->ConstantInputAsIntScalar("size", &output_size);
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar("size", &output_size));
     StatusOr<xla::Shape> input_shape_or = ctx->builder()->GetShape(input);
     OP_REQUIRES_OK(ctx, input_shape_or.status());
     auto input_shape = input_shape_or.ValueOrDie();
