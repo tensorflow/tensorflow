@@ -111,10 +111,10 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
     const se::dnn::BatchDescriptor& output_desc,
     const se::dnn::ConvolutionDescriptor& conv_desc,
     const se::dnn::ActivationMode activation_mode, double conv_input_scale,
-    double side_input_scale, se::DeviceMemory<T> input_ptr,
-    se::DeviceMemory<T> filter_ptr, se::DeviceMemory<T> output_ptr,
-    se::DeviceMemory<T> bias_ptr, se::DeviceMemory<T> side_input_ptr,
-    int64_t scratch_size);
+    double side_input_scale, double leakyrelu_alpha,
+    se::DeviceMemory<T> input_ptr, se::DeviceMemory<T> filter_ptr,
+    se::DeviceMemory<T> output_ptr, se::DeviceMemory<T> bias_ptr,
+    se::DeviceMemory<T> side_input_ptr, int64_t scratch_size);
 
 template <typename T>
 StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(

@@ -408,14 +408,15 @@ class Stream {
 
   port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
   FusedConvolveRunnerFromDesc(
-      const dnn::AlgorithmDesc &algorithm_desc, dnn::ConvolutionKind kind,
+      const dnn::AlgorithmDesc& algorithm_desc, dnn::ConvolutionKind kind,
       dnn::DataType element_type, dnn::DataType bias_type,
       dnn::DataType output_type, double conv_input_scale,
-      double side_input_scale, const dnn::BatchDescriptor &input_descriptor,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const dnn::BatchDescriptor &bias_descriptor,
-      const dnn::BatchDescriptor &output_descriptor,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      double side_input_scale, double leakyrelu_alpha,
+      const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& bias_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
       dnn::ActivationMode activation_mode) {
     dnn::DnnSupport *dnn_support = parent_->AsDnn();
     if (!dnn_support) {
@@ -423,9 +424,9 @@ class Stream {
     }
     return dnn_support->FusedConvolveRunnerFromDesc(
         this, algorithm_desc, kind, element_type, bias_type, output_type,
-        conv_input_scale, side_input_scale, input_descriptor, filter_descriptor,
-        bias_descriptor, output_descriptor, convolution_descriptor,
-        activation_mode);
+        conv_input_scale, side_input_scale, leakyrelu_alpha, input_descriptor,
+        filter_descriptor, bias_descriptor, output_descriptor,
+        convolution_descriptor, activation_mode);
   }
 
   Stream &ThenSeparableConvolve(
