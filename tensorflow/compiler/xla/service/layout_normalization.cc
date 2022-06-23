@@ -181,7 +181,94 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
+  // For bitcasting transposes, converts:
+  //
+  // A{I} -> bitcast[S]{L} -> transpose{L2}
+  //
+  // Into:
+  //
+  // A{I} -> bitcast{L2}
+  //
+  // For non-bitcasting ones, converts:
+  //
+  // A{I} -> bitcast[S0]{L} -> transpose[S]{L2}
+  //
+  // Into:
+  //
+  // A{I} -> transpose[S']{I} -> bitcast{L2}
+  //
+  // Where S' is the normalization of [S]{L2}, and `dimensions` attribute is
+  //
+  // The `dimensions` of the new transposition is given by:
+  //
+  //  L^-1 o `dim_0` o L2
+  //
+  // where dim_0 is dimensions of the original transposition, and `o` denotes
+  // permutation composition.
+  Status HandleTranspose(HloInstruction* hlo) override {
+    auto s = hlo->shape();
+    auto operand = hlo->mutable_operand(0);
+    auto operand_s = operand->shape();
+    TF_ASSIGN_OR_RETURN(auto a0, GetNormalizedInput(operand));
+    auto normalized_shape = Normalize(s);
+    VLOG(3) << "Input transpose: " << hlo->ToString();
+
+    if (!ShapeUtil::TransposeIsBitcast(s, operand_s, hlo->dimensions())) {
+      auto l0_perm = InversePermutation(ToTransposeDimensions(
+          ShapeUtil::DropDegenerateDimensions(operand_s).layout()));
+      auto l_perm = ToTransposeDimensions(
+          ShapeUtil::DropDegenerateDimensions(s).layout());
+
+      auto dims = NoDegenerateDims(hlo->dimensions(), s, operand_s);
+      auto t = ComposePermutations(l0_perm, dims);
+      auto dimensions = ComposePermutations(t, l_perm);
+      auto normalized_transpose = hlo->AddInstruction(
+          HloInstruction::CreateTranspose(normalized_shape, a0, dimensions));
+      VLOG(3) << "Generated normalized physical transpose: "
+              << normalized_transpose->ToString();
+      auto bc_to_orig = MakeBitcastHlo(normalized_transpose, s);
+      TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
+    } else {
+      auto bc_to_orig = MakeBitcastHlo(a0, s);
+      TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
+    }
+    return OkStatus();
+  }
+
  private:
+  // Drops items from `dimensions` corresponding to degenerate dimensions in
+  // `input_shape`.
+  std::vector<int64_t> NoDegenerateDims(absl::Span<int64_t const> dimensions,
+                                        const Shape& input_shape,
+                                        const Shape& output_shape) {
+    std::vector<int64_t> out;
+    for (int i = 0; i < dimensions.size(); i++) {
+      if (input_shape.dimensions(i) != 1) {
+        int64_t val = dimensions[i];
+
+        // Count all preceding 1-sized dimensions.
+        int64_t delta = 0;
+        for (int o = 0; o < val; o++) {
+          if (output_shape.dimensions(o) == static_cast<int64_t>(1)) {
+            delta++;
+          }
+        }
+
+        out.push_back(val - delta);
+      }
+    }
+    return out;
+  }
+
+  // Converts a layout to a dimensions transposition necessary to get to that
+  // layout from identity.
+  std::vector<int64_t> ToTransposeDimensions(const Layout& l) {
+    std::vector<int64_t> out(l.minor_to_major().begin(),
+                             l.minor_to_major().end());
+    absl::c_reverse(out);
+    return out;
+  }
+
   // Due to Local Precondition we have, the input to all processed ops should
   // be HLO in descending layout piped through bitcast.
   StatusOr<HloInstruction*> GetNormalizedInput(HloInstruction* hlo) {

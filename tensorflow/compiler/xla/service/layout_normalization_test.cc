@@ -128,5 +128,60 @@ ENTRY main {
 )");
 }
 
+TEST_F(LayoutNormalizationTest, Transpose) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[5,4]{1,0} parameter(0)
+  t = f32[4,5]{0,1} transpose(a), dimensions={1,0}
+  ROOT out = abs(t)
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[a_0:%[^ ]+]] = f32[5,4]{1,0} parameter(0)
+// CHECK: [[bitcast_1:%[^ ]+]] = f32[5,4]{1,0} bitcast([[a_0]])
+// CHECK: [[abs_2:%[^ ]+]] = f32[5,4]{1,0} abs([[bitcast_1]])
+// CHECK: ROOT [[bitcast_3_3:%[^ ]+]] = f32[4,5]{0,1} bitcast([[abs_2]])
+)");
+}
+
+TEST_F(LayoutNormalizationTest, PhysicalTranspose) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  p = f64[3,4,5]{0,1,2} parameter(0)
+  t = f32[5,4,3]{2,0,1} transpose(p), dimensions={2,1,0}
+  ROOT out = abs(t)
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[bitcast_0:%[^ ]+]] = f64[5,4,3]{2,1,0} bitcast([[p_1:%[^ ]+]])
+// CHECK: [[transpose_2:%[^ ]+]] = f32[4,5,3]{2,1,0} transpose([[bitcast_0]]), dimensions={1,0,2}
+// CHECK: [[abs_3:%[^ ]+]] = f32[4,5,3]{2,1,0} abs([[transpose_2]])
+)");
+}
+
+TEST_F(LayoutNormalizationTest, PhysicalTransposeDegenerate) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  p = f32[3,4,5,1]{0,1,2,3} parameter(0)
+  t = f32[5,1,4,3]{3,2,0,1} transpose(p), dimensions={2,3,1,0}
+  ROOT out = abs(t)
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[bitcast_0:%[^ ]+]] = f32[5,4,3]{2,1,0} bitcast([[p_1:%[^ ]+]])
+// CHECK: [[transpose_2:%[^ ]+]] = f32[5,4,3]{2,1,0} transpose([[bitcast_0]]), dimensions={0,1,2}
+// CHECK: [[abs_3:%[^ ]+]] = f32[5,4,3]{2,1,0} abs([[transpose_2]])
+)");
+}
+
 }  // namespace
 }  // namespace xla
