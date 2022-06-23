@@ -250,7 +250,7 @@ func.func @parallel_loop(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>,
   %space = gml_st.space [8] : !gml_st.tile<8>
 
   %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4)
-      outs(%output at %space: tensor<8xf32> at !gml_st.tile<8>) {
+      outs(%output: tensor<8xf32>) {
     %tile = gml_st.tile %space [%i] [4] [1]
       : !gml_st.tile<8> to !gml_st.tile<4>
     %lhs_sub = gml_st.materialize %lhs at %tile
@@ -282,7 +282,7 @@ func.func @for_loop(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>,
   %space = gml_st.space [8] : !gml_st.tile<8>
 
   %sum = gml_st.for (%i) = (%c0) to (%c8) step (%c4)
-      outs(%out_ = %output at %space: tensor<8xf32> at !gml_st.tile<8>) {
+      outs(%out_ = %output : tensor<8xf32>) {
     %tile = gml_st.tile %space [%i] [4] [1]
       : !gml_st.tile<8> to !gml_st.tile<4>
     %lhs_sub = gml_st.materialize %lhs at %tile

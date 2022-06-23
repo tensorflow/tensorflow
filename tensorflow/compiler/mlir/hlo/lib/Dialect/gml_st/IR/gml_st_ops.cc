@@ -440,22 +440,20 @@ template <typename LoopTy>
 void buildLoopLikeOp(
     OpBuilder &builder, OperationState &result, TypeRange resultTypes,
     ValueRange lowerBounds, ValueRange upperBounds, ValueRange steps,
-    ValueRange outputs, ValueRange subsets,
+    ValueRange outputs,
     function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
         bodyBuilderFn) {
   result.addOperands(lowerBounds);
   result.addOperands(upperBounds);
   result.addOperands(steps);
   result.addOperands(outputs);
-  result.addOperands(subsets);
   result.addTypes(resultTypes);
   result.addAttribute(
       LoopOp::getOperandSegmentSizeAttr(),
       builder.getI32VectorAttr({static_cast<int32_t>(lowerBounds.size()),
                                 static_cast<int32_t>(upperBounds.size()),
                                 static_cast<int32_t>(steps.size()),
-                                static_cast<int32_t>(outputs.size()),
-                                static_cast<int32_t>(subsets.size())}));
+                                static_cast<int32_t>(outputs.size())}));
 
   OpBuilder::InsertionGuard guard(builder);
   unsigned numIvs = steps.size();
@@ -483,8 +481,7 @@ ParseResult parseOutputArgs(
     OpAsmParser &parser,
     SmallVectorImpl<OpAsmParser::UnresolvedOperand> &outputRegionArgs,
     SmallVectorImpl<OpAsmParser::UnresolvedOperand> &outputs,
-    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &subsets,
-    SmallVectorImpl<Type> &outputTypes, SmallVectorImpl<Type> &subsetTypes) {
+    SmallVectorImpl<Type> &outputTypes) {
   auto parseElt = [&]() -> ParseResult {
     if (std::is_same<LoopTy, ForOp>::value) {
       if (parser.parseOperand(outputRegionArgs.emplace_back(),
@@ -493,12 +490,8 @@ ParseResult parseOutputArgs(
         return failure();
       }
     }
-    if (parser.parseOperand(outputs.emplace_back()) ||
-        parser.parseKeyword("at") ||
-        parser.parseOperand(subsets.emplace_back()) || parser.parseColon() ||
-        parser.parseType(outputTypes.emplace_back()) ||
-        parser.parseKeyword("at") ||
-        parser.parseType(subsetTypes.emplace_back())) {
+    if (parser.parseOperand(outputs.emplace_back()) || parser.parseColon() ||
+        parser.parseType(outputTypes.emplace_back())) {
       return failure();
     }
     return success();
@@ -540,18 +533,15 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
     return failure();
 
   // Parse output tensors.
-  SmallVector<OpAsmParser::UnresolvedOperand, 4> outputs, outputRegionArgs,
-      subsets;
-  SmallVector<Type, 4> outputTypes, subsetTypes;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> outputs, outputRegionArgs;
+  SmallVector<Type, 4> outputTypes;
   if (succeeded(parser.parseOptionalKeyword("outs"))) {
     SMLoc loc = parser.getCurrentLocation();
 
-    if (parseOutputArgs<LoopTy>(parser, outputRegionArgs, outputs, subsets,
-                                outputTypes, subsetTypes))
+    if (parseOutputArgs<LoopTy>(parser, outputRegionArgs, outputs, outputTypes))
       return failure();
 
-    if (parser.resolveOperands(outputs, outputTypes, loc, result.operands) ||
-        parser.resolveOperands(subsets, subsetTypes, loc, result.operands))
+    if (parser.resolveOperands(outputs, outputTypes, loc, result.operands))
       return failure();
   }
 
@@ -579,8 +569,7 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
       builder.getI32VectorAttr({static_cast<int32_t>(lower.size()),
                                 static_cast<int32_t>(upper.size()),
                                 static_cast<int32_t>(steps.size()),
-                                static_cast<int32_t>(outputs.size()),
-                                static_cast<int32_t>(subsets.size())}));
+                                static_cast<int32_t>(outputs.size())}));
 
   // Parser result types.
   if (parser.parseOptionalColonTypeList(result.types)) return failure();
@@ -599,12 +588,11 @@ LogicalResult ParallelOp::verify() { return success(); }
 void ParallelOp::build(
     OpBuilder &builder, OperationState &result, TypeRange resultTypes,
     ValueRange lowerBounds, ValueRange upperBounds, ValueRange steps,
-    ValueRange outputs, ValueRange subsets,
+    ValueRange outputs,
     function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
         bodyBuilderFn) {
   buildLoopLikeOp<ParallelOp>(builder, result, resultTypes, lowerBounds,
-                              upperBounds, steps, outputs, subsets,
-                              bodyBuilderFn);
+                              upperBounds, steps, outputs, bodyBuilderFn);
 }
 
 void ParallelOp::print(OpAsmPrinter &p) {
@@ -613,12 +601,8 @@ void ParallelOp::print(OpAsmPrinter &p) {
 
   if (!outputs().empty()) {
     p << " outs (";
-    llvm::interleaveComma(llvm::zip(outputs(), subsets()), p, [&](auto it) {
-      Value output, subset;
-      std::tie(output, subset) = it;
-      p << output << " at " << subset << ": " << output.getType() << " at "
-        << subset.getType();
-    });
+    llvm::interleaveComma(outputs(), p,
+                          [&](auto it) { p << it << ": " << it.getType(); });
     p << ")";
   }
 
@@ -659,11 +643,11 @@ LogicalResult ForOp::verify() {
 void ForOp::build(
     OpBuilder &builder, OperationState &result, TypeRange resultTypes,
     ValueRange lowerBounds, ValueRange upperBounds, ValueRange steps,
-    ValueRange outputs, ValueRange subsets,
+    ValueRange outputs,
     function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
         bodyBuilderFn) {
   buildLoopLikeOp<ForOp>(builder, result, resultTypes, lowerBounds, upperBounds,
-                         steps, outputs, subsets, bodyBuilderFn);
+                         steps, outputs, bodyBuilderFn);
 }
 
 void ForOp::print(OpAsmPrinter &p) {
@@ -673,12 +657,10 @@ void ForOp::print(OpAsmPrinter &p) {
   if (!outputs().empty()) {
     p << " outs (";
     llvm::interleaveComma(
-        llvm::zip(getRegionOutputArgs(), outputs(), subsets()), p,
-        [&](auto it) {
-          Value outputRegionArg, output, subset;
-          std::tie(outputRegionArg, output, subset) = it;
-          p << outputRegionArg << " = " << output << " at " << subset << ": "
-            << output.getType() << " at " << subset.getType();
+        llvm::zip(getRegionOutputArgs(), outputs()), p, [&](auto it) {
+          Value outputRegionArg, output;
+          std::tie(outputRegionArg, output) = it;
+          p << outputRegionArg << " = " << output << ": " << output.getType();
         });
     p << ")";
   }

@@ -149,7 +149,7 @@ func.func @fuse_into_ploop(%lhs : tensor<8xf32>, %rhs : tensor<8xf32>,
   // CHECK-DAG: %[[C4:.*]] = arith.constant 4
   // CHECK-DAG: %[[C0:.*]] = arith.constant 0
   // CHECK-DAG: %[[SPACE:.*]] = gml_st.space [8] : !gml_st.tile<8>
-  // CHECK:     %[[RES:.*]] = gml_st.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[C8]]) step (%[[C4]]) outs (%[[OUT]] at %[[SPACE]]: tensor<8xf32> at !gml_st.tile<8>) {
+  // CHECK:     %[[RES:.*]] = gml_st.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[C8]]) step (%[[C4]]) outs (%[[OUT]]: tensor<8xf32>) {
   // CHECK-DAG:   %[[TILE:.*]] = gml_st.tile %[[SPACE]] [%[[I]]] [4] [1] : !gml_st.tile<8> to !gml_st.tile<4>
   // CHECK-DAG:   %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]] at %[[TILE]] : tensor<8xf32> at !gml_st.tile<4>
   // CHECK-DAG:   %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]] at %[[TILE]] : tensor<8xf32> at !gml_st.tile<4>
@@ -171,7 +171,7 @@ func.func @fuse_into_ploop(%lhs : tensor<8xf32>, %rhs : tensor<8xf32>,
   %c8 = arith.constant 8 : index
   %space = gml_st.space [8] : !gml_st.tile<8>
   %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4)
-      outs(%out at %space: tensor<8xf32> at !gml_st.tile<8>) {
+      outs(%out : tensor<8xf32>) {
     %tile = gml_st.tile %space [%i] [4] [1] : !gml_st.tile<8> to !gml_st.tile<4>
     %tanh_sub = gml_st.materialize %tanh at %tile
         : tensor<8xf32> at !gml_st.tile<4>

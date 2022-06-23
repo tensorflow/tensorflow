@@ -382,7 +382,6 @@ FailureOr<TilingResult> tileToTiles(RewriterBase &b, linalg::LinalgOp linalgOp,
   LinalgOp result;
   auto loop = b.create<ParallelOp>(
       loc, output.getType(), lowerBounds, upperBounds, steps, output,
-      ValueRange{space},
       [&](OpBuilder &b, Location nestedLoc, ValueRange ivs,
           ValueRange /*outputs*/) {
         auto operandTile = createTile(b, nestedLoc, ivs, upperBounds, steps,
@@ -440,7 +439,7 @@ FailureOr<TilingResult> tileToPoints(RewriterBase &b,
     }
   }
   auto loop = b.create<ParallelOp>(
-      loc, output.getType(), lowerBounds, upperBounds, steps, output, space,
+      loc, output.getType(), lowerBounds, upperBounds, steps, output,
       [&](OpBuilder &b, Location nestedLoc, ValueRange ivs,
           ValueRange /*outputs*/) {
         Value point = b.create<PointOp>(
