@@ -83,6 +83,8 @@ extern const char* const kEigenMatMulC128SymbolName =
     "__xla_cpu_runtime_EigenMatMulC128";
 extern const char* const kEigenMatMulS32SymbolName =
     "__xla_cpu_runtime_EigenMatMulS32";
+extern const char* const kEigenBatchMatMulF32SymbolName =
+    "__xla_cpu_runtime_EigenBatchMatMulF32";
 extern const char* const kMKLConv2DF32SymbolName =
     "__xla_cpu_runtime_MKLConv2DF32";
 extern const char* const kMKLMatMulF32SymbolName =
