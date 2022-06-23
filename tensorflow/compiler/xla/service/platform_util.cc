@@ -200,10 +200,8 @@ PlatformUtil::GetStreamExecutors(
     // shared hosts.
     if (allowed_devices) {
       int count = 0;
-      for (auto ai = allowed_devices->cbegin(); ai != allowed_devices->cend();
-           ai++) {
+      for (const auto& i : *allowed_devices) {
         if (count >= device_count) break;
-        int i = *ai;
         thread_pool.Schedule([i, count, &create_fn]() { create_fn(i, count); });
         count++;
       }
