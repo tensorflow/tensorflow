@@ -45,8 +45,6 @@ namespace acceleration {
 constexpr int kMaxAttempts = 2;
 constexpr int64_t ValidatorRunner::kDefaultEventTimeoutUs;
 
-using ::tflite::nnapi::NnApiSupportLibrary;
-
 ValidatorRunner::ValidatorRunner(const std::string& model_path,
                                  const std::string& storage_path,
                                  const std::string& data_directory_path,
