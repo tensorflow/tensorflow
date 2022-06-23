@@ -103,6 +103,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
 #include "tensorflow/compiler/xla/service/bitcast_dtypes_expander.h"
+#include "tensorflow/compiler/xla/service/broadcast_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/cholesky_expander.h"
@@ -593,6 +594,7 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     HloPassPipeline pipeline("hlo normalization");
     pipeline.AddPass<ReshapeDecomposer>();
     pipeline.AddPass<ReduceDecomposer>();
+    pipeline.AddPass<BroadcastCanonicalizer>();
     TF_RETURN_IF_ERROR(pipeline.Run(module).status());
   }
 

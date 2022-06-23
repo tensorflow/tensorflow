@@ -64,6 +64,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
 #include "tensorflow/compiler/xla/service/bitcast_decomposer.h"
 #include "tensorflow/compiler/xla/service/bitcast_dtypes_expander.h"
+#include "tensorflow/compiler/xla/service/broadcast_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/collectives_schedule_linearizer.h"
@@ -710,13 +711,13 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   {
     HloPassPipeline pipeline("hlo normalization");
     pipeline.AddPass<ReshapeDecomposer>();
-    pipeline.AddPass<ReduceDecomposer>(
-        /*custom_layout_allowed=*/[&](const HloInstruction* r) {
-          return IsReductionFromOrToContiguousDimensions(*r);
-        });
+    pipeline.AddPass<ReduceDecomposer>([&](const HloInstruction* r) {
+      return IsReductionFromOrToContiguousDimensions(*r);
+    });
     if (hlo_module->config().debug_options().xla_gpu_normalize_layouts()) {
       pipeline.AddPass<LayoutNormalization>();
     }
+    pipeline.AddPass<BroadcastCanonicalizer>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
