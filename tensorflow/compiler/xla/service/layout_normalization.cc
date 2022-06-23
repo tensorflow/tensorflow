@@ -75,7 +75,61 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
+  // Pushes down the bitcast across the unary.
+  // That is, converts:
+  //
+  //    H_0{I} -> B{L} -> U{L}
+  //
+  // into
+  //
+  //    H_0{I} -> U{I} -> B{L}
+  //
+  // where {I} denotes default layout.
+  Status HandleElementwiseUnary(HloInstruction* hlo) override {
+    if (hlo->opcode() == HloOpcode::kCopy) {
+      // TODO(cheshire): Copy should not be really treated as elementwise.
+      return DefaultAction(hlo);
+    }
+    auto s = hlo->shape();
+    auto operand = hlo->mutable_operand(0);
+    auto operand_shape = operand->shape();
+
+    // Precondition: elementwise unary leaves layout intact.
+    TF_RET_CHECK(s.layout() == operand_shape.layout())
+        << "Unexpected non-layout preserving elementwise unary: "
+        << hlo->ToString();
+    TF_ASSIGN_OR_RETURN(auto normalized_input, GetNormalizedInput(operand));
+
+    PrimitiveType to_element_type = s.element_type();
+    HloInstruction* new_unary;
+    if (hlo->opcode() == HloOpcode::kConvert) {
+      new_unary = MakeConvertToHlo(normalized_input, to_element_type);
+    } else if (hlo->opcode() == HloOpcode::kReducePrecision) {
+      new_unary = MakeReducePrecisionHlo(normalized_input, hlo->exponent_bits(),
+                                         hlo->mantissa_bits());
+    } else if (hlo->opcode() == HloOpcode::kBitcastConvert) {
+      new_unary = MakeBitcastConvertToHlo(normalized_input, to_element_type);
+    } else {
+      TF_ASSIGN_OR_RETURN(new_unary,
+                          MakeUnaryHlo(hlo->opcode(), normalized_input));
+    }
+    auto bc_to_orig = MakeBitcastHlo(new_unary, s);
+    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
+    return OkStatus();
+  }
+
  private:
+  // Due to Local Precondition we have, the input to all processed ops should
+  // be HLO in descending layout piped through bitcast.
+  StatusOr<HloInstruction*> GetNormalizedInput(HloInstruction* hlo) {
+    TF_RET_CHECK(hlo->opcode() == HloOpcode::kBitcast);
+    auto input = hlo->mutable_operand(0);
+    auto input_shape = input->shape();
+    TF_RET_CHECK(input_shape.layout() ==
+                 LayoutUtil::GetDefaultLayoutForShape(input_shape));
+    return input;
+  }
+
   // Forces the layout to be descending and removes degenerate dimensions
   // without altering physical layout.
   Shape Normalize(const Shape& s) {
