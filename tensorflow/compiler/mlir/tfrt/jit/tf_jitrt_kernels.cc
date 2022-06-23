@@ -125,6 +125,9 @@ using ::tensorflow::tfd::KernelFallbackCompatRequestState;
 using ::tensorflow::tfrt_stub::FallbackTensor;
 using ::tensorflow::thread::ThreadPool;
 
+template <typename T>
+using KernelArgument = ::tfrt::Argument<T>;
+
 // -------------------------------------------------------------------------- //
 // Dedicated thread pool for running compilation tasks.
 // -------------------------------------------------------------------------- //
@@ -535,7 +538,7 @@ static AsyncValueRef<Chain> Compile(StringAttribute device,
 // -------------------------------------------------------------------------- //
 
 static AsyncValueRef<Chain> WaitForCompilation(
-    Argument<Chain> chain, CompilationUnitAttribute kernel,
+    KernelArgument<Chain> chain, CompilationUnitAttribute kernel,
     const ExecutionContext& exec_ctx) {
   // Request context must be initialized with the tf_jitrt state.
   auto* state = exec_ctx.request_ctx()->GetDataIfExists<TfJitRtRequestState>();
@@ -556,7 +559,7 @@ static AsyncValueRef<Chain> WaitForCompilation(
 // -------------------------------------------------------------------------- //
 
 static AsyncValueRef<Chain> ResetCompilationThreadPool(
-    Argument<Chain> chain, const ExecutionContext& exec_ctx) {
+    KernelArgument<Chain> chain, const ExecutionContext& exec_ctx) {
   // Make sure that we reset the compilation thread pool only from a thread pool
   // (concurrent work queue) managed by the HostContext.
   return EnqueueWork(exec_ctx, [host = exec_ctx.host()]() -> Chain {
