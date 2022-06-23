@@ -38,7 +38,7 @@ from tensorflow.python.ops.linalg import linear_operator_algebra
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.ops.linalg import slicing
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.tracking import data_structures
+from tensorflow.python.trackable import data_structures
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest

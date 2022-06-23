@@ -247,7 +247,7 @@ py_binary(
         "//tensorflow/python/module",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/saved_model:save_options",
-        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/trackable:asset",
         "@absl_py//absl:app",
     ],
 )

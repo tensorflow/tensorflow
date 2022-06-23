@@ -575,7 +575,7 @@ cuda_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:save",
-        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/trackable:autotrackable",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
