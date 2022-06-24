@@ -39,7 +39,7 @@ namespace {
 using ::testing::HasSubstr;
 
 std::unique_ptr<HloModule> CreateUnverifiedModule() {
-  return absl::make_unique<HloModule>("module", HloModuleConfig());
+  return std::make_unique<HloModule>("module", HloModuleConfig());
 }
 
 // This class cannot be converted to use HloTestBase. It explicitly

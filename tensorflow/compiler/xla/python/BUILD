@@ -2,7 +2,11 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_cuda_or_rocm",
+    "tf_cc_test",
+)
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 # buildifier: disable=same-origin-load
@@ -162,7 +166,6 @@ cc_library(
         "//tensorflow/python:bfloat16_lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/types:optional",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
     ],
@@ -252,7 +255,7 @@ cc_library(
         "py_executable.cc",
         "py_values.cc",
         "sharded_device_array.cc",
-    ] + if_cuda([
+    ] + if_cuda_or_rocm([
         "py_client_gpu.cc",
     ]),
     hdrs = [
@@ -262,7 +265,7 @@ cc_library(
         "py_executable.h",
         "py_values.h",
         "sharded_device_array.h",
-    ] + if_cuda([
+    ] + if_cuda_or_rocm([
         "py_client_gpu.h",
     ]),
     compatible_with = [],
@@ -286,7 +289,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "@pybind11",
@@ -371,7 +373,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
@@ -401,7 +402,6 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:self_adjoint_eig",
         "//tensorflow/compiler/xla/client/lib:sorting",
         "//tensorflow/compiler/xla/client/lib:svd",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
@@ -452,7 +452,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "@pybind11",
@@ -594,7 +593,6 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:util",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/types:optional",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
     ],
@@ -649,7 +647,6 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@pybind11",
     ],

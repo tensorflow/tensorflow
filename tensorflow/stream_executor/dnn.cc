@@ -54,7 +54,7 @@ constexpr DataType ToDataType<std::complex<double>>::value;
 AlgorithmDesc::AlgorithmDesc(
     int64_t engine_id,
     const std::vector<std::pair<int64_t, int64_t>>& tuning_knobs,
-    absl::optional<uint64_t> workspace_size) {
+    std::optional<uint64_t> workspace_size) {
   proto_.set_is_cudnn_frontend(true);
   proto_.set_algo_id(engine_id);
   if (workspace_size) {

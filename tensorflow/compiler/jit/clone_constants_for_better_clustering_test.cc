@@ -30,7 +30,7 @@ using ::tensorflow::testing::FindNodeByName;
 
 Status CloneConstantsForBetterClustering(const Scope& s,
                                          std::unique_ptr<Graph>* result) {
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   SessionOptions session_options;
   session_options.config.mutable_graph_options()
       ->mutable_optimizer_options()

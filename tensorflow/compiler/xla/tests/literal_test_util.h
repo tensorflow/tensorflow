@@ -18,11 +18,11 @@ limitations under the License.
 
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <random>
 #include <string>
 
 #include "absl/base/attributes.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"

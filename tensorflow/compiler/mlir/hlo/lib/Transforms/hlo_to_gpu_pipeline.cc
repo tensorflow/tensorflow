@@ -25,7 +25,7 @@ limitations under the License.
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/GPU/Passes.h"
+#include "mlir/Dialect/GPU/Transforms/Passes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
@@ -47,7 +47,7 @@ void mlir::createHloToGpuPipeline(OpPassManager &pm,
   pm.addPass(CreateComputeOpAndFuncBufferizePass());
   pm.addNestedPass<FuncOp>(createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(createConvertLinalgToParallelLoopsPass());
-  pm.addPass(bufferization::createBufferDeallocationPass());
+  pm.addNestedPass<FuncOp>(bufferization::createBufferDeallocationPass());
   // Loops -> GPU
   pm.addNestedPass<FuncOp>(CreateTileLoopsPass(tileSizes, unrollFactors));
   pm.addNestedPass<FuncOp>(createGpuMapParallelLoopsPass());
@@ -58,10 +58,10 @@ void mlir::createHloToGpuPipeline(OpPassManager &pm,
   constexpr llvm::StringRef kGpuDataLayoutSpec =
       "#dlti.dl_spec<#dlti.dl_entry<index,32:i32>>";
   pm.addPass(createGpuKernelOutliningPass(kGpuDataLayoutSpec));
-  pm.addPass(createLowerAffinePass());
-  pm.addNestedPass<FuncOp>(createCanonicalizerPass());
-  pm.addPass(createConvertSCFToCFPass());
+  pm.addNestedPass<gpu::GPUModuleOp>(createLowerAffinePass());
+  pm.addNestedPass<gpu::GPUModuleOp>(createCanonicalizerPass());
+  pm.addNestedPass<gpu::GPUModuleOp>(createConvertSCFToCFPass());
   // GPU -> low-level IR
   pm.addNestedPass<gpu::GPUModuleOp>(CreateGpuKernelToNvvmPass());
-  pm.addNestedPass<FuncOp>(CreatePropagateStaticShapesToKernelPass());
+  pm.addPass(CreatePropagateStaticShapesToKernelPass());
 }

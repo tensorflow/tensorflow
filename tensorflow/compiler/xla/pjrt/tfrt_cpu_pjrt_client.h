@@ -351,7 +351,7 @@ class TfrtCpuBuffer final : public PjRtBuffer {
         case kUninitialized:
           return InvalidArgument("Buffer has not been initialized");
         case kValid:
-          return ::tensorflow::OkStatus();
+          return OkStatus();
         case kMoved:
           return InvalidArgument("Buffer has been moved.");
         case kConverted:

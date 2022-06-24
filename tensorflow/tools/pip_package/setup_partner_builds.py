@@ -40,7 +40,7 @@ from setuptools import setup
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.9.1'
+_VERSION = '2.10.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -68,6 +68,10 @@ REQUIRED_PACKAGES = [
     _VERSION +
     ';platform_system=="Linux" and (platform_machine=="arm64" or '
     'platform_machine=="aarch64")',
+    # Install the TensorFlow package built by Intel if the user is on a Windows
+    # machine.
+    standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') +
+    '==' + _VERSION + ';platform_system=="Windows"',
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 

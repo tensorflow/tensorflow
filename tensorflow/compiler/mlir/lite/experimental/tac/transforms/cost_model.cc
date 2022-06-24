@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include "absl/strings/str_cat.h"
 #include "llvm/Support/Casting.h"

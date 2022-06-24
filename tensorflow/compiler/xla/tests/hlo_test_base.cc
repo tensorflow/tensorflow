@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
-#include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -74,8 +73,7 @@ ProgramShape GetProgramShapeWithLayout(const HloModule& module) {
 
 HloTestBase::HloTestBase(bool verifier_layout_sensitive,
                          bool allow_mixed_precision_in_hlo_verifier,
-                         std::function<bool(const HloInstruction*)>
-                             instruction_can_change_layout_func)
+                         HloPredicate instruction_can_change_layout_func)
     : HloTestBase(GetTestPlatform(), GetReferencePlatform(),
                   verifier_layout_sensitive,
                   allow_mixed_precision_in_hlo_verifier,
@@ -85,14 +83,13 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
                          se::Platform* reference_platform,
                          bool verifier_layout_sensitive,
                          bool allow_mixed_precision_in_hlo_verifier,
-                         std::function<bool(const HloInstruction*)>
-                             instruction_can_change_layout_func)
+                         HloPredicate instruction_can_change_layout_func)
     : test_runner_(test_platform),
       reference_runner_(reference_platform),
       verifier_layout_sensitive_(verifier_layout_sensitive),
       allow_mixed_precision_in_hlo_verifier_(
           allow_mixed_precision_in_hlo_verifier) {
-  hlo_verifier_ = absl::make_unique<HloVerifier>(
+  hlo_verifier_ = std::make_unique<HloVerifier>(
       /*layout_sensitive=*/verifier_layout_sensitive,
       /*allow_mixed_precision=*/allow_mixed_precision_in_hlo_verifier,
       instruction_can_change_layout_func);
@@ -112,12 +109,12 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
 
 std::unique_ptr<HloModule> HloTestBase::CreateNewUnverifiedModule(
     const std::string& name) {
-  return absl::make_unique<HloModule>(name, GetModuleConfigForTest());
+  return std::make_unique<HloModule>(name, GetModuleConfigForTest());
 }
 
 std::unique_ptr<VerifiedHloModule> HloTestBase::CreateNewVerifiedModule(
     const std::string& name, int64_t replica_count) {
-  return absl::make_unique<VerifiedHloModule>(
+  return std::make_unique<VerifiedHloModule>(
       name, GetModuleConfigForTest(replica_count), verifier_layout_sensitive_,
       allow_mixed_precision_in_hlo_verifier_,
       backend().compiler()->ShapeSizeBytesFunction());
@@ -138,7 +135,7 @@ HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
 StatusOr<std::unique_ptr<VerifiedHloModule>>
 HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
                                           const HloModuleConfig& config) {
-  auto module = absl::make_unique<VerifiedHloModule>(
+  auto module = std::make_unique<VerifiedHloModule>(
       TestName(), config, verifier_layout_sensitive_,
       allow_mixed_precision_in_hlo_verifier_,
       backend().compiler()->ShapeSizeBytesFunction());
@@ -253,13 +250,15 @@ StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
     std::function<Executable*(int64_t)> executable_provider,
     std::function<int64_t(int64_t)> argument_count_provider,
     std::function<const Literal*(int64_t, int64_t)> argument_provider,
-    int64_t num_replicas, bool run_hlo_passes) {
+    int64_t num_replicas, bool run_hlo_passes,
+    DeviceAssignment* device_assignment) {
   HloRunner::ReplicatedExecuteOptions options;
   options.num_replicas = num_replicas;
   options.run_hlo_passes = run_hlo_passes;
   options.use_threads = true;
   return test_runner_.ExecuteReplicated(
-      executable_provider, argument_count_provider, argument_provider, options);
+      executable_provider, argument_count_provider, argument_provider, options,
+      device_assignment);
 }
 
 StatusOr<std::unique_ptr<HloModule>> HloTestBase::MakeReferenceModule(

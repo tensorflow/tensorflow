@@ -103,7 +103,7 @@ REGISTER_OP("AudioMicrofrontend")
 
       ShapeHandle output = ctx->MakeShape({num_frames, num_features});
       ctx->set_output(0, output);
-      return tensorflow::Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Audio Microfrontend Op.

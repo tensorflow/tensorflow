@@ -184,7 +184,9 @@ TfMetricsDbData ConvertHostThreadsXLineToTfMetricsDbData(
 
 void ConsumeTfMetricsDbData(TfMetricsDbData src, OpMetricsDbCombiner* dst) {
   AddIdleOp(src.tf_metrics_db);
-  dst->Combine(src.tf_metrics_db);
+  // Host OpMetricsDb does not need to update the number of cores a certain op
+  // occurs.
+  dst->Combine(src.tf_metrics_db, /*update_num_cores=*/false);
   src.tf_metrics_db.Clear();
 }
 

@@ -158,7 +158,7 @@ class TerminationConfig(object):
 
 
 # TODO(wxinyi): configure the exit function based on device type (GPU or TPU).
-class GCPTerminationConfig(TerminationConfig):
+class GcpGpuTerminationConfig(TerminationConfig):
   """Configurations for GCP GPU VM."""
 
   def __init__(  # pylint: disable=super-init-not-called
@@ -171,6 +171,19 @@ class GCPTerminationConfig(TerminationConfig):
     self.grace_period = (
         grace_period
         if grace_period or grace_period == 0 else gce_util.GRACE_PERIOD_GCE)
+
+
+class GcpCpuTerminationConfig(TerminationConfig):
+  """Configurations for GCP CPU VM."""
+
+  def __init__(  # pylint: disable=super-init-not-called
+      self,
+      termination_watcher_fn=None,
+      exit_fn=None,
+      grace_period=None):
+    self.termination_watcher_fn = termination_watcher_fn or gce_util.termination_watcher_function_gce
+    self.exit_fn = exit_fn or gce_util.gce_exit_fn
+    self.grace_period = grace_period or 0
 
 
 class BorgTerminationConfig(TerminationConfig):
@@ -193,9 +206,14 @@ def _complete_config_for_environment(platform_device, termination_config):
     termination_config = TerminationConfig()
 
   if platform_device is gce_util.PlatformDevice.GCE_GPU:
-    return GCPTerminationConfig(termination_config.termination_watcher_fn,
-                                termination_config.exit_fn,
-                                termination_config.grace_period)
+    return GcpGpuTerminationConfig(termination_config.termination_watcher_fn,
+                                   termination_config.exit_fn,
+                                   termination_config.grace_period)
+
+  elif platform_device is gce_util.PlatformDevice.GCE_CPU:
+    return GcpCpuTerminationConfig(termination_config.termination_watcher_fn,
+                                   termination_config.exit_fn,
+                                   termination_config.grace_period)
 
   else:
     # The default we chose are the same as the ones used by Borg. So we just

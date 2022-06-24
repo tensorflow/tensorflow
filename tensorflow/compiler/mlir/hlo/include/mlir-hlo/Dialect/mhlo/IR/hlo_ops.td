@@ -363,7 +363,7 @@ def HLO_RealOp: HLO_UnaryElementwiseOp<"real",
 
 def HLO_RoundOp: HLO_UnaryElementwiseOp<"round_nearest_afz",
     [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpTensor> {
-  let summary = "Round operator";
+  let summary = "Round operator, ties away from zero";
   let description = [{
     Returns `Round(operand)` element-wise, rounding to nearest integer with
     half-way cases rounding away from zero.
@@ -372,6 +372,18 @@ def HLO_RoundOp: HLO_UnaryElementwiseOp<"round_nearest_afz",
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
   let hasFolder = 1;
+}
+
+def HLO_RoundNearestEvenOp: HLO_UnaryElementwiseOp<"round_nearest_even",
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpTensor> {
+  let summary = "Round operator, ties to even";
+  let description = [{
+    Returns `Round(operand)` element-wise, rounding to nearest integer with
+    half-way cases rounding towards even numbers.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
 }
 
 def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt",
@@ -508,14 +520,14 @@ def HLO_Atan2Op : HLO_BinaryElementwiseOp<"atan2",
   }];
 }
 
-def HLO_ComplexOp: HLO_BinaryElementwiseOpNoAssembly<"complex",
-    [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+def HLO_ComplexOp: HLO_BinaryElementwiseOpNoAssembly<"complex", [NoSideEffect, 
+    SameOperandsElementType, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Complex operator";
   let description = [{
     Performs element-wise conversion of a pair of real and imaginary values to
     a complex value.
   }];
-  let arguments = (ins HLO_FpTensor:$lhs, HLO_FpTensor:$rhs);
+  let arguments = (ins HLO_Fp32Or64Tensor:$lhs, HLO_Fp32Or64Tensor:$rhs);
   let results = (outs HLO_ComplexTensor:$result);
   let assemblyFormat = "`(`operands`)` attr-dict `:` `(`type(operands)`)` `->` type($result)";
   let hasFolder = 1;
@@ -950,6 +962,7 @@ def HLO_WhileOp: HLO_Op<"while", [
   let hasCustomHLOConverter = 1;
   let hasCanonicalizer = 1;
   let hasCustomAssemblyFormat = 1;
+  let hasFolder = 1;
   let hasVerifier = 1;
 }
 

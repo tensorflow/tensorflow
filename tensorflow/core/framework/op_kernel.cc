@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -95,6 +96,33 @@ Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
   return OkStatus();
 }
 
+const absl::flat_hash_set<std::string>* GetOpNodeDefsToLogFromEnv() {
+  auto* result = new absl::flat_hash_set<std::string>;
+  const char* env = getenv("TF_DEBUG_OPS_TO_LOG_NODEDEFS");
+  if (!env) {
+    return result;
+  }
+
+  std::vector<absl::string_view> ops = absl::StrSplit(env, ',');
+  LOG(INFO) << "Will log NodeDefs from the following ops: ";
+  for (absl::string_view op : ops) {
+    result->insert(std::string(op));
+    LOG(INFO) << "  |" << op << "|";
+  }
+
+  return result;
+}
+
+// Returns true if the NodeDef for the OpKernel should be logged. The
+// envionrmental variable TF_DEBUG_OPS_TO_LOG_NODEDEFS can be set to a
+// comma-separated list of op types. The NodeDef for each is printed, which is
+// useful for debugging purposes.
+bool ShouldLogNodeDef(OpKernel* op_kernel) {
+  static const absl::flat_hash_set<std::string>& ops_to_log_nodedefs =
+      *GetOpNodeDefsToLogFromEnv();
+  return ops_to_log_nodedefs.count(op_kernel->type_string());
+}
+
 }  // namespace
 
 // OpKernel ------------------------------------------------------------------
@@ -124,6 +152,10 @@ OpKernel::OpKernel(OpKernelConstruction* context, bool is_deferred)
   expensive_ = context->device_type() != DeviceType(DEVICE_GPU) &&
                !DeviceFactory::IsPluggableDevice(
                    DeviceTypeString(context->device_type()));
+
+  if (ShouldLogNodeDef(this)) {
+    LOG(INFO) << "NodeDef for " << name() << ":\n" << def().ShortDebugString();
+  }
 }
 
 OpKernel::OpKernel(OpKernelConstruction* context, NodeDef&& custom_def,
@@ -1112,7 +1144,7 @@ static Status IsProbablySafeToLoad(const string& path) {
   if (!missing_features.empty()) {
     string errmsg = "Missing CPU features: ";
     errmsg.append(absl::StrJoin(missing_features, ", "));
-    return Status(errors::Code::FAILED_PRECONDITION, errmsg);
+    return errors::FailedPrecondition(errmsg);
   }
   return OkStatus();
 }

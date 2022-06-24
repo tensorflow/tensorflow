@@ -30,9 +30,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -412,7 +410,6 @@ bool ValidateTilingOfBitcast(
 }  // namespace
 
 void AlgebraicSimplifierVisitor::ResetState(HloComputation* computation) {
-  changed_ = false;
   ResetVisitStates();
   computation_ = computation;
 }
@@ -422,7 +419,7 @@ bool AlgebraicSimplifierVisitor::Run(HloComputation* computation,
                                      AlgebraicSimplifier* simplifier) {
   ResetState(computation);
   TF_CHECK_OK(computation->Accept(this));
-  return changed_ || changed();
+  return changed();
 }
 
 bool AlgebraicSimplifierVisitor::SameShape(const HloInstruction* lhs,
@@ -589,7 +586,7 @@ Status AlgebraicSimplifierVisitor::ScalarMultiplyReduction(
     return OkStatus();
   }
 
-  changed_ = true;
+  MarkAsChanged();
 
   // Combine all constant multipliers.
   float multiplier = 1.0;
@@ -1208,6 +1205,14 @@ std::optional<Shape> AlgebraicSimplifierVisitor::ReshapeLayoutDimensions(
   for (int i = 0; i < result_shape.rank(); ++i) {
     if (result_shape.dimensions(i) == 1) {
       bitcast_pos++;
+      // Since there is a possiblity of over-incrementing bitcast_pos
+      // we need such a check here also before accessing the vector.
+      // Overincrementing is possible when the result's dimension is
+      // smaller than the original dimension.
+      if (bitcast_pos >= reshaped_dimensions->size()) {
+        VLOG(3) << "bitcast pos is over incremented:" << bitcast_pos << "\n";
+        return std::nullopt;
+      }
       (*reshaped_dimensions)[bitcast_pos] = i;
     }
   }
@@ -1314,7 +1319,6 @@ Status AlgebraicSimplifierVisitor::HandleBitcastConvert(
 
 Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
   if (SwapCopyBitcastCopy(copy)) {
-    changed_ = true;
     return OkStatus();
   }
   // If a copy feeds a copy, make it a single copy.
@@ -2106,9 +2110,7 @@ HloInstruction* AlgebraicSimplifierVisitor::AddReduce(
       computation_->AddInstruction(simplifier_->CreateConstantWithLayoutUpdated(
           LiteralUtil::Zero(hlo->shape().element_type()).Clone()));
   HloComputation* AddReduce_computation = GetOrCreateScalarAddComputation(type);
-  Shape shape = ShapeUtil::FilterDimensions(
-      [&](int64_t dim) { return !absl::c_linear_search(dims, dim); },
-      hlo->shape());
+  Shape shape = ShapeUtil::DeleteDimensions(dims, hlo->shape());
   simplifier_->UpdateLayout(&shape);
   return computation_->AddInstruction(HloInstruction::CreateReduce(
       shape, hlo, zero, dims, AddReduce_computation));
@@ -3045,7 +3047,7 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
         !ShapeUtil::ElementIsComplex(abs_operand->shape())) {
       TF_RETURN_IF_ERROR(multiply->ReplaceOperandWith(0, abs_operand));
       TF_RETURN_IF_ERROR(multiply->ReplaceOperandWith(1, abs_operand));
-      changed_ = true;
+      MarkAsChanged();
       return OkStatus();
     }
   }
@@ -3365,7 +3367,7 @@ Status AlgebraicSimplifierVisitor::HandleOptimizationBarrier(
     return OkStatus();
   }
 
-  changed_ = true;
+  MarkAsChanged();
   std::vector<int64_t> index_map(used_elements.size(), -1);
   std::vector<HloInstruction*> operands;
   int64_t current_index = 0;
@@ -3497,8 +3499,8 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
     TF_ASSIGN_OR_RETURN(
         bool sink_succeeded,
         TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(broadcast));
-    changed_ |= sink_succeeded;
     if (sink_succeeded) {
+      MarkAsChanged();
       return OkStatus();
     }
   }
@@ -3522,7 +3524,7 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
         // Use HloInstruction::ReplaceAllUsesWith instead of
         // HloComputation::ReplaceWithNewInstruction because we are replacing an
         // instruction other than the visited instruction.
-        changed_ = true;
+        MarkAsChanged();
         return user->ReplaceAllUsesWith(new_broadcast);
       }
     }
@@ -4959,7 +4961,7 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
               index->shape(), HloOpcode::kAdd, index, inner_index));
       TF_RETURN_IF_ERROR(dynamic_slice->ReplaceOperandWith(i, combined_index));
     }
-    changed_ = true;
+    MarkAsChanged();
   }
   return OkStatus();
 }
@@ -5083,7 +5085,7 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
       TF_RETURN_IF_ERROR(
           dynamic_update_slice->ReplaceOperandWith(i, combined_index));
     }
-    changed_ = true;
+    MarkAsChanged();
     return OkStatus();
   }
   return OkStatus();
@@ -5306,11 +5308,8 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
       new_reduce_dimensions.push_back(transpose_dimensions[dim]);
     }
 
-    Shape new_reduce_result_shape = ShapeUtil::FilterDimensions(
-        [&](const int64_t dim) {
-          return !absl::c_linear_search(new_reduce_dimensions, dim);
-        },
-        arg->mutable_operand(0)->shape());
+    Shape new_reduce_result_shape = ShapeUtil::DeleteDimensions(
+        new_reduce_dimensions, arg->mutable_operand(0)->shape());
     HloInstruction* new_reduce =
         reduce->AddInstruction(HloInstruction::CreateReduce(
             new_reduce_result_shape, arg->mutable_operand(0), init_value,
@@ -5397,7 +5396,7 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
       }
     }
     if (can_move_reshape_into_reduce) {
-      changed_ = true;
+      MarkAsChanged();
       absl::flat_hash_set<int64_t> dimensions_not_to_reduce;
       for (auto dim_pair : unmodified_dims) {
         if (arg_dim_in_output[dim_pair.second]) {
@@ -5692,11 +5691,8 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(HloInstruction* hlo) {
     // If a reduce window can be expressed as a reduce, do so and reshape the
     // output.
     if (!effective_reduce_dims.empty()) {
-      Shape reduce_shape = ShapeUtil::FilterDimensions(
-          [&](int64_t dim) {
-            return !absl::c_linear_search(effective_reduce_dims, dim);
-          },
-          reduce_window->shape());
+      Shape reduce_shape = ShapeUtil::DeleteDimensions(effective_reduce_dims,
+                                                       reduce_window->shape());
       simplifier_->UpdateLayout(&reduce_shape);
       HloInstruction* reduce = hlo->AddInstruction(HloInstruction::CreateReduce(
           /*shape=*/reduce_shape,
@@ -6206,7 +6202,7 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
           return true;
         }()));
     if (did_transform) {
-      changed_ = true;
+      MarkAsChanged();
       return OkStatus();
     }
   }

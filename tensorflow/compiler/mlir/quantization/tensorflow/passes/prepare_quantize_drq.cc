@@ -127,7 +127,7 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
     if (auto call_op = dyn_cast<TF::PartitionedCallOp>(op)) {
       StringRef function_name =
           call_op.fAttr().cast<FlatSymbolRefAttr>().getValue();
-      if (!function_name.startswith("fused_")) {
+      if (!function_name.startswith("composite_")) {
         return false;
       }
       if (function_name.contains("matmul")) {

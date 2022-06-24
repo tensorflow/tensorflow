@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -105,7 +104,7 @@ Status LocalDeviceState::ThenMemcpyDeviceToDevice(
   // the buffer addresses identify the devices. This does not work
   // on all platforms; this method is virtual so it can be overridden.
   transfer_stream->ThenMemcpyD2D(&dst_buffer, src_buffer, dst_buffer.size());
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 void LocalDeviceState::ThenExecuteCallback(se::Stream* stream,

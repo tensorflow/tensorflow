@@ -361,12 +361,12 @@ class QuantizeFunctionPattern
       has_quantized_types = IsQuantizedCallforStaticRange(call_op);
     }
 
-    if (!f_attr.getValue().startswith("fused_") || !has_quantized_types) {
+    if (!f_attr.getValue().startswith("composite_") || !has_quantized_types) {
       return failure();
     }
 
     llvm::Twine quantized_function_name = llvm::Twine(
-        "quantized_", f_attr.getValue().substr(6).rsplit('_').first);
+        "quantized_", f_attr.getValue().substr(10).rsplit('_').first);
 
     SmallVector<Value, 4> args;
     SmallVector<Value, 4> qparam_args;

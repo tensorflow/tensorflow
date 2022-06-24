@@ -26,7 +26,7 @@ td_library(
         "lift_as_function_call_utils.td",
     ],
     deps = [
-        "@llvm-project//mlir:StdOpsTdFiles",
+        "@llvm-project//mlir:FuncTdFiles",
     ],
 )
 

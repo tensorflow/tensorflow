@@ -292,7 +292,8 @@ void OpProfileBuilder::AddOp(const OpMetrics& op_metrics) {
   }
 
   for (auto* node : all_paths) {
-    CombineOpMetrics(op_metrics, &metrics_[node]);
+    // Per program combiner does not need to update OpMetrics.num_cores
+    CombineOpMetrics(op_metrics, &metrics_[node], /*update_num_cores=*/false);
   }
 }
 

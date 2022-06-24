@@ -108,7 +108,7 @@ void AddConvertHloToTfPass(std::string entry_function_name,
 
   // Expands mhlo.tuple ops.
   pass_manager->addPass(
-      mlir::mhlo::CreateExpandHloTuplesPass(entry_function_name));
+      mlir::mhlo::createExpandHloTuplesPass(entry_function_name));
   // Flatten tuples for control flows.
   pass_manager->addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createFlattenTuplePass());

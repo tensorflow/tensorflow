@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"

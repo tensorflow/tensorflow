@@ -49,7 +49,7 @@ Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
     current_properties_[kFlopsKey] =
         GetDotFlops(custom_call->operand(0)->shape(), custom_call->shape(),
                     gemm_config.dot_dimension_numbers());
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   if (IsCustomCallToDnnConvolution(*custom_call)) {
@@ -75,7 +75,7 @@ Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
       SetOutputBytesAccessed(
           options_.shape_size(custom_call->shape().tuple_shapes(0)));
     }
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   return HloCostAnalysis::HandleCustomCall(custom_call);

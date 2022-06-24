@@ -156,7 +156,7 @@ Status TpuPlatform::TpusPerHost(int* tpus) {
 
   if (tpu::OpsApiFn()->TpuConfigurationApi_TpusPerHostFn == nullptr) {
     *tpus = 0;
-    return Status::OK();
+    return OkStatus();
   }
 
   tpu::OpsApiFn()->TpuConfigurationApi_TpusPerHostFn(tpus, status);
@@ -170,7 +170,7 @@ Status TpuPlatform::TpuMemoryLimit(int64_t* memory_limit) {
 
   if (tpu::OpsApiFn()->TpuConfigurationApi_TpuMemoryLimitFn == nullptr) {
     *memory_limit = 0;
-    return Status::OK();
+    return OkStatus();
   }
 
   tpu::OpsApiFn()->TpuConfigurationApi_TpuMemoryLimitFn(

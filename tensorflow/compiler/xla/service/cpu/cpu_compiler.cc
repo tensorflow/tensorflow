@@ -29,9 +29,9 @@ limitations under the License.
 
 // IWYU pragma: no_include "llvm/Config/Disassemblers.def.inc"
 // IWYU pragma: no_include "llvm/Config/Targets.def.inc"
+
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -159,6 +159,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/optimization_barrier_expander.h"
 #include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/reduce_scatter_decomposer.h"
+#include "tensorflow/compiler/xla/service/reshape_decomposer.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/result_caster.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
@@ -235,7 +236,7 @@ ModuleComputationsTransitivelyContainCustomCall(const HloModule& module) {
       // The computation contains a custom-call instruction directly.
       if (DynCast<HloCustomCallInstruction>(instruction)) {
         custom_call_map[computation] = true;
-        return ::tensorflow::OkStatus();
+        return OkStatus();
       }
       // The computation calls something that contains a custom-call
       // instruction (directly or indirectly). This lookup relies on the call
@@ -245,13 +246,13 @@ ModuleComputationsTransitivelyContainCustomCall(const HloModule& module) {
         bool callee_contains_custom_call = FindOrDie(custom_call_map, callee);
         if (callee_contains_custom_call) {
           custom_call_map[computation] = true;
-          return ::tensorflow::OkStatus();
+          return OkStatus();
         }
       }
     }
 
     custom_call_map[computation] = false;
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }));
 
   return custom_call_map;
@@ -353,7 +354,7 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
   Status DefaultAction(HloInstruction* hlo_instruction) override {
     hlo_to_profile_idx_->insert(
         {hlo_instruction, FindOrDie(assigned_indices_, hlo_instruction)});
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   Status HandleCall(HloInstruction* call) override {
@@ -361,7 +362,7 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
     CollectProfileCandidates candidates_for_call(hlo_to_profile_idx_,
                                                  assigned_indices_);
     TF_RETURN_IF_ERROR(call->to_apply()->Accept(&candidates_for_call));
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
   // Recurse into "conditional" so we can profile inside of it.
   Status HandleConditional(HloInstruction* conditional) override {
@@ -377,17 +378,13 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
     TF_RETURN_IF_ERROR(
         conditional->false_computation()->Accept(&candidates_for_false));
 
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   // Skip constants, there is nothing to profile.
-  Status HandleConstant(HloInstruction*) override {
-    return ::tensorflow::OkStatus();
-  }
+  Status HandleConstant(HloInstruction*) override { return OkStatus(); }
   // Skip parameters, they are a simple load.
-  Status HandleParameter(HloInstruction*) override {
-    return ::tensorflow::OkStatus();
-  }
+  Status HandleParameter(HloInstruction*) override { return OkStatus(); }
   // It is important to recurse for "while" or else we risk overly coarse
   // profiling information.
   Status HandleWhile(HloInstruction* xla_while) override {
@@ -402,7 +399,7 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
                                                  assigned_indices_);
     TF_RETURN_IF_ERROR(xla_while->while_body()->Accept(&candidates_for_body));
 
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   absl::flat_hash_map<const HloInstruction*, int64_t>* hlo_to_profile_idx_;
@@ -427,7 +424,9 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       spmd_pipeline.AddPass<ZeroSizedHloElimination>();
       spmd_pipeline.AddPass<ConditionalCanonicalizer>();
 
-      spmd_pipeline.AddPass<ShardingPropagation>(/*is_spmd=*/true);
+      spmd_pipeline.AddPass<ShardingPropagation>(
+          /*is_spmd=*/true, /*propagate_metadata=*/false,
+          module->config().allow_spmd_sharding_propagation_to_output());
       spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
           num_partitions, module->config().replica_count());
     } else {
@@ -604,6 +603,8 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
           /*layout_sensitive=*/true,
           /*allow_mixed_precision=*/false);
 
+  pipeline.AddPass<ReshapeDecomposer>();
+
   // Add a fusion pass now that layout assignment is done.
   pipeline.AddPass<CpuInstructionFusion>();
 
@@ -657,7 +658,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
                                  llvm::TargetMachine* target_machine,
                                  bool is_mlir_compile) {
   if (DumpingEnabledForHloModule(*module)) {
-    hlo_proto_ = absl::make_unique<HloProto>();
+    hlo_proto_ = std::make_unique<HloProto>();
     *hlo_proto_->mutable_hlo_module() = module->ToProto();
   }
 
@@ -740,7 +741,7 @@ Status VerifyLlvmModule(const llvm::Module& llvm_module) {
       << err_stream.str()
       << "\nThis probably indicates a bug in the HLO -> LLVM IR lowering. "
          "Rerun with --xla_dump_to to get the IR. ";
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status CreateHloProfilingArtifacts(
@@ -751,7 +752,7 @@ Status CreateHloProfilingArtifacts(
         computation_to_profile_idx,
     std::unique_ptr<HloProfileIndexMap>* hlo_profile_index_map,
     std::unique_ptr<HloProfilePrinterData>* hlo_profile_printer_data) {
-  *hlo_profile_index_map = absl::make_unique<HloProfileIndexMap>(module);
+  *hlo_profile_index_map = std::make_unique<HloProfileIndexMap>(module);
   const HloComputation& entry_computation = *module.entry_computation();
 
   TF_ASSIGN_OR_RETURN(
@@ -775,7 +776,7 @@ Status CreateHloProfilingArtifacts(
   *computation_to_profile_idx =
       (*hlo_profile_index_map)->computation_to_profile_idx();
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace
@@ -807,7 +808,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> CpuCompiler::AssignBuffers(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> assignment,
       BufferAssigner::Run(module,
-                          absl::make_unique<SequentialHloOrdering>(schedule),
+                          std::make_unique<SequentialHloOrdering>(schedule),
                           BufferSizeBytesFunction(), memory_alignment,
                           /*allocate_buffers_for_constants=*/true));
 
@@ -863,7 +864,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   // efficient broadcast operations moving.
   // Move up broadcasting operations to allow for more fusion opportunities.
   pm.addPass(mlir::createInlinerPass());
-  pm.addPass(mlir::mhlo::CreateExpandHloTuplesPass("main"));
+  pm.addPass(mlir::mhlo::createExpandHloTuplesPass("main"));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeGeneralDotPass());
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -947,7 +948,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
         "Failed to compile through MLIR pipeline");
   }
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> createMLIRModule(
@@ -1091,7 +1092,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   LoadMLIRDialects(mlir_context);
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
   auto llvm_module =
-      absl::make_unique<llvm::Module>("__compute_module", *llvm_context);
+      std::make_unique<llvm::Module>("__compute_module", *llvm_context);
 
   auto jit = SimpleOrcJIT::Create(
       CompilerTargetOptions(module->config()),
@@ -1138,7 +1139,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> assignment,
       BufferAssigner::Run(module.get(),
-                          absl::make_unique<SequentialHloOrdering>(schedule),
+                          std::make_unique<SequentialHloOrdering>(schedule),
                           BufferSizeBytesFunction(), memory_alignment,
                           /*allocate_buffers_for_constants=*/true));
   DumpHloModuleIfEnabled(*module, *assignment, "cpu_after_optimizations");
@@ -1207,7 +1208,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
                                                  std::move(llvm_context));
   cantFail((*jit)->AddModule(std::move(thread_safe_module)));
 
-  auto cpu_executable = absl::make_unique<CpuExecutable>(
+  auto cpu_executable = std::make_unique<CpuExecutable>(
       std::move(*jit), std::move(assignment), std::move(module), function_name,
       std::move(hlo_profile_printer_data), std::move(hlo_profile_index_map));
 
@@ -1219,7 +1220,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // dump or embed_ir_in_executable is enabled.
   if (embed_ir_in_executable ||
       DumpingEnabledForHloModule(cpu_executable->module())) {
-    auto hlo_proto = absl::make_unique<HloProto>();
+    auto hlo_proto = std::make_unique<HloProto>();
     if (hlo_proto_) {
       *hlo_proto = *hlo_proto_;
     } else {
@@ -1347,7 +1348,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<BufferAssignment> assignment,
         BufferAssigner::Run(module,
-                            absl::make_unique<SequentialHloOrdering>(schedule),
+                            std::make_unique<SequentialHloOrdering>(schedule),
                             BufferSizeBytesFunction(), memory_alignment,
                             /*allocate_buffers_for_constants=*/true));
     // BufferAssignment::ToString() includes a header, so no need for us to
@@ -1486,7 +1487,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
                         assignment->GetUniqueTopLevelOutputSlice());
 
-    results.emplace_back(absl::make_unique<CpuAotCompilationResult>(
+    results.emplace_back(std::make_unique<CpuAotCompilationResult>(
         std::move(object_file_data), std::move(buffer_infos),
         result_slice.index(), std::move(hlo_profile_printer_data)));
   }
@@ -1509,7 +1510,7 @@ HloCostAnalysis::ShapeSizeFunction CpuCompiler::ShapeSizeBytesFunction() const {
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
       stream_executor::host::kHostPlatformId,
-      []() { return absl::make_unique<xla::cpu::CpuCompiler>(); });
+      []() { return std::make_unique<xla::cpu::CpuCompiler>(); });
   return true;
 }
 static bool module_initialized = InitModule();

@@ -17,7 +17,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/array2d.h"
@@ -132,7 +131,7 @@ class TestLinspaceMaxParametric
     float from = -128.0, to = 256.0;
     std::unique_ptr<Array2D<T>> alhs =
         MakeLinspaceArray2D<T>(from, to, rows, cols);
-    auto arhs = absl::make_unique<Array2D<T>>(rows, cols, static_cast<T>(1.0f));
+    auto arhs = std::make_unique<Array2D<T>>(rows, cols, static_cast<T>(1.0f));
 
     XlaBuilder builder(absl::StrFormat("max_%dx%d_linspace", rows, cols));
     auto lhs = ConstantR2FromArray2D<T>(&builder, *alhs);

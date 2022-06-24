@@ -567,8 +567,8 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
       dict(
           fields={"x": object()},
           shape=[],
-          err=TypeError,
-          msg="Unexpected type for value"),
+          err=(TypeError, ValueError),
+          msg="Error with shape of x|Unexpected type for value"),
       dict(
           fields={},
           shape=None,
@@ -579,7 +579,7 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
           shape=[5],
           err=ValueError,
           msg=r"Field f has shape \(\), which is incompatible with the shape "
-          r"that was specified or inferred from other fields: \(5,\)"),
+          r"that was specified or inferred from other fields: \(5,\)|Shapes"),
       dict(
           fields=dict(x=[1], y=[]),
           shape=[None],

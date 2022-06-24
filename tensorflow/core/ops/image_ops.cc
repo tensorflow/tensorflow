@@ -56,7 +56,7 @@ Status SetOutputToSizedImage(InferenceContext* c, DimensionHandle batch_dim,
     width = c->MakeDim(vec(1));
   }
   c->set_output(0, c->MakeShape({batch_dim, height, width, channel_dim}));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ResizeShapeFn(InferenceContext* c) {
@@ -84,7 +84,7 @@ Status DecodeImageShapeFn(InferenceContext* c) {
 
   c->set_output(0, c->MakeShape({InferenceContext::kUnknownDim,
                                  InferenceContext::kUnknownDim, channels_dim}));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DecodeImageV2ShapeFn(InferenceContext* c) {
@@ -112,12 +112,12 @@ Status DecodeImageV2ShapeFn(InferenceContext* c) {
   // will always return 3-D shapes for all (jpg, png, bmp, gif).
   if (expand_animations) {
     c->set_output(0, c->UnknownShape());
-    return Status::OK();
+    return OkStatus();
   } else {
     c->set_output(0,
                   c->MakeShape({InferenceContext::kUnknownDim,
                                 InferenceContext::kUnknownDim, channels_dim}));
-    return Status::OK();
+    return OkStatus();
   }
 }
 
@@ -125,7 +125,7 @@ Status EncodeImageShapeFn(InferenceContext* c) {
   ShapeHandle unused;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 3, &unused));
   c->set_output(0, c->Scalar());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ColorspaceShapeFn(InferenceContext* c) {
@@ -139,7 +139,7 @@ Status ColorspaceShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->ReplaceDim(input, -1, last_dim, &out));
   c->set_output(0, out);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status NMSShapeFn(InferenceContext* c) {
@@ -162,7 +162,7 @@ Status NMSShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 1), 4, &unused));
 
   c->set_output(0, c->Vector(c->UnknownDim()));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SoftNMSShapeFn(InferenceContext* c) {
@@ -188,7 +188,7 @@ Status SoftNMSShapeFn(InferenceContext* c) {
 
   c->set_output(0, c->Vector(c->UnknownDim()));
   c->set_output(1, c->Vector(c->UnknownDim()));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CombinedNMSShapeFn(InferenceContext* c) {
@@ -252,7 +252,7 @@ Status CombinedNMSShapeFn(InferenceContext* c) {
   c->set_output(1, c->MakeShape({batch_dim, output_size}));
   c->set_output(2, c->MakeShape({batch_dim, output_size}));
   c->set_output(3, c->Vector(batch_dim));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -290,7 +290,7 @@ REGISTER_OP("ResizeBicubicGrad")
     .Attr("half_pixel_centers: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(1));
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -339,7 +339,7 @@ REGISTER_OP("QuantizedResizeBilinear")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &max_shape));
       c->set_output(1, c->MakeShape({}));
       c->set_output(2, c->MakeShape({}));
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -352,7 +352,7 @@ REGISTER_OP("ResizeBilinearGrad")
     .Attr("half_pixel_centers: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(1));
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -367,7 +367,7 @@ REGISTER_OP("ScaleAndTranslateGrad")
     .Attr("antialias: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(1));
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -409,7 +409,7 @@ REGISTER_OP("ResizeNearestNeighborGrad")
             c->ReplaceDim(input, 2, c->MakeDim(size_vec(1)), &input));
       }
       c->set_output(0, input);
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -442,7 +442,7 @@ REGISTER_OP("RandomCrop")
         w = c->MakeDim(size_vec(1));
       }
       c->set_output(0, c->MakeShape({h, w, channels}));
-      return Status::OK();
+      return OkStatus();
     });
 // TODO(shlens): Support variable rank in RandomCrop.
 
@@ -508,7 +508,7 @@ REGISTER_OP("DecodeAndCropJpeg")
         w = c->MakeDim(crop_window_vec(3));
       }
       c->set_output(0, c->MakeShape({h, w, channels_dim}));
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -542,7 +542,7 @@ REGISTER_OP("ExtractJpegShape")
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       c->set_output(0, c->Vector(3));
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -629,7 +629,7 @@ REGISTER_OP("DecodeGif")
       c->set_output(0, c->MakeShape({InferenceContext::kUnknownDim,
                                      InferenceContext::kUnknownDim,
                                      InferenceContext::kUnknownDim, 3}));
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -720,7 +720,7 @@ REGISTER_OP("SampleDistortedBoundingBox")
       c->set_output(0, c->Vector(3));
       c->set_output(1, c->Vector(3));
       c->set_output(2, c->MakeShape({1, 1, 4}));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SampleDistortedBoundingBoxV2")
@@ -755,7 +755,7 @@ REGISTER_OP("SampleDistortedBoundingBoxV2")
       c->set_output(0, c->Vector(3));
       c->set_output(1, c->Vector(3));
       c->set_output(2, c->MakeShape({1, 1, 4}));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("StatelessSampleDistortedBoundingBox")
@@ -793,7 +793,7 @@ REGISTER_OP("StatelessSampleDistortedBoundingBox")
       c->set_output(1, c->Vector(3));
       c->set_output(2, c->MakeShape({1, 1, 4}));
 
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -920,7 +920,7 @@ REGISTER_OP("CropAndResizeGradImage")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(3, &out));
       TF_RETURN_IF_ERROR(c->WithRank(out, 4, &out));
       c->set_output(0, out);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CropAndResizeGradBoxes")
@@ -933,7 +933,7 @@ REGISTER_OP("CropAndResizeGradBoxes")
     .Attr("method: {'bilinear'} = 'bilinear'")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(2));
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -961,7 +961,7 @@ REGISTER_OP("NonMaxSuppression")
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 1), 4, &unused));
 
       c->set_output(0, c->Vector(c->UnknownDim()));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("NonMaxSuppressionV2")
@@ -991,7 +991,7 @@ REGISTER_OP("NonMaxSuppressionV2")
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 1), 4, &unused));
 
       c->set_output(0, c->Vector(c->UnknownDim()));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("NonMaxSuppressionV3")
@@ -1028,7 +1028,7 @@ REGISTER_OP("NonMaxSuppressionV4")
         c->set_output(0, c->MakeShape({output_dim}));
       }
       c->set_output(1, c->MakeShape({}));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("NonMaxSuppressionV5")
@@ -1057,7 +1057,7 @@ REGISTER_OP("NonMaxSuppressionV5")
       }
 
       c->set_output(2, c->MakeShape({}));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("NonMaxSuppressionWithOverlaps")
@@ -1089,7 +1089,7 @@ REGISTER_OP("NonMaxSuppressionWithOverlaps")
           c->Merge(c->Dim(overlaps, 0), c->Dim(overlaps, 1), &unused));
 
       c->set_output(0, c->Vector(c->UnknownDim()));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CombinedNonMaxSuppression")
@@ -1143,7 +1143,7 @@ REGISTER_OP("GenerateBoundingBoxProposals")
           {c->Dim(scores, 0), post_nms_top_n});  // (N,post_nms_top_n)
       c->set_output(0, roi_shape);
       c->set_output(1, prob_shape);
-      return Status::OK();
+      return OkStatus();
     });
 
 // V3 op supports fill_value.

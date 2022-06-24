@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -29,7 +30,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
@@ -207,7 +207,7 @@ StatusOr<DeviceAssignment> TfrtCpuClient::GetDefaultDeviceAssignment(
 }
 
 StatusOr<std::unique_ptr<HloCostAnalysis>> TfrtCpuClient::GetHloCostAnalysis() {
-  return absl::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
+  return std::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
 }
 
 StatusOr<std::optional<std::string>> TfrtCpuClient::ExecutableFingerprint(
@@ -1036,7 +1036,7 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
       }
     }
     // Unblock ToLiteral caller.
-    return PjRtFuture<Status>(::tensorflow::OkStatus());
+    return PjRtFuture<Status>(OkStatus());
   } else {
     auto ready_event = tfrt::MakeUnconstructedAsyncValueRef<Status>();
     // Wait for buffer definition events to finish before d2h dispatch.
@@ -1074,7 +1074,7 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
           }
 
           // Unblock ToLiteral event.
-          ready_event.emplace(::tensorflow::OkStatus());
+          ready_event.emplace(OkStatus());
         });
     return PjRtFuture<Status>(
         client_->GetHostContext(), std::move(ready_event),
@@ -1242,7 +1242,7 @@ PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
           definition_event.emplace(FailedPrecondition(
               "Buffer Definition Event: %s", error->message));
         } else {
-          definition_event.emplace(::tensorflow::OkStatus());
+          definition_event.emplace(OkStatus());
         }
       } else {
         event.AndThen([event = event.CopyRef(),
@@ -1251,7 +1251,7 @@ PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
             definition_event.emplace(FailedPrecondition(
                 "Buffer Definition Event: %s", error->message));
           } else {
-            definition_event.emplace(::tensorflow::OkStatus());
+            definition_event.emplace(OkStatus());
           }
         });
       }
@@ -1361,7 +1361,7 @@ Status TfrtCpuExecutable::SetUpDonation(bool tuple_inputs) {
   TF_ASSIGN_OR_RETURN(parameters_that_must_be_donated_,
                       ComputeParametersThatMustBeDonated(
                           *cpu_executable_->shared_module(), tuple_inputs));
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 // The following few helpers are adapted from XLA:CPU to create a buffer table
@@ -1442,7 +1442,7 @@ Status TfrtCpuExecutable::CheckBufferCompatibilities(
           i, input_buffer_sizes_in_bytes_[i], buffer->Buffers()[0]->size());
     }
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 StatusOr<PjRtExecutable::Result> TfrtCpuExecutable::ExecuteHelper(

@@ -126,7 +126,7 @@ class DelegateProviders {
                      "XNNPACK delegate isn't supported on the platform!";
       } else {
         params_.Set<bool>("use_xnnpack", true);
-        params_.Set<bool>("num_threads", s.number_of_threads);
+        params_.Set<int32_t>("num_threads", s.number_of_threads);
       }
     }
   }

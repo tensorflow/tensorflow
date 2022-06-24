@@ -347,7 +347,7 @@ Status EmitCallToParallelForkJoin(
   // Emit call to parallel fork/join.
   b->CreateCall(fork_join_func, fork_join_arguments);
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace cpu

@@ -156,7 +156,7 @@ Rendezvous::ParsedKey Key(const string& sender, const uint64 incarnation,
 
 TEST_F(ExecutorTest, SimpleAdd) {
   // c = a + b
-  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = std::make_unique<Graph>(OpRegistry::Global());
   auto in0 = test::graph::Recv(g.get(), "a", "float", ALICE, 1, BOB);
   auto in1 = test::graph::Recv(g.get(), "b", "float", ALICE, 1, BOB);
   auto tmp = test::graph::Add(g.get(), in0, in1);
@@ -184,7 +184,7 @@ TEST_F(ExecutorTest, SelfAdd) {
   //
   // b <- v10
   // All nodes are executed by one thread.
-  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = std::make_unique<Graph>(OpRegistry::Global());
   auto v = test::graph::Recv(g.get(), "a", "float", ALICE, 1, BOB);
   const int N = 10;
   for (int i = 1; i <= N; ++i) {
@@ -241,7 +241,7 @@ void BuildTree(int N, Graph* g) {
 }
 
 TEST_F(ExecutorTest, RandomTree) {
-  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = std::make_unique<Graph>(OpRegistry::Global());
   BuildTree(4096, g.get());
   Create(std::move(g));
   Rendezvous::Args args;
@@ -274,7 +274,7 @@ void BuildConcurrentAddAssign(Graph* g) {
 
 #ifndef THREAD_SANITIZER
 TEST_F(ExecutorTest, ConcurrentAddAssign) {
-  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = std::make_unique<Graph>(OpRegistry::Global());
   BuildConcurrentAddAssign(g.get());
   Create(std::move(g));
   for (int iters = 0; iters < 16; ++iters) {
@@ -293,7 +293,7 @@ TEST_F(ExecutorTest, ConcurrentAddAssign) {
 #endif
 
 TEST_F(ExecutorTest, SimpleSwitchLive) {
-  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = std::make_unique<Graph>(OpRegistry::Global());
   auto in0 = test::graph::Recv(g.get(), "a", "float", ALICE, 1, BOB);
   auto in1 = test::graph::Constant(g.get(), VB(false));
   auto tmp = test::graph::Switch(g.get(), in0, in1);
@@ -312,7 +312,7 @@ TEST_F(ExecutorTest, SimpleSwitchLive) {
 }
 
 TEST_F(ExecutorTest, SimpleSwitchDead) {
-  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = std::make_unique<Graph>(OpRegistry::Global());
   auto in0 = test::graph::Recv(g.get(), "a", "float", ALICE, 1, BOB);
   auto in1 = test::graph::Constant(g.get(), VB(true));
   auto tmp = test::graph::Switch(g.get(), in0, in1);
@@ -331,7 +331,7 @@ TEST_F(ExecutorTest, SimpleSwitchDead) {
 
 TEST_F(ExecutorTest, Abort) {
   // e = a + b + c + d
-  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = std::make_unique<Graph>(OpRegistry::Global());
   auto in0 = test::graph::Recv(g.get(), "a", "float", ALICE, 1, BOB);
   auto in1 = test::graph::Recv(g.get(), "b", "float", ALICE, 1, BOB);
   auto in2 = test::graph::Recv(g.get(), "c", "float", ALICE, 1, BOB);
@@ -383,7 +383,7 @@ TEST_F(ExecutorTest, Abort) {
 }
 
 TEST_F(ExecutorTest, RecvInvalidDtype) {
-  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = std::make_unique<Graph>(OpRegistry::Global());
   // An input vector of type float of size 1.
   auto one = test::graph::Recv(g.get(), "one", "float", ALICE, 1, BOB);
   // A floating point variable vector of size 1.
@@ -408,7 +408,7 @@ TEST_F(ExecutorTest, RecvInvalidDtype) {
 }
 
 TEST_F(ExecutorTest, RecvInvalidRefDtype) {
-  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = std::make_unique<Graph>(OpRegistry::Global());
   // A var that always produces as invalid dtype.
   auto var = test::graph::InvalidRefType(g.get(), DT_FLOAT, DT_DOUBLE);
   test::graph::Send(g.get(), var, "out", BOB, 1, ALICE);
@@ -424,7 +424,7 @@ TEST_F(ExecutorTest, RecvInvalidRefDtype) {
 
 TEST_F(ExecutorTest, NoInputTensors) {
   // Create a graph where none of the nodes have input tensors.
-  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = std::make_unique<Graph>(OpRegistry::Global());
   test::graph::Constant(g.get(), V(1.0));
   Create(std::move(g));
   TF_ASSERT_OK(Run(rendez_));

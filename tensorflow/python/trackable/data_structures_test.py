@@ -19,7 +19,7 @@ import os
 import pickle
 
 from absl.testing import parameterized
-
+from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -31,9 +31,8 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.trackable import data_structures
-from tensorflow.python.training.tracking import tracking
-from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
 from tensorflow.python.util import serialization
 
@@ -41,7 +40,7 @@ from tensorflow.python.util import serialization
 class ListTests(test.TestCase):
 
   def testJSONSerialization(self):
-    obj = tracking.AutoTrackable()
+    obj = autotrackable.AutoTrackable()
     obj.l = [1]
     json.dumps(obj.l, default=serialization.get_json_type)
 
@@ -197,8 +196,8 @@ class ListWrapperTest(test.TestCase):
   def testListWrapperBasic(self):
     # ListWrapper, unlike List, compares like the built-in list type (since it
     # is used to automatically replace lists).
-    a = tracking.AutoTrackable()
-    b = tracking.AutoTrackable()
+    a = autotrackable.AutoTrackable()
+    b = autotrackable.AutoTrackable()
     self.assertEqual([a, a],
                      [a, a])
     self.assertEqual(data_structures.ListWrapper([a, a]),
@@ -331,7 +330,7 @@ class ListWrapperTest(test.TestCase):
 class MappingTests(test.TestCase):
 
   def testJSONSerialization(self):
-    obj = tracking.AutoTrackable()
+    obj = autotrackable.AutoTrackable()
     obj.d = {"a": 2}
     json.dumps(obj.d, default=serialization.get_json_type)
 
@@ -359,7 +358,7 @@ class MappingTests(test.TestCase):
     self.assertEqual(2, len(has_mappings))
     self.assertNotIn(data_structures.Mapping(), has_mappings)
     # In contrast to Mapping, dict wrappers are not hashable
-    a = tracking.AutoTrackable()
+    a = autotrackable.AutoTrackable()
     a.d = {}
     self.assertEqual({}, a.d)
     self.assertFalse({} != a.d)  # pylint: disable=g-explicit-bool-comparison
@@ -368,7 +367,7 @@ class MappingTests(test.TestCase):
       set([a.d])
 
   def testListShallowCopy(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     orig_list = [[1.]]
     root.a = orig_list
     copied = copy.copy(root.a)
@@ -385,7 +384,7 @@ class MappingTests(test.TestCase):
       util.list_objects(copy.copy(root.a))
 
   def testListDeepCopy(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     orig_list = [[1.]]
     root.a = orig_list
     copied = copy.deepcopy(root.a)
@@ -402,7 +401,7 @@ class MappingTests(test.TestCase):
       util.list_objects(copy.deepcopy(root.a))
 
   def testDictShallowCopy(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     orig_dict = {"a": [1.]}
     root.a = orig_dict
     copied = copy.copy(root.a)
@@ -424,7 +423,7 @@ class MappingTests(test.TestCase):
       util.list_objects(copy.copy(root.a))
 
   def testDictDeepCopy(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     orig_dict = {"a": [1.]}
     root.a = orig_dict
     copied = copy.deepcopy(root.a)
@@ -441,8 +440,8 @@ class MappingTests(test.TestCase):
       util.list_objects(copy.deepcopy(root.a))
 
   def testShallowCopyTrackable(self):
-    original = tracking.AutoTrackable()
-    original_sub = tracking.AutoTrackable()
+    original = autotrackable.AutoTrackable()
+    original_sub = autotrackable.AutoTrackable()
     original.a = [[1.]]
     original.b = {"a": original_sub}
     shallow_copied = copy.copy(original)
@@ -455,8 +454,8 @@ class MappingTests(test.TestCase):
     self.assertIn(shallow_copied.b["a"], shallow_deps)
 
   def testDeepCopyTrackable(self):
-    original = tracking.AutoTrackable()
-    original_sub = tracking.AutoTrackable()
+    original = autotrackable.AutoTrackable()
+    original_sub = autotrackable.AutoTrackable()
     original.a = [[1.]]
     original.b = {"a": original_sub}
     self.assertIsInstance(original.b, dict)
@@ -465,7 +464,7 @@ class MappingTests(test.TestCase):
     self.assertIsNot(original, deep_copied)
     self.assertIsNot(original_sub, deep_copied.b["a"])
     self.assertEqual([[1.]], deep_copied.a)
-    self.assertIsInstance(deep_copied.b["a"], tracking.AutoTrackable)
+    self.assertIsInstance(deep_copied.b["a"], autotrackable.AutoTrackable)
     deps = util.list_objects(deep_copied)
     self.assertIn(deep_copied.a, deps)
     self.assertIn(deep_copied.b, deps)
@@ -513,7 +512,7 @@ class MappingTests(test.TestCase):
 class TupleTests(test.TestCase, parameterized.TestCase):
 
   def testJSONSerialization(self):
-    obj = tracking.AutoTrackable()
+    obj = autotrackable.AutoTrackable()
     obj.l = (1,)
     json.dumps(obj.l, default=serialization.get_json_type)
 

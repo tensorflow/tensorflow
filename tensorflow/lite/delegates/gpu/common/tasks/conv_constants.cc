@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_constants.h"
 
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -103,7 +104,6 @@ std::string GenerateConvolutionConstantCode(const GpuInfo& gpu_info,
                                             bool use_dot_conv,
                                             GPUOperation* op) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetAddressMode(AddressMode::kZero);
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }
@@ -316,8 +316,8 @@ GPUOperation CreateConvConstants(const GpuInfo& gpu_info,
   desc.element_type = definition.GetDataType();
   desc.memory_type = MemoryType::CONSTANT;
   desc.UploadLinearData(attr.bias);
-  op.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  op.args_.AddObject("biases",
+                     std::make_unique<TensorLinearDescriptor>(std::move(desc)));
   return op;
 }
 

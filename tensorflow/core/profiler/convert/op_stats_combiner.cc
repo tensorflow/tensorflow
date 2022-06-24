@@ -125,7 +125,10 @@ void CombineOpStats(
     OpMetricsDbCombiner* hlo_metrics_db_complete_steps_only_combiner,
     std::vector<OpMetricsDbCombiner>* hlo_metrics_db_per_step_combiners) {
   // Combine host_metrics_db.
-  host_op_metrics_db_combiner->Combine(src.host_op_metrics_db());
+  // Host OpMetricsDb does not need to update the number of cores a certain op
+  // occurs.
+  host_op_metrics_db_combiner->Combine(src.host_op_metrics_db(),
+                                       /*update_num_cores=*/false);
   // Combine device_metrics_db.
   device_op_metrics_db_combiner->Combine(src.device_op_metrics_db());
 

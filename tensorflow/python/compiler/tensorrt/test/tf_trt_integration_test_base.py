@@ -50,7 +50,8 @@ from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils
 from tensorflow.python.tools import saved_model_utils
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
+from tensorflow.python.trackable import resource
 from tensorflow.python.util import nest
 
 TfTrtIntegrationTestParams = collections.namedtuple(
@@ -593,7 +594,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   # The input value can be a string or a sequence of string.
   def _RemoveGraphSequenceNumberImpl(self, value, expecting_prefix):
     if isinstance(value, str):
-      match = re.search(r"TRTEngineOp_\d+_", value)
+      match = re.search(r"TRTEngineOp_\d{3,}_", value)
       has_prefix = match and value.startswith(match.group(0))
       assert (not expecting_prefix) or has_prefix
       if has_prefix:
@@ -875,7 +876,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     all_op_names = [node.name for node in gdef_to_verify.node]
     trt_op_names = []
     for func in gdef_to_verify.library.function:
-      if not re.search(r"TRTEngineOp_\d+_\d+_native_segment",
+      if not re.search(r"TRTEngineOp_\d{3,}_\d{3,}_native_segment",
                        func.signature.name):
         for node in func.node_def:
           all_op_names.append(node.name)
@@ -966,7 +967,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def _MakeSavedModelV2(self, run_params):
     params = self._GetParamsCached()
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.run = def_function.function(
         params.graph_fn, input_signature=params.input_specs)
     saved_model_dir = self._GetSavedModelDir(run_params, GraphState.ORIGINAL)

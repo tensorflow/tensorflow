@@ -49,7 +49,7 @@ struct DeleteNotifier {
 
 TEST(RefcountingHashMapTest, PointerIdentity) {
   RefcountingHashMap<int, int> m;
-  auto factory = [](const int) { return absl::make_unique<int>(); };
+  auto factory = [](const int) { return std::make_unique<int>(); };
   std::shared_ptr<int> a = m.GetOrCreateIfAbsent(0, factory);
   std::shared_ptr<int> b = m.GetOrCreateIfAbsent(0, factory);
   std::shared_ptr<int> c = m.GetOrCreateIfAbsent(1, factory);
@@ -59,14 +59,14 @@ TEST(RefcountingHashMapTest, PointerIdentity) {
 
 TEST(RefcountingHashMapTest, DefaultInitialized) {
   RefcountingHashMap<int, int> m;
-  auto factory = [](const int) { return absl::make_unique<int>(); };
+  auto factory = [](const int) { return std::make_unique<int>(); };
   EXPECT_EQ(*m.GetOrCreateIfAbsent(42, factory), 0);
 }
 
 TEST(RefcountingHashMapTest, DeletesEagerly) {
   RefcountingHashMap<int, DeleteNotifier> m;
   bool deleted = false;
-  auto factory = [](const int) { return absl::make_unique<DeleteNotifier>(); };
+  auto factory = [](const int) { return std::make_unique<DeleteNotifier>(); };
   auto handle = m.GetOrCreateIfAbsent(0, factory);
   handle->fn = [&] { deleted = true; };
   EXPECT_FALSE(deleted);
@@ -76,7 +76,7 @@ TEST(RefcountingHashMapTest, DeletesEagerly) {
 
 TEST(RefcountingHashMapTest, CustomFactory) {
   RefcountingHashMap<int, int> m;
-  auto factory = [](const int x) { return absl::make_unique<int>(x + 1); };
+  auto factory = [](const int x) { return std::make_unique<int>(x + 1); };
   EXPECT_EQ(*m.GetOrCreateIfAbsent(0, factory), 1);
   EXPECT_EQ(*m.GetOrCreateIfAbsent(100, factory), 101);
 }

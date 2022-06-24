@@ -41,64 +41,62 @@ LogicalResult VerifyCollectivePermuteSourceTargetPairs(
   for (auto i = attr.begin(), e = attr.end(); i != e; ++i) {
     auto val = (*i).getSExtValue();
     if (i.getIndex() % 2 == 0) {
-      bool is_unique = sources.insert(val).second;
-      if (!is_unique)
-        return op->emitError() << "duplicate sources not allowed.";
+      bool isUnique = sources.insert(val).second;
+      if (!isUnique) return op->emitError() << "duplicate sources not allowed.";
     } else {
-      bool is_unique = targets.insert(val).second;
-      if (!is_unique)
-        return op->emitError() << "duplicate targets not allowed.";
+      bool isUnique = targets.insert(val).second;
+      if (!isUnique) return op->emitError() << "duplicate targets not allowed.";
     }
   }
   return success();
 }
 
-LogicalResult VerifyReduceScatter(Operation *op, TypeRange operand_types,
-                                  TypeRange result_types,
-                                  uint64_t scatter_dimension) {
+LogicalResult VerifyReduceScatter(Operation *op, TypeRange operandTypes,
+                                  TypeRange resultTypes,
+                                  uint64_t scatterDimension) {
   // If operand and result are both ranked, then the size of the scatter
   // dimension in the operand should be a multiple of the size of the scatter
   // dimension in the result.
 
   // TODO(zhouxin) Change the ODS definition to return int64_t.
-  if (static_cast<int64_t>(scatter_dimension) < 0) {
+  if (static_cast<int64_t>(scatterDimension) < 0) {
     return op->emitOpError("expects scatter_dimension >= 0");
   }
 
-  for (auto it : llvm::zip(operand_types, result_types)) {
-    auto operand_type = std::get<0>(it).cast<ShapedType>();
-    auto result_type = std::get<1>(it).cast<ShapedType>();
-    if (!operand_type.hasRank() || !result_type.hasRank()) continue;
-    if (operand_type.getRank() != result_type.getRank())
+  for (auto it : llvm::zip(operandTypes, resultTypes)) {
+    auto operandType = std::get<0>(it).cast<ShapedType>();
+    auto resultType = std::get<1>(it).cast<ShapedType>();
+    if (!operandType.hasRank() || !resultType.hasRank()) continue;
+    if (operandType.getRank() != resultType.getRank())
       return op->emitOpError() << "operand and result should have same rank";
-    if (scatter_dimension >= operand_type.getRank())
+    if (scatterDimension >= operandType.getRank())
       return op->emitOpError()
              << "scatter dim should be less than operand/result rank";
-    if (operand_type.isDynamicDim(scatter_dimension) ||
-        result_type.isDynamicDim(scatter_dimension))
+    if (operandType.isDynamicDim(scatterDimension) ||
+        resultType.isDynamicDim(scatterDimension))
       continue;
-    if (operand_type.getDimSize(scatter_dimension) == 0)
+    if (operandType.getDimSize(scatterDimension) == 0)
       return op->emitOpError() << "operand scatter dimension cannot be zero";
-    if (result_type.getDimSize(scatter_dimension) == 0)
+    if (resultType.getDimSize(scatterDimension) == 0)
       return op->emitOpError() << "result scatter dimension cannot be zero";
-    if ((operand_type.getDimSize(scatter_dimension) %
-         result_type.getDimSize(scatter_dimension)) != 0)
+    if ((operandType.getDimSize(scatterDimension) %
+         resultType.getDimSize(scatterDimension)) != 0)
       return op->emitOpError()
              << "operand scatter dimension has size "
-             << operand_type.getDimSize(scatter_dimension)
+             << operandType.getDimSize(scatterDimension)
              << ", expected to be a multiple of result scatter dimension size "
-             << result_type.getDimSize(scatter_dimension);
+             << resultType.getDimSize(scatterDimension);
 
     // Non scatter dimensions should be equal.
-    for (uint64_t index : llvm::seq<uint64_t>(0, operand_type.getRank())) {
-      if (index == scatter_dimension || operand_type.isDynamicDim(index) ||
-          result_type.isDynamicDim(index))
+    for (uint64_t index : llvm::seq<uint64_t>(0, operandType.getRank())) {
+      if (index == scatterDimension || operandType.isDynamicDim(index) ||
+          resultType.isDynamicDim(index))
         continue;
-      if (operand_type.getDimSize(index) != result_type.getDimSize(index))
+      if (operandType.getDimSize(index) != resultType.getDimSize(index))
         return op->emitOpError()
                << "non scatter dimensions should be same for operand ("
-               << operand_type.getDimSize(index) << ") and result ("
-               << result_type.getDimSize(index) << ")";
+               << operandType.getDimSize(index) << ") and result ("
+               << resultType.getDimSize(index) << ")";
     }
   }
   return success();
@@ -136,26 +134,26 @@ void printWindowAttribute(OpAsmPrinter &p, DenseElementsAttr attribute) {
 }  // namespace
 
 void printWindowAttributes(OpAsmPrinter &p, Operation * /*op*/,
-                           llvm::Optional<DenseIntElementsAttr> window_strides,
+                           llvm::Optional<DenseIntElementsAttr> windowStrides,
                            llvm::Optional<DenseIntElementsAttr> padding,
-                           llvm::Optional<DenseIntElementsAttr> lhs_dilation,
-                           llvm::Optional<DenseIntElementsAttr> rhs_dilation,
-                           llvm::Optional<DenseElementsAttr> window_reversal) {
+                           llvm::Optional<DenseIntElementsAttr> lhsDilation,
+                           llvm::Optional<DenseIntElementsAttr> rhsDilation,
+                           llvm::Optional<DenseElementsAttr> windowReversal) {
   using pair_t = std::pair<DenseElementsAttr, StringRef>;
-  std::array<pair_t, 5> printed_attributes = {{
-      {window_strides ? *window_strides : nullptr, "stride"},
+  std::array<pair_t, 5> printedAttributes = {{
+      {windowStrides ? *windowStrides : nullptr, "stride"},
       {padding ? *padding : nullptr, "pad"},
-      {lhs_dilation ? *lhs_dilation : nullptr, "lhs_dilate"},
-      {rhs_dilation ? *rhs_dilation : nullptr, "rhs_dilate"},
-      {window_reversal ? *window_reversal : nullptr, "reverse"},
+      {lhsDilation ? *lhsDilation : nullptr, "lhs_dilate"},
+      {rhsDilation ? *rhsDilation : nullptr, "rhs_dilate"},
+      {windowReversal ? *windowReversal : nullptr, "reverse"},
   }};
 
   // Do not print attributes that do no exist.
-  auto non_null_attributes = llvm::make_filter_range(
-      printed_attributes,
+  auto nonNullAttributes = llvm::make_filter_range(
+      printedAttributes,
       [](const pair_t &a) { return static_cast<bool>(a.first); });
 
-  llvm::interleaveComma(non_null_attributes, p, [&](const pair_t &a) {
+  llvm::interleaveComma(nonNullAttributes, p, [&](const pair_t &a) {
     p << a.second << " = [";
     printWindowAttribute(p, a.first);
     p << "]";
@@ -163,22 +161,22 @@ void printWindowAttributes(OpAsmPrinter &p, Operation * /*op*/,
 }
 
 ParseResult parseWindowAttributes(OpAsmParser &parser,
-                                  DenseIntElementsAttr &window_strides,
+                                  DenseIntElementsAttr &windowStrides,
                                   DenseIntElementsAttr &padding,
-                                  DenseIntElementsAttr &lhs_dilation,
-                                  DenseIntElementsAttr &rhs_dilation,
-                                  DenseElementsAttr &window_reversal) {
-  StringRef attribute_name;
+                                  DenseIntElementsAttr &lhsDilation,
+                                  DenseIntElementsAttr &rhsDilation,
+                                  DenseElementsAttr &windowReversal) {
+  StringRef attributeName;
 
-  llvm::StringSet<> allowed_attribute_names{
+  llvm::StringSet<> allowedAttributeNames{
       {"stride", "pad", "lhs_dilate", "rhs_dilate", "reverse"}};
 
-  while (parser.parseOptionalKeyword(&attribute_name).succeeded()) {
+  while (parser.parseOptionalKeyword(&attributeName).succeeded()) {
     // Verify that the attribute name is valid and erase it.
-    if (!allowed_attribute_names.erase(attribute_name)) {
+    if (!allowedAttributeNames.erase(attributeName)) {
       return parser.emitError(parser.getCurrentLocation(),
                               "Unexpected keyword ")
-             << attribute_name;
+             << attributeName;
     }
 
     if (parser.parseEqual()) {
@@ -188,30 +186,30 @@ ParseResult parseWindowAttributes(OpAsmParser &parser,
     // parse the attribute value. We need to support either 1D and Nx2 array of
     // integers to parse.
     llvm::SmallVector<int64_t> values;
-    auto int64_parser = [&]() {
+    auto int64Parser = [&]() {
       return parser.parseInteger(values.emplace_back(0));
     };
 
-    if (attribute_name == "pad") {
+    if (attributeName == "pad") {
       // Parse 2D array of integers.
       // Helper to parse an array of two integer elements such as [e0, e1].
-      auto inner_parser = [&]() -> ParseResult {
-        size_t num_old_elements = values.size();
+      auto innerParser = [&]() -> ParseResult {
+        size_t numOldElements = values.size();
         if (parser.parseCommaSeparatedList(mlir::AsmParser::Delimiter::Square,
-                                           int64_parser))
+                                           int64Parser))
           return failure();
-        size_t num_parsed_elements = values.size() - num_old_elements;
+        size_t numParsedElements = values.size() - numOldElements;
         constexpr size_t kExpectedElements = 2;
-        if (num_parsed_elements != kExpectedElements)
+        if (numParsedElements != kExpectedElements)
           return parser.emitError(parser.getCurrentLocation())
                  << "Expected array with " << kExpectedElements
-                 << " elements, got " << num_parsed_elements
+                 << " elements, got " << numParsedElements
                  << " elements instead";
         return success();
       };
 
       if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Square,
-                                         inner_parser)) {
+                                         innerParser)) {
         return failure();
       }
       const int64_t size = static_cast<int64_t>(values.size());
@@ -223,25 +221,25 @@ ParseResult parseWindowAttributes(OpAsmParser &parser,
     } else {
       // Parse 1D array of integers.
       if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Square,
-                                         int64_parser)) {
+                                         int64Parser)) {
         return failure();
       }
       const int64_t size = static_cast<int64_t>(values.size());
-      if (attribute_name == "reverse") {
+      if (attributeName == "reverse") {
         auto ty = RankedTensorType::get({size},
                                         parser.getBuilder().getIntegerType(1));
-        auto bool_vector = llvm::to_vector<4>(
+        auto boolVector = llvm::to_vector<4>(
             llvm::map_range(values, [](int64_t v) { return v != 0; }));
-        window_reversal = DenseElementsAttr::get(ty, bool_vector);
+        windowReversal = DenseElementsAttr::get(ty, boolVector);
       } else {
         auto attr = parser.getBuilder().getI64TensorAttr(values);
 
-        if (attribute_name == "stride") {
-          window_strides = attr;
-        } else if (attribute_name == "lhs_dilate") {
-          lhs_dilation = attr;
-        } else if (attribute_name == "rhs_dilate") {
-          rhs_dilation = attr;
+        if (attributeName == "stride") {
+          windowStrides = attr;
+        } else if (attributeName == "lhs_dilate") {
+          lhsDilation = attr;
+        } else if (attributeName == "rhs_dilate") {
+          rhsDilation = attr;
         } else {
           llvm_unreachable("Unexpected attribute name");
         }

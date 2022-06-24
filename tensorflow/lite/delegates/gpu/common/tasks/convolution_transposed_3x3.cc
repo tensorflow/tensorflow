@@ -63,7 +63,6 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
     ConvolutionTransposed3x3::WeightsUploadType weights_upload_type,
     int2 padding, int3 work_group_launch_order) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetAddressMode(AddressMode::kZero);
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }

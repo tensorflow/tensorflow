@@ -18,11 +18,11 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/base/macros.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -114,8 +114,7 @@ class HloTestBase : public ManifestCheckingTest {
   // and the reference backend.
   explicit HloTestBase(bool verifier_layout_sensitive = false,
                        bool allow_mixed_precision_in_hlo_verifier = true,
-                       std::function<bool(const HloInstruction*)>
-                           instruction_can_change_layout_func = {});
+                       HloPredicate instruction_can_change_layout_func = {});
 
   // If your test doesn't use interpreter as the reference backend, you can use
   // this constructor. Note that your test target is responsible for linking in
@@ -123,8 +122,7 @@ class HloTestBase : public ManifestCheckingTest {
   HloTestBase(se::Platform* test_platform, se::Platform* reference_platform,
               bool verifier_layout_sensitive = false,
               bool allow_mixed_precision_in_hlo_verifier = true,
-              std::function<bool(const HloInstruction*)>
-                  instruction_can_change_layout_func = {});
+              HloPredicate instruction_can_change_layout_func = {});
 
   ~HloTestBase() override {}
 
@@ -178,7 +176,8 @@ class HloTestBase : public ManifestCheckingTest {
       std::function<Executable*(int64_t)> executable_provider,
       std::function<int64_t(int64_t)> argument_count_provider,
       std::function<const Literal*(int64_t, int64_t)> argument_provider,
-      int64_t num_replicas, bool run_hlo_passes);
+      int64_t num_replicas, bool run_hlo_passes,
+      DeviceAssignment* device_assignment = nullptr);
 
   // Executes the given hlo module on two backends and compares results.
   //

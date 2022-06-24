@@ -128,6 +128,26 @@ func.func @alltoall(%data: tensor<4x16xf32>) -> tensor<16x4xindex> {
 
 // -----
 
+// CHECK-LABEL: func @abs
+func.func @abs(%arg0: tensor<1x2xf32>) -> tensor<1x2xindex> {
+  %0 = "mhlo.abs"(%arg0) {} : (tensor<1x2xf32>) -> tensor<1x2xf32>
+  %1 = "mhlo_test.get_return_type_components"(%0)
+      : (tensor<1x2xf32>) -> tensor<1x2xindex>
+// CHECK: %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<1x2xf32>) -> tensor<1x2xindex>
+  func.return %1: tensor<1x2xindex>
+}
+
+// CHECK-LABEL: @concat
+func.func @concat(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<3xindex> {
+  %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<2xi32>) -> tensor<3xi32>
+  %1 = "mhlo_test.get_return_type_components"(%0)
+      : (tensor<3xi32>) -> tensor<3xindex>
+// CHECK: %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<3xi32>) -> tensor<3xindex>
+  func.return %1 : tensor<3xindex>
+}
+
+// -----
+
 #CSR = #sparse_tensor.encoding<{
   dimLevelType = ["dense", "compressed"]
 }>

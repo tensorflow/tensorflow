@@ -117,7 +117,7 @@ std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::GetFromText(
   auto module_op = module.release();
 
   // Create the context
-  return absl::make_unique<TFRDecomposeContext>(module_op);
+  return std::make_unique<TFRDecomposeContext>(module_op);
 }
 
 StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(const NodeDef& node_def,

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/numerical_utils.h"
 
 #include <cmath>
+#include <optional>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

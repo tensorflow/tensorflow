@@ -29,11 +29,6 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-enum class AddressMode {
-  kDontCare,
-  kZero,
-};
-
 enum class TensorStorageType {
   UNKNOWN,
   BUFFER,
@@ -78,7 +73,6 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   size_t GetSizeInBytesForShape(const BHWDC& shape5d) const;
 
   bool HasAxis(Axis axis) const;
-  void SetAddressMode(AddressMode mode);
   int GetWidthSize(BHWDC shape) const;
   int GetSliceStrideSize(BHWDC shape) const;
 
@@ -112,6 +106,14 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
   absl::Status CanCreateTensorWithShape(const GpuInfo& gpu_info,
                                         const BHWC& shape) const;
+
+  // Can udate storage type if in the current storage type this tensor can not
+  // be allocated with shape on specified device(gpu_info)
+  // Usual scenario is to create new tensor_desc on base of another and may be
+  // update storage type for new tensor_desc shape because it can be unsuported
+  // with old storage type
+  absl::Status UpdateToSupportedStorageType(const GpuInfo& gpu_info,
+                                            const BHWC& shape);
 
   DataType data_type = DataType::UNKNOWN;
   TensorStorageType storage_type = TensorStorageType::UNKNOWN;
@@ -195,8 +197,6 @@ struct TensorDescriptor : public GPUObjectDescriptor {
                     const std::vector<std::string>& coords) const;
 
   bool IsBatchedWidth() const;
-
-  AddressMode AddressModeFromState() const;
 
   absl::Status MaybeGetDataTypeFromTemplateArgs(
       const std::vector<std::string>& template_args, DataType* result) const;

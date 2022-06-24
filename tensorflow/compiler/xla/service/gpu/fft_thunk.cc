@@ -235,7 +235,7 @@ Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
       LOG(FATAL) << "unsupported fft type";
   }
   if (launch_ok) {
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
   return InternalError("Unable to launch fft with type %s",
                        FftTypeToString(fft_type));

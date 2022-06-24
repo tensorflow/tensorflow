@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 
+#include <memory>
+
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -83,7 +84,7 @@ int ComputeStreamToAssign(
 }  // namespace
 
 std::unique_ptr<StreamAssignment> AssignStreams(const HloModule& module) {
-  auto stream_assignment = absl::make_unique<StreamAssignment>();
+  auto stream_assignment = std::make_unique<StreamAssignment>();
   const HloComputation& computation = *module.entry_computation();
   std::unique_ptr<HloReachabilityMap> reachability =
       HloReachabilityMap::Build(&computation);

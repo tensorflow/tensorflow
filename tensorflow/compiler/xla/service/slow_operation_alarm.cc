@@ -17,13 +17,13 @@ limitations under the License.
 
 #include <functional>
 #include <list>
+#include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
-#include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/platform/env.h"
 
@@ -103,9 +103,8 @@ SlowOperationAlarm::SlowOperationAlarm(
     absl::Duration timeout, std::string msg,
     std::atomic<int64_t>* counter /*=nullptr*/)
     : SlowOperationAlarm(
-          timeout,
-          // TODO(b/157309856): Once we have C++17, capture msg "by move".
-          [msg] { return msg; },  //
+          timeout,                                 //
+          [msg = std::move(msg)] { return msg; },  //
           counter) {}
 
 SlowOperationAlarm::SlowOperationAlarm(
@@ -133,7 +132,7 @@ std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm(
   }
 
 #if NDEBUG
-  return absl::make_unique<SlowOperationAlarm>(
+  return std::make_unique<SlowOperationAlarm>(
       absl::Duration(absl::Minutes(2)),
       absl::StrCat(
           separator,
@@ -142,7 +141,7 @@ std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm(
           msg_suffix, separator),
       counter);
 #else
-  return absl::make_unique<SlowOperationAlarm>(
+  return std::make_unique<SlowOperationAlarm>(
       absl::Duration(absl::Seconds(10)),
       absl::StrCat(
           separator,

@@ -227,7 +227,7 @@ static port::Status RunRedzoneChecker(
   TF_RETURN_IF_ERROR(stream->ThenLaunch(
       ThreadDim(threads_per_block), BlockDim(block_count), comparison_kernel,
       redzone, redzone_pattern, redzone.size(), out_param));
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Since we reuse the same buffer for multiple checks, we re-initialize redzone
@@ -241,7 +241,7 @@ static port::Status ReinitializeRedzone(Stream* stream,
   redzone_array.fill(redzone_pattern);
   stream->ThenMemcpy(&redzone, redzone_array.data(), redzone.size());
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Check redzones around the user allocation.

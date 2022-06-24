@@ -229,7 +229,7 @@ xla::Status DistributedRuntimeClientImpl::Connect() {
       tensorflow::ThreadOptions(), "pjrt_distributed_heartbeat",
       [this]() { HeartbeatLoop(); }));
   LOG(INFO) << "Connected to distributed JAX controller";
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 xla::Status DistributedRuntimeClientImpl::EnumerateDevices(
@@ -258,7 +258,7 @@ xla::Status DistributedRuntimeClientImpl::EnumerateDevices(
   }
   VLOG(10) << "EnumerateDevices() response: " << response.DebugString();
   response.mutable_global_topology()->Swap(global_topology);
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 xla::Status DistributedRuntimeClientImpl::Shutdown() {
@@ -290,7 +290,7 @@ xla::Status DistributedRuntimeClientImpl::Shutdown() {
   VLOG(10) << "Shutdown() response: " << response.DebugString();
   absl::MutexLock lock(&mu_);
   state_ = State::kClosed;
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 xla::StatusOr<std::string> DistributedRuntimeClientImpl::BlockingKeyValueGet(
@@ -504,7 +504,7 @@ xla::Status DistributedRuntimeCoordinationServiceClient::EnumerateDevices(
   Status s = coord_agent_->WaitForAllTasks(devices);
   if (!s.ok()) return s;
   *global_topology = coord_agent_->GetClusterDeviceInfo().xla().devices();
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 xla::StatusOr<std::string>

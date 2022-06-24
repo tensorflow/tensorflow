@@ -109,7 +109,7 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
                                     hlo_module->config(), libdevice_dir));
 #endif
   }
-  return ::tensorflow::OkStatus();
+  return xla::OkStatus();
 }
 
 xla::Status CompileAndPrintLlvmIrFromFile(const std::string& file_name,
@@ -124,7 +124,7 @@ xla::Status CompileAndPrintLlvmIrFromFile(const std::string& file_name,
     TF_RETURN_IF_ERROR(CompileAndPrintLlvmIr(hlo_module_text, ptx, sm));
   }
 
-  return ::tensorflow::OkStatus();
+  return xla::OkStatus();
 }
 }  // namespace
 

@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
 
 #include <algorithm>
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
@@ -157,7 +157,7 @@ std::optional<std::vector<HloInstruction*>> FindElementwiseOperationGroup(
     }
   }
 
-  return ShouldTransform(operations) ? absl::make_optional(operations)
+  return ShouldTransform(operations) ? std::make_optional(operations)
                                      : std::nullopt;
 }
 

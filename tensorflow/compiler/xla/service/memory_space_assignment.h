@@ -944,7 +944,7 @@ class MemorySpaceAssignment {
                                     .instructions()
                                     .end()),
         computations_in_schedule_(),
-        preset_assignments_(absl::make_unique<PresetAssignments>()) {
+        preset_assignments_(std::make_unique<PresetAssignments>()) {
     for (const auto& computation_and_bound :
          hlo_live_range.computation_span_times()) {
       computations_in_schedule_.insert(computation_and_bound.first);

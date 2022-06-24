@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 
 #include <iterator>
+#include <optional>
 #include <sstream>
 #include <string>
 
 #include "absl/algorithm/container.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"

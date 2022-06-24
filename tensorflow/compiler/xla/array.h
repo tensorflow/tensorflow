@@ -352,7 +352,7 @@ class Array {
         return s;
       }
     }
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   // Invokes a callback with the (indices, value) for each cell in the array.
@@ -367,7 +367,7 @@ class Array {
         return s;
       }
     }
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   // Returns the value at the cell specified by the indexes. The number of

@@ -17,11 +17,11 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PJRT_GPU_DEVICE_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/base/macros.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/statusor.h"

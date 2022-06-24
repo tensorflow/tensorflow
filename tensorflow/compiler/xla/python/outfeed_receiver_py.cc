@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 
 #include "absl/algorithm/container.h"
-#include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "pybind11/functional.h"
 #include "pybind11/pybind11.h"
@@ -57,7 +56,7 @@ class OutfeedReceiverForPython {
                       [](const std::shared_ptr<PyClient>& client) {
                         return client->pjrt_client();
                       });
-    outfeed_receiver_ = absl::make_unique<OutfeedReceiver>(
+    outfeed_receiver_ = std::make_unique<OutfeedReceiver>(
         callback, client_ptrs, max_callback_queue_size_bytes);
   }
   OutfeedReceiverForPython(const OutfeedReceiverForPython&) = delete;
@@ -129,7 +128,7 @@ void BuildOutfeedReceiverSubmodule(py::module* m) {
          std::vector<std::shared_ptr<PyClient>> clients,
          ssize_t max_callback_queue_size_bytes)
           -> std::unique_ptr<OutfeedReceiverForPython> {
-        auto server = absl::make_unique<OutfeedReceiverForPython>(
+        auto server = std::make_unique<OutfeedReceiverForPython>(
             callback_to_python, clients, max_callback_queue_size_bytes);
         server->Start();
         return server;

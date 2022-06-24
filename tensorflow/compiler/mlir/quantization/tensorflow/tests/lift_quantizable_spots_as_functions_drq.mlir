@@ -25,11 +25,11 @@ func.func @float_matmul(%arg0: tensor<1x12x12x512xf32>) -> (tensor<*xf32>) {
 // CHECK: %[[CONST:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<512x512xf32>} : () -> tensor<512x512xf32>
 // CHECK: %[[PARTITIONEDCALL:.*]] = "tf.PartitionedCall"(%arg0, %[[CONST]])
 // CHECK-SAME: {_tfl_quant_trait = "fully_quantizable",
-// CHECK-SAME: f = @fused_matmul_fn_1}
+// CHECK-SAME: f = @composite_matmul_fn_1}
 // CHECK: return %[[PARTITIONEDCALL]]
 // CHECK: }
 
-// CHECK-LABEL: private @fused_matmul_fn_1
+// CHECK-LABEL: private @composite_matmul_fn_1
 // CHECK-NEXT: %[[OUT:.*]] = "tf.MatMul"(%arg0, %arg1)
 // CHECK-NEXT: return %[[OUT]]
 }

@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -34,7 +35,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/overflow_util.h"
@@ -857,7 +857,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       TF_RETURN_IF_ERROR(
           ValidateShapeWithOptionalLayoutInternal(element_shape));
     }
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   // Non-tuple shape.
@@ -879,7 +879,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
           primitive_util::LowercasePrimitiveTypeName(shape.element_type()),
           shape.ShortDebugString());
     }
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   for (int64_t i = 0; i < shape.rank(); ++i) {
@@ -892,14 +892,14 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   }
 
   TF_RETURN_IF_ERROR(ValidateShapeSize(shape));
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 /* static */ Status ShapeUtil::ValidateShapeSize(const Shape& shape) {
   VLOG(3) << "Validating shape size: " << ShapeUtil::HumanString(shape);
 
   if (!shape.IsArray()) {
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   int64_t shape_size = [&]() {
@@ -926,7 +926,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   }
 
   VLOG(3) << "Shape size is valid: " << shape_size;
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 /* static */ Status ShapeUtil::ValidateShapeWithOptionalLayout(
@@ -1060,7 +1060,7 @@ Status ForEachSubshapeHelper(const Shape& shape,
       index->pop_back();
     }
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 // Helper for ForEachMutableSubshape which visits the subshapes of the given
@@ -1077,7 +1077,7 @@ Status ForEachMutableSubshapeHelper(
       index->pop_back();
     }
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace
@@ -1089,7 +1089,7 @@ Status ForEachMutableSubshapeHelper(
       shape,
       [&func](const Shape& subshape, const ShapeIndex& index) {
         func(subshape, index);
-        return ::tensorflow::OkStatus();
+        return OkStatus();
       },
       &index)
       .IgnoreError();
@@ -1102,7 +1102,7 @@ Status ForEachMutableSubshapeHelper(
       shape,
       [&func](Shape* subshape, const ShapeIndex& index) {
         func(subshape, index);
-        return ::tensorflow::OkStatus();
+        return OkStatus();
       },
       &index)
       .IgnoreError();
@@ -1622,6 +1622,17 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
   return compatible;
 }
 
+/* static */ Shape ShapeUtil::DeleteDimensions(
+    absl::Span<int64_t const> dims_to_delete, Shape shape) {
+  std::vector<int64_t> dims_to_delete_v(dims_to_delete.begin(),
+                                        dims_to_delete.end());
+  absl::c_sort(dims_to_delete_v, std::greater<int64_t>());
+  for (int64_t dim : dims_to_delete_v) {
+    shape = DeleteDimension(dim, shape);
+  }
+  return shape;
+}
+
 /* static */ Shape ShapeUtil::FilterDimensions(
     const std::function<bool(int64_t)>& p, Shape shape) {
   CHECK(shape.IsArray());
@@ -1631,10 +1642,7 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
       dims_to_delete.push_back(i);
     }
   }
-  for (int64_t dim : dims_to_delete) {
-    shape = DeleteDimension(dim, shape);
-  }
-  return shape;
+  return DeleteDimensions(dims_to_delete, shape);
 }
 
 // Returns the indices of the first elements of all consecutive subarrays of the
@@ -1731,7 +1739,7 @@ Status ShapeUtil::ByteStrides(const Shape& shape, absl::Span<int64_t> strides) {
     strides.at(i) = stride;
     stride *= shape.dimensions(i);
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 /*static*/ int64_t ShapeUtil::ArraySize(const Shape& shape) {

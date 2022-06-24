@@ -42,7 +42,7 @@ ENTRY main {
                           platform->ExecutorForDevice(0));
 
   // Compile AOT.
-  auto module_group = absl::make_unique<HloModuleGroup>(std::move(module));
+  auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
   AotCompilationOptions aot_options(compiler.PlatformId());
   aot_options.set_executor(stream_exec);
   TF_ASSERT_OK_AND_ASSIGN(

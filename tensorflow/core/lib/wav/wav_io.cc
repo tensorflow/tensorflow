@@ -105,7 +105,7 @@ Status IncrementOffset(int old_offset, size_t increment, size_t max_size,
     return errors::InvalidArgument("Offset too large, overflowed: ",
                                    *new_offset);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ExpectText(const std::string& data, const std::string& expected_text,
@@ -120,7 +120,7 @@ Status ExpectText(const std::string& data, const std::string& expected_text,
                                    " but found ", found_text);
   }
   *offset = new_offset;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ReadString(const std::string& data, int expected_length,
@@ -130,7 +130,7 @@ Status ReadString(const std::string& data, int expected_length,
       IncrementOffset(*offset, expected_length, data.size(), &new_offset));
   *value = std::string(data.begin() + *offset, data.begin() + new_offset);
   *offset = new_offset;
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T>
@@ -205,7 +205,7 @@ Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
     core::EncodeFixed16(&data[i * kBytesPerSample],
                         static_cast<uint16>(sample));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template Status EncodeAudioAsS16LEWav<std::string>(const float* audio,
@@ -341,7 +341,7 @@ Status DecodeLin16WaveAsFloatVector(const std::string& wav_string,
   if (!was_data_found) {
     return errors::InvalidArgument("No data chunk found in WAV");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace wav

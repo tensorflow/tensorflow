@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 
+#include <memory>
 #include <ostream>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -557,7 +557,7 @@ PointsToSet& TuplePointsToAnalysis::CreateEmptyPointsToSet(
   PerInstruction* pi = PerInst(instruction);
   CHECK(pi->points_to_set == nullptr)
       << "instruction should not have been present in the map.";
-  auto set = absl::make_unique<PointsToSet>(&instruction->shape());
+  auto set = std::make_unique<PointsToSet>(&instruction->shape());
   pi->points_to_set = std::move(set);
   // Return *set using the iterator returned by emplace.
   return *pi->points_to_set;

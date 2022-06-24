@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_NUMERICAL_UTILS_H_
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "absl/types/optional.h"

@@ -32,6 +32,44 @@ limitations under the License.
 namespace mlir {
 namespace tfg {
 
+TEST(EvalUtilsTest, InvalidInputs) {
+  const char *const code = R"mlir(
+    tfg.func @test() -> (tensor<2x2xi32>) {
+      %Const_0, %ctl_0 = Const name("c0") {dtype = i1, value = dense<1> : tensor<i1>} : () -> (tensor<i1>)
+      %Const_1, %ctl_2 = Const name("c1") {dtype = i32, value = dense<2> : tensor<2x2xi32>} : () -> (tensor<2x2xi32>)
+      %Switch:2, %ctl_3 = Switch(%Const_1, %Const_0) name("switch") {T = i1} : (tensor<2x2xi32>, tensor<i1>) -> (tensor<*xi32>, tensor<*xi32>)
+      return (%Const_1) : tensor<2x2xi32>
+    }
+  )mlir";
+
+  MLIRContext context;
+  auto tfg_dialect = context.getOrLoadDialect<tfg::TFGraphDialect>();
+  OwningOpRef<ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
+  ASSERT_TRUE(module);
+  GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
+  ASSERT_TRUE(func);
+
+  auto iter = func.body().begin()->begin();
+  Operation *const_0 = &*iter++;
+  ASSERT_TRUE(tfg_dialect->IsConstant(const_0));
+  Operation *const_1 = &*iter++;
+  ASSERT_TRUE(tfg_dialect->IsConstant(const_1));
+  Operation *switch_op = &*iter++;
+
+  auto cpu_device = std::make_unique<util::SimpleDevice>();
+  auto resource_mgr = std::make_unique<tensorflow::ResourceMgr>();
+
+  llvm::SmallVector<Attribute> result;
+
+  // The operand 1 of SwitchOp is not scalar.
+  EXPECT_TRUE(failed(
+      util::EvaluateOperation(cpu_device.get(), resource_mgr.get(), switch_op,
+                              {const_0->getAttrOfType<ElementsAttr>("value"),
+                               const_1->getAttrOfType<ElementsAttr>("value")},
+                              result)));
+}
+
 TEST(EvalUtilsTest, EvaluateOperation) {
   const char *const code = R"mlir(
     tfg.func @test() -> (tensor<2x2xi32>) {
@@ -60,7 +98,7 @@ TEST(EvalUtilsTest, EvaluateOperation) {
 
   llvm::SmallVector<Attribute> result;
 
-  EXPECT_TRUE(succeeded(util::EvaluateOperation(
+  ASSERT_TRUE(succeeded(util::EvaluateOperation(
       cpu_device.get(), resource_mgr.get(), const_0,
       {const_0->getAttrOfType<ElementsAttr>("value")}, result)));
 
@@ -70,7 +108,7 @@ TEST(EvalUtilsTest, EvaluateOperation) {
 
   result.clear();
 
-  EXPECT_TRUE(succeeded(util::EvaluateOperation(
+  ASSERT_TRUE(succeeded(util::EvaluateOperation(
       cpu_device.get(), resource_mgr.get(), const_1,
       {const_1->getAttrOfType<ElementsAttr>("value")}, result)));
 
@@ -80,7 +118,7 @@ TEST(EvalUtilsTest, EvaluateOperation) {
 
   result.clear();
 
-  EXPECT_TRUE(succeeded(
+  ASSERT_TRUE(succeeded(
       util::EvaluateOperation(cpu_device.get(), resource_mgr.get(), add,
                               {const_0->getAttrOfType<ElementsAttr>("value"),
                                const_1->getAttrOfType<ElementsAttr>("value")},
@@ -89,6 +127,50 @@ TEST(EvalUtilsTest, EvaluateOperation) {
   ASSERT_EQ(result.size(), 1);
   ASSERT_TRUE(result[0].isa<ElementsAttr>());
   EXPECT_EQ(result[0].cast<ElementsAttr>().getValues<int>()[0], 3);
+}
+
+TEST(EvalUtilsTest, OutputInvalidation) {
+  const char *const code = R"mlir(
+    tfg.func @test() -> (tensor<2x2xi32>) {
+      %Const_0, %ctl_0 = Const name("c0") {dtype = i1, value = dense<1> : tensor<i1>} : () -> (tensor<i1>)
+      %Const_1, %ctl_2 = Const name("c1") {dtype = i32, value = dense<2> : tensor<2x2xi32>} : () -> (tensor<2x2xi32>)
+      %Switch:2, %ctl_3 = Switch(%Const_1, %Const_0) name("switch") {T = i1} : (tensor<2x2xi32>, tensor<i1>) -> (tensor<*xi32>, tensor<*xi32>)
+      %Identity_0, %ctl_4 = Identity(%Switch#0) name("id1") {T = i32} : (tensor<*xi32>) -> (tensor<*xi32>)
+      %Identity_1, %ctl_5 = Identity(%Switch#1) name("id2") {T = i32} : (tensor<*xi32>) -> (tensor<*xi32>)
+      return (%Const_1) : tensor<2x2xi32>
+    }
+  )mlir";
+
+  MLIRContext context;
+  auto tfg_dialect = context.getOrLoadDialect<tfg::TFGraphDialect>();
+  OwningOpRef<ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
+  ASSERT_TRUE(module);
+  GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
+  ASSERT_TRUE(func);
+
+  auto iter = func.body().begin()->begin();
+  Operation *const_0 = &*iter++;
+  ASSERT_TRUE(tfg_dialect->IsConstant(const_0));
+  Operation *const_1 = &*iter++;
+  ASSERT_TRUE(tfg_dialect->IsConstant(const_1));
+  Operation *switch_op = &*iter++;
+
+  auto cpu_device = std::make_unique<util::SimpleDevice>();
+  auto resource_mgr = std::make_unique<tensorflow::ResourceMgr>();
+
+  llvm::SmallVector<Attribute> result;
+
+  ASSERT_TRUE(succeeded(
+      util::EvaluateOperation(cpu_device.get(), resource_mgr.get(), switch_op,
+                              {const_1->getAttrOfType<ElementsAttr>("value"),
+                               const_0->getAttrOfType<ElementsAttr>("value")},
+                              result)));
+
+  ASSERT_EQ(result.size(), 2);
+  // Output 0 is invalidated.
+  EXPECT_EQ(result[0], nullptr);
+  EXPECT_EQ(result[1].cast<ElementsAttr>().getValues<int>()[0], 2);
 }
 
 }  // namespace tfg

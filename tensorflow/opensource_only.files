@@ -11,8 +11,6 @@ tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h:
 tensorflow/core/platform/default/build_config/BUILD:
 tensorflow/core/tfrt/tpu/tpu_resources.h:
 tensorflow/core/tfrt/utils/bridge_graph_analysis.h:
-tensorflow/dtensor/mlir/utils/BUILD:
-tensorflow/dtensor/mlir/utils/collective_lowering.cc:
 tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal.cc:
 tensorflow/dtensor/mlir/utils/update_tpu_metadata.cc:
 tensorflow/examples/custom_ops_doc/multiplex_1/BUILD:

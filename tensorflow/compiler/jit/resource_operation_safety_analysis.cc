@@ -208,7 +208,7 @@ class ResourceOpSet {
 
   void EnsureIsCopied() {
     if (storage_ == nullptr) {
-      storage_ = absl::make_unique<Impl>();
+      storage_ = std::make_unique<Impl>();
       for (ResourceOp op : *this) {
         storage_->insert(op);
       }
@@ -259,7 +259,7 @@ Status ComputeIncompatibleResourceOperationPairs(
                       });
 
   auto resource_op_set_for_node =
-      absl::make_unique<ResourceOpSet[]>(g.num_node_ids());
+      std::make_unique<ResourceOpSet[]>(g.num_node_ids());
 
   const bool vlog = VLOG_IS_ON(2);
 

@@ -22,13 +22,13 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <initializer_list>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
 
 #include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -582,6 +582,10 @@ class ShapeUtil {
   // • `DeleteDimension(1, T[m, n, k]) = T[m, k]`
   static Shape DeleteDimension(int64_t dim_to_delete, Shape shape);
 
+  // Returns a shape with dimensions in `to_drop` dropped.
+  static Shape DeleteDimensions(absl::Span<int64_t const> dims_to_delete,
+                                Shape shape);
+
   // Returns a shape with all the dimensions of the input shape for which `p`
   // returns true.
   // For examples:
@@ -762,7 +766,7 @@ class ShapeUtil {
                                      const FnType& visitor_function,
                                      bool parallel = false) {
     if (ShapeUtil::IsZeroElementArray(shape)) {
-      return ::tensorflow::OkStatus();
+      return OkStatus();
     }
     CHECK_EQ(shape.rank(), base.size());
     CHECK_EQ(incr.size(), base.size());

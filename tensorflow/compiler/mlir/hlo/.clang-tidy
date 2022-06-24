@@ -46,7 +46,7 @@ Checks: >
         readability-avoid-const-params-in-decls,
         readability-const-return-type,
         readability-container-size-empty,
-        # readability-identifier-naming,
+        readability-identifier-naming,
         readability-inconsistent-declaration-parameter-name,
         readability-misleading-indentation,
         readability-redundant-control-flow,

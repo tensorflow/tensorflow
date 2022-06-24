@@ -746,6 +746,9 @@ StatusOr<unsigned> GraphDefImporter::ArgNumType(const NamedAttrList &attrs,
 Status GraphDefImporter::ConvertNodeDef(OpBuilder &builder, ConversionState &s,
                                         const NodeDef &node) {
   VLOG(4) << "Importing: " << node.name();
+  if (node.op().empty())
+    return InvalidArgument("Node ", node.name(), " has an empty op name");
+
   OperationState state(ConvertLocation(node), absl::StrCat("tfg.", node.op()));
 
   // The GraphImporter does light shape inference, but here we will defer all of
@@ -907,8 +910,8 @@ StatusOr<OwningOpRef<ModuleOp>> ImportGraphDef(MLIRContext *context,
   return importer.ConvertGraphDef(graph_def);
 }
 
-StatusOr<OwningOpRef<mlir::ModuleOp>> ImportGraphAndFunctionsToMlir(
-    MLIRContext *context, const Graph &graph, const GraphDebugInfo &debug_info,
+StatusOr<OwningOpRef<ModuleOp>> ImportGraphAndFunctionsToMlir(
+    MLIRContext *context, const GraphDebugInfo &debug_info, const Graph &graph,
     const FunctionLibraryDefinition &flib_def) {
   // TODO(b/231723721): This conversion path is slow because both the graph and
   // the function library are converted to GraphDef.

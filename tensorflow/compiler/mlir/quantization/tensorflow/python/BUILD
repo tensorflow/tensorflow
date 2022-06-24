@@ -131,13 +131,16 @@ pytype_strict_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/client:session",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/platform",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
+        "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/types",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -145,13 +148,16 @@ tf_py_test(
     name = "quantize_model_test",
     size = "medium",
     srcs = ["integration_test/quantize_model_test.py"],
+    shard_count = 10,  # Parallelize the test to avoid timeouts.
     tags = ["no_pip"],
     deps = [
         ":quantize_model",
         "//tensorflow:tensorflow_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/saved_model:tag_constants",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )

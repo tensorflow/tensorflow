@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
 
 namespace mlir {
 namespace quant {
@@ -115,7 +116,7 @@ void PrepareLiftingPass::runOnOperation() {
   // with a constant operand to a preceding affine operation.
   RewritePatternSet patterns(ctx);
   populateWithGenerated(patterns);
-  patterns.add<RemoveIdentity>(ctx);
+  patterns.add<TF::ConvertTFEinsumOp, RemoveIdentity>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 

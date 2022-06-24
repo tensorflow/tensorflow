@@ -26,15 +26,15 @@ namespace hlo {
 static constexpr size_t kPaddingSize = 64;
 
 DenseIntElementsAttr getBroadcastDimensionsAttr(Builder* b, Value x, Value y,
-                                                bool allow_empty) {
+                                                bool allowEmpty) {
   TensorType xType = x.getType().dyn_cast<RankedTensorType>();
   TensorType yType = y.getType().dyn_cast<RankedTensorType>();
   if (!xType || !yType) return {};
-  if (allow_empty && xType == yType) return {};
+  if (allowEmpty && xType == yType) return {};
 
   // If the shapes have the same rank, then there is nothing to do.
   auto xRank = xType.getRank(), yRank = yType.getRank();
-  if (allow_empty && xRank == yRank) return {};
+  if (allowEmpty && xRank == yRank) return {};
 
   // Otherwise if the ranks of the inputs don't match, TensorFlow automatically
   // reshapes the smaller by padding with dimensions of size 1 as a prefix. In
@@ -57,23 +57,23 @@ DenseIntElementsAttr getBroadcastDimensionsAttr(Builder* b, Value x, Value y,
   return DenseIntElementsAttr::get(type, broadcastDimensions);
 }
 
-DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
-  RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
+DenseElementsAttr GetScalarOfType(Type ty, int64_t rawValue) {
+  RankedTensorType scalarTy = RankedTensorType::get({}, ty);
 
-  if (auto float_ty = ty.dyn_cast<FloatType>()) {
-    APFloat value(float_ty.getFloatSemantics(), raw_value);
-    return DenseElementsAttr::get(scalar_ty, value);
+  if (auto floatTy = ty.dyn_cast<FloatType>()) {
+    APFloat value(floatTy.getFloatSemantics(), rawValue);
+    return DenseElementsAttr::get(scalarTy, value);
   }
-  if (auto int_ty = ty.dyn_cast<IntegerType>()) {
-    APInt value(int_ty.getWidth(), static_cast<int64_t>(raw_value),
+  if (auto intTy = ty.dyn_cast<IntegerType>()) {
+    APInt value(intTy.getWidth(), static_cast<int64_t>(rawValue),
                 /*isSigned=*/true);
-    return DenseElementsAttr::get(scalar_ty, value);
+    return DenseElementsAttr::get(scalarTy, value);
   }
-  if (auto complex_ty = ty.dyn_cast<ComplexType>()) {
-    if (auto float_ty = complex_ty.getElementType().cast<FloatType>()) {
-      APFloat real(float_ty.getFloatSemantics(), raw_value);
-      APFloat imag = APFloat::getZero(float_ty.getFloatSemantics());
-      return DenseElementsAttr::get(scalar_ty,
+  if (auto complexTy = ty.dyn_cast<ComplexType>()) {
+    if (auto floatTy = complexTy.getElementType().cast<FloatType>()) {
+      APFloat real(floatTy.getFloatSemantics(), rawValue);
+      APFloat imag = APFloat::getZero(floatTy.getFloatSemantics());
+      return DenseElementsAttr::get(scalarTy,
                                     std::complex<APFloat>(real, imag));
     }
   }
@@ -81,30 +81,29 @@ DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
 }
 
 DenseElementsAttr GetScalarNegZeroOfType(Type ty) {
-  RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
+  RankedTensorType scalarTy = RankedTensorType::get({}, ty);
 
-  if (auto float_ty = ty.dyn_cast<FloatType>()) {
-    APFloat neg_zero =
-        APFloat::getZero(float_ty.getFloatSemantics(), /*Negative=*/true);
-    return DenseElementsAttr::get(scalar_ty, neg_zero);
+  if (auto floatTy = ty.dyn_cast<FloatType>()) {
+    APFloat negZero =
+        APFloat::getZero(floatTy.getFloatSemantics(), /*Negative=*/true);
+    return DenseElementsAttr::get(scalarTy, negZero);
   }
-  if (auto int_ty = ty.dyn_cast<IntegerType>()) {
-    return DenseElementsAttr::get(scalar_ty, APInt::getZero(int_ty.getWidth()));
+  if (auto intTy = ty.dyn_cast<IntegerType>()) {
+    return DenseElementsAttr::get(scalarTy, APInt::getZero(intTy.getWidth()));
   }
-  if (auto complex_ty = ty.dyn_cast<ComplexType>()) {
-    if (auto float_ty = complex_ty.getElementType().cast<FloatType>()) {
-      APFloat neg_zero =
-          APFloat::getZero(float_ty.getFloatSemantics(), /*Negative=*/true);
-      return DenseElementsAttr::get(scalar_ty,
-                                    std::complex<APFloat>(neg_zero, neg_zero));
+  if (auto complexTy = ty.dyn_cast<ComplexType>()) {
+    if (auto floatTy = complexTy.getElementType().cast<FloatType>()) {
+      APFloat negZero =
+          APFloat::getZero(floatTy.getFloatSemantics(), /*Negative=*/true);
+      return DenseElementsAttr::get(scalarTy,
+                                    std::complex<APFloat>(negZero, negZero));
     }
   }
   llvm_unreachable("unsupported type");
 }
 
-static APFloat GetScalarLimitOfFloatType(FloatType float_ty,
-                                         ScalarLimit limit) {
-  auto& semantics = float_ty.getFloatSemantics();
+static APFloat getScalarLimitOfFloatType(FloatType floatTy, ScalarLimit limit) {
+  auto& semantics = floatTy.getFloatSemantics();
   switch (limit) {
     case kLowest:
       return APFloat::getLargest(semantics, /*negative=*/true);
@@ -123,14 +122,14 @@ static APFloat GetScalarLimitOfFloatType(FloatType float_ty,
 // The argument 'scalar' describes which scalar value to return. `integer_value`
 // is used to specify the integer value for kInteger. For any other scalar,
 // integer_value is ignored.
-static APInt GetScalarLimitOfIntegerType(IntegerType integer_ty,
+static APInt getScalarLimitOfIntegerType(IntegerType integerTy,
                                          ScalarLimit limit) {
-  unsigned width = integer_ty.getWidth();
-  bool is_bool = (width == 1);
+  unsigned width = integerTy.getWidth();
+  bool isBool = (width == 1);
   switch (limit) {
     case kLowest:
     case kInfinityLowest:
-      if (integer_ty.isUnsigned() || is_bool) {
+      if (integerTy.isUnsigned() || isBool) {
         return APInt::getMinValue(width);
       } else {
         return APInt::getSignedMinValue(width);
@@ -138,7 +137,7 @@ static APInt GetScalarLimitOfIntegerType(IntegerType integer_ty,
 
     case kMax:
     case kInfinityMax:
-      if (integer_ty.isUnsigned() || is_bool) {
+      if (integerTy.isUnsigned() || isBool) {
         return APInt::getMaxValue(width);
       } else {
         return APInt::getSignedMaxValue(width);
@@ -148,32 +147,32 @@ static APInt GetScalarLimitOfIntegerType(IntegerType integer_ty,
 }
 
 DenseElementsAttr GetScalarLimitOfType(Type ty, ScalarLimit limit) {
-  RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
-  if (auto float_ty = ty.dyn_cast<FloatType>()) {
-    return DenseElementsAttr::get(scalar_ty,
-                                  GetScalarLimitOfFloatType(float_ty, limit));
+  RankedTensorType scalarTy = RankedTensorType::get({}, ty);
+  if (auto floatTy = ty.dyn_cast<FloatType>()) {
+    return DenseElementsAttr::get(scalarTy,
+                                  getScalarLimitOfFloatType(floatTy, limit));
   }
-  if (auto integer_ty = ty.dyn_cast<IntegerType>()) {
+  if (auto integerTy = ty.dyn_cast<IntegerType>()) {
     return DenseElementsAttr::get(
-        scalar_ty, GetScalarLimitOfIntegerType(integer_ty, limit));
+        scalarTy, getScalarLimitOfIntegerType(integerTy, limit));
   }
   llvm_unreachable("unsupported type");
 }
 
-std::string LmhloToMhloOpName(llvm::StringRef op_name,
+std::string LmhloToMhloOpName(llvm::StringRef opName,
                               mlir::MLIRContext* context) {
-  assert(op_name.startswith("lmhlo.") && "Expected an LMHLO op");
+  assert(opName.startswith("lmhlo.") && "Expected an LMHLO op");
 
-  if (op_name == "lmhlo.dot") {
+  if (opName == "lmhlo.dot") {
     return "mhlo.dot_general";
   }
 
-  if (op_name == "lmhlo.dynamic_slice") {
+  if (opName == "lmhlo.dynamic_slice") {
     return "mhlo.dynamic-slice";
   }
 
-  std::string mhlo_op_name(op_name.drop_front(1));
-  if (context->isOperationRegistered(mhlo_op_name)) return mhlo_op_name;
+  std::string mhloOpName(opName.drop_front(1));
+  if (context->isOperationRegistered(mhloOpName)) return mhloOpName;
   return "";
 }
 

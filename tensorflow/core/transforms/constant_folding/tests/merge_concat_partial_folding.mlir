@@ -12,7 +12,7 @@ module {
     // CHECK: %[[AXIS:.*]], {{.*}} = Const name("axis")
     %Const_7, %ctl_8 = Const name("axis") {dtype = i32, value = dense<0> : tensor<i32>} : () -> (tensor<i32>)
     %ConcatV2, %ctl_9 = ConcatV2(%Const, %Const_0, %Placeholder, %Const_7) name("concat1") {N = 3 : i64, T = f32, Tidx = i32} : (tensor<2x2xf32>, tensor<2x2xf32>, tensor<2x2xf32>, tensor<i32>) -> (tensor<6x2xf32>)
-    // CHECK: %[[CONST:.*]], {{.*}} = Const{{.*}} name("concat2/_partial_split_0/eval_0/const_folded")
+    // CHECK: %[[CONST:.*]], {{.*}} = Const{{.*}} name("concat2/_partial_split_0")
     // CHECK: ConcatV2(%[[CONST]], %[[P]], %[[AXIS]]) name("concat2")
     %ConcatV2_10, %ctl_11 = ConcatV2(%Const_2, %Const_4, %ConcatV2, %Const_7) name("concat2") {N = 3 : i64, T = f32, Tidx = i32} : (tensor<2x2xf32>, tensor<2x2xf32>, tensor<6x2xf32>, tensor<i32>) -> (tensor<10x2xf32>)
     // CHECK: ConcatV2(%[[P]], %[[ARG]], %[[AXIS]]) name("concat3")
