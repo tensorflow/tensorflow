@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/root_dataset.h"
 
+#include <algorithm>
 #include <functional>
 #include <string>
 #include <utility>
@@ -160,11 +161,22 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
 
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) override {
+    {
+      tf_shared_lock l(mu_);
+      if (model_ != nullptr && end_time_usec_ > 0) {
+        model_->RecordIteratorGapTime(ctx->env()->NowMicros() - end_time_usec_);
+      }
+    }
     if (dataset()->params_.autotune) {
       TF_RETURN_IF_ERROR(EnsureModelThreadStarted(ctx));
     }
-    return input_impl_->GetNext(IteratorContext(CreateParams(ctx)), out_tensors,
-                                end_of_sequence);
+    TF_RETURN_IF_ERROR(input_impl_->GetNext(IteratorContext(CreateParams(ctx)),
+                                            out_tensors, end_of_sequence));
+    {
+      mutex_lock l(mu_);
+      end_time_usec_ = std::max(ctx->env()->NowMicros(), end_time_usec_);
+    }
+    return OkStatus();
   }
 
  protected:
@@ -260,6 +272,9 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
   int64_t max_intra_op_parallelism_;
   int64_t threadpool_size_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
+
+  // The end time of the previous `GetNextInternal` call.
+  uint64_t end_time_usec_ TF_GUARDED_BY(mu_) = 0;
 
   // Must be ordered last as its execution may depend on other members.
   std::unique_ptr<IteratorBase> input_impl_;

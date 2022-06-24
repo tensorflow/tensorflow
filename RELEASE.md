@@ -73,6 +73,10 @@
         small increase in memory usage due to buffering. To enable this
         behavior, set `inject_prefetch=True` in
         `tf.data.experimental.OptimizationOptions`.
+    *   Added a new value to `tf.data.Options.autotune.autotune_algorithm`:
+        STAGE_BASED. If the autotune algorithm is set to STAGE_BASED, then it
+        runs a new algorithm that can get the same performance with lower
+        CPU/memory usage.
 
 *   `tf.distribute`:
 
