@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 
+#include <fenv.h>  // NOLINT
+
 #include <algorithm>
 #include <bitset>
 #include <cmath>
@@ -256,8 +258,17 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   template <typename NativeT,
             typename std::enable_if_t<!is_complex_v<NativeT>>* = nullptr>
   Status HandleRoundNearestEven(HloInstruction* round) {
-    // TODO(b/228138251): Add support for rounding to nearest even.
-    return UnsupportedTypeError(round);
+    // Saves current rounding direction.
+    int curr_direction = fegetround();
+    fesetround(FE_TONEAREST);
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[round],
+        ElementWiseUnaryOp(round, [](ElementwiseT elem_operand) {
+          return std::nearbyint(elem_operand);
+        }));
+    // Restores default rounding direction.
+    fesetround(curr_direction);
+    return OkStatus();
   }
 
   template <typename NativeT,
