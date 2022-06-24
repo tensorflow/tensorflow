@@ -81,6 +81,43 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
+  // Converts broadcast input and output to normalized layout.
+  //
+  // Converts:
+  //
+  //  A{I} -> bitcast{L} -> broadcast[S]{L'}
+  //
+  // Into:
+  //
+  //  A{I} -> broadcast[S']{I} -> bitcast[S]{L'}
+  Status HandleBroadcast(HloInstruction* hlo) override {
+    VLOG(3) << "Input broadcast: " << hlo->ToString();
+    auto s = hlo->shape();
+    auto operand = hlo->mutable_operand(0);
+    TF_ASSIGN_OR_RETURN(auto normalized_input, GetNormalizedInput(operand));
+    auto normalized_shape = Normalize(s);
+    auto orig_br_dimensions =
+        NoDegenerateDims(hlo->dimensions(), operand->shape(), s);
+    auto layout_as_permutation = ToTransposeDimensions(
+        ShapeUtil::DropDegenerateDimensions(operand->shape()).layout());
+    auto orig_output_layout_as_permutation =
+        ToTransposeDimensions(ShapeUtil::DropDegenerateDimensions(s).layout());
+    std::vector<int64_t> br_dimensions;
+    if (!hlo->dimensions().empty()) {
+      br_dimensions = Permute(orig_br_dimensions, layout_as_permutation);
+    }
+    for (int64_t& d : br_dimensions) {
+      d = FindIndex(orig_output_layout_as_permutation, d);
+    }
+    absl::c_sort(br_dimensions);
+    auto normalized_broadcast =
+        MakeBroadcastHlo(normalized_input, br_dimensions, normalized_shape);
+    VLOG(3) << "Generated broadcast: " << normalized_broadcast->ToString();
+    auto bc_to_orig = MakeBitcastHlo(normalized_broadcast, s);
+    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
+    return OkStatus();
+  }
+
   // Pushes down the bitcast across the unary.
   // That is, converts:
   //

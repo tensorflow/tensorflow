@@ -222,5 +222,78 @@ ENTRY main {
 )");
 }
 
+TEST_F(LayoutNormalizationTest, Broadcast) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[4,5]{0,1} parameter(0)
+  b = f32[4,3,2,5]{0,1,2,3} broadcast(a), dimensions={0,3}
+  ROOT out = abs(b)
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[broadcast_0:%[^ ]+]] = f32[5,2,3,4]{3,2,1,0} broadcast([[bitcast_1:%[^ ]+]]), dimensions={0,3}
+// CHECK: [[abs_2:%[^ ]+]] = f32[5,2,3,4]{3,2,1,0} abs([[broadcast_0]])
+)");
+}
+
+TEST_F(LayoutNormalizationTest, BroadcastCustomOutputLayout) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[2,3]{1,0} parameter(0)
+  b = f32[2,4,3]{1,2,0} broadcast(a), dimensions={0,2}
+  ROOT out = abs(b)
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[a_0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+// CHECK: [[bitcast_1:%[^ ]+]] = f32[2,3]{1,0} bitcast([[a_0]])
+// CHECK: [[broadcast_2:%[^ ]+]] = f32[2,3,4]{2,1,0} broadcast([[bitcast_1]]), dimensions={0,1}
+// CHECK: [[abs_3:%[^ ]+]] = f32[2,3,4]{2,1,0} abs([[broadcast_2]])
+// CHECK: ROOT [[bitcast_3_4:%[^ ]+]] = f32[2,4,3]{1,2,0} bitcast([[abs_3]])
+)");
+}
+
+TEST_F(LayoutNormalizationTest, BroadcastCustomOutputLayoutWithDegenerate) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[9]{0} parameter(0)
+  b = f32[2,1,4,9]{2,0,1,3} broadcast(a), dimensions={3}
+  ROOT out = abs(b)
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: %bitcast = f32[9]{0} bitcast(%a)
+// CHECK: %broadcast = f32[9,2,4]{2,1,0} broadcast(%bitcast), dimensions={0}
+// CHECK: %abs = f32[9,2,4]{2,1,0} abs(%broadcast)
+// CHECK: ROOT %bitcast.3 = f32[2,1,4,9]{2,0,1,3} bitcast(%abs)
+)");
+}
+
+TEST_F(LayoutNormalizationTest, BroadcastWithDegenerate) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[1,4,5]{0,1,2} parameter(0)
+  b = f32[1,4,3,1,2,5,1]{0,1,2,3,4,5,6} broadcast(a), dimensions={0,1,5}
+  ROOT out = abs(b)
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK:  [[broadcast_0:%[^ ]+]] = f32[5,2,3,4]{3,2,1,0} broadcast([[bitcast_1:%[^ ]+]]), dimensions={0,3}
+// CHECK:  [[abs_2:%[^ ]+]] = f32[5,2,3,4]{3,2,1,0} abs([[broadcast_0]])
+)");
+}
+
 }  // namespace
 }  // namespace xla
