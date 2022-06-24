@@ -6988,18 +6988,6 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
   }
 };
 
-// TF.PrintOp to mhlo.PrintOp
-class ConvertPrintOp : public OpRewritePattern<TF::PrintOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(TF::PrintOp op,
-                                PatternRewriter &rewriter) const final {
-    auto input = op.input();
-    rewriter.replaceOpWithNewOp<mhlo::PrintOp>(op, op.getType(), input);
-    return success();
-  }
-};
-
 // Converts tf.XlaSelectAndScatter to mhlo.SelectAndScatter
 class ConvertXlaSelectAndScatterOp
     : public OpRewritePattern<TF::XlaSelectAndScatterOp> {
@@ -7257,7 +7245,6 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertRollOp,
     ConvertLeakyReluOp,
     ConvertLeakyReluGradOp,
-    ConvertPrintOp,
     ConvertSplitOpDynamic,
     ConvertSliceOpDynamic,
     ConvertTileOpDynamic,

@@ -1714,10 +1714,6 @@ LogicalResult ExportXlaOp(DynamicConvOp op, OpLoweringContext ctx) {
   return failure();
 }
 
-LogicalResult ExportXlaOp(PrintOp op, OpLoweringContext ctx) {
-  return failure();
-}
-
 LogicalResult ExportXlaOp(UniformQuantizeOp op, OpLoweringContext ctx) {
   // Currently, it doesn't have an XLA builder equivalent.
   // TODO(b/230671877): Implement XLA import/export for quantized MHLO ops.

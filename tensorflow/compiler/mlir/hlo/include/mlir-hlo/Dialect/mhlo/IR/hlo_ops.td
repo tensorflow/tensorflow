@@ -2601,23 +2601,6 @@ def HLO_DynamicConvOp : HLO_Op<"dynamic_conv", [NoSideEffect]> {
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_PrintOp : HLO_Op<"print", []> {
-  let summary = "Print operation";
-  let description = [{
-    PrintOp is used to print tensor, which can be used to debug.
-  }];
-
-  let arguments = (ins
-      HLO_Tensor:$operand
-  );
-
-  let results = (outs
-    HLO_Tensor:$output
-  );
-
-  let hasCustomHLOConverter = 1;
-}
-
 def HLO_ComputeReshapeShapeOp :
     HLO_Op<"compute_reshape_shape", [NoSideEffect]> {
   string summary = "Compute input for reshape with any dynamic dim resolved";

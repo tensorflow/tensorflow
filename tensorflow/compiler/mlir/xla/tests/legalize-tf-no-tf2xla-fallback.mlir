@@ -6253,19 +6253,6 @@ func.func @xlasort_const() -> (tensor<2x3xi64>) {
 }
 
 //===----------------------------------------------------------------------===//
-// tf.Print legalization
-//===----------------------------------------------------------------------===//
-// CHECK-LABEL: @simple_print
-func.func @simple_print() -> (tensor<*xi32>) {
-  // CHECK: mhlo.constant dense<1> : tensor<i32>
-  // CHECK: tensor.cast {{.*}} : tensor<i32> to tensor<*xi32>
-  // CHECK: "mhlo.print"({{.*}}) : (tensor<*xi32>) -> tensor<*xi32>
-  %const = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<*xi32>
-  %print = "tf.Print"(%const) { message = "bla" } : (tensor<*xi32>) -> (tensor<*xi32>)
-  func.return %print: tensor<*xi32>
-}
-
-//===----------------------------------------------------------------------===//
 // tf.NextAfter legalization
 //===----------------------------------------------------------------------===//
 // CHECK-LABEL: func @nextafter
