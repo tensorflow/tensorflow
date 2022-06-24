@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_DEPTHWISE_CONV_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_DEPTHWISE_CONV_H_
 
+#include <memory>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -93,14 +95,13 @@ void UploadWeightsForDWConv2D(const tflite::gpu::Tensor<OHWI, T>& weights,
     desc.element_size = 4;
     desc.size = float4_size * elements_count;
     desc.data = std::move(data);
-    op->args_.AddObject("weights", absl::make_unique<BufferDescriptor>(desc));
+    op->args_.AddObject("weights", std::make_unique<BufferDescriptor>(desc));
   } else {
     Texture2DDescriptor desc;
     desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
     desc.size = int2(kernel_x * kernel_y, dst_slices);
     desc.data = std::move(data);
-    op->args_.AddObject("weights",
-                        absl::make_unique<Texture2DDescriptor>(desc));
+    op->args_.AddObject("weights", std::make_unique<Texture2DDescriptor>(desc));
   }
 }
 
@@ -169,14 +170,14 @@ void UploadWeightsForDWConv3D(const tflite::gpu::Tensor<OHWDI, T>& weights,
     desc.size = float4_size * elements_count;
     desc.data = std::move(data);
     op->args_.AddObject("weights",
-                        absl::make_unique<BufferDescriptor>(std::move(desc)));
+                        std::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
     Texture2DDescriptor desc;
     desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
     desc.size = int2(kernel_x * kernel_y * kernel_z, dst_slices);
     desc.data = std::move(data);
-    op->args_.AddObject(
-        "weights", absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+    op->args_.AddObject("weights",
+                        std::make_unique<Texture2DDescriptor>(std::move(desc)));
   }
 }
 

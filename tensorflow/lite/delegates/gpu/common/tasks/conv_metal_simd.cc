@@ -495,8 +495,8 @@ ConvolutionMetalSimd CreateConvolutionMetalSimd(
     weights_desc.data = ReorderWeightsForConv(
         attr.weights, weights_type, desc.params_.slices_per_thread / 2);
     weights_desc.size = weights_desc.data.size();
-    desc.args_.AddObject("weights", absl::make_unique<BufferDescriptor>(
-                                        std::move(weights_desc)));
+    desc.args_.AddObject(
+        "weights", std::make_unique<BufferDescriptor>(std::move(weights_desc)));
   }
 
   BufferDescriptor bias_desc;
@@ -507,7 +507,7 @@ ConvolutionMetalSimd CreateConvolutionMetalSimd(
                                         AlignByN(attr.weights.shape.o, 4 * 4));
   bias_desc.size = bias_desc.data.size();
   desc.args_.AddObject(
-      "biases", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
+      "biases", std::make_unique<BufferDescriptor>(std::move(bias_desc)));
 
   desc.work_group_size_ = desc.params_.work_group_size;
   desc.work_group_launch_order_ = desc.params_.work_group_launch_order;

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/fully_connected.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -212,7 +213,7 @@ void FullyConnected::UploadQuantizedWeights(
     args_.AddHalf("q1", half(-scale * (127.0 + zero_point)));
   }
   args_.AddObject("weights",
-                  absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+                  std::make_unique<Texture2DDescriptor>(std::move(desc)));
 }
 
 FullyConnected CreateFullyConnected(const GpuInfo& gpu_info,
@@ -233,7 +234,7 @@ FullyConnected CreateFullyConnected(const GpuInfo& gpu_info,
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(attr.bias);
   result.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+      "biases", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
 
   return result;
 }
@@ -256,7 +257,7 @@ FullyConnected CreateFullyConnected(const GpuInfo& gpu_info,
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(attr.bias);
   result.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+      "biases", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
 
   return result;
 

@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_CONSTANTS_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_CONSTANTS_H_
 
+#include <memory>
+#include <utility>
+
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -147,7 +150,7 @@ void UploadWeightsForConvConstants(const tflite::gpu::Tensor<OHWI, T>& weights,
   }
 
   op->args_.AddObject("weights",
-                      absl::make_unique<BufferDescriptor>(std::move(desc)));
+                      std::make_unique<BufferDescriptor>(std::move(desc)));
 }
 
 bool IsConvConstantsSupported(const GpuInfo& gpu_info,

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -50,7 +51,7 @@ absl::Status QuantAndDequant_Dim2Bits8Test(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateQuantizeAndDequantize(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 3, 2, 1), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({0.0f, 1.0f, 0.25098f, 0.498039f, 0.443137f, 0.0f},
@@ -87,7 +88,7 @@ absl::Status QuantAndDequant_Dim3Bits8_NegativeRangeTest(
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateQuantizeAndDequantize(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 3, 1, 2), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(
           {0.0f, -0.896471f, 0.247059f, 0.501176f, 0.444706f, 0.0f},
@@ -123,7 +124,7 @@ absl::Status QuantAndDequant_Dim3Bits16Test(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateQuantizeAndDequantize(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 3, 1, 2), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(
           {0.0f, 1.0f, 0.250004f, 0.500008f, 0.44445f, 1.5259e-05f},
@@ -160,7 +161,7 @@ absl::Status QuantAndDequant_Dim2Bits16_NegativeRangeTest(
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateQuantizeAndDequantize(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 3, 2, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(
           {0.0f, -0.900014f, 0.249998f, 0.499995f, 0.444431f, 0.0f},

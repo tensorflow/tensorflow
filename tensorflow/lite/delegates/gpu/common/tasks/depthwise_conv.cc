@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -274,8 +275,8 @@ GPUOperation CreateDepthwiseConvolution2D(
                                          : LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(attr.bias);
-  op.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  op.args_.AddObject("biases",
+                     std::make_unique<TensorLinearDescriptor>(std::move(desc)));
   return op;
 }
 
@@ -302,8 +303,8 @@ GPUOperation CreateDepthwiseConvolution2DDynamicWeights(
           : LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(attr.bias);
-  op.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  op.args_.AddObject("biases",
+                     std::make_unique<TensorLinearDescriptor>(std::move(desc)));
   return op;
 }
 
@@ -341,8 +342,8 @@ GPUOperation CreateDepthwiseConvolution3D(
                                          : LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(attr.bias);
-  op.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  op.args_.AddObject("biases",
+                     std::make_unique<TensorLinearDescriptor>(std::move(desc)));
   return op;
 }
 
