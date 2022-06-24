@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/match.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/convert/op_profile_builder.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"

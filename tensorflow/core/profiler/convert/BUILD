@@ -95,6 +95,7 @@ cc_library(
     srcs = ["op_stats_to_op_profile.cc"],
     hdrs = ["op_stats_to_op_profile.h"],
     deps = [
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/profiler/convert:op_profile_builder",
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
