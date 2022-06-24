@@ -15,12 +15,12 @@ limitations under the License.
 
 #include <utility>
 
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 
 namespace tensorflow {
@@ -145,7 +145,11 @@ struct FusionPass : public FusionBase<FusionPass> {
     tensor::CollapseShapeOp::getCanonicalizationPatterns(patterns, context);
     context->getLoadedDialect<linalg::LinalgDialect>()
         ->getCanonicalizationPatterns(patterns);
-    (void)applyPatternsAndFoldGreedily(op->getRegions(), std::move(patterns));
+    // Use TopDownTraversal for compile time reasons.
+    mlir::GreedyRewriteConfig grc;
+    grc.useTopDownTraversal = true;
+    (void)applyPatternsAndFoldGreedily(op->getRegions(), std::move(patterns),
+                                       grc);
   }
 };
 
