@@ -125,7 +125,7 @@ class ObjectGraphView(trackable_view.TrackableView):
 
   def _breadth_first_traversal(self):
     """Find shortest paths to all dependencies of self.root."""
-    return super(ObjectGraphView, self)._all_nodes_with_paths()
+    return super(ObjectGraphView, self)._descendants_with_paths()
 
   def serialize_object_graph(self, saveables_cache=None):
     """Determine checkpoint keys for variables and build a serialized graph.

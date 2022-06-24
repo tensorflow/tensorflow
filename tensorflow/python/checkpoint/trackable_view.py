@@ -66,11 +66,11 @@ class TrackableView(object):
     else:
       return self._root_ref
 
-  def all_nodes(self):
+  def descendants(self):
     """Returns a list of all nodes from self.root using a breadth first traversal."""
-    return self._all_nodes_with_paths()[0]
+    return self._descendants_with_paths()[0]
 
-  def _all_nodes_with_paths(self):
+  def _descendants_with_paths(self):
     """Returns a list of all nodes and its paths from self.root using a breadth first traversal."""
     bfs_sorted = []
     to_visit = collections.deque([self.root])
