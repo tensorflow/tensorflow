@@ -72,7 +72,7 @@ template <typename T>
 static Value getConstantLike(OpBuilder& b, Location loc, T constant,
                              Value val) {
   Type ty = getElementTypeOrSelf(val.getType());
-  if (auto complex_ty = ty.dyn_cast<ComplexType>()) {
+  if (auto complexTy = ty.dyn_cast<ComplexType>()) {
     // TODO(b/190374484): This code will only work for static shapes.
     // The proper way to support these constants is through chlo.constant_like
     // which then legalizes to code which works well for both static and dynamic
