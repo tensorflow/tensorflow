@@ -756,8 +756,6 @@ class XlaBuilder {
       const std::optional<Layout>& layout = std::nullopt,
       const std::optional<bool> use_global_device_ids = std::nullopt);
 
-  // TODO(b/219961627): Allow the replica_groups to be inferred (one group
-  // containing all replicas).
   XlaOp AllToAll(XlaOp operand, int64_t split_dimension,
                  int64_t concat_dimension, int64_t split_count,
                  absl::Span<const ReplicaGroup> replica_groups,

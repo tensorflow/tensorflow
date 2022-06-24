@@ -469,15 +469,8 @@ Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
 
   TF_RET_CHECK(all_to_all != nullptr);
 
-  // The size of each replica group must be the same (checked in
-  // CheckReplicaGroups). This is the split count of the operation). In case the
-  // empty replica group is used must not be an array all-to-all, as checked
-  // above), infer from the number of operands.
-  const int64_t split_count = hlo->replica_groups().empty()
-                                  ? hlo->operand_count()
-                                  : hlo->replica_groups()[0].replica_ids_size();
-
   if (all_to_all->split_dimension()) {
+    int64_t split_count = GetSubgroupSize(all_to_all, group_mode);
     TF_RET_CHECK(hlo->operand_count() == 1);
     return CheckShape(
         hlo, ShapeInference::InferAllToAllShape(
