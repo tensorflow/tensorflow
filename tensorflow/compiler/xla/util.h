@@ -418,44 +418,13 @@ std::string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
 // severity, filename, and line number.
 void LogLines(int sev, absl::string_view text, const char* fname, int lineno);
 
-// Used on a function to trap bad calls: any call that matches the specified
-// condition will cause a compile-time error. This macro uses a clang-specific
-// "diagnose_if" attribute, as described at
-// https://clang.llvm.org/docs/AttributeReference.html#diagnose-if
-//
-// Example:
-//
-//   int compute_absolute_value(int c)
-//     XLA_DIAGNOSE_ERROR_IF(c >= 0, "'c' is already positive.");
-#if ABSL_HAVE_ATTRIBUTE(diagnose_if)
-#define XLA_DIAGNOSE_ERROR_IF(...) \
-  __attribute__((diagnose_if(__VA_ARGS__, "error")))
-#else
-#define XLA_DIAGNOSE_ERROR_IF(...)
-#endif
-
-constexpr bool IsRuntimeEvaluated() {
-#ifdef __cpp_lib_is_constant_evaluated
-  return !std::is_constant_evaluated();
-#elif ABSL_HAVE_BUILTIN(__builtin_is_constant_evaluated)
-  return !__builtin_is_constant_evaluated();
-#else
-  return false;
-#endif
-}
-
 // Returns a mask with "width" number of least significant bits set.
 template <typename T>
-constexpr inline T LsbMask(int width)
-    XLA_DIAGNOSE_ERROR_IF(width < 0 || width >= std::numeric_limits<T>::digits,
-                          "width must be between [0, sizeof(T)*8)") {
+constexpr inline T LsbMask(int width) {
   static_assert(std::is_unsigned<T>::value,
                 "T should be an unsigned integer type");
-  if (IsRuntimeEvaluated()) {
-    DCHECK_GE(width, 0) << "Unsupported width " << width;
-    DCHECK_LE(width, std::numeric_limits<T>::digits)
-        << "Unsupported width " << width;
-  }
+  ABSL_ASSERT(width >= 0);
+  ABSL_ASSERT(width <= std::numeric_limits<T>::digits);
   return width == 0
              ? 0
              : static_cast<T>(-1) >> (std::numeric_limits<T>::digits - width);
@@ -488,13 +457,10 @@ constexpr inline T ClearUpperBits(T value, int width) {
 // Note: returns 1 when `exponent` is zero.
 // Precondition: `exponent` is non-negative.
 template <typename T>
-constexpr T IPow(T base, int exponent)
-    XLA_DIAGNOSE_ERROR_IF(exponent < 0, "exponent must be non-negative") {
-  if (IsRuntimeEvaluated()) {
-    // A negative `exponent` is indicative of a logic bug for integral `base`.
-    // We disallow it for floating-point types for symmetry.
-    DCHECK_GE(exponent, 0);
-  }
+constexpr T IPow(T base, int exponent) {
+  // A negative `exponent` is indicative of a logic bug for integral `base`.
+  // We disallow it for floating-point types for symmetry.
+  ABSL_ASSERT(exponent >= 0);
   // We use the right-to-left binary exponentiation algorithm.
   T result{1};
   while (exponent > 0) {
