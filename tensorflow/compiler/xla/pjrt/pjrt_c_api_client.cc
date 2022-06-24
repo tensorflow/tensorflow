@@ -127,11 +127,16 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::WrapBuffer(
 
 const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }
 
+PjRtCApiExecutable::~PjRtCApiExecutable() {
+  // TODO(silverstone): use a C API "Destroy method"
+  delete executable_;
+}
+
 PjRtCApiExecutable::PjRtCApiExecutable(PjRtCApiClient* client,
                                        std::unique_ptr<PjRtExecutable> wrapped)
-    : client_(client), wrapped_(std::move(wrapped)) {
-  addressable_devices_.reserve(wrapped_->addressable_devices().size());
-  for (PjRtDevice* device : wrapped_->addressable_devices()) {
+    : client_(client), executable_{new PJRT_Executable{std::move(wrapped)}} {
+  addressable_devices_.reserve(this->wrapped()->addressable_devices().size());
+  for (PjRtDevice* device : this->wrapped()->addressable_devices()) {
     addressable_devices_.push_back(client_->GetCApiDevice(device));
   }
 }
@@ -148,7 +153,7 @@ PjRtCApiExecutable::Execute(
 
   TF_ASSIGN_OR_RETURN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> out,
-      wrapped_->Execute(wrapped_args, options, returned_futures));
+      wrapped()->Execute(wrapped_args, options, returned_futures));
 
   for (auto& buffer_list : out) {
     for (std::unique_ptr<PjRtBuffer>& buffer : buffer_list) {
@@ -166,10 +171,10 @@ PjRtCApiExecutable::ExecuteSharded(
   std::vector<PjRtBuffer*> wrapped_args =
       PjRtCApiBuffer::GetWrappedVector(argument_handles);
 
-  TF_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<PjRtBuffer>> out,
-      wrapped_->ExecuteSharded(wrapped_args, PjRtCApiDevice::GetWrapped(device),
-                               options, returned_future, fill_future));
+  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> out,
+                      wrapped()->ExecuteSharded(
+                          wrapped_args, PjRtCApiDevice::GetWrapped(device),
+                          options, returned_future, fill_future));
 
   for (std::unique_ptr<PjRtBuffer>& buffer : out) {
     buffer = std::make_unique<PjRtCApiBuffer>(client_, std::move(buffer));
@@ -186,7 +191,7 @@ PjRtCApiExecutable::ExecutePortable(
       PjRtCApiBuffer::GetWrappedVector(argument_handles);
 
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> out,
-                      wrapped_->ExecutePortable(
+                      wrapped()->ExecutePortable(
                           wrapped_args, PjRtCApiDevice::GetWrapped(device),
                           options, returned_future, fill_future));
 
@@ -194,6 +199,25 @@ PjRtCApiExecutable::ExecutePortable(
     buffer = std::make_unique<PjRtCApiBuffer>(client_, std::move(buffer));
   }
   return out;
+}
+
+PjRtExecutable* PjRtCApiExecutable::wrapped() const {
+  return executable_->executable.get();
+}
+
+absl::string_view PjRtCApiExecutable::name() const {
+  const PJRT_Api* c_api = client_->pjrt_c_api();
+  PJRT_Executable_Name_Args args;
+  args.executable = executable_;
+  args.struct_size = PJRT_Executable_Name_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  PJRT_Error* error = c_api->PJRT_Executable_Name(&args);
+  // TODO(b/236710439): handle error
+  CHECK(error == nullptr);
+
+  absl::string_view executable_name(args.executable_name,
+                                    args.executable_name_size);
+  return executable_name;
 }
 
 StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient() {

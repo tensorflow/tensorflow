@@ -375,22 +375,24 @@ class PjRtCApiExecutable : public PjRtExecutable {
   PjRtCApiExecutable(PjRtCApiClient* client,
                      std::unique_ptr<PjRtExecutable> wrapped);
 
+  ~PjRtCApiExecutable() override;
+
   PjRtClient* client() const override { return client_; }
-  absl::string_view name() const override { return wrapped_->name(); }
-  int num_replicas() const override { return wrapped_->num_replicas(); }
-  int num_partitions() const override { return wrapped_->num_partitions(); }
+  absl::string_view name() const override;
+  int num_replicas() const override { return wrapped()->num_replicas(); }
+  int num_partitions() const override { return wrapped()->num_partitions(); }
 
   int64_t SizeOfGeneratedCodeInBytes() const override {
-    return wrapped_->SizeOfGeneratedCodeInBytes();
+    return wrapped()->SizeOfGeneratedCodeInBytes();
   }
 
   const DeviceAssignment& device_assignment() const override {
-    return wrapped_->device_assignment();
+    return wrapped()->device_assignment();
   }
 
   absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
       const override {
-    return wrapped_->addressable_device_logical_ids();
+    return wrapped()->addressable_device_logical_ids();
   }
 
   absl::Span<PjRtDevice* const> addressable_devices() const override {
@@ -399,7 +401,7 @@ class PjRtCApiExecutable : public PjRtExecutable {
 
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override {
-    return wrapped_->GetHloModules();
+    return wrapped()->GetHloModules();
   }
 
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
@@ -420,10 +422,10 @@ class PjRtCApiExecutable : public PjRtExecutable {
       std::optional<PjRtFuture<Status>>& returned_future,
       bool fill_future) override;
 
-  void Delete() override { return wrapped_->Delete(); }
-  bool IsDeleted() override { return wrapped_->IsDeleted(); }
+  void Delete() override { return wrapped()->Delete(); }
+  bool IsDeleted() override { return wrapped()->IsDeleted(); }
 
-  PjRtExecutable* wrapped() const { return wrapped_.get(); }
+  PjRtExecutable* wrapped() const;
 
   static PjRtExecutable* GetWrapped(const PjRtExecutable* c_api_executable) {
     return tensorflow::down_cast<const PjRtCApiExecutable*>(c_api_executable)
@@ -432,7 +434,7 @@ class PjRtCApiExecutable : public PjRtExecutable {
 
  private:
   PjRtCApiClient* client_;
-  std::unique_ptr<PjRtExecutable> wrapped_;
+  PJRT_Executable* executable_;
   std::vector<PjRtDevice*> addressable_devices_;
 };
 

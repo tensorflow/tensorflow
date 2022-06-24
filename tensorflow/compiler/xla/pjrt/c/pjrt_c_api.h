@@ -152,6 +152,26 @@ const size_t PJRT_Device_Id_Args_STRUCT_SIZE =
 // hosts' devices.
 typedef PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args);
 
+// ------------------------------- Executables ---------------------------------
+
+typedef struct PJRT_Executable PJRT_Executable;
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Executable* executable;
+  // `executable_name` has the same lifetime as `executable`. It is owned by
+  // `executable`.
+  const char* executable_name;  // out
+  size_t executable_name_size;  // out
+} PJRT_Executable_Name_Args;
+
+const size_t PJRT_Executable_Name_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Executable_Name_Args, executable_name_size);
+
+// Returns a string that identifies the executable.
+typedef PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args);
+
 // -------------------------------- API access ---------------------------------
 
 #define PJRT_API_STRUCT_FIELD(fn_type) fn_type* fn_type
@@ -170,10 +190,12 @@ typedef struct {
   PJRT_API_STRUCT_FIELD(PJRT_Client_PlatformVersion);
 
   PJRT_API_STRUCT_FIELD(PJRT_Device_Id);
+
+  PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);
 } PJRT_Api;
 
 const size_t PJRT_Api_STRUCT_SIZE =
-    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Client_Destroy);
+    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Executable_Name);
 
 #undef PJRT_API_STRUCT_FIELD
 
