@@ -70,6 +70,7 @@ pytype_strict_library(
         "//tensorflow/dtensor/proto:layout_proto_py_pb2",
         "//tensorflow/python:config",
         "//tensorflow/python:device",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
