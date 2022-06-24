@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <math.h>
 
+#include <algorithm>
 #include <cstddef>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
