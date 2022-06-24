@@ -3029,6 +3029,15 @@ func.func @reshape(%arg0: tensor<2xf32>, %arg1: tensor<2xi32>) -> tensor<2x1xf32
 
 // -----
 
+// CHECK-LABEL: not_lowering_reshape
+func.func @not_lowering_reshape(%arg0: tensor<!tf_type.string>, %arg1: tensor<1xi32>) -> tensor<1x!tf_type.string> {
+  // CHECK:  "tf.Reshape"
+  %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<!tf_type.string>, tensor<1xi32>) -> tensor<1x!tf_type.string>
+  func.return %0 : tensor<1x!tf_type.string>
+}
+
+// -----
+
 // CHECK-LABEL: reshape_dynamic
 func.func @reshape_dynamic(%arg0: tensor<?xf32>, %arg1: tensor<2xi32>) -> tensor<?x?xf32> {
   // CHECK:  "chlo.dynamic_reshape"
