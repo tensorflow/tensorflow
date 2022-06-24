@@ -19,6 +19,7 @@ limitations under the License.
 #include <list>
 #include <map>
 #include <memory>
+#include <string>
 #include <unordered_map>
 
 #include "tensorflow/lite/allocation.h"
