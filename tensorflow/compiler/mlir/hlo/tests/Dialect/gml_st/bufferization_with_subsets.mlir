@@ -9,8 +9,8 @@ func.func @subset_space(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %dim_1 = tensor.dim %input, %c1 : tensor<?x?xf32>
 
   %space = gml_st.space [%dim_0, %dim_1] : !gml_st.tile<?x?>
-  %identity = gml_st.materialize %input at %space
-    : tensor<?x?xf32> at !gml_st.tile<?x?>
+  %identity = gml_st.materialize %input[%space]
+    : tensor<?x?xf32>[!gml_st.tile<?x?>]
 
   return %identity : tensor<?x?xf32>
 }
@@ -31,8 +31,8 @@ func.func @subset_tile(%input: tensor<?x?xf32>) -> tensor<2x4xf32> {
   %tile = gml_st.tile %space[0, 1][2, 4][1, 1]
     : !gml_st.tile<?x?> to !gml_st.tile<2x4>
 
-  %slice = gml_st.materialize %input at %tile
-    : tensor<?x?xf32> at !gml_st.tile<2x4>
+  %slice = gml_st.materialize %input[%tile]
+    : tensor<?x?xf32>[!gml_st.tile<2x4>]
 
   return %slice : tensor<2x4xf32>
 }
@@ -57,8 +57,8 @@ func.func @subset_point(%input: tensor<?x?xf32>) -> f32 {
     : !gml_st.tile<?x?> to !gml_st.tile<2x4>
   %pt = gml_st.point %tile[0, 1] : !gml_st.tile<2x4> to !gml_st.point
 
-  %element = gml_st.materialize %input at %pt
-    : tensor<?x?xf32> at !gml_st.point
+  %element = gml_st.materialize %input[%pt]
+    : tensor<?x?xf32>[!gml_st.point]
 
   return %element : f32
 }

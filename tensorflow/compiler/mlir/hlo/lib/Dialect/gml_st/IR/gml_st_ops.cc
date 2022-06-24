@@ -436,68 +436,41 @@ LogicalResult LoopOp::verify() {
 // LoopLikeOp
 //===----------------------------------------------------------------------===//
 
-template <typename LoopTy>
-void buildLoopLikeOp(
-    OpBuilder &builder, OperationState &result, TypeRange resultTypes,
-    ValueRange lowerBounds, ValueRange upperBounds, ValueRange steps,
-    ValueRange outputs,
-    function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
-        bodyBuilderFn) {
-  result.addOperands(lowerBounds);
-  result.addOperands(upperBounds);
-  result.addOperands(steps);
-  result.addOperands(outputs);
-  result.addTypes(resultTypes);
-  result.addAttribute(
-      LoopOp::getOperandSegmentSizeAttr(),
-      builder.getI32VectorAttr({static_cast<int32_t>(lowerBounds.size()),
-                                static_cast<int32_t>(upperBounds.size()),
-                                static_cast<int32_t>(steps.size()),
-                                static_cast<int32_t>(outputs.size())}));
-
-  OpBuilder::InsertionGuard guard(builder);
-  unsigned numIvs = steps.size();
-  SmallVector<Type, 8> argTypes(numIvs, builder.getIndexType());
-  SmallVector<Location, 8> argLocs(numIvs, result.location);
-  for (Value output : outputs) {
-    argTypes.push_back(output.getType());
-    argLocs.push_back(output.getLoc());
-  }
-  Region *bodyRegion = result.addRegion();
-  Block *bodyBlock = builder.createBlock(bodyRegion, {}, argTypes, argLocs);
-
-  if (bodyBuilderFn) {
-    builder.setInsertionPointToStart(bodyBlock);
-    bodyBuilderFn(builder, result.location,
-                  bodyBlock->getArguments().take_front(numIvs),
-                  bodyBlock->getArguments().take_back(outputs.size()));
-    LoopOp::ensureTerminator(*bodyRegion, builder, result.location);
-  }
-}
-
 namespace {
-template <typename LoopTy>
-ParseResult parseOutputArgs(
-    OpAsmParser &parser,
-    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &outputRegionArgs,
-    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &outputs,
-    SmallVectorImpl<Type> &outputTypes) {
+
+ParseResult parseForOpOutputArgs(
+    OpAsmParser &parser, OperationState &result,
+    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &regionOperands,
+    SmallVectorImpl<Type> &regionTypes, int32_t *outputCount) {
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> outputs, outputRegionArgs;
+  SmallVector<Type, 4> outputTypes;
+
   auto parseElt = [&]() -> ParseResult {
-    if (std::is_same<LoopTy, ForOp>::value) {
-      if (parser.parseOperand(outputRegionArgs.emplace_back(),
-                              /*allowResultNumber=*/false) ||
-          parser.parseEqual()) {
-        return failure();
-      }
+    if (parser.parseOperand(outputRegionArgs.emplace_back(),
+                            /*allowResultNumber=*/false) ||
+        parser.parseEqual()) {
+      return failure();
     }
     if (parser.parseOperand(outputs.emplace_back()) || parser.parseColon() ||
         parser.parseType(outputTypes.emplace_back())) {
       return failure();
     }
+    *outputCount = outputs.size();
     return success();
   };
-  return parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parseElt);
+  if (succeeded(parser.parseOptionalKeyword("outs"))) {
+    SMLoc loc = parser.getCurrentLocation();
+
+    if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parseElt))
+      return failure();
+    if (parser.resolveOperands(outputs, outputTypes, loc, result.operands))
+      return failure();
+  }
+  regionOperands.append(outputRegionArgs);
+  regionTypes.append(outputTypes);
+  return success();
 }
+
 }  // namespace
 
 template <typename LoopTy>
@@ -532,26 +505,20 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
       parser.resolveOperands(steps, builder.getIndexType(), result.operands))
     return failure();
 
-  // Parse output tensors.
-  SmallVector<OpAsmParser::UnresolvedOperand, 4> outputs, outputRegionArgs;
-  SmallVector<Type, 4> outputTypes;
-  if (succeeded(parser.parseOptionalKeyword("outs"))) {
-    SMLoc loc = parser.getCurrentLocation();
+  SmallVector<int32_t> segmentSizes{static_cast<int32_t>(lower.size()),
+                                    static_cast<int32_t>(upper.size()),
+                                    static_cast<int32_t>(steps.size())};
 
-    if (parseOutputArgs<LoopTy>(parser, outputRegionArgs, outputs, outputTypes))
-      return failure();
-
-    if (parser.resolveOperands(outputs, outputTypes, loc, result.operands))
-      return failure();
-  }
-
-  // Parse the body.
-  SmallVector<Type, 4> regionTypes(ivs.size(), builder.getIndexType());
+  // Parse the output tensors (only for ForOp) and the body.
   SmallVector<OpAsmParser::UnresolvedOperand, 4> regionOperands(ivs);
+  SmallVector<Type, 4> regionTypes(ivs.size(), builder.getIndexType());
 
-  if (!outputRegionArgs.empty()) {
-    regionOperands.append(outputRegionArgs);
-    regionTypes.append(outputTypes);
+  if (std::is_same<LoopTy, ForOp>::value) {
+    int32_t outputCount = 0;
+    if (parseForOpOutputArgs(parser, result, regionOperands, regionTypes,
+                             &outputCount))
+      return failure();
+    segmentSizes.push_back(outputCount);
   }
 
   SmallVector<OpAsmParser::Argument, 4> regionArgs;
@@ -564,15 +531,13 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
 
   // Parse attributes.
   if (parser.parseOptionalAttrDict(result.attributes)) return failure();
-  result.addAttribute(
-      LoopTy::getOperandSegmentSizeAttr(),
-      builder.getI32VectorAttr({static_cast<int32_t>(lower.size()),
-                                static_cast<int32_t>(upper.size()),
-                                static_cast<int32_t>(steps.size()),
-                                static_cast<int32_t>(outputs.size())}));
 
   // Parser result types.
   if (parser.parseOptionalColonTypeList(result.types)) return failure();
+
+  // Add segment sizes.
+  result.addAttribute(LoopTy::getOperandSegmentSizeAttr(),
+                      builder.getI32VectorAttr(segmentSizes));
 
   return success();
 }
@@ -588,25 +553,36 @@ LogicalResult ParallelOp::verify() { return success(); }
 void ParallelOp::build(
     OpBuilder &builder, OperationState &result, TypeRange resultTypes,
     ValueRange lowerBounds, ValueRange upperBounds, ValueRange steps,
-    ValueRange outputs,
-    function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
-        bodyBuilderFn) {
-  buildLoopLikeOp<ParallelOp>(builder, result, resultTypes, lowerBounds,
-                              upperBounds, steps, outputs, bodyBuilderFn);
+    function_ref<void(OpBuilder &, Location, ValueRange)> bodyBuilderFn) {
+  result.addOperands(lowerBounds);
+  result.addOperands(upperBounds);
+  result.addOperands(steps);
+  result.addTypes(resultTypes);
+  result.addAttribute(
+      LoopOp::getOperandSegmentSizeAttr(),
+      builder.getI32VectorAttr({static_cast<int32_t>(lowerBounds.size()),
+                                static_cast<int32_t>(upperBounds.size()),
+                                static_cast<int32_t>(steps.size())}));
+
+  OpBuilder::InsertionGuard guard(builder);
+  unsigned numIvs = steps.size();
+  SmallVector<Type, 8> argTypes(numIvs, builder.getIndexType());
+  SmallVector<Location, 8> argLocs(numIvs, result.location);
+  Region *bodyRegion = result.addRegion();
+  Block *bodyBlock = builder.createBlock(bodyRegion, {}, argTypes, argLocs);
+
+  if (bodyBuilderFn) {
+    builder.setInsertionPointToStart(bodyBlock);
+    bodyBuilderFn(builder, result.location,
+                  bodyBlock->getArguments().take_front(numIvs));
+    LoopOp::ensureTerminator(*bodyRegion, builder, result.location);
+  }
 }
 
 void ParallelOp::print(OpAsmPrinter &p) {
   p << " (" << getInductionVars() << ") = (" << lowerBound() << ") to ("
-    << upperBound() << ") step (" << step() << ")";
+    << upperBound() << ") step (" << step() << ") ";
 
-  if (!outputs().empty()) {
-    p << " outs (";
-    llvm::interleaveComma(outputs(), p,
-                          [&](auto it) { p << it << ": " << it.getType(); });
-    p << ")";
-  }
-
-  p << ' ';
   p.printRegion(region(), /*printEntryBlockArgs=*/false);
   p.printOptionalAttrDict(
       getOperation()->getAttrs(),
@@ -646,8 +622,36 @@ void ForOp::build(
     ValueRange outputs,
     function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
         bodyBuilderFn) {
-  buildLoopLikeOp<ForOp>(builder, result, resultTypes, lowerBounds, upperBounds,
-                         steps, outputs, bodyBuilderFn);
+  result.addOperands(lowerBounds);
+  result.addOperands(upperBounds);
+  result.addOperands(steps);
+  result.addOperands(outputs);
+  result.addTypes(resultTypes);
+  result.addAttribute(
+      LoopOp::getOperandSegmentSizeAttr(),
+      builder.getI32VectorAttr({static_cast<int32_t>(lowerBounds.size()),
+                                static_cast<int32_t>(upperBounds.size()),
+                                static_cast<int32_t>(steps.size()),
+                                static_cast<int32_t>(outputs.size())}));
+
+  OpBuilder::InsertionGuard guard(builder);
+  unsigned numIvs = steps.size();
+  SmallVector<Type, 8> argTypes(numIvs, builder.getIndexType());
+  SmallVector<Location, 8> argLocs(numIvs, result.location);
+  for (Value output : outputs) {
+    argTypes.push_back(output.getType());
+    argLocs.push_back(output.getLoc());
+  }
+  Region *bodyRegion = result.addRegion();
+  Block *bodyBlock = builder.createBlock(bodyRegion, {}, argTypes, argLocs);
+
+  if (bodyBuilderFn) {
+    builder.setInsertionPointToStart(bodyBlock);
+    bodyBuilderFn(builder, result.location,
+                  bodyBlock->getArguments().take_front(numIvs),
+                  bodyBlock->getArguments().take_back(outputs.size()));
+    LoopOp::ensureTerminator(*bodyRegion, builder, result.location);
+  }
 }
 
 void ForOp::print(OpAsmPrinter &p) {

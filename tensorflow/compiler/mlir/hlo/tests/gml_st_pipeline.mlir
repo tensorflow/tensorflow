@@ -15,20 +15,19 @@ func.func @log(%arg0: tensor<2048xf32>) -> tensor<2048xf32> {
 // CHECK:     %[[SPACE:.*]] = gml_st.space [2048] : !gml_st.tile<2048>
 // CHECK:     %[[RESULT:.*]] = gml_st.parallel (%[[IV:.*]]) = (%[[C0]])
 // CHECK:         to (%[[C2048]]) step (%[[C256]])
-// CHECK:         outs (%[[INIT]]: tensor<2048xf32>)
 // CHECK:       %[[TILE:.*]] = gml_st.tile %[[SPACE]] [%[[IV]]] [256] [1] :
 // CHECK:                      !gml_st.tile<2048> to !gml_st.tile<256>
-// CHECK:       %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG0]] at %[[TILE]] :
-// CHECK:                         tensor<2048xf32> at !gml_st.tile<256>
-// CHECK:       %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]] at %[[TILE]] :
-// CHECK:                          tensor<2048xf32> at !gml_st.tile<256>
+// CHECK:       %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG0]][%[[TILE]]] :
+// CHECK:                         tensor<2048xf32>[!gml_st.tile<256>]
+// CHECK:       %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[TILE]]] :
+// CHECK:                          tensor<2048xf32>[!gml_st.tile<256>]
 // CHECK:       %[[LINALG_OP:.*]] = linalg.generic
 // CHECK:                           ins(%[[ARG_SUB]] : tensor<256xf32>)
 // CHECK:                           outs(%[[INIT_SUB:.*]] : tensor<256xf32>)
 // CHECK:         %[[LOG:.*]] = math.log %{{.*}} : f32
 // CHECK:         linalg.yield %[[LOG]] : f32
-// CHECK:       gml_st.subset_yield %[[LINALG_OP]] at %[[TILE]] :
-// CHECK:           tensor<256xf32> at !gml_st.tile<256>
+// CHECK:       gml_st.subset_yield %[[LINALG_OP]] into %[[INIT]][%[[TILE]]] :
+// CHECK:           tensor<256xf32> into tensor<2048xf32>[!gml_st.tile<256>]
 // CHECK:     return %[[RESULT]] : tensor<2048xf32>
 
 // -----

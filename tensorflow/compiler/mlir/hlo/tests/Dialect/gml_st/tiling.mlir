@@ -36,17 +36,17 @@ func.func @elemenwise(%lhs : tensor<?x?xf32>,
 
 // POINT:       %[[SPACE:.*]] = gml_st.space {{.*}} : !gml_st.tile<?x?>
 // POINT:       %{{.*}} = gml_st.parallel (%[[I:.*]], %[[J:.*]]) =
-// POINT-SAME:      outs (%{{.*}}: tensor<?x?xf32>)
 
 // POINT:         %[[PT:.*]] = gml_st.point %[[SPACE]] [%[[I]], %[[J]]]
 // POINT-SAME:        !gml_st.tile<?x?> to !gml_st.point
-// POINT:         %[[LHS_PT:.*]] = gml_st.materialize %[[LHS]] at %[[PT]]
-// POINT-SAME:        : tensor<?x?xf32> at !gml_st.point
-// POINT:         %[[RHS_PT:.*]] = gml_st.materialize %[[RHS]] at %[[PT]]
-// POINT-SAME:        : tensor<?x?xf32> at !gml_st.point
+// POINT:         %[[LHS_PT:.*]] = gml_st.materialize %[[LHS]][%[[PT]]]
+// POINT-SAME:        : tensor<?x?xf32>[!gml_st.point]
+// POINT:         %[[RHS_PT:.*]] = gml_st.materialize %[[RHS]][%[[PT]]]
+// POINT-SAME:        : tensor<?x?xf32>[!gml_st.point]
    
 // POINT:         %[[ADD:.*]] = arith.addf %[[LHS_PT]], %[[RHS_PT]] : f32
-// POINT:         gml_st.subset_yield %[[ADD]] at %[[PT]] : f32 at !gml_st.point
+// POINT:         gml_st.subset_yield %[[ADD]] into %{{.*}}[%[[PT]]]
+// POINT-SAME:        f32 into tensor<?x?xf32>[!gml_st.point]
 
 // TILE-LABEL: @elemenwise
 // TILE-SAME:  %[[LHS:.*]]: tensor<?x?xf32>, %[[RHS:.*]]: tensor<?x?xf32>
@@ -61,7 +61,6 @@ func.func @elemenwise(%lhs : tensor<?x?xf32>,
 // TILE:       %{{.*}} = gml_st.parallel (%[[I:.*]], %[[J:.*]]) =
 // TILE-SAME:      (%[[C0]], %[[C0]]) to (%[[DIM0]], %[[DIM1]])
 // TILE-SAME:      step (%[[C4]], %[[C1]])
-// TILE-SAME:      outs (%{{.*}}: tensor<?x?xf32>)
 
 // TILE:         %[[NEXT_IV:.*]] = arith.addi %[[I]], %[[C4]] : index
 // TILE:         %[[IS_PARTIAL:.*]] = arith.cmpi sgt, %[[NEXT_IV]], %[[DIM0]]
@@ -71,14 +70,14 @@ func.func @elemenwise(%lhs : tensor<?x?xf32>,
 // TILE:         %[[TILE:.*]] = gml_st.tile %[[SPACE]]
 // TILE:             [%[[I]], %[[J]]] [%[[SIZE]], 1] [1, 1]
 // TILE:             : !gml_st.tile<?x?> to !gml_st.tile<?x1>
-// TILE:         %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]] at %[[TILE]]
-// TILE:         %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]] at %[[TILE]]
-// TILE:         %[[OUT_SUB:.*]] = gml_st.materialize %[[INIT]] at %[[TILE]]
+// TILE:         %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]][%[[TILE]]]
+// TILE:         %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]][%[[TILE]]]
+// TILE:         %[[OUT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[TILE]]]
 // TILE:         %[[LINALG_OP:.*]] = linalg.generic
 // TILE-SAME:        ins(%[[LHS_SUB]], %[[RHS_SUB]]
 // TILE-SAME:        : tensor<?x1xf32>, tensor<?x1xf32>)
 // TILE-SAME:        outs(%[[OUT_SUB]] : tensor<?x1xf32>)
 // TILE:           %[[ADDF:.*]] = arith.addf
 // TILE:           linalg.yield %[[ADDF]] : f32
-// TILE:         gml_st.subset_yield %[[LINALG_OP]] at %[[TILE]]
-// TILE-SAME:        : tensor<?x1xf32> at !gml_st.tile<?x1>
+// TILE:         gml_st.subset_yield %[[LINALG_OP]] into %[[INIT]][%[[TILE]]]
+// TILE-SAME:        : tensor<?x1xf32> into tensor<?x?xf32>[!gml_st.tile<?x1>]

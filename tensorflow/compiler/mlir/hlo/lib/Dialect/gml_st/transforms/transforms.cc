@@ -381,9 +381,8 @@ FailureOr<TilingResult> tileToTiles(RewriterBase &b, linalg::LinalgOp linalgOp,
   }
   LinalgOp result;
   auto loop = b.create<ParallelOp>(
-      loc, output.getType(), lowerBounds, upperBounds, steps, output,
-      [&](OpBuilder &b, Location nestedLoc, ValueRange ivs,
-          ValueRange /*outputs*/) {
+      loc, output.getType(), lowerBounds, upperBounds, steps,
+      [&](OpBuilder &b, Location nestedLoc, ValueRange ivs) {
         auto operandTile = createTile(b, nestedLoc, ivs, upperBounds, steps,
                                       outputType.getShape(), tileSizes, space);
         auto tiledResultTy = RankedTensorType::get(
@@ -402,10 +401,10 @@ FailureOr<TilingResult> tileToTiles(RewriterBase &b, linalg::LinalgOp linalgOp,
         // Clone 'linalgOp' and replace the original operands with
         // 'tiledOperands'.
         result = linalgOp.clone(b, loc, tiledResultTy, tiledOperands);
-        SmallVector<Value> outputOperands = result->getResults();
+        SmallVector<Value> tiledResults = result->getResults();
         b.create<SubsetYieldOp>(
-            nestedLoc, outputOperands,
-            SmallVector<Value>(outputOperands.size(), operandTile));
+            nestedLoc, tiledResults, SmallVector<Value>{output},
+            SmallVector<Value>(tiledResults.size(), operandTile));
       });
 
   return TilingResult{loop.getOperation(), result};
@@ -439,9 +438,8 @@ FailureOr<TilingResult> tileToPoints(RewriterBase &b,
     }
   }
   auto loop = b.create<ParallelOp>(
-      loc, output.getType(), lowerBounds, upperBounds, steps, output,
-      [&](OpBuilder &b, Location nestedLoc, ValueRange ivs,
-          ValueRange /*outputs*/) {
+      loc, output.getType(), lowerBounds, upperBounds, steps,
+      [&](OpBuilder &b, Location nestedLoc, ValueRange ivs) {
         Value point = b.create<PointOp>(
             nestedLoc, b.getType<PointType>(), space, ivs,
             b.getI64ArrayAttr(SmallVector<int64_t>(
@@ -459,7 +457,7 @@ FailureOr<TilingResult> tileToPoints(RewriterBase &b,
         for (Value val : block.getTerminator()->getOperands())
           yieldedValues.push_back(bvm.lookup(val));
         b.create<SubsetYieldOp>(
-            nestedLoc, yieldedValues,
+            nestedLoc, yieldedValues, SmallVector<Value>{output},
             SmallVector<Value>(yieldedValues.size(), point));
       });
 

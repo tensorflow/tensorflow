@@ -46,8 +46,8 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
   // CHECK-DAG: %[[ARG_TILE:.*]] = gml_st.tile %8 [%[[ARG_OFFSET_D0]], %[[ARG_OFFSET_D1]]] [%[[ARG_SIZE_D0]], %[[ARG_SIZE_D1]]] [1, 1] : !gml_st.tile<?x?> to !gml_st.tile<?x?>
 
   // Check tiled broadcast.
-  // CHECK-DAG: %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]] at %[[RES_TILE]] : tensor<?x?x?xf32> at !gml_st.tile<3x4x5>
-  // CHECK-DAG: %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]] at %[[ARG_TILE]] : tensor<?x?xf32> at !gml_st.tile<?x?>
+  // CHECK-DAG: %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[RES_TILE]]] : tensor<?x?x?xf32>[!gml_st.tile<3x4x5>]
+  // CHECK-DAG: %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]][%[[ARG_TILE]]] : tensor<?x?xf32>[!gml_st.tile<?x?>]
   // CHECK-DAG: %[[RES:.*]] = gml_st.dynamic_broadcast_in_dim %[[INIT_SUB]], %[[ARG_SUB]], [0, 2] : tensor<3x4x5xf32>, tensor<?x?xf32> -> tensor<3x4x5xf32>
   // CHECK: return %[[RES]] : tensor<3x4x5xf32>
 
@@ -67,8 +67,8 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
   %space = gml_st.space [%d0, %d1, %d2] : !gml_st.tile<?x?x?>
   %tile = gml_st.tile %space [0, 1, 2] [3, 4, 5] [1, 1, 1]
       : !gml_st.tile<?x?x?> to !gml_st.tile<3x4x5>
-  %bcast_sub = gml_st.materialize %bcast at %tile
-      : tensor<?x?x?xf32> at !gml_st.tile<3x4x5>
+  %bcast_sub = gml_st.materialize %bcast[%tile]
+      : tensor<?x?x?xf32>[!gml_st.tile<3x4x5>]
 
   func.return %bcast_sub : tensor<3x4x5xf32>
 }
@@ -79,12 +79,12 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
 // CHECK-SAME:  %[[LHS:.*]]: tensor<32x32xf32>, %[[RHS:.*]]: tensor<32x32xf32>, %[[TILE:.*]]: !gml_st.tile<?x?>
 func.func @add(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
     %tile: !gml_st.tile<?x?>) -> tensor<?x?xf32> {
-  // CHECK-DAG: %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]] at %[[TILE]] : tensor<32x32xf32> at !gml_st.tile<?x?>
-  // CHECK-DAG: %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]] at %[[TILE]] : tensor<32x32xf32> at !gml_st.tile<?x?>
+  // CHECK-DAG: %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]][%[[TILE]]] : tensor<32x32xf32>[!gml_st.tile<?x?>]
+  // CHECK-DAG: %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]][%[[TILE]]] : tensor<32x32xf32>[!gml_st.tile<?x?>]
   // CHECK-DAG: %[[RES:.*]] = mhlo.add %[[LHS_SUB]], %[[RHS_SUB]] : tensor<?x?xf32>
   // CHECK:     return %[[RES]]
   %0 = mhlo.add %lhs, %rhs : tensor<32x32xf32>
-  %1 = gml_st.materialize %0 at %tile : tensor<32x32xf32> at !gml_st.tile<?x?>
+  %1 = gml_st.materialize %0[%tile] : tensor<32x32xf32>[!gml_st.tile<?x?>]
   func.return %1 : tensor<?x?xf32>
 }
 
@@ -94,11 +94,11 @@ func.func @add(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
 // CHECK-SAME:  %[[ARG:.*]]: tensor<32x32xf32>, %[[TILE:.*]]: !gml_st.tile<?x?>
 func.func @cos(%arg: tensor<32x32xf32>, %tile: !gml_st.tile<?x?>)
     -> tensor<?x?xf32> {
-  // CHECK-DAG: %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]] at %[[TILE]] : tensor<32x32xf32> at !gml_st.tile<?x?>
+  // CHECK-DAG: %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]][%[[TILE]]] : tensor<32x32xf32>[!gml_st.tile<?x?>]
   // CHECK-DAG: %[[RES:.*]] = mhlo.cosine %[[ARG_SUB]] : tensor<?x?xf32>
   // CHECK:     return %[[RES]]
   %0 = mhlo.cosine %arg : tensor<32x32xf32>
-  %1 = gml_st.materialize %0 at %tile : tensor<32x32xf32> at !gml_st.tile<?x?>
+  %1 = gml_st.materialize %0[%tile] : tensor<32x32xf32>[!gml_st.tile<?x?>]
   return %1 : tensor<?x?xf32>
 }
 
@@ -108,12 +108,12 @@ func.func @cos(%arg: tensor<32x32xf32>, %tile: !gml_st.tile<?x?>)
 // CHECK-SAME:  %[[LHS:.*]]: tensor<32x32xf32>, %[[RHS:.*]]: tensor<32x32xf32>, %[[POINT:.*]]: !gml_st.point
 func.func @add_point(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
     %point: !gml_st.point) -> f32 {
-  // CHECK-DAG: %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]] at %[[POINT]] : tensor<32x32xf32> at !gml_st.point
-  // CHECK-DAG: %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]] at %[[POINT]] : tensor<32x32xf32> at !gml_st.point
+  // CHECK-DAG: %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]][%[[POINT]]] : tensor<32x32xf32>[!gml_st.point]
+  // CHECK-DAG: %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]][%[[POINT]]] : tensor<32x32xf32>[!gml_st.point]
   // CHECK-DAG: %[[RES:.*]] = arith.addf %[[LHS_SUB]], %[[RHS_SUB]]
   // CHECK:     return %[[RES]]
   %0 = mhlo.add %lhs, %rhs : tensor<32x32xf32>
-  %1 = gml_st.materialize %0 at %point : tensor<32x32xf32> at !gml_st.point
+  %1 = gml_st.materialize %0[%point] : tensor<32x32xf32>[!gml_st.point]
   func.return %1 : f32
 }
 
@@ -122,11 +122,11 @@ func.func @add_point(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
 // CHECK-LABEL: @cos_point
 // CHECK-SAME:  %[[ARG:.*]]: tensor<32x32xf32>, %[[POINT:.*]]: !gml_st.point
 func.func @cos_point(%arg: tensor<32x32xf32>, %point: !gml_st.point) -> f32 {
-  // CHECK-DAG: %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]] at %[[POINT]] : tensor<32x32xf32> at !gml_st.point
+  // CHECK-DAG: %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]][%[[POINT]]] : tensor<32x32xf32>[!gml_st.point]
   // CHECK-DAG: %[[RES:.*]] = math.cos %[[ARG_SUB]]
   // CHECK:     return %[[RES]]
   %0 = mhlo.cosine %arg : tensor<32x32xf32>
-  %1 = gml_st.materialize %0 at %point : tensor<32x32xf32> at !gml_st.point
+  %1 = gml_st.materialize %0[%point] : tensor<32x32xf32>[!gml_st.point]
   return %1 : f32
 }
 
@@ -149,18 +149,19 @@ func.func @fuse_into_ploop(%lhs : tensor<8xf32>, %rhs : tensor<8xf32>,
   // CHECK-DAG: %[[C4:.*]] = arith.constant 4
   // CHECK-DAG: %[[C0:.*]] = arith.constant 0
   // CHECK-DAG: %[[SPACE:.*]] = gml_st.space [8] : !gml_st.tile<8>
-  // CHECK:     %[[RES:.*]] = gml_st.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[C8]]) step (%[[C4]]) outs (%[[OUT]]: tensor<8xf32>) {
+  // CHECK:     %[[RES:.*]] = gml_st.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[C8]]) step (%[[C4]]) {
   // CHECK-DAG:   %[[TILE:.*]] = gml_st.tile %[[SPACE]] [%[[I]]] [4] [1] : !gml_st.tile<8> to !gml_st.tile<4>
-  // CHECK-DAG:   %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]] at %[[TILE]] : tensor<8xf32> at !gml_st.tile<4>
-  // CHECK-DAG:   %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]] at %[[TILE]] : tensor<8xf32> at !gml_st.tile<4>
-  // CHECK-DAG:   %[[OUT_SUB:.*]] = gml_st.materialize %[[OUT]] at %[[TILE]] : tensor<8xf32> at !gml_st.tile<4>
+  // CHECK-DAG:   %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]][%[[TILE]]] : tensor<8xf32>[!gml_st.tile<4>]
+  // CHECK-DAG:   %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]][%[[TILE]]] : tensor<8xf32>[!gml_st.tile<4>]
+  // CHECK-DAG:   %[[OUT_SUB:.*]] = gml_st.materialize %[[OUT]][%[[TILE]]] : tensor<8xf32>[!gml_st.tile<4>]
   // CHECK-DAG:   %[[TANH_SUB:.*]] = mhlo.tanh %[[LHS_SUB]]
   // CHECK-DAG:   %[[COS_SUB:.*]] = mhlo.cosine %[[RHS_SUB]]
   // CHECK:       %[[RES_SUB:.*]] = linalg.generic {indexing_maps = [#map, #map, #map], iterator_types = ["parallel"]} ins(%[[TANH_SUB]], %[[COS_SUB]] : tensor<4xf32>, tensor<4xf32>) outs(%[[OUT_SUB]] : tensor<4xf32>)
   // CHECK:       ^bb0(%[[TANH_SCALAR:.*]]: f32, %[[COS_SCALAR:.*]]: f32, %{{.*}}: f32):
   // CHECK-DAG:     %[[RES_SCALAR:.*]] = arith.addf %[[TANH_SCALAR]], %[[COS_SCALAR]] : f32
   // CHECK:         linalg.yield %[[RES_SCALAR]]
-  // CHECK:       gml_st.subset_yield %[[RES_SUB]] at %[[TILE]] : tensor<4xf32> at !gml_st.tile<4>
+  // CHECK:       gml_st.subset_yield %[[RES_SUB]] into %[[OUT]][%[[TILE]]
+  // CHECK-SAME:    : tensor<4xf32> into tensor<8xf32>[!gml_st.tile<4>]
   // CHECK:     return %[[RES]]
 
   %tanh = mhlo.tanh %lhs : tensor<8xf32>
@@ -170,15 +171,14 @@ func.func @fuse_into_ploop(%lhs : tensor<8xf32>, %rhs : tensor<8xf32>,
   %c4 = arith.constant 4 : index
   %c8 = arith.constant 8 : index
   %space = gml_st.space [8] : !gml_st.tile<8>
-  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4)
-      outs(%out : tensor<8xf32>) {
+  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4) {
     %tile = gml_st.tile %space [%i] [4] [1] : !gml_st.tile<8> to !gml_st.tile<4>
-    %tanh_sub = gml_st.materialize %tanh at %tile
-        : tensor<8xf32> at !gml_st.tile<4>
-    %cos_sub = gml_st.materialize %cos at %tile
-        : tensor<8xf32> at !gml_st.tile<4>
-    %out_sub = gml_st.materialize %out at %tile
-        : tensor<8xf32> at !gml_st.tile<4>
+    %tanh_sub = gml_st.materialize %tanh[%tile]
+        : tensor<8xf32>[!gml_st.tile<4>]
+    %cos_sub = gml_st.materialize %cos[%tile]
+        : tensor<8xf32>[!gml_st.tile<4>]
+    %out_sub = gml_st.materialize %out[%tile]
+        : tensor<8xf32>[!gml_st.tile<4>]
 
     %result_sub = linalg.generic #cwise_trait
         ins(%tanh_sub, %cos_sub : tensor<4xf32>, tensor<4xf32>)
@@ -188,7 +188,7 @@ func.func @fuse_into_ploop(%lhs : tensor<8xf32>, %rhs : tensor<8xf32>,
         linalg.yield %s : f32
     } -> tensor<4xf32>
 
-    gml_st.subset_yield %result_sub at %tile : tensor<4xf32> at !gml_st.tile<4>
+    gml_st.subset_yield %result_sub into %out[%tile] : tensor<4xf32> into tensor<8xf32>[!gml_st.tile<4>]
   } : tensor<8xf32>
   func.return %sum : tensor<8xf32>
 }
