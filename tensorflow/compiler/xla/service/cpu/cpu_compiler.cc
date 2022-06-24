@@ -420,7 +420,9 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     if (num_partitions > 1) {
       // Run some IR cleanup passes before running the SPMD partitioning
       // passes.
-      spmd_pipeline.AddInvariantChecker<HloVerifier>(HloVerifierOpts{});
+      spmd_pipeline.AddInvariantChecker<HloVerifier>(
+          /*layout_sensitive=*/false,
+          /*allow_mixed_precision=*/false);
       spmd_pipeline.AddPass<CallInliner>();
       spmd_pipeline.AddPass<ZeroSizedHloElimination>();
       spmd_pipeline.AddPass<ConditionalCanonicalizer>();
@@ -439,7 +441,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   }
 
   HloPassPipeline pipeline("HLO passes through layout assignment");
-  pipeline.AddInvariantChecker<HloVerifier>(HloVerifierOpts{});
+  pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
+                                            /*allow_mixed_precision=*/false);
 
   pipeline.AddPass<OperandUpcaster>();
   pipeline.AddPass<ResultCaster>();
@@ -515,7 +518,9 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // Run the following passes to a fixed point.
   [&pipeline =
        pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification")] {
-    pipeline.AddInvariantCheckerDebug<HloVerifier>(HloVerifierOpts{});
+    pipeline.AddInvariantCheckerDebug<HloVerifier>(
+        /*layout_sensitive=*/false,
+        /*allow_mixed_precision=*/false);
 
     AlgebraicSimplifierOptions options;
     options.set_enable_dot_strength_reduction(false);
@@ -606,7 +611,8 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // After layout assignment, use a layout-sensitive verifier.
   pipeline.AddPass<HloPassPipeline>("after layout assignment")
       .AddInvariantCheckerDebug<HloVerifier>(
-          HloVerifierOpts{}.MakeLayoutSensitive());
+          /*layout_sensitive=*/true,
+          /*allow_mixed_precision=*/false);
 
   pipeline.AddPass<ReshapeDecomposer>();
 
@@ -619,8 +625,9 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
        "simplification after layout assignment")] {
     pipeline.AddInvariantCheckerDebug<HloVerifier>(
-        HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
-            LayoutAssignment::InstructionCanChangeLayout));
+        /*layout_sensitive=*/true,
+        /*allow_mixed_precision=*/false,
+        LayoutAssignment::InstructionCanChangeLayout);
     AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
     options.set_enable_dot_strength_reduction(false);

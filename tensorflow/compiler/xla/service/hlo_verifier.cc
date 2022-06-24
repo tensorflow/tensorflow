@@ -15,10 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 
-#include <memory>
-#include <optional>
-#include <vector>
-
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -779,7 +775,7 @@ bool ShapeVerifier::HasCompatibleElementTypes(const Shape& shape_0,
                                               const Shape& result_shape) {
   return ShapeUtil::SameElementType(shape_0, shape_1) &&
          (ShapeUtil::SameElementType(shape_0, result_shape) ||
-          (opts_.allow_mixed_precision &&
+          (allow_mixed_precision_ &&
            ShapeUtil::SameElementTypeIgnoringFpPrecision(shape_0,
                                                          result_shape)));
 }
@@ -1005,21 +1001,21 @@ Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
                              operand_shapes, reduce->dimensions(),
                              reduce->to_apply()->ComputeProgramShape())));
 
-  return opts_.allow_mixed_precision
+  return allow_mixed_precision_
              ? OkStatus()
              : SameElementTypesForOperandsAndToApplyParameters(
                    *reduce, reduce->operand_count());
 }
 
 Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
-  if (opts_.layout_sensitive &&
-      opts_.shape_size(bitcast->shape()) !=
-          opts_.shape_size(bitcast->operand(0)->shape())) {
+  if (layout_sensitive_ &&
+      shape_size_function_(bitcast->shape()) !=
+          shape_size_function_(bitcast->operand(0)->shape())) {
     return InternalError(
         "Bitcast cannot have different shape sizes of output (%d) and operand "
         "(%d) (%s) (%s)",
-        opts_.shape_size(bitcast->shape()),
-        opts_.shape_size(bitcast->operand(0)->shape()),
+        shape_size_function_(bitcast->shape()),
+        shape_size_function_(bitcast->operand(0)->shape()),
         bitcast->shape().ToString(true),
         bitcast->operand(0)->shape().ToString(true));
   }
@@ -1155,7 +1151,7 @@ Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
         ShapeUtil::GetSubshape(custom_call->shape(), pair.first);
     const Shape& operand_subshape = ShapeUtil::GetSubshape(
         custom_call->operand(pair.second.first)->shape(), pair.second.second);
-    if (opts_.layout_sensitive) {
+    if (layout_sensitive_) {
       TF_RET_CHECK(operand_subshape == output_subshape)
           << "Different aliasing shapes: " << operand_subshape.ToString()
           << " vs " << output_subshape.ToString();
@@ -1216,7 +1212,7 @@ Status ShapeVerifier::HandleMap(HloInstruction* map) {
       ShapeInference::InferMapShape(
           operand_shapes, map->to_apply()->ComputeProgramShape(), map_dims)));
 
-  return opts_.allow_mixed_precision
+  return allow_mixed_precision_
              ? OkStatus()
              : SameElementTypesForOperandsAndToApplyParameters(
                    *map, map->operand_count());
@@ -1234,7 +1230,7 @@ Status ShapeVerifier::HandleReduceWindow(HloInstruction* reduce_window) {
                          input_shapes, init_shapes, reduce_window->window(),
                          reduce_window->to_apply()->ComputeProgramShape())));
 
-  return opts_.allow_mixed_precision
+  return allow_mixed_precision_
              ? OkStatus()
              : SameElementTypesForOperandsAndToApplyParameters(
                    *reduce_window, reduce_window->operand_count());
@@ -1625,7 +1621,7 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
   // If allow_mixed_precision_ is false, check if there are operands with
   // different precisions. We need this check because ShapeInference allows
   // mixed precision inputs.
-  if (!opts_.allow_mixed_precision) {
+  if (!allow_mixed_precision_) {
     TF_RETURN_IF_ERROR(CheckMixedPrecisionOperands(instruction));
   }
 
@@ -1673,7 +1669,7 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       // instructions, although this may be made more strict pending discussion
       // in b/112709536.
       default:
-        if (opts_.allow_mixed_precision) {
+        if (allow_mixed_precision_) {
           return ShapeUtil::CompatibleIgnoringFpPrecision(instruction->shape(),
                                                           inferred_shape);
         } else {
@@ -2281,7 +2277,9 @@ Status CheckElementwiseInstruction(HloInstruction* instruction) {
 // not check result shape as that is checked in the ShapeVerifier.
 class InstructionVerifier : public DfsHloVisitorWithDefault {
  public:
-  explicit InstructionVerifier(const HloVerifierOpts& opts) : opts_(opts) {}
+  explicit InstructionVerifier(HloPredicate instruction_can_change_layout_func)
+      : instruction_can_change_layout_func_(
+            instruction_can_change_layout_func) {}
 
   Status DefaultAction(HloInstruction*) override { return OkStatus(); }
 
@@ -2393,8 +2391,9 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   Status Postprocess(HloInstruction* instruction) override {
-    if (!opts_.InstructionCanChangeLayout(instruction) &&
-        LayoutUtil::IsDenseArray(instruction->shape())) {
+    if (instruction_can_change_layout_func_ &&
+        LayoutUtil::IsDenseArray(instruction->shape()) &&
+        !instruction_can_change_layout_func_(instruction)) {
       const Shape& result_shape = instruction->shape();
       const Layout& result_layout = result_shape.layout();
       for (HloInstruction* operand : instruction->operands()) {
@@ -2415,7 +2414,8 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
 
  private:
   absl::flat_hash_map<std::string, const HloInstruction*> instructions_by_name_;
-  const HloVerifierOpts& opts_;
+  // Determines whether an instruction can change layouts.
+  HloPredicate instruction_can_change_layout_func_;
 };
 
 }  // namespace
@@ -2440,7 +2440,7 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
     std::unique_ptr<ShapeVerifier> shape_verifier =
         target_metadata_->GetVerifier();
     InstructionVerifier instruction_verifier(
-        target_metadata_->GetVerifierOpts());
+        instruction_can_change_layout_func_);
     for (auto* computation : module->computations()) {
       TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
       TF_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
@@ -2456,8 +2456,8 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
 
     TF_RETURN_IF_ERROR(module->input_output_alias_config().Verify(
         *module, [this](const Shape& shape) -> int64_t {
-          if (target_metadata_->GetVerifierOpts().IsLayoutSensitive()) {
-            return target_metadata_->GetVerifierOpts().ShapeSize(shape);
+          if (target_metadata_->IsLayoutSensitive()) {
+            return target_metadata_->ShapeSize(shape);
           } else {
             return 0;
           }

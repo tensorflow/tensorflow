@@ -16,88 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_VERIFIER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_VERIFIER_H_
 
-#include <functional>
 #include <memory>
-#include <string>
-#include <utility>
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 
 namespace xla {
 
-// Callback to return shape size, in bytes.
-using ShapeSizeFn = std::function<int64_t(const Shape&)>;
-
-struct HloVerifierOpts {
-  HloVerifierOpts&& MakeLayoutSensitive() {
-    layout_sensitive = true;
-    return std::move(*this);
-  }
-
-  HloVerifierOpts&& WithLayoutSensitive(bool layout_sensitive_p) {
-    layout_sensitive = layout_sensitive_p;
-    return std::move(*this);
-  }
-
-  HloVerifierOpts&& WithAllowMixedPrecision(bool allow_mixed_precision_p) {
-    allow_mixed_precision = allow_mixed_precision_p;
-    return std::move(*this);
-  }
-
-  HloVerifierOpts&& AllowMixedPrecision() {
-    allow_mixed_precision = true;
-    return std::move(*this);
-  }
-
-  HloVerifierOpts&& WithInstructionCanChangeLayout(
-      const HloPredicate& instruction_can_change_layout_p) {
-    instruction_can_change_layout = instruction_can_change_layout_p;
-    return std::move(*this);
-  }
-
-  HloVerifierOpts&& WithCustomShapeSize(const ShapeSizeFn& shape_size_p) {
-    shape_size = shape_size_p;
-    return std::move(*this);
-  }
-
-  bool IsLayoutSensitive() const { return layout_sensitive; }
-
-  bool AllowMixedPrecision() const { return allow_mixed_precision; }
-
-  const HloPredicate& InstructionCanChangeLayout() const {
-    return instruction_can_change_layout;
-  }
-
-  int64_t ShapeSize(const Shape& shape) const { return shape_size(shape); }
-
-  bool InstructionCanChangeLayout(const HloInstruction* instr) const {
-    return !instruction_can_change_layout ||
-           instruction_can_change_layout(instr);
-  }
-
-  // If the verifier is layout-sensitive, shapes must be equal to what's
-  // expected.  Otherwise, the shapes must simply be compatible.
-  bool layout_sensitive = false;
-
-  // Whether the inputs and output of an instruction can contain both F32s and
-  // BF16s. Tuples that include both F32s and BF16s are allowed regardless of
-  // this flag.
-  bool allow_mixed_precision = false;
-
-  HloPredicate instruction_can_change_layout;
-
-  // Returns a target-specific shape size.
-  ShapeSizeFn shape_size = [](const Shape& shape) {
-    return ShapeUtil::ByteSizeOf(shape);
-  };
-};
-
 // Visitor which verifies that the output shape is correctly set. Verifies
 // against the inferred shape for the instruction.
 class ShapeVerifier : public DfsHloVisitor {
  public:
-  explicit ShapeVerifier(const HloVerifierOpts& opts) : opts_(opts) {}
+  ShapeVerifier(bool layout_sensitive, bool allow_mixed_precision,
+                std::function<int64_t(const Shape&)> shape_size_function)
+      : layout_sensitive_(layout_sensitive),
+        allow_mixed_precision_(allow_mixed_precision),
+        shape_size_function_(shape_size_function) {}
 
   // Verifies that entry computation layout matches parameters and root shape of
   // the module's entry computation.
@@ -208,7 +142,7 @@ class ShapeVerifier : public DfsHloVisitor {
   bool ShapesSame(const Shape& a, const Shape& b,
                   bool minor_to_major_only = false,
                   bool ignore_memory_space = false) {
-    if (!opts_.layout_sensitive) {
+    if (!layout_sensitive_) {
       return ShapeUtil::Compatible(a, b);
     }
     Shape::Equal equal;
@@ -223,7 +157,7 @@ class ShapeVerifier : public DfsHloVisitor {
 
   bool ShapesSameIgnoringFpPrecision(const Shape& a, const Shape& b,
                                      bool minor_to_major_only = false) {
-    if (!opts_.layout_sensitive) {
+    if (!layout_sensitive_) {
       return ShapeUtil::CompatibleIgnoringFpPrecision(a, b);
     }
     Shape::Equal equal;
@@ -235,13 +169,13 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   std::string StringifyShape(const Shape& s) {
-    return opts_.layout_sensitive ? ShapeUtil::HumanStringWithLayout(s)
-                                  : ShapeUtil::HumanString(s);
+    return layout_sensitive_ ? ShapeUtil::HumanStringWithLayout(s)
+                             : ShapeUtil::HumanString(s);
   }
 
   // Helpers that switch on allow_mixed_precision_.
   bool SameElementType(const Shape& a, const Shape& b) {
-    return opts_.allow_mixed_precision
+    return allow_mixed_precision_
                ? ShapeUtil::SameElementTypeIgnoringFpPrecision(a, b)
                : ShapeUtil::SameElementType(a, b);
   }
@@ -264,19 +198,40 @@ class ShapeVerifier : public DfsHloVisitor {
   bool HasCompatibleElementTypes(const Shape& shape_0, const Shape& shape_1,
                                  const Shape& result_shape);
 
-  const HloVerifierOpts& opts_;
+  // If the verifier is layout-sensitive, shapes must be equal to what's
+  // expected.  Otherwise, the shapes must simply be compatible.
+  bool layout_sensitive_;
+
+  // Whether the inputs and output of an instruction can contain both F32s and
+  // BF16s. Tuples that include both F32s and BF16s are allowed regardless of
+  // this flag.
+  bool allow_mixed_precision_;
+
+  // Returns a target-specific shape size.
+  std::function<int64_t(const Shape&)> shape_size_function_;
 };
 
 // An interface used to encapsulate target-specific verification quirks.
 class TargetVerifierMetadata {
  public:
-  explicit TargetVerifierMetadata(HloVerifierOpts&& opts)
-      : opts_(std::move(opts)) {
-    CHECK(opts_.instruction_can_change_layout == nullptr ||
-          opts_.layout_sensitive);
+  explicit TargetVerifierMetadata(
+      std::function<int64_t(const Shape&)> shape_size_function)
+      : shape_size_function_(shape_size_function) {}
+
+  // Returns a target-specific shape size.
+  int64_t ShapeSize(const Shape& shape) const {
+    return shape_size_function_(shape);
+  }
+
+  void SetShapeSize(std::function<int64_t(const Shape&)> shape_size_function) {
+    CHECK(shape_size_function_ == nullptr)
+        << "shape_size_function_ is already set";
+    shape_size_function_ = shape_size_function;
   }
 
   virtual std::unique_ptr<ShapeVerifier> GetVerifier() const = 0;
+
+  virtual bool IsLayoutSensitive() const = 0;
 
   TargetVerifierMetadata() {}
   virtual ~TargetVerifierMetadata() {}
@@ -284,48 +239,54 @@ class TargetVerifierMetadata {
   TargetVerifierMetadata(const TargetVerifierMetadata&) = delete;
   TargetVerifierMetadata& operator=(const TargetVerifierMetadata&) = delete;
 
-  const HloVerifierOpts& GetVerifierOpts() const { return opts_; }
-
- private:
-  HloVerifierOpts opts_;
+ protected:
+  // Returns a target-specific shape size.
+  std::function<int64_t(const Shape&)> shape_size_function_;
 };
 
 // The default implementation of TargetVerifierMetadata, used unless the target
 // needs to override it.
 class DefaultVerifierMetadata : public TargetVerifierMetadata {
  public:
-  explicit DefaultVerifierMetadata(HloVerifierOpts&& opts)
-      : TargetVerifierMetadata(std::move(opts)) {}
+  DefaultVerifierMetadata(
+      bool layout_sensitive, bool allow_mixed_precision,
+      std::function<int64_t(const Shape&)> shape_size_function)
+      : TargetVerifierMetadata(shape_size_function),
+        layout_sensitive_(layout_sensitive),
+        allow_mixed_precision_(allow_mixed_precision) {}
 
   // Creates a ShapeVerifier that checks that shapes match inferred
   // expectations. This creates a new verifier every time because ShapeVerifier,
   // being a DfsHloVisitor, is stateful. We want a clean object for each run of
   // the verifier.
   std::unique_ptr<ShapeVerifier> GetVerifier() const override {
-    return std::make_unique<ShapeVerifier>(GetVerifierOpts());
+    return std::make_unique<ShapeVerifier>(
+        layout_sensitive_, allow_mixed_precision_, shape_size_function_);
   }
+
+  bool IsLayoutSensitive() const override { return layout_sensitive_; }
+
+ private:
+  bool layout_sensitive_;
+  bool allow_mixed_precision_;
 };
 
 // HLO pass that verifies invariants of HLO instructions for each computation in
 // the module.
 class HloVerifier : public HloModulePass {
  public:
-  HloVerifier(
+  explicit HloVerifier(
       bool layout_sensitive, bool allow_mixed_precision,
       HloPredicate instruction_can_change_layout_func = {},
       std::function<int64_t(const Shape&)> shape_size_func =
           [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); })
-      : HloVerifier(HloVerifierOpts{}
-                        .WithLayoutSensitive(layout_sensitive)
-                        .WithAllowMixedPrecision(allow_mixed_precision)
-                        .WithInstructionCanChangeLayout(
-                            instruction_can_change_layout_func)
-                        .WithCustomShapeSize(shape_size_func)) {}
-
-  explicit HloVerifier(HloVerifierOpts&& opts)
-      : target_metadata_(
-            std::make_unique<DefaultVerifierMetadata>(std::move(opts))),
-        context_("Unknown") {}
+      : target_metadata_(std::make_unique<DefaultVerifierMetadata>(
+            layout_sensitive, allow_mixed_precision, shape_size_func)),
+        instruction_can_change_layout_func_(
+            std::move(instruction_can_change_layout_func)),
+        context_("Unknown") {
+    CHECK(instruction_can_change_layout_func_ == nullptr || layout_sensitive);
+  }
 
   // Uses custom target metadata
   explicit HloVerifier(std::unique_ptr<TargetVerifierMetadata> target_metadata,
@@ -339,8 +300,10 @@ class HloVerifier : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  // Owns verifier config.
   std::unique_ptr<TargetVerifierMetadata> target_metadata_;
+
+  // Determines whether an instruction can change layouts.
+  HloPredicate instruction_can_change_layout_func_;
 
   // The hlo pass when the verifier is invoked.
   std::string context_;
