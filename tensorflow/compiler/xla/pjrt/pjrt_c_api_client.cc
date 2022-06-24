@@ -67,11 +67,11 @@ absl::string_view PjRtCApiClient::platform_name() const {
 }
 
 int PjRtCApiClient::process_index() const {
-  PJRT_Client_Process_Index_Args process_index_args;
-  process_index_args.struct_size = PJRT_Client_Process_Index_Args_STRUCT_SIZE;
+  PJRT_Client_ProcessIndex_Args process_index_args;
+  process_index_args.struct_size = PJRT_Client_ProcessIndex_Args_STRUCT_SIZE;
   process_index_args.priv = nullptr;
   process_index_args.client = c_client_.get();
-  PJRT_Error* error = c_api_->PJRT_Client_Process_Index(&process_index_args);
+  PJRT_Error* error = c_api_->PJRT_Client_ProcessIndex(&process_index_args);
 
   // TODO(b/236710439)
   CHECK(error == nullptr);

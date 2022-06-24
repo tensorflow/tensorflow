@@ -54,7 +54,7 @@ typedef struct {
   size_t message_size;  // out
 } PJRT_Error_Message_Args;
 const size_t PJRT_Error_Message_Args_STRUCT_SIZE =
-    PJRT_STRUCT_SIZE(PJRT_Error_Message_Args, error);
+    PJRT_STRUCT_SIZE(PJRT_Error_Message_Args, message_size);
 
 // Gets the human-readable reason for `error`. `message` has the lifetime of
 // `error`.
@@ -107,14 +107,14 @@ typedef struct {
   void* priv;
   PJRT_Client* client;
   int process_index;  // out
-} PJRT_Client_Process_Index_Args;
-const size_t PJRT_Client_Process_Index_Args_STRUCT_SIZE =
-    PJRT_STRUCT_SIZE(PJRT_Client_Process_Index_Args, process_index);
+} PJRT_Client_ProcessIndex_Args;
+const size_t PJRT_Client_ProcessIndex_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Client_ProcessIndex_Args, process_index);
 
 // Return the process index of this client. Always 0 in single-process
 // settings.
-typedef PJRT_Error* PJRT_Client_Process_Index(
-    PJRT_Client_Process_Index_Args* args);
+typedef PJRT_Error* PJRT_Client_ProcessIndex(
+    PJRT_Client_ProcessIndex_Args* args);
 
 typedef struct {
   size_t struct_size;
@@ -176,6 +176,7 @@ typedef PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args);
 
 #define PJRT_API_STRUCT_FIELD(fn_type) fn_type* fn_type
 
+// Please modify PJRT_Api_STRUCT_SIZE if the last field of PJRT_Api is changed.
 typedef struct {
   size_t struct_size;
   void* priv;
@@ -186,7 +187,7 @@ typedef struct {
   PJRT_API_STRUCT_FIELD(PJRT_Client_Create);
   PJRT_API_STRUCT_FIELD(PJRT_Client_Destroy);
   PJRT_API_STRUCT_FIELD(PJRT_Client_PlatformName);
-  PJRT_API_STRUCT_FIELD(PJRT_Client_Process_Index);
+  PJRT_API_STRUCT_FIELD(PJRT_Client_ProcessIndex);
   PJRT_API_STRUCT_FIELD(PJRT_Client_PlatformVersion);
 
   PJRT_API_STRUCT_FIELD(PJRT_Device_Id);
