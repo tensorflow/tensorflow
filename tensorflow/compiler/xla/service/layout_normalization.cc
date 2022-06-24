@@ -92,10 +92,6 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
   //
   // where {I} denotes default layout.
   Status HandleElementwiseUnary(HloInstruction* hlo) override {
-    if (hlo->opcode() == HloOpcode::kCopy) {
-      // TODO(cheshire): Copy should not be really treated as elementwise.
-      return DefaultAction(hlo);
-    }
     auto s = hlo->shape();
     auto operand = hlo->mutable_operand(0);
     auto operand_shape = operand->shape();
@@ -232,6 +228,36 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
       auto bc_to_orig = MakeBitcastHlo(a0, s);
       TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
     }
+    return OkStatus();
+  }
+
+  // Converts a purely physical copy into a physical+logical transposition.
+  //
+  // Converts:
+  //
+  //  A{I} -> bitcast{L} -> copy[S]{L'}
+  //
+  // Into:
+  //
+  //  A{I} -> transpose[S']{I} -> bitcast[S]{L'}
+  //
+  // Where S' is normalization of [S]{L'}, and transposition dimensions are
+  // given by L'.
+  Status HandleCopy(HloInstruction* hlo) override {
+    VLOG(3) << "Processing copy: " << hlo->ToString();
+    auto s = hlo->shape();
+    auto operand = hlo->mutable_operand(0);
+    TF_ASSIGN_OR_RETURN(auto a0, GetNormalizedInput(operand));
+    auto s_normalized = Normalize(s);
+    auto l0_perm = InversePermutation(ToTransposeDimensions(
+        ShapeUtil::DropDegenerateDimensions(operand->shape()).layout()));
+    auto l_perm =
+        ToTransposeDimensions(ShapeUtil::DropDegenerateDimensions(s).layout());
+    auto dimensions = ComposePermutations(l0_perm, l_perm);
+    auto t = hlo->AddInstruction(
+        HloInstruction::CreateTranspose(s_normalized, a0, dimensions));
+    auto bc_to_orig = MakeBitcastHlo(t, s);
+    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
     return OkStatus();
   }
 

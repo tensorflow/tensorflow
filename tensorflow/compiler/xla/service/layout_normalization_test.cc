@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/layout_normalization.h"
 
+#include <optional>
 #include <utility>
 
 #include "tensorflow/compiler/xla/statusor.h"
@@ -180,6 +181,44 @@ ENTRY main {
 // CHECK: [[bitcast_0:%[^ ]+]] = f32[5,4,3]{2,1,0} bitcast([[p_1:%[^ ]+]])
 // CHECK: [[transpose_2:%[^ ]+]] = f32[5,4,3]{2,1,0} transpose([[bitcast_0]]), dimensions={0,1,2}
 // CHECK: [[abs_3:%[^ ]+]] = f32[5,4,3]{2,1,0} abs([[transpose_2]])
+)");
+}
+
+TEST_F(LayoutNormalizationTest, Copy) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  p = f32[3,4,5]{0,1,2} parameter(0)
+  t = f32[3,4,5]{2,1,0} copy(p)
+  ROOT out = abs(t)
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[p_0:%[^ ]+]] = f32[3,4,5]{0,1,2} parameter(0)
+// CHECK: [[bitcast_1:%[^ ]+]] = f32[5,4,3]{2,1,0} bitcast([[p_0]])
+// CHECK: [[transpose_2:%[^ ]+]] = f32[3,4,5]{2,1,0} transpose([[bitcast_1]]), dimensions={2,1,0}
+// CHECK: [[abs_3:%[^ ]+]] = f32[3,4,5]{2,1,0} abs([[transpose_2]])
+)");
+}
+
+TEST_F(LayoutNormalizationTest, CopyDegenerate) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  p = f32[3,1,4,1,5]{0,1,2,3,4} parameter(0)
+  t = f32[3,1,4,1,5]{4,3,2,1,0} copy(p)
+  ROOT out = abs(t)
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[p_0:%[^ ]+]] = f32[3,1,4,1,5]{0,1,2,3,4} parameter(0)
+// CHECK: [[bitcast_1:%[^ ]+]] = f32[5,4,3]{2,1,0} bitcast([[p_0]])
+// CHECK: [[transpose_2:%[^ ]+]] = f32[3,4,5]{2,1,0} transpose([[bitcast_1]]), dimensions={2,1,0}
+// CHECK: [[abs_3:%[^ ]+]] = f32[3,4,5]{2,1,0} abs([[transpose_2]])
 )");
 }
 
