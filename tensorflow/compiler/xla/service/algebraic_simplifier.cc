@@ -4729,18 +4729,57 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
   // Try to simplify concat -> slice to an operand of concat.
   if (slice->operand(0)->opcode() == HloOpcode::kConcatenate &&
       IsUnstridedSlice(slice)) {
-    auto concat = slice->operand(0);
+    HloInstruction* concat = slice->mutable_operand(0);
     int64_t concat_dim = concat->concatenate_dimension();
     int64_t piece_start = 0;
-    for (auto piece : concat->operands()) {
-      if (!SameShape(piece, slice)) {
-        piece_start += piece->shape().dimensions(concat_dim);
-        continue;
+    std::optional<int64_t> start_operand;
+    std::optional<int64_t> limit_operand;
+    int64_t concat_start;
+    int64_t concat_limit;
+    const int64_t slice_start = slice->slice_starts(concat_dim);
+    const int64_t slice_limit = slice->slice_limits(concat_dim);
+    for (int64_t i = 0; i < concat->operand_count(); ++i) {
+      const HloInstruction* piece = concat->operand(i);
+      const int64_t piece_size = piece->shape().dimensions(concat_dim);
+      if (!start_operand && piece_start <= slice_start &&
+          piece_size + piece_start > slice_start) {
+        start_operand = i;
+        concat_start = piece_start;
       }
-      if (slice->slice_starts(concat_dim) == piece_start) {
-        return ReplaceInstruction(slice, piece);
+      piece_start += piece_size;
+      if (!limit_operand && piece_start >= slice_limit) {
+        limit_operand = i + 1;
+        concat_limit = piece_start;
+        break;
       }
-      piece_start += piece->shape().dimensions(concat_dim);
+    }
+    if (start_operand && limit_operand &&
+        *start_operand + 1 == *limit_operand &&
+        SameShape(concat->operand(*start_operand), slice)) {
+      return ReplaceInstruction(slice, concat->mutable_operand(*start_operand));
+    }
+    if (start_operand && limit_operand &&
+        *limit_operand - *start_operand < concat->operand_count()) {
+      std::vector<int64_t> starts = slice->slice_starts();
+      starts[concat_dim] = starts[concat_dim] - concat_start;
+      std::vector<int64_t> strides = slice->slice_strides();
+      std::vector<int64_t> limits = slice->slice_limits();
+      limits[concat_dim] =
+          starts[concat_dim] + slice->shape().dimensions(concat_dim);
+      HloInstruction* operand = concat->mutable_operand(*start_operand);
+      if (*start_operand + 1 != *limit_operand) {
+        TF_ASSIGN_OR_RETURN(
+            HloInstruction * new_concat,
+            MakeConcatHlo(
+                absl::MakeSpan(concat->operands())
+                    .subspan(*start_operand, *limit_operand - *start_operand),
+                concat_dim));
+        concat->SetupDerivedInstruction(new_concat);
+        operand = new_concat;
+      }
+      return ReplaceWithNewInstruction(
+          slice, HloInstruction::CreateSlice(slice->shape(), operand, starts,
+                                             limits, strides));
     }
   }
 
@@ -5946,7 +5985,6 @@ Status AlgebraicSimplifierVisitor::HandleSqrt(HloInstruction* sqrt) {
   }
   return OkStatus();
 }
-
 namespace {
 bool OnlyPermutesDegenerateDims(const Shape& shape,
                                 absl::Span<const int64_t> perm) {

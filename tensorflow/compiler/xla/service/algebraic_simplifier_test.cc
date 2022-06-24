@@ -7279,6 +7279,29 @@ TEST_F(AlgebraicSimplifierTest, SliceOfConcat) {
               GmockMatch(m::Parameter(1)));
 }
 
+TEST_F(AlgebraicSimplifierTest, SliceOfMultipleConcatOperands) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[50,50] parameter(0)
+      p1 = f32[50,50] parameter(1)
+      p2 = f32[50,50] parameter(2)
+      p3 = f32[50,50] parameter(3)
+      c0 = f32[200,50] concatenate(p0, p1, p2, p3), dimensions={0}
+      ROOT s0 = f32[98,50] slice(c0), slice={[51:149], [0:50]}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Slice(m::Concatenate(m::Parameter(1), m::Parameter(2)))));
+  EXPECT_THAT(m->entry_computation()->root_instruction()->slice_starts(),
+              ElementsAre(1, 0));
+  EXPECT_THAT(m->entry_computation()->root_instruction()->slice_limits(),
+              ElementsAre(99, 50));
+}
+
 TEST_F(AlgebraicSimplifierTest, SqrtOfSelfMultiply) {
   const char* kModuleStr = R"(
     HloModule m
