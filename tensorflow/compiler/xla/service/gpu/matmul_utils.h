@@ -89,7 +89,8 @@ struct GemmConfig {
       absl::Span<const int64_t> rhs_batch_dims,
       absl::Span<const int64_t> rhs_contracting_dims, const Shape& output_shape,
       double alpha_real, double alpha_imag, double beta,
-      std::optional<int64_t> algorithm, bool use_cublaslt);
+      std::optional<int64_t> algorithm, int64_t compute_precision,
+      bool use_cublaslt);
 
   MatrixLayout lhs_layout;
   MatrixLayout rhs_layout;
@@ -97,6 +98,7 @@ struct GemmConfig {
   complex128 alpha;
   double beta;
   std::optional<int64_t> algorithm;
+  int64_t compute_precision;
   bool use_cublaslt;
 };
 

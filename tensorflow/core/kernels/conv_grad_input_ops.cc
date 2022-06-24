@@ -155,8 +155,9 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     auto transpose = se::blas::Transpose::kTranspose;
     auto no_transpose = se::blas::Transpose::kNoTranspose;
 
-    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(transpose, no_transpose, n, m, k,
-                                             b_ptr, k, a_ptr, k, &c_ptr, n));
+    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(
+                            transpose, no_transpose, n, m, k, b_ptr, k, a_ptr,
+                            k, &c_ptr, n, se::blas::kDefaultComputePrecision));
     return;
   } else if (dims.spatial_dims[0].filter_size ==
                  dims.spatial_dims[0].input_size &&
@@ -181,8 +182,9 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     auto transpose = se::blas::Transpose::kTranspose;
     auto no_transpose = se::blas::Transpose::kNoTranspose;
 
-    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(transpose, no_transpose, n, m, k,
-                                             b_ptr, k, a_ptr, k, &c_ptr, n));
+    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(
+                            transpose, no_transpose, n, m, k, b_ptr, k, a_ptr,
+                            k, &c_ptr, n, se::blas::kDefaultComputePrecision));
     return;
   }
 

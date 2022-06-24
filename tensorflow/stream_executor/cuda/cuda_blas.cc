@@ -1768,7 +1768,7 @@ port::Status CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                                   const void *alpha, const DeviceMemoryBase &a,
                                   int lda, const DeviceMemoryBase &b, int ldb,
                                   const void *beta, DeviceMemoryBase *c,
-                                  int ldc) {
+                                  int ldc, blas::ComputePrecision precision) {
   cublasMath_t math_type = CUBLAS_DEFAULT_MATH;
 
 #if CUDA_VERSION < 11000
@@ -1787,6 +1787,9 @@ port::Status CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                                 "multiplication. This will only be logged "
                                 "once.";
       }
+    }
+    if (precision > blas::kDefaultComputePrecision) {
+      math_type = CUBLAS_DEFAULT_MATH;
     }
   }
 #endif
@@ -2043,10 +2046,10 @@ bool CUDABlas::DoBlasGemmWithProfilingImpl(
   }
 
   // Call blasGemm
-  bool result =
-      DoBlasGemm(stream, transa, transb, m, n, k, blas::ToDataType<T>::value,
-                 &alpha, a, lda, b, ldb, &beta, c, ldc)
-          .ok();
+  bool result = DoBlasGemm(stream, transa, transb, m, n, k,
+                           blas::ToDataType<T>::value, &alpha, a, lda, b, ldb,
+                           &beta, c, ldc, blas::kDefaultComputePrecision)
+                    .ok();
 
   if (timer != nullptr && result) {
     // GpuTimer will CHECK-fail if we Stop() it while the stream is in an error
@@ -2468,7 +2471,8 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
       DeviceMemory<T> *c_matrix = c_ptrs_to_wrappers[b];
       TF_RETURN_IF_ERROR(DoBlasGemm(
           stream, transa, transb, m, n, k, blas::ToDataType<T>::value, &alpha,
-          a_matrix, lda, b_matrix, ldb, &beta, c_matrix, ldc));
+          a_matrix, lda, b_matrix, ldb, &beta, c_matrix, ldc,
+          blas::kDefaultComputePrecision));
     }
     return ::tensorflow::OkStatus();
   }

@@ -806,6 +806,8 @@ StatusOr<Operation*> LhloDialectEmitter::EmitGemm(
       op.setAlgorithmAttr(
           builder_.getI64IntegerAttr(config.selected_algorithm()));
     }
+    op.setPrecisionConfigAttr(
+        xla::ConvertPrecisionConfig(&config.precision_config(), &builder_));
     return op.getOperation();
   };
 

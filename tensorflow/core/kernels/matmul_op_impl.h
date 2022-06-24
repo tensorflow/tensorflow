@@ -650,7 +650,8 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                        stream->ThenBlasGemm(
                            blas_transpose_b, blas_transpose_a, n, m, k,
                            *(b_ptrs[0]), adj_y || trans_y ? k : n, *(a_ptrs[0]),
-                           adj_x || trans_x ? m : k, c_ptrs[0], n));
+                           adj_x || trans_x ? m : k, c_ptrs[0], n,
+                           se::blas::kDefaultComputePrecision));
       } else if (use_strided_batched) {
         OP_REQUIRES_OK(context, stream->ThenBlasGemmStridedBatched(
                                     blas_transpose_b, blas_transpose_a, n, m, k,

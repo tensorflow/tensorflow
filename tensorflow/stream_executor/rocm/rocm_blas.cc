@@ -1361,7 +1361,7 @@ port::Status ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                                   const void *alpha, const DeviceMemoryBase &a,
                                   int lda, const DeviceMemoryBase &b, int ldb,
                                   const void *beta, DeviceMemoryBase *c,
-                                  int ldc) {
+                                  int ldc, blas::ComputePrecision precision) {
   blas_log("DoBlasGemm");
   VLOG(1) << absl::StreamFormat(
       "doing rocBLAS GEMM: at=%d bt=%d m=%u n=%u "

@@ -3868,7 +3868,8 @@ bool MIOpenSupport::DoMatMul(Stream* stream,
     if (!stream
              ->ThenBlasGemm(blas::Transpose::kNoTranspose,
                             blas::Transpose::kNoTranspose, m, n, k, weights, m,
-                            input_data, k, output_data, m)
+                            input_data, k, output_data, m,
+                            blas::kDefaultComputePrecision)
              .ok()) {
       return false;
     }
