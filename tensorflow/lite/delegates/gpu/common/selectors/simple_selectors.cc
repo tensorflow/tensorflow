@@ -139,7 +139,7 @@ absl::Status SelectConcat(const ConcatAttributes& attr,
 std::unique_ptr<GPUOperation> SelectDWConvolutionDynamicWeights(
     const DepthwiseConvolution2DAttributes& attr, const GpuInfo& gpu_info,
     const OperationDef& op_def) {
-  return std::make_unique<GPUOperation>(
+  return std::make_unique<DepthwiseConv>(
       CreateDepthwiseConvolution2DDynamicWeights(gpu_info, op_def, attr));
 }
 

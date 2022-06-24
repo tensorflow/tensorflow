@@ -32,7 +32,7 @@ std::unique_ptr<GPUOperation> SelectDWConvolutionAdreno(
     return std::make_unique<DepthwiseConv3x3>(
         CreateDepthwiseConv3x3(gpu_info, op_def, attr));
   } else {
-    return std::make_unique<GPUOperation>(
+    return std::make_unique<DepthwiseConv>(
         CreateDepthwiseConvolution2D(gpu_info, op_def, attr));
   }
 }
@@ -44,7 +44,7 @@ std::unique_ptr<GPUOperation> SelectDWConvolutionPowerVR(
     return std::make_unique<DepthwiseConv3x3>(
         CreateDepthwiseConv3x3(gpu_info, op_def, attr));
   } else {
-    return std::make_unique<GPUOperation>(
+    return std::make_unique<DepthwiseConv>(
         CreateDepthwiseConvolution2D(gpu_info, op_def, attr));
   }
 }
@@ -62,7 +62,7 @@ std::unique_ptr<GPUOperation> SelectDWConvolutionMali(
     return std::make_unique<DepthwiseConv3x3>(
         CreateDepthwiseConv3x3(gpu_info, op_def, attr));
   } else {
-    return std::make_unique<GPUOperation>(
+    return std::make_unique<DepthwiseConv>(
         CreateDepthwiseConvolution2D(gpu_info, op_def, attr));
   }
 }
@@ -77,7 +77,7 @@ std::unique_ptr<GPUOperation> SelectDWConvolutionApple(
     return std::make_unique<DepthWiseConv3x3StrideH2>(
         CreateDepthWiseConv3x3StrideH2(op_def, attr, gpu_info));
   } else {
-    return std::make_unique<GPUOperation>(
+    return std::make_unique<DepthwiseConv>(
         CreateDepthwiseConvolution2D(gpu_info, op_def, attr));
   }
 }
