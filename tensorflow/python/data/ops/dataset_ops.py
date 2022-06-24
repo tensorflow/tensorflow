@@ -64,8 +64,9 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.training.tracking import base as tracking_base
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import asset
+from tensorflow.python.trackable import base as tracking_base
+from tensorflow.python.trackable import resource as resource_lib
 from tensorflow.python.types import trace
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import lazy_loader
@@ -312,7 +313,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
 
     Returns:
       A dictionary mapping the node name of an asset constant to a tracked
-      `tracking.Asset` object.
+      `asset.Asset` object.
     """
     asset_tracker = {}
     for node in graph_def.node:
@@ -329,7 +330,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
           node_value = parsing_ops.parse_tensor(
               tensor_proto.SerializeToString(), dtypes.string).numpy()
         asset_tracker[node.name] = ([
-            self._track_trackable(tracking.Asset(n),
+            self._track_trackable(asset.Asset(n),
                                   name=node.name + "_" + str(i), overwrite=True)
             for i, n in enumerate(node_value)
         ])
@@ -4645,7 +4646,7 @@ class _NumpyIterator(object):
     return self.__next__()
 
 
-class _VariantTracker(tracking.CapturableResource):
+class _VariantTracker(resource_lib.CapturableResource):
   """Allows export of functions capturing a Dataset in SavedModels.
 
   When saving a SavedModel, `tf.saved_model.save` traverses the object

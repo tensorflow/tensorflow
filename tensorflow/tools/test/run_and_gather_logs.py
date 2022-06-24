@@ -67,6 +67,8 @@ flags.DEFINE_string(
     "test_log_output_filename", "",
     """Filename to write output benchmark results to. If the filename
                     is not specified, it will be automatically created.""")
+flags.DEFINE_boolean("skip_export", False,
+                     "Whether to skip exporting test results.")
 
 
 def gather_build_configuration():
@@ -86,8 +88,13 @@ def main(unused_args):
   test_args = " ".join(FLAGS.test_args)
   benchmark_type = FLAGS.benchmark_type
   test_results, _ = run_and_gather_logs_lib.run_and_gather_logs(
-      name, test_name=test_name, test_args=test_args,
-      benchmark_type=benchmark_type)
+      name,
+      test_name=test_name,
+      test_args=test_args,
+      benchmark_type=benchmark_type,
+      skip_processing_logs=FLAGS.skip_export)
+  if FLAGS.skip_export:
+    return
 
   # Additional bits we receive from bazel
   test_results.build_configuration.CopyFrom(gather_build_configuration())

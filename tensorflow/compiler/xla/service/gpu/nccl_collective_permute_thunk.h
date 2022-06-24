@@ -77,7 +77,7 @@ class NcclCollectivePermuteThunk : public NcclCollectiveThunk {
                            int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo::CollectivePermuteOp op) {
-    return GetCollectiveOpGroupMode(op.channel_id().hasValue(), std::nullopt)
+    return GetCollectiveOpGroupMode(op.getChannelId().hasValue(), std::nullopt)
         .ValueOrDie();
   }
 

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,7 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_CORE_PROFILER_UTILS_TPU_XPLANE_UTILS_H_
+#define TENSORFLOW_CORE_PROFILER_UTILS_TPU_XPLANE_UTILS_H_
 
-#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_structs.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
-#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_structs.cc.inc"
+namespace tensorflow {
+namespace profiler {
+
+// Find and return TensorCore XPlanes from the XSpace.
+std::vector<const XPlane*> FindTensorCorePlanes(const XSpace& xspace);
+
+}  // namespace profiler
+}  // namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_PROFILER_UTILS_TPU_XPLANE_UTILS_H_

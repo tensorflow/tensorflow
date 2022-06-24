@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 
 #include <iostream>
+#include <utility>
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -187,7 +188,7 @@ TEST(TypeToShapeTest, ConvertMemRefToShape) {
   StatusOr<mlir::Type> mlir_type =
       ConvertShapeToType<MemRefType>(shape, builder);
   ASSERT_TRUE(mlir_type.ok());
-  mlir::Type type = mlir_type.ConsumeValueOrDie();
+  mlir::Type type = std::move(mlir_type).value();
   Shape converted = TypeToShape(type);
   EXPECT_TRUE(ShapeUtil::Equal(
       converted, ShapeUtil::MakeShapeWithLayout(PrimitiveType::F32,
@@ -204,7 +205,7 @@ TEST(TypeToShapeTest, ConvertMemRefToShape2) {
   StatusOr<mlir::Type> mlir_type =
       ConvertShapeToType<MemRefType>(shape, builder);
   ASSERT_TRUE(mlir_type.ok());
-  mlir::Type type = mlir_type.ConsumeValueOrDie();
+  mlir::Type type = std::move(mlir_type).value();
   Shape converted = TypeToShape(type);
   EXPECT_TRUE(ShapeUtil::Equal(
       converted, ShapeUtil::MakeShapeWithLayout(PrimitiveType::C64,

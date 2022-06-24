@@ -46,8 +46,8 @@ class GenerateTestHloChecksTest(absltest.TestCase):
 // CHECK-NEXT: }
 // CHECK: %computation.2 { # New computation resets the counter.
 // CHECK-NEXT: [[parameter_0_0:%[^ ]+]] = parameter(0)
-// CHECK-NEXT: [[get-tuple-element_1_1:%[^ ]+]] = get-tuple-element([[parameter_0_0]])
-// CHECK-NEXT: ROOT [[bitcast-convert_2:%[^ ]+]] = bitcast-convert([[get-tuple-element_1_1]])
+// CHECK-NEXT: [[get_tuple_element_1_1:%[^ ]+]] = get-tuple-element([[parameter_0_0]])
+// CHECK-NEXT: ROOT [[bitcast_convert_2:%[^ ]+]] = bitcast-convert([[get_tuple_element_1_1]])
 """)
 
 

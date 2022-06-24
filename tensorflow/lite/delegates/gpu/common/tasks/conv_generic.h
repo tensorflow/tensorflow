@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_GENERIC_H_
 
 #include <cstring>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -153,6 +154,10 @@ class ConvGeneric : public GPUOperation {
                                        const FullyConnectedAttributes& attr,
                                        const BHWC* dst_shape);
 
+  friend ConvGeneric CreateConvGenericBatchedMatMul(
+      const GpuInfo& gpu_info, const OperationDef& definition,
+      const OHWI& weights_shape, const BHWC* dst_shape);
+
   friend ConvGeneric CreateConvGenericDynamicWeights(
       const GpuInfo& gpu_info, const OperationDef& definition,
       const Convolution2DAttributes& attr, const BHWC& weights_shape,
@@ -180,10 +185,10 @@ class ConvGeneric : public GPUOperation {
                              const OperationDef& definition,
                              const FullyConnectedAttributes& attr,
                              const BHWC* dst_shape = nullptr);
-  ConvParams GuessBestParamsWinograd(const GpuInfo& gpu_info,
-                                     const OperationDef& definition,
-                                     const Convolution2DAttributes& attr,
-                                     const BHWC* dst_shape = nullptr);
+  ConvParams GuessBestParamsPointwise(const GpuInfo& gpu_info,
+                                      const OperationDef& definition,
+                                      const OHWI& weights_shape,
+                                      const BHWC* dst_shape = nullptr);
   ConvParams GuessBestParams(const GpuInfo& gpu_info,
                              const OperationDef& definition,
                              const Convolution3DAttributes& attr,
@@ -252,7 +257,7 @@ void ConvGeneric::UploadBias(const tflite::gpu::Tensor<Linear, T>& bias) {
     }
   }
   args_.AddObject("biases",
-                  absl::make_unique<BufferDescriptor>(std::move(desc)));
+                  std::make_unique<BufferDescriptor>(std::move(desc)));
 }
 
 template <DataType T>
@@ -275,7 +280,7 @@ void ConvGeneric::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights) {
     desc.size = weights_data.size();
     desc.data = std::move(weights_data);
     args_.AddObject("weights",
-                    absl::make_unique<BufferDescriptor>(std::move(desc)));
+                    std::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
     uint2 tex_size = Get2dResourceSize(weights_desc, weights.shape);
     int sub_size = SizeOf(weights_desc.type) * 4 * tex_size.x * tex_size.y;
@@ -287,7 +292,7 @@ void ConvGeneric::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights) {
       memcpy(desc.data.data(), weights_data.data() + sub_size * i, sub_size);
       const std::string name = "weights" + std::to_string(i);
       args_.AddObject(name,
-                      absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+                      std::make_unique<Texture2DDescriptor>(std::move(desc)));
     }
   }
 }
@@ -308,7 +313,7 @@ void ConvGeneric::UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights) {
     desc.size = weights_data.size();
     desc.data = std::move(weights_data);
     args_.AddObject("weights",
-                    absl::make_unique<BufferDescriptor>(std::move(desc)));
+                    std::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
     uint2 tex_size = Get2dResourceSize(weights_desc, weights.shape);
     int sub_size = SizeOf(weights_desc.type) * 4 * tex_size.x * tex_size.y;
@@ -320,7 +325,7 @@ void ConvGeneric::UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights) {
       memcpy(desc.data.data(), weights_data.data() + sub_size * i, sub_size);
       const std::string name = "weights" + std::to_string(i);
       args_.AddObject(name,
-                      absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+                      std::make_unique<Texture2DDescriptor>(std::move(desc)));
     }
   }
 }
@@ -340,6 +345,11 @@ ConvGeneric CreateConvGenericDynamicWeights(const GpuInfo& gpu_info,
                                             const Convolution2DAttributes& attr,
                                             const BHWC& weights_shape,
                                             const BHWC* dst_shape = nullptr);
+
+ConvGeneric CreateConvGenericBatchedMatMul(const GpuInfo& gpu_info,
+                                           const OperationDef& definition,
+                                           const OHWI& weights_shape,
+                                           const BHWC* dst_shape = nullptr);
 
 ConvGeneric CreateConvGenericWino4x4To6x6(const GpuInfo& gpu_info,
                                           const OperationDef& definition,

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/status_macros.h"
 
+#include <utility>
+
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -81,7 +83,7 @@ StatusOr<int> CallStatusReturningFunction(const StatusReturningFunction& func) {
 TEST(StatusMacros, ReturnIfErrorOnOK) {
   StatusOr<int> rc = CallStatusReturningFunction(ReturnStatusOK);
   EXPECT_IS_OK(rc);
-  EXPECT_EQ(42, rc.ConsumeValueOrDie());
+  EXPECT_EQ(42, std::move(rc).value());
 }
 
 TEST(StatusMacros, ReturnIfErrorOnError) {

@@ -169,8 +169,8 @@ py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/training:training_util",
-        "//tensorflow/python/training/tracking",
         "//third_party/py/numpy",
     ],
 )

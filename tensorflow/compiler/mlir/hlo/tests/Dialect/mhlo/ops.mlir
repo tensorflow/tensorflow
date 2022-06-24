@@ -284,7 +284,7 @@ func.func @allgather_incompatible_types(%arg0: tensor<128x32xf32>) -> tensor<128
   // expected-error@+1 {{result gather dimension has size 100, expected to be a multiple of operand gather dimension size 32}}
   %0 = "mhlo.all_gather"(%arg0) {
     all_gather_dim = 1 : i64,
-    channel_handle = {handle = 1 : i64, type = 0 : i64},
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
     replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
   } : (tensor<128x32xf32>) -> tensor<128x100xf32>
   func.return %0 : tensor<128x100xf32>
@@ -296,7 +296,7 @@ func.func @allgather_gather_along_zero_dimension(%arg0: tensor<128x0x32xf32>) ->
   // expected-error@+1 {{operand gather dimension cannot be zero}}
   %0 = "mhlo.all_gather"(%arg0) {
     all_gather_dim = 1 : i64,
-    channel_handle = {handle = 1 : i64, type = 0 : i64},
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
     replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
   } : (tensor<128x0x32xf32>) -> tensor<128x100xf32>
   func.return %0 : tensor<128x100xf32>
@@ -308,7 +308,7 @@ func.func @allgather_gather_along_zero_dimension(%arg0: tensor<128x0x32xf32>) ->
 func.func @allgather_dynamic_gather_dim(%arg0: tensor<128x32xf32>) -> tensor<128x?xf32> {
   %0 = "mhlo.all_gather"(%arg0) {
     all_gather_dim = 1 : i64,
-    channel_handle = {handle = 1 : i64, type = 0 : i64},
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
     replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
   } : (tensor<128x32xf32>) -> tensor<128x?xf32>
   func.return %0 : tensor<128x?xf32>
@@ -1140,10 +1140,10 @@ func.func @real_mismatch_return_element_type(%arg0: tensor<2x3xcomplex<f32>>) ->
 func.func @recv_non_token_second_result(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>> {
   // expected-error@+1 {{last element of result types is expected to be of token type, but got 'tensor<i32>'}}
   %0:2 = "mhlo.recv"(%token) {
-    channel_handle = {
-      handle = 5 : i64,
-      type = 3 : i64  // Host to device channel
-    },
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 3  // Host to device channel
+    >,
     is_host_transfer = true
   } : (!mhlo.token) -> (tensor<3x4xi32>, tensor<i32>)
   %1 =  "mhlo.tuple"(%0#0, %0#1) : (tensor<3x4xi32>, tensor<i32>) -> tuple<tensor<3x4xi32>, tensor<i32>>

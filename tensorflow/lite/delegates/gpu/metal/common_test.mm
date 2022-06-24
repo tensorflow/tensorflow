@@ -21,9 +21,6 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
-
 using ::tflite::gpu::metal::GetBestSupportedMetalDevice;
 using ::tflite::gpu::metal::CreateComputeProgram;
 

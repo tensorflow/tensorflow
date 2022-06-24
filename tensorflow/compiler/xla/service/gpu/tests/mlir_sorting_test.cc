@@ -49,7 +49,7 @@ TEST_F(SortingTest, SimpleCase1) {
   std::vector<float> arg1 = {13, 12, 14, 11};
   auto outputs = RunMlirTextWithHostBuffers(
                      mlir_text, {ToUint8Span(&arg0), ToUint8Span(&arg1)})
-                     .ConsumeValueOrDie();
+                     .value();
   ASSERT_EQ(4, outputs.size());
   EXPECT_THAT(FromUint8Span<float>(outputs[0]),
               ElementsAreArray<float>({4, 3, 2, 1}));

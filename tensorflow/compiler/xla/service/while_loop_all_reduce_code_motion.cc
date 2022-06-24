@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/while_loop_all_reduce_code_motion.h"
 
 #include <iterator>
+#include <optional>
 #include <stack>
 #include <tuple>
 #include <utility>
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
+#include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -32,14 +34,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
-#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/hlo_replication_analysis.h"
 #include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace xla {
 
@@ -49,6 +47,8 @@ struct AccumulationContext {
   HloInstruction* accumulation_instruction;
   HloInstruction* accumulation_buffer;
   std::vector<int> param_tuple_indices;
+  std::optional<HloInstruction*> dynamic_slice;
+  std::optional<HloInstruction*> dynamic_update_slice;
 };
 
 // Describes whether an all-reduce instruction can be sinked from a while body
@@ -73,19 +73,122 @@ bool IsZero(const HloInstruction* hlo) {
   return false;
 }
 
+bool IsValueReplicatedWithinEachAllReduceGroup(
+    const HloInstruction& instruction, const ShapeIndex& index,
+    CollectiveOpGroupMode all_reduce_group_mode,
+    absl::Span<const ReplicaGroup> replica_groups, int num_replicas,
+    int num_partitions,
+    const std::unique_ptr<HloReplicationAnalysis>&
+        cross_replica_replication_analysis,
+    const std::unique_ptr<HloReplicationAnalysis>&
+        cross_partition_replication_analysis) {
+  VLOG(5) << "IsValueReplicatedWithinEachAllReduceGroup,"
+          << " all_reduce_group_mode: "
+          << CollectiveOpGroupModeToString(all_reduce_group_mode);
+  switch (all_reduce_group_mode) {
+    case CollectiveOpGroupMode::kCrossReplica: {
+      return cross_replica_replication_analysis == nullptr ||
+             cross_replica_replication_analysis->HloInstructionIsReplicatedAt(
+                 &instruction, index, replica_groups);
+    }
+    case CollectiveOpGroupMode::kCrossPartition: {
+      return cross_partition_replication_analysis == nullptr ||
+             cross_partition_replication_analysis->HloInstructionIsReplicatedAt(
+                 &instruction, index, replica_groups);
+    }
+    case CollectiveOpGroupMode::kCrossReplicaAndPartition: {
+      return (cross_replica_replication_analysis == nullptr ||
+              cross_replica_replication_analysis->HloInstructionIsReplicatedAt(
+                  &instruction, index, replica_groups)) &&
+             (cross_partition_replication_analysis == nullptr ||
+              cross_partition_replication_analysis
+                  ->HloInstructionIsReplicatedAt(&instruction, index));
+    }
+    case CollectiveOpGroupMode::kFlattenedID: {
+      if (num_replicas == 1) {
+        return cross_partition_replication_analysis == nullptr ||
+               cross_partition_replication_analysis
+                   ->HloInstructionIsReplicatedAt(&instruction, index,
+                                                  replica_groups);
+      }
+      if (num_partitions == 1) {
+        return cross_replica_replication_analysis == nullptr ||
+               cross_replica_replication_analysis->HloInstructionIsReplicatedAt(
+                   &instruction, index, replica_groups);
+      }
+      return (cross_replica_replication_analysis == nullptr ||
+              cross_replica_replication_analysis->HloInstructionIsReplicatedAt(
+                  &instruction, index)) &&
+             (cross_partition_replication_analysis == nullptr ||
+              cross_partition_replication_analysis
+                  ->HloInstructionIsReplicatedAt(&instruction, index));
+    }
+  }
+}
+
 // Checks if an all-reduce instruction is eligible for sinking and finds all of
 // the all-reduce's accumulation uses inside the while body if eligible.
-MovableAllReduceContext IsAllReduceMovable(HloInstruction* all_reduce,
-                                           HloComputation* while_body) {
+// An all-reduce is movable if all following conditions hold. This function
+// checks each condition.
+//   1) The all-reduce's reduction computation is summation.
+//   2) All users of the all-reduce are additions, which we refer to as
+//      accumulations. We refer the other operand and the output of the addition
+//      as accumulation buffers.
+//   3) Each accumulation buffer is a parameter to the loop body and also an
+//      output of the loop at the same tuple index.
+//   4) A limited set of HLOs can be applied to the all-reduce output before
+//      accumulation, as well as the accumulation buffers before and after the
+//      accumuation. These HLOs include
+//      a. kConvert: the sinked all-reduce will have the same element type.
+//      b. HLOs that change the shape of the all-reduce output and / or the
+//         accumulation buffer. HLOs are supported as long as all all-reduce
+//         participants have the same element-wise mapping between all-reduce
+//         output and the accumulation buffer. Note that it is fine if at
+//         different iterations, different all-reduce elements are mapped to
+//         the same accumulation buffer element. These include kBitcast,
+//         kReshape, and kTranspose.
+//         We also support dynamic-slice and dynamic-update-slice pairs on the
+//         accumulation buffer. We need to ensure the slice offset is the same
+//         across all cores. It is possible but difficult to support the
+//.        general case, so we use pattern matching to support the specific
+//.        cases of interest.
+//      c. Dynamically discarding the all-reduce result, i.e., kSelect between
+//         all-reduce result and 0. The predicate to kSelect must have the same
+//         value on all all-reduce cores.
+MovableAllReduceContext IsAllReduceMovable(
+    HloInstruction* all_reduce, HloComputation* while_body,
+    const std::unique_ptr<HloReplicationAnalysis>&
+        cross_replica_replication_analysis,
+    const std::unique_ptr<HloReplicationAnalysis>&
+        cross_partition_replication_analysis) {
+  VLOG(4) << "IsAllReduceMovable: " << all_reduce->ToString();
+  StatusOr<CollectiveOpGroupMode> all_reduce_group_mode =
+      GetCollectiveOpGroupMode(all_reduce->channel_id().has_value(),
+                               DynCast<HloAllReduceInstruction>(all_reduce)
+                                   ->use_global_device_ids());
+  CHECK(all_reduce_group_mode.ok());
   auto all_reduce_is_summation = [](HloInstruction* all_reduce) -> bool {
-    HloInstruction* to_apply_root = all_reduce->to_apply()->root_instruction();
-    if (all_reduce->to_apply()->num_parameters() != 2) {
-      return false;
-    }
-    return Match(to_apply_root,
-                 match::AddAnyOrder(match::Parameter(0), match::Parameter(1)));
+    std::optional<ReductionKind> reduction_type =
+        MatchReductionComputation(all_reduce->to_apply());
+    return reduction_type.has_value() && *reduction_type == ReductionKind::SUM;
   };
 
+  auto is_value_replicated_within_replica_group =
+      [&cross_replica_replication_analysis,
+       &cross_partition_replication_analysis, &all_reduce_group_mode,
+       all_reduce](const HloInstruction& instruction,
+                   const ShapeIndex& index) -> bool {
+    bool is_replicated = IsValueReplicatedWithinEachAllReduceGroup(
+        instruction, index, *all_reduce_group_mode,
+        all_reduce->replica_groups(),
+        all_reduce->GetModule()->config().replica_count(),
+        all_reduce->GetModule()->config().num_partitions(),
+        cross_replica_replication_analysis,
+        cross_partition_replication_analysis);
+    VLOG(5) << "instruction: " << instruction.name()
+            << " is_replicate: " << is_replicated;
+    return is_replicated;
+  };
   // We only support numerical types.
   const absl::InlinedVector<PrimitiveType, 12> kSupportedTypes{
       BF16, F16, F32, F64, S8, S16, S32, S64, U8, U16, U32, U64};
@@ -101,6 +204,8 @@ MovableAllReduceContext IsAllReduceMovable(HloInstruction* all_reduce,
     bool unsupported_operation{false};
     std::vector<int> tuple_index;
     bool returned_from_computation{false};
+    std::optional<HloInstruction*> dynamic_slice;
+    std::optional<HloInstruction*> dynamic_update_slice;
   };
 
   // If the instruction is a buffer forwarded from a tuple element of the
@@ -108,18 +213,22 @@ MovableAllReduceContext IsAllReduceMovable(HloInstruction* all_reduce,
   // tuple. The returned_from_computation field in the result is unused.
   auto get_origin_tuple_index =
       [](HloInstruction* instruction) -> BufferTupleIndex {
+    VLOG(4) << "get_origin_tuple_index called on " << instruction->ToString();
     // The returned_from_computation is never touched in this function.
     BufferTupleIndex result;
     while (!result.unsupported_operation) {
       switch (instruction->opcode()) {
-        default:
+        default: {
+          VLOG(4) << "get_origin_tuple_index, instruction: ("
+                  << instruction->ToString()
+                  << ") is an unsupported operation on accumulation buffer.";
           result.unsupported_operation = true;
           break;
+        }
         case HloOpcode::kBitcast:
         case HloOpcode::kConvert:
         case HloOpcode::kReshape:
         case HloOpcode::kTranspose:
-        case HloOpcode::kDynamicReshape:
           instruction = instruction->mutable_operand(0);
           break;
         case HloOpcode::kGetTupleElement: {
@@ -130,6 +239,19 @@ MovableAllReduceContext IsAllReduceMovable(HloInstruction* all_reduce,
             result.tuple_index.push_back(
                 Cast<HloGetTupleElementInstruction>(instruction)
                     ->tuple_index());
+            instruction = instruction->mutable_operand(0);
+          }
+          break;
+        }
+        case HloOpcode::kDynamicSlice: {
+          if (result.dynamic_slice.has_value()) {
+            VLOG(4) << "get_origin_tuple_index, instruction: ("
+                    << instruction->ToString()
+                    << "), we do not yet support more than 1 dynamic-slices on"
+                    << " the accmulation buffer.";
+            result.unsupported_operation = true;
+          } else {
+            result.dynamic_slice = instruction;
             instruction = instruction->mutable_operand(0);
           }
           break;
@@ -154,6 +276,7 @@ MovableAllReduceContext IsAllReduceMovable(HloInstruction* all_reduce,
   auto get_output_tuple_index =
       [](HloInstruction* instruction,
          HloComputation* while_body) -> BufferTupleIndex {
+    VLOG(4) << "get_output_tuple_index called on " << instruction->ToString();
     BufferTupleIndex result;
     std::stack<HloInstruction*> to_visit;
     to_visit.push(instruction);
@@ -171,22 +294,12 @@ MovableAllReduceContext IsAllReduceMovable(HloInstruction* all_reduce,
             to_visit.push(user);
             break;
           }
-          case HloOpcode::kDynamicSlice: {
-            if (user->operand_index(instruction) == 0) {
-              to_visit.push(user);
-            } else {
+          case HloOpcode::kDynamicUpdateSlice: {
+            if (result.dynamic_update_slice.has_value()) {
               result.unsupported_operation = true;
-            }
-            break;
-          }
-          case HloOpcode::kSelect: {
-            if ((user->operand_index(instruction) == 1 &&
-                 IsZero(user->operand(2))) ||
-                (user->operand_index(instruction) == 2 &&
-                 IsZero(user->operand(1)))) {
-              to_visit.push(user);
             } else {
-              result.unsupported_operation = true;
+              result.dynamic_update_slice = user;
+              to_visit.push(user);
             }
             break;
           }
@@ -207,8 +320,12 @@ MovableAllReduceContext IsAllReduceMovable(HloInstruction* all_reduce,
             }
             break;
           }
-          default:
+          default: {
+            VLOG(4) << "get_output_tuple_index, instruction: ("
+                    << instruction->ToString()
+                    << ") is an unsupported operation on accumulation buffer.";
             result.unsupported_operation = true;
+          }
         }
         if (result.unsupported_operation) {
           break;
@@ -221,8 +338,9 @@ MovableAllReduceContext IsAllReduceMovable(HloInstruction* all_reduce,
   // Checks whether any buffer in the list of accumulation contexts is used in
   // the parent computation except for forwarding uses.
   auto is_buffer_used =
-      [](absl::Span<const AccumulationContext> accumulation_contexts,
-         HloComputation* while_body_computation) -> bool {
+      [&is_value_replicated_within_replica_group](
+          absl::Span<const AccumulationContext> accumulation_contexts,
+          HloComputation* while_body_computation) -> bool {
     std::vector<HloInstruction*> parameter_instructions;
     absl::c_copy_if(while_body_computation->instructions(),
                     std::back_inserter(parameter_instructions),
@@ -257,6 +375,7 @@ MovableAllReduceContext IsAllReduceMovable(HloInstruction* all_reduce,
         HloInstruction* instruction = to_visit.top();
         to_visit.pop();
         for (HloInstruction* user : instruction->users()) {
+          VLOG(5) << "is_buffer_used, user: " << user->name();
           switch (user->opcode()) {
             case HloOpcode::kBitcast:
             case HloOpcode::kConvert:
@@ -265,18 +384,12 @@ MovableAllReduceContext IsAllReduceMovable(HloInstruction* all_reduce,
               to_visit.push(user);
               break;
             case HloOpcode::kSelect: {
-              if ((user->operand_index(instruction) == 1 &&
-                   IsZero(user->operand(2))) ||
-                  (user->operand_index(instruction) == 2 &&
-                   IsZero(user->operand(1)))) {
-                to_visit.push(user);
-              } else {
-                return true;
-              }
-              break;
-            }
-            case HloOpcode::kDynamicReshape: {
-              if (instruction == user->operand(0)) {
+              if (((user->operand_index(instruction) == 1 &&
+                    IsZero(user->operand(2))) ||
+                   (user->operand_index(instruction) == 2 &&
+                    IsZero(user->operand(1)))) &&
+                  is_value_replicated_within_replica_group(*(user->operand(0)),
+                                                           {})) {
                 to_visit.push(user);
               } else {
                 return true;
@@ -289,8 +402,25 @@ MovableAllReduceContext IsAllReduceMovable(HloInstruction* all_reduce,
               }
               break;
             }
-            default:
+            case HloOpcode::kDynamicSlice: {
+              if (!accumulation.dynamic_slice.has_value() ||
+                  user != *accumulation.dynamic_slice) {
+                return true;
+              }
+              break;
+            }
+            case HloOpcode::kDynamicUpdateSlice: {
+              if (!accumulation.dynamic_update_slice.has_value() ||
+                  user != *accumulation.dynamic_update_slice) {
+                return true;
+              }
+              break;
+            }
+            default: {
+              VLOG(4) << "buffer is used by " << user->ToString()
+                      << ", preventing the motion of all-reduce.";
               return true;
+            }
           }
         }
       }
@@ -298,10 +428,39 @@ MovableAllReduceContext IsAllReduceMovable(HloInstruction* all_reduce,
     return false;
   };
 
-  // Finds all accumulation contexts of the given all-reduce instruction if it
-  // is movable.
+  auto dus_matches_ds_offsets =
+      [](const HloInstruction& dynamic_slice,
+         const HloInstruction& dynamic_update_slice) -> bool {
+    if (dynamic_slice.operand_count() + 1 !=
+        dynamic_update_slice.operand_count()) {
+      return false;
+    }
+    for (int i = 1; i < dynamic_slice.operand_count(); ++i) {
+      if (dynamic_slice.operand(i) != dynamic_update_slice.operand(i + 1)) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  auto dus_indices_are_replicated =
+      [&is_value_replicated_within_replica_group](
+          const HloInstruction& dynamic_update_slice) -> bool {
+    for (int i = 2; i < dynamic_update_slice.operand_count(); ++i) {
+      LOG(INFO) << " operand: " << dynamic_update_slice.operand(i)->ToString();
+      if (!is_value_replicated_within_replica_group(
+              *dynamic_update_slice.operand(i), {})) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  // Finds all accumulation contexts of the given all-reduce instruction
+  // if it is movable.
   auto get_accumulation_contexts =
-      [&get_origin_tuple_index, &get_output_tuple_index, &is_buffer_used](
+      [&get_origin_tuple_index, &get_output_tuple_index, &is_buffer_used,
+       &dus_matches_ds_offsets, &dus_indices_are_replicated](
           HloInstruction* all_reduce,
           HloComputation* while_body) -> MovableAllReduceContext {
     std::vector<AccumulationContext> accumulation_contexts;
@@ -325,15 +484,6 @@ MovableAllReduceContext IsAllReduceMovable(HloInstruction* all_reduce,
           case HloOpcode::kTranspose:
           case HloOpcode::kSlice: {
             to_visit.push(user);
-            break;
-          }
-          case HloOpcode::kDynamicSlice: {
-            if (user->operand_index(instruction) == 0) {
-              to_visit.push(user);
-            } else {
-              is_all_reduce_movable = false;
-              break;
-            }
             break;
           }
           case HloOpcode::kSelect: {
@@ -366,17 +516,30 @@ MovableAllReduceContext IsAllReduceMovable(HloInstruction* all_reduce,
                 output_buffer_tuple_index.returned_from_computation &&
                 !origin_buffer_tuple_index.tuple_index.empty() &&
                 absl::c_equal(origin_buffer_tuple_index.tuple_index,
-                              output_buffer_tuple_index.tuple_index)) {
+                              output_buffer_tuple_index.tuple_index) &&
+                (origin_buffer_tuple_index.dynamic_slice.has_value() ==
+                 output_buffer_tuple_index.dynamic_update_slice.has_value()) &&
+                (!origin_buffer_tuple_index.dynamic_slice.has_value() ||
+                 (dus_matches_ds_offsets(
+                      **origin_buffer_tuple_index.dynamic_slice,
+                      **output_buffer_tuple_index.dynamic_update_slice) &&
+                  dus_indices_are_replicated(
+                      **output_buffer_tuple_index.dynamic_update_slice)))) {
               accumulation_contexts.push_back(AccumulationContext{
                   user, accumulation_buffer,
-                  std::move(output_buffer_tuple_index.tuple_index)});
+                  std::move(output_buffer_tuple_index.tuple_index),
+                  origin_buffer_tuple_index.dynamic_slice,
+                  output_buffer_tuple_index.dynamic_update_slice});
             } else {
               is_all_reduce_movable = false;
             }
             break;
           }
-          default:
+          default: {
+            VLOG(4) << "get_accumulation_contexts, all-reduce result is used "
+                    << " by " << user->ToString() << ", not movable.";
             is_all_reduce_movable = false;
+          }
         }
       }
     }
@@ -572,6 +735,23 @@ StatusOr<bool> WhileLoopAllReduceCodeMotion::Run(HloModule* module) {
       !module->config().use_spmd_partitioning()) {
     return false;
   }
+  std::unique_ptr<HloReplicationAnalysis> cross_replica_replication_analysis;
+  if (module->config().replica_count() > 1) {
+    VLOG(5) << "num_replicas: " << module->config().replica_count()
+            << " run HloReplicationAnalysis across replicas";
+    TF_ASSIGN_OR_RETURN(cross_replica_replication_analysis,
+                        HloReplicationAnalysis::RunWithPartialReplication(
+                            module, /*cross_partition_spmd=*/false));
+  }
+  std::unique_ptr<HloReplicationAnalysis> cross_partition_replication_analysis;
+  if (module->config().use_spmd_partitioning() &&
+      module->config().num_partitions() > 1) {
+    VLOG(5) << "num_partitions: " << module->config().num_partitions()
+            << " run HloReplicationAnalysis across partitions";
+    TF_ASSIGN_OR_RETURN(cross_partition_replication_analysis,
+                        HloReplicationAnalysis::RunWithPartialReplication(
+                            module, /*cross_partition_spmd=*/true));
+  }
   // The while instruction's parent could be a while body for another while
   // loop. We recursively sink the all-reduce through nested while loops if
   // applicable by repeating this process.
@@ -614,12 +794,21 @@ StatusOr<bool> WhileLoopAllReduceCodeMotion::Run(HloModule* module) {
       HloInstructionMap<std::vector<AccumulationContext>>
           all_reduce_to_accumulations;
       for (HloInstruction* all_reduce : while_body_all_reduces) {
-        auto movable_all_reduce_context =
-            IsAllReduceMovable(all_reduce, computation);
+        auto movable_all_reduce_context = IsAllReduceMovable(
+            all_reduce, computation, cross_replica_replication_analysis,
+            cross_partition_replication_analysis);
         if (movable_all_reduce_context.is_movable) {
           all_reduce_to_accumulations[all_reduce] =
               std::move(movable_all_reduce_context.accumulation_contexts);
         }
+        VLOG(3) << "WhileLoopAllReduceCodeMotion, all-reduce: "
+                << all_reduce->ToString()
+                << " is_movable: " << movable_all_reduce_context.is_movable
+                << " while loop: " << while_caller_instructions.front()->name()
+                << " num_accumulations: "
+                << (movable_all_reduce_context.is_movable
+                        ? all_reduce_to_accumulations[all_reduce].size()
+                        : 0);
       }
       if (all_reduce_to_accumulations.empty()) {
         continue;

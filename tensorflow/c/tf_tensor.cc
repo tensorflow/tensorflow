@@ -241,7 +241,7 @@ Status TensorInterface::BitcastFrom(const TensorInterface& from, DataType type,
 
 Status TensorInterface::FromProto(const tensorflow::TensorProto& from) {
   bool success = tensor_.FromProto(from);
-  if (success) return Status::OK();
+  if (success) return OkStatus();
   return errors::InvalidArgument("Unparseable tensor proto");
 }
 
@@ -277,7 +277,7 @@ namespace tensorflow {
 
 // Non-static for testing.
 TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
-  *status = tensorflow::Status::OK();
+  *status = OkStatus();
   if (!src.IsInitialized()) {
     *status = FailedPrecondition(
         "attempt to use a tensor with an uninitialized value");
@@ -301,7 +301,7 @@ Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
 
 Status TensorInterface::ToTensor(tensorflow::Tensor* dst) const {
   *dst = tensor_;
-  return Status::OK();
+  return OkStatus();
 }
 
 bool TensorInterface::IsAligned() const { return tensor_.IsAligned(); }

@@ -1867,6 +1867,7 @@ py_library(
         ":lookup_ops_gen",
         ":math_ops",
         ":string_ops",
+        "//tensorflow/python/checkpoint:saveable_compat",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",

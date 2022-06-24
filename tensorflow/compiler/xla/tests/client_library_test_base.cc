@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -146,7 +147,7 @@ std::string ClientLibraryTestBase::ExecuteToString(
   if (!computation_status.ok()) {
     return computation_status.status().ToString();
   }
-  auto computation = computation_status.ConsumeValueOrDie();
+  auto computation = std::move(computation_status).value();
 
   auto result =
       client_->ExecuteAndTransfer(computation, arguments, &execution_options_);
@@ -421,7 +422,7 @@ void ClientLibraryTestBase::ComputeAndCompareR1U8(
   if (!actual_status.ok()) {
     return;
   }
-  auto actual = actual_status.ConsumeValueOrDie();
+  auto actual = std::move(actual_status).value();
 
   // Turn the expected value into a literal.
   Literal expected_literal = LiteralUtil::CreateR1U8(expected);
@@ -440,7 +441,7 @@ void ClientLibraryTestBase::ComputeAndCompareTuple(
   if (!actual_status.ok()) {
     return;
   }
-  auto actual = actual_status.ConsumeValueOrDie();
+  auto actual = std::move(actual_status).value();
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, actual));
 }
 
@@ -452,7 +453,7 @@ void ClientLibraryTestBase::ComputeAndCompareTuple(
   if (!actual_status.ok()) {
     return;
   }
-  auto actual = actual_status.ConsumeValueOrDie();
+  auto actual = std::move(actual_status).value();
   EXPECT_TRUE(LiteralTestUtil::Near(expected, actual, error));
 }
 
@@ -464,7 +465,7 @@ void ClientLibraryTestBase::ComputeAndCompare(
     return;
   }
   Literal reference, result;
-  std::tie(reference, result) = status_or_data.ConsumeValueOrDie();
+  std::tie(reference, result) = std::move(status_or_data).value();
   EXPECT_TRUE(LiteralTestUtil::Equal(reference, result));
 }
 
@@ -476,7 +477,7 @@ void ClientLibraryTestBase::ComputeAndCompare(
     return;
   }
   Literal reference, result;
-  std::tie(reference, result) = status_or_data.ConsumeValueOrDie();
+  std::tie(reference, result) = std::move(status_or_data).value();
   EXPECT_TRUE(LiteralTestUtil::Near(reference, result, error));
 }
 
@@ -536,7 +537,7 @@ XlaComputation ClientLibraryTestBase::CreateScalarRelu() {
   Max(z_value, zero);
   auto computation_status = builder.Build();
   TF_CHECK_OK(computation_status.status());
-  return computation_status.ConsumeValueOrDie();
+  return std::move(computation_status).value();
 }
 
 XlaComputation ClientLibraryTestBase::CreateScalarMax() {
@@ -547,7 +548,7 @@ XlaComputation ClientLibraryTestBase::CreateScalarMax() {
   Max(x, y);
   auto computation_status = builder.Build();
   TF_CHECK_OK(computation_status.status());
-  return computation_status.ConsumeValueOrDie();
+  return std::move(computation_status).value();
 }
 
 XlaComputation ClientLibraryTestBase::CreateScalarReluSensitivity() {
@@ -563,7 +564,7 @@ XlaComputation ClientLibraryTestBase::CreateScalarReluSensitivity() {
 
   auto computation_status = builder.Build();
   TF_CHECK_OK(computation_status.status());
-  return computation_status.ConsumeValueOrDie();
+  return std::move(computation_status).value();
 }
 
 std::unique_ptr<Array2D<float>> ClientLibraryTestBase::CreatePatternedMatrix(

@@ -1333,6 +1333,7 @@ def _is_worker_failure(error):
   # connection) to be reused for a replaced server listening to same address.
   if isinstance(error, errors.InvalidArgumentError):
     if ("unknown device" in str(error).lower() or
+        "Primary device is not remote" in str(error) or
         "Unable to find the relevant tensor remote_handle" in str(error)):
       return True
 

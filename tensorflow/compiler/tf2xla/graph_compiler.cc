@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <deque>
 #include <numeric>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
@@ -287,7 +288,7 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
     for (const string& node_name : token_input_nodes) {
       auto token_or = compiler->GetNodeToken(node_name);
       TF_RETURN_IF_ERROR(token_or.status());
-      token_inputs.push_back(token_or.ConsumeValueOrDie());
+      token_inputs.push_back(std::move(token_or).value());
     }
     xla::XlaOp token_input = xla::AfterAll(b, token_inputs);
     handles.push_back(token_input);

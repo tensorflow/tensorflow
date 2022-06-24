@@ -199,82 +199,91 @@ class PreemptionSyncManagerTest : public ::testing::Test {
 
 /* Single task tests */
 TEST_F(PreemptionSyncManagerTest, NoPreemption_NoSyncPoint) {
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
+  int step_counter = 0;
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
 }
 
 TEST_F(PreemptionSyncManagerTest, Preemption_SingleSyncPoint) {
   // Simulate task doing work and making progress.
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
+  int step_counter = 0;
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
   SendPreemptionNotice();
 
   // Since this is the only task, sync point must be reached.
-  EXPECT_TRUE(preempt_sync_mgr_->ReachedSyncPoint());
+  EXPECT_TRUE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
 
   // Now, we moved past the sync point.
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
 }
 
 TEST_F(PreemptionSyncManagerTest, DelayedPreemption_NoSyncPointYet) {
+  int step_counter = 0;
   // Simulate task doing work and making progress.
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
   // Send notice about scheduled preemption in an hour.
   SendPreemptionNotice(absl::Now() + absl::Hours(1));
 
   // Protocol didn't trigger yet, so there should be no sync point.
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
 }
+
 TEST_F(PreemptionSyncManagerTest, UnhealthyTask_NoSyncPoint) {
+  int step_counter = 0;
   // Simulate task doing work and making progress.
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
   SimulateUnhealthyTaskTwo();
   SendPreemptionNotice();
 
   // No sync point is created since one of the tasks is unhealthy.
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
 }
 
 /* Two task tests */
 TEST_F(PreemptionSyncManagerTest, PreemptSlowTask) {
+  int step_counter0 = 0;
+  int step_counter2 = 0;
   // Simulate slow task 1 that is only at call #1.
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter0++));
   // Simulate fast task 3 that is already at call #3.
-  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint());
-  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint());
-  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint());
+  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint(step_counter2++));
+  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint(step_counter2++));
+  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint(step_counter2++));
   SendPreemptionNotice();
 
   // Sync point should be set at call #4.
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
-  EXPECT_TRUE(preempt_sync_mgr_->ReachedSyncPoint());
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter0++));
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter0++));
+  EXPECT_TRUE(preempt_sync_mgr_->ReachedSyncPoint(step_counter0++));
 
   // Task 2 was already at call #3, so the next call should be the sync point.
-  EXPECT_TRUE(preempt_sync_mgr2_->ReachedSyncPoint());
+  EXPECT_TRUE(preempt_sync_mgr2_->ReachedSyncPoint(step_counter2++));
 }
 
 // Same as PreemptSlowTask, but we send the preemption notice to the faster
 // task 2.
 TEST_F(PreemptionSyncManagerTest, PreemptFastTask) {
+  int step_counter0 = 0;
+  int step_counter2 = 0;
   // Simulate slow task 1 that is only at call #1.
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter0++));
   // Simulate fast task 3 that is already at call #3.
-  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint());
-  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint());
-  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint());
+  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint(step_counter2++));
+  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint(step_counter2++));
+  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint(step_counter2++));
   SendPreemptionNotice(absl::Now(), /*=to_task1=*/false);
 
   // Sync point should be set at call #4.
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
-  EXPECT_TRUE(preempt_sync_mgr_->ReachedSyncPoint());
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter0++));
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter0++));
+  EXPECT_TRUE(preempt_sync_mgr_->ReachedSyncPoint(step_counter0++));
 
   // Task 2 was already at call #3, so the next call should be the sync point.
-  EXPECT_TRUE(preempt_sync_mgr2_->ReachedSyncPoint());
+  EXPECT_TRUE(preempt_sync_mgr2_->ReachedSyncPoint(step_counter2++));
 }
 
 }  // namespace

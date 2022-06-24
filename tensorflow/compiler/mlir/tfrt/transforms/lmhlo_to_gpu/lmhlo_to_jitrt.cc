@@ -105,7 +105,7 @@ using mlir::lmhlo_gpu::ConvBackwardInputOp;
 using mlir::lmhlo_gpu::ConvForwardFusedOp;
 using mlir::lmhlo_gpu::ConvForwardFusedSideInputOp;
 using mlir::lmhlo_gpu::ConvForwardOp;
-using mlir::lmhlo_gpu::ConvolutionBackendConfig;
+using mlir::lmhlo_gpu::ConvolutionBackendConfigAttr;
 using mlir::lmhlo_gpu::GEMM_BiasOp;
 using mlir::lmhlo_gpu::GEMMOp;
 using mlir::memref::AllocaOp;
@@ -212,7 +212,7 @@ class IoFeedOpLowering : public OpRewritePattern<IoFeedOp> {
     // Call the runtime intrinsic with the original operands.
     auto call = rewriter.create<CallOp>(op.getLoc(), inserted, TypeRange(),
                                         op.getOperands());
-    call->setAttr(b.getStringAttr("config"), op.configAttr());
+    call->setAttr(b.getStringAttr("config"), op.getConfigAttr());
 
     // Erase the original infeed/outfeed operation.
     rewriter.eraseOp(op);
@@ -370,7 +370,7 @@ class GemmLowering : public OpRewritePattern<Gemm> {
                                CallOp call) {}
   static void SetOptionalAttrs(ImplicitLocOpBuilder& b, GEMM_BiasOp op,
                                CallOp call) {
-    call->setAttr(b.getStringAttr("beta"), op.betaAttr());
+    call->setAttr(b.getStringAttr("beta"), op.getBetaAttr());
   }
 
  public:
@@ -408,16 +408,16 @@ class GemmLowering : public OpRewritePattern<Gemm> {
     call->setAttr(b.getStringAttr("uid"), b.getI64IntegerAttr(uid_.uid()));
 
     // Copy backend specific attributes.
-    call->setAttr(b.getStringAttr("algorithm"), op.algorithmAttr());
-    call->setAttr(b.getStringAttr("alpha_imag"), op.alpha_imagAttr());
-    call->setAttr(b.getStringAttr("alpha_real"), op.alpha_realAttr());
+    call->setAttr(b.getStringAttr("algorithm"), op.getAlgorithmAttr());
+    call->setAttr(b.getStringAttr("alpha_imag"), op.getAlphaImagAttr());
+    call->setAttr(b.getStringAttr("alpha_real"), op.getAlphaRealAttr());
 
     // Set optional arguments that are defined only for some Gemm ops.
     SetOptionalAttrs(b, op, call);
 
     // TODO(ezhulenev): Once cutom calls support passing structured attributes
     // we should be able to pass `mhlo.dot` attribute directly.
-    auto dot = op.dot_dimension_numbers();
+    auto dot = op.getDotDimensionNumbers();
     auto lhs_batch = b.getI64TensorAttr(dot.getLhsBatchingDimensions());
     auto lhs_contract = b.getI64TensorAttr(dot.getLhsContractingDimensions());
     auto rhs_batch = b.getI64TensorAttr(dot.getRhsBatchingDimensions());
@@ -531,16 +531,8 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
       set_attr(name, b.getI64TensorAttr(values));
     };
 
-    // Convert array attribute to an i64 vector.
-    auto to_i64s = [](ArrayAttr arr) {
-      auto range = llvm::map_range(arr.getValue(), [](Attribute attr) {
-        return attr.cast<IntegerAttr>().getInt();
-      });
-      return SmallVector<int64_t>(range.begin(), range.end());
-    };
-
     // Copy dimension number attributes.
-    ConvDimensionNumbersAttr dims = op.dimension_numbers();
+    ConvDimensionNumbersAttr dims = op.getDimensionNumbers();
 
     set_i64("input_batch_dim", dims.getInputBatchDimension());
     set_i64("input_feature_dim", dims.getInputFeatureDimension());
@@ -555,33 +547,35 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
     set_i64s("output_spatial_dims", dims.getOutputSpatialDimensions());
 
     // Copy convolution window attributes.
-    set_xi1("window_reversal", op.window_reversal());
-    set_xi64("window_strides", op.window_strides());
-    set_xi64("lhs_dilation", op.lhs_dilation());
-    set_xi64("rhs_dilation", op.rhs_dilation());
-    set_xi64("padding", op.padding());
+    set_xi1("window_reversal", op.getWindowReversal());
+    set_xi64("window_strides", op.getWindowStrides());
+    set_xi64("lhs_dilation", op.getLhsDilation());
+    set_xi64("rhs_dilation", op.getRhsDilation());
+    set_xi64("padding", op.getPadding());
 
     // Copy backend config.
-    ConvolutionBackendConfig backend = op.backend_config();
+    ConvolutionBackendConfigAttr backend = op.getBackendConfig();
 
-    set_attr("algorithm", backend.algorithm());
-    set_attr("tensor_ops_enabled", backend.tensor_ops_enabled());
-    set_attr("is_cudnn_frontend", backend.is_cudnn_frontend());
-    set_attr("workspace_size", backend.workspace_size());
+    set_i64("algorithm", backend.getAlgorithm());
+    set_attr("tensor_ops_enabled",
+             b.getBoolAttr(backend.getTensorOpsEnabled()));
+    set_attr("is_cudnn_frontend", b.getBoolAttr(backend.getIsCudnnFrontend()));
+    set_i64("workspace_size", backend.getWorkspaceSize());
 
-    set_i64s("knob_ids", to_i64s(backend.knob_ids()));
-    set_i64s("knob_values", to_i64s(backend.knob_values()));
-    set_i64s("operand_0_layout", to_i64s(backend.operand_0_layout()));
-    set_i64s("operand_1_layout", to_i64s(backend.operand_1_layout()));
-    set_i64s("result_layout", to_i64s(backend.result_layout()));
+    set_i64s("knob_ids", backend.getKnobIds());
+    set_i64s("knob_values", backend.getKnobValues());
+    set_i64s("operand_0_layout", backend.getOperand_0Layout());
+    set_i64s("operand_1_layout", backend.getOperand_1Layout());
+    set_i64s("result_layout", backend.getResultLayout());
 
     // Copy remaining attributes.
-    set_attr("feature_group_count", op.feature_group_countAttr());
-    set_attr("result_scale", op.result_scaleAttr());
+    set_attr("feature_group_count", op.getFeatureGroupCountAttr());
+    set_attr("result_scale", op.getResultScaleAttr());
 
     // Copy attributes specific for fused convolutions.
     if (auto fused = dyn_cast<ConvForwardFusedOp>(op.getOperation())) {
-      auto activation_mode = ConvertConvActivationMode(fused.activation_mode());
+      auto activation_mode =
+          ConvertConvActivationMode(fused.getActivationMode());
       if (!activation_mode.ok())
         return op.emitOpError("failed to convert activation mode");
       set_i64("activation_mode", static_cast<int64_t>(*activation_mode));
@@ -589,11 +583,12 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
 
     // Copy attributes specific for fused convolutions with side input.
     if (auto fused = dyn_cast<ConvForwardFusedSideInputOp>(op.getOperation())) {
-      auto activation_mode = ConvertConvActivationMode(fused.activation_mode());
+      auto activation_mode =
+          ConvertConvActivationMode(fused.getActivationMode());
       if (!activation_mode.ok())
         return op.emitOpError("failed to convert activation mode");
       set_i64("activation_mode", static_cast<int64_t>(*activation_mode));
-      set_attr("side_input_scale", fused.side_input_scaleAttr());
+      set_attr("side_input_scale", fused.getSideInputScaleAttr());
     }
 
     // Erase the original conv operation.
@@ -649,8 +644,8 @@ class WhileOpLowering : public OpRewritePattern<WhileOp> {
 
     // Clone condition and body blocks into the new loop operation.
     BlockAndValueMapping mapping;
-    op.cond().cloneInto(&loop.getBefore(), mapping);
-    op.body().cloneInto(&loop.getAfter(), mapping);
+    op.getCond().cloneInto(&loop.getBefore(), mapping);
+    op.getBody().cloneInto(&loop.getAfter(), mapping);
 
     {  // Replace loop condition terminator.
       auto* terminator = loop.getBefore().back().getTerminator();
@@ -692,10 +687,10 @@ class CaseOpLowering : public OpRewritePattern<CaseOp> {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
     // Copy index buffer to the host ...
-    auto index_type = op.index().getType().dyn_cast<MemRefType>();
+    auto index_type = op.getIndex().getType().dyn_cast<MemRefType>();
     Value index_on_host = b.create<memref::AllocaOp>(index_type);
     b.create<gpu::MemcpyOp>(TypeRange(),
-                            ValueRange({index_on_host, op.index()}));
+                            ValueRange({index_on_host, op.getIndex()}));
 
     // Get the index value from the buffer.
     Value index = b.create<memref::LoadOp>(index_type.getElementType(),
@@ -786,25 +781,24 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
 
     // If custom call has target arguments mapping, then we need to pass empty
     // memrefs in place of holes.
-    if (op.target_arg_mapping().hasValue()) {
-      auto mapping = *op.target_arg_mapping();
-      int64_t num_args = mapping.num_args().getInt();
-      int64_t num_results = mapping.num_results().getInt();
+    if (op.getTargetArgMapping().hasValue()) {
+      auto mapping = *op.getTargetArgMapping();
+      int64_t num_args = mapping.getNumArgs();
+      int64_t num_results = mapping.getNumResults();
 
       // We represent holes as empty i8 memrefs.
       Value hole = b.create<AllocaOp>(MemRefType::get({0}, b.getI8Type()));
       operands = llvm::SmallVector<Value>(num_args + num_results, hole);
 
       // Update operands to mapped custom call arguments.
-      auto args = mapping.args_to_target_args().getAsRange<IntegerAttr>();
-      for (auto& indexed : llvm::enumerate(args))
-        operands[indexed.value().getInt()] = op.args()[indexed.index()];
+      auto args = mapping.getArgsToTargetArgs();
+      for (const auto& indexed : llvm::enumerate(args))
+        operands[indexed.value()] = op.getArgs()[indexed.index()];
 
       // Update operands to mapped custom call results.
-      auto res = mapping.results_to_target_results().getAsRange<IntegerAttr>();
-      for (auto& indexed : llvm::enumerate(res))
-        operands[num_args + indexed.value().getInt()] =
-            op.output()[indexed.index()];
+      auto res = mapping.getResultsToTargetResults();
+      for (const auto& indexed : llvm::enumerate(res))
+        operands[num_args + indexed.value()] = op.getOutput()[indexed.index()];
     }
 
     // Create a custom call function declaration.
@@ -829,9 +823,9 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
       call->setAttr(b.getStringAttr(name), attr);
     };
 
-    set_attr("api_version", op.api_versionAttr());
-    set_attr("backend_config", op.backend_configAttr());
-    set_attr("call_target_name", op.call_target_nameAttr());
+    set_attr("api_version", op.getApiVersionAttr());
+    set_attr("backend_config", op.getBackendConfigAttr());
+    set_attr("call_target_name", op.getCallTargetNameAttr());
 
     // Erase the original infeed/outfeed operation.
     rewriter.eraseOp(op);
@@ -954,9 +948,9 @@ class FftOpLowering : public OpRewritePattern<FftOp> {
                                         op.getOperands());
 
     // Copy backend specific attributes.
-    call->setAttr(b.getStringAttr("fft_length"), op.fft_lengthAttr());
+    call->setAttr(b.getStringAttr("fft_length"), op.getFftLengthAttr());
     call->setAttr(b.getStringAttr("fft_type"),
-                  b.getI32IntegerAttr(static_cast<int32_t>(op.fft_type())));
+                  b.getI32IntegerAttr(static_cast<int32_t>(op.getFftType())));
 
     // Erase the original Fft operation.
     rewriter.eraseOp(op);
@@ -999,7 +993,8 @@ class CholeskyOpLowering : public OpRewritePattern<CholeskyOp> {
     auto call = rewriter.create<CallOp>(op.getLoc(), inserted, TypeRange(),
                                         op.getOperands());
 
-    const auto& dims = op.input().getType().cast<mlir::MemRefType>().getShape();
+    const auto& dims =
+        op.getInput().getType().cast<mlir::MemRefType>().getShape();
     if (dims.size() < 2)
       return op.emitOpError() << "Input's dimension count (" << dims.size()
                               << ") must be 2 or greater.";
@@ -1012,7 +1007,8 @@ class CholeskyOpLowering : public OpRewritePattern<CholeskyOp> {
     call->setAttr(b.getStringAttr("batch_size"),
                   b.getI64IntegerAttr(batch_size));
     call->setAttr(b.getStringAttr("n"), b.getI64IntegerAttr(n));
-    call->setAttr(b.getStringAttr("uplo"), b.getI64IntegerAttr(op.is_lower()));
+    call->setAttr(b.getStringAttr("uplo"),
+                  b.getI64IntegerAttr(op.getIsLower()));
 
     // Erase the original Cholesky operation.
     rewriter.eraseOp(op);
@@ -1084,7 +1080,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
   static xla::gpu::NcclCollectiveConfig GetNcclCollectiveConfig(
       ReduceOrGatherOp op, int /*replica_count*/, int /*num_partitions*/) {
     return xla::gpu::GetNcclCollectiveConfigForMlir(op,
-                                                    op.use_global_device_ids());
+                                                    op.getUseGlobalDeviceIds());
   }
   static xla::gpu::NcclCollectiveConfig GetNcclCollectiveConfig(
       AllToAllOp op, int /*replica_count*/, int /*num_partitions*/) {
@@ -1107,10 +1103,10 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
       return failure();
     }
 
-    for (int64_t i = 0; i < op.operands().size(); i++) {
+    for (int64_t i = 0; i < op.getInputs().size(); i++) {
       rewriter.create<gpu::MemcpyOp>(
           op.getLoc(), TypeRange(),
-          ValueRange({op.results()[i], op.operands()[i]}));
+          ValueRange({op.getOutputs()[i], op.getOperands()[i]}));
     }
     return success();
   }
@@ -1122,8 +1118,9 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
       return failure();
     }
 
-    rewriter.create<gpu::MemcpyOp>(op.getLoc(), TypeRange(),
-                                   ValueRange({op.output(), op.operand()}));
+    rewriter.create<gpu::MemcpyOp>(
+        op.getLoc(), TypeRange(),
+        ValueRange({op.getOutput(), op.getOperand()}));
     return success();
   }
 
@@ -1151,7 +1148,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
                                         CallOp call) {
     std::optional<xla::ReductionKind> reduction_kind =
         xla::gpu::NcclAllReduceThunkBase::MatchAllReduceComputation(
-            op.computation());
+            op.getComputation());
     if (!reduction_kind.has_value())
       return op.emitOpError()
              << "Failed to determine reduction computation for AllReduce";
@@ -1168,13 +1165,13 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
   static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b, AllToAllOp op,
                                         CallOp call) {
     call->setAttr(b.getStringAttr("has_split_dimension"),
-                  b.getBoolAttr(op.split_dimension().hasValue()));
+                  b.getBoolAttr(op.getSplitDimension().hasValue()));
     return success();
   }
   static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b,
                                         CollectivePermuteOp op, CallOp call) {
     auto source_target_pairs_or =
-        xla::ConvertNx2Attribute(op.source_target_pairs());
+        xla::ConvertNx2Attribute(op.getSourceTargetPairs());
     if (!source_target_pairs_or.ok()) {
       return op.emitOpError()
              << source_target_pairs_or.status().error_message();
@@ -1226,7 +1223,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
                                          num_partitions, rewriter))) {
       // For async collective erase all corresponding done operations.
       if (auto start = dyn_cast<AllReduceStartOp>(op.getOperation())) {
-        auto users = llvm::to_vector(start.token().getUsers());
+        auto users = llvm::to_vector(start.getToken().getUsers());
         llvm::for_each(users, [&](Operation* user) {
           if (isa<AllReduceDoneOp>(user)) rewriter.eraseOp(user);
         });
@@ -1311,7 +1308,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     // have the token argument. We rely on the `unrealized_conversion_cast`
     // operation to create a fake token from the `i8` constant.
     if (auto start = dyn_cast<AllReduceStartOp>(op.getOperation())) {
-      Value token = start.token();
+      Value token = start.getToken();
       Value c0 = b.create<ConstantOp>(b.getI8IntegerAttr(0));
       auto fake = b.create<UnrealizedConversionCastOp>(token.getType(), c0);
       token.replaceAllUsesWith(fake.getResult(0));
@@ -1526,7 +1523,7 @@ void ConvertLmhloGpuToJitRtPass::runOnOperation() {
   // all other collective operations will get assigned uid.
   CollectiveUidGenerator collective_uid;
   auto walked = module.walk([&](AllReduceStartOp start) -> WalkResult {
-    Value token = start.token();
+    Value token = start.getToken();
 
     // We expect the token to be consumed just once.
     if (!token.hasOneUse()) return start.emitOpError("token has multiple uses");

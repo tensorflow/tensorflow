@@ -91,12 +91,7 @@ limitations under the License.
 // resize_bilinear_op.cc.
 #define CAST_FUNCTORS_SUBSET(devname)                                 \
   SPECIALIZE_CAST(devname, float, double)                             \
-  SPECIALIZE_CAST(devname, float, std::complex<double>)               \
-  SPECIALIZE_CAST(devname, std::complex<float>, std::complex<double>) \
-  SPECIALIZE_CAST(devname, std::complex<float>, double)               \
   SPECIALIZE_CAST(devname, Eigen::half, float)                        \
-  SPECIALIZE_CAST(devname, Eigen::half, std::complex<double>)         \
-  SPECIALIZE_CAST(devname, Eigen::half, std::complex<float>)          \
   SPECIALIZE_CAST(devname, bfloat16, float)                           \
   template <typename OUT_TYPE, typename IN_OUT>                       \
   struct CastFunctor<devname, OUT_TYPE, IN_OUT> {                     \

@@ -48,8 +48,8 @@ struct DotOpConverter : public OpRewritePattern<DotOp> {
   // Supports only rank-2 tensors for LHS and RHS.
   LogicalResult matchAndRewrite(DotOp op,
                                 PatternRewriter& rewriter) const override {
-    Value lhs = op.lhs();
-    Value rhs = op.rhs();
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
     MemRefType lhsType = lhs.getType().cast<MemRefType>();
     MemRefType rhsType = rhs.getType().cast<MemRefType>();
     Type elementType = lhsType.getElementType();
@@ -63,7 +63,7 @@ struct DotOpConverter : public OpRewritePattern<DotOp> {
     // We don't currently support batching dimensions, or multiple contraction
     // dimensions.
     mhlo::DotDimensionNumbersAttr dotDimensionNumbers =
-        op.dot_dimension_numbers();
+        op.getDotDimensionNumbers();
     if (!dotDimensionNumbers.getLhsBatchingDimensions().empty() ||
         !dotDimensionNumbers.getRhsBatchingDimensions().empty())
       return failure();
@@ -82,12 +82,13 @@ struct DotOpConverter : public OpRewritePattern<DotOp> {
       auto l = builder.create<AffineLoadOp>(loc, lhs, lhsIndices);
       auto r = builder.create<AffineLoadOp>(loc, rhs, rhsIndices);
       auto result =
-          rewriter.create<AffineLoadOp>(loc, op.output(), resultIndices);
+          rewriter.create<AffineLoadOp>(loc, op.getOutput(), resultIndices);
       Value opResult = lmhlo::LhloOpToStdScalarOp::map<DotOp>(
           op, elementType, {l, r, result}, &builder);
       mapStatus = success(opResult != nullptr);
       if (failed(mapStatus)) return;
-      builder.create<AffineStoreOp>(loc, opResult, op.output(), resultIndices);
+      builder.create<AffineStoreOp>(loc, opResult, op.getOutput(),
+                                    resultIndices);
     };
 
     buildBoundedAffineLoopNest(rewriter, op.getLoc(),
@@ -123,13 +124,13 @@ struct ConcatOpConverter : public OpRewritePattern<ConcatenateOp> {
   LogicalResult matchAndRewrite(ConcatenateOp op,
                                 PatternRewriter& rewriter) const override {
     Location loc = op.getLoc();
-    Value output = op.output();
+    Value output = op.getOutput();
     MemRefType outputType = output.getType().cast<MemRefType>();
     unsigned outputRank = outputType.getRank();
     ArrayRef<int64_t> outputShape = outputType.getShape();
 
-    ValueRange operands = op.val();
-    uint64_t concatDim = op.dimension();
+    ValueRange operands = op.getVal();
+    uint64_t concatDim = op.getDimension();
     int64_t prevBound = 0;
 
     for (Value operand : operands) {
@@ -245,19 +246,19 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
     Location loc = op.getLoc();
 
     // Operand array.
-    Value operand = op.operand();
+    Value operand = op.getOperand();
     MemRefType operandType = operand.getType().cast<MemRefType>();
     unsigned operandRank = operandType.getRank();
     ArrayRef<int64_t> operandShape = operandType.getShape();
 
     // Start_indices array.
-    Value startIndices = op.start_indices();
+    Value startIndices = op.getStartIndices();
     MemRefType startIndicesType = startIndices.getType().cast<MemRefType>();
     unsigned startIndicesRank = startIndicesType.getRank();
     ArrayRef<int64_t> startIndicesShape = startIndicesType.getShape();
 
     // Output array.
-    Value output = op.output();
+    Value output = op.getOutput();
     MemRefType outputType = output.getType().cast<MemRefType>();
     ArrayRef<int64_t> outputShape = outputType.getShape();
 
@@ -265,7 +266,7 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
         !outputType.hasStaticShape())
       return rewriter.notifyMatchFailure(op, "only static shaped type allowed");
 
-    mhlo::GatherDimensionNumbersAttr gatherDim = op.dimension_numbers();
+    mhlo::GatherDimensionNumbersAttr gatherDim = op.getDimensionNumbers();
 
     auto collapsedSliceDims = gatherDim.getCollapsedSliceDims();
     auto offsetDims = gatherDim.getOffsetDims();
@@ -273,7 +274,7 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
     int64_t indexVectorDim = gatherDim.getIndexVectorDim();
 
     // Slice_sizes.
-    DenseIntElementsAttr sliceSizesAttr = op.slice_sizesAttr();
+    DenseIntElementsAttr sliceSizesAttr = op.getSliceSizesAttr();
     SmallVector<int64_t, 4> sliceSizes;
     for (const APInt& dim : sliceSizesAttr.getValues<APInt>())
       sliceSizes.push_back(dim.getSExtValue());
@@ -475,9 +476,9 @@ struct PadOpConverter : public OpRewritePattern<PadOp> {
 
   LogicalResult matchAndRewrite(PadOp op,
                                 PatternRewriter& rewriter) const override {
-    Value operand = op.operand();
-    Value paddingValue = op.padding_value();
-    Value output = op.output();
+    Value operand = op.getOperand();
+    Value paddingValue = op.getPaddingValue();
+    Value output = op.getOutput();
 
     auto operandType = operand.getType().dyn_cast<ShapedType>();
     auto outputType = output.getType().dyn_cast<ShapedType>();
@@ -487,9 +488,9 @@ struct PadOpConverter : public OpRewritePattern<PadOp> {
       return failure();
     unsigned rank = operandType.getRank();
 
-    auto edgePadLowRanges = op.edge_padding_low().getValues<int64_t>();
-    auto edgePadHighRanges = op.edge_padding_high().getValues<int64_t>();
-    auto interiorPadRanges = op.interior_padding().getValues<int64_t>();
+    auto edgePadLowRanges = op.getEdgePaddingLow().getValues<int64_t>();
+    auto edgePadHighRanges = op.getEdgePaddingHigh().getValues<int64_t>();
+    auto interiorPadRanges = op.getInteriorPadding().getValues<int64_t>();
     // Check whether the constraints for the lowering are satisfied :-
     //   1. interior_padding[i] == 0
     //   2. edge_padding_*[i] >= 0
@@ -562,8 +563,8 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOpTy> {
 
   LogicalResult matchAndRewrite(LhloOpTy op,
                                 PatternRewriter& rewriter) const override {
-    const auto& lhs = op.lhs();
-    const auto& rhs = op.rhs();
+    const auto& lhs = op.getLhs();
+    const auto& rhs = op.getRhs();
     const auto& lhsType = lhs.getType().template cast<MemRefType>();
     const auto& rhsType = rhs.getType().template cast<MemRefType>();
     const auto& elementType = lhsType.getElementType();
@@ -581,7 +582,7 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOpTy> {
           op, elementType, {l, r}, &builder);
       mapStatus = success(opResult != nullptr);
       if (failed(mapStatus)) return;
-      rewriter.create<AffineStoreOp>(loc, opResult, op.out(), inductionVars);
+      rewriter.create<AffineStoreOp>(loc, opResult, op.getOut(), inductionVars);
     };
 
     buildBoundedAffineLoopNest(rewriter, op.getLoc(), lhsType.getShape(),
@@ -599,7 +600,7 @@ struct UnaryOpConverter : public OpRewritePattern<LhloOpTy> {
 
   LogicalResult matchAndRewrite(LhloOpTy op,
                                 PatternRewriter& rewriter) const override {
-    Value input = op.input();
+    Value input = op.getInput();
     auto inputType = input.getType().cast<MemRefType>();
     auto elementType = inputType.getElementType();
     ArrayRef<int64_t> shape = inputType.getShape();
@@ -614,7 +615,8 @@ struct UnaryOpConverter : public OpRewritePattern<LhloOpTy> {
           op, elementType, {loadInput}, &builder);
       mapStatus = success(opResult != nullptr);
       if (failed(mapStatus)) return;
-      rewriter.create<AffineStoreOp>(loc, opResult, op.output(), inductionVars);
+      rewriter.create<AffineStoreOp>(loc, opResult, op.getOutput(),
+                                     inductionVars);
     };
     buildBoundedAffineLoopNest(rewriter, op.getLoc(), shape, bodyBuilder);
     if (failed(mapStatus)) return failure();

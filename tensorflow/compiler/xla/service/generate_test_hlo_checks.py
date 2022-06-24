@@ -25,6 +25,9 @@ import tempfile
 from typing import Dict
 
 
+ESCAPE_FILECHECK_VARNAME = re.compile(r"[^a-zA-Z0-9_]")
+
+
 class FileCheckVarReplacer:
   """Replacer class for replacing HLO instructions by FileCheck captures."""
 
@@ -66,7 +69,8 @@ class FileCheckVarReplacer:
 
   def _generate_unique_varname(self, instr_name: str) -> str:
     self._counter += 1
-    normalized_instr_name = instr_name.replace("%", "").replace(".", "_")
+    normalized_instr_name = ESCAPE_FILECHECK_VARNAME.sub(
+        "_", instr_name.replace("%", ""))
     return f"{normalized_instr_name}_{self._counter}"
 
 

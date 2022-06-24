@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/platform/env.h"
 
@@ -101,53 +102,73 @@ void SlowOperationAlarm::UnscheduleAlarm(const SlowOperationAlarm* alarm) {
 }
 SlowOperationAlarm::SlowOperationAlarm(
     absl::Duration timeout, std::string msg,
-    std::atomic<int64_t>* counter /*=nullptr*/)
+    std::atomic<int64_t>* counter /*=nullptr*/,
+    absl::string_view context /*=""*/)
     : SlowOperationAlarm(
           timeout,                                 //
           [msg = std::move(msg)] { return msg; },  //
-          counter) {}
+          counter, std::move(context)) {}
 
 SlowOperationAlarm::SlowOperationAlarm(
     absl::Duration timeout, std::function<std::string()> msg_fn,
-    std::atomic<int64_t>* counter /*=nullptr*/)
-    : deadline_(absl::Now() + timeout),
+    std::atomic<int64_t>* counter /*=nullptr*/,
+    absl::string_view context /*=""*/)
+    : start_(absl::Now()),
+      deadline_(start_ + timeout),
+      context_(std::move(context)),
       msg_fn_(std::move(msg_fn)),
       counter_(counter) {
   ScheduleAlarm(this);
 }
 
-SlowOperationAlarm::~SlowOperationAlarm() { UnscheduleAlarm(this); }
+SlowOperationAlarm::~SlowOperationAlarm() {
+  UnscheduleAlarm(this);
+
+  absl::Time now = absl::Now();
+  if (deadline() <= now) {
+    absl::Duration duration = now - start_;
+    if (context_.empty()) {
+      LOG(ERROR) << "The operation took " << absl::FormatDuration(duration)
+                 << "\n"
+                 << msg_fn_();
+    } else {
+      LOG(ERROR) << "[" << context_ << "] The operation took "
+                 << absl::FormatDuration(duration) << "\n"
+                 << msg_fn_();
+    }
+  }
+}
 
 std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm(
-    absl::string_view msg) {
+    absl::string_view context) {
   // Pass a counter to these alarms so they only log once every power-of-two
   // occurrences.
   static auto* counter = new std::atomic<int64_t>(0);
 
   const char* separator = "\n********************************";
 
-  std::string msg_suffix;
-  if (!msg.empty()) {
-    msg_suffix = absl::StrCat("\n", msg);
+  std::string context_msg;
+  if (!context.empty()) {
+    context_msg = absl::StrCat("[", context, "] ");
   }
 
 #if NDEBUG
   return std::make_unique<SlowOperationAlarm>(
       absl::Duration(absl::Minutes(2)),
       absl::StrCat(
-          separator,
-          "\nVery slow compile?  If you want to file a bug, run with envvar "
+          separator, "\n", context_msg,
+          "Very slow compile?  If you want to file a bug, run with envvar "
           "XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.",
-          msg_suffix, separator),
+          separator),
       counter);
 #else
   return std::make_unique<SlowOperationAlarm>(
       absl::Duration(absl::Seconds(10)),
       absl::StrCat(
-          separator,
-          "\nSlow compile?  XLA was built without compiler optimizations, "
+          separator, "\n", context_msg,
+          "Slow compile?  XLA was built without compiler optimizations, "
           "which can be slow.  Try rebuilding with -c opt.",
-          msg_suffix, separator),
+          separator),
       counter);
 #endif
 }

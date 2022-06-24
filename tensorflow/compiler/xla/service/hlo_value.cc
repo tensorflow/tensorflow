@@ -283,6 +283,20 @@ bool InstructionValueSet::AssignUnionOf(
   return changed;
 }
 
+bool InstructionValueSet::AssignUnionOf(const InstructionValueSet& input,
+                                        ShapeIndexView input_index) {
+  bool changed = false;
+  for (auto& [index, value_set] : *this) {
+    ShapeIndex source_index(input_index);
+    for (auto i : index) {
+      source_index.push_back(i);
+    }
+    changed |= value_set.AssignUnionOf({&input.element(source_index)});
+  }
+
+  return changed;
+}
+
 std::ostream& operator<<(std::ostream& out,
                          const InstructionValueSet& instruction_value_set) {
   out << instruction_value_set.ToString();

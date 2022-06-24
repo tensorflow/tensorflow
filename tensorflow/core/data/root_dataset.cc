@@ -202,7 +202,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
         strings::Printf("%lld out of %lld (%.2f%%)",
                         static_cast<long long>(memory_usage / 1.0e6),
                         static_cast<long long>(memory_info.total / 1.0e6),
-                        static_cast<double>(memory_usage) /
+                        static_cast<double>(100 * memory_usage) /
                             static_cast<double>(memory_info.total))));
     if (model_node() != nullptr) {
       traceme_metadata.push_back(std::make_pair(

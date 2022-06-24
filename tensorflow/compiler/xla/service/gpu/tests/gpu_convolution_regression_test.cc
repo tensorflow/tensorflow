@@ -27,7 +27,7 @@ class GpuConvolutionRegressionTest : public HloTestBase {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsFromFlags());
     (void)backend().compiler()->RunHloPasses(
-        ParseAndReturnVerifiedModule(hlo_string, config).ConsumeValueOrDie(),
+        ParseAndReturnVerifiedModule(hlo_string, config).value(),
         backend().default_stream_executor(), backend().memory_allocator());
   }
 };

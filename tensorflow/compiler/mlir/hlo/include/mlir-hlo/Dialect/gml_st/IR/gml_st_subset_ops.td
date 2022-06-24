@@ -19,6 +19,7 @@ limitations under the License.
 #define GML_ST_SUBSET_OPS
 
 include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Interfaces/ViewLikeInterface.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/OpBase.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
@@ -31,6 +32,9 @@ def GMLST_TileType : GMLST_Subset<"Tile"> {
   let summary = "Type that represents a tile of an index space.";
   let parameters = (ins ArrayRefParameter<"int64_t">:$shape);
   let assemblyFormat = "`<` custom<ShapeTypeDimensionsList>($shape) `>`";
+  let extraClassDeclaration = [{
+    unsigned getRank() const { return getShape().size(); }
+  }];
 }
 
 def GMLST_PointType : GMLST_Subset<"Point"> {
@@ -45,7 +49,7 @@ def IsSubsetTypePred : Or<[GMLST_TileType.predicate, GMLST_PointType.predicate]>
 def AnySubset : Type<IsSubsetTypePred, "subset type">;
 
 def GMLST_SpaceOp : GMLST_Op<"space",
-    [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let arguments = (ins Variadic<Index>:$shapes,
                        I64ArrayAttr:$static_shapes);
   let results = (outs GMLST_TileType:$result);
@@ -56,7 +60,7 @@ def GMLST_SpaceOp : GMLST_Op<"space",
   let hasVerifier = 1;
 }
 
-def GMLST_PointOp : GMLST_Op<"point", []> {
+def GMLST_PointOp : GMLST_Op<"point", [NoSideEffect]> {
   let arguments = (ins AnySubset:$subset,
                        Variadic<Index>:$indices,
                        I64ArrayAttr:$static_indices);
@@ -66,11 +70,15 @@ def GMLST_PointOp : GMLST_Op<"point", []> {
     custom<OperandsOrIntegersOffsetsOrStridesList>($indices, $static_indices)
     attr-dict `:` qualified(type($subset)) `to` qualified(type($result))
   }];
+  let extraClassDeclaration = [{
+    unsigned getRank() { return static_indices().size(); }
+  }];
   let hasVerifier = 1;
 }
 
 def GMLST_TileOp : GMLST_Op<"tile",
-    [AttrSizedOperandSegments,
+    [NoSideEffect, AttrSizedOperandSegments,
+     OffsetSizeAndStrideOpInterface,
      DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let arguments = (ins GMLST_TileType:$subset,
                        Variadic<Index>:$offsets,
@@ -86,6 +94,18 @@ def GMLST_TileOp : GMLST_Op<"tile",
     custom<OperandsOrIntegersSizesList>($sizes, $static_sizes)
     custom<OperandsOrIntegersOffsetsOrStridesList>($strides, $static_strides)
     attr-dict `:` qualified(type($subset)) `to` qualified(type($result))
+  }];
+
+  let extraClassDeclaration = [{
+    /// Return the expected rank of each of the`static_offsets`, `static_sizes`
+    /// and `static_strides` attributes.
+    std::array<unsigned, 3> getArrayAttrMaxRanks() {
+      unsigned rank = subset().getType().cast<TileType>().getRank();
+      return {rank, rank, rank};
+    }
+    /// Return the number of leading operands before the `offsets`, `sizes` and
+    /// and `strides` operands.
+    static unsigned getOffsetSizeAndStrideStartOperandIndex() { return 1; }
   }];
   let hasVerifier = 1;
 }

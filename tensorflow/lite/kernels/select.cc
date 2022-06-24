@@ -182,7 +182,7 @@ TfLiteStatus SelectEval(TfLiteContext* context, TfLiteNode* node) {
   if (data->has_low_rank_input_condition) {
     TF_LITE_SWITCH(input_x->type, RankOneSelect);
   } else if (data->requires_broadcast) {
-    TF_LITE_SWITCH(input_x->type, BroadcastSelectSlow);
+    TF_LITE_SWITCH(input_x->type, BroadcastSelect5DSlow);
   } else {
     TF_LITE_SWITCH(input_x->type, Select);
   }

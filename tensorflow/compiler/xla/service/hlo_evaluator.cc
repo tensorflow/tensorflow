@@ -25,6 +25,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -853,7 +854,7 @@ bool HloEvaluator::TryEvaluate(HloInstruction* instruction, Literal* result,
     return false;
   }
 
-  *result = result_or.ConsumeValueOrDie();
+  *result = std::move(result_or).value();
   return true;
 }
 
@@ -2929,7 +2930,7 @@ Status HloEvaluator::HandleScatter(HloInstruction* hlo) {
     }
     Literal updated_result =
         embedded_evaluator.Evaluate(*scatter->to_apply(), to_apply_args)
-            .ConsumeValueOrDie();
+            .value();
     // Clear visit states so that the we can use the evaluate again on the
     // same computation.
     embedded_evaluator.ResetVisitStates();
@@ -3337,7 +3338,7 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
       StatusOr<Literal> result =
           TryParseAndEvaluateWhileInductionVar(while_hlo);
       if (result.ok()) {
-        lcv = result.ConsumeValueOrDie();
+        lcv = std::move(result).value();
         break;
       } else {
         return InvalidArgument("Loop %s exceeded loop iteration limit (%d).",

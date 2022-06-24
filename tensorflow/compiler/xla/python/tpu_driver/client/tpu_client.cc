@@ -82,7 +82,7 @@ StatusOr<std::shared_ptr<PyTpuClient>> PyTpuClient::Get(
     return client_status.status();
   }
 
-  auto client = client_status.ConsumeValueOrDie();
+  auto client = std::move(client_status).value();
 
   tpu_driver::SystemInfo system_info;
   client->QuerySystemInfo(&system_info);

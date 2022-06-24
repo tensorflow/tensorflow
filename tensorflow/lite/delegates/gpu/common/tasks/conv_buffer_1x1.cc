@@ -364,7 +364,7 @@ void ConvBuffer1x1::GetPossibleKernelWorkGroups(
 
 bool IsConvBuffer1x1Supported(const OperationDef& definition,
                               const Convolution2DAttributes& attr) {
-  auto src_storage_type = definition.src_tensors[0].storage_type;
+  auto src_storage_type = definition.src_tensors[0].GetStorageType();
   return src_storage_type == TensorStorageType::BUFFER &&
          attr.weights.shape.w == 1 && attr.weights.shape.h == 1 &&
          attr.dilations.w == 1 && attr.dilations.h == 1 &&
@@ -377,7 +377,7 @@ bool IsConvBuffer1x1Supported(const OperationDef& definition,
 bool IsConvBuffer1x1Supported(const OperationDef& definition,
                               const BHWC& weights_shape,
                               const Convolution2DAttributes& attr) {
-  auto src_storage_type = definition.src_tensors[0].storage_type;
+  auto src_storage_type = definition.src_tensors[0].GetStorageType();
   return src_storage_type == TensorStorageType::BUFFER &&
          weights_shape.w == 1 && weights_shape.h == 1 &&
          attr.dilations.w == 1 && attr.dilations.h == 1 &&

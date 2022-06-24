@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 #include <type_traits>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
@@ -240,7 +241,7 @@ std::string ExperimentalConvertSavedModelToMlir(
     return "// error";
   }
 
-  return MlirModuleToString(*module_or.ConsumeValueOrDie(), show_debug_info);
+  return MlirModuleToString(*std::move(module_or).value(), show_debug_info);
 }
 
 std::string ExperimentalConvertSavedModelV1ToMlirLite(
@@ -300,7 +301,7 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
 
   // Run the tf standard pipeline by default and then, run passes that lift
   // variables if the flag is set on the module.
-  mlir::OwningOpRef<mlir::ModuleOp> module = module_or.ConsumeValueOrDie();
+  mlir::OwningOpRef<mlir::ModuleOp> module = std::move(module_or).value();
   mlir::PassManager pm(&context);
   std::string error;
   llvm::raw_string_ostream error_stream(error);

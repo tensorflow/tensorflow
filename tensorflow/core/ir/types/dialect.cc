@@ -266,7 +266,7 @@ Attribute FullTypeAttr::parse(AsmParser &parser, Type odsType) {
 }
 
 static void RawFullTypeAttrPrint(FullTypeAttr tfattr, AsmPrinter &printer) {
-  printer << stringifyFullTypeId(tf_type::FullTypeId(tfattr.getType_id()));
+  printer << stringifyFullTypeId(tf_type::FullTypeId(tfattr.getTypeId()));
   if (!tfattr.getArgs().empty()) {
     printer << "<";
     llvm::interleaveComma(tfattr.getArgs(), printer, [&](Attribute arg) {

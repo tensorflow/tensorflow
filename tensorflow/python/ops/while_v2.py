@@ -1333,9 +1333,10 @@ def _duplicate_body_captures_in_cond(cond_graph, body_graph_captures):
   # `Graph._names_in_use` a trie so that we can find a unique prefix.
   # TODO(b/143286622): This should not be required once captures are separated
   # from regular loop vars.
-  placeholders = c_api.TF_CreatePlaceholders(
-      cond_graph._c_graph, types,
-      compat.as_str(_build_cond_placeholders_name_prefix(cond_graph)))
+  with cond_graph._c_graph.get() as c_graph:
+    placeholders = c_api.TF_CreatePlaceholders(
+        c_graph, types,
+        compat.as_str(_build_cond_placeholders_name_prefix(cond_graph)))
   placeholder_ops = [
       _OperationWithOutputs(ph.oper, cond_graph)
       for ph in placeholders

@@ -44,7 +44,7 @@ int64_t PeakMemoryUseOfEntryComputation(
   CHECK(module->has_schedule());
 
   std::unique_ptr<HloAliasAnalysis> alias_analysis =
-      HloAliasAnalysis::Run(module).ConsumeValueOrDie();
+      HloAliasAnalysis::Run(module).value();
 
   const HloSchedule& schedule = module->schedule();
 

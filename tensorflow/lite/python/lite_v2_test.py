@@ -61,7 +61,7 @@ from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.saved_model.loader_impl import parse_saved_model
 from tensorflow.python.saved_model.save import save
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 
 # Only run jax related tests when we can import jax.
 DISABLE_JAX_TEST = False
@@ -138,7 +138,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   def testModelWithoutInputs(self):
 
     def _get_random_number_gen():
-      root = tracking.AutoTrackable()
+      root = autotrackable.AutoTrackable()
 
       @tf.function(input_signature=[])
       def func():
@@ -235,7 +235,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   def _getIntegerQuantizeModel(self, num_filters=16):
     np.random.seed(0)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
 
     @tf.function(
         input_signature=[tf.TensorSpec(shape=[1, 5, 5, 3], dtype=tf.float32)])
@@ -568,7 +568,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     concrete_func = root.f.get_concrete_function(input_data)
 
     converter = lite.TFLiteConverterV2.from_concrete_functions(
-        [concrete_func], trackable_obj=tracking.AutoTrackable())
+        [concrete_func], trackable_obj=autotrackable.AutoTrackable())
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -734,7 +734,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   @test_util.run_v2_only
   def testGraphDebugInfo(self):
     """Test a concrete function has debug info captured."""
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.v1 = tf.Variable(3.)
     root.f = tf.function(lambda x: root.v1 * x)
     input_data = tf.constant(1., shape=[1])
@@ -749,7 +749,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   def _getIntegerQuantizationModelWithFlexOp(self):
     np.random.seed(0)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
 
     @tf.function(input_signature=[
         tf.TensorSpec(shape=[3, 3, 3, 3, 3], dtype=tf.float32)
@@ -848,7 +848,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   def _getIntegerQuantizationModelWithUnsupportedOps(self):
     np.random.seed(0)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
 
     @tf.function(input_signature=[
         tf.TensorSpec(shape=[3], dtype=tf.float32),
@@ -1661,7 +1661,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
   def testConstModel(self):
     """Test a basic model with functions to make sure functions are inlined."""
     input_data = tf.constant(1., shape=[1])
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = tf.function(lambda x: 2. * x)
     to_save = root.f.get_concrete_function(input_data)
 
@@ -2169,7 +2169,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
   def testGraphDebugInfo(self):
     """Test a SavedModel has debug info captured."""
     input_data = tf.constant(1., shape=[1])
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = tf.function(lambda x: 2. * x)
     to_save = root.f.get_concrete_function(input_data)
     options = save_options.SaveOptions(save_debug_info=True)
@@ -3277,7 +3277,7 @@ class GrapplerTest(lite_v2_test_util.ModelTest):
       y_broadcast = tf.broadcast_to(y_const, [3, 3])
       return tf.matmul(x, y_broadcast)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
     concrete_func = root.f.get_concrete_function(input_data)
 
@@ -3344,7 +3344,7 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
       mult = tf.matmul(fill, input_tensor)
       return tf.matmul(mult, const_tensor)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = model
     concrete_func = root.f.get_concrete_function()
 
@@ -4153,7 +4153,7 @@ class SparsityTest(lite_v2_test_util.ModelTest):
 
   def _getSparsificableModel(self, matrix_b_values):
     np.random.seed(0)
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
 
     @tf.function(
         input_signature=[tf.TensorSpec(shape=[16, 4], dtype=tf.float32)])

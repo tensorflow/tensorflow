@@ -22,6 +22,7 @@ limitations under the License.
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -818,7 +819,7 @@ StatusOr<Operation*> ConvertOp(
       return emitError(loc, type_or_err.status().ToString()),
              type_or_err.status();
     }
-    auto type = type_or_err.ConsumeValueOrDie();
+    auto type = std::move(type_or_err).value();
 
     if (op_name == "tfl.quantize") {
       // Special case for quantize: return type must also be in qtype attribute
@@ -1202,7 +1203,7 @@ StatusOr<FuncOp> ConvertSubgraph(
           << type_or_err.status().ToString();
       return type_or_err.status();
     }
-    auto type = type_or_err.ConsumeValueOrDie();
+    auto type = std::move(type_or_err).value();
     input_types.push_back(type);
   }
 
@@ -1238,7 +1239,7 @@ StatusOr<FuncOp> ConvertSubgraph(
           << type_or_err.status().ToString();
       return type_or_err.status();
     }
-    auto type = type_or_err.ConsumeValueOrDie();
+    auto type = std::move(type_or_err).value();
     ret_types.push_back(type);
   }
   auto func_type = builder.getFunctionType(input_types, ret_types);
@@ -1522,7 +1523,7 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
                  << func_or_error.status().error_message(),
              nullptr;
     }
-    module.push_back(func_or_error.ConsumeValueOrDie());
+    module.push_back(std::move(func_or_error).value());
   }
   AddRegionsForTflWhileOp(module);
   return OwningOpRef<mlir::ModuleOp>(module);

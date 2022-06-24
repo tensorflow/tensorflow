@@ -21,7 +21,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops_structs.h"
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_structured_interface.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -39,11 +39,6 @@ limitations under the License.
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 
-// clang-format off
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
-// clang-format on
-
 namespace mlir {
 class OpBuilder;
 namespace lmhlo {
@@ -52,6 +47,12 @@ class LmhloDialect : public Dialect {
  public:
   explicit LmhloDialect(MLIRContext *context);
   static StringRef getDialectNamespace() { return "lmhlo"; }
+
+  // Parses an attribute registered to this dialect.
+  Attribute parseAttribute(DialectAsmParser &parser, Type type) const override;
+
+  // Prints an attribute registered to this dialect.
+  void printAttribute(Attribute attr, DialectAsmPrinter &os) const override;
 };
 
 }  // namespace lmhlo

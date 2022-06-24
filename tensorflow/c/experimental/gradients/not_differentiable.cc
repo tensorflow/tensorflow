@@ -22,7 +22,7 @@ Status NotDifferentiableGradientFunction::Compute(
   for (int i = 0; i < grad_inputs.size(); i++) {
     grad_inputs[i] = nullptr;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RegisterNotDifferentiable(GradientRegistry* registry, const string& op) {

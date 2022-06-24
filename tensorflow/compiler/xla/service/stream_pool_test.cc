@@ -27,9 +27,9 @@ class StreamPoolTest : public ::testing::Test {
  protected:
   std::unique_ptr<se::StreamExecutor> NewStreamExecutor() {
     se::Platform* platform =
-        se::MultiPlatformManager::PlatformWithName("Host").ConsumeValueOrDie();
+        se::MultiPlatformManager::PlatformWithName("Host").value();
     se::StreamExecutorConfig config(/*ordinal=*/0);
-    return platform->GetUncachedExecutor(config).ConsumeValueOrDie();
+    return platform->GetUncachedExecutor(config).value();
   }
 };
 

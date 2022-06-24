@@ -28,6 +28,10 @@ from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.core.protobuf import saved_object_graph_pb2
+from tensorflow.python.checkpoint import checkpoint
+from tensorflow.python.checkpoint import checkpoint_options
+from tensorflow.python.checkpoint import functional_saver
+from tensorflow.python.checkpoint import graph_view
 from tensorflow.python.checkpoint import util as checkpoint_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -59,14 +63,11 @@ from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils_impl
 from tensorflow.python.saved_model.pywrap_saved_model import constants
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
-from tensorflow.python.training.saving import checkpoint_options
-from tensorflow.python.training.saving import functional_saver
+from tensorflow.python.trackable import asset
+from tensorflow.python.trackable import base
+from tensorflow.python.trackable import resource
+from tensorflow.python.trackable import trackable_utils
 from tensorflow.python.training.saving import saveable_object_util
-from tensorflow.python.training.tracking import base
-from tensorflow.python.training.tracking import graph_view
-from tensorflow.python.training.tracking import trackable_utils
-from tensorflow.python.training.tracking import tracking
-from tensorflow.python.training.tracking import util
 from tensorflow.python.util import compat
 from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
@@ -141,13 +142,13 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
     asset_paths = object_identity.ObjectIdentityDictionary()
     constant_captures = object_identity.ObjectIdentityDictionary()
     for obj in trackable_objects:
-      if isinstance(obj, tracking.Asset):
+      if isinstance(obj, asset.Asset):
         asset_paths[obj.asset_path] = obj
       if isinstance(obj, function_saved_model_utils.TrackableConstant):
         constant_captures[obj.capture] = obj
 
     def _get_merged_trackable(x):
-      if isinstance(x, tracking.Asset):
+      if isinstance(x, asset.Asset):
         return asset_paths[x.asset_path]
       if isinstance(x, function_saved_model_utils.TrackableConstant):
         if x.capture in asset_paths:
@@ -397,7 +398,7 @@ class _SaveableView(object):
           object_map=object_map,
           tensor_map=tensor_map,
           options=self._options)
-      if isinstance(obj, tracking.Asset):
+      if isinstance(obj, asset.Asset):
         _add_asset_info(obj, asset_info, tensor_map[obj.asset_path])
       if tensors:
         for tensor in tensors:
@@ -416,7 +417,7 @@ class _SaveableView(object):
   def get_concrete_resource_initializers(self):
     concrete_initializers = []
     for obj in self.nodes:
-      if isinstance(obj, tracking.CapturableResource):
+      if isinstance(obj, resource.CapturableResource):
         concrete_initializers.append(
             self.augmented_graph_view.get_child(
                 obj, "_initialize").get_concrete_function())
@@ -975,7 +976,7 @@ def _serialize_object_graph(saveable_view, asset_file_def_index):
 
 def _write_object_proto(obj, proto, asset_file_def_index, list_children_fn):
   """Saves an object into SavedObject proto."""
-  if isinstance(obj, tracking.Asset):
+  if isinstance(obj, asset.Asset):
     proto.asset.SetInParent()
     proto.asset.asset_file_def_index = asset_file_def_index[obj]
   elif resource_variable_ops.is_resource_variable(obj):
@@ -991,7 +992,7 @@ def _write_object_proto(obj, proto, asset_file_def_index, list_children_fn):
   elif isinstance(obj, _CapturedTensor):
     proto.captured_tensor.name = obj.name
     proto.captured_tensor.concrete_function = obj.concrete_function
-  elif isinstance(obj, tracking.CapturableResource):
+  elif isinstance(obj, resource.CapturableResource):
     proto.resource.device = obj._resource_device  # pylint: disable=protected-access
   else:
     registered_type_proto = revived_types.serialize(obj)
@@ -1383,7 +1384,7 @@ def _build_meta_graph_impl(obj, signatures, options, meta_graph_def=None):
 
   # Use _SaveableView to provide a frozen listing of properties and functions.
   saveable_view = _SaveableView(augmented_graph_view, options)
-  object_saver = util.TrackableSaver(augmented_graph_view)
+  object_saver = checkpoint.TrackableSaver(augmented_graph_view)
   asset_info, exported_graph = _fill_meta_graph_def(
       meta_graph_def, saveable_view, signatures, options.namespace_whitelist,
       options.experimental_custom_gradients)
@@ -1422,7 +1423,7 @@ def _build_meta_graph(obj, signatures, options, meta_graph_def=None):
   Returns:
     meta_graph_def: Filled MetaGraphDef proto
     exported_graph: `tf.Graph` object generated from `obj`.
-    object_saver: `util.TrackableSaver` of the `obj` and its dependencies.
+    object_saver: `checkpoint.TrackableSaver` of the `obj` and its dependencies.
     asset_info: `_AssetInfo` tuple containing external assets in the `obj`.
     saveable_view.nodes: _SaveableView nodes.
     saveable_view.node_paths: _SaveableView paths.

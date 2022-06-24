@@ -302,7 +302,7 @@ class HeapSimulatorTracker {
   // simulation over the entire module.
   void RunWholeModule(
       const std::vector<HloInstruction*>& full_module_sequence) {
-    alias_analysis_ = HloAliasAnalysis::Run(module_.get()).ConsumeValueOrDie();
+    alias_analysis_ = HloAliasAnalysis::Run(module_.get()).value();
 
     // Construct the module sequence grouped by computation.
     HloSchedule schedule(module_.get());
@@ -324,7 +324,7 @@ class HeapSimulatorTracker {
     auto algorithm = std::make_unique<HeapCallRecorder>(&actual_calls_);
     result_ = HeapSimulator::Run(std::move(algorithm), *module_, schedule,
                                  *alias_analysis_, size_fn)
-                  .ConsumeValueOrDie();
+                  .value();
   }
 
   HloModule* module() { return module_.get(); }
@@ -394,7 +394,7 @@ class HeapSimulatorTracker {
         HeapSimulator::Run(std::move(algorithm), *module_->entry_computation(),
                            HloInstructionSequence(instruction_sequence),
                            *alias_analysis_, zero_size, options)
-            .ConsumeValueOrDie();
+            .value();
   }
 
   std::unique_ptr<HloModule> module_;

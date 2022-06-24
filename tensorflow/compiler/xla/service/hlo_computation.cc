@@ -143,8 +143,8 @@ HloInstruction* HloComputation::AddInstructionInternal(
 HloInstruction* HloComputation::AddParameter(
     std::unique_ptr<HloInstruction> instruction) {
   CHECK(instruction->opcode() == HloOpcode::kParameter);
-  CHECK(IsFusionComputation());
-  CHECK(fusion_instruction_->operand_count() == param_instructions_.size());
+  CHECK(!IsFusionComputation() ||
+        fusion_instruction_->operand_count() == param_instructions_.size());
   instruction->set_parent(this);
   param_instructions_.push_back(instruction.get());
   AddInstructionInternal(std::move(instruction));
@@ -192,12 +192,11 @@ Status HloComputation::ReplaceEntryComputationParameter(
 Status HloComputation::RemoveParameter(int64_t param_no) {
   CHECK_GE(param_no, 0);
   CHECK_LT(param_no, param_instructions_.size());
-  CHECK(IsFusionComputation());
   HloInstruction* param_instruction = param_instructions_[param_no];
   auto param_instruction_iterator = param_instructions_.begin() + param_no;
   param_instructions_.erase(param_instruction_iterator);
   // Throw removed fused parameter instruction away.
-  TF_RETURN_IF_ERROR(RemoveInstruction(param_instruction));
+  TF_RETURN_IF_ERROR(ForceRemoveInstruction(param_instruction));
 
   while (param_no < param_instructions_.size()) {
     param_instruction = param_instructions_[param_no];
@@ -206,7 +205,7 @@ Status HloComputation::RemoveParameter(int64_t param_no) {
             param_no, param_instruction->shape(), StrCat("param_", param_no)));
     TF_RETURN_IF_ERROR(param_instruction->ReplaceAllUsesWith(new_instr));
     param_instructions_[param_no] = new_instr;
-    TF_RETURN_IF_ERROR(RemoveInstruction(param_instruction));
+    TF_RETURN_IF_ERROR(ForceRemoveInstruction(param_instruction));
     param_no++;
   }
 
@@ -218,8 +217,8 @@ HloInstruction* HloComputation::ReplaceParameter(
   CHECK_GE(param_no, 0);
   CHECK_LT(param_no, param_instructions_.size());
   CHECK(instruction->opcode() == HloOpcode::kParameter);
-  CHECK(IsFusionComputation());
-  CHECK_EQ(fusion_instruction_->operand_count(), param_instructions_.size());
+  CHECK(!IsFusionComputation() ||
+        fusion_instruction_->operand_count() == param_instructions_.size());
 
   instruction->set_parent(this);
   HloInstruction* new_instruction =
@@ -698,19 +697,18 @@ HloComputation::CreateFromProto(
   return std::move(computation);
 }
 
-void HloComputation::FuseInstructionsInto(
-    absl::Span<HloInstruction* const> instructions_to_fuse,
-    HloInstruction* fusion_instruction) {
-  CHECK_EQ(HloOpcode::kFusion, fusion_instruction->opcode());
-  HloInstruction* root = instructions_to_fuse.front();
-  TF_CHECK_OK(root->ReplaceAllUsesWith(fusion_instruction));
+void HloComputation::AppendInstructionsIntoCalledComputation(
+    absl::Span<HloInstruction* const> instructions_to_append,
+    HloInstruction* caller) {
+  HloInstruction* root = instructions_to_append.front();
+  TF_CHECK_OK(root->ReplaceAllUsesWith(caller));
   if (root == root_instruction()) {
-    set_root_instruction(fusion_instruction);
+    set_root_instruction(caller);
   }
   TF_CHECK_OK(RemoveInstruction(root));
-  for (size_t i = 1; i < instructions_to_fuse.size(); ++i) {
-    HloInstruction* instruction = instructions_to_fuse[i];
-    fusion_instruction->FuseInstruction(instruction);
+  for (size_t i = 1; i < instructions_to_append.size(); ++i) {
+    HloInstruction* instruction = instructions_to_append[i];
+    caller->AppendInstructionIntoCalledComputation(instruction);
     if (instruction->IsDead()) {
       TF_CHECK_OK(RemoveInstruction(instruction));
     }
@@ -723,8 +721,19 @@ HloInstruction* HloComputation::CreateFusionInstruction(
   HloInstruction* root = instructions_to_fuse.front();
   HloInstruction* fusion_instruction = AddInstruction(
       HloInstruction::CreateFusion(root->shape(), fusion_kind, root));
-  FuseInstructionsInto(instructions_to_fuse, fusion_instruction);
+  AppendInstructionsIntoCalledComputation(instructions_to_fuse,
+                                          fusion_instruction);
   return fusion_instruction;
+}
+
+HloInstruction* HloComputation::CreateCallInstruction(
+    absl::Span<HloInstruction* const> instructions_to_call) {
+  HloInstruction* root = instructions_to_call.front();
+  HloInstruction* call_instruction =
+      AddInstruction(HloInstruction::CreateCall(root->shape(), root));
+  AppendInstructionsIntoCalledComputation(instructions_to_call,
+                                          call_instruction);
+  return call_instruction;
 }
 
 StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(

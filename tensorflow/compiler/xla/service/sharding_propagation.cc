@@ -162,7 +162,8 @@ bool IsPassthroughCustomOps(const HloInstruction* hlo) {
   return hlo->IsCustomCall("ResizeNearest") ||
          hlo->IsCustomCall("ResizeBilinear") ||
          hlo->IsCustomCall("ResizeNearestGrad") ||
-         hlo->IsCustomCall("ResizeBilinearGrad");
+         hlo->IsCustomCall("ResizeBilinearGrad") ||
+         hlo->IsCustomCall("Cholesky");
 }
 
 // Return the operand which is the most suitable for determining the sharding

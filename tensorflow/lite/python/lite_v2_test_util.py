@@ -30,7 +30,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 
 
 class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -88,7 +88,7 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     return signature_runner(**inputs)
 
   def _getSimpleVariableModel(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.v1 = variables.Variable(3.)
     root.v2 = variables.Variable(2.)
     root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
@@ -96,7 +96,7 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def _getSimpleModelWithVariables(self):
 
-    class SimpleModelWithOneVariable(tracking.AutoTrackable):
+    class SimpleModelWithOneVariable(autotrackable.AutoTrackable):
       """Basic model with 1 variable."""
 
       def __init__(self):
@@ -112,7 +112,7 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def _getMultiFunctionModel(self):
 
-    class BasicModel(tracking.AutoTrackable):
+    class BasicModel(autotrackable.AutoTrackable):
       """Basic model with multiple functions."""
 
       def __init__(self):
@@ -141,7 +141,7 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def _getMultiFunctionModelWithSharedWeight(self):
 
-    class BasicModelWithSharedWeight(tracking.AutoTrackable):
+    class BasicModelWithSharedWeight(autotrackable.AutoTrackable):
       """Model with multiple functions and a shared weight."""
 
       def __init__(self):
@@ -165,7 +165,7 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def _getMatMulModelWithSmallWeights(self):
 
-    class MatMulModelWithSmallWeights(tracking.AutoTrackable):
+    class MatMulModelWithSmallWeights(autotrackable.AutoTrackable):
       """MatMul model with small weights and relatively large biases."""
 
       def __init__(self):

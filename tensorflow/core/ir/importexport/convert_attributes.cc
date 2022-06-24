@@ -453,7 +453,7 @@ StatusOr<tensorflow::FullTypeDef> ConvertAttribute(
                              mlir::debugString(full_type.getAttr()));
   }
 
-  ret.set_type_id(static_cast<tensorflow::FullTypeId>(full_type.getType_id()));
+  ret.set_type_id(static_cast<tensorflow::FullTypeId>(full_type.getTypeId()));
 
   return ret;
 }

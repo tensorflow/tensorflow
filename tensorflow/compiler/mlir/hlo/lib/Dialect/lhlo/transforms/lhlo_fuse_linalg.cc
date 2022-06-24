@@ -101,7 +101,7 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
       }
 
       if (auto toTensor = dyn_cast<bufferization::ToTensorOp>(definingOp)) {
-        auto alias = toTensor.memref();
+        auto alias = toTensor.getMemref();
         if (resultBuffers.insert(alias).second) {
           worklist.push_back(alias);
         }
@@ -109,7 +109,7 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
       }
 
       if (auto toMemref = dyn_cast<bufferization::ToMemrefOp>(definingOp)) {
-        auto alias = toMemref.tensor();
+        auto alias = toMemref.getTensor();
         if (resultBuffers.insert(alias).second) {
           worklist.push_back(alias);
         }

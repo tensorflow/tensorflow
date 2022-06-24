@@ -151,6 +151,7 @@ cc_library(
     srcs = ["hlo_test_base.cc"],
     hdrs = ["hlo_test_base.h"],
     deps = [
+        ":filecheck",
         ":literal_test_util",
         ":manifest_checking_test",
         ":test_utils",

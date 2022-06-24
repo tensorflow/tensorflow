@@ -7,7 +7,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_libtpu",
+    "if_cuda_or_rocm",
     "tf_cuda_library",
 )
 
@@ -229,9 +229,9 @@ tf_kernel_library(
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/core/util:overflow",
         "//tensorflow/stream_executor/lib",
-    ] + if_libtpu(
-        if_false = [":gpu_tf_kernel_custom_call"],
-        if_true = [],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":gpu_tf_kernel_custom_call"],
     ),
 )
 

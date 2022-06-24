@@ -490,12 +490,6 @@ LogicalResult CollectSpecialTpuOps(
   if (!island || !island.WrapsSingleOp()) return success();
   Operation& wrapped_op = island.GetBody().front();
 
-  // TODO(b/188046643): Conservatively fail until pass is extended to fuse
-  // chains of these ops.
-  if (isa<TF::TPUPartitionedInputOp, TF::TPUPartitionedOutputOp>(wrapped_op)) {
-    return failure();
-  }
-
   if (visited_wrapped_ops.contains(&wrapped_op)) return success();
 
   llvm::Optional<llvm::StringRef> result = GetTpuClusterName(&wrapped_op);

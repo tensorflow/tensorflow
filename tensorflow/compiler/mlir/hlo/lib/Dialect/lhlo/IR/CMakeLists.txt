@@ -29,7 +29,6 @@ add_mlir_library(LmhloStructuredInterface
 
 add_mlir_dialect_library(LmhloDialect
   lhlo_ops.cc
-  lhlo_ops_structs.cc
 
   DEPENDS
   MLIRlhlo_opsIncGen

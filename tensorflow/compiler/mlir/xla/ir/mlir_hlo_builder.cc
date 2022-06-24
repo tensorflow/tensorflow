@@ -88,7 +88,7 @@ XlaOp MlirHloBuilder::ConstantLiteral(const LiteralSlice& literal) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(mlir::DenseElementsAttr attr,
                         CreateDenseElementsAttrFromLiteral(literal, builder_));
-    auto op = builder_.create<mlir::mhlo::ConstOp>(loc_, attr);
+    auto op = builder_.create<mlir::mhlo::ConstantOp>(loc_, attr);
     return MakeXlaOp(op);
   });
 }

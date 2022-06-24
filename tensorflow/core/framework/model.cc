@@ -557,12 +557,14 @@ class AsyncInterleaveMany : public Node {
   }
 
   double MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_) {
-    double result = 0;
-    auto* parameter = gtl::FindOrNull(parameters_, kParallelism);
-    if (parameter) {
-      result += (*parameter)->value * AverageBufferedElementSize();
+    auto* parameter = gtl::FindOrNull(parameters_, kMaxBufferedElements);
+    if (parameter == nullptr) {
+      parameter = gtl::FindOrNull(parameters_, kParallelism);
+      if (parameter == nullptr) {
+        return 0.0;
+      }
     }
-    return result;
+    return (*parameter)->value * AverageBufferedElementSize();
   }
 
   Status ToProto(ModelProto::Node* node_proto) const {

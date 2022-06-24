@@ -306,7 +306,7 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
     auto iv = ivs.front();
 
     auto tile_sizes = mlir::linalg::computeTileSizes(
-        b, nested_loc, ivs, tile_size_value, input_size);
+         b, nested_loc, tile_size_value, input_size);
     for (auto input : inputs) {
       // Extract slice of input.
       Value slice = mlir::linalg::makeTiledShape(

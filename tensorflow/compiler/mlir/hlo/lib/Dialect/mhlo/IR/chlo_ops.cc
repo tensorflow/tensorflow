@@ -527,7 +527,8 @@ Operation* ChloDialect::materializeConstant(OpBuilder& builder, Attribute value,
                                             Type type, Location loc) {
   // Mirror MHLO dialect here.
   if (value.isa<ElementsAttr>())
-    return builder.create<mhlo::ConstOp>(loc, type, value.cast<ElementsAttr>());
+    return builder.create<mhlo::ConstantOp>(loc, type,
+                                            value.cast<ElementsAttr>());
   return nullptr;
 }
 

@@ -36,10 +36,12 @@ class SlowOperationAlarm {
   // If `counter` is not null, this alarm will throttle itself to logging
   // once-every-power-of-two occurrences. The counter must outlive this object.
   SlowOperationAlarm(absl::Duration timeout, std::string msg,
-                     std::atomic<int64_t>* counter = nullptr);
+                     std::atomic<int64_t>* counter = nullptr,
+                     absl::string_view context = "");
   SlowOperationAlarm(absl::Duration timeout,
                      std::function<std::string()> msg_fn,
-                     std::atomic<int64_t>* counter = nullptr);
+                     std::atomic<int64_t>* counter = nullptr,
+                     absl::string_view context = "");
   ~SlowOperationAlarm();
 
   // Not copyable or movable, because the constructor stores a pointer to `this`
@@ -62,7 +64,9 @@ class SlowOperationAlarm {
   static void ScheduleAlarm(SlowOperationAlarm* alarm);
   static void UnscheduleAlarm(const SlowOperationAlarm* alarm);
 
+  absl::Time start_;
   absl::Time deadline_;
+  std::string context_;
   std::function<std::string()> msg_fn_;
   std::atomic<bool> fired_{false};
   // counter_ may be null.  If it's not, this alarm prints something only once
@@ -71,15 +75,18 @@ class SlowOperationAlarm {
 };
 
 // Returns an object which prints a warning about slow compilation after a
-// certain amount of time.
+// certain amount of time. It will also print the total lifetime duration of
+// the returned object when it goes out of scope.
 //
 // In debug builds, recommends building with -c opt.
 //
 // In opt builds, recommends filing a bug.
 //
 // This is throttled to once-every-power-of-two occurrences, globally.
+//
+// `context` is an additional message prepended to the alarm.
 ABSL_MUST_USE_RESULT std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm(
-    absl::string_view msg = "");
+    absl::string_view context);
 
 }  // namespace xla
 

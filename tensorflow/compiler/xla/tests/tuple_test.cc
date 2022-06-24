@@ -167,8 +167,8 @@ XLA_TEST_F(TupleTest, AddTupleElements) {
                        ConstantR2<float>(&builder, constant_matrix)});
   auto vector_element = GetTupleElement(tuple_data, 0);
   auto matrix_element = GetTupleElement(tuple_data, 1);
-  auto vector_shape = builder.GetShape(vector_element).ConsumeValueOrDie();
-  auto matrix_shape = builder.GetShape(matrix_element).ConsumeValueOrDie();
+  auto vector_shape = builder.GetShape(vector_element).value();
+  auto matrix_shape = builder.GetShape(matrix_element).value();
   Add(matrix_element, vector_element,
       /*broadcast_dimensions=*/{1});
 
@@ -289,7 +289,7 @@ XLA_TEST_F(TupleTest, GetTupleElementOfNestedTuple) {
               }),
               LiteralUtil::CreateR1<float>({7.0, 8.0, 9.0}),
           }))
-          .ConsumeValueOrDie();
+          .value();
 
   std::vector<GlobalData*> arguments = {data.get()};
   const std::vector<float> expected = {4.0 + 10.0, 5.0 + 11.0, 6.0 + 12.0};
@@ -326,12 +326,12 @@ XLA_TEST_F(TupleTest, ComplexTuples) {
                         {{{100, 200}, {300, 400}},
                          {{1000, 2000}, {3000, 4000}},
                          {{10000, 20000}, {30000, 40000}}})})}))
-          .ConsumeValueOrDie();
+          .value();
   std::unique_ptr<GlobalData> arg1 =
       client_
           ->TransferToServer(
               LiteralUtil::CreateR1<complex64>({{1, 2}, {1, -2}}))
-          .ConsumeValueOrDie();
+          .value();
   auto sum =
       LiteralUtil::CreateR2<complex64>({{{111, 222}, {331, 442}},
                                         {{1011, 2022}, {3031, 4042}},

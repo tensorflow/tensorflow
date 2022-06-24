@@ -59,7 +59,7 @@ tensorflow::Status EnsureSparseVariableAccess(
     tensorflow::Var* var) {
   auto* context = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
   if (var->copy_on_read_mode.load()) {
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   mutex_lock ml(*var->mu());
   // Once copy-on-read mode is True the refcount is guaranteed to be 1. This can
@@ -67,7 +67,7 @@ tensorflow::Status EnsureSparseVariableAccess(
   // copy-on-read mode is false.
   if (var->tensor()->RefCountIsOne()) {
     var->copy_on_read_mode.store(true);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   Tensor tmp;
   if (variantType) {
@@ -94,7 +94,7 @@ tensorflow::Status EnsureSparseVariableAccess(
   }
   *var->tensor() = tmp;
   var->copy_on_read_mode.store(true);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::Status PrepareToUpdateVariable(
@@ -131,7 +131,7 @@ tensorflow::Status PrepareToUpdateVariable(
     }
     *tensor = tmp;
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::mutex* GetTrainingVariableMutex(
@@ -172,7 +172,7 @@ void TF_AssignVariable(TF_OpKernelContext* ctx, int input_index,
                                *ptr = new tensorflow::Var(value.dtype());
                                *(*ptr)->tensor() = value;
                                (*ptr)->is_initialized = true;
-                               return tensorflow::Status::OK();
+                               return ::tensorflow::OkStatus();
                              }));
   tensorflow::mutex_lock ml(*variable->mu());
 
