@@ -276,8 +276,8 @@ class PjRtCApiClient : public PjRtClient {
 
 class PjRtCApiBuffer : public PjRtBuffer {
  public:
-  PjRtCApiBuffer(PjRtCApiClient* client, std::unique_ptr<PjRtBuffer> wrapped)
-      : client_(client), wrapped_(std::move(wrapped)) {}
+  PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer);
+  ~PjRtCApiBuffer() override;
 
   const Shape& on_device_shape() const override {
     return wrapped_->on_device_shape();
@@ -347,9 +347,9 @@ class PjRtCApiBuffer : public PjRtBuffer {
     return wrapped_->GetReadyFuture();
   }
 
-  bool IsOnCpu() const override { return wrapped_->IsOnCpu(); }
+  bool IsOnCpu() const override;
 
-  PjRtBuffer* wrapped() const { return wrapped_.get(); }
+  PjRtBuffer* wrapped() const { return wrapped_; }
 
   static PjRtBuffer* GetWrapped(PjRtBuffer* c_api_buffer) {
     return tensorflow::down_cast<PjRtCApiBuffer*>(c_api_buffer)->wrapped();
@@ -367,7 +367,12 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
  private:
   PjRtCApiClient* client_;
-  std::unique_ptr<PjRtBuffer> wrapped_;
+  PJRT_Buffer* buffer_;
+
+  // TODO(amangu): _wrapped is a non-C API pointer that was used to bypass the
+  // C API calls until all the C API's got implemented. Remove it when it's
+  // usage is reduced to zero.
+  PjRtBuffer* wrapped_;
 };
 
 class PjRtCApiExecutable : public PjRtExecutable {

@@ -121,11 +121,28 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiClient::WrapExecutable(
 StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::WrapBuffer(
     StatusOr<std::unique_ptr<PjRtBuffer>> to_wrap) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> buffer, std::move(to_wrap));
-  return std::unique_ptr<PjRtBuffer>(
-      std::make_unique<PjRtCApiBuffer>(this, std::move(buffer)));
+  return std::unique_ptr<PjRtBuffer>(std::make_unique<PjRtCApiBuffer>(
+      this, new PJRT_Buffer{std::move(buffer)}));
 }
 
 const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }
+
+PjRtCApiBuffer::PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer)
+    : client_(client), buffer_(buffer), wrapped_(buffer->buffer.get()) {}
+
+PjRtCApiBuffer::~PjRtCApiBuffer() { delete buffer_; }
+
+bool PjRtCApiBuffer::IsOnCpu() const {
+  PJRT_Buffer_IsOnCpu_Args args;
+  args.struct_size = PJRT_Buffer_IsOnCpu_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer_;
+
+  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Buffer_IsOnCpu(&args);
+  // TODO(b/236710439): handle error
+  CHECK(error == nullptr);
+  return args.is_on_cpu;
+}
 
 PjRtCApiExecutable::~PjRtCApiExecutable() {
   // TODO(silverstone): use a C API "Destroy method"
@@ -157,7 +174,8 @@ PjRtCApiExecutable::Execute(
 
   for (auto& buffer_list : out) {
     for (std::unique_ptr<PjRtBuffer>& buffer : buffer_list) {
-      buffer = std::make_unique<PjRtCApiBuffer>(client_, std::move(buffer));
+      buffer = std::make_unique<PjRtCApiBuffer>(
+          client_, new PJRT_Buffer{std::move(buffer)});
     }
   }
   return out;
@@ -177,7 +195,8 @@ PjRtCApiExecutable::ExecuteSharded(
                           options, returned_future, fill_future));
 
   for (std::unique_ptr<PjRtBuffer>& buffer : out) {
-    buffer = std::make_unique<PjRtCApiBuffer>(client_, std::move(buffer));
+    buffer = std::make_unique<PjRtCApiBuffer>(
+        client_, new PJRT_Buffer{std::move(buffer)});
   }
   return out;
 }
@@ -196,7 +215,8 @@ PjRtCApiExecutable::ExecutePortable(
                           options, returned_future, fill_future));
 
   for (std::unique_ptr<PjRtBuffer>& buffer : out) {
-    buffer = std::make_unique<PjRtCApiBuffer>(client_, std::move(buffer));
+    buffer = std::make_unique<PjRtCApiBuffer>(
+        client_, new PJRT_Buffer{std::move(buffer)});
   }
   return out;
 }

@@ -39,6 +39,10 @@ struct PJRT_Executable {
   std::unique_ptr<xla::PjRtExecutable> executable;
 };
 
+struct PJRT_Buffer {
+  std::unique_ptr<xla::PjRtBuffer> buffer;
+};
+
 namespace pjrt {
 
 // C API definitions
@@ -54,6 +58,8 @@ PJRT_Error* PJRT_Client_PlatformVersion(PJRT_Client_PlatformVersion_Args* args);
 PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args);
 
 PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args);
+
+PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args);
 
 // Helper macros and functions
 

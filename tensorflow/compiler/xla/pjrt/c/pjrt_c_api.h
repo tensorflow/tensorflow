@@ -172,6 +172,22 @@ const size_t PJRT_Executable_Name_Args_STRUCT_SIZE =
 // Returns a string that identifies the executable.
 typedef PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args);
 
+// ---------------------------------- Buffers ----------------------------------
+
+typedef struct PJRT_Buffer PJRT_Buffer;
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  bool is_on_cpu;  // out
+} PJRT_Buffer_IsOnCpu_Args;
+const size_t PJRT_Buffer_IsOnCpu_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Buffer_IsOnCpu_Args, is_on_cpu);
+
+// Whether this buffer is on CPU and thus allows for certain optimizations.
+typedef PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args);
+
 // -------------------------------- API access ---------------------------------
 
 #define PJRT_API_STRUCT_FIELD(fn_type) fn_type* fn_type
@@ -193,10 +209,12 @@ typedef struct {
   PJRT_API_STRUCT_FIELD(PJRT_Device_Id);
 
   PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);
+
+  PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsOnCpu);
 } PJRT_Api;
 
 const size_t PJRT_Api_STRUCT_SIZE =
-    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Executable_Name);
+    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Buffer_IsOnCpu);
 
 #undef PJRT_API_STRUCT_FIELD
 
