@@ -59,7 +59,7 @@ Update MakeFinishTaskUpdate() {
 Update MakeRegisterDatasetUpdate() {
   Update update;
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
-  register_dataset->set_dataset_id(2);
+  register_dataset->set_dataset_id("dataset_id");
   register_dataset->set_fingerprint(3);
   return update;
 }

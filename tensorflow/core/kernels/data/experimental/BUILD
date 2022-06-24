@@ -275,6 +275,7 @@ tf_kernel_library(
         "//tensorflow/core/data/service:grpc_util",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/kernels/data:iterator_ops",
+        "@com_google_absl//absl/strings",
     ],
 )
 

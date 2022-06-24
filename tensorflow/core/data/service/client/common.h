@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_CLIENT_COMMON_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_CLIENT_COMMON_H_
 
-#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -28,7 +27,7 @@ namespace data {
 
 // tf.data service parameters.
 struct DataServiceParams final {
-  int64_t dataset_id = 0;
+  std::string dataset_id;
   ProcessingModeDef processing_mode;
   std::string address;
   std::string protocol;

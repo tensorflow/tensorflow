@@ -449,6 +449,7 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status_matchers",
+        "@com_google_absl//absl/strings",
     ],
 )
 

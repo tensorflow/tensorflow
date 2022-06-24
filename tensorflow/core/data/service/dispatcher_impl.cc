@@ -106,8 +106,8 @@ std::string DatasetsDir(const std::string& work_dir) {
   return io::JoinPath(work_dir, kDatasetsDir);
 }
 
-std::string DatasetKey(int64_t id, uint64 fingerprint) {
-  return absl::StrCat("id_", id, "_fp_", fingerprint);
+std::string DatasetKey(const std::string& dataset_id, uint64 fingerprint) {
+  return absl::StrCat("id_", dataset_id, "_fp_", fingerprint);
 }
 
 Status CreateWorkerStub(const std::string& address, const std::string& protocol,
@@ -153,6 +153,13 @@ DispatcherConfig ApplyConfigDefaults(const DispatcherConfig& config) {
   return new_config;
 }
 
+void VLogLines(const int log_level, const std::string& message) {
+#if defined(PLATFORM_GOOGLE)
+  VLOG_LINES(log_level, message);
+#else
+  VLOG(log_level) << message;
+#endif
+}
 }  // namespace
 
 DataServiceDispatcherImpl::DataServiceDispatcherImpl(
@@ -442,7 +449,7 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
 }
 
 Status DataServiceDispatcherImpl::MakeSplitProviders(
-    int64_t dataset_id,
+    const std::string& dataset_id,
     std::vector<std::unique_ptr<SplitProvider>>& split_providers)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::shared_ptr<const Dataset> dataset;
@@ -472,38 +479,33 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
   GraphDef* graph = dataset_def.mutable_graph();
   PrepareGraph(graph);
   TF_RETURN_IF_ERROR(HashGraph(*graph, &fingerprint));
+  VLogLines(/*log_level=*/4,
+            absl::StrCat("Registering dataset graph: ", graph->DebugString()));
 
   mutex_lock l(mu_);
-#if defined(PLATFORM_GOOGLE)
-  VLOG_LINES(4,
-             absl::StrCat("Registering dataset graph: ", graph->DebugString()));
-#else
-  VLOG(4) << "Registering dataset graph: " << graph->DebugString();
-#endif
   std::shared_ptr<const Dataset> dataset;
   Status s = state_.DatasetFromFingerprint(fingerprint, dataset);
   if (s.ok()) {
-    int64_t id = dataset->dataset_id;
+    std::string dataset_id = dataset->dataset_id;
     VLOG(3) << "Received duplicate RegisterDataset request with fingerprint "
-            << fingerprint << ". Returning id " << id;
-    response->set_dataset_id(id);
+            << fingerprint << ". Returning id " << dataset_id;
+    response->set_dataset_id(dataset_id);
     return OkStatus();
   } else if (!errors::IsNotFound(s)) {
     return s;
   }
 
-  int64_t id;
-  TF_RETURN_IF_ERROR(
-      RegisterDataset(fingerprint, dataset_def, request->metadata(), id));
-
-  response->set_dataset_id(id);
-  VLOG(3) << "Registered new dataset with id " << id;
+  std::string dataset_id;
+  TF_RETURN_IF_ERROR(RegisterDataset(fingerprint, dataset_def,
+                                     request->metadata(), dataset_id));
+  response->set_dataset_id(dataset_id);
+  VLOG(3) << "Registered new dataset with id " << dataset_id;
   return OkStatus();
 }
 
 Status DataServiceDispatcherImpl::RegisterDataset(
     uint64 fingerprint, const DatasetDef& dataset,
-    const DataServiceMetadata& metadata, int64_t& dataset_id)
+    const DataServiceMetadata& metadata, std::string& dataset_id)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   dataset_id = state_.NextAvailableDatasetId();
   Update update;
@@ -520,7 +522,7 @@ Status DataServiceDispatcherImpl::GetDataServiceMetadata(
     const GetDataServiceMetadataRequest* request,
     GetDataServiceMetadataResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
-  int64_t dataset_id = request->dataset_id();
+  std::string dataset_id = request->dataset_id();
   std::shared_ptr<const Dataset> dataset;
 
   mutex_lock l(mu_);
@@ -1151,7 +1153,8 @@ Status DataServiceDispatcherImpl::GcOldIterations()
 }
 
 Status DataServiceDispatcherImpl::GetDatasetDef(
-    int64_t dataset_id, std::shared_ptr<const DatasetDef>& dataset_def)
+    const std::string& dataset_id,
+    std::shared_ptr<const DatasetDef>& dataset_def)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));

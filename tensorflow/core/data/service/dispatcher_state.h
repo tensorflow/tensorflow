@@ -75,13 +75,13 @@ class DispatcherState {
 
   // A dataset registered with the dispatcher.
   struct Dataset {
-    explicit Dataset(int64_t dataset_id, int64_t fingerprint,
+    explicit Dataset(const std::string& dataset_id, int64_t fingerprint,
                      const DataServiceMetadata& metadata)
         : dataset_id(dataset_id),
           fingerprint(fingerprint),
           metadata(metadata) {}
 
-    const int64_t dataset_id;
+    const std::string dataset_id;
     const int64_t fingerprint;
     const DataServiceMetadata metadata;
   };
@@ -152,7 +152,7 @@ class DispatcherState {
   };
 
   struct Job {
-    explicit Job(int64_t id, int64_t dataset_id,
+    explicit Job(int64_t id, const std::string& dataset_id,
                  const ProcessingModeDef& processing_mode, std::string job_name,
                  std::optional<int64_t> num_consumers,
                  bool use_cross_trainer_cache, TargetWorkers target_workers)
@@ -165,7 +165,7 @@ class DispatcherState {
           target_workers(target_workers) {}
 
     const int64_t id;
-    const int64_t dataset_id;
+    const std::string dataset_id;
     const ProcessingModeDef processing_mode;
     const std::string job_name;
     const absl::optional<int64_t> num_consumers;
@@ -226,10 +226,11 @@ class DispatcherState {
 
   using TasksById = absl::flat_hash_map<int64_t, std::shared_ptr<Task>>;
 
-  // Returns the next available dataset id.
-  int64_t NextAvailableDatasetId() const;
+  // Returns the next available dataset ID.
+  std::string NextAvailableDatasetId() const;
+
   // Gets a dataset by id. Returns NOT_FOUND if there is no such dataset.
-  Status DatasetFromId(int64_t id,
+  Status DatasetFromId(const std::string& id,
                        std::shared_ptr<const Dataset>& dataset) const;
   // Gets a dataset by fingerprint. Returns NOT_FOUND if there is no such
   // dataset.
@@ -311,10 +312,12 @@ class DispatcherState {
   void ClientHeartbeat(const ClientHeartbeatUpdate& client_heartbeat);
   void CreateTask(const CreateTaskUpdate& create_task);
   void FinishTask(const FinishTaskUpdate& finish_task);
+  // Updates the next available dataset ID.
+  void UpdateNextAvailableDatasetId();
 
   int64_t next_available_dataset_id_ = 1000;
   // Registered datasets, keyed by dataset ids.
-  absl::flat_hash_map<int64_t, std::shared_ptr<Dataset>> datasets_by_id_;
+  absl::flat_hash_map<std::string, std::shared_ptr<Dataset>> datasets_by_id_;
   // Registered datasets, keyed by dataset fingerprints.
   absl::flat_hash_map<uint64, std::shared_ptr<Dataset>>
       datasets_by_fingerprint_;

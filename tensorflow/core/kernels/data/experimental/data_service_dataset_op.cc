@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -115,9 +116,9 @@ bool IsColocatedTask(const TaskInfo& task) {
   });
 }
 
-StatusOr<DataServiceMetadata> GetDataServiceMetadata(const int64_t dataset_id,
-                                                     const tstring& address,
-                                                     const tstring& protocol) {
+StatusOr<DataServiceMetadata> GetDataServiceMetadata(
+    const std::string& dataset_id, const tstring& address,
+    const tstring& protocol) {
   DataServiceDispatcherClient client(address, protocol);
   DataServiceMetadata metadata;
   absl::Time deadline =
@@ -140,7 +141,7 @@ StatusOr<DataServiceMetadata> GetDataServiceMetadata(const int64_t dataset_id,
 }
 
 StatusOr<DataServiceMetadata::Compression> GetValidatedCompression(
-    int64_t dataset_id, const DataServiceMetadata& metadata) {
+    const std::string& dataset_id, const DataServiceMetadata& metadata) {
   if (metadata.compression() == DataServiceMetadata::COMPRESSION_UNSPECIFIED) {
     return errors::Internal(absl::Substitute(
         "Got invalid compression $0 for dataset $1. A proper compression "
@@ -174,7 +175,7 @@ StatusOr<DataServiceConfig> GetDataServiceConfig(const tstring& address,
 // to read from (in case workers are added or removed).
 class DataServiceDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int op_version, int64_t dataset_id,
+  Dataset(OpKernelContext* ctx, int op_version, const std::string& dataset_id,
           const ProcessingModeDef& processing_mode, const std::string& address,
           const std::string& protocol,
           const std::string& data_transfer_protocol,
@@ -289,7 +290,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // Inputs
     std::vector<Node*> inputs;
     Node* dataset_id;
-    TF_RETURN_IF_ERROR(b->AddScalar(dataset_id_, &dataset_id));
+    int64_t dataset_id_int;
+    if (!absl::SimpleAtoi(dataset_id_, &dataset_id_int)) {
+      return errors::Internal("Failed to parse dataset ID: ", dataset_id_,
+                              ". Expect integers.");
+    }
+    TF_RETURN_IF_ERROR(b->AddScalar(dataset_id_int, &dataset_id));
     inputs.push_back(dataset_id);
 
     Node* processing_mode;
@@ -1293,7 +1299,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   };
 
   const int op_version_;
-  const int64_t dataset_id_;
+  const tstring dataset_id_;
   const ProcessingModeDef processing_mode_;
   const tstring address_;
   const tstring protocol_;
@@ -1371,8 +1377,9 @@ DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
 
 void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
                                        DatasetBase** output) {
-  int64_t dataset_id;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kDatasetId, &dataset_id));
+  int64_t dataset_id_int;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kDatasetId, &dataset_id_int));
+  std::string dataset_id = absl::StrCat(dataset_id_int);
 
   tstring processing_mode_str;
   OP_REQUIRES_OK(
