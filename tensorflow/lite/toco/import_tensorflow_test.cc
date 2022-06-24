@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/import_tensorflow.h"
-#include "tensorflow/lite/toco/toco_port.h"
+
+#include <memory>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -25,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/testing/util.h"
+#include "tensorflow/lite/toco/toco_port.h"
 
 namespace toco {
 

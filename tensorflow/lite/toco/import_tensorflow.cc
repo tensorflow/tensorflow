@@ -63,7 +63,6 @@ using tensorflow::DT_UINT32;
 using tensorflow::DT_UINT8;
 using tensorflow::GraphDef;
 using tensorflow::NodeDef;
-using tensorflow::OpRegistry;
 using tensorflow::TensorProto;
 using tensorflow::TensorShapeProto;
 
@@ -1122,7 +1121,7 @@ tensorflow::Status ConvertFakeQuantWithMinMaxArgs(
   TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
   auto* op = new FakeQuantOperator;
   op->inputs.push_back(node.input(0));
-  op->minmax.reset(new MinMax);
+  op->minmax = std::make_unique<MinMax>();
   auto& minmax = *op->minmax;
   minmax.min = GetFloatAttr(node, "min");
   minmax.max = GetFloatAttr(node, "max");

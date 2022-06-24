@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdlib>
 #include <memory>
 #include <set>
+#include <string>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
