@@ -83,7 +83,7 @@ static bool ControlElementwiseOpsFusion(const OpResult &producer_result,
   if (IsBroadcast(producer_result.getOwner())) return true;
 
   // If producer result has multiple users do not fuse it into the consumer.
-  if (!llvm::hasSingleElement(producer_result.getUsers())) return false;
+  if (!producer_result.hasOneUse()) return false;
 
   return true;
 }
@@ -108,6 +108,9 @@ static bool IsUnitDimExpansionOnly(TensorReshapeOp reshape_op) {
 
 // Control function to skip unit dim reshape when fusing reshapes by expansion.
 static bool SkipUnitDimReshape(const OpResult &producer, OpOperand &consumer) {
+  // If producer result has multiple users do not fuse it into the consumer.
+  if (!producer.hasOneUse()) return false;
+
   if (auto producer_collapse_op =
           dyn_cast<tensor::CollapseShapeOp>(producer.getOwner())) {
     return !IsUnitDimExpansionOnly(producer_collapse_op);
