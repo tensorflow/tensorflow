@@ -6641,18 +6641,11 @@ LogicalResult TransposeOp::inferReturnTypeComponents(
   auto rankedTy = type.dyn_cast<RankedTensorType>();
   if (!rankedTy) {
     auto shapedTy = type.dyn_cast<ShapedType>();
-    if (!shapedTy)
-      return emitOptionalError(loc,
-                               "expected shaped type operand, got: ", type);
     inferredReturnTypes.emplace_back(shapedTy);
     return success();
   }
   auto permutation = attributes.getAs<DenseIntElementsAttr>("permutation");
   int64_t rank = rankedTy.getRank();
-  if (!permutation)
-    return emitOptionalError(loc,
-                             "missing permutation attribute on TransposeOp");
-
   if (permutation.getType().getRank() != 1)
     return emitOptionalError(loc, "TransposeOp permutation has rank ",
                              permutation.getType().getRank(),
@@ -6663,10 +6656,17 @@ LogicalResult TransposeOp::inferReturnTypeComponents(
                              " does not match permutation size ",
                              permutation.size());
 
+  std::vector<int64_t> range(rank);
+  std::iota(range.begin(), range.end(), 0);
+  if (!std::is_permutation(range.begin(), range.end(), permutation.begin()))
+    return emitOptionalError(loc,
+                             "attribute permutation must be a permutation"
+                             " of [",
+                             range, "] but got ", permutation);
+
   SmallVector<int64_t> resultShape;
   ArrayRef<int64_t> inputShape = rankedTy.getShape();
   for (int64_t dim : permutation.getValues<int64_t>()) {
-    if (dim >= rank) return failure();
     resultShape.push_back(inputShape[dim]);
   }
   inferredReturnTypes.emplace_back(resultShape, rankedTy.getElementType());

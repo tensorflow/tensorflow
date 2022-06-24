@@ -137,6 +137,8 @@ func.func @abs(%arg0: tensor<1x2xf32>) -> tensor<1x2xindex> {
   func.return %1: tensor<1x2xindex>
 }
 
+// -----
+
 // CHECK-LABEL: @concat
 func.func @concat(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<3xindex> {
   %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<2xi32>) -> tensor<3xi32>
@@ -144,6 +146,17 @@ func.func @concat(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<3xindex
       : (tensor<3xi32>) -> tensor<3xindex>
 // CHECK: %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<3xi32>) -> tensor<3xindex>
   func.return %1 : tensor<3xindex>
+}
+
+// -----
+
+// CHECK-LABEL: func @transpose
+func.func @transpose(%arg0: tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xindex> {
+  %0 = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
+  %1 = "mhlo_test.get_return_type_components"(%0)
+      : (tensor<2x1x4x3xi32>) -> tensor<2x1x4x3xindex>
+// CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [2, 1, 4, 3], element_type0 = i32} : (tensor<2x1x4x3xi32>) -> tensor<2x1x4x3xindex>
+  func.return %1 : tensor<2x1x4x3xindex>
 }
 
 // -----
