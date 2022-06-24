@@ -41,6 +41,7 @@ TEST(TpuEmbeddingErrors, StatusOk) {
     const Status status = AppendTpuEmbeddingErrorPayload(OkStatus());
     TF_EXPECT_OK(status);
     EXPECT_FALSE(HasTpuEmbeddingErrorPayload(status));
+    EXPECT_FALSE(HasTpuEmbeddingErrorMessage(status));
   }
 
   {
@@ -57,14 +58,17 @@ TEST(TpuEmbeddingErrors, StatusFailed) {
         AppendTpuEmbeddingErrorPayload(errors::InvalidArgument(""));
     EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
     EXPECT_TRUE(HasTpuEmbeddingErrorPayload(status));
+    EXPECT_TRUE(HasTpuEmbeddingErrorMessage(status));
   }
 
   {
     StatusOr<std::string> status_or = AppendTpuEmbeddingErrorPayload(
         GenerateTFStatusOr(errors::Code::RESOURCE_EXHAUSTED));
     EXPECT_FALSE(status_or.ok());
-    EXPECT_EQ(status_or.status().code(), error::Code::RESOURCE_EXHAUSTED);
-    EXPECT_TRUE(HasTpuEmbeddingErrorPayload(status_or.status()));
+    const Status& status = status_or.status();
+    EXPECT_EQ(status.code(), error::Code::RESOURCE_EXHAUSTED);
+    EXPECT_TRUE(HasTpuEmbeddingErrorPayload(status));
+    EXPECT_TRUE(HasTpuEmbeddingErrorMessage(status));
   }
 }
 
