@@ -15,12 +15,16 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/api.h"
 
+#include <utility>
+
 #ifndef CL_DELEGATE_NO_GL
 #define CL_DELEGATE_ALLOW_GL
 #endif
 
 #include <algorithm>
 #include <cstring>
+#include <memory>
+#include <variant>
 
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
@@ -325,11 +329,11 @@ class GlBufferHolder : public TensorTie {
   }
 
   absl::Status SetExternalObject(TensorObject obj) final {
-    auto ssbo = absl::get_if<OpenGlBuffer>(&obj);
+    auto ssbo = std::get_if<OpenGlBuffer>(&obj);
     if (!ssbo) {
       return absl::InvalidArgumentError("Missing OpenGL SSBO");
     }
-    auto old_ssbo = absl::get_if<OpenGlBuffer>(&external_obj_);
+    auto old_ssbo = std::get_if<OpenGlBuffer>(&external_obj_);
     if (old_ssbo && ssbo->id == old_ssbo->id) {
       return absl::OkStatus();
     }
