@@ -31,6 +31,8 @@ class DataServiceClient {
  public:
   explicit DataServiceClient(const DataServiceParams& params);
   virtual ~DataServiceClient() = default;
+  DataServiceClient(const DataServiceClient&) = delete;
+  DataServiceClient& operator=(const DataServiceClient&) = delete;
 
   // Reads the next element from tf.data servers. Blocks if the next element is
   // not ready.
