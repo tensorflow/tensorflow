@@ -30,31 +30,31 @@ class Serializable(metaclass=abc.ABCMeta):
 
   def __init_subclass__(cls, **kwargs):
     super().__init_subclass__(**kwargs)
-    if cls.type_proto() in PROTO_CLASS_TO_PY_CLASS:
+    if cls.experimental_type_proto() in PROTO_CLASS_TO_PY_CLASS:
       raise ValueError(
           "Existing Python class " +
-          PROTO_CLASS_TO_PY_CLASS[cls.type_proto()].__name__ + " already has " +
-          cls.type_proto().__name__ +
+          PROTO_CLASS_TO_PY_CLASS[cls.experimental_type_proto()].__name__ +
+          " already has " + cls.experimental_type_proto().__name__ +
           " as its associated proto representation. Please ensure " +
           cls.__name__ + " has a unique proto representation.")
 
-    PROTO_CLASS_TO_PY_CLASS[cls.type_proto()] = cls
+    PROTO_CLASS_TO_PY_CLASS[cls.experimental_type_proto()] = cls
 
   @classmethod
   @abc.abstractmethod
-  def type_proto(cls) -> Type[message.Message]:
+  def experimental_type_proto(cls) -> Type[message.Message]:
     """Returns the unique type of proto associated with this class."""
     raise NotImplementedError
 
   @classmethod
   @abc.abstractmethod
-  def from_proto(cls, proto: message.Message) -> "Serializable":
-    """Returns an instance based on a proto generated from to_proto()."""
+  def experimental_from_proto(cls, proto: message.Message) -> "Serializable":
+    """Returns an instance based on a proto."""
     raise NotImplementedError
 
   @abc.abstractmethod
-  def to_proto(self) -> message.Message:
-    """Returns a proto of type type_proto() representing this instance."""
+  def experimental_as_proto(self) -> message.Message:
+    """Returns a proto representing this instance."""
     raise NotImplementedError
 
 
@@ -62,16 +62,16 @@ def serialize(to_serialize: Serializable) -> SerializedTraceType:
   """Converts Serializable to a proto SerializedTraceType."""
 
   if not isinstance(to_serialize, Serializable):
-    raise ValueError("Can not serialize ",
-                     type(to_serialize).__name__,
-                     " since it is not Serializable. For object ",
-                     to_serialize)
-  actual_proto = to_serialize.to_proto()
+    raise ValueError("Can not serialize " + type(to_serialize).__name__ +
+                     " since it is not Serializable. For object " +
+                     str(to_serialize))
+  actual_proto = to_serialize.experimental_as_proto()
 
-  if not isinstance(actual_proto, to_serialize.type_proto()):
+  if not isinstance(actual_proto, to_serialize.experimental_type_proto()):
     raise ValueError(
         type(to_serialize).__name__ +
-        " returned different type of proto than specified by type_proto()")
+        " returned different type of proto than specified by " +
+        "experimental_type_proto()")
 
   serialized = SerializedTraceType()
   serialized.representation.Pack(actual_proto)
@@ -84,7 +84,8 @@ def deserialize(proto: SerializedTraceType) -> Serializable:
     if proto.representation.Is(proto_class.DESCRIPTOR):
       actual_proto = proto_class()
       proto.representation.Unpack(actual_proto)
-      return PROTO_CLASS_TO_PY_CLASS[proto_class].from_proto(actual_proto)
+      return PROTO_CLASS_TO_PY_CLASS[proto_class].experimental_from_proto(
+          actual_proto)
 
   raise ValueError(
       "Can not deserialize proto of url: ", proto.representation.type_url,
