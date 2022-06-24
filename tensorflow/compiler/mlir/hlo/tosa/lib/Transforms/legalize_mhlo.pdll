@@ -23,8 +23,38 @@ Pattern =>
   replace op<mhlo.ceil>(input : Value<_: Tosa_Tensor>)
      with op<tosa.ceil>(input);
 Pattern =>
+  replace op<mhlo.exponential>(input : Value<_: Tosa_Tensor>)
+     with op<tosa.exp>(input);
+Pattern =>
   replace op<mhlo.floor>(input : Value<_: Tosa_Tensor>)
      with op<tosa.floor>(input);
 Pattern =>
+  replace op<mhlo.log>(input : Value<_: Tosa_Tensor>)
+     with op<tosa.log>(input);
+Pattern =>
   replace op<mhlo.negate>(input : Value<_: Tosa_Tensor>)
      with op<tosa.negate>(input);
+Pattern =>
+  replace op<mhlo.tanh>(input : Value<_: Tosa_Tensor>)
+     with op<tosa.tanh>(input);
+
+// Binary ops.
+Pattern =>
+  replace op<mhlo.add>(input0 : Value<_: Tosa_Tensor>,
+                       input1 : Value<_: Tosa_Tensor>)
+     with op<tosa.add>(input0, input1);
+Pattern =>
+  replace op<mhlo.maximum>(input0 : Value<_: Tosa_Tensor>,
+                           input1 : Value<_: Tosa_Tensor>)
+     with op<tosa.maximum>(input0, input1);
+Pattern =>
+  replace op<mhlo.subtract>(input0 : Value<_: Tosa_Tensor>,
+                            input1 : Value<_: Tosa_Tensor>)
+     with op<tosa.sub>(input0, input1);
+
+// Ternary ops.
+Pattern =>
+  replace op<mhlo.select>(input0 : Value<_: Tosa_Tensor>,
+                          input1 : Value<_: Tosa_Tensor>,
+                          input2 : Value<_: Tosa_Tensor>)
+     with op<tosa.select>(input0, input1, input2);
