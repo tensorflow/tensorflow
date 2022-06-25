@@ -177,15 +177,14 @@ static LogicalResult rngInferReturnTypeComponents(
   auto shapeOperandType = shapeOperand.getType().cast<ShapedType>();
   Type elementType = getElementTypeOrSelf(operands[1]);
 
-  // Match constant shape arguments.
+  // Operand `shape` (1D by ODS) may be a constant or not, if `shape` is:
+  // 1, not constant and have dynimic dim (tensor<?x>): infer tensor<*x>.
+  // 2. not constant nor dynimic (e.g. tensor<3xi64>): infer tensor<?x?x?x>.
+  // 3. constant (e.g. dense<[2, 3, 5]>): infer tensor<2x3x5x>.
+
+  // Match to check whether the `shape` operand is a constant.
   DenseIntElementsAttr shape;
   if (!matchPattern(shapeOperand, m_Constant(&shape))) {
-    if (!shapeOperandType.hasRank()) {
-      inferredReturnShapes.emplace_back(elementType);
-      return success();
-    }
-    if (shapeOperandType.getRank() != 1)
-      return emitOptionalError(location, "shape operand required to be 1D");
     int size = shapeOperandType.getDimSize(0);
     if (isDynamicDimSize(size)) {
       inferredReturnShapes.emplace_back(elementType);
@@ -196,6 +195,7 @@ static LogicalResult rngInferReturnTypeComponents(
     return success();
   }
 
+  // `shape` operand is a constant.
   shapeVector.reserve(shape.size());
   for (const APInt& fp : shape.getValues<APInt>())
     shapeVector.push_back(fp.getSExtValue());
