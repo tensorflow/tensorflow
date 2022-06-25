@@ -1078,9 +1078,9 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
 #ifdef TFLITE_USE_SIMPLE_MEMORY_PLANNER
     memory_planner_.reset(new SimplePlanner(&context_, CreateGraphInfo()));
 #else
-    memory_planner_.reset(new ArenaPlanner(&context_, CreateGraphInfo(),
-                                           ShouldPreserveAllTensors(),
-                                           kDefaultTensorAlignment));
+    memory_planner_ = std::make_unique<ArenaPlanner>(
+        &context_, CreateGraphInfo(), ShouldPreserveAllTensors(),
+        kDefaultTensorAlignment);
 #endif
     memory_planner_->PlanAllocations();
   }

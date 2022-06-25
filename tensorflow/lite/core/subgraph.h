@@ -313,8 +313,8 @@ class Subgraph {
       profiler_.reset(nullptr);
       context_.profiler = nullptr;
     } else {
-      profiler_.reset(
-          new SubgraphAwareProfiler(profiler, associated_subgraph_idx));
+      profiler_ = std::make_unique<SubgraphAwareProfiler>(
+          profiler, associated_subgraph_idx);
       context_.profiler = profiler_.get();
     }
   }
