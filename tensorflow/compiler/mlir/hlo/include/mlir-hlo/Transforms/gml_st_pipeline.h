@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_TRANSFORMS_GML_ST_PIPELINE_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_TRANSFORMS_GML_ST_PIPELINE_H_
+#ifndef MLIR_HLO_TRANSFORMS_GML_ST_PIPELINE_H
+#define MLIR_HLO_TRANSFORMS_GML_ST_PIPELINE_H
 
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassOptions.h"
@@ -33,4 +33,4 @@ void createGmlStPipeline(mlir::OpPassManager& pm,
 
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_TRANSFORMS_GML_ST_PIPELINE_H_
+#endif  // MLIR_HLO_TRANSFORMS_GML_ST_PIPELINE_H
