@@ -161,6 +161,15 @@ func.func @transpose(%arg0: tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xindex> {
 
 // -----
 
+// CHECK-LABEL: func @slice
+func.func @slice(%arg0: tensor<3x4xi32>) -> tensor<1x2xindex> {
+  %0 = "mhlo.slice"(%arg0) {start_indices = dense<[1, 0]> : tensor<2xi64>, limit_indices = dense<[2, 4]> : tensor<2xi64>, strides = dense<[1, 2]> : tensor<2xi64>} : (tensor<3x4xi32>) -> tensor<1x2xi32>
+  %1 = "mhlo_test.get_return_type_components"(%0)
+      : (tensor<1x2xi32>) -> tensor<1x2xindex>
+// CHECK: %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<1x2xi32>) -> tensor<1x2xindex>
+  func.return %1 : tensor<1x2xindex>
+}
+
 #CSR = #sparse_tensor.encoding<{
   dimLevelType = ["dense", "compressed"]
 }>

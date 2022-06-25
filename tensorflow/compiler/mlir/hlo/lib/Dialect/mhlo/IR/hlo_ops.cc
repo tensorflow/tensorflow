@@ -6115,16 +6115,18 @@ static int64_t inferSliceDim(int64_t inputDim, int64_t start, int64_t end,
   return llvm::divideCeil(end - start, stride);
 }
 
+// The following properties are already enforced by the ODS:
+//  type(start_indices) == type(limit_indices) == type(strides).
+// Verify the following properties:
+//  P1. Verify rank(start_indices) == 1.
+//  P2. Verify size(start_indices) == rank(operand).
+//  P3~5. Verify 0 <= start_indices[i] <= limit_indices[i] <= shape(operand)[i].
+//  P6. Verify stride[i] > 0.
 LogicalResult SliceOp::inferReturnTypes(
     MLIRContext* context, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   SliceOpAdaptor slice(operands, attributes);
-  // TODO(jpienaar): Update this code after refactoring verify.
-  if (failed(slice.verify(location.getValueOr(UnknownLoc::get(context))))) {
-    return failure();
-  }
-
   Type ty = slice.operand().getType();
   RankedTensorType rankedTy = ty.dyn_cast<RankedTensorType>();
   if (!rankedTy) {
@@ -6136,11 +6138,15 @@ LogicalResult SliceOp::inferReturnTypes(
   }
 
   ShapedType attrTy = slice.start_indices().getType();
+  // P1.
+  // Note: ODS has type(start_indices) == type(limit_indices) == type(strides)
+  // So this implies rank(limit_indices) == rank(strides) == 1 also.
   if (attrTy.getRank() != 1) {
     return emitOptionalError(location, "start_indices has rank ",
                              attrTy.getRank(), " instead of required rank 1");
   }
 
+  // P2.
   int64_t rank = rankedTy.getRank();
   if (attrTy.getNumElements() != rank) {
     return emitOptionalError(
@@ -6156,6 +6162,29 @@ LogicalResult SliceOp::inferReturnTypes(
   SmallVector<int64_t, 4> shape;
   shape.reserve(rank);
   for (int64_t i = 0, e = rank; i != e; i++) {
+    if (isDynamicDimSize(rankedTy.getDimSize(i))) {
+      shape.push_back(ShapedType::kDynamicSize);
+      continue;
+    }
+    // P3.
+    if (start[i] < 0)
+      return emitOptionalError(location, "negative start index ", start[i],
+                               " in dimension ", i);
+    // P4.
+    if (limit[i] > rankedTy.getDimSize(i))
+      return emitOptionalError(location, "limit index ", limit[i],
+                               " is larger than dimension size ",
+                               rankedTy.getDimSize(i), " in dimension ", i);
+    // P5.
+    if (start[i] > limit[i])
+      return emitOptionalError(location, "start index ", start[i],
+                               " is larger than limit index ", limit[i],
+                               " in dimension ", i);
+    // P6.
+    if (strideVals[i] <= 0)
+      return emitOptionalError(location, "stride must be positive but got ",
+                               strideVals[i], " in dimension ", i);
+
     shape.push_back(inferSliceDim(rankedTy.getDimSize(i), start[i], limit[i],
                                   strideVals[i]));
   }
