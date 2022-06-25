@@ -55,7 +55,7 @@ createSymbolicShapeOptimizationPass();
 /// Creates a pass that merges smaller buffer into bigger buffer to optimize
 /// memory consumption.
 std::unique_ptr<OperationPass<func::FuncOp>> createBufferPackingPass(
-    unsigned window_size = 5);
+    unsigned windowSize = 5);
 
 /// Creates a pass that tests the useranges of the UserangeAnalysis.
 std::unique_ptr<OperationPass<func::FuncOp>> createTestUserangePass();
