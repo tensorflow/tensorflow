@@ -267,7 +267,7 @@ class DistributeOptions(options_lib.OptionsBase):
 
   ```python
   options = tf.data.Options()
-  options.experimental_distribute.auto_shard_policy = AutoShardPolicy.OFF
+  options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.OFF
   dataset = dataset.with_options(options)
   ```
   """
