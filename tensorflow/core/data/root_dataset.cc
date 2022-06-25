@@ -145,11 +145,11 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
       threadpool_size_ =
           value_or_default(dataset()->params_.private_threadpool_size, 0,
                            port::MaxParallelism());
-      thread_pool_ = absl::make_unique<thread::ThreadPool>(
+      thread_pool_ = std::make_unique<thread::ThreadPool>(
           Env::Default(), ThreadOptions{}, "data_private_threadpool",
           threadpool_size_);
     }
-    cancellation_manager_ = absl::make_unique<CancellationManager>();
+    cancellation_manager_ = std::make_unique<CancellationManager>();
   }
 
   ~Iterator() override { cancellation_manager_->StartCancel(); }
@@ -302,7 +302,7 @@ RootDataset::~RootDataset() {}
 
 std::unique_ptr<IteratorBase> RootDataset::MakeIteratorInternal(
     const string& prefix) const {
-  return absl::make_unique<Iterator>(
+  return std::make_unique<Iterator>(
       Iterator::Params{this, name_utils::IteratorPrefix(kDatasetType, prefix)});
 }
 
