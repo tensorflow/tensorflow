@@ -36,10 +36,10 @@ Value emitNumElementsComputation(OpBuilder& b, Location loc, Operation* op);
 Value emitNumElementsComputation(OpBuilder& b, Location loc, Value memref);
 
 llvm::SmallVector<Value> calcMultiDimIndex(OpBuilder& b, Location loc,
-                                           Value linear_index, Value memref);
+                                           Value linearIndex, Value memref);
 
 llvm::SmallVector<Value> calcMultiDimIndex(OpBuilder& b, Location loc,
-                                           Value linear_index,
+                                           Value linearIndex,
                                            llvm::ArrayRef<Value> shape);
 
 }  // namespace codegen_utils
