@@ -113,22 +113,6 @@ SmallVector<OpFoldResult> composeStrides(
   return composedStrides;
 }
 
-// TODO(frgossen): Move this upstream to the ViewLikeInterface
-std::pair<ArrayAttr, SmallVector<Value>> decomposeMixedStridesOrOffsets(
-    OpBuilder& b, const SmallVectorImpl<OpFoldResult>& mixedValues) {
-  SmallVector<int64_t> staticValues;
-  SmallVector<Value> dynamicValues;
-  for (const auto& it : mixedValues) {
-    if (it.is<Attribute>()) {
-      staticValues.push_back(it.get<Attribute>().cast<IntegerAttr>().getInt());
-    } else {
-      staticValues.push_back(ShapedType::kDynamicStrideOrOffset);
-      dynamicValues.push_back(it.get<Value>());
-    }
-  }
-  return {b.getI64ArrayAttr(staticValues), dynamicValues};
-}
-
 struct ComposeTilesPattern : public OpRewritePattern<TileOp> {
   using OpRewritePattern<TileOp>::OpRewritePattern;
 

@@ -115,8 +115,8 @@ Value getInitTensor(OpBuilder& b, Location loc, ShapedType type,
 
 Value getInitSparseTensor(OpBuilder& b, Location loc, ShapedType type,
                           ArrayRef<Value> dynSizes) {
-  return b.create<bufferization::AllocTensorOp>(
-      loc, type, dynSizes, /*copy=*/Value(), /*escape=*/BoolAttr());
+  return b.create<bufferization::AllocTensorOp>(loc, type, dynSizes,
+                                                /*copy=*/Value());
 }
 
 Value getInitTensorFor(OpBuilder& b, Location loc, ShapedType resultType,
