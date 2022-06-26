@@ -25,7 +25,7 @@ cd ~
 export TENSORFLOW_VER=master
 export TENSORFLOW_DIR=`pwd`/tensorflow_${TENSORFLOW_VER}
 
-git clone -b ${TENSORFLOW_VER} --depth 1 https://github.com/tensorflow/tensorflow.git ${TENSORFLOW_DIR} || echo "git folder exists..."
+git clone -b tflite_gpu_python --depth 1 https://github.com/BenjaminWegener/tensorflow.git ${TENSORFLOW_DIR} || echo "git folder exists..."
 
 echo -e "\e[1;32;49m
 installing bazel, to remove do 'sudo rm -f /usr/local/bin/bazel'
@@ -61,12 +61,6 @@ cmake -j4 ../tensorflow/lite -DCMAKE_FIND_DEBUG_MODE=1
 # clean up bazel cache, just in case.
 cd ${TENSORFLOW_DIR}
 bazel clean
-
-echo -e "\e[1;32;49m
-patching build files to fix not linking EGL / GLESv2...
-\e[0m"
-sed -i "s#conditions:default\": \[\],#conditions:default\": \[\"-lEGL\",\"-lGLESv2\",\],#g" ${TENSORFLOW_DIR}/tensorflow/lite/delegates/gpu/build_defs.bzl
-
 bazel build -s --local_ram_resources=HOST_RAM*0.75 --local_cpu_resources=HOST_CPUS*0.5 -c opt tensorflow/lite:libtensorflowlite.so
 bazel build --local_ram_resources=HOST_RAM*0.75 --local_cpu_resources=HOST_CPUS*0.5 --config=native_arch_linux -c opt --copt "-DEGL_NO_X11" --copt="-DMESA_EGL_NO_X11_HEADERS" --copt "-DTFLITE_GPU_BINARY_RELEASE" tensorflow/lite/delegates/gpu:libtensorflowlite_gpu_delegate.so
 
