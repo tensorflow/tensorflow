@@ -2938,7 +2938,7 @@ func.func @slice_with_strides2(%arg0: tensor<6xi32>) -> tensor<3xi32> {
 // -----
 
 func.func @dynamic_slice(%arg: tensor<3x4xf32>, %start1: tensor<i64>, %start2: tensor<i64>) -> tensor<1x4xf32> {
-  %0 = "mhlo.dynamic-slice"(%arg, %start1, %start2) {
+  %0 = "mhlo.dynamic_slice"(%arg, %start1, %start2) {
     slice_sizes = dense<[1, 4]> : tensor<2xi64>
   } : (tensor<3x4xf32>, tensor<i64>, tensor<i64>) -> tensor<1x4xf32>
   func.return %0 : tensor<1x4xf32>
@@ -2963,7 +2963,7 @@ func.func @dynamic_slice(%arg: tensor<3x4xf32>, %start1: tensor<i64>, %start2: t
 // -----
 
 func.func @dynamic_slice_unsigned(%arg: tensor<3x4xui32>, %start1: tensor<i64>, %start2: tensor<i64>) -> tensor<1x4xui32> {
-  %0 = "mhlo.dynamic-slice"(%arg, %start1, %start2) {
+  %0 = "mhlo.dynamic_slice"(%arg, %start1, %start2) {
     slice_sizes = dense<[1, 4]> : tensor<2xi64>
   } : (tensor<3x4xui32>, tensor<i64>, tensor<i64>) -> tensor<1x4xui32>
   func.return %0 : tensor<1x4xui32>

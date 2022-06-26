@@ -475,7 +475,7 @@ add {
   %start_idx_1 = s32[] parameter(1)
   %start_idx_2 = s32[] parameter(2)
   %start_idx_3 = s32[] parameter(3)
-  // CHECK:  "mhlo.dynamic-slice"([[OPERAND]], [[START_IDX_1]], [[START_IDX_2]], [[START_IDX_3]])
+  // CHECK:  "mhlo.dynamic_slice"([[OPERAND]], [[START_IDX_1]], [[START_IDX_2]], [[START_IDX_3]])
   // CHECK-SAME:  slice_sizes = dense<[1, 1, 32]> : tensor<3xi64>
   ROOT %dynamic-slice = s32[1,1,32] dynamic-slice(s32[2,2,258] %operand, s32[] %start_idx_1, s32[] %start_idx_2, s32[] %start_idx_3), dynamic_slice_sizes={1,1,32}
 }

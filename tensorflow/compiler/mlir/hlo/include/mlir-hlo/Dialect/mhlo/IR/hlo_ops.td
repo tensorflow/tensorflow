@@ -1176,7 +1176,7 @@ def HLO_SliceOp: HLO_Op<
   let hasFolder = 1;
 }
 
-def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
+def HLO_DynamicSliceOp: HLO_Op<"dynamic_slice",
       [NoSideEffect, AllElementTypesMatch<["operand", "result"]>,
        InferTensorType]> {
   let summary = "Dynamic Slice operator";
