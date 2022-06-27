@@ -3775,7 +3775,8 @@ LogicalResult DynamicSliceOp::verify() {
     if (slice_size < 0) {
       return emitOpError() << "has negative size index to dynamic slice: "
                            << slice_size;
-    } else if (!operandType.isDynamicDim(i)) {
+    }
+    if (!operandType.isDynamicDim(i)) {
       int64_t dim_size = operandType.getDimSize(i);
       if (slice_size > dim_size) {
         return emitOpError() << "has slice size " << slice_size
@@ -5964,7 +5965,8 @@ bool isSplatZero(SplatElementsAttr attr) {
   if (!attr) return false;
   if (attr.getElementType().isa<FloatType>()) {
     return attr.getSplatValue<APFloat>().isZero();
-  } else if (attr.getElementType().isa<IntegerType>()) {
+  }
+  if (attr.getElementType().isa<IntegerType>()) {
     return attr.getSplatValue<APInt>().isZero();
   } else {
     return false;
@@ -5989,7 +5991,8 @@ bool isSplatOne(SplatElementsAttr attr) {
   if (!attr) return false;
   if (attr.getElementType().isa<FloatType>()) {
     return attr.getSplatValue<APFloat>().convertToDouble() == 1.0;
-  } else if (attr.getElementType().isa<IntegerType>()) {
+  }
+  if (attr.getElementType().isa<IntegerType>()) {
     return attr.getSplatValue<APInt>().getSExtValue() == 1;
   } else {
     return false;
