@@ -21,6 +21,7 @@ from absl import logging
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.platform import remote_utils
 
 
 def initialize_multi_client_cluster(job_name: str,
@@ -28,7 +29,6 @@ def initialize_multi_client_cluster(job_name: str,
                                     client_id: int,
                                     collective_leader: str,
                                     port: Optional[int] = None,
-                                    protocol: Optional[str] = "grpc",
                                     enable_coordination_service: bool = False):
   """Initialize GRPC servers and collectives for multi-client DTensor setup.
 
@@ -45,7 +45,6 @@ def initialize_multi_client_cluster(job_name: str,
     client_id: The ID of the DTensor client this function is being called in.
     collective_leader: The job/task that will be used to run collectives.
     port: The port this client's GRPC server will run on.
-    protocol: The protocol to be used by this server.
     enable_coordination_service: If true, enable distributed coordination
       service to make sure that workers know the devices on each other, a
       prerequisite for data transfer through cross-worker rendezvous.
@@ -78,7 +77,7 @@ def initialize_multi_client_cluster(job_name: str,
       default_session_config=config_proto,
       job_name=job_name,
       task_index=client_id,
-      protocol=protocol,
+      protocol=remote_utils.get_default_communication_protocol(),
       port=port)
   server_def.default_session_config.rpc_options.num_channels_per_target = 4
   server_def.default_session_config.experimental.recv_buf_max_chunk = -1

@@ -86,7 +86,7 @@ import org.tensorflow.lite.InterpreterApi.Options.TfLiteRuntime;
 public interface InterpreterApi extends AutoCloseable {
 
   /** An options class for controlling runtime interpreter behavior. */
-  public static class Options {
+  class Options {
     public Options() {
       this.delegates = new ArrayList<>();
     }
@@ -181,7 +181,7 @@ public interface InterpreterApi extends AutoCloseable {
     }
 
     /** Enum to represent where to get the TensorFlow Lite runtime implementation from. */
-    public static enum TfLiteRuntime {
+    public enum TfLiteRuntime {
       /**
        * Use a TF Lite runtime implementation that is linked into the application. If there is no
        * suitable TF Lite runtime implementation linked into the application, then attempting to
@@ -219,7 +219,7 @@ public interface InterpreterApi extends AutoCloseable {
        * coming from (e.g. middleware layers).
        */
       PREFER_SYSTEM_OVER_APPLICATION,
-    };
+    }
 
     /** Specify where to get the TF Lite runtime implementation from. */
     public Options setRuntime(TfLiteRuntime runtime) {
@@ -251,7 +251,7 @@ public interface InterpreterApi extends AutoCloseable {
    *     model.
    */
   @SuppressWarnings("StaticOrDefaultInterfaceMethod")
-  public static InterpreterApi create(@NonNull File modelFile, InterpreterApi.Options options) {
+  static InterpreterApi create(@NonNull File modelFile, InterpreterApi.Options options) {
     TfLiteRuntime runtime = (options == null ? null : options.getRuntime());
     InterpreterFactoryApi factory = TensorFlowLite.getFactory(runtime);
     return factory.create(modelFile, options);
@@ -270,7 +270,7 @@ public interface InterpreterApi extends AutoCloseable {
    *     direct {@code ByteBuffer} of nativeOrder.
    */
   @SuppressWarnings("StaticOrDefaultInterfaceMethod")
-  public static InterpreterApi create(
+  static InterpreterApi create(
       @NonNull ByteBuffer byteBuffer, InterpreterApi.Options options) {
     TfLiteRuntime runtime = (options == null ? null : options.getRuntime());
     InterpreterFactoryApi factory = TensorFlowLite.getFactory(runtime);
@@ -316,7 +316,7 @@ public interface InterpreterApi extends AutoCloseable {
    * @throws IllegalArgumentException (EXPERIMENTAL, subject to change) if the inference is
    *     interrupted by {@code setCancelled(true)}.
    */
-  public void run(Object input, Object output);
+  void run(Object input, Object output);
 
   /**
    * Runs model inference if the model takes multiple inputs, or returns multiple outputs.
@@ -357,7 +357,7 @@ public interface InterpreterApi extends AutoCloseable {
    * @throws IllegalArgumentException if {@code inputs} is null or empty, if {@code outputs} is
    *     null, or if an error occurs when running inference.
    */
-  public void runForMultipleInputsOutputs(
+  void runForMultipleInputsOutputs(
       Object @NonNull [] inputs, @NonNull Map<Integer, Object> outputs);
 
   /**
@@ -385,7 +385,7 @@ public interface InterpreterApi extends AutoCloseable {
    *
    * @throws IllegalStateException if the graph's tensors could not be successfully allocated.
    */
-  public void allocateTensors();
+  void allocateTensors();
 
   /**
    * Resizes idx-th input of the native model to the given dims.
@@ -393,7 +393,7 @@ public interface InterpreterApi extends AutoCloseable {
    * @throws IllegalArgumentException if {@code idx} is negative or is not smaller than the number
    *     of model inputs; or if error occurs when resizing the idx-th input.
    */
-  public void resizeInput(int idx, @NonNull int[] dims);
+  void resizeInput(int idx, @NonNull int[] dims);
 
   /**
    * Resizes idx-th input of the native model to the given dims.
@@ -405,10 +405,10 @@ public interface InterpreterApi extends AutoCloseable {
    *     of model inputs; or if error occurs when resizing the idx-th input. Additionally, the error
    *     occurs when attempting to resize a tensor with fixed dimensions when `strict` is True.
    */
-  public void resizeInput(int idx, @NonNull int[] dims, boolean strict);
+  void resizeInput(int idx, @NonNull int[] dims, boolean strict);
 
   /** Gets the number of input tensors. */
-  public int getInputTensorCount();
+  int getInputTensorCount();
 
   /**
    * Gets index of an input given the op name of the input.
@@ -416,7 +416,7 @@ public interface InterpreterApi extends AutoCloseable {
    * @throws IllegalArgumentException if {@code opName} does not match any input in the model used
    *     to initialize the interpreter.
    */
-  public int getInputIndex(String opName);
+  int getInputIndex(String opName);
 
   /**
    * Gets the Tensor associated with the provided input index.
@@ -424,10 +424,10 @@ public interface InterpreterApi extends AutoCloseable {
    * @throws IllegalArgumentException if {@code inputIndex} is negative or is not smaller than the
    *     number of model inputs.
    */
-  public Tensor getInputTensor(int inputIndex);
+  Tensor getInputTensor(int inputIndex);
 
   /** Gets the number of output Tensors. */
-  public int getOutputTensorCount();
+  int getOutputTensorCount();
 
   /**
    * Gets index of an output given the op name of the output.
@@ -435,7 +435,7 @@ public interface InterpreterApi extends AutoCloseable {
    * @throws IllegalArgumentException if {@code opName} does not match any output in the model used
    *     to initialize the interpreter.
    */
-  public int getOutputIndex(String opName);
+  int getOutputIndex(String opName);
 
   /**
    * Gets the Tensor associated with the provided output index.
@@ -450,16 +450,16 @@ public interface InterpreterApi extends AutoCloseable {
    * @throws IllegalArgumentException if {@code outputIndex} is negative or is not smaller than the
    *     number of model outputs.
    */
-  public Tensor getOutputTensor(int outputIndex);
+  Tensor getOutputTensor(int outputIndex);
 
   /**
    * Returns native inference timing.
    *
    * @throws IllegalArgumentException if the model is not initialized by the interpreter.
    */
-  public Long getLastNativeInferenceDurationNanoseconds();
+  Long getLastNativeInferenceDurationNanoseconds();
 
   /** Release resources associated with the {@code InterpreterApi} instance. */
   @Override
-  public void close();
+  void close();
 }

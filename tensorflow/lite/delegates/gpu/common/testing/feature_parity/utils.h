@@ -41,9 +41,9 @@ namespace tflite {
 // and coordinates. By default dimensions are interpreted depending on the size:
 // 1:Linear, 2:HW, 3: HWC, 4:BHWC. If there are more than 4 dimensions,
 // absl::nullopt will be returned.
-absl::optional<std::string> ShapeToString(TfLiteIntArray* shape);
-absl::optional<std::string> CoordinateToString(TfLiteIntArray* shape,
-                                               int linear);
+std::optional<std::string> ShapeToString(TfLiteIntArray* shape);
+std::optional<std::string> CoordinateToString(TfLiteIntArray* shape,
+                                              int linear);
 
 template <typename TupleMatcher>
 class TensorEqMatcher {
@@ -77,7 +77,7 @@ class TensorEqMatcher {
     // Define what gtest framework will print for the Expected field.
     void DescribeTo(std::ostream* os) const override {
       std::string shape;
-      absl::optional<std::string> result = ShapeToString(rhs_.dims);
+      std::optional<std::string> result = ShapeToString(rhs_.dims);
       if (result.has_value()) {
         shape = std::move(result.value());
       } else {
@@ -115,7 +115,7 @@ class TensorEqMatcher {
       }
       if (!dims_are_equal) {
         std::string shape;
-        absl::optional<std::string> result = ShapeToString(rhs_.dims);
+        std::optional<std::string> result = ShapeToString(rhs_.dims);
         if (result.has_value()) {
           shape = std::move(result.value());
         } else {
@@ -143,8 +143,7 @@ class TensorEqMatcher {
             *listener << ", ";
             testing::internal::UniversalPrint(*right, listener->stream());
             std::string coordinate;
-            absl::optional<std::string> result =
-                CoordinateToString(lhs.dims, i);
+            std::optional<std::string> result = CoordinateToString(lhs.dims, i);
             if (result.has_value()) {
               coordinate = std::move(result.value());
             } else {

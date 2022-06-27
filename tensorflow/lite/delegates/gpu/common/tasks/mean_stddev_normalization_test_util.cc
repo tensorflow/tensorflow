@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/mean_stddev_normalization_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -46,7 +47,7 @@ absl::Status MeanStddevNormSeparateBatchesTest(float mean, float diff,
           CreateMeanStdDevNormalization(op_def, env->GetGpuInfo(), 1);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {src_tensor},
-          absl::make_unique<MeanStdDevNormalization>(std::move(operation)),
+          std::make_unique<MeanStdDevNormalization>(std::move(operation)),
           BHWC(1, 1, 1, 4), &dst_tensor));
 
       std::vector<float> expected_output;
@@ -93,7 +94,7 @@ absl::Status MeanStddevNormalizationAllBatchesTest(
           CreateMeanStdDevNormalization(op_def, env->GetGpuInfo(), 1);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {src_tensor},
-          absl::make_unique<MeanStdDevNormalization>(std::move(operation)),
+          std::make_unique<MeanStdDevNormalization>(std::move(operation)),
           BHWC(9, 1, 1, 4), &dst_tensor));
 
       const float ksqrt16 = std::sqrt(1.6f);
@@ -148,7 +149,7 @@ absl::Status MeanStddevNormalizationLargeVectorTest(
                                                      (kVectorSize + 3) / 4);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {src_tensor},
-          absl::make_unique<MeanStdDevNormalization>(std::move(operation)),
+          std::make_unique<MeanStdDevNormalization>(std::move(operation)),
           BHWC(1, 1, 1, kVectorSize), &dst_tensor));
 
       std::vector<float> expected_output(kVectorSize);

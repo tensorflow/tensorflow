@@ -286,8 +286,7 @@ def dtensor_initialize_multi_client(
         dtensor_jobs=api.jobs(),
         client_id=api.client_id(),
         collective_leader=api.full_job_name(task_id=0),
-        enable_coordination_service=enable_coordination_service,
-        protocol='grpc')
+        enable_coordination_service=enable_coordination_service)
 
   # Make sure the server change is fully propagated before returning.
   context.ensure_initialized()

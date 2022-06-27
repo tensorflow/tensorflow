@@ -172,6 +172,8 @@ class AlgebraicSimplifierOptions {
 
   bool enable_sink_broadcast() const { return enable_sink_broadcast_; }
 
+  // TODO(b/228984373): Remove this option once BitcastDecomposer lands and
+  // sticks.
   void set_replace_transpose_with_bitcast(bool replace_transpose_with_bitcast) {
     replace_transpose_with_bitcast_ = replace_transpose_with_bitcast;
   }

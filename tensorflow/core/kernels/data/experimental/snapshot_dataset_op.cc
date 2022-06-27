@@ -138,7 +138,7 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(
+    return std::make_unique<Iterator>(
         Iterator::Params{this, absl::StrCat(prefix, "::Snapshot")});
   }
 
@@ -702,17 +702,17 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
 
       switch (mode_) {
         case snapshot_util::READER:
-          iterator_ = absl::make_unique<Reader>(
+          iterator_ = std::make_unique<Reader>(
               Reader::Params{dataset(),
                              absl::StrCat(prefix(), Reader::kIteratorName)},
               index_);
           break;
         case snapshot_util::WRITER:
-          iterator_ = absl::make_unique<Writer>(Writer::Params{
+          iterator_ = std::make_unique<Writer>(Writer::Params{
               dataset(), absl::StrCat(prefix(), Writer::kIteratorName)});
           break;
         case snapshot_util::PASSTHROUGH:
-          iterator_ = absl::make_unique<Passthrough>(Passthrough::Params{
+          iterator_ = std::make_unique<Passthrough>(Passthrough::Params{
               dataset(), absl::StrCat(prefix(), Passthrough::kIteratorName)});
           break;
       }
@@ -989,7 +989,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return absl::make_unique<Iterator>(
+      return std::make_unique<Iterator>(
           Iterator::Params{this, absl::StrCat(prefix, "::Snapshot")});
     }
 
@@ -1196,7 +1196,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
         switch (state_) {
           case snapshot_util::WRITER:
-            iterator_ = absl::make_unique<SnapshotWriterIterator>(
+            iterator_ = std::make_unique<SnapshotWriterIterator>(
                 SnapshotWriterIterator::Params{
                     dataset(), absl::StrCat(prefix(), "WriterImpl")},
                 hash_dir_, run_id);
@@ -1224,13 +1224,13 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                     "; dataset: ", dataset()->output_dtypes()[i]);
               }
             }
-            iterator_ = absl::make_unique<SnapshotReaderIterator>(
+            iterator_ = std::make_unique<SnapshotReaderIterator>(
                 SnapshotReaderIterator::Params{
                     dataset(), absl::StrCat(prefix(), "ReaderImpl")},
                 hash_dir_, run_id, metadata.version());
             break;
           case snapshot_util::PASSTHROUGH:
-            iterator_ = absl::make_unique<SnapshotPassthroughIterator>(
+            iterator_ = std::make_unique<SnapshotPassthroughIterator>(
                 SnapshotPassthroughIterator::Params{
                     dataset(), absl::StrCat(prefix(), "PassthroughImpl")});
             break;

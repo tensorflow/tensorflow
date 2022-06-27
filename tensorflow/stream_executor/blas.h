@@ -224,6 +224,10 @@ class AlgorithmConfig {
   AlgorithmType algorithm_;
 };
 
+// Opaque identifier specifying the precision to use in gemm calls.
+typedef int64_t ComputePrecision;
+constexpr ComputePrecision kDefaultComputePrecision = 0;
+
 // This struct contains the metadata of a matrix, e.g., its base address and
 // dimensions.
 struct MatrixDescriptor {
@@ -1089,7 +1093,7 @@ class BlasSupport {
                                   const DeviceMemoryBase &a, int lda,
                                   const DeviceMemoryBase &b, int ldb,
                                   const void *beta, DeviceMemoryBase *c,
-                                  int ldc) = 0;
+                                  int ldc, ComputePrecision precision) = 0;
 
   virtual bool DoBlasGemmWithProfiling(
       Stream *stream, blas::Transpose transa, blas::Transpose transb,
@@ -2027,7 +2031,8 @@ class BlasSupport {
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
       uint64_t m, uint64 n, uint64 k, blas::DataType dtype, const void *alpha, \
       const DeviceMemoryBase &a, int lda, const DeviceMemoryBase &b, int ldb,  \
-      const void *beta, DeviceMemoryBase *c, int ldc) override;                \
+      const void *beta, DeviceMemoryBase *c, int ldc,                          \
+      blas::ComputePrecision precision) override;                              \
   bool DoBlasGemmWithProfiling(                                                \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
       uint64_t m, uint64 n, uint64 k, float alpha,                             \

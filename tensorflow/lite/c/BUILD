@@ -43,19 +43,6 @@ tflite_cc_shared_object(
 )
 
 cc_library(
-    name = "c_api_internal",
-    hdrs = ["c_api_internal.h"],
-    copts = tflite_copts(),
-    visibility = ["//visibility:private"],
-    deps = [
-        ":common",
-        "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/core/api",
-    ],
-)
-
-cc_library(
     name = "c_api",
     hdrs = [
         "c_api.h",
@@ -92,6 +79,7 @@ cc_library(
         ":c_api_internal",
         ":c_api_types",
         ":common",
+        ":common_internal",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:create_op_resolver_header",
         "//tensorflow/lite:framework",
@@ -133,6 +121,19 @@ cc_library(
     hdrs = ["c_api_types.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
+)
+
+cc_library(
+    name = "c_api_internal",
+    hdrs = ["c_api_internal.h"],
+    copts = tflite_copts(),
+    visibility = ["//visibility:private"],
+    deps = [
+        ":common",
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/core/api",
+    ],
 )
 
 cc_test(
@@ -220,6 +221,18 @@ cc_library(
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
+cc_library(
+    name = "common_internal",
+    hdrs = ["common_internal.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    visibility = ["//tensorflow/lite:__pkg__"],
+    deps = [
+        ":c_api_types",
+        ":common",
+    ],
+)
+
 # For use with library targets that can't use relative paths.
 exports_files([
     "c_api.h",
@@ -238,6 +251,7 @@ filegroup(
         "c_api.cc",
         "c_api_experimental.cc",
         "c_api_opaque.cc",
+        "common_internal.h",
     ],
 )
 

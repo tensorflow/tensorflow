@@ -17,6 +17,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 
 namespace xla {
 namespace spmd {
@@ -1960,11 +1960,11 @@ StatusOr<HloInstruction*> PartitionDotGroupOnBatch(
     SpmdPartitioningVisitor* visitor) {
   std::vector<std::pair<HloInstruction*, HloSharding>>
       top_level_sharding_to_reset;
-  auto cleaner = tensorflow::gtl::MakeCleanup([&] {
+  absl::Cleanup cleaner = [&] {
     for (auto& to_reset : top_level_sharding_to_reset) {
       to_reset.first->set_sharding(to_reset.second);
     }
-  });
+  };
   std::vector<int64_t> lhs_dims;
   std::vector<int64_t> rhs_dims;
   std::vector<int64_t> output_dims;
@@ -2304,11 +2304,11 @@ StatusOr<HloInstruction*> PartitionDotGroupOnNonContracting(
     SpmdPartitioningVisitor* visitor) {
   std::vector<std::pair<HloInstruction*, HloSharding>>
       top_level_sharding_to_reset;
-  auto cleaner = tensorflow::gtl::MakeCleanup([&] {
+  absl::Cleanup cleaner = [&] {
     for (auto& to_reset : top_level_sharding_to_reset) {
       to_reset.first->set_sharding(to_reset.second);
     }
-  });
+  };
 
   std::vector<int64_t> output_dims;
   output_dims.reserve(partitioned_non_contracting_dims.size());
@@ -2533,11 +2533,11 @@ StatusOr<HloInstruction*> PartitionDotGroupOnContracting(
     SpmdPartitioningVisitor* visitor) {
   std::vector<std::pair<HloInstruction*, HloSharding>>
       top_level_sharding_to_reset;
-  auto cleaner = tensorflow::gtl::MakeCleanup([&] {
+  absl::Cleanup cleaner = [&] {
     for (auto& to_reset : top_level_sharding_to_reset) {
       to_reset.first->set_sharding(to_reset.second);
     }
-  });
+  };
   std::vector<int64_t> lhs_dims;
   std::vector<int64_t> rhs_dims;
   int64_t group_count = 1;

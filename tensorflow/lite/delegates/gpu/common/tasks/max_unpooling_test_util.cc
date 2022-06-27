@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/max_unpooling_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -52,7 +53,7 @@ absl::Status MaxUnpoolingTest(TestExecutionEnvironment* env) {
       GPUOperation operation = CreateMaxUnpooling(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {src_tensor, src_ind_tensor},
-          absl::make_unique<GPUOperation>(std::move(operation)),
+          std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 4, 4, 1), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,

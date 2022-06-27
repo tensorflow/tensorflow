@@ -29,7 +29,8 @@ namespace gpu {
 class ConverterToConvWeights : public GPUOperation {
  public:
   ConverterToConvWeights(const OperationDef& definition,
-                         const WeightsDescription& weights_desc);
+                         const WeightsDescription& weights_desc,
+                         Layout input_layout);
   absl::Status BindArguments(ArgumentsBinder* args) override;
   int3 GetGridSize() const override;
 
@@ -46,14 +47,15 @@ class ConverterToConvWeights : public GPUOperation {
   OHWI GetWeightsSize() const;
 
   WeightsDescription weights_desc_;
+
+  Layout input_layout_;  // Can be only OHWI or HWIO
+  // if input_layout_ is OHWI: reinterpreting weights as OHWI-BHWC tensor
+  // if input_layout_ is HWIO: reinterpreting weights as HWIO-BHWC tensor
 };
 
-// We expect src BHWC tensor and we assume that B is O, H = H, W = W, C is I
-// as dst we expect Tensor with storage type BUFFER and
-// dst.b * dst.h * dst.w * dst.c = AlignByN(src.b, 4) * src.h * src.w
-// AlignByN(src.c, 4)
 ConverterToConvWeights CreateConverterToConvWeights(
-    const OperationDef& definition, const WeightsDescription& weights_desc);
+    const OperationDef& definition, const WeightsDescription& weights_desc,
+    Layout input_layout);
 
 }  // namespace gpu
 }  // namespace tflite

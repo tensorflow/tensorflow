@@ -683,17 +683,16 @@ def : Pat<(TF_CastOp $arg, ConstBoolAttrFalse), (HLO_ConvertOp $arg)>;
 def : Pat<(TF_TransposeOp:$res $arg, (ConstantLikeMatcher ElementsAttr:$permutation)),
           (HLO_TransposeOp $arg, (CastElementsToI64Elements $permutation))>;
 
-// Result of the following ops changing tensor shape needs to have static
-// shape as HLO doesn't yet support dynamic reshaping ops.
-//
-// TODO(hinsu): Update once HLO supports dynamic reshaping ops.
+
+// Lowering these ops with static shape to mhlo.reshape
 foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
-  def : Pat<(TfOp:$res $arg, $ignored),
+  def : Pat<(TfOp:$res HLO_Tensor:$arg, $ignored),
             (HLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)],
             (addBenefit 2)>;
 }
 
-def : Pat<(TF_ReshapeOp:$res $arg, $shape),
+// Lowering tf.Reshape with dynamic shape
+def : Pat<(TF_ReshapeOp:$res HLO_Tensor:$arg, $shape),
           (CHLO_DynamicReshapeOp $arg, $shape)>;
 
 // Returns NaN if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.

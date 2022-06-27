@@ -48,13 +48,13 @@ def IsSubsetTypePred : Or<[GMLST_TileType.predicate, GMLST_PointType.predicate]>
 
 def AnySubset : Type<IsSubsetTypePred, "subset type">;
 
-def GMLST_SpaceOp : GMLST_Op<"space",
-    [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let arguments = (ins Variadic<Index>:$shapes,
-                       I64ArrayAttr:$static_shapes);
+def GMLST_SpaceOp : GMLST_Op<"space", [NoSideEffect,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let arguments = (ins Variadic<Index>:$dynamic_sizes,
+                       I64ArrayAttr:$static_sizes);
   let results = (outs GMLST_TileType:$result);
   let assemblyFormat = [{
-    custom<OperandsOrIntegersSizesList>($shapes, $static_shapes)
+    custom<OperandsOrIntegersSizesList>($dynamic_sizes, $static_sizes)
     attr-dict `:` qualified(type($result))
   }];
   let hasVerifier = 1;
@@ -62,12 +62,12 @@ def GMLST_SpaceOp : GMLST_Op<"space",
 
 def GMLST_PointOp : GMLST_Op<"point", [NoSideEffect]> {
   let arguments = (ins AnySubset:$subset,
-                       Variadic<Index>:$indices,
+                       Variadic<Index>:$dynamic_indices,
                        I64ArrayAttr:$static_indices);
   let results = (outs GMLST_PointType:$result);
   let assemblyFormat = [{
     $subset
-    custom<OperandsOrIntegersOffsetsOrStridesList>($indices, $static_indices)
+    custom<OperandsOrIntegersOffsetsOrStridesList>($dynamic_indices, $static_indices)
     attr-dict `:` qualified(type($subset)) `to` qualified(type($result))
   }];
   let extraClassDeclaration = [{
@@ -76,10 +76,9 @@ def GMLST_PointOp : GMLST_Op<"point", [NoSideEffect]> {
   let hasVerifier = 1;
 }
 
-def GMLST_TileOp : GMLST_Op<"tile",
-    [NoSideEffect, AttrSizedOperandSegments,
-     OffsetSizeAndStrideOpInterface,
-     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+def GMLST_TileOp : GMLST_Op<"tile", [NoSideEffect, AttrSizedOperandSegments,
+    OffsetSizeAndStrideOpInterface,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let arguments = (ins GMLST_TileType:$subset,
                        Variadic<Index>:$offsets,
                        Variadic<Index>:$sizes,

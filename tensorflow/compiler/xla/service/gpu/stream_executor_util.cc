@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/determinism.h"
@@ -179,7 +178,7 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
       StreamExecutorConvLayoutsToXlaLayouts(dnums, DataLayout::kBatchDepthYX,
                                             FilterLayout::kOutputInputYX,
                                             DataLayout::kBatchDepthYX)
-          .ConsumeValueOrDie();
+          .value();
 
   // NCHW4 and NCHW32 have the same Layout; we disambiguate them below.
   Layout nchw_vect_input, nchw_vect_filter, nchw_vect_output;
@@ -187,14 +186,14 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
       StreamExecutorConvLayoutsToXlaLayouts(dnums, DataLayout::kBatchDepthYX4,
                                             FilterLayout::kOutputInputYX4,
                                             DataLayout::kBatchDepthYX4)
-          .ConsumeValueOrDie();
+          .value();
 
   Layout nhwc_input, nhwc_filter, nhwc_output;
   std::tie(nhwc_input, nhwc_filter, nhwc_output) =
       StreamExecutorConvLayoutsToXlaLayouts(dnums, DataLayout::kBatchYXDepth,
                                             FilterLayout::kOutputYXInput,
                                             DataLayout::kBatchYXDepth)
-          .ConsumeValueOrDie();
+          .value();
 
   DataLayout input_layout;
   if (LayoutUtil::Equal(input.layout(), nchw_input)) {

@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -1358,6 +1359,43 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
 
       return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
                                       operands[0].getType());
+    }
+    case HloOpcode::kDomain: {
+      auto domain_kind = mlir::mhlo::symbolizeDomainKind(
+          instruction->user_side_metadata().Kind());
+      if (!domain_kind || *domain_kind != mlir::mhlo::DomainKind::sharding) {
+        return tensorflow::errors::InvalidArgument(
+            "Invalid domain kind in hlo -> mhlo import. Only 'sharding' is "
+            "supported");
+      }
+      attributes.push_back(builder_->getNamedAttr(
+          "kind", mlir::mhlo::DomainKindAttr::get(func_builder->getContext(),
+                                                  *domain_kind)));
+
+      // In XLA, DomainMetadata is open-world, but in the proto, it is hardcoded
+      // to be ShardingMetadata. Thankfully, the only other implementation of
+      // DomainMetadata is OpName, which is generally used for debugging and
+      // never for compiling production models.
+      //
+      // Since this is hardcoded as such in the proto, we must follow suit.
+      // TODO(b/208783683): The one improvement we can make on this is to move
+      // from the a serialized proto representation to a parsable string
+      auto exit_metadata = ShardingMetadata::ToShardingMetadata(
+          &instruction->operand_side_metadata());
+      auto entry_metadata = ShardingMetadata::ToShardingMetadata(
+          &instruction->user_side_metadata());
+      attributes.push_back(builder_->getNamedAttr(
+          "exit_metadata",
+          builder_->getStringAttr(
+              (*exit_metadata)->sharding()->ToProto().SerializeAsString())));
+      attributes.push_back(builder_->getNamedAttr(
+          "entry_metadata",
+          builder_->getStringAttr(
+              (*entry_metadata)->sharding()->ToProto().SerializeAsString())));
+
+      return func_builder
+          ->create<mlir::mhlo::DomainOp>(loc, result_type, operands, attributes)
+          .getOperation();
     }
 
 #define NO_ATTRIBUTE_CASE(hlo_op_code, mlir_op)                               \

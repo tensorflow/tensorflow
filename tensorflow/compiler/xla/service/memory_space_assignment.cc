@@ -2762,7 +2762,7 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
   } else if (prev_allocation_in_default_mem_it == allocation_sequence->rend()) {
     allocation_sequence->push_back(
         std::make_unique<MemorySpaceAssignment::Allocation>(
-            defining_position, MemorySpace::kDefault, /*chunk=*/absl::nullopt,
+            defining_position, MemorySpace::kDefault, /*chunk=*/std::nullopt,
             request.start_time, request.end_time,
             /*is_scoped_allocation=*/false));
     prev_allocation_in_default_mem_it = allocation_sequence->rbegin();

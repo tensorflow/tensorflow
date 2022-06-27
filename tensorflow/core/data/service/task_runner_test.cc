@@ -169,7 +169,7 @@ Status RunConsumer(int64_t consumer_index, int64_t start_index,
 TEST(FirstComeFirstServedTaskRunnerTest, GetNext) {
   size_t range = 10;
   FirstComeFirstServedTaskRunner runner(
-      absl::make_unique<RangeIterator>(range, /*repeat=*/false));
+      std::make_unique<RangeIterator>(range, /*repeat=*/false));
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<int64_t> output,
       GetTaskRunnerOutput<int64_t>(runner, GetElementRequest()));
@@ -182,7 +182,7 @@ TEST(FirstComeFirstServedTaskRunnerTest, GetNext) {
 
 TEST(FirstComeFirstServedTaskRunnerTest, EmptyDataset) {
   FirstComeFirstServedTaskRunner runner(
-      absl::make_unique<RangeIterator>(/*range=*/0, /*repeat=*/false));
+      std::make_unique<RangeIterator>(/*range=*/0, /*repeat=*/false));
 
   for (int i = 0; i < 5; ++i) {
     GetElementResult result;
@@ -194,7 +194,7 @@ TEST(FirstComeFirstServedTaskRunnerTest, EmptyDataset) {
 TEST(FirstComeFirstServedTaskRunnerTest, Cancel) {
   size_t range = 10;
   FirstComeFirstServedTaskRunner runner(
-      absl::make_unique<RangeIterator>(range, /*repeat=*/false));
+      std::make_unique<RangeIterator>(range, /*repeat=*/false));
   runner.Cancel();
 
   for (int i = 0; i < range; ++i) {
@@ -208,7 +208,7 @@ TEST(FirstComeFirstServedTaskRunnerTest, ConcurrentReaders) {
   size_t range = 1000;
   size_t num_readers = 10;
   FirstComeFirstServedTaskRunner runner(
-      absl::make_unique<RangeIterator>(range, /*repeat=*/false));
+      std::make_unique<RangeIterator>(range, /*repeat=*/false));
 
   mutex mu;
   std::vector<int64_t> results;  // Guarded by `mu`.
@@ -239,7 +239,7 @@ TEST(FirstComeFirstServedTaskRunnerTest, ConcurrentReaders) {
 TEST(FirstComeFirstServedTaskRunnerTest, GetNextAndCancel) {
   size_t range = 10;
   FirstComeFirstServedTaskRunner runner(
-      absl::make_unique<RangeIterator>(range, /*repeat=*/false));
+      std::make_unique<RangeIterator>(range, /*repeat=*/false));
 
   int64_t i;
   for (i = 0; i < range / 2; ++i) {
@@ -257,7 +257,7 @@ TEST(FirstComeFirstServedTaskRunnerTest, GetNextAndCancel) {
 
 TEST(FirstComeFirstServedTaskRunnerTest, Error) {
   FirstComeFirstServedTaskRunner runner(
-      absl::make_unique<ElementOrErrorIterator<tstring>>(
+      std::make_unique<ElementOrErrorIterator<tstring>>(
           std::vector<StatusOr<tstring>>{
               tstring("First element"),
               errors::InvalidArgument("Invalid argument"),
@@ -275,7 +275,7 @@ TEST(FirstComeFirstServedTaskRunnerTest, Error) {
 TEST(CachingTaskRunnerTest, GetNext) {
   size_t range = 10;
   CachingTaskRunner runner(
-      absl::make_unique<RangeIterator>(range, /*repeat=*/false),
+      std::make_unique<RangeIterator>(range, /*repeat=*/false),
       /*max_cache_size_bytes=*/kLargeCache);
 
   size_t num_trainers = 10;
@@ -294,7 +294,7 @@ TEST(CachingTaskRunnerTest, GetNext) {
 
 TEST(CachingTaskRunnerTest, EmptyDataset) {
   CachingTaskRunner runner(
-      absl::make_unique<RangeIterator>(/*range=*/0, /*repeat=*/false),
+      std::make_unique<RangeIterator>(/*range=*/0, /*repeat=*/false),
       /*max_cache_size_bytes=*/kLargeCache);
   GetElementRequest request;
   request.set_trainer_id("Trainer ID");
@@ -309,7 +309,7 @@ TEST(CachingTaskRunnerTest, EmptyDataset) {
 TEST(CachingTaskRunnerTest, SlowClientSkipsData) {
   size_t range = 1000;
   CachingTaskRunner runner(
-      absl::make_unique<RangeIterator>(range, /*repeat=*/false),
+      std::make_unique<RangeIterator>(range, /*repeat=*/false),
       /*max_cache_size_bytes=*/kSmallCache);
 
   GetElementRequest request;
@@ -329,7 +329,7 @@ TEST(CachingTaskRunnerTest, ConcurrentTrainers) {
   size_t range = 100;
   size_t num_readers = 10;
   CachingTaskRunner runner(
-      absl::make_unique<RangeIterator>(range, /*repeat=*/false),
+      std::make_unique<RangeIterator>(range, /*repeat=*/false),
       /*max_cache_size_bytes=*/kLargeCache);
 
   // When the cache is large enough, every trainer can read all the elements.
@@ -356,7 +356,7 @@ TEST(CachingTaskRunnerTest, RepeatDataset) {
   size_t range = 10;
   size_t num_readers = 10, num_elements_to_read = 200;
   CachingTaskRunner runner(
-      absl::make_unique<RangeIterator>(range, /*repeat=*/true),
+      std::make_unique<RangeIterator>(range, /*repeat=*/true),
       /*max_cache_size_bytes=*/kSmallCache);
 
   // Verifies each client can read `num_elements_to_read` elements from the
@@ -385,7 +385,7 @@ TEST(CachingTaskRunnerTest, RepeatDataset) {
 TEST(CachingTaskRunnerTest, Cancel) {
   size_t range = 10;
   CachingTaskRunner runner(
-      absl::make_unique<RangeIterator>(range, /*repeat=*/false),
+      std::make_unique<RangeIterator>(range, /*repeat=*/false),
       /*max_cache_size_bytes=*/kLargeCache);
 
   GetElementRequest request;
@@ -408,7 +408,7 @@ TEST(CachingTaskRunnerTest, CancelConcurrentReaders) {
   size_t range = 10;
   size_t num_readers = 10;
   CachingTaskRunner runner(
-      absl::make_unique<RangeIterator>(range, /*repeat=*/true),
+      std::make_unique<RangeIterator>(range, /*repeat=*/true),
       /*max_cache_size_bytes=*/kSmallCache);
 
   // The readers keep getting elements until cancelled.
@@ -446,7 +446,7 @@ TEST(CachingTaskRunnerTest, CancelConcurrentReaders) {
 
 TEST(CachingTaskRunnerTest, Errors) {
   size_t num_readers = 10;
-  CachingTaskRunner runner(absl::make_unique<ElementOrErrorIterator<tstring>>(
+  CachingTaskRunner runner(std::make_unique<ElementOrErrorIterator<tstring>>(
                                std::vector<StatusOr<tstring>>{
                                    tstring("First element"),
                                    errors::Cancelled("Cancelled"),
@@ -501,7 +501,7 @@ TEST_P(ConsumeParallelTest, ConsumeParallel) {
   int64_t num_elements = std::get<0>(GetParam());
   int64_t num_consumers = std::get<1>(GetParam());
   RoundRobinTaskRunner runner(
-      absl::make_unique<RangeIterator>(num_elements, /*repeat=*/true),
+      std::make_unique<RangeIterator>(num_elements, /*repeat=*/true),
       num_consumers,
       /*worker_address=*/"test_worker_address");
   std::vector<std::vector<int64_t>> per_consumer_results;
@@ -550,7 +550,7 @@ TEST(RoundRobinTaskRunner, ConsumeParallelPartialRound) {
   std::vector<std::vector<int64_t>> expected_consumer_results = {
       {5, 10, 15}, {1, 6, 11, 16}, {2, 7, 12, 17}, {8, 13, 18}, {9, 14, 19}};
   RoundRobinTaskRunner runner(
-      absl::make_unique<RangeIterator>(30, /*repeat=*/true), num_consumers,
+      std::make_unique<RangeIterator>(30, /*repeat=*/true), num_consumers,
       /*worker_address=*/"test_worker_address");
   std::vector<std::vector<int64_t>> per_consumer_results;
   std::vector<std::unique_ptr<Thread>> consumers;

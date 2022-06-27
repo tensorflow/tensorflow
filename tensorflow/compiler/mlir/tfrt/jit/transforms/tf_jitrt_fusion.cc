@@ -15,12 +15,12 @@ limitations under the License.
 
 #include <utility>
 
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 
 namespace tensorflow {
@@ -83,7 +83,7 @@ static bool ControlElementwiseOpsFusion(const OpResult &producer_result,
   if (IsBroadcast(producer_result.getOwner())) return true;
 
   // If producer result has multiple users do not fuse it into the consumer.
-  if (!llvm::hasSingleElement(producer_result.getUsers())) return false;
+  if (!producer_result.hasOneUse()) return false;
 
   return true;
 }
@@ -108,6 +108,9 @@ static bool IsUnitDimExpansionOnly(TensorReshapeOp reshape_op) {
 
 // Control function to skip unit dim reshape when fusing reshapes by expansion.
 static bool SkipUnitDimReshape(const OpResult &producer, OpOperand &consumer) {
+  // If producer result has multiple users do not fuse it into the consumer.
+  if (!producer.hasOneUse()) return false;
+
   if (auto producer_collapse_op =
           dyn_cast<tensor::CollapseShapeOp>(producer.getOwner())) {
     return !IsUnitDimExpansionOnly(producer_collapse_op);
@@ -142,7 +145,11 @@ struct FusionPass : public FusionBase<FusionPass> {
     tensor::CollapseShapeOp::getCanonicalizationPatterns(patterns, context);
     context->getLoadedDialect<linalg::LinalgDialect>()
         ->getCanonicalizationPatterns(patterns);
-    (void)applyPatternsAndFoldGreedily(op->getRegions(), std::move(patterns));
+    // Use TopDownTraversal for compile time reasons.
+    mlir::GreedyRewriteConfig grc;
+    grc.useTopDownTraversal = true;
+    (void)applyPatternsAndFoldGreedily(op->getRegions(), std::move(patterns),
+                                       grc);
   }
 };
 

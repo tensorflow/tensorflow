@@ -1557,6 +1557,7 @@ cc_library(
         ":copy_removal",
         ":expand_hlo_tuples",
         ":generic_host_to_llvm",
+        ":gml_st_compose_subset_ops",
         ":gml_st_fusion",
         ":gml_st_passes_inc_gen",
         ":gml_st_tiling",
@@ -1609,6 +1610,7 @@ cc_library(
         "include/mlir-hlo/Transforms/register_gpu_passes.h",
     ],
     deps = [
+        ":gpu_fusion_rewrite",
         ":gpu_kernel_lowering_passes",
         ":gpu_transforms_pass_inc_gen",
         ":hlo_to_gpu_pipeline",
@@ -1862,9 +1864,11 @@ cc_library(
 
 cc_library(
     name = "gpu_kernel_lowering_passes",
-    srcs = ["lib/Transforms/gpu_kernel_lowering_passes.cc"],
-    hdrs = [
+    srcs = [
         "include/mlir-hlo/Transforms/GPUPassDetail.h",
+        "lib/Transforms/gpu_kernel_lowering_passes.cc",
+    ],
+    hdrs = [
         "include/mlir-hlo/Transforms/gpu_passes.h",
     ],
     deps = [
@@ -2150,6 +2154,65 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "gpu_fusion_rewrite",
+    srcs = [
+        "include/mlir-hlo/Transforms/GPUPassDetail.h",
+        "lib/Transforms/gpu_fusion_rewrite.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Transforms/gpu_passes.h",
+    ],
+    deps = [
+        ":gpu_transforms_pass_inc_gen",
+        ":hlo",
+        ":hlo_to_gpu_pipeline",
+        ":lhlo",
+        ":transforms_pass_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineDialect",
+        "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:GPUDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:NVVMDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ROCDLDialect",
+        "@llvm-project//mlir:Rewrite",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "gml_st_pipeline",
+    srcs = ["lib/Transforms/gml_st_pipeline.cc"],
+    hdrs = ["include/mlir-hlo/Transforms/gml_st_pipeline.h"],
+    deps = [
+        ":gml_st_tiling",
+        ":legalize_mhlo_to_gml",
+        ":legalize_to_linalg",
+        "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
+    name = "gml_st_passes",
+    hdrs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
+        "include/mlir-hlo/Transforms/register_gml_st_passes.h",
+    ],
+    deps = [
+        ":all_test_passes",
+        ":gml_st_passes_inc_gen",
+        ":gml_st_pipeline",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
 CAPI_HEADERS = [
     "include/mlir-hlo-c/Attributes.h",
     "include/mlir-hlo-c/Dialects.h",
@@ -2203,8 +2266,8 @@ cc_binary(
     srcs = ["tools/mlir-hlo-opt/mlir-hlo-opt.cc"],
     deps = [
         ":all_passes",
-        ":all_test_passes",
         ":gml_st",
+        ":gml_st_passes",
         ":gpu_passes",
         ":hlo_dialect_registration",
         ":lhlo",
@@ -2506,6 +2569,28 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "gml_st_compose_subset_ops",
+    srcs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/pass_detail.h",
+        "lib/Dialect/gml_st/transforms/compose_subset_ops.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":gml_st",
+        ":gml_st_passes_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
     ],
 )

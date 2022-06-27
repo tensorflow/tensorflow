@@ -1155,6 +1155,7 @@ std::optional<Shape> AlgebraicSimplifierVisitor::ReshapeLayoutDimensions(
   for (int64_t op_pos = 0; op_pos < original_dimensions.size(); ++op_pos) {
     int64_t op_dim = original_dimensions[op_pos];
     VLOG(3) << "op_pos = " << op_pos << "\n";
+    VLOG(3) << "op_dim = " << op_dim << "\n";
     if (original_map.size() <= op_dim) {
       VLOG(3) << "Skip due to original_map has too few dimensions.\n";
       continue;
@@ -1178,18 +1179,21 @@ std::optional<Shape> AlgebraicSimplifierVisitor::ReshapeLayoutDimensions(
         (*reshaped_dimensions)[bitcast_pos] = bitcast_dim;
       }
       auto op_dims = result_map[bitcast_dim];
-      if (op_dims.size() > 1 && op_pos > 0 && op_dims[0] != op_dim) {
+      if (op_dims.size() > 1 && op_pos > 0) {
         // Check that op dimensions that are combined into bitcast_dim are not
         // non-contiguous or reordered to be different from how they appear in
         // result_map.
         int64_t op_dim_prev = original_dimensions[op_pos - 1];
-
-        if (original_map[op_dim_prev].empty() ||
-            original_map[op_dim_prev][0] != bitcast_dim) {
+        // If the current dimension is not the first being combined into
+        // bitcast_dim, or is not contiguous with the previous dimension, abort.
+        if (op_dims[0] != op_dim &&
+            (original_map[op_dim_prev].empty() ||
+             original_map[op_dim_prev][0] != bitcast_dim)) {
           VLOG(2) << "Abort b/c op dimensions that are combined into "
                      "bitcast_dim are not contiguous in the result. \n ";
           return std::nullopt;
         }
+        // Now perform the dimension re-ordering check in the bitcast.
         for (int i = 0; i < op_dims.size(); ++i) {
           if (op_dims[i] == op_dim_prev) {
             if (i == op_dims.size() - 1 || op_dims[i + 1] != op_dim) {
@@ -3475,15 +3479,12 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
   // A broadcast of a reshape which merely inserts 1-sized dimensions can
   // elide its operand.
   {
-    bool merely_inserts_or_deletes_1_sized_dimensions;
-    std::vector<int64_t> inserted_indices, deleted_indices;
-    std::tie(merely_inserts_or_deletes_1_sized_dimensions, deleted_indices,
-             inserted_indices) =
+    std::optional<ShapeUtil::ShapeEqualityDescriptor> reshape_degenerate =
         operand->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
-    if (merely_inserts_or_deletes_1_sized_dimensions &&
-        deleted_indices.empty()) {
-      std::reverse(inserted_indices.begin(), inserted_indices.end());
-      for (auto inserted_index : inserted_indices) {
+    if (reshape_degenerate.has_value() &&
+        reshape_degenerate->deleted_dimensions.empty()) {
+      absl::c_reverse(reshape_degenerate->inserted_dimensions);
+      for (auto inserted_index : reshape_degenerate->inserted_dimensions) {
         dims.erase(dims.begin() + inserted_index);
       }
       return ReplaceWithNewInstruction(
@@ -4362,17 +4363,13 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
   // enable other optimizations, e.g., merging with broadcast, and sparse update
   // (add(x, dus(broadcast(0), y, ...)) -> dus(x, add(ds(x), y), ...)).
   if (!options_.is_layout_sensitive()) {
-    bool trivial_reshape;
-    std::vector<int64_t> deleted_dims;
-    std::vector<int64_t> inserted_dims;
-
     HloInstruction* dus;
     HloInstruction* slice;
-    std::tie(trivial_reshape, deleted_dims, inserted_dims) =
+    std::optional<ShapeUtil::ShapeEqualityDescriptor> trivial_reshape =
         reshape->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
     // 1-sized dimensions added and removed will be one sized in both the update
     // slice and the dynamic-update-slice result.
-    if (trivial_reshape &&
+    if (trivial_reshape.has_value() &&
         Match(reshape->mutable_operand(0),
               m::Op(&dus)
                   .WithOpcode(HloOpcode::kDynamicUpdateSlice)
@@ -4387,10 +4384,11 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
       auto zero = MakeScalarLike(dus->mutable_operand(2), 0);
       const Shape& old_slice_shape = dus->operand(1)->shape();
       for (int64_t i = 0; i <= old_slice_shape.rank(); ++i) {
-        if (absl::c_linear_search(deleted_dims, i)) {
+        if (absl::c_linear_search(trivial_reshape->deleted_dimensions, i)) {
           continue;
         }
-        while (absl::c_linear_search(inserted_dims, new_slice_shape.size())) {
+        while (absl::c_linear_search(trivial_reshape->inserted_dimensions,
+                                     new_slice_shape.size())) {
           new_slice_shape.push_back(1);
           new_dus_operands.push_back(zero);
         }
@@ -4725,18 +4723,57 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
   // Try to simplify concat -> slice to an operand of concat.
   if (slice->operand(0)->opcode() == HloOpcode::kConcatenate &&
       IsUnstridedSlice(slice)) {
-    auto concat = slice->operand(0);
+    HloInstruction* concat = slice->mutable_operand(0);
     int64_t concat_dim = concat->concatenate_dimension();
     int64_t piece_start = 0;
-    for (auto piece : concat->operands()) {
-      if (!SameShape(piece, slice)) {
-        piece_start += piece->shape().dimensions(concat_dim);
-        continue;
+    std::optional<int64_t> start_operand;
+    std::optional<int64_t> limit_operand;
+    int64_t concat_start;
+    int64_t concat_limit;
+    const int64_t slice_start = slice->slice_starts(concat_dim);
+    const int64_t slice_limit = slice->slice_limits(concat_dim);
+    for (int64_t i = 0; i < concat->operand_count(); ++i) {
+      const HloInstruction* piece = concat->operand(i);
+      const int64_t piece_size = piece->shape().dimensions(concat_dim);
+      if (!start_operand && piece_start <= slice_start &&
+          piece_size + piece_start > slice_start) {
+        start_operand = i;
+        concat_start = piece_start;
       }
-      if (slice->slice_starts(concat_dim) == piece_start) {
-        return ReplaceInstruction(slice, piece);
+      piece_start += piece_size;
+      if (!limit_operand && piece_start >= slice_limit) {
+        limit_operand = i + 1;
+        concat_limit = piece_start;
+        break;
       }
-      piece_start += piece->shape().dimensions(concat_dim);
+    }
+    if (start_operand && limit_operand &&
+        *start_operand + 1 == *limit_operand &&
+        SameShape(concat->operand(*start_operand), slice)) {
+      return ReplaceInstruction(slice, concat->mutable_operand(*start_operand));
+    }
+    if (start_operand && limit_operand &&
+        *limit_operand - *start_operand < concat->operand_count()) {
+      std::vector<int64_t> starts = slice->slice_starts();
+      starts[concat_dim] = starts[concat_dim] - concat_start;
+      std::vector<int64_t> strides = slice->slice_strides();
+      std::vector<int64_t> limits = slice->slice_limits();
+      limits[concat_dim] =
+          starts[concat_dim] + slice->shape().dimensions(concat_dim);
+      HloInstruction* operand = concat->mutable_operand(*start_operand);
+      if (*start_operand + 1 != *limit_operand) {
+        TF_ASSIGN_OR_RETURN(
+            HloInstruction * new_concat,
+            MakeConcatHlo(
+                absl::MakeSpan(concat->operands())
+                    .subspan(*start_operand, *limit_operand - *start_operand),
+                concat_dim));
+        concat->SetupDerivedInstruction(new_concat);
+        operand = new_concat;
+      }
+      return ReplaceWithNewInstruction(
+          slice, HloInstruction::CreateSlice(slice->shape(), operand, starts,
+                                             limits, strides));
     }
   }
 
@@ -5942,7 +5979,6 @@ Status AlgebraicSimplifierVisitor::HandleSqrt(HloInstruction* sqrt) {
   }
   return OkStatus();
 }
-
 namespace {
 bool OnlyPermutesDegenerateDims(const Shape& shape,
                                 absl::Span<const int64_t> perm) {

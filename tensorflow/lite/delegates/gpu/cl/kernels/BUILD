@@ -78,23 +78,6 @@ cc_test(
 )
 
 cc_test(
-    name = "conv_buffer_1x1_test",
-    srcs = ["conv_buffer_1x1_test.cc"],
-    linkstatic = True,
-    tags = tf_gpu_tests_tags() + [
-        "linux",
-        "local",
-    ],
-    deps = [
-        ":cl_test",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:conv_buffer_1x1_test_util",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "conv_constants_test",
     srcs = ["conv_constants_test.cc"],
     linkstatic = True,
@@ -775,7 +758,6 @@ test_suite(
         "add_test",
         "cast_test",
         "concat_test",
-        "conv_buffer_1x1_test",
         "conv_constants_test",
         "conv_generic_test",
         "conv_weights_converter_test",

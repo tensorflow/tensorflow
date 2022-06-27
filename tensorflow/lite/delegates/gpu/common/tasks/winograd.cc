@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/winograd.h"
 
 #include <cstring>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -293,7 +294,7 @@ Winograd4x4To36 CreateWinograd4x4To36(const OperationDef& definition,
   VectorToKernelBufferDesc(BtMatrixForWinograd4x4To6x6(),
                            definition.GetDataType(), &buffer_desc);
   desc.args_.AddObject(
-      "Bt", absl::make_unique<BufferDescriptor>(std::move(buffer_desc)));
+      "Bt", std::make_unique<BufferDescriptor>(std::move(buffer_desc)));
 
   desc.work_group_size_ = int3(8, 4, 1);
   return desc;
@@ -504,12 +505,12 @@ void Winograd4x4To36TileX6::UploadBt() {
   desc.element_type = definition_.GetDataType();
   desc.UploadLinearData(bt_aligned);
   args_.AddObject("bt_non_uniform",
-                  absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+                  std::make_unique<TensorLinearDescriptor>(std::move(desc)));
 
   BufferDescriptor buffer_desc;
   VectorToKernelBufferDesc(bt_mat, definition_.GetDataType(), &buffer_desc);
   args_.AddObject("Bt",
-                  absl::make_unique<BufferDescriptor>(std::move(buffer_desc)));
+                  std::make_unique<BufferDescriptor>(std::move(buffer_desc)));
 }
 
 int3 Winograd4x4To36TileX6::SelectBestWorkGroup(
@@ -584,14 +585,14 @@ Winograd36To4x4 CreateWinograd36To4x4(
   bias_desc.storage_type = LinearStorageType::BUFFER;
   bias_desc.element_type = definition.GetDataType();
   bias_desc.UploadLinearData(biases);
-  desc.args_.AddObject("biases", absl::make_unique<TensorLinearDescriptor>(
-                                     std::move(bias_desc)));
+  desc.args_.AddObject(
+      "biases", std::make_unique<TensorLinearDescriptor>(std::move(bias_desc)));
 
   BufferDescriptor buffer_desc;
   VectorToKernelBufferDesc(AtMatrixForWinograd4x4To6x6(),
                            definition.GetDataType(), &buffer_desc);
   desc.args_.AddObject(
-      "At", absl::make_unique<BufferDescriptor>(std::move(buffer_desc)));
+      "At", std::make_unique<BufferDescriptor>(std::move(buffer_desc)));
 
   desc.work_group_size_ = int3(32, 1, 1);
   return desc;
@@ -729,12 +730,12 @@ void Winograd36To4x4Tile4x1::UploadAt() {
   desc.element_type = definition_.GetDataType();
   desc.UploadLinearData(at_aligned);
   args_.AddObject("at_non_uniform",
-                  absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+                  std::make_unique<TensorLinearDescriptor>(std::move(desc)));
 
   BufferDescriptor buffer_desc;
   VectorToKernelBufferDesc(at_mat, definition_.GetDataType(), &buffer_desc);
   args_.AddObject("At",
-                  absl::make_unique<BufferDescriptor>(std::move(buffer_desc)));
+                  std::make_unique<BufferDescriptor>(std::move(buffer_desc)));
 }
 
 int3 Winograd36To4x4Tile4x1::SelectBestWorkGroup(
@@ -788,7 +789,7 @@ Winograd36To4x4Tile4x1 CreateWinograd36To4x4Tile4x1(
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(biases);
   result.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+      "biases", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
   result.UploadAt();
   return result;
 }

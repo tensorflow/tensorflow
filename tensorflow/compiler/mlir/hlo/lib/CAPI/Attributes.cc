@@ -394,6 +394,27 @@ MlirStringRef mlirMhloComparisonTypeAttrGetType(MlirAttribute attr) {
 }
 
 //
+// DomainKindAttr.
+//
+
+MlirAttribute mlirMhloDomainKindAttrGet(MlirContext ctx, MlirStringRef kind) {
+  llvm::Optional<mlir::mhlo::DomainKind> domainKind =
+      mlir::mhlo::symbolizeDomainKind(unwrap(kind));
+  if (!domainKind) llvm_unreachable("Invalid domain kind specified.");
+  return wrap(
+      mlir::mhlo::DomainKindAttr::get(unwrap(ctx), domainKind.getValue()));
+}
+
+bool mlirMhloAttributeIsADomainKindAttr(MlirAttribute attr) {
+  return unwrap(attr).isa<mlir::mhlo::DomainKindAttr>();
+}
+
+MlirStringRef mlirMhloDomainKindAttrGetType(MlirAttribute attr) {
+  return wrap(mlir::mhlo::stringifyDomainKind(
+      unwrap(attr).cast<mlir::mhlo::DomainKindAttr>().getValue()));
+}
+
+//
 // PrecisionAttr.
 //
 

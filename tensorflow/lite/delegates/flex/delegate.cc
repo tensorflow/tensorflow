@@ -78,8 +78,7 @@ TfLiteStatus FlexDelegate::Initialize(TfLiteContext* context) {
 
   // Initializes the cancellation manager.
   if (!cancellation_manager_) {
-    cancellation_manager_ =
-        absl::make_unique<tensorflow::CancellationManager>();
+    cancellation_manager_ = std::make_unique<tensorflow::CancellationManager>();
     delegate_data_.SetCancellationManager(cancellation_manager_.get());
   }
 

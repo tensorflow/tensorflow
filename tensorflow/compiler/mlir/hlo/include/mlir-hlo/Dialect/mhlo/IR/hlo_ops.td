@@ -1176,7 +1176,7 @@ def HLO_SliceOp: HLO_Op<
   let hasFolder = 1;
 }
 
-def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
+def HLO_DynamicSliceOp: HLO_Op<"dynamic_slice",
       [NoSideEffect, AllElementTypesMatch<["operand", "result"]>,
        InferTensorType]> {
   let summary = "Dynamic Slice operator";
@@ -1220,6 +1220,31 @@ def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
 //===----------------------------------------------------------------------===//
 // MHLO Other op definitions.
 //===----------------------------------------------------------------------===//
+
+def HLO_DomainOp : HLO_Op<"domain", [HLO_CompatibleOperandsAndResultType, InferTypeOpInterface, NoSideEffect]> {
+  let summary = "Marks groups of instructions (domains) with a property";
+  let description = [{
+    Domain instructions are used to group instructions with the same
+    DomainMetadata property. ShardingMetadata is the main use case today to
+    group instructions on the same device. Domain instructions provide two
+    major benefits:
+      - Prevent unintentionally optimizing instructions across domains.
+      - Automatically assign the metadata of the instructions created in the domain.
+    Without domain instructions, each HLO optimization pass would have to check
+    and propagate the metadata, which would be easy to miss and also adds
+    complexity to the compiler. Since domain instructions connect two different
+    domains, each domain instruction is associated with two DomainMetadata --
+    one on the operand side and one on the user side of the domain.
+  }];
+  let arguments = (ins
+    HLO_TensorOrToken:$operand,
+    HLO_DomainKindAttr:$kind,
+    StrAttr:$entry_metadata,
+    StrAttr:$exit_metadata
+  );
+  let results = (outs HLO_TensorOrToken:$result);
+  let hasCustomHLOConverter = 1;
+}
 
 def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [NoSideEffect,
     AllShapesMatch<["scale", "mean", "variance", "grad_scale",
@@ -2573,23 +2598,6 @@ def HLO_DynamicConvOp : HLO_Op<"dynamic_conv", [NoSideEffect]> {
        HLO_Tensor:$d_padding),
     ConvolutionAttributes.attributes);
   let results = (outs HLO_Tensor);
-  let hasCustomHLOConverter = 1;
-}
-
-def HLO_PrintOp : HLO_Op<"print", []> {
-  let summary = "Print operation";
-  let description = [{
-    PrintOp is used to print tensor, which can be used to debug.
-  }];
-
-  let arguments = (ins
-      HLO_Tensor:$operand
-  );
-
-  let results = (outs
-    HLO_Tensor:$output
-  );
-
   let hasCustomHLOConverter = 1;
 }
 

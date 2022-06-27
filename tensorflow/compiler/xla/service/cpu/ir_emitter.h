@@ -187,7 +187,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // A convenient helper for calling BufferAssignment::GetUniqueSlice.
   BufferAllocation::Slice GetAllocationSlice(
       const HloInstruction& hlo, const ShapeIndex& index = {}) const {
-    return assignment_.GetUniqueSlice(&hlo, index).ConsumeValueOrDie();
+    return assignment_.GetUniqueSlice(&hlo, index).value();
   }
 
  private:

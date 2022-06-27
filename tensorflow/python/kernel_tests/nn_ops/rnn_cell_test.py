@@ -21,6 +21,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -48,8 +49,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
-from tensorflow.python.training.tracking import tracking
-from tensorflow.python.training.tracking import util as trackable_utils
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.util import nest
 
 
@@ -3094,7 +3094,7 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
       self.skipTest("b/175887901")
 
     with self.cached_session():
-      root = tracking.AutoTrackable()
+      root = autotrackable.AutoTrackable()
       root.cell = rnn_cell_impl.LSTMCell(8)
       @def_function.function(input_signature=[tensor_spec.TensorSpec([3, 8])])
       def call(x):

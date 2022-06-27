@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 
+#include <optional>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -218,14 +219,10 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
   CHECK_EQ(multidim_.size(), output_shape.rank());
   std::vector<llvm::Value*> source_multidim_index(
       input_shape.rank(), llvm::UndefValue::get(index_type_));
-  auto trivial_reshape =
-      ShapeUtil::InsertedOrDeleted1SizedDimensions(input_shape, output_shape);
-  if (std::get<0>(trivial_reshape)) {
-    // The 1-sized dimensions which only appear in 'input_shape'.
-    auto deleted_dims_indices = std::get<1>(trivial_reshape);
-    // The 1-sized dimensions which only appear in 'output_shape'.
-    auto inserted_dims_indices = std::get<2>(trivial_reshape);
 
+  if (std::optional<ShapeUtil::ShapeEqualityDescriptor> trivial_reshape =
+          ShapeUtil::InsertedOrDeleted1SizedDimensions(input_shape,
+                                                       output_shape)) {
     // This is a two-way merge of 'deleted_dims_indices' with indexing into
     // 'source_multidim_index', and a two-way merge of 'inserted_dims_indices'
     // with indexing into 'multidim_'. When we find a dimension in
@@ -234,11 +231,12 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
     // indices that appear in 'inserted_dims_indices').
     for (int64_t i = 0, j = 0, k = 0, l = 0; i < source_multidim_index.size();
          ++i) {
-      if (j == deleted_dims_indices.size() || deleted_dims_indices[j] > i) {
+      if (j == trivial_reshape->deleted_dimensions.size() ||
+          trivial_reshape->deleted_dimensions[j] > i) {
         // This is a dimension that was preserved. Take the matching value from
         // multidim_.
-        while (l < inserted_dims_indices.size() &&
-               inserted_dims_indices[l] == k) {
+        while (l < trivial_reshape->inserted_dimensions.size() &&
+               trivial_reshape->inserted_dimensions[l] == k) {
           // Skip 1-sized dimensions.
           ++k;
           ++l;

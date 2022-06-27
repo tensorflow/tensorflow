@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/util.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -475,6 +475,14 @@ class QuantizeFunctionPattern
         dyn_cast<func::FuncOp>(quantized_func->clone());
     if (new_quantized_func == nullptr) {
       return failure();
+    }
+    new_quantized_func.setType(
+        FunctionType::get(getContext(), TypeRange(ArrayRef<Value>(args)),
+                          new_quantized_func.getResultTypes()));
+    for (auto pair : llvm::zip_first(args, new_quantized_func.getArguments())) {
+      auto new_quantized_func_arg = std::get<1>(pair);
+      auto partitioned_call_arg = std::get<0>(pair);
+      new_quantized_func_arg.setType(partitioned_call_arg.getType());
     }
 
     // Set the attributes for ops with the attr_map attribute.

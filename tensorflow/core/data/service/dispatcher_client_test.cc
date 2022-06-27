@@ -47,16 +47,16 @@ constexpr const char kProtocol[] = "grpc";
 class DispatcherClientTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    test_cluster_ = absl::make_unique<TestCluster>(/*num_workers=*/1);
+    test_cluster_ = std::make_unique<TestCluster>(/*num_workers=*/1);
     TF_ASSERT_OK(test_cluster_->Initialize());
-    dispatcher_client_ = absl::make_unique<DataServiceDispatcherClient>(
+    dispatcher_client_ = std::make_unique<DataServiceDispatcherClient>(
         test_cluster_->DispatcherAddress(), kProtocol);
   }
 
   // Creates a dataset and returns the dataset ID.
-  StatusOr<int64_t> RegisterDataset(const DataServiceMetadata& metadata) {
+  StatusOr<std::string> RegisterDataset(const DataServiceMetadata& metadata) {
     const auto dataset_def = testing::RangeDataset(10);
-    int64_t dataset_id = 0;
+    std::string dataset_id;
     TF_RETURN_IF_ERROR(
         dispatcher_client_->RegisterDataset(dataset_def, metadata, dataset_id));
     return dataset_id;
@@ -71,7 +71,8 @@ TEST_F(DispatcherClientTest, GetDataServiceMetadata) {
   metadata.set_element_spec("encoded_element_spec");
   metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
   metadata.set_cardinality(kInfiniteCardinality);
-  TF_ASSERT_OK_AND_ASSIGN(const int64_t dataset_id, RegisterDataset(metadata));
+  TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id,
+                          RegisterDataset(metadata));
 
   DataServiceMetadata result;
   TF_ASSERT_OK(dispatcher_client_->GetDataServiceMetadata(dataset_id, result));
@@ -82,8 +83,8 @@ TEST_F(DispatcherClientTest, DatasetDoesNotExist) {
   DataServiceMetadata metadata;
   EXPECT_THAT(
       dispatcher_client_->GetDataServiceMetadata(
-          /*dataset_id=*/-1000, metadata),
-      StatusIs(error::NOT_FOUND, HasSubstr("Dataset id -1000 not found")));
+          /*dataset_id=*/"not-found", metadata),
+      StatusIs(error::NOT_FOUND, HasSubstr("Dataset id not-found not found")));
 }
 
 TEST_F(DispatcherClientTest, GetDataServiceConfig) {
@@ -97,7 +98,8 @@ TEST_F(DispatcherClientTest, EnableCrossTrainerCache) {
   metadata.set_element_spec("encoded_element_spec");
   metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
   metadata.set_cardinality(kInfiniteCardinality);
-  TF_ASSERT_OK_AND_ASSIGN(const int64_t dataset_id, RegisterDataset(metadata));
+  TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id,
+                          RegisterDataset(metadata));
 
   ProcessingModeDef processing_mode;
   processing_mode.set_sharding_policy(ProcessingModeDef::OFF);
@@ -125,7 +127,8 @@ TEST_F(DispatcherClientTest, CreateNamedJob) {
   metadata.set_element_spec("encoded_element_spec");
   metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
   metadata.set_cardinality(kInfiniteCardinality);
-  TF_ASSERT_OK_AND_ASSIGN(const int64_t dataset_id, RegisterDataset(metadata));
+  TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id,
+                          RegisterDataset(metadata));
 
   ProcessingModeDef processing_mode;
   processing_mode.set_sharding_policy(ProcessingModeDef::OFF);
@@ -150,7 +153,8 @@ TEST_F(DispatcherClientTest, NamedJobsDoNotMatch) {
   metadata.set_element_spec("encoded_element_spec");
   metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
   metadata.set_cardinality(kInfiniteCardinality);
-  TF_ASSERT_OK_AND_ASSIGN(const int64_t dataset_id, RegisterDataset(metadata));
+  TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id,
+                          RegisterDataset(metadata));
 
   int64_t job_id = 0;
   ProcessingModeDef processing_mode;

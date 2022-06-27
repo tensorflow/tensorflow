@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOCO_TFLITE_CUSTOM_OPERATOR_H_
 #define TENSORFLOW_LITE_TOCO_TFLITE_CUSTOM_OPERATOR_H_
 
+#include <memory>
+
 #include "flatbuffers/flexbuffers.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
@@ -56,7 +58,7 @@ class CustomOperator : public BaseOperator {
   std::unique_ptr<Operator> Deserialize(
       const BuiltinOptions* builtin_options,
       const CustomOptions* custom_options) const override {
-    auto op = absl::make_unique<TocoOperator>();
+    auto op = std::make_unique<TocoOperator>();
     if (custom_options) {
       auto flexbuffer_map =
           flexbuffers::GetRoot(custom_options->data(), custom_options->size())

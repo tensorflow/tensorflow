@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/cast_test_util.h"
 
+#include <memory>
+
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/testing_util.h"
@@ -44,7 +46,7 @@ absl::Status CastTests(TestExecutionEnvironment* env) {
     GPUOperation operation = CreateCast(op_def, env->GetGpuInfo());
     RETURN_IF_ERROR(env->ExecuteGPUOperation(
         {&src_desc}, {&dst_desc},
-        absl::make_unique<GPUOperation>(std::move(operation))));
+        std::make_unique<GPUOperation>(std::move(operation))));
 
     tflite::gpu::Tensor<BHWC, DataType::INT32> dst_tensor;
     dst_desc.DownloadData(&dst_tensor);

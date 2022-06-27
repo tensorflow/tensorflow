@@ -168,7 +168,7 @@ std::string LmhloToMhloOpName(llvm::StringRef opName,
   }
 
   if (opName == "lmhlo.dynamic_slice") {
-    return "mhlo.dynamic-slice";
+    return "mhlo.dynamic_slice";
   }
 
   std::string mhloOpName(opName.drop_front(1));

@@ -54,8 +54,6 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
  public:
   PreemptionSyncManagerImpl() = default;
   ~PreemptionSyncManagerImpl() override {
-    call_opts_->StartCancel();
-    call_opts_->ClearCancelCallback();
     shutdown_.Notify();
   }
   Status Initialize(CoordinationServiceAgent* agent) override;
@@ -141,8 +139,12 @@ Status PreemptionSyncManagerImpl::Initialize(
   call_opts_ = agent_->GetKeyValueAsync(
       kPreemptionNoticeKey,
       [this, agent = agent_](StatusOr<std::string> status_or_death_time) {
-        // Retrieve preemption notice and parse death time.
-        if (!status_or_death_time.ok()) {
+        if (errors::IsCancelled(status_or_death_time.status())) {
+          // The agent cancels pending GetKeyValue RPCs because of shutdown,
+          // so simply log and return.
+          LOG(INFO) << "Cancelled call to retrive preemption notice.";
+          return;
+        } else if (!status_or_death_time.ok()) {
           LOG(ERROR) << "Failed to retrieve preemption notice from "
                         "coordination service: "
                      << status_or_death_time.status();

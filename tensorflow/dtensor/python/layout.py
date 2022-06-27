@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.dtensor.proto import layout_pb2
 from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import device as tf_device
+from tensorflow.python.framework import ops
 from tensorflow.python.util.tf_export import tf_export
 
 # UNSHARDED indicates a tensor dimension is not sharded over any mesh dimension.
@@ -35,6 +36,14 @@ tf_export('experimental.dtensor.MATCH', v1=[]).export_constant(
     __name__, 'MATCH')
 
 MeshDimension = collections.namedtuple('MeshDimension', ['name', 'size'])
+
+
+def _compute_mesh_strides(mesh_dims: List[MeshDimension]) -> List[int]:
+  strides = [1]
+  for idx, dim in enumerate(reversed(mesh_dims[1:])):
+    strides.append(strides[idx] * dim.size)
+  strides.reverse()
+  return strides
 
 
 @tf_export('experimental.dtensor.Mesh', v1=[])
@@ -180,6 +189,8 @@ class Mesh(object):
     self._local_devices = local_devices
     self._global_devices = global_devices
     self._name = mesh_name
+    self._strides = _compute_mesh_strides(
+        [self._dim_dict[dim] for dim in self._dim_names])
 
   @property
   def dim_names(self) -> List[str]:
@@ -291,6 +302,35 @@ class Mesh(object):
   def num_local_devices(self) -> int:
     """Returns the number of local devices."""
     return len(self._local_devices)
+
+  @property
+  def strides(self) -> List[int]:
+    """Returns the strides tensor array for this mesh.
+
+    If the mesh shape is `[a, b, c, d]`, then the strides array can be computed
+    as `[b*c*d, c*d, d, 1]`. This array can be useful in computing local device
+    offsets given a device ID. Using the same example, the device coordinates of
+    the mesh can be computed as:
+
+    ```
+    [(device_id / (b*c*d)) % a,
+     (device_id / (c*d))   % b,
+     (device_id / (d))     % c,
+     (device_id)           % d]
+    ```
+
+    This is the same as `(device_id // mesh.strides) % mesh.shape`.
+
+    Returns:
+      The mesh strides as an integer tensor.
+    """
+    return self._strides
+
+  def coords(self, device_idx: int) -> ops.Tensor:
+    """Converts the device index into a tensor of mesh coordinates."""
+    strides = ops.convert_to_tensor(self.strides)
+    shape = ops.convert_to_tensor(self.shape())
+    return (device_idx // strides) % shape
 
   def to_string(self) -> str:
     """Returns string representation of Mesh."""

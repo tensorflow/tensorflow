@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/special/conv_pointwise.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
@@ -196,7 +200,7 @@ GPUOperation CreateConvPointwise(const OperationDef& definition,
   op.code_ = GenerateCode();
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
   op.args_.AddObject("offsets",
-                     absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+                     std::make_unique<Texture2DDescriptor>(std::move(desc)));
   return op;
 }
 
@@ -259,7 +263,7 @@ absl::Status TryFusedPointwiseConv(
       InitSingleOpSubgraph({second_commom_input, first_commom_input},
                            {concat_node.outputs[0]}, gpu_subgraph);
   auto operation = CreateConvPointwise(op_def, op_attr);
-  *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
+  *gpu_op = std::make_unique<GPUOperation>(std::move(operation));
   return absl::OkStatus();
 }
 

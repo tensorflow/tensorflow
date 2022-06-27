@@ -266,6 +266,7 @@ static StatusOr<GemmConfig> GetGemmConfig(
   return GemmConfig::For(ToShape(lhs), lhs_batch, lhs_contract, ToShape(rhs),
                          rhs_batch, rhs_contract, ToShape(out), alpha_real,
                          alpha_imag, beta.getValueOr(0.0), algorithm,
+                         se::blas::kDefaultComputePrecision,
                          debug_options->xla_gpu_enable_cublaslt());
 }
 

@@ -39,11 +39,12 @@ class Literal(trace.TraceType, serialization.Serializable):
     return self if all(self == other for other in types) else None
 
   @classmethod
-  def type_proto(cls) -> Type[default_types_pb2.SerializedLiteral]:
+  def experimental_type_proto(cls) -> Type[default_types_pb2.SerializedLiteral]:
     return default_types_pb2.SerializedLiteral
 
   @classmethod
-  def from_proto(cls, proto: default_types_pb2.SerializedLiteral) -> "Literal":
+  def experimental_from_proto(
+      cls, proto: default_types_pb2.SerializedLiteral) -> "Literal":
     if proto.HasField("bool_value"):
       return Literal(proto.bool_value)
 
@@ -58,7 +59,7 @@ class Literal(trace.TraceType, serialization.Serializable):
 
     raise ValueError("Malformed Literal proto can not be deserialized")
 
-  def to_proto(self) -> default_types_pb2.SerializedLiteral:
+  def experimental_as_proto(self) -> default_types_pb2.SerializedLiteral:
     if isinstance(self.value, bool):
       return default_types_pb2.SerializedLiteral(bool_value=self.value)
 
@@ -167,14 +168,15 @@ class Tuple(trace.TraceType, serialization.Serializable):
     return Tuple(*supertyped_components)
 
   @classmethod
-  def type_proto(cls) -> Type[default_types_pb2.SerializedTuple]:
+  def experimental_type_proto(cls) -> Type[default_types_pb2.SerializedTuple]:
     return default_types_pb2.SerializedTuple
 
   @classmethod
-  def from_proto(cls, proto: default_types_pb2.SerializedTuple) -> "Tuple":
+  def experimental_from_proto(
+      cls, proto: default_types_pb2.SerializedTuple) -> "Tuple":
     return Tuple(*[serialization.deserialize(c) for c in proto.components])
 
-  def to_proto(self) -> default_types_pb2.SerializedTuple:
+  def experimental_as_proto(self) -> default_types_pb2.SerializedTuple:
     return default_types_pb2.SerializedTuple(
         components=[serialization.serialize(c) for c in self.components])
 
@@ -228,16 +230,18 @@ class List(trace.TraceType, serialization.Serializable):
     return List(*supertyped_components_tuple.components)
 
   @classmethod
-  def type_proto(cls) -> Type[default_types_pb2.SerializedList]:
+  def experimental_type_proto(cls) -> Type[default_types_pb2.SerializedList]:
     return default_types_pb2.SerializedList
 
   @classmethod
-  def from_proto(cls, proto: default_types_pb2.SerializedList) -> "List":
-    return List(*Tuple.from_proto(proto.components_tuple).components)
+  def experimental_from_proto(
+      cls, proto: default_types_pb2.SerializedList) -> "List":
+    return List(
+        *Tuple.experimental_from_proto(proto.components_tuple).components)
 
-  def to_proto(self) -> default_types_pb2.SerializedList:
+  def experimental_as_proto(self) -> default_types_pb2.SerializedList:
     return default_types_pb2.SerializedList(
-        components_tuple=self.components_tuple.to_proto())
+        components_tuple=self.components_tuple.experimental_as_proto())
 
   def _placeholder_value(self) -> Any:
     return list(self.components_tuple._placeholder_value())  # pylint: disable=protected-access
@@ -304,20 +308,22 @@ class NamedTuple(trace.TraceType, serialization.Serializable):
                       supertyped_attributes.components, self._placeholder_type)
 
   @classmethod
-  def type_proto(cls) -> Type[default_types_pb2.SerializedNamedTuple]:
+  def experimental_type_proto(
+      cls) -> Type[default_types_pb2.SerializedNamedTuple]:
     return default_types_pb2.SerializedNamedTuple
 
   @classmethod
-  def from_proto(cls,
-                 proto: default_types_pb2.SerializedNamedTuple) -> "NamedTuple":
-    return NamedTuple(proto.type_name, tuple(proto.attribute_names),
-                      Tuple.from_proto(proto.attributes).components)
+  def experimental_from_proto(
+      cls, proto: default_types_pb2.SerializedNamedTuple) -> "NamedTuple":
+    return NamedTuple(
+        proto.type_name, tuple(proto.attribute_names),
+        Tuple.experimental_from_proto(proto.attributes).components)
 
-  def to_proto(self) -> default_types_pb2.SerializedNamedTuple:
+  def experimental_as_proto(self) -> default_types_pb2.SerializedNamedTuple:
     return default_types_pb2.SerializedNamedTuple(
         type_name=self.type_name,
         attribute_names=list(self.attribute_names),
-        attributes=self.attributes.to_proto())
+        attributes=self.attributes.experimental_as_proto())
 
   def _placeholder_value(self) -> Any:
     if self._placeholder_type is None:
@@ -394,18 +400,21 @@ class Attrs(trace.TraceType):
                  supertyped_attributes.attributes, self._placeholder_type)
 
   @classmethod
-  def type_proto(cls) -> Type[default_types_pb2.SerializedAttrs]:
+  def experimental_type_proto(cls) -> Type[default_types_pb2.SerializedAttrs]:
     return default_types_pb2.SerializedAttrs
 
   @classmethod
-  def from_proto(cls, proto: default_types_pb2.SerializedAttrs) -> "Attrs":
-    return Attrs(proto.named_attributes.type_name,
-                 tuple(proto.named_attributes.attribute_names),
-                 Tuple.from_proto(proto.named_attributes.attributes).components)
+  def experimental_from_proto(
+      cls, proto: default_types_pb2.SerializedAttrs) -> "Attrs":
+    return Attrs(
+        proto.named_attributes.type_name,
+        tuple(proto.named_attributes.attribute_names),
+        Tuple.experimental_from_proto(
+            proto.named_attributes.attributes).components)
 
-  def to_proto(self) -> default_types_pb2.SerializedAttrs:
+  def experimental_as_proto(self) -> default_types_pb2.SerializedAttrs:
     return default_types_pb2.SerializedAttrs(
-        named_attributes=self.named_attributes.to_proto())
+        named_attributes=self.named_attributes.experimental_as_proto())
 
   def _placeholder_value(self) -> Any:
     if self._placeholder_type is None:
@@ -485,19 +494,20 @@ class Dict(trace.TraceType, serialization.Serializable):
     return Dict(new_mapping)
 
   @classmethod
-  def type_proto(cls) -> Type[default_types_pb2.SerializedDict]:
+  def experimental_type_proto(cls) -> Type[default_types_pb2.SerializedDict]:
     return default_types_pb2.SerializedDict
 
   @classmethod
-  def from_proto(cls, proto: default_types_pb2.SerializedDict) -> "Dict":
+  def experimental_from_proto(
+      cls, proto: default_types_pb2.SerializedDict) -> "Dict":
     return Dict({
-        Literal.from_proto(k).value: serialization.deserialize(v)
+        Literal.experimental_from_proto(k).value: serialization.deserialize(v)
         for k, v in zip(proto.keys, proto.values)
     })
 
-  def to_proto(self) -> default_types_pb2.SerializedDict:
+  def experimental_as_proto(self) -> default_types_pb2.SerializedDict:
     return default_types_pb2.SerializedDict(
-        keys=[Literal(k).to_proto() for k in self.mapping.keys()],
+        keys=[Literal(k).experimental_as_proto() for k in self.mapping.keys()],
         values=[serialization.serialize(v) for v in self.mapping.values()])
 
   def _placeholder_value(self) -> Any:
@@ -552,19 +562,20 @@ class Reference(trace.TraceType, serialization.Serializable):
     return None
 
   @classmethod
-  def type_proto(cls) -> Type[default_types_pb2.SerializedReference]:
+  def experimental_type_proto(
+      cls) -> Type[default_types_pb2.SerializedReference]:
     return default_types_pb2.SerializedReference
 
   @classmethod
-  def from_proto(cls,
-                 proto: default_types_pb2.SerializedReference) -> "Reference":
+  def experimental_from_proto(
+      cls, proto: default_types_pb2.SerializedReference) -> "Reference":
     return Reference(
         serialization.deserialize(proto.base),
-        Literal.from_proto(proto.identifier).value)
+        Literal.experimental_from_proto(proto.identifier).value)
 
-  def to_proto(self) -> default_types_pb2.SerializedReference:
+  def experimental_as_proto(self) -> default_types_pb2.SerializedReference:
     return default_types_pb2.SerializedReference(
-        identifier=Literal(self.identifier).to_proto(),
+        identifier=Literal(self.identifier).experimental_as_proto(),
         base=serialization.serialize(self.base))
 
   def _placeholder_value(self) -> Any:

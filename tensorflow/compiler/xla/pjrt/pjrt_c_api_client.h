@@ -17,30 +17,37 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PJRT_PJRT_C_API_CLIENT_H_
 
 #include <functional>
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/platform/casts.h"
 
 namespace xla {
 
+class PjRtCApiClient;
+
 class PjRtCApiDevice : public PjRtDevice {
  public:
-  explicit PjRtCApiDevice(PjRtDevice* wrapped) : wrapped_(wrapped) {}
+  explicit PjRtCApiDevice(PJRT_Device* device);
+  ~PjRtCApiDevice() override;
 
   // Must set client exactly once.
-  void SetClient(PjRtClient* client) {
+  void SetClient(PjRtCApiClient* client) {
     CHECK(client_ == nullptr) << ToString();
     client_ = client;
   }
 
-  PjRtClient* client() const override { return client_; }
+  PjRtClient* client() const override;
 
   bool IsAddressable() const override { return wrapped_->IsAddressable(); }
 
-  int id() const override { return wrapped_->id(); }
+  int id() const override;
 
   int process_index() const override { return wrapped_->process_index(); }
 
@@ -83,7 +90,11 @@ class PjRtCApiDevice : public PjRtDevice {
   }
 
  private:
-  PjRtClient* client_ = nullptr;
+  PjRtCApiClient* client_ = nullptr;
+  PJRT_Device* device_;
+  // TODO(shahrokhi): wrapped_ is a non-C API pointer that was used to bypass
+  // the C API calls until all the C API's got implemented. Remove it when it's
+  // usage is reduced to zero.
   PjRtDevice* wrapped_;
 };
 
@@ -92,9 +103,7 @@ class PjRtCApiClient : public PjRtClient {
   PjRtCApiClient(const PJRT_Api* c_api, PJRT_Client* c_client,
                  std::vector<std::unique_ptr<PjRtCApiDevice>> devices);
 
-  ~PjRtCApiClient() override;
-
-  int process_index() const override { return wrapped_->process_index(); }
+  int process_index() const override;
 
   int device_count() const override { return wrapped_->device_count(); }
 
@@ -125,13 +134,9 @@ class PjRtCApiClient : public PjRtClient {
     return wrapped_->platform_id();
   }
 
-  absl::string_view platform_name() const override {
-    return wrapped_->platform_name();
-  }
+  absl::string_view platform_name() const override;
 
-  absl::string_view platform_version() const override {
-    return wrapped_->platform_version();
-  }
+  absl::string_view platform_version() const override;
 
   PjRtRuntimeType runtime_type() const override {
     return wrapped_->runtime_type();
@@ -251,9 +256,11 @@ class PjRtCApiClient : public PjRtClient {
   StatusOr<std::unique_ptr<PjRtBuffer>> WrapBuffer(
       StatusOr<std::unique_ptr<PjRtBuffer>> to_wrap);
 
+  const PJRT_Api* pjrt_c_api() const;
+
  private:
   const PJRT_Api* c_api_;
-  PJRT_Client* c_client_;
+  std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter> c_client_;
 
   std::vector<std::unique_ptr<PjRtCApiDevice>> owned_devices_;
   std::vector<PjRtDevice*> devices_;
@@ -269,8 +276,8 @@ class PjRtCApiClient : public PjRtClient {
 
 class PjRtCApiBuffer : public PjRtBuffer {
  public:
-  PjRtCApiBuffer(PjRtCApiClient* client, std::unique_ptr<PjRtBuffer> wrapped)
-      : client_(client), wrapped_(std::move(wrapped)) {}
+  PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer);
+  ~PjRtCApiBuffer() override;
 
   const Shape& on_device_shape() const override {
     return wrapped_->on_device_shape();
@@ -340,9 +347,9 @@ class PjRtCApiBuffer : public PjRtBuffer {
     return wrapped_->GetReadyFuture();
   }
 
-  bool IsOnCpu() const override { return wrapped_->IsOnCpu(); }
+  bool IsOnCpu() const override;
 
-  PjRtBuffer* wrapped() const { return wrapped_.get(); }
+  PjRtBuffer* wrapped() const { return wrapped_; }
 
   static PjRtBuffer* GetWrapped(PjRtBuffer* c_api_buffer) {
     return tensorflow::down_cast<PjRtCApiBuffer*>(c_api_buffer)->wrapped();
@@ -360,7 +367,12 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
  private:
   PjRtCApiClient* client_;
-  std::unique_ptr<PjRtBuffer> wrapped_;
+  PJRT_Buffer* buffer_;
+
+  // TODO(amangu): _wrapped is a non-C API pointer that was used to bypass the
+  // C API calls until all the C API's got implemented. Remove it when it's
+  // usage is reduced to zero.
+  PjRtBuffer* wrapped_;
 };
 
 class PjRtCApiExecutable : public PjRtExecutable {
@@ -368,22 +380,24 @@ class PjRtCApiExecutable : public PjRtExecutable {
   PjRtCApiExecutable(PjRtCApiClient* client,
                      std::unique_ptr<PjRtExecutable> wrapped);
 
+  ~PjRtCApiExecutable() override;
+
   PjRtClient* client() const override { return client_; }
-  absl::string_view name() const override { return wrapped_->name(); }
-  int num_replicas() const override { return wrapped_->num_replicas(); }
-  int num_partitions() const override { return wrapped_->num_partitions(); }
+  absl::string_view name() const override;
+  int num_replicas() const override { return wrapped()->num_replicas(); }
+  int num_partitions() const override { return wrapped()->num_partitions(); }
 
   int64_t SizeOfGeneratedCodeInBytes() const override {
-    return wrapped_->SizeOfGeneratedCodeInBytes();
+    return wrapped()->SizeOfGeneratedCodeInBytes();
   }
 
   const DeviceAssignment& device_assignment() const override {
-    return wrapped_->device_assignment();
+    return wrapped()->device_assignment();
   }
 
   absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
       const override {
-    return wrapped_->addressable_device_logical_ids();
+    return wrapped()->addressable_device_logical_ids();
   }
 
   absl::Span<PjRtDevice* const> addressable_devices() const override {
@@ -392,7 +406,7 @@ class PjRtCApiExecutable : public PjRtExecutable {
 
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override {
-    return wrapped_->GetHloModules();
+    return wrapped()->GetHloModules();
   }
 
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
@@ -413,10 +427,10 @@ class PjRtCApiExecutable : public PjRtExecutable {
       std::optional<PjRtFuture<Status>>& returned_future,
       bool fill_future) override;
 
-  void Delete() override { return wrapped_->Delete(); }
-  bool IsDeleted() override { return wrapped_->IsDeleted(); }
+  void Delete() override { return wrapped()->Delete(); }
+  bool IsDeleted() override { return wrapped()->IsDeleted(); }
 
-  PjRtExecutable* wrapped() const { return wrapped_.get(); }
+  PjRtExecutable* wrapped() const;
 
   static PjRtExecutable* GetWrapped(const PjRtExecutable* c_api_executable) {
     return tensorflow::down_cast<const PjRtCApiExecutable*>(c_api_executable)
@@ -425,7 +439,7 @@ class PjRtCApiExecutable : public PjRtExecutable {
 
  private:
   PjRtCApiClient* client_;
-  std::unique_ptr<PjRtExecutable> wrapped_;
+  PJRT_Executable* executable_;
   std::vector<PjRtDevice*> addressable_devices_;
 };
 

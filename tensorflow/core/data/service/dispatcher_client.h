@@ -58,7 +58,7 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
 
   // Gets a dataset definition for the given dataset id, and stores the
   // definition in `dataset_def`.
-  Status GetDatasetDef(int64_t dataset_id, DatasetDef& dataset_def);
+  Status GetDatasetDef(const std::string& dataset_id, DatasetDef& dataset_def);
 
   // Gets the next split for the specified iteration id, repetition, and split
   // provider index.
@@ -70,12 +70,12 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // dataset id in `dataset_id`.
   Status RegisterDataset(const DatasetDef& dataset,
                          const DataServiceMetadata& metadata,
-                         int64_t& dataset_id);
+                         std::string& dataset_id);
 
   // If `job_name` is set, looks up a job matching `job_name`.
   // If `job_name` is absent or no matching job is found, creates a
   // new job. The resulting job id is stored in `job_id`.
-  Status GetOrCreateJob(int64_t dataset_id,
+  Status GetOrCreateJob(const std::string& dataset_id,
                         const ProcessingModeDef& processing_mode,
                         const absl::optional<std::string>& job_name,
                         std::optional<int64_t> num_consumers,
@@ -109,7 +109,7 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   Status GetWorkers(std::vector<WorkerInfo>& workers);
 
   // Returns data service metadata for the registered dataset.
-  Status GetDataServiceMetadata(int64_t dataset_id,
+  Status GetDataServiceMetadata(const std::string& dataset_id,
                                 DataServiceMetadata& metadata);
 
   // Returns data service config of the data service cluster.

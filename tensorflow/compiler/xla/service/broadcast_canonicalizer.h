@@ -12,22 +12,26 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 
-#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_UTIL_H_
-#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_UTIL_H_
-namespace mlir {
-namespace quant {
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_BROADCAST_CANONICALIZER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_BROADCAST_CANONICALIZER_H_
 
-// Returns true if the op has any quantized tensors as input or output.
-bool HasQuantizedTensors(Operation *op);
+#include <optional>
 
-enum class QuantizationMethod {
-  kQuantizationAwareTraining,
-  kPostTrainingQuantization,
-  kDynamicRangeQuantization
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+
+namespace xla {
+
+// This transform ensures that dimensions in all broadcast operations are
+// sorted.
+class BroadcastCanonicalizer : public HloModulePass {
+ public:
+  explicit BroadcastCanonicalizer();
+
+  absl::string_view name() const override { return "broadcast_canonicalizer"; }
+  StatusOr<bool> Run(HloModule* module) override;
 };
 
-}  // namespace quant
-}  // namespace mlir
-#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_UTIL_H_
+}  // namespace xla
+
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_BROADCAST_CANONICALIZER_H_

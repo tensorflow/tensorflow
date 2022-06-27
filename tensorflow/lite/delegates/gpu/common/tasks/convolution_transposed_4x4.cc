@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_4x4.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -416,7 +417,7 @@ void ConvolutionTransposed4x4::UploadWeights(
 
   RearrangeWeights(weights, weights_desc, absl::MakeSpan(desc.data));
   args_.AddObject("weights",
-                  absl::make_unique<BufferDescriptor>(std::move(desc)));
+                  std::make_unique<BufferDescriptor>(std::move(desc)));
 }
 
 bool IsConvolutionTransposed4x4Supported(
@@ -440,7 +441,7 @@ ConvolutionTransposed4x4 CreateConvolutionTransposed4x4(
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(attr.bias);
   result.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+      "biases", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
   return result;
 }
 
@@ -465,7 +466,7 @@ ConvolutionTransposed4x4 CreateConvolutionTransposed4x4DynamicWeights(
   desc.element_type = new_def.GetDataType();
   desc.UploadLinearData(attr.bias);
   result.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+      "biases", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
   return result;
 }
 

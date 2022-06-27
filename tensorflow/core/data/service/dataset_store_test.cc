@@ -49,9 +49,9 @@ std::string NewDatasetsDir() {
 
 std::unique_ptr<DatasetStore> MakeStore(const std::string& type) {
   if (type == kFileSystem) {
-    return absl::make_unique<FileSystemDatasetStore>(NewDatasetsDir());
+    return std::make_unique<FileSystemDatasetStore>(NewDatasetsDir());
   } else if (type == kMemory) {
-    return absl::make_unique<MemoryDatasetStore>();
+    return std::make_unique<MemoryDatasetStore>();
   } else {
     CHECK(false) << "unexpected type: " << type;
   }

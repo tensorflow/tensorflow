@@ -56,16 +56,23 @@ bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
   return false;
 }
 
+bool IsPhysicallyTransposing(const HloInstruction* instr) {
+  return instr->opcode() == HloOpcode::kCopy ||
+         (instr->opcode() == HloOpcode::kTranspose &&
+          !ShapeUtil::TransposeIsBitcast(instr->operand(0)->shape(),
+                                         instr->shape(), instr->dimensions()));
+}
+
 }  // namespace
 
 bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
                                          const HloInstruction& reduce) {
-  if (producer.opcode() == HloOpcode::kCopy) {
+  if (IsPhysicallyTransposing(&producer)) {
     return false;
   }
   if (producer.opcode() == HloOpcode::kFusion) {
     for (const HloInstruction* instr : producer.fused_instructions()) {
-      if (instr->opcode() == HloOpcode::kCopy) {
+      if (IsPhysicallyTransposing(instr)) {
         // Elementwise copies are only inserted in input fusion for
         // transposition, and those are never friendly to the reduction.
         return false;
@@ -75,8 +82,7 @@ bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
 
   // A fusion iterates over its output in physically-contiguous order. This
   // applies "upwards" to operands.  Only an operator that changes an operand's
-  // physical layout can create a "bad" memory access pattern, and layout
-  // assignment guarantees kCopy is the only such operator.
+  // physical layout can create a "bad" memory access pattern.
   return true;
 }
 

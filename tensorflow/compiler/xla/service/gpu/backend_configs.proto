@@ -56,6 +56,8 @@ message GemmBackendConfig {
 
   xla.DotDimensionNumbers dot_dimension_numbers = 7;
 
+  xla.PrecisionConfig precision_config = 12;
+
   // Deleted fields.
   reserved 8, 10, 11;
   reserved "batch_size", "lhs_stride", "rhs_stride";

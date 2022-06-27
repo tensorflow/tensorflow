@@ -10428,6 +10428,32 @@ ENTRY entry {
               op::Copy(AllOf(op::AllReduce(op::AllReduce(dus)))));
 }
 
+TEST_F(SpmdPartitioningTest, GatherPassthrough) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p = f32[16,64,768,768]{3,2,1,0} parameter(0), sharding={replicated}
+  c = f32[16,64,768,768]{3,2,1,0} copy(p), sharding={devices=[1,4,1,1]0,1,2,3}
+  constant.1669 = s32[] constant(0)
+  iota.1012 = s32[6]{0} iota(), iota_dimension=0, sharding={replicated} 
+  constant.1748 = s32[] constant(128), sharding={replicated}
+  broadcast.2642 = s32[6]{0} broadcast(constant.1748), dimensions={}, sharding={replicated}
+  multiply.92 = s32[6]{0} multiply(iota.1012, broadcast.2642), sharding={replicated}
+  broadcast.2643 = s32[2,6]{1,0} broadcast(multiply.92), dimensions={1}, sharding={replicated}
+  transpose.542 = s32[6,2]{0,1} transpose(broadcast.2643), dimensions={1,0}, sharding={replicated}
+  pad.19 = s32[6,4]{1,0} pad(transpose.542, constant.1669), padding=0_0x2_0, sharding={replicated}
+  ROOT gather.1 = f32[16,64,6,128,128]{4,3,2,1,0} gather(c, pad.19), offset_dims={0,1,3,4}, collapsed_slice_dims={}, start_index_map={0,1,2,3}, index_vector_dim=1, slice_sizes={16,64,128,128}, sharding={devices=[1,4,1,1,1]0,1,2,3}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Gather(), op::Shape("f32[16,16,6,128,128]")));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla
