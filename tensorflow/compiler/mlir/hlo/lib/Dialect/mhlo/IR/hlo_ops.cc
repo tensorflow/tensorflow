@@ -3109,18 +3109,22 @@ LogicalResult ClampOp::verify() {
   auto minType = min().getType().cast<RankedTensorType>();
 
   auto minShape = minType.getShape();
-  if (minShape != operandShape && minType.getRank() != 0) {
+  if (failed(verifyCompatibleShape(minType, operandType)) &&
+      minType.getRank() != 0) {
     return emitOpError(llvm::formatv(
-        "min shape [{0}] is not scalar and does not match operand shape [{1}]",
+        "min shape [{0}] is not scalar and is not compatible to operand shape "
+        "[{1}]",
         llvm::make_range(minShape.begin(), minShape.end()),
         llvm::make_range(operandShape.begin(), operandShape.end())));
   }
 
   auto maxType = max().getType().cast<RankedTensorType>();
   auto maxShape = maxType.getShape();
-  if (maxShape != operandShape && maxType.getRank() != 0) {
+  if (failed(verifyCompatibleShape(maxType, operandType)) &&
+      maxType.getRank() != 0) {
     return emitOpError(llvm::formatv(
-        "max shape [{0}] is not scalar and does not match operand shape [{1}]",
+        "max shape [{0}] is not scalar and is not compatible to operand shape "
+        "[{1}]",
         llvm::make_range(maxShape.begin(), maxShape.end()),
         llvm::make_range(operandShape.begin(), operandShape.end())));
   }
