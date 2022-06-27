@@ -2431,8 +2431,10 @@ struct ReduceWindowOpOnTensorsGenericConversion
       dstExprs.push_back(mlir::getAffineDimExpr(i, ctx));
     }
 
-    SmallVector<AffineMap, 4> inferredMaps =
-        AffineMap::inferFromExprList({srcExprs, windowExprs, dstExprs});
+    SmallVector<AffineMap, 4> inferredMaps(3, AffineMap::get(ctx));
+    if (rank > 0)
+      inferredMaps =
+          AffineMap::inferFromExprList({srcExprs, windowExprs, dstExprs});
 
     SmallVector<AffineMap, 4> indexingMaps;
 
