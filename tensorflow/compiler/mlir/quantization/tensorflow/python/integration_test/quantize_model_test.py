@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for quantize_model."""
-from typing import List, Mapping, Optional, Sequence, Set, Tuple
+from typing import Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 import warnings
 
 from absl.testing import parameterized
@@ -23,6 +23,8 @@ import tensorflow  # pylint: disable=unused-import
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import quantize_model
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
+from tensorflow.core.framework import function_pb2
+from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
@@ -51,6 +53,32 @@ _Method = quant_opts_pb2.QuantizationMethod.Method
 _ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod
 
 
+def _is_quantized_function(func: function_pb2.FunctionDef) -> bool:
+  """Determine whether a FunctionDef is quantized.
+
+  Args:
+    func: A FunctionDef object.
+
+  Returns:
+    True if `func` is quantized.
+  """
+  return func.signature.name.startswith('quantized_')
+
+
+def _contains_op_with_name(nodes: Iterable[node_def_pb2.NodeDef],
+                           op_name: str) -> bool:
+  """Determine whether there is a node whose operation name matches `op_name`.
+
+  Args:
+    nodes: Iterable of NodeDefs.
+    op_name: Name of the op to match.
+
+  Returns:
+    True if there is a node that matches `op_name`.
+  """
+  return any(node.op == op_name for node in nodes)
+
+
 def _contains_quantized_function_call(
     meta_graphdef: meta_graph_pb2.MetaGraphDef) -> bool:
   """Determines if the graph def has quantized function call.
@@ -61,10 +89,8 @@ def _contains_quantized_function_call(
   Returns:
     True if and only if the graph def contains a quantized function call.
   """
-  for func in meta_graphdef.graph_def.library.function:
-    if func.signature.name.startswith('quantized_'):
-      return True
-  return False
+  return any(
+      map(_is_quantized_function, meta_graphdef.graph_def.library.function))
 
 
 def _contains_op(meta_graphdef: meta_graph_pb2.MetaGraphDef,
@@ -79,14 +105,14 @@ def _contains_op(meta_graphdef: meta_graph_pb2.MetaGraphDef,
     True if and only if the graph def contains an op named `op_name`.
   """
   # Check the main graph
-  if any(node.op == op_name for node in meta_graphdef.graph_def.node):
+  if _contains_op_with_name(
+      nodes=meta_graphdef.graph_def.node, op_name=op_name):
     return True
+
   # Check the graph genederated from user defined functions
-  for func in meta_graphdef.graph_def.library.function:
-    for node in func.node_def:
-      if node.op == op_name:
-        return True
-  return False
+  return any(
+      _contains_op_with_name(nodes=func.node_def, op_name=op_name)
+      for func in meta_graphdef.graph_def.library.function)
 
 
 def _create_simple_tf1_conv_model(
@@ -226,7 +252,8 @@ class MatmulModel(module.Module):
     self.activation_fn = activation_fn
 
   @def_function.function(input_signature=[
-      tensor_spec.TensorSpec(shape=[1, 4], dtype=dtypes.float32)
+      tensor_spec.TensorSpec(
+          shape=(1, 4), dtype=dtypes.float32, name='input_tensor')
   ])
   def matmul(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
     """Performs a matrix multiplication.
@@ -798,7 +825,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
 
   @test_util.run_in_graph_and_eager_modes
-  def test_model_use_representative_samples_list(self):
+  def test_model_ptq_use_representative_samples_list(self):
     model = MatmulModel()
     input_savedmodel_dir = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_savedmodel_dir)
@@ -824,13 +851,74 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
                           {'serving_default'})
     output_loader = saved_model_loader.SavedModelLoader(output_savedmodel_dir)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    # Model is not quantized because there was no sample data for calibration.
+    self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_model_ptq_use_ndarray_representative_dataset(self):
+    model = MatmulModel()
+    input_savedmodel_dir = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_savedmodel_dir)
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+    output_savedmodel_dir = self.create_tempdir().full_path
+    tags = {tag_constants.SERVING}
+
+    # Use np.ndarrays instead of tf.Tensors for the representative dataset.
+    representative_dataset = [{
+        'input_tensor': np.random.uniform(size=(1, 4)).astype(np.float32),
+    } for _ in range(4)]
+
+    converted_model = quantize_model.quantize(
+        input_savedmodel_dir, ['serving_default'],
+        tags=tags,
+        output_directory=output_savedmodel_dir,
+        quantization_options=quantization_options,
+        representative_dataset=representative_dataset)
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
+    output_loader = saved_model_loader.SavedModelLoader(output_savedmodel_dir)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_model_ptq_use_python_list_representative_dataset(self):
+    model = MatmulModel()
+    input_savedmodel_dir = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_savedmodel_dir)
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+    output_savedmodel_dir = self.create_tempdir().full_path
+    tags = {tag_constants.SERVING}
+
+    # Use plain python lists as representative samples.
+    representative_dataset = [{
+        'input_tensor': [[0.1, 0.2, 0.3, 0.4]],
+    } for _ in range(4)]
+
+    converted_model = quantize_model.quantize(
+        input_savedmodel_dir, ['serving_default'],
+        tags=tags,
+        output_directory=output_savedmodel_dir,
+        quantization_options=quantization_options,
+        representative_dataset=representative_dataset)
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
+    output_loader = saved_model_loader.SavedModelLoader(output_savedmodel_dir)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
 
   # tf.data.Dataset is as an Iterable (thus can be used as representative
   # dataset) only in TF2 (eager mode).
   @test_util.run_v2_only
-  def test_model_use_tf_dataset_for_representative_dataset(self):
+  def test_model_ptq_use_tf_dataset_for_representative_dataset(self):
     model = MatmulModel()
     input_savedmodel_dir = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_savedmodel_dir)
@@ -864,11 +952,10 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
                           {'serving_default'})
     output_loader = saved_model_loader.SavedModelLoader(output_savedmodel_dir)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    # Model is not quantized because there was no sample data for calibration.
     self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
 
   @test_util.run_in_graph_and_eager_modes
-  def test_model_no_representative_sample_shows_warnings(self):
+  def test_model_ptq_no_representative_sample_shows_warnings(self):
     model = MatmulModel()
     input_savedmodel_dir = self.create_tempdir('input').full_path
     output_savedmodel_dir = self.create_tempdir().full_path
@@ -907,7 +994,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     self.assertFalse(_contains_quantized_function_call(output_meta_graphdef))
 
   @test_util.run_in_graph_and_eager_modes
-  def test_model_with_uncalibrated_subgraph(self):
+  def test_model_ptq_with_uncalibrated_subgraph(self):
 
     class IfModel(module.Module):
       """A model that contains a branching op."""

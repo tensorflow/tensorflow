@@ -155,16 +155,18 @@ def _fix_tensor_names(signatures, exported_graph):
 def _get_signature_key_and_input(
     representative_sample: repr_dataset.RepresentativeSample,
     signature_keys: List[str],
-) -> Tuple[str, Mapping[str, core.Tensor]]:
+) -> Tuple[str, Mapping[str, core.TensorLike]]:
   """Gets the signature key and input data from `representative_sample`.
 
   The `representative_sample` can be in two formats:
 
-  1. A tuple of: (signature_key, {input_name -> input_tensor})
-  2. A dict: {input_name -> input_tensor}.
+  1. A tuple of: (signature_key, {input_key -> input_value})
+  2. A dict: {input_key -> input_value}.
 
   (2) assumes the signature_key to be the default signature key (first item in
   `signature_keys`).
+
+  Input values are any `TensorLike` values that can be converted to a `Tensor`.
 
   Args:
     representative_sample: A single sample from the representative dataset, used
@@ -176,7 +178,7 @@ def _get_signature_key_and_input(
   Returns:
     signature_key: Signature key that indicates the function to be used for the
       returned input data.
-    input data: A input_name -> input_tensor mapping (dict).
+    input data: A input_key -> input_value mapping (dict).
 
   Raises:
     ValueError: When the format of `representative_sample` is invalid, or when
@@ -202,18 +204,18 @@ def _get_signature_key_and_input(
 
 
 def _create_feed_dict_from_input_data(
-    input_data: Mapping[str, core.Tensor],
+    input_data: Mapping[str, core.TensorLike],
     signature_def: meta_graph_pb2.SignatureDef) -> Dict[str, np.ndarray]:
   """Constructs a feed_dict from input data.
 
   Note: This function should only be used in graph mode.
 
-  This is a helper function that converts an 'input key -> input tensor' mapping
-  to a feed dict. A feed dict is an 'input tensor name -> input data' mapping
+  This is a helper function that converts an 'input key -> input value' mapping
+  to a feed dict. A feed dict is an 'input tensor name -> input value' mapping
   and can be directly passed to the `feed_dict` argument of `sess.run()`.
 
   Args:
-    input_data: Input key -> input tensor mapping. The input keys should match
+    input_data: Input key -> input value mapping. The input keys should match
       the input keys of `signature_def`.
     signature_def: A SignatureDef representing the function that `input_data` is
       an input to.
@@ -224,16 +226,23 @@ def _create_feed_dict_from_input_data(
 
   Returns:
     Feed dict, which is intended to be used as input for `sess.run`. It is
-    essentially a mapping: input tensor name -> tensor data.
+    essentially a mapping: input tensor name -> input value. Note that the input
+    value in the feed dict is not a `Tensor`.
   """
   feed_dict = {}
-  for input_key, input_tensor in input_data.items():
+  for input_key, input_value in input_data.items():
     if input_key not in signature_def.inputs:
       raise KeyError(f"Invalid input key '{input_key}'. Available input keys"
                      f' are: {list(signature_def.inputs.keys())}.')
 
     input_tensor_name = signature_def.inputs[input_key].name
-    feed_dict[input_tensor_name] = input_tensor.eval()
+
+    value = input_value
+    if isinstance(input_value, core.Tensor):
+      # Take the data out of the tensor.
+      value = input_value.eval()
+
+    feed_dict[input_tensor_name] = value
 
   return feed_dict
 
@@ -283,6 +292,32 @@ def _run_graph_for_calibration_graph_mode(
       sess.run(output_tensor_names, feed_dict=feed_dict)
 
 
+def _convert_values_to_tf_tensors(
+    tensorlike_map: Mapping[str, core.TensorLike]) -> Mapping[str, core.Tensor]:
+  """Converts TensorLike values of `tensorlike_map` to Tensors.
+
+  Creates a copy of `tensorlike_map`, where each value is converted to Tensors
+  unless it is already a Tensor.
+  The values are not converted in-place (i.e. `tensorlike_map` is not mutated).
+
+  Args:
+    tensorlike_map: A map of {name -> tensorlike value}.
+
+  Returns:
+    Converted map of {name -> tensor value}.
+  """
+  tensor_mapping = {}
+  for name, tensorlike_value in tensorlike_map.items():
+    if isinstance(tensorlike_value, core.Tensor):
+      tensor_value = tensorlike_value
+    else:
+      tensor_value = ops.convert_to_tensor_v2_with_dispatch(tensorlike_value)
+
+    tensor_mapping[name] = tensor_value
+
+  return tensor_mapping
+
+
 def _run_graph_for_calibration_eager_mode(
     model_dir: str, signature_keys: List[str], tags: Set[str],
     representative_dataset: repr_dataset.RepresentativeDataset) -> None:
@@ -308,9 +343,17 @@ def _run_graph_for_calibration_eager_mode(
     signature_key, input_data = _get_signature_key_and_input(
         sample, signature_keys)
 
+    # Convert any non-Tensor values from the sample to Tensors.
+    # This conversion is required because the model saved in `model_dir` is
+    # saved using TF1 SavedModelBuilder, which doesn't save the
+    # SavedObjectGraph.
+    # TODO(b/236795224): Remove the need for this conversion by keeping the
+    # FunctionSpec (object graph) in the SavedModel. Related: b/213406917.
+    func_kwargs = _convert_values_to_tf_tensors(input_data)
+
     func = root.signatures[signature_key]
     try:
-      func(**input_data)
+      func(**func_kwargs)
     except Exception as ex:
       raise ValueError(
           f'Failed to run the function with signature key: {signature_key}'
@@ -335,11 +378,10 @@ def _static_range_quantize(
       analyze.
     output_directory: The path to save the output SavedModel (must be an empty
       directory).
-    representative_dataset: a generator that returns a dictionary in
-      {input_name: input_tensor} format or a tuple with signature key and a
-      dictionary in {input_name: input_tensor} format that feeds calibration
-      data for quantizing model. This should be provided when the model is not a
-      QAT model.
+    representative_dataset: a generator that returns a dictionary in {input_key:
+      input_value} format or a tuple with signature key and a dictionary in
+      {input_key: input_value} format that feeds calibration data for quantizing
+      model. This should be provided when the model is not a QAT model.
 
   Returns:
     A SavedModel object with TF quantization applied.
@@ -553,11 +595,10 @@ def quantize(
     output_directory: The path to save the output SavedModel (must be an empty
       directory).
     quantization_options: A set of options for quantization.
-    representative_dataset: a generator that returns a dictionary in
-      {input_name: input_tensor} format or a tuple with signature key and a
-      dictionary in {input_name: input_tensor} format that feeds calibration
-      data for quantizing model. This should be provided when the model is a PTQ
-      model.
+    representative_dataset: an iterator that returns a dictionary of {input_key:
+      input_value} or a tuple with signature key and a dictionary of {input_key:
+      input_value} that feeds calibration data for quantizing model. This should
+      be provided when the model is a PTQ model.
 
   Returns:
     A SavedModel object with TF quantization applied, or None if no quantization
